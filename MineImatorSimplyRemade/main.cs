@@ -28,7 +28,7 @@ class main
         _window = _glfw.CreateWindow(640, 480, "Mine Imator Simply Remade: Nuxi", null, null);
         if (_window == null)
         {
-            Console.WriteLine("Failed to create window");
+            Console.WriteLine("Failed to create main window!");
             _glfw.Terminate();
             return 1;
         }
