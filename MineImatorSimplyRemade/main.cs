@@ -1,4 +1,5 @@
 ﻿using System.Drawing;
+using Silk.NET.Core.Native;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
 
@@ -8,6 +9,8 @@ class main
     private static Glfw _glfw;
     private static unsafe WindowHandle* _window;
     private static GL _gl;
+    
+    private static bool isVulkan = false;
     
     private static unsafe int Main(string[] args)
     {
@@ -33,6 +36,14 @@ class main
         _glfw.MakeContextCurrent(_window);
         
         _gl = GL.GetApi(_glfw.GetProcAddress);
+        
+        byte* versionPtr = _gl.GetString(StringName.Version);
+        string openGlVersion = SilkMarshal.PtrToString((IntPtr)versionPtr) ?? throw new InvalidOperationException();
+        Console.WriteLine($"OpenGL Version: {openGlVersion}");
+        
+        byte* rendererPtr = _gl.GetString(StringName.Renderer);
+        string gpuRenderer = SilkMarshal.PtrToString((IntPtr)rendererPtr) ?? throw new InvalidOperationException();
+        Console.WriteLine($"GPU: {gpuRenderer}");
         
         _gl.ClearColor(Color.Black);
 
