@@ -27,13 +27,14 @@ public static class main
         Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
         Glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
         
-        Windows.Add(new Window(640, 480, "Mine Imator Simply Remade: Nuxi"));
+        Windows.Add(new Window(640, 480, "Mine Imator Simply Remade: Nuxi", Glfw));
         if (Windows[0].WindowHandle == null)
         {
             Console.WriteLine("Failed to create main window!");
             Glfw.Terminate();
             return 1;
         }
+        Windows[0].CenterWindow();
 
         Windows[0].SetClearColor(new vec4(0.3f, 0.4f, 0.5f, 1));
         
@@ -42,6 +43,7 @@ public static class main
         _gl = GL.GetApi(Glfw.GetProcAddress);
         
         Windows[0].SetGL(_gl);
+        Windows[0].SetupImgui();
         
         byte* versionPtr = _gl.GetString(StringName.Version);
         string openGlVersion = SilkMarshal.PtrToString((IntPtr)versionPtr) ?? throw new InvalidOperationException();

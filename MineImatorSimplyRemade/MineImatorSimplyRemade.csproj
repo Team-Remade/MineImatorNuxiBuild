@@ -10,6 +10,9 @@
 
     <ItemGroup>
       <PackageReference Include="GlmSharp" Version="0.9.8" />
+      <PackageReference Include="Hexa.NET.ImGui" Version="2.2.9" />
+      <PackageReference Include="Hexa.NET.ImGui.Backends" Version="1.0.18" />
+      <PackageReference Include="Hexa.NET.ImGui.Backends.GLFW" Version="1.0.18" />
       <PackageReference Include="Silk.NET.GLFW" Version="2.23.0" />
       <PackageReference Include="Silk.NET.Input" Version="2.23.0" />
       <PackageReference Include="Silk.NET.OpenGL" Version="2.23.0" />
