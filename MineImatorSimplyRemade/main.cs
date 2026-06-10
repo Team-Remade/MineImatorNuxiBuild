@@ -1,41 +1,47 @@
 ﻿using System.Drawing;
+using GlmSharp;
+using MineImatorSimplyRemade.core.window;
 using Silk.NET.Core.Native;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
 
 
-class main
+public static class main
 {
-    private static Glfw _glfw;
-    private static unsafe WindowHandle* _window;
+    public static Glfw Glfw { get; private set; }
+    public static List<Window> Windows { get; private set; } = new List<Window>();
     private static GL _gl;
     
     private static bool isVulkan = false;
     
     private static unsafe int Main(string[] args)
     {
-        _glfw = Glfw.GetApi();
-        if (!_glfw.Init())
+        Glfw = Glfw.GetApi();
+        if (!Glfw.Init())
         {
             Console.WriteLine("Failed to initialize GLFW");
             return 1;
         }
         
-        _glfw.WindowHint(WindowHintInt.ContextVersionMajor, 3);
-        _glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
-        _glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
+        Glfw.WindowHint(WindowHintInt.ContextVersionMajor, 3);
+        Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
+        Glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
         
-        _window = _glfw.CreateWindow(640, 480, "Mine Imator Simply Remade: Nuxi", null, null);
-        if (_window == null)
+        Windows.Add(new Window(640, 480, "Mine Imator Simply Remade: Nuxi"));
+        if (Windows[0].WindowHandle == null)
         {
             Console.WriteLine("Failed to create main window!");
-            _glfw.Terminate();
+            Glfw.Terminate();
             return 1;
         }
+
+        Windows[0].SetClearColor(new vec4(0.3f, 0.4f, 0.5f, 1));
         
-        _glfw.MakeContextCurrent(_window);
+        Glfw.MakeContextCurrent(Windows[0].WindowHandle);
         
-        _gl = GL.GetApi(_glfw.GetProcAddress);
+        _gl = GL.GetApi(Glfw.GetProcAddress);
+        
+        Windows[0].SetGL(_gl);
         
         byte* versionPtr = _gl.GetString(StringName.Version);
         string openGlVersion = SilkMarshal.PtrToString((IntPtr)versionPtr) ?? throw new InvalidOperationException();
@@ -44,22 +50,25 @@ class main
         byte* rendererPtr = _gl.GetString(StringName.Renderer);
         string gpuRenderer = SilkMarshal.PtrToString((IntPtr)rendererPtr) ?? throw new InvalidOperationException();
         Console.WriteLine($"GPU: {gpuRenderer}");
-        
-        _gl.ClearColor(Color.Black);
 
-        while (!_glfw.WindowShouldClose(_window))
+        while (!Glfw.WindowShouldClose(Windows[0].WindowHandle))
         {
-            _glfw.PollEvents();
-            
-            _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-            
-            _glfw.SwapBuffers(_window);
+            Glfw.PollEvents();
+
+            foreach (var window in Windows)
+            {
+                window.Render();
+            }
         }
         
         _gl.Dispose();
-        _glfw.DestroyWindow(_window);
-        _glfw.MakeContextCurrent(null);
-        _glfw.Terminate();
+        
+        foreach (var window in Windows)
+        {
+            Glfw.DestroyWindow(window.WindowHandle);
+        }
+        
+        Glfw.Terminate();
         
         return 0;
     }
