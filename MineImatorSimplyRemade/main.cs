@@ -1,6 +1,6 @@
-﻿using System.Drawing;
-using GlmSharp;
+﻿using GlmSharp;
 using MineImatorSimplyRemade.core.window;
+using MineImatorSimplyRemade.core.window.windows;
 using Silk.NET.Core.Native;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
@@ -27,7 +27,7 @@ public static class main
         Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
         Glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
         
-        Windows.Add(new Window(640, 480, "Mine Imator Simply Remade: Nuxi", Glfw));
+        Windows.Add(new MainWindow(640, 480, "Mine Imator Simply Remade: Nuxi", Glfw));
         if (Windows[0].WindowHandle == null)
         {
             Console.WriteLine("Failed to create main window!");

@@ -9,9 +9,9 @@ using Monitor = Silk.NET.GLFW.Monitor;
 
 namespace MineImatorSimplyRemade.core.window;
 
-public class Window
+public class Window : IDisposable
 {
-    private unsafe WindowHandle* windowHandle;
+    protected unsafe WindowHandle* windowHandle;
     public unsafe WindowHandle* WindowHandle => windowHandle;
     private GL _gl;
     private Glfw Glfw;
@@ -72,7 +72,7 @@ public class Window
         Glfw.SwapBuffers(windowHandle);
     }
 
-    private void RenderUi()
+    protected virtual void RenderUi()
     {
         
     }
@@ -102,5 +102,9 @@ public class Window
         int centerY = monitorY + (mode->Height - windowHeight) / 2;
         
         Glfw.SetWindowPos(windowHandle, centerX, centerY);
+    }
+
+    public void Dispose()
+    {
     }
 }
