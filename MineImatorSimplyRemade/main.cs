@@ -1,4 +1,5 @@
 ﻿using GlmSharp;
+using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.window;
 using MineImatorSimplyRemade.core.window.windows;
 using Silk.NET.Core.Native;
@@ -11,6 +12,7 @@ public static class main
     public static Glfw Glfw { get; private set; }
     public static List<Window> Windows { get; private set; } = new List<Window>();
     private static GL _gl;
+    public static GL Gl => _gl;
     
     private static bool isVulkan = false;
     
@@ -44,6 +46,8 @@ public static class main
         
         Windows[0].SetGL(_gl);
         Windows[0].SetupImgui();
+        var win = Windows[0] as MainWindow;
+        win.triangleMesh = new Mesh(_gl);
         
         byte* versionPtr = _gl.GetString(StringName.Version);
         string openGlVersion = SilkMarshal.PtrToString((IntPtr)versionPtr) ?? throw new InvalidOperationException();

@@ -14,6 +14,7 @@ public class Window : IDisposable
     protected unsafe WindowHandle* windowHandle;
     public unsafe WindowHandle* WindowHandle => windowHandle;
     private GL _gl;
+    public GL GL => _gl;
     private Glfw Glfw;
     private vec4 clearColor = new vec4(0, 0, 0, 1);
     private ImGuiIOPtr io;
@@ -54,6 +55,8 @@ public class Window : IDisposable
         _gl.ClearColor(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
         _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
         
+        Draw();
+        
         ImGuiImplOpenGL3.NewFrame();
         ImGuiImplGLFW.NewFrame();
         ImGui.NewFrame();
@@ -70,6 +73,11 @@ public class Window : IDisposable
         }
         
         Glfw.SwapBuffers(windowHandle);
+    }
+
+    protected virtual void Draw()
+    {
+        
     }
 
     protected virtual void RenderUi()
