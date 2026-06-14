@@ -13,17 +13,31 @@ public class Window : IDisposable
 {
     protected unsafe WindowHandle* windowHandle;
     public unsafe WindowHandle* WindowHandle => windowHandle;
+    public int WindowWidth, WindowHeight;
+    
     private GL _gl;
     public GL GL => _gl;
     private Glfw Glfw;
+    
     private vec4 clearColor = new vec4(0, 0, 0, 1);
     private ImGuiIOPtr io;
+
+    private unsafe void FrameBufferResizeCallback(WindowHandle* windowHandle, int width, int height)
+    {
+        WindowWidth = width;
+        WindowHeight = height;
+    }
 
     public unsafe Window(int width, int height, string title, Glfw glfw, GL gl = null)
     {
         Glfw = glfw;
         windowHandle = Glfw.CreateWindow(width, height, title, null, null);
         _gl = gl;
+        
+        WindowWidth = width;
+        WindowHeight = height;
+        
+        Glfw.SetFramebufferSizeCallback(windowHandle, FrameBufferResizeCallback);
     }
 
     public unsafe void SetupImgui()
@@ -85,7 +99,7 @@ public class Window : IDisposable
         
     }
 
-    public void SetGL(GL gl)
+    public virtual void SetGL(GL gl)
     {
         _gl = gl;
     }

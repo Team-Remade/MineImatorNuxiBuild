@@ -46,8 +46,6 @@ public static class main
         
         Windows[0].SetGL(_gl);
         Windows[0].SetupImgui();
-        var win = Windows[0] as MainWindow;
-        win.triangleMesh = new Mesh(_gl);
         
         byte* versionPtr = _gl.GetString(StringName.Version);
         string openGlVersion = SilkMarshal.PtrToString((IntPtr)versionPtr) ?? throw new InvalidOperationException();

@@ -1,4 +1,6 @@
-﻿using GlmSharp;
+﻿using System.Drawing;
+using GlmSharp;
+using MineImatorSimplyRemade.core.mdl.material;
 using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.core.mdl;
@@ -9,6 +11,8 @@ public class Mesh : IDisposable
     
     private uint VBO, VAO;
     private Shader shader;
+    
+    protected Color Color { get; set; } = Color.White;
     
     private float[] vertices = {
         -0.5f, -0.5f * glm.Sqrt(3) / 3, 0.0f,
@@ -44,6 +48,16 @@ public class Mesh : IDisposable
         
         _gl.BindVertexArray(VAO);
         _gl.DrawArrays(GLEnum.Triangles, 0, 3);
+    }
+    
+    public int GetSurfaceCount()
+    {
+        return 1;
+    }
+
+    public Material SurfaceGetMaterial(int surfaceIndex)
+    {
+        return new Material();
     }
 
     public void Dispose()
