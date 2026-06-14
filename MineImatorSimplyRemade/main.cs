@@ -9,8 +9,8 @@ using Silk.NET.OpenGL;
 
 public static class main
 {
-    public static Glfw Glfw { get; private set; }
-    public static List<Window> Windows { get; private set; } = new List<Window>();
+    private static Glfw Glfw { get; set; }
+    private static List<Window> Windows { get; set; } = new List<Window>();
     private static GL _gl;
     public static GL Gl => _gl;
     

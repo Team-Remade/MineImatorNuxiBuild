@@ -2,6 +2,7 @@
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
+        <ApplicationIcon>Icon.ico</ApplicationIcon>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
@@ -16,6 +17,7 @@
       <PackageReference Include="Silk.NET.GLFW" Version="2.23.0" />
       <PackageReference Include="Silk.NET.Input" Version="2.23.0" />
       <PackageReference Include="Silk.NET.OpenGL" Version="2.23.0" />
+      <PackageReference Include="StbImageSharp" Version="2.30.15" />
     </ItemGroup>
     
     <ItemGroup>

@@ -6,11 +6,14 @@ using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
+using StbImageSharp;
 
 namespace MineImatorSimplyRemade.core.window.windows;
 
 public class MainWindow : Window
 {
+    public static Random Rnd = new Random();
+    
     private static readonly string
         LocalPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
     
@@ -37,6 +40,24 @@ public class MainWindow : Window
     public MainWindow(int width, int height, string title, Glfw glfw, GL gl = null) : base(width, height, title, glfw, gl)
     {
         menubar = new Menubar();
+
+        ImageResult icon;
+        var rng = Rnd.Next(1, 1000);
+
+        if (rng == 777)
+        {
+            icon = LoadEmbeddedImage("chegg");
+        }
+        else if (rng < 500)
+        {
+            icon = LoadEmbeddedImage("Icon");
+        }
+        else
+        {
+            icon = LoadEmbeddedImage("tamari");
+        }
+        
+        SetWindowIcon(icon);
     }
 
     public override void SetGL(GL gl)

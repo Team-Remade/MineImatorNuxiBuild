@@ -1,10 +1,12 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Reflection;
+using System.Runtime.CompilerServices;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.GLFW;
 using Hexa.NET.ImGui.Backends.OpenGL3;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
+using StbImageSharp;
 using Monitor = Silk.NET.GLFW.Monitor;
 
 namespace MineImatorSimplyRemade.core.window;
@@ -124,6 +126,41 @@ public class Window : IDisposable
         int centerY = monitorY + (mode->Height - windowHeight) / 2;
         
         Glfw.SetWindowPos(windowHandle, centerX, centerY);
+    }
+
+    public ImageResult LoadEmbeddedImage(string resourceName)
+    {
+        Assembly assembly = Assembly.GetExecutingAssembly();
+
+        using Stream? stream = assembly.GetManifestResourceStream($"MineImatorSimplyRemade.assets.img.{resourceName}.png");
+        if (stream == null)
+        {
+            throw new FileNotFoundException($"Embedded resource {resourceName} not found");
+        }
+            
+        ImageResult imageResult = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+            
+        return imageResult;
+    }
+
+    public unsafe void SetWindowIcon(ImageResult imageResult)
+    {
+        if (imageResult.Comp != ColorComponents.RedGreenBlueAlpha)
+        {
+            throw new NotSupportedException("Only RedGreenBlueAlpha is supported for window icons");
+        }
+
+        fixed (byte* ptr = imageResult.Data)
+        {
+            Image image = new Image
+            {
+                Width = imageResult.Width,
+                Height = imageResult.Height,
+                Pixels = ptr,
+            };
+            
+            Glfw.SetWindowIcon(windowHandle, 1, &image);
+        }
     }
 
     public void Dispose()
