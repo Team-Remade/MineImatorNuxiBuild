@@ -1,5 +1,4 @@
-﻿using System.Drawing;
-using GlmSharp;
+﻿using GlmSharp;
 using MineImatorSimplyRemade.core.mdl.material;
 using Silk.NET.OpenGL;
 
@@ -11,18 +10,28 @@ public class Mesh : IDisposable
     
     private uint VBO, VAO;
     private Shader shader;
+
+    public readonly List<vec3> Vertices = new List<vec3>();
     
-    protected Color Color { get; set; } = Color.White;
-    
-    private float[] vertices = {
-        -0.5f, -0.5f * glm.Sqrt(3) / 3, 0.0f,
-        0.5f, -0.5f * glm.Sqrt(3) / 3, 0.0f,
-        0.0f, 0.5f * glm.Sqrt(3) * 2 / 3, 0.0f
-    };
+    private List<float> vertices = new List<float>();
 
     public Mesh(GL gl)
     {
         _gl = gl;
+        
+        Vertices.Add(new vec3(0.0f, 0.5f, 0.0f)); // top
+        Vertices.Add(new vec3(-0.5f, -0.5f, 0.0f)); // bottom left
+        Vertices.Add(new vec3(0.5f, -0.5f, 0.0f)); // bottom right
+
+        if (Vertices.Count % 3 != 0)
+        {
+            throw  new Exception("Mesh contains an invalid number of vertices!");
+        }
+
+        if (Vertices.Count > 0)
+        {
+            GenVertexArray();
+        }
 
         shader = new Shader(gl);
         shader.CompileShader("simple.vert", "simple.frag");
@@ -33,13 +42,23 @@ public class Mesh : IDisposable
         _gl.BindVertexArray(VAO);
         
         _gl.BindBuffer(GLEnum.ArrayBuffer, VBO);
-        _gl.BufferData(GLEnum.ArrayBuffer, 9 * sizeof(float), vertices, GLEnum.StaticDraw);
+        _gl.BufferData(GLEnum.ArrayBuffer, (uint)vertices.Count * sizeof(float), vertices.ToArray(), GLEnum.StaticDraw);
         
         _gl.VertexAttribPointer(0, 3, GLEnum.Float, false, 3 * sizeof(float), 0);
         _gl.EnableVertexAttribArray(0);
         
         _gl.BindBuffer(GLEnum.ArrayBuffer, 0);
         _gl.BindVertexArray(0);
+    }
+
+    public void GenVertexArray()
+    {
+        foreach (vec3 vertex in Vertices)
+        {
+            vertices.Add(vertex.x);
+            vertices.Add(vertex.y);
+            vertices.Add(vertex.z);
+        }
     }
 
     public void Render()

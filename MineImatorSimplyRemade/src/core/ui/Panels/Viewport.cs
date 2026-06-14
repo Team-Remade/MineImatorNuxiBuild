@@ -57,6 +57,8 @@ public class Viewport : UiPanel
         
         Gl.BindTexture(GLEnum.Texture2D, 0);
         Gl.BindRenderbuffer(GLEnum.Renderbuffer, 0);
+        
+        Gl.Viewport((int)ImGui.GetCursorScreenPos().X, (int)ImGui.GetCursorScreenPos().Y, width, height);
     }
     
     public override unsafe void Render()
