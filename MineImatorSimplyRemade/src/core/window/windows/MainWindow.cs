@@ -28,17 +28,15 @@ public class MainWindow : Window
 
     private UiPanel[] _panels =
     {
-        new Viewport()
+        new Viewport(),
+        new Timeline(),
+        new SceneTree(),
+        new PropertiesPanel()
     };
 
     public MainWindow(int width, int height, string title, Glfw glfw, GL gl = null) : base(width, height, title, glfw, gl)
     {
         menubar = new Menubar();
-    }
-
-    protected override void Draw()
-    {
-        _panels[0].Draw();
     }
 
     public override void SetGL(GL gl)

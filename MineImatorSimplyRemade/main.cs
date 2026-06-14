@@ -29,7 +29,14 @@ public static class main
         Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
         Glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
         
-        Windows.Add(new MainWindow(640, 480, "Mine Imator Simply Remade: Nuxi", Glfw));
+        var monitor = Glfw.GetPrimaryMonitor();
+        var videoMode = Glfw.GetVideoMode(monitor);
+        var size = new vec2(videoMode->Width, videoMode->Height);
+
+        size.x -= 200;
+        size.y -= 160;
+        
+        Windows.Add(new MainWindow((int)size.x, (int)size.y, "Mine Imator Simply Remade: Nuxi", Glfw));
         if (Windows[0].WindowHandle == null)
         {
             Console.WriteLine("Failed to create main window!");

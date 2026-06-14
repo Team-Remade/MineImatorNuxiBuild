@@ -43,11 +43,6 @@ public class Viewport : UiPanel
         
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
     }
-    
-    public override void Draw()
-    {
-        
-    }
 
     private unsafe void ResizeFramebuffer(uint width, uint height)
     {
