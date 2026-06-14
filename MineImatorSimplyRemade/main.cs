@@ -1,5 +1,4 @@
 ﻿using GlmSharp;
-using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.window;
 using MineImatorSimplyRemade.core.window.windows;
 using Silk.NET.Core.Native;
@@ -10,9 +9,8 @@ using Silk.NET.OpenGL;
 public static class main
 {
     private static Glfw Glfw { get; set; }
-    private static List<Window> Windows { get; set; } = new List<Window>();
+    private static List<Window> Windows { get; } = new List<Window>();
     private static GL _gl;
-    public static GL Gl => _gl;
     
     private static bool isVulkan = false;
     
@@ -70,6 +68,8 @@ public static class main
             {
                 window.Render();
             }
+            
+            Thread.Sleep(1);
         }
         
         _gl.Dispose();
