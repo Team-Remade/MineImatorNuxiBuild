@@ -3,6 +3,7 @@ using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
+using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
@@ -63,16 +64,22 @@ public class MainWindow : Window
     public override void SetGL(GL gl)
     {
         base.SetGL(gl);
+
+        // Must be initialised before any SceneObject calls AssignObjectId().
+        SelectionManager.Initialize();
+
         foreach (var panel in _panels)
         {
             panel.Gl = gl;
-            
+
             if (panel is Viewport viewport)
             {
                 viewport.InitFramebuffer(1, 1);
-                //test
-                viewport.SceneObjects.Add(new SceneObject());
-                viewport.SceneObjects[0].AddMesh(new Mesh(gl));
+
+                // Default test object: a unit cube at the origin.
+                var testObj = new SceneObject { Name = "Cube" };
+                testObj.AddMesh(new Mesh(gl));
+                viewport.SceneObjects.Add(testObj);
             }
         }
     }

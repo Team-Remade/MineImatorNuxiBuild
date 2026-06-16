@@ -29,12 +29,12 @@ public static class main
         
         var monitor = Glfw.GetPrimaryMonitor();
         var videoMode = Glfw.GetVideoMode(monitor);
-        var size = new vec2(videoMode->Width, videoMode->Height);
+        var size = new ivec2(videoMode->Width, videoMode->Height);
 
         size.x -= 200;
         size.y -= 160;
         
-        Windows.Add(new MainWindow((int)size.x, (int)size.y, "Mine Imator Simply Remade: Nuxi", Glfw));
+        Windows.Add(new MainWindow(size.x, size.y, "Mine Imator Simply Remade: Nuxi", Glfw));
         if (Windows[0].WindowHandle == null)
         {
             Console.WriteLine("Failed to create main window!");

@@ -550,7 +550,67 @@ public class SceneObject
             child.ApplyEffectiveVisibility();
     }
 
-    //TODO get transforms
+    // ── World transform ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds the local TRS matrix for this object from its current
+    /// <see cref="Position"/>, <see cref="Rotation"/> (Euler XYZ, radians),
+    /// <see cref="Scale"/>, and <see cref="PivotOffset"/>.
+    /// </summary>
+    public mat4 GetLocalMatrix()
+    {
+        // Translate to position, then apply pivot offset negation so the mesh
+        // visually rotates around the pivot, then apply rotation and scale.
+        mat4 t = mat4.Translate(Position - GetAccumulatedPivotOffset());
+        mat4 rx = mat4.RotateX(Rotation.x);
+        mat4 ry = mat4.RotateY(Rotation.y);
+        mat4 rz = mat4.RotateZ(Rotation.z);
+        mat4 s = mat4.Scale(Scale);
+        return t * rz * ry * rx * s;
+    }
+
+    /// <summary>
+    /// Returns the world-space TRS matrix for this object by recursively
+    /// multiplying up the parent chain, respecting inheritance flags.
+    /// </summary>
+    public mat4 GetWorldMatrix()
+    {
+        mat4 local = GetLocalMatrix();
+
+        if (Parent == null)
+            return local;
+
+        mat4 parentWorld = Parent.GetWorldMatrix();
+
+        // Selectively strip parent contributions that are not inherited.
+        // For full inheritance just multiply; partial inheritance is handled
+        // by rebuilding the parent matrix with only the inherited components.
+        if (InheritPosition && InheritRotation && InheritScale)
+            return parentWorld * local;
+
+        // Decompose parent matrix into T, R, S and recombine with only the
+        // parts this child wants to inherit.
+        // GlmSharp is row-major: translation lives in Row3 (m30, m31, m32).
+        vec3 parentPos = new vec3(parentWorld.m30, parentWorld.m31, parentWorld.m32);
+        // Extract scale lengths from the upper-left 3×3 rows.
+        vec3 row0 = new vec3(parentWorld.m00, parentWorld.m01, parentWorld.m02);
+        vec3 row1 = new vec3(parentWorld.m10, parentWorld.m11, parentWorld.m12);
+        vec3 row2 = new vec3(parentWorld.m20, parentWorld.m21, parentWorld.m22);
+        vec3 parentScale = new vec3(row0.Length, row1.Length, row2.Length);
+
+        // Normalised rotation rows
+        mat4 parentRot = mat4.Identity;
+        if (parentScale.x != 0) { parentRot.m00 = row0.x / parentScale.x; parentRot.m01 = row0.y / parentScale.x; parentRot.m02 = row0.z / parentScale.x; }
+        if (parentScale.y != 0) { parentRot.m10 = row1.x / parentScale.y; parentRot.m11 = row1.y / parentScale.y; parentRot.m12 = row1.z / parentScale.y; }
+        if (parentScale.z != 0) { parentRot.m20 = row2.x / parentScale.z; parentRot.m21 = row2.y / parentScale.z; parentRot.m22 = row2.z / parentScale.z; }
+
+        mat4 inherited = mat4.Identity;
+        if (InheritPosition) inherited = mat4.Translate(parentPos) * inherited;
+        if (InheritRotation) inherited = inherited * parentRot;
+        if (InheritScale)    inherited = inherited * mat4.Scale(parentScale);
+
+        return inherited * local;
+    }
 
     // ── Pivot helpers ─────────────────────────────────────────────────────────
 

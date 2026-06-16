@@ -163,7 +163,8 @@ public class Window : IDisposable
         }
     }
 
-    public void Dispose()
+    public unsafe void Dispose()
     {
+        Glfw.DestroyWindow(windowHandle);
     }
 }
