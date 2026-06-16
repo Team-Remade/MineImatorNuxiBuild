@@ -1,6 +1,7 @@
 using System.Numerics;
 using GlmSharp;
 using Hexa.NET.ImGui;
+using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -375,9 +376,25 @@ public class SpawnMenu : UiPanel
             Name          = objectName,
             ObjectType    = "Point Light",
             SpawnCategory = "Light",
-            Position      = vec3.Zero
+            Position      = vec3.Zero,
+            PivotOffset   = vec3.Zero,
         };
         obj.AssignObjectId();
+
+        // Add a fully-transparent cube so the pick pass can detect clicks on the
+        // light (the billboard geometry lives outside the normal Visuals pipeline).
+        // Alpha = 0 → invisible in normal/transparent render passes;
+        // the flat-colour pick shader ignores alpha so it still works for selection.
+        if (Gl != null)
+        {
+            var pickMesh = new CubeMesh(Gl)
+            {
+                Alpha  = 0f,       // invisible in normal rendering
+                Albedo = vec3.Zero
+            };
+            obj.AddMesh(pickMesh);
+        }
+
         Viewport.SceneObjects.Add(obj);
         return obj;
     }

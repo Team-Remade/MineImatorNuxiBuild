@@ -288,6 +288,15 @@ public class Mesh : IDisposable
         _gl.BindVertexArray(0);
     }
 
+    // ── Point light data (set by Viewport before each draw call) ─────────────
+
+    /// <summary>
+    /// Point lights active in the scene.  Set by <c>Viewport</c> before calling
+    /// <see cref="Render"/> so the shader receives per-frame lighting data.
+    /// Each entry: (world position, RGB colour, range, energy).
+    /// </summary>
+    public static readonly List<(vec3 pos, vec3 color, float range, float energy)> PointLights = new();
+
     // ── Rendering ─────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -319,6 +328,19 @@ public class Mesh : IDisposable
         SetUniformVec3("uLightDir",   new vec3(1f, 1f, 1f).Normalized);
         SetUniformVec3("uLightColor", new vec3(0.85f, 0.85f, 0.85f));
         SetUniformVec3("uAmbient",    new vec3(0.35f, 0.35f, 0.35f));
+
+        // ── Point lights ──────────────────────────────────────────────────────
+        const int maxLights = 16;
+        int lightCount = Math.Min(PointLights.Count, maxLights);
+        SetUniformInt("uPointLightCount", lightCount);
+        for (int i = 0; i < lightCount; i++)
+        {
+            var (lpos, lcol, lrange, lenergy) = PointLights[i];
+            SetUniformVec3($"uPointLightPos[{i}]",   lpos);
+            SetUniformVec3($"uPointLightColor[{i}]", lcol);
+            SetUniformFloat($"uPointLightRange[{i}]",  lrange);
+            SetUniformFloat($"uPointLightEnergy[{i}]", lenergy);
+        }
 
         // Texture binding
         bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;

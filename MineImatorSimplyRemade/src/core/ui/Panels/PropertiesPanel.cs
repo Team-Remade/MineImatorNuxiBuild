@@ -401,6 +401,8 @@ public class PropertiesPanel : UiPanel
         }
 
         // ── Material ──────────────────────────────────────────────────────────
+        bool isLight = _currentObject is LightSceneObject;
+        if (isLight) ImGui.BeginDisabled();
         if (ImGui.CollapsingHeader("Material"))
         {
             // Ensure MaterialSettings exists when we need to write
@@ -549,6 +551,7 @@ public class PropertiesPanel : UiPanel
                 _currentObject.PropagateMaterialSettingsToChildren();
             }
         }
+        if (isLight) ImGui.EndDisabled();
 
         // ── Light (shown only for LightSceneObject) ───────────────────────────
         if (_currentObject is LightSceneObject light)
@@ -558,7 +561,7 @@ public class PropertiesPanel : UiPanel
                 // Color
                 {
                     var lc   = light.LightColor;
-                    var vec3 = new Vector3(lc.r / 255f, lc.g / 255f, lc.b / 255f);
+                    var vec3 = new Vector3(lc.r, lc.g, lc.b);
                     if (ImGui.ColorEdit3("Color##lightColor", ref vec3))
                         light.LightColor = new vec4(vec3.X, vec3.Y, vec3.Z, 1);
                 }

@@ -8,6 +8,7 @@ using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.gizmo;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
+using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
 using StbImageSharp;
@@ -175,6 +176,23 @@ public class Viewport : UiPanel
     /// </summary>
     private uint _benchTexture;
 
+    // ── Light billboard ────────────────────────────────────────────────────────
+
+    /// <summary>Billboard shader used to draw camera-facing light icons.</summary>
+    private MineImatorSimplyRemade.core.mdl.Shader? _billboardShader;
+
+    /// <summary>GL texture handle for <c>light.png</c>.</summary>
+    private uint _lightIconTexture;
+
+    /// <summary>GL texture handle for <c>lightRay.png</c>.</summary>
+    private uint _lightRayTexture;
+
+    /// <summary>World-space size of the light icon billboard (metres).</summary>
+    private const float LightBillboardSize = 0.5f;
+
+    /// <summary>World-space size of the light-ray billboard (slightly larger, drawn behind).</summary>
+    private const float LightRayBillboardSize = 0.8f;
+
     // ── Ground plane setup ─────────────────────────────────────────────────────
 
     /// <summary>
@@ -262,6 +280,9 @@ public class Viewport : UiPanel
         // automatically sync to the gizmo handle set.
         if (SelectionManager.Instance != null)
             SelectionManager.Instance.Gizmo = Gizmo;
+
+        // ── Light billboard resources ──────────────────────────────────────────
+        InitLightBillboards();
     }
 
     private unsafe void InitPickFramebuffer(uint width, uint height)
@@ -321,14 +342,205 @@ public class Viewport : UiPanel
         Gl.BindTexture(GLEnum.Texture2D, 0);
     }
 
+    // ── Light billboard init ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Loads light billboard textures and creates the shared screen-aligned quad
+    /// VAO used by <see cref="RenderLightBillboards"/>.
+    /// </summary>
+    private unsafe void InitLightBillboards()
+    {
+        if (Gl == null) return;
+
+        // Load textures.
+        _lightIconTexture = LoadEmbeddedTexture("light",    nearest: true);
+        _lightRayTexture  = LoadEmbeddedTexture("lightRay", nearest: true);
+
+        // Assign to shared static handles on LightSceneObject.
+        LightSceneObject.BillboardVao = CreateBillboardVao();
+
+        // Compile billboard shader.
+        _billboardShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _billboardShader.CompileShader("billboard.vert", "billboard.frag");
+    }
+
+    /// <summary>
+    /// Builds and returns a VAO for a unit XY quad (positions at ±0.5, UVs 0-1).
+    /// The billboard vertex shader uses <c>aPos</c> (loc 0) and <c>aTexCoord</c> (loc 2).
+    /// </summary>
+    private unsafe uint CreateBillboardVao()
+    {
+        if (Gl == null) return 0;
+
+        // Interleaved [ px py pz nx ny nz u v ] — same layout as Mesh so the
+        // same attribute pointers apply.  Normals are unused but keep the stride identical.
+        float[] verts =
+        {
+            //  px     py     pz    nx    ny    nz    u     v
+             0.5f,  0.5f,  0f,   0f,  0f, -1f,  1f,  1f,  // top-right
+             0.5f, -0.5f,  0f,   0f,  0f, -1f,  1f,  0f,  // bottom-right
+            -0.5f, -0.5f,  0f,   0f,  0f, -1f,  0f,  0f,  // bottom-left
+            -0.5f,  0.5f,  0f,   0f,  0f, -1f,  0f,  1f,  // top-left
+        };
+        uint[] indices = { 0, 1, 2, 0, 2, 3 };
+
+        uint vao, vbo, ebo;
+        Gl.GenVertexArrays(1, out vao);
+        Gl.GenBuffers(1, out vbo);
+        Gl.GenBuffers(1, out ebo);
+
+        Gl.BindVertexArray(vao);
+
+        Gl.BindBuffer(GLEnum.ArrayBuffer, vbo);
+        fixed (float* p = verts)
+            Gl.BufferData(GLEnum.ArrayBuffer, (uint)(verts.Length * sizeof(float)), p, GLEnum.StaticDraw);
+
+        Gl.BindBuffer(GLEnum.ElementArrayBuffer, ebo);
+        fixed (uint* p = indices)
+            Gl.BufferData(GLEnum.ElementArrayBuffer, (uint)(indices.Length * sizeof(uint)), p, GLEnum.StaticDraw);
+
+        uint stride = 8 * sizeof(float);
+        // loc 0: position (xyz)
+        Gl.VertexAttribPointer(0, 3, GLEnum.Float, false, stride, 0);
+        Gl.EnableVertexAttribArray(0);
+        // loc 1: normal (xyz) — not used by billboard shader but keeps layout consistent
+        Gl.VertexAttribPointer(1, 3, GLEnum.Float, false, stride, 3 * sizeof(float));
+        Gl.EnableVertexAttribArray(1);
+        // loc 2: texcoord (uv)
+        Gl.VertexAttribPointer(2, 2, GLEnum.Float, false, stride, 6 * sizeof(float));
+        Gl.EnableVertexAttribArray(2);
+
+        Gl.BindVertexArray(0);
+        Gl.BindBuffer(GLEnum.ArrayBuffer, 0);
+
+        LightSceneObject.BillboardVbo = vbo;
+        LightSceneObject.BillboardEbo = ebo;
+
+        return vao;
+    }
+
+    // ── Light billboard render ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Draws a camera-facing icon + ray billboard for every visible
+    /// <see cref="LightSceneObject"/> in the scene.
+    /// Must be called while the main FBO is bound and blending is disabled
+    /// (it enables/disables blending internally).
+    /// </summary>
+    private unsafe void RenderLightBillboards(mat4 view, mat4 proj)
+    {
+        if (_billboardShader == null) return;
+        if (LightSceneObject.BillboardVao == 0) return;
+
+        uint prog = _billboardShader.ShaderProgram;
+        Gl.UseProgram(prog);
+
+        // Blend: normal alpha (premultiplied would require different blend, but PNG
+        // icons are straight-alpha so use standard src-alpha / one-minus-src-alpha).
+        Gl.Enable(GLEnum.Blend);
+        Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+        Gl.Disable(GLEnum.CullFace);
+        Gl.DepthMask(false); // don't write depth — billboards sit on top
+
+        // Upload view + proj (shared for all billboards this frame).
+        int viewLoc = Gl.GetUniformLocation(prog, "uView");
+        int projLoc = Gl.GetUniformLocation(prog, "uProj");
+        int posLoc  = Gl.GetUniformLocation(prog, "uWorldPos");
+        int sizeLoc = Gl.GetUniformLocation(prog, "uSize");
+        int texLoc  = Gl.GetUniformLocation(prog, "uTexture");
+        int tintLoc = Gl.GetUniformLocation(prog, "uTint");
+
+        if (viewLoc >= 0)
+        {
+            float[] vf =
+            {
+                view.m00, view.m01, view.m02, view.m03,
+                view.m10, view.m11, view.m12, view.m13,
+                view.m20, view.m21, view.m22, view.m23,
+                view.m30, view.m31, view.m32, view.m33,
+            };
+            fixed (float* p = vf) Gl.UniformMatrix4(viewLoc, 1, false, p);
+        }
+        if (projLoc >= 0)
+        {
+            float[] pf =
+            {
+                proj.m00, proj.m01, proj.m02, proj.m03,
+                proj.m10, proj.m11, proj.m12, proj.m13,
+                proj.m20, proj.m21, proj.m22, proj.m23,
+                proj.m30, proj.m31, proj.m32, proj.m33,
+            };
+            fixed (float* p = pf) Gl.UniformMatrix4(projLoc, 1, false, p);
+        }
+
+        Gl.BindVertexArray(LightSceneObject.BillboardVao);
+        Gl.ActiveTexture(GLEnum.Texture0);
+        if (texLoc >= 0) Gl.Uniform1(texLoc, 0);
+
+        foreach (var obj in SceneObjects)
+            RenderLightBillboardsRecursive(obj, posLoc, sizeLoc, tintLoc);
+
+        Gl.BindVertexArray(0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        Gl.DepthMask(true);
+        Gl.Disable(GLEnum.Blend);
+        Gl.Enable(GLEnum.CullFace);
+    }
+
+    private unsafe void RenderLightBillboardsRecursive(
+        SceneObject obj, int posLoc, int sizeLoc, int tintLoc)
+    {
+        if (!obj.GetEffectiveVisibility()) return;
+
+        if (obj is LightSceneObject light)
+        {
+            vec3 worldPos = new vec3(
+                obj.GetWorldMatrix().m30,
+                obj.GetWorldMatrix().m31,
+                obj.GetWorldMatrix().m32);
+
+            if (posLoc >= 0) Gl.Uniform3(posLoc, worldPos.x, worldPos.y, worldPos.z);
+
+            // 1) Ray billboard (behind the icon, tinted to light colour)
+            if (_lightRayTexture != 0)
+            {
+                if (sizeLoc >= 0) Gl.Uniform1(sizeLoc, LightRayBillboardSize);
+                if (tintLoc >= 0)
+                    Gl.Uniform4(tintLoc,
+                        light.LightColor.x,
+                        light.LightColor.y,
+                        light.LightColor.z,
+                        light.LightColor.w);
+
+                Gl.BindTexture(GLEnum.Texture2D, _lightRayTexture);
+                Gl.DrawElements(GLEnum.Triangles, 6, GLEnum.UnsignedInt, (void*)0);
+            }
+
+            // 2) Icon billboard (white tint — preserve the PNG's own colours)
+            if (_lightIconTexture != 0)
+            {
+                if (sizeLoc >= 0) Gl.Uniform1(sizeLoc, LightBillboardSize);
+                if (tintLoc >= 0) Gl.Uniform4(tintLoc, 1f, 1f, 1f, 1f);
+
+                Gl.BindTexture(GLEnum.Texture2D, _lightIconTexture);
+                Gl.DrawElements(GLEnum.Triangles, 6, GLEnum.UnsignedInt, (void*)0);
+            }
+        }
+
+        foreach (var child in obj.Children)
+            RenderLightBillboardsRecursive(child, posLoc, sizeLoc, tintLoc);
+    }
+
     /// <summary>
     /// Loads an image from the embedded assembly resources and uploads it as a
     /// 2-D OpenGL texture, returning the texture handle.
     /// The resource name is the base name without path or extension
     /// (e.g. <c>"bench"</c> maps to <c>MineImatorSimplyRemade.assets.img.bench.png</c>).
+    /// Pass <paramref name="nearest"/>=true for pixel-art textures that should use
+    /// nearest-neighbour filtering instead of linear.
     /// Returns 0 if the resource is not found or if <see cref="Gl"/> is null.
     /// </summary>
-    private unsafe uint LoadEmbeddedTexture(string resourceName)
+    private unsafe uint LoadEmbeddedTexture(string resourceName, bool nearest = false)
     {
         if (Gl == null) return 0;
 
@@ -343,18 +555,29 @@ public class Viewport : UiPanel
 
         var img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
 
+        // OpenGL expects pixel row 0 at the bottom; StbImageSharp delivers row 0 at
+        // the top.  Flip the rows in-place so the texture is the right way up.
+        int rowBytes = img.Width * 4; // RGBA = 4 bytes per pixel
+        byte[] flipped = new byte[img.Data.Length];
+        for (int row = 0; row < img.Height; row++)
+        {
+            int srcRow = img.Height - 1 - row;
+            System.Buffer.BlockCopy(img.Data, srcRow * rowBytes, flipped, row * rowBytes, rowBytes);
+        }
+
         uint tex = Gl.GenTexture();
         Gl.BindTexture(GLEnum.Texture2D, tex);
 
-        fixed (byte* p = img.Data)
+        fixed (byte* p = flipped)
         {
             Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8,
                 (uint)img.Width, (uint)img.Height, 0,
                 PixelFormat.Rgba, GLEnum.UnsignedByte, p);
         }
 
-        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
-        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
+        var filter = nearest ? TextureMinFilter.Nearest : TextureMinFilter.Linear;
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)filter);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, nearest ? (int)TextureMagFilter.Nearest : (int)TextureMagFilter.Linear);
         Gl.BindTexture(GLEnum.Texture2D, 0);
 
         return tex;
@@ -448,6 +671,12 @@ public class Viewport : UiPanel
         if (_groundPlane != null)
             _groundPlane.Render(mat4.Identity, view, proj);
 
+        // ── Collect point lights ───────────────────────────────────────────────
+        // Rebuild the static light list used by Mesh.Render() every frame so
+        // that moved / deleted lights are always up-to-date.
+        Mesh.PointLights.Clear();
+        CollectPointLights(SceneObjects);
+
         // ── Scene objects ─────────────────────────────────────────────────────
         // Collect visible (object, mesh) pairs and split into opaque / transparent.
         var opaquePairs      = new List<(mat4 model, Mesh mesh)>();
@@ -498,6 +727,17 @@ public class Viewport : UiPanel
             Gl.Disable(GLEnum.Blend);
         }
 
+        // ── Light billboards ──────────────────────────────────────────────────
+        // Drawn after transparent geometry, before the selection outline so
+        // selected lights still receive the orange Sobel outline.
+        RenderLightBillboards(view, proj);
+
+        // Restore state that billboards may have altered.
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Less);
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
+
         // ── Selection highlight: Sobel edge detection ─────────────────────────
         // Pass 1: stamp flat-white silhouette mask into _silhouetteFbo.
         //         No depth test → X-ray: occluded parts still contribute.
@@ -538,7 +778,9 @@ public class Viewport : UiPanel
             bool benchClicked = ImGui.ImageButton(
                 "##benchBtn",
                 new ImTextureRef(texId: (ulong)_benchTexture),
-                new Vector2(64, 64));
+                new Vector2(64, 64),
+                new Vector2(0, 1),   // uv0: top-left in GL tex = bottom of image data
+                new Vector2(1, 0));  // uv1: bottom-right in GL tex = top of image data
             ImGui.PopStyleColor(3);
 
             if (benchClicked && SpawnMenu != null)
@@ -835,6 +1077,28 @@ public class Viewport : UiPanel
         Gl.DepthFunc(GLEnum.Less);
         Gl.Enable(GLEnum.CullFace);
         Gl.CullFace(GLEnum.Back);
+    }
+
+    /// <summary>
+    /// Recursively walks <paramref name="objects"/> and appends every visible
+    /// <see cref="LightSceneObject"/> to <see cref="Mesh.PointLights"/>.
+    /// </summary>
+    private static void CollectPointLights(IEnumerable<SceneObject> objects)
+    {
+        foreach (var obj in objects)
+        {
+            if (!obj.GetEffectiveVisibility()) continue;
+
+            if (obj is LightSceneObject light)
+            {
+                mat4 world = obj.GetWorldMatrix();
+                var pos    = new vec3(world.m30, world.m31, world.m32);
+                var col    = new vec3(light.LightColor.x, light.LightColor.y, light.LightColor.z);
+                Mesh.PointLights.Add((pos, col, light.LightRange, light.LightEnergy));
+            }
+
+            CollectPointLights(obj.Children);
+        }
     }
 
     /// <summary>
