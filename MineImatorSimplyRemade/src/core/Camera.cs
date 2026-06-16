@@ -104,4 +104,76 @@ public class Camera
     {
         return mat4.Perspective(FovY, aspectRatio, Near, Far);
     }
+
+    // ── Ray casting / unprojection ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the world-space ray origin for a given screen pixel, assuming a
+    /// perspective camera.  For perspective projection this is simply the eye position.
+    /// <paramref name="screenPos"/> is an absolute screen coordinate.
+    /// <paramref name="imageMin"/> and <paramref name="imageSize"/> describe the
+    /// rectangle of the rendered viewport image in screen space.
+    /// </summary>
+    public vec3 ProjectRayOrigin(System.Numerics.Vector2 screenPos,
+                                  System.Numerics.Vector2 imageMin,
+                                  System.Numerics.Vector2 imageSize)
+    {
+        return Position; // perspective: ray always originates at the eye
+    }
+
+    /// <summary>
+    /// Returns the world-space ray direction for a given screen pixel.
+    /// The returned vector is normalised.
+    /// </summary>
+    public vec3 ProjectRayNormal(System.Numerics.Vector2 screenPos,
+                                  System.Numerics.Vector2 imageMin,
+                                  System.Numerics.Vector2 imageSize)
+    {
+        if (imageSize.X < 1 || imageSize.Y < 1) return new vec3(0, 0, -1);
+
+        // Map screen position to NDC [-1, 1] (Y flipped: screen-Y increases down).
+        float ndcX =  (screenPos.X - imageMin.X) / imageSize.X * 2f - 1f;
+        float ndcY = -((screenPos.Y - imageMin.Y) / imageSize.Y * 2f - 1f);
+
+        float aspect = imageSize.X / imageSize.Y;
+        float tanHalfFov = MathF.Tan(FovY * 0.5f);
+
+        // Ray in view space (looking along –Z in right-handed OpenGL convention).
+        vec3 rayView = new vec3(ndcX * aspect * tanHalfFov,
+                                 ndcY * tanHalfFov,
+                                -1f).Normalized;
+
+        // Transform to world space using the inverse view matrix.
+        mat4 viewInv = GetViewMatrix().Inverse;
+        // Rotate only (ignore translation) by treating as direction.
+        vec4 rayWorld = viewInv * new vec4(rayView, 0f);
+        return new vec3(rayWorld.x, rayWorld.y, rayWorld.z).Normalized;
+    }
+
+    /// <summary>
+    /// Projects a world-space position to a 2D screen coordinate within the
+    /// image rectangle defined by <paramref name="imageMin"/> / <paramref name="imageSize"/>.
+    /// </summary>
+    public System.Numerics.Vector2 UnprojectPosition(vec3 worldPos,
+                                                      System.Numerics.Vector2 imageMin,
+                                                      System.Numerics.Vector2 imageSize)
+    {
+        if (imageSize.X < 1 || imageSize.Y < 1) return imageMin;
+
+        float aspect = imageSize.X / imageSize.Y;
+        mat4 view = GetViewMatrix();
+        mat4 proj = GetProjectionMatrix(aspect);
+
+        // Clip space
+        vec4 clip = proj * view * new vec4(worldPos, 1f);
+        if (MathF.Abs(clip.w) < 1e-7f) return imageMin;
+
+        // NDC
+        float ndcX =  clip.x / clip.w;
+        float ndcY = -clip.y / clip.w; // flip Y back to screen convention
+
+        float screenX = imageMin.X + (ndcX * 0.5f + 0.5f) * imageSize.X;
+        float screenY = imageMin.Y + (ndcY * 0.5f + 0.5f) * imageSize.Y;
+        return new System.Numerics.Vector2(screenX, screenY);
+    }
 }

@@ -1,4 +1,5 @@
-﻿using MineImatorSimplyRemadeNuxi.core.objs;
+﻿using MineImatorSimplyRemade.gizmo;
+using MineImatorSimplyRemadeNuxi.core.objs;
 
 namespace MineImatorSimplyRemadeNuxi.core;
 
@@ -29,21 +30,21 @@ public class SelectionManager
 
     /// <summary>
     /// The 3D gizmo used to transform selected objects.
-    /// Assign from AppViewport after both are created.
+    /// Assign from Viewport after both are created.
     /// </summary>
-    //private Gizmo3D _gizmo;
-    //public Gizmo3D Gizmo
-    //{
-    //    get => _gizmo;
-    //    set
-    //    {
-    //        if (_gizmo != null)
-    //            _gizmo.TransformEnd -= OnGizmoTransformEnd;
-    //        _gizmo = value;
-    //        if (_gizmo != null)
-    //            _gizmo.TransformEnd += OnGizmoTransformEnd;
-    //    }
-    //}
+    private Gizmo3D? _gizmo;
+    public Gizmo3D? Gizmo
+    {
+        get => _gizmo;
+        set
+        {
+            if (_gizmo != null)
+                _gizmo.TransformEnd -= OnGizmoTransformEnd;
+            _gizmo = value;
+            if (_gizmo != null)
+                _gizmo.TransformEnd += OnGizmoTransformEnd;
+        }
+    }
 
     /// <summary>
     /// Incrementing counter used to generate unique pick-colour IDs.
@@ -68,17 +69,17 @@ public class SelectionManager
     /// </summary>
     private void SyncGizmoSelection()
     {
-    //    if (_gizmo == null) return;
-    //    _gizmo.ClearSelection();
-    //    foreach (var obj in SelectedObjects)
-    //        _gizmo.Select(obj);
+        if (_gizmo == null) return;
+        _gizmo.ClearSelection();
+        foreach (var obj in SelectedObjects)
+            _gizmo.Select(obj);
     }
 
-    //private void OnGizmoTransformEnd(Gizmo3D.TransformMode mode, Gizmo3D.TransformPlane plane)
-    //{
+    private void OnGizmoTransformEnd(Gizmo3D.TransformMode mode, Gizmo3D.TransformPlane plane)
+    {
         // Notify all listeners (e.g. PropertiesPanel) so they can refresh.
-    //    SelectionChanged?.Invoke();
-    //}
+        SelectionChanged?.Invoke();
+    }
 
     // ── Public API ───────────────────────────────────────────────────────────
 

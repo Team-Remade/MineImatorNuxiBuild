@@ -4,6 +4,8 @@ using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemade.gizmo;
+using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using Silk.NET.OpenGL;
 
@@ -27,10 +29,19 @@ public class Viewport : UiPanel
 
     public Camera Camera { get; } = new Camera();
 
+    // ── Gizmo ──────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The 3D transform gizmo for moving/rotating/scaling selected objects.
+    /// Created in <see cref="InitFramebuffer"/> once the GL context is ready.
+    /// </summary>
+    public Gizmo3D? Gizmo { get; private set; }
+
     // ── Orbit drag state ───────────────────────────────────────────────────────
 
     private bool  _dragging;
     private bool  _panning;
+    private bool  _gizmoDragging;
     private float _lastMouseX = float.NaN;
     private float _lastMouseY = float.NaN;
 
@@ -94,6 +105,15 @@ public class Viewport : UiPanel
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
+
+        // Initialise the gizmo now that the GL context is fully ready.
+        Gizmo = new Gizmo3D(Gl);
+        Gizmo.Init();
+
+        // Register the gizmo with the SelectionManager so selection changes
+        // automatically sync to the gizmo handle set.
+        if (SelectionManager.Instance != null)
+            SelectionManager.Instance.Gizmo = Gizmo;
     }
 
     private unsafe void ResizeFramebuffer(uint width, uint height)
@@ -175,22 +195,29 @@ public class Viewport : UiPanel
                 mesh.Render(model, view, proj);
         }
 
+        // ── Gizmo 3D ──────────────────────────────────────────────────────────
+        Gizmo?.Render(Camera, view, proj);
+
         Gl.Disable(GLEnum.CullFace);
         Gl.Disable(GLEnum.DepthTest);
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
 
         // ── Display FBO as ImGui image (flip V for OpenGL→ImGui convention) ────
+        var imageMin = ImGui.GetCursorScreenPos();
         ImGui.Image(
             new ImTextureRef(texId: (ulong)_colorTex),
             size,
             new Vector2(0, 1),
             new Vector2(1, 0));
 
+        // ── Gizmo overlay (rotation arc drawn on the ImGui draw list) ─────────
+        Gizmo?.RenderOverlay(Camera, imageMin, size);
+
         ImGui.End();
         ImGui.PopStyleVar(2);
     }
 
-    // ── Camera input ───────────────────────────────────────────────────────────
+    // ── Camera / gizmo input ───────────────────────────────────────────────────
 
     private void HandleCameraInput()
     {
@@ -208,16 +235,45 @@ public class Viewport : UiPanel
         float dx = mouseX - _lastMouseX;
         float dy = mouseY - _lastMouseY;
 
-        // Left-button drag → orbit
+        // Reconstruct image rect from ImGui cursor (set just before ImGui.Image call).
+        // We approximate it here from the window content region.
+        var imageMin  = ImGui.GetWindowPos() + ImGui.GetCursorPos();
+        var imageSize = ImGui.GetContentRegionAvail();
+        var mousePos  = new Vector2(mouseX, mouseY);
+
+        // ── G key: toggle global ↔ local transform space ─────────────────────
+        if (Gizmo != null && Gizmo.Visible && !Gizmo.Editing &&
+            ImGui.IsKeyPressed(ImGuiKey.G))
+        {
+            Gizmo.UseLocalSpace = !Gizmo.UseLocalSpace;
+        }
+
+        // ── Gizmo hover (no button held) ──────────────────────────────────────
+        if (Gizmo != null && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
+            Gizmo.UpdateHover(mousePos, Camera, imageMin, imageSize);
+
+        // Left-button pressed this frame: try gizmo first, then orbit
         if (ImGui.IsMouseDown(ImGuiMouseButton.Left))
         {
-            if (_dragging)
+            if (!_dragging && !_gizmoDragging)
+            {
+                // New press: check if gizmo claims it
+                if (Gizmo != null && Gizmo.TryBeginEdit(mousePos, Camera, imageMin, imageSize))
+                    _gizmoDragging = true;
+                else
+                    _dragging = true;
+            }
+
+            if (_gizmoDragging)
+                Gizmo?.ContinueEdit(mousePos);
+            else if (_dragging)
                 Camera.Orbit(dx * 0.005f, dy * 0.005f);
-            _dragging = true;
         }
         else
         {
-            _dragging = false;
+            if (_gizmoDragging) Gizmo?.EndEdit();
+            _dragging      = false;
+            _gizmoDragging = false;
         }
 
         // Middle-button drag → pan
