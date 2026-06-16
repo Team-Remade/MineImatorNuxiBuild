@@ -378,6 +378,29 @@ public class Mesh : IDisposable
         if (loc >= 0) _gl.Uniform1(loc, value);
     }
 
+    // ── Pick pass ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Draws the mesh geometry using whatever shader program is currently bound.
+    /// Used by the colour-pick pass in <c>Viewport</c>, which sets up the flat
+    /// pick shader and per-object uniforms (MVP, pick colour) before calling this.
+    /// Only the position attribute (location 0) is needed; the pick shader ignores
+    /// normals and UVs.
+    /// </summary>
+    public unsafe void RenderPickPass(GL gl)
+    {
+        if (_vao == 0) return;
+
+        gl.BindVertexArray(_vao);
+
+        if (Indices != null && _ebo != 0)
+            gl.DrawElements(GLEnum.Triangles, (uint)Indices.Length, GLEnum.UnsignedInt, (void*)0);
+        else
+            gl.DrawArrays(GLEnum.Triangles, 0, (uint)Vertices.Count);
+
+        gl.BindVertexArray(0);
+    }
+
     // ── IDisposable ───────────────────────────────────────────────────────────
 
     public void Dispose()
