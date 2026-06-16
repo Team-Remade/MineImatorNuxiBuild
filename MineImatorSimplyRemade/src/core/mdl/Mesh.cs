@@ -5,16 +5,21 @@ using Silk.NET.OpenGL;
 namespace MineImatorSimplyRemade.core.mdl;
 
 /// <summary>
-/// A GPU-resident triangle mesh.  Each vertex stores a position (vec3) and a
-/// normal (vec3), interleaved as [ px, py, pz, nx, ny, nz … ].
+/// A GPU-resident triangle mesh.  Each vertex stores a position (vec3), a
+/// normal (vec3), and an optional UV coordinate (vec2), interleaved as
+/// [ px, py, pz, nx, ny, nz, u, v … ].
 ///
 /// Usage:
 ///   1. Populate <see cref="Vertices"/> (positions) and <see cref="Normals"/>
 ///      (one normal per vertex, or leave empty for auto-generation).
-///   2. Optionally set <see cref="Indices"/> for indexed drawing; leave null
+///   2. Optionally populate <see cref="TexCoords"/> (one UV per vertex).
+///      Leave empty for untextured meshes (UV defaults to 0,0).
+///   3. Optionally set <see cref="Indices"/> for indexed drawing; leave null
 ///      for non-indexed mode.
-///   3. Call <see cref="Upload"/> to push data to the GPU.
-///   4. Call <see cref="Render(mat4, mat4, mat4)"/> each frame.
+///   4. Call <see cref="Upload"/> to push data to the GPU.
+///   5. Call <see cref="Render(mat4, mat4, mat4)"/> each frame.
+///   6. Optionally set <see cref="TextureId"/> to a GL texture handle to
+///      render with a texture instead of the flat <see cref="Albedo"/> colour.
 /// </summary>
 public class Mesh : IDisposable
 {
@@ -35,9 +40,31 @@ public class Mesh : IDisposable
     public readonly List<vec3> Normals = new();
 
     /// <summary>
+    /// Per-vertex texture coordinates (UV), parallel to <see cref="Vertices"/>.
+    /// Leave empty for untextured meshes — the shader will use <see cref="Albedo"/> instead.
+    /// </summary>
+    public readonly List<vec2> TexCoords = new();
+
+    /// <summary>
     /// Optional index buffer (uint32).  Leave null for plain <c>DrawArrays</c>.
     /// </summary>
     public uint[]? Indices;
+
+    // ── Texture ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// OpenGL texture handle to bind when rendering this mesh.
+    /// Set to 0 (default) to render with the flat <see cref="Albedo"/> colour.
+    /// </summary>
+    public uint TextureId = 0;
+
+    // ── Culling ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// When true, back-face culling is disabled for this mesh so both sides are
+    /// visible.  When false (default), only front faces (CCW winding) are drawn.
+    /// </summary>
+    public bool DoubleSided = false;
 
     // ── Material ──────────────────────────────────────────────────────────────
 
@@ -202,16 +229,22 @@ public class Mesh : IDisposable
         if (Normals.Count != Vertices.Count)
             GenerateNormals();
 
-        // Interleave: [ px py pz nx ny nz ] per vertex
-        float[] data = new float[Vertices.Count * 6];
+        // Pad TexCoords to match vertex count with (0,0) if not provided.
+        bool hasUVs = TexCoords.Count == Vertices.Count;
+
+        // Interleave: [ px py pz nx ny nz u v ] per vertex
+        const int floatsPerVertex = 8;
+        float[] data = new float[Vertices.Count * floatsPerVertex];
         for (int i = 0; i < Vertices.Count; i++)
         {
-            data[i * 6 + 0] = Vertices[i].x;
-            data[i * 6 + 1] = Vertices[i].y;
-            data[i * 6 + 2] = Vertices[i].z;
-            data[i * 6 + 3] = Normals[i].x;
-            data[i * 6 + 4] = Normals[i].y;
-            data[i * 6 + 5] = Normals[i].z;
+            data[i * floatsPerVertex + 0] = Vertices[i].x;
+            data[i * floatsPerVertex + 1] = Vertices[i].y;
+            data[i * floatsPerVertex + 2] = Vertices[i].z;
+            data[i * floatsPerVertex + 3] = Normals[i].x;
+            data[i * floatsPerVertex + 4] = Normals[i].y;
+            data[i * floatsPerVertex + 5] = Normals[i].z;
+            data[i * floatsPerVertex + 6] = hasUVs ? TexCoords[i].x : 0f;
+            data[i * floatsPerVertex + 7] = hasUVs ? TexCoords[i].y : 0f;
         }
 
         _gl.GenVertexArrays(1, out _vao);
@@ -222,13 +255,16 @@ public class Mesh : IDisposable
         _gl.BindBuffer(GLEnum.ArrayBuffer, _vbo);
         _gl.BufferData(GLEnum.ArrayBuffer, (uint)(data.Length * sizeof(float)), data, GLEnum.StaticDraw);
 
-        uint stride = 6 * sizeof(float);
+        uint stride = (uint)(floatsPerVertex * sizeof(float));
         // location 0: position
         _gl.VertexAttribPointer(0, 3, GLEnum.Float, false, stride, 0);
         _gl.EnableVertexAttribArray(0);
         // location 1: normal
         _gl.VertexAttribPointer(1, 3, GLEnum.Float, false, stride, 3 * sizeof(float));
         _gl.EnableVertexAttribArray(1);
+        // location 2: texcoord
+        _gl.VertexAttribPointer(2, 2, GLEnum.Float, false, stride, 6 * sizeof(float));
+        _gl.EnableVertexAttribArray(2);
 
         // Index buffer
         if (Indices != null && Indices.Length > 0)
@@ -273,6 +309,18 @@ public class Mesh : IDisposable
         SetUniformVec3("uLightColor", new vec3(0.85f, 0.85f, 0.85f));
         SetUniformVec3("uAmbient",    new vec3(0.35f, 0.35f, 0.35f));
 
+        // Texture binding
+        bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;
+        SetUniformBool("uUseTexture", useTexture);
+        if (useTexture)
+        {
+            _gl.ActiveTexture(GLEnum.Texture0);
+            _gl.BindTexture(GLEnum.Texture2D, TextureId);
+            SetUniformInt("uTexture", 0);
+        }
+
+        if (DoubleSided) _gl.Disable(GLEnum.CullFace);
+
         _gl.BindVertexArray(_vao);
 
         if (Indices != null && _ebo != 0)
@@ -281,6 +329,14 @@ public class Mesh : IDisposable
             _gl.DrawArrays(GLEnum.Triangles, 0, (uint)Vertices.Count);
 
         _gl.BindVertexArray(0);
+
+        if (DoubleSided) _gl.Enable(GLEnum.CullFace);
+
+        if (useTexture)
+        {
+            _gl.ActiveTexture(GLEnum.Texture0);
+            _gl.BindTexture(GLEnum.Texture2D, 0);
+        }
     }
 
     // ── Uniform helpers ───────────────────────────────────────────────────────
@@ -304,6 +360,18 @@ public class Mesh : IDisposable
     {
         int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
         if (loc >= 0) _gl.Uniform3(loc, v.x, v.y, v.z);
+    }
+
+    private void SetUniformBool(string name, bool value)
+    {
+        int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
+        if (loc >= 0) _gl.Uniform1(loc, value ? 1 : 0);
+    }
+
+    private void SetUniformInt(string name, int value)
+    {
+        int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
+        if (loc >= 0) _gl.Uniform1(loc, value);
     }
 
     // ── IDisposable ───────────────────────────────────────────────────────────

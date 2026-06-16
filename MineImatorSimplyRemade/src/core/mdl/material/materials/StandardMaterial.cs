@@ -9,9 +9,23 @@ public class StandardMaterial : Material
     public float Metallic;
     public float Roughness;
     public bool NormalEnabled;
-    //public Texture2D NormalTexture;
+
+    /// <summary>
+    /// OpenGL texture handle for the normal map (0 = no normal map).
+    /// Loaded from an external image file and uploaded to the GPU as a Texture2D.
+    /// Currently stored and propagated through the hierarchy; a normal-map shader
+    /// stage will consume it once the rendering pipeline supports it.
+    /// </summary>
+    public uint NormalTexture = 0;
+
     public float Transparency;
     public bool EmissionEnabled;
     public vec4 Emission;
     public float EmissionEnergyMultiplier;
+
+    /// <summary>
+    /// When true, both faces of every triangle are rendered (back-face culling
+    /// disabled for this surface).
+    /// </summary>
+    public bool DoubleSided = false;
 }

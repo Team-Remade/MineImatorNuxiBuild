@@ -501,21 +501,33 @@ public class PropertiesPanel : UiPanel
 
             // Normal map (display only; file picking not yet implemented)
             {
-                //string normalName = (mat?.NormalTexture != null) ? "(texture)" : "None";
-                //ImGui.Text("Normal: " + normalName);
+                string normalName = (mat?.NormalTexture != 0) ? "(texture)" : "None";
+                ImGui.Text("Normal: " + normalName);
                 // TODO: open NativeFileDialog to pick a normal-map texture file
-                //if (ImGui.Button("Browse##normalBrowse"))
+                if (ImGui.Button("Browse##normalBrowse"))
                 {
                     // TODO: implement normal map file picker
                 }
-                //ImGui.SameLine();
-                //if (ImGui.Button("Clear##normalClear") && mat != null)
+                ImGui.SameLine();
+                if (ImGui.Button("Clear##normalClear") && mat != null)
                 {
-                //    EnsureMaterialSettings();
-                //    _currentObject.MaterialSettings.NormalTexture = null;
-                //    _currentObject.MaterialSettings.NormalEnabled  = false;
-                //    _currentObject.SetExplicitMaterialSettings();
-                //    _currentObject.PropagateMaterialSettingsToChildren();
+                    EnsureMaterialSettings();
+                    _currentObject.MaterialSettings.NormalTexture = 0;
+                    _currentObject.MaterialSettings.NormalEnabled  = false;
+                    _currentObject.SetExplicitMaterialSettings();
+                    _currentObject.PropagateMaterialSettingsToChildren();
+                }
+            }
+
+            // Double Sided
+            {
+                bool doubleSided = mat?.DoubleSided ?? false;
+                if (ImGui.Checkbox("Double Sided", ref doubleSided))
+                {
+                    EnsureMaterialSettings();
+                    _currentObject.MaterialSettings.DoubleSided = doubleSided;
+                    _currentObject.SetExplicitMaterialSettings();
+                    _currentObject.PropagateMaterialSettingsToChildren();
                 }
             }
 
@@ -531,8 +543,9 @@ public class PropertiesPanel : UiPanel
                 m.Roughness       = 0.5f;
                 m.EmissionEnabled = false;
                 m.EmissionEnergy  = 1f;
-                //m.NormalTexture   = null;
+                m.NormalTexture   = 0;
                 m.NormalEnabled   = false;
+                m.DoubleSided     = false;
                 _currentObject.SetExplicitMaterialSettings();
                 _currentObject.PropagateMaterialSettingsToChildren();
             }

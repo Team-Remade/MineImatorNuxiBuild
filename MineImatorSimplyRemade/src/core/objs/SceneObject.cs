@@ -17,12 +17,24 @@ public class MaterialSettings
     public float Metallic = 0f;
     public float Roughness = 0.5f;
     public bool NormalEnabled = false;
-    //public Texture2D NormalTexture = null;
+
+    /// <summary>
+    /// OpenGL texture handle for the normal map (0 = no normal map).
+    /// Propagated down the scene hierarchy when <see cref="SceneObject.MaterialSettings"/>
+    /// is updated, and applied to all <see cref="StandardMaterial"/> surfaces.
+    /// </summary>
+    public uint NormalTexture = 0;
+
     /// <summary>Alpha-transparency amount (0 = fully opaque, 1 = fully transparent).</summary>
     public float Transparency = 0f;
     public bool EmissionEnabled = false;
     public vec4 EmissionColor = new vec4(Color.Black.R, Color.Black.G, Color.Black.B, 1f);
     public float EmissionEnergy = 1f;
+
+    /// <summary>
+    /// When true, both faces of meshes are rendered (back-face culling disabled).
+    /// </summary>
+    public bool DoubleSided = false;
 }
 
 // ── SceneObject ───────────────────────────────────────────────────────────────
@@ -295,6 +307,9 @@ public class SceneObject
         var meshes = GetMeshInstancesRecursively();
         foreach (var mesh in meshes)
         {
+            // Apply DoubleSided directly to the mesh so the renderer reads it.
+            mesh.DoubleSided = _materialSettings.DoubleSided;
+
             for (int i = 0; i < mesh.GetSurfaceCount(); i++)
             {
                 var material = mesh.SurfaceGetMaterial(i);
@@ -304,11 +319,12 @@ public class SceneObject
                     stdMat.Metallic = _materialSettings.Metallic;
                     stdMat.Roughness = _materialSettings.Roughness;
                     stdMat.NormalEnabled = _materialSettings.NormalEnabled;
-                    //stdMat.NormalTexture = _materialSettings.NormalTexture;
+                    stdMat.NormalTexture = _materialSettings.NormalTexture;
                     stdMat.Transparency = _materialSettings.Transparency;
                     stdMat.EmissionEnabled = _materialSettings.EmissionEnabled;
                     stdMat.Emission = _materialSettings.EmissionColor;
                     stdMat.EmissionEnergyMultiplier = _materialSettings.EmissionEnergy;
+                    stdMat.DoubleSided = _materialSettings.DoubleSided;
                 }
             }
         }

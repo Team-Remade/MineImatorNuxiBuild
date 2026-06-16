@@ -3,6 +3,7 @@ using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using Silk.NET.OpenGL;
 
@@ -13,6 +14,14 @@ public class Viewport : UiPanel
     // ── Scene ──────────────────────────────────────────────────────────────────
 
     public List<SceneObject> SceneObjects { get; } = new();
+
+    // ── Ground plane ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The XZ-plane ground mesh that displays the tiled terrain texture.
+    /// Initialised in <see cref="InitGroundPlane"/> after atlases are loaded.
+    /// </summary>
+    private PlaneMesh? _groundPlane;
 
     // ── Camera ─────────────────────────────────────────────────────────────────
 
@@ -32,6 +41,25 @@ public class Viewport : UiPanel
     private uint _rbo;
 
     private uint _viewportWidth, _viewportHeight;
+
+    // ── Ground plane setup ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates the 64×64 XZ ground plane and assigns the terrain atlas tile (8,2)
+    /// as its texture.  Must be called after both the GL context and
+    /// <see cref="TerrainAtlas"/> are initialised.
+    /// </summary>
+    public void InitGroundPlane()
+    {
+        if (Gl == null) return;
+
+        _groundPlane = new PlaneMesh(Gl, 64f, 64f, PlaneOrientation.XZ);
+
+        // Terrain tile (8,2): column 8, row 2 of the Minecraft 1.3.2 terrain sheet
+        // (grass-top / dirt depending on the atlas version).
+        if (TerrainAtlas.Textures.TryGetValue("8,2", out uint tileId))
+            _groundPlane.TextureId = tileId;
+    }
 
     // ── FBO setup ──────────────────────────────────────────────────────────────
 
@@ -132,6 +160,11 @@ public class Viewport : UiPanel
         mat4 view    = Camera.GetViewMatrix();
         mat4 proj    = Camera.GetProjectionMatrix(aspect);
 
+        // ── Ground plane ──────────────────────────────────────────────────────
+        if (_groundPlane != null)
+            _groundPlane.Render(mat4.Identity, view, proj);
+
+        // ── Scene objects ─────────────────────────────────────────────────────
         foreach (var sceneObject in SceneObjects)
         {
             if (!sceneObject.GetEffectiveVisibility()) continue;

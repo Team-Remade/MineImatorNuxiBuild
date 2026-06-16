@@ -9,6 +9,7 @@ using MineImatorSimplyRemadeNuxi.core.objs;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
 using StbImageSharp;
+using MineImatorSimplyRemade;
 
 namespace MineImatorSimplyRemade.core.window.windows;
 
@@ -69,6 +70,10 @@ public class MainWindow : Window
         // Must be initialised before any SceneObject calls AssignObjectId().
         SelectionManager.Initialize();
 
+        // Initialise texture atlases (requires an active GL context).
+        TerrainAtlas.Initialize(gl);
+        ItemsAtlas.Initialize(gl);
+
         Viewport?        viewport        = null;
         SceneTree?       sceneTree       = null;
         PropertiesPanel? propertiesPanel = null;
@@ -82,6 +87,9 @@ public class MainWindow : Window
                 case Viewport vp:
                     viewport = vp;
                     vp.InitFramebuffer(1, 1);
+
+                    // Initialise the textured ground plane after atlases are loaded.
+                    vp.InitGroundPlane();
 
                     // Default test object: a unit cube at the origin.
                     var testObj = new SceneObject { Name = "Cube" };

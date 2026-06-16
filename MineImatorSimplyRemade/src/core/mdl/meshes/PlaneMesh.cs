@@ -21,6 +21,7 @@ public class PlaneMesh : Mesh
         Height = height;
         Orientation = orientation;
         
+        DoubleSided = true;
         GenerateVertices();
         Upload();
     }
@@ -59,40 +60,22 @@ public class PlaneMesh : Mesh
             ];
         }
 
-        vec2 uv0, uv1, uv2, uv3;
-        if (Orientation == PlaneOrientation.XY)
-        {
-            uv0 = new vec2(Width, Height);
-            uv1 = new vec2(Width, 0);
-            uv2 = new vec2(0, 0);
-            uv3 = new vec2(0, Height);
-        }
-        else
-        {
-            uv0 = new vec2(Width, Height);
-            uv1 = new vec2(Width, 0);
-            uv2 = new vec2(0, 0);
-            uv3 = new vec2(0, Height);
-        }
+        // UV coordinates tile the texture across the plane extent.
+        // uv0..uv3 match the vertex order: top-right, bottom-right, bottom-left, top-left.
+        vec2 uv0 = new vec2(Width, Height);
+        vec2 uv1 = new vec2(Width, 0);
+        vec2 uv2 = new vec2(0, 0);
+        vec2 uv3 = new vec2(0, Height);
 
-        // Front face: vertices 0-3 (CCW when viewed from the positive normal side)
-        // Back face:  vertices 4-7 (same positions, reversed winding for correct back normals)
         Vertices.AddRange(positions);
-        Vertices.AddRange(positions);
+        TexCoords.AddRange(new[] { uv0, uv1, uv2, uv3 });
 
-        // Front face triangles (CCW):
-        //  0──3
+        // Two CCW triangles forming the quad:
+        //  3──0
         //  │ /│
         //  │/ │
-        //  1──2
-        // Back face triangles (CW of front = CCW from behind): indices offset by 4
-        Indices =
-        [
-            // front
-            0, 1, 2,  0, 2, 3,
-            // back (reversed winding)
-            4, 6, 5,  4, 7, 6,
-        ];
+        //  2──1
+        Indices = [0, 1, 2,  0, 2, 3];
 
         GenerateNormals();
     }
