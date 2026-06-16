@@ -449,6 +449,12 @@ public class Viewport : UiPanel
             _groundPlane.Render(mat4.Identity, view, proj);
 
         // ── Scene objects ─────────────────────────────────────────────────────
+        // Collect visible (object, mesh) pairs and split into opaque / transparent.
+        var opaquePairs      = new List<(mat4 model, Mesh mesh)>();
+        var transparentPairs = new List<(mat4 model, Mesh mesh, float dist)>();
+
+        vec3 camPos = Camera.Position;
+
         foreach (var sceneObject in SceneObjects)
         {
             if (!sceneObject.GetEffectiveVisibility()) continue;
@@ -456,7 +462,40 @@ public class Viewport : UiPanel
             mat4 model = sceneObject.GetWorldMatrix();
 
             foreach (Mesh mesh in sceneObject.GetMeshInstancesRecursively())
+            {
+                if (mesh.Alpha < 1.0f)
+                {
+                    // Depth sort key: distance from camera to object origin.
+                    vec3 worldPos = new vec3(model.m30, model.m31, model.m32);
+                    float dist    = (worldPos - camPos).LengthSqr;
+                    transparentPairs.Add((model, mesh, dist));
+                }
+                else
+                {
+                    opaquePairs.Add((model, mesh));
+                }
+            }
+        }
+
+        // Pass 1 – Opaque geometry (normal depth read + write).
+        foreach (var (model, mesh) in opaquePairs)
+            mesh.Render(model, view, proj);
+
+        // Pass 2 – Transparent geometry (back-to-front, depth read only).
+        if (transparentPairs.Count > 0)
+        {
+            // Sort farthest-first so nearer surfaces blend on top.
+            transparentPairs.Sort((a, b) => b.dist.CompareTo(a.dist));
+
+            Gl.Enable(GLEnum.Blend);
+            Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+            Gl.DepthMask(false); // read depth but don't write – avoids z-fighting
+
+            foreach (var (model, mesh, _) in transparentPairs)
                 mesh.Render(model, view, proj);
+
+            Gl.DepthMask(true);
+            Gl.Disable(GLEnum.Blend);
         }
 
         // ── Selection highlight: Sobel edge detection ─────────────────────────

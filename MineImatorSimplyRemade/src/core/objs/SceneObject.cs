@@ -313,6 +313,9 @@ public class SceneObject
                 _materialSettings.AlbedoColor.y,
                 _materialSettings.AlbedoColor.z);
             mesh.DoubleSided = _materialSettings.DoubleSided;
+            // Combine AlbedoColor.a with (1 - Transparency) so both routes
+            // can control opacity: 0 Transparency = fully opaque.
+            mesh.Alpha = _materialSettings.AlbedoColor.w * (1f - _materialSettings.Transparency);
         }
     }
 

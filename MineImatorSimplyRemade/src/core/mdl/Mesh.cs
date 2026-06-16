@@ -83,6 +83,12 @@ public class Mesh : IDisposable
     /// </summary>
     public vec3 Albedo = vec3.Ones;
 
+    /// <summary>
+    /// Overall opacity of this mesh [0 = fully transparent, 1 = fully opaque].
+    /// Combined with the texture alpha (if any) in the fragment shader.
+    /// </summary>
+    public float Alpha = 1.0f;
+
     // ── Construction ──────────────────────────────────────────────────────────
 
     /// <summary>
@@ -308,6 +314,7 @@ public class Mesh : IDisposable
         SetUniformMat4("uModel", model);
 
         SetUniformVec3("uAlbedo", Albedo);
+        SetUniformFloat("uAlpha", Alpha);
         // Light travels from upper-right-front toward origin (world space)
         SetUniformVec3("uLightDir",   new vec3(1f, 1f, 1f).Normalized);
         SetUniformVec3("uLightColor", new vec3(0.85f, 0.85f, 0.85f));
@@ -373,6 +380,12 @@ public class Mesh : IDisposable
     }
 
     private void SetUniformInt(string name, int value)
+    {
+        int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
+        if (loc >= 0) _gl.Uniform1(loc, value);
+    }
+
+    private void SetUniformFloat(string name, float value)
     {
         int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
         if (loc >= 0) _gl.Uniform1(loc, value);
