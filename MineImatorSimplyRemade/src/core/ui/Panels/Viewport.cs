@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using System.Reflection;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core;
@@ -8,6 +9,7 @@ using MineImatorSimplyRemade.gizmo;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using Silk.NET.OpenGL;
+using StbImageSharp;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
@@ -123,6 +125,20 @@ public class Viewport : UiPanel
     /// <summary>Minimum Sobel gradient magnitude treated as an edge (0–1).</summary>
     private const float EdgeThreshold = 0.4f;
 
+    // ── Spawn menu / bench button ──────────────────────────────────────────────
+
+    /// <summary>
+    /// The floating spawn-object menu.  Set by <see cref="MainWindow"/> after
+    /// both objects are created so the bench button can trigger it.
+    /// </summary>
+    public SpawnMenu? SpawnMenu { get; set; }
+
+    /// <summary>
+    /// OpenGL texture handle for the bench icon displayed as a button in the
+    /// top-left corner of the viewport.  Loaded in <see cref="InitFramebuffer"/>.
+    /// </summary>
+    private uint _benchTexture;
+
     // ── Ground plane setup ─────────────────────────────────────────────────────
 
     /// <summary>
@@ -198,6 +214,9 @@ public class Viewport : UiPanel
         // ── Empty VAO for the full-screen triangle draw (Core Profile req.) ───
         Gl.GenVertexArrays(1, out _edgeVao);
 
+        // ── Bench button texture ──────────────────────────────────────────────
+        _benchTexture = LoadEmbeddedTexture("bench");
+
         // ── Gizmo ─────────────────────────────────────────────────────────────
         // Initialise the gizmo now that the GL context is fully ready.
         Gizmo = new Gizmo3D(Gl);
@@ -264,6 +283,45 @@ public class Viewport : UiPanel
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
+    }
+
+    /// <summary>
+    /// Loads an image from the embedded assembly resources and uploads it as a
+    /// 2-D OpenGL texture, returning the texture handle.
+    /// The resource name is the base name without path or extension
+    /// (e.g. <c>"bench"</c> maps to <c>MineImatorSimplyRemade.assets.img.bench.png</c>).
+    /// Returns 0 if the resource is not found or if <see cref="Gl"/> is null.
+    /// </summary>
+    private unsafe uint LoadEmbeddedTexture(string resourceName)
+    {
+        if (Gl == null) return 0;
+
+        var asm = Assembly.GetExecutingAssembly();
+        using var stream = asm.GetManifestResourceStream(
+            $"MineImatorSimplyRemade.assets.img.{resourceName}.png");
+        if (stream == null)
+        {
+            Console.Error.WriteLine($"[Viewport] Embedded texture not found: {resourceName}");
+            return 0;
+        }
+
+        var img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+
+        uint tex = Gl.GenTexture();
+        Gl.BindTexture(GLEnum.Texture2D, tex);
+
+        fixed (byte* p = img.Data)
+        {
+            Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8,
+                (uint)img.Width, (uint)img.Height, 0,
+                PixelFormat.Rgba, GLEnum.UnsignedByte, p);
+        }
+
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+
+        return tex;
     }
 
     private unsafe void ResizeFramebuffer(uint width, uint height)
@@ -392,6 +450,28 @@ public class Viewport : UiPanel
 
         // ── Gizmo overlay (rotation arc drawn on the ImGui draw list) ─────────
         Gizmo?.RenderOverlay(Camera, imageMin, size);
+
+        // ── Bench button (top-left of the viewport, opens the spawn menu) ─────
+        if (_benchTexture != 0)
+        {
+            float padding = 8f;
+            ImGui.SetCursorPos(new Vector2(padding, ImGui.GetFrameHeight() + padding));
+            ImGui.PushStyleColor(ImGuiCol.Button,        new System.Numerics.Vector4(0, 0, 0, 0));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new System.Numerics.Vector4(0, 0, 0, 0));
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive,  new System.Numerics.Vector4(0, 0, 0, 0));
+            bool benchClicked = ImGui.ImageButton(
+                "##benchBtn",
+                new ImTextureRef(texId: (ulong)_benchTexture),
+                new Vector2(64, 64));
+            ImGui.PopStyleColor(3);
+
+            if (benchClicked && SpawnMenu != null)
+            {
+                var btnMax = ImGui.GetItemRectMax();
+                var btnMin = ImGui.GetItemRectMin();
+                SpawnMenu.Toggle(new Vector2(btnMin.X, btnMax.Y + 4f));
+            }
+        }
 
         ImGui.End();
         ImGui.PopStyleVar(2);

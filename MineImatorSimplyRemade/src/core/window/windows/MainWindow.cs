@@ -29,6 +29,8 @@ public class MainWindow : Window
     public const string TimelineDockId = "Timeline";
     
     private bool _dockSpaceInitialized = false;
+
+    private SpawnMenu? _spawnMenu;
     
     private Menubar menubar;
 
@@ -114,6 +116,20 @@ public class MainWindow : Window
 
         sceneTree?.Initialize();
         propertiesPanel?.Initialize();
+
+        // ── Spawn menu ────────────────────────────────────────────────────────
+        // Must be created after the Viewport has been initialised (so the GL
+        // context is available for mesh creation) and after the SceneTree is
+        // wired (so SceneTree.Refresh() works from within the spawn menu).
+        if (viewport != null)
+        {
+            _spawnMenu = new SpawnMenu
+            {
+                Gl       = gl,
+                Viewport = viewport
+            };
+            viewport.SpawnMenu = _spawnMenu;
+        }
     }
 
     protected override void RenderUi()
@@ -155,6 +171,9 @@ public class MainWindow : Window
         {
             panel.Render();
         }
+
+        // Render the floating spawn menu (no-op when closed).
+        _spawnMenu?.Render();
     }
     
     private unsafe void SetupDefaultDockSpace(uint dockspaceId, Vector2 size)
