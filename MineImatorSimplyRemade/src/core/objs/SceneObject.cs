@@ -13,7 +13,7 @@ namespace MineImatorSimplyRemadeNuxi.core.objs;
 /// </summary>
 public class MaterialSettings
 {
-    public Color AlbedoColor = Color.White;
+    public vec4 AlbedoColor = new vec4(Color.White.R, Color.White.G, Color.White.B, 1f);
     public float Metallic = 0f;
     public float Roughness = 0.5f;
     public bool NormalEnabled = false;
@@ -21,7 +21,7 @@ public class MaterialSettings
     /// <summary>Alpha-transparency amount (0 = fully opaque, 1 = fully transparent).</summary>
     public float Transparency = 0f;
     public bool EmissionEnabled = false;
-    public Color EmissionColor = Color.Black;
+    public vec4 EmissionColor = new vec4(Color.Black.R, Color.Black.G, Color.Black.B, 1f);
     public float EmissionEnergy = 1f;
 }
 
