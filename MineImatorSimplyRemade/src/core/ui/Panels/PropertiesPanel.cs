@@ -1,5 +1,4 @@
-﻿using System.Drawing;
-using System.Numerics;
+﻿using System.Numerics;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl;
@@ -411,13 +410,13 @@ public class PropertiesPanel : UiPanel
             // Alpha – skip for BoneSceneObject
             if (_currentObject is not BoneSceneObject)
             {
-                float alpha = mat?.AlbedoColor.a / 255f ?? 1f;
+                float alpha = mat?.AlbedoColor.a ?? 1f;
                 ImGui.SetNextItemWidth(-60f);
                 if (ImGui.SliderFloat("Alpha", ref alpha, 0f, 1f))
                 {
                     EnsureMaterialSettings();
                     var c = _currentObject.MaterialSettings.AlbedoColor;
-                    _currentObject.MaterialSettings.AlbedoColor = new vec4(c.r, c.g, c.b, (byte)(alpha * 255f));
+                    _currentObject.MaterialSettings.AlbedoColor = new vec4(c.r, c.g, c.b, alpha);
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
@@ -427,8 +426,8 @@ public class PropertiesPanel : UiPanel
 
             // Albedo color
             {
-                vec4 ac = mat?.AlbedoColor ?? new vec4(Color.White.R, Color.White.G, Color.White.B, Color.White.A);
-                var vec4 = new Vector4(ac.r / 255f, ac.g / 255f, ac.b / 255f, ac.a / 255f);
+                vec4 ac = mat?.AlbedoColor ?? new vec4(1f, 1f, 1f, 1f);
+                var vec4 = new Vector4(ac.r, ac.g, ac.b, ac.a);
                 if (ImGui.ColorEdit4("Albedo", ref vec4))
                 {
                     EnsureMaterialSettings();
@@ -476,12 +475,12 @@ public class PropertiesPanel : UiPanel
 
             // Emission color (no alpha)
             {
-                vec4 ec = mat?.EmissionColor ?? new vec4(Color.Black.R, Color.Black.G, Color.Black.B, Color.Black.A);
-                var vec3 = new Vector3(ec.r / 255f, ec.g / 255f, ec.b / 255f);
+                vec4 ec = mat?.EmissionColor ?? new vec4(0f, 0f, 0f, 1f);
+                var vec3 = new Vector3(ec.r, ec.g, ec.b);
                 if (ImGui.ColorEdit3("Emission Color", ref vec3))
                 {
                     EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.EmissionColor = new vec4(vec3.X, vec3.Y, vec3.Z, 1);
+                    _currentObject.MaterialSettings.EmissionColor = new vec4(vec3.X, vec3.Y, vec3.Z, 1f);
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
@@ -538,7 +537,7 @@ public class PropertiesPanel : UiPanel
             {
                 EnsureMaterialSettings();
                 var m = _currentObject.MaterialSettings;
-                m.AlbedoColor     = new vec4(Color.White.R, Color.White.G, Color.White.B, Color.White.A);
+                m.AlbedoColor     = new vec4(1f, 1f, 1f, 1f);
                 m.Metallic        = 0f;
                 m.Roughness       = 0.5f;
                 m.EmissionEnabled = false;
@@ -609,7 +608,7 @@ public class PropertiesPanel : UiPanel
                     light.LightIndirectEnergy = 1f;
                     light.LightSpecular       = 0.5f;
                     light.LightShadowEnabled  = true;
-                    light.LightColor          = new vec4(Color.White.R, Color.White.G, Color.White.B, Color.White.A);
+                    light.LightColor          = new vec4(1f, 1f, 1f, 1f);
                 }
             }
         }

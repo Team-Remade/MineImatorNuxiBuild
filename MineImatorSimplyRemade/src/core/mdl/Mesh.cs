@@ -1,5 +1,6 @@
 ﻿using GlmSharp;
 using MineImatorSimplyRemade.core.mdl.material;
+using MineImatorSimplyRemade.core.mdl.material.materials;
 using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.core.mdl;
@@ -68,7 +69,7 @@ public class Mesh : IDisposable
 
     // ── Material ──────────────────────────────────────────────────────────────
 
-    private readonly List<Material> _surfaces = new() { new Material() };
+    private readonly List<Material> _surfaces = new() { new StandardMaterial() };
 
     public int GetSurfaceCount() => _surfaces.Count;
     public Material SurfaceGetMaterial(int index) => _surfaces[index];
@@ -76,8 +77,11 @@ public class Mesh : IDisposable
 
     // ── Albedo colour (set by material layer) ─────────────────────────────────
 
-    /// <summary>Base colour passed to the fragment shader as <c>uAlbedo</c>.</summary>
-    public vec3 Albedo = new vec3(0.8f, 0.3f, 0.02f);
+    /// <summary>
+    /// Fallback base colour passed to the fragment shader as <c>uAlbedo</c> when
+    /// no <see cref="StandardMaterial"/> surface is assigned.
+    /// </summary>
+    public vec3 Albedo = vec3.Ones;
 
     // ── Construction ──────────────────────────────────────────────────────────
 
@@ -303,7 +307,7 @@ public class Mesh : IDisposable
         SetUniformMat4("uMVP",   mvp);
         SetUniformMat4("uModel", model);
 
-        SetUniformVec3("uAlbedo",     Albedo);
+        SetUniformVec3("uAlbedo", Albedo);
         // Light travels from upper-right-front toward origin (world space)
         SetUniformVec3("uLightDir",   new vec3(1f, 1f, 1f).Normalized);
         SetUniformVec3("uLightColor", new vec3(0.85f, 0.85f, 0.85f));

@@ -5,7 +5,7 @@ namespace MineImatorSimplyRemade.core.mdl.material.materials;
 
 public class StandardMaterial : Material
 {
-    public vec4 AlbedoColor = new vec4();
+    public vec4 AlbedoColor = new vec4(1f, 1f, 1f, 1f);
     public float Metallic;
     public float Roughness;
     public bool NormalEnabled;

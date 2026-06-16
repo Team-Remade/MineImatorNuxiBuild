@@ -1,7 +1,5 @@
-﻿using System.Drawing;
-using GlmSharp;
+﻿using GlmSharp;
 using MineImatorSimplyRemade.core.mdl;
-using MineImatorSimplyRemade.core.mdl.material.materials;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs;
 
@@ -13,7 +11,7 @@ namespace MineImatorSimplyRemadeNuxi.core.objs;
 /// </summary>
 public class MaterialSettings
 {
-    public vec4 AlbedoColor = new vec4(Color.White.R, Color.White.G, Color.White.B, 1f);
+    public vec4 AlbedoColor = new vec4(1f, 1f, 1f, 1f);
     public float Metallic = 0f;
     public float Roughness = 0.5f;
     public bool NormalEnabled = false;
@@ -28,7 +26,7 @@ public class MaterialSettings
     /// <summary>Alpha-transparency amount (0 = fully opaque, 1 = fully transparent).</summary>
     public float Transparency = 0f;
     public bool EmissionEnabled = false;
-    public vec4 EmissionColor = new vec4(Color.Black.R, Color.Black.G, Color.Black.B, 1f);
+    public vec4 EmissionColor = new vec4(0f, 0f, 0f, 1f);
     public float EmissionEnergy = 1f;
 
     /// <summary>
@@ -278,12 +276,16 @@ public class SceneObject
     }
 
     /// <summary>
-    /// Propagates this object's <see cref="MaterialSettings"/> to all descendant
-    /// <see cref="SceneObject"/>s that do not have explicit settings of their own.
+    /// Applies the current <see cref="MaterialSettings"/> to this object's own meshes,
+    /// then propagates to all descendant <see cref="SceneObject"/>s that do not have
+    /// explicit settings of their own.
     /// </summary>
     public void PropagateMaterialSettingsToChildren()
     {
         if (_materialSettings == null) return;
+
+        // Always apply to self first so the object that was just edited updates too.
+        ApplyMaterialSettingsToMeshes();
 
         foreach (var child in GetChildrenObjects())
         {
@@ -297,8 +299,7 @@ public class SceneObject
     }
 
     /// <summary>
-    /// Applies the current <see cref="MaterialSettings"/> to all <see cref="StandardMaterial"/>
-    /// surfaces found on meshes in the Visual hierarchy.
+    /// Applies the current <see cref="MaterialSettings"/> to all meshes in the Visual hierarchy.
     /// </summary>
     public void ApplyMaterialSettingsToMeshes()
     {
@@ -307,26 +308,11 @@ public class SceneObject
         var meshes = GetMeshInstancesRecursively();
         foreach (var mesh in meshes)
         {
-            // Apply DoubleSided directly to the mesh so the renderer reads it.
+            mesh.Albedo = new vec3(
+                _materialSettings.AlbedoColor.x,
+                _materialSettings.AlbedoColor.y,
+                _materialSettings.AlbedoColor.z);
             mesh.DoubleSided = _materialSettings.DoubleSided;
-
-            for (int i = 0; i < mesh.GetSurfaceCount(); i++)
-            {
-                var material = mesh.SurfaceGetMaterial(i);
-                if (material is StandardMaterial stdMat)
-                {
-                    stdMat.AlbedoColor = _materialSettings.AlbedoColor;
-                    stdMat.Metallic = _materialSettings.Metallic;
-                    stdMat.Roughness = _materialSettings.Roughness;
-                    stdMat.NormalEnabled = _materialSettings.NormalEnabled;
-                    stdMat.NormalTexture = _materialSettings.NormalTexture;
-                    stdMat.Transparency = _materialSettings.Transparency;
-                    stdMat.EmissionEnabled = _materialSettings.EmissionEnabled;
-                    stdMat.Emission = _materialSettings.EmissionColor;
-                    stdMat.EmissionEnergyMultiplier = _materialSettings.EmissionEnergy;
-                    stdMat.DoubleSided = _materialSettings.DoubleSided;
-                }
-            }
         }
     }
 
