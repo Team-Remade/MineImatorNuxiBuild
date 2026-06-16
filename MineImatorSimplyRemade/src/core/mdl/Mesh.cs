@@ -62,8 +62,8 @@ public class Mesh : IDisposable
     public Mesh(GL gl)
     {
         _gl = gl;
-        BuildDefaultCube();
-        Upload();
+        //BuildDefaultCube();
+        //Upload();
     }
 
     /// <summary>
@@ -80,9 +80,68 @@ public class Mesh : IDisposable
         Upload();
     }
 
+    protected virtual void GenerateVertices()
+    {
+        
+    }
+
+    /// <summary>
+    /// Generates flat per-vertex normals from the current <see cref="Vertices"/> and
+    /// <see cref="Indices"/> (or sequential triangles when no index buffer is set).
+    /// Each triangle contributes the same face normal to all three of its vertices;
+    /// shared vertices keep the normal of the last triangle that referenced them.
+    /// Call this after populating <see cref="Vertices"/> (and optionally <see cref="Indices"/>)
+    /// but before <see cref="Upload"/>.
+    /// </summary>
+    protected void GenerateNormals()
+    {
+        Normals.Clear();
+
+        // Initialise one normal slot per vertex.
+        for (int i = 0; i < Vertices.Count; i++)
+            Normals.Add(vec3.Zero);
+
+        if (Indices != null && Indices.Length >= 3)
+        {
+            // Index-aware: iterate over every triangle defined by the EBO.
+            for (int i = 0; i + 2 < Indices.Length; i += 3)
+            {
+                uint i0 = Indices[i];
+                uint i1 = Indices[i + 1];
+                uint i2 = Indices[i + 2];
+
+                vec3 edge1 = Vertices[(int)i1] - Vertices[(int)i0];
+                vec3 edge2 = Vertices[(int)i2] - Vertices[(int)i0];
+                vec3 n = vec3.Cross(edge1, edge2).Normalized;
+
+                Normals[(int)i0] = n;
+                Normals[(int)i1] = n;
+                Normals[(int)i2] = n;
+            }
+        }
+        else
+        {
+            // Non-indexed: every three consecutive vertices form a triangle.
+            for (int i = 0; i + 2 < Vertices.Count; i += 3)
+            {
+                vec3 edge1 = Vertices[i + 1] - Vertices[i];
+                vec3 edge2 = Vertices[i + 2] - Vertices[i];
+                vec3 n = vec3.Cross(edge1, edge2).Normalized;
+
+                Normals[i]     = n;
+                Normals[i + 1] = n;
+                Normals[i + 2] = n;
+            }
+        }
+
+        // Ensure any leftover slots are not zero (shouldn't happen, but guard anyway).
+        for (int i = 0; i < Normals.Count; i++)
+            if (Normals[i] == vec3.Zero) Normals[i] = vec3.UnitY;
+    }
+
     // ── Default geometry ──────────────────────────────────────────────────────
 
-    private void BuildDefaultCube()
+    protected void BuildDefaultCube()
     {
         // A unit cube (side 1) centred at origin, with per-face flat normals.
         // 6 faces × 2 triangles × 3 vertices = 36 vertices (no index buffer).
@@ -139,20 +198,9 @@ public class Mesh : IDisposable
 
         if (Vertices.Count == 0) return;
 
-        // Auto-generate flat normals if none were supplied.
+        // Auto-generate flat normals if none were supplied by the subclass.
         if (Normals.Count != Vertices.Count)
-        {
-            Normals.Clear();
-            for (int i = 0; i + 2 < Vertices.Count; i += 3)
-            {
-                vec3 edge1 = Vertices[i + 1] - Vertices[i];
-                vec3 edge2 = Vertices[i + 2] - Vertices[i];
-                vec3 n = vec3.Cross(edge1, edge2).Normalized;
-                Normals.Add(n); Normals.Add(n); Normals.Add(n);
-            }
-            // Pad if not multiple of 3
-            while (Normals.Count < Vertices.Count) Normals.Add(vec3.UnitY);
-        }
+            GenerateNormals();
 
         // Interleave: [ px py pz nx ny nz ] per vertex
         float[] data = new float[Vertices.Count * 6];
@@ -241,21 +289,7 @@ public class Mesh : IDisposable
     {
         int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
         if (loc < 0) return;
-        // GlmSharp mat4 field layout (verified experimentally):
-        //   mat4.Translate(1,2,3) stores translation as m30=1, m31=2, m32=3 (row 3).
-        //   mat4*vec4 is column-vector convention: Translate(1,2,3)*(0,0,0,1) = (1,2,3,1).
-        // GLM (C++) is column-major: translation at m[3][0..2], &mvp[0][0] sends col0 first.
-        // GlmSharp is row-major: m[row][col], so m30 = row3,col0.
-        // To match GLM's &mvp[0][0] (column-major, GL_FALSE), we send GlmSharp columns:
-        //   col0 = (m00,m10,m20,m30), col1 = (m01,m11,m21,m31), etc.
-        // BUT previous test showed this puts translation (-5) in column 2, not column 3.
-        // That means GlmSharp m[row][col] naming is OPPOSITE to what we expect:
-        //   m32 != row3,col2 — it must be row2,col3 (column-major naming like GLM).
-        // Proof: if m32=-5 is actually at row2,col3, then col3=(m03,m13,m23,m33)
-        //   but our col-major array had c2 containing -5 because we used m02,m12,m22,m32.
-        // So GlmSharp mRC means m[col=R][row=C] — column-major naming!
-        // Column 0 = (m00,m01,m02,m03), column 1 = (m10,m11,m12,m13), etc.
-        // Send columns in order with GL_FALSE (no transpose needed):
+        
         float[] f =
         {
             m.m00, m.m01, m.m02, m.m03,   // column 0

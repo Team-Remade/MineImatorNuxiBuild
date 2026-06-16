@@ -1,6 +1,7 @@
 ﻿using System.Numerics;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core;
@@ -78,7 +79,7 @@ public class MainWindow : Window
 
                 // Default test object: a unit cube at the origin.
                 var testObj = new SceneObject { Name = "Cube" };
-                testObj.AddMesh(new Mesh(gl));
+                testObj.AddMesh(new CubeMesh(gl));
                 viewport.SceneObjects.Add(testObj);
             }
         }
