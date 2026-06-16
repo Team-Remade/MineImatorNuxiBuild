@@ -92,12 +92,6 @@ public class MainWindow : Window
 
                     // Initialise the textured ground plane after atlases are loaded.
                     vp.InitGroundPlane();
-
-                    // Default test object: a unit cube at the origin.
-                    var testObj = new SceneObject { Name = "Cube" };
-                    testObj.AssignObjectId();
-                    testObj.AddMesh(new CubeMesh(gl));
-                    vp.SceneObjects.Add(testObj);
                     break;
 
                 case SceneTree st:

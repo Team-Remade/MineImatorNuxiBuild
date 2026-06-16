@@ -404,6 +404,11 @@ public class SpawnMenu : UiPanel
             obj.AddMesh(new PlaneMesh(Gl, 1f, 1f, PlaneOrientation.XY));
         }
 
+        if (primitiveType == "Cube" && Gl != null)
+        {
+            obj.AddMesh(new CubeMesh(Gl));
+        }
+
         Viewport.SceneObjects.Add(obj);
         return obj;
     }
