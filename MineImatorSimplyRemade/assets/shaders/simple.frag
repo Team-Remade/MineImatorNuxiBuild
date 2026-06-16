@@ -64,6 +64,11 @@ void main() {
         pointLightSum += uPointLightColor[i] * diffFact * attenuation * uPointLightEnergy[i];
     }
 
+    // Discard fully-transparent fragments so they don't write to the depth
+    // buffer during the pre-pass, preventing transparent item-model pixels
+    // from clipping geometry drawn afterwards (e.g. light billboards).
+    if (alpha < 0.01) discard;
+
     vec3 result = (uAmbient + diffuse + pointLightSum) * baseColor;
     FragColor   = vec4(result, alpha);
 }
