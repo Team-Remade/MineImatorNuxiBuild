@@ -339,14 +339,11 @@ public class SceneObject
     }
 
     /// <summary>
-    /// Applies or removes a selection material overlay on all meshes in the Visual
-    /// hierarchy.  Currently a stub — no SelectionMaterial is available yet.
+    /// Reserved for future per-mesh material overlay work.
+    /// The visible highlight effect is handled by the <c>RenderHighlightPass</c>
+    /// in <c>Viewport</c> using an inflated back-face shell shader.
     /// </summary>
-    public void ApplySelectionMaterial(bool selected)
-    {
-        // TODO: apply SelectionManager.Instance.SelectionMaterial overlay to meshes
-        // once a selection overlay effect is implemented in the renderer.
-    }
+    public void ApplySelectionMaterial(bool selected) { }
 
     // ── Colour picking ───────────────────────────────────────────────────────
 

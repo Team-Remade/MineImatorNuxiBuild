@@ -93,6 +93,36 @@ public class Viewport : UiPanel
     /// <summary>Flat-colour shader used in the pick pass (outputs uPickColor).</summary>
     private MineImatorSimplyRemade.core.mdl.Shader? _pickShader;
 
+    // ── Sobel selection highlight ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Off-screen R8 framebuffer used to stamp a flat white mask of the selected
+    /// objects.  The Sobel edge shader then reads this to find silhouette edges.
+    /// </summary>
+    private uint _silhouetteFbo;
+    private uint _silhouetteTex;
+
+    /// <summary>Shader that writes flat white into the silhouette mask FBO.</summary>
+    private MineImatorSimplyRemade.core.mdl.Shader? _silhouetteShader;
+
+    /// <summary>
+    /// Full-screen Sobel edge detection shader.  Reads <see cref="_silhouetteTex"/>
+    /// and paints the detected edges into the main display FBO.
+    /// </summary>
+    private MineImatorSimplyRemade.core.mdl.Shader? _edgeShader;
+
+    /// <summary>
+    /// Empty VAO required by the full-screen triangle draw call used in the edge pass.
+    /// OpenGL 3.3 Core Profile mandates a VAO even when no vertex data is sourced.
+    /// </summary>
+    private uint _edgeVao;
+
+    /// <summary>Colour of the Sobel selection outline (RGBA).</summary>
+    private static readonly vec4 EdgeColor = new vec4(1.0f, 0.65f, 0.0f, 1.0f);
+
+    /// <summary>Minimum Sobel gradient magnitude treated as an edge (0–1).</summary>
+    private const float EdgeThreshold = 0.4f;
+
     // ── Ground plane setup ─────────────────────────────────────────────────────
 
     /// <summary>
@@ -154,6 +184,20 @@ public class Viewport : UiPanel
         _pickShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
         _pickShader.CompileShader("pick.vert", "pick.frag");
 
+        // ── Silhouette mask FBO ───────────────────────────────────────────────
+        InitSilhouetteFbo(width, height);
+
+        // ── Silhouette shader (flat white into the mask FBO) ──────────────────
+        _silhouetteShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _silhouetteShader.CompileShader("pick.vert", "silhouette.frag");
+
+        // ── Sobel edge shader (full-screen quad, reads mask, writes edges) ────
+        _edgeShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _edgeShader.CompileShader("edge.vert", "edge.frag");
+
+        // ── Empty VAO for the full-screen triangle draw (Core Profile req.) ───
+        Gl.GenVertexArrays(1, out _edgeVao);
+
         // ── Gizmo ─────────────────────────────────────────────────────────────
         // Initialise the gizmo now that the GL context is fully ready.
         Gizmo = new Gizmo3D(Gl);
@@ -195,6 +239,33 @@ public class Viewport : UiPanel
         Gl.BindTexture(GLEnum.Texture2D, 0);
     }
 
+    private unsafe void InitSilhouetteFbo(uint width, uint height)
+    {
+        Gl.GenFramebuffers(1, out _silhouetteFbo);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _silhouetteFbo);
+
+        // Single-channel R8 texture — stores the flat white silhouette mask.
+        Gl.GenTextures(1, out _silhouetteTex);
+        Gl.BindTexture(GLEnum.Texture2D, _silhouetteTex);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.R8, width, height, 0,
+                      PixelFormat.Red, GLEnum.UnsignedByte, (void*)0);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+        // Clamp to border (0) so Sobel samples outside the texture edge return 0.
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToBorder);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToBorder);
+        Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.ColorAttachment0,
+                                GLEnum.Texture2D, _silhouetteTex, 0);
+
+        // No depth needed — we use GL_ALWAYS depth test in the silhouette pass.
+        var status = Gl.CheckFramebufferStatus(GLEnum.Framebuffer);
+        if (status != GLEnum.FramebufferComplete)
+            Console.Error.WriteLine($"[Viewport] Silhouette framebuffer incomplete: {status}");
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+    }
+
     private unsafe void ResizeFramebuffer(uint width, uint height)
     {
         _viewportWidth  = width;
@@ -215,6 +286,11 @@ public class Viewport : UiPanel
 
         Gl.BindRenderbuffer(GLEnum.Renderbuffer, _pickRbo);
         Gl.RenderbufferStorage(GLEnum.Renderbuffer, GLEnum.DepthComponent24, width, height);
+
+        // Resize silhouette mask FBO attachment.
+        Gl.BindTexture(GLEnum.Texture2D, _silhouetteTex);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.R8, width, height, 0,
+                      PixelFormat.Red, GLEnum.UnsignedByte, (void*)0);
 
         Gl.BindTexture(GLEnum.Texture2D, 0);
         Gl.BindRenderbuffer(GLEnum.Renderbuffer, 0);
@@ -287,6 +363,14 @@ public class Viewport : UiPanel
             foreach (Mesh mesh in sceneObject.GetMeshInstancesRecursively())
                 mesh.Render(model, view, proj);
         }
+
+        // ── Selection highlight: Sobel edge detection ─────────────────────────
+        // Pass 1: stamp flat-white silhouette mask into _silhouetteFbo.
+        //         No depth test → X-ray: occluded parts still contribute.
+        RenderSilhouettePass(view, proj);
+        // Pass 2: Sobel filter over the mask; composite edges onto _fbo.
+        //         Restores depth/cull/FBO state before returning.
+        RenderEdgePass();
 
         // ── Gizmo 3D ──────────────────────────────────────────────────────────
         Gizmo?.Render(Camera, view, proj);
@@ -473,6 +557,128 @@ public class Viewport : UiPanel
             // Recurse into children.
             RenderPickObjects(obj.Children, view, proj);
         }
+    }
+
+    /// <summary>
+    /// Pass 1 of the Sobel outline effect.
+    ///
+    /// Renders every visible mesh belonging to a selected object into the
+    /// single-channel <see cref="_silhouetteFbo"/> as flat white (1.0).  The FBO
+    /// has no depth attachment; <c>GL_ALWAYS</c> ensures occluded parts of the
+    /// object still contribute to the mask, so the outline is drawn "through"
+    /// other geometry.
+    /// </summary>
+    private unsafe void RenderSilhouettePass(mat4 view, mat4 proj)
+    {
+        if (_silhouetteShader == null) return;
+
+        var sm = SelectionManager.Instance;
+        if (sm == null || sm.SelectedObjects.Count == 0) return;
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _silhouetteFbo);
+        Gl.Viewport(0, 0, _viewportWidth, _viewportHeight);
+
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Disable(GLEnum.DepthTest);   // always stamp the full shape, even if behind other objects
+
+        Gl.ClearColor(0f, 0f, 0f, 0f);
+        Gl.Clear(ClearBufferMask.ColorBufferBit);
+
+        uint prog = _silhouetteShader.ShaderProgram;
+        Gl.UseProgram(prog);
+
+        int mvpLoc = Gl.GetUniformLocation(prog, "uMVP");
+
+        foreach (var obj in sm.SelectedObjects)
+        {
+            if (!obj.GetEffectiveVisibility()) continue;
+            if (obj.Visuals.Count == 0) continue;
+
+            mat4 model = obj.GetWorldMatrix();
+            mat4 mvp   = proj * view * model;
+
+            if (mvpLoc >= 0)
+            {
+                float[] f =
+                {
+                    mvp.m00, mvp.m01, mvp.m02, mvp.m03,
+                    mvp.m10, mvp.m11, mvp.m12, mvp.m13,
+                    mvp.m20, mvp.m21, mvp.m22, mvp.m23,
+                    mvp.m30, mvp.m31, mvp.m32, mvp.m33,
+                };
+                fixed (float* p = f)
+                    Gl.UniformMatrix4(mvpLoc, 1, false, p);
+            }
+
+            foreach (var mesh in obj.Visuals)
+                mesh.RenderPickPass(Gl);
+        }
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+    }
+
+    /// <summary>
+    /// Pass 2 of the Sobel outline effect.
+    ///
+    /// Runs a full-screen Sobel gradient filter over the silhouette mask produced
+    /// by <see cref="RenderSilhouettePass"/> and blends the resulting edge pixels
+    /// on top of the main display FBO using <see cref="EdgeColor"/>.
+    /// </summary>
+    private unsafe void RenderEdgePass()
+    {
+        if (_edgeShader == null) return;
+
+        var sm = SelectionManager.Instance;
+        if (sm == null || sm.SelectedObjects.Count == 0) return;
+
+        // Draw into the main scene FBO.
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
+        Gl.Viewport(0, 0, _viewportWidth, _viewportHeight);
+
+        Gl.Disable(GLEnum.DepthTest);
+        Gl.Disable(GLEnum.CullFace);
+
+        // Additive-style alpha blend so the edge sits on top of the scene.
+        Gl.Enable(GLEnum.Blend);
+        Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+
+        uint prog = _edgeShader.ShaderProgram;
+        Gl.UseProgram(prog);
+
+        // Bind the silhouette mask texture to unit 0.
+        Gl.ActiveTexture(GLEnum.Texture0);
+        Gl.BindTexture(GLEnum.Texture2D, _silhouetteTex);
+        int maskLoc = Gl.GetUniformLocation(prog, "uMask");
+        if (maskLoc >= 0) Gl.Uniform1(maskLoc, 0);
+
+        // Texel size = 1 / viewport.  The shader uses this both for UV from
+        // gl_FragCoord and for computing neighbour sample offsets.
+        int texelLoc = Gl.GetUniformLocation(prog, "uTexelSize");
+        if (texelLoc >= 0)
+            Gl.Uniform2(texelLoc,
+                        1f / _viewportWidth,
+                        1f / _viewportHeight);
+
+        int colorLoc = Gl.GetUniformLocation(prog, "uEdgeColor");
+        if (colorLoc >= 0)
+            Gl.Uniform4(colorLoc, EdgeColor.x, EdgeColor.y, EdgeColor.z, EdgeColor.w);
+
+        int threshLoc = Gl.GetUniformLocation(prog, "uThreshold");
+        if (threshLoc >= 0) Gl.Uniform1(threshLoc, EdgeThreshold);
+
+        // Full-screen triangle: 3 vertices, no VBO.
+        Gl.BindVertexArray(_edgeVao);
+        Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+        Gl.BindVertexArray(0);
+
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        Gl.Disable(GLEnum.Blend);
+        // Leave _fbo bound and restore depth/cull state so the gizmo (rendered
+        // immediately after this pass) draws into the correct framebuffer.
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Less);
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
     }
 
     /// <summary>
