@@ -69,20 +69,43 @@ public class MainWindow : Window
         // Must be initialised before any SceneObject calls AssignObjectId().
         SelectionManager.Initialize();
 
+        Viewport?        viewport        = null;
+        SceneTree?       sceneTree       = null;
+        PropertiesPanel? propertiesPanel = null;
+
         foreach (var panel in _panels)
         {
             panel.Gl = gl;
 
-            if (panel is Viewport viewport)
+            switch (panel)
             {
-                viewport.InitFramebuffer(1, 1);
+                case Viewport vp:
+                    viewport = vp;
+                    vp.InitFramebuffer(1, 1);
 
-                // Default test object: a unit cube at the origin.
-                var testObj = new SceneObject { Name = "Cube" };
-                testObj.AddMesh(new CubeMesh(gl));
-                viewport.SceneObjects.Add(testObj);
+                    // Default test object: a unit cube at the origin.
+                    var testObj = new SceneObject { Name = "Cube" };
+                    testObj.AssignObjectId();
+                    testObj.AddMesh(new CubeMesh(gl));
+                    vp.SceneObjects.Add(testObj);
+                    break;
+
+                case SceneTree st:
+                    sceneTree = st;
+                    break;
+
+                case PropertiesPanel pp:
+                    propertiesPanel = pp;
+                    break;
             }
         }
+
+        // Wire cross-references after all panels are set up.
+        if (sceneTree != null && viewport != null)
+            sceneTree.Viewport = viewport;
+
+        sceneTree?.Initialize();
+        propertiesPanel?.Initialize();
     }
 
     protected override void RenderUi()
