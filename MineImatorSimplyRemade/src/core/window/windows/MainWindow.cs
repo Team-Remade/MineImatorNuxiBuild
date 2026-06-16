@@ -111,6 +111,16 @@ public class MainWindow : Window
         if (viewport != null && propertiesPanel != null)
             viewport.PropertiesPanel = propertiesPanel;
 
+        // Wire GLFW references so the viewport can lock/unlock the cursor.
+        if (viewport != null)
+        {
+            unsafe
+            {
+                viewport.GlfwApi    = Glfw;
+                viewport.GlfwWindow = windowHandle;
+            }
+        }
+
         sceneTree?.Initialize();
         propertiesPanel?.Initialize();
 

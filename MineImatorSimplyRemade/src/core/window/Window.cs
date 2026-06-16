@@ -19,7 +19,7 @@ public class Window : IDisposable
     
     private GL _gl;
     public GL GL => _gl;
-    private Glfw Glfw;
+    protected Glfw Glfw;
     
     private vec4 clearColor = new vec4(0, 0, 0, 1);
     private ImGuiIOPtr io;

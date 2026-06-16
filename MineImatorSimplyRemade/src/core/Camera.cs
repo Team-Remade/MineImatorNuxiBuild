@@ -68,6 +68,26 @@ public class Camera
     }
 
     /// <summary>
+    /// Rotates the camera in place (FPS-style look).
+    /// The eye position stays fixed; <see cref="Target"/> is repositioned
+    /// <see cref="Distance"/> units ahead of the eye in the new look direction.
+    /// Pitch is clamped so the camera never flips past vertical.
+    /// </summary>
+    public void Look(float deltaYaw, float deltaPitch)
+    {
+        // Capture eye position before changing angles.
+        vec3 eye = Position;
+
+        Yaw   += deltaYaw;
+        Pitch = Math.Clamp(Pitch + deltaPitch, -MathF.PI / 2f + 0.01f, MathF.PI / 2f - 0.01f);
+
+        // Recompute Target so the eye stays exactly where it was.
+        // OffsetFromTarget() now uses the new Yaw/Pitch and points away from
+        // the target, so Target = eye - newOffset.
+        Target = eye - OffsetFromTarget();
+    }
+
+    /// <summary>
     /// Pans the target point in the camera's local right/up plane.
     /// <paramref name="deltaRight"/> and <paramref name="deltaUp"/> are world-unit amounts.
     /// </summary>
@@ -86,6 +106,39 @@ public class Camera
     public void Zoom(float delta)
     {
         Distance = Math.Max(0.1f, Distance - delta);
+    }
+
+    /// <summary>
+    /// Translates the camera in first-person (free-fly) mode.
+    /// Both the eye position and the orbit <see cref="Target"/> are moved together
+    /// so the orbit pivot stays in front of the camera.
+    /// <para>
+    /// <paramref name="forward"/> is the world-unit distance to move along the
+    /// camera's look direction (positive = forward into the scene).
+    /// <paramref name="right"/> is the world-unit distance to strafe
+    /// (positive = right).
+    /// <paramref name="up"/> is the world-unit distance to move vertically
+    /// along world Y (positive = up).
+    /// </para>
+    /// </summary>
+    public void MoveFreeFly(float forward, float right, float up)
+    {
+        // OffsetFromTarget() points FROM target TO eye (i.e. away from the scene).
+        // Negate it to get the camera's look direction (into the scene).
+        float cosP = MathF.Cos(Pitch);
+        vec3 lookDir = -new vec3(
+            cosP * MathF.Sin(Yaw),
+            MathF.Sin(Pitch),
+            cosP * MathF.Cos(Yaw)).Normalized;
+
+        // Right is perpendicular to the look direction on the XZ plane (no roll).
+        vec3 rt = vec3.Cross(lookDir, vec3.UnitY).Normalized;
+
+        // Translate both eye and target together (rigid body translation).
+        vec3 delta = lookDir * forward + rt * right + vec3.UnitY * up;
+        Target += delta;
+        // Position is derived from Target + OffsetFromTarget(), so moving
+        // Target moves the eye implicitly.
     }
 
     // ── Matrix getters ────────────────────────────────────────────────────────

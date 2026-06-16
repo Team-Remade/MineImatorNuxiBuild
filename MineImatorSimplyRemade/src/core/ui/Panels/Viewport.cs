@@ -8,6 +8,7 @@ using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.gizmo;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
+using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
 using StbImageSharp;
 
@@ -26,6 +27,19 @@ public class Viewport : UiPanel
     /// for the viewport clear color.
     /// </summary>
     public PropertiesPanel? PropertiesPanel { get; set; }
+
+    // ── GLFW references (for cursor lock during free-fly) ──────────────────────
+
+    /// <summary>
+    /// The GLFW API instance.  Set by <see cref="MainWindow"/> after construction
+    /// so the viewport can toggle <see cref="CursorModeValue.CursorDisabled"/>.
+    /// </summary>
+    public Glfw? GlfwApi { get; set; }
+
+    /// <summary>
+    /// The native GLFW window handle.  Set alongside <see cref="GlfwApi"/>.
+    /// </summary>
+    public unsafe WindowHandle* GlfwWindow { get; set; }
 
     // ── Ground plane ───────────────────────────────────────────────────────────
 
@@ -67,6 +81,20 @@ public class Viewport : UiPanel
     /// an orbit drag rather than a click.
     /// </summary>
     private const float OrbitDragThreshold = 4f;
+
+    // ── Free-fly state ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// True while the right mouse button is held and free-fly mode is active.
+    /// Mouse look and WASD/QE movement are processed when this is true.
+    /// </summary>
+    private bool _freeFly;
+
+    /// <summary>Current movement speed multiplier for free-fly, adjusted by scroll wheel.</summary>
+    private float _freeFlySpeed = 5f;
+
+    /// <summary>Mouse sensitivity for free-fly look (radians per pixel).</summary>
+    private const float FreeFlyLookSensitivity = 0.003f;
 
     // ── Click position for deferred pick ──────────────────────────────────────
 
@@ -895,9 +923,98 @@ public class Viewport : UiPanel
             _panning = false;
         }
 
-        // Scroll wheel → zoom
+        // Scroll wheel → zoom (normal mode) or speed change (free-fly mode)
         if (io.MouseWheel != 0)
-            Camera.Zoom(io.MouseWheel * Camera.Distance * 0.1f);
+        {
+            if (_freeFly)
+            {
+                // Multiply/divide speed by a fixed factor per notch so the steps
+                // feel consistent at any speed level.
+                float factor = io.MouseWheel > 0 ? 1.3f : 1f / 1.3f;
+                for (int i = 0; i < (int)MathF.Abs(io.MouseWheel); i++)
+                    _freeFlySpeed *= factor;
+                _freeFlySpeed = Math.Clamp(_freeFlySpeed, 0.1f, 500f);
+            }
+            else
+            {
+                Camera.Zoom(io.MouseWheel * Camera.Distance * 0.1f);
+            }
+        }
+
+        // ── Right-button: free-fly mode ───────────────────────────────────────
+        // While the right mouse button is held GLFW cursor mode is set to
+        // CursorDisabled: the OS cursor is hidden and locked; GLFW delivers
+        // raw unbounded deltas via the normal cursor-position callbacks, which
+        // the ImGui GLFW backend exposes as io.MouseDelta each frame.
+        // Controls:
+        //   • Mouse delta  → look (yaw / pitch)
+        //   • W / S        → move forward / backward
+        //   • A / D        → strafe left / right
+        //   • E / Q        → move up / down
+        if (ImGui.IsMouseDown(ImGuiMouseButton.Right))
+        {
+            // Lock cursor on the first frame of right-click.
+            if (!_freeFly && GlfwApi != null)
+            {
+                unsafe
+                {
+                    GlfwApi.SetInputMode(GlfwWindow,
+                        CursorStateAttribute.Cursor,
+                        CursorModeValue.CursorDisabled);
+                }
+            }
+
+            if (_freeFly)
+            {
+                // io.MouseDelta is populated by the GLFW backend from the raw
+                // cursor position callback — correct even while cursor is locked.
+                float lookDx =  io.MouseDelta.X * FreeFlyLookSensitivity;
+                // Screen Y increases downward; negate so dragging down pitches down.
+                float lookDy = -io.MouseDelta.Y * FreeFlyLookSensitivity;
+
+                // Look rotates the camera in place: the eye stays fixed and
+                // Target is repositioned ahead of it (FPS-style, not orbit).
+                Camera.Look(lookDx, lookDy);
+
+                // WASD / QE keyboard movement (frame-rate independent).
+                float dt    = io.DeltaTime;
+                float speed = _freeFlySpeed * Camera.Distance * 0.2f;  // scale with distance
+
+                // Space = speed boost (×2.5), Shift = slow (×0.4).
+                if (ImGui.IsKeyDown(ImGuiKey.Space))         speed *= 2.5f;
+                else if (ImGui.IsKeyDown(ImGuiKey.ModShift)) speed *= 0.4f;
+
+                float fwdDelta   = 0f;
+                float rightDelta = 0f;
+                float upDelta    = 0f;
+
+                if (ImGui.IsKeyDown(ImGuiKey.W)) fwdDelta   += speed * dt;
+                if (ImGui.IsKeyDown(ImGuiKey.S)) fwdDelta   -= speed * dt;
+                if (ImGui.IsKeyDown(ImGuiKey.D)) rightDelta += speed * dt;
+                if (ImGui.IsKeyDown(ImGuiKey.A)) rightDelta -= speed * dt;
+                if (ImGui.IsKeyDown(ImGuiKey.E)) upDelta    += speed * dt;
+                if (ImGui.IsKeyDown(ImGuiKey.Q)) upDelta    -= speed * dt;
+
+                if (fwdDelta != 0f || rightDelta != 0f || upDelta != 0f)
+                    Camera.MoveFreeFly(fwdDelta, rightDelta, upDelta);
+            }
+
+            _freeFly = true;
+        }
+        else
+        {
+            // Restore normal cursor when right mouse button is released.
+            if (_freeFly && GlfwApi != null)
+            {
+                unsafe
+                {
+                    GlfwApi.SetInputMode(GlfwWindow,
+                        CursorStateAttribute.Cursor,
+                        CursorModeValue.CursorNormal);
+                }
+            }
+            _freeFly = false;
+        }
 
         _lastMouseX = mouseX;
         _lastMouseY = mouseY;
