@@ -403,7 +403,7 @@ public class PropertiesPanel : UiPanel
         // ── Material ──────────────────────────────────────────────────────────
         bool isLight = _currentObject is LightSceneObject;
         if (isLight) ImGui.BeginDisabled();
-        if (ImGui.CollapsingHeader("Material"))
+        if (ImGui.CollapsingHeader("Material") && !isLight)
         {
             // Ensure MaterialSettings exists when we need to write
             EnsureMaterialSettings();

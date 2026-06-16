@@ -20,6 +20,12 @@ public static class ItemsAtlas
     /// <summary>All sliced tile textures, keyed as <c>"x,y"</c>.</summary>
     public static readonly Dictionary<string, uint> Textures = new();
 
+    /// <summary>
+    /// Raw RGBA pixel bytes for each tile, keyed as <c>"x,y"</c>.
+    /// Each value is a <c>TileSize * TileSize * 4</c> byte array (top-to-bottom, RGBA).
+    /// </summary>
+    public static readonly Dictionary<string, byte[]> TilePixels = new();
+
     private static GL? _gl;
 
     public static void Initialize(GL gl)
@@ -89,6 +95,7 @@ public static class ItemsAtlas
 
                 string key = $"{tx},{ty}";
                 Textures[key] = texId;
+                TilePixels[key] = tile;
             }
         }
 

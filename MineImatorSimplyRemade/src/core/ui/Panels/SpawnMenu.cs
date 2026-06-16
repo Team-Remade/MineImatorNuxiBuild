@@ -1,6 +1,7 @@
 using System.Numerics;
 using GlmSharp;
 using Hexa.NET.ImGui;
+using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.ui;
@@ -8,6 +9,15 @@ using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
+
+// ── Atlas source enum ─────────────────────────────────────────────────────────
+
+/// <summary>Which Minecraft texture atlas to source tiles from in the Items spawn tab.</summary>
+public enum ItemAtlasSource
+{
+    ItemAtlas,
+    BlockAtlas
+}
 
 /// <summary>
 /// Three-column spawn menu (Categories | Objects | Variants) displayed as a
@@ -31,6 +41,23 @@ public class SpawnMenu : UiPanel
 
     private string _searchQuery  = "";
     private string _searchBuffer = "";
+
+    // ── Items category state ─────────────────────────────────────────────────
+
+    /// <summary>Which atlas is currently selected in the Items tab.</summary>
+    private ItemAtlasSource _itemAtlasSource = ItemAtlasSource.ItemAtlas;
+
+    /// <summary>
+    /// Currently selected tile key (e.g. <c>"3,2"</c>), or empty string for none.
+    /// </summary>
+    private string _selectedTileKey = "";
+
+    /// <summary>When true (default) the spawned mesh is extruded; otherwise flat.</summary>
+    private bool _item3DMode = true;
+
+    /// <summary>Search filter applied to the tile grid list.</summary>
+    private string _itemSearchBuffer = "";
+    private string _itemSearchQuery  = "";
 
     // Category → list of object names
     private readonly Dictionary<string, List<string>> _categories;
@@ -62,7 +89,8 @@ public class SpawnMenu : UiPanel
                     "Cube", "Sphere", "Cylinder", "Cone", "Torus", "Plane", "Capsule"
                 }
             },
-            // Blocks / Items / Characters depend on Minecraft loaders not yet present.
+            // Items renders its own custom UI in the objects/variants columns.
+            { "Items",        new List<string>() },
             { "Custom Models", new List<string> { "Load..." } }
         };
 
@@ -89,7 +117,7 @@ public class SpawnMenu : UiPanel
         _nextWindowPos = screenPos;
     }
 
-    public override void Render()
+    public override unsafe void Render()
     {
         if (!_isOpen) return;
 
@@ -180,69 +208,228 @@ public class SpawnMenu : UiPanel
         ImGui.EndChild();
         ImGui.SameLine();
 
-        // ── Objects ─────────────────────────────────────────────────────────
-        ImGui.BeginChild("##objects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Objects");
-        ImGui.Separator();
-
-        if (_categories.TryGetValue(_selectedCategory, out var objectList))
+        // ── Objects / Items custom UI ────────────────────────────────────────
+        if (_selectedCategory == "Items")
         {
-            var filtered = string.IsNullOrEmpty(_searchQuery)
-                ? objectList
-                : objectList
-                    .Where(o => o.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-
-            for (int i = 0; i < filtered.Count; i++)
-            {
-                bool sel = _selectedObjectIndex == i;
-                if (ImGui.Selectable(filtered[i] + "##obj" + i, sel))
-                {
-                    _selectedObjectIndex  = i;
-                    _selectedVariantIndex = -1;
-                    OnObjectSelected(filtered[i]);
-                }
-
-                // Double-click spawns immediately (except "Load...")
-                if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-                {
-                    _selectedObjectIndex = i;
-                    OnObjectDoubleClicked(filtered[i]);
-                }
-            }
-        }
-
-        ImGui.EndChild();
-        ImGui.SameLine();
-
-        // ── Variants ────────────────────────────────────────────────────────
-        ImGui.BeginChild("##variants", new Vector2(0, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Variants");
-        ImGui.Separator();
-
-        if (_currentVariants.Count > 0)
-        {
-            for (int i = 0; i < _currentVariants.Count; i++)
-            {
-                bool sel = _selectedVariantIndex == i;
-                if (ImGui.Selectable(_currentVariants[i] + "##var" + i, sel))
-                    _selectedVariantIndex = i;
-
-                if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-                {
-                    _selectedVariantIndex = i;
-                    TrySpawn();
-                }
-            }
+            RenderItemsObjectsColumn(columnWidth);
+            ImGui.SameLine();
+            RenderItemsVariantsColumn();
         }
         else
         {
-            ImGui.TextDisabled("(not available)");
+            // Standard objects column
+            ImGui.BeginChild("##objects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
+            ImGui.TextDisabled("Objects");
+            ImGui.Separator();
+
+            if (_categories.TryGetValue(_selectedCategory, out var objectList))
+            {
+                var filtered = string.IsNullOrEmpty(_searchQuery)
+                    ? objectList
+                    : objectList
+                        .Where(o => o.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+
+                for (int i = 0; i < filtered.Count; i++)
+                {
+                    bool sel = _selectedObjectIndex == i;
+                    if (ImGui.Selectable(filtered[i] + "##obj" + i, sel))
+                    {
+                        _selectedObjectIndex  = i;
+                        _selectedVariantIndex = -1;
+                        OnObjectSelected(filtered[i]);
+                    }
+
+                    // Double-click spawns immediately (except "Load...")
+                    if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                    {
+                        _selectedObjectIndex = i;
+                        OnObjectDoubleClicked(filtered[i]);
+                    }
+                }
+            }
+
+            ImGui.EndChild();
+            ImGui.SameLine();
+
+            // ── Variants ────────────────────────────────────────────────────
+            ImGui.BeginChild("##variants", new Vector2(0, 0), ImGuiChildFlags.Borders);
+            ImGui.TextDisabled("Variants");
+            ImGui.Separator();
+
+            if (_currentVariants.Count > 0)
+            {
+                for (int i = 0; i < _currentVariants.Count; i++)
+                {
+                    bool sel = _selectedVariantIndex == i;
+                    if (ImGui.Selectable(_currentVariants[i] + "##var" + i, sel))
+                        _selectedVariantIndex = i;
+
+                    if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                    {
+                        _selectedVariantIndex = i;
+                        TrySpawn();
+                    }
+                }
+            }
+            else
+            {
+                ImGui.TextDisabled("(not available)");
+            }
+
+            ImGui.EndChild();
+        }
+
+        ImGui.EndChild(); // ##cols
+    }
+
+    // ── Items category UI ─────────────────────────────────────────────────────
+
+    private unsafe void RenderItemsObjectsColumn(float columnWidth)
+    {
+        ImGui.BeginChild("##itemsObjects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
+        ImGui.TextDisabled("Tiles");
+        ImGui.Separator();
+
+        // Atlas source dropdown
+        ImGui.Text("Atlas:");
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(-1);
+        int atlasIdx = (int)_itemAtlasSource;
+        string[] atlasNames = ["Item Atlas", "Block Atlas"];
+        if (ImGui.Combo("##atlasSource", ref atlasIdx, atlasNames, atlasNames.Length))
+        {
+            _itemAtlasSource = (ItemAtlasSource)atlasIdx;
+            _selectedTileKey = ""; // reset selection when switching atlas
+        }
+
+        ImGui.Spacing();
+
+        // Search filter
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.InputTextWithHint("##itemSearch", "Filter tiles (e.g. 3,2)...", ref _itemSearchBuffer, 64))
+            _itemSearchQuery = _itemSearchBuffer;
+
+        ImGui.Separator();
+
+        // Tile grid – show all 16×16 = 256 tiles as icon buttons in a grid
+        const int gridSize   = 16;
+        const float iconSize = 28f;
+        float availWidth = ImGui.GetContentRegionAvail().X;
+        int   cols       = Math.Max(1, (int)(availWidth / (iconSize + 4f)));
+
+        ImGui.BeginChild("##tileGrid", new Vector2(0, 0));
+
+        var textures = _itemAtlasSource == ItemAtlasSource.ItemAtlas
+            ? ItemsAtlas.Textures
+            : TerrainAtlas.Textures;
+
+        int col = 0;
+        for (int ty = 0; ty < gridSize; ty++)
+        {
+            for (int tx = 0; tx < gridSize; tx++)
+            {
+                string key = $"{tx},{ty}";
+
+                // Apply search filter
+                if (!string.IsNullOrEmpty(_itemSearchQuery) &&
+                    !key.Contains(_itemSearchQuery, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (!textures.TryGetValue(key, out uint texId)) continue;
+
+                bool isSel = _selectedTileKey == key;
+
+                if (col > 0) ImGui.SameLine();
+                if (col >= cols) { col = 0; }
+
+                // Highlight selected tile
+                if (isSel)
+                    ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.3f, 0.5f, 0.9f, 0.8f));
+
+                // GL textures are stored top-to-bottom; flip V for correct display
+                bool clicked = ImGui.ImageButton(
+                    $"##tile_{key}",
+                    new ImTextureRef(texId: (ulong)texId),
+                    new Vector2(iconSize, iconSize),
+                    new Vector2(0, 0),
+                    new Vector2(1, 1));
+
+                if (isSel)
+                    ImGui.PopStyleColor();
+
+                if (clicked)
+                    _selectedTileKey = key;
+
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip($"Tile ({key})");
+
+                if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                {
+                    _selectedTileKey = key;
+                    TrySpawnItem();
+                }
+
+                col++;
+                if (col >= cols) col = 0;
+            }
+        }
+
+        ImGui.EndChild(); // ##tileGrid
+        ImGui.EndChild(); // ##itemsObjects
+    }
+
+    private unsafe void RenderItemsVariantsColumn()
+    {
+        ImGui.BeginChild("##itemsVariants", new Vector2(0, 0), ImGuiChildFlags.Borders);
+        ImGui.TextDisabled("Options");
+        ImGui.Separator();
+
+        // 3D toggle
+        ImGui.Spacing();
+        ImGui.Checkbox("3D (extruded)", ref _item3DMode);
+        ImGui.Spacing();
+        ImGui.TextDisabled(_item3DMode
+            ? "Each pixel is extruded\nto form a hull mesh."
+            : "Flat double-sided plane\nwith the tile texture.");
+
+        ImGui.Separator();
+
+        // Preview of selected tile
+        if (!string.IsNullOrEmpty(_selectedTileKey))
+        {
+            var textures = _itemAtlasSource == ItemAtlasSource.ItemAtlas
+                ? ItemsAtlas.Textures
+                : TerrainAtlas.Textures;
+
+            ImGui.Spacing();
+            ImGui.TextDisabled("Preview:");
+            ImGui.Spacing();
+
+            if (textures.TryGetValue(_selectedTileKey, out uint previewTex))
+            {
+                float previewSize = Math.Min(ImGui.GetContentRegionAvail().X - 8f, 96f);
+                // Centre the preview
+                float indent = (ImGui.GetContentRegionAvail().X - previewSize) / 2f;
+                if (indent > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + indent);
+                ImGui.Image(
+                    new ImTextureRef(texId: (ulong)previewTex),
+                    new Vector2(previewSize, previewSize),
+                    new Vector2(0, 0),
+                    new Vector2(1, 1));
+            }
+
+            ImGui.Spacing();
+            string atlasLabel = _itemAtlasSource == ItemAtlasSource.ItemAtlas ? "ItemAtlas" : "BlockAtlas";
+            ImGui.TextDisabled($"{atlasLabel}[{_selectedTileKey}]");
+        }
+        else
+        {
+            ImGui.Spacing();
+            ImGui.TextDisabled("Select a tile\nfrom the grid.");
         }
 
         ImGui.EndChild();
-
-        ImGui.EndChild(); // ##cols
     }
 
     private void RenderBottomBar()
@@ -261,6 +448,9 @@ public class SpawnMenu : UiPanel
 
     private bool CanSpawn()
     {
+        if (_selectedCategory == "Items")
+            return !string.IsNullOrEmpty(_selectedTileKey);
+
         if (_selectedObjectIndex < 0) return false;
 
         var filtered = GetFilteredObjects();
@@ -309,10 +499,23 @@ public class SpawnMenu : UiPanel
 
     private void TrySpawn()
     {
+        if (_selectedCategory == "Items")
+        {
+            TrySpawnItem();
+            return;
+        }
+
         var filtered = GetFilteredObjects();
         if (_selectedObjectIndex < 0 || _selectedObjectIndex >= filtered.Count) return;
 
         SpawnObject(filtered[_selectedObjectIndex]);
+        _isOpen = false;
+    }
+
+    private void TrySpawnItem()
+    {
+        if (string.IsNullOrEmpty(_selectedTileKey)) return;
+        SpawnItemObject(_selectedTileKey, _itemAtlasSource, _item3DMode);
         _isOpen = false;
     }
 
@@ -345,6 +548,59 @@ public class SpawnMenu : UiPanel
 
         // The SceneTree rebuilds itself every frame from Viewport.SceneObjects,
         // so no explicit refresh call is needed after a spawn.
+    }
+
+    /// <summary>
+    /// Creates and registers a <see cref="SceneObject"/> carrying an
+    /// <see cref="ExtrudedItemMesh"/> built from the selected atlas tile.
+    /// </summary>
+    public SceneObject? SpawnItemObject(string tileKey, ItemAtlasSource atlasSource, bool is3D)
+    {
+        if (Viewport == null || Gl == null) return null;
+
+        // Resolve texture ID and pixel data from the appropriate atlas
+        uint tileTexId = 0;
+        byte[]? tilePixels = null;
+
+        if (atlasSource == ItemAtlasSource.ItemAtlas)
+        {
+            ItemsAtlas.Textures.TryGetValue(tileKey, out tileTexId);
+            ItemsAtlas.TilePixels.TryGetValue(tileKey, out tilePixels);
+        }
+        else
+        {
+            TerrainAtlas.Textures.TryGetValue(tileKey, out tileTexId);
+            TerrainAtlas.TilePixels.TryGetValue(tileKey, out tilePixels);
+        }
+
+        if (tileTexId == 0 || tilePixels == null) return null;
+
+        string atlasLabel = atlasSource == ItemAtlasSource.ItemAtlas ? "Item" : "Block";
+        string baseName   = $"{atlasLabel}[{tileKey}]";
+        int nextNum       = GetNextAvailableObjectNumber(baseName);
+        string fullName   = nextNum > 1 ? $"{baseName}{nextNum}" : baseName;
+
+        var obj = new SceneObject
+        {
+            Name          = fullName,
+            ObjectType    = baseName,
+            SpawnCategory = "Items",
+            TextureType   = atlasSource == ItemAtlasSource.ItemAtlas ? "item" : "block",
+            Position      = vec3.Zero
+        };
+        obj.AssignObjectId();
+
+        var mesh = new ExtrudedItemMesh(
+            Gl,
+            tileTexId,
+            tilePixels,
+            is3D: is3D,
+            tileSize: ItemsAtlas.TileSize,
+            extrudeDepth: 1f / 16f);
+
+        obj.AddMesh(mesh);
+        Viewport.SceneObjects.Add(obj);
+        return obj;
     }
 
     // ── Public spawn helpers ─────────────────────────────────────────────────

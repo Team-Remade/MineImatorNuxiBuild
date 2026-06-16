@@ -79,7 +79,7 @@ public class Camera
         vec3 eye = Position;
 
         Yaw   -= deltaYaw;
-        Pitch = Math.Clamp(Pitch + deltaPitch, -MathF.PI / 2f + 0.01f, MathF.PI / 2f - 0.01f);
+        Pitch = Math.Clamp(Pitch - deltaPitch, -MathF.PI / 2f + 0.01f, MathF.PI / 2f - 0.01f);
 
         // Recompute Target so the eye stays exactly where it was.
         // OffsetFromTarget() now uses the new Yaw/Pitch and points away from

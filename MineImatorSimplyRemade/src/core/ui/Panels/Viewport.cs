@@ -678,9 +678,13 @@ public class Viewport : UiPanel
         CollectPointLights(SceneObjects);
 
         // ── Scene objects ─────────────────────────────────────────────────────
-        // Collect visible (object, mesh) pairs and split into opaque / transparent.
-        var opaquePairs      = new List<(mat4 model, Mesh mesh)>();
-        var transparentPairs = new List<(mat4 model, Mesh mesh, float dist)>();
+        // Split meshes into three buckets:
+        //   opaque       – Alpha == 1, no texture  → normal depth read+write
+        //   textured     – has a TextureId          → depth pre-pass + color pass (LEQUAL)
+        //   alphaBlend   – Alpha < 1, no texture    → straight back-to-front blend, no pre-pass
+        var opaquePairs    = new List<(mat4 model, Mesh mesh)>();
+        var texturedPairs  = new List<(mat4 model, Mesh mesh, float dist)>();
+        var alphaBlendPairs = new List<(mat4 model, Mesh mesh, float dist)>();
 
         vec3 camPos = Camera.Position;
 
@@ -692,35 +696,61 @@ public class Viewport : UiPanel
 
             foreach (Mesh mesh in sceneObject.GetMeshInstancesRecursively())
             {
-                if (mesh.Alpha < 1.0f)
-                {
-                    // Depth sort key: distance from camera to object origin.
-                    vec3 worldPos = new vec3(model.m30, model.m31, model.m32);
-                    float dist    = (worldPos - camPos).LengthSqr;
-                    transparentPairs.Add((model, mesh, dist));
-                }
+                vec3  worldPos = new vec3(model.m30, model.m31, model.m32);
+                float dist     = (worldPos - camPos).LengthSqr;
+
+                if (mesh.TextureId != 0)
+                    texturedPairs.Add((model, mesh, dist));
+                else if (mesh.Alpha < 1.0f)
+                    alphaBlendPairs.Add((model, mesh, dist));
                 else
-                {
                     opaquePairs.Add((model, mesh));
-                }
             }
         }
 
-        // Pass 1 – Opaque geometry (normal depth read + write).
+        // Pass 1 – Opaque geometry (depth read + write, no blending).
         foreach (var (model, mesh) in opaquePairs)
             mesh.Render(model, view, proj);
 
-        // Pass 2 – Transparent geometry (back-to-front, depth read only).
-        if (transparentPairs.Count > 0)
+        // Pass 2 – Textured meshes (may have per-pixel alpha from the texture).
+        //   2a. Depth pre-pass: populate depth buffer with color writes masked off so
+        //       each mesh self-occludes (front faces block back faces of the same object).
+        //   2b. Color pass: LEQUAL depth so the pre-pass depth values pass, depth writes
+        //       off for correct back-to-front blending between separate objects.
+        if (texturedPairs.Count > 0)
         {
-            // Sort farthest-first so nearer surfaces blend on top.
-            transparentPairs.Sort((a, b) => b.dist.CompareTo(a.dist));
+            texturedPairs.Sort((a, b) => b.dist.CompareTo(a.dist));
+
+            Gl.ColorMask(false, false, false, false);
+            foreach (var (model, mesh, _) in texturedPairs)
+                mesh.Render(model, view, proj);
+            Gl.ColorMask(true, true, true, true);
+
+            Gl.DepthFunc(GLEnum.Lequal);
+            Gl.Enable(GLEnum.Blend);
+            Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+            Gl.DepthMask(false);
+
+            foreach (var (model, mesh, _) in texturedPairs)
+                mesh.Render(model, view, proj);
+
+            Gl.DepthMask(true);
+            Gl.DepthFunc(GLEnum.Less);
+            Gl.Disable(GLEnum.Blend);
+        }
+
+        // Pass 3 – Plain alpha-blended meshes (no texture, no pre-pass).
+        //   Sorted back-to-front; depth test reads but does not write so they
+        //   composite correctly behind/in-front of each other and textured meshes.
+        if (alphaBlendPairs.Count > 0)
+        {
+            alphaBlendPairs.Sort((a, b) => b.dist.CompareTo(a.dist));
 
             Gl.Enable(GLEnum.Blend);
             Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
-            Gl.DepthMask(false); // read depth but don't write – avoids z-fighting
+            Gl.DepthMask(false);
 
-            foreach (var (model, mesh, _) in transparentPairs)
+            foreach (var (model, mesh, _) in alphaBlendPairs)
                 mesh.Render(model, view, proj);
 
             Gl.DepthMask(true);
