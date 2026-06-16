@@ -391,13 +391,14 @@ public class SceneTree : UiPanel
         int nextNum  = GetNextAvailableNameNumber(baseName);
         dup.Name = nextNum > 1 ? $"{baseName}{nextNum}" : baseName;
 
-        dup.ObjectType      = original.ObjectType;
-        dup.IsSelectable    = original.IsSelectable;
-        dup.Position        = original.Position;
-        dup.Rotation        = original.Rotation;
-        dup.Scale           = original.Scale;
-        dup.PivotOffset     = original.PivotOffset;
-        dup.ObjectVisible   = original.ObjectVisible;
+        dup.ObjectType          = original.ObjectType;
+        dup.IsSelectable        = original.IsSelectable;
+        dup.Position            = original.Position;
+        dup.Rotation            = original.Rotation;
+        dup.Scale               = original.Scale;
+        dup.PivotOffset         = original.PivotOffset;
+        dup.InheritPivotOffset  = original.InheritPivotOffset;
+        dup.ObjectVisible       = original.ObjectVisible;
         dup.SpawnCategory   = original.SpawnCategory;
         dup.BlockVariant    = original.BlockVariant;
         dup.TextureType     = original.TextureType;
