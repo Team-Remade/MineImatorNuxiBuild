@@ -108,6 +108,9 @@ public class MainWindow : Window
         if (sceneTree != null && viewport != null)
             sceneTree.Viewport = viewport;
 
+        if (viewport != null && propertiesPanel != null)
+            viewport.PropertiesPanel = propertiesPanel;
+
         sceneTree?.Initialize();
         propertiesPanel?.Initialize();
 

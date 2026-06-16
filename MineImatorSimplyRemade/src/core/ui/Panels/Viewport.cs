@@ -19,6 +19,14 @@ public class Viewport : UiPanel
 
     public List<SceneObject> SceneObjects { get; } = new();
 
+    // ── Panel references ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Reference to the properties panel, used to read the background color
+    /// for the viewport clear color.
+    /// </summary>
+    public PropertiesPanel? PropertiesPanel { get; set; }
+
     // ── Ground plane ───────────────────────────────────────────────────────────
 
     /// <summary>
@@ -400,7 +408,8 @@ public class Viewport : UiPanel
         Gl.CullFace(GLEnum.Back);
         Gl.FrontFace(GLEnum.Ccw);
 
-        Gl.ClearColor(0.18f, 0.18f, 0.18f, 1.0f);
+        float[] bg = PropertiesPanel?.BackgroundColor ?? [0.18f, 0.18f, 0.18f, 1.0f];
+        Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
         Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
         float aspect = (h > 0) ? (float)w / h : 1f;
