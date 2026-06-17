@@ -86,7 +86,7 @@ public class SpawnMenu : UiPanel
             {
                 "Primitives", new List<string>
                 {
-                    "Cube", "Sphere", "Cylinder", "Cone", "Torus", "Plane", "Capsule"
+                    "Empty", "Cube", "Sphere", "Cylinder", "Cone", "Torus", "Plane", "Capsule"
                 }
             },
             // Items renders its own custom UI in the objects/variants columns.
