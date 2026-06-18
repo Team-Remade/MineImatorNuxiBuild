@@ -196,8 +196,8 @@ public class Viewport : UiPanel
     // ── Ground plane setup ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// Creates the 64×64 XZ ground plane and assigns the terrain atlas tile (8,2)
-    /// as its texture.  Must be called after both the GL context and
+    /// Creates the 64×64 XZ ground plane and assigns the <c>grass_block_top</c>
+    /// texture as its surface.  Must be called after both the GL context and
     /// <see cref="TerrainAtlas"/> are initialised.
     /// </summary>
     public void InitGroundPlane()
@@ -206,9 +206,8 @@ public class Viewport : UiPanel
 
         _groundPlane = new PlaneMesh(Gl, 64f, 64f, PlaneOrientation.XZ);
 
-        // Terrain tile (8,2): column 8, row 2 of the Minecraft 1.3.2 terrain sheet
-        // (grass-top / dirt depending on the atlas version).
-        if (TerrainAtlas.Textures.TryGetValue("8,2", out uint tileId))
+        // Use the named grass_block_top texture from textures/block/.
+        if (TerrainAtlas.Textures.TryGetValue("grass_block_top", out uint tileId))
             _groundPlane.TextureId = tileId;
     }
 

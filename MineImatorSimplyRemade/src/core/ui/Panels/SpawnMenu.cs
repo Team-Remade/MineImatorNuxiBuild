@@ -307,13 +307,12 @@ public class SpawnMenu : UiPanel
 
         // Search filter
         ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##itemSearch", "Filter tiles (e.g. 3,2)...", ref _itemSearchBuffer, 64))
+        if (ImGui.InputTextWithHint("##itemSearch", "Filter tiles (e.g. grass)...", ref _itemSearchBuffer, 64))
             _itemSearchQuery = _itemSearchBuffer;
 
         ImGui.Separator();
 
-        // Tile grid – show all 16×16 = 256 tiles as icon buttons in a grid
-        const int gridSize   = 16;
+        // Tile grid – show all available tiles as icon buttons in a grid
         const float iconSize = 28f;
         float availWidth = ImGui.GetContentRegionAvail().X;
         int   cols       = Math.Max(1, (int)(availWidth / (iconSize + 4f)));
@@ -325,54 +324,49 @@ public class SpawnMenu : UiPanel
             : TerrainAtlas.Textures;
 
         int col = 0;
-        for (int ty = 0; ty < gridSize; ty++)
+        foreach (var kvp in textures)
         {
-            for (int tx = 0; tx < gridSize; tx++)
+            string key    = kvp.Key;
+            uint   texId  = kvp.Value;
+
+            // Apply search filter
+            if (!string.IsNullOrEmpty(_itemSearchQuery) &&
+                !key.Contains(_itemSearchQuery, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            bool isSel = _selectedTileKey == key;
+
+            if (col > 0) ImGui.SameLine();
+            if (col >= cols) { col = 0; }
+
+            // Highlight selected tile
+            if (isSel)
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.3f, 0.5f, 0.9f, 0.8f));
+
+            bool clicked = ImGui.ImageButton(
+                $"##tile_{key}",
+                new ImTextureRef(texId: (ulong)texId),
+                new Vector2(iconSize, iconSize),
+                new Vector2(0, 0),
+                new Vector2(1, 1));
+
+            if (isSel)
+                ImGui.PopStyleColor();
+
+            if (clicked)
+                _selectedTileKey = key;
+
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(key);
+
+            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
             {
-                string key = $"{tx},{ty}";
-
-                // Apply search filter
-                if (!string.IsNullOrEmpty(_itemSearchQuery) &&
-                    !key.Contains(_itemSearchQuery, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                if (!textures.TryGetValue(key, out uint texId)) continue;
-
-                bool isSel = _selectedTileKey == key;
-
-                if (col > 0) ImGui.SameLine();
-                if (col >= cols) { col = 0; }
-
-                // Highlight selected tile
-                if (isSel)
-                    ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.3f, 0.5f, 0.9f, 0.8f));
-
-                // GL textures are stored top-to-bottom; flip V for correct display
-                bool clicked = ImGui.ImageButton(
-                    $"##tile_{key}",
-                    new ImTextureRef(texId: (ulong)texId),
-                    new Vector2(iconSize, iconSize),
-                    new Vector2(0, 0),
-                    new Vector2(1, 1));
-
-                if (isSel)
-                    ImGui.PopStyleColor();
-
-                if (clicked)
-                    _selectedTileKey = key;
-
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip($"Tile ({key})");
-
-                if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-                {
-                    _selectedTileKey = key;
-                    TrySpawnItem();
-                }
-
-                col++;
-                if (col >= cols) col = 0;
+                _selectedTileKey = key;
+                TrySpawnItem();
             }
+
+            col++;
+            if (col >= cols) col = 0;
         }
 
         ImGui.EndChild(); // ##tileGrid
@@ -590,12 +584,13 @@ public class SpawnMenu : UiPanel
         };
         obj.AssignObjectId();
 
+        int tileSize = atlasSource == ItemAtlasSource.ItemAtlas ? ItemsAtlas.TileSize : TerrainAtlas.TileSize;
         var mesh = new ExtrudedItemMesh(
             Gl,
             tileTexId,
             tilePixels,
             is3D: is3D,
-            tileSize: ItemsAtlas.TileSize,
+            tileSize: tileSize,
             extrudeDepth: 1f / 16f);
 
         obj.AddMesh(mesh);
