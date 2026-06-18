@@ -1,0 +1,24 @@
+{
+    "parent": "minecraft:block/template_wall_sign",
+    "ambientocclusion": false,
+    "texture_size": [64, 32],
+    "textures": {
+        "particle": "minecraft:block/oak_planks",
+        "planks": "minecraft:block/oak_planks"
+    },
+    "elements": [
+        {
+            "from": [0, 4.3333, 14.3333],
+            "to": [16, 12.3333, 15.66663],
+            "rotation": {"angle": 0, "axis": "y", "origin": [8, 3, 15]},
+            "faces": {
+                "north": {"uv": [0.5, 1, 6.5, 7], "texture": "#planks"},
+                "east": {"uv": [0, 1, 0.5, 7], "texture": "#planks"},
+                "south": {"uv": [7, 1, 13, 7], "texture": "#planks"},
+                "west": {"uv": [6.5, 1, 7, 7], "texture": "#planks"},
+                "up": {"uv": [0.5, 0, 6.5, 1], "texture": "#planks"},
+                "down": {"uv": [6.5, 0, 12.5, 1], "texture": "#planks"}
+            }
+        }
+    ]
+}

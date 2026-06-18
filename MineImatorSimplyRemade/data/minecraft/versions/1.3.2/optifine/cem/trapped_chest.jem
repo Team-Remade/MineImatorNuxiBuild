@@ -1,0 +1,54 @@
+{
+	"credit": "Made by Dangeresque486 with Blockbench",
+	"texture": "textures/block/classic_trapped_chest.png",
+	"textureSize": [64, 64],
+	"models": [
+		{
+			"part": "base",
+			"id": "base",
+			"invertAxis": "xy",
+			"translate": [-8, 0, -8],
+			"rotate": [-180, 0, 0],
+			"boxes": [
+				{
+					"coordinates": [-8, -16, 8, 16, 16, 16],
+					"uvNorth": [32, 32, 0, 0],
+					"uvEast": [32, 32, 0, 0],
+					"uvSouth": [64, 32, 32, 0],
+					"uvWest": [32, 32, 0, 0],
+					"uvUp": [64, 64, 32, 32],
+					"uvDown": [32, 64, 0, 32]
+				}
+			],
+			"animations": [
+				{
+					"this.rx": 0
+				}
+			]
+		},
+		{
+			"part": "lid",
+			"id": "lid",
+			"invertAxis": "xy",
+			"translate": [-8, -9, -7],
+			"rotate": [-180, 0, 0],
+			"animations": [
+				{
+					"this.rx": 0
+				}
+			]
+		},
+		{
+			"part": "knob",
+			"id": "knob",
+			"invertAxis": "xy",
+			"translate": [-8, -9, -7],
+			"rotate": [-180, 0, 0],
+			"animations": [
+				{
+					"this.rx": 0
+				}
+			]
+		}
+	]
+}
