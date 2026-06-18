@@ -59,6 +59,22 @@ public class Mesh : IDisposable
     /// </summary>
     public uint TextureId = 0;
 
+    // ── Animation ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Key into <see cref="TerrainAtlas.AnimatedTextures"/>.
+    /// When non-empty the mesh samples a single frame of the spritesheet each
+    /// render call and advances the animation over time.
+    /// Leave empty (default) for static textures.
+    /// </summary>
+    public string AnimationKey = "";
+
+    /// <summary>Accumulated real-time seconds since the animation started.</summary>
+    private double _animTime = 0.0;
+
+    /// <summary>Minecraft runs at 20 ticks/s; each frametime unit = 1 tick.</summary>
+    private const double SecondsPerTick = 1.0 / 20.0;
+
     // ── Culling ───────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -297,6 +313,12 @@ public class Mesh : IDisposable
     /// </summary>
     public static readonly List<(vec3 pos, vec3 color, float range, float energy)> PointLights = new();
 
+    /// <summary>
+    /// Elapsed seconds since the last frame.  Set by the Viewport once per frame
+    /// before any meshes are rendered so animated textures advance correctly.
+    /// </summary>
+    public static double DeltaTime = 0.0;
+
     // ── Rendering ─────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -341,6 +363,30 @@ public class Mesh : IDisposable
             SetUniformFloat($"uPointLightRange[{i}]",  lrange);
             SetUniformFloat($"uPointLightEnergy[{i}]", lenergy);
         }
+
+        // ── Animation UV offset ───────────────────────────────────────────────
+        float texOffsetV = 0f;
+        float texScaleV  = 1f;
+
+        if (!string.IsNullOrEmpty(AnimationKey) &&
+            TerrainAtlas.AnimatedTextures.TryGetValue(AnimationKey, out var animInfo))
+        {
+            _animTime += DeltaTime;
+
+            double ticksPerFrame = animInfo.FrameTime * SecondsPerTick;
+            double totalDuration = animInfo.Frames.Length * ticksPerFrame;
+            double t = _animTime % totalDuration;
+            int sequenceIndex = (int)(t / ticksPerFrame);
+            sequenceIndex = Math.Clamp(sequenceIndex, 0, animInfo.Frames.Length - 1);
+            int frameIndex = animInfo.Frames[sequenceIndex];
+
+            // Each frame occupies (frameH / totalH) of the texture in V
+            texScaleV  = (float)animInfo.FrameHeight / (animInfo.FrameHeight * animInfo.TotalFrames);
+            texOffsetV = frameIndex * texScaleV;
+        }
+
+        SetUniformVec2("uTexOffset",  new vec2(0f, texOffsetV));
+        SetUniformFloat("uTexScaleV", texScaleV);
 
         // Texture binding
         bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;
@@ -387,6 +433,12 @@ public class Mesh : IDisposable
             m.m30, m.m31, m.m32, m.m33,   // column 3
         };
         fixed (float* p = f) _gl.UniformMatrix4(loc, 1, false, p);
+    }
+
+    private void SetUniformVec2(string name, vec2 v)
+    {
+        int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
+        if (loc >= 0) _gl.Uniform2(loc, v.x, v.y);
     }
 
     private void SetUniformVec3(string name, vec3 v)

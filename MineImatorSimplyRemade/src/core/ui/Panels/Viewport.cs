@@ -670,7 +670,9 @@ public class Viewport : UiPanel
         if (_groundPlane != null)
             _groundPlane.Render(mat4.Identity, view, proj);
 
-        // ── Collect point lights ───────────────────────────────────────────────
+        // ── Per-frame mesh globals ─────────────────────────────────────────────
+        Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
+
         // Rebuild the static light list used by Mesh.Render() every frame so
         // that moved / deleted lights are always up-to-date.
         Mesh.PointLights.Clear();

@@ -7,6 +7,7 @@ using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
+using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
@@ -76,6 +77,12 @@ public class SpawnMenu : UiPanel
     // ── Window positioning ───────────────────────────────────────────────────
     private Vector2? _nextWindowPos;
 
+    // ── Blocks category state ─────────────────────────────────────────────────
+
+    /// <summary>Search filter applied to the blocks object list.</summary>
+    private string _blockSearchBuffer = "";
+    private string _blockSearchQuery  = "";
+
     // ── Constructor ──────────────────────────────────────────────────────────
     public SpawnMenu()
     {
@@ -91,10 +98,21 @@ public class SpawnMenu : UiPanel
             },
             // Items renders its own custom UI in the objects/variants columns.
             { "Items",        new List<string>() },
+            // Blocks: populated from BlockRegistry at render time.
+            { "Blocks",       new List<string>() },
             { "Custom Models", new List<string> { "Load..." } }
         };
 
         UpdateCustomModelsCategory();
+        RefreshBlocksCategory();
+    }
+
+    // ── Blocks category helpers ───────────────────────────────────────────────
+
+    /// <summary>Rebuilds the Blocks category list from <see cref="BlockRegistry"/>.</summary>
+    public void RefreshBlocksCategory()
+    {
+        _categories["Blocks"] = BlockRegistry.Blocks.ToList();
     }
 
     // ── Public API ───────────────────────────────────────────────────────────
@@ -208,12 +226,18 @@ public class SpawnMenu : UiPanel
         ImGui.EndChild();
         ImGui.SameLine();
 
-        // ── Objects / Items custom UI ────────────────────────────────────────
+        // ── Objects / Items / Blocks custom UI ───────────────────────────────
         if (_selectedCategory == "Items")
         {
             RenderItemsObjectsColumn(columnWidth);
             ImGui.SameLine();
             RenderItemsVariantsColumn();
+        }
+        else if (_selectedCategory == "Blocks")
+        {
+            RenderBlocksObjectsColumn(columnWidth);
+            ImGui.SameLine();
+            RenderBlocksVariantsColumn();
         }
         else
         {
@@ -426,6 +450,102 @@ public class SpawnMenu : UiPanel
         ImGui.EndChild();
     }
 
+    // ── Blocks category UI ────────────────────────────────────────────────────
+
+    private void RenderBlocksObjectsColumn(float columnWidth)
+    {
+        ImGui.BeginChild("##blocksObjects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
+        ImGui.TextDisabled("Blocks");
+        ImGui.Separator();
+
+        // Per-column search (overrides the global search for this column)
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.InputTextWithHint("##blockSearch", "Filter blocks...", ref _blockSearchBuffer, 128))
+        {
+            _blockSearchQuery    = _blockSearchBuffer;
+            _selectedObjectIndex  = -1;
+            _selectedVariantIndex = -1;
+            _currentVariants.Clear();
+        }
+
+        ImGui.Separator();
+
+        ImGui.BeginChild("##blockList", new Vector2(0, 0));
+
+        var blockList = BlockRegistry.Blocks;
+        string query  = string.IsNullOrEmpty(_blockSearchQuery) ? _searchQuery : _blockSearchQuery;
+
+        int displayIndex = 0;
+        for (int i = 0; i < blockList.Count; i++)
+        {
+            string name = blockList[i];
+            if (!string.IsNullOrEmpty(query) &&
+                !name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            bool sel = _selectedObjectIndex == i;
+            if (ImGui.Selectable(name + "##blk" + i, sel))
+            {
+                _selectedObjectIndex  = i;
+                _selectedVariantIndex = -1;
+                OnBlockSelected(name);
+            }
+
+            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+            {
+                _selectedObjectIndex = i;
+                OnBlockSelected(name);
+                // Auto-select first variant
+                if (_currentVariants.Count > 0)
+                    _selectedVariantIndex = 0;
+                TrySpawn();
+            }
+
+            displayIndex++;
+        }
+
+        if (displayIndex == 0)
+            ImGui.TextDisabled("(no blocks found)");
+
+        ImGui.EndChild(); // ##blockList
+        ImGui.EndChild(); // ##blocksObjects
+    }
+
+    private void RenderBlocksVariantsColumn()
+    {
+        ImGui.BeginChild("##blocksVariants", new Vector2(0, 0), ImGuiChildFlags.Borders);
+        ImGui.TextDisabled("Variants");
+        ImGui.Separator();
+
+        if (_currentVariants.Count > 0)
+        {
+            for (int i = 0; i < _currentVariants.Count; i++)
+            {
+                bool sel = _selectedVariantIndex == i;
+                if (ImGui.Selectable(_currentVariants[i] + "##bvar" + i, sel))
+                    _selectedVariantIndex = i;
+
+                if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                {
+                    _selectedVariantIndex = i;
+                    TrySpawn();
+                }
+            }
+        }
+        else if (_selectedObjectIndex >= 0)
+        {
+            ImGui.Spacing();
+            ImGui.TextDisabled("(no variants)");
+        }
+        else
+        {
+            ImGui.Spacing();
+            ImGui.TextDisabled("Select a block\nto see its variants.");
+        }
+
+        ImGui.EndChild();
+    }
+
     private void RenderBottomBar()
     {
         float buttonWidth = 110f;
@@ -456,7 +576,13 @@ public class SpawnMenu : UiPanel
             return objectName != "Load..." && _customModelPaths.ContainsKey(objectName);
 
         if (_selectedCategory == "Blocks")
-            return _currentVariants.Count > 0 && _selectedVariantIndex >= 0;
+        {
+            // A block is spawnable as soon as one is selected; variant defaults to first if not chosen
+            var blockList = BlockRegistry.Blocks;
+            return _selectedObjectIndex >= 0 &&
+                   _selectedObjectIndex < blockList.Count &&
+                   BlockRegistry.GetVariants(blockList[_selectedObjectIndex]).Count > 0;
+        }
 
         return true;
     }
@@ -471,21 +597,20 @@ public class SpawnMenu : UiPanel
             return;
         }
 
-        if (_selectedCategory == "Blocks")
-        {
-            // TODO: populate _currentVariants from block-state JSON when that system exists
-            _currentVariants.Clear();
-            return;
-        }
-
         _currentVariants.Clear();
+    }
+
+    private void OnBlockSelected(string blockName)
+    {
+        _currentVariants.Clear();
+        var variants = BlockRegistry.GetVariants(blockName);
+        foreach (var v in variants)
+            _currentVariants.Add(v.VariantKey);
     }
 
     private void OnObjectDoubleClicked(string objectName)
     {
         if (_selectedCategory == "Custom Models" && objectName == "Load...") return;
-        if (_selectedCategory == "Blocks") return; // Blocks need a variant chosen first
-
         TrySpawn();
     }
 
@@ -499,10 +624,38 @@ public class SpawnMenu : UiPanel
             return;
         }
 
+        if (_selectedCategory == "Blocks")
+        {
+            TrySpawnBlock();
+            return;
+        }
+
         var filtered = GetFilteredObjects();
         if (_selectedObjectIndex < 0 || _selectedObjectIndex >= filtered.Count) return;
 
         SpawnObject(filtered[_selectedObjectIndex]);
+        _isOpen = false;
+    }
+
+    private void TrySpawnBlock()
+    {
+        if (_selectedObjectIndex < 0) return;
+
+        // Get the block name from the registry list (not the filtered category list,
+        // since blocks uses its own per-column search)
+        var blockList = BlockRegistry.Blocks;
+        if (_selectedObjectIndex >= blockList.Count) return;
+
+        string blockName = blockList[_selectedObjectIndex];
+
+        // Default to first variant if none explicitly selected
+        int variantIndex = _selectedVariantIndex >= 0 ? _selectedVariantIndex : 0;
+        var variants = BlockRegistry.GetVariants(blockName);
+        if (variants.Count == 0) return;
+        if (variantIndex >= variants.Count) variantIndex = 0;
+
+        var variant = variants[variantIndex];
+        SpawnBlockObject(blockName, variant);
         _isOpen = false;
     }
 
@@ -679,6 +832,78 @@ public class SpawnMenu : UiPanel
 
         Viewport.SceneObjects.Add(obj);
         return obj;
+    }
+
+    /// <summary>
+    /// Creates and registers a block <see cref="SceneObject"/> whose geometry is
+    /// built from the Minecraft model JSON for the chosen variant.
+    /// For two-block-tall blocks (doors), the top half's meshes are added to the
+    /// same object with their vertices offset +1 in Y so the door is a single unit.
+    /// </summary>
+    public SceneObject? SpawnBlockObject(string blockName, BlockVariantEntry variant)
+    {
+        if (Viewport == null || Gl == null) return null;
+
+        int nextNum     = GetNextAvailableObjectNumber(blockName);
+        string fullName = nextNum > 1 ? $"{blockName}{nextNum}" : blockName;
+
+        var obj = new SceneObject
+        {
+            Name          = fullName,
+            ObjectType    = blockName,
+            SpawnCategory = "Blocks",
+            BlockVariant  = variant.VariantKey,
+            TextureType   = "block",
+            Position      = GlmSharp.vec3.Zero,
+            PivotOffset   = new GlmSharp.vec3(0f, 0.5f, 0f)
+        };
+        obj.AssignObjectId();
+
+        // Bottom/foot part (or full single-block)
+        AddBlockMeshes(obj, variant);
+
+        // Second part — bake offset directly into the mesh vertices
+        if (variant.TopHalf != null)
+            AddBlockMeshes(obj, variant.TopHalf,
+                           variant.PartOffsetX, variant.PartOffsetY, variant.PartOffsetZ);
+
+        Viewport.SceneObjects.Add(obj);
+        return obj;
+    }
+
+    /// <summary>
+    /// Builds meshes for <paramref name="variant"/> and adds them to <paramref name="obj"/>,
+    /// shifting every vertex by the given block-unit offsets.
+    /// </summary>
+    private void AddBlockMeshes(SceneObject obj, BlockVariantEntry variant,
+                                float offsetX = 0f, float offsetY = 0f, float offsetZ = 0f)
+    {
+        ResolvedBlockModel? resolved = null;
+        if (!string.IsNullOrEmpty(variant.ModelPath))
+            resolved = BlockRegistry.ResolveModel(variant.ModelPath);
+
+        List<Mesh> meshes;
+        if (!string.IsNullOrEmpty(variant.CemPath))
+            meshes = CemLoader.Load(Gl!, variant.CemPath, BlockRegistry.VersionRoot);
+        else if (resolved != null)
+            meshes = MinecraftModelMesh.Build(Gl!, resolved, variant.RotationX, variant.RotationY);
+        else
+            meshes = new List<Mesh> { MinecraftModelMesh.BuildTexturedFallbackCube(Gl!, null,
+                blockNameHint: obj.ObjectType) };
+
+        if (offsetX != 0f || offsetY != 0f || offsetZ != 0f)
+        {
+            var shift = new GlmSharp.vec3(offsetX, offsetY, offsetZ);
+            foreach (var mesh in meshes)
+            {
+                for (int i = 0; i < mesh.Vertices.Count; i++)
+                    mesh.Vertices[i] += shift;
+                mesh.Upload();
+            }
+        }
+
+        foreach (var mesh in meshes)
+            obj.AddMesh(mesh);
     }
 
     // ── Utility helpers ───────────────────────────────────────────────────────

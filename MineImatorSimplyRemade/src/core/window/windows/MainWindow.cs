@@ -76,6 +76,9 @@ public class MainWindow : Window
         TerrainAtlas.Initialize(gl);
         ItemsAtlas.Initialize(gl);
 
+        // Initialise block registry (reads blockstates/models from the most recent .nux version).
+        BlockRegistry.Initialize();
+
         Viewport?        viewport        = null;
         SceneTree?       sceneTree       = null;
         PropertiesPanel? propertiesPanel = null;
