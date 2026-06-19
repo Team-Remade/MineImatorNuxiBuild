@@ -11,10 +11,11 @@ Requirements
 ## Setup
 
 1. Clone the repo
-2. cd into the project
+2. Run `cd ./MineImatorNuxiBuild`
 3. Run `dotnet restore`
 4. Run `dotnet build`
-5. FISH
+5. Run `cd ./MineImatorSimplyRemade`
+6. Run `dotnet run`
 
 ## Contributing
 
