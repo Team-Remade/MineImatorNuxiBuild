@@ -21,7 +21,7 @@ public enum ItemAtlasSource
 }
 
 /// <summary>
-/// Three-column spawn menu (Categories | Objects | Variants) displayed as a
+/// Four-column spawn menu (Categories | Objects | Variants | Preview) displayed as a
 /// floating ImGui window.  Ported from the Nuxi reference project.
 ///
 /// Usage
@@ -83,6 +83,23 @@ public class SpawnMenu : UiPanel
     private string _blockSearchBuffer = "";
     private string _blockSearchQuery  = "";
 
+    // ── Preview renderer ──────────────────────────────────────────────────────
+
+    /// <summary>Off-screen FBO renderer that draws the preview column content.</summary>
+    private PreviewRenderer? _previewRenderer;
+
+    /// <summary>
+    /// Meshes currently loaded for the preview.  Rebuilt whenever the selection
+    /// key changes.  Disposed with the old meshes before rebuilding.
+    /// </summary>
+    private List<Mesh> _previewMeshes = new();
+
+    /// <summary>
+    /// Opaque string identifying the last selection rendered.  When it changes
+    /// <see cref="_previewMeshes"/> is rebuilt.
+    /// </summary>
+    private string _previewKey = "";
+
     // ── Constructor ──────────────────────────────────────────────────────────
     public SpawnMenu()
     {
@@ -143,7 +160,7 @@ public class SpawnMenu : UiPanel
         {
             // Clamp so the window doesn't fall off the right/bottom edge.
             var io = ImGui.GetIO();
-            float wx = Math.Min(_nextWindowPos.Value.X, io.DisplaySize.X - 910f);
+            float wx = Math.Min(_nextWindowPos.Value.X, io.DisplaySize.X - 1160f);
             float wy = Math.Min(_nextWindowPos.Value.Y, io.DisplaySize.Y - 450f);
             ImGui.SetNextWindowPos(new Vector2(wx, wy), ImGuiCond.Always);
             _nextWindowPos = null; // only force position on the first frame
@@ -158,7 +175,10 @@ public class SpawnMenu : UiPanel
                 new Vector2(0.5f, 0.5f));
         }
 
-        ImGui.SetNextWindowSize(new Vector2(900, 440), ImGuiCond.Appearing);
+        ImGui.SetNextWindowSize(new Vector2(1150, 440), ImGuiCond.Appearing);
+
+        // Update the off-screen 3-D preview before the window draws
+        UpdatePreview(Mesh.DeltaTime);
 
         if (ImGui.Begin("Spawn Menu##SpawnMenuWindow", ref _isOpen))
         {
@@ -196,12 +216,222 @@ public class SpawnMenu : UiPanel
         }
     }
 
+    // ── Preview mesh management ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Ensures the <see cref="PreviewRenderer"/> is created and initialised,
+    /// computes the current selection key, rebuilds <see cref="_previewMeshes"/>
+    /// when the selection has changed, and renders them into the preview FBO.
+    /// Must be called each frame <em>before</em> the ImGui column that displays
+    /// the result, so the FBO texture is ready for <c>ImGui.Image</c>.
+    /// </summary>
+    private void UpdatePreview(double deltaTime)
+    {
+        if (Gl == null) return;
+
+        // Lazy-init the renderer
+        if (_previewRenderer == null)
+        {
+            _previewRenderer = new PreviewRenderer(Gl);
+            _previewRenderer.Initialize();
+        }
+
+        // Compute a key that uniquely identifies what should be previewed
+        string newKey = ComputePreviewKey();
+
+        if (newKey != _previewKey)
+        {
+            _previewKey = newKey;
+
+            // Dispose old preview meshes
+            foreach (var m in _previewMeshes) m.Dispose();
+            _previewMeshes.Clear();
+
+            // Build fresh meshes for the new selection
+            if (!string.IsNullOrEmpty(newKey))
+                _previewMeshes = BuildPreviewMeshes();
+
+            // Tune camera distance to fit the object type
+            _previewRenderer.Distance = GetPreviewDistance();
+            _previewRenderer.Yaw      = 0.75f;
+            _previewRenderer.Pitch    = 0.35f;
+        }
+
+        // Render into FBO every frame (so auto-rotation plays)
+        _previewRenderer.Render(_previewMeshes, _previewKey, deltaTime);
+    }
+
+    /// <summary>Returns a string that uniquely identifies the current selection.</summary>
+    private string ComputePreviewKey()
+    {
+        return _selectedCategory switch
+        {
+            "Items"  => string.IsNullOrEmpty(_selectedTileKey) ? ""
+                        : $"item:{(int)_itemAtlasSource}:{_selectedTileKey}:{_item3DMode}",
+            "Blocks" => _selectedObjectIndex < 0 ||
+                        _selectedObjectIndex >= BlockRegistry.Blocks.Count ? "" :
+                        $"block:{BlockRegistry.Blocks[_selectedObjectIndex]}:" +
+                        $"{(_selectedVariantIndex >= 0 ? _selectedVariantIndex : 0)}",
+            _ => _selectedObjectIndex < 0 ? "" :
+                 $"std:{_selectedCategory}:{GetFilteredObjects().ElementAtOrDefault(_selectedObjectIndex) ?? ""}"
+        };
+    }
+
+    /// <summary>Returns a camera distance appropriate for the selected object type.</summary>
+    private float GetPreviewDistance()
+    {
+        return _selectedCategory switch
+        {
+            "Blocks"     => 2.2f,
+            "Items"      => 2.2f,
+            "Camera"     => 3.5f,
+            "Primitives" => 2.2f,
+            _            => 2.5f
+        };
+    }
+
+    /// <summary>
+    /// Builds and returns GL meshes for the currently selected item.
+    /// Returns an empty list for categories that have no geometry (Camera, Light, Empty, Custom).
+    /// </summary>
+    private List<Mesh> BuildPreviewMeshes()
+    {
+        if (Gl == null) return new List<Mesh>();
+
+        switch (_selectedCategory)
+        {
+            case "Items":
+            {
+                if (string.IsNullOrEmpty(_selectedTileKey)) return new List<Mesh>();
+
+                uint tileTexId = 0;
+                byte[]? tilePixels = null;
+                int tileSize;
+
+                if (_itemAtlasSource == ItemAtlasSource.ItemAtlas)
+                {
+                    ItemsAtlas.Textures.TryGetValue(_selectedTileKey, out tileTexId);
+                    ItemsAtlas.TilePixels.TryGetValue(_selectedTileKey, out tilePixels);
+                    tileSize = ItemsAtlas.TileSize;
+                }
+                else
+                {
+                    TerrainAtlas.Textures.TryGetValue(_selectedTileKey, out tileTexId);
+                    TerrainAtlas.TilePixels.TryGetValue(_selectedTileKey, out tilePixels);
+                    tileSize = TerrainAtlas.TileSize;
+                }
+
+                if (tileTexId == 0 || tilePixels == null) return new List<Mesh>();
+
+                var mesh = new ExtrudedItemMesh(
+                    Gl, tileTexId, tilePixels,
+                    is3D: _item3DMode, tileSize: tileSize, extrudeDepth: 1f / 16f);
+                return new List<Mesh> { mesh };
+            }
+
+            case "Blocks":
+            {
+                if (_selectedObjectIndex < 0 ||
+                    _selectedObjectIndex >= BlockRegistry.Blocks.Count)
+                    return new List<Mesh>();
+
+                string blockName = BlockRegistry.Blocks[_selectedObjectIndex];
+                int variantIdx   = _selectedVariantIndex >= 0 ? _selectedVariantIndex : 0;
+                var variants     = BlockRegistry.GetVariants(blockName);
+                if (variants.Count == 0) return new List<Mesh>();
+                if (variantIdx >= variants.Count) variantIdx = 0;
+
+                var variant  = variants[variantIdx];
+                var meshes   = new List<Mesh>();
+
+                AppendBlockMeshesForPreview(meshes, variant);
+                if (variant.TopHalf != null)
+                {
+                    // Centre two-block-tall objects vertically (shift down by -0.5)
+                    var topMeshes = new List<Mesh>();
+                    AppendBlockMeshesForPreview(topMeshes, variant.TopHalf);
+                    var shift = new vec3(variant.PartOffsetX,
+                                        variant.PartOffsetY - 0.5f,
+                                        variant.PartOffsetZ);
+                    foreach (var m in topMeshes)
+                    {
+                        for (int i = 0; i < m.Vertices.Count; i++)
+                            m.Vertices[i] += shift;
+                        m.Upload();
+                    }
+                    meshes.AddRange(topMeshes);
+                }
+
+                // Centre single-block meshes so they orbit around (0,0,0) nicely:
+                // offset vertices down by 0.5 (block origin is at base, centre at 0.5)
+                if (variant.TopHalf == null)
+                {
+                    var downShift = new vec3(0f, -0.5f, 0f);
+                    foreach (var m in meshes)
+                    {
+                        for (int i = 0; i < m.Vertices.Count; i++)
+                            m.Vertices[i] += downShift;
+                        m.Upload();
+                    }
+                }
+
+                return meshes;
+            }
+
+            case "Primitives":
+            {
+                var filtered = GetFilteredObjects();
+                if (_selectedObjectIndex < 0 || _selectedObjectIndex >= filtered.Count)
+                    return new List<Mesh>();
+
+                string name = filtered[_selectedObjectIndex];
+                if (name == "Empty") return new List<Mesh>();
+
+                if (name == "Cube")   return new List<Mesh> { new CubeMesh(Gl) };
+                if (name == "Plane")  return new List<Mesh> { new PlaneMesh(Gl, 1f, 1f, PlaneOrientation.XY) };
+
+                // For shapes not yet implemented, show a cube placeholder
+                return new List<Mesh> { new CubeMesh(Gl) };
+            }
+
+            default:
+                return new List<Mesh>();
+        }
+    }
+
+    /// <summary>
+    /// Builds block meshes from a <see cref="BlockVariantEntry"/> and appends them
+    /// to <paramref name="meshes"/>.  Mirrors <see cref="AddBlockMeshes"/> but does
+    /// not attach anything to a SceneObject.
+    /// </summary>
+    private void AppendBlockMeshesForPreview(List<Mesh> meshes, BlockVariantEntry variant)
+    {
+        if (Gl == null) return;
+
+        ResolvedBlockModel? resolved = null;
+        if (!string.IsNullOrEmpty(variant.ModelPath))
+            resolved = BlockRegistry.ResolveModel(variant.ModelPath);
+
+        List<Mesh> built;
+        if (!string.IsNullOrEmpty(variant.CemPath))
+            built = CemLoader.Load(Gl, variant.CemPath, BlockRegistry.VersionRoot);
+        else if (resolved != null)
+            built = MinecraftModelMesh.Build(Gl, resolved, variant.RotationX, variant.RotationY);
+        else
+            built = new List<Mesh>
+            {
+                MinecraftModelMesh.BuildTexturedFallbackCube(Gl, null, blockNameHint: "")
+            };
+
+        meshes.AddRange(built);
+    }
+
     private void RenderMainColumns()
     {
         float totalHeight = ImGui.GetContentRegionAvail().Y - 40; // leave room for bottom bar
 
         ImGui.BeginChild("##cols", new Vector2(0, totalHeight));
-        float columnWidth = ImGui.GetContentRegionAvail().X / 3f;
+        float columnWidth = ImGui.GetContentRegionAvail().X / 4f;
 
         // ── Categories ──────────────────────────────────────────────────────
         ImGui.BeginChild("##categories", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
@@ -231,13 +461,17 @@ public class SpawnMenu : UiPanel
         {
             RenderItemsObjectsColumn(columnWidth);
             ImGui.SameLine();
-            RenderItemsVariantsColumn();
+            RenderItemsVariantsColumn(columnWidth);
+            ImGui.SameLine();
+            RenderItemsPreviewColumn();
         }
         else if (_selectedCategory == "Blocks")
         {
             RenderBlocksObjectsColumn(columnWidth);
             ImGui.SameLine();
-            RenderBlocksVariantsColumn();
+            RenderBlocksVariantsColumn(columnWidth);
+            ImGui.SameLine();
+            RenderBlocksPreviewColumn();
         }
         else
         {
@@ -277,7 +511,7 @@ public class SpawnMenu : UiPanel
             ImGui.SameLine();
 
             // ── Variants ────────────────────────────────────────────────────
-            ImGui.BeginChild("##variants", new Vector2(0, 0), ImGuiChildFlags.Borders);
+            ImGui.BeginChild("##variants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
             ImGui.TextDisabled("Variants");
             ImGui.Separator();
 
@@ -302,9 +536,46 @@ public class SpawnMenu : UiPanel
             }
 
             ImGui.EndChild();
+            ImGui.SameLine();
+
+            // ── Preview ─────────────────────────────────────────────────────
+            RenderStandardPreviewColumn();
         }
 
         ImGui.EndChild(); // ##cols
+    }
+
+    // ── Standard (non-Items, non-Blocks) preview column ──────────────────────
+
+    private unsafe void RenderStandardPreviewColumn()
+    {
+        ImGui.BeginChild("##stdPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
+        ImGui.TextDisabled("Preview");
+        ImGui.Separator();
+
+        var filtered = GetFilteredObjects();
+        if (_selectedObjectIndex >= 0 && _selectedObjectIndex < filtered.Count)
+        {
+            string objectName = filtered[_selectedObjectIndex];
+
+            bool hasGeometry = _previewMeshes.Count > 0 &&
+                               _previewRenderer != null &&
+                               _previewRenderer.ColorTexture != 0;
+
+            ImGui.Spacing();
+            RenderPreviewImage(hasGeometry);
+            ImGui.Spacing();
+
+            // Centred name label
+            CentreText(objectName);
+        }
+        else
+        {
+            ImGui.Spacing();
+            ImGui.TextDisabled("Select an object\nto see a preview.");
+        }
+
+        ImGui.EndChild();
     }
 
     // ── Items category UI ─────────────────────────────────────────────────────
@@ -397,9 +668,9 @@ public class SpawnMenu : UiPanel
         ImGui.EndChild(); // ##itemsObjects
     }
 
-    private unsafe void RenderItemsVariantsColumn()
+    private void RenderItemsVariantsColumn(float columnWidth)
     {
-        ImGui.BeginChild("##itemsVariants", new Vector2(0, 0), ImGuiChildFlags.Borders);
+        ImGui.BeginChild("##itemsVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
         ImGui.TextDisabled("Options");
         ImGui.Separator();
 
@@ -411,40 +682,34 @@ public class SpawnMenu : UiPanel
             ? "Each pixel is extruded\nto form a hull mesh."
             : "Flat double-sided plane\nwith the tile texture.");
 
+        ImGui.EndChild();
+    }
+
+    private unsafe void RenderItemsPreviewColumn()
+    {
+        ImGui.BeginChild("##itemsPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
+        ImGui.TextDisabled("Preview");
         ImGui.Separator();
 
-        // Preview of selected tile
         if (!string.IsNullOrEmpty(_selectedTileKey))
         {
-            var textures = _itemAtlasSource == ItemAtlasSource.ItemAtlas
-                ? ItemsAtlas.Textures
-                : TerrainAtlas.Textures;
+            bool hasGeometry = _previewMeshes.Count > 0 &&
+                               _previewRenderer != null &&
+                               _previewRenderer.ColorTexture != 0;
 
             ImGui.Spacing();
-            ImGui.TextDisabled("Preview:");
+            RenderPreviewImage(hasGeometry);
             ImGui.Spacing();
 
-            if (textures.TryGetValue(_selectedTileKey, out uint previewTex))
-            {
-                float previewSize = Math.Min(ImGui.GetContentRegionAvail().X - 8f, 96f);
-                // Centre the preview
-                float indent = (ImGui.GetContentRegionAvail().X - previewSize) / 2f;
-                if (indent > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + indent);
-                ImGui.Image(
-                    new ImTextureRef(texId: (ulong)previewTex),
-                    new Vector2(previewSize, previewSize),
-                    new Vector2(0, 0),
-                    new Vector2(1, 1));
-            }
-
-            ImGui.Spacing();
             string atlasLabel = _itemAtlasSource == ItemAtlasSource.ItemAtlas ? "ItemAtlas" : "BlockAtlas";
-            ImGui.TextDisabled($"{atlasLabel}[{_selectedTileKey}]");
+            CentreText($"{atlasLabel}[{_selectedTileKey}]");
+            ImGui.Spacing();
+            CentreText(_item3DMode ? "3D extruded" : "Flat plane");
         }
         else
         {
             ImGui.Spacing();
-            ImGui.TextDisabled("Select a tile\nfrom the grid.");
+            ImGui.TextDisabled("Select a tile\nto see a preview.");
         }
 
         ImGui.EndChild();
@@ -511,9 +776,9 @@ public class SpawnMenu : UiPanel
         ImGui.EndChild(); // ##blocksObjects
     }
 
-    private void RenderBlocksVariantsColumn()
+    private void RenderBlocksVariantsColumn(float columnWidth)
     {
-        ImGui.BeginChild("##blocksVariants", new Vector2(0, 0), ImGuiChildFlags.Borders);
+        ImGui.BeginChild("##blocksVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
         ImGui.TextDisabled("Variants");
         ImGui.Separator();
 
@@ -544,6 +809,116 @@ public class SpawnMenu : UiPanel
         }
 
         ImGui.EndChild();
+    }
+
+    private unsafe void RenderBlocksPreviewColumn()
+    {
+        ImGui.BeginChild("##blocksPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
+        ImGui.TextDisabled("Preview");
+        ImGui.Separator();
+
+        if (_selectedObjectIndex >= 0 && _selectedObjectIndex < BlockRegistry.Blocks.Count)
+        {
+            string blockName = BlockRegistry.Blocks[_selectedObjectIndex];
+            int variantIdx   = _selectedVariantIndex >= 0 ? _selectedVariantIndex : 0;
+            var variants     = BlockRegistry.GetVariants(blockName);
+
+            if (variants.Count > 0 && variantIdx < variants.Count)
+            {
+                bool hasGeometry = _previewMeshes.Count > 0 &&
+                                   _previewRenderer != null &&
+                                   _previewRenderer.ColorTexture != 0;
+
+                ImGui.Spacing();
+                RenderPreviewImage(hasGeometry);
+                ImGui.Spacing();
+                CentreText(blockName);
+
+                string varKey = variants[variantIdx].VariantKey;
+                if (!string.IsNullOrEmpty(varKey))
+                {
+                    ImGui.Spacing();
+                    CentreText(varKey);
+                }
+            }
+            else
+            {
+                ImGui.Spacing();
+                ImGui.TextDisabled("(no variants)");
+            }
+        }
+        else
+        {
+            ImGui.Spacing();
+            ImGui.TextDisabled("Select a block\nto see a preview.");
+        }
+
+        ImGui.EndChild();
+    }
+
+    // ── Shared preview helpers ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Draws the preview FBO texture (if <paramref name="hasGeometry"/> is true) or a
+    /// "no preview" placeholder.  The image is centred in the available horizontal space
+    /// and sized to fit both the column width and a maximum of 180 px.
+    /// </summary>
+    private unsafe void RenderPreviewImage(bool hasGeometry)
+    {
+        float avail = ImGui.GetContentRegionAvail().X - 8f;
+        float size  = Math.Min(avail, 180f);
+
+        float indent = (ImGui.GetContentRegionAvail().X - size) / 2f;
+        if (indent > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + indent);
+
+        if (hasGeometry && _previewRenderer != null)
+        {
+            // OpenGL textures are stored bottom-up; flip UV Y so the image is right-side-up.
+            ImGui.Image(
+                new ImTextureRef(texId: (ulong)_previewRenderer.ColorTexture),
+                new Vector2(size, size),
+                new Vector2(0, 1),   // uv0: (0,1) = top-left in GL coords
+                new Vector2(1, 0));  // uv1: (1,0) = bottom-right in GL coords
+
+            // Allow dragging on the preview image to orbit the camera
+            if (ImGui.IsItemActive() && ImGui.IsMouseDragging(ImGuiMouseButton.Left))
+            {
+                var delta = ImGui.GetMouseDragDelta(ImGuiMouseButton.Left);
+                ImGui.ResetMouseDragDelta(ImGuiMouseButton.Left);
+                _previewRenderer.Orbit(delta.X * 0.01f, -delta.Y * 0.01f);
+            }
+        }
+        else
+        {
+            // Placeholder rectangle
+            var drawList = ImGui.GetWindowDrawList();
+            var pos      = ImGui.GetCursorScreenPos();
+            drawList.AddRectFilled(pos, new Vector2(pos.X + size, pos.Y + size),
+                                   0xFF222226, 4f);
+            drawList.AddRect(pos, new Vector2(pos.X + size, pos.Y + size),
+                             0xFF555566, 4f, 0, 1.5f);
+
+            // "no preview" text centred inside the box
+            const string msg = "no preview";
+            var ts = ImGui.CalcTextSize(msg);
+            ImGui.SetCursorScreenPos(new Vector2(
+                pos.X + (size - ts.X) * 0.5f,
+                pos.Y + (size - ts.Y) * 0.5f));
+            ImGui.TextDisabled(msg);
+            // Advance cursor past the rectangle
+            ImGui.SetCursorScreenPos(new Vector2(pos.X, pos.Y + size));
+            ImGui.Dummy(new Vector2(size, 0));
+        }
+    }
+
+    /// <summary>Renders <paramref name="text"/> centred in the current column.</summary>
+    private static void CentreText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        float lw     = ImGui.CalcTextSize(text).X;
+        float indent = (ImGui.GetContentRegionAvail().X - lw) / 2f;
+        if (indent > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + indent);
+        ImGui.TextDisabled(text);
     }
 
     private void RenderBottomBar()
