@@ -175,8 +175,10 @@ public class SceneTree : UiPanel
 
     private void RenderNode(SceneObject obj)
     {
+        if (obj.HideInSceneTree) return;
+
         int nodeId    = ++_nodeIdCounter;
-        bool hasChildren = obj.Children.Count > 0;
+        bool hasChildren = obj.Children.Any(c => !c.HideInSceneTree);
         bool isSelected  = SelectionManager.Instance != null
             ? SelectionManager.Instance.IsSelected(obj)
             : _selectedObject == obj;

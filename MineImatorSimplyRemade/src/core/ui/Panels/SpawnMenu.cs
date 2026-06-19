@@ -7,6 +7,7 @@ using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
+using NativeFileDialogSharp;
 using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
@@ -83,6 +84,12 @@ public class SpawnMenu : UiPanel
     private string _blockSearchBuffer = "";
     private string _blockSearchQuery  = "";
 
+    // ── Characters category state ──────────────────────────────────────────────
+
+    /// <summary>Search filter applied to the characters object list.</summary>
+    private string _charSearchBuffer = "";
+    private string _charSearchQuery  = "";
+
     // ── Preview renderer ──────────────────────────────────────────────────────
 
     /// <summary>Off-screen FBO renderer that draws the preview column content.</summary>
@@ -117,11 +124,14 @@ public class SpawnMenu : UiPanel
             { "Items",        new List<string>() },
             // Blocks: populated from BlockRegistry at render time.
             { "Blocks",       new List<string>() },
+            // Characters: populated from CharacterRegistry at render time.
+            { "Characters",   new List<string>() },
             { "Custom Models", new List<string> { "Load..." } }
         };
 
         UpdateCustomModelsCategory();
         RefreshBlocksCategory();
+        RefreshCharactersCategory();
     }
 
     // ── Blocks category helpers ───────────────────────────────────────────────
@@ -130,6 +140,16 @@ public class SpawnMenu : UiPanel
     public void RefreshBlocksCategory()
     {
         _categories["Blocks"] = BlockRegistry.Blocks.ToList();
+    }
+
+    // ── Characters category helpers ────────────────────────────────────────────
+
+    /// <summary>Rebuilds the Characters category list from <see cref="CharacterRegistry"/>.</summary>
+    public void RefreshCharactersCategory()
+    {
+        _categories["Characters"] = CharacterRegistry.Characters
+            .Select(c => c.Name)
+            .ToList();
     }
 
     // ── Public API ───────────────────────────────────────────────────────────
@@ -272,6 +292,9 @@ public class SpawnMenu : UiPanel
                         _selectedObjectIndex >= BlockRegistry.Blocks.Count ? "" :
                         $"block:{BlockRegistry.Blocks[_selectedObjectIndex]}:" +
                         $"{(_selectedVariantIndex >= 0 ? _selectedVariantIndex : 0)}",
+            "Characters" => _selectedObjectIndex < 0 ||
+                            _selectedObjectIndex >= CharacterRegistry.Characters.Count ? "" :
+                            $"char:{CharacterRegistry.Characters[_selectedObjectIndex].FilePath}",
             _ => _selectedObjectIndex < 0 ? "" :
                  $"std:{_selectedCategory}:{GetFilteredObjects().ElementAtOrDefault(_selectedObjectIndex) ?? ""}"
         };
@@ -286,6 +309,7 @@ public class SpawnMenu : UiPanel
             "Items"      => 2.2f,
             "Camera"     => 3.5f,
             "Primitives" => 2.2f,
+            "Characters" => 3.5f,
             _            => 2.5f
         };
     }
@@ -472,6 +496,20 @@ public class SpawnMenu : UiPanel
             RenderBlocksVariantsColumn(columnWidth);
             ImGui.SameLine();
             RenderBlocksPreviewColumn();
+        }
+        else if (_selectedCategory == "Characters")
+        {
+            RenderCharactersObjectsColumn(columnWidth);
+            ImGui.SameLine();
+            // Characters have no sub-variants — show an empty variants column for consistency.
+            ImGui.BeginChild("##charVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
+            ImGui.TextDisabled("Variants");
+            ImGui.Separator();
+            ImGui.Spacing();
+            ImGui.TextDisabled("(not available)");
+            ImGui.EndChild();
+            ImGui.SameLine();
+            RenderStandardPreviewColumn();
         }
         else
         {
@@ -856,6 +894,71 @@ public class SpawnMenu : UiPanel
         ImGui.EndChild();
     }
 
+    // ── Characters category UI ────────────────────────────────────────────────
+
+    private void RenderCharactersObjectsColumn(float columnWidth)
+    {
+        ImGui.BeginChild("##charObjects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
+        ImGui.TextDisabled("Characters");
+        ImGui.Separator();
+
+        // Per-column search
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.InputTextWithHint("##charSearch", "Filter characters...", ref _charSearchBuffer, 128))
+        {
+            _charSearchQuery     = _charSearchBuffer;
+            _selectedObjectIndex  = -1;
+            _selectedVariantIndex = -1;
+        }
+
+        ImGui.Separator();
+
+        ImGui.BeginChild("##charList", new Vector2(0, 0));
+
+        var chars = CharacterRegistry.Characters;
+        string query = string.IsNullOrEmpty(_charSearchQuery) ? _searchQuery : _charSearchQuery;
+
+        int displayIndex = 0;
+        for (int i = 0; i < chars.Count; i++)
+        {
+            var entry = chars[i];
+
+            if (!string.IsNullOrEmpty(query) &&
+                !entry.Name.Contains(query, StringComparison.OrdinalIgnoreCase) &&
+                !entry.Group.Contains(query, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Show a group prefix when the character lives in a sub-folder
+            string label = string.IsNullOrEmpty(entry.Group)
+                ? entry.Name
+                : $"[{entry.Group}] {entry.Name}";
+
+            bool sel = _selectedObjectIndex == i;
+            if (ImGui.Selectable(label + "##char" + i, sel))
+            {
+                _selectedObjectIndex  = i;
+                _selectedVariantIndex = -1;
+                _currentVariants.Clear();
+            }
+
+            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+            {
+                _selectedObjectIndex = i;
+                TrySpawn();
+            }
+
+            displayIndex++;
+        }
+
+        if (displayIndex == 0)
+            ImGui.TextDisabled(chars.Count == 0
+                ? "(no characters found –\nplace models in a\n'characters/' folder)"
+                : "(no matches)");
+
+        ImGui.EndChild(); // ##charList
+        ImGui.EndChild(); // ##charObjects
+    }
+
     // ── Shared preview helpers ────────────────────────────────────────────────
 
     /// <summary>
@@ -948,7 +1051,7 @@ public class SpawnMenu : UiPanel
         var objectName = filtered[_selectedObjectIndex];
 
         if (_selectedCategory == "Custom Models")
-            return objectName != "Load..." && _customModelPaths.ContainsKey(objectName);
+            return objectName == "Load..." || _customModelPaths.ContainsKey(objectName);
 
         if (_selectedCategory == "Blocks")
         {
@@ -957,6 +1060,12 @@ public class SpawnMenu : UiPanel
             return _selectedObjectIndex >= 0 &&
                    _selectedObjectIndex < blockList.Count &&
                    BlockRegistry.GetVariants(blockList[_selectedObjectIndex]).Count > 0;
+        }
+
+        if (_selectedCategory == "Characters")
+        {
+            var chars = CharacterRegistry.Characters;
+            return _selectedObjectIndex >= 0 && _selectedObjectIndex < chars.Count;
         }
 
         return true;
@@ -969,6 +1078,7 @@ public class SpawnMenu : UiPanel
         if (_selectedCategory == "Custom Models" && objectName == "Load...")
         {
             _currentVariants.Clear();
+            OpenCustomModelFileDialog();
             return;
         }
 
@@ -985,8 +1095,66 @@ public class SpawnMenu : UiPanel
 
     private void OnObjectDoubleClicked(string objectName)
     {
-        if (_selectedCategory == "Custom Models" && objectName == "Load...") return;
+        if (_selectedCategory == "Custom Models" && objectName == "Load...")
+            return; // single-click already handled in OnObjectSelected
+
         TrySpawn();
+    }
+
+    /// <summary>
+    /// Opens a native file-open dialog filtered to common 3-D model formats.
+    /// On success the model is imported via <see cref="AssimpModelLoader"/>,
+    /// added to the scene, and the entry is stored in the custom-model history.
+    /// </summary>
+    private void OpenCustomModelFileDialog()
+    {
+        if (Viewport == null || Gl == null) return;
+
+        var result = Dialog.FileOpen(
+            "glb,gltf,fbx,obj,dae,3ds,blend,ply,stl,x3d");
+
+        if (result.IsOk && !string.IsNullOrEmpty(result.Path))
+            SpawnCustomModelFromPath(result.Path);
+    }
+
+    /// <summary>
+    /// Loads the model at <paramref name="filePath"/> via Assimp and spawns the
+    /// resulting hierarchy as a child of the scene root.
+    /// Returns the root <see cref="SceneObject"/> on success, or <c>null</c> on error.
+    /// </summary>
+    public SceneObject? SpawnCustomModelFromPath(string filePath)
+    {
+        if (Viewport == null || Gl == null) return null;
+
+        SceneObject? root = AssimpModelLoader.Load(Gl, filePath);
+        if (root == null)
+        {
+            Console.Error.WriteLine($"[SpawnMenu] Failed to load model: {filePath}");
+            return null;
+        }
+
+        string displayName = Path.GetFileNameWithoutExtension(filePath);
+        root.Name = displayName;
+
+        AddToCustomModelHistory(filePath, displayName);
+        Viewport.SceneObjects.Add(root);
+        return root;
+    }
+
+    private void SpawnCustomModel(string objectName)
+    {
+        if (objectName == "Load...")
+        {
+            OpenCustomModelFileDialog();
+            return;
+        }
+
+        // Re-spawn a model from the history list.
+        if (_customModelPaths.TryGetValue(objectName, out string? path))
+        {
+            SpawnCustomModelFromPath(path);
+            _isOpen = false;
+        }
     }
 
     // ── Spawn logic ───────────────────────────────────────────────────────────
@@ -1002,6 +1170,12 @@ public class SpawnMenu : UiPanel
         if (_selectedCategory == "Blocks")
         {
             TrySpawnBlock();
+            return;
+        }
+
+        if (_selectedCategory == "Characters")
+        {
+            TrySpawnCharacter();
             return;
         }
 
@@ -1034,6 +1208,16 @@ public class SpawnMenu : UiPanel
         _isOpen = false;
     }
 
+    private void TrySpawnCharacter()
+    {
+        var chars = CharacterRegistry.Characters;
+        if (_selectedObjectIndex < 0 || _selectedObjectIndex >= chars.Count) return;
+
+        var entry = chars[_selectedObjectIndex];
+        SpawnCustomModelFromPath(entry.FilePath);
+        _isOpen = false;
+    }
+
     private void TrySpawnItem()
     {
         if (string.IsNullOrEmpty(_selectedTileKey)) return;
@@ -1059,7 +1243,7 @@ public class SpawnMenu : UiPanel
                 break;
 
             case "Custom Models":
-                // GLB/GLTF loading not yet implemented
+                SpawnCustomModel(objectName);
                 break;
 
             default:

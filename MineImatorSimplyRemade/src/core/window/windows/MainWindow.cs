@@ -79,6 +79,9 @@ public class MainWindow : Window
         // Initialise block registry (reads blockstates/models from the most recent .nux version).
         BlockRegistry.Initialize();
 
+        // Scan data/**/characters/ folders and register character models.
+        CharacterRegistry.Initialize();
+
         Viewport?        viewport        = null;
         SceneTree?       sceneTree       = null;
         PropertiesPanel? propertiesPanel = null;

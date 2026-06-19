@@ -176,6 +176,16 @@ public class Viewport : UiPanel
     /// </summary>
     private uint _benchTexture;
 
+    // ── Bone indicator ─────────────────────────────────────────────────────────
+
+    /// <summary>Flat-colour shader used to draw the bone octahedron indicators.</summary>
+    private MineImatorSimplyRemade.core.mdl.Shader? _boneShader;
+
+    /// <summary>RGBA colour for unselected bone indicators.</summary>
+    private static readonly vec4 BoneColor         = new(0.80f, 0.65f, 0.10f, 1f); // amber
+    /// <summary>RGBA colour for selected bone indicators.</summary>
+    private static readonly vec4 BoneColorSelected = new(1.00f, 0.90f, 0.20f, 1f); // bright yellow
+
     // ── Light billboard ────────────────────────────────────────────────────────
 
     /// <summary>Billboard shader used to draw camera-facing light icons.</summary>
@@ -361,6 +371,10 @@ public class Viewport : UiPanel
         // Compile billboard shader.
         _billboardShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
         _billboardShader.CompileShader("billboard.vert", "billboard.frag");
+
+        // Bone indicator shader (flat MVP + colour, same as gizmo).
+        _boneShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _boneShader.CompileShader("gizmo.vert", "gizmo.frag");
     }
 
     /// <summary>
@@ -530,6 +544,75 @@ public class Viewport : UiPanel
             RenderLightBillboardsRecursive(child, posLoc, sizeLoc, tintLoc);
     }
 
+    // ── Bone indicator render ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Draws a small flat-coloured octahedron at the origin of every visible
+    /// <see cref="BoneSceneObject"/> in the scene, using the gizmo shader.
+    /// Selected bones are drawn in a brighter colour.
+    /// Rendered with depth-test on so occluded bones are hidden by geometry,
+    /// but depth-write off so they never occlude other objects.
+    /// </summary>
+    private unsafe void RenderBoneIndicators(mat4 view, mat4 proj)
+    {
+        if (_boneShader == null) return;
+
+        var sm = SelectionManager.Instance;
+
+        uint prog = _boneShader.ShaderProgram;
+        Gl.UseProgram(prog);
+
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Always); // always draw on top of geometry
+        Gl.DepthMask(false);         // don't pollute the depth buffer
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Disable(GLEnum.Blend);
+
+        int mvpLoc   = Gl.GetUniformLocation(prog, "uMVP");
+        int colorLoc = Gl.GetUniformLocation(prog, "uColor");
+
+        foreach (var root in SceneObjects)
+            RenderBoneIndicatorsRecursive(root, view, proj, mvpLoc, colorLoc, sm);
+
+        Gl.DepthMask(true);
+        Gl.DepthFunc(GLEnum.Less); // restore normal depth testing
+        Gl.Enable(GLEnum.CullFace);
+    }
+
+    private unsafe void RenderBoneIndicatorsRecursive(
+        SceneObject obj, mat4 view, mat4 proj,
+        int mvpLoc, int colorLoc, SelectionManager? sm)
+    {
+        if (!obj.GetEffectiveVisibility()) return;
+
+        if (obj is BoneSceneObject bone && bone.IndicatorMesh != null)
+        {
+            mat4 model = obj.GetWorldMatrix();
+            mat4 mvp   = proj * view * model;
+
+            if (mvpLoc >= 0)
+            {
+                float[] f =
+                {
+                    mvp.m00, mvp.m01, mvp.m02, mvp.m03,
+                    mvp.m10, mvp.m11, mvp.m12, mvp.m13,
+                    mvp.m20, mvp.m21, mvp.m22, mvp.m23,
+                    mvp.m30, mvp.m31, mvp.m32, mvp.m33,
+                };
+                fixed (float* p = f) Gl.UniformMatrix4(mvpLoc, 1, false, p);
+            }
+
+            bool selected = sm != null && sm.SelectedObjects.Contains(obj);
+            vec4 col = selected ? BoneColorSelected : BoneColor;
+            if (colorLoc >= 0) Gl.Uniform4(colorLoc, col.x, col.y, col.z, col.w);
+
+            bone.IndicatorMesh.RenderPickPass(Gl);
+        }
+
+        foreach (var child in obj.Children)
+            RenderBoneIndicatorsRecursive(child, view, proj, mvpLoc, colorLoc, sm);
+    }
+
     /// <summary>
     /// Loads an image from the embedded assembly resources and uploads it as a
     /// 2-D OpenGL texture, returning the texture handle.
@@ -689,25 +772,7 @@ public class Viewport : UiPanel
 
         vec3 camPos = Camera.Position;
 
-        foreach (var sceneObject in SceneObjects)
-        {
-            if (!sceneObject.GetEffectiveVisibility()) continue;
-
-            mat4 model = sceneObject.GetWorldMatrix();
-
-            foreach (Mesh mesh in sceneObject.GetMeshInstancesRecursively())
-            {
-                vec3  worldPos = new vec3(model.m30, model.m31, model.m32);
-                float dist     = (worldPos - camPos).LengthSqr;
-
-                if (mesh.TextureId != 0)
-                    texturedPairs.Add((model, mesh, dist));
-                else if (mesh.Alpha < 1.0f)
-                    alphaBlendPairs.Add((model, mesh, dist));
-                else
-                    opaquePairs.Add((model, mesh));
-            }
-        }
+        CollectRenderPairs(SceneObjects, camPos, opaquePairs, texturedPairs, alphaBlendPairs);
 
         // Pass 1 – Opaque geometry (depth read + write, no blending).
         foreach (var (model, mesh) in opaquePairs)
@@ -768,6 +833,9 @@ public class Viewport : UiPanel
         Gl.DepthFunc(GLEnum.Less);
         Gl.Enable(GLEnum.CullFace);
         Gl.CullFace(GLEnum.Back);
+
+        // ── Bone indicators ───────────────────────────────────────────────────
+        RenderBoneIndicators(view, proj);
 
         // ── Selection highlight: Sobel edge detection ─────────────────────────
         // Pass 1: stamp flat-white silhouette mask into _silhouetteFbo.
@@ -953,7 +1021,8 @@ public class Viewport : UiPanel
         {
             if (!obj.GetEffectiveVisibility()) continue;
 
-            if (obj.IsSelectable && obj.Visuals.Count > 0)
+            bool hasBoneIndicator = obj is BoneSceneObject b && b.IndicatorMesh != null;
+            if (obj.IsSelectable && (obj.Visuals.Count > 0 || hasBoneIndicator))
             {
                 mat4 model = obj.GetWorldMatrix();
                 mat4 mvp   = proj * view * model;
@@ -978,9 +1047,13 @@ public class Viewport : UiPanel
                 if (colorLoc >= 0)
                     Gl.Uniform3(colorLoc, obj.PickColor.x, obj.PickColor.y, obj.PickColor.z);
 
-                // Draw each mesh's VAO directly via the pick shader (position attrib 0).
+                // Draw geometry meshes.
                 foreach (var mesh in obj.Visuals)
                     mesh.RenderPickPass(Gl);
+
+                // Draw the bone indicator octahedron as an additional pick target.
+                if (obj is BoneSceneObject bone && bone.IndicatorMesh != null)
+                    bone.IndicatorMesh.RenderPickPass(Gl);
             }
 
             // Recurse into children.
@@ -1129,6 +1202,42 @@ public class Viewport : UiPanel
             }
 
             CollectPointLights(obj.Children);
+        }
+    }
+
+    /// <summary>
+    /// Recursively collects (worldMatrix, mesh) pairs from every visible node in the
+    /// scene hierarchy.  Each node uses its own <see cref="SceneObject.GetWorldMatrix"/>
+    /// so that child nodes are correctly positioned relative to their parents.
+    /// </summary>
+    private static void CollectRenderPairs(
+        IEnumerable<SceneObject> objects,
+        vec3 camPos,
+        List<(mat4 model, Mesh mesh)> opaque,
+        List<(mat4 model, Mesh mesh, float dist)> textured,
+        List<(mat4 model, Mesh mesh, float dist)> alphaBlend)
+    {
+        foreach (var obj in objects)
+        {
+            if (!obj.GetEffectiveVisibility()) continue;
+
+            mat4  model    = obj.GetWorldMatrix();
+            vec3  worldPos = new vec3(model.m30, model.m31, model.m32);
+            float dist     = (worldPos - camPos).LengthSqr;
+
+            // Only this node's own Visuals — not its descendants.
+            foreach (Mesh mesh in obj.Visuals)
+            {
+                if (mesh.TextureId != 0)
+                    textured.Add((model, mesh, dist));
+                else if (mesh.Alpha < 1.0f)
+                    alphaBlend.Add((model, mesh, dist));
+                else
+                    opaque.Add((model, mesh));
+            }
+
+            // Recurse into children so each child uses its own world matrix.
+            CollectRenderPairs(obj.Children, camPos, opaque, textured, alphaBlend);
         }
     }
 

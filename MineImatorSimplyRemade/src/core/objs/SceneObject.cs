@@ -333,6 +333,13 @@ public class SceneObject
     public bool IsSelected;
 
     /// <summary>
+    /// When true this node is omitted from the scene-tree panel.
+    /// Used for internal helper nodes (e.g. mesh-display children of bones)
+    /// that should not be directly manipulated by the user.
+    /// </summary>
+    public bool HideInSceneTree = false;
+
+    /// <summary>
     /// Sets the selection state and applies or removes the selection material overlay.
     /// </summary>
     public void SetSelected(bool selected)
