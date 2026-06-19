@@ -246,9 +246,13 @@ public class PropertiesPanel : UiPanel
             if (ImGui.Checkbox("Inherit Position##pos", ref inheritPos))
                 _currentObject.InheritPosition = inheritPos;
 
-            vec3 rawPos = (_currentObject is BoneSceneObject bonePos)
-                ? bonePos.TargetPosition
-                : _currentObject.LocalPosition;
+            // MiBoneSceneObjects expose an offset from their model base pose (always zero at load).
+            // Plain BoneSceneObjects (GLB) use TargetPosition as an offset from rest pose.
+            vec3 rawPos = (_currentObject is MiBoneSceneObject miPos)
+                ? miPos.OffsetPosition
+                : (_currentObject is BoneSceneObject bonePos)
+                    ? bonePos.TargetPosition
+                    : _currentObject.LocalPosition;
 
             float posX = rawPos.x * 16f;
             float posY = rawPos.y * 16f;
@@ -289,9 +293,11 @@ public class PropertiesPanel : UiPanel
             if (ImGui.Checkbox("Inherit Rotation##rot", ref inheritRot))
                 _currentObject.InheritRotation = inheritRot;
 
-            vec3 rawRot = (_currentObject is BoneSceneObject boneRot)
-                ? boneRot.TargetRotation
-                : _currentObject.LocalRotation;
+            vec3 rawRot = (_currentObject is MiBoneSceneObject miRot)
+                ? miRot.OffsetRotation
+                : (_currentObject is BoneSceneObject boneRot)
+                    ? boneRot.TargetRotation
+                    : _currentObject.LocalRotation;
 
             float rotX = rawRot.x * (180f / MathF.PI);
             float rotY = rawRot.y * (180f / MathF.PI);
@@ -328,7 +334,9 @@ public class PropertiesPanel : UiPanel
 
             ImGui.Checkbox("Link Scale", ref _linkScale);
 
-            vec3 curScale = _currentObject.LocalScale;
+            vec3 curScale = (_currentObject is MiBoneSceneObject miScale)
+                ? miScale.OffsetScale
+                : _currentObject.LocalScale;
             float scaleX = curScale.x;
             float scaleY = curScale.y;
             float scaleZ = curScale.z;
@@ -343,7 +351,7 @@ public class PropertiesPanel : UiPanel
                     scaleY = MathF.Max(curScale.y + delta, 0.001f);
                     scaleZ = MathF.Max(curScale.z + delta, 0.001f);
                 }
-                _currentObject.SetLocalScale(new vec3(scaleX, scaleY, scaleZ));
+                ApplyScale(new vec3(scaleX, scaleY, scaleZ));
             }
             if (ImGui.DragFloat("Y##scaleY", ref scaleY, 0.01f, 0.001f, float.MaxValue))
             {
@@ -354,7 +362,7 @@ public class PropertiesPanel : UiPanel
                     scaleX = MathF.Max(curScale.x + delta, 0.001f);
                     scaleZ = MathF.Max(curScale.z + delta, 0.001f);
                 }
-                _currentObject.SetLocalScale(new vec3(scaleX, scaleY, scaleZ));
+                ApplyScale(new vec3(scaleX, scaleY, scaleZ));
             }
             if (ImGui.DragFloat("Z##scaleZ", ref scaleZ, 0.01f, 0.001f, float.MaxValue))
             {
@@ -365,12 +373,12 @@ public class PropertiesPanel : UiPanel
                     scaleX = MathF.Max(curScale.x + delta, 0.001f);
                     scaleY = MathF.Max(curScale.y + delta, 0.001f);
                 }
-                _currentObject.SetLocalScale(new vec3(scaleX, scaleY, scaleZ));
+                ApplyScale(new vec3(scaleX, scaleY, scaleZ));
             }
             ImGui.PopItemWidth();
 
             if (ImGui.Button("Reset##scaleReset"))
-                _currentObject.SetLocalScale(vec3.Ones);
+                ApplyScale(vec3.Ones);
         }
 
         // ── Pivot Offset ──────────────────────────────────────────────────────
@@ -626,7 +634,11 @@ public class PropertiesPanel : UiPanel
 
     private void ApplyPosition(vec3 pos)
     {
-        if (_currentObject is BoneSceneObject bone)
+        // MiBoneSceneObjects: pos is an offset from the base pose.
+        // Plain BoneSceneObjects (GLB): pos is an offset from the rest pose.
+        if (_currentObject is MiBoneSceneObject miPos)
+            miPos.OffsetPosition = pos;
+        else if (_currentObject is BoneSceneObject bone)
             bone.TargetPosition = pos;
         else
             _currentObject.SetLocalPosition(pos);
@@ -634,10 +646,20 @@ public class PropertiesPanel : UiPanel
 
     private void ApplyRotation(vec3 rot)
     {
-        if (_currentObject is BoneSceneObject bone)
+        if (_currentObject is MiBoneSceneObject miRot)
+            miRot.OffsetRotation = rot;
+        else if (_currentObject is BoneSceneObject bone)
             bone.TargetRotation = rot;
         else
             _currentObject.SetLocalRotation(rot);
+    }
+
+    private void ApplyScale(vec3 scale)
+    {
+        if (_currentObject is MiBoneSceneObject miScale)
+            miScale.OffsetScale = scale;
+        else
+            _currentObject.SetLocalScale(scale);
     }
 
     /// <summary>

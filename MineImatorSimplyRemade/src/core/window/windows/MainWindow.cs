@@ -2,6 +2,7 @@
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core;
@@ -81,6 +82,9 @@ public class MainWindow : Window
 
         // Scan data/**/characters/ folders and register character models.
         CharacterRegistry.Initialize();
+
+        // Initialise the Mine Imator model loader with the GL context.
+        MineImatorLoader.Instance.Initialize(gl);
 
         Viewport?        viewport        = null;
         SceneTree?       sceneTree       = null;

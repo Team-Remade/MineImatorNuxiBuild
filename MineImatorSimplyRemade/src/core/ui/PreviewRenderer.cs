@@ -1,5 +1,6 @@
 using GlmSharp;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemadeNuxi.core.objs;
 using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.core.ui;
@@ -118,12 +119,18 @@ public class PreviewRenderer : IDisposable
     /// so the auto-rotation is visible.
     ///
     /// <paramref name="deltaTime"/> drives the auto-orbit animation.
+    ///
+    /// When <paramref name="sceneRoot"/> is non-null the scene-object hierarchy is
+    /// rendered in addition to (or instead of) the flat <paramref name="meshes"/> list.
+    /// Each node in the hierarchy is rendered with its own world matrix so that a
+    /// character's bones appear in their correct poses.
     /// </summary>
     public unsafe void Render(
         IReadOnlyList<Mesh> meshes,
         string              selectionKey,
         double              deltaTime,
-        float               boundsRadius = 0.75f)
+        float               boundsRadius = 0.75f,
+        SceneObject?        sceneRoot    = null)
     {
         if (!_initialized) Initialize();
         if (_fbo == 0 || ColorTexture == 0) return;
@@ -153,7 +160,8 @@ public class PreviewRenderer : IDisposable
         _gl.ClearColor(0.12f, 0.12f, 0.14f, 1.0f);
         _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-        if (meshes.Count > 0)
+        bool hasSomethingToRender = meshes.Count > 0 || sceneRoot != null;
+        if (hasSomethingToRender)
         {
             // ── Camera matrices ───────────────────────────────────────────────
             float cosP = MathF.Cos(Pitch);
@@ -169,18 +177,35 @@ public class PreviewRenderer : IDisposable
                 0.05f,
                 100f);
 
-            // ── Compute mesh bounds to auto-fit the camera ────────────────────
-            // (simple: just use the caller-supplied boundsRadius)
-            // Distance is already set per object-type by the caller.
-
+            // ── Flat mesh list (Items, Blocks, Primitives) ────────────────────
             mat4 model = mat4.Identity;
-
             foreach (var mesh in meshes)
                 mesh.Render(model, view, proj);
+
+            // ── Scene-object hierarchy (Characters) ───────────────────────────
+            if (sceneRoot != null)
+                RenderSceneObjectRecursive(sceneRoot, view, proj);
         }
 
         // ── Restore GL state ─────────────────────────────────────────────────
         _gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+    }
+
+    /// <summary>
+    /// Recursively renders all visible nodes in a <see cref="SceneObject"/> hierarchy,
+    /// applying each node's own world matrix so that bones are placed correctly.
+    /// </summary>
+    private void RenderSceneObjectRecursive(SceneObject obj, mat4 view, mat4 proj)
+    {
+        if (!obj.GetEffectiveVisibility()) return;
+
+        mat4 worldMatrix = obj.GetWorldMatrix();
+
+        foreach (var mesh in obj.Visuals)
+            mesh.Render(worldMatrix, view, proj);
+
+        foreach (var child in obj.Children)
+            RenderSceneObjectRecursive(child, view, proj);
     }
 
     // ── Manual orbit (drag) ───────────────────────────────────────────────────

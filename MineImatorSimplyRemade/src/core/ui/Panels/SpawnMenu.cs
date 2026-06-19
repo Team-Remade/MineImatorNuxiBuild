@@ -4,6 +4,7 @@ using Hexa.NET.ImGui;
 using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -90,6 +91,18 @@ public class SpawnMenu : UiPanel
     private string _charSearchBuffer = "";
     private string _charSearchQuery  = "";
 
+    /// <summary>
+    /// Index into the selected character's <see cref="CharacterEntry.TextureVariants"/> list.
+    /// -1 means no explicit selection (use the model's built-in default texture).
+    /// </summary>
+    private int _selectedCharTextureIndex = -1;
+
+    /// <summary>
+    /// Absolute path chosen by the user when the "Custom" texture variant is selected.
+    /// Reset whenever the character selection changes.
+    /// </summary>
+    private string _customCharTexturePath = "";
+
     // ── Preview renderer ──────────────────────────────────────────────────────
 
     /// <summary>Off-screen FBO renderer that draws the preview column content.</summary>
@@ -100,6 +113,13 @@ public class SpawnMenu : UiPanel
     /// key changes.  Disposed with the old meshes before rebuilding.
     /// </summary>
     private List<Mesh> _previewMeshes = new();
+
+    /// <summary>
+    /// When the selected category is "Characters" this holds the temporary
+    /// <see cref="CharacterSceneObject"/> built purely for the preview FBO.
+    /// Its meshes are disposed and it is recreated whenever the selection key changes.
+    /// </summary>
+    private SceneObject? _previewCharacter;
 
     /// <summary>
     /// Opaque string identifying the last selection rendered.  When it changes
@@ -267,6 +287,9 @@ public class SpawnMenu : UiPanel
             foreach (var m in _previewMeshes) m.Dispose();
             _previewMeshes.Clear();
 
+            // Dispose old preview character meshes
+            DisposePreviewCharacter();
+
             // Build fresh meshes for the new selection
             if (!string.IsNullOrEmpty(newKey))
                 _previewMeshes = BuildPreviewMeshes();
@@ -278,7 +301,7 @@ public class SpawnMenu : UiPanel
         }
 
         // Render into FBO every frame (so auto-rotation plays)
-        _previewRenderer.Render(_previewMeshes, _previewKey, deltaTime);
+        _previewRenderer.Render(_previewMeshes, _previewKey, deltaTime, sceneRoot: _previewCharacter);
     }
 
     /// <summary>Returns a string that uniquely identifies the current selection.</summary>
@@ -294,7 +317,8 @@ public class SpawnMenu : UiPanel
                         $"{(_selectedVariantIndex >= 0 ? _selectedVariantIndex : 0)}",
             "Characters" => _selectedObjectIndex < 0 ||
                             _selectedObjectIndex >= CharacterRegistry.Characters.Count ? "" :
-                            $"char:{CharacterRegistry.Characters[_selectedObjectIndex].FilePath}",
+                            $"char:{CharacterRegistry.Characters[_selectedObjectIndex].FilePath}" +
+                            $":{_selectedCharTextureIndex}",
             _ => _selectedObjectIndex < 0 ? "" :
                  $"std:{_selectedCategory}:{GetFilteredObjects().ElementAtOrDefault(_selectedObjectIndex) ?? ""}"
         };
@@ -418,9 +442,89 @@ public class SpawnMenu : UiPanel
                 return new List<Mesh> { new CubeMesh(Gl) };
             }
 
+            case "Characters":
+            {
+                if (_selectedObjectIndex < 0 ||
+                    _selectedObjectIndex >= CharacterRegistry.Characters.Count)
+                    return new List<Mesh>();
+
+                var entry = CharacterRegistry.Characters[_selectedObjectIndex];
+                if (string.IsNullOrEmpty(entry.FilePath)) return new List<Mesh>();
+
+                string ext = Path.GetExtension(entry.FilePath).ToLowerInvariant();
+
+                SceneObject? character;
+
+                if (ext == ".mimodel")
+                {
+                    // Mine Imator native format — load via MineImatorLoader.
+                    string? textureOverridePath = ResolveCharacterTextureOverride(entry);
+
+                    var loader = MineImatorLoader.Instance;
+                    var model  = loader.LoadModel(entry.FilePath);
+                    if (model == null) return new List<Mesh>();
+
+                    var miChar = loader.CreateCharacterFromModel(model);
+                    if (miChar == null) return new List<Mesh>();
+
+                    // Apply texture variant if one was selected.
+                    if (!string.IsNullOrEmpty(textureOverridePath) && File.Exists(textureOverridePath))
+                    {
+                        uint overrideTexId = loader.LoadTextureFromFile(textureOverridePath);
+                        if (overrideTexId != 0)
+                            ApplyTextureOverrideToCharacter(miChar, overrideTexId);
+                    }
+
+                    character = miChar;
+                }
+                else
+                {
+                    // Binary / standard 3-D format (.glb, .gltf, .fbx, .obj, …) — use Assimp.
+                    if (Gl == null) return new List<Mesh>();
+                    character = AssimpModelLoader.Load(Gl, entry.FilePath);
+                    if (character == null) return new List<Mesh>();
+                }
+
+                // Store the hierarchy so PreviewRenderer can render it with proper world matrices.
+                _previewCharacter = character;
+
+                // Return an empty flat mesh list; the renderer will walk the hierarchy.
+                return new List<Mesh>();
+            }
+
             default:
                 return new List<Mesh>();
         }
+    }
+
+    /// <summary>
+    /// Resolves the texture override path for the currently selected character variant.
+    /// Returns null when no override should be applied (use the model's built-in default).
+    /// </summary>
+    private string? ResolveCharacterTextureOverride(CharacterEntry entry)
+    {
+        if (_selectedCharTextureIndex < 0 ||
+            _selectedCharTextureIndex >= entry.TextureVariants.Count)
+            return null;
+
+        var variant = entry.TextureVariants[_selectedCharTextureIndex];
+        if (variant.IsCustom)
+            return string.IsNullOrEmpty(_customCharTexturePath) ? null : _customCharTexturePath;
+
+        return string.IsNullOrEmpty(variant.FilePath) ? null : variant.FilePath;
+    }
+
+    /// <summary>
+    /// Disposes all meshes attached to <see cref="_previewCharacter"/> and clears it.
+    /// </summary>
+    private void DisposePreviewCharacter()
+    {
+        if (_previewCharacter == null) return;
+
+        foreach (var mesh in _previewCharacter.GetMeshInstancesRecursively())
+            mesh.Dispose();
+
+        _previewCharacter = null;
     }
 
     /// <summary>
@@ -469,9 +573,11 @@ public class SpawnMenu : UiPanel
             {
                 if (_selectedCategory != category)
                 {
-                    _selectedCategory    = category;
-                    _selectedObjectIndex  = -1;
-                    _selectedVariantIndex = -1;
+                    _selectedCategory          = category;
+                    _selectedObjectIndex        = -1;
+                    _selectedVariantIndex       = -1;
+                    _selectedCharTextureIndex   = -1;
+                    _customCharTexturePath      = "";
                     _currentVariants.Clear();
                 }
             }
@@ -501,13 +607,7 @@ public class SpawnMenu : UiPanel
         {
             RenderCharactersObjectsColumn(columnWidth);
             ImGui.SameLine();
-            // Characters have no sub-variants — show an empty variants column for consistency.
-            ImGui.BeginChild("##charVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-            ImGui.TextDisabled("Variants");
-            ImGui.Separator();
-            ImGui.Spacing();
-            ImGui.TextDisabled("(not available)");
-            ImGui.EndChild();
+            RenderCharactersVariantsColumn(columnWidth);
             ImGui.SameLine();
             RenderStandardPreviewColumn();
         }
@@ -863,9 +963,9 @@ public class SpawnMenu : UiPanel
 
             if (variants.Count > 0 && variantIdx < variants.Count)
             {
-                bool hasGeometry = _previewMeshes.Count > 0 &&
-                                   _previewRenderer != null &&
-                                   _previewRenderer.ColorTexture != 0;
+            bool hasGeometry = (_previewMeshes.Count > 0 || _previewCharacter != null) &&
+                               _previewRenderer != null &&
+                               _previewRenderer.ColorTexture != 0;
 
                 ImGui.Spacing();
                 RenderPreviewImage(hasGeometry);
@@ -936,8 +1036,10 @@ public class SpawnMenu : UiPanel
             bool sel = _selectedObjectIndex == i;
             if (ImGui.Selectable(label + "##char" + i, sel))
             {
-                _selectedObjectIndex  = i;
-                _selectedVariantIndex = -1;
+                _selectedObjectIndex       = i;
+                _selectedVariantIndex      = -1;
+                _selectedCharTextureIndex  = -1;
+                _customCharTexturePath     = "";
                 _currentVariants.Clear();
             }
 
@@ -957,6 +1059,107 @@ public class SpawnMenu : UiPanel
 
         ImGui.EndChild(); // ##charList
         ImGui.EndChild(); // ##charObjects
+    }
+
+    // ── Characters variants column ────────────────────────────────────────────
+
+    /// <summary>
+    /// Renders the Variants column for the Characters category.
+    /// Shows a texture selector when the selected character has a
+    /// <c>textures.nux</c> manifest; otherwise shows a "(not available)" notice.
+    /// </summary>
+    private void RenderCharactersVariantsColumn(float columnWidth)
+    {
+        ImGui.BeginChild("##charVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
+        ImGui.TextDisabled("Texture");
+        ImGui.Separator();
+
+        if (_selectedObjectIndex >= 0 &&
+            _selectedObjectIndex < CharacterRegistry.Characters.Count)
+        {
+            var entry = CharacterRegistry.Characters[_selectedObjectIndex];
+
+            if (entry.TextureVariants.Count > 0)
+            {
+                ImGui.Spacing();
+                ImGui.Text("Skin:");
+
+                // Build the names array for the combo box
+                string[] variantNames = entry.TextureVariants
+                    .Select(v => v.Name)
+                    .ToArray();
+
+                // Default to first variant (index 0) when nothing is explicitly chosen
+                int comboIndex = _selectedCharTextureIndex >= 0 &&
+                                 _selectedCharTextureIndex < variantNames.Length
+                    ? _selectedCharTextureIndex
+                    : 0;
+
+                ImGui.SetNextItemWidth(-1);
+                if (ImGui.Combo("##charTexture", ref comboIndex, variantNames, variantNames.Length))
+                    _selectedCharTextureIndex = comboIndex;
+
+                ImGui.Spacing();
+
+                // Show each variant as a selectable list entry as well
+                for (int i = 0; i < entry.TextureVariants.Count; i++)
+                {
+                    bool sel = (i == comboIndex);
+                    if (ImGui.Selectable(entry.TextureVariants[i].Name + "##ctex" + i, sel))
+                        _selectedCharTextureIndex = i;
+
+                    if (ImGui.IsItemHovered() &&
+                        ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                    {
+                        _selectedCharTextureIndex = i;
+                        TrySpawn();
+                    }
+                }
+
+                // ── Custom variant file picker ─────────────────────────────
+                var selectedVariant = entry.TextureVariants[comboIndex];
+                if (selectedVariant.IsCustom)
+                {
+                    ImGui.Spacing();
+                    ImGui.Separator();
+                    ImGui.Spacing();
+
+                    if (ImGui.Button("Browse...##charTexBrowse", new Vector2(-1, 0)))
+                    {
+                        var result = Dialog.FileOpen("png,jpg,jpeg,tga,bmp");
+                        if (result.IsOk && !string.IsNullOrEmpty(result.Path))
+                            _customCharTexturePath = result.Path;
+                    }
+
+                    ImGui.Spacing();
+
+                    if (!string.IsNullOrEmpty(_customCharTexturePath))
+                    {
+                        // Show just the filename — full path is too long for the column
+                        string fileName = Path.GetFileName(_customCharTexturePath);
+                        ImGui.TextDisabled(fileName);
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip(_customCharTexturePath);
+                    }
+                    else
+                    {
+                        ImGui.TextDisabled("No file chosen.");
+                    }
+                }
+            }
+            else
+            {
+                ImGui.Spacing();
+                ImGui.TextDisabled("(no texture variants)");
+            }
+        }
+        else
+        {
+            ImGui.Spacing();
+            ImGui.TextDisabled("Select a character\nto see textures.");
+        }
+
+        ImGui.EndChild();
     }
 
     // ── Shared preview helpers ────────────────────────────────────────────────
@@ -1065,7 +1268,22 @@ public class SpawnMenu : UiPanel
         if (_selectedCategory == "Characters")
         {
             var chars = CharacterRegistry.Characters;
-            return _selectedObjectIndex >= 0 && _selectedObjectIndex < chars.Count;
+            if (_selectedObjectIndex < 0 || _selectedObjectIndex >= chars.Count)
+                return false;
+
+            // If the selected texture variant is Custom, a file must have been picked.
+            var charEntry = chars[_selectedObjectIndex];
+            if (charEntry.TextureVariants.Count > 0)
+            {
+                int texIdx = _selectedCharTextureIndex >= 0 &&
+                             _selectedCharTextureIndex < charEntry.TextureVariants.Count
+                    ? _selectedCharTextureIndex : 0;
+                if (charEntry.TextureVariants[texIdx].IsCustom &&
+                    string.IsNullOrEmpty(_customCharTexturePath))
+                    return false;
+            }
+
+            return true;
         }
 
         return true;
@@ -1111,22 +1329,46 @@ public class SpawnMenu : UiPanel
         if (Viewport == null || Gl == null) return;
 
         var result = Dialog.FileOpen(
-            "glb,gltf,fbx,obj,dae,3ds,blend,ply,stl,x3d");
+            "glb,gltf,fbx,obj,dae,3ds,blend,ply,stl,x3d,mimodel,miobject");
 
         if (result.IsOk && !string.IsNullOrEmpty(result.Path))
             SpawnCustomModelFromPath(result.Path);
     }
 
     /// <summary>
-    /// Loads the model at <paramref name="filePath"/> via Assimp and spawns the
-    /// resulting hierarchy as a child of the scene root.
+    /// Loads the model at <paramref name="filePath"/> and spawns the resulting
+    /// hierarchy as a child of the scene root.
+    ///
+    /// Supports:
+    ///  - .mimodel / .miobject  — Mine Imator model files (via MineImatorLoader)
+    ///  - .glb / .gltf and all Assimp-supported formats (via AssimpModelLoader)
+    ///
+    /// <paramref name="textureOverridePath"/> — when not null and the model is a
+    /// <c>.mimodel</c>, overrides the model's default texture with this PNG path.
+    ///
     /// Returns the root <see cref="SceneObject"/> on success, or <c>null</c> on error.
     /// </summary>
-    public SceneObject? SpawnCustomModelFromPath(string filePath)
+    public SceneObject? SpawnCustomModelFromPath(string filePath, string? textureOverridePath = null)
     {
         if (Viewport == null || Gl == null) return null;
 
-        SceneObject? root = AssimpModelLoader.Load(Gl, filePath);
+        string ext = Path.GetExtension(filePath).ToLowerInvariant();
+
+        SceneObject? root;
+
+        if (ext == ".mimodel")
+        {
+            root = SpawnMineImatorModel(filePath, textureOverridePath);
+        }
+        else if (ext == ".miobject")
+        {
+            root = SpawnMineImatorObject(filePath);
+        }
+        else
+        {
+            root = AssimpModelLoader.Load(Gl, filePath);
+        }
+
         if (root == null)
         {
             Console.Error.WriteLine($"[SpawnMenu] Failed to load model: {filePath}");
@@ -1134,11 +1376,86 @@ public class SpawnMenu : UiPanel
         }
 
         string displayName = Path.GetFileNameWithoutExtension(filePath);
-        root.Name = displayName;
+        if (string.IsNullOrEmpty(root.Name)) root.Name = displayName;
 
         AddToCustomModelHistory(filePath, displayName);
         Viewport.SceneObjects.Add(root);
         return root;
+    }
+
+    /// <summary>
+    /// Loads a Mine Imator .mimodel file and creates a CharacterSceneObject.
+    /// When <paramref name="textureOverridePath"/> is non-null the skin texture on
+    /// every bone mesh is replaced with the texture loaded from that path.
+    /// </summary>
+    private SceneObject? SpawnMineImatorModel(string filePath, string? textureOverridePath = null)
+    {
+        var loader = MineImatorLoader.Instance;
+        var model  = loader.LoadModel(filePath);
+        if (model == null) return null;
+
+        var character = loader.CreateCharacterFromModel(model);
+        if (character == null) return null;
+
+        character.Name = model.Name ?? Path.GetFileNameWithoutExtension(filePath);
+        character.SourceAssetPath = filePath;
+        character.AssignObjectId();
+
+        // Apply texture override: replace every bone mesh's TextureId with the
+        // chosen skin texture so the correct variant is visible from spawn.
+        if (!string.IsNullOrEmpty(textureOverridePath) && File.Exists(textureOverridePath))
+        {
+            uint overrideTexId = loader.LoadTextureFromFile(textureOverridePath);
+            if (overrideTexId != 0)
+                ApplyTextureOverrideToCharacter(character, overrideTexId);
+        }
+
+        return character;
+    }
+
+    /// <summary>
+    /// Walks the full scene-object hierarchy of <paramref name="root"/> and
+    /// replaces the skin texture on every bone/mesh that already carries a
+    /// non-zero <c>TextureId</c>.
+    ///
+    /// For <see cref="MiBoneSceneObject"/> nodes the override is also written
+    /// into the stored shape data so it survives bend-angle regeneration.
+    /// </summary>
+    private static void ApplyTextureOverrideToCharacter(SceneObject root, uint textureId)
+    {
+        if (root is MiBoneSceneObject miBone)
+        {
+            miBone.OverrideTexture(textureId);
+        }
+        else
+        {
+            foreach (var mesh in root.Visuals)
+            {
+                if (mesh.TextureId != 0)
+                    mesh.TextureId = textureId;
+            }
+        }
+
+        foreach (var child in root.Children)
+            ApplyTextureOverrideToCharacter(child, textureId);
+    }
+
+    /// <summary>
+    /// Loads a Mine Imator .miobject file and creates a scene hierarchy.
+    /// </summary>
+    private SceneObject? SpawnMineImatorObject(string filePath)
+    {
+        var loader   = MineImatorLoader.Instance;
+        var miObject = loader.LoadMiObject(filePath);
+        if (miObject == null) return null;
+
+        var scene = loader.CreateSceneFromMiObject(miObject);
+        if (scene == null) return null;
+
+        scene.Name = Path.GetFileNameWithoutExtension(filePath);
+        scene.SourceAssetPath = filePath;
+        scene.AssignObjectId();
+        return scene;
     }
 
     private void SpawnCustomModel(string objectName)
@@ -1214,7 +1531,30 @@ public class SpawnMenu : UiPanel
         if (_selectedObjectIndex < 0 || _selectedObjectIndex >= chars.Count) return;
 
         var entry = chars[_selectedObjectIndex];
-        SpawnCustomModelFromPath(entry.FilePath);
+
+        // Resolve optional texture override from the variants list
+        string? textureOverride = null;
+        if (entry.TextureVariants.Count > 0)
+        {
+            int texIdx = _selectedCharTextureIndex >= 0 &&
+                         _selectedCharTextureIndex < entry.TextureVariants.Count
+                ? _selectedCharTextureIndex
+                : 0;
+
+            var variant = entry.TextureVariants[texIdx];
+            if (variant.IsCustom)
+            {
+                // Custom variant: require the user to have picked a file first.
+                if (string.IsNullOrEmpty(_customCharTexturePath)) return;
+                textureOverride = _customCharTexturePath;
+            }
+            else
+            {
+                textureOverride = variant.FilePath;
+            }
+        }
+
+        SpawnCustomModelFromPath(entry.FilePath, textureOverride);
         _isOpen = false;
     }
 
