@@ -1,6 +1,7 @@
 using GlmSharp;
 using MineImatorSimplyRemade;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.core.mdl.meshes;
@@ -46,10 +47,12 @@ public static class CemLoader
             return new List<Mesh> { new CubeMesh(gl) };
         }
 
-        JObject root;
+        JsonObject root;
         try
         {
-            root = JObject.Parse(File.ReadAllText(cemPath));
+            var parsed = JsonNode.Parse(File.ReadAllText(cemPath))?.AsObject();
+            if (parsed == null) throw new Exception("Root is not a JSON object");
+            root = parsed;
         }
         catch (Exception ex)
         {
@@ -58,26 +61,26 @@ public static class CemLoader
         }
 
         // ── Resolve texture ───────────────────────────────────────────────────
-        string texturePath = root["texture"]?.Value<string>() ?? "";
+        string texturePath = root["texture"]?.GetValue<string>() ?? "";
         uint   texId       = ResolveTexture(texturePath, versionRoot);
 
-        int[]  texSize     = root["textureSize"]?.ToObject<int[]>() ?? new[] { 64, 64 };
+        int[]  texSize     = JsonNodeToIntArray(root["textureSize"]) ?? new[] { 64, 64 };
         float  texW        = texSize.Length > 0 ? texSize[0] : 64f;
         float  texH        = texSize.Length > 1 ? texSize[1] : 64f;
 
         // ── Build meshes from parts ───────────────────────────────────────────
         var result = new List<Mesh>();
-        if (root["models"] is not JArray parts) return result;
+        if (root["models"] is not JsonArray parts) return result;
 
-        foreach (JToken partToken in parts)
+        foreach (JsonNode? partToken in parts)
         {
-            if (partToken is not JObject part) continue;
-            if (part["boxes"] is not JArray boxes) continue;
+            if (partToken is not JsonObject part) continue;
+            if (part["boxes"] is not JsonArray boxes) continue;
 
             // Part-level transform (rotate is intentionally ignored — see BuildPartTransform)
-            float[] translate  = part["translate"]?.ToObject<float[]>() ?? new float[] { 0, 0, 0 };
-            string  invertAxis = part["invertAxis"]?.Value<string>()     ?? "";
-            string  partId     = part["id"]?.Value<string>()             ?? "";
+            float[] translate  = JsonNodeToFloatArray(part["translate"]) ?? new float[] { 0, 0, 0 };
+            string  invertAxis = part["invertAxis"]?.GetValue<string>()  ?? "";
+            string  partId     = part["id"]?.GetValue<string>()          ?? "";
 
             mat4 partTransform = BuildPartTransform(translate, invertAxis);
 
@@ -88,9 +91,9 @@ public static class CemLoader
             else if (partId.EndsWith("_right", StringComparison.OrdinalIgnoreCase))
                 partTransform = mat4.Translate(new vec3(-0.5f, 0f, 0f)) * partTransform;
 
-            foreach (JToken boxToken in boxes)
+            foreach (JsonNode? boxToken in boxes)
             {
-                if (boxToken is not JObject box) continue;
+                if (boxToken is not JsonObject box) continue;
                 var mesh = BuildBoxMesh(gl, box, partTransform, texId, texW, texH, invertAxis);
                 if (mesh != null)
                     result.Add(mesh);
@@ -163,11 +166,11 @@ public static class CemLoader
 
     // ── Box mesh builder ──────────────────────────────────────────────────────
 
-    private static Mesh? BuildBoxMesh(GL gl, JObject box,
+    private static Mesh? BuildBoxMesh(GL gl, JsonObject box,
         mat4 partTransform, uint texId,
         float texW, float texH, string invertAxis)
     {
-        float[]? coords = box["coordinates"]?.ToObject<float[]>();
+        float[]? coords = JsonNodeToFloatArray(box["coordinates"]);
         if (coords == null || coords.Length < 6) return null;
 
         // coordinates: [x, y, z, width, height, depth] in pixel units
@@ -206,7 +209,7 @@ public static class CemLoader
 
         foreach (var (uvKey, faceName) in faceSpecs)
         {
-            float[]? uvArr = box[uvKey]?.ToObject<float[]>();
+            float[]? uvArr = JsonNodeToFloatArray(box[uvKey]);
             if (uvArr == null || uvArr.Length < 4) continue;
 
             // JEM UV arrays are [x2, y2, x1, y1] — the second corner is stored first.
@@ -295,5 +298,25 @@ public static class CemLoader
         vec4 t = m * new vec4(n, 0f);
         var  r = new vec3(t.x, t.y, t.z);
         return r.LengthSqr > 0f ? r.Normalized : vec3.UnitY;
+    }
+
+    // ── JSON helpers ──────────────────────────────────────────────────────────
+
+    private static float[]? JsonNodeToFloatArray(JsonNode? node)
+    {
+        if (node is not JsonArray arr) return null;
+        var result = new float[arr.Count];
+        for (int i = 0; i < arr.Count; i++)
+            result[i] = arr[i]?.GetValue<float>() ?? 0f;
+        return result;
+    }
+
+    private static int[]? JsonNodeToIntArray(JsonNode? node)
+    {
+        if (node is not JsonArray arr) return null;
+        var result = new int[arr.Count];
+        for (int i = 0; i < arr.Count; i++)
+            result[i] = arr[i]?.GetValue<int>() ?? 0;
+        return result;
     }
 }

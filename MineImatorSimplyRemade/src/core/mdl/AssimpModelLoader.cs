@@ -3,7 +3,7 @@ using System.Text;
 using GlmSharp;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using Silk.NET.OpenGL;
 using StbImageSharp;
 
@@ -147,25 +147,26 @@ public static class AssimpModelLoader
                 json = SysFile.ReadAllText(filePath);
             }
 
-            var root = JObject.Parse(json);
+            var root = JsonNode.Parse(json)?.AsObject();
+            if (root == null) return;
 
             // nodes array: index → name
-            var nodes = root["nodes"] as JArray;
+            var nodes = root["nodes"] as JsonArray;
             if (nodes == null) return;
 
-            var skins = root["skins"] as JArray;
+            var skins = root["skins"] as JsonArray;
             if (skins == null) return;
 
             foreach (var skin in skins)
             {
-                var joints = skin["joints"] as JArray;
+                var joints = skin?["joints"] as JsonArray;
                 if (joints == null) continue;
                 foreach (var joint in joints)
                 {
-                    int idx = joint.Value<int>();
-                    if (idx < nodes.Count)
+                    int idx = joint?.GetValue<int>() ?? -1;
+                    if (idx >= 0 && idx < nodes.Count)
                     {
-                        string? name = nodes[idx]["name"]?.Value<string>();
+                        string? name = nodes[idx]?["name"]?.GetValue<string>();
                         if (!string.IsNullOrEmpty(name))
                             names.Add(name);
                     }

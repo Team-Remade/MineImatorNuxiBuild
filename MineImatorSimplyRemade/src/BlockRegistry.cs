@@ -1,5 +1,6 @@
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade;
@@ -104,9 +105,9 @@ public class BlockModelFace
 
 internal class NuxManifest
 {
-    [JsonProperty("version")] public string Version { get; set; } = "";
-    [JsonProperty("name")]    public string Name    { get; set; } = "";
-    [JsonProperty("revision")]public int    Revision{ get; set; }
+    [JsonPropertyName("version")] public string Version { get; set; } = "";
+    [JsonPropertyName("name")]    public string Name    { get; set; } = "";
+    [JsonPropertyName("revision")]public int    Revision{ get; set; }
 }
 
 // ── BlockRegistry ─────────────────────────────────────────────────────────────
@@ -142,8 +143,8 @@ public static class BlockRegistry
     /// <summary>Block name → list of variant entries.</summary>
     private static readonly Dictionary<string, List<BlockVariantEntry>> _variants = new();
 
-    /// <summary>Raw parsed model JSON cache (model path → JObject).</summary>
-    private static readonly Dictionary<string, JObject?> _rawModelCache = new();
+    /// <summary>Raw parsed model JSON cache (model path → JsonObject).</summary>
+    private static readonly Dictionary<string, JsonObject?> _rawModelCache = new();
 
     /// <summary>Resolved model cache (model path → resolved).</summary>
     private static readonly Dictionary<string, ResolvedBlockModel> _resolvedCache = new();
@@ -377,7 +378,7 @@ public static class BlockRegistry
             try
             {
                 string text = File.ReadAllText(nuxFile);
-                var manifest = JsonConvert.DeserializeObject<NuxManifest>(text);
+                var manifest = JsonSerializer.Deserialize(text, AppJsonContext.Default.NuxManifest);
                 if (manifest == null) continue;
 
                 // The version folder has the same name as the .nux file (minus extension)
@@ -403,43 +404,45 @@ public static class BlockRegistry
     private static void ParseBlockstate(string blockName, string filePath)
     {
         string text = File.ReadAllText(filePath);
-        var root    = JObject.Parse(text);
+        var root    = JsonNode.Parse(text)?.AsObject();
+        if (root == null) return;
 
         var variantList = new List<BlockVariantEntry>();
 
-        if (root["variants"] is JObject variantsObj)
+        if (root["variants"] is JsonObject variantsObj)
         {
-            foreach (var prop in variantsObj.Properties())
+            foreach (var prop in variantsObj)
             {
-                string variantKey = prop.Name; // e.g. "axis=y", "snowy=false", ""
-                ParseVariantToken(variantKey, prop.Value, variantList);
+                string variantKey = prop.Key; // e.g. "axis=y", "snowy=false", ""
+                if (prop.Value != null)
+                    ParseVariantToken(variantKey, prop.Value, variantList);
             }
         }
-        else if (root["multipart"] is JArray multipartArr)
+        else if (root["multipart"] is JsonArray multipartArr)
         {
             // Multipart blockstates (fences, glass panes, walls, redstone, etc.)
             // Each part has an "apply" field with a model (and optional rotation).
             // We collect all unique model+rotation combinations as individual variants
             // so the user can select any part to preview.
             var seen = new HashSet<string>();
-            foreach (JToken part in multipartArr)
+            foreach (JsonNode? part in multipartArr)
             {
-                if (part is not JObject partObj) continue;
-                JToken? applyToken = partObj["apply"];
+                if (part is not JsonObject partObj) continue;
+                JsonNode? applyToken = partObj["apply"];
                 if (applyToken == null) continue;
 
                 // "apply" can be a single object or an array
-                IEnumerable<JObject> applies = applyToken is JArray applyArr
-                    ? applyArr.OfType<JObject>()
-                    : applyToken is JObject applyObj ? new[] { applyObj } : Enumerable.Empty<JObject>();
+                IEnumerable<JsonObject> applies = applyToken is JsonArray applyArr
+                    ? applyArr.OfType<JsonObject>()
+                    : applyToken is JsonObject applyObj ? new[] { applyObj } : Enumerable.Empty<JsonObject>();
 
-                foreach (JObject apply in applies)
+                foreach (JsonObject apply in applies)
                 {
-                    string model = apply["model"]?.Value<string>() ?? "";
+                    string model = apply["model"]?.GetValue<string>() ?? "";
                     if (string.IsNullOrEmpty(model)) continue;
 
-                    int rx = apply["x"]?.Value<int>() ?? 0;
-                    int ry = apply["y"]?.Value<int>() ?? 0;
+                    int rx = apply["x"]?.GetValue<int>() ?? 0;
+                    int ry = apply["y"]?.GetValue<int>() ?? 0;
 
                     // Derive a readable variant key from the model name + rotation
                     string modelShort = model.Contains(':') ? model[(model.IndexOf(':') + 1)..] : model;
@@ -567,33 +570,33 @@ public static class BlockRegistry
         return string.IsNullOrEmpty(result) ? "default" : result;
     }
 
-    private static void ParseVariantToken(string variantKey, JToken token, List<BlockVariantEntry> list)
+    private static void ParseVariantToken(string variantKey, JsonNode token, List<BlockVariantEntry> list)
     {
         // A variant value can be a single object or an array of objects (random rotations)
-        if (token is JArray arr)
+        if (token is JsonArray arr)
         {
             // Multiple weighted variants — expose each as its own entry
             for (int i = 0; i < arr.Count; i++)
             {
-                if (arr[i] is JObject obj)
+                if (arr[i] is JsonObject obj)
                 {
                     string suffix = arr.Count > 1 ? $" [{i}]" : "";
                     list.Add(ParseVariantObject(variantKey.Length > 0 ? variantKey + suffix : $"default{suffix}", obj));
                 }
             }
         }
-        else if (token is JObject obj)
+        else if (token is JsonObject obj)
         {
             string displayKey = variantKey.Length > 0 ? variantKey : "default";
             list.Add(ParseVariantObject(displayKey, obj));
         }
     }
 
-    private static BlockVariantEntry ParseVariantObject(string key, JObject obj)
+    private static BlockVariantEntry ParseVariantObject(string key, JsonObject obj)
     {
-        string model = obj["model"]?.Value<string>() ?? "";
-        int    rx    = obj["x"]?.Value<int>() ?? 0;
-        int    ry    = obj["y"]?.Value<int>() ?? 0;
+        string model = obj["model"]?.GetValue<string>() ?? "";
+        int    rx    = obj["x"]?.GetValue<int>() ?? 0;
+        int    ry    = obj["y"]?.GetValue<int>() ?? 0;
 
         string cemPath = GetCemPath(NormalizeModelPath(model));
 
@@ -617,14 +620,14 @@ public static class BlockRegistry
             return null;
         }
 
-        JObject? raw = LoadRawModel(modelPath);
+        JsonObject? raw = LoadRawModel(modelPath);
         if (raw == null) return null;
 
         // Recursively resolve parent first
         ResolvedBlockModel? parentResolved = null;
-        if (raw["parent"] is JToken parentToken)
+        if (raw["parent"] is JsonNode parentToken)
         {
-            string parentPath = NormalizeModelPath(parentToken.Value<string>() ?? "");
+            string parentPath = NormalizeModelPath(parentToken.GetValue<string>() ?? "");
             // Skip the built-in "builtin/generated" or "builtin/entity" parents
             if (!parentPath.StartsWith("builtin/") && !parentPath.Contains("builtin/"))
                 parentResolved = BuildResolvedModel(parentPath, visited);
@@ -641,10 +644,10 @@ public static class BlockRegistry
         }
 
         // texture_size: [w, h] — present in models that use non-16×16 UV space
-        if (raw["texture_size"] is JArray tsArr && tsArr.Count >= 2)
+        if (raw["texture_size"] is JsonArray tsArr && tsArr.Count >= 2)
         {
-            result.TextureSizeX = tsArr[0].Value<float>();
-            result.TextureSizeY = tsArr[1].Value<float>();
+            result.TextureSizeX = tsArr[0]!.GetValue<float>();
+            result.TextureSizeY = tsArr[1]!.GetValue<float>();
         }
 
         // Copy parent textures
@@ -653,18 +656,18 @@ public static class BlockRegistry
                 result.Textures[kvp.Key] = kvp.Value;
 
         // Copy parent elements (only if this model does not override them)
-        bool hasOwnElements = raw["elements"] is JArray ea && ea.Count > 0;
+        bool hasOwnElements = raw["elements"] is JsonArray ea && ea.Count > 0;
         if (parentResolved != null && !hasOwnElements)
             foreach (var el in parentResolved.Elements)
                 result.Elements.Add(el);
 
         // Override / add textures from this model
-        if (raw["textures"] is JObject texObj)
+        if (raw["textures"] is JsonObject texObj)
         {
-            foreach (var prop in texObj.Properties())
+            foreach (var prop in texObj)
             {
-                string slotName  = prop.Name;
-                string slotValue = prop.Value.Value<string>() ?? "";
+                string slotName  = prop.Key;
+                string slotValue = prop.Value?.GetValue<string>() ?? "";
                 result.Textures[slotName] = slotValue;
             }
         }
@@ -673,11 +676,11 @@ public static class BlockRegistry
         ResolveTextureRefs(result.Textures);
 
         // Parse own elements
-        if (hasOwnElements && raw["elements"] is JArray elements)
+        if (hasOwnElements && raw["elements"] is JsonArray elements)
         {
-            foreach (JToken elToken in elements)
+            foreach (JsonNode? elToken in elements)
             {
-                if (elToken is not JObject elObj) continue;
+                if (elToken is not JsonObject elObj) continue;
                 var element = ParseElement(elObj, result.Textures);
                 if (element != null)
                     result.Elements.Add(element);
@@ -711,10 +714,10 @@ public static class BlockRegistry
         }
     }
 
-    private static BlockModelElement? ParseElement(JObject obj, Dictionary<string, string> textures)
+    private static BlockModelElement? ParseElement(JsonObject obj, Dictionary<string, string> textures)
     {
-        var fromArr = obj["from"]?.ToObject<float[]>();
-        var toArr   = obj["to"]?.ToObject<float[]>();
+        var fromArr = JsonNodeToFloatArray(obj["from"]);
+        var toArr   = JsonNodeToFloatArray(obj["to"]);
         if (fromArr == null || toArr == null || fromArr.Length < 3 || toArr.Length < 3)
             return null;
 
@@ -725,54 +728,64 @@ public static class BlockRegistry
         };
 
         // Optional element rotation
-        if (obj["rotation"] is JObject rotObj)
+        if (obj["rotation"] is JsonObject rotObj)
         {
             el.Rotation = new ElementRotation
             {
-                Origin  = rotObj["origin"]?.ToObject<float[]>() ?? new float[] { 8, 8, 8 },
-                Axis    = rotObj["axis"]?.Value<string>() ?? "y",
-                Angle   = rotObj["angle"]?.Value<float>() ?? 0f,
-                Rescale = rotObj["rescale"]?.Value<bool>() ?? false
+                Origin  = JsonNodeToFloatArray(rotObj["origin"]) ?? new float[] { 8, 8, 8 },
+                Axis    = rotObj["axis"]?.GetValue<string>() ?? "y",
+                Angle   = rotObj["angle"]?.GetValue<float>() ?? 0f,
+                Rescale = rotObj["rescale"]?.GetValue<bool>() ?? false
             };
         }
 
         // Faces
-        if (obj["faces"] is JObject facesObj)
+        if (obj["faces"] is JsonObject facesObj)
         {
-            foreach (var faceProp in facesObj.Properties())
+            foreach (var faceProp in facesObj)
             {
-                if (faceProp.Value is not JObject faceObj) continue;
+                if (faceProp.Value is not JsonObject faceObj) continue;
 
                 var face = new BlockModelFace
                 {
-                    Texture   = faceObj["texture"]?.Value<string>() ?? "",
-                    Cullface  = faceObj["cullface"]?.Value<string>(),
-                    TintIndex = faceObj["tintindex"]?.Value<int>() ?? -1,
-                    Rotation  = faceObj["rotation"]?.Value<int>() ?? 0
+                    Texture   = faceObj["texture"]?.GetValue<string>() ?? "",
+                    Cullface  = faceObj["cullface"]?.GetValue<string>(),
+                    TintIndex = faceObj["tintindex"]?.GetValue<int>() ?? -1,
+                    Rotation  = faceObj["rotation"]?.GetValue<int>() ?? 0
                 };
 
-                if (faceObj["uv"] is JArray uvArr && uvArr.Count == 4)
+                if (faceObj["uv"] is JsonArray uvArr && uvArr.Count == 4)
                 {
                     // UV values are always in 0–16 logical space regardless of texture_size.
                     // texture_size only describes the pixel resolution of the atlas texture
                     // and does not affect how UVs are interpreted here.
                     face.Uv = new float[]
                     {
-                        uvArr[0].Value<float>(),
-                        uvArr[1].Value<float>(),
-                        uvArr[2].Value<float>(),
-                        uvArr[3].Value<float>()
+                        uvArr[0]!.GetValue<float>(),
+                        uvArr[1]!.GetValue<float>(),
+                        uvArr[2]!.GetValue<float>(),
+                        uvArr[3]!.GetValue<float>()
                     };
                 }
 
-                el.Faces[faceProp.Name] = face;
+                el.Faces[faceProp.Key] = face;
             }
         }
 
         return el;
     }
 
-    private static JObject? LoadRawModel(string normalizedPath)
+    /// <summary>Converts a JsonNode (expected to be a JsonArray of numbers) to float[].</summary>
+    private static float[]? JsonNodeToFloatArray(JsonNode? node)
+    {
+        if (node is not JsonArray arr) return null;
+        var result = new float[arr.Count];
+        for (int i = 0; i < arr.Count; i++)
+            result[i] = arr[i]?.GetValue<float>() ?? 0f;
+        return result;
+    }
+
+    private static JsonObject? LoadRawModel(string normalizedPath)
     {
         if (_rawModelCache.TryGetValue(normalizedPath, out var cached))
             return cached;
@@ -786,13 +799,13 @@ public static class BlockRegistry
         // models/<relativePath>.json
         string filePath = Path.Combine(VersionRoot, "models", relativePath + ".json");
 
-        JObject? result = null;
+        JsonObject? result = null;
         if (File.Exists(filePath))
         {
             try
             {
                 string text = File.ReadAllText(filePath);
-                result = JObject.Parse(text);
+                result = JsonNode.Parse(text)?.AsObject();
             }
             catch (Exception ex)
             {

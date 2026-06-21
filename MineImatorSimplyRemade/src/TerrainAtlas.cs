@@ -1,4 +1,4 @@
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using Silk.NET.OpenGL;
 using StbImageSharp;
 
@@ -194,27 +194,27 @@ public static class TerrainAtlas
     {
         try
         {
-            var root = JObject.Parse(File.ReadAllText(metaPath));
-            var anim = root["animation"] as JObject;
+            var root = JsonNode.Parse(File.ReadAllText(metaPath))?.AsObject();
+            var anim = root?["animation"] as JsonObject;
             if (anim == null) return null;
 
             // Frame size: default is square (width × width), can be overridden
-            int frameW = anim["width"]?.Value<int>()     ?? imgWidth;
-            int frameH = anim["height"]?.Value<int>()    ?? imgWidth; // square frames by default
-            int frameTime = anim["frametime"]?.Value<int>() ?? 1;
+            int frameW = anim["width"]?.GetValue<int>()     ?? imgWidth;
+            int frameH = anim["height"]?.GetValue<int>()    ?? imgWidth; // square frames by default
+            int frameTime = anim["frametime"]?.GetValue<int>() ?? 1;
 
             int totalFrames = imgHeight / frameH;
             if (totalFrames < 1) totalFrames = 1;
 
             int[] frames;
-            if (anim["frames"] is JArray framesArr && framesArr.Count > 0)
+            if (anim["frames"] is JsonArray framesArr && framesArr.Count > 0)
             {
                 // Each entry can be an int (frame index) or an object {index, time}
                 // For now read just the index; per-frame time overrides are rare
                 frames = framesArr
-                    .Select(t => t is JObject fo
-                        ? fo["index"]?.Value<int>() ?? 0
-                        : t.Value<int>())
+                    .Select(t => t is JsonObject fo
+                        ? fo["index"]?.GetValue<int>() ?? 0
+                        : t?.GetValue<int>() ?? 0)
                     .ToArray();
             }
             else

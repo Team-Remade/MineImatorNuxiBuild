@@ -1,4 +1,5 @@
 using GlmSharp;
+using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -72,8 +73,8 @@ public class MineImatorLoader
                 return null;
             }
 
-            var miObject = JsonSerializer.Deserialize<MiObject>(File.ReadAllText(objectPath),
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true, MaxDepth = 256 });
+            var miObject = JsonSerializer.Deserialize(File.ReadAllText(objectPath),
+                AppJsonContext.Default.MiObject);
 
             if (miObject == null) return null;
 
@@ -190,8 +191,8 @@ public class MineImatorLoader
                 return null;
             }
 
-            var model = JsonSerializer.Deserialize<MiModel>(File.ReadAllText(modelPath),
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true, MaxDepth = 256 });
+            var model = JsonSerializer.Deserialize(File.ReadAllText(modelPath),
+                AppJsonContext.Default.MiModel);
 
             if (model == null) return null;
 

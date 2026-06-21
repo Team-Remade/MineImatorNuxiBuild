@@ -127,10 +127,7 @@ public static class CharacterRegistry
     // ── Internal state ────────────────────────────────────────────────────────
     private static readonly List<CharacterEntry> _characters = new();
 
-    private static readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
+
 
     // ── Initialization ────────────────────────────────────────────────────────
 
@@ -144,7 +141,10 @@ public static class CharacterRegistry
         _characters.Clear();
 
         // Resolve the data directory relative to the application executable.
-        string baseDir  = AppContext.BaseDirectory;
+        // Use Environment.ProcessPath (same as BlockRegistry) so that single-file
+        // self-contained publishes find data/ next to the .exe rather than in the
+        // temp extraction directory that AppContext.BaseDirectory points to.
+        string baseDir  = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
         string dataPath = Path.Combine(baseDir, "data");
 
         if (!Directory.Exists(dataPath))
@@ -222,7 +222,7 @@ public static class CharacterRegistry
             if (string.IsNullOrWhiteSpace(json))
                 return Array.Empty<CharacterTextureVariant>();
 
-            var manifest = JsonSerializer.Deserialize<TexturesNuxManifest>(json, _jsonOptions);
+            var manifest = JsonSerializer.Deserialize(json, AppJsonContext.Default.TexturesNuxManifest);
             if (manifest == null || manifest.Variants.Count == 0)
                 return Array.Empty<CharacterTextureVariant>();
 
