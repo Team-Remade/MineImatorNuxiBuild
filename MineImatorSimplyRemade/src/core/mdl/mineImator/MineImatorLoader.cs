@@ -382,11 +382,11 @@ public class MineImatorLoader
             var boneObject  = character.BoneObjects[boneName];
 
             // Set transform from part data.
-            // Convert pixels → blocks (÷16) only — do NOT multiply by accumulatedParentScale
-            // here. In this project bones are plain SceneObjects in a parent–child hierarchy
-            // whose world transform already incorporates parent scale via GetWorldMatrix().
-            // (The Godot source multiplied by accumulatedParentScale because Skeleton3D stores
-            // bone positions in a scale-stripped space; that doesn't apply here.)
+            // Bone SceneObjects always have Scale = vec3.Ones (part scale is baked into mesh
+            // vertices instead).  Because no bone in the chain carries a non-unit scale,
+            // GetWorldMatrix() never propagates parent scale to a child's position.  We must
+            // therefore bake accumulatedParentScale (the product of all ancestor part scales)
+            // directly into the local position, mirroring what the Godot/Skeleton3D source does.
             vec3 position = vec3.Zero;
             if (part.Position != null && part.Position.Length >= 3)
             {
@@ -395,6 +395,7 @@ public class MineImatorLoader
                     part.Position[1] / 16f,
                     part.Position[2] / 16f
                 );
+                position *= accumulatedParentScale;
             }
 
             vec3 rotation = vec3.Zero;
@@ -618,11 +619,14 @@ public class MineImatorLoader
 
         vec3 shapePosition = vec3.Zero;
         if (shape.Position != null && shape.Position.Length >= 3)
+        {
             shapePosition = new vec3(shape.Position[0] / 16f, shape.Position[1] / 16f, shape.Position[2] / 16f);
-
-        // The rotation pivot is the center of the shape's bounding box, not shapePosition.
-        // shapePosition is a pure translation applied after rotation.
-        vec3 shapePivot = (from + to) * 0.5f;
+            // Scale shapePosition by the accumulated parent scale so it moves proportionally
+            // with the rest of the shape geometry. The from/to bounding box vertices are scaled
+            // via shapeScaleMat (which already incorporates accumulatedParentScale); this offset
+            // lives in the same pixel/16 space and must receive the same treatment.
+            shapePosition *= accumulatedParentScale;
+        }
 
         vec3 shapeRotation = vec3.Zero;
         if (shape.Rotation != null && shape.Rotation.Length >= 3)
@@ -656,8 +660,7 @@ public class MineImatorLoader
                         shapePosition, shapeRotation, shapeScale, bendStyle);
                 else
                     mesh = CreateExtrudedPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
-                        textureId, shape.TextureMirror, shape.Invert, inflate, shapeRotation, shapeScale,
-                        shapePivot);
+                        textureId, shape.TextureMirror, shape.Invert, inflate, shapeRotation, shapeScale);
             }
             else if (planeBent)
             {
@@ -669,14 +672,14 @@ public class MineImatorLoader
             {
                 mesh = CreatePlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
                     shape.TextureMirror, shape.Invert, inflate, shapeRotation, shapeScale,
-                    shape.HideFront, shape.HideBack, shapePivot);
+                    shape.HideFront, shape.HideBack);
             }
         }
         else
         {
             mesh = CreateBlockMesh(partName, shapeIndex, from, to, uvU, uvV, sizeX, sizeY, sizeZ,
                 texWidth, texHeight, shape.TextureMirror, shape.Invert, inflate, effectiveBend,
-                shapePosition, shapeRotation, shapeScale, bendStyle, shapePivot);
+                shapePosition, shapeRotation, shapeScale, bendStyle);
         }
 
         if (mesh != null)
@@ -705,8 +708,7 @@ public class MineImatorLoader
         float uvU, float uvV, float sizeX, float sizeY, float sizeZ,
         int texWidth, int texHeight, bool textureMirror, bool invert, float inflate = 0f,
         BendParams? bend = null, vec3 shapePosition = default, vec3 shapeRotation = default,
-        vec3 shapeScale = default, BendStyle bendStyle = BendStyle.ProjectDefault,
-        vec3 shapePivot = default)
+        vec3 shapeScale = default, BendStyle bendStyle = BendStyle.ProjectDefault)
     {
         var vertices = new List<vec3>();
         var normals  = new List<vec3>();
@@ -795,11 +797,9 @@ public class MineImatorLoader
             mat4 shapeScaleMat = shapeScale != default && shapeScale != vec3.Ones
                 ? mat4.Scale(shapeScale) : mat4.Identity;
 
-            // Rotate/scale around the box centre (shapePivot = (from+to)/2).
-            // shapePosition is a pure translation baked in after the mesh is built.
-            vec3 pivot = shapePivot != default ? shapePivot : (min + max) * 0.5f;
-            vec3 Rv(vec3 v) => BendHelper.TransformPoint(shapeRotMat * shapeScaleMat,
-                v - pivot) + pivot;
+            // Rotate/scale around the bone origin (vec3.Zero), matching Mine Imator's behaviour.
+            // shapePosition is a separate translation baked into vertices after geometry is built.
+            vec3 Rv(vec3 v) => BendHelper.TransformPoint(shapeRotMat * shapeScaleMat, v);
             vec3 Rn(vec3 n) => BendHelper.TransformDirection(shapeRotMat * shapeScaleMat, n);
 
             float x1 = min.x, x2 = max.x, y1 = min.y, y2 = max.y, z1 = min.z, z2 = max.z;
@@ -1091,7 +1091,7 @@ public class MineImatorLoader
     private Mesh CreatePlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
         int texWidth, int texHeight, bool textureMirror, bool invert, float inflate = 0f,
         vec3 shapeRotation = default, vec3 shapeScale = default,
-        bool hideFront = false, bool hideBack = false, vec3 shapePivot = default)
+        bool hideFront = false, bool hideBack = false)
     {
         var vertices = new List<vec3>();
         var normals  = new List<vec3>();
@@ -1115,9 +1115,9 @@ public class MineImatorLoader
 
         if (textureMirror) { (tex1, tex2) = (tex2, tex1); (tex3, tex4) = (tex4, tex3); }
 
+        // Rotate/scale around the bone origin (vec3.Zero), matching Mine Imator's behaviour.
         mat4 rsm = BuildShapeRotMat(shapeRotation) * (shapeScale != default && shapeScale != vec3.Ones ? mat4.Scale(shapeScale) : mat4.Identity);
-        vec3 pivot = shapePivot != default ? shapePivot : (min + max) * 0.5f;
-        vec3 Rv(vec3 v) => BendHelper.TransformPoint(rsm, v - pivot) + pivot;
+        vec3 Rv(vec3 v) => BendHelper.TransformPoint(rsm, v);
         vec3 Rn(vec3 n) => BendHelper.TransformDirection(rsm, n);
 
         if (!hideFront)
@@ -1153,11 +1153,11 @@ public class MineImatorLoader
 
     private Mesh CreateExtrudedPlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
         int texWidth, int texHeight, uint textureId, bool textureMirror, bool invert, float inflate = 0f,
-        vec3 shapeRotation = default, vec3 shapeScale = default, vec3 shapePivot = default)
+        vec3 shapeRotation = default, vec3 shapeScale = default)
     {
         if (textureId == 0)
             return CreatePlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
-                textureMirror, invert, inflate, shapeRotation, shapeScale, shapePivot: shapePivot);
+                textureMirror, invert, inflate, shapeRotation, shapeScale);
 
         var pixels = TryGetPixels(textureId, texWidth, texHeight, out int imgW, out int imgH);
         if (pixels == null)
@@ -1183,9 +1183,9 @@ public class MineImatorLoader
         float pixScaleX = size.x / regionW;
         float pixScaleY = size.y / regionH;
 
+        // Rotate/scale around the bone origin (vec3.Zero), matching Mine Imator's behaviour.
         mat4 rsm = BuildShapeRotMat(shapeRotation) * (shapeScale != default && shapeScale != vec3.Ones ? mat4.Scale(shapeScale) : mat4.Identity);
-        vec3 pivot = shapePivot != default ? shapePivot : (from + to) * 0.5f;
-        vec3 Rv(vec3 v) => BendHelper.TransformPoint(rsm, v - pivot) + pivot;
+        vec3 Rv(vec3 v) => BendHelper.TransformPoint(rsm, v);
         vec3 Rn(vec3 n) => BendHelper.TransformDirection(rsm, n);
 
         var vertices = new List<vec3>();
