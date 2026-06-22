@@ -83,6 +83,23 @@ public class Mesh : IDisposable
     /// </summary>
     public bool DoubleSided = false;
 
+    // ── Overlay / unlit flags ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// When true, the mesh is rendered without lighting: ambient, diffuse, and
+    /// point-light contributions are all bypassed and the raw albedo/texture colour
+    /// is used directly.  Intended for editor overlays such as the camera icon.
+    /// </summary>
+    public bool Unlit = false;
+
+    /// <summary>
+    /// When true, depth testing is disabled while drawing this mesh so it always
+    /// renders on top of all other geometry in the scene.  The depth buffer is
+    /// also left unmodified (depth writes off) so the overlay does not occlude
+    /// objects rendered after it.  Intended for editor overlays such as the camera icon.
+    /// </summary>
+    public bool DepthTestDisabled = false;
+
     // ── Material ──────────────────────────────────────────────────────────────
 
     private readonly List<Material> _surfaces = new() { new StandardMaterial() };
@@ -346,10 +363,21 @@ public class Mesh : IDisposable
 
         SetUniformVec3("uAlbedo", Albedo);
         SetUniformFloat("uAlpha", Alpha);
-        // Light travels from upper-right-front toward origin (world space)
-        SetUniformVec3("uLightDir",   new vec3(1f, 1f, 1f).Normalized);
-        SetUniformVec3("uLightColor", new vec3(0.85f, 0.85f, 0.85f));
-        SetUniformVec3("uAmbient",    new vec3(0.35f, 0.35f, 0.35f));
+
+        if (Unlit)
+        {
+            // Unlit: full ambient (1,1,1), no directional light, no point lights
+            SetUniformVec3("uLightDir",   new vec3(0f, 1f, 0f));
+            SetUniformVec3("uLightColor", new vec3(0f, 0f, 0f));
+            SetUniformVec3("uAmbient",    new vec3(1f, 1f, 1f));
+        }
+        else
+        {
+            // Light travels from upper-right-front toward origin (world space)
+            SetUniformVec3("uLightDir",   new vec3(1f, 1f, 1f).Normalized);
+            SetUniformVec3("uLightColor", new vec3(0.85f, 0.85f, 0.85f));
+            SetUniformVec3("uAmbient",    new vec3(0.35f, 0.35f, 0.35f));
+        }
 
         // ── Point lights ──────────────────────────────────────────────────────
         const int maxLights = 16;
@@ -400,6 +428,13 @@ public class Mesh : IDisposable
 
         if (DoubleSided) _gl.Disable(GLEnum.CullFace);
 
+        // Overlay meshes render on top of all geometry: depth test off, depth writes off.
+        if (DepthTestDisabled)
+        {
+            _gl.Disable(GLEnum.DepthTest);
+            _gl.DepthMask(false);
+        }
+
         _gl.BindVertexArray(_vao);
 
         if (Indices != null && _ebo != 0)
@@ -408,6 +443,14 @@ public class Mesh : IDisposable
             _gl.DrawArrays(GLEnum.Triangles, 0, (uint)Vertices.Count);
 
         _gl.BindVertexArray(0);
+
+        // Restore depth state after overlay draw.
+        if (DepthTestDisabled)
+        {
+            _gl.Enable(GLEnum.DepthTest);
+            _gl.DepthFunc(GLEnum.Less);
+            _gl.DepthMask(true);
+        }
 
         if (DoubleSided) _gl.Enable(GLEnum.CullFace);
 

@@ -172,6 +172,15 @@ public class Viewport : UiPanel
     /// </summary>
     private int _activeCameraIndex = 0;
 
+    // ── Overlay visibility ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// When true (default) the viewport renders editor overlays: the 3-D gizmo,
+    /// the selection outline, light billboards, and bone indicators.
+    /// Set to false by the "Overlays" toggle button in the top bar.
+    /// </summary>
+    public bool OverlaysEnabled { get; set; } = true;
+
     // ── Secondary camera viewport ──────────────────────────────────────────────
 
     /// <summary>
@@ -632,6 +641,29 @@ public class Viewport : UiPanel
     }
 
     /// <summary>
+    /// Renders light billboards and bone indicators into the currently bound FBO
+    /// using the supplied camera matrices.  Called by <see cref="CameraViewport"/>
+    /// when its <c>OverlaysEnabled</c> flag is set, so the two viewports share the
+    /// same overlay shaders and geometry without duplicating code.
+    ///
+    /// The caller is responsible for binding the target FBO and setting the
+    /// viewport dimensions before calling this method.  GL state is restored to
+    /// the expected scene defaults (depth-test on/Less, cull-face on/Back) on return.
+    /// </summary>
+    public void RenderOverlaysPublic(mat4 view, mat4 proj)
+    {
+        RenderLightBillboards(view, proj);
+
+        // Restore state that billboards may have altered.
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Less);
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
+
+        RenderBoneIndicators(view, proj);
+    }
+
+    /// <summary>
     /// Loads an image from the embedded assembly resources and uploads it as a
     /// 2-D OpenGL texture, returning the texture handle.
     /// The resource name is the base name without path or extension
@@ -806,6 +838,34 @@ public class Viewport : UiPanel
                     _activeCameraIndex = 0;
             }
 
+            // Overlays toggle button — right-aligned at the end of the bar.
+            {
+                ImGui.SameLine();
+                ImGui.SetCursorPosY(itemY);
+
+                // Tint the button to indicate the active state.
+                if (!OverlaysEnabled)
+                {
+                    ImGui.PushStyleColor(ImGuiCol.Button,        new Vector4(0.20f, 0.20f, 0.20f, 1.0f));
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.30f, 0.30f, 0.30f, 1.0f));
+                    ImGui.PushStyleColor(ImGuiCol.ButtonActive,  new Vector4(0.40f, 0.40f, 0.40f, 1.0f));
+                    ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(0.50f, 0.50f, 0.50f, 1.0f));
+                }
+                else
+                {
+                    ImGui.PushStyleColor(ImGuiCol.Button,        new Vector4(0.25f, 0.45f, 0.25f, 1.0f));
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.30f, 0.55f, 0.30f, 1.0f));
+                    ImGui.PushStyleColor(ImGuiCol.ButtonActive,  new Vector4(0.35f, 0.60f, 0.35f, 1.0f));
+                    ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(0.90f, 0.95f, 0.90f, 1.0f));
+                }
+
+                if (ImGui.Button(OverlaysEnabled ? "Overlays" : "Overlays",
+                        new Vector2(0, iconSize)))
+                    OverlaysEnabled = !OverlaysEnabled;
+
+                ImGui.PopStyleColor(4);
+            }
+
             // Advance the layout cursor to the bottom edge of the bar.
             var winPos  = ImGui.GetWindowPos();
             float barBottomLocal = (barMin.Y + TopBarHeight) - winPos.Y - ImGui.GetScrollY();
@@ -903,10 +963,11 @@ public class Viewport : UiPanel
         var opaquePairs    = new List<(mat4 model, Mesh mesh)>();
         var texturedPairs  = new List<(mat4 model, Mesh mesh, float dist)>();
         var alphaBlendPairs = new List<(mat4 model, Mesh mesh, float dist)>();
+        var overlayPairs   = new List<(mat4 model, Mesh mesh)>();
 
         vec3 camPos = activeCamera.Position;
 
-        CollectRenderPairs(SceneObjects, camPos, opaquePairs, texturedPairs, alphaBlendPairs);
+        CollectRenderPairs(SceneObjects, camPos, opaquePairs, texturedPairs, alphaBlendPairs, overlayPairs);
 
         // Pass 1 – Opaque geometry (depth read + write, no blending).
         foreach (var (model, mesh) in opaquePairs)
@@ -957,30 +1018,39 @@ public class Viewport : UiPanel
             Gl.Disable(GLEnum.Blend);
         }
 
-        // ── Light billboards ──────────────────────────────────────────────────
-        // Drawn after transparent geometry, before the selection outline so
-        // selected lights still receive the orange Sobel outline.
-        RenderLightBillboards(view, proj);
+        if (OverlaysEnabled)
+        {
+            // ── Object-mesh overlays (e.g. camera icon) ───────────────────────────
+            // Rendered with depth-test off so they always appear on top.
+            // Mesh.Render() handles the DepthTestDisabled / Unlit flags internally.
+            foreach (var (model, mesh) in overlayPairs)
+                mesh.Render(model, view, proj);
 
-        // Restore state that billboards may have altered.
-        Gl.Enable(GLEnum.DepthTest);
-        Gl.DepthFunc(GLEnum.Less);
-        Gl.Enable(GLEnum.CullFace);
-        Gl.CullFace(GLEnum.Back);
+            // ── Light billboards ──────────────────────────────────────────────────
+            // Drawn after transparent geometry, before the selection outline so
+            // selected lights still receive the orange Sobel outline.
+            RenderLightBillboards(view, proj);
 
-        // ── Bone indicators ───────────────────────────────────────────────────
-        RenderBoneIndicators(view, proj);
+            // Restore state that billboards may have altered.
+            Gl.Enable(GLEnum.DepthTest);
+            Gl.DepthFunc(GLEnum.Less);
+            Gl.Enable(GLEnum.CullFace);
+            Gl.CullFace(GLEnum.Back);
 
-        // ── Selection highlight: Sobel edge detection ─────────────────────────
-        // Pass 1: stamp flat-white silhouette mask into _silhouetteFbo.
-        //         No depth test → X-ray: occluded parts still contribute.
-        RenderSilhouettePass(view, proj);
-        // Pass 2: Sobel filter over the mask; composite edges onto _fbo.
-        //         Restores depth/cull/FBO state before returning.
-        RenderEdgePass();
+            // ── Bone indicators ───────────────────────────────────────────────────
+            RenderBoneIndicators(view, proj);
 
-        // ── Gizmo 3D ──────────────────────────────────────────────────────────
-        Gizmo?.Render(Camera, view, proj);
+            // ── Selection highlight: Sobel edge detection ─────────────────────────
+            // Pass 1: stamp flat-white silhouette mask into _silhouetteFbo.
+            //         No depth test → X-ray: occluded parts still contribute.
+            RenderSilhouettePass(view, proj);
+            // Pass 2: Sobel filter over the mask; composite edges onto _fbo.
+            //         Restores depth/cull/FBO state before returning.
+            RenderEdgePass();
+
+            // ── Gizmo 3D ──────────────────────────────────────────────────────────
+            Gizmo?.Render(Camera, view, proj);
+        }
 
         Gl.Disable(GLEnum.CullFace);
         Gl.Disable(GLEnum.DepthTest);
@@ -998,7 +1068,8 @@ public class Viewport : UiPanel
             new Vector2(1, 0));
 
         // ── Gizmo overlay (rotation arc drawn on the ImGui draw list) ─────────
-        Gizmo?.RenderOverlay(Camera, imageMin, size);
+        if (OverlaysEnabled)
+            Gizmo?.RenderOverlay(Camera, imageMin, size);
 
         // ── Inline camera viewport (bottom-right overlay) ──────────────────────
         if (CameraViewport != null && !CameraViewport.Undocked)
@@ -1342,7 +1413,8 @@ public class Viewport : UiPanel
         vec3 camPos,
         List<(mat4 model, Mesh mesh)> opaque,
         List<(mat4 model, Mesh mesh, float dist)> textured,
-        List<(mat4 model, Mesh mesh, float dist)> alphaBlend)
+        List<(mat4 model, Mesh mesh, float dist)> alphaBlend,
+        List<(mat4 model, Mesh mesh)> overlays)
     {
         foreach (var obj in objects)
         {
@@ -1355,6 +1427,15 @@ public class Viewport : UiPanel
             // Only this node's own Visuals — not its descendants.
             foreach (Mesh mesh in obj.Visuals)
             {
+                // Overlay meshes (e.g. camera icon) are collected separately so
+                // they can be shown/hidden with the Overlays toggle and are never
+                // fed into the normal depth-sorted scene passes.
+                if (mesh.DepthTestDisabled)
+                {
+                    overlays.Add((model, mesh));
+                    continue;
+                }
+
                 if (mesh.TextureId != 0)
                     textured.Add((model, mesh, dist));
                 else if (mesh.Alpha < 1.0f)
@@ -1364,7 +1445,7 @@ public class Viewport : UiPanel
             }
 
             // Recurse into children so each child uses its own world matrix.
-            CollectRenderPairs(obj.Children, camPos, opaque, textured, alphaBlend);
+            CollectRenderPairs(obj.Children, camPos, opaque, textured, alphaBlend, overlays);
         }
     }
 
@@ -1432,10 +1513,17 @@ public class Viewport : UiPanel
 
     private void HandleCameraInput()
     {
-        // Only process input when the viewport panel is hovered.
-        if (!ImGui.IsWindowHovered()) return;
+        // Allow input to continue while free-fly is active even if the ImGui
+        // mouse position has drifted outside the panel (the OS cursor is locked
+        // by GLFW so the real cursor never moved — only the internal position).
+        if (!_freeFly && !ImGui.IsWindowHovered()) return;
 
         var io = ImGui.GetIO();
+
+        // While free-fly is active, tell ImGui this window owns the mouse so
+        // other panels and widgets do not receive hover/click events.
+        if (_freeFly)
+            ImGui.SetNextFrameWantCaptureMouse(true);
 
         float mouseX = io.MousePos.X;
         float mouseY = io.MousePos.Y;

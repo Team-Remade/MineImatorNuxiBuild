@@ -1691,6 +1691,14 @@ public class SpawnMenu : UiPanel
             {
                 // Flatten visuals from the loaded hierarchy into the camera object.
                 FlattenVisualsInto(cameraModelRoot, obj);
+
+                // Mark every camera mesh as unlit (flat colour, no shading) and as
+                // an overlay (renders in front of all scene geometry).
+                foreach (var mesh in obj.Visuals)
+                {
+                    mesh.Unlit             = true;
+                    mesh.DepthTestDisabled = true;
+                }
             }
 
             // Add an invisible cube for object picking (same approach as lights).

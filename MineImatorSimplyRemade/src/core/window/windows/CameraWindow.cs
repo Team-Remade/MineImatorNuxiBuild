@@ -130,6 +130,31 @@ public class CameraWindow : Window
             Hide();
         }
 
+        // Overlays toggle — mirrors the inline panel button.
+        ImGui.SameLine();
+        {
+            bool overlays = _panel.OverlaysEnabled;
+            if (!overlays)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Button,        new Vector4(0.20f, 0.20f, 0.20f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.30f, 0.30f, 0.30f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive,  new Vector4(0.40f, 0.40f, 0.40f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(0.50f, 0.50f, 0.50f, 1.0f));
+            }
+            else
+            {
+                ImGui.PushStyleColor(ImGuiCol.Button,        new Vector4(0.25f, 0.45f, 0.25f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.30f, 0.55f, 0.30f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive,  new Vector4(0.35f, 0.60f, 0.35f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(0.90f, 0.95f, 0.90f, 1.0f));
+            }
+
+            if (ImGui.Button("Overlays"))
+                _panel.OverlaysEnabled = !_panel.OverlaysEnabled;
+
+            ImGui.PopStyleColor(4);
+        }
+
         ImGui.Separator();
 
         // Display the FBO texture (texture objects are shared across GL contexts).

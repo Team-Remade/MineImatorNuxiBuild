@@ -56,6 +56,15 @@ public class CameraViewport : UiPanel
     private float _lastMouseX = float.NaN;
     private float _lastMouseY = float.NaN;
 
+    // ── Overlay visibility ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// When true the preview viewport renders editor overlays (gizmo, selection
+    /// outline, light billboards, bone indicators).  Defaults to <c>false</c> so
+    /// the preview is a clean render-output view out of the box.
+    /// </summary>
+    public bool OverlaysEnabled { get; set; } = false;
+
     // ── Docking / pop state ───────────────────────────────────────────────────
 
     /// <summary>True while a GLFW CameraWindow owns the rendering.</summary>
@@ -291,7 +300,31 @@ public class CameraViewport : UiPanel
             return;
         }
 
-        // Corner picker — small buttons after the pop button.
+        // Overlays toggle — same pattern as the main Viewport button.
+        ImGui.SameLine();
+        {
+            if (!OverlaysEnabled)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Button,        new Vector4(0.20f, 0.20f, 0.20f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.30f, 0.30f, 0.30f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive,  new Vector4(0.40f, 0.40f, 0.40f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(0.50f, 0.50f, 0.50f, 1.0f));
+            }
+            else
+            {
+                ImGui.PushStyleColor(ImGuiCol.Button,        new Vector4(0.25f, 0.45f, 0.25f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.30f, 0.55f, 0.30f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive,  new Vector4(0.35f, 0.60f, 0.35f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(0.90f, 0.95f, 0.90f, 1.0f));
+            }
+
+            if (ImGui.Button("Overlays"))
+                OverlaysEnabled = !OverlaysEnabled;
+
+            ImGui.PopStyleColor(4);
+        }
+
+        // Corner picker — small buttons after the overlays button.
         ImGui.SameLine();
         DrawCornerPicker();
 
@@ -385,7 +418,8 @@ public class CameraViewport : UiPanel
         var opaque     = new List<(mat4, Mesh)>();
         var textured   = new List<(mat4, Mesh, float)>();
         var alphaBlend = new List<(mat4, Mesh, float)>();
-        CollectRenderPairs(MainViewport.SceneObjects, camPos, opaque, textured, alphaBlend);
+        var overlays   = new List<(mat4, Mesh)>();
+        CollectRenderPairs(MainViewport.SceneObjects, camPos, opaque, textured, alphaBlend, overlays);
 
         foreach (var (model, mesh) in opaque)
             mesh.Render(model, view, proj);
@@ -417,6 +451,16 @@ public class CameraViewport : UiPanel
             Gl.Disable(GLEnum.Blend);
         }
 
+        // ── Editor overlays (optional) ────────────────────────────────────────
+        if (OverlaysEnabled)
+        {
+            // Object-mesh overlays (e.g. camera icon).
+            foreach (var (model, mesh) in overlays)
+                mesh.Render(model, view, proj);
+
+            MainViewport.RenderOverlaysPublic(view, proj);
+        }
+
         Gl.Disable(GLEnum.CullFace);
         Gl.Disable(GLEnum.DepthTest);
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
@@ -444,7 +488,8 @@ public class CameraViewport : UiPanel
         IEnumerable<SceneObject> objects, vec3 camPos,
         List<(mat4, Mesh)> opaque,
         List<(mat4, Mesh, float)> textured,
-        List<(mat4, Mesh, float)> alphaBlend)
+        List<(mat4, Mesh, float)> alphaBlend,
+        List<(mat4, Mesh)> overlays)
     {
         foreach (var obj in objects)
         {
@@ -454,11 +499,12 @@ public class CameraViewport : UiPanel
             float dist  = (wp - camPos).LengthSqr;
             foreach (var mesh in obj.Visuals)
             {
+                if (mesh.DepthTestDisabled)    { overlays.Add((model, mesh)); continue; }
                 if (mesh.TextureId != 0)       textured.Add((model, mesh, dist));
                 else if (mesh.Alpha < 1.0f)    alphaBlend.Add((model, mesh, dist));
                 else                           opaque.Add((model, mesh));
             }
-            CollectRenderPairs(obj.Children, camPos, opaque, textured, alphaBlend);
+            CollectRenderPairs(obj.Children, camPos, opaque, textured, alphaBlend, overlays);
         }
     }
 
@@ -471,10 +517,16 @@ public class CameraViewport : UiPanel
         var io = ImGui.GetIO();
         if (float.IsNaN(_lastMouseX)) { _lastMouseX = io.MousePos.X; _lastMouseY = io.MousePos.Y; }
 
-        if (ImGui.IsMouseDown(ImGuiMouseButton.Right) && hovered)
+        // Allow free-fly to continue even if the ImGui mouse position has drifted
+        // outside the panel — the OS cursor is locked so it never actually moved.
+        if (ImGui.IsMouseDown(ImGuiMouseButton.Right) && (hovered || _freeFly))
         {
             if (!_freeFly && GlfwApi != null)
                 GlfwApi.SetInputMode(GlfwWindow, CursorStateAttribute.Cursor, CursorModeValue.CursorDisabled);
+
+            // Tell ImGui this window owns the mouse while free-fly is active.
+            if (_freeFly)
+                ImGui.SetNextFrameWantCaptureMouse(true);
 
             if (_freeFly)
             {
