@@ -2,6 +2,7 @@ using System.Numerics;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade;
+using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
@@ -1657,16 +1658,91 @@ public class SpawnMenu : UiPanel
     {
         if (Viewport == null) return null;
 
+        // Place the new camera at the work camera's current eye position and orientation.
+        var workCam = Viewport.Camera;
+        vec3 spawnPos = workCam.Position;
+        float spawnYaw   = workCam.Yaw;
+        float spawnPitch = workCam.Pitch;
+
         var obj = new CameraSceneObject
         {
             Name          = objectName,
             ObjectType    = "Camera",
             SpawnCategory = "Camera",
-            Position      = vec3.Zero
+            Position      = spawnPos,
+            // Rotation stored in radians (engine convention).
+            // Yaw  → Rotation.y (same sign).
+            // Pitch → Rotation.x negated: mesh RotateX and camera pitch are opposite sign.
+            Rotation      = new vec3(-spawnPitch, spawnYaw, 0f),
+            PivotOffset   = vec3.Zero
         };
         obj.AssignObjectId();
+
+        // Sync the embedded Camera to match the scene-object transform.
+        obj.SyncCameraToTransform();
+
+        // Load the Camera.glb mesh from embedded resources and attach it as the
+        // visual representation.  We extract to a temp file because AssimpModelLoader
+        // requires a file-system path.
+        if (Gl != null)
+        {
+            var cameraModelRoot = LoadEmbeddedCameraModel(Gl);
+            if (cameraModelRoot != null)
+            {
+                // Flatten visuals from the loaded hierarchy into the camera object.
+                FlattenVisualsInto(cameraModelRoot, obj);
+            }
+
+            // Add an invisible cube for object picking (same approach as lights).
+            var pickMesh = new CubeMesh(Gl)
+            {
+                Alpha  = 0f,
+                Albedo = vec3.Zero
+            };
+            obj.AddMesh(pickMesh);
+        }
+
         Viewport.SceneObjects.Add(obj);
         return obj;
+    }
+
+    /// <summary>
+    /// Extracts the embedded <c>Camera.glb</c> to a temporary file and loads it
+    /// via <see cref="AssimpModelLoader"/>.  Returns null on failure.
+    /// </summary>
+    private static SceneObject? LoadEmbeddedCameraModel(Silk.NET.OpenGL.GL gl)
+    {
+        const string resourceName = "MineImatorSimplyRemade.assets.mesh.Camera.glb";
+        var asm = System.Reflection.Assembly.GetExecutingAssembly();
+        using var stream = asm.GetManifestResourceStream(resourceName);
+        if (stream == null)
+        {
+            Console.Error.WriteLine("[SpawnMenu] Embedded Camera.glb not found.");
+            return null;
+        }
+
+        // Write to a temp file so Assimp can load it.
+        string tempPath = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), "MineImatorSimplyRemade_Camera.glb");
+        using (var fs = System.IO.File.Create(tempPath))
+            stream.CopyTo(fs);
+
+        return MineImatorSimplyRemade.core.mdl.AssimpModelLoader.Load(gl, tempPath);
+    }
+
+    /// <summary>
+    /// Recursively collects all <see cref="Mesh"/> visuals from <paramref name="source"/>
+    /// and its children and adds them to <paramref name="target"/>'s Visuals list.
+    /// </summary>
+    private static void FlattenVisualsInto(
+        MineImatorSimplyRemadeNuxi.core.objs.SceneObject source,
+        MineImatorSimplyRemadeNuxi.core.objs.SceneObject target)
+    {
+        foreach (var mesh in source.Visuals)
+            target.AddMesh(mesh);
+
+        foreach (var child in source.Children)
+            FlattenVisualsInto(child, target);
     }
 
     /// <summary>Creates and registers a <see cref="LightSceneObject"/> in the viewport.</summary>

@@ -24,6 +24,9 @@ public class MainWindow : Window
     private static readonly string ApplicationLocalDirectory = "SimplyRemadeNuxi";
     private static readonly string ImGuiIniPath = "imgui.ini";
     
+    /// <summary>Returns the camera viewport panel for use by <c>main.cs</c>.</summary>
+    public CameraViewport? GetCameraViewport() => _cameraViewport;
+
     public const string ViewportDockId = "Viewport";
     public const string SceneTreeDockId = "Scene Tree";
     public const string PropertiesDockId = "Properties";
@@ -31,8 +34,9 @@ public class MainWindow : Window
     
     private bool _dockSpaceInitialized = false;
 
-    private SpawnMenu? _spawnMenu;
-    
+    private SpawnMenu?      _spawnMenu;
+    private CameraViewport? _cameraViewport;
+
     private Menubar menubar;
 
     private UiPanel[] _panels =
@@ -146,6 +150,26 @@ public class MainWindow : Window
                 Viewport = viewport
             };
             viewport.SpawnMenu = _spawnMenu;
+        }
+
+        // ── Camera viewport ───────────────────────────────────────────────────
+        if (viewport != null)
+        {
+            _cameraViewport = new CameraViewport
+            {
+                Gl           = gl,
+                MainViewport = viewport
+            };
+
+            unsafe
+            {
+                _cameraViewport.GlfwApi    = Glfw;
+                _cameraViewport.GlfwWindow = windowHandle;
+            }
+
+            _cameraViewport.Init(320, 200);
+            viewport.CameraViewport = _cameraViewport;
+            // Pop/Dock wiring is done in main.cs where CameraWindow is owned.
         }
     }
 

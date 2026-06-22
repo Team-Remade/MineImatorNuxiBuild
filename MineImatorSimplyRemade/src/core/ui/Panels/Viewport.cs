@@ -47,7 +47,9 @@ public class Viewport : UiPanel
     /// <summary>
     /// The XZ-plane ground mesh that displays the tiled terrain texture.
     /// Initialised in <see cref="InitGroundPlane"/> after atlases are loaded.
+    /// Exposed so the <see cref="CameraViewport"/> can render the same ground plane.
     /// </summary>
+    public PlaneMesh? GroundPlane => _groundPlane;
     private PlaneMesh? _groundPlane;
 
     // ── Camera ─────────────────────────────────────────────────────────────────
@@ -161,6 +163,22 @@ public class Viewport : UiPanel
 
     /// <summary>Minimum Sobel gradient magnitude treated as an edge (0–1).</summary>
     private const float EdgeThreshold = 0.4f;
+
+    // ── Camera dropdown ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Index of the active camera for the main viewport.
+    /// 0 = work camera; 1+ = spawned cameras by index.
+    /// </summary>
+    private int _activeCameraIndex = 0;
+
+    // ── Secondary camera viewport ──────────────────────────────────────────────
+
+    /// <summary>
+    /// The secondary camera viewport panel (inline overlay + optional undocked window).
+    /// Set by <see cref="MainWindow"/> after construction.
+    /// </summary>
+    public CameraViewport? CameraViewport { get; set; }
 
     // ── Spawn menu / bench button ──────────────────────────────────────────────
 
@@ -697,23 +715,119 @@ public class Viewport : UiPanel
 
     // ── Render ─────────────────────────────────────────────────────────────────
 
+    // Height of the top bar (camera dropdown + bench button row) in pixels.
+    private const float TopBarHeight = 28f;
+
     public override unsafe void Render()
     {
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
+        // Outer window uses the default window padding so the tab bar, borders,
+        // and title bar all behave normally when docked.
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0);
 
         ImGui.Begin("Viewport");
+        ImGui.PopStyleVar(); // pop WindowBorderSize — done before widgets
 
-        var size = ImGui.GetContentRegionAvail();
+        var totalSize = ImGui.GetContentRegionAvail();
 
         // Skip rendering until ImGui has finished its first layout pass and the
-        // panel has a real size. Avoids drawing into a 1×1 or 4×1 stub texture.
-        if (size.X < 16 || size.Y < 16)
+        // panel has a real size.
+        if (totalSize.X < 16 || totalSize.Y < 16)
         {
             ImGui.End();
-            ImGui.PopStyleVar(2);
             return;
         }
+
+        // ── Top bar ───────────────────────────────────────────────────────────
+        // Left-aligned: bench button | camera dropdown.
+        // Background drawn via the draw list; widgets laid out with SameLine.
+        {
+            const float barPadX = 4f;
+            const float barPadY = 3f;
+            float iconSize = TopBarHeight - barPadY * 2f;
+
+            // Solid background strip.
+            var barMin = ImGui.GetCursorScreenPos();
+            var barMax = new Vector2(barMin.X + totalSize.X, barMin.Y + TopBarHeight);
+            ImGui.GetWindowDrawList().AddRectFilled(barMin, barMax,
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0.13f, 0.13f, 0.13f, 1.0f)));
+
+            // Vertically centre items within the bar height.
+            float itemY = ImGui.GetCursorPosY() + barPadY;
+
+            // Bench button.
+            if (_benchTexture != 0)
+            {
+                ImGui.SetCursorPos(new Vector2(ImGui.GetCursorPosX() + barPadX, itemY));
+                ImGui.PushStyleColor(ImGuiCol.Button,        new Vector4(0, 0, 0, 0));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(1, 1, 1, 0.10f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive,  new Vector4(1, 1, 1, 0.20f));
+                bool benchClicked = ImGui.ImageButton(
+                    "##benchBtn",
+                    new ImTextureRef(texId: (ulong)_benchTexture),
+                    new Vector2(iconSize, iconSize),
+                    new Vector2(0, 1),
+                    new Vector2(1, 0));
+                ImGui.PopStyleColor(3);
+                if (benchClicked && SpawnMenu != null)
+                {
+                    var btnMax = ImGui.GetItemRectMax();
+                    var btnMin = ImGui.GetItemRectMin();
+                    SpawnMenu.Toggle(new Vector2(btnMin.X, btnMax.Y + 4f));
+                }
+                ImGui.SameLine();
+            }
+
+            // Camera dropdown — immediately to the right of the bench button.
+            {
+                var spawnedCams = GetSpawnedCameras();
+                string currentCamLabel = _activeCameraIndex == 0
+                    ? "Work Camera"
+                    : (_activeCameraIndex - 1 < spawnedCams.Count
+                        ? spawnedCams[_activeCameraIndex - 1].Name
+                        : "Work Camera");
+
+                ImGui.SetCursorPosY(itemY);
+                ImGui.SetNextItemWidth(160f);
+                if (ImGui.BeginCombo("##vpCamSelect", currentCamLabel))
+                {
+                    bool workSel = _activeCameraIndex == 0;
+                    if (ImGui.Selectable("Work Camera", workSel)) _activeCameraIndex = 0;
+                    if (workSel) ImGui.SetItemDefaultFocus();
+                    for (int i = 0; i < spawnedCams.Count; i++)
+                    {
+                        bool sel = _activeCameraIndex == i + 1;
+                        if (ImGui.Selectable(spawnedCams[i].Name + "##vpcam" + i, sel))
+                            _activeCameraIndex = i + 1;
+                        if (sel) ImGui.SetItemDefaultFocus();
+                    }
+                    ImGui.EndCombo();
+                }
+                if (_activeCameraIndex > spawnedCams.Count)
+                    _activeCameraIndex = 0;
+            }
+
+            // Advance the layout cursor to the bottom edge of the bar.
+            var winPos  = ImGui.GetWindowPos();
+            float barBottomLocal = (barMin.Y + TopBarHeight) - winPos.Y - ImGui.GetScrollY();
+            ImGui.SetCursorPosY(barBottomLocal);
+        }
+
+        // ── 3D image child window ─────────────────────────────────────────────
+        // A zero-padding child window fills the remaining area below the bar.
+        // Using a child means the image's clip rect is independent of the outer
+        // window's padding/tab-bar, so nothing clips the top of the 3D view.
+        var imageAreaSize = ImGui.GetContentRegionAvail();
+        if (imageAreaSize.X < 1) imageAreaSize.X = 1;
+        if (imageAreaSize.Y < 1) imageAreaSize.Y = 1;
+
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
+        ImGui.BeginChild("##vpImage", imageAreaSize, ImGuiChildFlags.None,
+            ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+        ImGui.PopStyleVar();
+
+        var size = ImGui.GetContentRegionAvail();
+        if (size.X < 1) size.X = 1;
+        if (size.Y < 1) size.Y = 1;
 
         uint w = (uint)size.X;
         uint h = (uint)size.Y;
@@ -746,8 +860,28 @@ public class Viewport : UiPanel
         Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
         float aspect = (h > 0) ? (float)w / h : 1f;
-        mat4 view    = Camera.GetViewMatrix();
-        mat4 proj    = Camera.GetProjectionMatrix(aspect);
+
+        // Use the active camera (work camera or a spawned camera).
+        var (activeCamera, activeCamObj) = GetActiveRenderCamera();
+
+        // Apply spawned-camera projection settings if a scene camera is active.
+        float savedFovY = activeCamera.FovY;
+        float savedNear = activeCamera.Near;
+        float savedFar  = activeCamera.Far;
+        if (activeCamObj != null)
+        {
+            activeCamera.FovY = GlmSharp.glm.Radians(activeCamObj.Fov);
+            activeCamera.Near = activeCamObj.Near;
+            activeCamera.Far  = activeCamObj.Far;
+        }
+
+        mat4 view = activeCamera.GetViewMatrix();
+        mat4 proj = activeCamera.GetProjectionMatrix(aspect);
+
+        // Restore camera settings after extracting matrices.
+        activeCamera.FovY = savedFovY;
+        activeCamera.Near = savedNear;
+        activeCamera.Far  = savedFar;
 
         // ── Ground plane ──────────────────────────────────────────────────────
         if (_groundPlane != null)
@@ -770,7 +904,7 @@ public class Viewport : UiPanel
         var texturedPairs  = new List<(mat4 model, Mesh mesh, float dist)>();
         var alphaBlendPairs = new List<(mat4 model, Mesh mesh, float dist)>();
 
-        vec3 camPos = Camera.Position;
+        vec3 camPos = activeCamera.Position;
 
         CollectRenderPairs(SceneObjects, camPos, opaquePairs, texturedPairs, alphaBlendPairs);
 
@@ -866,32 +1000,15 @@ public class Viewport : UiPanel
         // ── Gizmo overlay (rotation arc drawn on the ImGui draw list) ─────────
         Gizmo?.RenderOverlay(Camera, imageMin, size);
 
-        // ── Bench button (top-left of the viewport, opens the spawn menu) ─────
-        if (_benchTexture != 0)
+        // ── Inline camera viewport (bottom-right overlay) ──────────────────────
+        if (CameraViewport != null && !CameraViewport.Undocked)
         {
-            float padding = 8f;
-            ImGui.SetCursorPos(new Vector2(padding, ImGui.GetFrameHeight() + padding));
-            ImGui.PushStyleColor(ImGuiCol.Button,        new System.Numerics.Vector4(0, 0, 0, 0));
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new System.Numerics.Vector4(0, 0, 0, 0));
-            ImGui.PushStyleColor(ImGuiCol.ButtonActive,  new System.Numerics.Vector4(0, 0, 0, 0));
-            bool benchClicked = ImGui.ImageButton(
-                "##benchBtn",
-                new ImTextureRef(texId: (ulong)_benchTexture),
-                new Vector2(64, 64),
-                new Vector2(0, 1),   // uv0: top-left in GL tex = bottom of image data
-                new Vector2(1, 0));  // uv1: bottom-right in GL tex = top of image data
-            ImGui.PopStyleColor(3);
-
-            if (benchClicked && SpawnMenu != null)
-            {
-                var btnMax = ImGui.GetItemRectMax();
-                var btnMin = ImGui.GetItemRectMin();
-                SpawnMenu.Toggle(new Vector2(btnMin.X, btnMax.Y + 4f));
-            }
+            var spawnedCams = GetSpawnedCameras();
+            CameraViewport.RenderInline(imageMin, imageSize, spawnedCams);
         }
 
+        ImGui.EndChild();
         ImGui.End();
-        ImGui.PopStyleVar(2);
     }
 
     // ── Colour-pick pass ──────────────────────────────────────────────────────
@@ -924,8 +1041,18 @@ public class Viewport : UiPanel
         uint h = _viewportHeight;
 
         float aspect = (h > 0) ? (float)w / h : 1f;
-        mat4 view = Camera.GetViewMatrix();
-        mat4 proj = Camera.GetProjectionMatrix(aspect);
+        // Pick pass uses the same camera as the render pass for consistency.
+        var (pickCamera, pickCamObj) = GetActiveRenderCamera();
+        float pickSavedFovY = pickCamera.FovY, pickSavedNear = pickCamera.Near, pickSavedFar = pickCamera.Far;
+        if (pickCamObj != null)
+        {
+            pickCamera.FovY = GlmSharp.glm.Radians(pickCamObj.Fov);
+            pickCamera.Near = pickCamObj.Near;
+            pickCamera.Far  = pickCamObj.Far;
+        }
+        mat4 view = pickCamera.GetViewMatrix();
+        mat4 proj = pickCamera.GetProjectionMatrix(aspect);
+        pickCamera.FovY = pickSavedFovY; pickCamera.Near = pickSavedNear; pickCamera.Far = pickSavedFar;
 
         // ── Render pick pass ─────────────────────────────────────────────────
         Gl.BindFramebuffer(GLEnum.Framebuffer, _pickFbo);
@@ -1239,6 +1366,50 @@ public class Viewport : UiPanel
             // Recurse into children so each child uses its own world matrix.
             CollectRenderPairs(obj.Children, camPos, opaque, textured, alphaBlend);
         }
+    }
+
+    /// <summary>
+    /// Collects all <see cref="CameraSceneObject"/> instances from the entire scene.
+    /// </summary>
+    private List<CameraSceneObject> GetSpawnedCameras()
+    {
+        var result = new List<CameraSceneObject>();
+        CollectSpawnedCameras(SceneObjects, result);
+        return result;
+    }
+
+    private static void CollectSpawnedCameras(
+        IEnumerable<SceneObject> objects,
+        List<CameraSceneObject> result)
+    {
+        foreach (var obj in objects)
+        {
+            if (obj is CameraSceneObject cam) result.Add(cam);
+            CollectSpawnedCameras(obj.Children, result);
+        }
+    }
+
+    /// <summary>
+    /// Returns the active render <see cref="Camera"/> based on <see cref="_activeCameraIndex"/>.
+    /// Index 0 = work camera; 1+ = spawned cameras.
+    /// Also returns the associated <see cref="CameraSceneObject"/> if applicable.
+    /// </summary>
+    private (Camera cam, CameraSceneObject? sceneObj) GetActiveRenderCamera()
+    {
+        if (_activeCameraIndex == 0) return (Camera, null);
+
+        var spawned = GetSpawnedCameras();
+        int idx     = _activeCameraIndex - 1;
+
+        if (idx >= 0 && idx < spawned.Count)
+        {
+            var camObj = spawned[idx];
+            camObj.SyncCameraToTransform();
+            return (camObj.ViewCamera, camObj);
+        }
+
+        _activeCameraIndex = 0;
+        return (Camera, null);
     }
 
     /// <summary>
