@@ -137,8 +137,6 @@ public class Window : IDisposable
         _gl.ClearColor(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
         _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
         
-        Draw();
-        
         ImGuiImplOpenGL3.NewFrame();
         ImGuiImplGLFW.NewFrame();
         ImGui.NewFrame();
@@ -155,11 +153,6 @@ public class Window : IDisposable
         }
         
         Glfw.SwapBuffers(windowHandle);
-    }
-
-    protected virtual void Draw()
-    {
-        
     }
 
     protected virtual void RenderUi()
