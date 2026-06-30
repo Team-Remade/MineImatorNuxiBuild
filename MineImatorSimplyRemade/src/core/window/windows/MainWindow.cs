@@ -56,15 +56,16 @@ public class MainWindow : Window
 
         if (rng == 777)
         {
-            icon = LoadEmbeddedImage("chegg");
+            icon = LoadEmbeddedImage("icons.chegg");
         }
         else if (rng < 500)
         {
-            icon = LoadEmbeddedImage("Icon");
+            icon = LoadEmbeddedImage("icons.Icon");
         }
         else
         {
-            icon = LoadEmbeddedImage("tamari");
+            var ic = Rnd.Next(0, 1);
+            icon = LoadEmbeddedImage(ic == 1 ? "icons.tamari" : "icons.prism");
         }
         
         SetWindowIcon(icon);
