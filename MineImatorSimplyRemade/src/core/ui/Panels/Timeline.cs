@@ -421,7 +421,6 @@ public class Timeline : UiPanel
             ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
         ImGui.SetScrollY(_vScrollOffset);
         RenderLeftLabels();
-        float leftScrollY = ImGui.GetScrollY();
         ImGui.EndChild();
         ImGui.PopStyleVar();
 
@@ -434,10 +433,7 @@ public class Timeline : UiPanel
         ImGui.BeginChild("##right_tracks", new Vector2(rightW, tracksH), ImGuiChildFlags.None,
             ImGuiWindowFlags.HorizontalScrollbar | ImGuiWindowFlags.AlwaysHorizontalScrollbar);
 
-        // Sync vertical scroll from left panel
-        if (MathF.Abs(ImGui.GetScrollY() - leftScrollY) > 0.5f)
-            ImGui.SetScrollY(leftScrollY);
-
+        // Right panel is the scroll master; left panel mirrors it each frame.
         _hScrollOffset = ImGui.GetScrollX();
         _vScrollOffset = ImGui.GetScrollY();
 
