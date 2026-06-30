@@ -4,6 +4,12 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 
 public class Menubar : UiPanel
 {
+    public Action? NewProjectRequested { get; set; }
+    public Action? OpenProjectRequested { get; set; }
+    public Action? SaveProjectRequested { get; set; }
+    public Action? SaveProjectAsRequested { get; set; }
+    public Action? ImportAssetRequested { get; set; }
+
     public override void Render()
     {
         if (ImGui.BeginMainMenuBar())
@@ -12,9 +18,11 @@ public class Menubar : UiPanel
             {
                 if (ImGui.MenuItem("New Project"))
                 {
+                    NewProjectRequested?.Invoke();
                 }
                 if (ImGui.MenuItem("Open Project"))
                 {
+                    OpenProjectRequested?.Invoke();
                 }
                 if (ImGui.MenuItem("Open Recent..."))
                 {
@@ -22,13 +30,16 @@ public class Menubar : UiPanel
                 ImGui.Separator();
                 if (ImGui.MenuItem("Save Project"))
                 {
+                    SaveProjectRequested?.Invoke();
                 }
                 if (ImGui.MenuItem("Save As"))
                 {
+                    SaveProjectAsRequested?.Invoke();
                 }
                 ImGui.Separator();
                 if (ImGui.MenuItem("Import Asset"))
                 {
+                    ImportAssetRequested?.Invoke();
                 }
                 if (ImGui.MenuItem("Import from world"))
                 {

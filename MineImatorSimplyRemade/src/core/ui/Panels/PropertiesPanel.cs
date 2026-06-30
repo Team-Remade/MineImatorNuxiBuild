@@ -36,6 +36,9 @@ public class PropertiesPanel : UiPanel
 
     // ── Public wiring ─────────────────────────────────────────────────────────
 
+    /// <summary>Set from MainWindow after both panels are initialised.</summary>
+    public Timeline? Timeline { get; set; }
+
     /// <summary>
     /// Subscribe to SelectionManager events.  Call once from App.Initialize()
     /// after SelectionManager.Initialize() has been called.
@@ -226,7 +229,10 @@ public class PropertiesPanel : UiPanel
         {
             bool vis = _currentObject.ObjectVisible;
             if (ImGui.Checkbox("Visible", ref vis))
+            {
                 _currentObject.SetObjectVisible(vis);
+                Timeline?.RecordAutoKeyframe(_currentObject, "visible");
+            }
 
             bool inheritVis = _currentObject.InheritVisibility;
             if (ImGui.Checkbox("Inherit Visibility", ref inheritVis))
@@ -429,6 +435,7 @@ public class PropertiesPanel : UiPanel
                     _currentObject.MaterialSettings.AlbedoColor = new vec4(c.r, c.g, c.b, alpha);
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
+                    Timeline?.RecordAutoKeyframe(_currentObject, "material.alpha");
                 }
                 ImGui.SameLine();
                 ImGui.Text(alpha.ToString("F2"));
@@ -571,35 +578,52 @@ public class PropertiesPanel : UiPanel
                     var lc   = light.LightColor;
                     var vec3 = new Vector3(lc.r, lc.g, lc.b);
                     if (ImGui.ColorEdit3("Color##lightColor", ref vec3))
+                    {
                         light.LightColor = new vec4(vec3.X, vec3.Y, vec3.Z, 1);
+                        Timeline?.RecordAutoKeyframe(_currentObject, "light.color.r");
+                        Timeline?.RecordAutoKeyframe(_currentObject, "light.color.g");
+                        Timeline?.RecordAutoKeyframe(_currentObject, "light.color.b");
+                    }
                 }
 
                 // Energy
                 {
                     float energy = light.LightEnergy;
                     if (ImGui.DragFloat("Energy##lightEnergy", ref energy, 0.05f, 0f, 100f))
+                    {
                         light.LightEnergy = energy;
+                        Timeline?.RecordAutoKeyframe(_currentObject, "light.energy");
+                    }
                 }
 
                 // Range
                 {
                     float range = light.LightRange;
                     if (ImGui.DragFloat("Range##lightRange", ref range, 0.1f, 0.01f, 500f))
+                    {
                         light.LightRange = range;
+                        Timeline?.RecordAutoKeyframe(_currentObject, "light.range");
+                    }
                 }
 
                 // Indirect Energy
                 {
                     float indirect = light.LightIndirectEnergy;
                     if (ImGui.DragFloat("Indirect Energy##lightIndirect", ref indirect, 0.05f, 0f, 16f))
+                    {
                         light.LightIndirectEnergy = indirect;
+                        Timeline?.RecordAutoKeyframe(_currentObject, "light.indirect_energy");
+                    }
                 }
 
                 // Specular
                 {
                     float specular = light.LightSpecular;
                     if (ImGui.SliderFloat("Specular##lightSpecular", ref specular, 0f, 1f))
+                    {
                         light.LightSpecular = specular;
+                        Timeline?.RecordAutoKeyframe(_currentObject, "light.specular");
+                    }
                 }
 
                 // Cast Shadows
@@ -642,6 +666,9 @@ public class PropertiesPanel : UiPanel
             bone.TargetPosition = pos;
         else
             _currentObject.SetLocalPosition(pos);
+        Timeline?.RecordAutoKeyframe(_currentObject, "position.x");
+        Timeline?.RecordAutoKeyframe(_currentObject, "position.y");
+        Timeline?.RecordAutoKeyframe(_currentObject, "position.z");
     }
 
     private void ApplyRotation(vec3 rot)
@@ -652,6 +679,9 @@ public class PropertiesPanel : UiPanel
             bone.TargetRotation = rot;
         else
             _currentObject.SetLocalRotation(rot);
+        Timeline?.RecordAutoKeyframe(_currentObject, "rotation.x");
+        Timeline?.RecordAutoKeyframe(_currentObject, "rotation.y");
+        Timeline?.RecordAutoKeyframe(_currentObject, "rotation.z");
     }
 
     private void ApplyScale(vec3 scale)
@@ -660,6 +690,9 @@ public class PropertiesPanel : UiPanel
             miScale.OffsetScale = scale;
         else
             _currentObject.SetLocalScale(scale);
+        Timeline?.RecordAutoKeyframe(_currentObject, "scale.x");
+        Timeline?.RecordAutoKeyframe(_currentObject, "scale.y");
+        Timeline?.RecordAutoKeyframe(_currentObject, "scale.z");
     }
 
     /// <summary>

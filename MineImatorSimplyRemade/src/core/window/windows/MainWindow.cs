@@ -3,10 +3,12 @@ using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
+using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
+using NativeFileDialogSharp;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
 using StbImageSharp;
@@ -31,18 +33,26 @@ public class MainWindow : Window
     public const string SceneTreeDockId = "Scene Tree";
     public const string PropertiesDockId = "Properties";
     public const string TimelineDockId = "Timeline";
+    public const string ContentBrowserDockId = "Content Browser";
     
     private bool _dockSpaceInitialized = false;
 
     private SpawnMenu?      _spawnMenu;
     private CameraViewport? _cameraViewport;
+    private ContentBrowser? _contentBrowser;
+    private Viewport? _mainViewport;
 
     private Menubar menubar;
+    private readonly ProjectManager _projectManager = ProjectManager.Instance;
+
+    private bool _openNewProjectPopup;
+    private string _newProjectNameBuffer = "Untitled Project";
 
     private UiPanel[] _panels =
     {
         new Viewport(),
         new Timeline(),
+        new ContentBrowser(),
         new SceneTree(),
         new PropertiesPanel()
     };
@@ -50,6 +60,11 @@ public class MainWindow : Window
     public MainWindow(int width, int height, string title, Glfw glfw, GL gl = null) : base(width, height, title, glfw, gl)
     {
         menubar = new Menubar();
+        menubar.NewProjectRequested = () => _openNewProjectPopup = true;
+        menubar.OpenProjectRequested = OpenProjectFromDialog;
+        menubar.SaveProjectRequested = SaveProjectWithScene;
+        menubar.SaveProjectAsRequested = () => _openNewProjectPopup = true;
+        menubar.ImportAssetRequested = ImportAssetFromDialog;
 
         ImageResult icon;
         var rng = Rnd.Next(1, 1000);
@@ -94,6 +109,7 @@ public class MainWindow : Window
         Viewport?        viewport        = null;
         SceneTree?       sceneTree       = null;
         PropertiesPanel? propertiesPanel = null;
+        Timeline?        timeline        = null;
 
         foreach (var panel in _panels)
         {
@@ -103,6 +119,7 @@ public class MainWindow : Window
             {
                 case Viewport vp:
                     viewport = vp;
+                    _mainViewport = vp;
                     vp.InitFramebuffer(1, 1);
 
                     // Initialise the textured ground plane after atlases are loaded.
@@ -116,6 +133,14 @@ public class MainWindow : Window
                 case PropertiesPanel pp:
                     propertiesPanel = pp;
                     break;
+
+                case ContentBrowser cb:
+                    _contentBrowser = cb;
+                    break;
+
+                case Timeline tl:
+                    timeline = tl;
+                    break;
             }
         }
 
@@ -125,6 +150,15 @@ public class MainWindow : Window
 
         if (viewport != null && propertiesPanel != null)
             viewport.PropertiesPanel = propertiesPanel;
+
+        if (timeline != null && viewport != null)
+            timeline.Viewport = viewport;
+
+        if (timeline != null && propertiesPanel != null)
+            propertiesPanel.Timeline = timeline;
+
+        if (timeline != null)
+            SelectionManager.Instance.Timeline = timeline;
 
         // Wire GLFW references so the viewport can lock/unlock the cursor.
         if (viewport != null)
@@ -138,6 +172,7 @@ public class MainWindow : Window
 
         sceneTree?.Initialize();
         propertiesPanel?.Initialize();
+        timeline?.Initialize();
 
         // ── Spawn menu ────────────────────────────────────────────────────────
         // Must be created after the Viewport has been initialised (so the GL
@@ -151,6 +186,9 @@ public class MainWindow : Window
                 Viewport = viewport
             };
             viewport.SpawnMenu = _spawnMenu;
+
+            if (_contentBrowser != null)
+                _contentBrowser.SpawnMenu = _spawnMenu;
         }
 
         // ── Camera viewport ───────────────────────────────────────────────────
@@ -177,6 +215,7 @@ public class MainWindow : Window
     protected override void RenderUi()
     {
         menubar.Render();
+        RenderProjectDialogs();
         
         ImGuiViewportPtr mainViewport = ImGui.GetMainViewport();
         ImGui.SetNextWindowPos(mainViewport.WorkPos);
@@ -217,6 +256,108 @@ public class MainWindow : Window
         // Render the floating spawn menu (no-op when closed).
         _spawnMenu?.Render();
     }
+
+    private void RenderProjectDialogs()
+    {
+        if (_openNewProjectPopup)
+        {
+            _openNewProjectPopup = false;
+            ImGui.OpenPopup("New Project");
+        }
+
+        bool popupOpen = true;
+        if (ImGui.BeginPopupModal("New Project", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.Text("Project name");
+            ImGui.SetNextItemWidth(320f);
+            ImGui.InputText("##newProjectName", ref _newProjectNameBuffer, 128);
+
+            if (ImGui.Button("Create", new Vector2(120, 0)))
+            {
+                string name = string.IsNullOrWhiteSpace(_newProjectNameBuffer)
+                    ? "Untitled Project"
+                    : _newProjectNameBuffer.Trim();
+
+                _projectManager.CreateNewProject(name);
+
+                if (_mainViewport != null && _spawnMenu != null)
+                    ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, _mainViewport, _spawnMenu);
+
+                SaveProjectWithScene();
+                ImGui.CloseCurrentPopup();
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel", new Vector2(120, 0)))
+                ImGui.CloseCurrentPopup();
+
+            ImGui.EndPopup();
+        }
+    }
+
+    private void OpenProjectFromDialog()
+    {
+        var result = Dialog.FileOpen("nxProj");
+        if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
+            return;
+
+        if (_projectManager.LoadProject(result.Path))
+            LoadProjectScene();
+    }
+
+    private void ImportAssetFromDialog()
+    {
+        if (!_projectManager.HasProject)
+        {
+            _openNewProjectPopup = true;
+            return;
+        }
+
+        var result = Dialog.FileOpen("glb,gltf,fbx,obj,dae,3ds,blend,ply,stl,x3d,mimodel,miobject,png,jpg,jpeg,bmp,tga,gif,webp,tiff,wav,mp3,ogg,flac,m4a");
+        if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
+            return;
+
+        _projectManager.AddAsset(result.Path, DetectAssetType(result.Path));
+    }
+
+    private static ProjectAssetType DetectAssetType(string path)
+    {
+        string ext = Path.GetExtension(path).ToLowerInvariant();
+
+        if (ext is ".glb" or ".gltf" or ".fbx" or ".obj" or ".dae" or ".3ds" or ".blend" or ".ply" or ".stl" or ".x3d" or ".mimodel" or ".miobject")
+            return ProjectAssetType.Model;
+
+        if (ext is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".tga" or ".gif" or ".webp" or ".tiff")
+            return ProjectAssetType.Image;
+
+        if (ext is ".wav" or ".mp3" or ".ogg" or ".flac" or ".m4a")
+            return ProjectAssetType.Sound;
+
+        return ProjectAssetType.Other;
+    }
+
+    private void SaveProjectWithScene()
+    {
+        if (!_projectManager.HasProject)
+        {
+            _openNewProjectPopup = true;
+            return;
+        }
+
+        if (_mainViewport == null)
+            return;
+
+        ProjectSceneSerializer.WriteSceneToManifest(_projectManager.Manifest, _mainViewport);
+        _projectManager.SaveManifest();
+    }
+
+    private void LoadProjectScene()
+    {
+        if (_mainViewport == null || _spawnMenu == null || !_projectManager.HasProject)
+            return;
+
+        ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, _mainViewport, _spawnMenu);
+    }
     
     private unsafe void SetupDefaultDockSpace(uint dockspaceId, Vector2 size)
     {
@@ -238,6 +379,7 @@ public class MainWindow : Window
 
         ImGuiP.DockBuilderDockWindow(ViewportDockId, viewportDockId);
         ImGuiP.DockBuilderDockWindow(TimelineDockId, timelineDockId);
+        ImGuiP.DockBuilderDockWindow(ContentBrowserDockId, timelineDockId);
         ImGuiP.DockBuilderDockWindow(SceneTreeDockId, sceneTreeDockId);
         ImGuiP.DockBuilderDockWindow(PropertiesDockId, propertiesDockId);
 

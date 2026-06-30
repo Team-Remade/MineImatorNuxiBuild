@@ -242,43 +242,28 @@ internal static class GizmoMath
     /// </summary>
     public static vec3 MatrixToEulerYXZ(mat4 m)
     {
-        // SceneObject builds GetLocalMatrix as t * rz * ry * rx * s * tPivot.
-        // For pure rotation the combined matrix R = Rz*Ry*Rx has:
-        //   R.m10 = -sin(x)          (row 1, col 0 in GlmSharp column-major = m.m01 index)
-        // GlmSharp mRC indexing: m.mRC where R = row, C = column.
-        // But in GlmSharp mat4 the field names are mCR (column C, row R).
-        // i.e. mat4.m10 = column 1, row 0 = second column, first row component.
-        // Let M = Rz*Ry*Rx. Expanding:
-        //   M[col=0,row=1] = sin(z)*cos(x)*sin(y) - cos(z)*sin(x)   ... this is complex.
-        // Simpler: extract via standard OpenGL column-major convention.
-        //   R = Rz*Ry*Rx:
-        //   [0][1] (col0,row1) = sin(z)*sin(y)*cos(x) - cos(z)*sin(x)
-        //   [0][2] (col0,row2) = cos(z)*sin(y)*cos(x) + sin(z)*sin(x)
-        //   [1][1] (col1,row1) = cos(z)*cos(x)
-        //   [2][1] (col2,row1) = -sin(x)                              ← pitch
-        // GlmSharp: m.mCR, so col1row1 = m.m11, col2row1 = m.m21, col0row2 = m.m02 ...
-        // Actually GlmSharp mXY: first index is column, second is row (column-major).
-        // So m.m01 = column 0, row 1.  In GLSL mat4 m[col][row].
-        // R = Rz*Ry*Rx col-major standard:
-        //   m[2][1] (col 2, row 1) = -sin(x)
-        float pitch = MathF.Asin(-Math.Clamp(m.m21, -1f, 1f));
-        float yaw, roll;
-        if (MathF.Abs(m.m21) < 0.9999f)
+        // Extract Euler (x, y, z) for R = Rz*Ry*Rx (GlmSharp column-major, mCR where C=col, R=row).
+        // GetLocalMatrix builds rotation as rz * ry * rx  →  R = Rz*Ry*Rx.
+        //
+        // Expanding R = Rz*Ry*Rx gives the following key elements:
+        //   m.m02 (col 0, row 2) = -sin(y)
+        //   m.m12 (col 1, row 2) =  cos(y)*sin(x)
+        //   m.m22 (col 2, row 2) =  cos(y)*cos(x)
+        //   m.m01 (col 0, row 1) =  cos(y)*sin(z)
+        //   m.m00 (col 0, row 0) =  cos(y)*cos(z)
+        float yaw   = MathF.Asin(-Math.Clamp(m.m02, -1f, 1f));   // Y = asin(-m02)
+        float pitch, roll;
+        if (MathF.Abs(m.m02) < 0.9999f)
         {
-            // m[2][2] = cos(y)*cos(x), m[0][2] = sin(y)*cos(x) doesn't apply here.
-            // For Rz*Ry*Rx:
-            //   m[2][2] (col2,row2) = cos(y)*cos(x)
-            //   m[2][0] (col2,row0) = sin(y)*cos(x)   → atan2(m20, m22) = yaw
-            //   m[1][1] (col1,row1) = cos(z)*cos(x)
-            //   m[0][1] (col0,row1) = sin(z)*cos(x)   → atan2(m01, m11) = roll
-            yaw  = MathF.Atan2(m.m20, m.m22);
-            roll = MathF.Atan2(m.m01, m.m11);
+            pitch = MathF.Atan2(m.m12, m.m22);   // X = atan2(cos(y)*sin(x), cos(y)*cos(x))
+            roll  = MathF.Atan2(m.m01, m.m00);   // Z = atan2(cos(y)*sin(z), cos(y)*cos(z))
         }
         else
         {
-            // Gimbal lock
-            yaw  = MathF.Atan2(-m.m02, m.m00);
-            roll = 0;
+            // Gimbal lock (y ≈ ±90°): x and z are coupled; convention: z = 0.
+            // At y=±90°: m.m11 = cos(z-x), m.m21 = sin(z-x)  → x = atan2(-m21, m11) with z=0.
+            pitch = MathF.Atan2(-m.m21, m.m11);
+            roll  = 0;
         }
         return new vec3(pitch, yaw, roll);
     }
@@ -1581,7 +1566,11 @@ public class Gizmo3D : IDisposable
             }
             else if (_edit.Mode == TransformMode.Rotate)
             {
-                obj.SetLocalRotation(GizmoMath.MatrixToEulerYXZ(newTransform.Basis));
+                // Strip scale from the basis before extracting Euler angles.
+                // In local-rotation mode, ComputeTransform returns purRot * rotMat * scaleMat,
+                // so the basis includes scale. MatrixToEulerYXZ assumes a pure-rotation matrix
+                // (m.m21 == -sin(x) only holds without scale), so we must normalise first.
+                obj.SetLocalRotation(GizmoMath.MatrixToEulerYXZ(NormalizeRotation(newTransform.Basis)));
             }
             else if (_edit.Mode == TransformMode.Scale)
             {
@@ -1656,8 +1645,15 @@ public class Gizmo3D : IDisposable
                 mat4 rotMat = GizmoMath.AxisAngle(axis, extra);
                 if (local)
                 {
-                    mat4 rotated = rotMat * originalLocal.Basis;
-                    return new Transform3D(rotated, originalLocal.Origin);
+                    // Post-multiply so the rotation is applied in the object's own local
+                    // coordinate frame, not world space.  Strip scale from the local basis
+                    // first (originalLocal.Basis = rot * scl) so that the pure-rotation
+                    // matrix fed to MatrixToEulerYXZ / SetLocalRotation is correct; then
+                    // reattach scale so ExtractScale still produces the right value.
+                    vec3 scaleVec = GizmoMath.ExtractScale(originalLocal.Basis);
+                    mat4 scaleMat = mat4.Scale(scaleVec);
+                    mat4 purRot   = originalLocal.Basis * scaleMat.Inverse;
+                    return new Transform3D(purRot * rotMat * scaleMat, originalLocal.Origin);
                 }
                 else
                 {

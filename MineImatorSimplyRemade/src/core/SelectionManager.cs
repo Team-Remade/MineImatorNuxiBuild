@@ -1,4 +1,5 @@
-﻿using MineImatorSimplyRemade.gizmo;
+﻿using MineImatorSimplyRemade.core.ui.Panels;
+using MineImatorSimplyRemade.gizmo;
 using MineImatorSimplyRemadeNuxi.core.objs;
 
 namespace MineImatorSimplyRemadeNuxi.core;
@@ -27,6 +28,12 @@ public class SelectionManager
 
     /// <summary>All currently selected scene objects (may be more than one).</summary>
     public List<SceneObject> SelectedObjects { get; } = new();
+
+    /// <summary>
+    /// Reference to the Timeline panel for auto-keyframing on gizmo transforms.
+    /// Assign from MainWindow after both are created.
+    /// </summary>
+    public Timeline? Timeline { get; set; }
 
     /// <summary>
     /// The 3D gizmo used to transform selected objects.
@@ -77,6 +84,32 @@ public class SelectionManager
 
     private void OnGizmoTransformEnd(Gizmo3D.TransformMode mode, Gizmo3D.TransformPlane plane)
     {
+        // Record auto-keyframes for the transformed properties.
+        if (Timeline != null)
+        {
+            foreach (var obj in SelectedObjects)
+            {
+                switch (mode)
+                {
+                    case Gizmo3D.TransformMode.Translate:
+                        Timeline.RecordAutoKeyframe(obj, "position.x");
+                        Timeline.RecordAutoKeyframe(obj, "position.y");
+                        Timeline.RecordAutoKeyframe(obj, "position.z");
+                        break;
+                    case Gizmo3D.TransformMode.Rotate:
+                        Timeline.RecordAutoKeyframe(obj, "rotation.x");
+                        Timeline.RecordAutoKeyframe(obj, "rotation.y");
+                        Timeline.RecordAutoKeyframe(obj, "rotation.z");
+                        break;
+                    case Gizmo3D.TransformMode.Scale:
+                        Timeline.RecordAutoKeyframe(obj, "scale.x");
+                        Timeline.RecordAutoKeyframe(obj, "scale.y");
+                        Timeline.RecordAutoKeyframe(obj, "scale.z");
+                        break;
+                }
+            }
+        }
+
         // Notify all listeners (e.g. PropertiesPanel) so they can refresh.
         SelectionChanged?.Invoke();
     }
