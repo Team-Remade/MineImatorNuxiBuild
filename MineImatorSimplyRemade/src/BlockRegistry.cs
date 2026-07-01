@@ -278,9 +278,49 @@ public static class BlockRegistry
             });
         }
 
+        void AddModelVariant(string blockName, string variantKey, string modelPath, int rotationY = 0, bool useCemOverride = true)
+        {
+            if (!_extraVariants.TryGetValue(blockName, out var list))
+            {
+                list = new List<BlockVariantEntry>();
+                _extraVariants[blockName] = list;
+            }
+
+            string cemPath = "";
+            if (useCemOverride)
+                cemPath = GetCemPath(NormalizeModelPath(modelPath)) ?? "";
+
+            list.Add(new BlockVariantEntry
+            {
+                VariantKey = variantKey,
+                ModelPath = modelPath,
+                RotationY = rotationY,
+                CemPath = cemPath
+            });
+        }
+
         // Large chest variants on chest + trapped_chest
         AddCemVariant("chest",         "large",         "chest_large");
         AddCemVariant("trapped_chest", "large",         "trapped_chest_large");
+
+        // Legacy schematic import needs explicit facing variants for chest models.
+        // Keep CEM enabled so chest textures/materials remain correct.
+        AddModelVariant("chest", "facing=north", "minecraft:block/chest", 0, useCemOverride: true);
+        AddModelVariant("chest", "facing=east", "minecraft:block/chest", 90, useCemOverride: true);
+        AddModelVariant("chest", "facing=south", "minecraft:block/chest", 180, useCemOverride: true);
+        AddModelVariant("chest", "facing=west", "minecraft:block/chest", 270, useCemOverride: true);
+
+        AddModelVariant("trapped_chest", "facing=north", "minecraft:block/trapped_chest", 0, useCemOverride: true);
+        AddModelVariant("trapped_chest", "facing=east", "minecraft:block/trapped_chest", 90, useCemOverride: true);
+        AddModelVariant("trapped_chest", "facing=south", "minecraft:block/trapped_chest", 180, useCemOverride: true);
+        AddModelVariant("trapped_chest", "facing=west", "minecraft:block/trapped_chest", 270, useCemOverride: true);
+
+        // This resource pack collapses oak_wall_sign blockstate to a default sign model,
+        // so inject explicit directional wall-sign variants.
+        AddModelVariant("oak_wall_sign", "facing=north", "minecraft:block/oak_wall_sign", 0, useCemOverride: false);
+        AddModelVariant("oak_wall_sign", "facing=east", "minecraft:block/oak_wall_sign", 90, useCemOverride: false);
+        AddModelVariant("oak_wall_sign", "facing=south", "minecraft:block/oak_wall_sign", 180, useCemOverride: false);
+        AddModelVariant("oak_wall_sign", "facing=west", "minecraft:block/oak_wall_sign", 270, useCemOverride: false);
 
         // Bed: pair foot + head as a single two-block object (head is +1 in Z).
         // Replace the useless "minecraft:block/bed" default variant entirely.

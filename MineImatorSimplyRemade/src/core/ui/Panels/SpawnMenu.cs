@@ -7,6 +7,7 @@ using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
+using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -85,6 +86,11 @@ public class SpawnMenu : UiPanel
     // ── Owner reference ──────────────────────────────────────────────────────
     /// <summary>The viewport whose child list receives newly spawned objects.</summary>
     public Viewport? Viewport { get; set; }
+    /// <summary>
+    /// Optional project manager used to copy externally loaded schematics into
+    /// the active project so scene save/load remains portable.
+    /// </summary>
+    public ProjectManager? ProjectManager { get; set; }
 
     // ── Window positioning ───────────────────────────────────────────────────
     private Vector2? _nextWindowPos;
@@ -562,7 +568,97 @@ public class SpawnMenu : UiPanel
                 MinecraftModelMesh.BuildTexturedFallbackCube(Gl, null, blockNameHint: "")
             };
 
+        ApplyVariantRotationToCemMeshes(built, variant);
+
         meshes.AddRange(built);
+    }
+
+    private static void ApplyVariantRotationToCemMeshes(List<Mesh> meshes, BlockVariantEntry variant)
+    {
+        if (string.IsNullOrEmpty(variant.CemPath))
+            return;
+
+        int turnsX = NormalizeQuarterTurns(variant.RotationX);
+        int turnsY = NormalizeQuarterTurns(variant.RotationY);
+        if (turnsX == 0 && turnsY == 0)
+            return;
+
+        bool hasAnyVertex = false;
+        float minX = float.MaxValue;
+        float minY = float.MaxValue;
+        float minZ = float.MaxValue;
+        float maxX = float.MinValue;
+        float maxY = float.MinValue;
+        float maxZ = float.MinValue;
+
+        foreach (var mesh in meshes)
+        {
+            for (int i = 0; i < mesh.Vertices.Count; i++)
+            {
+                hasAnyVertex = true;
+                var v = mesh.Vertices[i];
+                if (v.x < minX) minX = v.x;
+                if (v.y < minY) minY = v.y;
+                if (v.z < minZ) minZ = v.z;
+                if (v.x > maxX) maxX = v.x;
+                if (v.y > maxY) maxY = v.y;
+                if (v.z > maxZ) maxZ = v.z;
+            }
+        }
+
+        if (!hasAnyVertex)
+            return;
+
+        var pivot = new vec3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, (minZ + maxZ) * 0.5f);
+
+        foreach (var mesh in meshes)
+        {
+            for (int i = 0; i < mesh.Vertices.Count; i++)
+            {
+                vec3 v = mesh.Vertices[i] - pivot;
+                v = RotateQuarterTurnsX(v, turnsX);
+                v = RotateQuarterTurnsY(v, turnsY);
+                mesh.Vertices[i] = v + pivot;
+
+                if (i < mesh.Normals.Count)
+                {
+                    vec3 n = mesh.Normals[i];
+                    n = RotateQuarterTurnsX(n, turnsX);
+                    n = RotateQuarterTurnsY(n, turnsY);
+                    mesh.Normals[i] = n;
+                }
+            }
+
+            mesh.Upload();
+        }
+    }
+
+    private static int NormalizeQuarterTurns(int degrees)
+    {
+        int normalized = ((degrees % 360) + 360) % 360;
+        return normalized / 90;
+    }
+
+    private static vec3 RotateQuarterTurnsX(vec3 v, int turns)
+    {
+        return turns switch
+        {
+            1 => new vec3(v.x, -v.z, v.y),
+            2 => new vec3(v.x, -v.y, -v.z),
+            3 => new vec3(v.x, v.z, -v.y),
+            _ => v
+        };
+    }
+
+    private static vec3 RotateQuarterTurnsY(vec3 v, int turns)
+    {
+        return turns switch
+        {
+            1 => new vec3(v.z, v.y, -v.x),
+            2 => new vec3(-v.x, v.y, -v.z),
+            3 => new vec3(-v.z, v.y, v.x),
+            _ => v
+        };
     }
 
     private void RenderMainColumns()
@@ -1369,11 +1465,36 @@ public class SpawnMenu : UiPanel
         var result = Dialog.FileOpen("schematic,schem");
         if (!result.IsOk || string.IsNullOrEmpty(result.Path)) return;
 
-        var root = SpawnSchematicFromPath(result.Path);
+        string pathToSpawn = ResolveSchematicPathForProject(result.Path);
+        var root = SpawnSchematicFromPath(pathToSpawn);
         if (root == null)
-            Console.Error.WriteLine($"[SpawnMenu] Failed to load schematic: {result.Path}");
+            Console.Error.WriteLine($"[SpawnMenu] Failed to load schematic: {pathToSpawn}");
         else
             _isOpen = false;
+    }
+
+    private string ResolveSchematicPathForProject(string sourcePath)
+    {
+        string fullSourcePath = Path.GetFullPath(sourcePath);
+
+        if (ProjectManager == null || !ProjectManager.HasProject)
+            return fullSourcePath;
+
+        try
+        {
+            var existing = ProjectManager.GetProjectAssets().FirstOrDefault(a =>
+                string.Equals(Path.GetFullPath(a.SourcePath), fullSourcePath, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+                return ProjectManager.GetAssetFullPath(existing);
+
+            var added = ProjectManager.AddAsset(fullSourcePath, ProjectAssetType.Other);
+            return ProjectManager.GetAssetFullPath(added);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SpawnMenu] Could not register schematic in project assets: {ex.Message}");
+            return fullSourcePath;
+        }
     }
 
     /// <summary>
@@ -1600,6 +1721,15 @@ public class SpawnMenu : UiPanel
         float originX = (width - 1) * 0.5f;
         float originZ = (length - 1) * 0.5f;
 
+        var largeChestPlacements = BuildLargeChestPlacements(
+            voxelInfos,
+            width,
+            height,
+            length,
+            originX,
+            originZ,
+            variantCache);
+
         var merged = new Dictionary<uint, MeshAccumulator>();
         int placed = 0;
 
@@ -1610,12 +1740,29 @@ public class SpawnMenu : UiPanel
                 for (int x = 0; x < width; x++)
                 {
                     int index = y * width * length + z * width + x;
+
+                    if (largeChestPlacements.SkippedIndices.Contains(index))
+                        continue;
+
+                    if (largeChestPlacements.ByAnchorIndex.TryGetValue(index, out var largePlacement))
+                    {
+                        placed++;
+
+                        foreach (var template in largePlacement.Info.Templates)
+                        {
+                            var acc = GetOrCreateAccumulator(merged, template.TextureId);
+                            AppendTemplate(acc, template, largePlacement.Px, largePlacement.Py, largePlacement.Pz);
+                        }
+
+                        continue;
+                    }
+
                     var info = voxelInfos[index];
                     if (info == null) continue;
 
                     placed++;
                     float px = x - originX;
-                    float py = y;
+                    float py = y + 0.5f;
                     float pz = z - originZ;
 
                     if (info.IsCullableCube && info.CubeFaces != null)
@@ -1675,6 +1822,176 @@ public class SpawnMenu : UiPanel
 
         Viewport.SceneObjects.Add(root);
         return root;
+    }
+
+    private sealed class LargeChestPlacement
+    {
+        public required VariantRenderInfo Info;
+        public float Px;
+        public float Py;
+        public float Pz;
+    }
+
+    private sealed class LargeChestPlacementSet
+    {
+        public readonly Dictionary<int, LargeChestPlacement> ByAnchorIndex = new();
+        public readonly HashSet<int> SkippedIndices = new();
+    }
+
+    private LargeChestPlacementSet BuildLargeChestPlacements(
+        VariantRenderInfo?[] voxelInfos,
+        int width,
+        int height,
+        int length,
+        float originX,
+        float originZ,
+        Dictionary<string, VariantRenderInfo> variantCache)
+    {
+        var result = new LargeChestPlacementSet();
+        int layerSize = width * length;
+        int total = voxelInfos.Length;
+        var processed = new HashSet<int>();
+
+        for (int index = 0; index < total; index++)
+        {
+            if (processed.Contains(index))
+                continue;
+
+            var info = voxelInfos[index];
+            if (info == null)
+                continue;
+
+            if (!IsChestType(info.BlockName))
+                continue;
+
+            if (!TryGetVariantFacing(info.Variant, out string? facing) || string.IsNullOrEmpty(facing))
+                continue;
+
+            int y = index / layerSize;
+            int rem = index % layerSize;
+            int z = rem / width;
+            int x = rem % width;
+
+            (int dx, int dz)[] pairAxis = facing switch
+            {
+                "north" or "south" => new[] { (1, 0), (-1, 0) },
+                "east" or "west" => new[] { (0, 1), (0, -1) },
+                _ => Array.Empty<(int, int)>()
+            };
+
+            int pairIndex = -1;
+            int pairX = 0;
+            int pairZ = 0;
+
+            foreach (var (dx, dz) in pairAxis)
+            {
+                int nx = x + dx;
+                int nz = z + dz;
+                if (nx < 0 || nz < 0 || nx >= width || nz >= length)
+                    continue;
+
+                int nIndex = y * layerSize + nz * width + nx;
+                var other = voxelInfos[nIndex];
+                if (other == null || !IsChestType(other.BlockName))
+                    continue;
+
+                if (!string.Equals(other.BlockName, info.BlockName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (!TryGetVariantFacing(other.Variant, out string? otherFacing) ||
+                    !string.Equals(otherFacing, facing, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                pairIndex = nIndex;
+                pairX = nx;
+                pairZ = nz;
+                break;
+            }
+
+            if (pairIndex < 0)
+                continue;
+
+            processed.Add(index);
+            processed.Add(pairIndex);
+
+            if (!TryCreateLargeChestRenderInfo(info.BlockName, facing, variantCache, out var largeInfo) || largeInfo == null)
+                continue;
+
+            int anchor = Math.Min(index, pairIndex);
+            float cx = (x + pairX) * 0.5f;
+            float cz = (z + pairZ) * 0.5f;
+
+            result.ByAnchorIndex[anchor] = new LargeChestPlacement
+            {
+                Info = largeInfo,
+                Px = cx - originX,
+                Py = y + 0.5f,
+                Pz = cz - originZ
+            };
+
+            result.SkippedIndices.Add(index);
+            result.SkippedIndices.Add(pairIndex);
+            result.SkippedIndices.Remove(anchor);
+        }
+
+        return result;
+    }
+
+    private static bool IsChestType(string blockName)
+    {
+        return string.Equals(blockName, "chest", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(blockName, "trapped_chest", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryGetVariantFacing(BlockVariantEntry variant, out string? facing)
+    {
+        var props = ParseVariantKeyProperties(variant.VariantKey);
+        if (props.TryGetValue("facing", out string? v) && !string.IsNullOrWhiteSpace(v))
+        {
+            facing = v;
+            return true;
+        }
+
+        facing = null;
+        return false;
+    }
+
+    private bool TryCreateLargeChestRenderInfo(
+        string blockName,
+        string facing,
+        Dictionary<string, VariantRenderInfo> variantCache,
+        out VariantRenderInfo? info)
+    {
+        info = null;
+
+        var largeVariant = BlockRegistry.GetVariants(blockName)
+            .FirstOrDefault(v => string.Equals(v.VariantKey, "large", StringComparison.OrdinalIgnoreCase));
+        if (largeVariant == null)
+            return false;
+
+        int rotationY = facing switch
+        {
+            "east" => 90,
+            "south" => 180,
+            "west" => 270,
+            _ => 0
+        };
+
+        var orientedLarge = new BlockVariantEntry
+        {
+            VariantKey = $"large,facing={facing}",
+            ModelPath = largeVariant.ModelPath,
+            RotationX = largeVariant.RotationX,
+            RotationY = rotationY,
+            CemPath = largeVariant.CemPath,
+            TopHalf = largeVariant.TopHalf,
+            PartOffsetX = largeVariant.PartOffsetX,
+            PartOffsetY = largeVariant.PartOffsetY,
+            PartOffsetZ = largeVariant.PartOffsetZ
+        };
+
+        info = GetOrCreateVariantRenderInfo(blockName, orientedLarge, variantCache);
+        return true;
     }
 
     private sealed class MeshAccumulator
@@ -1838,7 +2155,16 @@ public class SpawnMenu : UiPanel
                         height,
                         length,
                         out var doorName,
-                        out var doorHint))
+                        out var doorHint,
+                        out bool isUpperHalf))
+                {
+                    outVoxels[i] = null;
+                    continue;
+                }
+
+                // Door variants are compressed into a single two-block mesh in BlockRegistry.
+                // Spawn only from the lower half to avoid duplicate full-door geometry.
+                if (isUpperHalf)
                 {
                     outVoxels[i] = null;
                     continue;
@@ -1857,6 +2183,28 @@ public class SpawnMenu : UiPanel
                 outVoxels[i] = doorVariant == null
                     ? null
                     : GetOrCreateVariantRenderInfo(doorName, doorVariant, variantCache);
+                continue;
+            }
+
+            if (blockId == 85)
+            {
+                if (!TryResolveLegacyBlock(blockId, blockData, out var fenceBlockName, out _))
+                {
+                    outVoxels[i] = null;
+                    continue;
+                }
+
+                if (!availableBlocks.Contains(fenceBlockName))
+                {
+                    outVoxels[i] = null;
+                    continue;
+                }
+
+                string fenceHint = BuildLegacyFenceVariantHint(blocks, i, width, height, length);
+                Dictionary<string, string>? fenceProps =
+                    TryParseVariantHintProperties(fenceHint, out var parsedFenceProps) ? parsedFenceProps : null;
+
+                outVoxels[i] = GetOrCreateFenceRenderInfo(fenceBlockName, fenceProps, variantCache);
                 continue;
             }
 
@@ -1895,6 +2243,69 @@ public class SpawnMenu : UiPanel
         }
 
         return true;
+    }
+
+    private VariantRenderInfo? GetOrCreateFenceRenderInfo(
+        string blockName,
+        Dictionary<string, string>? props,
+        Dictionary<string, VariantRenderInfo> cache)
+    {
+        bool north = props != null && props.TryGetValue("north", out string? n) && string.Equals(n, "true", StringComparison.OrdinalIgnoreCase);
+        bool east = props != null && props.TryGetValue("east", out string? e) && string.Equals(e, "true", StringComparison.OrdinalIgnoreCase);
+        bool south = props != null && props.TryGetValue("south", out string? s) && string.Equals(s, "true", StringComparison.OrdinalIgnoreCase);
+        bool west = props != null && props.TryGetValue("west", out string? w) && string.Equals(w, "true", StringComparison.OrdinalIgnoreCase);
+
+        string cacheKey = $"fence|{blockName}|n={(north ? 1 : 0)}|e={(east ? 1 : 0)}|s={(south ? 1 : 0)}|w={(west ? 1 : 0)}";
+        if (cache.TryGetValue(cacheKey, out var existing))
+            return existing;
+
+        var variants = BlockRegistry.GetVariants(blockName);
+        if (variants.Count == 0)
+            return null;
+
+        bool IsPost(BlockVariantEntry v) =>
+            !string.IsNullOrEmpty(v.ModelPath) && v.ModelPath.Contains("_fence_post", StringComparison.OrdinalIgnoreCase);
+
+        bool IsSideWithY(BlockVariantEntry v, int y) =>
+            !string.IsNullOrEmpty(v.ModelPath) &&
+            v.ModelPath.Contains("_fence_side", StringComparison.OrdinalIgnoreCase) &&
+            v.RotationY == y;
+
+        var post = variants.FirstOrDefault(IsPost) ?? variants[0];
+
+        var parts = new List<BlockVariantEntry> { post };
+        if (north)
+        {
+            var part = variants.FirstOrDefault(v => IsSideWithY(v, 0));
+            if (part != null) parts.Add(part);
+        }
+        if (east)
+        {
+            var part = variants.FirstOrDefault(v => IsSideWithY(v, 270));
+            if (part != null) parts.Add(part);
+        }
+        if (south)
+        {
+            var part = variants.FirstOrDefault(v => IsSideWithY(v, 180));
+            if (part != null) parts.Add(part);
+        }
+        if (west)
+        {
+            var part = variants.FirstOrDefault(v => IsSideWithY(v, 90));
+            if (part != null) parts.Add(part);
+        }
+
+        var info = new VariantRenderInfo
+        {
+            BlockName = blockName,
+            Variant = post,
+            IsCullableCube = false,
+            CubeFaces = null,
+            Templates = BuildVariantTemplates(parts)
+        };
+
+        cache[cacheKey] = info;
+        return info;
     }
 
     private VariantRenderInfo GetOrCreateVariantRenderInfo(
@@ -1971,7 +2382,28 @@ public class SpawnMenu : UiPanel
             set.South == null || set.West == null || set.East == null)
             return null;
 
+        int turnsY = NormalizeQuarterTurns(variant.RotationY);
+        if (turnsY != 0)
+            RotateCubeFacesY(set, turnsY);
+
         return set;
+    }
+
+    private static void RotateCubeFacesY(CubeFaceSet set, int turns)
+    {
+        turns = ((turns % 4) + 4) % 4;
+        for (int i = 0; i < turns; i++)
+        {
+            var oldNorth = set.North;
+            var oldEast = set.East;
+            var oldSouth = set.South;
+            var oldWest = set.West;
+
+            set.North = oldEast;
+            set.East = oldSouth;
+            set.South = oldWest;
+            set.West = oldNorth;
+        }
     }
 
     private static vec2[] GetFaceUv(string faceName, float[]? uvTag, int rotation)
@@ -2035,6 +2467,16 @@ public class SpawnMenu : UiPanel
             });
             mesh.Dispose();
         }
+
+        return templates;
+    }
+
+    private List<MeshTemplate> BuildVariantTemplates(IEnumerable<BlockVariantEntry> variants)
+    {
+        var templates = new List<MeshTemplate>();
+
+        foreach (var variant in variants)
+            templates.AddRange(BuildVariantTemplates(variant));
 
         return templates;
     }
@@ -2533,7 +2975,7 @@ public class SpawnMenu : UiPanel
             case 61:
             {
                 blockName = "furnace";
-                if (TryLegacyHorizontalFacingFrom2To5(blockData, out string? furnaceFacing))
+                if (TryLegacyFurnaceFacing(blockData, out string? furnaceFacing))
                     variantHint = $"facing={furnaceFacing},lit=false";
                 else
                     variantHint = "lit=false";
@@ -2542,7 +2984,7 @@ public class SpawnMenu : UiPanel
             case 62:
             {
                 blockName = "furnace";
-                if (TryLegacyHorizontalFacingFrom2To5(blockData, out string? furnaceFacing))
+                if (TryLegacyFurnaceFacing(blockData, out string? furnaceFacing))
                     variantHint = $"facing={furnaceFacing},lit=true";
                 else
                     variantHint = "lit=true";
@@ -2560,7 +3002,7 @@ public class SpawnMenu : UiPanel
                 if (TryLegacyHorizontalFacingFrom2To5(blockData, out string? signFacing))
                 {
                     blockName = "oak_wall_sign";
-                    variantHint = $"facing={signFacing}";
+                    variantHint = $"facing={OppositeFacing(signFacing ?? "north")}";
                 }
                 else
                 {
@@ -2619,8 +3061,8 @@ public class SpawnMenu : UiPanel
                 bool top = (blockData & 0x8) != 0;
                 string facing = (blockData & 0x3) switch
                 {
-                    0 => "south",
-                    1 => "north",
+                    0 => "north",
+                    1 => "south",
                     2 => "east",
                     3 => "west",
                     _ => "north"
@@ -2729,8 +3171,8 @@ public class SpawnMenu : UiPanel
     {
         facing = (data & 0x7) switch
         {
-            2 => "north",
-            3 => "south",
+            2 => "south",
+            3 => "north",
             4 => "west",
             5 => "east",
             _ => null
@@ -2744,8 +3186,8 @@ public class SpawnMenu : UiPanel
         {
             1 => "east",
             2 => "west",
-            3 => "south",
-            4 => "north",
+            3 => "north",
+            4 => "south",
             _ => null
         };
         return facing != null;
@@ -2757,11 +3199,36 @@ public class SpawnMenu : UiPanel
         {
             1 => "east",
             2 => "west",
-            3 => "south",
-            4 => "north",
+            3 => "north",
+            4 => "south",
             _ => null
         };
         return facing != null;
+    }
+
+    private static bool TryLegacyFurnaceFacing(int data, out string? facing)
+    {
+        facing = (data & 0x7) switch
+        {
+            2 => "north",
+            3 => "south",
+            4 => "west",
+            5 => "east",
+            _ => null
+        };
+        return facing != null;
+    }
+
+    private static string OppositeFacing(string facing)
+    {
+        return facing switch
+        {
+            "north" => "south",
+            "south" => "north",
+            "east" => "west",
+            "west" => "east",
+            _ => facing
+        };
     }
 
     private static bool TryResolveLegacyDoor(
@@ -2774,12 +3241,14 @@ public class SpawnMenu : UiPanel
         int height,
         int length,
         out string blockName,
-        out string variantHint)
+        out string variantHint,
+        out bool isUpperHalf)
     {
         blockName = blockId == 71 ? "iron_door" : "oak_door";
 
         int layerSize = width * length;
         bool isUpper = (blockData & 0x8) != 0;
+        isUpperHalf = isUpper;
 
         int lowerData = blockData;
         int upperData = 0;
@@ -2800,10 +3269,10 @@ public class SpawnMenu : UiPanel
 
         string facing = (lowerData & 0x3) switch
         {
-            0 => "east",
-            1 => "south",
-            2 => "west",
-            3 => "north",
+            0 => "west",
+            1 => "north",
+            2 => "east",
+            3 => "south",
             _ => "north"
         };
 
@@ -2814,6 +3283,32 @@ public class SpawnMenu : UiPanel
         string hinge = hingeRight ? "right" : "left";
         variantHint = $"facing={facing},half={half},hinge={hinge},open={(open ? "true" : "false")}";
         return true;
+    }
+
+    private static string BuildLegacyFenceVariantHint(byte[] blocks, int index, int width, int height, int length)
+    {
+        int layerSize = width * length;
+        int y = index / layerSize;
+        int rem = index % layerSize;
+        int z = rem / width;
+        int x = rem % width;
+
+        bool IsFenceLike(int nx, int ny, int nz)
+        {
+            if (nx < 0 || ny < 0 || nz < 0 || nx >= width || ny >= height || nz >= length)
+                return false;
+
+            int nIndex = ny * layerSize + nz * width + nx;
+            int id = blocks[nIndex];
+            return id == 85 || id == 107; // oak_fence and oak_fence_gate
+        }
+
+        bool north = IsFenceLike(x, y, z - 1);
+        bool east = IsFenceLike(x + 1, y, z);
+        bool south = IsFenceLike(x, y, z + 1);
+        bool west = IsFenceLike(x - 1, y, z);
+
+        return $"north={(north ? "true" : "false")},east={(east ? "true" : "false")},south={(south ? "true" : "false")},west={(west ? "true" : "false")}";
     }
 
     // ── Spawn logic ───────────────────────────────────────────────────────────

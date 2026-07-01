@@ -189,6 +189,13 @@ public static class ProjectSceneSerializer
         if (entry.SpawnCategory == "Primitives")
             return spawnMenu.SpawnPrimitiveObject(entry.ObjectType, entry.Name);
 
+        if (entry.SpawnCategory == "Scenery")
+        {
+            if (!string.IsNullOrWhiteSpace(entry.SourceAssetPath) && File.Exists(entry.SourceAssetPath))
+                return spawnMenu.SpawnSchematicFromPath(entry.SourceAssetPath);
+            return null;
+        }
+
         if (!string.IsNullOrWhiteSpace(entry.SourceAssetPath) && File.Exists(entry.SourceAssetPath))
             return spawnMenu.SpawnCustomModelFromPath(entry.SourceAssetPath);
 

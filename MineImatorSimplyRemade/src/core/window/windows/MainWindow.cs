@@ -265,7 +265,8 @@ public class MainWindow : Window
             _spawnMenu = new SpawnMenu
             {
                 Gl = gl,
-                Viewport = viewport
+                Viewport = viewport,
+                ProjectManager = _projectManager
             };
             viewport.SpawnMenu = _spawnMenu;
             if (_contentBrowser != null)
