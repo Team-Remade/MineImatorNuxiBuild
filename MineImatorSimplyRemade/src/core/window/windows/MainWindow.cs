@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core.mdl.mineImator;
@@ -69,6 +72,12 @@ public class MainWindow : Window
     private PendingSaveAction _pendingSaveAction;
     private bool _pendingSavePrimed;
 
+    private readonly string _appTitle;
+    private string _lastAppliedWindowTitle = "";
+    private string _savedSceneFingerprint = "";
+    private double _nextDirtyCheckAtSeconds;
+    private const double DirtyCheckIntervalSeconds = 0.35;
+
     private readonly UiPanel[] _panels =
     [
         new Viewport(),
@@ -80,6 +89,7 @@ public class MainWindow : Window
 
     public MainWindow(int width, int height, string title, Glfw glfw, GL? gl = null) : base(width, height, title, glfw, gl!)
     {
+        _appTitle = title;
         _menubar = new Menubar();
         _menubar.NewProjectRequested = OpenNewProjectPopup;
         _menubar.OpenProjectRequested = OpenProjectFromDialog;
@@ -99,6 +109,7 @@ public class MainWindow : Window
             icon = LoadEmbeddedImage(Rnd.Next(0, 1) == 1 ? "icons.tamari" : "icons.prism");
 
         SetWindowIcon(icon);
+        RefreshWindowTitle();
     }
 
     public CameraViewport? GetCameraViewport() => _cameraViewport;
@@ -206,6 +217,8 @@ public class MainWindow : Window
 
         HandleKeyboardShortcuts();
         ProcessPendingSaveAction();
+        UpdateDirtyStateFromScene();
+        RefreshWindowTitle();
 
         _menubar.Render();
         RenderProjectDialogs();
@@ -247,6 +260,85 @@ public class MainWindow : Window
         _spawnMenu?.Render();
         RenderProjectHomeScreen();
         RenderToast();
+    }
+
+    private void UpdateDirtyStateFromScene()
+    {
+        if (!_projectManager.HasProject || _mainViewport == null)
+        {
+            _projectManager.SetDirty(false);
+            _savedSceneFingerprint = "";
+            return;
+        }
+
+        double now = GetNowSeconds();
+        if (now < _nextDirtyCheckAtSeconds)
+            return;
+
+        _nextDirtyCheckAtSeconds = now + DirtyCheckIntervalSeconds;
+
+        string currentFingerprint = BuildSceneFingerprint();
+        if (string.IsNullOrEmpty(currentFingerprint))
+            return;
+
+        if (string.IsNullOrEmpty(_savedSceneFingerprint))
+            _savedSceneFingerprint = currentFingerprint;
+
+        _projectManager.SetDirty(!string.Equals(currentFingerprint, _savedSceneFingerprint, StringComparison.Ordinal));
+    }
+
+    private void CaptureCurrentSceneAsSavedState()
+    {
+        if (!_projectManager.HasProject || _mainViewport == null)
+        {
+            _savedSceneFingerprint = "";
+            _projectManager.SetDirty(false);
+            return;
+        }
+
+        _savedSceneFingerprint = BuildSceneFingerprint();
+        _projectManager.SetDirty(false);
+    }
+
+    private string BuildSceneFingerprint()
+    {
+        if (_mainViewport == null)
+            return "";
+
+        var manifestSnapshot = new ProjectManifest
+        {
+            ProjectName = _projectManager.Manifest.ProjectName,
+            CreatedUtc = "",
+            LastSavedUtc = "",
+            Assets = new List<ProjectAssetEntry>(_projectManager.Manifest.Assets)
+        };
+
+        ProjectSceneSerializer.WriteSceneToManifest(manifestSnapshot, _mainViewport, _timeline);
+
+        string snapshotJson = JsonSerializer.Serialize(manifestSnapshot, AppJsonContext.Default.ProjectManifest);
+
+        byte[] hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(snapshotJson));
+        return Convert.ToHexString(hashBytes);
+    }
+
+    private void RefreshWindowTitle()
+    {
+        string title;
+        if (_projectManager.HasProject)
+        {
+            string state = _projectManager.IsDirty ? "Unsaved" : "Saved";
+            title = $"{_appTitle} - {_projectManager.Manifest.ProjectName} [{state}]";
+        }
+        else
+        {
+            title = $"{_appTitle} - No Project";
+        }
+
+        if (string.Equals(title, _lastAppliedWindowTitle, StringComparison.Ordinal))
+            return;
+
+        SetWindowTitle(title);
+        _lastAppliedWindowTitle = title;
     }
 
     private void HandleKeyboardShortcuts()
@@ -481,6 +573,8 @@ public class MainWindow : Window
         {
             _showProjectHome = false;
             LoadProjectScene();
+            CaptureCurrentSceneAsSavedState();
+            RefreshWindowTitle();
         }
         else
         {
@@ -503,6 +597,8 @@ public class MainWindow : Window
         {
             _showProjectHome = false;
             LoadProjectScene();
+            CaptureCurrentSceneAsSavedState();
+            RefreshWindowTitle();
         }
         else
         {
@@ -563,7 +659,9 @@ public class MainWindow : Window
         {
             ProjectSceneSerializer.WriteSceneToManifest(_projectManager.Manifest, _mainViewport, _timeline);
             _projectManager.SaveManifest();
+            CaptureCurrentSceneAsSavedState();
             RefreshProjectThumbnail();
+            RefreshWindowTitle();
             ShowSuccessToast($"Saved {_projectManager.Manifest.ProjectName}");
         }
         catch (Exception ex)
@@ -618,7 +716,9 @@ public class MainWindow : Window
 
                 ProjectSceneSerializer.WriteSceneToManifest(_projectManager.Manifest, _mainViewport, _timeline);
                 _projectManager.SaveProjectAs(name);
+                CaptureCurrentSceneAsSavedState();
                 RefreshProjectThumbnail();
+                RefreshWindowTitle();
                 ShowSuccessToast($"Saved copy as {name}");
                 _showProjectHome = false;
                 return true;
@@ -631,6 +731,7 @@ public class MainWindow : Window
                 ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, _mainViewport, _spawnMenu, _timeline);
 
             SaveProjectWithSceneInternal();
+            RefreshWindowTitle();
             return true;
         }
         catch (Exception ex)

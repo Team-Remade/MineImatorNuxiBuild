@@ -222,6 +222,11 @@ public class Window : IDisposable
         }
     }
 
+    public unsafe void SetWindowTitle(string title)
+    {
+        Glfw.SetWindowTitle(windowHandle, title);
+    }
+
     public unsafe void Dispose()
     {
         Glfw.DestroyWindow(windowHandle);

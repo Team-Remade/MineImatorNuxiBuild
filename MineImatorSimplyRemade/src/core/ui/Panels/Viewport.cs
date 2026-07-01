@@ -1,4 +1,6 @@
-﻿using System.Numerics;
+﻿using System.Buffers.Binary;
+using System.IO.Compression;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using GlmSharp;
@@ -10,8 +12,6 @@ using MineImatorSimplyRemade.gizmo;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
 using StbImageSharp;
@@ -798,27 +798,88 @@ public class Viewport : UiPanel
         return dest;
     }
 
+    private static readonly byte[] PngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+
     private static void WritePng24(string filePath, byte[] rgbPixels, int width, int height)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(filePath) ?? ".");
 
-        using var image = new Image<Rgb24>(width, height);
+        int stride = width * 3;
+        byte[] scanlines = new byte[height * (stride + 1)];
         for (int y = 0; y < height; y++)
         {
+            int destRow = y * (stride + 1);
             int srcY = height - 1 - y;
-            int srcRow = srcY * width * 3;
-
-            for (int x = 0; x < width; x++)
-            {
-                int srcIndex = srcRow + x * 3;
-                image[x, y] = new Rgb24(
-                    rgbPixels[srcIndex + 0],
-                    rgbPixels[srcIndex + 1],
-                    rgbPixels[srcIndex + 2]);
-            }
+            int srcRow = srcY * stride;
+            System.Buffer.BlockCopy(rgbPixels, srcRow, scanlines, destRow + 1, stride);
         }
 
-        image.SaveAsPng(filePath);
+        byte[] ihdr = new byte[13];
+        BinaryPrimitives.WriteUInt32BigEndian(ihdr.AsSpan(0, 4), (uint)width);
+        BinaryPrimitives.WriteUInt32BigEndian(ihdr.AsSpan(4, 4), (uint)height);
+        ihdr[8] = 8;
+        ihdr[9] = 2;
+
+        byte[] compressed;
+        using (var compressedStream = new MemoryStream())
+        {
+            using (var zlib = new ZLibStream(compressedStream, CompressionLevel.SmallestSize, leaveOpen: true))
+                zlib.Write(scanlines, 0, scanlines.Length);
+
+            compressed = compressedStream.ToArray();
+        }
+
+        using var stream = File.Create(filePath);
+        stream.Write(PngSignature, 0, PngSignature.Length);
+        WritePngChunk(stream, "IHDR", ihdr);
+        WritePngChunk(stream, "IDAT", compressed);
+        WritePngChunk(stream, "IEND", []);
+    }
+
+    private static void WritePngChunk(Stream stream, string chunkType, byte[] data)
+    {
+        Span<byte> header = stackalloc byte[8];
+        BinaryPrimitives.WriteUInt32BigEndian(header[..4], (uint)data.Length);
+        header[4] = (byte)chunkType[0];
+        header[5] = (byte)chunkType[1];
+        header[6] = (byte)chunkType[2];
+        header[7] = (byte)chunkType[3];
+
+        stream.Write(header);
+        if (data.Length > 0)
+            stream.Write(data, 0, data.Length);
+
+        uint crc = ComputePngCrc32(chunkType, data);
+        Span<byte> crcBytes = stackalloc byte[4];
+        BinaryPrimitives.WriteUInt32BigEndian(crcBytes, crc);
+        stream.Write(crcBytes);
+    }
+
+    private static uint ComputePngCrc32(string chunkType, byte[] data)
+    {
+        uint crc = 0xFFFFFFFFu;
+
+        for (int i = 0; i < chunkType.Length; i++)
+            crc = UpdatePngCrc32(crc, (byte)chunkType[i]);
+
+        for (int i = 0; i < data.Length; i++)
+            crc = UpdatePngCrc32(crc, data[i]);
+
+        return crc ^ 0xFFFFFFFFu;
+    }
+
+    private static uint UpdatePngCrc32(uint crc, byte value)
+    {
+        crc ^= value;
+        for (int bit = 0; bit < 8; bit++)
+        {
+            if ((crc & 1u) != 0)
+                crc = (crc >> 1) ^ 0xEDB88320u;
+            else
+                crc >>= 1;
+        }
+
+        return crc;
     }
 
     // ── Render ─────────────────────────────────────────────────────────────────

@@ -18,8 +18,19 @@ public sealed class ProjectManager
     public ProjectManifest Manifest { get; private set; } = new();
     public string ProjectFolder { get; private set; } = "";
     public string ProjectFilePath { get; private set; } = "";
-    public string DefaultProjectRoot => Path.Combine(AppContext.BaseDirectory, "Projects");
-    public string RecentProjectsFilePath => Path.Combine(AppContext.BaseDirectory, "recentProjects.json");
+    public bool IsDirty { get; private set; }
+    public string DefaultProjectRoot => ResolveDefaultProjectRoot();
+    public string RecentProjectsFilePath => Path.Combine(AppDataRoot, "recentProjects.json");
+
+    private static string AppDocumentsRoot => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        "MineImatorSimplyRemade");
+
+    private static string AppDataRoot => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "MineImatorSimplyRemade");
+
+    private string LegacyRecentProjectsFilePath => Path.Combine(AppContext.BaseDirectory, "recentProjects.json");
 
     private string DataRoot => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "data"));
 
@@ -60,6 +71,7 @@ public sealed class ProjectManager
 
         TrackRecentProject(ProjectFilePath, Manifest.ProjectName);
         SaveManifest();
+        SetDirty(false);
     }
 
     public void CreateNewProject(string projectFolder, string projectName)
@@ -95,6 +107,7 @@ public sealed class ProjectManager
 
         TrackRecentProject(ProjectFilePath, Manifest.ProjectName);
         SaveManifest();
+        SetDirty(false);
     }
 
     public bool LoadProject(string projectPath)
@@ -137,6 +150,7 @@ public sealed class ProjectManager
         Directory.CreateDirectory(OtherFolder);
 
         TrackRecentProject(ProjectFilePath, Manifest.ProjectName);
+        SetDirty(false);
 
         return true;
     }
@@ -152,6 +166,7 @@ public sealed class ProjectManager
         using var writer = new Utf8JsonWriter(stream, writerOptions);
         JsonSerializer.Serialize(writer, Manifest, AppJsonContext.Default.ProjectManifest);
         writer.Flush();
+        SetDirty(false);
     }
 
     public void SaveProjectAs(string projectName)
@@ -181,6 +196,12 @@ public sealed class ProjectManager
 
         TrackRecentProject(ProjectFilePath, Manifest.ProjectName);
         SaveManifest();
+        SetDirty(false);
+    }
+
+    public void SetDirty(bool isDirty)
+    {
+        IsDirty = isDirty;
     }
 
     public ProjectAssetEntry AddAsset(string sourcePath, ProjectAssetType assetType)
@@ -292,12 +313,27 @@ public sealed class ProjectManager
 
     private RecentProjectsState LoadRecentProjectsState()
     {
-        if (!File.Exists(RecentProjectsFilePath))
+        if (File.Exists(RecentProjectsFilePath))
+            return ReadRecentProjectsStateFrom(RecentProjectsFilePath);
+
+        if (File.Exists(LegacyRecentProjectsFilePath))
+        {
+            var legacyState = ReadRecentProjectsStateFrom(LegacyRecentProjectsFilePath);
+            SaveRecentProjectsState(legacyState);
+            return legacyState;
+        }
+
+        return new RecentProjectsState();
+    }
+
+    private RecentProjectsState ReadRecentProjectsStateFrom(string path)
+    {
+        if (!File.Exists(path))
             return new RecentProjectsState();
 
         try
         {
-            string json = File.ReadAllText(RecentProjectsFilePath);
+            string json = File.ReadAllText(path);
             return JsonSerializer.Deserialize(json, AppJsonContext.Default.RecentProjectsState)
                    ?? new RecentProjectsState();
         }
@@ -309,6 +345,8 @@ public sealed class ProjectManager
 
     private void SaveRecentProjectsState(RecentProjectsState state)
     {
+        Directory.CreateDirectory(Path.GetDirectoryName(RecentProjectsFilePath) ?? AppDataRoot);
+
         var writerOptions = new JsonWriterOptions { Indented = true };
         using var stream = File.Create(RecentProjectsFilePath);
         using var writer = new Utf8JsonWriter(stream, writerOptions);
@@ -363,6 +401,12 @@ public sealed class ProjectManager
     {
         string ext = Path.GetExtension(path).ToLowerInvariant();
         return ext is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".tga" or ".dds" or ".gif" or ".webp" or ".tiff";
+    }
+
+    private static string ResolveDefaultProjectRoot()
+    {
+        string basePath = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
+        return Path.Combine(basePath, "Projects");
     }
 
     private static bool IsPathUnderDirectory(string path, string directory)
