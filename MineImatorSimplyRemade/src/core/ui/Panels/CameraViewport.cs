@@ -88,6 +88,9 @@ public class CameraViewport : UiPanel
     private const float InlineMinW = 160f;
     private const float InlineMinH = 120f;
     private const float InlinePad  = 8f;
+    private bool _inlineResizeDragActive;
+    private Vector2 _prevInlineWindowSize;
+    private bool _hasPrevInlineWindowSize;
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -264,8 +267,13 @@ public class CameraViewport : UiPanel
             _                                 => imageMin.Y + imageSize.Y - _inlineSize.Y - InlinePad,
         };
 
-        ImGui.SetNextWindowPos(new Vector2(posX, posY), ImGuiCond.Always);
-        ImGui.SetNextWindowSize(_inlineSize, ImGuiCond.Always);
+        // While the resize grip is being dragged, avoid forcing anchored
+        // position/size each frame; otherwise live resize can fight the lock.
+        if (!_inlineResizeDragActive)
+        {
+            ImGui.SetNextWindowPos(new Vector2(posX, posY), ImGuiCond.Always);
+            ImGui.SetNextWindowSize(_inlineSize, ImGuiCond.Always);
+        }
         ImGui.SetNextWindowSizeConstraints(
             new Vector2(InlineMinW, InlineMinH),
             new Vector2(imageSize.X - InlinePad * 2, imageSize.Y - InlinePad * 2));
@@ -287,6 +295,28 @@ public class CameraViewport : UiPanel
 
         // Track resize (user drags the resize handle).
         _inlineSize = ImGui.GetWindowSize();
+
+        Vector2 winPos = ImGui.GetWindowPos();
+        Vector2 winSz = _inlineSize;
+        Vector2 mouse = ImGui.GetMousePos();
+        bool leftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
+        bool hovered = ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows);
+        bool overResizeGrip = mouse.X >= winPos.X + winSz.X - 28f &&
+                              mouse.X <= winPos.X + winSz.X + 12f &&
+                              mouse.Y >= winPos.Y + winSz.Y - 28f &&
+                              mouse.Y <= winPos.Y + winSz.Y + 12f;
+
+        bool sizeChangedThisFrame = _hasPrevInlineWindowSize &&
+                                    (MathF.Abs(winSz.X - _prevInlineWindowSize.X) > 0.1f ||
+                                     MathF.Abs(winSz.Y - _prevInlineWindowSize.Y) > 0.1f);
+
+        if (!leftDown)
+            _inlineResizeDragActive = false;
+        else if (!_inlineResizeDragActive && ((hovered && overResizeGrip) || sizeChangedThisFrame))
+            _inlineResizeDragActive = true;
+
+        _prevInlineWindowSize = winSz;
+        _hasPrevInlineWindowSize = true;
 
         // ── Header row ────────────────────────────────────────────────────────
         var (activeCam, sceneObj) = DrawCameraDropdown(spawned);
