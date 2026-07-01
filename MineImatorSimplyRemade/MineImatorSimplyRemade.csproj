@@ -10,6 +10,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="Cyotek.Data.Nbt" Version="4.0.0" />
       <PackageReference Include="FFMPEGCore-Fork" Version="1.0.0" />
       <PackageReference Include="FFMpegCore.Extensions.Downloader" Version="5.0.0" />
       <PackageReference Include="GlmSharp" Version="0.9.8" />
