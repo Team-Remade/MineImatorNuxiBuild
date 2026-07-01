@@ -19,11 +19,7 @@ namespace MineImatorSimplyRemade.core.window.windows;
 public class MainWindow : Window
 {
     public static Random Rnd = new Random();
-    
-    private static readonly string
-        LocalPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-    
-    private static readonly string ApplicationLocalDirectory = "SimplyRemadeNuxi";
+
     private static readonly string ImGuiIniPath = "imgui.ini";
     
     /// <summary>Returns the camera viewport panel for use by <c>main.cs</c>.</summary>

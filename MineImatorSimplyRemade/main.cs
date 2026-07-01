@@ -1,4 +1,5 @@
 ﻿using GlmSharp;
+using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.window;
 using MineImatorSimplyRemade.core.window.windows;
 using Silk.NET.Core.Native;
@@ -8,6 +9,13 @@ using Silk.NET.OpenGL;
 
 public static class main
 {
+    public const string ApplicationLocalDirectory = "SimplyRemadeNuxi";
+
+    public static readonly string LocalPath =
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+    public static string ApplicationLocalDirectoryPath {get; private set;} = Path.Combine(main.LocalPath, main.ApplicationLocalDirectory);
+    
     private static Glfw Glfw { get; set; }
     private static MainWindow MainWindow { get; set; }
     private static CameraWindow CameraWindow { get; set; }
@@ -23,6 +31,12 @@ public static class main
             Console.WriteLine("Failed to initialize GLFW");
             return 1;
         }
+
+        // Show startup progress only for first-time FFmpeg download.
+        if (FfmpegBootstrap.RequiresFirstTimeDownload())
+            ShowFfmpegStartupWindow();
+        else
+            FfmpegBootstrap.EnsureFfmpegInstalled();
 
         // ── Main window ───────────────────────────────────────────────────────
         Glfw.WindowHint(WindowHintInt.ContextVersionMajor, 3);
@@ -127,5 +141,62 @@ public static class main
     {
         // GLFW_VISIBLE attribute: 1 = visible, 0 = hidden.
         return Glfw.GetWindowAttrib(CameraWindow.WindowHandle, WindowAttributeGetter.Visible);
+    }
+
+    private static unsafe void ShowFfmpegStartupWindow()
+    {
+        Glfw.WindowHint(WindowHintInt.ContextVersionMajor, 3);
+        Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
+        Glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
+
+        var startupWindow = new StartupProgressWindow(560, 210, "Preparing Mine Imator Simply Remade", Glfw);
+        if (startupWindow.WindowHandle == null)
+        {
+            // Fallback if the startup window cannot be created.
+            FfmpegBootstrap.EnsureFfmpegInstalled();
+            return;
+        }
+
+        startupWindow.CenterWindow();
+        startupWindow.SetClearColor(new vec4(0.11f, 0.11f, 0.13f, 1f));
+
+        Glfw.MakeContextCurrent(startupWindow.WindowHandle);
+        using var startupGl = GL.GetApi(Glfw.GetProcAddress);
+        startupWindow.SetGL(startupGl);
+        startupWindow.SetupImgui();
+
+        string status = "Preparing FFmpeg setup...";
+        Exception? downloadError = null;
+
+        var installTask = Task.Run(() =>
+        {
+            try
+            {
+                FfmpegBootstrap.EnsureFfmpegInstalled(message => status = message);
+            }
+            catch (Exception ex)
+            {
+                downloadError = ex;
+            }
+        });
+
+        while (!installTask.IsCompleted)
+        {
+            Glfw.PollEvents();
+
+            startupWindow.StatusMessage = status;
+
+            if (!Glfw.WindowShouldClose(startupWindow.WindowHandle))
+                startupWindow.Render();
+
+            Thread.Sleep(16);
+        }
+
+        if (downloadError != null)
+        {
+            Console.Error.WriteLine($"[FFmpeg] Failed to initialize local ffmpeg binaries: {downloadError.Message}");
+        }
+
+        startupWindow.Dispose();
     }
 }
