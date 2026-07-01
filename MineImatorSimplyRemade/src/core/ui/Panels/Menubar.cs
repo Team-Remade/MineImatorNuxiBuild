@@ -18,6 +18,7 @@ public class Menubar : UiPanel
     public Action? UndoRequested { get; set; }
     public Action? RedoRequested { get; set; }
     public Action? ImportAssetRequested { get; set; }
+    public Action? ResetWorkCameraRequested { get; set; }
     public Action? HomeScreenRequested { get; set; }
     public Action<RenderRequestKind>? RenderRequested { get; set; }
 
@@ -126,6 +127,7 @@ public class Menubar : UiPanel
             {
                 if (ImGui.MenuItem("Reset Work Camera"))
                 {
+                    ResetWorkCameraRequested?.Invoke();
                 }
                 if (ImGui.MenuItem("Show Secondary View"))
                 {

@@ -171,6 +171,7 @@ public class MainWindow : Window
         _menubar.UndoRequested = PerformUndo;
         _menubar.RedoRequested = PerformRedo;
         _menubar.ImportAssetRequested = ImportAssetFromDialog;
+        _menubar.ResetWorkCameraRequested = () => _mainViewport?.Camera.ResetToDefaultPose();
         _menubar.HomeScreenRequested = () => _showProjectHome = true;
         _menubar.RenderRequested = OpenRenderPopup;
 

@@ -2070,6 +2070,9 @@ public class Viewport : UiPanel
 
             if (_freeFly)
             {
+                if (ImGui.IsKeyPressed(ImGuiKey.R, false))
+                    Camera.ResetToDefaultPose();
+
                 // io.MouseDelta is populated by the GLFW backend from the raw
                 // cursor position callback — correct even while cursor is locked.
                 float lookDx =  io.MouseDelta.X * FreeFlyLookSensitivity;

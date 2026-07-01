@@ -16,19 +16,24 @@ namespace MineImatorSimplyRemade.core;
 /// </summary>
 public class Camera
 {
+    public static readonly vec3 DefaultTarget = vec3.Zero;
+    public const float DefaultYaw = 0.5f;
+    public const float DefaultPitch = 0.4f;
+    public const float DefaultDistance = 5f;
+
     // ── Orbit state ───────────────────────────────────────────────────────────
 
     /// <summary>World-space point the camera orbits around.</summary>
-    public vec3 Target = vec3.Zero;
+    public vec3 Target = DefaultTarget;
 
     /// <summary>Horizontal rotation angle in radians.</summary>
-    public float Yaw = 0.5f;
+    public float Yaw = DefaultYaw;
 
     /// <summary>Vertical tilt angle in radians (clamped to ±89°).</summary>
-    public float Pitch = 0.4f;
+    public float Pitch = DefaultPitch;
 
     /// <summary>Distance from <see cref="Target"/> to the camera eye.</summary>
-    public float Distance = 5f;
+    public float Distance = DefaultDistance;
 
     // ── Projection state ──────────────────────────────────────────────────────
 
@@ -139,6 +144,15 @@ public class Camera
         Target += delta;
         // Position is derived from Target + OffsetFromTarget(), so moving
         // Target moves the eye implicitly.
+    }
+
+    /// <summary>Restores the camera to its default work-camera spawn pose.</summary>
+    public void ResetToDefaultPose()
+    {
+        Target = DefaultTarget;
+        Yaw = DefaultYaw;
+        Pitch = DefaultPitch;
+        Distance = DefaultDistance;
     }
 
     // ── Matrix getters ────────────────────────────────────────────────────────
