@@ -6,6 +6,8 @@
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+        <NoWarn>$(NoWarn);IL2104</NoWarn>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
@@ -29,6 +31,10 @@
     
     <ItemGroup>
         <EmbeddedResource Include="assets\**" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <TrimmerRootDescriptor Include="TrimmerRoots.xml" />
     </ItemGroup>
 
     <Target Name="CopyDataFolder" AfterTargets="Build">

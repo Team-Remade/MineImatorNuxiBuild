@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using MineImatorSimplyRemade.core.mdl.mineImator;
+using MineImatorSimplyRemade.core.project;
 
 namespace MineImatorSimplyRemade;
 
@@ -20,6 +21,7 @@ namespace MineImatorSimplyRemade;
 [JsonSerializable(typeof(TexturesNuxManifest))]
 [JsonSerializable(typeof(MiObject))]
 [JsonSerializable(typeof(MiModel))]
+[JsonSerializable(typeof(ProjectManifest))]
 internal partial class AppJsonContext : JsonSerializerContext
 {
 }

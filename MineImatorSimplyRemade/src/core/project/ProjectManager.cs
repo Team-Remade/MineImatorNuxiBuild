@@ -12,11 +12,6 @@ public sealed class ProjectManager
     public static ProjectManager Instance => _lazy.Value;
 
     private const string ProjectFileExtension = ".nxProj";
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true
-    };
-
     private ProjectManager() { }
 
     public ProjectManifest Manifest { get; private set; } = new();
@@ -124,7 +119,7 @@ public sealed class ProjectManager
         }
 
         string json = File.ReadAllText(projectFile);
-        var manifest = JsonSerializer.Deserialize<ProjectManifest>(json);
+        var manifest = JsonSerializer.Deserialize(json, AppJsonContext.Default.ProjectManifest);
         if (manifest == null)
             return false;
 
@@ -146,8 +141,11 @@ public sealed class ProjectManager
             throw new InvalidOperationException("No project is currently open.");
 
         Manifest.LastSavedUtc = DateTime.UtcNow.ToString("o");
-        string json = JsonSerializer.Serialize(Manifest, JsonOptions);
-        File.WriteAllText(ProjectFilePath, json);
+        var writerOptions = new JsonWriterOptions { Indented = true };
+        using var stream = File.Create(ProjectFilePath);
+        using var writer = new Utf8JsonWriter(stream, writerOptions);
+        JsonSerializer.Serialize(writer, Manifest, AppJsonContext.Default.ProjectManifest);
+        writer.Flush();
     }
 
     public ProjectAssetEntry AddAsset(string sourcePath, ProjectAssetType assetType)

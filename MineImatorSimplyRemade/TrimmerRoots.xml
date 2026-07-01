@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<linker>
+  <!-- Keep FFmpeg downloader models/constructors used by reflection-based JSON in trimmed builds. -->
+  <assembly fullname="FFMpegCore" preserve="all" />
+  <assembly fullname="FFMpegCore.Extensions.Downloader" preserve="all" />
+</linker>
