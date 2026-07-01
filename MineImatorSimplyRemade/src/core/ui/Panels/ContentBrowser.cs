@@ -65,7 +65,7 @@ public class ContentBrowser : UiPanel
             if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
             {
                 _selectedAssetIndex = i;
-                SpawnSelectedModel();
+                SpawnSelectedAsset();
             }
 
             visibleIndex++;
@@ -76,10 +76,10 @@ public class ContentBrowser : UiPanel
 
         ImGui.EndChild();
 
-        bool canSpawn = CanSpawnSelectedModel();
+        bool canSpawn = CanSpawnSelectedAsset();
         if (!canSpawn) ImGui.BeginDisabled();
-        if (ImGui.Button("Spawn Selected Model", new Vector2(-1, 28)))
-            SpawnSelectedModel();
+        if (ImGui.Button("Spawn Selected Asset", new Vector2(-1, 28)))
+            SpawnSelectedAsset();
         if (!canSpawn) ImGui.EndDisabled();
 
         ImGui.End();
@@ -117,7 +117,7 @@ public class ContentBrowser : UiPanel
         }
     }
 
-    private bool CanSpawnSelectedModel()
+    private bool CanSpawnSelectedAsset()
     {
         var projectManager = ProjectManager.Instance;
         var assets = projectManager.GetProjectAssets();
@@ -126,21 +126,32 @@ public class ContentBrowser : UiPanel
             return false;
 
         var selected = assets[_selectedAssetIndex];
-        if (selected.AssetType != ProjectAssetType.Model)
+        string fullPath = projectManager.GetAssetFullPath(selected);
+        if (!File.Exists(fullPath) || SpawnMenu == null)
             return false;
 
-        string fullPath = projectManager.GetAssetFullPath(selected);
-        return File.Exists(fullPath) && SpawnMenu != null;
+        if (selected.AssetType == ProjectAssetType.Model)
+            return true;
+
+        string ext = Path.GetExtension(fullPath).ToLowerInvariant();
+        return ext is ".schematic" or ".schem";
     }
 
-    private void SpawnSelectedModel()
+    private void SpawnSelectedAsset()
     {
-        if (!CanSpawnSelectedModel())
+        if (!CanSpawnSelectedAsset())
             return;
 
         var projectManager = ProjectManager.Instance;
         var selected = projectManager.GetProjectAssets()[_selectedAssetIndex];
         string fullPath = projectManager.GetAssetFullPath(selected);
+
+        string ext = Path.GetExtension(fullPath).ToLowerInvariant();
+        if (ext is ".schematic" or ".schem")
+        {
+            SpawnMenu?.SpawnSchematicFromPath(fullPath);
+            return;
+        }
 
         SpawnMenu?.SpawnCustomModelFromPath(fullPath);
     }
