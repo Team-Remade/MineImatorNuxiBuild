@@ -10,8 +10,10 @@ namespace MineImatorSimplyRemade.core.project;
 
 public static class ProjectSceneSerializer
 {
-    public static void WriteSceneToManifest(ProjectManifest manifest, Viewport viewport, Timeline? timeline = null)
+    public static void WriteSceneToManifest(ProjectManifest manifest, Viewport viewport, Timeline? timeline = null, PropertiesPanel? propertiesPanel = null)
     {
+        propertiesPanel?.WriteProjectSettingsToManifest(manifest);
+
         manifest.SceneObjects = viewport.SceneObjects
             .Select(SerializeNode)
             .ToList();
@@ -20,8 +22,10 @@ public static class ProjectSceneSerializer
             manifest.Timeline = timeline.ExportProjectState();
     }
 
-    public static void LoadSceneFromManifest(ProjectManifest manifest, Viewport viewport, SpawnMenu spawnMenu, Timeline? timeline = null)
+    public static void LoadSceneFromManifest(ProjectManifest manifest, Viewport viewport, SpawnMenu spawnMenu, Timeline? timeline = null, PropertiesPanel? propertiesPanel = null)
     {
+        propertiesPanel?.LoadProjectSettingsFromManifest(manifest);
+
         ClearScene(viewport);
 
         foreach (var root in manifest.SceneObjects)
@@ -29,6 +33,10 @@ public static class ProjectSceneSerializer
 
         SelectionManager.Instance?.ClearSelection();
         timeline?.ImportProjectState(manifest.Timeline);
+
+        // Keep timeline FPS aligned with project settings after timeline state is restored.
+        if (propertiesPanel != null)
+            timeline?.SetFrameRate(propertiesPanel.GetFramerate());
     }
 
     private static ProjectSceneObjectEntry SerializeNode(SceneObject obj)

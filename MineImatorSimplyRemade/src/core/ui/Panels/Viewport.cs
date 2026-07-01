@@ -54,6 +54,9 @@ public class Viewport : UiPanel
     /// </summary>
     public PlaneMesh? GroundPlane => _groundPlane;
     private PlaneMesh? _groundPlane;
+    public bool GroundPlaneVisible { get; private set; } = true;
+    public string GroundTileAtlas { get; private set; } = "block";
+    public string GroundTileKey { get; private set; } = "grass_block_top";
 
     // ── Camera ─────────────────────────────────────────────────────────────────
 
@@ -252,9 +255,34 @@ public class Viewport : UiPanel
 
         _groundPlane = new PlaneMesh(Gl, 64f, 64f, PlaneOrientation.XZ);
 
-        // Use the named grass_block_top texture from textures/block/.
-        if (TerrainAtlas.Textures.TryGetValue("grass_block_top", out uint tileId))
-            _groundPlane.TextureId = tileId;
+        SetGroundPlaneTexture("block", "grass_block_top");
+    }
+
+    public void SetGroundPlaneVisible(bool visible)
+    {
+        GroundPlaneVisible = visible;
+    }
+
+    public bool SetGroundPlaneTexture(string atlasKind, string tileKey)
+    {
+        if (_groundPlane == null)
+            return false;
+
+        string normalizedAtlas = string.Equals(atlasKind, "item", StringComparison.OrdinalIgnoreCase)
+            ? "item"
+            : "block";
+        string normalizedKey = (tileKey ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalizedKey))
+            return false;
+
+        var atlas = normalizedAtlas == "item" ? ItemsAtlas.Textures : TerrainAtlas.Textures;
+        if (!atlas.TryGetValue(normalizedKey, out uint tileId))
+            return false;
+
+        _groundPlane.TextureId = tileId;
+        GroundTileAtlas = normalizedAtlas;
+        GroundTileKey = normalizedKey;
+        return true;
     }
 
     // ── FBO setup ──────────────────────────────────────────────────────────────
@@ -1081,7 +1109,7 @@ public class Viewport : UiPanel
         activeCamera.Far  = savedFar;
 
         // ── Ground plane ──────────────────────────────────────────────────────
-        if (_groundPlane != null)
+        if (_groundPlane != null && GroundPlaneVisible)
             _groundPlane.Render(mat4.Identity, view, proj);
 
         // ── Per-frame mesh globals ─────────────────────────────────────────────

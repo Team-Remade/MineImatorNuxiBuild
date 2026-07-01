@@ -407,7 +407,7 @@ public class CameraViewport : UiPanel
         cam.FovY = savedFovY; cam.Near = savedNear; cam.Far = savedFar;
 
         // Ground plane.
-        if (MainViewport.GroundPlane != null)
+        if (MainViewport.GroundPlane != null && MainViewport.GroundPlaneVisible)
             MainViewport.GroundPlane.Render(mat4.Identity, view, proj);
 
         // Scene objects.

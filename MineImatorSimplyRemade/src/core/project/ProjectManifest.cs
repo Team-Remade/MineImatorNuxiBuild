@@ -40,8 +40,31 @@ public class ProjectManifest
     public string CreatedUtc { get; set; } = DateTime.UtcNow.ToString("o");
     public string LastSavedUtc { get; set; } = DateTime.UtcNow.ToString("o");
     public List<ProjectAssetEntry> Assets { get; set; } = new();
+    public ProjectRenderSettings Settings { get; set; } = new();
     public List<ProjectSceneObjectEntry> SceneObjects { get; set; } = new();
     public ProjectTimelineState Timeline { get; set; } = new();
+}
+
+public class ProjectRenderSettings
+{
+    public int ResolutionWidth { get; set; } = 1920;
+    public int ResolutionHeight { get; set; } = 1080;
+    public int Framerate { get; set; } = 30;
+    public int TextureAnimationFps { get; set; } = 20;
+    public bool UseSky { get; set; } = false;
+    public bool UseAdvancedSky { get; set; } = false;
+    public bool StretchBackground { get; set; } = true;
+    public string BackgroundImagePath { get; set; } = "No image selected";
+    public bool FloorVisible { get; set; } = true;
+    public string FloorTextureAtlas { get; set; } = "block";
+    public string FloorTileKey { get; set; } = "grass_block_top";
+    public ProjectVec4 BackgroundColor { get; set; } = new()
+    {
+        X = 0.5764706f,
+        Y = 0.5764706f,
+        Z = 1f,
+        W = 1f
+    };
 }
 
 public class ProjectTimelineState

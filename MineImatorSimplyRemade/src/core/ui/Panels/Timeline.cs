@@ -127,6 +127,12 @@ public class Timeline : UiPanel
     public int   CurrentFrame => _currentFrame;
     public float Framerate    => _frameRate;
 
+    public void SetFrameRate(float frameRate)
+    {
+        _frameRate = Math.Clamp(frameRate, 1f, 120f);
+        _frameAccumulator = 0.0;
+    }
+
     public ProjectTimelineState ExportProjectState()
     {
         return new ProjectTimelineState

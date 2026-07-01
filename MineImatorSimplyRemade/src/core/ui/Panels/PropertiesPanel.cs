@@ -1,7 +1,9 @@
 ﻿using System.Numerics;
+using System.Linq;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -19,13 +21,21 @@ public class PropertiesPanel : UiPanel
     public bool UseSky;
     public bool UseAdvancedSky;
 
-    public int GetResolutionWidth()  => 0;
-    public int GetResolutionHeight() => 0;
-    public int GetFramerate()        => 0;
+    private string _projectName = "Untitled Project";
+    private int _resolutionWidth = 1920;
+    private int _resolutionHeight = 1080;
+    private int _framerate = 30;
 
-    public int    TextureAnimationFps  = 0;
+    public int GetResolutionWidth()  => _resolutionWidth;
+    public int GetResolutionHeight() => _resolutionHeight;
+    public int GetFramerate()        => _framerate;
+
+    public int    TextureAnimationFps  = 20;
     public string BackgroundImagePath  = "No image selected";
     public bool   StretchBackground    = true;
+    public bool   FloorVisible         = true;
+    public string FloorTextureAtlas    = "block";
+    public string FloorTileKey         = "grass_block_top";
 
     // ── Object tab state ──────────────────────────────────────────────────────
 
@@ -38,6 +48,7 @@ public class PropertiesPanel : UiPanel
 
     /// <summary>Set from MainWindow after both panels are initialised.</summary>
     public Timeline? Timeline { get; set; }
+    public Viewport? Viewport { get; set; }
 
     /// <summary>
     /// Subscribe to SelectionManager events.  Call once from App.Initialize()
@@ -47,6 +58,109 @@ public class PropertiesPanel : UiPanel
     {
         if (SelectionManager.Instance != null)
             SelectionManager.Instance.SelectionChanged += OnSelectionChanged;
+
+        LoadProjectSettingsFromManifest(ProjectManager.Instance.Manifest);
+    }
+
+    public void LoadProjectSettingsFromManifest(ProjectManifest manifest)
+    {
+        if (manifest == null)
+            return;
+
+        _projectName = string.IsNullOrWhiteSpace(manifest.ProjectName) ? "Untitled Project" : manifest.ProjectName;
+
+        ProjectRenderSettings settings = manifest.Settings ?? new ProjectRenderSettings();
+        _resolutionWidth = Math.Max(1, settings.ResolutionWidth);
+        _resolutionHeight = Math.Max(1, settings.ResolutionHeight);
+        _framerate = Math.Clamp(settings.Framerate, 1, 120);
+        TextureAnimationFps = Math.Clamp(settings.TextureAnimationFps, 1, 240);
+        UseSky = settings.UseSky;
+        UseAdvancedSky = settings.UseAdvancedSky;
+        StretchBackground = settings.StretchBackground;
+        BackgroundImagePath = string.IsNullOrWhiteSpace(settings.BackgroundImagePath)
+            ? "No image selected"
+            : settings.BackgroundImagePath;
+        FloorVisible = settings.FloorVisible;
+        FloorTextureAtlas = NormalizeFloorAtlas(settings.FloorTextureAtlas);
+        FloorTileKey = string.IsNullOrWhiteSpace(settings.FloorTileKey)
+            ? "grass_block_top"
+            : settings.FloorTileKey;
+
+        ProjectVec4 bg = settings.BackgroundColor ?? new ProjectVec4 { X = 0.5764706f, Y = 0.5764706f, Z = 1f, W = 1f };
+        BackgroundColor[0] = bg.X;
+        BackgroundColor[1] = bg.Y;
+        BackgroundColor[2] = bg.Z;
+        BackgroundColor[3] = bg.W;
+
+        ApplyFloorSettingsToViewport();
+        Timeline?.SetFrameRate(_framerate);
+    }
+
+    public void WriteProjectSettingsToManifest(ProjectManifest manifest)
+    {
+        if (manifest == null)
+            return;
+
+        string normalizedName = string.IsNullOrWhiteSpace(_projectName) ? "Untitled Project" : _projectName.Trim();
+        _projectName = normalizedName;
+        manifest.ProjectName = normalizedName;
+
+        manifest.Settings ??= new ProjectRenderSettings();
+        manifest.Settings.ResolutionWidth = Math.Max(1, _resolutionWidth);
+        manifest.Settings.ResolutionHeight = Math.Max(1, _resolutionHeight);
+        manifest.Settings.Framerate = Math.Clamp(_framerate, 1, 120);
+        manifest.Settings.TextureAnimationFps = Math.Clamp(TextureAnimationFps, 1, 240);
+        manifest.Settings.UseSky = UseSky;
+        manifest.Settings.UseAdvancedSky = UseAdvancedSky;
+        manifest.Settings.StretchBackground = StretchBackground;
+        manifest.Settings.BackgroundImagePath = string.IsNullOrWhiteSpace(BackgroundImagePath)
+            ? "No image selected"
+            : BackgroundImagePath;
+        manifest.Settings.FloorVisible = FloorVisible;
+        manifest.Settings.FloorTextureAtlas = NormalizeFloorAtlas(FloorTextureAtlas);
+        manifest.Settings.FloorTileKey = string.IsNullOrWhiteSpace(FloorTileKey)
+            ? "grass_block_top"
+            : FloorTileKey;
+
+        manifest.Settings.BackgroundColor = new ProjectVec4
+        {
+            X = BackgroundColor[0],
+            Y = BackgroundColor[1],
+            Z = BackgroundColor[2],
+            W = BackgroundColor[3]
+        };
+
+        Timeline?.SetFrameRate(_framerate);
+    }
+
+    private static string NormalizeFloorAtlas(string atlas)
+    {
+        return string.Equals(atlas, "item", StringComparison.OrdinalIgnoreCase) ? "item" : "block";
+    }
+
+    private IEnumerable<string> GetFloorAtlasKeys()
+    {
+        var atlas = NormalizeFloorAtlas(FloorTextureAtlas) == "item" ? ItemsAtlas.Textures : TerrainAtlas.Textures;
+        return atlas.Keys.OrderBy(x => x, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private void ApplyFloorSettingsToViewport()
+    {
+        if (Viewport == null)
+            return;
+
+        FloorTextureAtlas = NormalizeFloorAtlas(FloorTextureAtlas);
+        Viewport.SetGroundPlaneVisible(FloorVisible);
+
+        if (!Viewport.SetGroundPlaneTexture(FloorTextureAtlas, FloorTileKey))
+        {
+            string? fallback = GetFloorAtlasKeys().FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(fallback))
+            {
+                FloorTileKey = fallback;
+                Viewport.SetGroundPlaneTexture(FloorTextureAtlas, FloorTileKey);
+            }
+        }
     }
     
     // ── Selection callback ────────────────────────────────────────────────────
@@ -80,62 +194,82 @@ public class PropertiesPanel : UiPanel
 
         if (ImGui.CollapsingHeader("Project Settings", ImGuiTreeNodeFlags.DefaultOpen))
         {
+            var projectManager = ProjectManager.Instance;
+
             ImGui.Text("Project Name:");
             ImGui.SetNextItemWidth(-1);
-            string projectName = "Untitled Project";
-            ImGui.InputText("##ProjectName", ref projectName, 256);
+            if (ImGui.InputText("##ProjectName", ref _projectName, 256))
+            {
+                WriteProjectSettingsToManifest(projectManager.Manifest);
+                projectManager.SetDirty(true);
+            }
 
             ImGui.Spacing();
             ImGui.Text("Resolution:");
-            int resWidth = 1920;
-            int resHeight = 1080;
             ImGui.SetNextItemWidth(80);
-            ImGui.InputInt("##ResWidth", ref resWidth, 0, 0, ImGuiInputTextFlags.None);
+            bool resolutionChanged = ImGui.InputInt("##ResWidth", ref _resolutionWidth, 0, 0, ImGuiInputTextFlags.None);
             ImGui.SameLine();
             ImGui.Text(" x ");
             ImGui.SameLine();
             ImGui.SetNextItemWidth(80);
-            ImGui.InputInt("##ResHeight", ref resHeight, 0, 0, ImGuiInputTextFlags.None);
+            resolutionChanged |= ImGui.InputInt("##ResHeight", ref _resolutionHeight, 0, 0, ImGuiInputTextFlags.None);
             ImGui.Text("Presets:");
-            if (ImGui.Button("720p"))  { resWidth = 1280; resHeight = 720; }
+            if (ImGui.Button("720p"))  { _resolutionWidth = 1280; _resolutionHeight = 720; resolutionChanged = true; }
             ImGui.SameLine();
-            if (ImGui.Button("1080p")) { resWidth = 1920; resHeight = 1080; }
+            if (ImGui.Button("1080p")) { _resolutionWidth = 1920; _resolutionHeight = 1080; resolutionChanged = true; }
             ImGui.SameLine();
-            if (ImGui.Button("1440p")) { resWidth = 2560; resHeight = 1440; }
+            if (ImGui.Button("1440p")) { _resolutionWidth = 2560; _resolutionHeight = 1440; resolutionChanged = true; }
             ImGui.SameLine();
-            if (ImGui.Button("4K"))    { resWidth = 3840; resHeight = 2160; }
+            if (ImGui.Button("4K"))    { _resolutionWidth = 3840; _resolutionHeight = 2160; resolutionChanged = true; }
+            if (resolutionChanged)
+            {
+                _resolutionWidth = Math.Max(1, _resolutionWidth);
+                _resolutionHeight = Math.Max(1, _resolutionHeight);
+                WriteProjectSettingsToManifest(projectManager.Manifest);
+                projectManager.SetDirty(true);
+            }
 
             ImGui.Spacing();
             ImGui.Text("Framerate:");
-            int framerate = 30;
             ImGui.SetNextItemWidth(80);
-            ImGui.InputInt("##Framerate", ref framerate, 0, 0, ImGuiInputTextFlags.None);
+            bool frameRateChanged = ImGui.InputInt("##Framerate", ref _framerate, 0, 0, ImGuiInputTextFlags.None);
             ImGui.SameLine();
             ImGui.Text(" fps");
             ImGui.Text("Presets:");
-            if (ImGui.Button("24"))  { framerate = 24; }
+            if (ImGui.Button("24"))  { _framerate = 24; frameRateChanged = true; }
             ImGui.SameLine();
-            if (ImGui.Button("30"))  { framerate = 30; }
+            if (ImGui.Button("30"))  { _framerate = 30; frameRateChanged = true; }
             ImGui.SameLine();
-            if (ImGui.Button("60"))  { framerate = 60; }
+            if (ImGui.Button("60"))  { _framerate = 60; frameRateChanged = true; }
             ImGui.SameLine();
-            if (ImGui.Button("120")) { framerate = 120; }
+            if (ImGui.Button("120")) { _framerate = 120; frameRateChanged = true; }
+            if (frameRateChanged)
+            {
+                _framerate = Math.Clamp(_framerate, 1, 120);
+                WriteProjectSettingsToManifest(projectManager.Manifest);
+                projectManager.SetDirty(true);
+            }
 
             ImGui.Spacing();
             ImGui.Text("Texture Animation Speed:");
-            int texAnimSpeed = 20;
             ImGui.SetNextItemWidth(80);
-            ImGui.InputInt("##TexAnimSpeed", ref texAnimSpeed, 0, 0, ImGuiInputTextFlags.None);
+            bool textureFpsChanged = ImGui.InputInt("##TexAnimSpeed", ref TextureAnimationFps, 0, 0, ImGuiInputTextFlags.None);
             ImGui.SameLine();
             ImGui.Text(" fps");
             ImGui.Text("Presets:");
-            if (ImGui.Button("10##tex")) { texAnimSpeed = 10; }
+            if (ImGui.Button("10##tex")) { TextureAnimationFps = 10; textureFpsChanged = true; }
             ImGui.SameLine();
-            if (ImGui.Button("20##tex")) { texAnimSpeed = 20; }
+            if (ImGui.Button("20##tex")) { TextureAnimationFps = 20; textureFpsChanged = true; }
             ImGui.SameLine();
-            if (ImGui.Button("30##tex")) { texAnimSpeed = 30; }
+            if (ImGui.Button("30##tex")) { TextureAnimationFps = 30; textureFpsChanged = true; }
             ImGui.SameLine();
-            if (ImGui.Button("60##tex")) { texAnimSpeed = 60; }
+            if (ImGui.Button("60##tex")) { TextureAnimationFps = 60; textureFpsChanged = true; }
+            if (textureFpsChanged)
+            {
+                TextureAnimationFps = Math.Clamp(TextureAnimationFps, 1, 240);
+                WriteProjectSettingsToManifest(projectManager.Manifest);
+                projectManager.SetDirty(true);
+            }
         }
 
         if (ImGui.CollapsingHeader("Background Settings"))
@@ -147,7 +281,11 @@ public class PropertiesPanel : UiPanel
                 fixed (byte* label = "##BackgroundColor"u8)
                 fixed (float* bgColorPtr = BackgroundColor)
                 {
-                    ImGui.ColorEdit4(label, bgColorPtr, ImGuiColorEditFlags.None);
+                    if (ImGui.ColorEdit4(label, bgColorPtr, ImGuiColorEditFlags.None))
+                    {
+                        WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                        ProjectManager.Instance.SetDirty(true);
+                    }
                 }
 
                 ImGui.Spacing();
@@ -170,8 +308,65 @@ public class PropertiesPanel : UiPanel
                         BackgroundColor[1] = presets[i].g;
                         BackgroundColor[2] = presets[i].b;
                         BackgroundColor[3] = presets[i].a;
+                        WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                        ProjectManager.Instance.SetDirty(true);
                     }
                 }
+                ImGui.Spacing();
+
+                bool floorVisible = FloorVisible;
+                if (ImGui.Checkbox("Show Floor", ref floorVisible))
+                {
+                    FloorVisible = floorVisible;
+                    ApplyFloorSettingsToViewport();
+                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                    ProjectManager.Instance.SetDirty(true);
+                }
+
+                bool floorChanged = false;
+                string floorAtlasLabel = NormalizeFloorAtlas(FloorTextureAtlas) == "item" ? "Item Atlas" : "Block Atlas";
+                if (ImGui.BeginCombo("Floor Atlas", floorAtlasLabel))
+                {
+                    bool useBlock = NormalizeFloorAtlas(FloorTextureAtlas) == "block";
+                    if (ImGui.Selectable("Block Atlas", useBlock))
+                    {
+                        FloorTextureAtlas = "block";
+                        floorChanged = true;
+                    }
+
+                    bool useItem = NormalizeFloorAtlas(FloorTextureAtlas) == "item";
+                    if (ImGui.Selectable("Item Atlas", useItem))
+                    {
+                        FloorTextureAtlas = "item";
+                        floorChanged = true;
+                    }
+
+                    ImGui.EndCombo();
+                }
+
+                ImGui.Text("Floor Tile:");
+                ImGui.SetNextItemWidth(-1);
+                if (ImGui.BeginCombo("##FloorTile", FloorTileKey))
+                {
+                    foreach (string key in GetFloorAtlasKeys())
+                    {
+                        bool selected = string.Equals(key, FloorTileKey, StringComparison.Ordinal);
+                        if (ImGui.Selectable(key, selected))
+                        {
+                            FloorTileKey = key;
+                            floorChanged = true;
+                        }
+                    }
+                    ImGui.EndCombo();
+                }
+
+                if (floorChanged)
+                {
+                    ApplyFloorSettingsToViewport();
+                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                    ProjectManager.Instance.SetDirty(true);
+                }
+
                 ImGui.Spacing();
                 // Background Image (display only; file picking not yet implemented)
                 {
@@ -188,6 +383,8 @@ public class PropertiesPanel : UiPanel
                     if (ImGui.Button("Clear##backgroundClear") && BackgroundImagePath != "No image selected")
                     {
                         BackgroundImagePath = "No image selected";
+                        WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                        ProjectManager.Instance.SetDirty(true);
                     }
                 }
             }

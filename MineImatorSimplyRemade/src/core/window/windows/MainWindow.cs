@@ -54,6 +54,7 @@ public class MainWindow : Window
     private ContentBrowser? _contentBrowser;
     private Viewport? _mainViewport;
     private Timeline? _timeline;
+    private PropertiesPanel? _propertiesPanel;
 
     private readonly Menubar _menubar;
     private readonly ProjectManager _projectManager = ProjectManager.Instance;
@@ -146,6 +147,7 @@ public class MainWindow : Window
                     break;
                 case PropertiesPanel pp:
                     propertiesPanel = pp;
+                    _propertiesPanel = pp;
                     break;
                 case ContentBrowser cb:
                     _contentBrowser = cb;
@@ -165,6 +167,8 @@ public class MainWindow : Window
             timeline.Viewport = viewport;
         if (timeline != null && propertiesPanel != null)
             propertiesPanel.Timeline = timeline;
+        if (viewport != null && propertiesPanel != null)
+            propertiesPanel.Viewport = viewport;
         if (timeline != null)
             SelectionManager.Instance.Timeline = timeline;
 
@@ -313,7 +317,7 @@ public class MainWindow : Window
             Assets = new List<ProjectAssetEntry>(_projectManager.Manifest.Assets)
         };
 
-        ProjectSceneSerializer.WriteSceneToManifest(manifestSnapshot, _mainViewport, _timeline);
+        ProjectSceneSerializer.WriteSceneToManifest(manifestSnapshot, _mainViewport, _timeline, _propertiesPanel);
 
         string snapshotJson = JsonSerializer.Serialize(manifestSnapshot, AppJsonContext.Default.ProjectManifest);
 
@@ -657,7 +661,7 @@ public class MainWindow : Window
 
         try
         {
-            ProjectSceneSerializer.WriteSceneToManifest(_projectManager.Manifest, _mainViewport, _timeline);
+            ProjectSceneSerializer.WriteSceneToManifest(_projectManager.Manifest, _mainViewport, _timeline, _propertiesPanel);
             _projectManager.SaveManifest();
             CaptureCurrentSceneAsSavedState();
             RefreshProjectThumbnail();
@@ -675,7 +679,7 @@ public class MainWindow : Window
         if (_mainViewport == null || _spawnMenu == null || !_projectManager.HasProject)
             return;
 
-        ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, _mainViewport, _spawnMenu, _timeline);
+        ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, _mainViewport, _spawnMenu, _timeline, _propertiesPanel);
     }
 
     private void OpenNewProjectPopup()
@@ -714,7 +718,7 @@ public class MainWindow : Window
                 if (_mainViewport == null)
                     return false;
 
-                ProjectSceneSerializer.WriteSceneToManifest(_projectManager.Manifest, _mainViewport, _timeline);
+                ProjectSceneSerializer.WriteSceneToManifest(_projectManager.Manifest, _mainViewport, _timeline, _propertiesPanel);
                 _projectManager.SaveProjectAs(name);
                 CaptureCurrentSceneAsSavedState();
                 RefreshProjectThumbnail();
@@ -728,7 +732,7 @@ public class MainWindow : Window
             _showProjectHome = false;
 
             if (_mainViewport != null && _spawnMenu != null)
-                ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, _mainViewport, _spawnMenu, _timeline);
+                ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, _mainViewport, _spawnMenu, _timeline, _propertiesPanel);
 
             SaveProjectWithSceneInternal();
             RefreshWindowTitle();
