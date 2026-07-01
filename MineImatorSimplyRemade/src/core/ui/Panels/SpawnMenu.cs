@@ -1,4 +1,5 @@
 using System.Numerics;
+using Cyotek.Data.Nbt;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade;
@@ -36,6 +37,14 @@ public enum ItemAtlasSource
 /// </summary>
 public class SpawnMenu : UiPanel
 {
+    private const string SceneryLoadLabel = "Load schematic...";
+
+    private static readonly string[] WoolColors =
+    {
+        "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
+        "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"
+    };
+
     // ── State ────────────────────────────────────────────────────────────────
     private bool _isOpen = false;
 
@@ -147,6 +156,7 @@ public class SpawnMenu : UiPanel
             { "Blocks",       new List<string>() },
             // Characters: populated from CharacterRegistry at render time.
             { "Characters",   new List<string>() },
+            { "Scenery",      new List<string> { SceneryLoadLabel } },
             { "Custom Models", new List<string> { "Load..." } }
         };
 
@@ -1257,6 +1267,9 @@ public class SpawnMenu : UiPanel
         if (_selectedCategory == "Custom Models")
             return objectName == "Load..." || _customModelPaths.ContainsKey(objectName);
 
+        if (_selectedCategory == "Scenery")
+            return objectName == SceneryLoadLabel;
+
         if (_selectedCategory == "Blocks")
         {
             // A block is spawnable as soon as one is selected; variant defaults to first if not chosen
@@ -1294,6 +1307,13 @@ public class SpawnMenu : UiPanel
 
     private void OnObjectSelected(string objectName)
     {
+        if (_selectedCategory == "Scenery" && objectName == SceneryLoadLabel)
+        {
+            _currentVariants.Clear();
+            OpenSchematicFileDialog();
+            return;
+        }
+
         if (_selectedCategory == "Custom Models" && objectName == "Load...")
         {
             _currentVariants.Clear();
@@ -1314,6 +1334,9 @@ public class SpawnMenu : UiPanel
 
     private void OnObjectDoubleClicked(string objectName)
     {
+        if (_selectedCategory == "Scenery" && objectName == SceneryLoadLabel)
+            return; // single-click already handled in OnObjectSelected
+
         if (_selectedCategory == "Custom Models" && objectName == "Load...")
             return; // single-click already handled in OnObjectSelected
 
@@ -1334,6 +1357,23 @@ public class SpawnMenu : UiPanel
 
         if (result.IsOk && !string.IsNullOrEmpty(result.Path))
             SpawnCustomModelFromPath(result.Path);
+    }
+
+    /// <summary>
+    /// Opens a native file-open dialog for Minecraft schematic files.
+    /// </summary>
+    private void OpenSchematicFileDialog()
+    {
+        if (Viewport == null || Gl == null) return;
+
+        var result = Dialog.FileOpen("schematic,schem");
+        if (!result.IsOk || string.IsNullOrEmpty(result.Path)) return;
+
+        var root = SpawnSchematicFromPath(result.Path);
+        if (root == null)
+            Console.Error.WriteLine($"[SpawnMenu] Failed to load schematic: {result.Path}");
+        else
+            _isOpen = false;
     }
 
     /// <summary>
@@ -1475,6 +1515,1307 @@ public class SpawnMenu : UiPanel
         }
     }
 
+    private void SpawnScenery(string objectName)
+    {
+        if (objectName != SceneryLoadLabel) return;
+        OpenSchematicFileDialog();
+    }
+
+    /// <summary>
+    /// Loads legacy <c>.schematic</c> and Sponge/WorldEdit <c>.schem</c> files and
+    /// spawns them as a merged scenery object.
+    /// </summary>
+    public SceneObject? SpawnSchematicFromPath(string filePath)
+    {
+        if (Viewport == null || Gl == null) return null;
+
+        NbtDocument doc;
+        try
+        {
+            doc = NbtDocument.LoadDocument(filePath);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SpawnMenu] Failed reading NBT schematic '{filePath}': {ex.Message}");
+            return null;
+        }
+
+        var rootTag = doc.DocumentRoot;
+        if (rootTag == null) return null;
+
+        var schematic = rootTag.GetCompound("Schematic") ?? rootTag;
+
+        int width = GetDimension(schematic, "Width");
+        int height = GetDimension(schematic, "Height");
+        int length = GetDimension(schematic, "Length");
+
+        if (width <= 0 || height <= 0 || length <= 0)
+        {
+            Console.Error.WriteLine($"[SpawnMenu] Invalid schematic dimensions in '{filePath}'.");
+            return null;
+        }
+
+        int total = width * height * length;
+        var variantCache = new Dictionary<string, VariantRenderInfo>(StringComparer.OrdinalIgnoreCase);
+        var voxelInfos = new VariantRenderInfo?[total];
+        var availableBlocks = new HashSet<string>(BlockRegistry.Blocks, StringComparer.OrdinalIgnoreCase);
+
+        bool modernLoaded = TryLoadModernPaletteBlocks(
+            schematic,
+            total,
+            availableBlocks,
+            variantCache,
+            voxelInfos);
+
+        if (!modernLoaded)
+        {
+            if (!TryLoadLegacyBlocks(
+                    schematic,
+                    width,
+                    height,
+                    length,
+                    total,
+                    availableBlocks,
+                    variantCache,
+                    voxelInfos))
+                return null;
+        }
+
+        string baseName = Path.GetFileNameWithoutExtension(filePath);
+        int nextNum = GetNextAvailableObjectNumber(baseName);
+        string fullName = nextNum > 1 ? $"{baseName}{nextNum}" : baseName;
+
+        var root = new SceneObject
+        {
+            Name = fullName,
+            ObjectType = "Schematic",
+            SpawnCategory = "Scenery",
+            SourceAssetPath = filePath,
+            Position = vec3.Zero,
+            PivotOffset = vec3.Zero,
+            InheritPivotOffset = false
+        };
+        root.AssignObjectId();
+
+        float originX = (width - 1) * 0.5f;
+        float originZ = (length - 1) * 0.5f;
+
+        var merged = new Dictionary<uint, MeshAccumulator>();
+        int placed = 0;
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int z = 0; z < length; z++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int index = y * width * length + z * width + x;
+                    var info = voxelInfos[index];
+                    if (info == null) continue;
+
+                    placed++;
+                    float px = x - originX;
+                    float py = y;
+                    float pz = z - originZ;
+
+                    if (info.IsCullableCube && info.CubeFaces != null)
+                    {
+                        EmitCubeFacesWithCulling(
+                            merged,
+                            info.CubeFaces,
+                            voxelInfos,
+                            width,
+                            height,
+                            length,
+                            x,
+                            y,
+                            z,
+                            px,
+                            py,
+                            pz);
+                        continue;
+                    }
+
+                    foreach (var template in info.Templates)
+                    {
+                        var acc = GetOrCreateAccumulator(merged, template.TextureId);
+                        AppendTemplate(acc, template, px, py, pz);
+                    }
+                }
+            }
+        }
+
+        if (placed == 0 || merged.Count == 0)
+        {
+            Console.Error.WriteLine($"[SpawnMenu] Schematic had no spawnable blocks: {filePath}");
+            return null;
+        }
+
+        foreach (var kv in merged)
+        {
+            var acc = kv.Value;
+            if (acc.Vertices.Count == 0) continue;
+
+            var mesh = new Mesh(Gl)
+            {
+                TextureId = kv.Key
+            };
+            mesh.Vertices.AddRange(acc.Vertices);
+            mesh.Normals.AddRange(acc.Normals);
+            mesh.TexCoords.AddRange(acc.TexCoords);
+            mesh.Upload();
+            root.AddMesh(mesh);
+        }
+
+        if (root.Visuals.Count == 0)
+        {
+            Console.Error.WriteLine($"[SpawnMenu] Schematic produced no renderable geometry: {filePath}");
+            return null;
+        }
+
+        Viewport.SceneObjects.Add(root);
+        return root;
+    }
+
+    private sealed class MeshAccumulator
+    {
+        public readonly List<vec3> Vertices = new();
+        public readonly List<vec3> Normals = new();
+        public readonly List<vec2> TexCoords = new();
+    }
+
+    private sealed class MeshTemplate
+    {
+        public uint TextureId;
+        public vec3[] Vertices = Array.Empty<vec3>();
+        public vec3[] Normals = Array.Empty<vec3>();
+        public vec2[] TexCoords = Array.Empty<vec2>();
+    }
+
+    private sealed class CubeFaceInfo
+    {
+        public required uint TextureId;
+        public required vec2[] Uv; // TL, TR, BR, BL
+    }
+
+    private sealed class CubeFaceSet
+    {
+        public CubeFaceInfo? Up;
+        public CubeFaceInfo? Down;
+        public CubeFaceInfo? North;
+        public CubeFaceInfo? South;
+        public CubeFaceInfo? West;
+        public CubeFaceInfo? East;
+    }
+
+    private sealed class VariantRenderInfo
+    {
+        public required string BlockName;
+        public required BlockVariantEntry Variant;
+        public bool IsCullableCube;
+        public CubeFaceSet? CubeFaces;
+        public List<MeshTemplate> Templates = new();
+    }
+
+    private static int GetDimension(TagCompound root, string key)
+    {
+        int value = root.GetShortValue(key, 0);
+        if (value == 0)
+            value = root.GetIntValue(key, 0);
+        return value;
+    }
+
+    private bool TryLoadModernPaletteBlocks(
+        TagCompound schematic,
+        int total,
+        HashSet<string> availableBlocks,
+        Dictionary<string, VariantRenderInfo> variantCache,
+        VariantRenderInfo?[] outVoxels)
+    {
+        var palette = schematic.GetCompound("Palette");
+        byte[] blockData = schematic.GetByteArrayValue("BlockData", Array.Empty<byte>());
+        if (palette == null || palette.Count == 0 || blockData.Length == 0)
+            return false;
+
+        if (!TryDecodeVarIntArray(blockData, total, out var paletteIndices))
+        {
+            Console.Error.WriteLine("[SpawnMenu] Failed to decode BlockData varints from .schem file.");
+            return false;
+        }
+
+        var paletteLookup = new Dictionary<int, string>();
+        foreach (Tag tag in palette.Value)
+        {
+            if (tag is TagInt ti)
+                paletteLookup[ti.Value] = ti.Name;
+        }
+
+        var idToInfo = new Dictionary<int, VariantRenderInfo?>();
+        for (int i = 0; i < total; i++)
+        {
+            int paletteId = paletteIndices[i];
+            if (!idToInfo.TryGetValue(paletteId, out var info))
+            {
+                if (!paletteLookup.TryGetValue(paletteId, out string? stateText) || string.IsNullOrEmpty(stateText))
+                {
+                    idToInfo[paletteId] = null;
+                    continue;
+                }
+
+                if (!TryParsePaletteState(stateText, out var blockName, out var props))
+                {
+                    idToInfo[paletteId] = null;
+                    continue;
+                }
+
+                if (string.Equals(blockName, "air", StringComparison.OrdinalIgnoreCase) ||
+                    !availableBlocks.Contains(blockName))
+                {
+                    idToInfo[paletteId] = null;
+                    continue;
+                }
+
+                var variant = PickBestVariantForProperties(BlockRegistry.GetVariants(blockName), props, null);
+                if (variant == null)
+                {
+                    idToInfo[paletteId] = null;
+                    continue;
+                }
+
+                info = GetOrCreateVariantRenderInfo(blockName, variant, variantCache);
+                idToInfo[paletteId] = info;
+            }
+
+            outVoxels[i] = info;
+        }
+
+        return true;
+    }
+
+    private bool TryLoadLegacyBlocks(
+        TagCompound schematic,
+        int width,
+        int height,
+        int length,
+        int total,
+        HashSet<string> availableBlocks,
+        Dictionary<string, VariantRenderInfo> variantCache,
+        VariantRenderInfo?[] outVoxels)
+    {
+        byte[] blocks = schematic.GetByteArrayValue("Blocks", Array.Empty<byte>());
+        byte[] data = schematic.GetByteArrayValue("Data", Array.Empty<byte>());
+        byte[] addBlocks = schematic.GetByteArrayValue("AddBlocks", Array.Empty<byte>());
+
+        if (blocks.Length < total)
+        {
+            Console.Error.WriteLine($"[SpawnMenu] Schematic block array is truncated ({blocks.Length} < {total}).");
+            return false;
+        }
+
+        var legacyCache = new Dictionary<int, VariantRenderInfo?>();
+
+        for (int i = 0; i < total; i++)
+        {
+            int blockId = blocks[i];
+            if (addBlocks.Length > 0)
+            {
+                int add = addBlocks[i >> 1];
+                int highBits = (i & 1) == 0 ? (add & 0x0F) : ((add >> 4) & 0x0F);
+                blockId |= highBits << 8;
+            }
+
+            int blockData = i < data.Length ? data[i] & 0x0F : 0;
+
+            if (blockId == 64 || blockId == 71)
+            {
+                if (!TryResolveLegacyDoor(
+                        blockId,
+                        blockData,
+                        blocks,
+                        data,
+                        i,
+                        width,
+                        height,
+                        length,
+                        out var doorName,
+                        out var doorHint))
+                {
+                    outVoxels[i] = null;
+                    continue;
+                }
+
+                if (!availableBlocks.Contains(doorName))
+                {
+                    outVoxels[i] = null;
+                    continue;
+                }
+
+                Dictionary<string, string>? doorProps =
+                    TryParseVariantHintProperties(doorHint, out var parsedDoorProps) ? parsedDoorProps : null;
+
+                var doorVariant = PickBestVariantForProperties(BlockRegistry.GetVariants(doorName), doorProps, doorHint);
+                outVoxels[i] = doorVariant == null
+                    ? null
+                    : GetOrCreateVariantRenderInfo(doorName, doorVariant, variantCache);
+                continue;
+            }
+
+            int legacyKey = (blockId << 8) | blockData;
+
+            if (!legacyCache.TryGetValue(legacyKey, out var info))
+            {
+                if (!TryResolveLegacyBlock(blockId, blockData, out var blockName, out var variantHint))
+                {
+                    legacyCache[legacyKey] = null;
+                    continue;
+                }
+
+                if (string.Equals(blockName, "air", StringComparison.OrdinalIgnoreCase) ||
+                    !availableBlocks.Contains(blockName))
+                {
+                    legacyCache[legacyKey] = null;
+                    continue;
+                }
+
+                Dictionary<string, string>? props =
+                    TryParseVariantHintProperties(variantHint, out var parsedProps) ? parsedProps : null;
+
+                var variant = PickBestVariantForProperties(BlockRegistry.GetVariants(blockName), props, variantHint);
+                if (variant == null)
+                {
+                    legacyCache[legacyKey] = null;
+                    continue;
+                }
+
+                info = GetOrCreateVariantRenderInfo(blockName, variant, variantCache);
+                legacyCache[legacyKey] = info;
+            }
+
+            outVoxels[i] = info;
+        }
+
+        return true;
+    }
+
+    private VariantRenderInfo GetOrCreateVariantRenderInfo(
+        string blockName,
+        BlockVariantEntry variant,
+        Dictionary<string, VariantRenderInfo> cache)
+    {
+        string cacheKey = $"{blockName}|{variant.VariantKey}|{variant.ModelPath}|{variant.RotationX}|{variant.RotationY}|{variant.CemPath}";
+        if (cache.TryGetValue(cacheKey, out var existing))
+            return existing;
+
+        var info = new VariantRenderInfo
+        {
+            BlockName = blockName,
+            Variant = variant
+        };
+
+        info.CubeFaces = TryBuildCullableCubeFaces(variant);
+        info.IsCullableCube = info.CubeFaces != null;
+
+        if (!info.IsCullableCube)
+            info.Templates = BuildVariantTemplates(variant);
+
+        cache[cacheKey] = info;
+        return info;
+    }
+
+    private CubeFaceSet? TryBuildCullableCubeFaces(BlockVariantEntry variant)
+    {
+        if (!string.IsNullOrEmpty(variant.CemPath) || variant.TopHalf != null)
+            return null;
+
+        if (string.IsNullOrEmpty(variant.ModelPath))
+            return null;
+
+        var resolved = BlockRegistry.ResolveModel(variant.ModelPath);
+        if (resolved == null || resolved.Elements.Count != 1)
+            return null;
+
+        var element = resolved.Elements[0];
+        if (element.Rotation != null)
+            return null;
+
+        if (element.From.Length < 3 || element.To.Length < 3)
+            return null;
+
+        if (element.From[0] != 0f || element.From[1] != 0f || element.From[2] != 0f ||
+            element.To[0] != 16f || element.To[1] != 16f || element.To[2] != 16f)
+            return null;
+
+        CubeFaceInfo? BuildFace(string faceName)
+        {
+            if (!element.Faces.TryGetValue(faceName, out var face)) return null;
+
+            string? texKey = BlockRegistry.ResolveTextureKey(resolved, face.Texture);
+            if (string.IsNullOrEmpty(texKey)) return null;
+            if (!TerrainAtlas.Textures.TryGetValue(texKey, out uint texId) || texId == 0) return null;
+
+            var uv = GetFaceUv(faceName, face.Uv, face.Rotation);
+            return new CubeFaceInfo { TextureId = texId, Uv = uv };
+        }
+
+        var set = new CubeFaceSet
+        {
+            Up = BuildFace("up"),
+            Down = BuildFace("down"),
+            North = BuildFace("north"),
+            South = BuildFace("south"),
+            West = BuildFace("west"),
+            East = BuildFace("east")
+        };
+
+        if (set.Up == null || set.Down == null || set.North == null ||
+            set.South == null || set.West == null || set.East == null)
+            return null;
+
+        return set;
+    }
+
+    private static vec2[] GetFaceUv(string faceName, float[]? uvTag, int rotation)
+    {
+        float uMin;
+        float vMin;
+        float uMax;
+        float vMax;
+
+        if (uvTag != null && uvTag.Length == 4)
+        {
+            uMin = uvTag[0] / 16f;
+            vMin = uvTag[1] / 16f;
+            uMax = uvTag[2] / 16f;
+            vMax = uvTag[3] / 16f;
+        }
+        else
+        {
+            (uMin, vMin, uMax, vMax) = faceName switch
+            {
+                "down" => (0f, 0f, 1f, 1f),
+                "up" => (0f, 1f, 1f, 0f),
+                "north" => (1f, 0f, 0f, 1f),
+                "south" => (0f, 0f, 1f, 1f),
+                "west" => (0f, 0f, 1f, 1f),
+                "east" => (1f, 0f, 0f, 1f),
+                _ => (0f, 0f, 1f, 1f)
+            };
+        }
+
+        (float u, float v)[] corners = rotation switch
+        {
+            90 => new[] { (uMin, vMax), (uMin, vMin), (uMax, vMin), (uMax, vMax) },
+            180 => new[] { (uMax, vMax), (uMin, vMax), (uMin, vMin), (uMax, vMin) },
+            270 => new[] { (uMax, vMin), (uMax, vMax), (uMin, vMax), (uMin, vMin) },
+            _ => new[] { (uMin, vMin), (uMax, vMin), (uMax, vMax), (uMin, vMax) }
+        };
+
+        return new[]
+        {
+            new vec2(corners[0].u, corners[0].v),
+            new vec2(corners[1].u, corners[1].v),
+            new vec2(corners[2].u, corners[2].v),
+            new vec2(corners[3].u, corners[3].v)
+        };
+    }
+
+    private List<MeshTemplate> BuildVariantTemplates(BlockVariantEntry variant)
+    {
+        var templates = new List<MeshTemplate>();
+        var meshes = BuildVariantMeshes(variant);
+
+        foreach (var mesh in meshes)
+        {
+            templates.Add(new MeshTemplate
+            {
+                TextureId = mesh.TextureId,
+                Vertices = mesh.Vertices.ToArray(),
+                Normals = mesh.Normals.ToArray(),
+                TexCoords = mesh.TexCoords.ToArray()
+            });
+            mesh.Dispose();
+        }
+
+        return templates;
+    }
+
+    private List<Mesh> BuildVariantMeshes(BlockVariantEntry variant)
+    {
+        var meshes = new List<Mesh>();
+
+        AppendBlockMeshesForPreview(meshes, variant);
+        if (variant.TopHalf != null)
+        {
+            var top = new List<Mesh>();
+            AppendBlockMeshesForPreview(top, variant.TopHalf);
+            var shift = new vec3(variant.PartOffsetX, variant.PartOffsetY, variant.PartOffsetZ);
+            foreach (var m in top)
+            {
+                for (int i = 0; i < m.Vertices.Count; i++)
+                    m.Vertices[i] += shift;
+                m.Upload();
+            }
+            meshes.AddRange(top);
+        }
+
+        return meshes;
+    }
+
+    private static bool TryDecodeVarIntArray(byte[] data, int expectedCount, out int[] values)
+    {
+        values = new int[expectedCount];
+        int index = 0;
+        int offset = 0;
+
+        while (offset < data.Length && index < expectedCount)
+        {
+            int numRead = 0;
+            int result = 0;
+            byte read;
+
+            do
+            {
+                if (offset >= data.Length) return false;
+                read = data[offset++];
+                int value = read & 0x7F;
+                result |= value << (7 * numRead);
+                numRead++;
+                if (numRead > 5) return false;
+            }
+            while ((read & 0x80) != 0);
+
+            values[index++] = result;
+        }
+
+        return index == expectedCount;
+    }
+
+    private static bool TryParsePaletteState(
+        string paletteState,
+        out string blockName,
+        out Dictionary<string, string> properties)
+    {
+        properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        string rawName = paletteState;
+        int bracket = paletteState.IndexOf('[');
+        if (bracket >= 0)
+            rawName = paletteState[..bracket];
+
+        int colon = rawName.IndexOf(':');
+        blockName = (colon >= 0 ? rawName[(colon + 1)..] : rawName).Trim();
+        if (string.IsNullOrEmpty(blockName)) return false;
+
+        if (bracket < 0) return true;
+
+        int endBracket = paletteState.LastIndexOf(']');
+        if (endBracket <= bracket) return true;
+
+        string body = paletteState[(bracket + 1)..endBracket];
+        foreach (string token in body.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int eq = token.IndexOf('=');
+            if (eq <= 0 || eq >= token.Length - 1) continue;
+
+            string key = token[..eq].Trim();
+            string value = token[(eq + 1)..].Trim();
+            if (key.Length > 0)
+                properties[key] = value;
+        }
+
+        return true;
+    }
+
+    private static bool TryParseVariantHintProperties(string? hint, out Dictionary<string, string> props)
+    {
+        props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(hint)) return false;
+
+        foreach (string token in hint.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int eq = token.IndexOf('=');
+            if (eq <= 0 || eq >= token.Length - 1) continue;
+
+            string key = token[..eq].Trim();
+            string value = token[(eq + 1)..].Trim();
+            if (key.Length > 0)
+                props[key] = value;
+        }
+
+        return props.Count > 0;
+    }
+
+    private static Dictionary<string, string> ParseVariantKeyProperties(string variantKey)
+    {
+        var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(variantKey) ||
+            string.Equals(variantKey, "default", StringComparison.OrdinalIgnoreCase))
+            return props;
+
+        foreach (string token in variantKey.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int eq = token.IndexOf('=');
+            if (eq <= 0 || eq >= token.Length - 1) continue;
+
+            string key = token[..eq].Trim();
+            string value = token[(eq + 1)..].Trim();
+            if (key.Length > 0)
+                props[key] = value;
+        }
+
+        return props;
+    }
+
+    private static BlockVariantEntry? PickBestVariantForProperties(
+        IReadOnlyList<BlockVariantEntry> variants,
+        Dictionary<string, string>? desiredProps,
+        string? variantHint)
+    {
+        if (variants.Count == 0) return null;
+
+        if (desiredProps == null || desiredProps.Count == 0)
+            return PickBestVariant(variants, variantHint);
+
+        BlockVariantEntry? best = null;
+        int bestScore = -1;
+
+        foreach (var variant in variants)
+        {
+            var props = ParseVariantKeyProperties(variant.VariantKey);
+            if (props.Count == 0)
+            {
+                if (best == null)
+                    best = variant;
+                continue;
+            }
+
+            int score = 0;
+            bool invalid = false;
+            foreach (var kv in props)
+            {
+                if (!desiredProps.TryGetValue(kv.Key, out string? desiredValue))
+                    continue;
+
+                if (!string.Equals(desiredValue, kv.Value, StringComparison.OrdinalIgnoreCase))
+                {
+                    invalid = true;
+                    break;
+                }
+
+                score++;
+            }
+
+            if (invalid) continue;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = variant;
+            }
+        }
+
+        return best ?? PickBestVariant(variants, variantHint);
+    }
+
+    private static BlockVariantEntry PickBestVariant(IReadOnlyList<BlockVariantEntry> variants, string? variantHint)
+    {
+        if (variants.Count == 0)
+            throw new InvalidOperationException("Cannot pick a variant from an empty list.");
+
+        if (string.IsNullOrWhiteSpace(variantHint))
+            return variants[0];
+
+        var exact = variants.FirstOrDefault(v =>
+            string.Equals(v.VariantKey, variantHint, StringComparison.OrdinalIgnoreCase));
+        if (exact != null) return exact;
+
+        var containing = variants.FirstOrDefault(v =>
+            v.VariantKey.Contains(variantHint, StringComparison.OrdinalIgnoreCase));
+        return containing ?? variants[0];
+    }
+
+    private static MeshAccumulator GetOrCreateAccumulator(Dictionary<uint, MeshAccumulator> merged, uint textureId)
+    {
+        if (!merged.TryGetValue(textureId, out var acc))
+        {
+            acc = new MeshAccumulator();
+            merged[textureId] = acc;
+        }
+
+        return acc;
+    }
+
+    private static void AppendTemplate(MeshAccumulator acc, MeshTemplate template, float px, float py, float pz)
+    {
+        var shift = new vec3(px, py, pz);
+        for (int i = 0; i < template.Vertices.Length; i++)
+        {
+            acc.Vertices.Add(template.Vertices[i] + shift);
+            acc.Normals.Add(i < template.Normals.Length ? template.Normals[i] : vec3.UnitY);
+            acc.TexCoords.Add(i < template.TexCoords.Length ? template.TexCoords[i] : vec2.Zero);
+        }
+    }
+
+    private static void EmitCubeFacesWithCulling(
+        Dictionary<uint, MeshAccumulator> merged,
+        CubeFaceSet faces,
+        VariantRenderInfo?[] voxels,
+        int width,
+        int height,
+        int length,
+        int x,
+        int y,
+        int z,
+        float px,
+        float py,
+        float pz)
+    {
+        bool IsOccluded(int nx, int ny, int nz)
+        {
+            if (nx < 0 || ny < 0 || nz < 0 || nx >= width || ny >= height || nz >= length)
+                return false;
+
+            int nIndex = ny * width * length + nz * width + nx;
+            var n = voxels[nIndex];
+            return n != null && n.IsCullableCube;
+        }
+
+        if (!IsOccluded(x, y + 1, z) && faces.Up != null)
+            EmitFace(merged, faces.Up, px, py, pz, "up");
+        if (!IsOccluded(x, y - 1, z) && faces.Down != null)
+            EmitFace(merged, faces.Down, px, py, pz, "down");
+        if (!IsOccluded(x, y, z - 1) && faces.North != null)
+            EmitFace(merged, faces.North, px, py, pz, "north");
+        if (!IsOccluded(x, y, z + 1) && faces.South != null)
+            EmitFace(merged, faces.South, px, py, pz, "south");
+        if (!IsOccluded(x - 1, y, z) && faces.West != null)
+            EmitFace(merged, faces.West, px, py, pz, "west");
+        if (!IsOccluded(x + 1, y, z) && faces.East != null)
+            EmitFace(merged, faces.East, px, py, pz, "east");
+    }
+
+    private static void EmitFace(
+        Dictionary<uint, MeshAccumulator> merged,
+        CubeFaceInfo face,
+        float px,
+        float py,
+        float pz,
+        string faceName)
+    {
+        var acc = GetOrCreateAccumulator(merged, face.TextureId);
+
+        vec3 v0;
+        vec3 v1;
+        vec3 v2;
+        vec3 v3;
+        vec3 n;
+
+        switch (faceName)
+        {
+            case "up":
+                v0 = new vec3(px - 0.5f, py + 0.5f, pz + 0.5f);
+                v1 = new vec3(px + 0.5f, py + 0.5f, pz + 0.5f);
+                v2 = new vec3(px + 0.5f, py + 0.5f, pz - 0.5f);
+                v3 = new vec3(px - 0.5f, py + 0.5f, pz - 0.5f);
+                n = new vec3(0f, 1f, 0f);
+                break;
+            case "down":
+                v0 = new vec3(px - 0.5f, py - 0.5f, pz - 0.5f);
+                v1 = new vec3(px + 0.5f, py - 0.5f, pz - 0.5f);
+                v2 = new vec3(px + 0.5f, py - 0.5f, pz + 0.5f);
+                v3 = new vec3(px - 0.5f, py - 0.5f, pz + 0.5f);
+                n = new vec3(0f, -1f, 0f);
+                break;
+            case "north":
+                v0 = new vec3(px - 0.5f, py + 0.5f, pz - 0.5f);
+                v1 = new vec3(px + 0.5f, py + 0.5f, pz - 0.5f);
+                v2 = new vec3(px + 0.5f, py - 0.5f, pz - 0.5f);
+                v3 = new vec3(px - 0.5f, py - 0.5f, pz - 0.5f);
+                n = new vec3(0f, 0f, -1f);
+                break;
+            case "south":
+                v0 = new vec3(px + 0.5f, py + 0.5f, pz + 0.5f);
+                v1 = new vec3(px - 0.5f, py + 0.5f, pz + 0.5f);
+                v2 = new vec3(px - 0.5f, py - 0.5f, pz + 0.5f);
+                v3 = new vec3(px + 0.5f, py - 0.5f, pz + 0.5f);
+                n = new vec3(0f, 0f, 1f);
+                break;
+            case "west":
+                v0 = new vec3(px - 0.5f, py + 0.5f, pz + 0.5f);
+                v1 = new vec3(px - 0.5f, py + 0.5f, pz - 0.5f);
+                v2 = new vec3(px - 0.5f, py - 0.5f, pz - 0.5f);
+                v3 = new vec3(px - 0.5f, py - 0.5f, pz + 0.5f);
+                n = new vec3(-1f, 0f, 0f);
+                break;
+            default: // east
+                v0 = new vec3(px + 0.5f, py + 0.5f, pz - 0.5f);
+                v1 = new vec3(px + 0.5f, py + 0.5f, pz + 0.5f);
+                v2 = new vec3(px + 0.5f, py - 0.5f, pz + 0.5f);
+                v3 = new vec3(px + 0.5f, py - 0.5f, pz - 0.5f);
+                n = new vec3(1f, 0f, 0f);
+                break;
+        }
+
+        // Tri 1
+        acc.Vertices.Add(v0); acc.Normals.Add(n); acc.TexCoords.Add(face.Uv[0]);
+        acc.Vertices.Add(v1); acc.Normals.Add(n); acc.TexCoords.Add(face.Uv[1]);
+        acc.Vertices.Add(v2); acc.Normals.Add(n); acc.TexCoords.Add(face.Uv[2]);
+        // Tri 2
+        acc.Vertices.Add(v0); acc.Normals.Add(n); acc.TexCoords.Add(face.Uv[0]);
+        acc.Vertices.Add(v2); acc.Normals.Add(n); acc.TexCoords.Add(face.Uv[2]);
+        acc.Vertices.Add(v3); acc.Normals.Add(n); acc.TexCoords.Add(face.Uv[3]);
+    }
+
+    private static bool TryResolveLegacyBlock(
+        int blockId,
+        int blockData,
+        out string blockName,
+        out string? variantHint)
+    {
+        variantHint = null;
+
+        switch (blockId)
+        {
+            case 0: blockName = "air"; return true;
+            case 1: blockName = "stone"; return true;
+            case 2: blockName = "grass_block"; return true;
+            case 3: blockName = "dirt"; return true;
+            case 4: blockName = "cobblestone"; return true;
+            case 5:
+                blockName = (blockData & 0x3) switch
+                {
+                    1 => "spruce_planks",
+                    2 => "birch_planks",
+                    3 => "jungle_planks",
+                    _ => "oak_planks"
+                };
+                return true;
+            case 6:
+                blockName = (blockData & 0x7) switch
+                {
+                    1 => "spruce_sapling",
+                    2 => "birch_sapling",
+                    3 => "jungle_sapling",
+                    4 => "acacia_sapling",
+                    5 => "dark_oak_sapling",
+                    _ => "oak_sapling"
+                };
+                return true;
+            case 7: blockName = "bedrock"; return true;
+            case 8: blockName = "water"; variantHint = "level=0"; return true;
+            case 9: blockName = "water"; variantHint = "level=0"; return true;
+            case 10: blockName = "lava"; variantHint = "level=0"; return true;
+            case 11: blockName = "lava"; variantHint = "level=0"; return true;
+            case 12: blockName = (blockData & 0x1) == 1 ? "red_sand" : "sand"; return true;
+            case 13: blockName = "gravel"; return true;
+            case 14: blockName = "gold_ore"; return true;
+            case 15: blockName = "iron_ore"; return true;
+            case 16: blockName = "coal_ore"; return true;
+            case 17:
+                blockName = (blockData & 0x3) switch
+                {
+                    1 => "spruce_log",
+                    2 => "birch_log",
+                    3 => "jungle_log",
+                    _ => "oak_log"
+                };
+                variantHint = (blockData & 0xC) switch
+                {
+                    0x4 => "axis=x",
+                    0x8 => "axis=z",
+                    _ => "axis=y"
+                };
+                return true;
+            case 18:
+                blockName = (blockData & 0x3) switch
+                {
+                    1 => "spruce_leaves",
+                    2 => "birch_leaves",
+                    3 => "jungle_leaves",
+                    _ => "oak_leaves"
+                };
+                return true;
+            case 19: blockName = "sponge"; return true;
+            case 20: blockName = "glass"; return true;
+            case 21: blockName = "lapis_ore"; return true;
+            case 22: blockName = "lapis_block"; return true;
+            case 23: blockName = "dispenser"; return true;
+            case 24: blockName = "sandstone"; return true;
+            case 25: blockName = "note_block"; return true;
+            case 26: blockName = "red_bed"; return true;
+            case 27: blockName = "powered_rail"; return true;
+            case 28: blockName = "detector_rail"; return true;
+            case 29: blockName = "sticky_piston"; return true;
+            case 30: blockName = "cobweb"; return true;
+            case 31:
+                blockName = (blockData & 0x3) switch
+                {
+                    1 => "grass",
+                    2 => "fern",
+                    _ => "dead_bush"
+                };
+                return true;
+            case 32: blockName = "dead_bush"; return true;
+            case 33: blockName = "piston"; return true;
+            case 35:
+                blockName = WoolColors[blockData & 0x0F] + "_wool";
+                return true;
+            case 37: blockName = "dandelion"; return true;
+            case 38: blockName = "poppy"; return true;
+            case 39: blockName = "brown_mushroom"; return true;
+            case 40: blockName = "red_mushroom"; return true;
+            case 41: blockName = "gold_block"; return true;
+            case 42: blockName = "iron_block"; return true;
+            case 43:
+            {
+                // Legacy double slabs by type metadata.
+                int type = blockData & 0x7;
+                blockName = type switch
+                {
+                    1 => "sandstone_slab",
+                    2 => "oak_slab",
+                    3 => "cobblestone_slab",
+                    4 => "brick_slab",
+                    _ => "smooth_stone_slab"
+                };
+                variantHint = "type=double";
+                return true;
+            }
+            case 44:
+            {
+                // Legacy half slabs by type + top-bit metadata.
+                int type = blockData & 0x7;
+                bool isTop = (blockData & 0x8) != 0;
+                blockName = type switch
+                {
+                    1 => "sandstone_slab",
+                    2 => "oak_slab",
+                    3 => "cobblestone_slab",
+                    4 => "brick_slab",
+                    _ => "smooth_stone_slab"
+                };
+                variantHint = isTop ? "type=top" : "type=bottom";
+                return true;
+            }
+            case 45: blockName = "bricks"; return true;
+            case 46: blockName = "tnt"; return true;
+            case 47: blockName = "bookshelf"; return true;
+            case 48: blockName = "mossy_cobblestone"; return true;
+            case 49: blockName = "obsidian"; return true;
+            case 50:
+            {
+                // 1-4 are wall-mounted; 5 (and 0) are standing torches.
+                if (TryLegacyHorizontalFacingFromTorchData(blockData, out string? torchFacing))
+                {
+                    blockName = "wall_torch";
+                    variantHint = $"facing={torchFacing}";
+                }
+                else
+                {
+                    blockName = "torch";
+                }
+                return true;
+            }
+            case 53:
+                blockName = "oak_stairs";
+                variantHint = LegacyStairsVariantHint(blockData);
+                return true;
+            case 54:
+            {
+                blockName = "chest";
+                if (TryLegacyHorizontalFacingFrom2To5(blockData, out string? chestFacing))
+                    variantHint = $"facing={chestFacing}";
+                return true;
+            }
+            case 56: blockName = "diamond_ore"; return true;
+            case 57: blockName = "diamond_block"; return true;
+            case 58: blockName = "crafting_table"; return true;
+            case 60: blockName = "farmland"; return true;
+            case 61:
+            {
+                blockName = "furnace";
+                if (TryLegacyHorizontalFacingFrom2To5(blockData, out string? furnaceFacing))
+                    variantHint = $"facing={furnaceFacing},lit=false";
+                else
+                    variantHint = "lit=false";
+                return true;
+            }
+            case 62:
+            {
+                blockName = "furnace";
+                if (TryLegacyHorizontalFacingFrom2To5(blockData, out string? furnaceFacing))
+                    variantHint = $"facing={furnaceFacing},lit=true";
+                else
+                    variantHint = "lit=true";
+                return true;
+            }
+            case 63: blockName = "oak_sign"; return true;
+            case 64: blockName = "oak_door"; return true; // contextual state resolved in TryLoadLegacyBlocks
+            case 65: blockName = "ladder"; return true;
+            case 67:
+                blockName = "cobblestone_stairs";
+                variantHint = LegacyStairsVariantHint(blockData);
+                return true;
+            case 68:
+            {
+                if (TryLegacyHorizontalFacingFrom2To5(blockData, out string? signFacing))
+                {
+                    blockName = "oak_wall_sign";
+                    variantHint = $"facing={signFacing}";
+                }
+                else
+                {
+                    blockName = "oak_sign";
+                }
+                return true;
+            }
+            case 69: blockName = "lever"; return true;
+            case 70: blockName = "stone_pressure_plate"; return true;
+            case 71: blockName = "iron_door"; return true; // contextual state resolved in TryLoadLegacyBlocks
+            case 72: blockName = "oak_pressure_plate"; return true;
+            case 73: blockName = "redstone_ore"; return true;
+            case 74: blockName = "redstone_ore"; return true;
+            case 76:
+            {
+                if (TryLegacyHorizontalFacingFromTorchData(blockData, out string? redTorchFacing))
+                {
+                    blockName = "redstone_wall_torch";
+                    variantHint = $"facing={redTorchFacing},lit=true";
+                }
+                else
+                {
+                    blockName = "redstone_torch";
+                    variantHint = "lit=true";
+                }
+                return true;
+            }
+            case 77:
+            {
+                blockName = "stone_button";
+                bool powered = (blockData & 0x8) != 0;
+                int orient = blockData & 0x7;
+                if (TryLegacyHorizontalFacingFromButtonData(orient, out string? buttonFacing))
+                    variantHint = $"face=wall,facing={buttonFacing},powered={(powered ? "true" : "false")}";
+                else
+                    variantHint = $"face=wall,facing=north,powered={(powered ? "true" : "false")}";
+                return true;
+            }
+            case 78: blockName = "snow"; return true;
+            case 79: blockName = "ice"; return true;
+            case 80: blockName = "snow_block"; return true;
+            case 81: blockName = "cactus"; return true;
+            case 82: blockName = "clay"; return true;
+            case 84: blockName = "jukebox"; return true;
+            case 85: blockName = "oak_fence"; return true;
+            case 86: blockName = "carved_pumpkin"; return true;
+            case 87: blockName = "netherrack"; return true;
+            case 88: blockName = "soul_sand"; return true;
+            case 89: blockName = "glowstone"; return true;
+            case 91: blockName = "jack_o_lantern"; return true;
+            case 96:
+            {
+                // Legacy trapdoor data: lower bits = facing, bit2=open, bit3=top-half.
+                blockName = "oak_trapdoor";
+                bool open = (blockData & 0x4) != 0;
+                bool top = (blockData & 0x8) != 0;
+                string facing = (blockData & 0x3) switch
+                {
+                    0 => "south",
+                    1 => "north",
+                    2 => "east",
+                    3 => "west",
+                    _ => "north"
+                };
+                variantHint = $"facing={facing},half={(top ? "top" : "bottom")},open={(open ? "true" : "false")}";
+                return true;
+            }
+            case 95: blockName = WoolColors[blockData & 0x0F] + "_stained_glass"; return true;
+            case 98: blockName = "stone_bricks"; return true;
+            case 103: blockName = "melon"; return true;
+            case 107: blockName = "oak_fence_gate"; return true;
+            case 108:
+                blockName = "brick_stairs";
+                variantHint = LegacyStairsVariantHint(blockData);
+                return true;
+            case 109:
+                blockName = "stone_brick_stairs";
+                variantHint = LegacyStairsVariantHint(blockData);
+                return true;
+            case 112: blockName = "nether_bricks"; return true;
+            case 114: blockName = "nether_brick_fence"; return true;
+            case 121: blockName = "end_stone"; return true;
+            case 123: blockName = "redstone_lamp"; return true;
+            case 125: blockName = "double_oak_slab"; return true;
+            case 126: blockName = "oak_slab"; return true;
+            case 128:
+                blockName = "sandstone_stairs";
+                variantHint = LegacyStairsVariantHint(blockData);
+                return true;
+            case 129: blockName = "emerald_ore"; return true;
+            case 133: blockName = "emerald_block"; return true;
+            case 134:
+                blockName = "spruce_stairs";
+                variantHint = LegacyStairsVariantHint(blockData);
+                return true;
+            case 135:
+                blockName = "birch_stairs";
+                variantHint = LegacyStairsVariantHint(blockData);
+                return true;
+            case 136:
+                blockName = "jungle_stairs";
+                variantHint = LegacyStairsVariantHint(blockData);
+                return true;
+            case 146:
+            {
+                blockName = "trapped_chest";
+                if (TryLegacyHorizontalFacingFrom2To5(blockData, out string? trappedFacing))
+                    variantHint = $"facing={trappedFacing}";
+                return true;
+            }
+            case 152: blockName = "redstone_block"; return true;
+            case 155: blockName = "quartz_block"; return true;
+            case 156:
+                blockName = "quartz_stairs";
+                variantHint = LegacyStairsVariantHint(blockData);
+                return true;
+            case 159: blockName = WoolColors[blockData & 0x0F] + "_terracotta"; return true;
+            case 161:
+                blockName = (blockData & 0x1) == 1 ? "dark_oak_leaves" : "acacia_leaves";
+                return true;
+            case 162:
+                blockName = (blockData & 0x1) == 1 ? "dark_oak_log" : "acacia_log";
+                variantHint = (blockData & 0xC) switch
+                {
+                    0x4 => "axis=x",
+                    0x8 => "axis=z",
+                    _ => "axis=y"
+                };
+                return true;
+            case 163:
+                blockName = "acacia_stairs";
+                variantHint = LegacyStairsVariantHint(blockData);
+                return true;
+            case 164:
+                blockName = "dark_oak_stairs";
+                variantHint = LegacyStairsVariantHint(blockData);
+                return true;
+            case 170: blockName = "hay_block"; return true;
+            case 172: blockName = "terracotta"; return true;
+            case 173: blockName = "coal_block"; return true;
+            case 174: blockName = "packed_ice"; return true;
+            case 175: blockName = "sunflower"; return true;
+            default:
+                blockName = string.Empty;
+                return false;
+        }
+    }
+
+    private static string LegacyStairsVariantHint(int data)
+    {
+        // Legacy stair metadata stores the ascending direction; modern facing is opposite.
+        string facing = (data & 0x3) switch
+        {
+            0 => "west",
+            1 => "east",
+            2 => "north",
+            3 => "south",
+            _ => "north"
+        };
+
+        string half = (data & 0x4) != 0 ? "top" : "bottom";
+        return $"facing={facing},half={half},shape=straight";
+    }
+
+    private static bool TryLegacyHorizontalFacingFrom2To5(int data, out string? facing)
+    {
+        facing = (data & 0x7) switch
+        {
+            2 => "north",
+            3 => "south",
+            4 => "west",
+            5 => "east",
+            _ => null
+        };
+        return facing != null;
+    }
+
+    private static bool TryLegacyHorizontalFacingFromTorchData(int data, out string? facing)
+    {
+        facing = (data & 0x7) switch
+        {
+            1 => "east",
+            2 => "west",
+            3 => "south",
+            4 => "north",
+            _ => null
+        };
+        return facing != null;
+    }
+
+    private static bool TryLegacyHorizontalFacingFromButtonData(int data, out string? facing)
+    {
+        facing = data switch
+        {
+            1 => "east",
+            2 => "west",
+            3 => "south",
+            4 => "north",
+            _ => null
+        };
+        return facing != null;
+    }
+
+    private static bool TryResolveLegacyDoor(
+        int blockId,
+        int blockData,
+        byte[] blocks,
+        byte[] data,
+        int index,
+        int width,
+        int height,
+        int length,
+        out string blockName,
+        out string variantHint)
+    {
+        blockName = blockId == 71 ? "iron_door" : "oak_door";
+
+        int layerSize = width * length;
+        bool isUpper = (blockData & 0x8) != 0;
+
+        int lowerData = blockData;
+        int upperData = 0;
+
+        if (isUpper)
+        {
+            int below = index - layerSize;
+            if (below >= 0 && below < blocks.Length && blocks[below] == blockId)
+                lowerData = below < data.Length ? data[below] & 0x0F : 0;
+            upperData = blockData;
+        }
+        else
+        {
+            int above = index + layerSize;
+            if (above >= 0 && above < blocks.Length && blocks[above] == blockId)
+                upperData = above < data.Length ? data[above] & 0x0F : 0;
+        }
+
+        string facing = (lowerData & 0x3) switch
+        {
+            0 => "east",
+            1 => "south",
+            2 => "west",
+            3 => "north",
+            _ => "north"
+        };
+
+        bool open = (lowerData & 0x4) != 0;
+        bool hingeRight = (upperData & 0x1) != 0;
+
+        string half = isUpper ? "upper" : "lower";
+        string hinge = hingeRight ? "right" : "left";
+        variantHint = $"facing={facing},half={half},hinge={hinge},open={(open ? "true" : "false")}";
+        return true;
+    }
+
     // ── Spawn logic ───────────────────────────────────────────────────────────
 
     private void TrySpawn()
@@ -1482,6 +2823,14 @@ public class SpawnMenu : UiPanel
         if (_selectedCategory == "Items")
         {
             TrySpawnItem();
+            return;
+        }
+
+        if (_selectedCategory == "Scenery")
+        {
+            var filteredScenery = GetFilteredObjects();
+            if (_selectedObjectIndex < 0 || _selectedObjectIndex >= filteredScenery.Count) return;
+            SpawnScenery(filteredScenery[_selectedObjectIndex]);
             return;
         }
 
@@ -1585,6 +2934,10 @@ public class SpawnMenu : UiPanel
 
             case "Custom Models":
                 SpawnCustomModel(objectName);
+                break;
+
+            case "Scenery":
+                SpawnScenery(objectName);
                 break;
 
             default:
