@@ -22,7 +22,6 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 ///
 /// Not yet implemented
 /// ────────────────────
-///  • Undo/redo (no command system yet)
 ///  • Multi-selection
 ///  • Per-type object icons
 ///  • Keyframe deep-copy on Duplicate

@@ -15,6 +15,8 @@ public class Menubar : UiPanel
     public Action? OpenRecentRequested { get; set; }
     public Action? SaveProjectRequested { get; set; }
     public Action? SaveProjectAsRequested { get; set; }
+    public Action? UndoRequested { get; set; }
+    public Action? RedoRequested { get; set; }
     public Action? ImportAssetRequested { get; set; }
     public Action? HomeScreenRequested { get; set; }
     public Action<RenderRequestKind>? RenderRequested { get; set; }
@@ -63,11 +65,13 @@ public class Menubar : UiPanel
 
             if (ImGui.BeginMenu("Edit"))
             {
-                if (ImGui.MenuItem("Undo"))
+                if (ImGui.MenuItem("Undo", "Ctrl+Z"))
                 {
+                    UndoRequested?.Invoke();
                 }
-                if (ImGui.MenuItem("Redo"))
+                if (ImGui.MenuItem("Redo", "Ctrl+Y"))
                 {
+                    RedoRequested?.Invoke();
                 }
                 ImGui.Separator();
                 if (ImGui.MenuItem("Cut"))

@@ -137,6 +137,19 @@ public class MainWindow : Window
     private double _nextDirtyCheckAtSeconds;
     private const double DirtyCheckIntervalSeconds = 0.35;
 
+    private const int MaxUndoEntries = 100;
+    private const double UndoCommitDelaySeconds = 0.45;
+
+    private readonly List<string> _undoSceneSnapshots = new();
+    private readonly List<string> _redoSceneSnapshots = new();
+
+    private string _lastHistorySnapshotJson = "";
+    private string _lastHistoryFingerprint = "";
+    private string _pendingHistorySnapshotJson = "";
+    private string _pendingHistoryFingerprint = "";
+    private double _pendingHistoryChangedAtSeconds;
+    private bool _suppressHistoryTracking;
+
     private readonly UiPanel[] _panels =
     [
         new Viewport(),
@@ -155,6 +168,8 @@ public class MainWindow : Window
         _menubar.OpenRecentRequested = () => _showProjectHome = true;
         _menubar.SaveProjectRequested = SaveProjectWithScene;
         _menubar.SaveProjectAsRequested = OpenSaveAsPopup;
+        _menubar.UndoRequested = PerformUndo;
+        _menubar.RedoRequested = PerformRedo;
         _menubar.ImportAssetRequested = ImportAssetFromDialog;
         _menubar.HomeScreenRequested = () => _showProjectHome = true;
         _menubar.RenderRequested = OpenRenderPopup;
@@ -322,6 +337,7 @@ public class MainWindow : Window
             panel.Render();
 
         _spawnMenu?.Render();
+        UpdateUndoRedoTracking();
         RenderProjectHomeScreen();
         RenderToast();
     }
@@ -369,20 +385,11 @@ public class MainWindow : Window
         if (_mainViewport == null)
             return "";
 
-        var manifestSnapshot = new ProjectManifest
-        {
-            ProjectName = _projectManager.Manifest.ProjectName,
-            CreatedUtc = "",
-            LastSavedUtc = "",
-            Assets = new List<ProjectAssetEntry>(_projectManager.Manifest.Assets)
-        };
+        string snapshotJson = CaptureSceneSnapshotJson(out string fingerprint);
+        if (string.IsNullOrEmpty(snapshotJson))
+            return "";
 
-        ProjectSceneSerializer.WriteSceneToManifest(manifestSnapshot, _mainViewport, _timeline, _propertiesPanel);
-
-        string snapshotJson = JsonSerializer.Serialize(manifestSnapshot, AppJsonContext.Default.ProjectManifest);
-
-        byte[] hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(snapshotJson));
-        return Convert.ToHexString(hashBytes);
+        return fingerprint;
     }
 
     private void RefreshWindowTitle()
@@ -410,6 +417,21 @@ public class MainWindow : Window
         ImGuiIOPtr io = ImGui.GetIO();
         if (!io.KeyCtrl || io.WantTextInput)
             return;
+
+        if (ImGui.IsKeyPressed(ImGuiKey.Z))
+        {
+            if (io.KeyShift)
+                PerformRedo();
+            else
+                PerformUndo();
+            return;
+        }
+
+        if (ImGui.IsKeyPressed(ImGuiKey.Y))
+        {
+            PerformRedo();
+            return;
+        }
 
         if (io.KeyShift && ImGui.IsKeyPressed(ImGuiKey.S))
         {
@@ -1322,6 +1344,197 @@ public class MainWindow : Window
             return;
 
         ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, _mainViewport, _spawnMenu, _timeline, _propertiesPanel);
+        ResetUndoRedoHistory();
+    }
+
+    private ProjectManifest CreateSceneSnapshotManifest()
+    {
+        var manifestSnapshot = new ProjectManifest
+        {
+            ProjectName = _projectManager.Manifest.ProjectName,
+            CreatedUtc = _projectManager.Manifest.CreatedUtc,
+            LastSavedUtc = _projectManager.Manifest.LastSavedUtc,
+            Assets = new List<ProjectAssetEntry>(_projectManager.Manifest.Assets)
+        };
+
+        if (_mainViewport != null)
+            ProjectSceneSerializer.WriteSceneToManifest(manifestSnapshot, _mainViewport, _timeline, _propertiesPanel);
+
+        return manifestSnapshot;
+    }
+
+    private static string ComputeSnapshotFingerprint(string snapshotJson)
+    {
+        byte[] hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(snapshotJson));
+        return Convert.ToHexString(hashBytes);
+    }
+
+    private string CaptureSceneSnapshotJson(out string fingerprint)
+    {
+        fingerprint = "";
+
+        if (!_projectManager.HasProject || _mainViewport == null)
+            return "";
+
+        ProjectManifest manifestSnapshot = CreateSceneSnapshotManifest();
+        string snapshotJson = JsonSerializer.Serialize(manifestSnapshot, AppJsonContext.Default.ProjectManifest);
+        if (string.IsNullOrEmpty(snapshotJson))
+            return "";
+
+        fingerprint = ComputeSnapshotFingerprint(snapshotJson);
+        return snapshotJson;
+    }
+
+    private void ResetUndoRedoHistory()
+    {
+        _undoSceneSnapshots.Clear();
+        _redoSceneSnapshots.Clear();
+        _pendingHistorySnapshotJson = "";
+        _pendingHistoryFingerprint = "";
+        _pendingHistoryChangedAtSeconds = 0;
+
+        _lastHistorySnapshotJson = CaptureSceneSnapshotJson(out _lastHistoryFingerprint);
+    }
+
+    private void PushUndoSnapshot(string snapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(snapshotJson))
+            return;
+
+        if (_undoSceneSnapshots.Count >= MaxUndoEntries)
+            _undoSceneSnapshots.RemoveAt(0);
+
+        _undoSceneSnapshots.Add(snapshotJson);
+    }
+
+    private void PushRedoSnapshot(string snapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(snapshotJson))
+            return;
+
+        if (_redoSceneSnapshots.Count >= MaxUndoEntries)
+            _redoSceneSnapshots.RemoveAt(0);
+
+        _redoSceneSnapshots.Add(snapshotJson);
+    }
+
+    private bool ApplySceneSnapshot(string snapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(snapshotJson) || _mainViewport == null || _spawnMenu == null)
+            return false;
+
+        ProjectManifest? snapshotManifest = JsonSerializer.Deserialize(snapshotJson, AppJsonContext.Default.ProjectManifest);
+        if (snapshotManifest == null)
+            return false;
+
+        _suppressHistoryTracking = true;
+        try
+        {
+            ProjectSceneSerializer.LoadSceneFromManifest(snapshotManifest, _mainViewport, _spawnMenu, _timeline, _propertiesPanel);
+        }
+        finally
+        {
+            _suppressHistoryTracking = false;
+        }
+
+        _lastHistorySnapshotJson = snapshotJson;
+        _lastHistoryFingerprint = ComputeSnapshotFingerprint(snapshotJson);
+        _pendingHistorySnapshotJson = "";
+        _pendingHistoryFingerprint = "";
+        _pendingHistoryChangedAtSeconds = 0;
+        _nextDirtyCheckAtSeconds = 0;
+        UpdateDirtyStateFromScene();
+        RefreshWindowTitle();
+        return true;
+    }
+
+    private void UpdateUndoRedoTracking()
+    {
+        if (_suppressHistoryTracking || !_projectManager.HasProject || _mainViewport == null || _spawnMenu == null)
+            return;
+
+        string currentSnapshotJson = CaptureSceneSnapshotJson(out string currentFingerprint);
+        if (string.IsNullOrEmpty(currentSnapshotJson))
+            return;
+
+        if (string.IsNullOrEmpty(_lastHistoryFingerprint))
+        {
+            _lastHistoryFingerprint = currentFingerprint;
+            _lastHistorySnapshotJson = currentSnapshotJson;
+            return;
+        }
+
+        if (string.Equals(currentFingerprint, _lastHistoryFingerprint, StringComparison.Ordinal))
+        {
+            _pendingHistorySnapshotJson = "";
+            _pendingHistoryFingerprint = "";
+            _pendingHistoryChangedAtSeconds = 0;
+            return;
+        }
+
+        if (!string.Equals(currentFingerprint, _pendingHistoryFingerprint, StringComparison.Ordinal))
+        {
+            _pendingHistoryFingerprint = currentFingerprint;
+            _pendingHistorySnapshotJson = currentSnapshotJson;
+            _pendingHistoryChangedAtSeconds = GetNowSeconds();
+            return;
+        }
+
+        if (GetNowSeconds() - _pendingHistoryChangedAtSeconds < UndoCommitDelaySeconds)
+            return;
+
+        PushUndoSnapshot(_lastHistorySnapshotJson);
+        _redoSceneSnapshots.Clear();
+
+        _lastHistoryFingerprint = _pendingHistoryFingerprint;
+        _lastHistorySnapshotJson = _pendingHistorySnapshotJson;
+        _pendingHistoryFingerprint = "";
+        _pendingHistorySnapshotJson = "";
+        _pendingHistoryChangedAtSeconds = 0;
+    }
+
+    private void PerformUndo()
+    {
+        if (_undoSceneSnapshots.Count == 0)
+            return;
+
+        string currentSnapshotJson = CaptureSceneSnapshotJson(out _);
+        if (string.IsNullOrWhiteSpace(currentSnapshotJson))
+            return;
+
+        string targetSnapshot = _undoSceneSnapshots[^1];
+        _undoSceneSnapshots.RemoveAt(_undoSceneSnapshots.Count - 1);
+        PushRedoSnapshot(currentSnapshotJson);
+
+        if (!ApplySceneSnapshot(targetSnapshot))
+        {
+            string redoSnapshot = _redoSceneSnapshots[^1];
+            _redoSceneSnapshots.RemoveAt(_redoSceneSnapshots.Count - 1);
+            _undoSceneSnapshots.Add(targetSnapshot);
+            ApplySceneSnapshot(redoSnapshot);
+        }
+    }
+
+    private void PerformRedo()
+    {
+        if (_redoSceneSnapshots.Count == 0)
+            return;
+
+        string currentSnapshotJson = CaptureSceneSnapshotJson(out _);
+        if (string.IsNullOrWhiteSpace(currentSnapshotJson))
+            return;
+
+        string targetSnapshot = _redoSceneSnapshots[^1];
+        _redoSceneSnapshots.RemoveAt(_redoSceneSnapshots.Count - 1);
+        PushUndoSnapshot(currentSnapshotJson);
+
+        if (!ApplySceneSnapshot(targetSnapshot))
+        {
+            string undoSnapshot = _undoSceneSnapshots[^1];
+            _undoSceneSnapshots.RemoveAt(_undoSceneSnapshots.Count - 1);
+            _redoSceneSnapshots.Add(targetSnapshot);
+            ApplySceneSnapshot(undoSnapshot);
+        }
     }
 
     private void OpenNewProjectPopup()
