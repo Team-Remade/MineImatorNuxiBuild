@@ -8,6 +8,7 @@ using Hexa.NET.ImGui;
 using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
+using MineImatorSimplyRemade.core.render;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core;
@@ -38,6 +39,14 @@ public class MainWindow : Window
         Save
     }
 
+    private enum RenderMode
+    {
+        Image,
+        Video
+    }
+
+    private readonly record struct ResolutionPreset(string Name, int Width, int Height);
+
     public static Random Rnd = new Random();
 
     private static readonly string ImGuiIniPath = "imgui.ini";
@@ -61,9 +70,58 @@ public class MainWindow : Window
     private readonly Dictionary<string, uint> _thumbnailTextures = new(StringComparer.OrdinalIgnoreCase);
 
     private bool _openProjectDialogPopup;
+    private bool _openRenderPopup;
     private bool _showProjectHome = true;
     private string _newProjectNameBuffer = "Untitled Project";
     private ProjectDialogMode _projectDialogMode = ProjectDialogMode.NewProject;
+
+    private RenderMode _renderPopupMode = RenderMode.Image;
+    private int _renderPopupWidth = 1920;
+    private int _renderPopupHeight = 1080;
+    private int _renderPopupFramerate = 30;
+    private int _renderPopupBitrateKbps = 12000;
+    private string _renderPopupImageFormat = "png";
+    private string _renderPopupVideoFormat = "mp4";
+    private string _renderPopupPreset = "1080P";
+
+    private bool _renderJobActive;
+    private bool _renderJobFinished;
+    private RenderMode _renderJobMode = RenderMode.Image;
+    private string _renderJobStatus = "";
+    private string _renderJobOutputPath = "";
+    private int _renderFrameCurrent;
+    private int _renderFrameTotal = 1;
+    private int _renderJobWidth;
+    private int _renderJobHeight;
+    private int _renderTimelineRestoreFrame;
+    private bool _renderVideoWarmupFrame;
+    private string _renderTempFramesDir = "";
+    private Task<string>? _renderEncodeTask;
+    private bool _closeRenderPopupRequested;
+    private double _renderJobStartedAtSeconds;
+    private uint _renderPreviewTexture;
+    private int _renderPreviewWidth;
+    private int _renderPreviewHeight;
+    private RenderExporter? _renderExporter;
+
+    private static readonly ResolutionPreset[] RenderResolutionPresets =
+    [
+        new("Avatar 512x512", 512, 512),
+        new("VGA 640x480", 640, 480),
+        new("720P", 1280, 720),
+        new("1080P", 1920, 1080),
+        new("1440P", 2560, 1440),
+        new("720P Cinematic", 1280, 544),
+        new("1080P Cinematic", 1920, 816),
+        new("1440P Cinematic", 2560, 1088),
+        new("1600P Cinematic", 3200, 1360),
+        new("UW4k Cinematic", 3840, 1600),
+        new("UW5k Cinematic", 5120, 2160),
+        new("Preview 960x400", 960, 400)
+    ];
+
+    private static readonly int[] RenderFramerateOptions = [12, 24, 25, 30, 48, 50, 60, 120];
+    private static readonly int[] RenderBitrateOptionsKbps = [4000, 8000, 12000, 20000, 40000, 80000];
 
     private string _toastMessage = "";
     private ToastKind _toastKind = ToastKind.Success;
@@ -99,6 +157,7 @@ public class MainWindow : Window
         _menubar.SaveProjectAsRequested = OpenSaveAsPopup;
         _menubar.ImportAssetRequested = ImportAssetFromDialog;
         _menubar.HomeScreenRequested = () => _showProjectHome = true;
+        _menubar.RenderRequested = OpenRenderPopup;
 
         ImageResult icon;
         int rng = Rnd.Next(1, 1000);
@@ -223,6 +282,7 @@ public class MainWindow : Window
         ProcessPendingSaveAction();
         UpdateDirtyStateFromScene();
         RefreshWindowTitle();
+        AdvanceRenderJob();
 
         _menubar.Render();
         RenderProjectDialogs();
@@ -565,6 +625,588 @@ public class MainWindow : Window
 
             ImGui.EndPopup();
         }
+
+        RenderRenderPopup();
+    }
+
+    private void OpenRenderPopup(Menubar.RenderRequestKind kind)
+    {
+        _renderPopupMode = kind == Menubar.RenderRequestKind.Video ? RenderMode.Video : RenderMode.Image;
+
+        if (_propertiesPanel != null)
+        {
+            _renderPopupWidth = _propertiesPanel.GetResolutionWidth();
+            _renderPopupHeight = _propertiesPanel.GetResolutionHeight();
+            _renderPopupFramerate = _propertiesPanel.GetFramerate();
+
+            _renderPopupMode = string.Equals(_propertiesPanel.GetRenderMode(), "video", StringComparison.OrdinalIgnoreCase)
+                ? RenderMode.Video
+                : _renderPopupMode;
+            _renderPopupImageFormat = _propertiesPanel.GetRenderImageFormat();
+            _renderPopupVideoFormat = _propertiesPanel.GetRenderVideoFormat();
+            _renderPopupBitrateKbps = _propertiesPanel.GetRenderVideoBitrateKbps();
+            _renderPopupPreset = _propertiesPanel.GetRenderResolutionPreset();
+        }
+
+        _openRenderPopup = true;
+    }
+
+    private void RenderRenderPopup()
+    {
+        if (_openRenderPopup)
+        {
+            _openRenderPopup = false;
+            ImGui.OpenPopup("Render Output");
+        }
+
+        if (_renderJobActive)
+            ImGui.OpenPopup("Render Output");
+
+        bool popupOpen = true;
+        if (!ImGui.BeginPopupModal("Render Output", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            return;
+
+        if (_closeRenderPopupRequested)
+        {
+            _closeRenderPopupRequested = false;
+            _renderJobFinished = false;
+            ImGui.CloseCurrentPopup();
+            ImGui.EndPopup();
+            return;
+        }
+
+        if (_renderJobActive || _renderJobFinished)
+            RenderRenderProgressSection();
+
+        bool settingsChanged = false;
+        bool controlsDisabled = _renderJobActive;
+        if (controlsDisabled)
+            ImGui.BeginDisabled();
+
+        string modeLabel = _renderPopupMode == RenderMode.Video ? "Video" : "Image";
+        if (ImGui.BeginCombo("Output Type", modeLabel))
+        {
+            bool imageSelected = _renderPopupMode == RenderMode.Image;
+            if (ImGui.Selectable("Image", imageSelected))
+            {
+                _renderPopupMode = RenderMode.Image;
+                settingsChanged = true;
+            }
+
+            bool videoSelected = _renderPopupMode == RenderMode.Video;
+            if (ImGui.Selectable("Video", videoSelected))
+            {
+                _renderPopupMode = RenderMode.Video;
+                settingsChanged = true;
+            }
+
+            ImGui.EndCombo();
+        }
+
+        string selectedPresetLabel = _renderPopupPreset;
+        if (ImGui.BeginCombo("Resolution Preset", selectedPresetLabel))
+        {
+            foreach (ResolutionPreset preset in RenderResolutionPresets)
+            {
+                bool selected = string.Equals(_renderPopupPreset, preset.Name, StringComparison.OrdinalIgnoreCase);
+                if (ImGui.Selectable(preset.Name, selected))
+                {
+                    _renderPopupPreset = preset.Name;
+                    _renderPopupWidth = preset.Width;
+                    _renderPopupHeight = preset.Height;
+                    settingsChanged = true;
+                }
+            }
+
+            bool customSelected = string.Equals(_renderPopupPreset, "Custom", StringComparison.OrdinalIgnoreCase);
+            if (ImGui.Selectable("Custom", customSelected))
+            {
+                _renderPopupPreset = "Custom";
+                settingsChanged = true;
+            }
+
+            ImGui.EndCombo();
+        }
+
+        int width = _renderPopupWidth;
+        int height = _renderPopupHeight;
+        bool widthChanged = ImGui.InputInt("Width", ref width, 0, 0, ImGuiInputTextFlags.None);
+        bool heightChanged = ImGui.InputInt("Height", ref height, 0, 0, ImGuiInputTextFlags.None);
+        if (widthChanged || heightChanged)
+        {
+            _renderPopupWidth = Math.Max(1, width);
+            _renderPopupHeight = Math.Max(1, height);
+            _renderPopupPreset = "Custom";
+            settingsChanged = true;
+        }
+
+        if (_renderPopupMode == RenderMode.Image)
+        {
+            string formatLabel = _renderPopupImageFormat.ToUpperInvariant();
+            if (ImGui.BeginCombo("File Format", formatLabel))
+            {
+                foreach (string candidate in new[] { "png", "jpg", "webp" })
+                {
+                    bool selected = string.Equals(_renderPopupImageFormat, candidate, StringComparison.OrdinalIgnoreCase);
+                    if (ImGui.Selectable(candidate.ToUpperInvariant(), selected))
+                    {
+                        _renderPopupImageFormat = candidate;
+                        settingsChanged = true;
+                    }
+                }
+
+                ImGui.EndCombo();
+            }
+        }
+        else
+        {
+            string formatLabel = _renderPopupVideoFormat.ToUpperInvariant();
+            if (ImGui.BeginCombo("File Format", formatLabel))
+            {
+                foreach (string candidate in new[] { "mp4", "webm" })
+                {
+                    bool selected = string.Equals(_renderPopupVideoFormat, candidate, StringComparison.OrdinalIgnoreCase);
+                    if (ImGui.Selectable(candidate.ToUpperInvariant(), selected))
+                    {
+                        _renderPopupVideoFormat = candidate;
+                        settingsChanged = true;
+                    }
+                }
+
+                ImGui.EndCombo();
+            }
+
+            string fpsLabel = $"{_renderPopupFramerate} fps";
+            if (ImGui.BeginCombo("Framerate", fpsLabel))
+            {
+                foreach (int fps in RenderFramerateOptions)
+                {
+                    bool selected = _renderPopupFramerate == fps;
+                    if (ImGui.Selectable($"{fps} fps", selected))
+                    {
+                        _renderPopupFramerate = fps;
+                        settingsChanged = true;
+                    }
+                }
+
+                ImGui.EndCombo();
+            }
+
+            string bitrateLabel = $"{_renderPopupBitrateKbps} kbps";
+            if (ImGui.BeginCombo("Bitrate", bitrateLabel))
+            {
+                foreach (int bitrate in RenderBitrateOptionsKbps)
+                {
+                    bool selected = _renderPopupBitrateKbps == bitrate;
+                    if (ImGui.Selectable($"{bitrate} kbps", selected))
+                    {
+                        _renderPopupBitrateKbps = bitrate;
+                        settingsChanged = true;
+                    }
+                }
+
+                ImGui.EndCombo();
+            }
+        }
+
+        if (settingsChanged)
+            ApplyRenderPopupToProjectSettings();
+
+        if (ImGui.Button(_renderPopupMode == RenderMode.Video ? "Start Render" : "Start Render", new Vector2(140, 0)))
+        {
+            StartRenderJob();
+        }
+
+        if (controlsDisabled)
+            ImGui.EndDisabled();
+
+        ImGui.SameLine();
+        if (_renderJobActive)
+        {
+            if (ImGui.Button("Abort", new Vector2(120, 0)))
+                CancelRenderJob("Render canceled");
+        }
+        else
+        {
+            if (ImGui.Button(_renderJobFinished ? "Close" : "Cancel", new Vector2(120, 0)))
+            {
+                _renderJobFinished = false;
+                ImGui.CloseCurrentPopup();
+            }
+        }
+
+        ImGui.EndPopup();
+    }
+
+    private unsafe void RenderRenderProgressSection()
+    {
+        float progress = _renderFrameTotal <= 0 ? 0f : Math.Clamp(_renderFrameCurrent / (float)_renderFrameTotal, 0f, 1f);
+        double elapsed = Math.Max(0d, GetNowSeconds() - _renderJobStartedAtSeconds);
+
+        ImGui.SeparatorText("Progress");
+        ImGui.TextWrapped(_renderJobStatus);
+        ImGui.ProgressBar(progress, new Vector2(360f, 0f), $"{progress * 100f:0.0}%");
+        ImGui.Text($"Frames: {_renderFrameCurrent}/{_renderFrameTotal}");
+        ImGui.Text($"Elapsed: {elapsed:0.0}s");
+
+        if (_renderPreviewTexture != 0 && _renderPreviewWidth > 0 && _renderPreviewHeight > 0)
+        {
+            ImGui.Text("Preview:");
+            float maxWidth = 360f;
+            float previewWidth = maxWidth;
+            float previewHeight = previewWidth * (_renderPreviewHeight / (float)_renderPreviewWidth);
+            if (previewHeight > 220f)
+            {
+                previewHeight = 220f;
+                previewWidth = previewHeight * (_renderPreviewWidth / (float)_renderPreviewHeight);
+            }
+
+            ImGui.Image(
+                new ImTextureRef(texId: (ulong)_renderPreviewTexture),
+                new Vector2(previewWidth, previewHeight),
+                new Vector2(0, 0),
+                new Vector2(1, 1));
+        }
+
+        ImGui.Separator();
+    }
+
+    private void ApplyRenderPopupToProjectSettings()
+    {
+        if (_propertiesPanel == null)
+            return;
+
+        _renderPopupWidth = Math.Max(1, _renderPopupWidth);
+        _renderPopupHeight = Math.Max(1, _renderPopupHeight);
+        _renderPopupFramerate = Math.Clamp(_renderPopupFramerate, 1, 120);
+        _renderPopupBitrateKbps = Math.Clamp(_renderPopupBitrateKbps, 500, 200000);
+
+        string mode = _renderPopupMode == RenderMode.Video ? "video" : "image";
+        _propertiesPanel.SetRenderDimensionsAndFramerate(_renderPopupWidth, _renderPopupHeight, _renderPopupFramerate);
+        _propertiesPanel.SetRenderExportSettings(mode, _renderPopupImageFormat, _renderPopupVideoFormat, _renderPopupBitrateKbps, _renderPopupPreset);
+
+        _projectManager.SetDirty(true);
+    }
+
+    private void StartRenderJob()
+    {
+        if (_cameraViewport == null)
+        {
+            ShowErrorToast("Render failed: camera viewport is not initialized");
+            return;
+        }
+
+        if (!_projectManager.HasProject)
+        {
+            ShowErrorToast("Open or create a project before rendering");
+            return;
+        }
+
+        if (_renderJobActive)
+            return;
+
+        int width = Math.Max(1, _renderPopupWidth);
+        int height = Math.Max(1, _renderPopupHeight);
+
+        if (_renderPopupMode == RenderMode.Video)
+        {
+            if ((width & 1) != 0) width -= 1;
+            if ((height & 1) != 0) height -= 1;
+            width = Math.Max(2, width);
+            height = Math.Max(2, height);
+        }
+
+        string rendersDir = Path.Combine(_projectManager.ProjectFolder, "renders");
+        Directory.CreateDirectory(rendersDir);
+
+        string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        string baseName = MakeSafeRenderBaseName(_projectManager.Manifest.ProjectName);
+
+        string target;
+        string? selectedOutput;
+        if (_renderPopupMode == RenderMode.Video)
+        {
+            target = Path.Combine(rendersDir, $"{baseName}_{stamp}.{_renderPopupVideoFormat}");
+            selectedOutput = PickRenderOutputPath(target, _renderPopupVideoFormat);
+        }
+        else
+        {
+            target = Path.Combine(rendersDir, $"{baseName}_{stamp}.{_renderPopupImageFormat}");
+            selectedOutput = PickRenderOutputPath(target, _renderPopupImageFormat);
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedOutput))
+            return;
+
+        string normalizedPath = EnsureOutputExtension(selectedOutput, _renderPopupMode == RenderMode.Video ? _renderPopupVideoFormat : _renderPopupImageFormat);
+
+        try
+        {
+            _renderExporter = new RenderExporter(_cameraViewport);
+            _renderJobMode = _renderPopupMode;
+            _renderJobActive = true;
+            _renderJobFinished = false;
+            _renderJobStatus = "Starting render...";
+            _renderJobOutputPath = normalizedPath;
+            _renderJobStartedAtSeconds = GetNowSeconds();
+            _renderJobWidth = width;
+            _renderJobHeight = height;
+            _renderFrameCurrent = 0;
+            _renderVideoWarmupFrame = false;
+            _closeRenderPopupRequested = false;
+
+            if (_renderJobMode == RenderMode.Video)
+            {
+                if (_timeline == null)
+                    throw new InvalidOperationException("Timeline is not initialized.");
+
+                _renderTimelineRestoreFrame = _timeline.CurrentFrame;
+                _renderFrameTotal = _timeline.MaxFrames + 1;
+                _timeline.SetCurrentFrameForRender(0);
+                _renderVideoWarmupFrame = true;
+                _renderTempFramesDir = Path.Combine(rendersDir, $"_render_frames_{stamp}_{Guid.NewGuid():N}");
+                Directory.CreateDirectory(_renderTempFramesDir);
+                _renderEncodeTask = null;
+            }
+            else
+            {
+                _renderTimelineRestoreFrame = _timeline?.CurrentFrame ?? 0;
+                _renderFrameTotal = 1;
+                _renderTempFramesDir = "";
+                _renderEncodeTask = null;
+            }
+
+            _renderPopupWidth = width;
+            _renderPopupHeight = height;
+            ApplyRenderPopupToProjectSettings();
+        }
+        catch (Exception ex)
+        {
+            _renderJobActive = false;
+            _renderJobFinished = true;
+            _renderJobStatus = $"Render failed: {ex.Message}";
+            ShowErrorToast(_renderJobStatus);
+        }
+    }
+
+    private void AdvanceRenderJob()
+    {
+        if (!_renderJobActive || _cameraViewport == null || _renderExporter == null)
+            return;
+
+        try
+        {
+            if (_renderJobMode == RenderMode.Image)
+            {
+                _renderJobStatus = "Rendering image...";
+                if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, out byte[] frame))
+                    throw new InvalidOperationException("Failed to capture render frame.");
+
+                UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight);
+                _renderExporter.ExportImageFromRgb(_renderJobWidth, _renderJobHeight, _renderPopupImageFormat, _renderJobOutputPath, frame);
+
+                _renderFrameCurrent = 1;
+                CompleteRenderJobSuccess();
+                return;
+            }
+
+            if (_timeline == null)
+                throw new InvalidOperationException("Render session is missing timeline state.");
+
+            if (_renderVideoWarmupFrame)
+            {
+                _renderVideoWarmupFrame = false;
+                _renderJobStatus = "Preparing frame 0...";
+                return;
+            }
+
+            if (_renderFrameCurrent < _renderFrameTotal)
+            {
+                _timeline.SetCurrentFrameForRender(_renderFrameCurrent);
+                if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, out byte[] frame))
+                    throw new InvalidOperationException($"Failed to capture frame {_renderFrameCurrent}.");
+
+                UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight);
+
+                string framePath = Path.Combine(_renderTempFramesDir, $"frame_{_renderFrameCurrent:D6}.ppm");
+                WritePpmFrame(framePath, frame, _renderJobWidth, _renderJobHeight);
+
+                int justRenderedFrame = _renderFrameCurrent;
+                _renderFrameCurrent++;
+                _renderJobStatus = $"Rendered frame {justRenderedFrame}/{_renderFrameTotal - 1}...";
+            }
+
+            if (_renderFrameCurrent >= _renderFrameTotal && _renderEncodeTask == null)
+            {
+                _renderJobStatus = "Encoding video...";
+                string tempDir = _renderTempFramesDir;
+                string outputPath = _renderJobOutputPath;
+                int fps = _renderPopupFramerate;
+                int bitrate = _renderPopupBitrateKbps;
+                string format = _renderPopupVideoFormat;
+                _renderEncodeTask = Task.Run(() => RenderExporter.EncodePpmSequenceToVideo(tempDir, fps, bitrate, format, outputPath));
+            }
+
+            if (_renderEncodeTask != null)
+            {
+                if (!_renderEncodeTask.IsCompleted)
+                    return;
+
+                if (_renderEncodeTask.IsFaulted)
+                    throw _renderEncodeTask.Exception?.GetBaseException() ?? new InvalidOperationException("Video encoding failed.");
+
+                CompleteRenderJobSuccess();
+            }
+        }
+        catch (Exception ex)
+        {
+            FailRenderJob(ex.Message);
+        }
+    }
+
+    private void CompleteRenderJobSuccess()
+    {
+        if (_timeline != null)
+            _timeline.SetCurrentFrame(_renderTimelineRestoreFrame);
+
+        _renderEncodeTask = null;
+        _renderExporter = null;
+        _renderJobActive = false;
+        _renderJobFinished = true;
+        _renderJobStatus = $"Render complete: {Path.GetFileName(_renderJobOutputPath)}";
+        _closeRenderPopupRequested = true;
+        CleanupRenderTempFrames();
+        ShowSuccessToast($"Rendered: {Path.GetFileName(_renderJobOutputPath)}");
+    }
+
+    private void CancelRenderJob(string message)
+    {
+        if (_timeline != null)
+            _timeline.SetCurrentFrame(_renderTimelineRestoreFrame);
+
+        _renderEncodeTask = null;
+        _renderExporter = null;
+        _renderJobActive = false;
+        _renderJobFinished = true;
+        _renderJobStatus = message;
+        _closeRenderPopupRequested = true;
+        CleanupRenderTempFrames();
+    }
+
+    private void FailRenderJob(string error)
+    {
+        CancelRenderJob($"Render failed: {error}");
+        ShowErrorToast(_renderJobStatus);
+    }
+
+    private unsafe void UpdateRenderPreviewTexture(byte[] rgbPixels, int width, int height)
+    {
+        if (GL == null)
+            return;
+
+        if (_renderPreviewTexture == 0)
+        {
+            GL.GenTextures(1, out _renderPreviewTexture);
+            GL.BindTexture(GLEnum.Texture2D, _renderPreviewTexture);
+            GL.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
+            GL.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
+            GL.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            GL.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+        }
+        else
+        {
+            GL.BindTexture(GLEnum.Texture2D, _renderPreviewTexture);
+        }
+
+        GL.PixelStore(GLEnum.UnpackAlignment, 1);
+        fixed (byte* p = rgbPixels)
+        {
+            if (_renderPreviewWidth != width || _renderPreviewHeight != height)
+            {
+                GL.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb8, (uint)width, (uint)height, 0, PixelFormat.Rgb, GLEnum.UnsignedByte, p);
+                _renderPreviewWidth = width;
+                _renderPreviewHeight = height;
+            }
+            else
+            {
+                GL.TexSubImage2D(GLEnum.Texture2D, 0, 0, 0, (uint)width, (uint)height, PixelFormat.Rgb, GLEnum.UnsignedByte, p);
+            }
+        }
+        GL.PixelStore(GLEnum.UnpackAlignment, 4);
+        GL.BindTexture(GLEnum.Texture2D, 0);
+    }
+
+    private void CleanupRenderTempFrames()
+    {
+        if (string.IsNullOrWhiteSpace(_renderTempFramesDir))
+            return;
+
+        try
+        {
+            if (Directory.Exists(_renderTempFramesDir))
+                Directory.Delete(_renderTempFramesDir, recursive: true);
+        }
+        catch
+        {
+            // Best-effort cleanup of temporary render frames.
+        }
+
+        _renderTempFramesDir = "";
+    }
+
+    private static void WritePpmFrame(string filePath, byte[] rgbPixels, int width, int height)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath) ?? ".");
+        byte[] header = Encoding.ASCII.GetBytes($"P6\n{width} {height}\n255\n");
+
+        using var stream = File.Create(filePath);
+        stream.Write(header, 0, header.Length);
+        stream.Write(rgbPixels, 0, rgbPixels.Length);
+    }
+
+    private static string? PickRenderOutputPath(string defaultPath, string format)
+    {
+        string extension = NormalizeOutputExtension(format);
+        var result = Dialog.FileSave(extension, defaultPath);
+        if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
+            return null;
+
+        return result.Path;
+    }
+
+    private static string EnsureOutputExtension(string outputPath, string format)
+    {
+        string extension = NormalizeOutputExtension(format);
+        string expected = "." + extension;
+
+        if (string.Equals(Path.GetExtension(outputPath), expected, StringComparison.OrdinalIgnoreCase))
+            return outputPath;
+
+        return Path.ChangeExtension(outputPath, expected);
+    }
+
+    private static string NormalizeOutputExtension(string format)
+    {
+        string normalized = (format ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "jpeg" => "jpg",
+            "png" => "png",
+            "jpg" => "jpg",
+            "webp" => "webp",
+            "mp4" => "mp4",
+            "webm" => "webm",
+            _ => "png"
+        };
+    }
+
+    private static string MakeSafeRenderBaseName(string projectName)
+    {
+        string fallback = string.IsNullOrWhiteSpace(projectName) ? "Render" : projectName.Trim();
+        foreach (char invalid in Path.GetInvalidFileNameChars())
+            fallback = fallback.Replace(invalid, '_');
+
+        return string.IsNullOrWhiteSpace(fallback) ? "Render" : fallback;
     }
 
     private void OpenProjectFromDialog()

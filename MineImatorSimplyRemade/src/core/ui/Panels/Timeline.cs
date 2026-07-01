@@ -125,12 +125,27 @@ public class Timeline : UiPanel
     // ── Public API ────────────────────────────────────────────────────────────
 
     public int   CurrentFrame => _currentFrame;
+    public int   MaxFrames    => _maxFrames;
     public float Framerate    => _frameRate;
 
     public void SetFrameRate(float frameRate)
     {
         _frameRate = Math.Clamp(frameRate, 1f, 120f);
         _frameAccumulator = 0.0;
+    }
+
+    public void SetCurrentFrame(int frame)
+    {
+        _currentFrame = Math.Max(0, frame);
+        _frameAccumulator = 0.0;
+        ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
+    }
+
+    public void SetCurrentFrameForRender(int frame)
+    {
+        _currentFrame = Math.Max(0, frame);
+        _frameAccumulator = 0.0;
+        ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: true);
     }
 
     public ProjectTimelineState ExportProjectState()
@@ -152,7 +167,7 @@ public class Timeline : UiPanel
         {
             _currentFrame = 0;
             _frameAccumulator = 0.0;
-            ApplyKeyframesAtCurrentFrame();
+            ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
             return;
         }
 
@@ -161,7 +176,7 @@ public class Timeline : UiPanel
         _autoKeyframe = state.AutoKeyframe;
         _currentFrame = Math.Max(0, state.CurrentFrame);
         _frameAccumulator = 0.0;
-        ApplyKeyframesAtCurrentFrame();
+        ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
     }
 
     /// <summary>
@@ -211,7 +226,7 @@ public class Timeline : UiPanel
                 {
                     _currentFrame     = newFrame;
                     _frameAccumulator = 0.0;
-                    ApplyKeyframesAtCurrentFrame();
+                    ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
                 }
             }
             else
@@ -257,7 +272,7 @@ public class Timeline : UiPanel
                 if (kf.Frame > furthest) furthest = kf.Frame;
 
         if (_currentFrame > furthest) { _currentFrame = 0; _frameAccumulator = 0.0; }
-        if (_currentFrame != prev) ApplyKeyframesAtCurrentFrame();
+        if (_currentFrame != prev) ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
     }
 
     // ── Transport controls ────────────────────────────────────────────────────
@@ -346,10 +361,10 @@ public class Timeline : UiPanel
             _maxFrames = Math.Max(10, _maxFrames);
     }
 
-    private void JumpToStart()          { _currentFrame = 0; _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(); }
+    private void JumpToStart()          { _currentFrame = 0; _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
     private void Stop()                 { _isPlaying = false; JumpToStart(); }
-    private void StepBackward()         { _currentFrame = Math.Max(0, _currentFrame - 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(); }
-    private void StepForward()          { _currentFrame = Math.Min(_maxFrames, _currentFrame + 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(); }
+    private void StepBackward()         { _currentFrame = Math.Max(0, _currentFrame - 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
+    private void StepForward()          { _currentFrame = Math.Min(_maxFrames, _currentFrame + 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
 
     // ── ImageButton helpers (byte* API required by Hexa.NET.ImGui 2.x) ───────
 
@@ -378,7 +393,7 @@ public class Timeline : UiPanel
                 if (kf.Frame > last) last = kf.Frame;
         _currentFrame = last;
         _frameAccumulator = 0.0;
-        ApplyKeyframesAtCurrentFrame();
+        ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
     }
 
     // ── Frame ruler ───────────────────────────────────────────────────────────
@@ -441,7 +456,7 @@ public class Timeline : UiPanel
             _rulerScrollAtDrag       = scrollX;
             // Seek immediately on the first click
             int newFrame = Math.Max(0, (int)MathF.Round((ImGui.GetMousePos().X - wPos.X + scrollX) / _pixelsPerFrame));
-            if (newFrame != _currentFrame) { _currentFrame = newFrame; _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(); }
+            if (newFrame != _currentFrame) { _currentFrame = newFrame; _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
         }
 
         ImGui.EndChild();
@@ -1093,7 +1108,7 @@ public class Timeline : UiPanel
 
     // ── Apply keyframes ───────────────────────────────────────────────────────
 
-    private void ApplyKeyframesAtCurrentFrame()
+    private void ApplyKeyframesAtCurrentFrame(bool holdFirstKeyframeBeforeStart)
     {
         foreach (var kvp in _propertyKeyframes)
         {
@@ -1108,7 +1123,7 @@ public class Timeline : UiPanel
             var target = FindObjectById(objectId);
             if (target == null) continue;
 
-            float? value = InterpolateKeyframes(keyframes, propertyPath, _currentFrame);
+            float? value = InterpolateKeyframes(keyframes, propertyPath, _currentFrame, holdFirstKeyframeBeforeStart);
             if (value.HasValue)
                 SetPropertyValue(target, propertyPath, value.Value);
             // null means "before first keyframe" — leave the object at its default state.
@@ -1120,7 +1135,7 @@ public class Timeline : UiPanel
     /// or <c>null</c> if the frame is before the first keyframe (meaning the object
     /// should keep its default/current value rather than being driven by animation).
     /// </summary>
-    private float? InterpolateKeyframes(List<TimelineKeyframe> keyframes, string path, int frame)
+    private float? InterpolateKeyframes(List<TimelineKeyframe> keyframes, string path, int frame, bool holdFirstKeyframeBeforeStart)
     {
         TimelineKeyframe? prev = null, next = null;
         foreach (var kf in keyframes)
@@ -1132,7 +1147,12 @@ public class Timeline : UiPanel
         // No keyframe at or before current frame → object is before its first keyframe.
         // Return null so the caller skips applying anything and the object keeps its
         // current/default property value.
-        if (prev == null) return null;
+        if (prev == null)
+        {
+            if (holdFirstKeyframeBeforeStart && next != null)
+                return Convert.ToSingle(next.Value);
+            return null;
+        }
 
         // At or after the last keyframe, or exactly on a keyframe.
         if (next == null || prev.Frame == frame)

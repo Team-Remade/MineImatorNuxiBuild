@@ -15,6 +15,12 @@ public static class FfmpegBootstrap
         return !HasFfmpegBinary(FfmpegBinaryDirectory) || !HasFfprobeBinary(FfmpegBinaryDirectory);
     }
 
+    public static string GetFfmpegExecutablePath()
+    {
+        string fileName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
+        return Path.Combine(FfmpegBinaryDirectory, fileName);
+    }
+
     public static void EnsureFfmpegInstalled(Action<string>? statusCallback = null)
     {
         if (_ffmpegReady)

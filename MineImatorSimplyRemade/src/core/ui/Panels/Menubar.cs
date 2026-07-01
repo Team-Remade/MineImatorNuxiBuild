@@ -4,6 +4,12 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 
 public class Menubar : UiPanel
 {
+    public enum RenderRequestKind
+    {
+        Image,
+        Video
+    }
+
     public Action? NewProjectRequested { get; set; }
     public Action? OpenProjectRequested { get; set; }
     public Action? OpenRecentRequested { get; set; }
@@ -11,6 +17,7 @@ public class Menubar : UiPanel
     public Action? SaveProjectAsRequested { get; set; }
     public Action? ImportAssetRequested { get; set; }
     public Action? HomeScreenRequested { get; set; }
+    public Action<RenderRequestKind>? RenderRequested { get; set; }
 
     public override void Render()
     {
@@ -102,9 +109,11 @@ public class Menubar : UiPanel
             {
                 if (ImGui.MenuItem("Render Image"))
                 {
+                    RenderRequested?.Invoke(RenderRequestKind.Image);
                 }
                 if (ImGui.MenuItem("Render Animation"))
                 {
+                    RenderRequested?.Invoke(RenderRequestKind.Video);
                 }
                 ImGui.EndMenu();
             }

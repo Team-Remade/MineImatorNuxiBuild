@@ -498,6 +498,56 @@ public class CameraViewport : UiPanel
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
     }
 
+    public unsafe bool CaptureCurrentViewRgb(uint w, uint h, out byte[] rgbPixels)
+    {
+        rgbPixels = Array.Empty<byte>();
+        if (Gl == null || MainViewport == null || _fbo == 0 || w == 0 || h == 0)
+            return false;
+
+        var spawned = GetSpawnedCamerasPublic();
+        var (activeCam, sceneObj) = DrawCameraDropdownInternal(spawned);
+
+        bool previousOverlays = OverlaysEnabled;
+        OverlaysEnabled = false;
+        try
+        {
+            ResizeFboPublic(w, h);
+            RenderScenePublic(activeCam, sceneObj, w, h);
+
+            rgbPixels = new byte[checked((int)(w * h * 3))];
+
+            Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
+            Gl.PixelStore(GLEnum.PackAlignment, 1);
+            fixed (byte* p = rgbPixels)
+                Gl.ReadPixels(0, 0, w, h, GLEnum.Rgb, GLEnum.UnsignedByte, p);
+            Gl.PixelStore(GLEnum.PackAlignment, 4);
+            Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+
+            FlipRgbRows(rgbPixels, (int)w, (int)h);
+            return true;
+        }
+        finally
+        {
+            OverlaysEnabled = previousOverlays;
+        }
+    }
+
+    private static void FlipRgbRows(byte[] rgbPixels, int width, int height)
+    {
+        int stride = width * 3;
+        byte[] row = new byte[stride];
+
+        for (int y = 0; y < height / 2; y++)
+        {
+            int top = y * stride;
+            int bottom = (height - 1 - y) * stride;
+
+            System.Buffer.BlockCopy(rgbPixels, top, row, 0, stride);
+            System.Buffer.BlockCopy(rgbPixels, bottom, rgbPixels, top, stride);
+            System.Buffer.BlockCopy(row, 0, rgbPixels, bottom, stride);
+        }
+    }
+
     // ── Scene collection helpers ──────────────────────────────────────────────
 
     private static void CollectPointLights(IEnumerable<SceneObject> objects)

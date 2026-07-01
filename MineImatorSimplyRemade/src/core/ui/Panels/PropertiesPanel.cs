@@ -31,10 +31,42 @@ public class PropertiesPanel : UiPanel
     private int _resolutionWidth = 1920;
     private int _resolutionHeight = 1080;
     private int _framerate = 30;
+    private string _renderMode = "image";
+    private string _renderImageFormat = "png";
+    private string _renderVideoFormat = "mp4";
+    private int _renderVideoBitrateKbps = 12000;
+    private string _renderResolutionPreset = "1080P";
 
     public int GetResolutionWidth()  => _resolutionWidth;
     public int GetResolutionHeight() => _resolutionHeight;
     public int GetFramerate()        => _framerate;
+    public string GetRenderMode() => _renderMode;
+    public string GetRenderImageFormat() => _renderImageFormat;
+    public string GetRenderVideoFormat() => _renderVideoFormat;
+    public int GetRenderVideoBitrateKbps() => _renderVideoBitrateKbps;
+    public string GetRenderResolutionPreset() => _renderResolutionPreset;
+
+    public void SetRenderDimensionsAndFramerate(int width, int height, int framerate)
+    {
+        _resolutionWidth = Math.Max(1, width);
+        _resolutionHeight = Math.Max(1, height);
+        _framerate = Math.Clamp(framerate, 1, 120);
+
+        if (ProjectManager.Instance.HasProject)
+            WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+    }
+
+    public void SetRenderExportSettings(string mode, string imageFormat, string videoFormat, int videoBitrateKbps, string resolutionPreset)
+    {
+        _renderMode = string.Equals(mode, "video", StringComparison.OrdinalIgnoreCase) ? "video" : "image";
+        _renderImageFormat = string.IsNullOrWhiteSpace(imageFormat) ? "png" : imageFormat.Trim().ToLowerInvariant();
+        _renderVideoFormat = string.IsNullOrWhiteSpace(videoFormat) ? "mp4" : videoFormat.Trim().ToLowerInvariant();
+        _renderVideoBitrateKbps = Math.Clamp(videoBitrateKbps, 500, 200000);
+        _renderResolutionPreset = string.IsNullOrWhiteSpace(resolutionPreset) ? "Custom" : resolutionPreset.Trim();
+
+        if (ProjectManager.Instance.HasProject)
+            WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+    }
 
     public int    TextureAnimationFps  = 20;
     public string BackgroundImagePath  = NoImageSelected;
@@ -83,6 +115,11 @@ public class PropertiesPanel : UiPanel
         _resolutionWidth = Math.Max(1, settings.ResolutionWidth);
         _resolutionHeight = Math.Max(1, settings.ResolutionHeight);
         _framerate = Math.Clamp(settings.Framerate, 1, 120);
+        _renderMode = string.Equals(settings.RenderMode, "video", StringComparison.OrdinalIgnoreCase) ? "video" : "image";
+        _renderImageFormat = string.IsNullOrWhiteSpace(settings.RenderImageFormat) ? "png" : settings.RenderImageFormat.Trim().ToLowerInvariant();
+        _renderVideoFormat = string.IsNullOrWhiteSpace(settings.RenderVideoFormat) ? "mp4" : settings.RenderVideoFormat.Trim().ToLowerInvariant();
+        _renderVideoBitrateKbps = Math.Clamp(settings.RenderVideoBitrateKbps, 500, 200000);
+        _renderResolutionPreset = string.IsNullOrWhiteSpace(settings.RenderResolutionPreset) ? "Custom" : settings.RenderResolutionPreset.Trim();
         TextureAnimationFps = Math.Clamp(settings.TextureAnimationFps, 1, 240);
         UseSky = settings.UseSky;
         UseAdvancedSky = settings.UseAdvancedSky;
@@ -128,6 +165,11 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.ResolutionWidth = Math.Max(1, _resolutionWidth);
         manifest.Settings.ResolutionHeight = Math.Max(1, _resolutionHeight);
         manifest.Settings.Framerate = Math.Clamp(_framerate, 1, 120);
+        manifest.Settings.RenderMode = string.Equals(_renderMode, "video", StringComparison.OrdinalIgnoreCase) ? "video" : "image";
+        manifest.Settings.RenderImageFormat = string.IsNullOrWhiteSpace(_renderImageFormat) ? "png" : _renderImageFormat.Trim().ToLowerInvariant();
+        manifest.Settings.RenderVideoFormat = string.IsNullOrWhiteSpace(_renderVideoFormat) ? "mp4" : _renderVideoFormat.Trim().ToLowerInvariant();
+        manifest.Settings.RenderVideoBitrateKbps = Math.Clamp(_renderVideoBitrateKbps, 500, 200000);
+        manifest.Settings.RenderResolutionPreset = string.IsNullOrWhiteSpace(_renderResolutionPreset) ? "Custom" : _renderResolutionPreset.Trim();
         manifest.Settings.TextureAnimationFps = Math.Clamp(TextureAnimationFps, 1, 240);
         manifest.Settings.UseSky = UseSky;
         manifest.Settings.UseAdvancedSky = UseAdvancedSky;

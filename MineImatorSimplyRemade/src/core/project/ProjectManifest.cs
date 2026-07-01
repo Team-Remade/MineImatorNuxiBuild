@@ -50,6 +50,11 @@ public class ProjectRenderSettings
     public int ResolutionWidth { get; set; } = 1920;
     public int ResolutionHeight { get; set; } = 1080;
     public int Framerate { get; set; } = 30;
+    public string RenderMode { get; set; } = "image";
+    public string RenderImageFormat { get; set; } = "png";
+    public string RenderVideoFormat { get; set; } = "mp4";
+    public int RenderVideoBitrateKbps { get; set; } = 12000;
+    public string RenderResolutionPreset { get; set; } = "1080P";
     public int TextureAnimationFps { get; set; } = 20;
     public bool UseSky { get; set; } = false;
     public bool UseAdvancedSky { get; set; } = false;
