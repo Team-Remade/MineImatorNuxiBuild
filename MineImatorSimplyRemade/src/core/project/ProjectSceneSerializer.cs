@@ -14,6 +14,14 @@ public static class ProjectSceneSerializer
     {
         propertiesPanel?.WriteProjectSettingsToManifest(manifest);
 
+        manifest.WorkCamera = new ProjectWorkCameraState
+        {
+            Target = ToProjectVec3(viewport.Camera.Target),
+            Yaw = viewport.Camera.Yaw,
+            Pitch = viewport.Camera.Pitch,
+            Distance = viewport.Camera.Distance
+        };
+
         manifest.SceneObjects = viewport.SceneObjects
             .Select(SerializeNode)
             .ToList();
@@ -25,6 +33,8 @@ public static class ProjectSceneSerializer
     public static void LoadSceneFromManifest(ProjectManifest manifest, Viewport viewport, SpawnMenu spawnMenu, Timeline? timeline = null, PropertiesPanel? propertiesPanel = null)
     {
         propertiesPanel?.LoadProjectSettingsFromManifest(manifest);
+
+        ApplyWorkCameraState(manifest.WorkCamera, viewport.Camera);
 
         ClearScene(viewport);
 
@@ -350,5 +360,19 @@ public static class ProjectSceneSerializer
         }
 
         return result;
+    }
+
+    private static void ApplyWorkCameraState(ProjectWorkCameraState? state, Camera camera)
+    {
+        if (state == null)
+        {
+            camera.ResetToDefaultPose();
+            return;
+        }
+
+        camera.Target = ToVec3(state.Target);
+        camera.Yaw = state.Yaw;
+        camera.Pitch = Math.Clamp(state.Pitch, -MathF.PI / 2f + 0.01f, MathF.PI / 2f - 0.01f);
+        camera.Distance = Math.Max(0.1f, state.Distance);
     }
 }

@@ -41,8 +41,23 @@ public class ProjectManifest
     public string LastSavedUtc { get; set; } = DateTime.UtcNow.ToString("o");
     public List<ProjectAssetEntry> Assets { get; set; } = new();
     public ProjectRenderSettings Settings { get; set; } = new();
+    public ProjectWorkCameraState WorkCamera { get; set; } = new();
     public List<ProjectSceneObjectEntry> SceneObjects { get; set; } = new();
     public ProjectTimelineState Timeline { get; set; } = new();
+}
+
+public class ProjectWorkCameraState
+{
+    public ProjectVec3 Target { get; set; } = new()
+    {
+        X = 0f,
+        Y = 0f,
+        Z = 0f
+    };
+
+    public float Yaw { get; set; } = 0.5f;
+    public float Pitch { get; set; } = 0.4f;
+    public float Distance { get; set; } = 5f;
 }
 
 public class ProjectRenderSettings
