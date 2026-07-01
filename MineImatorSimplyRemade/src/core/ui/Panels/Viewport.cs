@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core;
@@ -9,6 +10,8 @@ using MineImatorSimplyRemade.gizmo;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
 using StbImageSharp;
@@ -188,6 +191,12 @@ public class Viewport : UiPanel
     /// Set by <see cref="MainWindow"/> after construction.
     /// </summary>
     public CameraViewport? CameraViewport { get; set; }
+
+    /// <summary>
+    /// When true, the inline camera preview overlay is skipped.
+    /// Useful when a fullscreen launcher/home screen is shown above the editor.
+    /// </summary>
+    public bool SuppressInlineCameraViewport { get; set; } = false;
 
     // ── Spawn menu / bench button ──────────────────────────────────────────────
 
@@ -745,6 +754,73 @@ public class Viewport : UiPanel
         Gl.BindRenderbuffer(GLEnum.Renderbuffer, 0);
     }
 
+    public unsafe bool SaveThumbnail(string filePath, int outputWidth = 320, int outputHeight = 180)
+    {
+        if (Gl == null || _fbo == 0 || _viewportWidth == 0 || _viewportHeight == 0)
+            return false;
+
+        int srcWidth = (int)_viewportWidth;
+        int srcHeight = (int)_viewportHeight;
+        int srcStride = srcWidth * 3;
+        byte[] source = new byte[srcStride * srcHeight];
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
+        Gl.PixelStore(GLEnum.PackAlignment, 1);
+        fixed (byte* p = source)
+            Gl.ReadPixels(0, 0, (uint)srcWidth, (uint)srcHeight, GLEnum.Rgb, GLEnum.UnsignedByte, p);
+        Gl.PixelStore(GLEnum.PackAlignment, 4);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+
+        byte[] resized = ResizeRgbNearest(source, srcWidth, srcHeight, outputWidth, outputHeight);
+        WritePng24(filePath, resized, outputWidth, outputHeight);
+        return true;
+    }
+
+    private static byte[] ResizeRgbNearest(byte[] source, int srcWidth, int srcHeight, int dstWidth, int dstHeight)
+    {
+        byte[] dest = new byte[dstWidth * dstHeight * 3];
+
+        for (int y = 0; y < dstHeight; y++)
+        {
+            int srcY = y * srcHeight / dstHeight;
+            for (int x = 0; x < dstWidth; x++)
+            {
+                int srcX = x * srcWidth / dstWidth;
+                int srcIndex = (srcY * srcWidth + srcX) * 3;
+                int dstIndex = (y * dstWidth + x) * 3;
+
+                dest[dstIndex + 0] = source[srcIndex + 0];
+                dest[dstIndex + 1] = source[srcIndex + 1];
+                dest[dstIndex + 2] = source[srcIndex + 2];
+            }
+        }
+
+        return dest;
+    }
+
+    private static void WritePng24(string filePath, byte[] rgbPixels, int width, int height)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath) ?? ".");
+
+        using var image = new Image<Rgb24>(width, height);
+        for (int y = 0; y < height; y++)
+        {
+            int srcY = height - 1 - y;
+            int srcRow = srcY * width * 3;
+
+            for (int x = 0; x < width; x++)
+            {
+                int srcIndex = srcRow + x * 3;
+                image[x, y] = new Rgb24(
+                    rgbPixels[srcIndex + 0],
+                    rgbPixels[srcIndex + 1],
+                    rgbPixels[srcIndex + 2]);
+            }
+        }
+
+        image.SaveAsPng(filePath);
+    }
+
     // ── Render ─────────────────────────────────────────────────────────────────
 
     // Height of the top bar (camera dropdown + bench button row) in pixels.
@@ -1072,7 +1148,7 @@ public class Viewport : UiPanel
             Gizmo?.RenderOverlay(Camera, imageMin, size);
 
         // ── Inline camera viewport (bottom-right overlay) ──────────────────────
-        if (CameraViewport != null && !CameraViewport.Undocked)
+        if (!SuppressInlineCameraViewport && CameraViewport != null && !CameraViewport.Undocked)
         {
             var spawnedCams = GetSpawnedCameras();
             CameraViewport.RenderInline(imageMin, imageSize, spawnedCams);

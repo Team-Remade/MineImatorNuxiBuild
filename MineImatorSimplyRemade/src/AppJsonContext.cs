@@ -22,6 +22,7 @@ namespace MineImatorSimplyRemade;
 [JsonSerializable(typeof(MiObject))]
 [JsonSerializable(typeof(MiModel))]
 [JsonSerializable(typeof(ProjectManifest))]
+[JsonSerializable(typeof(RecentProjectsState))]
 internal partial class AppJsonContext : JsonSerializerContext
 {
 }

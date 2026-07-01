@@ -6,9 +6,11 @@ public class Menubar : UiPanel
 {
     public Action? NewProjectRequested { get; set; }
     public Action? OpenProjectRequested { get; set; }
+    public Action? OpenRecentRequested { get; set; }
     public Action? SaveProjectRequested { get; set; }
     public Action? SaveProjectAsRequested { get; set; }
     public Action? ImportAssetRequested { get; set; }
+    public Action? HomeScreenRequested { get; set; }
 
     public override void Render()
     {
@@ -26,13 +28,14 @@ public class Menubar : UiPanel
                 }
                 if (ImGui.MenuItem("Open Recent..."))
                 {
+                    OpenRecentRequested?.Invoke();
                 }
                 ImGui.Separator();
-                if (ImGui.MenuItem("Save Project"))
+                if (ImGui.MenuItem("Save Project", "Ctrl+S"))
                 {
                     SaveProjectRequested?.Invoke();
                 }
-                if (ImGui.MenuItem("Save As"))
+                if (ImGui.MenuItem("Save As", "Ctrl+Shift+S"))
                 {
                     SaveProjectAsRequested?.Invoke();
                 }
@@ -128,6 +131,7 @@ public class Menubar : UiPanel
                 ImGui.Separator();
                 if (ImGui.MenuItem("Home Screen"))
                 {
+                    HomeScreenRequested?.Invoke();
                 }
                 ImGui.EndMenu();
             }

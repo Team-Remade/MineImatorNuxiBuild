@@ -21,6 +21,19 @@ public class ProjectAssetEntry
     public bool StoredInProject { get; set; } = true;
 }
 
+public class RecentProjectEntry
+{
+    public string ProjectName { get; set; } = "";
+    public string ProjectFilePath { get; set; } = "";
+    public string LastOpenedUtc { get; set; } = DateTime.UtcNow.ToString("o");
+    public string ThumbnailPath { get; set; } = "";
+}
+
+public class RecentProjectsState
+{
+    public List<RecentProjectEntry> Projects { get; set; } = new();
+}
+
 public class ProjectManifest
 {
     public string ProjectName { get; set; } = "Untitled Project";
@@ -28,6 +41,22 @@ public class ProjectManifest
     public string LastSavedUtc { get; set; } = DateTime.UtcNow.ToString("o");
     public List<ProjectAssetEntry> Assets { get; set; } = new();
     public List<ProjectSceneObjectEntry> SceneObjects { get; set; } = new();
+    public ProjectTimelineState Timeline { get; set; } = new();
+}
+
+public class ProjectTimelineState
+{
+    public int CurrentFrame { get; set; } = 0;
+    public int MaxFrames { get; set; } = 300;
+    public float FrameRate { get; set; } = 30f;
+    public bool AutoKeyframe { get; set; } = false;
+}
+
+public class ProjectKeyframeEntry
+{
+    public int Frame { get; set; }
+    public float Value { get; set; }
+    public string InterpolationType { get; set; } = "linear";
 }
 
 public class ProjectVec3
@@ -84,6 +113,8 @@ public class ProjectSceneObjectEntry
     public float LightIndirectEnergy { get; set; } = 1f;
     public float LightSpecular { get; set; } = 0.5f;
     public bool LightShadowEnabled { get; set; } = true;
+
+    public Dictionary<string, List<ProjectKeyframeEntry>> Keyframes { get; set; } = new();
 
     public List<ProjectSceneObjectEntry> Children { get; set; } = new();
 }

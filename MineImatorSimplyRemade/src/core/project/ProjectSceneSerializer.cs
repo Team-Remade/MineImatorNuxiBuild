@@ -10,14 +10,17 @@ namespace MineImatorSimplyRemade.core.project;
 
 public static class ProjectSceneSerializer
 {
-    public static void WriteSceneToManifest(ProjectManifest manifest, Viewport viewport)
+    public static void WriteSceneToManifest(ProjectManifest manifest, Viewport viewport, Timeline? timeline = null)
     {
         manifest.SceneObjects = viewport.SceneObjects
             .Select(SerializeNode)
             .ToList();
+
+        if (timeline != null)
+            manifest.Timeline = timeline.ExportProjectState();
     }
 
-    public static void LoadSceneFromManifest(ProjectManifest manifest, Viewport viewport, SpawnMenu spawnMenu)
+    public static void LoadSceneFromManifest(ProjectManifest manifest, Viewport viewport, SpawnMenu spawnMenu, Timeline? timeline = null)
     {
         ClearScene(viewport);
 
@@ -25,6 +28,7 @@ public static class ProjectSceneSerializer
             RestoreNode(root, viewport, spawnMenu, parent: null);
 
         SelectionManager.Instance?.ClearSelection();
+        timeline?.ImportProjectState(manifest.Timeline);
     }
 
     private static ProjectSceneObjectEntry SerializeNode(SceneObject obj)
@@ -48,7 +52,8 @@ public static class ProjectSceneSerializer
             InheritVisibility = obj.InheritVisibility,
             ObjectVisible = obj.ObjectVisible,
             IsSelectable = obj.IsSelectable,
-            HideInSceneTree = obj.HideInSceneTree
+            HideInSceneTree = obj.HideInSceneTree,
+            Keyframes = SerializeKeyframes(obj)
         };
 
         if (obj.SpawnCategory == "Items")
@@ -88,25 +93,7 @@ public static class ProjectSceneSerializer
     {
         SceneObject obj = CreateSpawnedObject(entry, spawnMenu) ?? CreateFallbackObject(entry, viewport);
 
-        ApplyBaseProperties(obj, entry);
-
-        if (obj is CameraSceneObject camera)
-        {
-            camera.Fov = entry.CameraFov;
-            camera.Near = entry.CameraNear;
-            camera.Far = entry.CameraFar;
-            camera.SyncCameraToTransform();
-        }
-
-        if (obj is LightSceneObject light)
-        {
-            light.LightColor = ToVec4(entry.LightColor);
-            light.LightEnergy = entry.LightEnergy;
-            light.LightRange = entry.LightRange;
-            light.LightIndirectEnergy = entry.LightIndirectEnergy;
-            light.LightSpecular = entry.LightSpecular;
-            light.LightShadowEnabled = entry.LightShadowEnabled;
-        }
+        ApplyEntryToObject(obj, entry);
 
         if (parent != null)
         {
@@ -114,10 +101,47 @@ public static class ProjectSceneSerializer
             parent.AddChild(obj);
         }
 
-        foreach (var child in entry.Children)
-            RestoreNode(child, viewport, spawnMenu, obj);
+        RestoreChildren(entry, obj, viewport, spawnMenu);
 
         return obj;
+    }
+
+    private static void RestoreChildren(ProjectSceneObjectEntry entry, SceneObject obj, Viewport viewport, SpawnMenu spawnMenu)
+    {
+        var usedChildren = new HashSet<SceneObject>();
+
+        foreach (var childEntry in entry.Children)
+        {
+            SceneObject? existingChild = FindMatchingChild(obj, childEntry, usedChildren);
+            if (existingChild != null)
+            {
+                usedChildren.Add(existingChild);
+                ApplyEntryToObject(existingChild, childEntry);
+                RestoreChildren(childEntry, existingChild, viewport, spawnMenu);
+                continue;
+            }
+
+            RestoreNode(childEntry, viewport, spawnMenu, obj);
+        }
+    }
+
+    private static SceneObject? FindMatchingChild(SceneObject parent, ProjectSceneObjectEntry entry, HashSet<SceneObject> usedChildren)
+    {
+        foreach (var child in parent.Children)
+        {
+            if (usedChildren.Contains(child))
+                continue;
+
+            if (!string.IsNullOrWhiteSpace(entry.Name) && string.Equals(child.Name, entry.Name, StringComparison.Ordinal))
+                return child;
+
+            if (!string.IsNullOrWhiteSpace(entry.ObjectType) &&
+                string.Equals(child.ObjectType, entry.ObjectType, StringComparison.Ordinal) &&
+                string.Equals(child.SpawnCategory, entry.SpawnCategory, StringComparison.Ordinal))
+                return child;
+        }
+
+        return null;
     }
 
     private static SceneObject? CreateSpawnedObject(ProjectSceneObjectEntry entry, SpawnMenu spawnMenu)
@@ -177,7 +201,7 @@ public static class ProjectSceneSerializer
         return obj;
     }
 
-    private static void ApplyBaseProperties(SceneObject obj, ProjectSceneObjectEntry entry)
+    private static void ApplyEntryToObject(SceneObject obj, ProjectSceneObjectEntry entry)
     {
         obj.Name = entry.Name;
         obj.ObjectType = entry.ObjectType;
@@ -199,6 +223,26 @@ public static class ProjectSceneSerializer
         obj.ObjectVisible = entry.ObjectVisible;
         obj.IsSelectable = entry.IsSelectable;
         obj.HideInSceneTree = entry.HideInSceneTree;
+
+        obj.Keyframes = DeserializeKeyframes(entry.Keyframes);
+
+        if (obj is CameraSceneObject camera)
+        {
+            camera.Fov = entry.CameraFov;
+            camera.Near = entry.CameraNear;
+            camera.Far = entry.CameraFar;
+            camera.SyncCameraToTransform();
+        }
+
+        if (obj is LightSceneObject light)
+        {
+            light.LightColor = ToVec4(entry.LightColor);
+            light.LightEnergy = entry.LightEnergy;
+            light.LightRange = entry.LightRange;
+            light.LightIndirectEnergy = entry.LightIndirectEnergy;
+            light.LightSpecular = entry.LightSpecular;
+            light.LightShadowEnabled = entry.LightShadowEnabled;
+        }
     }
 
     private static void ClearScene(Viewport viewport)
@@ -245,5 +289,51 @@ public static class ProjectSceneSerializer
     private static vec4 ToVec4(ProjectVec4 value)
     {
         return new vec4(value.X, value.Y, value.Z, value.W);
+    }
+
+    private static Dictionary<string, List<ProjectKeyframeEntry>> SerializeKeyframes(SceneObject obj)
+    {
+        var result = new Dictionary<string, List<ProjectKeyframeEntry>>();
+
+        foreach (var pair in obj.Keyframes)
+        {
+            if (pair.Value == null || pair.Value.Count == 0)
+                continue;
+
+            result[pair.Key] = pair.Value
+                .Select(kf => new ProjectKeyframeEntry
+                {
+                    Frame = kf.Frame,
+                    Value = Convert.ToSingle(kf.Value),
+                    InterpolationType = kf.InterpolationType
+                })
+                .OrderBy(kf => kf.Frame)
+                .ToList();
+        }
+
+        return result;
+    }
+
+    private static Dictionary<string, List<ObjectKeyframe>> DeserializeKeyframes(Dictionary<string, List<ProjectKeyframeEntry>> source)
+    {
+        var result = new Dictionary<string, List<ObjectKeyframe>>();
+
+        foreach (var pair in source)
+        {
+            if (pair.Value == null || pair.Value.Count == 0)
+                continue;
+
+            result[pair.Key] = pair.Value
+                .Select(kf => new ObjectKeyframe
+                {
+                    Frame = kf.Frame,
+                    Value = kf.Value,
+                    InterpolationType = kf.InterpolationType
+                })
+                .OrderBy(kf => kf.Frame)
+                .ToList();
+        }
+
+        return result;
     }
 }

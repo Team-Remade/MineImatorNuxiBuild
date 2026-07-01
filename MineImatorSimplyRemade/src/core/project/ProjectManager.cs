@@ -12,12 +12,14 @@ public sealed class ProjectManager
     public static ProjectManager Instance => _lazy.Value;
 
     private const string ProjectFileExtension = ".nxProj";
+    private const int MaxRecentProjects = 100;
     private ProjectManager() { }
 
     public ProjectManifest Manifest { get; private set; } = new();
     public string ProjectFolder { get; private set; } = "";
     public string ProjectFilePath { get; private set; } = "";
     public string DefaultProjectRoot => Path.Combine(AppContext.BaseDirectory, "Projects");
+    public string RecentProjectsFilePath => Path.Combine(AppContext.BaseDirectory, "recentProjects.json");
 
     private string DataRoot => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "data"));
 
@@ -56,6 +58,7 @@ public sealed class ProjectManager
         Directory.CreateDirectory(SoundsFolder);
         Directory.CreateDirectory(OtherFolder);
 
+        TrackRecentProject(ProjectFilePath, Manifest.ProjectName);
         SaveManifest();
     }
 
@@ -90,6 +93,7 @@ public sealed class ProjectManager
         Directory.CreateDirectory(SoundsFolder);
         Directory.CreateDirectory(OtherFolder);
 
+        TrackRecentProject(ProjectFilePath, Manifest.ProjectName);
         SaveManifest();
     }
 
@@ -132,6 +136,8 @@ public sealed class ProjectManager
         Directory.CreateDirectory(SoundsFolder);
         Directory.CreateDirectory(OtherFolder);
 
+        TrackRecentProject(ProjectFilePath, Manifest.ProjectName);
+
         return true;
     }
 
@@ -146,6 +152,35 @@ public sealed class ProjectManager
         using var writer = new Utf8JsonWriter(stream, writerOptions);
         JsonSerializer.Serialize(writer, Manifest, AppJsonContext.Default.ProjectManifest);
         writer.Flush();
+    }
+
+    public void SaveProjectAs(string projectName)
+    {
+        if (!HasProject)
+            throw new InvalidOperationException("No project is currently open.");
+
+        string safeName = MakeSafeName(projectName);
+        Directory.CreateDirectory(DefaultProjectRoot);
+
+        string uniqueFolderName = MakeUniqueFolderName(DefaultProjectRoot, safeName);
+        string destinationFolder = Path.Combine(DefaultProjectRoot, uniqueFolderName);
+        string destinationProjectFile = Path.Combine(destinationFolder, uniqueFolderName + ProjectFileExtension);
+
+        CopyDirectory(ProjectFolder, destinationFolder);
+
+        string copiedOriginalProjectFile = Path.Combine(destinationFolder, Path.GetFileName(ProjectFilePath));
+        if (!string.Equals(copiedOriginalProjectFile, destinationProjectFile, StringComparison.OrdinalIgnoreCase) &&
+            File.Exists(copiedOriginalProjectFile))
+        {
+            File.Move(copiedOriginalProjectFile, destinationProjectFile, overwrite: true);
+        }
+
+        ProjectFolder = destinationFolder;
+        ProjectFilePath = destinationProjectFile;
+        Manifest.ProjectName = safeName;
+
+        TrackRecentProject(ProjectFilePath, Manifest.ProjectName);
+        SaveManifest();
     }
 
     public ProjectAssetEntry AddAsset(string sourcePath, ProjectAssetType assetType)
@@ -192,6 +227,93 @@ public sealed class ProjectManager
     public IReadOnlyList<ProjectAssetEntry> GetProjectAssets()
     {
         return Manifest.Assets.AsReadOnly();
+    }
+
+    public IReadOnlyList<RecentProjectEntry> GetRecentProjects()
+    {
+        var state = LoadRecentProjectsState();
+        return state.Projects.AsReadOnly();
+    }
+
+    public void TrackRecentProject(string projectFilePath, string projectName)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath))
+            return;
+
+        string fullProjectPath = Path.GetFullPath(projectFilePath);
+        var state = LoadRecentProjectsState();
+
+        state.Projects.RemoveAll(entry =>
+            string.Equals(Path.GetFullPath(entry.ProjectFilePath), fullProjectPath, StringComparison.OrdinalIgnoreCase));
+
+        state.Projects.Insert(0, new RecentProjectEntry
+        {
+            ProjectName = string.IsNullOrWhiteSpace(projectName)
+                ? Path.GetFileNameWithoutExtension(fullProjectPath)
+                : projectName,
+            ProjectFilePath = fullProjectPath,
+            LastOpenedUtc = DateTime.UtcNow.ToString("o"),
+            ThumbnailPath = ""
+        });
+
+        if (state.Projects.Count > MaxRecentProjects)
+            state.Projects = state.Projects.Take(MaxRecentProjects).ToList();
+
+        SaveRecentProjectsState(state);
+    }
+
+    public void UpdateRecentProjectThumbnail(string projectFilePath, string thumbnailPath)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath))
+            return;
+
+        string fullProjectPath = Path.GetFullPath(projectFilePath);
+        var state = LoadRecentProjectsState();
+        var entry = state.Projects.FirstOrDefault(item =>
+            string.Equals(Path.GetFullPath(item.ProjectFilePath), fullProjectPath, StringComparison.OrdinalIgnoreCase));
+        if (entry == null)
+            return;
+
+        entry.ThumbnailPath = string.IsNullOrWhiteSpace(thumbnailPath) ? "" : Path.GetFullPath(thumbnailPath);
+        SaveRecentProjectsState(state);
+    }
+
+    public void RemoveRecentProject(string projectFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath))
+            return;
+
+        string fullProjectPath = Path.GetFullPath(projectFilePath);
+        var state = LoadRecentProjectsState();
+        state.Projects.RemoveAll(entry =>
+            string.Equals(Path.GetFullPath(entry.ProjectFilePath), fullProjectPath, StringComparison.OrdinalIgnoreCase));
+        SaveRecentProjectsState(state);
+    }
+
+    private RecentProjectsState LoadRecentProjectsState()
+    {
+        if (!File.Exists(RecentProjectsFilePath))
+            return new RecentProjectsState();
+
+        try
+        {
+            string json = File.ReadAllText(RecentProjectsFilePath);
+            return JsonSerializer.Deserialize(json, AppJsonContext.Default.RecentProjectsState)
+                   ?? new RecentProjectsState();
+        }
+        catch
+        {
+            return new RecentProjectsState();
+        }
+    }
+
+    private void SaveRecentProjectsState(RecentProjectsState state)
+    {
+        var writerOptions = new JsonWriterOptions { Indented = true };
+        using var stream = File.Create(RecentProjectsFilePath);
+        using var writer = new Utf8JsonWriter(stream, writerOptions);
+        JsonSerializer.Serialize(writer, state, AppJsonContext.Default.RecentProjectsState);
+        writer.Flush();
     }
 
     private string CopyAssetIntoProject(string sourcePath, ProjectAssetType assetType)
@@ -282,6 +404,23 @@ public sealed class ProjectManager
         if (string.IsNullOrWhiteSpace(safeName))
             safeName = "UntitledProject";
         return safeName;
+    }
+
+    private static void CopyDirectory(string sourceDir, string destinationDir)
+    {
+        Directory.CreateDirectory(destinationDir);
+
+        foreach (string filePath in Directory.GetFiles(sourceDir))
+        {
+            string destinationFile = Path.Combine(destinationDir, Path.GetFileName(filePath));
+            File.Copy(filePath, destinationFile, overwrite: true);
+        }
+
+        foreach (string subDirectory in Directory.GetDirectories(sourceDir))
+        {
+            string destinationSubDirectory = Path.Combine(destinationDir, Path.GetFileName(subDirectory));
+            CopyDirectory(subDirectory, destinationSubDirectory);
+        }
     }
 
     private string MakeUniqueRelativePath(string relativePath)

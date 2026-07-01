@@ -5,6 +5,7 @@ using System.Linq;
 using System.Numerics;
 using GlmSharp;
 using Hexa.NET.ImGui;
+using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -125,6 +126,37 @@ public class Timeline : UiPanel
 
     public int   CurrentFrame => _currentFrame;
     public float Framerate    => _frameRate;
+
+    public ProjectTimelineState ExportProjectState()
+    {
+        return new ProjectTimelineState
+        {
+            CurrentFrame = _currentFrame,
+            MaxFrames = _maxFrames,
+            FrameRate = _frameRate,
+            AutoKeyframe = _autoKeyframe
+        };
+    }
+
+    public void ImportProjectState(ProjectTimelineState? state)
+    {
+        OnSelectionChanged();
+
+        if (state == null)
+        {
+            _currentFrame = 0;
+            _frameAccumulator = 0.0;
+            ApplyKeyframesAtCurrentFrame();
+            return;
+        }
+
+        _maxFrames = Math.Max(10, state.MaxFrames);
+        _frameRate = Math.Clamp(state.FrameRate, 1f, 120f);
+        _autoKeyframe = state.AutoKeyframe;
+        _currentFrame = Math.Max(0, state.CurrentFrame);
+        _frameAccumulator = 0.0;
+        ApplyKeyframesAtCurrentFrame();
+    }
 
     /// <summary>
     /// Subscribe to <see cref="SelectionManager"/> events.
@@ -1363,8 +1395,6 @@ public class Timeline : UiPanel
 
     public void OnProjectLoaded()
     {
-        OnSelectionChanged();
-        _currentFrame = 0;
-        ApplyKeyframesAtCurrentFrame();
+        ImportProjectState(null);
     }
 }
