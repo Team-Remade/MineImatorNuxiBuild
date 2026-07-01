@@ -8,6 +8,7 @@ using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.gizmo;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -57,6 +58,20 @@ public class Viewport : UiPanel
     public bool GroundPlaneVisible { get; private set; } = true;
     public string GroundTileAtlas { get; private set; } = "block";
     public string GroundTileKey { get; private set; } = "grass_block_top";
+
+    // ── Background image plane ───────────────────────────────────────────────
+
+    private MineImatorSimplyRemade.core.mdl.Shader? _backgroundShader;
+    private uint _backgroundVao;
+    private uint _backgroundVbo;
+    private uint _backgroundTexture;
+    private int _backgroundImageWidth;
+    private int _backgroundImageHeight;
+    private int _backgroundRenderMode;
+    private float _backgroundUserScale = 1f;
+    private float _backgroundRotationRadians;
+    private Vector2 _backgroundUserOffset = Vector2.Zero;
+    private string _backgroundImagePath = "No image selected";
 
     // ── Camera ─────────────────────────────────────────────────────────────────
 
@@ -338,6 +353,9 @@ public class Viewport : UiPanel
         _edgeShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
         _edgeShader.CompileShader("edge.vert", "edge.frag");
 
+        // ── Background quad shader + geometry ───────────────────────────────
+        InitBackgroundRenderer();
+
         // ── Empty VAO for the full-screen triangle draw (Core Profile req.) ───
         Gl.GenVertexArrays(1, out _edgeVao);
 
@@ -356,6 +374,223 @@ public class Viewport : UiPanel
 
         // ── Light billboard resources ──────────────────────────────────────────
         InitLightBillboards();
+
+        // Apply persisted project background settings if available.
+        if (PropertiesPanel != null)
+            SetBackgroundImage(
+                PropertiesPanel.BackgroundImagePath,
+                PropertiesPanel.BackgroundRenderMode,
+                PropertiesPanel.BackgroundScale,
+                PropertiesPanel.BackgroundRotationDegrees,
+                new Vector2(PropertiesPanel.BackgroundOffset[0], PropertiesPanel.BackgroundOffset[1]));
+    }
+
+    private unsafe void InitBackgroundRenderer()
+    {
+        _backgroundShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _backgroundShader.CompileShader("background.vert", "background.frag");
+
+        float[] quadVertices =
+        {
+            // pos      // uv
+            -1f, -1f,   0f, 0f,
+             1f, -1f,   1f, 0f,
+             1f,  1f,   1f, 1f,
+            -1f, -1f,   0f, 0f,
+             1f,  1f,   1f, 1f,
+            -1f,  1f,   0f, 1f,
+        };
+
+        Gl.GenVertexArrays(1, out _backgroundVao);
+        Gl.GenBuffers(1, out _backgroundVbo);
+
+        Gl.BindVertexArray(_backgroundVao);
+        Gl.BindBuffer(GLEnum.ArrayBuffer, _backgroundVbo);
+        fixed (float* ptr = quadVertices)
+            Gl.BufferData(GLEnum.ArrayBuffer, (uint)(quadVertices.Length * sizeof(float)), ptr, GLEnum.StaticDraw);
+
+        const uint stride = 4 * sizeof(float);
+        Gl.VertexAttribPointer(0, 2, GLEnum.Float, false, stride, 0);
+        Gl.EnableVertexAttribArray(0);
+        Gl.VertexAttribPointer(1, 2, GLEnum.Float, false, stride, 2 * sizeof(float));
+        Gl.EnableVertexAttribArray(1);
+
+        Gl.BindBuffer(GLEnum.ArrayBuffer, 0);
+        Gl.BindVertexArray(0);
+    }
+
+    private static int ParseBackgroundRenderMode(string mode)
+    {
+        if (string.Equals(mode, "fit", StringComparison.OrdinalIgnoreCase))
+            return 1;
+        if (string.Equals(mode, "original", StringComparison.OrdinalIgnoreCase))
+            return 2;
+        return 0;
+    }
+
+    public void SetBackgroundImage(string imagePath, bool stretch)
+    {
+        SetBackgroundImage(imagePath, stretch ? "stretch" : "original", 1f, 0f, Vector2.Zero);
+    }
+
+    public void SetBackgroundImage(string imagePath, string renderMode, float userScale, float rotationDegrees, Vector2 userOffset)
+    {
+        _backgroundRenderMode = ParseBackgroundRenderMode(renderMode);
+        _backgroundUserScale = Math.Clamp(userScale, 0.01f, 20f);
+        _backgroundRotationRadians = rotationDegrees * (MathF.PI / 180f);
+        _backgroundUserOffset = userOffset;
+
+        string normalizedPath = string.IsNullOrWhiteSpace(imagePath) ? "No image selected" : imagePath.Trim();
+        bool samePathLoaded = string.Equals(normalizedPath, _backgroundImagePath, StringComparison.OrdinalIgnoreCase) &&
+                              _backgroundTexture != 0;
+        if (samePathLoaded)
+            return;
+
+        _backgroundImagePath = normalizedPath;
+        DisposeBackgroundTexture();
+
+        if (string.Equals(_backgroundImagePath, "No image selected", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        string resolvedPath = ResolveBackgroundImagePath(_backgroundImagePath);
+        if (string.IsNullOrWhiteSpace(resolvedPath) || !File.Exists(resolvedPath))
+            return;
+
+        TryLoadBackgroundTexture(resolvedPath);
+    }
+
+    private string ResolveBackgroundImagePath(string configuredPath)
+    {
+        if (Path.IsPathRooted(configuredPath))
+            return configuredPath;
+
+        if (ProjectManager.Instance.HasProject)
+        {
+            string insideProject = Path.Combine(ProjectManager.Instance.ProjectFolder, configuredPath);
+            if (File.Exists(insideProject))
+                return insideProject;
+
+            string fileOnly = Path.GetFileName(configuredPath);
+            if (!string.IsNullOrWhiteSpace(fileOnly))
+            {
+                string underImages = Path.Combine(ProjectManager.Instance.ImagesFolder, fileOnly);
+                if (File.Exists(underImages))
+                    return underImages;
+            }
+        }
+
+        return configuredPath;
+    }
+
+    private unsafe void TryLoadBackgroundTexture(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            ImageResult img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+            if (img.Data == null || img.Data.Length == 0)
+                return;
+
+            _backgroundImageWidth = img.Width;
+            _backgroundImageHeight = img.Height;
+
+            int rowBytes = img.Width * 4;
+            byte[] flipped = new byte[img.Data.Length];
+            for (int row = 0; row < img.Height; row++)
+            {
+                int srcRow = img.Height - 1 - row;
+                System.Buffer.BlockCopy(img.Data, srcRow * rowBytes, flipped, row * rowBytes, rowBytes);
+            }
+
+            Gl.GenTextures(1, out _backgroundTexture);
+            Gl.BindTexture(GLEnum.Texture2D, _backgroundTexture);
+            fixed (byte* p = flipped)
+            {
+                Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8,
+                    (uint)img.Width, (uint)img.Height, 0,
+                    PixelFormat.Rgba, GLEnum.UnsignedByte, p);
+            }
+
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Viewport] Failed to load background image '{path}': {ex.Message}");
+            DisposeBackgroundTexture();
+        }
+    }
+
+    private void DisposeBackgroundTexture()
+    {
+        if (_backgroundTexture != 0)
+        {
+            Gl.DeleteTexture(_backgroundTexture);
+            _backgroundTexture = 0;
+        }
+
+        _backgroundImageWidth = 0;
+        _backgroundImageHeight = 0;
+    }
+
+    public void RenderBackgroundPlanePublic(uint viewportWidth, uint viewportHeight)
+    {
+        RenderBackgroundPlane(viewportWidth, viewportHeight);
+    }
+
+    private unsafe void RenderBackgroundPlane(uint viewportWidth, uint viewportHeight)
+    {
+        if (_backgroundShader == null || _backgroundTexture == 0 || _backgroundVao == 0)
+            return;
+
+        Gl.Disable(GLEnum.DepthTest);
+        Gl.DepthMask(false);
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Enable(GLEnum.Blend);
+        Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+
+        uint program = _backgroundShader.ShaderProgram;
+        Gl.UseProgram(program);
+
+        int texLoc = Gl.GetUniformLocation(program, "uBackgroundTex");
+        if (texLoc >= 0) Gl.Uniform1(texLoc, 0);
+
+        int modeLoc = Gl.GetUniformLocation(program, "uMode");
+        if (modeLoc >= 0) Gl.Uniform1(modeLoc, _backgroundRenderMode);
+
+        int userScaleLoc = Gl.GetUniformLocation(program, "uUserScale");
+        if (userScaleLoc >= 0) Gl.Uniform1(userScaleLoc, _backgroundUserScale);
+
+        int userRotationLoc = Gl.GetUniformLocation(program, "uUserRotationRadians");
+        if (userRotationLoc >= 0) Gl.Uniform1(userRotationLoc, _backgroundRotationRadians);
+
+        int userOffsetLoc = Gl.GetUniformLocation(program, "uUserOffset");
+        if (userOffsetLoc >= 0) Gl.Uniform2(userOffsetLoc, _backgroundUserOffset.X, _backgroundUserOffset.Y);
+
+        int viewportLoc = Gl.GetUniformLocation(program, "uViewportSize");
+        if (viewportLoc >= 0) Gl.Uniform2(viewportLoc, (float)viewportWidth, (float)viewportHeight);
+
+        int imageLoc = Gl.GetUniformLocation(program, "uImageSize");
+        if (imageLoc >= 0) Gl.Uniform2(imageLoc, (float)_backgroundImageWidth, (float)_backgroundImageHeight);
+
+        Gl.ActiveTexture(GLEnum.Texture0);
+        Gl.BindTexture(GLEnum.Texture2D, _backgroundTexture);
+        Gl.BindVertexArray(_backgroundVao);
+        Gl.DrawArrays(GLEnum.Triangles, 0, 6);
+
+        Gl.BindVertexArray(0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        Gl.Disable(GLEnum.Blend);
+
+        Gl.DepthMask(true);
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Less);
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
+        Gl.FrontFace(GLEnum.Ccw);
     }
 
     private unsafe void InitPickFramebuffer(uint width, uint height)
@@ -1083,6 +1318,8 @@ public class Viewport : UiPanel
         float[] bg = PropertiesPanel?.BackgroundColor ?? [0.18f, 0.18f, 0.18f, 1.0f];
         Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
         Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+
+        RenderBackgroundPlane(w, h);
 
         float aspect = (h > 0) ? (float)w / h : 1f;
 

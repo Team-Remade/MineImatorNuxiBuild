@@ -53,7 +53,12 @@ public class ProjectRenderSettings
     public int TextureAnimationFps { get; set; } = 20;
     public bool UseSky { get; set; } = false;
     public bool UseAdvancedSky { get; set; } = false;
+    public string BackgroundRenderMode { get; set; } = "stretch";
     public bool StretchBackground { get; set; } = true;
+    public float BackgroundScale { get; set; } = 1f;
+    public float BackgroundRotationDegrees { get; set; } = 0f;
+    public float BackgroundOffsetX { get; set; } = 0f;
+    public float BackgroundOffsetY { get; set; } = 0f;
     public string BackgroundImagePath { get; set; } = "No image selected";
     public bool FloorVisible { get; set; } = true;
     public string FloorTextureAtlas { get; set; } = "block";

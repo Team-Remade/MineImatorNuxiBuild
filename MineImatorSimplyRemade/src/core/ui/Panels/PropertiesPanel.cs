@@ -7,11 +7,17 @@ using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
+using NativeFileDialogSharp;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
 public class PropertiesPanel : UiPanel
 {
+    private const string NoImageSelected = "No image selected";
+    private const string BackgroundModeStretch = "stretch";
+    private const string BackgroundModeFit = "fit";
+    private const string BackgroundModeOriginal = "original";
+
     // ── Project tab state ─────────────────────────────────────────────────────
 
     public Node Floor;
@@ -31,7 +37,11 @@ public class PropertiesPanel : UiPanel
     public int GetFramerate()        => _framerate;
 
     public int    TextureAnimationFps  = 20;
-    public string BackgroundImagePath  = "No image selected";
+    public string BackgroundImagePath  = NoImageSelected;
+    public string BackgroundRenderMode = BackgroundModeStretch;
+    public float  BackgroundScale      = 1f;
+    public float  BackgroundRotationDegrees;
+    public readonly float[] BackgroundOffset = [0f, 0f];
     public bool   StretchBackground    = true;
     public bool   FloorVisible         = true;
     public string FloorTextureAtlas    = "block";
@@ -76,9 +86,17 @@ public class PropertiesPanel : UiPanel
         TextureAnimationFps = Math.Clamp(settings.TextureAnimationFps, 1, 240);
         UseSky = settings.UseSky;
         UseAdvancedSky = settings.UseAdvancedSky;
+        BackgroundRenderMode = NormalizeBackgroundRenderMode(settings.BackgroundRenderMode);
         StretchBackground = settings.StretchBackground;
+        if (string.IsNullOrWhiteSpace(settings.BackgroundRenderMode))
+            BackgroundRenderMode = StretchBackground ? BackgroundModeStretch : BackgroundModeOriginal;
+
+        BackgroundScale = Math.Clamp(settings.BackgroundScale, 0.01f, 20f);
+        BackgroundRotationDegrees = Math.Clamp(settings.BackgroundRotationDegrees, -360f, 360f);
+        BackgroundOffset[0] = settings.BackgroundOffsetX;
+        BackgroundOffset[1] = settings.BackgroundOffsetY;
         BackgroundImagePath = string.IsNullOrWhiteSpace(settings.BackgroundImagePath)
-            ? "No image selected"
+            ? NoImageSelected
             : settings.BackgroundImagePath;
         FloorVisible = settings.FloorVisible;
         FloorTextureAtlas = NormalizeFloorAtlas(settings.FloorTextureAtlas);
@@ -93,6 +111,7 @@ public class PropertiesPanel : UiPanel
         BackgroundColor[3] = bg.W;
 
         ApplyFloorSettingsToViewport();
+        ApplyBackgroundSettingsToViewport();
         Timeline?.SetFrameRate(_framerate);
     }
 
@@ -112,9 +131,18 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.TextureAnimationFps = Math.Clamp(TextureAnimationFps, 1, 240);
         manifest.Settings.UseSky = UseSky;
         manifest.Settings.UseAdvancedSky = UseAdvancedSky;
-        manifest.Settings.StretchBackground = StretchBackground;
+        BackgroundRenderMode = NormalizeBackgroundRenderMode(BackgroundRenderMode);
+        BackgroundScale = Math.Clamp(BackgroundScale, 0.01f, 20f);
+        BackgroundRotationDegrees = Math.Clamp(BackgroundRotationDegrees, -360f, 360f);
+
+        manifest.Settings.BackgroundRenderMode = BackgroundRenderMode;
+        manifest.Settings.StretchBackground = string.Equals(BackgroundRenderMode, BackgroundModeStretch, StringComparison.OrdinalIgnoreCase);
+        manifest.Settings.BackgroundScale = BackgroundScale;
+        manifest.Settings.BackgroundRotationDegrees = BackgroundRotationDegrees;
+        manifest.Settings.BackgroundOffsetX = BackgroundOffset[0];
+        manifest.Settings.BackgroundOffsetY = BackgroundOffset[1];
         manifest.Settings.BackgroundImagePath = string.IsNullOrWhiteSpace(BackgroundImagePath)
-            ? "No image selected"
+            ? NoImageSelected
             : BackgroundImagePath;
         manifest.Settings.FloorVisible = FloorVisible;
         manifest.Settings.FloorTextureAtlas = NormalizeFloorAtlas(FloorTextureAtlas);
@@ -136,6 +164,15 @@ public class PropertiesPanel : UiPanel
     private static string NormalizeFloorAtlas(string atlas)
     {
         return string.Equals(atlas, "item", StringComparison.OrdinalIgnoreCase) ? "item" : "block";
+    }
+
+    private static string NormalizeBackgroundRenderMode(string mode)
+    {
+        if (string.Equals(mode, BackgroundModeFit, StringComparison.OrdinalIgnoreCase))
+            return BackgroundModeFit;
+        if (string.Equals(mode, BackgroundModeOriginal, StringComparison.OrdinalIgnoreCase))
+            return BackgroundModeOriginal;
+        return BackgroundModeStretch;
     }
 
     private IEnumerable<string> GetFloorAtlasKeys()
@@ -161,6 +198,50 @@ public class PropertiesPanel : UiPanel
                 Viewport.SetGroundPlaneTexture(FloorTextureAtlas, FloorTileKey);
             }
         }
+    }
+
+    private void ApplyBackgroundSettingsToViewport()
+    {
+        Viewport?.SetBackgroundImage(
+            BackgroundImagePath,
+            BackgroundRenderMode,
+            BackgroundScale,
+            BackgroundRotationDegrees,
+            new Vector2(BackgroundOffset[0], BackgroundOffset[1]));
+    }
+
+    private IReadOnlyList<ProjectAssetEntry> GetBackgroundImageAssets()
+    {
+        return ProjectManager.Instance
+            .GetProjectAssets()
+            .Where(asset => asset.AssetType == ProjectAssetType.Image)
+            .ToList();
+    }
+
+    private static string GetBackgroundImageLabel(string backgroundImagePath)
+    {
+        return string.IsNullOrWhiteSpace(backgroundImagePath) ||
+               string.Equals(backgroundImagePath, NoImageSelected, StringComparison.OrdinalIgnoreCase)
+            ? NoImageSelected
+            : Path.GetFileName(backgroundImagePath);
+    }
+
+    private bool ImportBackgroundImageFromDialog()
+    {
+        if (!ProjectManager.Instance.HasProject)
+            return false;
+
+        var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
+        if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
+            return false;
+
+        ProjectAssetEntry entry = ProjectManager.Instance.AddAsset(result.Path, ProjectAssetType.Image);
+        string importedPath = entry.StoredInProject && !string.IsNullOrWhiteSpace(entry.RelativePath)
+            ? entry.RelativePath
+            : entry.SourcePath;
+
+        BackgroundImagePath = string.IsNullOrWhiteSpace(importedPath) ? NoImageSelected : importedPath;
+        return true;
     }
     
     // ── Selection callback ────────────────────────────────────────────────────
@@ -368,24 +449,132 @@ public class PropertiesPanel : UiPanel
                 }
 
                 ImGui.Spacing();
-                // Background Image (display only; file picking not yet implemented)
+                bool backgroundChanged = false;
+
+                string modeLabel = BackgroundRenderMode switch
                 {
-                    ImGui.Text("Background Image:");
-                    ImGui.SameLine();
-                    string backgroundImg = Path.GetFileName(BackgroundImagePath);
-                    ImGui.Text(backgroundImg);
-                    // TODO: open NativeFileDialog to pick a background texture file
-                    if (ImGui.Button("Browse##backgroundBrowse"))
+                    BackgroundModeFit => "Fit",
+                    BackgroundModeOriginal => "Original",
+                    _ => "Stretch"
+                };
+
+                if (ImGui.BeginCombo("Background Mode", modeLabel))
+                {
+                    bool isStretch = string.Equals(BackgroundRenderMode, BackgroundModeStretch, StringComparison.OrdinalIgnoreCase);
+                    if (ImGui.Selectable("Stretch", isStretch))
                     {
-                        // TODO: implement background image file picker
+                        BackgroundRenderMode = BackgroundModeStretch;
+                        StretchBackground = true;
+                        backgroundChanged = true;
                     }
-                    ImGui.SameLine();
-                    if (ImGui.Button("Clear##backgroundClear") && BackgroundImagePath != "No image selected")
+
+                    bool isFit = string.Equals(BackgroundRenderMode, BackgroundModeFit, StringComparison.OrdinalIgnoreCase);
+                    if (ImGui.Selectable("Fit", isFit))
                     {
-                        BackgroundImagePath = "No image selected";
-                        WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
-                        ProjectManager.Instance.SetDirty(true);
+                        BackgroundRenderMode = BackgroundModeFit;
+                        StretchBackground = false;
+                        backgroundChanged = true;
                     }
+
+                    bool isOriginal = string.Equals(BackgroundRenderMode, BackgroundModeOriginal, StringComparison.OrdinalIgnoreCase);
+                    if (ImGui.Selectable("Original", isOriginal))
+                    {
+                        BackgroundRenderMode = BackgroundModeOriginal;
+                        StretchBackground = false;
+                        backgroundChanged = true;
+                    }
+
+                    ImGui.EndCombo();
+                }
+
+                float backgroundScale = BackgroundScale;
+                if (ImGui.DragFloat("Background Scale", ref backgroundScale, 0.01f, 0.01f, 20f))
+                {
+                    BackgroundScale = Math.Clamp(backgroundScale, 0.01f, 20f);
+                    backgroundChanged = true;
+                }
+
+                float backgroundRotation = BackgroundRotationDegrees;
+                if (ImGui.DragFloat("Background Rotation", ref backgroundRotation, 0.25f, -360f, 360f))
+                {
+                    BackgroundRotationDegrees = Math.Clamp(backgroundRotation, -360f, 360f);
+                    backgroundChanged = true;
+                }
+
+                float offsetX = BackgroundOffset[0];
+                if (ImGui.DragFloat("Background Offset X", ref offsetX, 0.005f, -3f, 3f))
+                {
+                    BackgroundOffset[0] = offsetX;
+                    backgroundChanged = true;
+                }
+
+                float offsetY = BackgroundOffset[1];
+                if (ImGui.DragFloat("Background Offset Y", ref offsetY, 0.005f, -3f, 3f))
+                {
+                    BackgroundOffset[1] = offsetY;
+                    backgroundChanged = true;
+                }
+
+                if (ImGui.Button("Reset Transform##backgroundResetTransform"))
+                {
+                    BackgroundScale = 1f;
+                    BackgroundRotationDegrees = 0f;
+                    BackgroundOffset[0] = 0f;
+                    BackgroundOffset[1] = 0f;
+                    backgroundChanged = true;
+                }
+
+                var imageAssets = GetBackgroundImageAssets();
+                string selectedImageLabel = GetBackgroundImageLabel(BackgroundImagePath);
+                ImGui.Text("Background Image:");
+                ImGui.SetNextItemWidth(-1);
+                if (ImGui.BeginCombo("##BackgroundImage", selectedImageLabel))
+                {
+                    bool noneSelected = string.Equals(BackgroundImagePath, NoImageSelected, StringComparison.OrdinalIgnoreCase);
+                    if (ImGui.Selectable(NoImageSelected, noneSelected))
+                    {
+                        BackgroundImagePath = NoImageSelected;
+                        backgroundChanged = true;
+                    }
+
+                    foreach (var asset in imageAssets)
+                    {
+                        string candidatePath = !string.IsNullOrWhiteSpace(asset.RelativePath)
+                            ? asset.RelativePath
+                            : asset.SourcePath;
+                        if (string.IsNullOrWhiteSpace(candidatePath))
+                            continue;
+
+                        bool selected = string.Equals(candidatePath, BackgroundImagePath, StringComparison.OrdinalIgnoreCase);
+                        string optionLabel = string.IsNullOrWhiteSpace(asset.DisplayName)
+                            ? Path.GetFileName(candidatePath)
+                            : asset.DisplayName;
+
+                        if (ImGui.Selectable(optionLabel + "##" + candidatePath, selected))
+                        {
+                            BackgroundImagePath = candidatePath;
+                            backgroundChanged = true;
+                        }
+                    }
+
+                    ImGui.EndCombo();
+                }
+
+                if (ImGui.Button("Import##backgroundImport") && ImportBackgroundImageFromDialog())
+                    backgroundChanged = true;
+
+                ImGui.SameLine();
+                if (ImGui.Button("Clear##backgroundClear") && !string.Equals(BackgroundImagePath, NoImageSelected, StringComparison.OrdinalIgnoreCase))
+                {
+                    BackgroundImagePath = NoImageSelected;
+                    backgroundChanged = true;
+                }
+
+                if (backgroundChanged)
+                {
+                    ApplyBackgroundSettingsToViewport();
+                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                    ProjectManager.Instance.SetDirty(true);
                 }
             }
         }

@@ -391,6 +391,8 @@ public class CameraViewport : UiPanel
         Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
         Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
+        MainViewport.RenderBackgroundPlanePublic(w, h);
+
         float aspect = h > 0 ? (float)w / h : 1f;
 
         float savedFovY = cam.FovY, savedNear = cam.Near, savedFar = cam.Far;
