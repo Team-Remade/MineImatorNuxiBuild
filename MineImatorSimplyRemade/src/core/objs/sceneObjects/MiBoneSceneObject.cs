@@ -122,6 +122,20 @@ public class MiBoneSceneObject : BoneSceneObject
         LockBend = lockBend;
     }
 
+    /// <summary>
+    /// Returns the bend transform at the end of this bone's bend region.
+    /// Child objects use this to stay attached to the bent half of the limb.
+    /// </summary>
+    public mat4 GetBentHalfTransform(vec3 shapePosition)
+    {
+        if (!BendParameters.HasValue)
+            return mat4.Identity;
+
+        var bendParams = BendParameters.Value;
+        var bendVector = BendHelper.GetBendVector(GetEffectiveBendAngle(), 1.0f);
+        return BendHelper.GetBendMatrix(bendParams, bendVector, shapePosition);
+    }
+
     /// <summary>Registers shape data so meshes can be regenerated when the bend angle changes.</summary>
     public void RegisterShapeData(BoneShapeData data)
     {

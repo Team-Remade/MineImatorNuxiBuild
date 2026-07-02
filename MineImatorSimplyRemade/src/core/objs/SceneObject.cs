@@ -1,5 +1,6 @@
 ﻿using GlmSharp;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs;
 
@@ -599,7 +600,7 @@ public class SceneObject
         if (Parent == null)
             return local;
 
-        mat4 parentWorld = Parent.GetWorldMatrix();
+        mat4 parentWorld = GetBendAdjustedParentMatrix();
 
         // Selectively strip parent contributions that are not inherited.
         // For full inheritance just multiply; partial inheritance is handled
@@ -663,7 +664,7 @@ public class SceneObject
         if (Parent == null)
             return mat4.Identity;
 
-        mat4 parentWorld = Parent.GetWorldMatrix();
+        mat4 parentWorld = GetBendAdjustedParentMatrix();
 
         if (InheritPivotOffset)
             return parentWorld;
@@ -709,6 +710,22 @@ public class SceneObject
             return localNoPivot;
 
         return Parent.GetWorldMatrix() * localNoPivot;
+    }
+
+    private mat4 GetBendAdjustedParentMatrix()
+    {
+        if (Parent == null)
+            return mat4.Identity;
+
+        mat4 parentWorld = Parent.GetWorldMatrix();
+
+        if (LockBend > 0f && Parent is MiBoneSceneObject bendAncestor)
+        {
+            vec3 pivotOffset = -GetAccumulatedPivotOffset();
+            parentWorld *= bendAncestor.GetBentHalfTransform(pivotOffset);
+        }
+
+        return parentWorld;
     }
 
     // ── Pivot helpers ─────────────────────────────────────────────────────────

@@ -258,14 +258,21 @@ public class MineImatorLoader
                 int shapeIndex = 0;
                 foreach (var shape in part.Shapes)
                 {
+                    if (!shape.Visible)
+                    {
+                        shapeIndex++;
+                        continue;
+                    }
+
                     uint shapeTexture = GetShapeTexture(shape, part, model);
+                    int[]? textureSize = ResolveTextureSize(part, model);
 
                     float? colorAlpha = miBone?.ColorAlpha;
                     int    depth      = miBone?.Depth ?? 0;
 
                     var mesh = CreateShapeMesh(part.Name, shapeIndex, shape, model, shapeTexture,
                         accumulatedScale, bendParams, _currentCharacter.ModelBendStyle,
-                        colorAlpha, depth);
+                        colorAlpha, depth, textureSize: textureSize);
 
                     if (mesh != null)
                     {
@@ -298,9 +305,19 @@ public class MineImatorLoader
     /// </summary>
     public Mesh CreateShapeMeshPublic(string partName, int shapeIndex, MiShape shape, MiModel model,
         uint textureId, vec3 accumulatedParentScale, BendParams? bendParams = null,
-        BendStyle bendStyle = BendStyle.ProjectDefault, float? partColorAlpha = null, int depth = 0)
+        BendStyle bendStyle = BendStyle.ProjectDefault, float? partColorAlpha = null,
+        int depth = 0, int[]? textureSize = null)
         => CreateShapeMesh(partName, shapeIndex, shape, model, textureId, accumulatedParentScale,
-            bendParams, bendStyle, partColorAlpha, depth);
+            bendParams, bendStyle, partColorAlpha, depth, textureSize);
+
+    private static int[]? ResolveTextureSize(MiPart? part, MiModel model)
+    {
+        if (part?.TextureSize is { Length: >= 2 })
+            return part.TextureSize;
+        if (model.TextureSize is { Length: >= 2 })
+            return model.TextureSize;
+        return null;
+    }
 
     public void ClearCache()
     {
@@ -314,9 +331,29 @@ public class MineImatorLoader
 
     private void ApplyTimelineTransform(SceneObject obj, MiTimeline timeline)
     {
+        if (timeline.Position is { Length: >= 3 })
+            obj.SetLocalPosition(new vec3(timeline.Position[0] / 16f, timeline.Position[1] / 16f, timeline.Position[2] / 16f));
+
+        if (timeline.Rotation is { Length: >= 3 })
+            obj.SetLocalRotation(new vec3(
+                BendHelper.DegToRad(timeline.Rotation[0]),
+                BendHelper.DegToRad(timeline.Rotation[1]),
+                BendHelper.DegToRad(timeline.Rotation[2])));
+
+        if (timeline.Scale is { Length: >= 3 })
+            obj.SetLocalScale(new vec3(timeline.Scale[0], timeline.Scale[1], timeline.Scale[2]));
+
         if (timeline.Keyframes is { Count: > 0 })
         {
-            float[] pos = timeline.Keyframes.Select(kf => kf.Value.GetPosition()).FirstOrDefault(p => p != null);
+            float[]? pos = null;
+            if (timeline.Keyframes.TryGetValue("0", out var kf0))
+                pos = kf0?.GetPosition();
+
+            pos ??= timeline.Keyframes
+                .OrderBy(kv => int.TryParse(kv.Key, out var n) ? n : int.MaxValue)
+                .Select(kv => kv.Value.GetPosition())
+                .FirstOrDefault(p => p != null);
+
             if (pos != null)
                 obj.SetLocalPosition(new vec3(pos[0] / 16f, pos[1] / 16f, pos[2] / 16f));
         }
@@ -341,6 +378,9 @@ public class MineImatorLoader
 
         foreach (var part in parts)
         {
+            if (!part.Visible)
+                continue;
+
             int currentIdx = list.Count;
             list.Add((part, currentIdx, parentIdx, accumulatedParentScale));
 
@@ -600,12 +640,13 @@ public class MineImatorLoader
 
     private Mesh CreateShapeMesh(string partName, int shapeIndex, MiShape shape, MiModel model,
         uint textureId, vec3 accumulatedParentScale, BendParams? bendParams = null,
-        BendStyle bendStyle = BendStyle.ProjectDefault, float? partColorAlpha = null, int depth = 0)
+        BendStyle bendStyle = BendStyle.ProjectDefault, float? partColorAlpha = null,
+        int depth = 0, int[]? textureSize = null)
     {
         if (shape?.From == null || shape.To == null) return null;
 
-        int texWidth  = model.TextureSize?[0] ?? 64;
-        int texHeight = model.TextureSize?[1] ?? 64;
+        int texWidth  = textureSize?[0] ?? 64;
+        int texHeight = textureSize?[1] ?? 64;
 
         float uvU = shape.Uv?[0] ?? 0;
         float uvV = shape.Uv?[1] ?? 0;
@@ -687,9 +728,9 @@ public class MineImatorLoader
             if (textureId != 0) mesh.TextureId = textureId;
             if (partColorAlpha.HasValue) mesh.Alpha = partColorAlpha.Value;
 
-            // Apply shapePosition as a pure translation (baked into vertices).
-            // Rotation happens around shapePivot = (from+to)/2; shapePosition is separate.
-            if (shapePosition != vec3.Zero)
+            // Apply shapePosition only for non-bent meshes. Bent branches already
+            // incorporate the position into the bend matrix/pivot math.
+            if (shapePosition != vec3.Zero && !planeBent)
             {
                 for (int i = 0; i < mesh.Vertices.Count; i++)
                     mesh.Vertices[i] += shapePosition;
@@ -865,15 +906,21 @@ public class MineImatorLoader
 
             bool invAngle = (b.Part == BendPart.Lower || b.Part == BendPart.Back || b.Part == BendPart.Left);
 
+            mat4 shapeRotMat   = BuildShapeRotMat(shapeRotation);
+            mat4 shapeScaleMat = shapeScale != default && shapeScale != vec3.Ones
+                ? mat4.Scale(shapeScale) : mat4.Identity;
+            mat4 rsm = shapeRotMat * shapeScaleMat;
+            float axisStart = segAxis == 0 ? x1 : segAxis == 1 ? y1 : z1;
+
             float bendStart, bendEnd;
             switch (segAxis)
             {
-                case 0:  bendStart = bendOffset - (shapePosition.x + x1) - bendSize/2f;
-                         bendEnd   = bendOffset - (shapePosition.x + x1) + bendSize/2f; break;
-                case 1:  bendStart = bendOffset - (shapePosition.y + y1) - bendSize/2f;
-                         bendEnd   = bendOffset - (shapePosition.y + y1) + bendSize/2f; break;
-                default: bendStart = bendOffset - (shapePosition.z + z1) - bendSize/2f;
-                         bendEnd   = bendOffset - (shapePosition.z + z1) + bendSize/2f; break;
+                case 0:  bendStart = bendOffset - (shapePosition.x + axisStart) - bendSize/2f;
+                         bendEnd   = bendOffset - (shapePosition.x + axisStart) + bendSize/2f; break;
+                case 1:  bendStart = bendOffset - (shapePosition.y + axisStart) - bendSize/2f;
+                         bendEnd   = bendOffset - (shapePosition.y + axisStart) + bendSize/2f; break;
+                default: bendStart = bendOffset - (shapePosition.z + axisStart) - bendSize/2f;
+                         bendEnd   = bendOffset - (shapePosition.z + axisStart) + bendSize/2f; break;
             }
 
             float totalSize = segAxis == 0 ? (x2-x1) : segAxis == 1 ? (y2-y1) : (z2-z1);
@@ -912,11 +959,6 @@ public class MineImatorLoader
                     texStart1=texNorth1; texStart2=texNorth2; texStart3=texNorth3; texStart4=texNorth4;
                     texEnd1=texSouth1;   texEnd2=texSouth2;   texEnd3=texSouth3;   texEnd4=texSouth4; break;
             }
-
-            mat4 shapeRotMat   = BuildShapeRotMat(shapeRotation);
-            mat4 shapeScaleMat = shapeScale != default && shapeScale != vec3.Ones
-                ? mat4.Scale(shapeScale) : mat4.Identity;
-            mat4 rsm = shapeRotMat * shapeScaleMat;
 
             p1 = BendHelper.TransformPoint(rsm, p1);
             p2 = BendHelper.TransformPoint(rsm, p2);
@@ -991,22 +1033,22 @@ public class MineImatorLoader
                 switch (segAxis)
                 {
                     case 0:
-                        np1 = new vec3(x1+segPos,y1,z2); np2 = new vec3(x1+segPos,y2,z2);
-                        np3 = new vec3(x1+segPos,y2,z1); np4 = new vec3(x1+segPos,y1,z1);
+                                                np1 = new vec3(x1+segPos,y1,z2); np2 = new vec3(x1+segPos,y2,z2);
+                                                np3 = new vec3(x1+segPos,y2,z1); np4 = new vec3(x1+segPos,y1,z1);
                         nn1 = new vec3(0,1,0); nn2 = new vec3(0,-1,0); nn3 = new vec3(0,0,1); nn4 = new vec3(0,0,-1);
                         { float toff = (segPos/totalSize)*texSizeFixX*(textureMirror?-1:1);
                           ntexpSide1=texSouth1.x+toff; ntexpSide2=texNorth2.x-toff; ntexpSide3=texDown4.x+toff; }
                         break;
                     case 1:
-                        np1 = new vec3(x2,y1+segPos,z2); np2 = new vec3(x1,y1+segPos,z2);
-                        np3 = new vec3(x1,y1+segPos,z1); np4 = new vec3(x2,y1+segPos,z1);
+                                                np1 = new vec3(x2,y1+segPos,z2); np2 = new vec3(x1,y1+segPos,z2);
+                                                np3 = new vec3(x1,y1+segPos,z1); np4 = new vec3(x2,y1+segPos,z1);
                         nn1 = new vec3(1,0,0); nn2 = new vec3(-1,0,0); nn3 = new vec3(0,0,1); nn4 = new vec3(0,0,-1);
                         { float toff = (segPos/totalSize)*texSizeFixY;
                           ntexpSide1=texSouth3.y-toff; ntexpSide2=ntexpSide1; ntexpSide3=ntexpSide1; }
                         break;
                     default:
-                        np1 = new vec3(x1,y2,z1+segPos); np2 = new vec3(x2,y2,z1+segPos);
-                        np3 = new vec3(x2,y1,z1+segPos); np4 = new vec3(x1,y1,z1+segPos);
+                                                np1 = new vec3(x1,y2,z1+segPos); np2 = new vec3(x2,y2,z1+segPos);
+                                                np3 = new vec3(x2,y1,z1+segPos); np4 = new vec3(x1,y1,z1+segPos);
                         nn1 = new vec3(1,0,0); nn2 = new vec3(-1,0,0); nn3 = new vec3(0,1,0); nn4 = new vec3(0,-1,0);
                         { float toff = (segPos/totalSize)*texSizeFixZ;
                           ntexpSide1=texEast2.x-toff*(textureMirror?-1:1);
@@ -1471,12 +1513,14 @@ public class MineImatorLoader
 
         bool invAngle = (b.Part==BendPart.Lower||b.Part==BendPart.Back||b.Part==BendPart.Left);
 
-        float bendStart = bendAlongX
-            ? bendOffset-(shapePosition.x+x1)-bendSize/2f
-            : bendOffset-(shapePosition.y+y1)-bendSize/2f;
-        float bendEnd = bendStart + bendSize;
+        mat4 shapeRotMat = BuildShapeRotMat(shapeRotation);
+        mat4 rsm = shapeRotMat * (shapeScale!=default&&shapeScale!=vec3.Ones ? mat4.Scale(shapeScale) : mat4.Identity);
+        float axisStart = bendAlongX ? x1 : y1;
 
-        mat4 rsm = BuildShapeRotMat(shapeRotation) * (shapeScale!=default&&shapeScale!=vec3.Ones ? mat4.Scale(shapeScale) : mat4.Identity);
+        float bendStart = bendAlongX
+            ? bendOffset-(shapePosition.x+axisStart)-bendSize/2f
+            : bendOffset-(shapePosition.y+axisStart)-bendSize/2f;
+        float bendEnd = bendStart + bendSize;
 
         int outerCount = bendAlongX ? regionH : regionW;
         int innerCount = bendAlongX ? regionW : regionH;
@@ -1782,6 +1826,7 @@ public class MiModel
 public class MiPart
 {
     [JsonPropertyName("name")]          public string Name       { get; set; }
+    [JsonPropertyName("visible")]       public bool   Visible    { get; set; } = true;
     [JsonPropertyName("texture")]       public string Texture    { get; set; }
     [JsonPropertyName("texture_size")]  public int[]  TextureSize { get; set; }
     [JsonPropertyName("textures")]      public Dictionary<string, string> Textures { get; set; }
@@ -1809,6 +1854,7 @@ public class MiPart
 
 public class MiShape
 {
+    [JsonPropertyName("visible")]        public bool    Visible      { get; set; } = true;
     [JsonPropertyName("type")]           public string  Type         { get; set; } = "block";
     [JsonPropertyName("from")]           public float[] From         { get; set; }
     [JsonPropertyName("to")]             public float[] To           { get; set; }
