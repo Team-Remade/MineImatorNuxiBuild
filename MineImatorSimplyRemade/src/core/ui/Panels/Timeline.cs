@@ -127,6 +127,7 @@ public class Timeline : UiPanel
     public int   CurrentFrame => _currentFrame;
     public int   MaxFrames    => _maxFrames;
     public float Framerate    => _frameRate;
+    public bool  IsPlaying    => _isPlaying;
 
     public void SetFrameRate(float frameRate)
     {

@@ -342,6 +342,18 @@ public class Mesh : IDisposable
     /// </summary>
     public static double DeltaTime = 0.0;
 
+    /// <summary>
+    /// Global gate for animated texture time progression.
+    /// When false, animated textures hold their current frame.
+    /// </summary>
+    public static bool AdvanceAnimatedTextures = true;
+
+    /// <summary>
+    /// Global playback speed multiplier for animated textures.
+    /// A value of 1.0 reproduces vanilla 20 FPS timing.
+    /// </summary>
+    public static double AnimatedTextureSpeedScale = 1.0;
+
     // ── Rendering ─────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -405,7 +417,8 @@ public class Mesh : IDisposable
         if (!string.IsNullOrEmpty(AnimationKey) &&
             TerrainAtlas.AnimatedTextures.TryGetValue(AnimationKey, out var animInfo))
         {
-            _animTime += DeltaTime;
+            if (AdvanceAnimatedTextures)
+                _animTime += DeltaTime * AnimatedTextureSpeedScale;
 
             double ticksPerFrame = animInfo.FrameTime * SecondsPerTick;
             double totalDuration = animInfo.Frames.Length * ticksPerFrame;

@@ -9,6 +9,7 @@ using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.project;
+using MineImatorSimplyRemade.core.window.windows;
 using MineImatorSimplyRemade.gizmo;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -1351,6 +1352,10 @@ public class Viewport : UiPanel
 
         // ── Per-frame mesh globals ─────────────────────────────────────────────
         Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
+        bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
+        Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
+        int textureAnimFps = Math.Clamp(PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240);
+        Mesh.AnimatedTextureSpeedScale = textureAnimFps / 20.0;
 
         // Rebuild the static light list used by Mesh.Render() every frame so
         // that moved / deleted lights are always up-to-date.

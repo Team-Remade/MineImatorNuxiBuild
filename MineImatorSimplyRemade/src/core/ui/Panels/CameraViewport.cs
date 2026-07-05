@@ -4,6 +4,7 @@ using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemade.core.window.windows;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using Silk.NET.GLFW;
@@ -441,6 +442,12 @@ public class CameraViewport : UiPanel
         // Ground plane.
         if (MainViewport.GroundPlane != null && MainViewport.GroundPlaneVisible)
             MainViewport.GroundPlane.Render(mat4.Identity, view, proj);
+
+        Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
+        bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
+        Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
+        int textureAnimFps = Math.Clamp(MainViewport.PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240);
+        Mesh.AnimatedTextureSpeedScale = textureAnimFps / 20.0;
 
         // Scene objects.
         Mesh.PointLights.Clear();

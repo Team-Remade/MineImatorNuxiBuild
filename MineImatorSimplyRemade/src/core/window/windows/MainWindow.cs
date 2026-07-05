@@ -21,6 +21,8 @@ namespace MineImatorSimplyRemade.core.window.windows;
 
 public class MainWindow : Window
 {
+    public static bool IsAnimationRenderExportActive { get; private set; }
+
     private enum ProjectDialogMode
     {
         NewProject,
@@ -975,6 +977,7 @@ public class MainWindow : Window
 
         try
         {
+            IsAnimationRenderExportActive = false;
             _renderExporter = new RenderExporter(_cameraViewport);
             _renderJobMode = _renderPopupMode;
             _renderJobActive = true;
@@ -990,6 +993,7 @@ public class MainWindow : Window
 
             if (_renderJobMode == RenderMode.Video)
             {
+                IsAnimationRenderExportActive = true;
                 if (_timeline == null)
                     throw new InvalidOperationException("Timeline is not initialized.");
 
@@ -1015,6 +1019,7 @@ public class MainWindow : Window
         }
         catch (Exception ex)
         {
+            IsAnimationRenderExportActive = false;
             _renderJobActive = false;
             _renderJobFinished = true;
             _renderJobStatus = $"Render failed: {ex.Message}";
@@ -1099,6 +1104,7 @@ public class MainWindow : Window
 
     private void CompleteRenderJobSuccess()
     {
+        IsAnimationRenderExportActive = false;
         if (_timeline != null)
             _timeline.SetCurrentFrame(_renderTimelineRestoreFrame);
 
@@ -1114,6 +1120,7 @@ public class MainWindow : Window
 
     private void CancelRenderJob(string message)
     {
+        IsAnimationRenderExportActive = false;
         if (_timeline != null)
             _timeline.SetCurrentFrame(_renderTimelineRestoreFrame);
 
