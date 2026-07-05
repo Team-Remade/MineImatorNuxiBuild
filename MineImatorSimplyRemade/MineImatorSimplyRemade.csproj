@@ -50,4 +50,26 @@
         <Copy SourceFiles="@(DataFiles)" DestinationFolder="$(PublishDir)data\%(RecursiveDir)" SkipUnchangedFiles="true" />
     </Target>
 
+    <Target Name="CopyModsFolder" AfterTargets="Build">
+        <ItemGroup>
+            <ModFiles Include="mods\**\*" />
+        </ItemGroup>
+        <Copy SourceFiles="@(ModFiles)" DestinationFolder="$(OutputPath)mods\%(RecursiveDir)" />
+        <ItemGroup>
+            <CopiedModGitkeepFiles Include="$(OutputPath)mods\**\*.gitkeep" />
+        </ItemGroup>
+        <Delete Files="@(CopiedModGitkeepFiles)" />
+    </Target>
+
+    <Target Name="CopyModsFolderPublish" AfterTargets="_CopyResolvedFilesToPublishAlways;_CopyResolvedFilesToPublishPreserveNewest">
+        <ItemGroup>
+            <ModFiles Include="$(MSBuildProjectDirectory)\mods\**\*" />
+        </ItemGroup>
+        <Copy SourceFiles="@(ModFiles)" DestinationFolder="$(PublishDir)mods\%(RecursiveDir)" SkipUnchangedFiles="true" />
+        <ItemGroup>
+            <PublishedModGitkeepFiles Include="$(PublishDir)mods\**\*.gitkeep" />
+        </ItemGroup>
+        <Delete Files="@(PublishedModGitkeepFiles)" />
+    </Target>
+
 </Project>
