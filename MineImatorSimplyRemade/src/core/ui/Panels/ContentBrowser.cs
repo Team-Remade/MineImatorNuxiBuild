@@ -11,6 +11,17 @@ public class ContentBrowser : UiPanel
 
     private int _selectedAssetIndex = -1;
     private string _search = "";
+    private int _assetTypeFilterIndex = 0;
+    private ProjectAssetEntry? _pendingRemoval;
+
+    private static readonly ProjectAssetType[] FilterableAssetTypes =
+    {
+        ProjectAssetType.Unknown,
+        ProjectAssetType.Model,
+        ProjectAssetType.Image,
+        ProjectAssetType.Sound,
+        ProjectAssetType.Other
+    };
 
     public override void Render()
     {
@@ -34,6 +45,9 @@ public class ContentBrowser : UiPanel
         ImGui.SetNextItemWidth(-1);
         ImGui.InputTextWithHint("##assetSearch", "Search assets...", ref _search, 128);
 
+        ImGui.SameLine();
+        RenderTypeFilter();
+
         ImGui.Separator();
 
         var assets = projectManager.GetProjectAssets();
@@ -43,6 +57,9 @@ public class ContentBrowser : UiPanel
         for (int i = 0; i < assets.Count; i++)
         {
             var asset = assets[i];
+            if (!IsAssetTypeVisible(asset.AssetType))
+                continue;
+
             if (!string.IsNullOrWhiteSpace(_search) &&
                 !asset.DisplayName.Contains(_search, StringComparison.OrdinalIgnoreCase))
             {
@@ -55,6 +72,13 @@ public class ContentBrowser : UiPanel
 
             if (ImGui.Selectable(row + "##asset" + i, selected))
                 _selectedAssetIndex = i;
+
+            if (ImGui.BeginPopupContextItem("##assetContext" + i))
+            {
+                if (ImGui.MenuItem("Remove asset..."))
+                    _pendingRemoval = asset;
+                ImGui.EndPopup();
+            }
 
             if (ImGui.IsItemHovered())
             {
@@ -76,6 +100,8 @@ public class ContentBrowser : UiPanel
 
         ImGui.EndChild();
 
+        RenderRemovalPopup(projectManager);
+
         bool canSpawn = CanSpawnSelectedAsset();
         if (!canSpawn) ImGui.BeginDisabled();
         if (ImGui.Button("Spawn Selected Asset", new Vector2(-1, 28)))
@@ -87,16 +113,85 @@ public class ContentBrowser : UiPanel
 
     private void RenderToolbar()
     {
-        if (ImGui.Button("Import Model"))
-            ImportAsset(ProjectAssetType.Model, "glb,gltf,fbx,obj,dae,3ds,blend,ply,stl,x3d,mimodel,miobject");
+        if (ImGui.Button("Import Asset", new Vector2(-1, 0)))
+            ImGui.OpenPopup("##importAssetPopup");
 
-        ImGui.SameLine();
-        if (ImGui.Button("Import Image"))
-            ImportAsset(ProjectAssetType.Image, "png,jpg,jpeg,bmp,tga,gif,webp,tiff");
+        if (ImGui.BeginPopup("##importAssetPopup"))
+        {
+            if (ImGui.MenuItem("Model"))
+                ImportAsset(ProjectAssetType.Model, "glb,gltf,fbx,obj,dae,3ds,blend,ply,stl,x3d,mimodel,miobject");
 
-        ImGui.SameLine();
-        if (ImGui.Button("Import Sound"))
-            ImportAsset(ProjectAssetType.Sound, "wav,mp3,ogg,flac,m4a");
+            if (ImGui.MenuItem("Image"))
+                ImportAsset(ProjectAssetType.Image, "png,jpg,jpeg,bmp,tga,gif,webp,tiff");
+
+            if (ImGui.MenuItem("Sound"))
+                ImportAsset(ProjectAssetType.Sound, "wav,mp3,ogg,flac,m4a");
+
+            ImGui.EndPopup();
+        }
+    }
+
+    private void RenderTypeFilter()
+    {
+        string currentLabel = _assetTypeFilterIndex == 0
+            ? "All types"
+            : FilterableAssetTypes[_assetTypeFilterIndex - 1].ToString();
+
+        ImGui.SetNextItemWidth(140);
+        if (ImGui.BeginCombo("##assetTypeFilter", currentLabel))
+        {
+            if (ImGui.Selectable("All types", _assetTypeFilterIndex == 0))
+                _assetTypeFilterIndex = 0;
+
+            for (int i = 0; i < FilterableAssetTypes.Length; i++)
+            {
+                var assetType = FilterableAssetTypes[i];
+                bool selected = _assetTypeFilterIndex == i + 1;
+                if (ImGui.Selectable(assetType.ToString(), selected))
+                    _assetTypeFilterIndex = i + 1;
+            }
+
+            ImGui.EndCombo();
+        }
+    }
+
+    private bool IsAssetTypeVisible(ProjectAssetType assetType)
+    {
+        return _assetTypeFilterIndex == 0 ||
+               FilterableAssetTypes[_assetTypeFilterIndex - 1] == assetType;
+    }
+
+    private void RenderRemovalPopup(ProjectManager projectManager)
+    {
+        if (_pendingRemoval != null)
+            ImGui.OpenPopup("##removeAssetConfirm");
+
+        bool popupOpen = true;
+        if (!ImGui.BeginPopupModal("##removeAssetConfirm", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            return;
+
+        if (_pendingRemoval != null)
+        {
+            ImGui.TextWrapped($"Remove '{_pendingRemoval.DisplayName}' from the project and delete it from disk?");
+            ImGui.Separator();
+
+            if (ImGui.Button("Remove", new Vector2(120, 0)))
+            {
+                projectManager.RemoveAsset(_pendingRemoval);
+                _selectedAssetIndex = -1;
+                _pendingRemoval = null;
+                ImGui.CloseCurrentPopup();
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel", new Vector2(120, 0)))
+            {
+                _pendingRemoval = null;
+                ImGui.CloseCurrentPopup();
+            }
+        }
+
+        ImGui.EndPopup();
     }
 
     private void ImportAsset(ProjectAssetType assetType, string filter)

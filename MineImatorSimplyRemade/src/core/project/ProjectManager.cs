@@ -250,6 +250,23 @@ public sealed class ProjectManager
         return Manifest.Assets.AsReadOnly();
     }
 
+    public bool RemoveAsset(ProjectAssetEntry asset)
+    {
+        if (!HasProject)
+            throw new InvalidOperationException("No project is currently open.");
+
+        if (asset == null)
+            return false;
+
+        bool removed = Manifest.Assets.Remove(asset);
+        if (!removed)
+            return false;
+
+        DeleteAssetFiles(asset);
+        SaveManifest();
+        return true;
+    }
+
     public IReadOnlyList<RecentProjectEntry> GetRecentProjects()
     {
         var state = LoadRecentProjectsState();
@@ -389,6 +406,31 @@ public sealed class ProjectManager
         Directory.CreateDirectory(Path.GetDirectoryName(fullTargetPath) ?? ProjectFolder);
         File.Copy(sourcePath, fullTargetPath, overwrite: false);
         return relativePath;
+    }
+
+    private void DeleteAssetFiles(ProjectAssetEntry asset)
+    {
+        string fullPath = GetAssetFullPath(asset);
+
+        try
+        {
+            if (asset.StoredInProject && asset.AssetType == ProjectAssetType.Model)
+            {
+                string? assetFolder = Path.GetDirectoryName(fullPath);
+                if (!string.IsNullOrWhiteSpace(assetFolder) && Directory.Exists(assetFolder))
+                {
+                    Directory.Delete(assetFolder, recursive: true);
+                    return;
+                }
+            }
+
+            if (File.Exists(fullPath))
+                File.Delete(fullPath);
+        }
+        catch
+        {
+            // Keep the manifest removal even if file deletion fails.
+        }
     }
 
     private string CopyModelIntoProject(string sourcePath)
