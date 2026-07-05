@@ -13,6 +13,7 @@ using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using NativeFileDialogSharp;
 using Silk.NET.OpenGL;
+using StbImageSharp;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
@@ -72,6 +73,9 @@ public class SpawnMenu : UiPanel
     /// <summary>Search filter applied to the tile grid list.</summary>
     private string _itemSearchBuffer = "";
     private string _itemSearchQuery  = "";
+
+    /// <summary>Counter used to generate unique custom-item keys.</summary>
+    private int _customItemTextureCounter = 1;
 
     // Category → list of object names
     private readonly Dictionary<string, List<string>> _categories;
@@ -923,6 +927,9 @@ public class SpawnMenu : UiPanel
 
         ImGui.BeginChild("##tileGrid", new Vector2(0, 0));
 
+        if (_itemAtlasSource == ItemAtlasSource.ItemAtlas)
+            ItemsAtlas.EnsureProjectCustomTexturesLoaded();
+
         var textures = _itemAtlasSource == ItemAtlasSource.ItemAtlas
             ? ItemsAtlas.Textures
             : TerrainAtlas.Textures;
@@ -991,7 +998,109 @@ public class SpawnMenu : UiPanel
             ? "Each pixel is extruded\nto form a hull mesh."
             : "Flat double-sided plane\nwith the tile texture.");
 
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        if (ImGui.Button("Load custom image...##itemCustom", new Vector2(-1, 0)))
+            ImportCustomItemImageFromDialog(selectInSpawnMenu: true);
+
         ImGui.EndChild();
+    }
+
+    private string? ImportCustomItemImageFromDialog(bool selectInSpawnMenu)
+    {
+        if (Gl == null)
+            return null;
+
+        var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
+        if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
+            return null;
+
+        string sourcePath = result.Path;
+        if (!File.Exists(sourcePath))
+            return null;
+
+        string resolvedPath = ResolveItemImagePathForProject(sourcePath, out string? projectRelativePath);
+
+        string key;
+        if (!string.IsNullOrWhiteSpace(projectRelativePath))
+        {
+            key = ItemsAtlas.BuildProjectCustomTextureKey(projectRelativePath);
+        }
+        else
+        {
+            string keyBase = Path.GetFileNameWithoutExtension(resolvedPath);
+            if (string.IsNullOrWhiteSpace(keyBase))
+                keyBase = "custom_item";
+
+            key = $"custom:{SanitizeCustomItemKey(keyBase)}";
+            while (ItemsAtlas.Textures.ContainsKey(key))
+                key = $"custom:{SanitizeCustomItemKey(keyBase)}_{_customItemTextureCounter++}";
+        }
+
+        if (!ItemsAtlas.TryRegisterCustomTextureFromFile(key, resolvedPath))
+            return null;
+
+        if (selectInSpawnMenu)
+        {
+            _itemAtlasSource = ItemAtlasSource.ItemAtlas;
+            _selectedTileKey = key;
+        }
+
+        return key;
+    }
+
+    public string? ImportCustomItemImageFromDialogForProperties()
+    {
+        return ImportCustomItemImageFromDialog(selectInSpawnMenu: false);
+    }
+
+    private string ResolveItemImagePathForProject(string sourcePath, out string? projectRelativePath)
+    {
+        projectRelativePath = null;
+
+        string fullSourcePath = Path.GetFullPath(sourcePath);
+        var projectManager = ProjectManager ?? core.project.ProjectManager.Instance;
+
+        if (projectManager == null || !projectManager.HasProject)
+            return fullSourcePath;
+
+        try
+        {
+            var existing = projectManager.GetProjectAssets().FirstOrDefault(a =>
+                a.AssetType == ProjectAssetType.Image &&
+                string.Equals(Path.GetFullPath(a.SourcePath), fullSourcePath, StringComparison.OrdinalIgnoreCase));
+
+            var asset = existing ?? projectManager.AddAsset(fullSourcePath, ProjectAssetType.Image);
+            projectRelativePath = asset.StoredInProject && !string.IsNullOrWhiteSpace(asset.RelativePath)
+                ? asset.RelativePath
+                : Path.GetFileName(projectManager.GetAssetFullPath(asset));
+
+            return projectManager.GetAssetFullPath(asset);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SpawnMenu] Could not register custom item image in project assets: {ex.Message}");
+            return fullSourcePath;
+        }
+    }
+
+    private static string SanitizeCustomItemKey(string key)
+    {
+        var chars = key
+            .Trim()
+            .ToLowerInvariant()
+            .Select(ch =>
+                (ch >= 'a' && ch <= 'z') ||
+                (ch >= '0' && ch <= '9') ||
+                ch == '_' || ch == '-'
+                    ? ch
+                    : '_')
+            .ToArray();
+
+        string sanitized = new string(chars).Trim('_');
+        return string.IsNullOrWhiteSpace(sanitized) ? "custom_item" : sanitized;
     }
 
     private unsafe void RenderItemsPreviewColumn()
@@ -3869,6 +3978,25 @@ public class SpawnMenu : UiPanel
         }
 
         return false;
+    }
+
+    public bool ApplyItemTextureToSpawnedObject(SceneObject target, ItemAtlasSource atlasSource, string tileKey)
+    {
+        if (target == null || Viewport == null || string.IsNullOrWhiteSpace(tileKey))
+            return false;
+
+        bool is3D = target.Visuals.OfType<ExtrudedItemMesh>().FirstOrDefault()?.Is3D ?? true;
+        var temp = SpawnItemObject(tileKey, atlasSource, is3D);
+        if (temp == null)
+            return false;
+
+        bool ok = ReplaceObjectMeshesFromTempSpawn(target, temp, target.ResourcePackId ?? "");
+        if (!ok)
+            return false;
+
+        target.ObjectType = temp.ObjectType;
+        target.TextureType = atlasSource == ItemAtlasSource.BlockAtlas ? "block" : "item";
+        return true;
     }
 
     private bool ReplaceObjectMeshesFromTempSpawn(SceneObject target, SceneObject temp, string normalizedResourcePackId)

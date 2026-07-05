@@ -1,5 +1,6 @@
 using Silk.NET.OpenGL;
 using StbImageSharp;
+using MineImatorSimplyRemade.core.project;
 
 namespace MineImatorSimplyRemade;
 
@@ -32,6 +33,78 @@ public static class ItemsAtlas
     {
         _gl = gl;
         LoadAtlas();
+    }
+
+    public static string BuildProjectCustomTextureKey(string relativePath)
+    {
+        string normalized = (relativePath ?? string.Empty)
+            .Replace('\\', '/')
+            .Trim();
+
+        while (normalized.StartsWith('/'))
+            normalized = normalized[1..];
+
+        if (string.IsNullOrWhiteSpace(normalized))
+            normalized = "images/custom.png";
+
+        return $"project:{normalized}";
+    }
+
+    public static bool TryRegisterCustomTextureFromFile(string key, string filePath)
+    {
+        if (_gl == null || string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            return false;
+
+        ImageResult img;
+        try
+        {
+            using var stream = File.OpenRead(filePath);
+            img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ItemsAtlas] Failed to load custom item image '{filePath}': {ex.Message}");
+            return false;
+        }
+
+        if (img.Width != img.Height)
+        {
+            Console.WriteLine($"[ItemsAtlas] Custom item image must be square: {filePath}");
+            return false;
+        }
+
+        UpsertTileTexture(key, img.Data, img.Width, img.Height);
+        return true;
+    }
+
+    public static void EnsureProjectCustomTexturesLoaded()
+    {
+        if (_gl == null)
+            return;
+
+        var projectManager = ProjectManager.Instance;
+        if (!projectManager.HasProject)
+            return;
+
+        foreach (var asset in projectManager.GetProjectAssets())
+        {
+            if (asset.AssetType != ProjectAssetType.Image)
+                continue;
+
+            string fullPath = projectManager.GetAssetFullPath(asset);
+            if (!File.Exists(fullPath))
+                continue;
+
+            string keySource = asset.StoredInProject && !string.IsNullOrWhiteSpace(asset.RelativePath)
+                ? asset.RelativePath
+                : asset.DisplayName;
+
+            string key = BuildProjectCustomTextureKey(keySource);
+            if (Textures.ContainsKey(key))
+                continue;
+
+            TryRegisterCustomTextureFromFile(key, fullPath);
+        }
     }
 
     private static unsafe void LoadAtlas()
@@ -68,6 +141,7 @@ public static class ItemsAtlas
         SliceGridAtlas(atlas.Data, atlasSize);
 
         ApplyResourcePackItemsOverrides();
+        EnsureProjectCustomTexturesLoaded();
 
         Console.WriteLine($"[ItemsAtlas] Loaded {Textures.Count} tiles from {atlasPath}");
     }

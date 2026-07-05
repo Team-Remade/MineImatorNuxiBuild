@@ -218,8 +218,33 @@ public class PropertiesPanel : UiPanel
         return BackgroundModeStretch;
     }
 
+    private static string? ExtractItemTileKeyFromObjectType(string objectType)
+    {
+        if (string.IsNullOrWhiteSpace(objectType))
+            return null;
+
+        int open = objectType.IndexOf('[');
+        int close = objectType.LastIndexOf(']');
+        if (open < 0 || close <= open)
+            return null;
+
+        return objectType[(open + 1)..close];
+    }
+
+    private static IEnumerable<string> GetItemAtlasKeys(ItemAtlasSource atlasSource)
+    {
+        if (atlasSource == ItemAtlasSource.ItemAtlas)
+            ItemsAtlas.EnsureProjectCustomTexturesLoaded();
+
+        var atlas = atlasSource == ItemAtlasSource.BlockAtlas ? TerrainAtlas.Textures : ItemsAtlas.Textures;
+        return atlas.Keys.OrderBy(x => x, StringComparer.OrdinalIgnoreCase);
+    }
+
     private IEnumerable<string> GetFloorAtlasKeys()
     {
+        if (NormalizeFloorAtlas(FloorTextureAtlas) == "item")
+            ItemsAtlas.EnsureProjectCustomTexturesLoaded();
+
         var atlas = NormalizeFloorAtlas(FloorTextureAtlas) == "item" ? ItemsAtlas.Textures : TerrainAtlas.Textures;
         return atlas.Keys.OrderBy(x => x, StringComparer.OrdinalIgnoreCase);
     }
@@ -854,6 +879,73 @@ public class PropertiesPanel : UiPanel
 
             bool supportsResourcePack = string.Equals(_currentObject.SpawnCategory, "Blocks", StringComparison.Ordinal) ||
                                         string.Equals(_currentObject.SpawnCategory, "Scenery", StringComparison.Ordinal);
+            bool supportsItemImage = string.Equals(_currentObject.SpawnCategory, "Items", StringComparison.Ordinal);
+
+            if (supportsItemImage)
+            {
+                var atlasSource = string.Equals(_currentObject.TextureType, "block", StringComparison.OrdinalIgnoreCase)
+                    ? ItemAtlasSource.BlockAtlas
+                    : ItemAtlasSource.ItemAtlas;
+
+                string currentKey = ExtractItemTileKeyFromObjectType(_currentObject.ObjectType)
+                                    ?? GetItemAtlasKeys(atlasSource).FirstOrDefault()
+                                    ?? "";
+
+                string atlasLabel = atlasSource == ItemAtlasSource.BlockAtlas ? "Block Atlas" : "Item Atlas";
+                if (ImGui.BeginCombo("Item Atlas", atlasLabel))
+                {
+                    bool useItem = atlasSource == ItemAtlasSource.ItemAtlas;
+                    if (ImGui.Selectable("Item Atlas", useItem))
+                    {
+                        atlasSource = ItemAtlasSource.ItemAtlas;
+                        currentKey = GetItemAtlasKeys(atlasSource).FirstOrDefault() ?? currentKey;
+                    }
+
+                    bool useBlock = atlasSource == ItemAtlasSource.BlockAtlas;
+                    if (ImGui.Selectable("Block Atlas", useBlock))
+                    {
+                        atlasSource = ItemAtlasSource.BlockAtlas;
+                        currentKey = GetItemAtlasKeys(atlasSource).FirstOrDefault() ?? currentKey;
+                    }
+
+                    ImGui.EndCombo();
+                }
+
+                ImGui.Text("Item Image:");
+                ImGui.SetNextItemWidth(-1);
+                if (ImGui.BeginCombo("##ItemImageKey", string.IsNullOrWhiteSpace(currentKey) ? "(none)" : currentKey))
+                {
+                    foreach (string key in GetItemAtlasKeys(atlasSource))
+                    {
+                        bool selected = string.Equals(key, currentKey, StringComparison.Ordinal);
+                        if (ImGui.Selectable(key, selected))
+                        {
+                            if (SpawnMenu != null && SpawnMenu.ApplyItemTextureToSpawnedObject(_currentObject, atlasSource, key))
+                            {
+                                ProjectManager.Instance.SetDirty(true);
+                                currentKey = key;
+                            }
+                        }
+                        if (selected)
+                            ImGui.SetItemDefaultFocus();
+                    }
+
+                    ImGui.EndCombo();
+                }
+
+                if (ImGui.Button("Load custom image...##ItemMaterialCustom", new Vector2(-1, 0)))
+                {
+                    string? customKey = SpawnMenu?.ImportCustomItemImageFromDialogForProperties();
+                    if (!string.IsNullOrWhiteSpace(customKey) &&
+                        SpawnMenu != null &&
+                        SpawnMenu.ApplyItemTextureToSpawnedObject(_currentObject, ItemAtlasSource.ItemAtlas, customKey))
+                    {
+                        ProjectManager.Instance.SetDirty(true);
+                    }
+                }
+
+                ImGui.Spacing();
+            }
 
             if (supportsResourcePack)
             {
