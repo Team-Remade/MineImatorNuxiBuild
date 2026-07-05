@@ -159,6 +159,36 @@ public static class BendHelper
                     SetBoolComponent(ref invertX, ref invertY, ref invertZ, axisIndices[i], bend.Invert[i]);
         }
 
+        // Legacy direction support from model_file_load_part.gml.
+        // direction: forward/backward/both (single or array), mapped onto active axes.
+        if (bend.Direction != null && bend.Direction.Length > 0)
+        {
+            int count = Math.Min(bend.Direction.Length, Math.Max(1, axisIndices.Count));
+            for (int i = 0; i < count; i++)
+            {
+                int axis = axisIndices.Count == 1 ? axisIndices[0] : axisIndices[Math.Min(i, axisIndices.Count - 1)];
+                string d = bend.Direction[i]?.ToLowerInvariant() ?? string.Empty;
+
+                if (d == "both")
+                {
+                    SetVec3Component(ref dirMin, axis, -180f);
+                    SetVec3Component(ref dirMax, axis, 180f);
+                }
+                else if (d == "forward")
+                {
+                    SetVec3Component(ref dirMin, axis, 0f);
+                    SetVec3Component(ref dirMax, axis, 180f);
+                    // In Mine-imator legacy, forward flips invert.
+                    ToggleBoolComponent(ref invertX, ref invertY, ref invertZ, axis);
+                }
+                else if (d == "backward")
+                {
+                    SetVec3Component(ref dirMin, axis, 0f);
+                    SetVec3Component(ref dirMax, axis, 180f);
+                }
+            }
+        }
+
         // Parse default angle
         vec3 angle = vec3.Zero;
         if (bend.Angle != null)
@@ -389,8 +419,8 @@ public static class BendHelper
         switch (axis?.ToLowerInvariant())
         {
             case "x": axisX = true; indices.Add(0); break;
-            case "z": axisZ = true; indices.Add(2); break;
-            case "y": axisY = true; indices.Add(1); break;
+                case "y": axisY = true; indices.Add(1); break;
+                case "z": axisZ = true; indices.Add(2); break;
         }
     }
 
@@ -411,6 +441,16 @@ public static class BendHelper
             case 0: bx = value; break;
             case 1: by = value; break;
             case 2: bz = value; break;
+        }
+    }
+
+    private static void ToggleBoolComponent(ref bool x, ref bool y, ref bool z, int axis)
+    {
+        switch (axis)
+        {
+            case 0: x = !x; break;
+            case 1: y = !y; break;
+            case 2: z = !z; break;
         }
     }
 

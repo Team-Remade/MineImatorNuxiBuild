@@ -191,13 +191,22 @@ public class MineImatorLoader
                 return null;
             }
 
-            var model = JsonSerializer.Deserialize(File.ReadAllText(modelPath),
-                AppJsonContext.Default.MiModel);
+            string json = File.ReadAllText(modelPath);
+            using var doc = JsonDocument.Parse(json);
+            if (!ValidateModelRoot(doc.RootElement, modelPath))
+                return null;
+
+            var model = JsonSerializer.Deserialize(json, AppJsonContext.Default.MiModel);
 
             if (model == null) return null;
 
             model.DirectoryPath = Path.GetDirectoryName(modelPath);
             model.FullPath      = modelPath;
+            NormalizeTextureSizeSquare(model.TextureSize);
+
+            if (model.Parts != null)
+                NormalizePartAndShapeTextureSizes(model.Parts, model.TextureSize);
+
             _modelCache[modelPath] = model;
             return model;
         }
@@ -319,6 +328,82 @@ public class MineImatorLoader
         return null;
     }
 
+    private static vec3 ConvertMiRotation(float[] rotDeg)
+    {
+        return new vec3(
+            BendHelper.DegToRad(rotDeg[0]),
+            BendHelper.DegToRad(rotDeg[1]),
+            BendHelper.DegToRad(rotDeg[2]));
+    }
+
+    private static bool ValidateModelRoot(JsonElement root, string modelPath)
+    {
+        bool HasString(string name) =>
+            root.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String;
+
+        bool HasArray(string name) =>
+            root.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Array;
+
+        if (!HasString("name"))
+        {
+            Console.Error.WriteLine($"[MineImatorLoader] Missing parameter 'name' in {modelPath}");
+            return false;
+        }
+
+        if (!HasString("texture"))
+        {
+            Console.Error.WriteLine($"[MineImatorLoader] Missing parameter 'texture' in {modelPath}");
+            return false;
+        }
+
+        if (!HasArray("texture_size"))
+        {
+            Console.Error.WriteLine($"[MineImatorLoader] Missing array 'texture_size' in {modelPath}");
+            return false;
+        }
+
+        if (!HasArray("parts"))
+        {
+            Console.Error.WriteLine($"[MineImatorLoader] Missing array 'parts' in {modelPath}");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static void NormalizeTextureSizeSquare(int[]? textureSize)
+    {
+        if (textureSize == null || textureSize.Length < 2) return;
+        int s = Math.Max(textureSize[0], textureSize[1]);
+        textureSize[0] = s;
+        textureSize[1] = s;
+    }
+
+    private static void NormalizePartAndShapeTextureSizes(List<MiPart> parts, int[]? fallbackTextureSize)
+    {
+        foreach (var part in parts)
+        {
+            if (part.TextureSize is { Length: >= 2 })
+                NormalizeTextureSizeSquare(part.TextureSize);
+
+            if (part.Shapes != null)
+            {
+                foreach (var shape in part.Shapes)
+                {
+                    if (shape.TextureSize is { Length: >= 2 })
+                        NormalizeTextureSizeSquare(shape.TextureSize);
+                    else if (part.TextureSize is { Length: >= 2 })
+                        shape.TextureSize = new[] { part.TextureSize[0], part.TextureSize[1] };
+                    else if (fallbackTextureSize is { Length: >= 2 })
+                        shape.TextureSize = new[] { fallbackTextureSize[0], fallbackTextureSize[1] };
+                }
+            }
+
+            if (part.Parts is { Count: > 0 })
+                NormalizePartAndShapeTextureSizes(part.Parts, part.TextureSize ?? fallbackTextureSize);
+        }
+    }
+
     public void ClearCache()
     {
         _modelCache.Clear();
@@ -335,10 +420,7 @@ public class MineImatorLoader
             obj.SetLocalPosition(new vec3(timeline.Position[0] / 16f, timeline.Position[1] / 16f, timeline.Position[2] / 16f));
 
         if (timeline.Rotation is { Length: >= 3 })
-            obj.SetLocalRotation(new vec3(
-                BendHelper.DegToRad(timeline.Rotation[0]),
-                BendHelper.DegToRad(timeline.Rotation[1]),
-                BendHelper.DegToRad(timeline.Rotation[2])));
+            obj.SetLocalRotation(ConvertMiRotation(timeline.Rotation));
 
         if (timeline.Scale is { Length: >= 3 })
             obj.SetLocalScale(new vec3(timeline.Scale[0], timeline.Scale[1], timeline.Scale[2]));
@@ -361,10 +443,7 @@ public class MineImatorLoader
         if (timeline.Keyframes != null && timeline.Keyframes.TryGetValue("0", out var kf2))
         {
             if (kf2.Rotation != null && kf2.Rotation.Length >= 3)
-                obj.SetLocalRotation(new vec3(
-                    BendHelper.DegToRad(kf2.Rotation[0]),
-                    BendHelper.DegToRad(kf2.Rotation[1]),
-                    BendHelper.DegToRad(kf2.Rotation[2])));
+                obj.SetLocalRotation(ConvertMiRotation(kf2.Rotation));
 
             if (kf2.Scale != null && kf2.Scale.Length >= 3)
                 obj.SetLocalScale(new vec3(kf2.Scale[0], kf2.Scale[1], kf2.Scale[2]));
@@ -398,10 +477,18 @@ public class MineImatorLoader
     private void CreateBoneSceneObjects(CharacterSceneObject character,
         List<(MiPart part, int boneIdx, int parentIdx, vec3 accumulatedParentScale)> boneDataList)
     {
+        var seenPartNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         // Pass 1: create all bone objects
         foreach (var (part, boneIdx, _, _) in boneDataList)
         {
             string boneName = part.Name ?? $"Bone_{boneIdx}";
+            if (!seenPartNames.Add(boneName))
+            {
+                Console.Error.WriteLine($"[MineImatorLoader] Duplicate part name found: {boneName}");
+                continue;
+            }
+
             var boneObject = new MiBoneSceneObject
             {
                 Name       = boneName,
@@ -419,7 +506,8 @@ public class MineImatorLoader
         foreach (var (part, boneIdx, parentIdx, accumulatedParentScale) in boneDataList)
         {
             string boneName = part.Name ?? $"Bone_{boneIdx}";
-            var boneObject  = character.BoneObjects[boneName];
+            if (!character.BoneObjects.TryGetValue(boneName, out var boneObject))
+                continue;
 
             // Set transform from part data.
             // Bone SceneObjects always have Scale = vec3.Ones (part scale is baked into mesh
@@ -438,15 +526,36 @@ public class MineImatorLoader
                 position *= accumulatedParentScale;
             }
 
+            // Port of model_file_load_part.gml lock_bend positioning:
+            // children of a bent part can be shifted by parent bend offset.
+            if (parentIdx >= 0)
+            {
+                var parentPart = boneDataList[parentIdx].part;
+                bool lockBend = !part.LockBend.HasValue || part.LockBend.Value != 0f;
+                if (lockBend && parentPart?.Bend?.Part != null)
+                {
+                    float parentOffset = parentPart.Bend.Offset ?? 0f;
+                    switch (parentPart.Bend.Part.ToLowerInvariant())
+                    {
+                        case "left":
+                        case "right":
+                            position.x -= parentOffset / 16f;
+                            break;
+                        case "front":
+                        case "back":
+                            position.y -= parentOffset / 16f;
+                            break;
+                        case "upper":
+                        case "lower":
+                            position.z -= parentOffset / 16f;
+                            break;
+                    }
+                }
+            }
+
             vec3 rotation = vec3.Zero;
             if (part.Rotation != null && part.Rotation.Length >= 3)
-            {
-                rotation = new vec3(
-                    BendHelper.DegToRad(part.Rotation[0]),
-                    BendHelper.DegToRad(part.Rotation[1]),
-                    BendHelper.DegToRad(part.Rotation[2])
-                );
-            }
+                rotation = ConvertMiRotation(part.Rotation);
 
             boneObject.SetLocalPosition(position);
             boneObject.SetLocalRotation(rotation);
@@ -498,7 +607,7 @@ public class MineImatorLoader
             }
         }
 
-        // Part-level texture
+        // Part-level texture inheritance (model_file_load_shape.gml parity)
         var partTex = GetPartTexture(part, null, model);
         if (partTex != 0) return partTex;
 
@@ -538,6 +647,26 @@ public class MineImatorLoader
             }
         }
 
+        if (!string.IsNullOrEmpty(model.TextureMaterial))
+        {
+            var path = Path.Combine(model.DirectoryPath, model.TextureMaterial);
+            if (File.Exists(path))
+            {
+                var t = LoadTextureFromFile(path);
+                if (t != 0) model.LoadedTextures["texture_material"] = t;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(model.TextureNormal))
+        {
+            var path = Path.Combine(model.DirectoryPath, model.TextureNormal);
+            if (File.Exists(path))
+            {
+                var t = LoadTextureFromFile(path);
+                if (t != 0) model.LoadedTextures["texture_normal"] = t;
+            }
+        }
+
         if (model.Textures != null)
         {
             foreach (var (name, texPath) in model.Textures)
@@ -569,6 +698,26 @@ public class MineImatorLoader
                 {
                     var t = LoadTextureFromFile(path);
                     if (t != 0) part.LoadedTextures["texture"] = t;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(part.TextureMaterial) && !part.LoadedTextures.ContainsKey("texture_material"))
+            {
+                var path = Path.Combine(model.DirectoryPath, part.TextureMaterial);
+                if (File.Exists(path))
+                {
+                    var t = LoadTextureFromFile(path);
+                    if (t != 0) part.LoadedTextures["texture_material"] = t;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(part.TextureNormal) && !part.LoadedTextures.ContainsKey("texture_normal"))
+            {
+                var path = Path.Combine(model.DirectoryPath, part.TextureNormal);
+                if (File.Exists(path))
+                {
+                    var t = LoadTextureFromFile(path);
+                    if (t != 0) part.LoadedTextures["texture_normal"] = t;
                 }
             }
 
@@ -632,6 +781,8 @@ public class MineImatorLoader
 
         if (bone.ColorAlpha.HasValue)
             mesh.Alpha = bone.ColorAlpha.Value;
+
+        mesh.SortDepth = bone.Depth;
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -645,8 +796,12 @@ public class MineImatorLoader
     {
         if (shape?.From == null || shape.To == null) return null;
 
-        int texWidth  = textureSize?[0] ?? 64;
-        int texHeight = textureSize?[1] ?? 64;
+        if (shape.HideBackfaceLegacy.HasValue)
+            shape.HideBack = shape.HideBackfaceLegacy.Value;
+
+        int[]? effectiveTextureSize = shape.TextureSize ?? textureSize;
+        int texWidth  = effectiveTextureSize?[0] ?? 64;
+        int texHeight = effectiveTextureSize?[1] ?? 64;
 
         float uvU = shape.Uv?[0] ?? 0;
         float uvV = shape.Uv?[1] ?? 0;
@@ -674,13 +829,14 @@ public class MineImatorLoader
             shapeRotation = new vec3(
                 BendHelper.DegToRad(shape.Rotation[0]),
                 BendHelper.DegToRad(shape.Rotation[1]),
-                BendHelper.DegToRad(shape.Rotation[2])
-            );
+                BendHelper.DegToRad(shape.Rotation[2]));
 
         vec3 shapeScale = vec3.Ones;
         if (shape.Scale != null && shape.Scale.Length >= 3)
             shapeScale = new vec3(shape.Scale[0], shape.Scale[1], shape.Scale[2]);
         shapeScale *= accumulatedParentScale;
+
+        vec3[]? shapeVertexOffsets = GetShapeVertexOffsets(shape);
 
         float inflate = shape.Inflate / 16f;
 
@@ -713,18 +869,20 @@ public class MineImatorLoader
             {
                 mesh = CreatePlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
                     shape.TextureMirror, shape.Invert, inflate, shapeRotation, shapeScale,
-                    shape.HideFront, shape.HideBack);
+                    shape.HideFront, shape.HideBack, shapeVertexOffsets);
             }
         }
         else
         {
             mesh = CreateBlockMesh(partName, shapeIndex, from, to, uvU, uvV, sizeX, sizeY, sizeZ,
                 texWidth, texHeight, shape.TextureMirror, shape.Invert, inflate, effectiveBend,
-                shapePosition, shapeRotation, shapeScale, bendStyle);
+                shapePosition, shapeRotation, shapeScale, bendStyle, shapeVertexOffsets);
         }
 
         if (mesh != null)
         {
+            mesh.SortDepth = depth;
+
             if (textureId != 0) mesh.TextureId = textureId;
             if (partColorAlpha.HasValue) mesh.Alpha = partColorAlpha.Value;
 
@@ -749,7 +907,8 @@ public class MineImatorLoader
         float uvU, float uvV, float sizeX, float sizeY, float sizeZ,
         int texWidth, int texHeight, bool textureMirror, bool invert, float inflate = 0f,
         BendParams? bend = null, vec3 shapePosition = default, vec3 shapeRotation = default,
-        vec3 shapeScale = default, BendStyle bendStyle = BendStyle.ProjectDefault)
+        vec3 shapeScale = default, BendStyle bendStyle = BendStyle.ProjectDefault,
+        vec3[]? shapeVertexOffsets = null)
     {
         var vertices = new List<vec3>();
         var normals  = new List<vec3>();
@@ -843,36 +1002,46 @@ public class MineImatorLoader
             vec3 Rv(vec3 v) => BendHelper.TransformPoint(shapeRotMat * shapeScaleMat, v);
             vec3 Rn(vec3 n) => BendHelper.TransformDirection(shapeRotMat * shapeScaleMat, n);
 
+            vec3 GetOffset(int index)
+            {
+                if (shapeVertexOffsets == null || index < 0 || index >= shapeVertexOffsets.Length)
+                    return vec3.Zero;
+                return shapeVertexOffsets[index];
+            }
+
             float x1 = min.x, x2 = max.x, y1 = min.y, y2 = max.y, z1 = min.z, z2 = max.z;
 
+            vec3 c1 = new vec3(x1, y2, z1) + GetOffset(0); // vert1
+            vec3 c2 = new vec3(x2, y2, z1) + GetOffset(1); // vert2
+            vec3 c3 = new vec3(x2, y1, z1) + GetOffset(2); // vert3
+            vec3 c4 = new vec3(x1, y1, z1) + GetOffset(3); // vert4
+            vec3 c5 = new vec3(x1, y2, z2) + GetOffset(4); // vert5
+            vec3 c6 = new vec3(x2, y2, z2) + GetOffset(5); // vert6
+            vec3 c7 = new vec3(x2, y1, z2) + GetOffset(6); // vert7
+            vec3 c8 = new vec3(x1, y1, z2) + GetOffset(7); // vert8
+
             AddFaceWithUVs(vertices, normals, uvs, indices,
-                Rv(new vec3(x1,y1,z2)), Rv(new vec3(x2,y1,z2)),
-                Rv(new vec3(x2,y2,z2)), Rv(new vec3(x1,y2,z2)),
+                Rv(c8), Rv(c7), Rv(c6), Rv(c5),
                 Rn(new vec3(0,0,1)), texSouth4, texSouth3, texSouth2, texSouth1, invert);
 
             AddFaceWithUVs(vertices, normals, uvs, indices,
-                Rv(new vec3(x2,y1,z2)), Rv(new vec3(x2,y1,z1)),
-                Rv(new vec3(x2,y2,z1)), Rv(new vec3(x2,y2,z2)),
+                Rv(c7), Rv(c3), Rv(c2), Rv(c6),
                 Rn(new vec3(1,0,0)), texEast4, texEast3, texEast2, texEast1, invert);
 
             AddFaceWithUVs(vertices, normals, uvs, indices,
-                Rv(new vec3(x1,y1,z1)), Rv(new vec3(x1,y1,z2)),
-                Rv(new vec3(x1,y2,z2)), Rv(new vec3(x1,y2,z1)),
+                Rv(c4), Rv(c8), Rv(c5), Rv(c1),
                 Rn(new vec3(-1,0,0)), texWest4, texWest3, texWest2, texWest1, invert);
 
             AddFaceWithUVs(vertices, normals, uvs, indices,
-                Rv(new vec3(x2,y1,z1)), Rv(new vec3(x1,y1,z1)),
-                Rv(new vec3(x1,y2,z1)), Rv(new vec3(x2,y2,z1)),
+                Rv(c3), Rv(c4), Rv(c1), Rv(c2),
                 Rn(new vec3(0,0,-1)), texNorth4, texNorth3, texNorth2, texNorth1, invert);
 
             AddFaceWithUVs(vertices, normals, uvs, indices,
-                Rv(new vec3(x1,y2,z2)), Rv(new vec3(x2,y2,z2)),
-                Rv(new vec3(x2,y2,z1)), Rv(new vec3(x1,y2,z1)),
+                Rv(c5), Rv(c6), Rv(c2), Rv(c1),
                 Rn(new vec3(0,1,0)), texUp4, texUp3, texUp2, texUp1, invert);
 
             AddFaceWithUVs(vertices, normals, uvs, indices,
-                Rv(new vec3(x1,y1,z1)), Rv(new vec3(x2,y1,z1)),
-                Rv(new vec3(x2,y1,z2)), Rv(new vec3(x1,y1,z2)),
+                Rv(c4), Rv(c3), Rv(c7), Rv(c8),
                 Rn(new vec3(0,-1,0)), texDown4, texDown3, texDown2, texDown1, invert);
         }
         else
@@ -1133,7 +1302,7 @@ public class MineImatorLoader
     private Mesh CreatePlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
         int texWidth, int texHeight, bool textureMirror, bool invert, float inflate = 0f,
         vec3 shapeRotation = default, vec3 shapeScale = default,
-        bool hideFront = false, bool hideBack = false)
+        bool hideFront = false, bool hideBack = false, vec3[]? shapeVertexOffsets = null)
     {
         var vertices = new List<vec3>();
         var normals  = new List<vec3>();
@@ -1162,11 +1331,28 @@ public class MineImatorLoader
         vec3 Rv(vec3 v) => BendHelper.TransformPoint(rsm, v);
         vec3 Rn(vec3 n) => BendHelper.TransformDirection(rsm, n);
 
+        vec3 GetOffset(int index)
+        {
+            if (shapeVertexOffsets == null || index < 0 || index >= shapeVertexOffsets.Length)
+                return vec3.Zero;
+            return shapeVertexOffsets[index];
+        }
+
+        float x1 = min.x, x2 = max.x, y1 = min.y, y2 = max.y, z1 = min.z, z2 = max.z;
+        vec3 c1 = new vec3(x1, y2, z1) + GetOffset(0); // vert1
+        vec3 c2 = new vec3(x2, y2, z1) + GetOffset(1); // vert2
+        vec3 c3 = new vec3(x2, y1, z1) + GetOffset(2); // vert3
+        vec3 c4 = new vec3(x1, y1, z1) + GetOffset(3); // vert4
+        vec3 c5 = new vec3(x1, y2, z2) + GetOffset(4); // vert5
+        vec3 c6 = new vec3(x2, y2, z2) + GetOffset(5); // vert6
+        vec3 c7 = new vec3(x2, y1, z2) + GetOffset(6); // vert7
+        vec3 c8 = new vec3(x1, y1, z2) + GetOffset(7); // vert8
+
         if (!hideFront)
         {
             int bv = vertices.Count;
-            vertices.Add(Rv(new vec3(min.x, min.y, min.z))); vertices.Add(Rv(new vec3(max.x, min.y, min.z)));
-            vertices.Add(Rv(new vec3(max.x, max.y, min.z))); vertices.Add(Rv(new vec3(min.x, max.y, min.z)));
+            vertices.Add(Rv(c4)); vertices.Add(Rv(c3));
+            vertices.Add(Rv(c2)); vertices.Add(Rv(c1));
             var bn = Rn(new vec3(0, 0, -1));
             normals.Add(bn); normals.Add(bn); normals.Add(bn); normals.Add(bn);
             if (invert) { uvs.Add(tex3); uvs.Add(tex4); uvs.Add(tex1); uvs.Add(tex2); }
@@ -1177,8 +1363,8 @@ public class MineImatorLoader
         if (!hideBack)
         {
             int bv = vertices.Count;
-            vertices.Add(Rv(new vec3(min.x, min.y, max.z))); vertices.Add(Rv(new vec3(max.x, min.y, max.z)));
-            vertices.Add(Rv(new vec3(max.x, max.y, max.z))); vertices.Add(Rv(new vec3(min.x, max.y, max.z)));
+            vertices.Add(Rv(c8)); vertices.Add(Rv(c7));
+            vertices.Add(Rv(c6)); vertices.Add(Rv(c5));
             var fn = Rn(new vec3(0, 0, 1));
             normals.Add(fn); normals.Add(fn); normals.Add(fn); normals.Add(fn);
             if (invert) { uvs.Add(tex3); uvs.Add(tex4); uvs.Add(tex1); uvs.Add(tex2); }
@@ -1670,11 +1856,39 @@ public class MineImatorLoader
     private static mat4 BuildShapeRotMat(vec3 rot)
     {
         if (rot == default || rot == vec3.Zero) return mat4.Identity;
-        // Rotations applied Z→X→Y (right-multiplication order matches Godot source)
-        mat4 rz = mat4.RotateZ(rot.z);
+        // Mine-imator matrix_build(pos, rotX, rotY, rotZ, scale) applies X->Y->Z.
+        // With column vectors, that corresponds to M = Rz * Ry * Rx.
         mat4 rx = mat4.RotateX(rot.x);
         mat4 ry = mat4.RotateY(rot.y);
-        return ry * rx * rz;
+        mat4 rz = mat4.RotateZ(rot.z);
+        return rz * ry * rx;
+    }
+
+    private static vec3[]? GetShapeVertexOffsets(MiShape shape)
+    {
+        float[][]? offsets = new[]
+        {
+            shape.Vert1, shape.Vert2, shape.Vert3, shape.Vert4,
+            shape.Vert5, shape.Vert6, shape.Vert7, shape.Vert8
+        };
+
+        bool hasAny = false;
+        var result = new vec3[8];
+        for (int i = 0; i < offsets.Length; i++)
+        {
+            var entry = offsets[i];
+            if (entry == null || entry.Length < 3)
+            {
+                result[i] = vec3.Zero;
+                continue;
+            }
+
+            result[i] = new vec3(entry[0] / 16f, entry[1] / 16f, entry[2] / 16f);
+            if (result[i] != vec3.Zero)
+                hasAny = true;
+        }
+
+        return hasAny ? result : null;
     }
 
     // Adds a face quad with uniform normal and per-vertex UVs
@@ -1799,10 +2013,16 @@ public class MineImatorLoader
 public class MiModel
 {
     [JsonPropertyName("name")]          public string Name         { get; set; }
+    [JsonPropertyName("description")]   public string Description  { get; set; }
     [JsonPropertyName("texture")]       public string Texture      { get; set; }
+    [JsonPropertyName("texture_material")] public string TextureMaterial { get; set; }
+    [JsonPropertyName("texture_normal")]   public string TextureNormal   { get; set; }
     [JsonPropertyName("texture_size")]  public int[]  TextureSize  { get; set; }
     [JsonPropertyName("textures")]      public Dictionary<string, string> Textures { get; set; }
     [JsonPropertyName("parts")]         public List<MiPart> Parts  { get; set; }
+    [JsonPropertyName("player_skin")]   public bool? PlayerSkin    { get; set; }
+    [JsonPropertyName("floor_box_uvs")] public bool? FloorBoxUvs   { get; set; }
+    [JsonPropertyName("model_color")]   public string ModelColor   { get; set; }
 
     [JsonIgnore] public string DirectoryPath { get; set; }
     [JsonIgnore] public string FullPath      { get; set; }
@@ -1827,8 +2047,17 @@ public class MiPart
 {
     [JsonPropertyName("name")]          public string Name       { get; set; }
     [JsonPropertyName("visible")]       public bool   Visible    { get; set; } = true;
+    [JsonPropertyName("description")]   public string Description { get; set; }
     [JsonPropertyName("texture")]       public string Texture    { get; set; }
+    [JsonPropertyName("texture_material")] public string TextureMaterial { get; set; }
+    [JsonPropertyName("texture_normal")]   public string TextureNormal   { get; set; }
     [JsonPropertyName("texture_size")]  public int[]  TextureSize { get; set; }
+    [JsonPropertyName("texture_scroll_speed")]
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float? TextureScrollSpeed { get; set; }
+    [JsonPropertyName("texture_scroll_direction")]
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float? TextureScrollDirection { get; set; }
     [JsonPropertyName("textures")]      public Dictionary<string, string> Textures { get; set; }
     [JsonPropertyName("position")]      public float[] Position  { get; set; }
     [JsonPropertyName("rotation")]      public float[] Rotation  { get; set; }
@@ -1841,6 +2070,8 @@ public class MiPart
 
     [JsonPropertyName("locked")]    public bool Locked  { get; set; }
     [JsonPropertyName("depth")]     public int  Depth   { get; set; }
+    [JsonPropertyName("backfaces")] public bool Backfaces { get; set; }
+    [JsonPropertyName("shadows")]   public bool Shadows   { get; set; } = true;
 
     [JsonPropertyName("color_alpha")]
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
@@ -1856,6 +2087,8 @@ public class MiShape
 {
     [JsonPropertyName("visible")]        public bool    Visible      { get; set; } = true;
     [JsonPropertyName("type")]           public string  Type         { get; set; } = "block";
+    [JsonPropertyName("description")]    public string  Description  { get; set; }
+    [JsonPropertyName("use_model_color")] public bool   UseModelColor { get; set; }
     [JsonPropertyName("from")]           public float[] From         { get; set; }
     [JsonPropertyName("to")]             public float[] To           { get; set; }
     [JsonPropertyName("uv")]             public float[] Uv           { get; set; }
@@ -1864,12 +2097,35 @@ public class MiShape
     [JsonPropertyName("scale")]          public float[] Scale        { get; set; }
     [JsonPropertyName("invert")]         public bool    Invert       { get; set; }
     [JsonPropertyName("texture_mirror")] public bool    TextureMirror { get; set; }
+    [JsonPropertyName("texture_mirror_y")] public bool  TextureMirrorY { get; set; }
     [JsonPropertyName("texture")]        public string  Texture      { get; set; }
+    [JsonPropertyName("texture_material")] public string TextureMaterial { get; set; }
+    [JsonPropertyName("texture_normal")]   public string TextureNormal   { get; set; }
+    [JsonPropertyName("texture_size")]   public int[]?  TextureSize   { get; set; }
+    [JsonPropertyName("texture_scroll_speed")]
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float? TextureScrollSpeed { get; set; }
+    [JsonPropertyName("texture_scroll_direction")]
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float? TextureScrollDirection { get; set; }
     [JsonPropertyName("3d")]             public bool    ThreeD       { get; set; }
     [JsonPropertyName("inflate")]        public float   Inflate      { get; set; }
     [JsonPropertyName("bend")]           public bool    Bend         { get; set; } = true;
     [JsonPropertyName("hide_front")]     public bool    HideFront    { get; set; }
     [JsonPropertyName("hide_back")]      public bool    HideBack     { get; set; }
+    [JsonPropertyName("hide_backface")]  public bool?   HideBackfaceLegacy { get; set; }
+    [JsonPropertyName("face_camera")]    public bool    FaceCamera   { get; set; }
+    [JsonPropertyName("item_bounce")]    public bool    ItemBounce   { get; set; }
+    [JsonPropertyName("locked")]         public bool    Locked       { get; set; }
+    [JsonPropertyName("move_required")]  public float[]? MoveRequired { get; set; }
+    [JsonPropertyName("vert1")]          public float[]? Vert1       { get; set; }
+    [JsonPropertyName("vert2")]          public float[]? Vert2       { get; set; }
+    [JsonPropertyName("vert3")]          public float[]? Vert3       { get; set; }
+    [JsonPropertyName("vert4")]          public float[]? Vert4       { get; set; }
+    [JsonPropertyName("vert5")]          public float[]? Vert5       { get; set; }
+    [JsonPropertyName("vert6")]          public float[]? Vert6       { get; set; }
+    [JsonPropertyName("vert7")]          public float[]? Vert7       { get; set; }
+    [JsonPropertyName("vert8")]          public float[]? Vert8       { get; set; }
 }
 
 public class MiBend
@@ -1890,8 +2146,16 @@ public class MiBend
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
     public float? InheritBend { get; set; }
 
+    [JsonPropertyName("end_offset")]
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float? EndOffset { get; set; }
+
     [JsonPropertyName("part")]   public string Part  { get; set; }
     [JsonPropertyName("axis")]   public object Axis  { get; set; }
+
+    [JsonPropertyName("direction")]
+    [JsonConverter(typeof(MiStringOrArrayStringConverter))]
+    public string[] Direction { get; set; }
 
     [JsonPropertyName("direction_min")]
     [JsonConverter(typeof(MiSingleOrArrayConverter))]
@@ -2045,6 +2309,42 @@ public class MiSingleOrArrayBoolConverter : JsonConverter<bool[]>
         if (value.Length == 1) { writer.WriteBooleanValue(value[0]); return; }
         writer.WriteStartArray();
         foreach (var v in value) writer.WriteBooleanValue(v);
+        writer.WriteEndArray();
+    }
+}
+
+public class MiStringOrArrayStringConverter : JsonConverter<string[]>
+{
+    public override string[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        switch (reader.TokenType)
+        {
+            case JsonTokenType.String:
+                return new[] { reader.GetString() ?? string.Empty };
+            case JsonTokenType.StartArray:
+            {
+                var list = new List<string>();
+                while (reader.Read())
+                {
+                    if (reader.TokenType == JsonTokenType.EndArray) break;
+                    if (reader.TokenType == JsonTokenType.String)
+                        list.Add(reader.GetString() ?? string.Empty);
+                }
+                return list.ToArray();
+            }
+            case JsonTokenType.Null:
+                return null;
+            default:
+                throw new JsonException($"Unexpected token {reader.TokenType}");
+        }
+    }
+
+    public override void Write(Utf8JsonWriter writer, string[] value, JsonSerializerOptions options)
+    {
+        if (value == null) { writer.WriteNullValue(); return; }
+        if (value.Length == 1) { writer.WriteStringValue(value[0]); return; }
+        writer.WriteStartArray();
+        foreach (var v in value) writer.WriteStringValue(v);
         writer.WriteEndArray();
     }
 }

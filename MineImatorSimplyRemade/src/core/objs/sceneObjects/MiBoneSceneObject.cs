@@ -1,6 +1,7 @@
 using GlmSharp;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.mineImator;
+using System;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
@@ -71,8 +72,23 @@ public class MiBoneSceneObject : BoneSceneObject
     /// <summary>Rotation delta relative to the base pose (displayed in the UI).</summary>
     public vec3 OffsetRotation
     {
-        get => LocalRotation - _basePoseRotation;
-        set => SetLocalRotation(_basePoseRotation + value);
+        get
+        {
+            // Mine-imator offsets are authored relative to the imported base pose in
+            // parent/model space. Derive delta with right-side inverse so mirrored
+            // base poses (e.g. Y=180) keep the expected up/down direction.
+            mat4 baseRot = BuildRotationMatrix(_basePoseRotation);
+            mat4 localRot = BuildRotationMatrix(LocalRotation);
+            mat4 deltaRot = localRot * InverseRotation(baseRot);
+            return MatrixToEulerRzRyRx(deltaRot);
+        }
+        set
+        {
+            mat4 baseRot = BuildRotationMatrix(_basePoseRotation);
+            mat4 deltaRot = BuildRotationMatrix(value);
+            mat4 composed = deltaRot * baseRot;
+            SetLocalRotation(MatrixToEulerRzRyRx(composed));
+        }
     }
 
     /// <summary>
@@ -250,4 +266,45 @@ public class MiBoneSceneObject : BoneSceneObject
     // ── Icon ──────────────────────────────────────────────────────────────────
 
     public override string GetObjectIcon() => "Bone";
+
+    private static mat4 BuildRotationMatrix(vec3 rot)
+    {
+        mat4 rx = mat4.RotateX(rot.x);
+        mat4 ry = mat4.RotateY(rot.y);
+        mat4 rz = mat4.RotateZ(rot.z);
+        // Match SceneObject.GetLocalMatrix rotation convention: R = Rz * Ry * Rx.
+        return rz * ry * rx;
+    }
+
+    private static mat4 InverseRotation(mat4 rot)
+    {
+        // Rotation inverse is transpose of the 3x3 basis.
+        mat4 inv = mat4.Identity;
+        inv.m00 = rot.m00; inv.m01 = rot.m10; inv.m02 = rot.m20;
+        inv.m10 = rot.m01; inv.m11 = rot.m11; inv.m12 = rot.m21;
+        inv.m20 = rot.m02; inv.m21 = rot.m12; inv.m22 = rot.m22;
+        return inv;
+    }
+
+    private static vec3 MatrixToEulerRzRyRx(mat4 m)
+    {
+        // Decompose for R = Rz * Ry * Rx to keep parity with SceneObject/Gizmo.
+        float yaw = MathF.Asin(-Math.Clamp(m.m02, -1f, 1f));
+        float pitch;
+        float roll;
+
+        if (MathF.Abs(m.m02) < 0.9999f)
+        {
+            pitch = MathF.Atan2(m.m12, m.m22);
+            roll = MathF.Atan2(m.m01, m.m00);
+        }
+        else
+        {
+            // Gimbal-lock fallback: preserve pitch, collapse roll to 0.
+            pitch = MathF.Atan2(-m.m21, m.m11);
+            roll = 0f;
+        }
+
+        return new vec3(pitch, yaw, roll);
+    }
 }

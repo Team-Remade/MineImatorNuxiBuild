@@ -1363,8 +1363,8 @@ public class Viewport : UiPanel
         //   textured     – has a TextureId          → depth pre-pass + color pass (LEQUAL)
         //   alphaBlend   – Alpha < 1, no texture    → straight back-to-front blend, no pre-pass
         var opaquePairs    = new List<(mat4 model, Mesh mesh)>();
-        var texturedPairs  = new List<(mat4 model, Mesh mesh, float dist)>();
-        var alphaBlendPairs = new List<(mat4 model, Mesh mesh, float dist)>();
+        var texturedPairs  = new List<(mat4 model, Mesh mesh, float dist, int sortDepth)>();
+        var alphaBlendPairs = new List<(mat4 model, Mesh mesh, float dist, int sortDepth)>();
         var overlayPairs   = new List<(mat4 model, Mesh mesh)>();
 
         vec3 camPos = activeCamera.Position;
@@ -1382,10 +1382,14 @@ public class Viewport : UiPanel
         //       off for correct back-to-front blending between separate objects.
         if (texturedPairs.Count > 0)
         {
-            texturedPairs.Sort((a, b) => b.dist.CompareTo(a.dist));
+            texturedPairs.Sort((a, b) =>
+            {
+                int byDist = b.dist.CompareTo(a.dist);
+                return byDist != 0 ? byDist : a.sortDepth.CompareTo(b.sortDepth);
+            });
 
             Gl.ColorMask(false, false, false, false);
-            foreach (var (model, mesh, _) in texturedPairs)
+            foreach (var (model, mesh, _, _) in texturedPairs)
                 mesh.Render(model, view, proj);
             Gl.ColorMask(true, true, true, true);
 
@@ -1394,7 +1398,7 @@ public class Viewport : UiPanel
             Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
             Gl.DepthMask(false);
 
-            foreach (var (model, mesh, _) in texturedPairs)
+            foreach (var (model, mesh, _, _) in texturedPairs)
                 mesh.Render(model, view, proj);
 
             Gl.DepthMask(true);
@@ -1407,13 +1411,17 @@ public class Viewport : UiPanel
         //   composite correctly behind/in-front of each other and textured meshes.
         if (alphaBlendPairs.Count > 0)
         {
-            alphaBlendPairs.Sort((a, b) => b.dist.CompareTo(a.dist));
+            alphaBlendPairs.Sort((a, b) =>
+            {
+                int byDist = b.dist.CompareTo(a.dist);
+                return byDist != 0 ? byDist : a.sortDepth.CompareTo(b.sortDepth);
+            });
 
             Gl.Enable(GLEnum.Blend);
             Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
             Gl.DepthMask(false);
 
-            foreach (var (model, mesh, _) in alphaBlendPairs)
+            foreach (var (model, mesh, _, _) in alphaBlendPairs)
                 mesh.Render(model, view, proj);
 
             Gl.DepthMask(true);
@@ -1814,8 +1822,8 @@ public class Viewport : UiPanel
         IEnumerable<SceneObject> objects,
         vec3 camPos,
         List<(mat4 model, Mesh mesh)> opaque,
-        List<(mat4 model, Mesh mesh, float dist)> textured,
-        List<(mat4 model, Mesh mesh, float dist)> alphaBlend,
+        List<(mat4 model, Mesh mesh, float dist, int sortDepth)> textured,
+        List<(mat4 model, Mesh mesh, float dist, int sortDepth)> alphaBlend,
         List<(mat4 model, Mesh mesh)> overlays)
     {
         foreach (var obj in objects)
@@ -1839,9 +1847,9 @@ public class Viewport : UiPanel
                 }
 
                 if (mesh.TextureId != 0)
-                    textured.Add((model, mesh, dist));
+                    textured.Add((model, mesh, dist, mesh.SortDepth));
                 else if (mesh.Alpha < 1.0f)
-                    alphaBlend.Add((model, mesh, dist));
+                    alphaBlend.Add((model, mesh, dist, mesh.SortDepth));
                 else
                     opaque.Add((model, mesh));
             }

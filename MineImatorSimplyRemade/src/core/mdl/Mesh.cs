@@ -100,6 +100,12 @@ public class Mesh : IDisposable
     /// </summary>
     public bool DepthTestDisabled = false;
 
+    /// <summary>
+    /// Optional render ordering hint used by the viewport for coplanar layered
+    /// meshes (e.g. Mine-imator facial rigs). Lower values render first.
+    /// </summary>
+    public int SortDepth = 0;
+
     // ── Material ──────────────────────────────────────────────────────────────
 
     private readonly List<Material> _surfaces = new() { new StandardMaterial() };

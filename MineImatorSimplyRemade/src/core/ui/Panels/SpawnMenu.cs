@@ -1514,35 +1514,63 @@ public class SpawnMenu : UiPanel
     {
         if (Viewport == null || Gl == null) return null;
 
-        string ext = Path.GetExtension(filePath).ToLowerInvariant();
+        string pathToSpawn = ResolveModelPathForProject(filePath);
+
+        string ext = Path.GetExtension(pathToSpawn).ToLowerInvariant();
 
         SceneObject? root;
 
         if (ext == ".mimodel")
         {
-            root = SpawnMineImatorModel(filePath, textureOverridePath);
+            root = SpawnMineImatorModel(pathToSpawn, textureOverridePath);
         }
         else if (ext == ".miobject")
         {
-            root = SpawnMineImatorObject(filePath);
+            root = SpawnMineImatorObject(pathToSpawn);
         }
         else
         {
-            root = AssimpModelLoader.Load(Gl, filePath);
+            root = AssimpModelLoader.Load(Gl, pathToSpawn);
         }
 
         if (root == null)
         {
-            Console.Error.WriteLine($"[SpawnMenu] Failed to load model: {filePath}");
+            Console.Error.WriteLine($"[SpawnMenu] Failed to load model: {pathToSpawn}");
             return null;
         }
 
-        string displayName = Path.GetFileNameWithoutExtension(filePath);
+        string displayName = Path.GetFileNameWithoutExtension(pathToSpawn);
         if (string.IsNullOrEmpty(root.Name)) root.Name = displayName;
 
-        AddToCustomModelHistory(filePath, displayName);
+        AddToCustomModelHistory(pathToSpawn, displayName);
         Viewport.SceneObjects.Add(root);
         return root;
+    }
+
+    private string ResolveModelPathForProject(string sourcePath)
+    {
+        string fullSourcePath = Path.GetFullPath(sourcePath);
+
+        if (ProjectManager == null || !ProjectManager.HasProject)
+            return fullSourcePath;
+
+        try
+        {
+            var existing = ProjectManager.GetProjectAssets().FirstOrDefault(a =>
+                string.Equals(Path.GetFullPath(a.SourcePath), fullSourcePath, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(Path.GetFullPath(ProjectManager.GetAssetFullPath(a)), fullSourcePath,
+                    StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+                return ProjectManager.GetAssetFullPath(existing);
+
+            var added = ProjectManager.AddAsset(fullSourcePath, ProjectAssetType.Model);
+            return ProjectManager.GetAssetFullPath(added);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SpawnMenu] Could not register model in project assets: {ex.Message}");
+            return fullSourcePath;
+        }
     }
 
     /// <summary>
