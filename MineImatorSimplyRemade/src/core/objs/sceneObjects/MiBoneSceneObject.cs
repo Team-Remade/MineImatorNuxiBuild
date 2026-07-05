@@ -79,7 +79,7 @@ public class MiBoneSceneObject : BoneSceneObject
             // base poses (e.g. Y=180) keep the expected up/down direction.
             mat4 baseRot = BuildRotationMatrix(_basePoseRotation);
             mat4 localRot = BuildRotationMatrix(LocalRotation);
-            mat4 deltaRot = localRot * InverseRotation(baseRot);
+            mat4 deltaRot = localRot * baseRot.Inverse;
             return MatrixToEulerRzRyRx(deltaRot);
         }
         set
@@ -274,16 +274,6 @@ public class MiBoneSceneObject : BoneSceneObject
         mat4 rz = mat4.RotateZ(rot.z);
         // Match SceneObject.GetLocalMatrix rotation convention: R = Rz * Ry * Rx.
         return rz * ry * rx;
-    }
-
-    private static mat4 InverseRotation(mat4 rot)
-    {
-        // Rotation inverse is transpose of the 3x3 basis.
-        mat4 inv = mat4.Identity;
-        inv.m00 = rot.m00; inv.m01 = rot.m10; inv.m02 = rot.m20;
-        inv.m10 = rot.m01; inv.m11 = rot.m11; inv.m12 = rot.m21;
-        inv.m20 = rot.m02; inv.m21 = rot.m12; inv.m22 = rot.m22;
-        return inv;
     }
 
     private static vec3 MatrixToEulerRzRyRx(mat4 m)
