@@ -111,6 +111,18 @@ public class SpawnMenu : UiPanel
     /// </summary>
     private string _spawnResourcePackId = "";
 
+    /// <summary>
+    /// Selected source ID for block list filtering.
+    /// Empty means default/vanilla block list.
+    /// </summary>
+    private string _spawnBlockSourceId = "";
+
+    /// <summary>
+    /// Selected source ID for item spawning.
+    /// Empty means default/base atlas keys (non-external).
+    /// </summary>
+    private string _spawnItemSourceId = "";
+
     private readonly List<string> _availableResourcePackIds = new();
 
     // ── Characters category state ──────────────────────────────────────────────
@@ -213,15 +225,33 @@ public class SpawnMenu : UiPanel
         _spawnResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(_spawnResourcePackId);
         if (!_availableResourcePackIds.Contains(_spawnResourcePackId, StringComparer.OrdinalIgnoreCase))
             _spawnResourcePackId = "";
+
+        _spawnBlockSourceId = MinecraftDataLoader.NormalizeResourcePackId(_spawnBlockSourceId);
+        if (!_availableResourcePackIds.Contains(_spawnBlockSourceId, StringComparer.OrdinalIgnoreCase))
+            _spawnBlockSourceId = "";
+
+        _spawnItemSourceId = MinecraftDataLoader.NormalizeResourcePackId(_spawnItemSourceId);
+        if (!_availableResourcePackIds.Contains(_spawnItemSourceId, StringComparer.OrdinalIgnoreCase))
+            _spawnItemSourceId = "";
     }
 
-    private void RenderResourcePackSelector(string idSuffix)
+    private bool RenderResourcePackSelector(string idSuffix, ref string selectedSourceId, string label = "Resource Pack:")
     {
-        ImGui.Text("Resource Pack:");
+        ImGui.Text(label);
         ImGui.SetNextItemWidth(-1);
 
-        int selectedIndex = Math.Max(0, _availableResourcePackIds.FindIndex(id =>
-            string.Equals(id, _spawnResourcePackId, StringComparison.OrdinalIgnoreCase)));
+        bool changed = false;
+        string normalizedSelected = MinecraftDataLoader.NormalizeResourcePackId(selectedSourceId);
+
+        int selectedIndex = 0;
+        for (int i = 0; i < _availableResourcePackIds.Count; i++)
+        {
+            if (!string.Equals(_availableResourcePackIds[i], normalizedSelected, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            selectedIndex = i;
+            break;
+        }
 
         string selectedLabel = selectedIndex == 0
             ? "Default"
@@ -232,11 +262,14 @@ public class SpawnMenu : UiPanel
             for (int i = 0; i < _availableResourcePackIds.Count; i++)
             {
                 string value = _availableResourcePackIds[i];
-                string label = i == 0 ? "Default" : value;
+                string optionLabel = i == 0 ? "Default" : value;
                 bool selected = i == selectedIndex;
 
-                if (ImGui.Selectable(label, selected))
-                    _spawnResourcePackId = value;
+                if (ImGui.Selectable(optionLabel, selected))
+                {
+                    selectedSourceId = value;
+                    changed = true;
+                }
 
                 if (selected)
                     ImGui.SetItemDefaultFocus();
@@ -244,6 +277,8 @@ public class SpawnMenu : UiPanel
 
             ImGui.EndCombo();
         }
+
+        return changed;
     }
 
     // ── Public API ───────────────────────────────────────────────────────────
@@ -822,7 +857,7 @@ public class SpawnMenu : UiPanel
 
             if (_selectedCategory == "Scenery")
             {
-                RenderResourcePackSelector("Scenery");
+                RenderResourcePackSelector("Scenery", ref _spawnResourcePackId);
                 ImGui.Spacing();
                 ImGui.Separator();
                 ImGui.Spacing();
@@ -913,6 +948,16 @@ public class SpawnMenu : UiPanel
 
         ImGui.Spacing();
 
+        bool itemSourceChanged = RenderResourcePackSelector("ItemsSource", ref _spawnItemSourceId, "Source Mod:");
+        if (itemSourceChanged &&
+            !string.IsNullOrWhiteSpace(_selectedTileKey) &&
+            !IsTextureKeyFromSelectedSource(_selectedTileKey, _spawnItemSourceId))
+        {
+            _selectedTileKey = "";
+        }
+
+        ImGui.Spacing();
+
         // Search filter
         ImGui.SetNextItemWidth(-1);
         if (ImGui.InputTextWithHint("##itemSearch", "Filter tiles (e.g. grass)...", ref _itemSearchBuffer, 64))
@@ -934,8 +979,15 @@ public class SpawnMenu : UiPanel
             ? ItemsAtlas.Textures
             : TerrainAtlas.Textures;
 
+        var filteredTextures = textures
+            .Where(static kvp => kvp.Value != 0)
+            .Where(kvp => IsTextureKeyFromSelectedSource(kvp.Key, _spawnItemSourceId))
+            .Where(kvp => string.IsNullOrEmpty(_itemSearchQuery) || kvp.Key.Contains(_itemSearchQuery, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(kvp => kvp.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         int col = 0;
-        foreach (var kvp in textures)
+        foreach (var kvp in filteredTextures)
         {
             string key    = kvp.Key;
             uint   texId  = kvp.Value;
@@ -991,7 +1043,6 @@ public class SpawnMenu : UiPanel
         ImGui.Separator();
 
         // 3D toggle
-        ImGui.Spacing();
         ImGui.Checkbox("3D (extruded)", ref _item3DMode);
         ImGui.Spacing();
         ImGui.TextDisabled(_item3DMode
@@ -1141,6 +1192,21 @@ public class SpawnMenu : UiPanel
         ImGui.TextDisabled("Blocks");
         ImGui.Separator();
 
+        bool blockSourceChanged = RenderResourcePackSelector("BlocksSource", ref _spawnBlockSourceId, "Source Mod:");
+        if (blockSourceChanged && _selectedObjectIndex >= 0 && _selectedObjectIndex < BlockRegistry.Blocks.Count)
+        {
+            string selectedBlock = BlockRegistry.Blocks[_selectedObjectIndex];
+            if (!IsBlockFromSelectedSource(selectedBlock, _spawnBlockSourceId))
+            {
+                _selectedObjectIndex = -1;
+                _selectedVariantIndex = -1;
+                _currentVariants.Clear();
+            }
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+
         // Per-column search (overrides the global search for this column)
         ImGui.SetNextItemWidth(-1);
         if (ImGui.InputTextWithHint("##blockSearch", "Filter blocks...", ref _blockSearchBuffer, 128))
@@ -1162,6 +1228,9 @@ public class SpawnMenu : UiPanel
         for (int i = 0; i < blockList.Count; i++)
         {
             string name = blockList[i];
+            if (!IsBlockFromSelectedSource(name, _spawnBlockSourceId))
+                continue;
+
             if (!string.IsNullOrEmpty(query) &&
                 !name.Contains(query, StringComparison.OrdinalIgnoreCase))
                 continue;
@@ -1200,7 +1269,7 @@ public class SpawnMenu : UiPanel
         ImGui.TextDisabled("Variants");
         ImGui.Separator();
 
-        RenderResourcePackSelector("Blocks");
+        RenderResourcePackSelector("BlocksResourcePack", ref _spawnResourcePackId, "Resource Pack:");
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -3712,6 +3781,7 @@ public class SpawnMenu : UiPanel
             ObjectType    = baseName,
             SpawnCategory = "Items",
             TextureType   = atlasSource == ItemAtlasSource.ItemAtlas ? "item" : "block",
+            ResourcePackId = GetSourceIdFromTextureKey(tileKey),
             Position      = vec3.Zero
         };
         obj.AssignObjectId();
@@ -3740,6 +3810,47 @@ public class SpawnMenu : UiPanel
         int pixelCount = pixels.Length / 4;
         int side = (int)Math.Sqrt(pixelCount);
         return side > 0 && side * side == pixelCount ? side : fallback;
+    }
+
+    private static bool IsTextureKeyFromSelectedSource(string textureKey, string selectedSourceId)
+    {
+        string selected = MinecraftDataLoader.NormalizeResourcePackId(selectedSourceId);
+        string keySource = GetSourceIdFromTextureKey(textureKey);
+
+        // Default source shows base/non-external keys.
+        if (string.IsNullOrWhiteSpace(selected))
+            return string.IsNullOrWhiteSpace(keySource);
+
+        return string.Equals(keySource, selected, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsBlockFromSelectedSource(string blockName, string selectedSourceId)
+    {
+        string selected = MinecraftDataLoader.NormalizeResourcePackId(selectedSourceId);
+        string blockSource = MinecraftDataLoader.NormalizeResourcePackId(BlockRegistry.GetBlockSourceId(blockName));
+
+        // Default source shows vanilla/non-namespaced blocks.
+        if (string.IsNullOrWhiteSpace(selected))
+            return string.IsNullOrWhiteSpace(blockSource);
+
+        return string.Equals(blockSource, selected, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetSourceIdFromTextureKey(string textureKey)
+    {
+        if (string.IsNullOrWhiteSpace(textureKey))
+            return "";
+
+        const string prefix = "resourcepack:";
+        if (!textureKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return "";
+
+        string rest = textureKey[prefix.Length..];
+        int sep = rest.IndexOf(':');
+        if (sep <= 0)
+            return "";
+
+        return MinecraftDataLoader.NormalizeResourcePackId(rest[..sep]);
     }
 
     // ── Public spawn helpers ─────────────────────────────────────────────────

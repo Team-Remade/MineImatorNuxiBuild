@@ -143,8 +143,20 @@ public static class BlockRegistry
     /// <summary>Block name → list of variant entries.</summary>
     private static readonly Dictionary<string, List<BlockVariantEntry>> _variants = new();
 
+    /// <summary>
+    /// Block name → source container id (resource pack / java mod id).
+    /// Empty string means vanilla/version-root data.
+    /// </summary>
+    private static readonly Dictionary<string, string> _blockSourceIds = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Raw parsed model JSON cache (model path → JsonObject).</summary>
     private static readonly Dictionary<string, JsonObject?> _rawModelCache = new();
+
+    /// <summary>
+    /// External (non-vanilla) model JSON indexed by normalized model path
+    /// (e.g. "biomesoplenty:block/algal_end_stone").
+    /// </summary>
+    private static readonly Dictionary<string, JsonObject> _externalModels = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Resolved model cache (model path → resolved).</summary>
     private static readonly Dictionary<string, ResolvedBlockModel> _resolvedCache = new();
@@ -160,8 +172,10 @@ public static class BlockRegistry
     {
         _blocks.Clear();
         _variants.Clear();
+        _blockSourceIds.Clear();
         _rawModelCache.Clear();
         _resolvedCache.Clear();
+        _externalModels.Clear();
 
         string basePath    = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
         string versionsDir = Path.Combine(basePath, "data", "minecraft", "versions");
@@ -200,6 +214,8 @@ public static class BlockRegistry
             try
             {
                 ParseBlockstate(blockName, file);
+                if (_variants.ContainsKey(blockName))
+                    _blockSourceIds[blockName] = "";
             }
             catch (Exception ex)
             {
@@ -207,8 +223,80 @@ public static class BlockRegistry
             }
         }
 
+        LoadExternalAssets();
+
         _blocks.AddRange(_variants.Keys.OrderBy(k => k));
         Console.WriteLine($"[BlockRegistry] Loaded {_blocks.Count} blocks.");
+    }
+
+    private static void LoadExternalAssets()
+    {
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".json"))
+        {
+            string rel = file.RelativePath.Replace('\\', '/');
+            string[] parts = rel.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            // Expected: assets/<namespace>/<category>/...<file>.json
+            if (parts.Length < 4)
+                continue;
+            if (!string.Equals(parts[0], "assets", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            string assetNamespace = parts[1].ToLowerInvariant();
+            string category = parts[2].ToLowerInvariant();
+
+            JsonObject? root;
+            try
+            {
+                string text = MinecraftDataLoader.DecodeUtf8(file.Data);
+                root = JsonNode.Parse(text)?.AsObject();
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (root == null)
+                continue;
+
+            if (string.Equals(category, "blockstates", StringComparison.OrdinalIgnoreCase) && parts.Length == 4)
+            {
+                string blockName = Path.GetFileNameWithoutExtension(parts[3]);
+                if (string.IsNullOrWhiteSpace(blockName))
+                    continue;
+
+                string key = string.Equals(assetNamespace, "minecraft", StringComparison.OrdinalIgnoreCase)
+                    ? blockName
+                    : $"{assetNamespace}:{blockName}";
+
+                try
+                {
+                    ParseBlockstate(key, root);
+                    if (_variants.ContainsKey(key))
+                        _blockSourceIds[key] = MinecraftDataLoader.GetResourcePackId(file.PackName);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[BlockRegistry] Error parsing external blockstate '{key}' from '{file.PackName}': {ex.Message}");
+                }
+
+                continue;
+            }
+
+            if (string.Equals(category, "models", StringComparison.OrdinalIgnoreCase) && parts.Length >= 5)
+            {
+                string modelPath = string.Join('/', parts.Skip(3));
+                if (!modelPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                modelPath = modelPath[..^5];
+                string key = string.Equals(assetNamespace, "minecraft", StringComparison.OrdinalIgnoreCase)
+                    ? modelPath
+                    : $"{assetNamespace}:{modelPath}";
+
+                _externalModels[key] = root;
+            }
+        }
     }
 
     // ── Public query API ──────────────────────────────────────────────────────
@@ -217,6 +305,13 @@ public static class BlockRegistry
     public static IReadOnlyList<BlockVariantEntry> GetVariants(string blockName)
     {
         return _variants.TryGetValue(blockName, out var list) ? list : Array.Empty<BlockVariantEntry>();
+    }
+
+    public static string GetBlockSourceId(string blockName)
+    {
+        return _blockSourceIds.TryGetValue(blockName, out string? id)
+            ? id
+            : "";
     }
 
     /// <summary>
@@ -447,6 +542,12 @@ public static class BlockRegistry
         var root    = JsonNode.Parse(text)?.AsObject();
         if (root == null) return;
 
+        ParseBlockstate(blockName, root);
+    }
+
+    private static void ParseBlockstate(string blockName, JsonObject root)
+    {
+
         var variantList = new List<BlockVariantEntry>();
 
         if (root["variants"] is JsonObject variantsObj)
@@ -520,8 +621,9 @@ public static class BlockRegistry
             }
         }
 
-        // Merge (or replace) extra variants registered for this block
-        if (_extraVariants.TryGetValue(blockName, out var extras))
+        // Merge (or replace) extra variants registered for this block.
+        // These only apply to vanilla block keys.
+        if (!blockName.Contains(':') && _extraVariants.TryGetValue(blockName, out var extras))
         {
             if (_replaceVariants.Contains(blockName))
                 variantList = extras.ToList();
@@ -830,6 +932,19 @@ public static class BlockRegistry
         if (_rawModelCache.TryGetValue(normalizedPath, out var cached))
             return cached;
 
+        if (_externalModels.TryGetValue(normalizedPath, out JsonObject? external))
+        {
+            _rawModelCache[normalizedPath] = external;
+            return external;
+        }
+
+        // Any remaining namespaced path is non-vanilla and was not found in external assets.
+        if (normalizedPath.Contains(':'))
+        {
+            _rawModelCache[normalizedPath] = null;
+            return null;
+        }
+
         // normalizedPath is like "block/grass_block" or "minecraft:block/grass_block"
         // Strip the "minecraft:" prefix if present
         string relativePath = normalizedPath;
@@ -860,8 +975,9 @@ public static class BlockRegistry
     /// <summary>
     /// Normalises a model reference to a consistently-formed path.
     /// Examples:
-    ///   "minecraft:block/grass_block"  → "block/grass_block"
-    ///   "block/grass_block"            → "block/grass_block"
+    ///   "minecraft:block/grass_block"       → "block/grass_block"
+    ///   "biomesoplenty:block/algal_end_stone" → "biomesoplenty:block/algal_end_stone"
+    ///   "block/grass_block"                 → "block/grass_block"
     ///   "#all"                         → "#all"   (texture ref, leave as-is)
     /// </summary>
     private static string NormalizeModelPath(string path)
@@ -869,9 +985,19 @@ public static class BlockRegistry
         if (string.IsNullOrEmpty(path)) return path;
         // Keep texture refs as-is
         if (path.StartsWith('#')) return path;
-        // Strip namespace prefix
+
+        // Preserve non-minecraft namespaces so mod models resolve correctly.
         int colon = path.IndexOf(':');
-        if (colon >= 0) return path[(colon + 1)..];
+        if (colon >= 0)
+        {
+            string ns = path[..colon];
+            string rest = path[(colon + 1)..];
+            if (string.Equals(ns, "minecraft", StringComparison.OrdinalIgnoreCase))
+                return rest;
+
+            return $"{ns.ToLowerInvariant()}:{rest}";
+        }
+
         return path;
     }
 
@@ -900,15 +1026,30 @@ public static class BlockRegistry
 
         if (value.StartsWith('#')) return null; // unresolved
 
-        // Strip namespace prefix (e.g. "minecraft:block/grass" → "block/grass")
+        // Split optional namespace (e.g. "minecraft:block/grass").
+        string ns = "";
         int colon = value.IndexOf(':');
-        if (colon >= 0) value = value[(colon + 1)..];
+        if (colon >= 0)
+        {
+            ns = value[..colon].ToLowerInvariant();
+            value = value[(colon + 1)..];
+        }
 
         // "block/" textures are keyed by bare name in TerrainAtlas (e.g. "grass_block_top")
-        if (value.StartsWith("block/")) return value["block/".Length..];
+        if (value.StartsWith("block/"))
+        {
+            string tail = value["block/".Length..];
+            if (!string.IsNullOrWhiteSpace(ns) && !string.Equals(ns, "minecraft", StringComparison.OrdinalIgnoreCase))
+                return $"{ns}/block/{tail}";
+
+            return tail;
+        }
 
         // "entity/" textures are keyed by their full relative path (e.g. "entity/bed/red")
         // TerrainAtlas stores these with the path intact so return as-is.
+        if (!string.IsNullOrWhiteSpace(ns) && !string.Equals(ns, "minecraft", StringComparison.OrdinalIgnoreCase))
+            return $"{ns}/{value}";
+
         return value;
     }
 }

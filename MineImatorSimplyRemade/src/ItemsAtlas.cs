@@ -208,6 +208,39 @@ public static class ItemsAtlas
 
             UpsertTileTexture(key, img.Data, img.Width, img.Height);
         }
+
+        // Load non-minecraft namespaced item textures from external containers (e.g. Java mods).
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png"))
+        {
+            if (!MinecraftDataLoader.TryParseTextureAssetPath(file.RelativePath, out string assetNamespace, out string category, out string textureKey))
+                continue;
+
+            if (string.Equals(assetNamespace, "minecraft", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (!string.Equals(category, "item", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            ImageResult img;
+            try
+            {
+                img = ImageResult.FromMemory(file.Data, ColorComponents.RedGreenBlueAlpha);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ItemsAtlas] Failed to load namespaced item texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
+                continue;
+            }
+
+            if (img.Width != img.Height)
+            {
+                Console.WriteLine($"[ItemsAtlas] Ignoring non-square namespaced item texture '{file.RelativePath}' from '{file.PackName}'.");
+                continue;
+            }
+
+            string key = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, $"{assetNamespace}/item/{textureKey}");
+            UpsertTileTexture(key, img.Data, img.Width, img.Height);
+        }
     }
 
     private static void SliceGridAtlas(byte[] src, int atlasSize, string keyPrefix = "")

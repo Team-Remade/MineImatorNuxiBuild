@@ -4,7 +4,8 @@ using System.Text;
 namespace MineImatorSimplyRemade;
 
 /// <summary>
-/// Shared loader for Minecraft data roots and resource-pack assets.
+/// Shared loader for Minecraft data roots and external asset containers
+/// (resource packs and Java mods).
 /// Atlases and registries should use this instead of hard-coding paths.
 /// </summary>
 public static class MinecraftDataLoader
@@ -49,16 +50,38 @@ public static class MinecraftDataLoader
         string normalizedPrefix = Normalize(pathPrefix);
         string normalizedSuffix = suffix.Contains('.') ? suffix : "." + suffix;
 
-        string packsRoot = Path.Combine(GetBasePath(), "mods", "resourcepacks");
-        if (!Directory.Exists(packsRoot))
+        foreach (ResourcePackFile file in EnumerateAssetContainers(
+                     Path.Combine("mods", "resourcepacks"),
+                     normalizedPrefix,
+                     normalizedSuffix,
+                     new[] { ".zip" }))
+            yield return file;
+
+        foreach (ResourcePackFile file in EnumerateAssetContainers(
+                     Path.Combine("mods", "javamods"),
+                     normalizedPrefix,
+                     normalizedSuffix,
+                     new[] { ".jar", ".zip" }))
+            yield return file;
+    }
+
+    private static IEnumerable<ResourcePackFile> EnumerateAssetContainers(
+        string rootRelativePath,
+        string normalizedPrefix,
+        string normalizedSuffix,
+        IEnumerable<string> archiveExtensions)
+    {
+        string root = Path.Combine(GetBasePath(), rootRelativePath);
+        if (!Directory.Exists(root))
             yield break;
 
-        var packContainers = Directory
-            .EnumerateFileSystemEntries(packsRoot, "*", SearchOption.TopDirectoryOnly)
+        var allowedExt = new HashSet<string>(archiveExtensions, StringComparer.OrdinalIgnoreCase);
+        var containers = Directory
+            .EnumerateFileSystemEntries(root, "*", SearchOption.TopDirectoryOnly)
             .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        foreach (string containerPath in packContainers)
+        foreach (string containerPath in containers)
         {
             if (Directory.Exists(containerPath))
             {
@@ -68,12 +91,15 @@ public static class MinecraftDataLoader
                 continue;
             }
 
-            if (File.Exists(containerPath) &&
-                string.Equals(Path.GetExtension(containerPath), ".zip", StringComparison.OrdinalIgnoreCase))
-            {
-                foreach (ResourcePackFile file in EnumerateZipPack(containerPath, normalizedPrefix, normalizedSuffix))
-                    yield return file;
-            }
+            if (!File.Exists(containerPath))
+                continue;
+
+            string ext = Path.GetExtension(containerPath);
+            if (!allowedExt.Contains(ext))
+                continue;
+
+            foreach (ResourcePackFile file in EnumerateZipPack(containerPath, normalizedPrefix, normalizedSuffix))
+                yield return file;
         }
     }
 
@@ -241,30 +267,79 @@ public static class MinecraftDataLoader
         return sb.ToString();
     }
 
+    public static bool TryParseTextureAssetPath(
+        string relativePath,
+        out string assetNamespace,
+        out string textureCategory,
+        out string textureKey)
+    {
+        assetNamespace = "";
+        textureCategory = "";
+        textureKey = "";
+
+        string normalized = Normalize(relativePath);
+        string[] parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        // Expected format: assets/<namespace>/textures/<category>/<path>.png
+        // Path can be a direct file (5 parts) or nested folders (6+ parts).
+        if (parts.Length < 5)
+            return false;
+
+        if (!string.Equals(parts[0], "assets", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (!string.Equals(parts[2], "textures", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        string fileName = parts[^1];
+        if (!fileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        assetNamespace = parts[1].ToLowerInvariant();
+        textureCategory = parts[3].ToLowerInvariant();
+
+        string[] keyParts = parts.Skip(4).ToArray();
+        if (keyParts.Length == 0)
+            return false;
+
+        keyParts[^1] = Path.GetFileNameWithoutExtension(keyParts[^1]);
+        textureKey = string.Join('/', keyParts);
+
+        return !string.IsNullOrWhiteSpace(assetNamespace) &&
+               !string.IsNullOrWhiteSpace(textureCategory) &&
+               !string.IsNullOrWhiteSpace(textureKey);
+    }
+
     public static IReadOnlyList<string> GetAvailableResourcePackIds()
     {
-        string packsRoot = Path.Combine(GetBasePath(), "mods", "resourcepacks");
-        if (!Directory.Exists(packsRoot))
-            return Array.Empty<string>();
-
         var ids = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (string path in Directory.EnumerateFileSystemEntries(packsRoot, "*", SearchOption.TopDirectoryOnly))
+        AddContainerIds(ids, Path.Combine("mods", "resourcepacks"), new[] { ".zip" });
+        AddContainerIds(ids, Path.Combine("mods", "javamods"), new[] { ".jar", ".zip" });
+
+        return ids.ToList();
+    }
+
+    private static void AddContainerIds(SortedSet<string> ids, string rootRelativePath, IEnumerable<string> allowedExtensions)
+    {
+        string root = Path.Combine(GetBasePath(), rootRelativePath);
+        if (!Directory.Exists(root))
+            return;
+
+        var extSet = new HashSet<string>(allowedExtensions, StringComparer.OrdinalIgnoreCase);
+
+        foreach (string path in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.TopDirectoryOnly))
         {
             string name = Path.GetFileName(path);
             if (string.IsNullOrWhiteSpace(name))
                 continue;
 
-            if (!Directory.Exists(path) &&
-                !string.Equals(Path.GetExtension(path), ".zip", StringComparison.OrdinalIgnoreCase))
+            if (!Directory.Exists(path) && !extSet.Contains(Path.GetExtension(path)))
                 continue;
 
             string id = GetResourcePackId(name);
             if (!string.IsNullOrWhiteSpace(id))
                 ids.Add(id);
         }
-
-        return ids.ToList();
     }
 
     private static string Normalize(string path)

@@ -171,7 +171,7 @@ public static class TerrainAtlas
         if (_gl == null) return;
 
         var mcmetaByPath = MinecraftDataLoader
-            .EnumerateResourcePackFiles("assets/minecraft/textures", ".png.mcmeta")
+            .EnumerateResourcePackFiles("assets", ".png.mcmeta")
             .ToDictionary(f => f.RelativePath, f => MinecraftDataLoader.DecodeUtf8(f.Data), StringComparer.OrdinalIgnoreCase);
 
         // Add block textures using namespaced keys so default keys stay intact.
@@ -248,6 +248,49 @@ public static class TerrainAtlas
             else
             {
                 AnimatedTextures.Remove(relative);
+            }
+        }
+
+        // Load non-minecraft namespaced textures from external containers (e.g. Java mods).
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png"))
+        {
+            if (!MinecraftDataLoader.TryParseTextureAssetPath(file.RelativePath, out string assetNamespace, out string category, out string textureKey))
+                continue;
+
+            if (string.Equals(assetNamespace, "minecraft", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (!string.Equals(category, "block", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(category, "entity", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            string key = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, $"{assetNamespace}/{category}/{textureKey}");
+
+            ImageResult img;
+            try
+            {
+                img = ImageResult.FromMemory(file.Data, ColorComponents.RedGreenBlueAlpha);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TerrainAtlas] Failed to load namespaced texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
+                continue;
+            }
+
+            string mcmetaPath = file.RelativePath + ".mcmeta";
+            bool hasAnim = mcmetaByPath.TryGetValue(mcmetaPath, out string? animText);
+
+            UpsertTexture(key, img.Data, img.Width, img.Height, hasAnim);
+
+            if (hasAnim)
+            {
+                var anim = ParseMcMetaFromText(animText!, img.Width, img.Height);
+                if (anim != null)
+                    AnimatedTextures[key] = anim;
+            }
+            else
+            {
+                AnimatedTextures.Remove(key);
             }
         }
     }
