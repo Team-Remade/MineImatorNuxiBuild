@@ -3753,6 +3753,9 @@ public class SpawnMenu : UiPanel
     {
         if (Viewport == null || Gl == null) return null;
 
+        if (atlasSource == ItemAtlasSource.ItemAtlas)
+            ItemsAtlas.EnsureProjectCustomTexturesLoaded();
+
         // Resolve texture ID and pixel data from the appropriate atlas
         uint tileTexId = 0;
         byte[]? tilePixels = null;
