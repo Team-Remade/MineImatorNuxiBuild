@@ -5,11 +5,13 @@ using MineImatorSimplyRemade.core.window.windows;
 using Silk.NET.Core.Native;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
+using System.Diagnostics;
 
 
 public static class main
 {
     public const string ApplicationLocalDirectory = "SimplyRemadeNuxi";
+    private const int MainLoopTargetFps = 60;
 
     public static readonly string LocalPath =
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -103,8 +105,13 @@ public static class main
         Console.WriteLine($"GPU: {gpuRenderer}");
 
         // ── Main loop ─────────────────────────────────────────────────────────
+        var frameTimer = Stopwatch.StartNew();
+        long targetFrameTicks = Stopwatch.Frequency / MainLoopTargetFps;
+
         while (!Glfw.WindowShouldClose(MainWindow.WindowHandle))
         {
+            long frameStartTicks = frameTimer.ElapsedTicks;
+
             Glfw.PollEvents();
 
             // Main window always renders.
@@ -126,7 +133,7 @@ public static class main
                 Glfw.MakeContextCurrent(MainWindow.WindowHandle);
             }
 
-            Thread.Sleep(1);
+            LimitFrameRate(frameTimer, frameStartTicks, targetFrameTicks);
         }
 
         _gl.Dispose();
@@ -135,6 +142,32 @@ public static class main
         Glfw.Terminate();
 
         return 0;
+    }
+
+    private static void LimitFrameRate(Stopwatch frameTimer, long frameStartTicks, long targetFrameTicks)
+    {
+        if (targetFrameTicks <= 0)
+            return;
+
+        while (true)
+        {
+            long elapsedTicks = frameTimer.ElapsedTicks - frameStartTicks;
+            long remainingTicks = targetFrameTicks - elapsedTicks;
+            if (remainingTicks <= 0)
+                break;
+
+            long oneMillisecondTicks = Stopwatch.Frequency / 1000;
+            if (remainingTicks > oneMillisecondTicks * 2)
+            {
+                int sleepMs = (int)(remainingTicks / oneMillisecondTicks) - 1;
+                if (sleepMs > 0)
+                    Thread.Sleep(sleepMs);
+            }
+            else
+            {
+                Thread.SpinWait(100);
+            }
+        }
     }
 
     private static unsafe bool IsWindowVisible()
