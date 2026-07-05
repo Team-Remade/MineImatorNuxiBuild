@@ -1488,8 +1488,41 @@ public class Viewport : UiPanel
             CameraViewport.RenderInline(imageMin, imageSize, spawnedCams);
         }
 
+        // Draw after other viewport UI so the fly-speed badge stays readable.
+        RenderFreeFlySpeedOverlay(imageMin, imageSize);
+
         ImGui.EndChild();
         ImGui.End();
+    }
+
+    private void RenderFreeFlySpeedOverlay(Vector2 imageMin, Vector2 imageSize)
+    {
+        if (!_freeFly) return;
+        if (imageSize.X < 1f || imageSize.Y < 1f) return;
+
+        string label = $"Fly speed x{_freeFlySpeed:0.##}";
+        Vector2 textSize = ImGui.CalcTextSize(label);
+
+        const float margin = 10f;
+        const float padX = 10f;
+        const float padY = 6f;
+
+        Vector2 boxMin = new Vector2(
+            imageMin.X + imageSize.X - textSize.X - (padX * 2f) - margin,
+            imageMin.Y + margin);
+        Vector2 boxMax = new Vector2(
+            boxMin.X + textSize.X + (padX * 2f),
+            boxMin.Y + textSize.Y + (padY * 2f));
+        Vector2 textPos = new Vector2(boxMin.X + padX, boxMin.Y + padY);
+
+        var fg = ImGui.GetForegroundDrawList();
+        uint bgColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.05f, 0.05f, 0.05f, 0.86f));
+        uint borderColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.95f, 0.78f, 0.22f, 0.95f));
+        uint textColor = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 1f));
+
+        fg.AddRectFilled(boxMin, boxMax, bgColor, 6f);
+        fg.AddRect(boxMin, boxMax, borderColor, 6f);
+        fg.AddText(textPos, textColor, label);
     }
 
     // ── Colour-pick pass ──────────────────────────────────────────────────────
