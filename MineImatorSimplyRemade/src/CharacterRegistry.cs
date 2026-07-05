@@ -136,9 +136,11 @@ public static class CharacterRegistry
     /// the application base directory) and populates <see cref="Characters"/>.
     /// Safe to call multiple times — clears and rebuilds the list each time.
     /// </summary>
-    public static void Initialize()
+    public static void Initialize(Action<float, string>? progress = null)
     {
         _characters.Clear();
+
+        progress?.Invoke(0f, "Locating character directories...");
 
         // Resolve the data directory relative to the application executable.
         // Use Environment.ProcessPath (same as BlockRegistry) so that single-file
@@ -156,10 +158,18 @@ public static class CharacterRegistry
         DataRoot = dataPath;
 
         // Find every directory named "characters" anywhere under data/
-        foreach (string charDir in Directory.EnumerateDirectories(
-                     dataPath, "characters", SearchOption.AllDirectories))
+        string[] characterDirectories = Directory.EnumerateDirectories(
+                dataPath, "characters", SearchOption.AllDirectories)
+            .ToArray();
+
+        int directoryCount = Math.Max(characterDirectories.Length, 1);
+
+        for (int i = 0; i < characterDirectories.Length; i++)
         {
+            string charDir = characterDirectories[i];
             ScanCharactersDirectory(charDir);
+            string label = Path.GetFileName(Path.GetDirectoryName(charDir) ?? charDir);
+            progress?.Invoke((i + 1) / (float)directoryCount, $"Characters: {label}");
         }
 
         _characters.Sort((a, b) =>
@@ -167,6 +177,7 @@ public static class CharacterRegistry
 
         Console.WriteLine($"[CharacterRegistry] Found {_characters.Count} character(s) " +
                           $"across all 'characters/' folders.");
+        progress?.Invoke(1f, $"Found {_characters.Count} character model(s)");
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

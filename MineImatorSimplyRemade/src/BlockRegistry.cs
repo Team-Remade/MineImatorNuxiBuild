@@ -168,7 +168,7 @@ public static class BlockRegistry
     /// most recent one by revision (then name), and loads all blockstates.
     /// Safe to call multiple times; subsequent calls re-load from scratch.
     /// </summary>
-    public static void Initialize()
+    public static void Initialize(Action<float, string>? progress = null)
     {
         _blocks.Clear();
         _variants.Clear();
@@ -176,6 +176,8 @@ public static class BlockRegistry
         _rawModelCache.Clear();
         _resolvedCache.Clear();
         _externalModels.Clear();
+
+        progress?.Invoke(0f, "Locating Minecraft version data...");
 
         string basePath    = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
         string versionsDir = Path.Combine(basePath, "data", "minecraft", "versions");
@@ -199,6 +201,7 @@ public static class BlockRegistry
         Console.WriteLine($"[BlockRegistry] Loading version '{LoadedVersion}' from {versionRoot}");
 
         BuildExtraVariants();
+        progress?.Invoke(0.08f, $"Using version {LoadedVersion}");
 
         // ── Load blockstates ──────────────────────────────────────────────────
         string blockstatesDir = Path.Combine(versionRoot, "blockstates");
@@ -208,8 +211,12 @@ public static class BlockRegistry
             return;
         }
 
-        foreach (string file in Directory.GetFiles(blockstatesDir, "*.json", SearchOption.TopDirectoryOnly))
+        string[] blockstateFiles = Directory.GetFiles(blockstatesDir, "*.json", SearchOption.TopDirectoryOnly);
+        int blockstateCount = Math.Max(blockstateFiles.Length, 1);
+
+        for (int i = 0; i < blockstateFiles.Length; i++)
         {
+            string file = blockstateFiles[i];
             string blockName = Path.GetFileNameWithoutExtension(file);
             try
             {
@@ -221,17 +228,32 @@ public static class BlockRegistry
             {
                 Console.WriteLine($"[BlockRegistry] Error parsing blockstate '{blockName}': {ex.Message}");
             }
+
+            progress?.Invoke(0.10f + ((i + 1) / (float)blockstateCount) * 0.60f, $"Blockstate: {blockName}");
         }
 
-        LoadExternalAssets();
+        LoadExternalAssets((value, detail) => progress?.Invoke(0.70f + value * 0.30f, detail));
 
         _blocks.AddRange(_variants.Keys.OrderBy(k => k));
         Console.WriteLine($"[BlockRegistry] Loaded {_blocks.Count} blocks.");
+        progress?.Invoke(1f, $"Loaded {_blocks.Count} block entries");
     }
 
-    private static void LoadExternalAssets()
+    private static void LoadExternalAssets(Action<float, string>? progress = null)
     {
-        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".json"))
+        int currentContainer = 0;
+        int totalContainers = 0;
+
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles(
+                     "assets",
+                     ".json",
+                     (_, containerName, current, total) =>
+                     {
+                         currentContainer = current;
+                         totalContainers = total;
+                         float ratio = total <= 0 ? 0f : (current - 1) / (float)total;
+                         progress?.Invoke(ratio, $"Scanning asset container {current}/{total}: {containerName}");
+                     }))
         {
             string rel = file.RelativePath.Replace('\\', '/');
             string[] parts = rel.Split('/', StringSplitOptions.RemoveEmptyEntries);
@@ -296,7 +318,15 @@ public static class BlockRegistry
 
                 _externalModels[key] = root;
             }
+
+            if (totalContainers > 0)
+            {
+                float ratio = Math.Clamp(currentContainer / (float)totalContainers, 0f, 1f);
+                progress?.Invoke(ratio, $"Reading external asset: {file.RelativePath}");
+            }
         }
+
+        progress?.Invoke(1f, "External block assets indexed");
     }
 
     // ── Public query API ──────────────────────────────────────────────────────

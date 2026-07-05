@@ -1,5 +1,6 @@
 ﻿using GlmSharp;
 using MineImatorSimplyRemade.core;
+using MineImatorSimplyRemade.core.startup;
 using MineImatorSimplyRemade.core.window;
 using MineImatorSimplyRemade.core.window.windows;
 using Silk.NET.Core.Native;
@@ -22,6 +23,7 @@ public static class main
     private static MainWindow MainWindow { get; set; }
     private static CameraWindow CameraWindow { get; set; }
     private static GL _gl;
+    private static GL? _startupGl;
     
     private static bool isVulkan = false;
     
@@ -34,11 +36,18 @@ public static class main
             return 1;
         }
 
-        // Show startup progress only for first-time FFmpeg download.
-        if (FfmpegBootstrap.RequiresFirstTimeDownload())
-            ShowFfmpegStartupWindow();
-        else
-            FfmpegBootstrap.EnsureFfmpegInstalled();
+        var startupWindow = CreateStartupWindow();
+        UpdateStartupWindow(startupWindow, new StartupProgressState
+        {
+            CurrentStep = 1,
+            TotalSteps = 8,
+            Phase = "Bootstrapping startup",
+            Status = "Checking local dependencies...",
+            Detail = "Preparing early loading window",
+            Progress = 0.02f
+        });
+
+        RunFfmpegBootstrap(startupWindow);
 
         // ── Main window ───────────────────────────────────────────────────────
         Glfw.WindowHint(WindowHintInt.ContextVersionMajor, 3);
@@ -49,10 +58,13 @@ public static class main
         var videoMode = Glfw.GetVideoMode(monitor);
         var size      = new ivec2(videoMode->Width - 200, videoMode->Height - 160);
 
-        MainWindow = new MainWindow(size.x, size.y, "Mine Imator Nuxi", Glfw);
+        MainWindow = new MainWindow(size.x, size.y, "Mine Imator Nuxi", Glfw, visible: false);
         if (MainWindow.WindowHandle == null)
         {
             Console.WriteLine("Failed to create main window!");
+            startupWindow?.Dispose();
+            _startupGl?.Dispose();
+            _startupGl = null;
             Glfw.Terminate();
             return 1;
         }
@@ -63,6 +75,11 @@ public static class main
         _gl = GL.GetApi(Glfw.GetProcAddress);
         MainWindow.SetGL(_gl);
         MainWindow.SetupImgui();
+        MainWindow.InitializeRuntime(progress => UpdateStartupWindow(startupWindow, RemapStartupState(progress)));
+        startupWindow?.Dispose();
+        _startupGl?.Dispose();
+        _startupGl = null;
+        MainWindow.Show();
 
         // ── Camera window ─────────────────────────────────────────────────────
         // Created now (before the loop) with context sharing so it can access
@@ -176,7 +193,21 @@ public static class main
         return Glfw.GetWindowAttrib(CameraWindow.WindowHandle, WindowAttributeGetter.Visible);
     }
 
-    private static unsafe void ShowFfmpegStartupWindow()
+    private static StartupProgressState RemapStartupState(StartupProgressState progress)
+    {
+        return new StartupProgressState
+        {
+            Title = progress.Title,
+            CurrentStep = progress.CurrentStep + 1,
+            TotalSteps = progress.TotalSteps + 1,
+            Phase = progress.Phase,
+            Status = progress.Status,
+            Detail = progress.Detail,
+            Progress = 0.10f + progress.Progress * 0.90f
+        };
+    }
+
+    private static unsafe StartupProgressWindow? CreateStartupWindow()
     {
         Glfw.WindowHint(WindowHintInt.ContextVersionMajor, 3);
         Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
@@ -185,18 +216,36 @@ public static class main
         var startupWindow = new StartupProgressWindow(560, 210, "Preparing Mine Imator Simply Remade", Glfw);
         if (startupWindow.WindowHandle == null)
         {
-            // Fallback if the startup window cannot be created.
-            FfmpegBootstrap.EnsureFfmpegInstalled();
-            return;
+            return null;
         }
 
         startupWindow.CenterWindow();
         startupWindow.SetClearColor(new vec4(0.11f, 0.11f, 0.13f, 1f));
 
         Glfw.MakeContextCurrent(startupWindow.WindowHandle);
-        using var startupGl = GL.GetApi(Glfw.GetProcAddress);
-        startupWindow.SetGL(startupGl);
+        _startupGl = GL.GetApi(Glfw.GetProcAddress);
+        startupWindow.SetGL(_startupGl);
         startupWindow.SetupImgui();
+
+        return startupWindow;
+    }
+
+    private static unsafe void RunFfmpegBootstrap(StartupProgressWindow? startupWindow)
+    {
+        if (!FfmpegBootstrap.RequiresFirstTimeDownload())
+        {
+            UpdateStartupWindow(startupWindow, new StartupProgressState
+            {
+                CurrentStep = 1,
+                TotalSteps = 8,
+                Phase = "Bootstrapping startup",
+                Status = "Verifying FFmpeg binaries...",
+                Detail = "Local video encoding tools already exist",
+                Progress = 0.08f
+            });
+            FfmpegBootstrap.EnsureFfmpegInstalled();
+            return;
+        }
 
         string status = "Preparing FFmpeg setup...";
         Exception? downloadError = null;
@@ -215,12 +264,15 @@ public static class main
 
         while (!installTask.IsCompleted)
         {
-            Glfw.PollEvents();
-
-            startupWindow.StatusMessage = status;
-
-            if (!Glfw.WindowShouldClose(startupWindow.WindowHandle))
-                startupWindow.Render();
+            UpdateStartupWindow(startupWindow, new StartupProgressState
+            {
+                CurrentStep = 1,
+                TotalSteps = 8,
+                Phase = "Installing video encoding tools",
+                Status = "First launch detected. Downloading FFmpeg binaries.",
+                Detail = status,
+                Progress = 0.06f
+            });
 
             Thread.Sleep(16);
         }
@@ -230,6 +282,39 @@ public static class main
             Console.Error.WriteLine($"[FFmpeg] Failed to initialize local ffmpeg binaries: {downloadError.Message}");
         }
 
-        startupWindow.Dispose();
+        UpdateStartupWindow(startupWindow, new StartupProgressState
+        {
+            CurrentStep = 1,
+            TotalSteps = 8,
+            Phase = "Bootstrapping startup",
+            Status = "FFmpeg check complete.",
+            Detail = downloadError == null ? "Continuing into asset initialization" : "FFmpeg failed to initialize; continuing startup",
+            Progress = 0.10f
+        });
+    }
+
+    private static unsafe void UpdateStartupWindow(StartupProgressWindow? startupWindow, StartupProgressState state)
+    {
+        if (startupWindow == null)
+            return;
+
+        startupWindow.ProgressState.Title = state.Title;
+        startupWindow.ProgressState.CurrentStep = state.CurrentStep;
+        startupWindow.ProgressState.TotalSteps = state.TotalSteps;
+        startupWindow.ProgressState.Phase = state.Phase;
+        startupWindow.ProgressState.Status = state.Status;
+        startupWindow.ProgressState.Detail = state.Detail;
+        startupWindow.ProgressState.Progress = state.Progress;
+
+        Glfw.PollEvents();
+
+        if (!Glfw.WindowShouldClose(startupWindow.WindowHandle))
+        {
+            Glfw.MakeContextCurrent(startupWindow.WindowHandle);
+            startupWindow.Render();
+        }
+
+        if (MainWindow?.WindowHandle != null)
+            Glfw.MakeContextCurrent(MainWindow.WindowHandle);
     }
 }

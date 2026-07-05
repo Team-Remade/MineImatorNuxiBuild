@@ -12,6 +12,8 @@ public static class MinecraftDataLoader
 {
     private const string ResourcePackKeyPrefix = "resourcepack";
 
+    public delegate void AssetContainerScanCallback(string rootRelativePath, string containerName, int currentContainer, int totalContainers);
+
     public sealed class ResourcePackFile
     {
         public string PackName { get; init; } = "";
@@ -45,7 +47,7 @@ public static class MinecraftDataLoader
         return dirs.OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase).First();
     }
 
-    public static IEnumerable<ResourcePackFile> EnumerateResourcePackFiles(string pathPrefix, string suffix)
+    public static IEnumerable<ResourcePackFile> EnumerateResourcePackFiles(string pathPrefix, string suffix, AssetContainerScanCallback? scanProgress = null)
     {
         string normalizedPrefix = Normalize(pathPrefix);
         string normalizedSuffix = suffix.Contains('.') ? suffix : "." + suffix;
@@ -54,14 +56,16 @@ public static class MinecraftDataLoader
                      Path.Combine("mods", "resourcepacks"),
                      normalizedPrefix,
                      normalizedSuffix,
-                     new[] { ".zip" }))
+                     new[] { ".zip" },
+                     scanProgress))
             yield return file;
 
         foreach (ResourcePackFile file in EnumerateAssetContainers(
                      Path.Combine("mods", "javamods"),
                      normalizedPrefix,
                      normalizedSuffix,
-                     new[] { ".jar", ".zip" }))
+                 new[] { ".jar", ".zip" },
+                 scanProgress))
             yield return file;
     }
 
@@ -69,7 +73,8 @@ public static class MinecraftDataLoader
         string rootRelativePath,
         string normalizedPrefix,
         string normalizedSuffix,
-        IEnumerable<string> archiveExtensions)
+        IEnumerable<string> archiveExtensions,
+        AssetContainerScanCallback? scanProgress)
     {
         string root = Path.Combine(GetBasePath(), rootRelativePath);
         if (!Directory.Exists(root))
@@ -81,8 +86,14 @@ public static class MinecraftDataLoader
             .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        int totalContainers = containers.Length;
+        int currentContainer = 0;
+
         foreach (string containerPath in containers)
         {
+            currentContainer++;
+            scanProgress?.Invoke(Normalize(rootRelativePath), Path.GetFileName(containerPath), currentContainer, totalContainers);
+
             if (Directory.Exists(containerPath))
             {
                 foreach (ResourcePackFile file in EnumerateDirectoryPack(containerPath, normalizedPrefix, normalizedSuffix))

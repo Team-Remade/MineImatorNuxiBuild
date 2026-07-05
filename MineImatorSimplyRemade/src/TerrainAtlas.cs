@@ -64,15 +64,17 @@ public static class TerrainAtlas
 
     private static GL? _gl;
 
-    public static void Initialize(GL gl)
+    public static void Initialize(GL gl, Action<float, string>? progress = null)
     {
         _gl = gl;
-        LoadTextures();
+        LoadTextures(progress);
     }
 
-    private static unsafe void LoadTextures()
+    private static unsafe void LoadTextures(Action<float, string>? progress = null)
     {
         if (_gl == null) return;
+
+        progress?.Invoke(0f, "Clearing previous terrain textures...");
 
         // Reinitialize safely when called multiple times.
         foreach (uint tex in Textures.Values)
@@ -95,9 +97,11 @@ public static class TerrainAtlas
 
         // Load block textures (flat key = filename without extension, e.g. "grass_block_top")
         string[] files = Directory.GetFiles(blockDir, "*.png", SearchOption.TopDirectoryOnly);
+        int blockFileCount = Math.Max(files.Length, 1);
 
-        foreach (string filePath in files)
+        for (int i = 0; i < files.Length; i++)
         {
+            string filePath = files[i];
             string key = Path.GetFileNameWithoutExtension(filePath);
 
             ImageResult img;
@@ -122,6 +126,8 @@ public static class TerrainAtlas
                 if (anim != null)
                     AnimatedTextures[key] = anim;
             }
+
+            progress?.Invoke(0.05f + ((i + 1) / (float)blockFileCount) * 0.45f, $"Block texture: {key}");
         }
 
         // Load entity textures recursively, keyed by their path relative to texturesDir
@@ -129,8 +135,12 @@ public static class TerrainAtlas
         string entityDir = Path.Combine(texturesDir, "entity");
         if (Directory.Exists(entityDir))
         {
-            foreach (string filePath in Directory.GetFiles(entityDir, "*.png", SearchOption.AllDirectories))
+            string[] entityFiles = Directory.GetFiles(entityDir, "*.png", SearchOption.AllDirectories);
+            int entityFileCount = Math.Max(entityFiles.Length, 1);
+
+            for (int i = 0; i < entityFiles.Length; i++)
             {
+                string filePath = entityFiles[i];
                 // Build a relative path key: "entity/bed/red"
                 string relative = Path.GetRelativePath(texturesDir, filePath)
                                       .Replace('\\', '/')
@@ -157,25 +167,36 @@ public static class TerrainAtlas
                     if (anim != null)
                         AnimatedTextures[relative] = anim;
                 }
+
+                progress?.Invoke(0.50f + ((i + 1) / (float)entityFileCount) * 0.15f, $"Entity texture: {relative}");
             }
         }
 
-        ApplyResourcePackOverrides();
+        ApplyResourcePackOverrides((value, detail) => progress?.Invoke(0.65f + value * 0.35f, detail));
 
         Console.WriteLine($"[TerrainAtlas] Loaded {Textures.Count} textures " +
                           $"({AnimatedTextures.Count} animated) from {blockDir}");
+        progress?.Invoke(1f, $"Loaded {Textures.Count} terrain texture(s)");
     }
 
-    private static void ApplyResourcePackOverrides()
+    private static void ApplyResourcePackOverrides(Action<float, string>? progress = null)
     {
         if (_gl == null) return;
 
         var mcmetaByPath = MinecraftDataLoader
-            .EnumerateResourcePackFiles("assets", ".png.mcmeta")
+            .EnumerateResourcePackFiles("assets", ".png.mcmeta", (_, containerName, current, total) =>
+            {
+                float ratio = total <= 0 ? 0f : (current - 1) / (float)total;
+                progress?.Invoke(ratio * 0.20f, $"Scanning animation metadata {current}/{total}: {containerName}");
+            })
             .ToDictionary(f => f.RelativePath, f => MinecraftDataLoader.DecodeUtf8(f.Data), StringComparer.OrdinalIgnoreCase);
 
         // Add block textures using namespaced keys so default keys stay intact.
-        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/block", ".png"))
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/block", ".png", (_, containerName, current, total) =>
+                 {
+                     float ratio = total <= 0 ? 0f : (current - 1) / (float)total;
+                     progress?.Invoke(0.20f + ratio * 0.30f, $"Scanning block overrides {current}/{total}: {containerName}");
+                 }))
         {
             string baseKey = Path.GetFileNameWithoutExtension(file.RelativePath);
             if (string.IsNullOrWhiteSpace(baseKey)) continue;
@@ -208,10 +229,16 @@ public static class TerrainAtlas
             {
                 AnimatedTextures.Remove(key);
             }
+
+            progress?.Invoke(0.50f, $"Block override: {baseKey}");
         }
 
         // Add entity textures using namespaced keys so default keys stay intact.
-        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/entity", ".png"))
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/entity", ".png", (_, containerName, current, total) =>
+                 {
+                     float ratio = total <= 0 ? 0f : (current - 1) / (float)total;
+                     progress?.Invoke(0.50f + ratio * 0.20f, $"Scanning entity overrides {current}/{total}: {containerName}");
+                 }))
         {
             string baseRelative = file.RelativePath
                 .Replace("assets/minecraft/textures/", "", StringComparison.OrdinalIgnoreCase)
@@ -249,10 +276,16 @@ public static class TerrainAtlas
             {
                 AnimatedTextures.Remove(relative);
             }
+
+            progress?.Invoke(0.70f, $"Entity override: {baseRelative}");
         }
 
         // Load non-minecraft namespaced textures from external containers (e.g. Java mods).
-        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png"))
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png", (_, containerName, current, total) =>
+                 {
+                     float ratio = total <= 0 ? 0f : (current - 1) / (float)total;
+                     progress?.Invoke(0.70f + ratio * 0.30f, $"Scanning namespaced textures {current}/{total}: {containerName}");
+                 }))
         {
             if (!MinecraftDataLoader.TryParseTextureAssetPath(file.RelativePath, out string assetNamespace, out string category, out string textureKey))
                 continue;
@@ -292,6 +325,8 @@ public static class TerrainAtlas
             {
                 AnimatedTextures.Remove(key);
             }
+
+            progress?.Invoke(1f, $"Namespaced texture: {assetNamespace}/{category}/{textureKey}");
         }
     }
 

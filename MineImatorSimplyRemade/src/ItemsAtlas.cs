@@ -29,10 +29,10 @@ public static class ItemsAtlas
 
     private static GL? _gl;
 
-    public static void Initialize(GL gl)
+    public static void Initialize(GL gl, Action<float, string>? progress = null)
     {
         _gl = gl;
-        LoadAtlas();
+        LoadAtlas(progress);
     }
 
     public static string BuildProjectCustomTextureKey(string relativePath)
@@ -107,9 +107,11 @@ public static class ItemsAtlas
         }
     }
 
-    private static unsafe void LoadAtlas()
+    private static unsafe void LoadAtlas(Action<float, string>? progress = null)
     {
         if (_gl == null) return;
+
+        progress?.Invoke(0f, "Clearing previous item textures...");
 
         foreach (uint tex in Textures.Values)
             _gl.DeleteTexture(tex);
@@ -139,19 +141,25 @@ public static class ItemsAtlas
         }
 
         SliceGridAtlas(atlas.Data, atlasSize);
+        progress?.Invoke(0.20f, "Loaded base item atlas");
 
-        ApplyResourcePackItemsOverrides();
+        ApplyResourcePackItemsOverrides((value, detail) => progress?.Invoke(0.20f + value * 0.75f, detail));
         EnsureProjectCustomTexturesLoaded();
+        progress?.Invoke(1f, $"Loaded {Textures.Count} item texture(s)");
 
         Console.WriteLine($"[ItemsAtlas] Loaded {Textures.Count} tiles from {atlasPath}");
     }
 
-    private static void ApplyResourcePackItemsOverrides()
+    private static void ApplyResourcePackItemsOverrides(Action<float, string>? progress = null)
     {
         if (_gl == null) return;
 
         // Legacy/old-style item sheet: add a namespaced 16x16 grid for the pack.
-        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/gui", "items.png"))
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/gui", "items.png", (_, containerName, current, total) =>
+                 {
+                     float ratio = total <= 0 ? 0f : (current - 1) / (float)total;
+                     progress?.Invoke(ratio * 0.25f, $"Scanning item sheets {current}/{total}: {containerName}");
+                 }))
         {
             ImageResult atlas;
             try
@@ -173,11 +181,16 @@ public static class ItemsAtlas
 
             string packPrefix = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, "");
             SliceGridAtlas(atlas.Data, atlasSize, packPrefix);
+            progress?.Invoke(0.25f, $"Applied item sheet from {file.PackName}");
         }
 
         // Modern packs expose per-item textures in assets/minecraft/textures/item/*.png.
         // Add each texture with a namespaced key so defaults remain available.
-        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/item", ".png"))
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/item", ".png", (_, containerName, current, total) =>
+                 {
+                     float ratio = total <= 0 ? 0f : (current - 1) / (float)total;
+                     progress?.Invoke(0.25f + ratio * 0.35f, $"Scanning item overrides {current}/{total}: {containerName}");
+                 }))
         {
             ImageResult img;
             try
@@ -207,10 +220,15 @@ public static class ItemsAtlas
             string key = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, baseKey);
 
             UpsertTileTexture(key, img.Data, img.Width, img.Height);
+            progress?.Invoke(0.60f, $"Item override: {baseKey}");
         }
 
         // Load non-minecraft namespaced item textures from external containers (e.g. Java mods).
-        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png"))
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png", (_, containerName, current, total) =>
+                 {
+                     float ratio = total <= 0 ? 0f : (current - 1) / (float)total;
+                     progress?.Invoke(0.60f + ratio * 0.40f, $"Scanning mod item textures {current}/{total}: {containerName}");
+                 }))
         {
             if (!MinecraftDataLoader.TryParseTextureAssetPath(file.RelativePath, out string assetNamespace, out string category, out string textureKey))
                 continue;
@@ -240,6 +258,7 @@ public static class ItemsAtlas
 
             string key = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, $"{assetNamespace}/item/{textureKey}");
             UpsertTileTexture(key, img.Data, img.Width, img.Height);
+            progress?.Invoke(1f, $"Mod item texture: {assetNamespace}/item/{textureKey}");
         }
     }
 

@@ -55,10 +55,18 @@ public class Window : IDisposable
     /// Creates a visible window with its own GL context.
     /// Used for the main application window.
     /// </summary>
-    public unsafe Window(int width, int height, string title, Glfw glfw, GL gl = null)
+    public unsafe Window(int width, int height, string title, Glfw glfw, GL gl = null, bool visible = true)
     {
         Glfw = glfw;
+
+        if (!visible)
+            Glfw.WindowHint(WindowHintBool.Visible, false);
+
         windowHandle = Glfw.CreateWindow(width, height, title, null, null);
+
+        if (!visible)
+            Glfw.WindowHint(WindowHintBool.Visible, true);
+
         _gl = gl;
 
         WindowWidth = width;

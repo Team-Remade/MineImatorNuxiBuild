@@ -9,6 +9,7 @@ using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.render;
+using MineImatorSimplyRemade.core.startup;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core;
@@ -162,7 +163,7 @@ public class MainWindow : Window
         new PropertiesPanel()
     ];
 
-    public MainWindow(int width, int height, string title, Glfw glfw, GL? gl = null) : base(width, height, title, glfw, gl!)
+    public MainWindow(int width, int height, string title, Glfw glfw, GL? gl = null, bool visible = true) : base(width, height, title, glfw, gl!, visible)
     {
         _appTitle = title;
         _menubar = new Menubar();
@@ -197,13 +198,49 @@ public class MainWindow : Window
     public override void SetGL(GL gl)
     {
         base.SetGL(gl);
+    }
+
+    public void InitializeRuntime(Action<StartupProgressState>? progress = null)
+    {
+        GL gl = GL;
+
+        const int totalSteps = 7;
+
+        void ReportStep(int currentStep, string phase, string status, float progressWithinStep, string detail = "")
+        {
+            float clampedStepProgress = Math.Clamp(progressWithinStep, 0f, 1f);
+            progress?.Invoke(new StartupProgressState
+            {
+                Title = "Preparing Mine Imator Simply Remade",
+                CurrentStep = currentStep,
+                TotalSteps = totalSteps,
+                Phase = phase,
+                Status = status,
+                Detail = detail,
+                Progress = ((currentStep - 1) + clampedStepProgress) / totalSteps
+            });
+        }
 
         SelectionManager.Initialize();
-        BlockRegistry.Initialize();
-        TerrainAtlas.Initialize(gl);
-        ItemsAtlas.Initialize(gl);
-        CharacterRegistry.Initialize();
+        ReportStep(1, "Bootstrapping editor services", "Selection state ready.", 1f);
+
+        BlockRegistry.Initialize((value, detail) => ReportStep(2, "Indexing Minecraft data", "Loading block registry...", value, detail));
+        ReportStep(2, "Indexing Minecraft data", "Block registry ready.", 1f, $"Loaded version {BlockRegistry.LoadedVersion}");
+
+        TerrainAtlas.Initialize(gl, (value, detail) => ReportStep(3, "Uploading block textures", "Building terrain atlas...", value, detail));
+        ReportStep(3, "Uploading block textures", "Terrain atlas ready.", 1f, $"{TerrainAtlas.Textures.Count} texture(s) available");
+
+        ItemsAtlas.Initialize(gl, (value, detail) => ReportStep(4, "Uploading item textures", "Building item atlas...", value, detail));
+        ReportStep(4, "Uploading item textures", "Item atlas ready.", 1f, $"{ItemsAtlas.Textures.Count} tile(s) available");
+
+        CharacterRegistry.Initialize((value, detail) => ReportStep(5, "Discovering characters", "Scanning model libraries...", value, detail));
+        ReportStep(5, "Discovering characters", "Character registry ready.", 1f, $"{CharacterRegistry.Characters.Count} character(s) found");
+
+        ReportStep(6, "Preparing runtime", "Binding model import systems...", 0f);
         MineImatorLoader.Instance.Initialize(gl);
+        ReportStep(6, "Preparing runtime", "Model import systems ready.", 1f);
+
+        ReportStep(7, "Constructing editor UI", "Creating panels and viewports...", 0f);
 
         Viewport? viewport = null;
         SceneTree? sceneTree = null;
@@ -220,6 +257,7 @@ public class MainWindow : Window
                     _mainViewport = vp;
                     vp.InitFramebuffer(1, 1);
                     vp.InitGroundPlane();
+                    ReportStep(7, "Constructing editor UI", "Creating panels and viewports...", 0.30f, "Viewport framebuffer initialized");
                     break;
                 case SceneTree st:
                     sceneTree = st;
@@ -263,6 +301,7 @@ public class MainWindow : Window
         sceneTree?.Initialize();
         propertiesPanel?.Initialize();
         timeline?.Initialize();
+        ReportStep(7, "Constructing editor UI", "Creating panels and viewports...", 0.65f, "Panels initialized");
 
         if (viewport != null)
         {
@@ -279,6 +318,8 @@ public class MainWindow : Window
                 _contentBrowser.SpawnMenu = _spawnMenu;
         }
 
+        ReportStep(7, "Constructing editor UI", "Creating panels and viewports...", 0.82f, "Spawn tools connected");
+
         if (viewport != null)
         {
             _cameraViewport = new CameraViewport
@@ -294,6 +335,8 @@ public class MainWindow : Window
             _cameraViewport.Init(320, 200);
             viewport.CameraViewport = _cameraViewport;
         }
+
+        ReportStep(7, "Constructing editor UI", "Editor ready.", 1f, "Main window will appear shortly");
     }
 
     protected override void RenderUi()
