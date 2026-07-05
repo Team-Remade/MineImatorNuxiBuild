@@ -264,6 +264,11 @@ public sealed class ProjectManager
         string fullProjectPath = Path.GetFullPath(projectFilePath);
         var state = LoadRecentProjectsState();
 
+        RecentProjectEntry? existingEntry = state.Projects.FirstOrDefault(entry =>
+            string.Equals(Path.GetFullPath(entry.ProjectFilePath), fullProjectPath, StringComparison.OrdinalIgnoreCase));
+
+        string thumbnailPath = ResolveRecentProjectThumbnailPath(fullProjectPath, existingEntry?.ThumbnailPath ?? "");
+
         state.Projects.RemoveAll(entry =>
             string.Equals(Path.GetFullPath(entry.ProjectFilePath), fullProjectPath, StringComparison.OrdinalIgnoreCase));
 
@@ -274,13 +279,30 @@ public sealed class ProjectManager
                 : projectName,
             ProjectFilePath = fullProjectPath,
             LastOpenedUtc = DateTime.UtcNow.ToString("o"),
-            ThumbnailPath = ""
+            ThumbnailPath = thumbnailPath
         });
 
         if (state.Projects.Count > MaxRecentProjects)
             state.Projects = state.Projects.Take(MaxRecentProjects).ToList();
 
         SaveRecentProjectsState(state);
+    }
+
+    private static string ResolveRecentProjectThumbnailPath(string projectFilePath, string existingThumbnailPath)
+    {
+        if (!string.IsNullOrWhiteSpace(existingThumbnailPath))
+        {
+            string fullExistingPath = Path.GetFullPath(existingThumbnailPath);
+            if (File.Exists(fullExistingPath))
+                return fullExistingPath;
+        }
+
+        string projectFolder = Path.GetDirectoryName(projectFilePath) ?? "";
+        if (string.IsNullOrWhiteSpace(projectFolder))
+            return "";
+
+        string fallbackThumbnailPath = Path.Combine(projectFolder, "thumbnail.png");
+        return File.Exists(fallbackThumbnailPath) ? fallbackThumbnailPath : "";
     }
 
     public void UpdateRecentProjectThumbnail(string projectFilePath, string thumbnailPath)
