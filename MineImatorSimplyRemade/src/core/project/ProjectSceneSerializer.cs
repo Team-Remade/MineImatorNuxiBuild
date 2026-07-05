@@ -58,6 +58,7 @@ public static class ProjectSceneSerializer
             SpawnCategory = obj.SpawnCategory,
             BlockVariant = obj.BlockVariant,
             TextureType = obj.TextureType,
+            ResourcePackId = obj.ResourcePackId,
             SourceAssetPath = obj.SourceAssetPath,
             Position = ToProjectVec3(obj.Position),
             Rotation = ToProjectVec3(obj.Rotation),
@@ -187,7 +188,7 @@ public static class ProjectSceneSerializer
             var variant = variants.FirstOrDefault(v => v.VariantKey == entry.BlockVariant)
                           ?? variants.FirstOrDefault();
             if (variant == null) return null;
-            return spawnMenu.SpawnBlockObject(entry.ObjectType, variant);
+            return spawnMenu.SpawnBlockObject(entry.ObjectType, variant, entry.ResourcePackId);
         }
 
         if (entry.SpawnCategory == "Camera")
@@ -202,7 +203,7 @@ public static class ProjectSceneSerializer
         if (entry.SpawnCategory == "Scenery")
         {
             if (!string.IsNullOrWhiteSpace(entry.SourceAssetPath) && File.Exists(entry.SourceAssetPath))
-                return spawnMenu.SpawnSchematicFromPath(entry.SourceAssetPath);
+                return spawnMenu.SpawnSchematicFromPath(entry.SourceAssetPath, entry.ResourcePackId);
             return null;
         }
 
@@ -233,6 +234,7 @@ public static class ProjectSceneSerializer
         obj.SpawnCategory = entry.SpawnCategory;
         obj.BlockVariant = entry.BlockVariant;
         obj.TextureType = entry.TextureType;
+        obj.ResourcePackId = entry.ResourcePackId;
         obj.SourceAssetPath = entry.SourceAssetPath;
 
         obj.SetLocalPosition(ToVec3(entry.Position));

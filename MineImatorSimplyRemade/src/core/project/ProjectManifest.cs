@@ -129,6 +129,7 @@ public class ProjectSceneObjectEntry
     public string SpawnCategory { get; set; } = "";
     public string BlockVariant { get; set; } = "";
     public string TextureType { get; set; } = "item";
+    public string ResourcePackId { get; set; } = "";
     public string SourceAssetPath { get; set; } = "";
 
     public ProjectVec3 Position { get; set; } = new();

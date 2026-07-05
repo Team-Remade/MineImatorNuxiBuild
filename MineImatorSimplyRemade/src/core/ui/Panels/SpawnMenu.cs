@@ -101,6 +101,14 @@ public class SpawnMenu : UiPanel
     private string _blockSearchBuffer = "";
     private string _blockSearchQuery  = "";
 
+    /// <summary>
+    /// Selected resourcepack ID for block/schematic spawning.
+    /// Empty means default (base game textures).
+    /// </summary>
+    private string _spawnResourcePackId = "";
+
+    private readonly List<string> _availableResourcePackIds = new();
+
     // ── Characters category state ──────────────────────────────────────────────
 
     /// <summary>Search filter applied to the characters object list.</summary>
@@ -169,6 +177,7 @@ public class SpawnMenu : UiPanel
         UpdateCustomModelsCategory();
         RefreshBlocksCategory();
         RefreshCharactersCategory();
+        RefreshResourcePackOptions();
     }
 
     // ── Blocks category helpers ───────────────────────────────────────────────
@@ -189,6 +198,50 @@ public class SpawnMenu : UiPanel
             .ToList();
     }
 
+    private void RefreshResourcePackOptions()
+    {
+        _availableResourcePackIds.Clear();
+        _availableResourcePackIds.Add("");
+
+        foreach (string id in MinecraftDataLoader.GetAvailableResourcePackIds())
+            _availableResourcePackIds.Add(id);
+
+        _spawnResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(_spawnResourcePackId);
+        if (!_availableResourcePackIds.Contains(_spawnResourcePackId, StringComparer.OrdinalIgnoreCase))
+            _spawnResourcePackId = "";
+    }
+
+    private void RenderResourcePackSelector(string idSuffix)
+    {
+        ImGui.Text("Resource Pack:");
+        ImGui.SetNextItemWidth(-1);
+
+        int selectedIndex = Math.Max(0, _availableResourcePackIds.FindIndex(id =>
+            string.Equals(id, _spawnResourcePackId, StringComparison.OrdinalIgnoreCase)));
+
+        string selectedLabel = selectedIndex == 0
+            ? "Default"
+            : _availableResourcePackIds[selectedIndex];
+
+        if (ImGui.BeginCombo($"##resourcePack{idSuffix}", selectedLabel))
+        {
+            for (int i = 0; i < _availableResourcePackIds.Count; i++)
+            {
+                string value = _availableResourcePackIds[i];
+                string label = i == 0 ? "Default" : value;
+                bool selected = i == selectedIndex;
+
+                if (ImGui.Selectable(label, selected))
+                    _spawnResourcePackId = value;
+
+                if (selected)
+                    ImGui.SetItemDefaultFocus();
+            }
+
+            ImGui.EndCombo();
+        }
+    }
+
     // ── Public API ───────────────────────────────────────────────────────────
 
     /// <summary>
@@ -205,6 +258,7 @@ public class SpawnMenu : UiPanel
             return;
         }
 
+        RefreshResourcePackOptions();
         _isOpen       = true;
         _nextWindowPos = screenPos;
     }
@@ -331,13 +385,15 @@ public class SpawnMenu : UiPanel
             "Blocks" => _selectedObjectIndex < 0 ||
                         _selectedObjectIndex >= BlockRegistry.Blocks.Count ? "" :
                         $"block:{BlockRegistry.Blocks[_selectedObjectIndex]}:" +
-                        $"{(_selectedVariantIndex >= 0 ? _selectedVariantIndex : 0)}",
+                        $"{(_selectedVariantIndex >= 0 ? _selectedVariantIndex : 0)}:" +
+                        $"rp:{MinecraftDataLoader.NormalizeResourcePackId(_spawnResourcePackId)}",
             "Characters" => _selectedObjectIndex < 0 ||
                             _selectedObjectIndex >= CharacterRegistry.Characters.Count ? "" :
                             $"char:{CharacterRegistry.Characters[_selectedObjectIndex].FilePath}" +
                             $":{_selectedCharTextureIndex}",
             _ => _selectedObjectIndex < 0 ? "" :
-                 $"std:{_selectedCategory}:{GetFilteredObjects().ElementAtOrDefault(_selectedObjectIndex) ?? ""}"
+                  $"std:{_selectedCategory}:{GetFilteredObjects().ElementAtOrDefault(_selectedObjectIndex) ?? ""}:" +
+                  $"rp:{(_selectedCategory == "Scenery" ? MinecraftDataLoader.NormalizeResourcePackId(_spawnResourcePackId) : "")}" 
         };
     }
 
@@ -377,13 +433,13 @@ public class SpawnMenu : UiPanel
                 {
                     ItemsAtlas.Textures.TryGetValue(_selectedTileKey, out tileTexId);
                     ItemsAtlas.TilePixels.TryGetValue(_selectedTileKey, out tilePixels);
-                    tileSize = ItemsAtlas.TileSize;
+                    tileSize = InferTileSizeFromPixels(tilePixels, ItemsAtlas.TileSize);
                 }
                 else
                 {
                     TerrainAtlas.Textures.TryGetValue(_selectedTileKey, out tileTexId);
                     TerrainAtlas.TilePixels.TryGetValue(_selectedTileKey, out tilePixels);
-                    tileSize = TerrainAtlas.TileSize;
+                    tileSize = InferTileSizeFromPixels(tilePixels, TerrainAtlas.TileSize);
                 }
 
                 if (tileTexId == 0 || tilePixels == null) return new List<Mesh>();
@@ -559,13 +615,13 @@ public class SpawnMenu : UiPanel
 
         List<Mesh> built;
         if (!string.IsNullOrEmpty(variant.CemPath))
-            built = CemLoader.Load(Gl, variant.CemPath, BlockRegistry.VersionRoot);
+            built = CemLoader.Load(Gl, variant.CemPath, BlockRegistry.VersionRoot, _spawnResourcePackId);
         else if (resolved != null)
-            built = MinecraftModelMesh.Build(Gl, resolved, variant.RotationX, variant.RotationY);
+            built = MinecraftModelMesh.Build(Gl, resolved, variant.RotationX, variant.RotationY, _spawnResourcePackId);
         else
             built = new List<Mesh>
             {
-                MinecraftModelMesh.BuildTexturedFallbackCube(Gl, null, blockNameHint: "")
+                MinecraftModelMesh.BuildTexturedFallbackCube(Gl, null, blockNameHint: "", resourcePackId: _spawnResourcePackId)
             };
 
         ApplyVariantRotationToCemMeshes(built, variant);
@@ -759,6 +815,14 @@ public class SpawnMenu : UiPanel
             ImGui.BeginChild("##variants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
             ImGui.TextDisabled("Variants");
             ImGui.Separator();
+
+            if (_selectedCategory == "Scenery")
+            {
+                RenderResourcePackSelector("Scenery");
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.Spacing();
+            }
 
             if (_currentVariants.Count > 0)
             {
@@ -1026,6 +1090,11 @@ public class SpawnMenu : UiPanel
         ImGui.BeginChild("##blocksVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
         ImGui.TextDisabled("Variants");
         ImGui.Separator();
+
+        RenderResourcePackSelector("Blocks");
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
 
         if (_currentVariants.Count > 0)
         {
@@ -1466,7 +1535,7 @@ public class SpawnMenu : UiPanel
         if (!result.IsOk || string.IsNullOrEmpty(result.Path)) return;
 
         string pathToSpawn = ResolveSchematicPathForProject(result.Path);
-        var root = SpawnSchematicFromPath(pathToSpawn);
+        var root = SpawnSchematicFromPath(pathToSpawn, _spawnResourcePackId);
         if (root == null)
             Console.Error.WriteLine($"[SpawnMenu] Failed to load schematic: {pathToSpawn}");
         else
@@ -1674,9 +1743,16 @@ public class SpawnMenu : UiPanel
     /// Loads legacy <c>.schematic</c> and Sponge/WorldEdit <c>.schem</c> files and
     /// spawns them as a merged scenery object.
     /// </summary>
-    public SceneObject? SpawnSchematicFromPath(string filePath)
+    public SceneObject? SpawnSchematicFromPath(string filePath, string resourcePackId = "")
     {
         if (Viewport == null || Gl == null) return null;
+
+        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
+        string previousResourcePackId = _spawnResourcePackId;
+        _spawnResourcePackId = normalizedResourcePackId;
+
+        try
+        {
 
         NbtDocument doc;
         try
@@ -1739,6 +1815,7 @@ public class SpawnMenu : UiPanel
             Name = fullName,
             ObjectType = "Schematic",
             SpawnCategory = "Scenery",
+            ResourcePackId = normalizedResourcePackId,
             SourceAssetPath = filePath,
             Position = vec3.Zero,
             PivotOffset = vec3.Zero,
@@ -1848,8 +1925,13 @@ public class SpawnMenu : UiPanel
             return null;
         }
 
-        Viewport.SceneObjects.Add(root);
-        return root;
+            Viewport.SceneObjects.Add(root);
+            return root;
+        }
+        finally
+        {
+            _spawnResourcePackId = previousResourcePackId;
+        }
     }
 
     private sealed class LargeChestPlacement
@@ -2390,7 +2472,9 @@ public class SpawnMenu : UiPanel
 
             string? texKey = BlockRegistry.ResolveTextureKey(resolved, face.Texture);
             if (string.IsNullOrEmpty(texKey)) return null;
-            if (!TerrainAtlas.Textures.TryGetValue(texKey, out uint texId) || texId == 0) return null;
+
+            string resolvedTexKey = ResolveTerrainTextureKeyForPack(texKey, _spawnResourcePackId);
+            if (!TerrainAtlas.Textures.TryGetValue(resolvedTexKey, out uint texId) || texId == 0) return null;
 
             var uv = GetFaceUv(faceName, face.Uv, face.Rotation);
             return new CubeFaceInfo { TextureId = texId, Uv = uv };
@@ -2477,6 +2561,16 @@ public class SpawnMenu : UiPanel
             new vec2(corners[2].u, corners[2].v),
             new vec2(corners[3].u, corners[3].v)
         };
+    }
+
+    private static string ResolveTerrainTextureKeyForPack(string baseTextureKey, string resourcePackId)
+    {
+        string normalizedPackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
+        if (string.IsNullOrWhiteSpace(normalizedPackId))
+            return baseTextureKey;
+
+        string namespaced = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(normalizedPackId, baseTextureKey);
+        return TerrainAtlas.Textures.ContainsKey(namespaced) ? namespaced : baseTextureKey;
     }
 
     private List<MeshTemplate> BuildVariantTemplates(BlockVariantEntry variant)
@@ -3394,7 +3488,7 @@ public class SpawnMenu : UiPanel
         if (variantIndex >= variants.Count) variantIndex = 0;
 
         var variant = variants[variantIndex];
-        SpawnBlockObject(blockName, variant);
+        SpawnBlockObject(blockName, variant, _spawnResourcePackId);
         _isOpen = false;
     }
 
@@ -3513,7 +3607,9 @@ public class SpawnMenu : UiPanel
         };
         obj.AssignObjectId();
 
-        int tileSize = atlasSource == ItemAtlasSource.ItemAtlas ? ItemsAtlas.TileSize : TerrainAtlas.TileSize;
+        int tileSize = InferTileSizeFromPixels(
+            tilePixels,
+            atlasSource == ItemAtlasSource.ItemAtlas ? ItemsAtlas.TileSize : TerrainAtlas.TileSize);
         var mesh = new ExtrudedItemMesh(
             Gl,
             tileTexId,
@@ -3525,6 +3621,16 @@ public class SpawnMenu : UiPanel
         obj.AddMesh(mesh);
         Viewport.SceneObjects.Add(obj);
         return obj;
+    }
+
+    private static int InferTileSizeFromPixels(byte[]? pixels, int fallback)
+    {
+        if (pixels == null || pixels.Length < 4)
+            return fallback;
+
+        int pixelCount = pixels.Length / 4;
+        int side = (int)Math.Sqrt(pixelCount);
+        return side > 0 && side * side == pixelCount ? side : fallback;
     }
 
     // ── Public spawn helpers ─────────────────────────────────────────────────
@@ -3699,9 +3805,11 @@ public class SpawnMenu : UiPanel
     /// For two-block-tall blocks (doors), the top half's meshes are added to the
     /// same object with their vertices offset +1 in Y so the door is a single unit.
     /// </summary>
-    public SceneObject? SpawnBlockObject(string blockName, BlockVariantEntry variant)
+    public SceneObject? SpawnBlockObject(string blockName, BlockVariantEntry variant, string resourcePackId = "")
     {
         if (Viewport == null || Gl == null) return null;
+
+        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
 
         int nextNum     = GetNextAvailableObjectNumber(blockName);
         string fullName = nextNum > 1 ? $"{blockName}{nextNum}" : blockName;
@@ -3713,21 +3821,74 @@ public class SpawnMenu : UiPanel
             SpawnCategory = "Blocks",
             BlockVariant  = variant.VariantKey,
             TextureType   = "block",
+            ResourcePackId = normalizedResourcePackId,
             Position      = GlmSharp.vec3.Zero,
             PivotOffset   = new GlmSharp.vec3(0f, 0.5f, 0f)
         };
         obj.AssignObjectId();
 
         // Bottom/foot part (or full single-block)
-        AddBlockMeshes(obj, variant);
+        AddBlockMeshes(obj, variant, normalizedResourcePackId);
 
         // Second part — bake offset directly into the mesh vertices
         if (variant.TopHalf != null)
             AddBlockMeshes(obj, variant.TopHalf,
+                           normalizedResourcePackId,
                            variant.PartOffsetX, variant.PartOffsetY, variant.PartOffsetZ);
 
         Viewport.SceneObjects.Add(obj);
         return obj;
+    }
+
+    public bool ApplyResourcePackToSpawnedObject(SceneObject target, string resourcePackId)
+    {
+        if (target == null || Viewport == null)
+            return false;
+
+        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
+
+        if (string.Equals(target.SpawnCategory, "Blocks", StringComparison.Ordinal))
+        {
+            var variants = BlockRegistry.GetVariants(target.ObjectType);
+            var variant = variants.FirstOrDefault(v => string.Equals(v.VariantKey, target.BlockVariant, StringComparison.Ordinal))
+                          ?? variants.FirstOrDefault();
+            if (variant == null)
+                return false;
+
+            var temp = SpawnBlockObject(target.ObjectType, variant, normalizedResourcePackId);
+            return temp != null && ReplaceObjectMeshesFromTempSpawn(target, temp, normalizedResourcePackId);
+        }
+
+        if (string.Equals(target.SpawnCategory, "Scenery", StringComparison.Ordinal))
+        {
+            if (string.IsNullOrWhiteSpace(target.SourceAssetPath) || !File.Exists(target.SourceAssetPath))
+                return false;
+
+            var temp = SpawnSchematicFromPath(target.SourceAssetPath, normalizedResourcePackId);
+            return temp != null && ReplaceObjectMeshesFromTempSpawn(target, temp, normalizedResourcePackId);
+        }
+
+        return false;
+    }
+
+    private bool ReplaceObjectMeshesFromTempSpawn(SceneObject target, SceneObject temp, string normalizedResourcePackId)
+    {
+        foreach (Mesh mesh in target.Visuals.ToList())
+        {
+            target.RemoveMesh(mesh);
+            mesh.Dispose();
+        }
+
+        foreach (Mesh mesh in temp.Visuals.ToList())
+        {
+            temp.RemoveMesh(mesh);
+            target.AddMesh(mesh);
+        }
+
+        Viewport?.SceneObjects.Remove(temp);
+        target.ResourcePackId = normalizedResourcePackId;
+        target.ApplyMaterialSettingsToMeshes();
+        return target.Visuals.Count > 0;
     }
 
     /// <summary>
@@ -3735,6 +3896,7 @@ public class SpawnMenu : UiPanel
     /// shifting every vertex by the given block-unit offsets.
     /// </summary>
     private void AddBlockMeshes(SceneObject obj, BlockVariantEntry variant,
+                                string resourcePackId = "",
                                 float offsetX = 0f, float offsetY = 0f, float offsetZ = 0f)
     {
         ResolvedBlockModel? resolved = null;
@@ -3743,12 +3905,12 @@ public class SpawnMenu : UiPanel
 
         List<Mesh> meshes;
         if (!string.IsNullOrEmpty(variant.CemPath))
-            meshes = CemLoader.Load(Gl!, variant.CemPath, BlockRegistry.VersionRoot);
+            meshes = CemLoader.Load(Gl!, variant.CemPath, BlockRegistry.VersionRoot, resourcePackId);
         else if (resolved != null)
-            meshes = MinecraftModelMesh.Build(Gl!, resolved, variant.RotationX, variant.RotationY);
+            meshes = MinecraftModelMesh.Build(Gl!, resolved, variant.RotationX, variant.RotationY, resourcePackId);
         else
             meshes = new List<Mesh> { MinecraftModelMesh.BuildTexturedFallbackCube(Gl!, null,
-                blockNameHint: obj.ObjectType) };
+                blockNameHint: obj.ObjectType, resourcePackId: resourcePackId) };
 
         if (offsetX != 0f || offsetY != 0f || offsetZ != 0f)
         {

@@ -39,7 +39,7 @@ public static class CemLoader
     /// <returns>
     /// List of meshes (one per box), or a single fallback CubeMesh on failure.
     /// </returns>
-    public static List<Mesh> Load(GL gl, string cemPath, string versionRoot)
+    public static List<Mesh> Load(GL gl, string cemPath, string versionRoot, string resourcePackId = "")
     {
         if (!File.Exists(cemPath))
         {
@@ -62,7 +62,7 @@ public static class CemLoader
 
         // ── Resolve texture ───────────────────────────────────────────────────
         string texturePath = root["texture"]?.GetValue<string>() ?? "";
-        uint   texId       = ResolveTexture(texturePath, versionRoot);
+        uint   texId       = ResolveTexture(texturePath, versionRoot, resourcePackId);
 
         int[]  texSize     = JsonNodeToIntArray(root["textureSize"]) ?? new[] { 64, 64 };
         float  texW        = texSize.Length > 0 ? texSize[0] : 64f;
@@ -105,13 +105,21 @@ public static class CemLoader
 
     // ── Texture resolution ────────────────────────────────────────────────────
 
-    private static uint ResolveTexture(string texturePath, string versionRoot)
+    private static uint ResolveTexture(string texturePath, string versionRoot, string resourcePackId)
     {
         if (string.IsNullOrEmpty(texturePath)) return 0;
 
         // JEM texture paths look like "textures/block/classic_chest.png"
         // Try the key in TerrainAtlas first (key = filename without extension)
         string key = Path.GetFileNameWithoutExtension(texturePath);
+        string normalizedPackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
+        if (!string.IsNullOrWhiteSpace(normalizedPackId))
+        {
+            string namespacedKey = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(normalizedPackId, key);
+            if (TerrainAtlas.Textures.TryGetValue(namespacedKey, out uint packAtlasId))
+                return packAtlasId;
+        }
+
         if (TerrainAtlas.Textures.TryGetValue(key, out uint atlasId))
             return atlasId;
 

@@ -403,6 +403,7 @@ public class SceneTree : UiPanel
         dup.SpawnCategory   = original.SpawnCategory;
         dup.BlockVariant    = original.BlockVariant;
         dup.TextureType     = original.TextureType;
+        dup.ResourcePackId  = original.ResourcePackId;
         dup.SourceAssetPath = original.SourceAssetPath;
 
         foreach (var mesh in original.Visuals)

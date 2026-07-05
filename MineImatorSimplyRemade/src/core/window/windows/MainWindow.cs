@@ -199,9 +199,9 @@ public class MainWindow : Window
         base.SetGL(gl);
 
         SelectionManager.Initialize();
+        BlockRegistry.Initialize();
         TerrainAtlas.Initialize(gl);
         ItemsAtlas.Initialize(gl);
-        BlockRegistry.Initialize();
         CharacterRegistry.Initialize();
         MineImatorLoader.Instance.Initialize(gl);
 
@@ -272,6 +272,8 @@ public class MainWindow : Window
                 Viewport = viewport,
                 ProjectManager = _projectManager
             };
+            if (propertiesPanel != null)
+                propertiesPanel.SpawnMenu = _spawnMenu;
             viewport.SpawnMenu = _spawnMenu;
             if (_contentBrowser != null)
                 _contentBrowser.SpawnMenu = _spawnMenu;

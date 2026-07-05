@@ -34,13 +34,14 @@ public static class MinecraftModelMesh
     /// <param name="variantRotX">Blockstate-level X rotation (degrees, 0/90/180/270).</param>
     /// <param name="variantRotY">Blockstate-level Y rotation (degrees, 0/90/180/270).</param>
     public static List<Mesh> Build(GL gl, ResolvedBlockModel model,
-                                   int variantRotX = 0, int variantRotY = 0)
+                                   int variantRotX = 0, int variantRotY = 0,
+                                   string resourcePackId = "")
     {
         if (model.Elements.Count == 0)
         {
             // Model has no geometry elements (e.g. only references a builtin parent).
             // Try to produce a textured cube from whatever textures the model exposes.
-            return new List<Mesh> { BuildTexturedFallbackCube(gl, model, blockNameHint: null) };
+            return new List<Mesh> { BuildTexturedFallbackCube(gl, model, blockNameHint: null, resourcePackId: resourcePackId) };
         }
 
         // Group faces by texture key so each texture gets one draw call
@@ -52,7 +53,7 @@ public static class MinecraftModelMesh
 
         foreach (var element in model.Elements)
         {
-            AppendElement(element, model, groups, variantTransform);
+            AppendElement(element, model, groups, variantTransform, resourcePackId);
         }
 
         var result = new List<Mesh>();
@@ -77,7 +78,7 @@ public static class MinecraftModelMesh
             result.Add(mesh);
         }
 
-        return result.Count > 0 ? result : new List<Mesh> { BuildTexturedFallbackCube(gl, model, blockNameHint: null) };
+        return result.Count > 0 ? result : new List<Mesh> { BuildTexturedFallbackCube(gl, model, blockNameHint: null, resourcePackId: resourcePackId) };
     }
 
     /// <summary>
@@ -88,7 +89,8 @@ public static class MinecraftModelMesh
     /// Falls back to an untextured white cube if nothing is found.
     /// </summary>
     public static Mesh BuildTexturedFallbackCube(GL gl, ResolvedBlockModel? model,
-                                                 string? blockNameHint = null)
+                                                 string? blockNameHint = null,
+                                                 string resourcePackId = "")
     {
         uint texId = 0;
 
@@ -101,10 +103,14 @@ public static class MinecraftModelMesh
                 if (model.Textures.ContainsKey(slot))
                 {
                     string? key = BlockRegistry.ResolveTextureKey(model, "#" + slot);
-                    if (key != null && TerrainAtlas.Textures.TryGetValue(key, out uint t))
+                    if (key != null)
                     {
-                        texId = t;
-                        break;
+                        string resolvedKey = ResolveTextureKeyForPack(key, resourcePackId);
+                        if (TerrainAtlas.Textures.TryGetValue(resolvedKey, out uint t))
+                        {
+                            texId = t;
+                            break;
+                        }
                     }
                 }
             }
@@ -115,10 +121,14 @@ public static class MinecraftModelMesh
                 foreach (var kvp in model.Textures)
                 {
                     string? key = BlockRegistry.ResolveTextureKey(model, "#" + kvp.Key);
-                    if (key != null && TerrainAtlas.Textures.TryGetValue(key, out uint t))
+                    if (key != null)
                     {
-                        texId = t;
-                        break;
+                        string resolvedKey = ResolveTextureKeyForPack(key, resourcePackId);
+                        if (TerrainAtlas.Textures.TryGetValue(resolvedKey, out uint t))
+                        {
+                            texId = t;
+                            break;
+                        }
                     }
                 }
             }
@@ -136,7 +146,9 @@ public static class MinecraftModelMesh
             };
             foreach (string candidate in candidates)
             {
-                if (TerrainAtlas.Textures.TryGetValue(candidate, out uint t))
+                string resolvedCandidate = ResolveTextureKeyForPack(candidate, resourcePackId);
+                if (TerrainAtlas.Textures.TryGetValue(resolvedCandidate, out uint t) ||
+                    TerrainAtlas.Textures.TryGetValue(candidate, out t))
                 {
                     texId = t;
                     break;
@@ -221,13 +233,24 @@ public static class MinecraftModelMesh
         _       => vec3.UnitY
     };
 
+    private static string ResolveTextureKeyForPack(string baseTextureKey, string resourcePackId)
+    {
+        string normalizedPackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
+        if (string.IsNullOrWhiteSpace(normalizedPackId))
+            return baseTextureKey;
+
+        string namespaced = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(normalizedPackId, baseTextureKey);
+        return TerrainAtlas.Textures.ContainsKey(namespaced) ? namespaced : baseTextureKey;
+    }
+
     // ── Element geometry builder ──────────────────────────────────────────────
 
     private static void AppendElement(
         BlockModelElement element,
         ResolvedBlockModel model,
         Dictionary<string, (List<vec3>, List<vec3>, List<vec2>, uint)> groups,
-        mat4 variantTransform)
+        mat4 variantTransform,
+        string resourcePackId)
     {
         float x0 = element.From[0] * Scale - 0.5f;
         float y0 = element.From[1] * Scale - 0.5f;
@@ -250,9 +273,12 @@ public static class MinecraftModelMesh
             string? texKey = BlockRegistry.ResolveTextureKey(model, face.Texture);
             if (texKey == null) continue;
 
-            uint texId = TerrainAtlas.Textures.TryGetValue(texKey, out uint t) ? t : 0;
+            string resolvedTexKey = ResolveTextureKeyForPack(texKey, resourcePackId);
+            uint texId = TerrainAtlas.Textures.TryGetValue(resolvedTexKey, out uint t)
+                ? t
+                : TerrainAtlas.Textures.TryGetValue(texKey, out t) ? t : 0;
 
-            string groupKey = texKey;
+            string groupKey = resolvedTexKey;
             if (!groups.TryGetValue(groupKey, out var group))
             {
                 group = (new List<vec3>(), new List<vec3>(), new List<vec2>(), texId);

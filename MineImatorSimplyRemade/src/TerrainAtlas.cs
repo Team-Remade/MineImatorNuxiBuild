@@ -74,8 +74,15 @@ public static class TerrainAtlas
     {
         if (_gl == null) return;
 
-        string basePath    = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
-        string texturesDir = Path.Combine(basePath, "data", "minecraft", "versions", "1.3.2", "textures");
+        // Reinitialize safely when called multiple times.
+        foreach (uint tex in Textures.Values)
+            _gl.DeleteTexture(tex);
+        Textures.Clear();
+        TilePixels.Clear();
+        AnimatedTextures.Clear();
+
+        string versionRoot = MinecraftDataLoader.GetVersionRoot();
+        string texturesDir = Path.Combine(versionRoot, "textures");
         string blockDir    = Path.Combine(texturesDir, "block");
 
         if (!Directory.Exists(blockDir))
@@ -105,38 +112,13 @@ public static class TerrainAtlas
                 continue;
             }
 
-            byte[] pixels = img.Data;
-
-            uint texId = _gl.GenTexture();
-            _gl.BindTexture(GLEnum.Texture2D, texId);
-
-            fixed (byte* ptr = pixels)
-            {
-                _gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba,
-                               (uint)img.Width, (uint)img.Height, 0,
-                               PixelFormat.Rgba, GLEnum.UnsignedByte, ptr);
-            }
-
-            // Nearest-neighbour (pixel-art) filtering.
-            // Animated textures are vertical spritesheets — use clamp-to-edge so
-            // frame boundaries don't bleed into adjacent frames.
             bool hasAnim = File.Exists(filePath + ".mcmeta");
-            var  wrapMode = hasAnim ? TextureWrapMode.ClampToEdge : TextureWrapMode.Repeat;
-
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS,     (int)wrapMode);
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT,     (int)wrapMode);
-
-            _gl.BindTexture(GLEnum.Texture2D, 0);
-
-            Textures[key]   = texId;
-            TilePixels[key] = pixels;
+            UpsertTexture(key, img.Data, img.Width, img.Height, hasAnim);
 
             // Parse animation metadata if a .mcmeta sidecar exists
             if (hasAnim)
             {
-                var anim = ParseMcMeta(filePath + ".mcmeta", img.Width, img.Height);
+                var anim = ParseMcMetaFromText(File.ReadAllText(filePath + ".mcmeta"), img.Width, img.Height);
                 if (anim != null)
                     AnimatedTextures[key] = anim;
             }
@@ -166,35 +148,144 @@ public static class TerrainAtlas
                     continue;
                 }
 
-                byte[] pixels = img.Data;
-                uint texId = _gl.GenTexture();
-                _gl.BindTexture(GLEnum.Texture2D, texId);
-                fixed (byte* ptr = pixels)
-                {
-                    _gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba,
-                                   (uint)img.Width, (uint)img.Height, 0,
-                                   PixelFormat.Rgba, GLEnum.UnsignedByte, ptr);
-                }
-                _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
-                _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
-                _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS,     (int)TextureWrapMode.Repeat);
-                _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT,     (int)TextureWrapMode.Repeat);
-                _gl.BindTexture(GLEnum.Texture2D, 0);
+                bool hasAnim = File.Exists(filePath + ".mcmeta");
+                UpsertTexture(relative, img.Data, img.Width, img.Height, hasAnim);
 
-                Textures[relative]   = texId;
-                TilePixels[relative] = pixels;
+                if (hasAnim)
+                {
+                    var anim = ParseMcMetaFromText(File.ReadAllText(filePath + ".mcmeta"), img.Width, img.Height);
+                    if (anim != null)
+                        AnimatedTextures[relative] = anim;
+                }
             }
         }
+
+        ApplyResourcePackOverrides();
 
         Console.WriteLine($"[TerrainAtlas] Loaded {Textures.Count} textures " +
                           $"({AnimatedTextures.Count} animated) from {blockDir}");
     }
 
-    private static AnimatedTextureInfo? ParseMcMeta(string metaPath, int imgWidth, int imgHeight)
+    private static void ApplyResourcePackOverrides()
+    {
+        if (_gl == null) return;
+
+        var mcmetaByPath = MinecraftDataLoader
+            .EnumerateResourcePackFiles("assets/minecraft/textures", ".png.mcmeta")
+            .ToDictionary(f => f.RelativePath, f => MinecraftDataLoader.DecodeUtf8(f.Data), StringComparer.OrdinalIgnoreCase);
+
+        // Add block textures using namespaced keys so default keys stay intact.
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/block", ".png"))
+        {
+            string baseKey = Path.GetFileNameWithoutExtension(file.RelativePath);
+            if (string.IsNullOrWhiteSpace(baseKey)) continue;
+
+            string key = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, baseKey);
+
+            ImageResult img;
+            try
+            {
+                img = ImageResult.FromMemory(file.Data, ColorComponents.RedGreenBlueAlpha);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TerrainAtlas] Failed to load resourcepack texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
+                continue;
+            }
+
+            string mcmetaPath = file.RelativePath + ".mcmeta";
+            bool hasAnim = mcmetaByPath.TryGetValue(mcmetaPath, out string? animText);
+
+            UpsertTexture(key, img.Data, img.Width, img.Height, hasAnim);
+
+            if (hasAnim)
+            {
+                var anim = ParseMcMetaFromText(animText!, img.Width, img.Height);
+                if (anim != null)
+                    AnimatedTextures[key] = anim;
+            }
+            else
+            {
+                AnimatedTextures.Remove(key);
+            }
+        }
+
+        // Add entity textures using namespaced keys so default keys stay intact.
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/entity", ".png"))
+        {
+            string baseRelative = file.RelativePath
+                .Replace("assets/minecraft/textures/", "", StringComparison.OrdinalIgnoreCase)
+                .Replace(".png", "", StringComparison.OrdinalIgnoreCase)
+                .Replace('\\', '/');
+
+            if (string.IsNullOrWhiteSpace(baseRelative))
+                continue;
+
+            string relative = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, baseRelative);
+
+            ImageResult img;
+            try
+            {
+                img = ImageResult.FromMemory(file.Data, ColorComponents.RedGreenBlueAlpha);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TerrainAtlas] Failed to load resourcepack entity texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
+                continue;
+            }
+
+            string mcmetaPath = file.RelativePath + ".mcmeta";
+            bool hasAnim = mcmetaByPath.TryGetValue(mcmetaPath, out string? animText);
+
+            UpsertTexture(relative, img.Data, img.Width, img.Height, hasAnim);
+
+            if (hasAnim)
+            {
+                var anim = ParseMcMetaFromText(animText!, img.Width, img.Height);
+                if (anim != null)
+                    AnimatedTextures[relative] = anim;
+            }
+            else
+            {
+                AnimatedTextures.Remove(relative);
+            }
+        }
+    }
+
+    private static unsafe void UpsertTexture(string key, byte[] pixels, int width, int height, bool hasAnim)
+    {
+        if (_gl == null) return;
+
+        if (Textures.TryGetValue(key, out uint oldTexId) && oldTexId != 0)
+            _gl.DeleteTexture(oldTexId);
+
+        uint texId = _gl.GenTexture();
+        _gl.BindTexture(GLEnum.Texture2D, texId);
+
+        fixed (byte* ptr = pixels)
+        {
+            _gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba,
+                           (uint)width, (uint)height, 0,
+                           PixelFormat.Rgba, GLEnum.UnsignedByte, ptr);
+        }
+
+        var wrapMode = hasAnim ? TextureWrapMode.ClampToEdge : TextureWrapMode.Repeat;
+        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS,     (int)wrapMode);
+        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT,     (int)wrapMode);
+
+        _gl.BindTexture(GLEnum.Texture2D, 0);
+
+        Textures[key] = texId;
+        TilePixels[key] = pixels;
+    }
+
+    private static AnimatedTextureInfo? ParseMcMetaFromText(string metaText, int imgWidth, int imgHeight)
     {
         try
         {
-            var root = JsonNode.Parse(File.ReadAllText(metaPath))?.AsObject();
+            var root = JsonNode.Parse(metaText)?.AsObject();
             var anim = root?["animation"] as JsonObject;
             if (anim == null) return null;
 
@@ -234,7 +325,7 @@ public static class TerrainAtlas
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[TerrainAtlas] Failed to parse mcmeta '{metaPath}': {ex.Message}");
+            Console.WriteLine($"[TerrainAtlas] Failed to parse mcmeta: {ex.Message}");
             return null;
         }
     }

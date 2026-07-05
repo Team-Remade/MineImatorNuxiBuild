@@ -49,6 +49,7 @@ public class SceneObject
     public string SpawnCategory = "";
     public string BlockVariant = "";
     public string TextureType = "item";
+    public string ResourcePackId = "";
 
     /// <summary>
     /// Absolute path to the source asset file used to create this object.

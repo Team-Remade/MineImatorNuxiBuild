@@ -38,8 +38,13 @@ public static class ItemsAtlas
     {
         if (_gl == null) return;
 
-        string basePath  = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
-        string atlasPath = Path.Combine(basePath, "data", "minecraft", "versions", "1.3.2", "gui", "items.png");
+        foreach (uint tex in Textures.Values)
+            _gl.DeleteTexture(tex);
+        Textures.Clear();
+        TilePixels.Clear();
+
+        string versionRoot = MinecraftDataLoader.GetVersionRoot();
+        string atlasPath = Path.Combine(versionRoot, "gui", "items.png");
 
         if (!File.Exists(atlasPath))
         {
@@ -60,7 +65,80 @@ public static class ItemsAtlas
             return;
         }
 
-        byte[] src = atlas.Data;
+        SliceGridAtlas(atlas.Data, atlasSize);
+
+        ApplyResourcePackItemsOverrides();
+
+        Console.WriteLine($"[ItemsAtlas] Loaded {Textures.Count} tiles from {atlasPath}");
+    }
+
+    private static void ApplyResourcePackItemsOverrides()
+    {
+        if (_gl == null) return;
+
+        // Legacy/old-style item sheet: add a namespaced 16x16 grid for the pack.
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/gui", "items.png"))
+        {
+            ImageResult atlas;
+            try
+            {
+                atlas = ImageResult.FromMemory(file.Data, ColorComponents.RedGreenBlueAlpha);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ItemsAtlas] Failed to load sheet override '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
+                continue;
+            }
+
+            int atlasSize = AtlasTiles * TileSize;
+            if (atlas.Width != atlasSize || atlas.Height != atlasSize)
+            {
+                Console.WriteLine($"[ItemsAtlas] Ignoring sheet override '{file.RelativePath}' from '{file.PackName}' due to size mismatch.");
+                continue;
+            }
+
+            string packPrefix = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, "");
+            SliceGridAtlas(atlas.Data, atlasSize, packPrefix);
+        }
+
+        // Modern packs expose per-item textures in assets/minecraft/textures/item/*.png.
+        // Add each texture with a namespaced key so defaults remain available.
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/item", ".png"))
+        {
+            ImageResult img;
+            try
+            {
+                img = ImageResult.FromMemory(file.Data, ColorComponents.RedGreenBlueAlpha);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ItemsAtlas] Failed to load item texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
+                continue;
+            }
+
+            if (img.Width != img.Height)
+            {
+                Console.WriteLine($"[ItemsAtlas] Ignoring non-square item texture '{file.RelativePath}' from '{file.PackName}'.");
+                continue;
+            }
+
+            string baseKey = file.RelativePath
+                .Replace("assets/minecraft/textures/item/", "", StringComparison.OrdinalIgnoreCase)
+                .Replace(".png", "", StringComparison.OrdinalIgnoreCase)
+                .Replace('\\', '/');
+
+            if (string.IsNullOrWhiteSpace(baseKey))
+                continue;
+
+            string key = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, baseKey);
+
+            UpsertTileTexture(key, img.Data, img.Width, img.Height);
+        }
+    }
+
+    private static void SliceGridAtlas(byte[] src, int atlasSize, string keyPrefix = "")
+    {
+        if (_gl == null) return;
 
         for (int ty = 0; ty < AtlasTiles; ty++)
         {
@@ -76,29 +154,39 @@ public static class ItemsAtlas
                     System.Buffer.BlockCopy(src, srcIdx, tile, dstIdx, TileSize * 4);
                 }
 
-                uint texId = _gl.GenTexture();
-                _gl.BindTexture(GLEnum.Texture2D, texId);
-
-                fixed (byte* ptr = tile)
-                {
-                    _gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba,
-                                   (uint)TileSize, (uint)TileSize, 0,
-                                   PixelFormat.Rgba, GLEnum.UnsignedByte, ptr);
-                }
-
-                _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
-                _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
-                _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS,     (int)TextureWrapMode.Repeat);
-                _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT,     (int)TextureWrapMode.Repeat);
-
-                _gl.BindTexture(GLEnum.Texture2D, 0);
-
-                string key = $"{tx},{ty}";
-                Textures[key] = texId;
-                TilePixels[key] = tile;
+                string key = string.IsNullOrWhiteSpace(keyPrefix)
+                    ? $"{tx},{ty}"
+                    : $"{keyPrefix}{tx},{ty}";
+                UpsertTileTexture(key, tile, TileSize, TileSize);
             }
         }
+    }
 
-        Console.WriteLine($"[ItemsAtlas] Loaded {Textures.Count} tiles from {atlasPath}");
+    private static unsafe void UpsertTileTexture(string key, byte[] pixels, int width, int height)
+    {
+        if (_gl == null) return;
+
+        if (Textures.TryGetValue(key, out uint oldTexId) && oldTexId != 0)
+            _gl.DeleteTexture(oldTexId);
+
+        uint texId = _gl.GenTexture();
+        _gl.BindTexture(GLEnum.Texture2D, texId);
+
+        fixed (byte* ptr = pixels)
+        {
+            _gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba,
+                           (uint)width, (uint)height, 0,
+                           PixelFormat.Rgba, GLEnum.UnsignedByte, ptr);
+        }
+
+        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS,     (int)TextureWrapMode.Repeat);
+        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT,     (int)TextureWrapMode.Repeat);
+
+        _gl.BindTexture(GLEnum.Texture2D, 0);
+
+        Textures[key] = texId;
+        TilePixels[key] = pixels;
     }
 }

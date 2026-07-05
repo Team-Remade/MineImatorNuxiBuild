@@ -91,6 +91,7 @@ public class PropertiesPanel : UiPanel
     /// <summary>Set from MainWindow after both panels are initialised.</summary>
     public Timeline? Timeline { get; set; }
     public Viewport? Viewport { get; set; }
+    public SpawnMenu? SpawnMenu { get; set; }
 
     /// <summary>
     /// Subscribe to SelectionManager events.  Call once from App.Initialize()
@@ -850,6 +851,60 @@ public class PropertiesPanel : UiPanel
             // Ensure MaterialSettings exists when we need to write
             EnsureMaterialSettings();
             var mat = _currentObject.MaterialSettings;
+
+            bool supportsResourcePack = string.Equals(_currentObject.SpawnCategory, "Blocks", StringComparison.Ordinal) ||
+                                        string.Equals(_currentObject.SpawnCategory, "Scenery", StringComparison.Ordinal);
+
+            if (supportsResourcePack)
+            {
+                string currentPackId = MinecraftDataLoader.NormalizeResourcePackId(_currentObject.ResourcePackId);
+                var packIds = MinecraftDataLoader.GetAvailableResourcePackIds().ToList();
+
+                int selectedIndex = 0;
+                if (!string.IsNullOrWhiteSpace(currentPackId))
+                {
+                    int found = packIds.FindIndex(id => string.Equals(id, currentPackId, StringComparison.OrdinalIgnoreCase));
+                    if (found >= 0)
+                        selectedIndex = found + 1;
+                }
+
+                string selectedLabel = selectedIndex == 0 ? "Default" : packIds[selectedIndex - 1];
+                if (ImGui.BeginCombo("Resource Pack", selectedLabel))
+                {
+                    bool isDefaultSelected = selectedIndex == 0;
+                    if (ImGui.Selectable("Default", isDefaultSelected))
+                    {
+                        if (SpawnMenu != null && SpawnMenu.ApplyResourcePackToSpawnedObject(_currentObject, ""))
+                        {
+                            _currentObject.ResourcePackId = "";
+                            ProjectManager.Instance.SetDirty(true);
+                        }
+                    }
+                    if (isDefaultSelected)
+                        ImGui.SetItemDefaultFocus();
+
+                    for (int i = 0; i < packIds.Count; i++)
+                    {
+                        string id = packIds[i];
+                        bool isSelected = selectedIndex == (i + 1);
+                        if (ImGui.Selectable(id, isSelected))
+                        {
+                            if (SpawnMenu != null && SpawnMenu.ApplyResourcePackToSpawnedObject(_currentObject, id))
+                            {
+                                _currentObject.ResourcePackId = id;
+                                ProjectManager.Instance.SetDirty(true);
+                            }
+                        }
+
+                        if (isSelected)
+                            ImGui.SetItemDefaultFocus();
+                    }
+
+                    ImGui.EndCombo();
+                }
+
+                ImGui.Spacing();
+            }
 
             // Alpha – skip for BoneSceneObject
             if (_currentObject is not BoneSceneObject)
