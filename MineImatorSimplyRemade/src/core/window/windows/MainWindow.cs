@@ -58,6 +58,7 @@ public class MainWindow : Window
     public const string ContentBrowserDockId = "Content Browser";
 
     private bool _dockSpaceInitialized;
+    private bool _dockSpaceRebuildRequested;
     private SpawnMenu? _spawnMenu;
     private CameraViewport? _cameraViewport;
     private ContentBrowser? _contentBrowser;
@@ -171,6 +172,7 @@ public class MainWindow : Window
         _menubar.UndoRequested = PerformUndo;
         _menubar.RedoRequested = PerformRedo;
         _menubar.ImportAssetRequested = ImportAssetFromDialog;
+        _menubar.ResetLayoutRequested = RequestDockSpaceRebuild;
         _menubar.ResetWorkCameraRequested = () => _mainViewport?.Camera.ResetToDefaultPose();
         _menubar.HomeScreenRequested = () => _showProjectHome = true;
         _menubar.RenderRequested = OpenRenderPopup;
@@ -327,10 +329,12 @@ public class MainWindow : Window
         uint dockspaceId = ImGui.GetID("##MainDockSpace");
         ImGui.DockSpace(dockspaceId, Vector2.Zero, ImGuiDockNodeFlags.PassthruCentralNode);
 
-        if (!_dockSpaceInitialized && !File.Exists(ImGuiIniPath))
+        bool shouldSetupDefaultDockspace = _dockSpaceRebuildRequested || (!_dockSpaceInitialized && !File.Exists(ImGuiIniPath));
+        if (shouldSetupDefaultDockspace)
         {
             SetupDefaultDockSpace(dockspaceId, mainViewport.WorkSize);
             _dockSpaceInitialized = true;
+            _dockSpaceRebuildRequested = false;
         }
 
         ImGui.End();
@@ -342,6 +346,11 @@ public class MainWindow : Window
         UpdateUndoRedoTracking();
         RenderProjectHomeScreen();
         RenderToast();
+    }
+
+    private void RequestDockSpaceRebuild()
+    {
+        _dockSpaceRebuildRequested = true;
     }
 
     private void UpdateDirtyStateFromScene()

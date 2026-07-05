@@ -19,6 +19,7 @@ public class Menubar : UiPanel
     public Action? RedoRequested { get; set; }
     public Action? ImportAssetRequested { get; set; }
     public Action? ResetWorkCameraRequested { get; set; }
+    public Action? ResetLayoutRequested { get; set; }
     public Action? HomeScreenRequested { get; set; }
     public Action<RenderRequestKind>? RenderRequested { get; set; }
 
@@ -125,6 +126,10 @@ public class Menubar : UiPanel
 
             if (ImGui.BeginMenu("View"))
             {
+                if (ImGui.MenuItem("Reset Layout"))
+                {
+                    ResetLayoutRequested?.Invoke();
+                }
                 if (ImGui.MenuItem("Reset Work Camera"))
                 {
                     ResetWorkCameraRequested?.Invoke();
