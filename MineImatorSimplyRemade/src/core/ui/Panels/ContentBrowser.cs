@@ -8,6 +8,8 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 public class ContentBrowser : UiPanel
 {
     public SpawnMenu? SpawnMenu { get; set; }
+    public Action? ImportResourcePackRequested { get; set; }
+    public Action? ImportResourcePackFolderRequested { get; set; }
 
     private int _selectedAssetIndex = -1;
     private string _search = "";
@@ -126,6 +128,14 @@ public class ContentBrowser : UiPanel
 
             if (ImGui.MenuItem("Sound"))
                 ImportAsset(ProjectAssetType.Sound, "wav,mp3,ogg,flac,m4a");
+
+            ImGui.Separator();
+
+            if (ImGui.MenuItem("Resource Pack (.zip)"))
+                ImportResourcePackRequested?.Invoke();
+
+            if (ImGui.MenuItem("Resource Pack Folder"))
+                ImportResourcePackFolderRequested?.Invoke();
 
             ImGui.EndPopup();
         }

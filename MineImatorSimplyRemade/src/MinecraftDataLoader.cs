@@ -11,6 +11,7 @@ namespace MineImatorSimplyRemade;
 public static class MinecraftDataLoader
 {
     private const string ResourcePackKeyPrefix = "resourcepack";
+    private static string _projectRoot = "";
 
     public delegate void AssetContainerScanCallback(string rootRelativePath, string containerName, int currentContainer, int totalContainers);
 
@@ -19,6 +20,18 @@ public static class MinecraftDataLoader
         public string PackName { get; init; } = "";
         public string RelativePath { get; init; } = "";
         public byte[] Data { get; init; } = Array.Empty<byte>();
+    }
+
+    public static void SetProjectRoot(string? projectRoot)
+    {
+        if (string.IsNullOrWhiteSpace(projectRoot))
+        {
+            _projectRoot = "";
+            return;
+        }
+
+        string fullPath = Path.GetFullPath(projectRoot);
+        _projectRoot = Directory.Exists(fullPath) ? fullPath : "";
     }
 
     public static string GetBasePath()
@@ -76,17 +89,24 @@ public static class MinecraftDataLoader
         IEnumerable<string> archiveExtensions,
         AssetContainerScanCallback? scanProgress)
     {
-        string root = Path.Combine(GetBasePath(), rootRelativePath);
-        if (!Directory.Exists(root))
+        var allowedExt = new HashSet<string>(archiveExtensions, StringComparer.OrdinalIgnoreCase);
+
+        var containers = new List<string>();
+        foreach (string root in EnumerateContainerRoots(rootRelativePath))
+        {
+            if (!Directory.Exists(root))
+                continue;
+
+            containers.AddRange(
+                Directory
+                    .EnumerateFileSystemEntries(root, "*", SearchOption.TopDirectoryOnly)
+                    .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase));
+        }
+
+        if (containers.Count == 0)
             yield break;
 
-        var allowedExt = new HashSet<string>(archiveExtensions, StringComparer.OrdinalIgnoreCase);
-        var containers = Directory
-            .EnumerateFileSystemEntries(root, "*", SearchOption.TopDirectoryOnly)
-            .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        int totalContainers = containers.Length;
+        int totalContainers = containers.Count;
         int currentContainer = 0;
 
         foreach (string containerPath in containers)
@@ -350,25 +370,47 @@ public static class MinecraftDataLoader
 
     private static void AddContainerIds(SortedSet<string> ids, string rootRelativePath, IEnumerable<string> allowedExtensions)
     {
-        string root = Path.Combine(GetBasePath(), rootRelativePath);
-        if (!Directory.Exists(root))
-            return;
-
         var extSet = new HashSet<string>(allowedExtensions, StringComparer.OrdinalIgnoreCase);
 
-        foreach (string path in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.TopDirectoryOnly))
+        foreach (string root in EnumerateContainerRoots(rootRelativePath))
         {
-            string name = Path.GetFileName(path);
-            if (string.IsNullOrWhiteSpace(name))
+            if (!Directory.Exists(root))
                 continue;
 
-            if (!Directory.Exists(path) && !extSet.Contains(Path.GetExtension(path)))
-                continue;
+            foreach (string path in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.TopDirectoryOnly))
+            {
+                string name = Path.GetFileName(path);
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
 
-            string id = GetResourcePackId(name);
-            if (!string.IsNullOrWhiteSpace(id))
-                ids.Add(id);
+                if (!Directory.Exists(path) && !extSet.Contains(Path.GetExtension(path)))
+                    continue;
+
+                string id = GetResourcePackId(name);
+                if (!string.IsNullOrWhiteSpace(id))
+                    ids.Add(id);
+            }
         }
+    }
+
+    private static IEnumerable<string> EnumerateContainerRoots(string rootRelativePath)
+    {
+        string baseRoot = Path.Combine(GetBasePath(), rootRelativePath);
+        yield return baseRoot;
+
+        if (string.IsNullOrWhiteSpace(_projectRoot))
+            yield break;
+
+        string projectRoot = Path.Combine(_projectRoot, rootRelativePath);
+        if (string.Equals(
+                Path.GetFullPath(projectRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                Path.GetFullPath(baseRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            yield break;
+        }
+
+        yield return projectRoot;
     }
 
     private static string Normalize(string path)

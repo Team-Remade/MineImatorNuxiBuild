@@ -89,7 +89,6 @@ public static class TerrainAtlas
 
         if (!Directory.Exists(blockDir))
         {
-            Console.WriteLine($"[TerrainAtlas] Directory not found: {blockDir}");
             return;
         }
 
@@ -112,7 +111,7 @@ public static class TerrainAtlas
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[TerrainAtlas] Failed to load '{filePath}': {ex.Message}");
+                Console.WriteLine($"Failed to load '{filePath}': {ex.Message}");
                 continue;
             }
 
@@ -154,7 +153,7 @@ public static class TerrainAtlas
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[TerrainAtlas] Failed to load entity texture '{filePath}': {ex.Message}");
+                    Console.WriteLine($"Failed to load entity texture '{filePath}': {ex.Message}");
                     continue;
                 }
 
@@ -174,8 +173,8 @@ public static class TerrainAtlas
 
         ApplyResourcePackOverrides((value, detail) => progress?.Invoke(0.65f + value * 0.35f, detail));
 
-        Console.WriteLine($"[TerrainAtlas] Loaded {Textures.Count} textures " +
-                          $"({AnimatedTextures.Count} animated) from {blockDir}");
+        Console.WriteLine($"Loaded {Textures.Count} textures " +
+                          $"({AnimatedTextures.Count} animated)");
         progress?.Invoke(1f, $"Loaded {Textures.Count} terrain texture(s)");
     }
 
@@ -210,7 +209,7 @@ public static class TerrainAtlas
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[TerrainAtlas] Failed to load resourcepack texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
+                Console.WriteLine($"Failed to load resourcepack texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
                 continue;
             }
 
@@ -257,7 +256,7 @@ public static class TerrainAtlas
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[TerrainAtlas] Failed to load resourcepack entity texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
+                Console.WriteLine($"Failed to load resourcepack entity texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
                 continue;
             }
 
@@ -306,7 +305,7 @@ public static class TerrainAtlas
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[TerrainAtlas] Failed to load namespaced texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
+                Console.WriteLine($"Failed to load namespaced texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
                 continue;
             }
 
@@ -403,7 +402,7 @@ public static class TerrainAtlas
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[TerrainAtlas] Failed to parse mcmeta: {ex.Message}");
+            Console.WriteLine($"Failed to parse mcmeta: {ex.Message}");
             return null;
         }
     }

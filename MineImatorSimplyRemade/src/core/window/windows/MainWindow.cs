@@ -48,6 +48,17 @@ public class MainWindow : Window
         Video
     }
 
+    private enum ResourcePackImportStage
+    {
+        None,
+        CopyPack,
+        ReloadBlocks,
+        ReloadTerrain,
+        ReloadItems,
+        RefreshUi,
+        Complete
+    }
+
     private readonly record struct ResolutionPreset(string Name, int Width, int Height);
 
     public static Random Rnd = new Random();
@@ -107,6 +118,17 @@ public class MainWindow : Window
     private int _renderPreviewWidth;
     private int _renderPreviewHeight;
     private RenderExporter? _renderExporter;
+
+    private bool _openResourcePackImportPopup;
+    private bool _resourcePackImportActive;
+    private bool _resourcePackImportFinished;
+    private ResourcePackImportStage _resourcePackImportStage = ResourcePackImportStage.None;
+    private string _resourcePackImportSourcePath = "";
+    private string _resourcePackImportedPath = "";
+    private string _resourcePackImportStatus = "";
+    private string _resourcePackImportDetail = "";
+    private string _resourcePackImportError = "";
+    private float _resourcePackImportProgress;
 
     private static readonly ResolutionPreset[] RenderResolutionPresets =
     [
@@ -175,6 +197,8 @@ public class MainWindow : Window
         _menubar.UndoRequested = PerformUndo;
         _menubar.RedoRequested = PerformRedo;
         _menubar.ImportAssetRequested = ImportAssetFromDialog;
+        _menubar.ImportResourcePackRequested = ImportResourcePackArchiveFromDialog;
+        _menubar.ImportResourcePackFolderRequested = ImportResourcePackFolderFromDialog;
         _menubar.ResetLayoutRequested = RequestDockSpaceRebuild;
         _menubar.ResetWorkCameraRequested = () => _mainViewport?.Camera.ResetToDefaultPose();
         _menubar.HomeScreenRequested = () => _showProjectHome = true;
@@ -315,7 +339,11 @@ public class MainWindow : Window
                 propertiesPanel.SpawnMenu = _spawnMenu;
             viewport.SpawnMenu = _spawnMenu;
             if (_contentBrowser != null)
+            {
                 _contentBrowser.SpawnMenu = _spawnMenu;
+                _contentBrowser.ImportResourcePackRequested = ImportResourcePackArchiveFromDialog;
+                _contentBrowser.ImportResourcePackFolderRequested = ImportResourcePackFolderFromDialog;
+            }
         }
 
         ReportStep(7, "Constructing editor UI", "Creating panels and viewports...", 0.82f, "Spawn tools connected");
@@ -349,9 +377,11 @@ public class MainWindow : Window
         UpdateDirtyStateFromScene();
         RefreshWindowTitle();
         AdvanceRenderJob();
+        AdvanceResourcePackImportJob();
 
         _menubar.Render();
         RenderProjectDialogs();
+        RenderResourcePackImportPopup();
 
         ImGuiViewportPtr mainViewport = ImGui.GetMainViewport();
         ImGui.SetNextWindowPos(mainViewport.WorkPos);
@@ -918,6 +948,138 @@ public class MainWindow : Window
         ImGui.EndPopup();
     }
 
+    private void AdvanceResourcePackImportJob()
+    {
+        if (!_resourcePackImportActive)
+            return;
+
+        try
+        {
+            switch (_resourcePackImportStage)
+            {
+                case ResourcePackImportStage.CopyPack:
+                    _resourcePackImportStatus = "Copying resource pack into project...";
+                    _resourcePackImportDetail = Path.GetFileName(_resourcePackImportSourcePath);
+                    _resourcePackImportProgress = 0.08f;
+                    _resourcePackImportedPath = _projectManager.ImportResourcePack(_resourcePackImportSourcePath);
+                    _resourcePackImportProgress = 0.20f;
+                    _resourcePackImportStage = ResourcePackImportStage.ReloadBlocks;
+                    break;
+
+                case ResourcePackImportStage.ReloadBlocks:
+                    _resourcePackImportStatus = "Reloading block registry...";
+                    BlockRegistry.Initialize((value, detail) =>
+                    {
+                        _resourcePackImportProgress = 0.20f + value * 0.22f;
+                        _resourcePackImportDetail = detail;
+                    });
+                    _resourcePackImportProgress = 0.42f;
+                    _resourcePackImportStage = ResourcePackImportStage.ReloadTerrain;
+                    break;
+
+                case ResourcePackImportStage.ReloadTerrain:
+                    _resourcePackImportStatus = "Reloading terrain textures...";
+                    TerrainAtlas.Initialize(GL, (value, detail) =>
+                    {
+                        _resourcePackImportProgress = 0.42f + value * 0.28f;
+                        _resourcePackImportDetail = detail;
+                    });
+                    _resourcePackImportProgress = 0.70f;
+                    _resourcePackImportStage = ResourcePackImportStage.ReloadItems;
+                    break;
+
+                case ResourcePackImportStage.ReloadItems:
+                    _resourcePackImportStatus = "Reloading item textures...";
+                    ItemsAtlas.Initialize(GL, (value, detail) =>
+                    {
+                        _resourcePackImportProgress = 0.70f + value * 0.24f;
+                        _resourcePackImportDetail = detail;
+                    });
+                    _resourcePackImportProgress = 0.94f;
+                    _resourcePackImportStage = ResourcePackImportStage.RefreshUi;
+                    break;
+
+                case ResourcePackImportStage.RefreshUi:
+                    _resourcePackImportStatus = "Refreshing spawn menu options...";
+                    _resourcePackImportDetail = "Syncing source selectors";
+                    _spawnMenu?.RefreshExternalAssetOptions();
+                    _resourcePackImportProgress = 1f;
+                    _resourcePackImportStage = ResourcePackImportStage.Complete;
+                    break;
+
+                case ResourcePackImportStage.Complete:
+                    _resourcePackImportActive = false;
+                    _resourcePackImportFinished = true;
+                    _resourcePackImportStatus = "Resource pack imported successfully.";
+                    _resourcePackImportDetail = Path.GetFileName(_resourcePackImportedPath);
+                    _resourcePackImportError = "";
+                    ShowSuccessToast($"Imported resource pack: {Path.GetFileName(_resourcePackImportedPath)}");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _resourcePackImportActive = false;
+            _resourcePackImportFinished = true;
+            _resourcePackImportError = ex.Message;
+            _resourcePackImportStatus = "Resource pack import failed.";
+            _resourcePackImportDetail = ex.Message;
+            ShowErrorToast($"Resource pack import failed: {ex.Message}");
+        }
+    }
+
+    private void RenderResourcePackImportPopup()
+    {
+        if (_openResourcePackImportPopup)
+        {
+            _openResourcePackImportPopup = false;
+            ImGui.OpenPopup("Import Resource Pack");
+        }
+
+        if (_resourcePackImportActive || _resourcePackImportFinished)
+            ImGui.OpenPopup("Import Resource Pack");
+
+        bool popupOpen = true;
+        if (!ImGui.BeginPopupModal("Import Resource Pack", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            return;
+
+        float clampedProgress = Math.Clamp(_resourcePackImportProgress, 0f, 1f);
+        ImGui.Text(_resourcePackImportStatus);
+        ImGui.ProgressBar(clampedProgress, new Vector2(360f, 0f), $"{clampedProgress * 100f:0.0}%");
+
+        if (!string.IsNullOrWhiteSpace(_resourcePackImportDetail))
+        {
+            ImGui.Spacing();
+            ImGui.TextWrapped(_resourcePackImportDetail);
+        }
+
+        ImGui.Spacing();
+        if (_resourcePackImportActive)
+        {
+            ImGui.TextDisabled("Please wait while assets are reloaded...");
+        }
+        else
+        {
+            if (!string.IsNullOrWhiteSpace(_resourcePackImportError))
+                ImGui.TextColored(new Vector4(0.92f, 0.38f, 0.38f, 1f), _resourcePackImportError);
+
+            if (ImGui.Button("Close", new Vector2(120f, 0f)))
+            {
+                _resourcePackImportFinished = false;
+                _resourcePackImportStage = ResourcePackImportStage.None;
+                _resourcePackImportSourcePath = "";
+                _resourcePackImportedPath = "";
+                _resourcePackImportStatus = "";
+                _resourcePackImportDetail = "";
+                _resourcePackImportError = "";
+                _resourcePackImportProgress = 0f;
+                ImGui.CloseCurrentPopup();
+            }
+        }
+
+        ImGui.EndPopup();
+    }
+
     private unsafe void RenderRenderProgressSection()
     {
         float progress = _renderFrameTotal <= 0 ? 0f : Math.Clamp(_renderFrameCurrent / (float)_renderFrameTotal, 0f, 1f);
@@ -1352,6 +1514,59 @@ public class MainWindow : Window
         _projectManager.AddAsset(result.Path, DetectAssetType(result.Path));
     }
 
+    private void ImportResourcePackArchiveFromDialog()
+    {
+        if (!_projectManager.HasProject)
+        {
+            OpenNewProjectPopup();
+            return;
+        }
+
+        var result = Dialog.FileOpen("zip");
+        if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
+            return;
+
+        QueueResourcePackImport(result.Path);
+    }
+
+    private void ImportResourcePackFolderFromDialog()
+    {
+        if (!_projectManager.HasProject)
+        {
+            OpenNewProjectPopup();
+            return;
+        }
+
+        var result = Dialog.FolderPicker();
+        if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
+            return;
+
+        QueueResourcePackImport(result.Path);
+    }
+
+    private void QueueResourcePackImport(string sourcePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePath))
+            return;
+
+        if (_resourcePackImportActive)
+        {
+            ShowErrorToast("A resource pack import is already running.");
+            return;
+        }
+
+        _resourcePackImportSourcePath = sourcePath;
+        _resourcePackImportedPath = "";
+        _resourcePackImportError = "";
+        _resourcePackImportProgress = 0f;
+        _resourcePackImportStatus = "Preparing import...";
+        _resourcePackImportDetail = Path.GetFileName(sourcePath);
+        _resourcePackImportFinished = false;
+        _resourcePackImportActive = true;
+        _resourcePackImportStage = ResourcePackImportStage.CopyPack;
+        _openResourcePackImportPopup = true;
+    }
+
     private static ProjectAssetType DetectAssetType(string path)
     {
         string ext = Path.GetExtension(path).ToLowerInvariant();
@@ -1406,8 +1621,17 @@ public class MainWindow : Window
         if (_mainViewport == null || _spawnMenu == null || !_projectManager.HasProject)
             return;
 
+        ReloadMinecraftDataForCurrentProject();
         ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, _mainViewport, _spawnMenu, _timeline, _propertiesPanel);
         ResetUndoRedoHistory();
+    }
+
+    private void ReloadMinecraftDataForCurrentProject()
+    {
+        BlockRegistry.Initialize();
+        TerrainAtlas.Initialize(GL);
+        ItemsAtlas.Initialize(GL);
+        _spawnMenu?.RefreshExternalAssetOptions();
     }
 
     private ProjectManifest CreateSceneSnapshotManifest()

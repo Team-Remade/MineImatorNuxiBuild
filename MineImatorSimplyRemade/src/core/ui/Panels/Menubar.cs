@@ -18,6 +18,8 @@ public class Menubar : UiPanel
     public Action? UndoRequested { get; set; }
     public Action? RedoRequested { get; set; }
     public Action? ImportAssetRequested { get; set; }
+    public Action? ImportResourcePackRequested { get; set; }
+    public Action? ImportResourcePackFolderRequested { get; set; }
     public Action? ResetWorkCameraRequested { get; set; }
     public Action? ResetLayoutRequested { get; set; }
     public Action? HomeScreenRequested { get; set; }
@@ -54,6 +56,14 @@ public class Menubar : UiPanel
                 if (ImGui.MenuItem("Import Asset"))
                 {
                     ImportAssetRequested?.Invoke();
+                }
+                if (ImGui.MenuItem("Import Resource Pack"))
+                {
+                    ImportResourcePackRequested?.Invoke();
+                }
+                if (ImGui.MenuItem("Import Resource Pack Folder"))
+                {
+                    ImportResourcePackFolderRequested?.Invoke();
                 }
                 if (ImGui.MenuItem("Import from world"))
                 {

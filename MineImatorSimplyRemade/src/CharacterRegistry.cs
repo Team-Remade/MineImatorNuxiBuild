@@ -151,7 +151,7 @@ public static class CharacterRegistry
 
         if (!Directory.Exists(dataPath))
         {
-            Console.WriteLine($"[CharacterRegistry] data/ directory not found at: {dataPath}");
+            Console.WriteLine($"data/ directory not found at: {dataPath}");
             return;
         }
 
@@ -175,7 +175,7 @@ public static class CharacterRegistry
         _characters.Sort((a, b) =>
             string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
 
-        Console.WriteLine($"[CharacterRegistry] Found {_characters.Count} character(s) " +
+        Console.WriteLine($"Found {_characters.Count} character(s) " +
                           $"across all 'characters/' folders.");
         progress?.Invoke(1f, $"Found {_characters.Count} character model(s)");
     }
@@ -257,7 +257,7 @@ public static class CharacterRegistry
                 if (!File.Exists(texPath))
                 {
                     Console.WriteLine(
-                        $"[CharacterRegistry] textures.nux variant '{entry.Name}' " +
+                        $"textures.nux variant '{entry.Name}' " +
                         $"references missing file: {texPath}");
                     continue;
                 }
@@ -273,7 +273,7 @@ public static class CharacterRegistry
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[CharacterRegistry] Failed to parse textures.nux at {manifestPath}: {ex.Message}");
+            Console.WriteLine($"Failed to parse textures.nux at {manifestPath}: {ex.Message}");
             return Array.Empty<CharacterTextureVariant>();
         }
     }

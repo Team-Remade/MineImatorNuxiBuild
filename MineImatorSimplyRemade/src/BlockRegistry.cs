@@ -184,7 +184,6 @@ public static class BlockRegistry
 
         if (!Directory.Exists(versionsDir))
         {
-            Console.WriteLine($"[BlockRegistry] Versions directory not found: {versionsDir}");
             return;
         }
 
@@ -192,13 +191,11 @@ public static class BlockRegistry
         string? versionRoot = FindBestVersionRoot(versionsDir);
         if (versionRoot == null)
         {
-            Console.WriteLine("[BlockRegistry] No valid version found.");
             return;
         }
 
         VersionRoot   = versionRoot;
         LoadedVersion = Path.GetFileName(versionRoot);
-        Console.WriteLine($"[BlockRegistry] Loading version '{LoadedVersion}' from {versionRoot}");
 
         BuildExtraVariants();
         progress?.Invoke(0.08f, $"Using version {LoadedVersion}");
@@ -207,7 +204,6 @@ public static class BlockRegistry
         string blockstatesDir = Path.Combine(versionRoot, "blockstates");
         if (!Directory.Exists(blockstatesDir))
         {
-            Console.WriteLine($"[BlockRegistry] blockstates directory not found: {blockstatesDir}");
             return;
         }
 
@@ -226,7 +222,7 @@ public static class BlockRegistry
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[BlockRegistry] Error parsing blockstate '{blockName}': {ex.Message}");
+                Console.WriteLine($"Error parsing blockstate '{blockName}': {ex.Message}");
             }
 
             progress?.Invoke(0.10f + ((i + 1) / (float)blockstateCount) * 0.60f, $"Blockstate: {blockName}");
@@ -235,7 +231,7 @@ public static class BlockRegistry
         LoadExternalAssets((value, detail) => progress?.Invoke(0.70f + value * 0.30f, detail));
 
         _blocks.AddRange(_variants.Keys.OrderBy(k => k));
-        Console.WriteLine($"[BlockRegistry] Loaded {_blocks.Count} blocks.");
+        Console.WriteLine($"Loaded {_blocks.Count} blocks.");
         progress?.Invoke(1f, $"Loaded {_blocks.Count} block entries");
     }
 
@@ -299,7 +295,7 @@ public static class BlockRegistry
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[BlockRegistry] Error parsing external blockstate '{key}' from '{file.PackName}': {ex.Message}");
+                    Console.WriteLine($"Error parsing external blockstate '{key}' from '{file.PackName}': {ex.Message}");
                 }
 
                 continue;
@@ -788,7 +784,7 @@ public static class BlockRegistry
     {
         if (!visited.Add(modelPath))
         {
-            Console.WriteLine($"[BlockRegistry] Circular parent reference: {modelPath}");
+            Console.WriteLine($"Circular parent reference: {modelPath}");
             return null;
         }
 
@@ -994,7 +990,7 @@ public static class BlockRegistry
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[BlockRegistry] Failed to parse model '{filePath}': {ex.Message}");
+                Console.WriteLine($"Failed to parse model '{filePath}': {ex.Message}");
             }
         }
 

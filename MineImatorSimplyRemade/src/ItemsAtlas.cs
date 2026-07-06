@@ -63,13 +63,13 @@ public static class ItemsAtlas
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ItemsAtlas] Failed to load custom item image '{filePath}': {ex.Message}");
+            Console.WriteLine($"Failed to load custom item image '{filePath}': {ex.Message}");
             return false;
         }
 
         if (img.Width != img.Height)
         {
-            Console.WriteLine($"[ItemsAtlas] Custom item image must be square: {filePath}");
+            Console.WriteLine($"Custom item image must be square: {filePath}");
             return false;
         }
 
@@ -123,7 +123,7 @@ public static class ItemsAtlas
 
         if (!File.Exists(atlasPath))
         {
-            Console.WriteLine($"[ItemsAtlas] File not found: {atlasPath}");
+            Console.WriteLine($"File not found: {atlasPath}");
             return;
         }
 
@@ -136,7 +136,7 @@ public static class ItemsAtlas
         int atlasSize = AtlasTiles * TileSize;
         if (atlas.Width != atlasSize || atlas.Height != atlasSize)
         {
-            Console.WriteLine($"[ItemsAtlas] Size mismatch: expected {atlasSize}×{atlasSize}, got {atlas.Width}×{atlas.Height}");
+            Console.WriteLine($"Size mismatch: expected {atlasSize}×{atlasSize}, got {atlas.Width}×{atlas.Height}");
             return;
         }
 
@@ -147,7 +147,7 @@ public static class ItemsAtlas
         EnsureProjectCustomTexturesLoaded();
         progress?.Invoke(1f, $"Loaded {Textures.Count} item texture(s)");
 
-        Console.WriteLine($"[ItemsAtlas] Loaded {Textures.Count} tiles from {atlasPath}");
+        Console.WriteLine($"Loaded {Textures.Count} tiles");
     }
 
     private static void ApplyResourcePackItemsOverrides(Action<float, string>? progress = null)
@@ -168,14 +168,14 @@ public static class ItemsAtlas
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ItemsAtlas] Failed to load sheet override '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
+                Console.WriteLine($"Failed to load sheet override '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
                 continue;
             }
 
             int atlasSize = AtlasTiles * TileSize;
             if (atlas.Width != atlasSize || atlas.Height != atlasSize)
             {
-                Console.WriteLine($"[ItemsAtlas] Ignoring sheet override '{file.RelativePath}' from '{file.PackName}' due to size mismatch.");
+                Console.WriteLine($"Ignoring sheet override '{file.RelativePath}' from '{file.PackName}' due to size mismatch.");
                 continue;
             }
 
@@ -199,13 +199,13 @@ public static class ItemsAtlas
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ItemsAtlas] Failed to load item texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
+                Console.WriteLine($"Failed to load item texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
                 continue;
             }
 
             if (img.Width != img.Height)
             {
-                Console.WriteLine($"[ItemsAtlas] Ignoring non-square item texture '{file.RelativePath}' from '{file.PackName}'.");
+                Console.WriteLine($"Ignoring non-square item texture '{file.RelativePath}' from '{file.PackName}'.");
                 continue;
             }
 
@@ -246,13 +246,13 @@ public static class ItemsAtlas
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ItemsAtlas] Failed to load namespaced item texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
+                Console.WriteLine($"Failed to load namespaced item texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
                 continue;
             }
 
             if (img.Width != img.Height)
             {
-                Console.WriteLine($"[ItemsAtlas] Ignoring non-square namespaced item texture '{file.RelativePath}' from '{file.PackName}'.");
+                Console.WriteLine($"Ignoring non-square namespaced item texture '{file.RelativePath}' from '{file.PackName}'.");
                 continue;
             }
 

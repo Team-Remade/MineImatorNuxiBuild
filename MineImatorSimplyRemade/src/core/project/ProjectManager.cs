@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using MineImatorSimplyRemade;
 
 namespace MineImatorSimplyRemade.core.project;
 
@@ -43,6 +44,7 @@ public sealed class ProjectManager
     public string ModelsFolder => Path.Combine(ProjectFolder, "models");
     public string SoundsFolder => Path.Combine(ProjectFolder, "sounds");
     public string OtherFolder => Path.Combine(ProjectFolder, "other");
+    public string ResourcePacksFolder => Path.Combine(ProjectFolder, "mods", "resourcepacks");
 
     public void CreateNewProject(string projectName)
     {
@@ -68,6 +70,7 @@ public sealed class ProjectManager
         Directory.CreateDirectory(ModelsFolder);
         Directory.CreateDirectory(SoundsFolder);
         Directory.CreateDirectory(OtherFolder);
+        MinecraftDataLoader.SetProjectRoot(ProjectFolder);
 
         TrackRecentProject(ProjectFilePath, Manifest.ProjectName);
         SaveManifest();
@@ -104,6 +107,7 @@ public sealed class ProjectManager
         Directory.CreateDirectory(ModelsFolder);
         Directory.CreateDirectory(SoundsFolder);
         Directory.CreateDirectory(OtherFolder);
+        MinecraftDataLoader.SetProjectRoot(ProjectFolder);
 
         TrackRecentProject(ProjectFilePath, Manifest.ProjectName);
         SaveManifest();
@@ -148,6 +152,7 @@ public sealed class ProjectManager
         Directory.CreateDirectory(ModelsFolder);
         Directory.CreateDirectory(SoundsFolder);
         Directory.CreateDirectory(OtherFolder);
+        MinecraftDataLoader.SetProjectRoot(ProjectFolder);
 
         TrackRecentProject(ProjectFilePath, Manifest.ProjectName);
         SetDirty(false);
@@ -193,6 +198,7 @@ public sealed class ProjectManager
         ProjectFolder = destinationFolder;
         ProjectFilePath = destinationProjectFile;
         Manifest.ProjectName = safeName;
+        MinecraftDataLoader.SetProjectRoot(ProjectFolder);
 
         TrackRecentProject(ProjectFilePath, Manifest.ProjectName);
         SaveManifest();
@@ -202,6 +208,44 @@ public sealed class ProjectManager
     public void SetDirty(bool isDirty)
     {
         IsDirty = isDirty;
+    }
+
+    public string ImportResourcePack(string sourcePath)
+    {
+        if (!HasProject)
+            throw new InvalidOperationException("No project is currently open.");
+
+        if (string.IsNullOrWhiteSpace(sourcePath))
+            throw new ArgumentException("Resource pack path is empty.", nameof(sourcePath));
+
+        string fullSourcePath = Path.GetFullPath(sourcePath);
+        bool isDirectory = Directory.Exists(fullSourcePath);
+        bool isFile = File.Exists(fullSourcePath);
+
+        if (!isDirectory && !isFile)
+            throw new FileNotFoundException("Resource pack source was not found.", sourcePath);
+
+        Directory.CreateDirectory(ResourcePacksFolder);
+
+        if (isDirectory)
+        {
+            string folderName = MakeSafeName(Path.GetFileName(fullSourcePath));
+            if (string.IsNullOrWhiteSpace(folderName))
+                folderName = "resourcepack";
+
+            string destinationFolder = Path.Combine(ResourcePacksFolder, MakeUniqueFolderName(ResourcePacksFolder, folderName));
+            CopyDirectory(fullSourcePath, destinationFolder);
+            return destinationFolder;
+        }
+
+        string ext = Path.GetExtension(fullSourcePath);
+        if (!string.Equals(ext, ".zip", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Resource pack import currently supports .zip files or unpacked folders.");
+
+        string destinationPath = Path.Combine(ResourcePacksFolder, Path.GetFileName(fullSourcePath));
+        destinationPath = MakeUniqueFilePath(destinationPath);
+        File.Copy(fullSourcePath, destinationPath, overwrite: false);
+        return destinationPath;
     }
 
     public ProjectAssetEntry AddAsset(string sourcePath, ProjectAssetType assetType)
@@ -548,6 +592,26 @@ public sealed class ProjectManager
             candidate = Path.Combine(dir, fileName + "_" + index + ext);
             index++;
         } while (File.Exists(Path.Combine(ProjectFolder, candidate)));
+
+        return candidate;
+    }
+
+    private static string MakeUniqueFilePath(string filePath)
+    {
+        if (!File.Exists(filePath))
+            return filePath;
+
+        string directory = Path.GetDirectoryName(filePath) ?? ".";
+        string fileName = Path.GetFileNameWithoutExtension(filePath);
+        string extension = Path.GetExtension(filePath);
+
+        int index = 1;
+        string candidate;
+        do
+        {
+            candidate = Path.Combine(directory, fileName + "_" + index + extension);
+            index++;
+        } while (File.Exists(candidate));
 
         return candidate;
     }

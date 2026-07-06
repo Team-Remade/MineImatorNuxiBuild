@@ -126,6 +126,7 @@ public class SpawnMenu : UiPanel
     private readonly List<string> _availableResourcePackIds = new();
     private readonly List<string> _availableSceneryResourcePackIds = new();
     private readonly List<string> _availableSourceModIds = new();
+    private readonly List<string> _availableItemSourceIds = new();
 
     // ── Characters category state ──────────────────────────────────────────────
 
@@ -216,6 +217,12 @@ public class SpawnMenu : UiPanel
             .ToList();
     }
 
+    public void RefreshExternalAssetOptions()
+    {
+        RefreshBlocksCategory();
+        RefreshResourcePackOptions();
+    }
+
     private void RefreshResourcePackOptions()
     {
         _availableResourcePackIds.Clear();
@@ -236,6 +243,12 @@ public class SpawnMenu : UiPanel
         foreach (string id in MinecraftDataLoader.GetAvailableJavaModIds())
             _availableSourceModIds.Add(id);
 
+        _availableItemSourceIds.Clear();
+        _availableItemSourceIds.Add("");
+
+        foreach (string id in MinecraftDataLoader.GetAvailableResourcePackIds())
+            _availableItemSourceIds.Add(id);
+
         _spawnResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(_spawnResourcePackId);
         if (!_availableResourcePackIds.Contains(_spawnResourcePackId, StringComparer.OrdinalIgnoreCase))
             _spawnResourcePackId = "";
@@ -245,7 +258,7 @@ public class SpawnMenu : UiPanel
             _spawnBlockSourceId = "";
 
         _spawnItemSourceId = MinecraftDataLoader.NormalizeResourcePackId(_spawnItemSourceId);
-        if (!_availableSourceModIds.Contains(_spawnItemSourceId, StringComparer.OrdinalIgnoreCase))
+        if (!_availableItemSourceIds.Contains(_spawnItemSourceId, StringComparer.OrdinalIgnoreCase))
             _spawnItemSourceId = "";
     }
 
@@ -976,8 +989,8 @@ public class SpawnMenu : UiPanel
         bool itemSourceChanged = RenderResourcePackSelector(
             "ItemsSource",
             ref _spawnItemSourceId,
-            "Source Mod:",
-            _availableSourceModIds);
+            "Source:",
+            _availableItemSourceIds);
         if (itemSourceChanged &&
             !string.IsNullOrWhiteSpace(_selectedTileKey) &&
             !IsTextureKeyFromSelectedSource(_selectedTileKey, _spawnItemSourceId))
