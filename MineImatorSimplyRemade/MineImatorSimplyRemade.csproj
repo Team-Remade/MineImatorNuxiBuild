@@ -12,7 +12,8 @@
         <InformationalVersion>v0.1.0</InformationalVersion>
         <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
         <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
-        <NoWarn>$(NoWarn);IL2104</NoWarn>
+        <!-- Third-party NativeAOT/single-file warnings from Silk.NET and FFMpegCore. -->
+        <NoWarn>$(NoWarn);IL2104;IL3000;IL3002;IL3053</NoWarn>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <PublishAot>true</PublishAot>
     </PropertyGroup>
