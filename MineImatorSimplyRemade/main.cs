@@ -247,6 +247,35 @@ public static class main
             return;
         }
 
+        UpdateStartupWindow(startupWindow, new StartupProgressState
+        {
+            CurrentStep = 1,
+            TotalSteps = 8,
+            Phase = "Installing video encoding tools",
+            Status = "First launch detected. Looking for an existing FFmpeg install.",
+            Detail = "You can choose an existing ffmpeg binary, or cancel to download automatically",
+            Progress = 0.05f
+        });
+
+        string importStatus = "No existing ffmpeg binary selected.";
+        bool importedExistingInstall = FfmpegBootstrap.TryImportExistingInstallOnFirstLaunch(message => importStatus = message);
+
+        if (importedExistingInstall && !FfmpegBootstrap.RequiresFirstTimeDownload())
+        {
+            UpdateStartupWindow(startupWindow, new StartupProgressState
+            {
+                CurrentStep = 1,
+                TotalSteps = 8,
+                Phase = "Bootstrapping startup",
+                Status = "Using existing FFmpeg binaries.",
+                Detail = importStatus,
+                Progress = 0.09f
+            });
+
+            FfmpegBootstrap.EnsureFfmpegInstalled();
+            return;
+        }
+
         string status = "Preparing FFmpeg setup...";
         Exception? downloadError = null;
 
