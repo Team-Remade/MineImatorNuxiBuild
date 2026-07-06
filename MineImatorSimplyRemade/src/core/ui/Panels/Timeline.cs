@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Numerics;
+using System.Text.Json;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.project;
@@ -131,8 +133,11 @@ public class Timeline : UiPanel
 
     public void SetFrameRate(float frameRate)
     {
-        _frameRate = Math.Clamp(frameRate, 1f, 120f);
-        _frameAccumulator = 0.0;
+        float clamped = Math.Clamp(frameRate, 1f, 120f);
+        if (MathF.Abs(clamped - _frameRate) < 0.0001f)
+            return;
+
+        _frameRate = clamped;
     }
 
     public void SetCurrentFrame(int frame)
@@ -253,16 +258,40 @@ public class Timeline : UiPanel
 
     private void UpdatePlayback()
     {
-        long   now   = Stopwatch.GetTimestamp();
-        double delta = (now - _lastTimestamp) / (double)Stopwatch.Frequency;
+        long now = Stopwatch.GetTimestamp();
+        double stopwatchDelta = (now - _lastTimestamp) / (double)Stopwatch.Frequency;
         _lastTimestamp = now;
 
-        if (!_isPlaying) { _frameAccumulator = 0.0; return; }
+        if (!_isPlaying)
+        {
+            _frameAccumulator = 0.0;
+            return;
+        }
 
-        _frameAccumulator += delta * _frameRate;
+        double imguiDelta = ImGui.GetIO().DeltaTime;
+        bool imguiValid = imguiDelta > 0.0 && imguiDelta < 0.5;
+        bool stopwatchValid = stopwatchDelta > 0.0 && stopwatchDelta < 0.5;
+
+        double delta = 0.0;
+        if (imguiValid && stopwatchValid)
+            delta = Math.Max(imguiDelta, stopwatchDelta);
+        else if (imguiValid)
+            delta = imguiDelta;
+        else if (stopwatchValid)
+            delta = stopwatchDelta;
+
+        if (delta <= 0.0)
+            return;
+
+        float playbackFps = float.IsFinite(_frameRate)
+            ? Math.Clamp(_frameRate, 1f, 120f)
+            : 30f;
+
+        _frameAccumulator += delta * playbackFps;
         int advance = (int)_frameAccumulator;
         _frameAccumulator -= advance;
-        if (advance <= 0) return;
+        if (advance <= 0)
+            return;
 
         int prev = _currentFrame;
         _currentFrame += advance;
@@ -272,7 +301,11 @@ public class Timeline : UiPanel
             foreach (var kf in kvp.Value)
                 if (kf.Frame > furthest) furthest = kf.Frame;
 
-        if (_currentFrame > furthest) { _currentFrame = 0; _frameAccumulator = 0.0; }
+        if (_currentFrame > furthest)
+        {
+            _currentFrame = 0;
+            _frameAccumulator = 0.0;
+        }
         if (_currentFrame != prev) ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
     }
 
@@ -1151,23 +1184,97 @@ public class Timeline : UiPanel
         if (prev == null)
         {
             if (holdFirstKeyframeBeforeStart && next != null)
-                return Convert.ToSingle(next.Value);
+                return TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
             return null;
         }
 
         // At or after the last keyframe, or exactly on a keyframe.
         if (next == null || prev.Frame == frame)
-            return Convert.ToSingle(prev.Value);
+            return TryConvertKeyframeValue(prev.Value, out float prevDirect) ? prevDirect : null;
 
         // Between two keyframes — interpolate.
         // "visible" and "instant" use the previous keyframe's value with no blending.
         if (path == "visible" || prev.InterpolationType == "instant")
-            return Convert.ToSingle(prev.Value);
+            return TryConvertKeyframeValue(prev.Value, out float prevInstant) ? prevInstant : null;
+
+        if (!TryConvertKeyframeValue(prev.Value, out float pv) || !TryConvertKeyframeValue(next.Value, out float nv))
+            return null;
 
         float t  = (frame - prev.Frame) / (float)(next.Frame - prev.Frame);
-        float pv = Convert.ToSingle(prev.Value);
-        float nv = Convert.ToSingle(next.Value);
         return pv + (nv - pv) * ApplyInterpolation(t, prev.InterpolationType);
+    }
+
+    private static bool TryConvertKeyframeValue(object? rawValue, out float value)
+    {
+        switch (rawValue)
+        {
+            case null:
+                value = 0f;
+                return true;
+            case float f:
+                value = f;
+                return true;
+            case double d:
+                value = (float)d;
+                return true;
+            case int i:
+                value = i;
+                return true;
+            case long l:
+                value = l;
+                return true;
+            case bool b:
+                value = b ? 1f : 0f;
+                return true;
+            case JsonElement json:
+                return TryConvertFromJsonElement(json, out value);
+            default:
+                if (rawValue is IConvertible conv)
+                {
+                    try
+                    {
+                        value = Convert.ToSingle(conv, CultureInfo.InvariantCulture);
+                        return true;
+                    }
+                    catch
+                    {
+                        // Fall through and report unsupported value.
+                    }
+                }
+
+                value = 0f;
+                return false;
+        }
+    }
+
+    private static bool TryConvertFromJsonElement(JsonElement json, out float value)
+    {
+        switch (json.ValueKind)
+        {
+            case JsonValueKind.Number:
+                if (json.TryGetSingle(out float n))
+                {
+                    value = n;
+                    return true;
+                }
+                break;
+            case JsonValueKind.True:
+                value = 1f;
+                return true;
+            case JsonValueKind.False:
+                value = 0f;
+                return true;
+            case JsonValueKind.String:
+                if (float.TryParse(json.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out float s))
+                {
+                    value = s;
+                    return true;
+                }
+                break;
+        }
+
+        value = 0f;
+        return false;
     }
 
     private static float ApplyInterpolation(float t, string type) => type switch

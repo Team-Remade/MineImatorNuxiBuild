@@ -200,8 +200,6 @@ public class PropertiesPanel : UiPanel
             Z = BackgroundColor[2],
             W = BackgroundColor[3]
         };
-
-        Timeline?.SetFrameRate(_framerate);
     }
 
     private static string NormalizeFloorAtlas(string atlas)
