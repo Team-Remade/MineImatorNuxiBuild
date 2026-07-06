@@ -29,6 +29,8 @@ public static class main
     
     private static unsafe int Main(string[] args)
     {
+        NativeLibraryBootstrap.Initialize();
+
         Glfw = Glfw.GetApi();
         if (!Glfw.Init())
         {
