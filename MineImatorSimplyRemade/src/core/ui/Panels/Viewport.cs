@@ -1875,6 +1875,9 @@ public class Viewport : UiPanel
             // Only this node's own Visuals — not its descendants.
             foreach (Mesh mesh in obj.Visuals)
             {
+                if (mesh.PickOnly)
+                    continue;
+
                 // Overlay meshes (e.g. camera icon) are collected separately so
                 // they can be shown/hidden with the Overlays toggle and are never
                 // fed into the normal depth-sorted scene passes.

@@ -588,6 +588,7 @@ public class CameraViewport : UiPanel
             float dist  = (wp - camPos).LengthSqr;
             foreach (var mesh in obj.Visuals)
             {
+                if (mesh.PickOnly) { continue; }
                 if (mesh.DepthTestDisabled)    { overlays.Add((model, mesh)); continue; }
                 if (mesh.TextureId != 0)       textured.Add((model, mesh, dist));
                 else if (mesh.Alpha < 1.0f)    alphaBlend.Add((model, mesh, dist));

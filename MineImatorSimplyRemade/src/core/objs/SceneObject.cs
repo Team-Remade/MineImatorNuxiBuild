@@ -318,6 +318,12 @@ public class SceneObject
             // Combine AlbedoColor.a with (1 - Transparency) so both routes
             // can control opacity: 0 Transparency = fully opaque.
             mesh.Alpha = _materialSettings.AlbedoColor.w * (1f - _materialSettings.Transparency);
+            mesh.EmissionEnabled = _materialSettings.EmissionEnabled;
+            mesh.EmissionColor = new vec3(
+                _materialSettings.EmissionColor.x,
+                _materialSettings.EmissionColor.y,
+                _materialSettings.EmissionColor.z);
+            mesh.EmissionEnergy = _materialSettings.EmissionEnergy;
         }
     }
 

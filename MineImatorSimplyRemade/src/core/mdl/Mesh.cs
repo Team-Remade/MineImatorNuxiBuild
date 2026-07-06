@@ -106,6 +106,13 @@ public class Mesh : IDisposable
     /// </summary>
     public int SortDepth = 0;
 
+    /// <summary>
+    /// When true, this mesh is excluded from normal scene rendering and is
+    /// intended only for editor helper passes such as colour picking and
+    /// silhouette masking.
+    /// </summary>
+    public bool PickOnly = false;
+
     // ── Material ──────────────────────────────────────────────────────────────
 
     private readonly List<Material> _surfaces = new() { new StandardMaterial() };
@@ -127,6 +134,22 @@ public class Mesh : IDisposable
     /// Combined with the texture alpha (if any) in the fragment shader.
     /// </summary>
     public float Alpha = 1.0f;
+
+    /// <summary>
+    /// When true, adds emissive lighting to the final shaded result.
+    /// </summary>
+    public bool EmissionEnabled = false;
+
+    /// <summary>
+    /// Emissive RGB color added in the fragment shader when
+    /// <see cref="EmissionEnabled"/> is true.
+    /// </summary>
+    public vec3 EmissionColor = vec3.Zero;
+
+    /// <summary>
+    /// Scalar multiplier for <see cref="EmissionColor"/>.
+    /// </summary>
+    public float EmissionEnergy = 1.0f;
 
     // ── Construction ──────────────────────────────────────────────────────────
 
@@ -337,6 +360,17 @@ public class Mesh : IDisposable
     public static readonly List<(vec3 pos, vec3 color, float range, float energy)> PointLights = new();
 
     /// <summary>
+    /// Global ambient light colour for lit meshes.
+    /// Set by project settings UI; defaults to neutral white.
+    /// </summary>
+    public static vec3 GlobalAmbientColor = vec3.Ones;
+
+    /// <summary>
+    /// Global ambient light strength multiplier for lit meshes.
+    /// </summary>
+    public static float GlobalAmbientStrength = 0.35f;
+
+    /// <summary>
     /// Elapsed seconds since the last frame.  Set by the Viewport once per frame
     /// before any meshes are rendered so animated textures advance correctly.
     /// </summary>
@@ -381,6 +415,9 @@ public class Mesh : IDisposable
 
         SetUniformVec3("uAlbedo", Albedo);
         SetUniformFloat("uAlpha", Alpha);
+        SetUniformBool("uEmissionEnabled", EmissionEnabled);
+        SetUniformVec3("uEmissionColor", EmissionColor);
+        SetUniformFloat("uEmissionEnergy", EmissionEnergy);
 
         if (Unlit)
         {
@@ -394,7 +431,12 @@ public class Mesh : IDisposable
             // Light travels from upper-right-front toward origin (world space)
             SetUniformVec3("uLightDir",   new vec3(1f, 1f, 1f).Normalized);
             SetUniformVec3("uLightColor", new vec3(0.85f, 0.85f, 0.85f));
-            SetUniformVec3("uAmbient",    new vec3(0.35f, 0.35f, 0.35f));
+            float ambientStrength = Math.Clamp(GlobalAmbientStrength, 0f, 5f);
+            vec3 ambientColor = new vec3(
+                Math.Clamp(GlobalAmbientColor.x, 0f, 1f),
+                Math.Clamp(GlobalAmbientColor.y, 0f, 1f),
+                Math.Clamp(GlobalAmbientColor.z, 0f, 1f));
+            SetUniformVec3("uAmbient", ambientColor * ambientStrength);
         }
 
         // ── Point lights ──────────────────────────────────────────────────────

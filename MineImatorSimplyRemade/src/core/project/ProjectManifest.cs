@@ -90,6 +90,13 @@ public class ProjectRenderSettings
         Z = 1f,
         W = 1f
     };
+    public ProjectVec3 AmbientLightColor { get; set; } = new()
+    {
+        X = 1f,
+        Y = 1f,
+        Z = 1f
+    };
+    public float AmbientLightStrength { get; set; } = 0.35f;
 }
 
 public class ProjectTimelineState

@@ -26,6 +26,8 @@ public class PropertiesPanel : UiPanel
 
     public bool UseSky;
     public bool UseAdvancedSky;
+    public readonly float[] AmbientLightColor = [1f, 1f, 1f];
+    public float AmbientLightStrength = 0.35f;
 
     private string _projectName = "Untitled Project";
     private int _resolutionWidth = 1920;
@@ -148,8 +150,15 @@ public class PropertiesPanel : UiPanel
         BackgroundColor[2] = bg.Z;
         BackgroundColor[3] = bg.W;
 
+        ProjectVec3 ambient = settings.AmbientLightColor ?? new ProjectVec3 { X = 1f, Y = 1f, Z = 1f };
+        AmbientLightColor[0] = ambient.X;
+        AmbientLightColor[1] = ambient.Y;
+        AmbientLightColor[2] = ambient.Z;
+        AmbientLightStrength = settings.AmbientLightStrength;
+
         ApplyFloorSettingsToViewport();
         ApplyBackgroundSettingsToViewport();
+        ApplyAmbientSettingsToRenderer();
         Timeline?.SetFrameRate(_framerate);
     }
 
@@ -200,6 +209,27 @@ public class PropertiesPanel : UiPanel
             Z = BackgroundColor[2],
             W = BackgroundColor[3]
         };
+        manifest.Settings.AmbientLightColor = new ProjectVec3
+        {
+            X = AmbientLightColor[0],
+            Y = AmbientLightColor[1],
+            Z = AmbientLightColor[2]
+        };
+        manifest.Settings.AmbientLightStrength = AmbientLightStrength;
+    }
+
+    private void ApplyAmbientSettingsToRenderer()
+    {
+        AmbientLightColor[0] = Math.Clamp(AmbientLightColor[0], 0f, 1f);
+        AmbientLightColor[1] = Math.Clamp(AmbientLightColor[1], 0f, 1f);
+        AmbientLightColor[2] = Math.Clamp(AmbientLightColor[2], 0f, 1f);
+        AmbientLightStrength = Math.Clamp(AmbientLightStrength, 0f, 5f);
+
+        Mesh.GlobalAmbientColor = new vec3(
+            AmbientLightColor[0],
+            AmbientLightColor[1],
+            AmbientLightColor[2]);
+        Mesh.GlobalAmbientStrength = AmbientLightStrength;
     }
 
     private static string NormalizeFloorAtlas(string atlas)
@@ -588,6 +618,32 @@ public class PropertiesPanel : UiPanel
                     BackgroundOffset[0] = 0f;
                     BackgroundOffset[1] = 0f;
                     backgroundChanged = true;
+                }
+
+                ImGui.Spacing();
+                ImGui.Text("Ambient Light:");
+                bool ambientChanged = false;
+                ImGui.SetNextItemWidth(-1);
+                fixed (byte* ambientLabel = "##AmbientLightColor"u8)
+                fixed (float* ambientColorPtr = AmbientLightColor)
+                {
+                    if (ImGui.ColorEdit3(ambientLabel, ambientColorPtr, ImGuiColorEditFlags.None))
+                        ambientChanged = true;
+                }
+
+                float ambientStrength = AmbientLightStrength;
+                ImGui.SetNextItemWidth(120f);
+                if (ImGui.DragFloat("Ambient Strength", ref ambientStrength, 0.01f, 0f, 5f))
+                {
+                    AmbientLightStrength = ambientStrength;
+                    ambientChanged = true;
+                }
+
+                if (ambientChanged)
+                {
+                    ApplyAmbientSettingsToRenderer();
+                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                    ProjectManager.Instance.SetDirty(true);
                 }
 
                 var imageAssets = GetBackgroundImageAssets();

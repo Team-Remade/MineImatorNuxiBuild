@@ -6,6 +6,9 @@ in vec2 vTexCoord;
 
 uniform vec3  uAlbedo;
 uniform float uAlpha;
+uniform bool  uEmissionEnabled;
+uniform vec3  uEmissionColor;
+uniform float uEmissionEnergy;
 uniform vec3  uLightDir;
 uniform vec3  uLightColor;
 uniform vec3  uAmbient;
@@ -70,5 +73,8 @@ void main() {
     if (alpha < 0.01) discard;
 
     vec3 result = (uAmbient + diffuse + pointLightSum) * baseColor;
+    if (uEmissionEnabled) {
+        result += uEmissionColor * max(uEmissionEnergy, 0.0);
+    }
     FragColor   = vec4(result, alpha);
 }

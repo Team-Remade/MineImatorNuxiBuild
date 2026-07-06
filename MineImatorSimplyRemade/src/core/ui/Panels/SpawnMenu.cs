@@ -3964,8 +3964,9 @@ public class SpawnMenu : UiPanel
             // Add an invisible cube for object picking (same approach as lights).
             var pickMesh = new CubeMesh(Gl)
             {
-                Alpha  = 0f,
-                Albedo = vec3.Zero
+                Alpha    = 0f,
+                Albedo   = vec3.Zero,
+                PickOnly = true
             };
             obj.AddMesh(pickMesh);
         }
@@ -4036,8 +4037,9 @@ public class SpawnMenu : UiPanel
         {
             var pickMesh = new CubeMesh(Gl)
             {
-                Alpha  = 0f,       // invisible in normal rendering
-                Albedo = vec3.Zero
+                Alpha    = 0f,       // invisible in normal rendering
+                Albedo   = vec3.Zero,
+                PickOnly = true
             };
             obj.AddMesh(pickMesh);
         }
