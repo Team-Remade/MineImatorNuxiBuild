@@ -3,6 +3,7 @@ using FFMpegCore.Extensions.Downloader;
 using FFMpegCore.Extensions.Downloader.Enums;
 using NativeFileDialogSharp;
 using System.Text.Json;
+using MineImatorSimplyRemade;
 
 namespace MineImatorSimplyRemade.core;
 
@@ -191,7 +192,8 @@ public static class FfmpegBootstrap
                 return new FfmpegBootstrapState();
 
             string json = File.ReadAllText(BootstrapStateFilePath);
-            return JsonSerializer.Deserialize<FfmpegBootstrapState>(json) ?? new FfmpegBootstrapState();
+            return JsonSerializer.Deserialize(json, AppJsonContext.Default.FfmpegBootstrapState)
+                   ?? new FfmpegBootstrapState();
         }
         catch
         {
@@ -204,12 +206,8 @@ public static class FfmpegBootstrap
         try
         {
             Directory.CreateDirectory(main.ApplicationLocalDirectoryPath);
-            var options = new JsonSerializerOptions
-            {
-                WriteIndented = true
-            };
 
-            string json = JsonSerializer.Serialize(state, options);
+            string json = JsonSerializer.Serialize(state, AppJsonContext.Default.FfmpegBootstrapState);
             File.WriteAllText(BootstrapStateFilePath, json);
         }
         catch
@@ -218,7 +216,7 @@ public static class FfmpegBootstrap
         }
     }
 
-    private sealed class FfmpegBootstrapState
+    public sealed class FfmpegBootstrapState
     {
         public bool FirstLaunchBinaryPromptShown { get; set; }
     }
