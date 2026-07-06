@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -85,6 +86,7 @@ public class MainWindow : Window
     private readonly Dictionary<string, uint> _thumbnailTextures = new(StringComparer.OrdinalIgnoreCase);
 
     private bool _openProjectDialogPopup;
+    private bool _openAboutPopup;
     private bool _openRenderPopup;
     private bool _showProjectHome = true;
     private string _newProjectNameBuffer = "Untitled Project";
@@ -158,6 +160,7 @@ public class MainWindow : Window
     private bool _pendingSavePrimed;
 
     private readonly string _appTitle;
+    private readonly string _aboutVersion;
     private string _lastAppliedWindowTitle = "";
     private string _savedSceneFingerprint = "";
     private double _nextDirtyCheckAtSeconds;
@@ -202,7 +205,12 @@ public class MainWindow : Window
         _menubar.ResetLayoutRequested = RequestDockSpaceRebuild;
         _menubar.ResetWorkCameraRequested = () => _mainViewport?.Camera.ResetToDefaultPose();
         _menubar.HomeScreenRequested = () => _showProjectHome = true;
+        _menubar.AboutRequested = OpenAboutPopup;
+        _menubar.ReportBugsRequested = OpenIssuesLink;
+        _menubar.VisitForumsRequested = OpenForumsLink;
+        _menubar.SupportUsRequested = OpenDonateLink;
         _menubar.RenderRequested = OpenRenderPopup;
+        _aboutVersion = ResolveAppVersion();
 
         ImageResult icon;
         int rng = Rnd.Next(1, 1000);
@@ -713,6 +721,12 @@ public class MainWindow : Window
             ImGui.OpenPopup(GetProjectDialogTitle());
         }
 
+        if (_openAboutPopup)
+        {
+            _openAboutPopup = false;
+            ImGui.OpenPopup("About Mine Imator Nuxi Build");
+        }
+
         bool popupOpen = true;
         string popupTitle = GetProjectDialogTitle();
         if (ImGui.BeginPopupModal(popupTitle, ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
@@ -736,7 +750,139 @@ public class MainWindow : Window
             ImGui.EndPopup();
         }
 
+        RenderAboutPopup();
+
         RenderRenderPopup();
+    }
+
+    private void OpenAboutPopup()
+    {
+        _openAboutPopup = true;
+    }
+
+    private static string ResolveAppVersion()
+    {
+        Assembly assembly = Assembly.GetExecutingAssembly();
+        string? informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational))
+            return informational!;
+
+        string? fileVersion = assembly.GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
+        if (!string.IsNullOrWhiteSpace(fileVersion))
+            return fileVersion!;
+
+        return assembly.GetName().Version?.ToString() ?? "Unknown";
+    }
+
+    private void RenderAboutPopup()
+    {
+        bool popupOpen = true;
+        if (!ImGui.BeginPopupModal("About Mine Imator Nuxi Build", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            return;
+
+        ImGui.Text("Mine Imator Nuxi Build");
+        ImGui.TextDisabled($"Version {_aboutVersion}");
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        ImGui.Text("Credits");
+
+        if (ImGui.BeginChild("##aboutCredits", new Vector2(720f, 300f), ImGuiChildFlags.Borders))
+        {
+            ImGui.TextWrapped("Mine Imator: David Andrei");
+            ImGui.TextWrapped("Mine Imator Development: David, Nimi, Marvin, Mbanders");
+            ImGui.Spacing();
+            ImGui.TextWrapped("Mine Imator Beta Testing: 9redwoods, AnxiousCynic, Hozq, Jossamations, Rollo, SoundsDotZip, UpgradedMoon, _Mine_, Randi(11x)Stress, Alpha Toostrr, Cade [CaZaKoJa], Jnick, KeepOnChucking, SKIBBZ, Swooplezz, Vash, Nirwandra, Azaron");
+            ImGui.Spacing();
+            ImGui.TextWrapped("Mine Imator Branding: Voxy");
+            ImGui.Spacing();
+            ImGui.TextWrapped("Nuxi Project Management: frosty boi, AshFX");
+            ImGui.TextWrapped("Nuxi Development: frosty boi, Zandar");
+            ImGui.TextWrapped("Nuxi Beta Testing: AshFX, Pikan, Evelyn");
+        }
+        ImGui.EndChild();
+
+        ImGui.Spacing();
+        if (ImGui.Button("Donate (Ko-fi)", new Vector2(150f, 0f)))
+            OpenDonateLink();
+
+        ImGui.SameLine();
+        if (ImGui.Button("Join Discord", new Vector2(150f, 0f)))
+            OpenDiscordLink();
+
+        ImGui.SameLine();
+        if (ImGui.Button("Close", new Vector2(120f, 0f)))
+            ImGui.CloseCurrentPopup();
+
+        ImGui.EndPopup();
+    }
+
+    private static void OpenDonateLink()
+    {
+        const string donateUrl = "https://ko-fi.com/forestw";
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = donateUrl,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // Ignore browser launch failures and keep the editor responsive.
+        }
+    }
+
+    private static void OpenDiscordLink()
+    {
+        const string discordInviteUrl = "https://discord.gg/eswvppFuAD";
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = discordInviteUrl,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // Ignore browser launch failures and keep the editor responsive.
+        }
+    }
+
+    private static void OpenForumsLink()
+    {
+        const string forumsUrl = "https://www.mineimatorforums.com/";
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = forumsUrl,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // Ignore browser launch failures and keep the editor responsive.
+        }
+    }
+
+    private static void OpenIssuesLink()
+    {
+        const string issuesUrl = "https://github.com/Team-Remade/MineImatorNuxiBuild/issues";
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = issuesUrl,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // Ignore browser launch failures and keep the editor responsive.
+        }
     }
 
     private void OpenRenderPopup(Menubar.RenderRequestKind kind)

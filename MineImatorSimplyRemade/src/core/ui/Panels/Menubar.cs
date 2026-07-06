@@ -23,6 +23,10 @@ public class Menubar : UiPanel
     public Action? ResetWorkCameraRequested { get; set; }
     public Action? ResetLayoutRequested { get; set; }
     public Action? HomeScreenRequested { get; set; }
+    public Action? AboutRequested { get; set; }
+    public Action? ReportBugsRequested { get; set; }
+    public Action? VisitForumsRequested { get; set; }
+    public Action? SupportUsRequested { get; set; }
     public Action<RenderRequestKind>? RenderRequested { get; set; }
 
     public override void Render()
@@ -170,6 +174,7 @@ public class Menubar : UiPanel
             {
                 if (ImGui.MenuItem("About"))
                 {
+                    AboutRequested?.Invoke();
                 }
                 if (ImGui.MenuItem("Tutorials"))
                 {
@@ -177,13 +182,16 @@ public class Menubar : UiPanel
                 ImGui.Separator();
                 if (ImGui.MenuItem("Report Bugs"))
                 {
+                    ReportBugsRequested?.Invoke();
                 }
                 if (ImGui.MenuItem("Visit the Forums"))
                 {
+                    VisitForumsRequested?.Invoke();
                 }
                 ImGui.Separator();
                 if (ImGui.MenuItem("Support Us"))
                 {
+                    SupportUsRequested?.Invoke();
                 }
                 ImGui.EndMenu();
             }
