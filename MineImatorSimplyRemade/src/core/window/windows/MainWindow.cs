@@ -67,7 +67,7 @@ public class MainWindow : Window
     public static Random Rnd = new Random();
 
     private static readonly string ImGuiIniPath = "imgui.ini";
-    private static readonly string SplashTextPath = Path.Combine(AppContext.BaseDirectory, "data", "splash.txt");
+    private static readonly string SplashTextPath = Path.Combine(AppContext.BaseDirectory, "data/splashes", "splash.txt");
 
     public const string ViewportDockId = "Viewport";
     public const string SceneTreeDockId = "Scene Tree";
