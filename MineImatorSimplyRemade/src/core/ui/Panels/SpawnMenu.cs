@@ -124,6 +124,8 @@ public class SpawnMenu : UiPanel
     private string _spawnItemSourceId = "";
 
     private readonly List<string> _availableResourcePackIds = new();
+    private readonly List<string> _availableSceneryResourcePackIds = new();
+    private readonly List<string> _availableSourceModIds = new();
 
     // ── Characters category state ──────────────────────────────────────────────
 
@@ -222,31 +224,48 @@ public class SpawnMenu : UiPanel
         foreach (string id in MinecraftDataLoader.GetAvailableResourcePackIds())
             _availableResourcePackIds.Add(id);
 
+        _availableSceneryResourcePackIds.Clear();
+        _availableSceneryResourcePackIds.Add("");
+
+        foreach (string id in MinecraftDataLoader.GetAvailableStandaloneResourcePackIds())
+            _availableSceneryResourcePackIds.Add(id);
+
+        _availableSourceModIds.Clear();
+        _availableSourceModIds.Add("");
+
+        foreach (string id in MinecraftDataLoader.GetAvailableJavaModIds())
+            _availableSourceModIds.Add(id);
+
         _spawnResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(_spawnResourcePackId);
         if (!_availableResourcePackIds.Contains(_spawnResourcePackId, StringComparer.OrdinalIgnoreCase))
             _spawnResourcePackId = "";
 
         _spawnBlockSourceId = MinecraftDataLoader.NormalizeResourcePackId(_spawnBlockSourceId);
-        if (!_availableResourcePackIds.Contains(_spawnBlockSourceId, StringComparer.OrdinalIgnoreCase))
+        if (!_availableSourceModIds.Contains(_spawnBlockSourceId, StringComparer.OrdinalIgnoreCase))
             _spawnBlockSourceId = "";
 
         _spawnItemSourceId = MinecraftDataLoader.NormalizeResourcePackId(_spawnItemSourceId);
-        if (!_availableResourcePackIds.Contains(_spawnItemSourceId, StringComparer.OrdinalIgnoreCase))
+        if (!_availableSourceModIds.Contains(_spawnItemSourceId, StringComparer.OrdinalIgnoreCase))
             _spawnItemSourceId = "";
     }
 
-    private bool RenderResourcePackSelector(string idSuffix, ref string selectedSourceId, string label = "Resource Pack:")
+    private bool RenderResourcePackSelector(
+        string idSuffix,
+        ref string selectedSourceId,
+        string label = "Resource Pack:",
+        IReadOnlyList<string>? availableIds = null)
     {
         ImGui.Text(label);
         ImGui.SetNextItemWidth(-1);
 
         bool changed = false;
         string normalizedSelected = MinecraftDataLoader.NormalizeResourcePackId(selectedSourceId);
+        var options = availableIds ?? _availableResourcePackIds;
 
         int selectedIndex = 0;
-        for (int i = 0; i < _availableResourcePackIds.Count; i++)
+        for (int i = 0; i < options.Count; i++)
         {
-            if (!string.Equals(_availableResourcePackIds[i], normalizedSelected, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(options[i], normalizedSelected, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             selectedIndex = i;
@@ -255,13 +274,13 @@ public class SpawnMenu : UiPanel
 
         string selectedLabel = selectedIndex == 0
             ? "Default"
-            : _availableResourcePackIds[selectedIndex];
+            : options[selectedIndex];
 
         if (ImGui.BeginCombo($"##resourcePack{idSuffix}", selectedLabel))
         {
-            for (int i = 0; i < _availableResourcePackIds.Count; i++)
+            for (int i = 0; i < options.Count; i++)
             {
-                string value = _availableResourcePackIds[i];
+                string value = options[i];
                 string optionLabel = i == 0 ? "Default" : value;
                 bool selected = i == selectedIndex;
 
@@ -425,7 +444,7 @@ public class SpawnMenu : UiPanel
                         _selectedObjectIndex >= BlockRegistry.Blocks.Count ? "" :
                         $"block:{BlockRegistry.Blocks[_selectedObjectIndex]}:" +
                         $"{(_selectedVariantIndex >= 0 ? _selectedVariantIndex : 0)}:" +
-                        $"rp:{MinecraftDataLoader.NormalizeResourcePackId(_spawnResourcePackId)}",
+                        $"rp:{GetEffectiveBlockTextureSourceId()}",
             "Characters" => _selectedObjectIndex < 0 ||
                             _selectedObjectIndex >= CharacterRegistry.Characters.Count ? "" :
                             $"char:{CharacterRegistry.Characters[_selectedObjectIndex].FilePath}" +
@@ -648,19 +667,21 @@ public class SpawnMenu : UiPanel
     {
         if (Gl == null) return;
 
+        string textureSourceId = GetEffectiveBlockTextureSourceId();
+
         ResolvedBlockModel? resolved = null;
         if (!string.IsNullOrEmpty(variant.ModelPath))
             resolved = BlockRegistry.ResolveModel(variant.ModelPath);
 
         List<Mesh> built;
         if (!string.IsNullOrEmpty(variant.CemPath))
-            built = CemLoader.Load(Gl, variant.CemPath, BlockRegistry.VersionRoot, _spawnResourcePackId);
+            built = CemLoader.Load(Gl, variant.CemPath, BlockRegistry.VersionRoot, textureSourceId);
         else if (resolved != null)
-            built = MinecraftModelMesh.Build(Gl, resolved, variant.RotationX, variant.RotationY, _spawnResourcePackId);
+            built = MinecraftModelMesh.Build(Gl, resolved, variant.RotationX, variant.RotationY, textureSourceId);
         else
             built = new List<Mesh>
             {
-                MinecraftModelMesh.BuildTexturedFallbackCube(Gl, null, blockNameHint: "", resourcePackId: _spawnResourcePackId)
+                MinecraftModelMesh.BuildTexturedFallbackCube(Gl, null, blockNameHint: "", resourcePackId: textureSourceId)
             };
 
         ApplyVariantRotationToCemMeshes(built, variant);
@@ -857,7 +878,11 @@ public class SpawnMenu : UiPanel
 
             if (_selectedCategory == "Scenery")
             {
-                RenderResourcePackSelector("Scenery", ref _spawnResourcePackId);
+                RenderResourcePackSelector(
+                    "Scenery",
+                    ref _spawnResourcePackId,
+                    "Resource Pack:",
+                    _availableSceneryResourcePackIds);
                 ImGui.Spacing();
                 ImGui.Separator();
                 ImGui.Spacing();
@@ -948,7 +973,11 @@ public class SpawnMenu : UiPanel
 
         ImGui.Spacing();
 
-        bool itemSourceChanged = RenderResourcePackSelector("ItemsSource", ref _spawnItemSourceId, "Source Mod:");
+        bool itemSourceChanged = RenderResourcePackSelector(
+            "ItemsSource",
+            ref _spawnItemSourceId,
+            "Source Mod:",
+            _availableSourceModIds);
         if (itemSourceChanged &&
             !string.IsNullOrWhiteSpace(_selectedTileKey) &&
             !IsTextureKeyFromSelectedSource(_selectedTileKey, _spawnItemSourceId))
@@ -1192,7 +1221,11 @@ public class SpawnMenu : UiPanel
         ImGui.TextDisabled("Blocks");
         ImGui.Separator();
 
-        bool blockSourceChanged = RenderResourcePackSelector("BlocksSource", ref _spawnBlockSourceId, "Source Mod:");
+        bool blockSourceChanged = RenderResourcePackSelector(
+            "BlocksSource",
+            ref _spawnBlockSourceId,
+            "Source Mod:",
+            _availableSourceModIds);
         if (blockSourceChanged && _selectedObjectIndex >= 0 && _selectedObjectIndex < BlockRegistry.Blocks.Count)
         {
             string selectedBlock = BlockRegistry.Blocks[_selectedObjectIndex];
@@ -3666,8 +3699,17 @@ public class SpawnMenu : UiPanel
         if (variantIndex >= variants.Count) variantIndex = 0;
 
         var variant = variants[variantIndex];
-        SpawnBlockObject(blockName, variant, _spawnResourcePackId);
+        SpawnBlockObject(blockName, variant, GetEffectiveBlockTextureSourceId());
         _isOpen = false;
+    }
+
+    private string GetEffectiveBlockTextureSourceId()
+    {
+        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(_spawnResourcePackId);
+        if (!string.IsNullOrWhiteSpace(normalizedResourcePackId))
+            return normalizedResourcePackId;
+
+        return MinecraftDataLoader.NormalizeResourcePackId(_spawnBlockSourceId);
     }
 
     private void TrySpawnCharacter()

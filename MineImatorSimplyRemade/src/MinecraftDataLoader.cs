@@ -330,6 +330,24 @@ public static class MinecraftDataLoader
         return ids.ToList();
     }
 
+    public static IReadOnlyList<string> GetAvailableStandaloneResourcePackIds()
+    {
+        var ids = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AddContainerIds(ids, Path.Combine("mods", "resourcepacks"), new[] { ".zip" });
+
+        return ids.ToList();
+    }
+
+    public static IReadOnlyList<string> GetAvailableJavaModIds()
+    {
+        var ids = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AddContainerIds(ids, Path.Combine("mods", "javamods"), new[] { ".jar", ".zip" });
+
+        return ids.ToList();
+    }
+
     private static void AddContainerIds(SortedSet<string> ids, string rootRelativePath, IEnumerable<string> allowedExtensions)
     {
         string root = Path.Combine(GetBasePath(), rootRelativePath);
