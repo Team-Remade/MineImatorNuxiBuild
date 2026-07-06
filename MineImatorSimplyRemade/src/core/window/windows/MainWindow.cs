@@ -23,6 +23,8 @@ namespace MineImatorSimplyRemade.core.window.windows;
 
 public class MainWindow : Window
 {
+    private readonly record struct SplashTextSegment(string Text, bool Strikethrough);
+
     public static bool IsAnimationRenderExportActive { get; private set; }
 
     private enum ProjectDialogMode
@@ -65,6 +67,7 @@ public class MainWindow : Window
     public static Random Rnd = new Random();
 
     private static readonly string ImGuiIniPath = "imgui.ini";
+    private static readonly string SplashTextPath = Path.Combine(AppContext.BaseDirectory, "data", "splash.txt");
 
     public const string ViewportDockId = "Viewport";
     public const string SceneTreeDockId = "Scene Tree";
@@ -84,6 +87,9 @@ public class MainWindow : Window
     private readonly Menubar _menubar;
     private readonly ProjectManager _projectManager = ProjectManager.Instance;
     private readonly Dictionary<string, uint> _thumbnailTextures = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> _homeSplashPool = new();
+    private readonly List<SplashTextSegment> _homeSplashSegments = new();
+    private string _homeSplashPlainText = "Splash Screen Placeholder";
 
     private bool _openProjectDialogPopup;
     private bool _openAboutPopup;
@@ -196,7 +202,11 @@ public class MainWindow : Window
         _menubar = new Menubar();
         _menubar.NewProjectRequested = OpenNewProjectPopup;
         _menubar.OpenProjectRequested = OpenProjectFromDialog;
-        _menubar.OpenRecentRequested = () => _showProjectHome = true;
+        _menubar.OpenRecentRequested = () =>
+        {
+            PickRandomHomeSplash();
+            _showProjectHome = true;
+        };
         _menubar.SaveProjectRequested = SaveProjectWithScene;
         _menubar.SaveProjectAsRequested = OpenSaveAsPopup;
         _menubar.UndoRequested = PerformUndo;
@@ -207,7 +217,11 @@ public class MainWindow : Window
         _menubar.ImportResourcePackFolderRequested = ImportResourcePackFolderFromDialog;
         _menubar.ResetLayoutRequested = RequestDockSpaceRebuild;
         _menubar.ResetWorkCameraRequested = () => _mainViewport?.Camera.ResetToDefaultPose();
-        _menubar.HomeScreenRequested = () => _showProjectHome = true;
+        _menubar.HomeScreenRequested = () =>
+        {
+            PickRandomHomeSplash();
+            _showProjectHome = true;
+        };
         _menubar.AboutRequested = OpenAboutPopup;
         _menubar.ReportBugsRequested = OpenIssuesLink;
         _menubar.VisitForumsRequested = OpenForumsLink;
@@ -225,6 +239,8 @@ public class MainWindow : Window
             icon = LoadEmbeddedImage(Rnd.Next(0, 1) == 1 ? "icons.tamari" : "icons.prism");
 
         SetWindowIcon(icon);
+        LoadHomeSplashes();
+        PickRandomHomeSplash();
         RefreshWindowTitle();
     }
 
@@ -605,8 +621,14 @@ public class MainWindow : Window
 
         drawList.AddRectFilled(splashMin, splashMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.16f, 0.18f, 0.22f, 1f)), 18f);
         drawList.AddRect(splashMin, splashMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.34f, 0.40f, 0.48f, 1f)), 18f, ImDrawFlags.RoundCornersAll, 2f);
-        drawList.AddText(splashMin + new Vector2(24f, 24f), ImGui.ColorConvertFloat4ToU32(new Vector4(0.92f, 0.95f, 0.98f, 1f)), "Splash Screen Placeholder");
-        drawList.AddText(splashMin + new Vector2(24f, 56f), ImGui.ColorConvertFloat4ToU32(new Vector4(0.70f, 0.75f, 0.82f, 1f)), "Add title artwork here later.");
+        drawList.AddText(
+            splashMin + new Vector2(24f, 24f),
+            ImGui.ColorConvertFloat4ToU32(new Vector4(0.92f, 0.95f, 0.98f, 1f)),
+            "Mine Imator Simply Remade");
+        DrawHomeSplashText(
+            drawList,
+            splashMin + new Vector2(24f, 56f),
+            ImGui.ColorConvertFloat4ToU32(new Vector4(0.70f, 0.75f, 0.82f, 1f)));
 
         ImGui.Dummy(splashSize);
         ImGui.TextDisabled("Splash art credits: (unassigned)");
@@ -795,14 +817,13 @@ public class MainWindow : Window
         {
             ImGui.TextWrapped("Mine Imator: David Andrei");
             ImGui.TextWrapped("Mine Imator Development: David, Nimi, Marvin, Mbanders");
-            ImGui.Spacing();
             ImGui.TextWrapped("Mine Imator Beta Testing: 9redwoods, AnxiousCynic, Hozq, Jossamations, Rollo, SoundsDotZip, UpgradedMoon, _Mine_, Randi(11x)Stress, Alpha Toostrr, Cade [CaZaKoJa], Jnick, KeepOnChucking, SKIBBZ, Swooplezz, Vash, Nirwandra, Azaron");
-            ImGui.Spacing();
             ImGui.TextWrapped("Mine Imator Branding: Voxy");
             ImGui.Spacing();
             ImGui.TextWrapped("Nuxi Project Management: frosty boi, AshFX");
-            ImGui.TextWrapped("Nuxi Development: frosty boi, Zandar");
-            ImGui.TextWrapped("Nuxi Beta Testing: AshFX, Pikan, Evelyn");
+            ImGui.TextWrapped("Nuxi Development: frosty boi, Zandar, & Github Contributors");
+            ImGui.TextWrapped("Nuxi Beta Testing: AshFX, Pikan, Evelyn, Lolin");
+            ImGui.TextWrapped("Nuxi Branding: AshFX");
         }
         ImGui.EndChild();
 
@@ -2198,6 +2219,124 @@ public class MainWindow : Window
         {
             GL.DeleteTextures(1, in texId);
             _thumbnailTextures.Remove(thumbnailPath);
+        }
+    }
+
+    private void LoadHomeSplashes()
+    {
+        _homeSplashPool.Clear();
+
+        try
+        {
+            if (!File.Exists(SplashTextPath))
+                return;
+
+            foreach (string raw in File.ReadAllLines(SplashTextPath))
+            {
+                string line = raw.Trim();
+                if (!string.IsNullOrWhiteSpace(line))
+                    _homeSplashPool.Add(line);
+            }
+        }
+        catch
+        {
+            // Keep fallback splash text if loading fails.
+        }
+    }
+
+    private void PickRandomHomeSplash()
+    {
+        if (_homeSplashPool.Count == 0)
+            LoadHomeSplashes();
+
+        string selected = _homeSplashPool.Count > 0
+            ? _homeSplashPool[Rnd.Next(_homeSplashPool.Count)]
+            : "Splash Screen Placeholder";
+
+        _homeSplashSegments.Clear();
+        _homeSplashSegments.AddRange(ParseSplashSegments(selected));
+
+        var plain = new StringBuilder();
+        foreach (SplashTextSegment segment in _homeSplashSegments)
+            plain.Append(segment.Text);
+
+        _homeSplashPlainText = plain.Length > 0 ? plain.ToString() : "Splash Screen Placeholder";
+    }
+
+    private static List<SplashTextSegment> ParseSplashSegments(string source)
+    {
+        var result = new List<SplashTextSegment>();
+        if (string.IsNullOrEmpty(source))
+        {
+            result.Add(new SplashTextSegment("", false));
+            return result;
+        }
+
+        var buffer = new StringBuilder();
+        bool strike = false;
+
+        void Flush()
+        {
+            if (buffer.Length == 0)
+                return;
+
+            result.Add(new SplashTextSegment(buffer.ToString(), strike));
+            buffer.Clear();
+        }
+
+        for (int i = 0; i < source.Length; i++)
+        {
+            if (source[i] == '~')
+            {
+                int runLength = 1;
+                while (i + runLength < source.Length && source[i + runLength] == '~')
+                    runLength++;
+
+                Flush();
+                strike = !strike;
+                i += runLength - 1;
+                continue;
+            }
+
+            buffer.Append(source[i]);
+        }
+
+        Flush();
+
+        if (result.Count == 0)
+            result.Add(new SplashTextSegment(source, false));
+
+        return result;
+    }
+
+    private void DrawHomeSplashText(ImDrawListPtr drawList, Vector2 start, uint textColor)
+    {
+        if (_homeSplashSegments.Count == 0)
+        {
+            drawList.AddText(start, textColor, _homeSplashPlainText);
+            return;
+        }
+
+        Vector2 cursor = start;
+        foreach (SplashTextSegment segment in _homeSplashSegments)
+        {
+            if (string.IsNullOrEmpty(segment.Text))
+                continue;
+
+            drawList.AddText(cursor, textColor, segment.Text);
+
+            Vector2 size = ImGui.CalcTextSize(segment.Text);
+            if (segment.Strikethrough)
+            {
+                float y = cursor.Y + size.Y * 0.52f;
+                drawList.AddLine(
+                    new Vector2(cursor.X, y),
+                    new Vector2(cursor.X + size.X, y),
+                    textColor,
+                    1.6f);
+            }
+
+            cursor.X += size.X;
         }
     }
 
