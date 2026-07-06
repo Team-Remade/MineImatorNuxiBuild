@@ -17,6 +17,7 @@ public class Menubar : UiPanel
     public Action? SaveProjectAsRequested { get; set; }
     public Action? UndoRequested { get; set; }
     public Action? RedoRequested { get; set; }
+    public Action? DuplicateRequested { get; set; }
     public Action? ImportAssetRequested { get; set; }
     public Action? ImportResourcePackRequested { get; set; }
     public Action? ImportResourcePackFolderRequested { get; set; }
@@ -106,6 +107,7 @@ public class Menubar : UiPanel
                 ImGui.Separator();
                 if (ImGui.MenuItem("Duplicate"))
                 {
+                    DuplicateRequested?.Invoke();
                 }
                 if (ImGui.MenuItem("Delete"))
                 {

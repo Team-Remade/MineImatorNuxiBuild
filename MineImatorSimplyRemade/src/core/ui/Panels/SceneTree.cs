@@ -170,6 +170,45 @@ public class SceneTree : UiPanel
     /// <summary>No-op — tree is rebuilt every frame.</summary>
     public void RefreshObject(SceneObject obj) { }
 
+    /// <summary>Duplicates every selected object using the same logic as the context menu.</summary>
+    public void DuplicateSelectedObjects()
+    {
+        var selectedObjects = SelectionManager.Instance?.SelectedObjects.ToList()
+            ?? (_selectedObject != null ? new List<SceneObject> { _selectedObject } : new List<SceneObject>());
+
+        if (selectedObjects.Count == 0)
+            return;
+
+        var duplicateRoots = selectedObjects
+            .Where(original => !selectedObjects.Any(other => other != original && original.IsDescendantOf(other)))
+            .ToList();
+
+        if (duplicateRoots.Count == 0)
+            return;
+
+        var duplicates = new List<SceneObject>(duplicateRoots.Count);
+        foreach (var original in duplicateRoots)
+        {
+            var duplicate = DuplicateObject(original, selectDuplicate: false);
+            if (duplicate != null)
+                duplicates.Add(duplicate);
+        }
+
+        if (duplicates.Count == 0)
+            return;
+
+        if (SelectionManager.Instance != null)
+        {
+            SelectionManager.Instance.ClearSelection();
+            foreach (var duplicate in duplicates)
+                SelectionManager.Instance.SelectObject(duplicate);
+        }
+        else
+        {
+            SelectObject(duplicates[0]);
+        }
+    }
+
     // ── Rendering helpers ───────────────────────────────────────────────────
 
     private void RenderNode(SceneObject obj)
@@ -316,10 +355,10 @@ public class SceneTree : UiPanel
 
     // ── Duplicate ───────────────────────────────────────────────────────────
 
-    private void DuplicateObject(SceneObject original)
+    private SceneObject DuplicateObject(SceneObject original, bool selectDuplicate = true)
     {
         var duplicate = CreateSceneObjectDuplicate(original);
-        if (duplicate == null) return;
+        if (duplicate == null) return null;
 
         DuplicateChildrenRecursive(original, duplicate);
 
@@ -328,15 +367,20 @@ public class SceneTree : UiPanel
         else
             Viewport?.SceneObjects.Add(duplicate);
 
-        if (SelectionManager.Instance != null)
+        if (selectDuplicate)
         {
-            SelectionManager.Instance.ClearSelection();
-            SelectionManager.Instance.SelectObject(duplicate);
+            if (SelectionManager.Instance != null)
+            {
+                SelectionManager.Instance.ClearSelection();
+                SelectionManager.Instance.SelectObject(duplicate);
+            }
+            else
+            {
+                SelectObject(duplicate);
+            }
         }
-        else
-        {
-            SelectObject(duplicate);
-        }
+
+        return duplicate;
     }
 
     private void DuplicateChildrenRecursive(SceneObject original, SceneObject duplicateParent)

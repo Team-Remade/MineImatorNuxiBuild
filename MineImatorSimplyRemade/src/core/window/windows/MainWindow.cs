@@ -159,6 +159,8 @@ public class MainWindow : Window
     private PendingSaveAction _pendingSaveAction;
     private bool _pendingSavePrimed;
 
+    private SceneTree? _sceneTree;
+
     private readonly string _appTitle;
     private readonly string _aboutVersion;
     private string _lastAppliedWindowTitle = "";
@@ -199,6 +201,7 @@ public class MainWindow : Window
         _menubar.SaveProjectAsRequested = OpenSaveAsPopup;
         _menubar.UndoRequested = PerformUndo;
         _menubar.RedoRequested = PerformRedo;
+        _menubar.DuplicateRequested = () => _sceneTree?.DuplicateSelectedObjects();
         _menubar.ImportAssetRequested = ImportAssetFromDialog;
         _menubar.ImportResourcePackRequested = ImportResourcePackArchiveFromDialog;
         _menubar.ImportResourcePackFolderRequested = ImportResourcePackFolderFromDialog;
@@ -293,6 +296,7 @@ public class MainWindow : Window
                     break;
                 case SceneTree st:
                     sceneTree = st;
+                    _sceneTree = st;
                     break;
                 case PropertiesPanel pp:
                     propertiesPanel = pp;
