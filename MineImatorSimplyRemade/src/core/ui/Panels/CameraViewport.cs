@@ -25,6 +25,12 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 /// </summary>
 public class CameraViewport : UiPanel
 {
+    private enum SceneRenderMode
+    {
+        Unrendered,
+        Rendered
+    }
+
     // ── References ────────────────────────────────────────────────────────────
 
     public Viewport? MainViewport { get; set; }
@@ -45,6 +51,35 @@ public class CameraViewport : UiPanel
     private uint _rbo;
     private uint _width  = 1;
     private uint _height = 1;
+    private uint _shadowFbo;
+    private uint _shadowTex;
+    private uint _shadowMapSize = 2048;
+    private MineImatorSimplyRemade.core.mdl.Shader? _shadowShader;
+    private uint _pointShadowFbo;
+    private MineImatorSimplyRemade.core.mdl.Shader? _pointShadowShader;
+    private const int MaxPointShadowLights = 4;
+    private const uint PointShadowMapSize = 1024;
+    private readonly uint[] _pointShadowCubeTextures = new uint[MaxPointShadowLights];
+
+    private static readonly vec3[] PointShadowFaceDirections =
+    [
+        new vec3(1f, 0f, 0f),
+        new vec3(-1f, 0f, 0f),
+        new vec3(0f, 1f, 0f),
+        new vec3(0f, -1f, 0f),
+        new vec3(0f, 0f, 1f),
+        new vec3(0f, 0f, -1f)
+    ];
+
+    private static readonly vec3[] PointShadowFaceUps =
+    [
+        new vec3(0f, -1f, 0f),
+        new vec3(0f, -1f, 0f),
+        new vec3(0f, 0f, 1f),
+        new vec3(0f, 0f, -1f),
+        new vec3(0f, -1f, 0f),
+        new vec3(0f, -1f, 0f)
+    ];
 
     /// <summary>The GL colour texture for the current frame (used by CameraWindow).</summary>
     public uint ColorTexture => _colorTex;
@@ -65,6 +100,16 @@ public class CameraViewport : UiPanel
     /// the preview is a clean render-output view out of the box.
     /// </summary>
     public bool OverlaysEnabled { get; set; } = false;
+    public bool InlineVisible { get; private set; } = true;
+    public bool HighQualityPreviewEnabled { get; private set; } = false;
+    public bool ShadowDebugEnabled { get; private set; } = false;
+
+    public bool IsInlineVisible =>
+        !Undocked &&
+        InlineVisible &&
+        !(MainViewport?.SuppressInlineCameraViewport ?? false);
+
+    public bool IsVisible => Undocked || IsInlineVisible;
 
     // ── Docking / pop state ───────────────────────────────────────────────────
 
@@ -76,6 +121,11 @@ public class CameraViewport : UiPanel
     /// should create a <see cref="CameraWindow"/> and add it to the window list.
     /// </summary>
     public event Action? PopRequested;
+
+    /// <summary>
+    /// Raised when the preview requests that an undocked camera window be hidden.
+    /// </summary>
+    public event Action? HideRequested;
 
     // ── Inline panel geometry ─────────────────────────────────────────────────
 
@@ -96,6 +146,33 @@ public class CameraViewport : UiPanel
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public CameraViewport() { }
+
+    public void ToggleInlineVisibility()
+    {
+        if (Undocked)
+        {
+            Undocked = false;
+            InlineVisible = false;
+            HideRequested?.Invoke();
+            return;
+        }
+
+        InlineVisible = !InlineVisible;
+    }
+
+    public void ToggleHighQualityPreview()
+    {
+        HighQualityPreviewEnabled = !HighQualityPreviewEnabled;
+        if (!HighQualityPreviewEnabled)
+            ShadowDebugEnabled = false;
+    }
+
+    public void ToggleShadowDebugMode()
+    {
+        ShadowDebugEnabled = !ShadowDebugEnabled;
+        if (ShadowDebugEnabled)
+            HighQualityPreviewEnabled = true;
+    }
 
     // ── Init / resize FBO ────────────────────────────────────────────────────
 
@@ -129,6 +206,8 @@ public class CameraViewport : UiPanel
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
+        EnsureShadowResources();
+        EnsurePointShadowResources();
     }
 
     public unsafe void ResizeFboPublic(uint w, uint h)
@@ -250,7 +329,7 @@ public class CameraViewport : UiPanel
         Vector2 imageSize,
         List<CameraSceneObject> spawned)
     {
-        if (Undocked) return;
+        if (!IsInlineVisible) return;
 
         // Clamp panel size to available image area.
         _inlineSize.X = Math.Clamp(_inlineSize.X, InlineMinW, imageSize.X - InlinePad * 2);
@@ -405,9 +484,13 @@ public class CameraViewport : UiPanel
 
     // ── Scene render (public so CameraWindow can call it) ────────────────────
 
-    public unsafe void RenderScenePublic(Camera cam, CameraSceneObject? sceneObj, uint w, uint h)
+    public unsafe void RenderScenePublic(Camera cam, CameraSceneObject? sceneObj, uint w, uint h, bool highQuality = false)
     {
         if (Gl == null || MainViewport == null) return;
+
+        SceneRenderMode renderMode = (highQuality || HighQualityPreviewEnabled)
+            ? SceneRenderMode.Rendered
+            : SceneRenderMode.Unrendered;
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
         Gl.Viewport(0, 0, w, h);
@@ -439,19 +522,35 @@ public class CameraViewport : UiPanel
 
         cam.FovY = savedFovY; cam.Near = savedNear; cam.Far = savedFar;
 
-        // Ground plane.
-        if (MainViewport.GroundPlane != null && MainViewport.GroundPlaneVisible)
-            MainViewport.GroundPlane.Render(mat4.Identity, view, proj);
-
         Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
         bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
         Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
         int textureAnimFps = Math.Clamp(MainViewport.PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240);
         Mesh.AnimatedTextureSpeedScale = textureAnimFps / 20.0;
+        Mesh.ShadowsEnabled = false;
+        Mesh.ShadowMapTexture = 0;
+        Mesh.ShadowLightSpaceMatrix = mat4.Identity;
+        Mesh.ShadowDebugMode = 0;
+        Mesh.DirectionalShadowEnabled = MainViewport.PropertiesPanel?.FillLightCastsShadows ?? true;
+        Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         // Scene objects.
         Mesh.PointLights.Clear();
-        CollectPointLights(MainViewport.SceneObjects);
+        Dictionary<LightSceneObject, int> pointShadowIndices = new();
+
+        if (renderMode == SceneRenderMode.Rendered)
+        {
+            Mesh.ShadowDebugMode = ShadowDebugEnabled ? 1 : 0;
+            if (Mesh.DirectionalShadowEnabled)
+                RenderShadowMap();
+            pointShadowIndices = RenderPointShadowMaps();
+        }
+
+        CollectPointLights(MainViewport.SceneObjects, pointShadowIndices);
+
+        // Ground plane.
+        if (MainViewport.GroundPlane != null && MainViewport.GroundPlaneVisible)
+            MainViewport.GroundPlane.Render(mat4.Identity, view, proj);
 
         vec3 camPos = cam.Position;
         var opaque     = new List<(mat4, Mesh)>();
@@ -503,9 +602,14 @@ public class CameraViewport : UiPanel
         Gl.Disable(GLEnum.CullFace);
         Gl.Disable(GLEnum.DepthTest);
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        Mesh.ShadowsEnabled = false;
+        Mesh.ShadowMapTexture = 0;
+        Mesh.ShadowLightSpaceMatrix = mat4.Identity;
+        Mesh.ShadowDebugMode = 0;
+        Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
     }
 
-    public unsafe bool CaptureCurrentViewRgb(uint w, uint h, out byte[] rgbPixels)
+    public unsafe bool CaptureCurrentViewRgb(uint w, uint h, bool highQuality, out byte[] rgbPixels)
     {
         rgbPixels = Array.Empty<byte>();
         if (Gl == null || MainViewport == null || _fbo == 0 || w == 0 || h == 0)
@@ -519,7 +623,7 @@ public class CameraViewport : UiPanel
         try
         {
             ResizeFboPublic(w, h);
-            RenderScenePublic(activeCam, sceneObj, w, h);
+            RenderScenePublic(activeCam, sceneObj, w, h, highQuality);
 
             rgbPixels = new byte[checked((int)(w * h * 3))];
 
@@ -536,6 +640,346 @@ public class CameraViewport : UiPanel
         finally
         {
             OverlaysEnabled = previousOverlays;
+        }
+    }
+
+    private unsafe void EnsureShadowResources()
+    {
+        if (Gl == null || _shadowShader != null)
+            return;
+
+        _shadowShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _shadowShader.CompileShader("shadow_depth.vert", "shadow_depth.frag");
+
+        Gl.GenFramebuffers(1, out _shadowFbo);
+        Gl.GenTextures(1, out _shadowTex);
+        Gl.BindTexture(GLEnum.Texture2D, _shadowTex);
+        Gl.TexImage2D(
+            GLEnum.Texture2D,
+            0,
+            InternalFormat.DepthComponent32f,
+            _shadowMapSize,
+            _shadowMapSize,
+            0,
+            PixelFormat.DepthComponent,
+            GLEnum.Float,
+            null);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToBorder);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToBorder);
+        float[] borderColor = [1f, 1f, 1f, 1f];
+        fixed (float* borderPtr = borderColor)
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureBorderColor, borderPtr);
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _shadowFbo);
+        Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.DepthAttachment, GLEnum.Texture2D, _shadowTex, 0);
+        Gl.DrawBuffer(GLEnum.None);
+        Gl.ReadBuffer(GLEnum.None);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+    }
+
+    private unsafe void EnsurePointShadowResources()
+    {
+        if (Gl == null || _pointShadowShader != null)
+            return;
+
+        _pointShadowShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _pointShadowShader.CompileShader("point_shadow_depth.vert", "point_shadow_depth.frag");
+
+        Gl.GenFramebuffers(1, out _pointShadowFbo);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _pointShadowFbo);
+        Gl.DrawBuffer(GLEnum.None);
+        Gl.ReadBuffer(GLEnum.None);
+
+        for (int i = 0; i < MaxPointShadowLights; i++)
+        {
+            Gl.GenTextures(1, out _pointShadowCubeTextures[i]);
+            Gl.BindTexture(GLEnum.TextureCubeMap, _pointShadowCubeTextures[i]);
+            for (int face = 0; face < 6; face++)
+            {
+                Gl.TexImage2D(
+                    GLEnum.TextureCubeMapPositiveX + face,
+                    0,
+                    InternalFormat.DepthComponent32f,
+                    PointShadowMapSize,
+                    PointShadowMapSize,
+                    0,
+                    PixelFormat.DepthComponent,
+                    GLEnum.Float,
+                    null);
+            }
+
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapR, (int)TextureWrapMode.ClampToEdge);
+        }
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        Gl.BindTexture(GLEnum.TextureCubeMap, 0);
+    }
+
+    private unsafe void RenderShadowMap()
+    {
+        if (Gl == null || MainViewport == null)
+            return;
+
+        EnsureShadowResources();
+        if (_shadowShader == null || _shadowFbo == 0 || _shadowTex == 0)
+            return;
+
+        mat4 lightViewProj = ComputeShadowLightSpaceMatrix();
+        Mesh.ShadowsEnabled = true;
+        Mesh.ShadowMapTexture = _shadowTex;
+        Mesh.ShadowLightSpaceMatrix = lightViewProj;
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _shadowFbo);
+        Gl.Viewport(0, 0, _shadowMapSize, _shadowMapSize);
+        Gl.Clear(ClearBufferMask.DepthBufferBit);
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.Disable(GLEnum.CullFace);
+
+        if (MainViewport.GroundPlane != null && MainViewport.GroundPlaneVisible)
+            MainViewport.GroundPlane.RenderShadow(_shadowShader, lightViewProj, mat4.Identity);
+
+        RenderShadowCasters(MainViewport.SceneObjects, lightViewProj);
+
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
+        Gl.Viewport(0, 0, _width, _height);
+    }
+
+    private unsafe Dictionary<LightSceneObject, int> RenderPointShadowMaps()
+    {
+        Dictionary<LightSceneObject, int> shadowIndices = new();
+        if (Gl == null || MainViewport == null)
+            return shadowIndices;
+
+        EnsurePointShadowResources();
+        if (_pointShadowShader == null || _pointShadowFbo == 0)
+            return shadowIndices;
+
+        List<(LightSceneObject Light, vec3 Position, float Range)> shadowLights = [];
+        CollectPointShadowCasters(MainViewport.SceneObjects, shadowLights);
+        int lightCount = Math.Min(shadowLights.Count, MaxPointShadowLights);
+        Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
+
+        for (int lightIndex = 0; lightIndex < lightCount; lightIndex++)
+        {
+            var (light, position, range) = shadowLights[lightIndex];
+            shadowIndices[light] = lightIndex;
+            Mesh.PointShadowCubeTextures[lightIndex] = _pointShadowCubeTextures[lightIndex];
+
+            float farPlane = Math.Max(range, 0.5f);
+            mat4 projection = mat4.Perspective(GlmSharp.glm.Radians(90f), 1f, 0.05f, farPlane);
+
+            for (int face = 0; face < 6; face++)
+            {
+                mat4 view = mat4.LookAt(position, position + PointShadowFaceDirections[face], PointShadowFaceUps[face]);
+                mat4 lightViewProj = projection * view;
+
+                Gl.BindFramebuffer(GLEnum.Framebuffer, _pointShadowFbo);
+                Gl.FramebufferTexture2D(
+                    GLEnum.Framebuffer,
+                    GLEnum.DepthAttachment,
+                    GLEnum.TextureCubeMapPositiveX + face,
+                    _pointShadowCubeTextures[lightIndex],
+                    0);
+                Gl.Viewport(0, 0, PointShadowMapSize, PointShadowMapSize);
+                Gl.Clear(ClearBufferMask.DepthBufferBit);
+                Gl.Enable(GLEnum.DepthTest);
+                Gl.Disable(GLEnum.CullFace);
+
+                if (MainViewport.GroundPlane != null && MainViewport.GroundPlaneVisible)
+                    MainViewport.GroundPlane.RenderPointShadow(_pointShadowShader, lightViewProj, mat4.Identity, position, farPlane);
+
+                RenderPointShadowCasters(MainViewport.SceneObjects, lightViewProj, position, farPlane);
+            }
+        }
+
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
+        Gl.Viewport(0, 0, _width, _height);
+        return shadowIndices;
+    }
+
+    private mat4 ComputeShadowLightSpaceMatrix()
+    {
+        var bounds = new SceneShadowBounds();
+        CollectShadowBounds(MainViewport?.SceneObjects ?? [], ref bounds);
+
+        if (MainViewport?.GroundPlaneVisible == true)
+        {
+            bounds.Include(new vec3(-32f, 0f, -32f));
+            bounds.Include(new vec3(32f, 0f, 32f));
+        }
+
+        if (!bounds.HasAny)
+        {
+            bounds.Include(vec3.Zero);
+            bounds.Include(new vec3(8f, 8f, 8f));
+        }
+
+        vec3 center = (bounds.Min + bounds.Max) * 0.5f;
+        vec3 extents = bounds.Max - bounds.Min;
+        float radius = Math.Max(12f, Math.Max(extents.x, Math.Max(extents.y, extents.z)) * 0.8f + 8f);
+        vec3 lightDir = new vec3(1f, 1f, 1f).Normalized;
+        vec3 lightPos = center + lightDir * (radius * 1.8f);
+
+        mat4 lightView = mat4.LookAt(lightPos, center, vec3.UnitY);
+        vec3[] corners =
+        [
+            new(bounds.Min.x, bounds.Min.y, bounds.Min.z),
+            new(bounds.Min.x, bounds.Min.y, bounds.Max.z),
+            new(bounds.Min.x, bounds.Max.y, bounds.Min.z),
+            new(bounds.Min.x, bounds.Max.y, bounds.Max.z),
+            new(bounds.Max.x, bounds.Min.y, bounds.Min.z),
+            new(bounds.Max.x, bounds.Min.y, bounds.Max.z),
+            new(bounds.Max.x, bounds.Max.y, bounds.Min.z),
+            new(bounds.Max.x, bounds.Max.y, bounds.Max.z)
+        ];
+
+        float minX = float.PositiveInfinity;
+        float maxX = float.NegativeInfinity;
+        float minY = float.PositiveInfinity;
+        float maxY = float.NegativeInfinity;
+        float minDepth = float.PositiveInfinity;
+        float maxDepth = float.NegativeInfinity;
+
+        foreach (vec3 corner in corners)
+        {
+            vec4 lightSpace = lightView * new vec4(corner, 1f);
+            minX = Math.Min(minX, lightSpace.x);
+            maxX = Math.Max(maxX, lightSpace.x);
+            minY = Math.Min(minY, lightSpace.y);
+            maxY = Math.Max(maxY, lightSpace.y);
+
+            float depth = -lightSpace.z;
+            minDepth = Math.Min(minDepth, depth);
+            maxDepth = Math.Max(maxDepth, depth);
+        }
+
+        const float xyPadding = 6f;
+        const float zPadding = 12f;
+        mat4 lightProj = mat4.Ortho(
+            minX - xyPadding,
+            maxX + xyPadding,
+            minY - xyPadding,
+            maxY + xyPadding,
+            Math.Max(0.1f, minDepth - zPadding),
+            Math.Max(minDepth - zPadding + 1f, maxDepth + zPadding));
+        return lightProj * lightView;
+    }
+
+    private void RenderShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj)
+    {
+        foreach (var obj in objects)
+        {
+            if (!obj.GetEffectiveVisibility())
+                continue;
+
+            mat4 model = obj.GetWorldMatrix();
+            foreach (var mesh in obj.Visuals)
+            {
+                if (mesh.PickOnly || mesh.DepthTestDisabled)
+                    continue;
+
+                mesh.RenderShadow(_shadowShader!, lightViewProj, model);
+            }
+
+            RenderShadowCasters(obj.Children, lightViewProj);
+        }
+    }
+
+    private void RenderPointShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, vec3 lightPos, float farPlane)
+    {
+        foreach (var obj in objects)
+        {
+            if (!obj.GetEffectiveVisibility())
+                continue;
+
+            mat4 model = obj.GetWorldMatrix();
+            foreach (var mesh in obj.Visuals)
+            {
+                if (mesh.PickOnly || mesh.DepthTestDisabled)
+                    continue;
+
+                mesh.RenderPointShadow(_pointShadowShader!, lightViewProj, model, lightPos, farPlane);
+            }
+
+            RenderPointShadowCasters(obj.Children, lightViewProj, lightPos, farPlane);
+        }
+    }
+
+    private static void CollectPointShadowCasters(IEnumerable<SceneObject> objects, List<(LightSceneObject Light, vec3 Position, float Range)> result)
+    {
+        foreach (var obj in objects)
+        {
+            if (!obj.GetEffectiveVisibility())
+                continue;
+
+            if (obj is LightSceneObject light && light.LightShadowEnabled)
+            {
+                mat4 world = obj.GetWorldMatrix();
+                result.Add((light, new vec3(world.m30, world.m31, world.m32), Math.Max(light.LightRange, 0.5f)));
+            }
+
+            CollectPointShadowCasters(obj.Children, result);
+        }
+    }
+
+    private static void CollectShadowBounds(IEnumerable<SceneObject> objects, ref SceneShadowBounds bounds)
+    {
+        foreach (var obj in objects)
+        {
+            if (!obj.GetEffectiveVisibility())
+                continue;
+
+            mat4 world = obj.GetWorldMatrix();
+            bool includedMeshVertex = false;
+            foreach (var mesh in obj.Visuals)
+            {
+                if (mesh.PickOnly || mesh.DepthTestDisabled || mesh.Vertices.Count == 0)
+                    continue;
+
+                includedMeshVertex = true;
+                foreach (vec3 vertex in mesh.Vertices)
+                {
+                    vec4 worldVertex = world * new vec4(vertex, 1f);
+                    bounds.Include(new vec3(worldVertex.x, worldVertex.y, worldVertex.z));
+                }
+            }
+
+            if (!includedMeshVertex)
+                bounds.Include(new vec3(world.m30, world.m31, world.m32));
+
+            CollectShadowBounds(obj.Children, ref bounds);
+        }
+    }
+
+    private struct SceneShadowBounds
+    {
+        public bool HasAny;
+        public vec3 Min;
+        public vec3 Max;
+
+        public void Include(vec3 point)
+        {
+            if (!HasAny)
+            {
+                Min = point;
+                Max = point;
+                HasAny = true;
+                return;
+            }
+
+            Min = new vec3(Math.Min(Min.x, point.x), Math.Min(Min.y, point.y), Math.Min(Min.z, point.z));
+            Max = new vec3(Math.Max(Max.x, point.x), Math.Max(Max.y, point.y), Math.Max(Max.z, point.z));
         }
     }
 
@@ -557,7 +1001,7 @@ public class CameraViewport : UiPanel
 
     // ── Scene collection helpers ──────────────────────────────────────────────
 
-    private static void CollectPointLights(IEnumerable<SceneObject> objects)
+    private static void CollectPointLights(IEnumerable<SceneObject> objects, Dictionary<LightSceneObject, int> shadowIndices)
     {
         foreach (var obj in objects)
         {
@@ -567,9 +1011,10 @@ public class CameraViewport : UiPanel
                 mat4 world = obj.GetWorldMatrix();
                 var pos    = new vec3(world.m30, world.m31, world.m32);
                 var col    = new vec3(light.LightColor.x, light.LightColor.y, light.LightColor.z);
-                Mesh.PointLights.Add((pos, col, light.LightRange, light.LightEnergy));
+                int shadowIndex = shadowIndices.TryGetValue(light, out int index) ? index : -1;
+                Mesh.PointLights.Add((pos, col, light.LightRange, light.LightEnergy, shadowIndex));
             }
-            CollectPointLights(obj.Children);
+            CollectPointLights(obj.Children, shadowIndices);
         }
     }
 

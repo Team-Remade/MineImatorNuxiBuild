@@ -28,6 +28,7 @@ public class PropertiesPanel : UiPanel
     public bool UseAdvancedSky;
     public readonly float[] AmbientLightColor = [1f, 1f, 1f];
     public float AmbientLightStrength = 0.35f;
+    public bool FillLightCastsShadows = true;
 
     private string _projectName = "Untitled Project";
     private int _resolutionWidth = 1920;
@@ -155,6 +156,7 @@ public class PropertiesPanel : UiPanel
         AmbientLightColor[1] = ambient.Y;
         AmbientLightColor[2] = ambient.Z;
         AmbientLightStrength = settings.AmbientLightStrength;
+        FillLightCastsShadows = settings.FillLightCastsShadows;
 
         ApplyFloorSettingsToViewport();
         ApplyBackgroundSettingsToViewport();
@@ -216,6 +218,7 @@ public class PropertiesPanel : UiPanel
             Z = AmbientLightColor[2]
         };
         manifest.Settings.AmbientLightStrength = AmbientLightStrength;
+        manifest.Settings.FillLightCastsShadows = FillLightCastsShadows;
     }
 
     private void ApplyAmbientSettingsToRenderer()
@@ -230,6 +233,7 @@ public class PropertiesPanel : UiPanel
             AmbientLightColor[1],
             AmbientLightColor[2]);
         Mesh.GlobalAmbientStrength = AmbientLightStrength;
+        Mesh.DirectionalShadowEnabled = FillLightCastsShadows;
     }
 
     private static string NormalizeFloorAtlas(string atlas)
@@ -636,6 +640,13 @@ public class PropertiesPanel : UiPanel
                 if (ImGui.DragFloat("Ambient Strength", ref ambientStrength, 0.01f, 0f, 5f))
                 {
                     AmbientLightStrength = ambientStrength;
+                    ambientChanged = true;
+                }
+
+                bool fillLightCastsShadows = FillLightCastsShadows;
+                if (ImGui.Checkbox("Fill Light Casts Shadows", ref fillLightCastsShadows))
+                {
+                    FillLightCastsShadows = fillLightCastsShadows;
                     ambientChanged = true;
                 }
 

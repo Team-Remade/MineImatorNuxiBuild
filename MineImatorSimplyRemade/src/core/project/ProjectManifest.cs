@@ -97,6 +97,7 @@ public class ProjectRenderSettings
         Z = 1f
     };
     public float AmbientLightStrength { get; set; } = 0.35f;
+    public bool FillLightCastsShadows { get; set; } = true;
 }
 
 public class ProjectTimelineState
@@ -152,6 +153,17 @@ public class ProjectSceneObjectEntry
     public bool ObjectVisible { get; set; } = true;
     public bool IsSelectable { get; set; } = true;
     public bool HideInSceneTree { get; set; } = false;
+
+    // Material override data
+    public bool HasMaterialOverrides { get; set; } = false;
+    public ProjectVec4 AlbedoColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f, W = 1f };
+    public float Metallic { get; set; } = 0f;
+    public float Roughness { get; set; } = 0.5f;
+    public float Transparency { get; set; } = 0f;
+    public bool DoubleSided { get; set; } = false;
+    public bool EmissionEnabled { get; set; } = false;
+    public ProjectVec4 EmissionColor { get; set; } = new() { X = 0f, Y = 0f, Z = 0f, W = 1f };
+    public float EmissionEnergy { get; set; } = 1f;
 
     // Item-specific data
     public string ItemTileKey { get; set; } = "";

@@ -103,6 +103,7 @@ public class MainWindow : Window
     private int _renderPopupHeight = 1080;
     private int _renderPopupFramerate = 30;
     private int _renderPopupBitrateKbps = 12000;
+    private bool _renderPopupHighQuality = true;
     private string _renderPopupImageFormat = "png";
     private string _renderPopupVideoFormat = "mp4";
     private string _renderPopupPreset = "1080P";
@@ -531,6 +532,22 @@ public class MainWindow : Window
     private void HandleKeyboardShortcuts()
     {
         ImGuiIOPtr io = ImGui.GetIO();
+
+        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F5, false))
+        {
+            if (_cameraViewport?.IsVisible == true)
+                _cameraViewport.ToggleHighQualityPreview();
+            else
+                _mainViewport?.ToggleHighQualityPreview();
+            return;
+        }
+
+        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F6, false))
+        {
+            _mainViewport?.ToggleShadowDebugMode();
+            return;
+        }
+
         if (!io.KeyCtrl || io.WantTextInput)
             return;
 
@@ -1021,6 +1038,14 @@ public class MainWindow : Window
             settingsChanged = true;
         }
 
+        bool highQuality = _renderPopupHighQuality;
+        if (ImGui.Checkbox("Render high quality", ref highQuality))
+            _renderPopupHighQuality = highQuality;
+
+        ImGui.TextDisabled(_renderPopupHighQuality
+            ? "Rendered mode: exports include lighting and shadows."
+            : "Unrendered mode: exports keep the current fast viewport setup.");
+
         if (_renderPopupMode == RenderMode.Image)
         {
             string formatLabel = _renderPopupImageFormat.ToUpperInvariant();
@@ -1415,7 +1440,7 @@ public class MainWindow : Window
             if (_renderJobMode == RenderMode.Image)
             {
                 _renderJobStatus = "Rendering image...";
-                if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, out byte[] frame))
+                if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame))
                     throw new InvalidOperationException("Failed to capture render frame.");
 
                 UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight);
@@ -1439,7 +1464,7 @@ public class MainWindow : Window
             if (_renderFrameCurrent < _renderFrameTotal)
             {
                 _timeline.SetCurrentFrameForRender(_renderFrameCurrent);
-                if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, out byte[] frame))
+                if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame))
                     throw new InvalidOperationException($"Failed to capture frame {_renderFrameCurrent}.");
 
                 UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight);

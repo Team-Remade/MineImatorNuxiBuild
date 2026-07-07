@@ -72,8 +72,21 @@ public static class ProjectSceneSerializer
             ObjectVisible = obj.ObjectVisible,
             IsSelectable = obj.IsSelectable,
             HideInSceneTree = obj.HideInSceneTree,
+            HasMaterialOverrides = obj.HasExplicitMaterialSettings,
             Keyframes = SerializeKeyframes(obj)
         };
+
+        if (obj.HasExplicitMaterialSettings && obj.MaterialSettings != null)
+        {
+            entry.AlbedoColor = ToProjectVec4(obj.MaterialSettings.AlbedoColor);
+            entry.Metallic = obj.MaterialSettings.Metallic;
+            entry.Roughness = obj.MaterialSettings.Roughness;
+            entry.Transparency = obj.MaterialSettings.Transparency;
+            entry.DoubleSided = obj.MaterialSettings.DoubleSided;
+            entry.EmissionEnabled = obj.MaterialSettings.EmissionEnabled;
+            entry.EmissionColor = ToProjectVec4(obj.MaterialSettings.EmissionColor);
+            entry.EmissionEnergy = obj.MaterialSettings.EmissionEnergy;
+        }
 
         if (obj.SpawnCategory == "Items")
         {
@@ -250,6 +263,22 @@ public static class ProjectSceneSerializer
         obj.ObjectVisible = entry.ObjectVisible;
         obj.IsSelectable = entry.IsSelectable;
         obj.HideInSceneTree = entry.HideInSceneTree;
+
+        if (entry.HasMaterialOverrides)
+        {
+            var material = obj.MaterialSettings ?? new MaterialSettings();
+            material.AlbedoColor = ToVec4(entry.AlbedoColor);
+            material.Metallic = entry.Metallic;
+            material.Roughness = entry.Roughness;
+            material.Transparency = entry.Transparency;
+            material.DoubleSided = entry.DoubleSided;
+            material.EmissionEnabled = entry.EmissionEnabled;
+            material.EmissionColor = ToVec4(entry.EmissionColor);
+            material.EmissionEnergy = entry.EmissionEnergy;
+            obj.MaterialSettings = material;
+            obj.SetExplicitMaterialSettings();
+            obj.PropagateMaterialSettingsToChildren();
+        }
 
         obj.Keyframes = DeserializeKeyframes(entry.Keyframes);
 

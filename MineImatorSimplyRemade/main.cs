@@ -113,6 +113,13 @@ public static class main
                 CameraWindow.Show();
                 Glfw.MakeContextCurrent(MainWindow.WindowHandle);
             };
+
+            camViewport.HideRequested += () =>
+            {
+                Glfw.MakeContextCurrent(CameraWindow.WindowHandle);
+                CameraWindow.Hide();
+                Glfw.MakeContextCurrent(MainWindow.WindowHandle);
+            };
         }
 
         byte* versionPtr = _gl.GetString(StringName.Version);

@@ -271,6 +271,11 @@ public class SceneObject
         _hasExplicitMaterialSettings = _materialSettings != null;
     }
 
+    /// <summary>
+    /// True when this object owns explicit material overrides instead of inheriting.
+    /// </summary>
+    public bool HasExplicitMaterialSettings => _hasExplicitMaterialSettings;
+
     private void OnMaterialSettingsChanged()
     {
         ApplyMaterialSettingsToMeshes();

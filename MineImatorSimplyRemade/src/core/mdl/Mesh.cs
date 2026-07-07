@@ -357,7 +357,7 @@ public class Mesh : IDisposable
     /// <see cref="Render"/> so the shader receives per-frame lighting data.
     /// Each entry: (world position, RGB colour, range, energy).
     /// </summary>
-    public static readonly List<(vec3 pos, vec3 color, float range, float energy)> PointLights = new();
+    public static readonly List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex)> PointLights = new();
 
     /// <summary>
     /// Global ambient light colour for lit meshes.
@@ -369,6 +369,17 @@ public class Mesh : IDisposable
     /// Global ambient light strength multiplier for lit meshes.
     /// </summary>
     public static float GlobalAmbientStrength = 0.35f;
+
+    /// <summary>
+    /// Export-only shadow state configured by <see cref="CameraViewport"/> when
+    /// high-quality rendered capture is enabled.
+    /// </summary>
+    public static bool ShadowsEnabled = false;
+    public static uint ShadowMapTexture = 0;
+    public static mat4 ShadowLightSpaceMatrix = mat4.Identity;
+    public static int ShadowDebugMode = 0;
+    public static bool DirectionalShadowEnabled = true;
+    public static readonly uint[] PointShadowCubeTextures = new uint[4];
 
     /// <summary>
     /// Elapsed seconds since the last frame.  Set by the Viewport once per frame
@@ -418,6 +429,9 @@ public class Mesh : IDisposable
         SetUniformBool("uEmissionEnabled", EmissionEnabled);
         SetUniformVec3("uEmissionColor", EmissionColor);
         SetUniformFloat("uEmissionEnergy", EmissionEnergy);
+        SetUniformBool("uUseShadowMap", DirectionalShadowEnabled && ShadowsEnabled && !Unlit && ShadowMapTexture != 0);
+        SetUniformInt("uShadowDebugMode", ShadowDebugMode);
+        SetUniformMat4("uLightSpaceMatrix", ShadowLightSpaceMatrix);
 
         if (Unlit)
         {
@@ -445,11 +459,12 @@ public class Mesh : IDisposable
         SetUniformInt("uPointLightCount", lightCount);
         for (int i = 0; i < lightCount; i++)
         {
-            var (lpos, lcol, lrange, lenergy) = PointLights[i];
+            var (lpos, lcol, lrange, lenergy, lshadowIndex) = PointLights[i];
             SetUniformVec3($"uPointLightPos[{i}]",   lpos);
             SetUniformVec3($"uPointLightColor[{i}]", lcol);
             SetUniformFloat($"uPointLightRange[{i}]",  lrange);
             SetUniformFloat($"uPointLightEnergy[{i}]", lenergy);
+            SetUniformInt($"uPointLightShadowIndex[{i}]", lshadowIndex);
         }
 
         // ── Animation UV offset ───────────────────────────────────────────────
@@ -487,6 +502,29 @@ public class Mesh : IDisposable
             SetUniformInt("uTexture", 0);
         }
 
+        if (ShadowsEnabled && !Unlit && ShadowMapTexture != 0)
+        {
+            _gl.ActiveTexture(GLEnum.Texture1);
+            _gl.BindTexture(GLEnum.Texture2D, ShadowMapTexture);
+            SetUniformInt("uShadowMap", 1);
+            _gl.ActiveTexture(GLEnum.Texture0);
+        }
+
+        if (!Unlit)
+        {
+            for (int i = 0; i < PointShadowCubeTextures.Length; i++)
+            {
+                uint cubeTex = PointShadowCubeTextures[i];
+                if (cubeTex == 0)
+                    continue;
+
+                _gl.ActiveTexture((GLEnum)((int)GLEnum.Texture0 + 2 + i));
+                _gl.BindTexture(GLEnum.TextureCubeMap, cubeTex);
+                SetUniformInt($"uPointShadowMaps[{i}]", 2 + i);
+            }
+            _gl.ActiveTexture(GLEnum.Texture0);
+        }
+
         if (DoubleSided) _gl.Disable(GLEnum.CullFace);
 
         // Overlay meshes render on top of all geometry: depth test off, depth writes off.
@@ -520,6 +558,141 @@ public class Mesh : IDisposable
             _gl.ActiveTexture(GLEnum.Texture0);
             _gl.BindTexture(GLEnum.Texture2D, 0);
         }
+
+        if (ShadowsEnabled && !Unlit && ShadowMapTexture != 0)
+        {
+            _gl.ActiveTexture(GLEnum.Texture1);
+            _gl.BindTexture(GLEnum.Texture2D, 0);
+            _gl.ActiveTexture(GLEnum.Texture0);
+        }
+
+        if (!Unlit)
+        {
+            for (int i = 0; i < PointShadowCubeTextures.Length; i++)
+            {
+                if (PointShadowCubeTextures[i] == 0)
+                    continue;
+
+                _gl.ActiveTexture((GLEnum)((int)GLEnum.Texture0 + 2 + i));
+                _gl.BindTexture(GLEnum.TextureCubeMap, 0);
+            }
+            _gl.ActiveTexture(GLEnum.Texture0);
+        }
+    }
+
+    public unsafe void RenderShadow(Shader shader, mat4 lightViewProj, mat4 model)
+    {
+        if (_vao == 0 || shader == null)
+            return;
+
+        _gl.UseProgram(shader.ShaderProgram);
+        SetUniformMat4(shader, "uMVP", lightViewProj * model);
+
+        float texOffsetV = 0f;
+        float texScaleV  = 1f;
+        if (!string.IsNullOrEmpty(AnimationKey) &&
+            TerrainAtlas.AnimatedTextures.TryGetValue(AnimationKey, out var animInfo))
+        {
+            double ticksPerFrame = animInfo.FrameTime * SecondsPerTick;
+            double totalDuration = animInfo.Frames.Length * ticksPerFrame;
+            double t = _animTime % totalDuration;
+            int sequenceIndex = (int)(t / ticksPerFrame);
+            sequenceIndex = Math.Clamp(sequenceIndex, 0, animInfo.Frames.Length - 1);
+            int frameIndex = animInfo.Frames[sequenceIndex];
+            texScaleV  = (float)animInfo.FrameHeight / (animInfo.FrameHeight * animInfo.TotalFrames);
+            texOffsetV = frameIndex * texScaleV;
+        }
+
+        bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;
+        SetUniformFloat(shader, "uAlpha", Alpha);
+        SetUniformBool(shader, "uUseTexture", useTexture);
+        SetUniformVec2(shader, "uTexOffset", new vec2(0f, texOffsetV));
+        SetUniformFloat(shader, "uTexScaleV", texScaleV);
+
+        if (useTexture)
+        {
+            _gl.ActiveTexture(GLEnum.Texture0);
+            _gl.BindTexture(GLEnum.Texture2D, TextureId);
+            SetUniformInt(shader, "uTexture", 0);
+        }
+
+        if (DoubleSided) _gl.Disable(GLEnum.CullFace);
+
+        _gl.BindVertexArray(_vao);
+
+        if (Indices != null && _ebo != 0)
+            _gl.DrawElements(GLEnum.Triangles, (uint)Indices.Length, GLEnum.UnsignedInt, (void*)0);
+        else
+            _gl.DrawArrays(GLEnum.Triangles, 0, (uint)Vertices.Count);
+
+        _gl.BindVertexArray(0);
+
+        if (useTexture)
+        {
+            _gl.ActiveTexture(GLEnum.Texture0);
+            _gl.BindTexture(GLEnum.Texture2D, 0);
+        }
+
+        if (DoubleSided) _gl.Enable(GLEnum.CullFace);
+    }
+
+    public unsafe void RenderPointShadow(Shader shader, mat4 lightViewProj, mat4 model, vec3 lightPos, float farPlane)
+    {
+        if (_vao == 0 || shader == null)
+            return;
+
+        _gl.UseProgram(shader.ShaderProgram);
+        SetUniformMat4(shader, "uLightViewProj", lightViewProj);
+        SetUniformMat4(shader, "uModel", model);
+        SetUniformVec3(shader, "uLightPos", lightPos);
+        SetUniformFloat(shader, "uFarPlane", farPlane);
+
+        float texOffsetV = 0f;
+        float texScaleV = 1f;
+        if (!string.IsNullOrEmpty(AnimationKey) &&
+            TerrainAtlas.AnimatedTextures.TryGetValue(AnimationKey, out var animInfo))
+        {
+            double ticksPerFrame = animInfo.FrameTime * SecondsPerTick;
+            double totalDuration = animInfo.Frames.Length * ticksPerFrame;
+            double t = _animTime % totalDuration;
+            int sequenceIndex = (int)(t / ticksPerFrame);
+            sequenceIndex = Math.Clamp(sequenceIndex, 0, animInfo.Frames.Length - 1);
+            int frameIndex = animInfo.Frames[sequenceIndex];
+            texScaleV = (float)animInfo.FrameHeight / (animInfo.FrameHeight * animInfo.TotalFrames);
+            texOffsetV = frameIndex * texScaleV;
+        }
+
+        bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;
+        SetUniformFloat(shader, "uAlpha", Alpha);
+        SetUniformBool(shader, "uUseTexture", useTexture);
+        SetUniformVec2(shader, "uTexOffset", new vec2(0f, texOffsetV));
+        SetUniformFloat(shader, "uTexScaleV", texScaleV);
+
+        if (useTexture)
+        {
+            _gl.ActiveTexture(GLEnum.Texture0);
+            _gl.BindTexture(GLEnum.Texture2D, TextureId);
+            SetUniformInt(shader, "uTexture", 0);
+        }
+
+        if (DoubleSided) _gl.Disable(GLEnum.CullFace);
+
+        _gl.BindVertexArray(_vao);
+
+        if (Indices != null && _ebo != 0)
+            _gl.DrawElements(GLEnum.Triangles, (uint)Indices.Length, GLEnum.UnsignedInt, (void*)0);
+        else
+            _gl.DrawArrays(GLEnum.Triangles, 0, (uint)Vertices.Count);
+
+        _gl.BindVertexArray(0);
+
+        if (useTexture)
+        {
+            _gl.ActiveTexture(GLEnum.Texture0);
+            _gl.BindTexture(GLEnum.Texture2D, 0);
+        }
+
+        if (DoubleSided) _gl.Enable(GLEnum.CullFace);
     }
 
     // ── Uniform helpers ───────────────────────────────────────────────────────
@@ -539,9 +712,30 @@ public class Mesh : IDisposable
         fixed (float* p = f) _gl.UniformMatrix4(loc, 1, false, p);
     }
 
+    private unsafe void SetUniformMat4(Shader shader, string name, mat4 m)
+    {
+        int loc = _gl.GetUniformLocation(shader.ShaderProgram, name);
+        if (loc < 0) return;
+
+        float[] f =
+        {
+            m.m00, m.m01, m.m02, m.m03,
+            m.m10, m.m11, m.m12, m.m13,
+            m.m20, m.m21, m.m22, m.m23,
+            m.m30, m.m31, m.m32, m.m33,
+        };
+        fixed (float* p = f) _gl.UniformMatrix4(loc, 1, false, p);
+    }
+
     private void SetUniformVec2(string name, vec2 v)
     {
         int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
+        if (loc >= 0) _gl.Uniform2(loc, v.x, v.y);
+    }
+
+    private void SetUniformVec2(Shader shader, string name, vec2 v)
+    {
+        int loc = _gl.GetUniformLocation(shader.ShaderProgram, name);
         if (loc >= 0) _gl.Uniform2(loc, v.x, v.y);
     }
 
@@ -551,9 +745,21 @@ public class Mesh : IDisposable
         if (loc >= 0) _gl.Uniform3(loc, v.x, v.y, v.z);
     }
 
+    private void SetUniformVec3(Shader shader, string name, vec3 v)
+    {
+        int loc = _gl.GetUniformLocation(shader.ShaderProgram, name);
+        if (loc >= 0) _gl.Uniform3(loc, v.x, v.y, v.z);
+    }
+
     private void SetUniformBool(string name, bool value)
     {
         int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
+        if (loc >= 0) _gl.Uniform1(loc, value ? 1 : 0);
+    }
+
+    private void SetUniformBool(Shader shader, string name, bool value)
+    {
+        int loc = _gl.GetUniformLocation(shader.ShaderProgram, name);
         if (loc >= 0) _gl.Uniform1(loc, value ? 1 : 0);
     }
 
@@ -563,9 +769,21 @@ public class Mesh : IDisposable
         if (loc >= 0) _gl.Uniform1(loc, value);
     }
 
+    private void SetUniformInt(Shader shader, string name, int value)
+    {
+        int loc = _gl.GetUniformLocation(shader.ShaderProgram, name);
+        if (loc >= 0) _gl.Uniform1(loc, value);
+    }
+
     private void SetUniformFloat(string name, float value)
     {
         int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
+        if (loc >= 0) _gl.Uniform1(loc, value);
+    }
+
+    private void SetUniformFloat(Shader shader, string name, float value)
+    {
+        int loc = _gl.GetUniformLocation(shader.ShaderProgram, name);
         if (loc >= 0) _gl.Uniform1(loc, value);
     }
 
