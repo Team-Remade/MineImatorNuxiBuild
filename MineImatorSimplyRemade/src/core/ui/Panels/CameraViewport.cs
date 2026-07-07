@@ -43,6 +43,12 @@ public class CameraViewport : UiPanel
     // ── Active camera selection ───────────────────────────────────────────────
 
     private int _selectedCameraIndex = 0;
+    /// <summary>Public accessor for the selected camera index (0 = work camera, 1+ = spawned cameras).</summary>
+    public int SelectedCameraIndex
+    {
+        get => _selectedCameraIndex;
+        set => _selectedCameraIndex = value;
+    }
 
     // ── Framebuffer ───────────────────────────────────────────────────────────
 

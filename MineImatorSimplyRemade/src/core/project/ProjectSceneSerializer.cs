@@ -22,6 +22,9 @@ public static class ProjectSceneSerializer
             Distance = viewport.Camera.Distance
         };
 
+        // Persist which camera the preview viewport is currently using (0 = work camera)
+        manifest.ActivePreviewCameraIndex = viewport.CameraViewport?.SelectedCameraIndex ?? 0;
+
         manifest.SceneObjects = viewport.SceneObjects
             .Select(SerializeNode)
             .ToList();
@@ -47,6 +50,10 @@ public static class ProjectSceneSerializer
         // Keep timeline FPS aligned with project settings after timeline state is restored.
         if (propertiesPanel != null)
             timeline?.SetFrameRate(propertiesPanel.GetFramerate());
+
+        // Restore preview viewport selected camera index (after scene objects restored so spawned cameras exist)
+        if (viewport.CameraViewport != null)
+            viewport.CameraViewport.SelectedCameraIndex = manifest.ActivePreviewCameraIndex;
     }
 
     private static ProjectSceneObjectEntry SerializeNode(SceneObject obj)

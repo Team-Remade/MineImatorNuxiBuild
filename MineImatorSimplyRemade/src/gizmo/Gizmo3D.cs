@@ -4,6 +4,7 @@ using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemadeNuxi.core.objs;
+using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.gizmo;
@@ -1566,11 +1567,19 @@ public class Gizmo3D : IDisposable
             }
             else if (_edit.Mode == TransformMode.Rotate)
             {
-                // Strip scale from the basis before extracting Euler angles.
-                // In local-rotation mode, ComputeTransform returns purRot * rotMat * scaleMat,
-                // so the basis includes scale. MatrixToEulerYXZ assumes a pure-rotation matrix
-                // (m.m21 == -sin(x) only holds without scale), so we must normalise first.
-                obj.SetLocalRotation(GizmoMath.MatrixToEulerYXZ(NormalizeRotation(newTransform.Basis)));
+                if (obj is CameraSceneObject cameraObject)
+                {
+                    vec3 forward = GizmoMath.BasisTransform(newTransform.Basis, vec3.UnitZ);
+                    cameraObject.ApplyLookDirection(forward);
+                }
+                else
+                {
+                    // Strip scale from the basis before extracting Euler angles.
+                    // In local-rotation mode, ComputeTransform returns purRot * rotMat * scaleMat,
+                    // so the basis includes scale. MatrixToEulerYXZ assumes a pure-rotation matrix
+                    // (m.m21 == -sin(x) only holds without scale), so we must normalise first.
+                    obj.SetLocalRotation(GizmoMath.MatrixToEulerYXZ(NormalizeRotation(newTransform.Basis)));
+                }
             }
             else if (_edit.Mode == TransformMode.Scale)
             {

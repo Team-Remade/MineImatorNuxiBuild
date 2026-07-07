@@ -58,6 +58,33 @@ public class CameraSceneObject : SceneObject
     /// and <see cref="SceneObject.Rotation"/>).
     /// Call this after the camera viewport moves the fly camera.
     /// </summary>
+    /// <summary>
+    /// Applies a look direction directly to the camera view state and keeps the
+    /// scene-object transform in sync. This is used for gizmo-based rotation so
+    /// camera yaw/pitch are updated from a stable forward vector instead of being
+    /// reinterpreted through a generic 3-axis Euler conversion.
+    /// </summary>
+    public void ApplyLookDirection(GlmSharp.vec3 forward)
+    {
+        forward = forward.Normalized;
+
+        float pitch = MathF.Asin(Math.Clamp(forward.y, -1f, 1f));
+        float yaw   = MathF.Atan2(forward.x, forward.z);
+
+        ViewCamera.Yaw   = yaw;
+        ViewCamera.Pitch = pitch;
+        ViewCamera.Distance = 0.001f;
+
+        float cosP = MathF.Cos(pitch);
+        var offset = new GlmSharp.vec3(
+            cosP * MathF.Sin(yaw),
+            MathF.Sin(pitch),
+            cosP * MathF.Cos(yaw)) * ViewCamera.Distance;
+
+        ViewCamera.Target = Position - offset;
+        SyncTransformFromCamera();
+    }
+
     public void SyncTransformFromCamera()
     {
         Position = ViewCamera.Position;

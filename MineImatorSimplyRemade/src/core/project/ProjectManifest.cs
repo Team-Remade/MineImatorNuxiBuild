@@ -42,6 +42,8 @@ public class ProjectManifest
     public List<ProjectAssetEntry> Assets { get; set; } = new();
     public ProjectRenderSettings Settings { get; set; } = new();
     public ProjectWorkCameraState WorkCamera { get; set; } = new();
+    // Index of the active camera used by the preview viewport: 0 = work camera, 1+ = spawned cameras
+    public int ActivePreviewCameraIndex { get; set; } = 0;
     public List<ProjectSceneObjectEntry> SceneObjects { get; set; } = new();
     public ProjectTimelineState Timeline { get; set; } = new();
 }
