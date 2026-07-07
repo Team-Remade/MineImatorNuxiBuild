@@ -57,11 +57,14 @@ public class CameraWindow : Window
         var spawned   = _panel.GetSpawnedCamerasPublic();
         var (activeCam, sceneObj) = _panel.DrawCameraDropdownInternal(spawned);
 
-        // Compute the available size from the last known window dimensions.
-        // We use WindowWidth/WindowHeight from the base class (updated by the
-        // framebuffer-size callback).
-        uint sceneW = (uint)Math.Max(4, WindowWidth);
-        uint sceneH = (uint)Math.Max(4, WindowHeight - 30); // subtract approx header height
+        // Estimate available content size for this frame and fit it to the
+        // project's render-resolution aspect ratio so the preview stays accurate.
+        var estimatedAvail = new Vector2(
+            Math.Max(4, WindowWidth - 8),
+            Math.Max(4, WindowHeight - 56));
+        Vector2 drawSizeEstimate = _panel.GetPreviewDrawSize(estimatedAvail);
+        uint sceneW = (uint)Math.Max(4, (int)MathF.Round(drawSizeEstimate.X));
+        uint sceneH = (uint)Math.Max(4, (int)MathF.Round(drawSizeEstimate.Y));
 
         _panel.ResizeFboPublic(sceneW, sceneH);
         _panel.RenderScenePublic(activeCam, sceneObj, sceneW, sceneH);
@@ -163,9 +166,16 @@ public class CameraWindow : Window
         {
             _panel.HandleFreeFlyPublic(activeCam, sceneObj, ImGui.IsWindowHovered());
 
+            Vector2 drawSize = _panel.GetPreviewDrawSize(avail);
+            Vector2 startPos = ImGui.GetCursorPos();
+            if (avail.X > drawSize.X)
+                ImGui.SetCursorPosX(startPos.X + (avail.X - drawSize.X) * 0.5f);
+            if (avail.Y > drawSize.Y)
+                ImGui.SetCursorPosY(startPos.Y + (avail.Y - drawSize.Y) * 0.5f);
+
             ImGui.Image(
                 new ImTextureRef(texId: (ulong)_panel.ColorTexture),
-                avail,
+                drawSize,
                 new Vector2(0, 1),
                 new Vector2(1, 0));
         }

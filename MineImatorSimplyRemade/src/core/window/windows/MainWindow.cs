@@ -67,6 +67,8 @@ public class MainWindow : Window
     public static Random Rnd = new Random();
 
     private static readonly string ImGuiIniPath = "imgui.ini";
+    private static readonly string SplashImagePath = Path.Combine(AppContext.BaseDirectory, "data/splashes", "splash.png");
+    private static readonly string SplashCreditPath = Path.Combine(AppContext.BaseDirectory, "data/splashes", "credit.txt");
     private static readonly string SplashTextPath = Path.Combine(AppContext.BaseDirectory, "data/splashes", "splash.txt");
 
     public const string ViewportDockId = "Viewport";
@@ -90,6 +92,7 @@ public class MainWindow : Window
     private readonly List<string> _homeSplashPool = new();
     private readonly List<SplashTextSegment> _homeSplashSegments = new();
     private string _homeSplashPlainText = "Splash Screen Placeholder";
+    private string _homeSplashCreditText = "(unassigned)";
 
     private bool _openProjectDialogPopup;
     private bool _openAboutPopup;
@@ -241,6 +244,7 @@ public class MainWindow : Window
 
         SetWindowIcon(icon);
         LoadHomeSplashes();
+        LoadHomeSplashCredit();
         PickRandomHomeSplash();
         RefreshWindowTitle();
     }
@@ -635,8 +639,19 @@ public class MainWindow : Window
         Vector2 splashMin = ImGui.GetCursorScreenPos();
         Vector2 splashSize = new Vector2(MathF.Min(ImGui.GetContentRegionAvail().X, 920f), 180f);
         Vector2 splashMax = splashMin + splashSize;
+        uint splashTexture = GetThumbnailTexture(SplashImagePath);
 
-        drawList.AddRectFilled(splashMin, splashMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.16f, 0.18f, 0.22f, 1f)), 18f);
+        if (splashTexture != 0)
+        {
+            ImGui.SetCursorScreenPos(splashMin);
+            ImGui.Image(new ImTextureRef(texId: (ulong)splashTexture), splashSize, Vector2.Zero, Vector2.One);
+        }
+        else
+        {
+            drawList.AddRectFilled(splashMin, splashMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.16f, 0.18f, 0.22f, 1f)), 18f);
+            ImGui.Dummy(splashSize);
+        }
+
         drawList.AddRect(splashMin, splashMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.34f, 0.40f, 0.48f, 1f)), 18f, ImDrawFlags.RoundCornersAll, 2f);
         drawList.AddText(
             splashMin + new Vector2(24f, 24f),
@@ -647,8 +662,7 @@ public class MainWindow : Window
             splashMin + new Vector2(24f, 56f),
             ImGui.ColorConvertFloat4ToU32(new Vector4(0.70f, 0.75f, 0.82f, 1f)));
 
-        ImGui.Dummy(splashSize);
-        ImGui.TextDisabled("Splash art credits: (unassigned)");
+        ImGui.TextDisabled($"Splash art credits: {_homeSplashCreditText}");
         ImGui.Spacing();
 
         float leftWidth = MathF.Min(320f, ImGui.GetContentRegionAvail().X * 0.34f);
@@ -2266,6 +2280,25 @@ public class MainWindow : Window
         catch
         {
             // Keep fallback splash text if loading fails.
+        }
+    }
+
+    private void LoadHomeSplashCredit()
+    {
+        _homeSplashCreditText = "(unassigned)";
+
+        try
+        {
+            if (!File.Exists(SplashCreditPath))
+                return;
+
+            string creditText = File.ReadAllText(SplashCreditPath).Trim();
+            if (!string.IsNullOrWhiteSpace(creditText))
+                _homeSplashCreditText = creditText;
+        }
+        catch
+        {
+            // Keep fallback credit text if loading fails.
         }
     }
 

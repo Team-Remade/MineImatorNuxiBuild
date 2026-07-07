@@ -111,6 +111,13 @@ public class CameraViewport : UiPanel
 
     public bool IsVisible => Undocked || IsInlineVisible;
 
+    public Vector2 GetPreviewDrawSize(Vector2 available)
+    {
+        float fallbackAspect = available.Y > 0f ? available.X / available.Y : (16f / 9f);
+        float targetAspect = GetProjectPreviewAspect(fallbackAspect);
+        return FitSizeToAspect(available, targetAspect);
+    }
+
     // ── Docking / pop state ───────────────────────────────────────────────────
 
     /// <summary>True while a GLFW CameraWindow owns the rendering.</summary>
@@ -172,6 +179,33 @@ public class CameraViewport : UiPanel
         ShadowDebugEnabled = !ShadowDebugEnabled;
         if (ShadowDebugEnabled)
             HighQualityPreviewEnabled = true;
+    }
+
+    private float GetProjectPreviewAspect(float fallbackAspect)
+    {
+        int width = MainViewport?.PropertiesPanel?.GetResolutionWidth() ?? 0;
+        int height = MainViewport?.PropertiesPanel?.GetResolutionHeight() ?? 0;
+        if (width <= 0 || height <= 0)
+            return fallbackAspect > 0f ? fallbackAspect : (16f / 9f);
+
+        return width / (float)height;
+    }
+
+    private static Vector2 FitSizeToAspect(Vector2 available, float aspect)
+    {
+        float availW = MathF.Max(1f, available.X);
+        float availH = MathF.Max(1f, available.Y);
+        float safeAspect = aspect > 0f ? aspect : (availW / availH);
+
+        float drawW = availW;
+        float drawH = drawW / safeAspect;
+        if (drawH > availH)
+        {
+            drawH = availH;
+            drawW = drawH * safeAspect;
+        }
+
+        return new Vector2(drawW, drawH);
     }
 
     // ── Init / resize FBO ────────────────────────────────────────────────────
@@ -442,15 +476,22 @@ public class CameraViewport : UiPanel
         var avail = ImGui.GetContentRegionAvail();
         if (avail.X >= 4 && avail.Y >= 4)
         {
-            uint w = (uint)avail.X;
-            uint h = (uint)avail.Y;
+            Vector2 drawSize = GetPreviewDrawSize(avail);
+            uint w = (uint)Math.Max(1, (int)MathF.Round(drawSize.X));
+            uint h = (uint)Math.Max(1, (int)MathF.Round(drawSize.Y));
             ResizeFboPublic(w, h);
             RenderScenePublic(activeCam, sceneObj, w, h);
             HandleFreeFlyPublic(activeCam, sceneObj, ImGui.IsWindowHovered());
 
+            Vector2 startPos = ImGui.GetCursorPos();
+            if (avail.X > drawSize.X)
+                ImGui.SetCursorPosX(startPos.X + (avail.X - drawSize.X) * 0.5f);
+            if (avail.Y > drawSize.Y)
+                ImGui.SetCursorPosY(startPos.Y + (avail.Y - drawSize.Y) * 0.5f);
+
             ImGui.Image(
                 new ImTextureRef(texId: (ulong)_colorTex),
-                avail,
+                drawSize,
                 new Vector2(0, 1),
                 new Vector2(1, 0));
         }
