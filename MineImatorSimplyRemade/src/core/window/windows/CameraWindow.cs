@@ -19,7 +19,7 @@ namespace MineImatorSimplyRemade.core.window.windows;
 /// </summary>
 public class CameraWindow : Window
 {
-    private CameraViewport? _panel;
+    private Viewport? _panel;
 
     /// <summary>The main window's GLFW handle, used to restore its GL context
     /// after this window finishes its ImGui frame.</summary>
@@ -31,7 +31,7 @@ public class CameraWindow : Window
         _mainHandle = shareWith;
     }
 
-    public CameraViewport? Panel
+    public Viewport? Panel
     {
         get => _panel;
         set => _panel = value;

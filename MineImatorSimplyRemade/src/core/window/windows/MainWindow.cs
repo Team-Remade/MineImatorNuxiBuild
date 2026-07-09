@@ -80,7 +80,7 @@ public class MainWindow : Window
     private bool _dockSpaceInitialized;
     private bool _dockSpaceRebuildRequested;
     private SpawnMenu? _spawnMenu;
-    private CameraViewport? _cameraViewport;
+    private Viewport? _cameraViewport;
     private ContentBrowser? _contentBrowser;
     private Viewport? _mainViewport;
     private Timeline? _timeline;
@@ -249,7 +249,7 @@ public class MainWindow : Window
         RefreshWindowTitle();
     }
 
-    public CameraViewport? GetCameraViewport() => _cameraViewport;
+    public Viewport? GetCameraViewport() => _cameraViewport;
 
     public override void SetGL(GL gl)
     {
@@ -383,18 +383,20 @@ public class MainWindow : Window
 
         if (viewport != null)
         {
-            _cameraViewport = new CameraViewport
+            _cameraViewport = new Viewport
             {
                 Gl = gl,
-                MainViewport = viewport
+                IsPreviewViewport = true,
+                MainViewport = viewport,
+                OverlaysEnabled = false
             };
             unsafe
             {
-                _cameraViewport.GlfwApi = Glfw;
-                _cameraViewport.GlfwWindow = windowHandle;
+                _cameraViewport.GlfwApiPreview = Glfw;
+                _cameraViewport.GlfwWindowPreview = windowHandle;
             }
-            _cameraViewport.Init(320, 200);
-            viewport.CameraViewport = _cameraViewport;
+            _cameraViewport.InitPreviewViewport(320, 200);
+            viewport.PreviewViewport = _cameraViewport;
         }
 
         ReportStep(7, "Constructing editor UI", "Editor ready.", 1f, "Main window will appear shortly");
@@ -403,7 +405,7 @@ public class MainWindow : Window
     protected override void RenderUi()
     {
         if (_mainViewport != null)
-            _mainViewport.SuppressInlineCameraViewport = _showProjectHome;
+            _mainViewport.SuppressInlinePreviewViewport = _showProjectHome;
 
         HandleKeyboardShortcuts();
         ProcessPendingSaveAction();

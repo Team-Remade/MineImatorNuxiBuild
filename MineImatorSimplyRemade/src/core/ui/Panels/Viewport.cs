@@ -97,8 +97,8 @@ public class Viewport : UiPanel
     private bool  _dragging;
     private bool  _panning;
     private bool  _gizmoDragging;
-    private float _lastMouseX = float.NaN;
-    private float _lastMouseY = float.NaN;
+    private double _lastMouseX = double.NaN;
+    private double _lastMouseY = double.NaN;
 
     /// <summary>
     /// Screen position where the left mouse button was pressed this drag sequence.
@@ -246,13 +246,85 @@ public class Viewport : UiPanel
     /// The secondary camera viewport panel (inline overlay + optional undocked window).
     /// Set by <see cref="MainWindow"/> after construction.
     /// </summary>
-    public CameraViewport? CameraViewport { get; set; }
+    public Viewport? PreviewViewport { get; set; }
 
     /// <summary>
     /// When true, the inline camera preview overlay is skipped.
     /// Useful when a fullscreen launcher/home screen is shown above the editor.
     /// </summary>
-    public bool SuppressInlineCameraViewport { get; set; } = false;
+    public bool SuppressInlinePreviewViewport { get; set; } = false;
+
+    // ── Preview viewport state ────────────────────────────────────────────────
+
+    /// <summary>True if this viewport is a preview (secondary) viewport rather than the main editor viewport.</summary>
+    public bool IsPreviewViewport { get; set; } = false;
+
+    /// <summary>Reference to the main viewport for preview instances to access scene objects.</summary>
+    public Viewport? MainViewport { get; set; }
+
+    private int _selectedCameraIndex = 0;
+    /// <summary>Public accessor for the selected camera index (0 = work camera, 1+ = spawned cameras).</summary>
+    public int SelectedCameraIndex
+    {
+        get => _selectedCameraIndex;
+        set => _selectedCameraIndex = value;
+    }
+
+    public Glfw? GlfwApiPreview { get; set; }
+    public unsafe WindowHandle* GlfwWindowPreview { get; set; }
+
+    private uint _previewFbo;
+    private uint _previewColorTex;
+    private uint _previewRbo;
+    private uint _previewWidth = 1;
+    private uint _previewHeight = 1;
+    private uint _previewShadowFbo;
+    private uint _previewShadowTex;
+    private MineImatorSimplyRemade.core.mdl.Shader? _previewShadowShader;
+    private uint _previewPointShadowFbo;
+    private MineImatorSimplyRemade.core.mdl.Shader? _previewPointShadowShader;
+    private readonly uint[] _previewPointShadowCubeTextures = new uint[MaxPointShadowLights];
+
+    public uint ColorTexture => _previewColorTex;
+
+    /// <summary>True while a GLFW CameraWindow owns the rendering.</summary>
+    public bool Undocked { get; set; } = false;
+
+    /// <summary>
+    /// Raised when the user clicks "Pop".  The subscriber (MainWindow / main.cs)
+    /// should create a <see cref="CameraWindow"/> and add it to the window list.
+    /// </summary>
+    public event Action? PopRequested;
+
+    /// <summary>
+    /// Raised when the preview requests that an undocked camera window be hidden.
+    /// </summary>
+    public event Action? HideRequested;
+
+    private enum Corner { BottomRight, BottomLeft, TopRight, TopLeft }
+    private Corner _corner = Corner.BottomRight;
+
+    private Vector2 _inlineSize = new Vector2(340f, 220f);
+    private const float InlineMinW = 160f;
+    private const float InlineMinH = 120f;
+    private const float InlinePad = 8f;
+    private bool _inlineResizeDragActive;
+    private Vector2 _prevInlineWindowSize;
+    private bool _hasPrevInlineWindowSize;
+
+    public bool InlineVisible { get; private set; } = true;
+
+    public bool IsInlineVisible =>
+        !Undocked &&
+        InlineVisible &&
+        !(MainViewport?.SuppressInlinePreviewViewport ?? false);
+
+    public bool IsVisible => Undocked || IsInlineVisible;
+
+    private bool _previewFreeFly;
+    private float _previewFreeFlySpeed = 5f;
+    private double _previewLastMouseX = double.NaN;
+    private double _previewLastMouseY = double.NaN;
 
     // ── Spawn menu / bench button ──────────────────────────────────────────────
 
@@ -1322,9 +1394,9 @@ public class Viewport : UiPanel
                 ImGui.PopStyleColor(4);
             }
 
-            if (CameraViewport != null)
+            if (PreviewViewport != null)
             {
-                bool previewVisible = CameraViewport.IsVisible;
+                bool previewVisible = PreviewViewport.IsVisible;
 
                 ImGui.SameLine();
                 ImGui.SetCursorPosY(itemY);
@@ -1345,14 +1417,14 @@ public class Viewport : UiPanel
                 }
 
                 if (ImGui.Button(previewVisible ? "Hide Preview" : "Show Preview", new Vector2(0, iconSize)))
-                    CameraViewport.ToggleInlineVisibility();
+                    PreviewViewport.ToggleInlineVisibility();
 
                 ImGui.PopStyleColor(4);
             }
 
-            bool previewF5Target = CameraViewport?.IsVisible ?? false;
+            bool previewF5Target = PreviewViewport?.IsVisible ?? false;
             bool f5Rendered = previewF5Target
-                ? CameraViewport!.HighQualityPreviewEnabled
+                ? PreviewViewport!.HighQualityPreviewEnabled
                 : HighQualityPreviewEnabled;
             string f5TargetLabel = previewF5Target ? "Preview" : "Main";
 
@@ -1605,11 +1677,11 @@ public class Viewport : UiPanel
         if (OverlaysEnabled)
             Gizmo?.RenderOverlay(Camera, imageMin, size);
 
-        // ── Inline camera viewport (bottom-right overlay) ──────────────────────
-        if (CameraViewport?.IsInlineVisible == true)
+        // ── Inline preview viewport (bottom-right overlay) ──────────────────────
+        if (PreviewViewport?.IsInlineVisible == true)
         {
-            var spawnedCams = GetSpawnedCameras();
-            CameraViewport.RenderInline(imageMin, imageSize, spawnedCams);
+            var spawnedCams = PreviewViewport.GetSpawnedCamerasPublic();
+            PreviewViewport.RenderInline(imageMin, imageSize, spawnedCams);
         }
 
         // Draw after other viewport UI so the fly-speed badge stays readable.
@@ -2381,6 +2453,588 @@ public class Viewport : UiPanel
         }
     }
 
+    // ── Preview viewport support ───────────────────────────────────────────────
+
+    public void ToggleInlineVisibility()
+    {
+        if (IsPreviewViewport)
+        {
+            if (Undocked)
+            {
+                Undocked = false;
+                InlineVisible = false;
+                HideRequested?.Invoke();
+                return;
+            }
+            InlineVisible = !InlineVisible;
+        }
+    }
+
+    public unsafe void InitPreviewViewport(uint width, uint height)
+    {
+        if (!IsPreviewViewport || Gl == null) return;
+        _previewWidth = width;
+        _previewHeight = height;
+
+        Gl.GenFramebuffers(1, out _previewFbo);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
+
+        Gl.GenTextures(1, out _previewColorTex);
+        Gl.BindTexture(GLEnum.Texture2D, _previewColorTex);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb, width, height, 0,
+                      PixelFormat.Rgb, GLEnum.UnsignedByte, (void*)0);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
+        Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.ColorAttachment0,
+                                GLEnum.Texture2D, _previewColorTex, 0);
+
+        Gl.GenRenderbuffers(1, out _previewRbo);
+        Gl.BindRenderbuffer(GLEnum.Renderbuffer, _previewRbo);
+        Gl.RenderbufferStorage(GLEnum.Renderbuffer, GLEnum.Depth24Stencil8, width, height);
+        Gl.FramebufferRenderbuffer(GLEnum.Framebuffer, GLEnum.DepthStencilAttachment,
+                                   GLEnum.Renderbuffer, _previewRbo);
+
+        var status = Gl.CheckFramebufferStatus(GLEnum.Framebuffer);
+        if (status != GLEnum.FramebufferComplete)
+            Console.Error.WriteLine($"[Viewport] Preview framebuffer incomplete: {status}");
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+    }
+
+    public unsafe void ResizeFboPublic(uint w, uint h)
+    {
+        if (!IsPreviewViewport || Gl == null || (w == _previewWidth && h == _previewHeight)) return;
+        _previewWidth = w;
+        _previewHeight = h;
+
+        Gl.BindTexture(GLEnum.Texture2D, _previewColorTex);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb, w, h, 0,
+                      PixelFormat.Rgb, GLEnum.UnsignedByte, (void*)0);
+        Gl.BindRenderbuffer(GLEnum.Renderbuffer, _previewRbo);
+        Gl.RenderbufferStorage(GLEnum.Renderbuffer, GLEnum.Depth24Stencil8, w, h);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        Gl.BindRenderbuffer(GLEnum.Renderbuffer, 0);
+    }
+
+    public List<CameraSceneObject> GetSpawnedCamerasPublic()
+    {
+        var result = new List<CameraSceneObject>();
+        var sourceSceneObjects = IsPreviewViewport ? (MainViewport?.SceneObjects ?? SceneObjects) : SceneObjects;
+        CollectSpawnedCameras(sourceSceneObjects, result);
+        return result;
+    }
+
+    public (Camera, CameraSceneObject?) DrawCameraDropdownInternal(List<CameraSceneObject> spawned)
+    {
+        if (_selectedCameraIndex > spawned.Count) _selectedCameraIndex = 0;
+        return GetActiveCameraPreview(spawned);
+    }
+
+    public (Camera, CameraSceneObject?) DrawCameraDropdownPublic(List<CameraSceneObject> spawned)
+        => DrawCameraDropdownInternal(spawned);
+
+    private (Camera cam, CameraSceneObject? sceneObj) GetActiveCameraPreview(List<CameraSceneObject> spawned)
+    {
+        if (_selectedCameraIndex == 0)
+            return (MainViewport?.Camera ?? Camera, null);
+
+        int idx = _selectedCameraIndex - 1;
+        if (idx >= 0 && idx < spawned.Count)
+        {
+            var camObj = spawned[idx];
+            camObj.SyncCameraToTransform();
+            return (camObj.ViewCamera, camObj);
+        }
+        _selectedCameraIndex = 0;
+        return (MainViewport?.Camera ?? Camera, null);
+    }
+
+    public unsafe void RenderInline(Vector2 imageMin, Vector2 imageSize, List<CameraSceneObject> spawned)
+    {
+        if (!IsInlineVisible) return;
+
+        _inlineSize.X = Math.Clamp(_inlineSize.X, InlineMinW, imageSize.X - InlinePad * 2);
+        _inlineSize.Y = Math.Clamp(_inlineSize.Y, InlineMinH, imageSize.Y - InlinePad * 2);
+
+        float posX = _corner switch
+        {
+            Corner.BottomLeft or Corner.TopLeft => imageMin.X + InlinePad,
+            _ => imageMin.X + imageSize.X - _inlineSize.X - InlinePad,
+        };
+        float posY = _corner switch
+        {
+            Corner.TopLeft or Corner.TopRight => imageMin.Y + InlinePad,
+            _ => imageMin.Y + imageSize.Y - _inlineSize.Y - InlinePad,
+        };
+
+        if (!_inlineResizeDragActive)
+        {
+            ImGui.SetNextWindowPos(new Vector2(posX, posY), ImGuiCond.Always);
+            ImGui.SetNextWindowSize(_inlineSize, ImGuiCond.Always);
+        }
+        ImGui.SetNextWindowSizeConstraints(
+            new Vector2(InlineMinW, InlineMinH),
+            new Vector2(imageSize.X - InlinePad * 2, imageSize.Y - InlinePad * 2));
+
+        ImGuiWindowFlags flags =
+            ImGuiWindowFlags.NoTitleBar |
+            ImGuiWindowFlags.NoScrollbar |
+            ImGuiWindowFlags.NoScrollWithMouse |
+            ImGuiWindowFlags.NoBringToFrontOnFocus;
+
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(4, 4));
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);
+        ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0.08f, 0.08f, 0.08f, 0.90f));
+        bool beginOk = ImGui.Begin("##CamViewInline", flags);
+        ImGui.PopStyleColor();
+        ImGui.PopStyleVar(2);
+
+        if (!beginOk) { ImGui.End(); return; }
+
+        _inlineSize = ImGui.GetWindowSize();
+
+        Vector2 winPos = ImGui.GetWindowPos();
+        Vector2 winSz = _inlineSize;
+        Vector2 mouse = ImGui.GetMousePos();
+        bool leftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
+        bool hovered = ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows);
+        bool overResizeGrip = mouse.X >= winPos.X + winSz.X - 28f &&
+                              mouse.X <= winPos.X + winSz.X + 12f &&
+                              mouse.Y >= winPos.Y + winSz.Y - 28f &&
+                              mouse.Y <= winPos.Y + winSz.Y + 12f;
+
+        bool sizeChangedThisFrame = _hasPrevInlineWindowSize &&
+                                    (MathF.Abs(winSz.X - _prevInlineWindowSize.X) > 0.1f ||
+                                     MathF.Abs(winSz.Y - _prevInlineWindowSize.Y) > 0.1f);
+
+        if (!leftDown)
+            _inlineResizeDragActive = false;
+        else if (!_inlineResizeDragActive && ((hovered && overResizeGrip) || sizeChangedThisFrame))
+            _inlineResizeDragActive = true;
+
+        _prevInlineWindowSize = winSz;
+        _hasPrevInlineWindowSize = true;
+
+        var (activeCam, sceneObj) = DrawCameraDropdown(spawned);
+
+        ImGui.SameLine();
+        if (ImGui.Button("Pop"))
+        {
+            Undocked = true;
+            PopRequested?.Invoke();
+            ImGui.End();
+            return;
+        }
+
+        ImGui.SameLine();
+        {
+            if (!OverlaysEnabled)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.20f, 0.20f, 0.20f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.30f, 0.30f, 0.30f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.40f, 0.40f, 0.40f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.50f, 0.50f, 0.50f, 1.0f));
+            }
+            else
+            {
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.25f, 0.45f, 0.25f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.30f, 0.55f, 0.30f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.35f, 0.60f, 0.35f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.90f, 0.95f, 0.90f, 1.0f));
+            }
+
+            if (ImGui.Button("Overlays"))
+                OverlaysEnabled = !OverlaysEnabled;
+
+            ImGui.PopStyleColor(4);
+        }
+
+        ImGui.SameLine();
+        DrawCornerPicker();
+
+        var avail = ImGui.GetContentRegionAvail();
+        if (avail.X >= 4 && avail.Y >= 4)
+        {
+            Vector2 drawSize = GetPreviewDrawSize(avail);
+            uint w = (uint)Math.Max(1, (int)MathF.Round(drawSize.X));
+            uint h = (uint)Math.Max(1, (int)MathF.Round(drawSize.Y));
+            ResizeFboPublic(w, h);
+            RenderScenePublic(activeCam, sceneObj, w, h);
+            HandleFreeFlyPublic(activeCam, sceneObj, ImGui.IsWindowHovered());
+
+            Vector2 startPos = ImGui.GetCursorPos();
+            if (avail.X > drawSize.X)
+                ImGui.SetCursorPosX(startPos.X + (avail.X - drawSize.X) * 0.5f);
+            if (avail.Y > drawSize.Y)
+                ImGui.SetCursorPosY(startPos.Y + (avail.Y - drawSize.Y) * 0.5f);
+
+            ImGui.Image(
+                new ImTextureRef(texId: (ulong)_previewColorTex),
+                drawSize,
+                new Vector2(0, 1),
+                new Vector2(1, 0));
+        }
+
+        ImGui.End();
+    }
+
+    private (Camera, CameraSceneObject?) DrawCameraDropdown(List<CameraSceneObject> spawned)
+    {
+        string currentLabel = _selectedCameraIndex == 0
+            ? "Work Camera"
+            : (_selectedCameraIndex - 1 < spawned.Count
+                ? spawned[_selectedCameraIndex - 1].Name
+                : "Work Camera");
+
+        ImGui.SetNextItemWidth(160f);
+        if (ImGui.BeginCombo("##camSelect", currentLabel))
+        {
+            bool workSel = _selectedCameraIndex == 0;
+            if (ImGui.Selectable("Work Camera", workSel)) _selectedCameraIndex = 0;
+            if (workSel) ImGui.SetItemDefaultFocus();
+
+            for (int i = 0; i < spawned.Count; i++)
+            {
+                bool sel = _selectedCameraIndex == i + 1;
+                if (ImGui.Selectable(spawned[i].Name + "##cam" + i, sel))
+                    _selectedCameraIndex = i + 1;
+                if (sel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+
+        if (_selectedCameraIndex > spawned.Count) _selectedCameraIndex = 0;
+        return GetActiveCameraPreview(spawned);
+    }
+
+    private void DrawCornerPicker()
+    {
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(2, 2));
+
+        if (ImGui.Button(_corner == Corner.TopLeft ? "[TL]" : " TL ", new Vector2(28, 16)))
+            _corner = Corner.TopLeft;
+        ImGui.SameLine(0, 2);
+        if (ImGui.Button(_corner == Corner.TopRight ? "[TR]" : " TR ", new Vector2(28, 16)))
+            _corner = Corner.TopRight;
+        ImGui.SameLine(0, 2);
+        if (ImGui.Button(_corner == Corner.BottomLeft ? "[BL]" : " BL ", new Vector2(28, 16)))
+            _corner = Corner.BottomLeft;
+        ImGui.SameLine(0, 2);
+        if (ImGui.Button(_corner == Corner.BottomRight ? "[BR]" : " BR ", new Vector2(28, 16)))
+            _corner = Corner.BottomRight;
+
+        ImGui.PopStyleVar();
+    }
+
+    public Vector2 GetPreviewDrawSize(Vector2 available)
+    {
+        float fallbackAspect = available.Y > 0f ? available.X / available.Y : (16f / 9f);
+        float targetAspect = GetProjectPreviewAspect(fallbackAspect);
+        return FitSizeToAspect(available, targetAspect);
+    }
+
+    private float GetProjectPreviewAspect(float fallbackAspect)
+    {
+        var mainVp = MainViewport;
+        int width = mainVp?.PropertiesPanel?.GetResolutionWidth() ?? 0;
+        int height = mainVp?.PropertiesPanel?.GetResolutionHeight() ?? 0;
+        if (width <= 0 || height <= 0)
+            return fallbackAspect > 0f ? fallbackAspect : (16f / 9f);
+
+        return width / (float)height;
+    }
+
+    private static Vector2 FitSizeToAspect(Vector2 available, float aspect)
+    {
+        float availW = MathF.Max(1f, available.X);
+        float availH = MathF.Max(1f, available.Y);
+        float safeAspect = aspect > 0f ? aspect : (availW / availH);
+
+        float drawW = availW;
+        float drawH = drawW / safeAspect;
+        if (drawH > availH)
+        {
+            drawH = availH;
+            drawW = drawH * safeAspect;
+        }
+
+        return new Vector2(drawW, drawH);
+    }
+
+    public unsafe void RenderScenePublic(Camera cam, CameraSceneObject? sceneObj, uint w, uint h, bool highQuality = false)
+    {
+        if (Gl == null || MainViewport == null) return;
+
+        SceneRenderMode renderMode = (highQuality || HighQualityPreviewEnabled)
+            ? SceneRenderMode.Rendered
+            : SceneRenderMode.Unrendered;
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
+        Gl.Viewport(0, 0, w, h);
+
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Less);
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
+        Gl.FrontFace(GLEnum.Ccw);
+
+        float[] bg = MainViewport.PropertiesPanel?.BackgroundColor ?? [0.18f, 0.18f, 0.18f, 1.0f];
+        Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
+        Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+
+        MainViewport.RenderBackgroundPlanePublic(w, h);
+
+        float aspect = h > 0 ? (float)w / h : 1f;
+
+        float savedFovY = cam.FovY, savedNear = cam.Near, savedFar = cam.Far;
+        if (sceneObj != null)
+        {
+            cam.FovY = GlmSharp.glm.Radians(sceneObj.Fov);
+            cam.Near = sceneObj.Near;
+            cam.Far = sceneObj.Far;
+        }
+
+        mat4 view = cam.GetViewMatrix();
+        mat4 proj = cam.GetProjectionMatrix(aspect);
+
+        cam.FovY = savedFovY; cam.Near = savedNear; cam.Far = savedFar;
+
+        Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
+        bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
+        Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
+        int textureAnimFps = Math.Clamp(MainViewport.PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240);
+        Mesh.AnimatedTextureSpeedScale = textureAnimFps / 20.0;
+        Mesh.ShadowsEnabled = false;
+        Mesh.ShadowMapTexture = 0;
+        Mesh.ShadowLightSpaceMatrix = mat4.Identity;
+        Mesh.ShadowDebugMode = 0;
+        Mesh.DirectionalShadowEnabled = MainViewport.PropertiesPanel?.FillLightCastsShadows ?? true;
+        Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
+
+        Mesh.PointLights.Clear();
+        Dictionary<LightSceneObject, int> pointShadowIndices = new();
+
+        CollectPointLights(MainViewport.SceneObjects, pointShadowIndices);
+
+        if (MainViewport.GroundPlane != null && MainViewport.GroundPlaneVisible)
+            MainViewport.GroundPlane.Render(mat4.Identity, view, proj);
+
+        vec3 camPos = cam.Position;
+        var opaque = new List<(mat4, Mesh)>();
+        var textured = new List<(mat4, Mesh, float, int)>();
+        var alphaBlend = new List<(mat4, Mesh, float, int)>();
+        var overlays = new List<(mat4, Mesh)>();
+        CollectRenderPairs(MainViewport.SceneObjects, camPos, opaque, textured, alphaBlend, overlays);
+
+        foreach (var (model, mesh) in opaque)
+            mesh.Render(model, view, proj);
+
+        if (textured.Count > 0)
+        {
+            textured.Sort((a, b) =>
+            {
+                int byDist = b.Item3.CompareTo(a.Item3);
+                return byDist != 0 ? byDist : a.Item4.CompareTo(b.Item4);
+            });
+            Gl.ColorMask(false, false, false, false);
+            foreach (var (model, mesh, _, _) in textured) mesh.Render(model, view, proj);
+            Gl.ColorMask(true, true, true, true);
+            Gl.DepthFunc(GLEnum.Lequal);
+            Gl.Enable(GLEnum.Blend);
+            Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+            Gl.DepthMask(false);
+            foreach (var (model, mesh, _, _) in textured) mesh.Render(model, view, proj);
+            Gl.DepthMask(true);
+            Gl.DepthFunc(GLEnum.Less);
+            Gl.Disable(GLEnum.Blend);
+        }
+
+        if (alphaBlend.Count > 0)
+        {
+            alphaBlend.Sort((a, b) =>
+            {
+                int byDist = b.Item3.CompareTo(a.Item3);
+                return byDist != 0 ? byDist : a.Item4.CompareTo(b.Item4);
+            });
+            Gl.Enable(GLEnum.Blend);
+            Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+            Gl.DepthMask(false);
+            foreach (var (model, mesh, _, _) in alphaBlend) mesh.Render(model, view, proj);
+            Gl.DepthMask(true);
+            Gl.Disable(GLEnum.Blend);
+        }
+
+        if (OverlaysEnabled)
+        {
+            foreach (var (model, mesh) in overlays)
+                mesh.Render(model, view, proj);
+
+            MainViewport.RenderOverlaysPublic(view, proj);
+        }
+
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Disable(GLEnum.DepthTest);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        Mesh.ShadowsEnabled = false;
+        Mesh.ShadowMapTexture = 0;
+        Mesh.ShadowLightSpaceMatrix = mat4.Identity;
+        Mesh.ShadowDebugMode = 0;
+        Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
+    }
+
+    public unsafe void HandleFreeFlyPublic(Camera cam, CameraSceneObject? sceneObj, bool hovered)
+    {
+        if (sceneObj == null) return;
+
+        var io = ImGui.GetIO();
+
+        // Allow input to continue while free-fly is active even if the ImGui
+        // window hover state changes (the OS cursor is locked by GLFW so the real 
+        // cursor never moved — only the internal ImGui position drifts).
+        if (!_previewFreeFly && !hovered)
+        {
+            _previewFreeFly = false;
+            return;
+        }
+
+        var imageMin = ImGui.GetWindowPos() + ImGui.GetCursorPos();
+        var imageSize = ImGui.GetContentRegionAvail();
+
+        double glfwCursorX = 0, glfwCursorY = 0;
+        if (GlfwApiPreview != null)
+        {
+            GlfwApiPreview.GetCursorPos(GlfwWindowPreview, out glfwCursorX, out glfwCursorY);
+        }
+
+        bool mouseInViewportBounds = glfwCursorX >= imageMin.X && glfwCursorX <= imageMin.X + imageSize.X &&
+                                     glfwCursorY >= imageMin.Y && glfwCursorY <= imageMin.Y + imageSize.Y;
+
+        // Detect initial right-click within viewport bounds and hovered to enter free-fly mode
+        if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && mouseInViewportBounds && hovered)
+        {
+            _previewFreeFly = true;
+            if (GlfwApiPreview != null)
+            {
+                GlfwApiPreview.SetInputMode(GlfwWindowPreview, CursorStateAttribute.Cursor, CursorModeValue.CursorDisabled);
+                // Seed last position on entry so we don't get a spurious camera jump on first frame
+                GlfwApiPreview.GetCursorPos(GlfwWindowPreview, out _previewLastMouseX, out _previewLastMouseY);
+            }
+        }
+
+        // Continue free-fly logic while mouse button is held and free-fly is active
+        if (_previewFreeFly && ImGui.IsMouseDown(ImGuiMouseButton.Right) && GlfwApiPreview != null)
+        {
+            ImGui.SetNextFrameWantCaptureMouse(true);
+
+            // Constrain mouse to viewport bounds during free-fly
+            if (!mouseInViewportBounds)
+            {
+                var clampedX = Math.Clamp(glfwCursorX, imageMin.X, imageMin.X + imageSize.X);
+                var clampedY = Math.Clamp(glfwCursorY, imageMin.Y, imageMin.Y + imageSize.Y);
+                GlfwApiPreview.SetCursorPos(GlfwWindowPreview, clampedX, clampedY);
+            }
+
+            GlfwApiPreview.GetCursorPos(GlfwWindowPreview, out double cursorX, out double cursorY);
+
+            if (!double.IsNaN(cursorX) && !double.IsNaN(cursorY) &&
+                !double.IsInfinity(cursorX) && !double.IsInfinity(cursorY) &&
+                !double.IsNaN(_previewLastMouseX) && !double.IsNaN(_previewLastMouseY))
+            {
+                float lookDx = (float)(cursorX - _previewLastMouseX) * FreeFlyLookSensitivity;
+                float lookDy = -(float)(cursorY - _previewLastMouseY) * FreeFlyLookSensitivity;
+
+                cam.Look(lookDx, lookDy);
+
+                _previewLastMouseX = cursorX;
+                _previewLastMouseY = cursorY;
+            }
+
+            float dt = io.DeltaTime;
+            float speed = _previewFreeFlySpeed * cam.Distance * 0.2f;
+            if (ImGui.IsKeyDown(ImGuiKey.Space)) speed *= 2.5f;
+            else if (ImGui.IsKeyDown(ImGuiKey.ModShift)) speed *= 0.4f;
+
+            float fwd = 0f, rt = 0f, up = 0f;
+            if (ImGui.IsKeyDown(ImGuiKey.W)) fwd += speed * dt;
+            if (ImGui.IsKeyDown(ImGuiKey.S)) fwd -= speed * dt;
+            if (ImGui.IsKeyDown(ImGuiKey.D)) rt += speed * dt;
+            if (ImGui.IsKeyDown(ImGuiKey.A)) rt -= speed * dt;
+            if (ImGui.IsKeyDown(ImGuiKey.E)) up += speed * dt;
+            if (ImGui.IsKeyDown(ImGuiKey.Q)) up -= speed * dt;
+            if (fwd != 0f || rt != 0f || up != 0f) cam.MoveFreeFly(fwd, rt, up);
+
+            if (io.MouseWheel != 0)
+            {
+                float factor = io.MouseWheel > 0 ? 1.3f : 1f / 1.3f;
+                for (int i = 0; i < (int)MathF.Abs(io.MouseWheel); i++) _previewFreeFlySpeed *= factor;
+                _previewFreeFlySpeed = Math.Clamp(_previewFreeFlySpeed, 0.1f, 500f);
+            }
+        }
+        else if (!ImGui.IsMouseDown(ImGuiMouseButton.Right) && _previewFreeFly)
+        {
+            // Exit free-fly when mouse button is released
+            if (GlfwApiPreview != null)
+                GlfwApiPreview.SetInputMode(GlfwWindowPreview, CursorStateAttribute.Cursor, CursorModeValue.CursorNormal);
+            _previewFreeFly = false;
+            // Reset mouse position tracking on free-fly exit
+            _previewLastMouseX = double.NaN;
+            _previewLastMouseY = double.NaN;
+        }
+
+        sceneObj.SyncTransformFromCamera();
+    }
+
+    public unsafe bool CaptureCurrentViewRgb(uint w, uint h, bool highQuality, out byte[] rgbPixels)
+    {
+        rgbPixels = Array.Empty<byte>();
+        if (Gl == null || MainViewport == null || _previewFbo == 0 || w == 0 || h == 0)
+            return false;
+
+        var spawned = GetSpawnedCamerasPublic();
+        var (activeCam, sceneObj) = DrawCameraDropdownInternal(spawned);
+
+        bool previousOverlays = OverlaysEnabled;
+        OverlaysEnabled = false;
+        try
+        {
+            ResizeFboPublic(w, h);
+            RenderScenePublic(activeCam, sceneObj, w, h, highQuality);
+
+            rgbPixels = new byte[checked((int)(w * h * 3))];
+
+            Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
+            Gl.PixelStore(GLEnum.PackAlignment, 1);
+            fixed (byte* p = rgbPixels)
+                Gl.ReadPixels(0, 0, w, h, GLEnum.Rgb, GLEnum.UnsignedByte, p);
+            Gl.PixelStore(GLEnum.PackAlignment, 4);
+            Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+
+            FlipRgbRows(rgbPixels, (int)w, (int)h);
+            return true;
+        }
+        finally
+        {
+            OverlaysEnabled = previousOverlays;
+        }
+    }
+
+    private static void FlipRgbRows(byte[] rgbPixels, int width, int height)
+    {
+        int stride = width * 3;
+        byte[] row = new byte[stride];
+
+        for (int y = 0; y < height / 2; y++)
+        {
+            int top = y * stride;
+            int bottom = (height - 1 - y) * stride;
+
+            System.Buffer.BlockCopy(rgbPixels, top, row, 0, stride);
+            System.Buffer.BlockCopy(rgbPixels, bottom, rgbPixels, top, stride);
+            System.Buffer.BlockCopy(row, 0, rgbPixels, bottom, stride);
+        }
+    }
+
     /// <summary>
     /// Returns the active render <see cref="Camera"/> based on <see cref="_activeCameraIndex"/>.
     /// Index 0 = work camera; 1+ = spawned cameras.
@@ -2440,10 +3094,10 @@ public class Viewport : UiPanel
         float mouseY = io.MousePos.Y;
 
         // Seed last position on first call so we never get a giant spurious delta.
-        if (float.IsNaN(_lastMouseX)) { _lastMouseX = mouseX; _lastMouseY = mouseY; }
+        if (double.IsNaN(_lastMouseX)) { _lastMouseX = mouseX; _lastMouseY = mouseY; }
 
-        float dx = mouseX - _lastMouseX;
-        float dy = mouseY - _lastMouseY;
+        float dx = (float)(mouseX - _lastMouseX);
+        float dy = (float)(mouseY - _lastMouseY);
 
         // Reconstruct image rect from ImGui cursor (set just before ImGui.Image call).
         // We approximate it here from the window content region.
@@ -2557,17 +3211,21 @@ public class Viewport : UiPanel
         // ── Right-button: free-fly mode ───────────────────────────────────────
         // While the right mouse button is held GLFW cursor mode is set to
         // CursorDisabled: the OS cursor is hidden and locked; GLFW delivers
-        // raw unbounded deltas via the normal cursor-position callbacks, which
-        // the ImGui GLFW backend exposes as io.MouseDelta each frame.
+        // raw unbounded deltas via the normal cursor-position callbacks.
         // Controls:
         //   • Mouse delta  → look (yaw / pitch)
         //   • W / S        → move forward / backward
         //   • A / D        → strafe left / right
         //   • E / Q        → move up / down
-        if (ImGui.IsMouseDown(ImGuiMouseButton.Right))
+
+        // Check if mouse is within viewport bounds (ignoring overlays like preview)
+        bool mouseInViewportBounds = mousePos.X >= imageMin.X && mousePos.X <= imageMin.X + imageSize.X &&
+                                     mousePos.Y >= imageMin.Y && mousePos.Y <= imageMin.Y + imageSize.Y;
+
+        if (ImGui.IsMouseDown(ImGuiMouseButton.Right) && (mouseInViewportBounds || _freeFly))
         {
-            // Lock cursor on the first frame of right-click.
-            if (!_freeFly && GlfwApi != null)
+            // Lock cursor on the first frame of right-click, only if mouse started in this viewport bounds.
+            if (!_freeFly && GlfwApi != null && mouseInViewportBounds)
             {
                 unsafe
                 {
@@ -2577,20 +3235,33 @@ public class Viewport : UiPanel
                 }
             }
 
-            if (_freeFly)
+            if (_freeFly && GlfwApi != null)
             {
                 if (ImGui.IsKeyPressed(ImGuiKey.R, false))
                     Camera.ResetToDefaultPose();
 
-                // io.MouseDelta is populated by the GLFW backend from the raw
-                // cursor position callback — correct even while cursor is locked.
-                float lookDx =  io.MouseDelta.X * FreeFlyLookSensitivity;
-                // Screen Y increases downward; negate so dragging down pitches down.
-                float lookDy = -io.MouseDelta.Y * FreeFlyLookSensitivity;
+                // Get raw cursor position from GLFW
+                unsafe
+                {
+                    GlfwApi.GetCursorPos(GlfwWindow, out double cursorX, out double cursorY);
 
-                // Look rotates the camera in place: the eye stays fixed and
-                // Target is repositioned ahead of it (FPS-style, not orbit).
-                Camera.Look(lookDx, lookDy);
+                    // Validate cursor values are not NaN or infinity
+                    if (!double.IsNaN(cursorX) && !double.IsNaN(cursorY) &&
+                        !double.IsInfinity(cursorX) && !double.IsInfinity(cursorY) &&
+                        !double.IsNaN(_lastMouseX) && !double.IsNaN(_lastMouseY))
+                    {
+                        // Calculate delta from last frame
+                        float lookDx = (float)(cursorX - _lastMouseX) * FreeFlyLookSensitivity;
+                        float lookDy = -(float)(cursorY - _lastMouseY) * FreeFlyLookSensitivity;
+
+                        // Look rotates the camera in place: the eye stays fixed and
+                        // Target is repositioned ahead of it (FPS-style, not orbit).
+                        Camera.Look(lookDx, lookDy);
+
+                        _lastMouseX = cursorX;
+                        _lastMouseY = cursorY;
+                    }
+                }
 
                 // WASD / QE keyboard movement (frame-rate independent).
                 float dt    = io.DeltaTime;
@@ -2613,6 +3284,14 @@ public class Viewport : UiPanel
 
                 if (fwdDelta != 0f || rightDelta != 0f || upDelta != 0f)
                     Camera.MoveFreeFly(fwdDelta, rightDelta, upDelta);
+
+                // Handle scroll wheel for speed adjustment
+                if (io.MouseWheel != 0)
+                {
+                    float factor = io.MouseWheel > 0 ? 1.3f : 1f / 1.3f;
+                    for (int i = 0; i < (int)MathF.Abs(io.MouseWheel); i++) _freeFlySpeed *= factor;
+                    _freeFlySpeed = Math.Clamp(_freeFlySpeed, 0.1f, 500f);
+                }
             }
 
             _freeFly = true;
@@ -2632,7 +3311,11 @@ public class Viewport : UiPanel
             _freeFly = false;
         }
 
-        _lastMouseX = mouseX;
-        _lastMouseY = mouseY;
+        // Only update ImGui mouse position for non-free-fly controls
+        if (!_freeFly)
+        {
+            _lastMouseX = mouseX;
+            _lastMouseY = mouseY;
+        }
     }
 }

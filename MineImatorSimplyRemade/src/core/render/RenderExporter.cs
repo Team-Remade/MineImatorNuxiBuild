@@ -5,7 +5,7 @@ namespace MineImatorSimplyRemade.core.render;
 
 public sealed class RenderExporter
 {
-    private readonly CameraViewport _cameraViewport;
+    private readonly Viewport _cameraViewport;
 
     public sealed class VideoExportSession : IDisposable
     {
@@ -85,7 +85,7 @@ public sealed class RenderExporter
         }
     }
 
-    public RenderExporter(CameraViewport cameraViewport)
+    public RenderExporter(Viewport cameraViewport)
     {
         _cameraViewport = cameraViewport;
     }

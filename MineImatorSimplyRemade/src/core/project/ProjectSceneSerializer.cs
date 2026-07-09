@@ -23,7 +23,7 @@ public static class ProjectSceneSerializer
         };
 
         // Persist which camera the preview viewport is currently using (0 = work camera)
-        manifest.ActivePreviewCameraIndex = viewport.CameraViewport?.SelectedCameraIndex ?? 0;
+        manifest.ActivePreviewCameraIndex = viewport.PreviewViewport?.SelectedCameraIndex ?? 0;
 
         manifest.SceneObjects = viewport.SceneObjects
             .Select(SerializeNode)
@@ -52,8 +52,8 @@ public static class ProjectSceneSerializer
             timeline?.SetFrameRate(propertiesPanel.GetFramerate());
 
         // Restore preview viewport selected camera index (after scene objects restored so spawned cameras exist)
-        if (viewport.CameraViewport != null)
-            viewport.CameraViewport.SelectedCameraIndex = manifest.ActivePreviewCameraIndex;
+        if (viewport.PreviewViewport != null)
+            viewport.PreviewViewport.SelectedCameraIndex = manifest.ActivePreviewCameraIndex;
     }
 
     private static ProjectSceneObjectEntry SerializeNode(SceneObject obj)
