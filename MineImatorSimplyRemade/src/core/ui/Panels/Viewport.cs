@@ -2883,47 +2883,46 @@ public class Viewport : UiPanel
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
     }
 
-    public unsafe void HandleFreeFlyPublic(Camera cam, CameraSceneObject? sceneObj, bool hovered)
+    /// <summary>
+    /// Core free-fly control logic (unified source of truth for all viewports).
+    /// Handles mouse look, keyboard movement, speed adjustments, and cursor management.
+    /// </summary>
+    private unsafe void DoFreeFlyMovement(
+        ref bool freeFlyActive,
+        ref float freeFlySpeed,
+        ref double lastMouseX,
+        ref double lastMouseY,
+        Camera camera,
+        Glfw? glfw,
+        WindowHandle* window,
+        Vector2 imageMin,
+        Vector2 imageSize)
     {
-        if (sceneObj == null) return;
-
         var io = ImGui.GetIO();
 
-        // Allow input to continue while free-fly is active even if the ImGui
-        // window hover state changes (the OS cursor is locked by GLFW so the real 
-        // cursor never moved — only the internal ImGui position drifts).
-        if (!_previewFreeFly && !hovered)
-        {
-            _previewFreeFly = false;
-            return;
-        }
-
-        var imageMin = ImGui.GetWindowPos() + ImGui.GetCursorPos();
-        var imageSize = ImGui.GetContentRegionAvail();
-
         double glfwCursorX = 0, glfwCursorY = 0;
-        if (GlfwApiPreview != null)
+        if (glfw != null)
         {
-            GlfwApiPreview.GetCursorPos(GlfwWindowPreview, out glfwCursorX, out glfwCursorY);
+            glfw.GetCursorPos(window, out glfwCursorX, out glfwCursorY);
         }
 
         bool mouseInViewportBounds = glfwCursorX >= imageMin.X && glfwCursorX <= imageMin.X + imageSize.X &&
                                      glfwCursorY >= imageMin.Y && glfwCursorY <= imageMin.Y + imageSize.Y;
 
-        // Detect initial right-click within viewport bounds and hovered to enter free-fly mode
-        if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && mouseInViewportBounds && hovered)
+        // Detect initial right-click within viewport bounds to enter free-fly mode
+        if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && mouseInViewportBounds)
         {
-            _previewFreeFly = true;
-            if (GlfwApiPreview != null)
+            freeFlyActive = true;
+            if (glfw != null)
             {
-                GlfwApiPreview.SetInputMode(GlfwWindowPreview, CursorStateAttribute.Cursor, CursorModeValue.CursorDisabled);
+                glfw.SetInputMode(window, CursorStateAttribute.Cursor, CursorModeValue.CursorDisabled);
                 // Seed last position on entry so we don't get a spurious camera jump on first frame
-                GlfwApiPreview.GetCursorPos(GlfwWindowPreview, out _previewLastMouseX, out _previewLastMouseY);
+                glfw.GetCursorPos(window, out lastMouseX, out lastMouseY);
             }
         }
 
         // Continue free-fly logic while mouse button is held and free-fly is active
-        if (_previewFreeFly && ImGui.IsMouseDown(ImGuiMouseButton.Right) && GlfwApiPreview != null)
+        if (freeFlyActive && ImGui.IsMouseDown(ImGuiMouseButton.Right) && glfw != null)
         {
             ImGui.SetNextFrameWantCaptureMouse(true);
 
@@ -2932,29 +2931,31 @@ public class Viewport : UiPanel
             {
                 var clampedX = Math.Clamp(glfwCursorX, imageMin.X, imageMin.X + imageSize.X);
                 var clampedY = Math.Clamp(glfwCursorY, imageMin.Y, imageMin.Y + imageSize.Y);
-                GlfwApiPreview.SetCursorPos(GlfwWindowPreview, clampedX, clampedY);
+                glfw.SetCursorPos(window, clampedX, clampedY);
             }
 
-            GlfwApiPreview.GetCursorPos(GlfwWindowPreview, out double cursorX, out double cursorY);
+            glfw.GetCursorPos(window, out double cursorX, out double cursorY);
 
+            // Apply look (mouse rotation)
             if (!double.IsNaN(cursorX) && !double.IsNaN(cursorY) &&
                 !double.IsInfinity(cursorX) && !double.IsInfinity(cursorY) &&
-                !double.IsNaN(_previewLastMouseX) && !double.IsNaN(_previewLastMouseY))
+                !double.IsNaN(lastMouseX) && !double.IsNaN(lastMouseY))
             {
-                float lookDx = (float)(cursorX - _previewLastMouseX) * FreeFlyLookSensitivity;
-                float lookDy = -(float)(cursorY - _previewLastMouseY) * FreeFlyLookSensitivity;
+                float lookDx = (float)(cursorX - lastMouseX) * FreeFlyLookSensitivity;
+                float lookDy = -(float)(cursorY - lastMouseY) * FreeFlyLookSensitivity;
+                camera.Look(lookDx, lookDy);
 
-                cam.Look(lookDx, lookDy);
-
-                _previewLastMouseX = cursorX;
-                _previewLastMouseY = cursorY;
+                lastMouseX = cursorX;
+                lastMouseY = cursorY;
             }
 
+            // Calculate movement speed
             float dt = io.DeltaTime;
-            float speed = _previewFreeFlySpeed * cam.Distance * 0.2f;
+            float speed = freeFlySpeed * camera.Distance * 0.2f;
             if (ImGui.IsKeyDown(ImGuiKey.Space)) speed *= 2.5f;
             else if (ImGui.IsKeyDown(ImGuiKey.ModShift)) speed *= 0.4f;
 
+            // Apply keyboard movement (WASD + QE)
             float fwd = 0f, rt = 0f, up = 0f;
             if (ImGui.IsKeyDown(ImGuiKey.W)) fwd += speed * dt;
             if (ImGui.IsKeyDown(ImGuiKey.S)) fwd -= speed * dt;
@@ -2962,25 +2963,42 @@ public class Viewport : UiPanel
             if (ImGui.IsKeyDown(ImGuiKey.A)) rt -= speed * dt;
             if (ImGui.IsKeyDown(ImGuiKey.E)) up += speed * dt;
             if (ImGui.IsKeyDown(ImGuiKey.Q)) up -= speed * dt;
-            if (fwd != 0f || rt != 0f || up != 0f) cam.MoveFreeFly(fwd, rt, up);
+            if (fwd != 0f || rt != 0f || up != 0f) camera.MoveFreeFly(fwd, rt, up);
 
+            // Handle scroll wheel for speed adjustment
             if (io.MouseWheel != 0)
             {
                 float factor = io.MouseWheel > 0 ? 1.3f : 1f / 1.3f;
-                for (int i = 0; i < (int)MathF.Abs(io.MouseWheel); i++) _previewFreeFlySpeed *= factor;
-                _previewFreeFlySpeed = Math.Clamp(_previewFreeFlySpeed, 0.1f, 500f);
+                for (int i = 0; i < (int)MathF.Abs(io.MouseWheel); i++) freeFlySpeed *= factor;
+                freeFlySpeed = Math.Clamp(freeFlySpeed, 0.1f, 500f);
             }
         }
-        else if (!ImGui.IsMouseDown(ImGuiMouseButton.Right) && _previewFreeFly)
+        else if (!ImGui.IsMouseDown(ImGuiMouseButton.Right) && freeFlyActive)
         {
             // Exit free-fly when mouse button is released
-            if (GlfwApiPreview != null)
-                GlfwApiPreview.SetInputMode(GlfwWindowPreview, CursorStateAttribute.Cursor, CursorModeValue.CursorNormal);
-            _previewFreeFly = false;
+            if (glfw != null)
+                glfw.SetInputMode(window, CursorStateAttribute.Cursor, CursorModeValue.CursorNormal);
+            freeFlyActive = false;
             // Reset mouse position tracking on free-fly exit
-            _previewLastMouseX = double.NaN;
-            _previewLastMouseY = double.NaN;
+            lastMouseX = double.NaN;
+            lastMouseY = double.NaN;
         }
+    }
+
+    public unsafe void HandleFreeFlyPublic(Camera cam, CameraSceneObject? sceneObj, bool hovered)
+    {
+        if (sceneObj == null) return;
+
+        // Allow input to continue while free-fly is active even if the ImGui
+        // window hover state changes (the OS cursor is locked by GLFW so the real 
+        // cursor never moved — only the internal ImGui position drifts).
+        if (!_previewFreeFly && !hovered) return;
+
+        var imageMin = ImGui.GetWindowPos() + ImGui.GetCursorPos();
+        var imageSize = ImGui.GetContentRegionAvail();
+
+        DoFreeFlyMovement(ref _previewFreeFly, ref _previewFreeFlySpeed, ref _previewLastMouseX, ref _previewLastMouseY,
+            cam, GlfwApiPreview, GlfwWindowPreview, imageMin, imageSize);
 
         sceneObj.SyncTransformFromCamera();
     }
@@ -3076,7 +3094,7 @@ public class Viewport : UiPanel
 
     // ── Camera / gizmo input ───────────────────────────────────────────────────
 
-    private void HandleCameraInput()
+    private unsafe void HandleCameraInput()
     {
         // Allow input to continue while free-fly is active even if the ImGui
         // mouse position has drifted outside the panel (the OS cursor is locked
@@ -3190,128 +3208,32 @@ public class Viewport : UiPanel
             _panning = false;
         }
 
-        // Scroll wheel → zoom (normal mode) or speed change (free-fly mode)
-        if (io.MouseWheel != 0)
+        // Scroll wheel → zoom (normal mode) only when not in free-fly
+        if (io.MouseWheel != 0 && !_freeFly)
         {
-            if (_freeFly)
-            {
-                // Multiply/divide speed by a fixed factor per notch so the steps
-                // feel consistent at any speed level.
-                float factor = io.MouseWheel > 0 ? 1.3f : 1f / 1.3f;
-                for (int i = 0; i < (int)MathF.Abs(io.MouseWheel); i++)
-                    _freeFlySpeed *= factor;
-                _freeFlySpeed = Math.Clamp(_freeFlySpeed, 0.1f, 500f);
-            }
-            else
-            {
-                Camera.Zoom(io.MouseWheel * Camera.Distance * 0.1f);
-            }
+            Camera.Zoom(io.MouseWheel * Camera.Distance * 0.1f);
         }
 
         // ── Right-button: free-fly mode ───────────────────────────────────────
-        // While the right mouse button is held GLFW cursor mode is set to
-        // CursorDisabled: the OS cursor is hidden and locked; GLFW delivers
-        // raw unbounded deltas via the normal cursor-position callbacks.
+        // Unified free-fly controls via DoFreeFlyMovement (source of truth).
         // Controls:
+        //   • Right-click to enter free-fly mode
         //   • Mouse delta  → look (yaw / pitch)
         //   • W / S        → move forward / backward
         //   • A / D        → strafe left / right
         //   • E / Q        → move up / down
+        //   • Space        → speed boost (×2.5)
+        //   • Shift        → slow (×0.4)
+        //   • Scroll wheel → adjust speed
+        
+        DoFreeFlyMovement(ref _freeFly, ref _freeFlySpeed, ref _lastMouseX, ref _lastMouseY,
+            Camera, GlfwApi, GlfwWindow, imageMin, imageSize);
 
-        // Check if mouse is within viewport bounds (ignoring overlays like preview)
-        bool mouseInViewportBounds = mousePos.X >= imageMin.X && mousePos.X <= imageMin.X + imageSize.X &&
-                                     mousePos.Y >= imageMin.Y && mousePos.Y <= imageMin.Y + imageSize.Y;
+        // Handle the R key to reset camera pose in free-fly mode
+        if (_freeFly && ImGui.IsKeyPressed(ImGuiKey.R, false))
+            Camera.ResetToDefaultPose();
 
-        if (ImGui.IsMouseDown(ImGuiMouseButton.Right) && (mouseInViewportBounds || _freeFly))
-        {
-            // Lock cursor on the first frame of right-click, only if mouse started in this viewport bounds.
-            if (!_freeFly && GlfwApi != null && mouseInViewportBounds)
-            {
-                unsafe
-                {
-                    GlfwApi.SetInputMode(GlfwWindow,
-                        CursorStateAttribute.Cursor,
-                        CursorModeValue.CursorDisabled);
-                }
-            }
-
-            if (_freeFly && GlfwApi != null)
-            {
-                if (ImGui.IsKeyPressed(ImGuiKey.R, false))
-                    Camera.ResetToDefaultPose();
-
-                // Get raw cursor position from GLFW
-                unsafe
-                {
-                    GlfwApi.GetCursorPos(GlfwWindow, out double cursorX, out double cursorY);
-
-                    // Validate cursor values are not NaN or infinity
-                    if (!double.IsNaN(cursorX) && !double.IsNaN(cursorY) &&
-                        !double.IsInfinity(cursorX) && !double.IsInfinity(cursorY) &&
-                        !double.IsNaN(_lastMouseX) && !double.IsNaN(_lastMouseY))
-                    {
-                        // Calculate delta from last frame
-                        float lookDx = (float)(cursorX - _lastMouseX) * FreeFlyLookSensitivity;
-                        float lookDy = -(float)(cursorY - _lastMouseY) * FreeFlyLookSensitivity;
-
-                        // Look rotates the camera in place: the eye stays fixed and
-                        // Target is repositioned ahead of it (FPS-style, not orbit).
-                        Camera.Look(lookDx, lookDy);
-
-                        _lastMouseX = cursorX;
-                        _lastMouseY = cursorY;
-                    }
-                }
-
-                // WASD / QE keyboard movement (frame-rate independent).
-                float dt    = io.DeltaTime;
-                float speed = _freeFlySpeed * Camera.Distance * 0.2f;  // scale with distance
-
-                // Space = speed boost (×2.5), Shift = slow (×0.4).
-                if (ImGui.IsKeyDown(ImGuiKey.Space))         speed *= 2.5f;
-                else if (ImGui.IsKeyDown(ImGuiKey.ModShift)) speed *= 0.4f;
-
-                float fwdDelta   = 0f;
-                float rightDelta = 0f;
-                float upDelta    = 0f;
-
-                if (ImGui.IsKeyDown(ImGuiKey.W)) fwdDelta   += speed * dt;
-                if (ImGui.IsKeyDown(ImGuiKey.S)) fwdDelta   -= speed * dt;
-                if (ImGui.IsKeyDown(ImGuiKey.D)) rightDelta += speed * dt;
-                if (ImGui.IsKeyDown(ImGuiKey.A)) rightDelta -= speed * dt;
-                if (ImGui.IsKeyDown(ImGuiKey.E)) upDelta    += speed * dt;
-                if (ImGui.IsKeyDown(ImGuiKey.Q)) upDelta    -= speed * dt;
-
-                if (fwdDelta != 0f || rightDelta != 0f || upDelta != 0f)
-                    Camera.MoveFreeFly(fwdDelta, rightDelta, upDelta);
-
-                // Handle scroll wheel for speed adjustment
-                if (io.MouseWheel != 0)
-                {
-                    float factor = io.MouseWheel > 0 ? 1.3f : 1f / 1.3f;
-                    for (int i = 0; i < (int)MathF.Abs(io.MouseWheel); i++) _freeFlySpeed *= factor;
-                    _freeFlySpeed = Math.Clamp(_freeFlySpeed, 0.1f, 500f);
-                }
-            }
-
-            _freeFly = true;
-        }
-        else
-        {
-            // Restore normal cursor when right mouse button is released.
-            if (_freeFly && GlfwApi != null)
-            {
-                unsafe
-                {
-                    GlfwApi.SetInputMode(GlfwWindow,
-                        CursorStateAttribute.Cursor,
-                        CursorModeValue.CursorNormal);
-                }
-            }
-            _freeFly = false;
-        }
-
-        // Only update ImGui mouse position for non-free-fly controls
+        // Update mouse tracking for non-free-fly controls
         if (!_freeFly)
         {
             _lastMouseX = mouseX;
