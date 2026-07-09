@@ -92,6 +92,15 @@ public class Viewport : UiPanel
     /// </summary>
     public Gizmo3D? Gizmo { get; private set; }
 
+    // ── Input handling ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Centralized input handler for camera controls.
+    /// Abstracts away ImGui dependencies to work with both main and undocked windows.
+    /// </summary>
+    private Input _input = new Input();
+    private Input _previewInput = new Input();
+
     // ── Orbit drag state ───────────────────────────────────────────────────────
 
     private bool  _dragging;
@@ -3171,14 +3180,61 @@ public class Viewport : UiPanel
         // Allow input to continue while free-fly is active even if the ImGui
         // window hover state changes (the OS cursor is locked by GLFW so the real 
         // cursor never moved — only the internal ImGui position drifts).
-        if (!_previewFreeFly && !hovered) return;
+        if (!_previewInput.IsFreeFlyActive && !hovered) return;
 
+        var io = ImGui.GetIO();
+        Vector2 mousePos = new Vector2(io.MousePos.X, io.MousePos.Y);
         var imageMin = ImGui.GetWindowPos() + ImGui.GetCursorPos();
         var imageSize = ImGui.GetContentRegionAvail();
 
-        DoFreeFlyMovement(ref _previewFreeFly, ref _previewFreeFlySpeed, ref _previewLastMouseX, ref _previewLastMouseY,
-            cam, GlfwApiPreview, GlfwWindowPreview, imageMin, imageSize);
+        // Gather full input state for undocked window (same as main viewport)
+        bool mouseDown_Left = ImGui.IsMouseDown(ImGuiMouseButton.Left);
+        bool mouseDown_Right = ImGui.IsMouseDown(ImGuiMouseButton.Right);
+        bool mouseDown_Middle = ImGui.IsMouseDown(ImGuiMouseButton.Middle);
+        bool mouseClicked_Left = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+        bool mouseClicked_Right = ImGui.IsMouseClicked(ImGuiMouseButton.Right);
+        bool mouseReleased_Left = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
+        bool mouseReleased_Right = ImGui.IsMouseReleased(ImGuiMouseButton.Right);
+        float mouseWheel = io.MouseWheel;
 
+        bool keyDown_W = ImGui.IsKeyDown(ImGuiKey.W);
+        bool keyDown_S = ImGui.IsKeyDown(ImGuiKey.S);
+        bool keyDown_A = ImGui.IsKeyDown(ImGuiKey.A);
+        bool keyDown_D = ImGui.IsKeyDown(ImGuiKey.D);
+        bool keyDown_E = ImGui.IsKeyDown(ImGuiKey.E);
+        bool keyDown_Q = ImGui.IsKeyDown(ImGuiKey.Q);
+        bool keyDown_Space = ImGui.IsKeyDown(ImGuiKey.Space);
+        bool keyDown_Shift = ImGui.IsKeyDown(ImGuiKey.ModShift);
+
+        bool keyPressed_G = ImGui.IsKeyPressed(ImGuiKey.G);
+        bool keyPressed_R = ImGui.IsKeyPressed(ImGuiKey.R, false);
+
+        // Process full input (orbit, pan, zoom, free-fly) through the centralized input handler
+        _previewInput.ProcessInput(
+            cam,
+            null, // No gizmo in preview viewport
+            imageMin,
+            imageSize,
+            GlfwApiPreview,
+            GlfwWindowPreview,
+            mousePos,
+            mouseDown_Left,
+            mouseDown_Right,
+            mouseDown_Middle,
+            mouseClicked_Left,
+            mouseClicked_Right,
+            mouseReleased_Left,
+            mouseReleased_Right,
+            mouseWheel,
+            keyDown_W, keyDown_S, keyDown_A, keyDown_D,
+            keyDown_E, keyDown_Q, keyDown_Space, keyDown_Shift,
+            keyPressed_G,
+            keyPressed_R,
+            io.DeltaTime,
+            hovered
+        );
+
+        // Sync camera transform
         sceneObj.SyncTransformFromCamera();
     }
 
@@ -3278,145 +3334,81 @@ public class Viewport : UiPanel
         // Allow input to continue while free-fly is active even if the ImGui
         // mouse position has drifted outside the panel (the OS cursor is locked
         // by GLFW so the real cursor never moved — only the internal position).
-        if (!_freeFly && !ImGui.IsWindowHovered()) return;
+        bool windowHovered = ImGui.IsWindowHovered();
+        if (!_input.IsFreeFlyActive && !windowHovered) return;
 
         var io = ImGui.GetIO();
 
         // While free-fly is active, tell ImGui this window owns the mouse so
         // other panels and widgets do not receive hover/click events.
-        if (_freeFly)
+        if (_input.IsFreeFlyActive)
             ImGui.SetNextFrameWantCaptureMouse(true);
 
-        float mouseX = io.MousePos.X;
-        float mouseY = io.MousePos.Y;
-
-        // Seed last position on first call so we never get a giant spurious delta.
-        if (double.IsNaN(_lastMouseX)) { _lastMouseX = mouseX; _lastMouseY = mouseY; }
-
-        float dx = (float)(mouseX - _lastMouseX);
-        float dy = (float)(mouseY - _lastMouseY);
-
-        // Reconstruct image rect from ImGui cursor (set just before ImGui.Image call).
-        // We approximate it here from the window content region.
+        Vector2 mousePos = new Vector2(io.MousePos.X, io.MousePos.Y);
         var imageMin  = ImGui.GetWindowPos() + ImGui.GetCursorPos();
         var imageSize = ImGui.GetContentRegionAvail();
-        var mousePos  = new Vector2(mouseX, mouseY);
 
-        // ── G key: toggle global ↔ local transform space ─────────────────────
-        if (Gizmo != null && Gizmo.Visible && !Gizmo.Editing &&
-            ImGui.IsKeyPressed(ImGuiKey.G))
+        // Gather input state
+        bool mouseDown_Left = ImGui.IsMouseDown(ImGuiMouseButton.Left);
+        bool mouseDown_Right = ImGui.IsMouseDown(ImGuiMouseButton.Right);
+        bool mouseDown_Middle = ImGui.IsMouseDown(ImGuiMouseButton.Middle);
+        bool mouseClicked_Left = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+        bool mouseClicked_Right = ImGui.IsMouseClicked(ImGuiMouseButton.Right);
+        bool mouseReleased_Left = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
+        bool mouseReleased_Right = ImGui.IsMouseReleased(ImGuiMouseButton.Right);
+        float mouseWheel = io.MouseWheel;
+
+        bool keyDown_W = ImGui.IsKeyDown(ImGuiKey.W);
+        bool keyDown_S = ImGui.IsKeyDown(ImGuiKey.S);
+        bool keyDown_A = ImGui.IsKeyDown(ImGuiKey.A);
+        bool keyDown_D = ImGui.IsKeyDown(ImGuiKey.D);
+        bool keyDown_E = ImGui.IsKeyDown(ImGuiKey.E);
+        bool keyDown_Q = ImGui.IsKeyDown(ImGuiKey.Q);
+        bool keyDown_Space = ImGui.IsKeyDown(ImGuiKey.Space);
+        bool keyDown_Shift = ImGui.IsKeyDown(ImGuiKey.ModShift);
+
+        bool keyPressed_G = ImGui.IsKeyPressed(ImGuiKey.G);
+        bool keyPressed_R = ImGui.IsKeyPressed(ImGuiKey.R, false);
+
+        // Process input through the centralized input handler
+        _input.ProcessInput(
+            Camera,
+            Gizmo,
+            imageMin,
+            imageSize,
+            GlfwApi,
+            GlfwWindow,
+            mousePos,
+            mouseDown_Left,
+            mouseDown_Right,
+            mouseDown_Middle,
+            mouseClicked_Left,
+            mouseClicked_Right,
+            mouseReleased_Left,
+            mouseReleased_Right,
+            mouseWheel,
+            keyDown_W, keyDown_S, keyDown_A, keyDown_D,
+            keyDown_E, keyDown_Q, keyDown_Space, keyDown_Shift,
+            keyPressed_G, keyPressed_R,
+            io.DeltaTime,
+            windowHovered
+        );
+
+        // Sync old fields for backward compatibility
+        _freeFly = _input.IsFreeFlyActive;
+        _freeFlySpeed = _input.FreeFlySpeed;
+        _dragging = _input.IsDragging;
+        _panning = _input.IsPanning;
+        _gizmoDragging = _input.IsGizmoDragging;
+
+        // Handle pending pick
+        if (_input.HasPendingPick)
         {
-            Gizmo.UseLocalSpace = !Gizmo.UseLocalSpace;
-        }
-
-        // ── Gizmo hover (no button held) ──────────────────────────────────────
-        if (Gizmo != null && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
-            Gizmo.UpdateHover(mousePos, Camera, imageMin, imageSize);
-
-        // Left-button pressed this frame: try gizmo first, then orbit
-        if (ImGui.IsMouseDown(ImGuiMouseButton.Left))
-        {
-            if (!_dragging && !_gizmoDragging)
-            {
-                // Record press position for drag vs. click discrimination.
-                if (float.IsNaN(_pressMouseX))
-                {
-                    _pressMouseX = mouseX;
-                    _pressMouseY = mouseY;
-                }
-
-                // New press: check if gizmo claims it
-                if (Gizmo != null && Gizmo.TryBeginEdit(mousePos, Camera, imageMin, imageSize))
-                {
-                    _gizmoDragging = true;
-                }
-                else
-                {
-                    // Only begin orbit if the mouse has moved beyond the threshold.
-                    float moveDist = MathF.Sqrt(
-                        (mouseX - _pressMouseX) * (mouseX - _pressMouseX) +
-                        (mouseY - _pressMouseY) * (mouseY - _pressMouseY));
-                    if (moveDist >= OrbitDragThreshold)
-                        _dragging = true;
-                }
-            }
-
-            if (_gizmoDragging)
-                Gizmo?.ContinueEdit(mousePos);
-            else if (_dragging)
-                Camera.Orbit(dx * 0.005f, dy * 0.005f);
-        }
-        else
-        {
-            // Left-button just released.
-            bool wasGizmoDragging = _gizmoDragging;
-            bool wasOrbitDragging = _dragging;
-
-            if (_gizmoDragging) Gizmo?.EndEdit();
-            _dragging      = false;
-            _gizmoDragging = false;
-
-            // Queue a colour-pick if:
-            //   - We were not finishing a gizmo drag
-            //   - We were not finishing an orbit drag (mouse moved beyond threshold)
-            //   - The gizmo is not currently hovering a handle (would be a gizmo click)
-            bool gizmoHovering = Gizmo?.Hovering ?? false;
-            if (!wasGizmoDragging && !wasOrbitDragging && !gizmoHovering &&
-                ImGui.IsMouseReleased(ImGuiMouseButton.Left))
-            {
-                _pendingPickX    = mouseX;
-                _pendingPickY    = mouseY;
-                _pendingPickCtrl = io.KeyCtrl;
-            }
-
-            // Reset press-position tracker.
-            _pressMouseX = float.NaN;
-            _pressMouseY = float.NaN;
-        }
-
-        // Middle-button drag → pan
-        if (ImGui.IsMouseDown(ImGuiMouseButton.Middle))
-        {
-            if (_panning)
-                Camera.Pan(-dx * 0.01f * (Camera.Distance / 5f),
-                            dy * 0.01f * (Camera.Distance / 5f));
-            _panning = true;
-        }
-        else
-        {
-            _panning = false;
-        }
-
-        // Scroll wheel → zoom (normal mode) only when not in free-fly
-        if (io.MouseWheel != 0 && !_freeFly)
-        {
-            Camera.Zoom(io.MouseWheel * Camera.Distance * 0.1f);
-        }
-
-        // ── Right-button: free-fly mode ───────────────────────────────────────
-        // Unified free-fly controls via DoFreeFlyMovement (source of truth).
-        // Controls:
-        //   • Right-click to enter free-fly mode
-        //   • Mouse delta  → look (yaw / pitch)
-        //   • W / S        → move forward / backward
-        //   • A / D        → strafe left / right
-        //   • E / Q        → move up / down
-        //   • Space        → speed boost (×2.5)
-        //   • Shift        → slow (×0.4)
-        //   • Scroll wheel → adjust speed
-        
-        DoFreeFlyMovement(ref _freeFly, ref _freeFlySpeed, ref _lastMouseX, ref _lastMouseY,
-            Camera, GlfwApi, GlfwWindow, imageMin, imageSize);
-
-        // Handle the R key to reset camera pose in free-fly mode
-        if (_freeFly && ImGui.IsKeyPressed(ImGuiKey.R, false))
-            Camera.ResetToDefaultPose();
-
-        // Update mouse tracking for non-free-fly controls
-        if (!_freeFly)
-        {
-            _lastMouseX = mouseX;
-            _lastMouseY = mouseY;
+            var (pickX, pickY) = _input.PendingPickPosition;
+            _pendingPickX = pickX;
+            _pendingPickY = pickY;
+            _pendingPickCtrl = _input.PendingPickCtrl;
+            _input.ClearPendingPick();
         }
     }
 }

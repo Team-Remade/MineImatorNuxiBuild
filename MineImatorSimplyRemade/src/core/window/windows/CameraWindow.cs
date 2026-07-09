@@ -70,6 +70,7 @@ public class CameraWindow : Window
         _panel.RenderScenePublic(activeCam, sceneObj, sceneW, sceneH);
 
         // ── Step 2: ImGui frame on this window's context ──────────────────────
+        // Make GL context current FIRST, before setting ImGui contexts
         SetContextCurrent();
         Glfw.MakeContextCurrent(WindowHandle);
 
@@ -133,6 +134,11 @@ public class CameraWindow : Window
         if (ImGui.Button("Dock"))
         {
             _panel.Undocked = false;
+            // Reset the camera viewport's GLFW references back to the main window
+            unsafe
+            {
+                _panel.GlfwWindowPreview = _mainHandle;
+            }
             Hide();
         }
 

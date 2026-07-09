@@ -23,7 +23,7 @@ public class Window : IDisposable
     
     private vec4 clearColor = new vec4(0, 0, 0, 1);
     private ImGuiIOPtr io;
-    private ImGuiContextPtr _imguiContext;
+    protected ImGuiContextPtr ImGuiContext { get; private set; }
 
     // Exposed to subclasses for custom render paths.
     protected float ClearR => clearColor.r;
@@ -37,11 +37,11 @@ public class Window : IDisposable
     /// </summary>
     protected unsafe void SetContextCurrent()
     {
-        if (_imguiContext.Handle != null)
+        if (ImGuiContext.Handle != null)
         {
-            ImGui.SetCurrentContext(_imguiContext);
-            ImGuiImplGLFW.SetCurrentContext(_imguiContext);
-            ImGuiImplOpenGL3.SetCurrentContext(_imguiContext);
+            ImGui.SetCurrentContext(ImGuiContext);
+            ImGuiImplGLFW.SetCurrentContext(ImGuiContext);
+            ImGuiImplOpenGL3.SetCurrentContext(ImGuiContext);
         }
     }
 
@@ -117,8 +117,8 @@ public class Window : IDisposable
     /// </summary>
     public unsafe void SetupImgui()
     {
-        _imguiContext = ImGui.CreateContext();
-        ImGui.SetCurrentContext(_imguiContext);
+        ImGuiContext = ImGui.CreateContext();
+        ImGui.SetCurrentContext(ImGuiContext);
         
         io = ImGui.GetIO();
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
@@ -128,12 +128,12 @@ public class Window : IDisposable
         
         ImGui.StyleColorsDark();
         
-        ImGuiImplGLFW.SetCurrentContext(_imguiContext);
+        ImGuiImplGLFW.SetCurrentContext(ImGuiContext);
         
         IntPtr nativeHandleValue = (IntPtr)windowHandle;
         ImGuiImplGLFW.InitForOpenGL(Unsafe.BitCast<IntPtr, GLFWwindowPtr>(nativeHandleValue), true);
         
-        ImGuiImplOpenGL3.SetCurrentContext(_imguiContext);
+        ImGuiImplOpenGL3.SetCurrentContext(ImGuiContext);
         ImGuiImplOpenGL3.Init("#version 150");
     }
 

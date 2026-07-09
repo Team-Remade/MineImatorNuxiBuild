@@ -109,6 +109,13 @@ public static class main
             // Pop button → show the window and mark undocked.
             camViewport.PopRequested += () =>
             {
+                // Update the camera viewport's GLFW references to point to the camera window
+                // so that free-fly controls work correctly in the undocked window
+                unsafe
+                {
+                    camViewport.GlfwApiPreview = Glfw;
+                    camViewport.GlfwWindowPreview = CameraWindow.WindowHandle;
+                }
                 Glfw.MakeContextCurrent(CameraWindow.WindowHandle);
                 CameraWindow.Show();
                 Glfw.MakeContextCurrent(MainWindow.WindowHandle);
