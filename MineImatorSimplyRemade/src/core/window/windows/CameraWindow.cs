@@ -108,6 +108,9 @@ public class CameraWindow : Window
         MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.CameraSceneObject? sceneObj,
         uint sceneW, uint sceneH)
     {
+        // Handle keyboard shortcuts specific to this undocked window
+        HandleCameraWindowKeyboardShortcuts();
+
         var vp = ImGui.GetMainViewport();
         ImGui.SetNextWindowPos(vp.Pos);
         ImGui.SetNextWindowSize(vp.Size);
@@ -181,5 +184,33 @@ public class CameraWindow : Window
         }
 
         ImGui.End();
+    }
+
+    /// <summary>
+    /// Handles keyboard shortcuts (F5, F6) specific to the undocked camera window.
+    /// This ensures that when the camera window is in focus in its own native window,
+    /// keyboard shortcuts are processed by this window's ImGui context instead of 
+    /// being lost to the main window's context.
+    /// </summary>
+    private void HandleCameraWindowKeyboardShortcuts()
+    {
+        if (_panel == null)
+            return;
+
+        ImGuiIOPtr io = ImGui.GetIO();
+
+        // F5: Toggle high-quality preview (shadows) for the camera viewport
+        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F5, false))
+        {
+            _panel.ToggleHighQualityPreview();
+            return;
+        }
+
+        // F6: Toggle shadow debug mode
+        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F6, false))
+        {
+            _panel.ToggleShadowDebugMode();
+            return;
+        }
     }
 }
