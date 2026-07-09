@@ -2926,14 +2926,6 @@ public class Viewport : UiPanel
         {
             ImGui.SetNextFrameWantCaptureMouse(true);
 
-            // Constrain mouse to viewport bounds during free-fly
-            if (!mouseInViewportBounds)
-            {
-                var clampedX = Math.Clamp(glfwCursorX, imageMin.X, imageMin.X + imageSize.X);
-                var clampedY = Math.Clamp(glfwCursorY, imageMin.Y, imageMin.Y + imageSize.Y);
-                glfw.SetCursorPos(window, clampedX, clampedY);
-            }
-
             glfw.GetCursorPos(window, out double cursorX, out double cursorY);
 
             // Apply look (mouse rotation)
@@ -2944,10 +2936,15 @@ public class Viewport : UiPanel
                 float lookDx = (float)(cursorX - lastMouseX) * FreeFlyLookSensitivity;
                 float lookDy = -(float)(cursorY - lastMouseY) * FreeFlyLookSensitivity;
                 camera.Look(lookDx, lookDy);
-
-                lastMouseX = cursorX;
-                lastMouseY = cursorY;
             }
+
+            // Recenter mouse to viewport center after each frame to prevent hitting edges
+            // and to ensure the mouse always has room to move in any direction
+            double centerX = imageMin.X + imageSize.X * 0.5;
+            double centerY = imageMin.Y + imageSize.Y * 0.5;
+            glfw.SetCursorPos(window, centerX, centerY);
+            lastMouseX = centerX;
+            lastMouseY = centerY;
 
             // Calculate movement speed
             float dt = io.DeltaTime;
