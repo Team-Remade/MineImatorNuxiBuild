@@ -1800,6 +1800,85 @@ public class Viewport : UiPanel
         Gl.BindTexture(GLEnum.TextureCubeMap, 0);
     }
 
+    private unsafe void EnsurePreviewShadowResources()
+    {
+        if (Gl == null || !IsPreviewViewport || _previewShadowShader != null)
+            return;
+
+        _previewShadowShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _previewShadowShader.CompileShader("shadow_depth.vert", "shadow_depth.frag");
+
+        Gl.GenFramebuffers(1, out _previewShadowFbo);
+        Gl.GenTextures(1, out _previewShadowTex);
+        Gl.BindTexture(GLEnum.Texture2D, _previewShadowTex);
+        Gl.TexImage2D(
+            GLEnum.Texture2D,
+            0,
+            InternalFormat.DepthComponent32f,
+            _shadowMapSize,
+            _shadowMapSize,
+            0,
+            PixelFormat.DepthComponent,
+            GLEnum.Float,
+            null);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToBorder);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToBorder);
+        float[] borderColor = [1f, 1f, 1f, 1f];
+        fixed (float* borderPtr = borderColor)
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureBorderColor, borderPtr);
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _previewShadowFbo);
+        Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.DepthAttachment, GLEnum.Texture2D, _previewShadowTex, 0);
+        Gl.DrawBuffer(GLEnum.None);
+        Gl.ReadBuffer(GLEnum.None);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+    }
+
+    private unsafe void EnsurePreviewPointShadowResources()
+    {
+        if (Gl == null || !IsPreviewViewport || _previewPointShadowShader != null)
+            return;
+
+        _previewPointShadowShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _previewPointShadowShader.CompileShader("point_shadow_depth.vert", "point_shadow_depth.frag");
+
+        Gl.GenFramebuffers(1, out _previewPointShadowFbo);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _previewPointShadowFbo);
+        Gl.DrawBuffer(GLEnum.None);
+        Gl.ReadBuffer(GLEnum.None);
+
+        for (int i = 0; i < MaxPointShadowLights; i++)
+        {
+            Gl.GenTextures(1, out _previewPointShadowCubeTextures[i]);
+            Gl.BindTexture(GLEnum.TextureCubeMap, _previewPointShadowCubeTextures[i]);
+            for (int face = 0; face < 6; face++)
+            {
+                Gl.TexImage2D(
+                    GLEnum.TextureCubeMapPositiveX + face,
+                    0,
+                    InternalFormat.DepthComponent32f,
+                    PointShadowMapSize,
+                    PointShadowMapSize,
+                    0,
+                    PixelFormat.DepthComponent,
+                    GLEnum.Float,
+                    null);
+            }
+
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapR, (int)TextureWrapMode.ClampToEdge);
+        }
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        Gl.BindTexture(GLEnum.TextureCubeMap, 0);
+    }
+
     private unsafe void RenderShadowMap()
     {
         if (Gl == null)
@@ -1823,7 +1902,7 @@ public class Viewport : UiPanel
         if (_groundPlane != null && GroundPlaneVisible)
             _groundPlane.RenderShadow(_shadowShader, lightViewProj, mat4.Identity);
 
-        RenderShadowCasters(SceneObjects, lightViewProj);
+        RenderShadowCasters(SceneObjects, lightViewProj, _shadowShader!);
 
         Gl.Enable(GLEnum.CullFace);
         Gl.CullFace(GLEnum.Back);
@@ -1875,7 +1954,7 @@ public class Viewport : UiPanel
                 if (_groundPlane != null && GroundPlaneVisible)
                     _groundPlane.RenderPointShadow(_pointShadowShader, lightViewProj, mat4.Identity, position, farPlane);
 
-                RenderPointShadowCasters(SceneObjects, lightViewProj, position, farPlane);
+                RenderPointShadowCasters(SceneObjects, lightViewProj, position, farPlane, _pointShadowShader!);
             }
         }
 
@@ -1954,7 +2033,7 @@ public class Viewport : UiPanel
         return lightProj * lightView;
     }
 
-    private void RenderShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj)
+    private void RenderShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, MineImatorSimplyRemade.core.mdl.Shader shadowShader)
     {
         foreach (var obj in objects)
         {
@@ -1967,10 +2046,10 @@ public class Viewport : UiPanel
                 if (mesh.PickOnly || mesh.DepthTestDisabled)
                     continue;
 
-                mesh.RenderShadow(_shadowShader!, lightViewProj, model);
+                mesh.RenderShadow(shadowShader, lightViewProj, model);
             }
 
-            RenderShadowCasters(obj.Children, lightViewProj);
+            RenderShadowCasters(obj.Children, lightViewProj, shadowShader);
         }
     }
 
@@ -2003,7 +2082,7 @@ public class Viewport : UiPanel
         }
     }
 
-    private void RenderPointShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, vec3 lightPos, float farPlane)
+    private void RenderPointShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, vec3 lightPos, float farPlane, MineImatorSimplyRemade.core.mdl.Shader pointShadowShader)
     {
         foreach (var obj in objects)
         {
@@ -2016,10 +2095,10 @@ public class Viewport : UiPanel
                 if (mesh.PickOnly || mesh.DepthTestDisabled)
                     continue;
 
-                mesh.RenderPointShadow(_pointShadowShader!, lightViewProj, model, lightPos, farPlane);
+                mesh.RenderPointShadow(pointShadowShader, lightViewProj, model, lightPos, farPlane);
             }
 
-            RenderPointShadowCasters(obj.Children, lightViewProj, lightPos, farPlane);
+            RenderPointShadowCasters(obj.Children, lightViewProj, lightPos, farPlane, pointShadowShader);
         }
     }
 
@@ -2038,6 +2117,101 @@ public class Viewport : UiPanel
 
             CollectPointShadowCasters(obj.Children, result);
         }
+    }
+
+    /// <summary>
+    /// Public method for preview viewport to render directional shadow map.
+    /// Renders shadows into the preview viewport's own shadow framebuffer.
+    /// </summary>
+    public unsafe void RenderShadowMapPublic()
+    {
+        if (Gl == null || !IsPreviewViewport)
+            return;
+
+        EnsurePreviewShadowResources();
+        if (_previewShadowShader == null || _previewShadowFbo == 0 || _previewShadowTex == 0)
+            return;
+
+        mat4 lightViewProj = ComputeShadowLightSpaceMatrix();
+        Mesh.ShadowsEnabled = true;
+        Mesh.ShadowMapTexture = _previewShadowTex;
+        Mesh.ShadowLightSpaceMatrix = lightViewProj;
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _previewShadowFbo);
+        Gl.Viewport(0, 0, _shadowMapSize, _shadowMapSize);
+        Gl.Clear(ClearBufferMask.DepthBufferBit);
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.Disable(GLEnum.CullFace);
+
+        if (MainViewport?.GroundPlane != null && MainViewport.GroundPlaneVisible)
+            MainViewport.GroundPlane.RenderShadow(_previewShadowShader, lightViewProj, mat4.Identity);
+
+        RenderShadowCasters(MainViewport?.SceneObjects ?? [], lightViewProj, _previewShadowShader!);
+
+
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
+        Gl.Viewport(0, 0, _previewWidth, _previewHeight);
+    }
+
+    /// <summary>
+    /// Public method for preview viewport to render point shadow maps.
+    /// Renders shadows into the preview viewport's own point shadow framebuffer.
+    /// </summary>
+    public unsafe Dictionary<LightSceneObject, int> RenderPointShadowMapsPublic()
+    {
+        Dictionary<LightSceneObject, int> shadowIndices = new();
+        if (Gl == null || !IsPreviewViewport)
+            return shadowIndices;
+
+        EnsurePreviewPointShadowResources();
+        if (_previewPointShadowShader == null || _previewPointShadowFbo == 0)
+            return shadowIndices;
+
+        List<(LightSceneObject Light, vec3 Position, float Range)> shadowLights = [];
+        CollectPointShadowCasters(MainViewport?.SceneObjects ?? [], shadowLights);
+        int lightCount = Math.Min(shadowLights.Count, MaxPointShadowLights);
+        Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
+
+        for (int lightIndex = 0; lightIndex < lightCount; lightIndex++)
+        {
+            var (light, position, range) = shadowLights[lightIndex];
+            shadowIndices[light] = lightIndex;
+            Mesh.PointShadowCubeTextures[lightIndex] = _previewPointShadowCubeTextures[lightIndex];
+
+            float farPlane = Math.Max(range, 0.5f);
+            mat4 projection = mat4.Perspective(GlmSharp.glm.Radians(90f), 1f, 0.05f, farPlane);
+
+            for (int face = 0; face < 6; face++)
+            {
+                mat4 view = mat4.LookAt(position, position + PointShadowFaceDirections[face], PointShadowFaceUps[face]);
+                mat4 lightViewProj = projection * view;
+
+                Gl.BindFramebuffer(GLEnum.Framebuffer, _previewPointShadowFbo);
+                Gl.FramebufferTexture2D(
+                    GLEnum.Framebuffer,
+                    GLEnum.DepthAttachment,
+                    GLEnum.TextureCubeMapPositiveX + face,
+                    _previewPointShadowCubeTextures[lightIndex],
+                    0);
+                Gl.Viewport(0, 0, PointShadowMapSize, PointShadowMapSize);
+                Gl.Clear(ClearBufferMask.DepthBufferBit);
+                Gl.Enable(GLEnum.DepthTest);
+                Gl.Disable(GLEnum.CullFace);
+
+                if (MainViewport?.GroundPlane != null && MainViewport.GroundPlaneVisible)
+                    MainViewport.GroundPlane.RenderPointShadow(_previewPointShadowShader, lightViewProj, mat4.Identity, position, farPlane);
+
+                RenderPointShadowCasters(MainViewport?.SceneObjects ?? [], lightViewProj, position, farPlane, _previewPointShadowShader!);
+            }
+        }
+
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
+        Gl.Viewport(0, 0, _previewWidth, _previewHeight);
+        return shadowIndices;
     }
 
     private struct SceneShadowBounds
@@ -2814,6 +2988,14 @@ public class Viewport : UiPanel
 
         Mesh.PointLights.Clear();
         Dictionary<LightSceneObject, int> pointShadowIndices = new();
+
+        if (renderMode == SceneRenderMode.Rendered)
+        {
+            Mesh.ShadowDebugMode = MainViewport.ShadowDebugEnabled ? 1 : 0;
+            if (Mesh.DirectionalShadowEnabled)
+                RenderShadowMapPublic();
+            pointShadowIndices = RenderPointShadowMapsPublic();
+        }
 
         CollectPointLights(MainViewport.SceneObjects, pointShadowIndices);
 
