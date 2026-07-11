@@ -104,11 +104,7 @@ public class UpdateChecker
             }
 
             var content = await response.Content.ReadAsStringAsync();
-            
-            // Suppress IL2026/IL3050 for GitHub API deserialization (external data, not persisted)
-#pragma warning disable IL2026, IL3050
-            var releases = JsonSerializer.Deserialize<List<GitHubRelease>>(content);
-#pragma warning restore IL2026, IL3050
+            var releases = (List<GitHubRelease>)JsonSerializer.Deserialize(content, typeof(List<GitHubRelease>), AppJsonContext.Default);
 
             if (releases == null || releases.Count == 0)
             {
