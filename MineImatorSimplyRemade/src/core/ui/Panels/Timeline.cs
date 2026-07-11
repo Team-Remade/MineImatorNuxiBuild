@@ -116,6 +116,8 @@ public class Timeline : UiPanel
     private TimelineKeyframe? _ctxKeyframe;
     private SceneObject?      _ctxObject;
     private string?           _ctxPropPath;
+    private bool              _openAddKeyframeMenu = false;
+    private SceneObject?      _ctxAddKeyframeObj;
 
     // ── Layout ────────────────────────────────────────────────────────────────
 
@@ -260,6 +262,14 @@ public class Timeline : UiPanel
             ImGui.OpenPopup("##kf_ctx");
         }
         RenderContextMenu();
+
+        // Deferred add-keyframe menu popup
+        if (_openAddKeyframeMenu)
+        {
+            _openAddKeyframeMenu = false;
+            ImGui.OpenPopup("##kf_add");
+        }
+        RenderAddKeyframeMenu();
 
         ImGui.End();
     }
@@ -651,6 +661,9 @@ public class Timeline : UiPanel
                 dl.AddRectFilled(hPos, hPos + new Vector2(contentW, RowHeight),
                     ImGui.ColorConvertFloat4ToU32(new Vector4(0.18f, 0.18f, 0.1f, 1f)));
                 ImGui.Dummy(new Vector2(contentW, RowHeight));
+                
+                // Handle mouse interactions on header row
+                HandleTrackMouse(row, hPos, contentW, scrollX, wPos, wSize);
                 continue;
             }
 
@@ -925,20 +938,29 @@ public class Timeline : UiPanel
         }
 
         // ── Right-click context menu ─────────────────────────────────────────
-        if (!row.IsGroupHeader && row.PropertyPath != "__header__" &&
-            ImGui.IsMouseClicked(ImGuiMouseButton.Right) && hoveredKf != null)
+        if (ImGui.IsMouseClicked(ImGuiMouseButton.Right))
         {
-            _ctxKeyframe = hoveredKf;
-            _ctxObject   = row.Object;
-            _ctxPropPath = row.PropertyPath;
-            if (!_selectedKeyframes.Contains(hoveredKf))
+            if (!row.IsGroupHeader && row.PropertyPath != "__header__" && hoveredKf != null)
             {
-                _selectedKeyframes.Clear();
-                _keyframeOwners.Clear();
-                _selectedKeyframes.Add(hoveredKf);
-                _keyframeOwners[hoveredKf] = (row.Object, row.PropertyPath);
+                // Right-click on a keyframe
+                _ctxKeyframe = hoveredKf;
+                _ctxObject   = row.Object;
+                _ctxPropPath = row.PropertyPath;
+                if (!_selectedKeyframes.Contains(hoveredKf))
+                {
+                    _selectedKeyframes.Clear();
+                    _keyframeOwners.Clear();
+                    _selectedKeyframes.Add(hoveredKf);
+                    _keyframeOwners[hoveredKf] = (row.Object, row.PropertyPath);
+                }
+                _openContextMenu = true;
             }
-            _openContextMenu = true;
+            else if (row.PropertyPath == "__header__")
+            {
+                // Right-click on object header row
+                _ctxAddKeyframeObj = row.Object;
+                _openAddKeyframeMenu = true;
+            }
         }
 
         // ── Drag-select ──────────────────────────────────────────────────────
@@ -1063,6 +1085,65 @@ public class Timeline : UiPanel
         ImGui.EndPopup();
     }
 
+    private void RenderAddKeyframeMenu()
+    {
+        if (!ImGui.BeginPopup("##kf_add")) return;
+        if (_ctxAddKeyframeObj == null) { ImGui.EndPopup(); return; }
+
+        ImGui.TextDisabled("Add Keyframe");
+        ImGui.Separator();
+
+        bool canRotate = !(_ctxAddKeyframeObj is LightSceneObject);
+        bool canScale = !(_ctxAddKeyframeObj is CameraSceneObject) && !(_ctxAddKeyframeObj is LightSceneObject);
+
+        if (ImGui.MenuItem("All Transforms"))
+        {
+            // Always add position keyframes
+            AddKeyframeForProperty(_ctxAddKeyframeObj, "position.x", _currentFrame);
+            AddKeyframeForProperty(_ctxAddKeyframeObj, "position.y", _currentFrame);
+            AddKeyframeForProperty(_ctxAddKeyframeObj, "position.z", _currentFrame);
+            
+            // Add rotation only if object supports it
+            if (canRotate)
+            {
+                AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.x", _currentFrame);
+                AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.y", _currentFrame);
+                AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.z", _currentFrame);
+            }
+            
+            // Add scale only if object supports it
+            if (canScale)
+            {
+                AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.x", _currentFrame);
+                AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.y", _currentFrame);
+                AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.z", _currentFrame);
+            }
+        }
+
+        if (ImGui.MenuItem("Position"))
+        {
+            AddKeyframeForProperty(_ctxAddKeyframeObj, "position.x", _currentFrame);
+            AddKeyframeForProperty(_ctxAddKeyframeObj, "position.y", _currentFrame);
+            AddKeyframeForProperty(_ctxAddKeyframeObj, "position.z", _currentFrame);
+        }
+
+        if (canRotate && ImGui.MenuItem("Rotation"))
+        {
+            AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.x", _currentFrame);
+            AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.y", _currentFrame);
+            AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.z", _currentFrame);
+        }
+
+        if (canScale && ImGui.MenuItem("Scale"))
+        {
+            AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.x", _currentFrame);
+            AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.y", _currentFrame);
+            AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.z", _currentFrame);
+        }
+
+        ImGui.EndPopup();
+    }
+
     public void DeleteSelectedKeyframes()
     {
         var toDelete = _selectedKeyframes
@@ -1116,6 +1197,7 @@ public class Timeline : UiPanel
 
         SaveKeyframesToObject(obj, propertyPath);
         RecalculateTimelineLength();
+        RebuildDisplayRows();
     }
 
     public void RemoveKeyframeForProperty(SceneObject obj, string propertyPath, int frame)
@@ -1125,6 +1207,7 @@ public class Timeline : UiPanel
         {
             list.RemoveAll(k => k.Frame == frame);
             SaveKeyframesToObject(obj, propertyPath);
+            RebuildDisplayRows();
         }
     }
 
@@ -1521,6 +1604,113 @@ public class Timeline : UiPanel
 
         if (Viewport != null)
             LoadKeyframesForAllObjects(CollectAllObjects(Viewport.SceneObjects));
+        
+        // Rebuild display rows to only show properties with keyframes
+        RebuildDisplayRows();
+    }
+
+    /// <summary>
+    /// Rebuilds _displayRows to only include properties that have keyframes.
+    /// Called whenever selection changes or keyframes are added/removed.
+    /// </summary>
+    private void RebuildDisplayRows()
+    {
+        var selectedObjects = SelectionManager.Instance?.SelectedObjects ?? new List<SceneObject>();
+        _displayRows.Clear();
+        _groupExpanded.Clear();
+
+        foreach (var obj in selectedObjects)
+        {
+            // Add header
+            _displayRows.Add(new TimelineProperty { Object = obj, Label = $"── {obj.Name} ──", PropertyPath = "__header__" });
+
+            // Collect properties that have keyframes
+            var propsWithKeyframes = new HashSet<string>();
+            foreach (var kvp in _propertyKeyframes)
+            {
+                if (kvp.Value.Count == 0) continue;
+                int dotIdx = kvp.Key.IndexOf('.');
+                if (dotIdx < 0) continue;
+                string objectId = kvp.Key[..dotIdx];
+                if (objectId != obj.ObjectId) continue;
+                string propPath = kvp.Key[(dotIdx + 1)..];
+                propsWithKeyframes.Add(propPath);
+            }
+
+            // Define all possible properties in order
+            var standardProps = new[]
+            {
+                (label: "Visible",         path: "visible", parent: "", indent: 0),
+                (label: "Alpha",           path: "material.alpha", parent: "", indent: 0),
+                (label: "Position",        path: "position", parent: "", indent: 0),
+                (label: "X",               path: "position.x", parent: "position", indent: 1),
+                (label: "Y",               path: "position.y", parent: "position", indent: 1),
+                (label: "Z",               path: "position.z", parent: "position", indent: 1),
+                (label: "Rotation",        path: "rotation", parent: "", indent: 0),
+                (label: "X",               path: "rotation.x", parent: "rotation", indent: 1),
+                (label: "Y",               path: "rotation.y", parent: "rotation", indent: 1),
+                (label: "Z",               path: "rotation.z", parent: "rotation", indent: 1),
+                (label: "Scale",           path: "scale", parent: "", indent: 0),
+                (label: "X",               path: "scale.x", parent: "scale", indent: 1),
+                (label: "Y",               path: "scale.y", parent: "scale", indent: 1),
+                (label: "Z",               path: "scale.z", parent: "scale", indent: 1),
+            };
+
+            // Add rows for properties with keyframes
+            foreach (var (label, path, parent, indent) in standardProps)
+            {
+                bool hasKeyframes = propsWithKeyframes.Contains(path);
+                if (!hasKeyframes) continue;
+
+                if (path == "position" || path == "rotation" || path == "scale")
+                {
+                    // This is a group header
+                    string[] groupPaths = path switch
+                    {
+                        "position" => new[] { "position.x", "position.y", "position.z" },
+                        "rotation" => new[] { "rotation.x", "rotation.y", "rotation.z" },
+                        "scale" => new[] { "scale.x", "scale.y", "scale.z" },
+                        _ => Array.Empty<string>()
+                    };
+                    _displayRows.Add(MakeGroup(obj, label, groupPaths));
+                }
+                else
+                {
+                    _displayRows.Add(MakeSingle(obj, label, path, indent));
+                }
+            }
+
+            // Light properties
+            if (obj is LightSceneObject)
+            {
+                var lightProps = new[]
+                {
+                    (label: "Light Energy",    path: "light.energy", parent: "", indent: 0),
+                    (label: "Light Range",     path: "light.range", parent: "", indent: 0),
+                    (label: "Indirect Energy", path: "light.indirect_energy", parent: "", indent: 0),
+                    (label: "Specular",        path: "light.specular", parent: "", indent: 0),
+                    (label: "Light Color",     path: "light.color", parent: "", indent: 0),
+                    (label: "R",               path: "light.color.r", parent: "light.color", indent: 1),
+                    (label: "G",               path: "light.color.g", parent: "light.color", indent: 1),
+                    (label: "B",               path: "light.color.b", parent: "light.color", indent: 1),
+                };
+
+                foreach (var (label, path, parent, indent) in lightProps)
+                {
+                    bool hasKeyframes = propsWithKeyframes.Contains(path);
+                    if (!hasKeyframes) continue;
+
+                    if (path == "light.color")
+                    {
+                        _displayRows.Add(MakeGroup(obj, label, new[] { "light.color.r", "light.color.g", "light.color.b" }));
+                    }
+                    else
+                    {
+                        _displayRows.Add(MakeSingle(obj, label, path, indent));
+                    }
+                }
+            }
+        }
     }
 
     private void AddObjectRows(SceneObject obj)

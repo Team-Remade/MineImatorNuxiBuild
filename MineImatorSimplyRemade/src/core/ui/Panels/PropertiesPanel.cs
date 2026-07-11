@@ -91,6 +91,12 @@ public class PropertiesPanel : UiPanel
     // Scale link toggle
     private bool _linkScale = true;
 
+    // ── Right-click keyframe context menu ──────────────────────────────────
+    
+    private bool              _openPropContextMenu = false;
+    private string?           _ctxPropertyPath;
+    private System.Numerics.Vector2 _ctxMenuPos;
+
     // ── Public wiring ─────────────────────────────────────────────────────────
 
     /// <summary>Set from MainWindow after both panels are initialised.</summary>
@@ -388,6 +394,14 @@ public class PropertiesPanel : UiPanel
                 RenderObjectTab();
                 ImGui.EndTabBar();
             }
+            
+            // Deferred context menu popup
+            if (_openPropContextMenu)
+            {
+                _openPropContextMenu = false;
+                ImGui.OpenPopup("##prop_keyframe_ctx");
+            }
+            RenderPropertyContextMenu();
         }
         ImGui.End();
     }
@@ -832,6 +846,8 @@ public class PropertiesPanel : UiPanel
             float posZ = rawPos.z * 16f;
 
             ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
+            
+            // Position X
             if (ImGui.DragFloat("X##posX", ref posX, 0.1f))
             {
                 rawPos.x = posX / 16f;
@@ -839,6 +855,14 @@ public class PropertiesPanel : UiPanel
                 rawPos.z = posZ / 16f;
                 ApplyPosition(rawPos);
             }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "position.x";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
+            }
+            
+            // Position Y
             if (ImGui.DragFloat("Y##posY", ref posY, 0.1f))
             {
                 rawPos.x = posX / 16f;
@@ -846,12 +870,26 @@ public class PropertiesPanel : UiPanel
                 rawPos.z = posZ / 16f;
                 ApplyPosition(rawPos);
             }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "position.y";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
+            }
+            
+            // Position Z
             if (ImGui.DragFloat("Z##posZ", ref posZ, 0.1f))
             {
                 rawPos.x = posX / 16f;
                 rawPos.y = posY / 16f;
                 rawPos.z = posZ / 16f;
                 ApplyPosition(rawPos);
+            }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "position.z";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
             }
             ImGui.PopItemWidth();
 
@@ -879,20 +917,44 @@ public class PropertiesPanel : UiPanel
             float rotZ = rawRot.z * (180f / MathF.PI);
 
             ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
+            
+            // Rotation X
             if (ImGui.DragFloat("X##rotX", ref rotX, 0.5f))
             {
                 rawRot = new vec3(rotX * (MathF.PI / 180f), rotY * (MathF.PI / 180f), rotZ * (MathF.PI / 180f));
                 ApplyRotation(rawRot);
             }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "rotation.x";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
+            }
+            
+            // Rotation Y
             if (ImGui.DragFloat("Y##rotY", ref rotY, 0.5f))
             {
                 rawRot = new vec3(rotX * (MathF.PI / 180f), rotY * (MathF.PI / 180f), rotZ * (MathF.PI / 180f));
                 ApplyRotation(rawRot);
             }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "rotation.y";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
+            }
+            
+            // Rotation Z
             if (ImGui.DragFloat("Z##rotZ", ref rotZ, 0.5f))
             {
                 rawRot = new vec3(rotX * (MathF.PI / 180f), rotY * (MathF.PI / 180f), rotZ * (MathF.PI / 180f));
                 ApplyRotation(rawRot);
+            }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "rotation.z";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
             }
             ImGui.PopItemWidth();
 
@@ -919,6 +981,8 @@ public class PropertiesPanel : UiPanel
             float scaleZ = curScale.z;
 
             ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
+            
+            // Scale X
             if (ImGui.DragFloat("X##scaleX", ref scaleX, 0.01f, 0.001f, float.MaxValue))
             {
                 scaleX = MathF.Max(scaleX, 0.001f);
@@ -930,6 +994,14 @@ public class PropertiesPanel : UiPanel
                 }
                 ApplyScale(new vec3(scaleX, scaleY, scaleZ));
             }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "scale.x";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
+            }
+            
+            // Scale Y
             if (ImGui.DragFloat("Y##scaleY", ref scaleY, 0.01f, 0.001f, float.MaxValue))
             {
                 scaleY = MathF.Max(scaleY, 0.001f);
@@ -941,6 +1013,14 @@ public class PropertiesPanel : UiPanel
                 }
                 ApplyScale(new vec3(scaleX, scaleY, scaleZ));
             }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "scale.y";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
+            }
+            
+            // Scale Z
             if (ImGui.DragFloat("Z##scaleZ", ref scaleZ, 0.01f, 0.001f, float.MaxValue))
             {
                 scaleZ = MathF.Max(scaleZ, 0.001f);
@@ -951,6 +1031,12 @@ public class PropertiesPanel : UiPanel
                     scaleY = MathF.Max(curScale.y + delta, 0.001f);
                 }
                 ApplyScale(new vec3(scaleX, scaleY, scaleZ));
+            }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "scale.z";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
             }
             ImGui.PopItemWidth();
 
@@ -1128,6 +1214,12 @@ public class PropertiesPanel : UiPanel
                     _currentObject.PropagateMaterialSettingsToChildren();
                     Timeline?.RecordAutoKeyframe(_currentObject, "material.alpha");
                 }
+                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                {
+                    _ctxPropertyPath = "material.alpha";
+                    _ctxMenuPos = ImGui.GetMousePos();
+                    _openPropContextMenu = true;
+                }
                 ImGui.SameLine();
                 ImGui.Text(alpha.ToString("F2"));
             }
@@ -1284,6 +1376,12 @@ public class PropertiesPanel : UiPanel
                         light.LightEnergy = energy;
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.energy");
                     }
+                    if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                    {
+                        _ctxPropertyPath = "light.energy";
+                        _ctxMenuPos = ImGui.GetMousePos();
+                        _openPropContextMenu = true;
+                    }
                 }
 
                 // Range
@@ -1293,6 +1391,12 @@ public class PropertiesPanel : UiPanel
                     {
                         light.LightRange = range;
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.range");
+                    }
+                    if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                    {
+                        _ctxPropertyPath = "light.range";
+                        _ctxMenuPos = ImGui.GetMousePos();
+                        _openPropContextMenu = true;
                     }
                 }
 
@@ -1304,6 +1408,12 @@ public class PropertiesPanel : UiPanel
                         light.LightIndirectEnergy = indirect;
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.indirect_energy");
                     }
+                    if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                    {
+                        _ctxPropertyPath = "light.indirect_energy";
+                        _ctxMenuPos = ImGui.GetMousePos();
+                        _openPropContextMenu = true;
+                    }
                 }
 
                 // Specular
@@ -1313,6 +1423,12 @@ public class PropertiesPanel : UiPanel
                     {
                         light.LightSpecular = specular;
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.specular");
+                    }
+                    if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                    {
+                        _ctxPropertyPath = "light.specular";
+                        _ctxMenuPos = ImGui.GetMousePos();
+                        _openPropContextMenu = true;
                     }
                 }
 
@@ -1393,5 +1509,23 @@ public class PropertiesPanel : UiPanel
         if (_currentObject == null) return;
         if (_currentObject.MaterialSettings == null)
             _currentObject.MaterialSettings = new MaterialSettings();
+    }
+
+    // ── Property context menu ─────────────────────────────────────────────────
+
+    private void RenderPropertyContextMenu()
+    {
+        if (!ImGui.BeginPopup("##prop_keyframe_ctx")) return;
+        if (_currentObject == null || _ctxPropertyPath == null) { ImGui.EndPopup(); return; }
+
+        ImGui.TextDisabled("Keyframe");
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Add Keyframe at Current Frame"))
+        {
+            Timeline?.AddKeyframeForProperty(_currentObject, _ctxPropertyPath, Timeline?.CurrentFrame ?? 0);
+        }
+
+        ImGui.EndPopup();
     }
 }
