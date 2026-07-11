@@ -417,6 +417,12 @@ public class MainWindow : Window
         }
 
         ReportStep(7, "Constructing editor UI", "Editor ready.", 1f, "Main window will appear shortly");
+
+        // Load preferences after all UI is ready
+        if (_preferencesPanel != null)
+        {
+            _preferencesPanel.LoadPreferences();
+        }
     }
 
     protected override void RenderUi()
@@ -2538,7 +2544,8 @@ public class MainWindow : Window
     {
         if (!_projectManager.HasProject || !_projectManager.IsDirty)
         {
-            // No unsaved changes, proceed with close
+            // No unsaved changes, save preferences and proceed with close
+            _preferencesPanel?.SavePreferences();
             Glfw.SetWindowShouldClose(WindowHandle, true);
             return;
         }
@@ -2609,6 +2616,7 @@ public class MainWindow : Window
                 _showUnsavedChangesDialog = false;
                 _handleCloseWithUnsavedChanges = false;
                 _allowWindowClose = true;
+                _preferencesPanel?.SavePreferences();
                 Glfw.SetWindowShouldClose(WindowHandle, true);
             }
             else if (shouldExit)
@@ -2617,6 +2625,7 @@ public class MainWindow : Window
                 _showUnsavedChangesDialog = false;
                 _handleCloseWithUnsavedChanges = false;
                 _allowWindowClose = true;
+                _preferencesPanel?.SavePreferences();
                 Glfw.SetWindowShouldClose(WindowHandle, true);
             }
 

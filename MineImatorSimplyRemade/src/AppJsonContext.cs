@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
+using MineImatorSimplyRemade.core.ui.Panels;
 
 namespace MineImatorSimplyRemade;
 
@@ -24,6 +25,7 @@ namespace MineImatorSimplyRemade;
 [JsonSerializable(typeof(MiModel))]
 [JsonSerializable(typeof(ProjectManifest))]
 [JsonSerializable(typeof(RecentProjectsState))]
+[JsonSerializable(typeof(PreferencesState))]
 [JsonSerializable(typeof(FfmpegBootstrap.FfmpegBootstrapState))]
 internal partial class AppJsonContext : JsonSerializerContext
 {
