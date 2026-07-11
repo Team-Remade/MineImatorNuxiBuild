@@ -170,6 +170,7 @@ public class MainWindow : Window
     private bool _pendingSavePrimed;
 
     private SceneTree? _sceneTree;
+    private PreferencesPanel? _preferencesPanel;
 
     private readonly string _appTitle;
     private readonly string _aboutVersion;
@@ -197,7 +198,8 @@ public class MainWindow : Window
         new Timeline(),
         new ContentBrowser(),
         new SceneTree(),
-        new PropertiesPanel()
+        new PropertiesPanel(),
+        new PreferencesPanel()
     ];
 
     public MainWindow(int width, int height, string title, Glfw glfw, GL? gl = null, bool visible = true) : base(width, height, title, glfw, gl!, visible)
@@ -232,6 +234,7 @@ public class MainWindow : Window
         _menubar.VisitForumsRequested = OpenForumsLink;
         _menubar.SupportUsRequested = OpenDonateLink;
         _menubar.RenderRequested = OpenRenderPopup;
+        _menubar.PreferencesRequested = () => _preferencesPanel?.ToggleVisibility();
         _aboutVersion = ResolveAppVersion();
 
         ImageResult icon;
@@ -302,6 +305,7 @@ public class MainWindow : Window
         Viewport? viewport = null;
         SceneTree? sceneTree = null;
         PropertiesPanel? propertiesPanel = null;
+        PreferencesPanel? preferencesPanel = null;
         Timeline? timeline = null;
 
         foreach (UiPanel panel in _panels)
@@ -323,6 +327,10 @@ public class MainWindow : Window
                 case PropertiesPanel pp:
                     propertiesPanel = pp;
                     _propertiesPanel = pp;
+                    break;
+                case PreferencesPanel pref:
+                    preferencesPanel = pref;
+                    _preferencesPanel = pref;
                     break;
                 case ContentBrowser cb:
                     _contentBrowser = cb;

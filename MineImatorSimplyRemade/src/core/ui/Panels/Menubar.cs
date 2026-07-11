@@ -30,6 +30,7 @@ public class Menubar : UiPanel
     public Action? VisitForumsRequested { get; set; }
     public Action? SupportUsRequested { get; set; }
     public Action<RenderRequestKind>? RenderRequested { get; set; }
+    public Action? PreferencesRequested { get; set; }
 
     public override void Render()
     {
@@ -125,6 +126,7 @@ public class Menubar : UiPanel
                 ImGui.Separator();
                 if (ImGui.MenuItem("Preferences"))
                 {
+                    PreferencesRequested?.Invoke();
                 }
                 ImGui.EndMenu();
             }
