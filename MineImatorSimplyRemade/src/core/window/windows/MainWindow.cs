@@ -169,6 +169,10 @@ public class MainWindow : Window
     private PendingSaveAction _pendingSaveAction;
     private bool _pendingSavePrimed;
 
+    private bool _showUnsavedChangesDialog;
+    private bool _handleCloseWithUnsavedChanges;
+    private bool _allowWindowClose;
+
     private SceneTree? _sceneTree;
     private PreferencesPanel? _preferencesPanel;
 
@@ -235,6 +239,7 @@ public class MainWindow : Window
         _menubar.SupportUsRequested = OpenDonateLink;
         _menubar.RenderRequested = OpenRenderPopup;
         _menubar.PreferencesRequested = () => _preferencesPanel?.ToggleVisibility();
+        _menubar.ExitRequested = RequestApplicationExit;
         _aboutVersion = ResolveAppVersion();
 
         ImageResult icon;
@@ -429,6 +434,7 @@ public class MainWindow : Window
         _menubar.Render();
         RenderProjectDialogs();
         RenderResourcePackImportPopup();
+        RenderUnsavedChangesDialog();
 
         ImGuiViewportPtr mainViewport = ImGui.GetMainViewport();
         ImGui.SetNextWindowPos(mainViewport.WorkPos);
@@ -2500,5 +2506,121 @@ public class MainWindow : Window
         ImGuiP.DockBuilderDockWindow(PropertiesDockId, propertiesDockId);
 
         ImGuiP.DockBuilderFinish(dockspaceId);
+    }
+
+    private void RequestApplicationExit()
+    {
+        CheckAndHandleUnsavedChanges();
+    }
+
+    public bool CanWindowClose()
+    {
+        // If we've already determined the window can close, allow it
+        if (_allowWindowClose)
+            return true;
+
+        // If there's no project or no unsaved changes, allow close
+        if (!_projectManager.HasProject || !_projectManager.IsDirty)
+            return true;
+
+        // If we're not already handling the close dialog, start handling it
+        if (!_handleCloseWithUnsavedChanges)
+        {
+            _handleCloseWithUnsavedChanges = true;
+            _showUnsavedChangesDialog = true;
+        }
+
+        // Don't close the window yet - we're showing the dialog
+        return false;
+    }
+
+    private unsafe void CheckAndHandleUnsavedChanges()
+    {
+        if (!_projectManager.HasProject || !_projectManager.IsDirty)
+        {
+            // No unsaved changes, proceed with close
+            Glfw.SetWindowShouldClose(WindowHandle, true);
+            return;
+        }
+
+        _handleCloseWithUnsavedChanges = true;
+        _showUnsavedChangesDialog = true;
+    }
+
+    private unsafe void RenderUnsavedChangesDialog()
+    {
+        if (!_showUnsavedChangesDialog)
+            return;
+
+        if (!ImGui.IsPopupOpen("Unsaved Changes"))
+            ImGui.OpenPopup("Unsaved Changes");
+
+        ImGuiViewportPtr viewport = ImGui.GetMainViewport();
+        Vector2 center = new Vector2(viewport.Pos.X + viewport.Size.X * 0.5f, viewport.Pos.Y + viewport.Size.Y * 0.5f);
+        ImGui.SetNextWindowPos(center, ImGuiCond.Appearing, new Vector2(0.5f, 0.5f));
+
+        if (ImGui.BeginPopupModal("Unsaved Changes", ref _showUnsavedChangesDialog, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.TextWrapped($"The project \"{_projectManager.Manifest.ProjectName}\" has unsaved changes.");
+            ImGui.TextWrapped("What would you like to do?");
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+
+            bool shouldSave = false;
+            bool shouldExit = false;
+
+            float buttonWidth = 150f;
+            float totalButtonWidth = (buttonWidth * 3) + (ImGui.GetStyle().ItemSpacing.X * 2);
+            float availableWidth = ImGui.GetContentRegionAvail().X;
+            float offset = (availableWidth - totalButtonWidth) / 2;
+
+            if (offset > 0)
+                ImGui.Indent(offset);
+
+            if (ImGui.Button("Save", new Vector2(buttonWidth, 0)))
+            {
+                shouldSave = true;
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Exit without Saving", new Vector2(buttonWidth, 0)))
+            {
+                shouldExit = true;
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel", new Vector2(buttonWidth, 0)))
+            {
+                ImGui.CloseCurrentPopup();
+                _showUnsavedChangesDialog = false;
+                _handleCloseWithUnsavedChanges = false;
+                _allowWindowClose = false;
+                Glfw.SetWindowShouldClose(WindowHandle, false);
+            }
+
+            if (offset > 0)
+                ImGui.Unindent(offset);
+
+            if (shouldSave)
+            {
+                SaveProjectWithScene();
+                ImGui.CloseCurrentPopup();
+                _showUnsavedChangesDialog = false;
+                _handleCloseWithUnsavedChanges = false;
+                _allowWindowClose = true;
+                Glfw.SetWindowShouldClose(WindowHandle, true);
+            }
+            else if (shouldExit)
+            {
+                ImGui.CloseCurrentPopup();
+                _showUnsavedChangesDialog = false;
+                _handleCloseWithUnsavedChanges = false;
+                _allowWindowClose = true;
+                Glfw.SetWindowShouldClose(WindowHandle, true);
+            }
+
+            ImGui.EndPopup();
+        }
     }
 }

@@ -141,7 +141,7 @@ public static class main
         var frameTimer = Stopwatch.StartNew();
         long targetFrameTicks = Stopwatch.Frequency / MainLoopTargetFps;
 
-        while (!Glfw.WindowShouldClose(MainWindow.WindowHandle))
+        while (!Glfw.WindowShouldClose(MainWindow.WindowHandle) || !MainWindow.CanWindowClose())
         {
             long frameStartTicks = frameTimer.ElapsedTicks;
 
