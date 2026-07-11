@@ -3825,29 +3825,17 @@ public class SpawnMenu : UiPanel
 
         try
         {
-            string projectRoot = ProjectManager.ProjectFolder;
-            string texturesDir = Path.Combine(projectRoot, "assets", "textures", "primitives");
-            Directory.CreateDirectory(texturesDir);
+            string fullSourcePath = Path.GetFullPath(sourcePath);
+            var existing = ProjectManager.GetProjectAssets().FirstOrDefault(a =>
+                a.AssetType == ProjectAssetType.Image &&
+                string.Equals(Path.GetFullPath(a.SourcePath), fullSourcePath, StringComparison.OrdinalIgnoreCase));
 
-            string fileName = Path.GetFileName(sourcePath);
-            string destPath = Path.Combine(texturesDir, fileName);
+            var asset = existing ?? ProjectManager.AddAsset(fullSourcePath, ProjectAssetType.Image);
 
-            // Handle filename conflicts by appending a number
-            int counter = 1;
-            string baseName = Path.GetFileNameWithoutExtension(fileName);
-            string extension = Path.GetExtension(fileName);
-            while (File.Exists(destPath) && !File.Exists(sourcePath).Equals(File.Exists(destPath)))
-            {
-                fileName = $"{baseName}_{counter}{extension}";
-                destPath = Path.Combine(texturesDir, fileName);
-                counter++;
-            }
+            if (asset.StoredInProject && !string.IsNullOrWhiteSpace(asset.RelativePath))
+                return asset.RelativePath;
 
-            File.Copy(sourcePath, destPath, true);
-
-            // Return project-relative path
-            string relativePath = Path.GetRelativePath(projectRoot, destPath);
-            return relativePath;
+            return ProjectManager.GetAssetFullPath(asset);
         }
         catch (Exception ex)
         {

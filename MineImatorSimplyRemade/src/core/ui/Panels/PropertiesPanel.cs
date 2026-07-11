@@ -100,6 +100,10 @@ public class PropertiesPanel : UiPanel
     private string?           _ctxPropertyPath;
     private System.Numerics.Vector2 _ctxMenuPos;
 
+    // ── Texture tracking for dropdown ────────────────────────────────────────
+    private Dictionary<uint, string> _loadedTexturePathCache = new();
+    private uint[] _cachedTextureIds = Array.Empty<uint>();
+
     // ── Public wiring ─────────────────────────────────────────────────────────
 
     /// <summary>Set from MainWindow after both panels are initialised.</summary>
@@ -377,6 +381,28 @@ public class PropertiesPanel : UiPanel
 
         BackgroundImagePath = string.IsNullOrWhiteSpace(importedPath) ? NoImageSelected : importedPath;
         return true;
+    }
+
+    private string ResolveAlbedoTexturePathForProject(string sourcePath)
+    {
+        string fullSourcePath = Path.GetFullPath(sourcePath);
+        if (!ProjectManager.Instance.HasProject)
+            return fullSourcePath;
+
+        try
+        {
+            var existing = ProjectManager.Instance.GetProjectAssets().FirstOrDefault(a =>
+                a.AssetType == ProjectAssetType.Image &&
+                string.Equals(Path.GetFullPath(a.SourcePath), fullSourcePath, StringComparison.OrdinalIgnoreCase));
+
+            var asset = existing ?? ProjectManager.Instance.AddAsset(fullSourcePath, ProjectAssetType.Image);
+            return ProjectManager.Instance.GetAssetFullPath(asset);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[PropertiesPanel] Could not register albedo texture in project assets: {ex.Message}");
+            return fullSourcePath;
+        }
     }
     
     // ── Selection callback ────────────────────────────────────────────────────
@@ -1233,6 +1259,9 @@ public class PropertiesPanel : UiPanel
             // Albedo texture (for primitives and custom objects)
             if (string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase))
             {
+                // Refresh texture cache from scene
+                RefreshLoadedTextures();
+                
                 ImGui.Text("Albedo Texture:");
                 
                 // Show current texture if any mesh has one
@@ -1246,21 +1275,99 @@ public class PropertiesPanel : UiPanel
                     }
                 }
 
-                if (currentTextureId != 0)
+                // Build list of available textures for dropdown
+                string currentLabel = "(none)";
+                if (currentTextureId != 0 && _loadedTexturePathCache.ContainsKey(currentTextureId))
                 {
-                    ImGui.TextDisabled("(texture loaded)");
+                    currentLabel = Path.GetFileName(_loadedTexturePathCache[currentTextureId]);
                 }
-                else
+                else if (currentTextureId == 0 && !string.IsNullOrEmpty(_currentObject.AlbedoTexturePath))
                 {
-                    ImGui.TextDisabled("(none)");
+                    // Texture path stored but ID is 0, show the filename
+                    string fullPath = Path.Combine(ProjectManager.Instance.ProjectFolder, _currentObject.AlbedoTexturePath);
+                    if (File.Exists(fullPath))
+                    {
+                        currentLabel = Path.GetFileName(fullPath);
+                    }
                 }
 
-                if (ImGui.Button("Load texture...##AlbedoTexture", new Vector2(-1, 0)))
+                // Texture dropdown
+                ImGui.SetNextItemWidth(-1);
+                if (ImGui.BeginCombo("##AlbedoTextureCombo", currentLabel))
+                {
+                    // "None" option
+                    if (ImGui.Selectable("(none)", currentTextureId == 0))
+                    {
+                        // Clear texture from all meshes
+                        foreach (var mesh in _currentObject.Visuals)
+                        {
+                            if (mesh.TextureId != 0)
+                            {
+                                Gl?.DeleteTexture(mesh.TextureId);
+                                mesh.TextureId = 0;
+                            }
+                        }
+                        _currentObject.AlbedoTexturePath = "";
+                        ProjectManager.Instance.SetDirty(true);
+                    }
+
+                    // Show all loaded/imported textures as options
+                    foreach (var (texId, path) in _loadedTexturePathCache)
+                    {
+                        if (texId == 0) continue;
+                        string label = Path.GetFileName(path);
+                        bool selected = (currentTextureId == texId);
+                        if (ImGui.Selectable(label, selected))
+                        {
+                            // Check if this is an actual loaded texture or just an imported file
+                            bool isLoadedTexture = false;
+                            foreach (var mesh in _currentObject.Visuals)
+                            {
+                                if (mesh.TextureId == texId)
+                                {
+                                    isLoadedTexture = true;
+                                    break;
+                                }
+                            }
+
+                            if (isLoadedTexture)
+                            {
+                                // Already loaded, just set it
+                                foreach (var mesh in _currentObject.Visuals)
+                                {
+                                    mesh.TextureId = texId;
+                                }
+                                if (!string.IsNullOrEmpty(path))
+                                {
+                                    _currentObject.AlbedoTexturePath = path.Contains(ProjectManager.Instance.ProjectFolder)
+                                        ? Path.GetRelativePath(ProjectManager.Instance.ProjectFolder, path)
+                                        : path;
+                                }
+                            }
+                            else
+                            {
+                                // File hasn't been loaded yet, load it now
+                                if (File.Exists(path))
+                                {
+                                    OnLoadAlbedoTextureForObject(path);
+                                }
+                            }
+                            ProjectManager.Instance.SetDirty(true);
+                        }
+                        if (selected)
+                            ImGui.SetItemDefaultFocus();
+                    }
+
+                    ImGui.EndCombo();
+                }
+
+                if (ImGui.Button("Load new texture...##AlbedoTexture", new Vector2(-1, 0)))
                 {
                     var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
                     if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
                     {
-                        OnLoadAlbedoTextureForObject(result.Path);
+                        string resolvedPath = ResolveAlbedoTexturePathForProject(result.Path);
+                        OnLoadAlbedoTextureForObject(resolvedPath);
                         ProjectManager.Instance.SetDirty(true);
                     }
                 }
@@ -1275,6 +1382,7 @@ public class PropertiesPanel : UiPanel
                             mesh.TextureId = 0;
                         }
                     }
+                    _currentObject.AlbedoTexturePath = "";
                     ProjectManager.Instance.SetDirty(true);
                 }
 
@@ -1593,6 +1701,99 @@ public class PropertiesPanel : UiPanel
     }
 
     /// <summary>
+    /// Builds a cache of user-imported textures. Scans the project's images folder
+    /// to find all imported texture files. Also maps currently loaded texture IDs to their paths.
+    /// This ensures imported textures are always shown in the dropdown, even if not currently applied.
+    /// </summary>
+    private void RefreshLoadedTextures()
+    {
+        _loadedTexturePathCache.Clear();
+
+        if (Viewport?.SceneObjects == null || !ProjectManager.Instance.HasProject)
+            return;
+
+        // First, scan for imported texture files in the project images folder
+        string texturesFolder = Path.Combine(ProjectManager.Instance.ProjectFolder, "images");
+        if (Directory.Exists(texturesFolder))
+        {
+            foreach (var filePath in Directory.EnumerateFiles(texturesFolder))
+            {
+                string ext = Path.GetExtension(filePath).ToLowerInvariant();
+                if (ext is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".tga" or ".gif" or ".webp" or ".tiff")
+                {
+                    // Use the relative path as a stable key for imported textures
+                    string relativePath = Path.GetRelativePath(ProjectManager.Instance.ProjectFolder, filePath);
+                    // Create a stable "fake" ID based on the filename hash
+                    uint fakeId = (uint)relativePath.GetHashCode() & 0x7FFFFFFF; // Ensure positive
+                    if (fakeId != 0) // Avoid ID 0 which means "no texture"
+                    {
+                        _loadedTexturePathCache[fakeId] = filePath;
+                    }
+                }
+            }
+        }
+
+        // Then scan primitives to find currently loaded textures and map their real IDs
+        foreach (var obj in Viewport.SceneObjects)
+        {
+            ScanPrimitiveObjectForTextures(obj);
+        }
+
+        _cachedTextureIds = _loadedTexturePathCache.Keys.ToArray();
+    }
+
+    private void ScanPrimitiveObjectForTextures(SceneObject obj)
+    {
+        if (obj == null) return;
+
+        // Only scan objects in the Primitives category
+        if (string.Equals(obj.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase))
+        {
+            // Scan this object's meshes for loaded textures
+            foreach (var mesh in obj.Visuals)
+            {
+                if (mesh.TextureId != 0 && !_loadedTexturePathCache.ContainsKey(mesh.TextureId))
+                {
+                    // Map the real texture ID to its path
+                    if (!string.IsNullOrEmpty(obj.AlbedoTexturePath))
+                    {
+                        string fullPath = Path.Combine(ProjectManager.Instance.ProjectFolder, obj.AlbedoTexturePath);
+
+                        // Replace any existing fake/import entry that points to the same file
+                        // so this texture appears only once in the dropdown.
+                        uint duplicateKey = 0;
+                        foreach (var (existingKey, existingPath) in _loadedTexturePathCache)
+                        {
+                            if (existingKey == mesh.TextureId) continue;
+                            if (string.Equals(Path.GetFullPath(existingPath), Path.GetFullPath(fullPath), StringComparison.OrdinalIgnoreCase))
+                            {
+                                duplicateKey = existingKey;
+                                break;
+                            }
+                        }
+
+                        if (duplicateKey != 0)
+                            _loadedTexturePathCache.Remove(duplicateKey);
+
+                        _loadedTexturePathCache[mesh.TextureId] = fullPath;
+                    }
+                    else
+                    {
+                        // Fallback if no path is stored
+                        _loadedTexturePathCache[mesh.TextureId] = $"Texture_{mesh.TextureId}";
+                    }
+                }
+            }
+        }
+
+        // Scan children recursively
+        foreach (var child in obj.Children)
+        {
+            ScanPrimitiveObjectForTextures(child);
+        }
+    }
+
+    /// <summary>
     /// Loads a texture from file and applies it as the albedo texture to all meshes in the current object.
     /// Supports PNG, JPG, BMP, TGA, GIF, WebP, and TIFF formats with RGBA color components.
     /// </summary>
@@ -1646,6 +1847,16 @@ public class PropertiesPanel : UiPanel
                         stdMat.AlbedoColor = new vec4(1f, 1f, 1f, 1f); // White for full color pass-through
                     }
                 }
+            }
+
+            // Store the relative path for persistence
+            if (filePath.Contains(ProjectManager.Instance.ProjectFolder))
+            {
+                _currentObject.AlbedoTexturePath = Path.GetRelativePath(ProjectManager.Instance.ProjectFolder, filePath);
+            }
+            else
+            {
+                _currentObject.AlbedoTexturePath = filePath;
             }
         }
         catch (Exception ex)
