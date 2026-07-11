@@ -318,8 +318,22 @@ public class Viewport : UiPanel
     private const float InlineMinH = 120f;
     private const float InlinePad = 8f;
     private bool _inlineResizeDragActive;
+    private bool _inlineResizeDragActiveLastFrame;
     private Vector2 _prevInlineWindowSize;
     private bool _hasPrevInlineWindowSize;
+    
+    /// <summary>
+    /// Tracks whether the inline preview window is being manually dragged by the user.
+    /// Used to suppress position forcing and camera input while dragging.
+    /// </summary>
+    private bool _inlineDragActive = false;
+    private Vector2 _inlineWindowLastPos = Vector2.Zero;
+    private int _inlineFramesSinceMovement = 0;
+    private bool _inlineMouseWasDownLastFrame = false;
+    private Vector2 _inlineMouseDownPos = Vector2.Zero;
+    private int _inlineFramesSinceMouseUp = 0;
+    private Vector2 _inlineWindowPosBeforeSnap = Vector2.Zero;
+    private bool _inlineSnappedThisInteraction = false;
 
     public bool InlineVisible { get; private set; } = true;
 
@@ -1481,7 +1495,7 @@ public class Viewport : UiPanel
         var imageSize = size;
 
         // ── Camera orbit/pan input ─────────────────────────────────────────────
-        HandleCameraInput();
+        HandleCameraInput(imageMin, imageSize);
 
         // ── 3D render into FBO ────────────────────────────────────────────────
         Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
@@ -2740,6 +2754,10 @@ public class Viewport : UiPanel
         _inlineSize.X = Math.Clamp(_inlineSize.X, InlineMinW, imageSize.X - InlinePad * 2);
         _inlineSize.Y = Math.Clamp(_inlineSize.Y, InlineMinH, imageSize.Y - InlinePad * 2);
 
+        // ── Get current mouse and window state for position control ─────────────────
+        var io = ImGui.GetIO();
+        Vector2 mouse = io.MousePos;
+
         float posX = _corner switch
         {
             Corner.BottomLeft or Corner.TopLeft => imageMin.X + InlinePad,
@@ -2750,21 +2768,52 @@ public class Viewport : UiPanel
             Corner.TopLeft or Corner.TopRight => imageMin.Y + InlinePad,
             _ => imageMin.Y + imageSize.Y - _inlineSize.Y - InlinePad,
         };
-
-        if (!_inlineResizeDragActive)
+        
+        // Allow free dragging while mouse is down. After release, snap to the nearest corner once.
+        bool shouldSnapToCorner = _inlineFramesSinceMouseUp > 2 && _inlineFramesSinceMouseUp < 60 && !_inlineSnappedThisInteraction;
+        if (shouldSnapToCorner)
         {
+            // Use the stored position from before snapping to calculate nearest corner
+            float midX = imageMin.X + imageSize.X * 0.5f;
+            float midY = imageMin.Y + imageSize.Y * 0.5f;
+                
+            bool isLeft = _inlineWindowPosBeforeSnap.X < midX;
+            bool isTop = _inlineWindowPosBeforeSnap.Y < midY;
+                
+            Corner nearestCorner = (isTop, isLeft) switch
+            {
+                (true, true) => Corner.TopLeft,
+                (true, false) => Corner.TopRight,
+                (false, true) => Corner.BottomLeft,
+                (false, false) => Corner.BottomRight,
+            };
+                
+            posX = nearestCorner switch
+            {
+                Corner.BottomLeft or Corner.TopLeft => imageMin.X + InlinePad,
+                _ => imageMin.X + imageSize.X - _inlineSize.X - InlinePad,
+            };
+            posY = nearestCorner switch
+            {
+                Corner.TopLeft or Corner.TopRight => imageMin.Y + InlinePad,
+                _ => imageMin.Y + imageSize.Y - _inlineSize.Y - InlinePad,
+            };
+                
             ImGui.SetNextWindowPos(new Vector2(posX, posY), ImGuiCond.Always);
-            ImGui.SetNextWindowSize(_inlineSize, ImGuiCond.Always);
+            _corner = nearestCorner;  // Update the corner tracking
+            _inlineSnappedThisInteraction = true;
         }
+        
+        ImGui.SetNextWindowSize(_inlineSize, ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSizeConstraints(
             new Vector2(InlineMinW, InlineMinH),
             new Vector2(imageSize.X - InlinePad * 2, imageSize.Y - InlinePad * 2));
 
         ImGuiWindowFlags flags =
-            ImGuiWindowFlags.NoTitleBar |
             ImGuiWindowFlags.NoScrollbar |
             ImGuiWindowFlags.NoScrollWithMouse |
-            ImGuiWindowFlags.NoBringToFrontOnFocus;
+            ImGuiWindowFlags.NoBringToFrontOnFocus |
+            ImGuiWindowFlags.NoDocking;
 
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(4, 4));
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);
@@ -2776,12 +2825,49 @@ public class Viewport : UiPanel
         if (!beginOk) { ImGui.End(); return; }
 
         _inlineSize = ImGui.GetWindowSize();
+        
+        // Store the window's actual position BEFORE we snap it, so next frame we can calculate
+        // the nearest corner based on where the user actually dragged it to
+        if (_inlineFramesSinceMouseUp == 0)
+        {
+            // Just released the mouse - store the position for nearest-corner calculation
+            _inlineWindowPosBeforeSnap = ImGui.GetWindowPos();
+        }
 
         Vector2 winPos = ImGui.GetWindowPos();
         Vector2 winSz = _inlineSize;
-        Vector2 mouse = ImGui.GetMousePos();
         bool leftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
         bool hovered = ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows);
+        
+        // ── Track mouse interaction state for camera input suppression ─────────────
+        bool mouseJustPressed = leftDown && !_inlineMouseWasDownLastFrame;
+        if (leftDown && hovered)
+        {
+            if (mouseJustPressed)
+            {
+                _inlineMouseDownPos = mouse;
+                _inlineSnappedThisInteraction = false;  // Reset snap flag for new drag
+            }
+            
+            _inlineFramesSinceMouseUp = 0;
+        }
+        else if (!leftDown)
+        {
+            // Mouse was just released - end drag mode
+            if (_inlineMouseWasDownLastFrame)
+            {
+                _inlineDragActive = false;
+                _inlineFramesSinceMouseUp = 0;
+            }
+            else
+            {
+                _inlineFramesSinceMouseUp++;
+            }
+        }
+        
+        _inlineMouseWasDownLastFrame = leftDown && hovered;
+        _inlineWindowLastPos = winPos;
+        
         bool overResizeGrip = mouse.X >= winPos.X + winSz.X - 28f &&
                               mouse.X <= winPos.X + winSz.X + 12f &&
                               mouse.Y >= winPos.Y + winSz.Y - 28f &&
@@ -2796,6 +2882,14 @@ public class Viewport : UiPanel
         else if (!_inlineResizeDragActive && ((hovered && overResizeGrip) || sizeChangedThisFrame))
             _inlineResizeDragActive = true;
 
+        // When resize ends, reset snap flags to allow snapping to nearest corner
+        if (_inlineResizeDragActiveLastFrame && !_inlineResizeDragActive)
+        {
+            _inlineSnappedThisInteraction = false;
+            _inlineFramesSinceMouseUp = 0;
+        }
+
+        _inlineResizeDragActiveLastFrame = _inlineResizeDragActive;
         _prevInlineWindowSize = winSz;
         _hasPrevInlineWindowSize = true;
 
@@ -2844,13 +2938,19 @@ public class Viewport : UiPanel
             uint h = (uint)Math.Max(1, (int)MathF.Round(drawSize.Y));
             ResizeFboPublic(w, h);
             RenderScenePublic(activeCam, sceneObj, w, h);
-            HandleFreeFlyPublic(activeCam, sceneObj, ImGui.IsWindowHovered());
 
             Vector2 startPos = ImGui.GetCursorPos();
             if (avail.X > drawSize.X)
                 ImGui.SetCursorPosX(startPos.X + (avail.X - drawSize.X) * 0.5f);
             if (avail.Y > drawSize.Y)
                 ImGui.SetCursorPosY(startPos.Y + (avail.Y - drawSize.Y) * 0.5f);
+
+            // Handle input AFTER cursor is positioned (so bounds are correct for centered image)
+            bool recentlyInteracted = _inlineFramesSinceMouseUp < 15;
+            bool allowCameraInput = ImGui.IsWindowHovered() && !_inlineDragActive && !recentlyInteracted;
+            var previewImageMin = ImGui.GetCursorScreenPos();
+            var previewImageSize = drawSize;
+            HandleFreeFlyPublic(activeCam, sceneObj, allowCameraInput, previewImageMin, previewImageSize);
 
             ImGui.Image(
                 new ImTextureRef(texId: (ulong)_previewColorTex),
@@ -3173,7 +3273,7 @@ public class Viewport : UiPanel
         }
     }
 
-    public unsafe void HandleFreeFlyPublic(Camera cam, CameraSceneObject? sceneObj, bool hovered)
+    public unsafe void HandleFreeFlyPublic(Camera cam, CameraSceneObject? sceneObj, bool hovered, Vector2 imageMin, Vector2 imageSize)
     {
         if (sceneObj == null) return;
 
@@ -3184,8 +3284,6 @@ public class Viewport : UiPanel
 
         var io = ImGui.GetIO();
         Vector2 mousePos = new Vector2(io.MousePos.X, io.MousePos.Y);
-        var imageMin = ImGui.GetWindowPos() + ImGui.GetCursorPos();
-        var imageSize = ImGui.GetContentRegionAvail();
 
         // Gather full input state for undocked window (same as main viewport)
         bool mouseDown_Left = ImGui.IsMouseDown(ImGuiMouseButton.Left);
@@ -3329,7 +3427,7 @@ public class Viewport : UiPanel
 
     // ── Camera / gizmo input ───────────────────────────────────────────────────
 
-    private unsafe void HandleCameraInput()
+    private unsafe void HandleCameraInput(Vector2 imageMin, Vector2 imageSize)
     {
         // Allow input to continue while free-fly is active even if the ImGui
         // mouse position has drifted outside the panel (the OS cursor is locked
@@ -3345,8 +3443,6 @@ public class Viewport : UiPanel
             ImGui.SetNextFrameWantCaptureMouse(true);
 
         Vector2 mousePos = new Vector2(io.MousePos.X, io.MousePos.Y);
-        var imageMin  = ImGui.GetWindowPos() + ImGui.GetCursorPos();
-        var imageSize = ImGui.GetContentRegionAvail();
 
         // Gather input state
         bool mouseDown_Left = ImGui.IsMouseDown(ImGuiMouseButton.Left);

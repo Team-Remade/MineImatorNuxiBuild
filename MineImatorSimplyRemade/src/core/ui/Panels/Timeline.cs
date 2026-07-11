@@ -130,6 +130,9 @@ public class Timeline : UiPanel
     public int   MaxFrames    => _maxFrames;
     public float Framerate    => _frameRate;
     public bool  IsPlaying    => _isPlaying;
+    public bool  IsWindowHovered { get; private set; }
+    public Vector2 WindowPos { get; private set; }
+    public Vector2 WindowSize { get; private set; }
 
     public void SetFrameRate(float frameRate)
     {
@@ -205,9 +208,16 @@ public class Timeline : UiPanel
 
         if (!ImGui.Begin("Timeline"))
         {
+            IsWindowHovered = false;
+            WindowPos = Vector2.Zero;
+            WindowSize = Vector2.Zero;
             ImGui.End();
             return;
         }
+
+        IsWindowHovered = ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup);
+        WindowPos = ImGui.GetWindowPos();
+        WindowSize = ImGui.GetWindowSize();
 
         RenderTransportControls();
         ImGui.Separator();
@@ -824,44 +834,94 @@ public class Timeline : UiPanel
             }
             else
             {
-                // Click on empty area → add keyframe + start drag-select
+                // Click on empty area → only start drag-select, do NOT create keyframe
                 if (!shiftHeld)
                 {
                     _selectedKeyframes.Clear();
                     _keyframeOwners.Clear();
                 }
-                AddKeyframeForProperty(row.Object, row.PropertyPath, frame);
                 StartDragSelect(mouse, shiftHeld);
             }
         }
 
         // ── Dragging keyframe ────────────────────────────────────────────────
+        // Update keyframe frames in real-time during drag, keeping lists sorted for rendering
         if (_isDraggingKeyframe && _draggedKeyframe != null && ImGui.IsMouseDown(ImGuiMouseButton.Left))
         {
             int newFrame = Math.Max(0, (int)MathF.Round(localX / _pixelsPerFrame));
             int offset   = newFrame - _dragStartFrame;
+            
             if (offset != 0)
             {
+                var sortedLists = new HashSet<string>();
                 foreach (var kf in _selectedKeyframes)
+                {
                     if (_selectedStartFrames.TryGetValue(kf, out int sf))
+                    {
                         kf.Frame = Math.Max(0, sf + offset);
+                        
+                        // Mark the keyframe's list for sorting
+                        if (_keyframeOwners.TryGetValue(kf, out var owner))
+                        {
+                            string key = $"{owner.obj.ObjectId}.{owner.path}";
+                            sortedLists.Add(key);
+                        }
+                    }
+                }
+                
+                // Sort each affected list to keep keyframes in frame order for rendering
+                foreach (var key in sortedLists)
+                {
+                    if (_propertyKeyframes.TryGetValue(key, out var list))
+                        list.Sort((a, b) => a.Frame.CompareTo(b.Frame));
+                }
             }
         }
 
         // ── Mouse released ───────────────────────────────────────────────────
         if (_isDraggingKeyframe && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
         {
+            // Collect all owners that had keyframes moved, then handle collisions and save
+            var changedOwners = new Dictionary<(SceneObject, string), List<TimelineKeyframe>>();
+            
             foreach (var kf in _selectedKeyframes)
             {
-                if (_keyframeOwners.TryGetValue(kf, out var owner) &&
-                    _selectedStartFrames.TryGetValue(kf, out int sf) && kf.Frame != sf)
+                if (!_keyframeOwners.TryGetValue(kf, out var owner)) continue;
+                if (!_selectedStartFrames.TryGetValue(kf, out int sf)) continue;
+                
+                if (kf.Frame != sf)
                 {
-                    MoveKeyframe(owner.obj, owner.path, sf, kf.Frame);
+                    var key = (owner.obj, owner.path);
+                    if (!changedOwners.ContainsKey(key))
+                        changedOwners[key] = new();
+                    changedOwners[key].Add(kf);
                 }
             }
+            
+            // For each changed property, remove collisions and save
+            foreach (var ((obj, path), movedKfs) in changedOwners)
+            {
+                string key = $"{obj.ObjectId}.{path}";
+                if (_propertyKeyframes.TryGetValue(key, out var list))
+                {
+                    // Remove collisions: if multiple keyframes now occupy the same frame,
+                    // keep only the first one and remove duplicates
+                    var frameGroups = movedKfs.GroupBy(k => k.Frame);
+                    foreach (var group in frameGroups.Where(g => g.Count() > 1))
+                    {
+                        var toKeep = group.First();
+                        foreach (var dup in group.Skip(1))
+                            list.Remove(dup);
+                    }
+                    
+                    SaveKeyframesToObject(obj, path);
+                }
+            }
+            
             _isDraggingKeyframe = false;
             _draggedKeyframe    = null;
             _selectedStartFrames.Clear();
+            RecalculateTimelineLength();
         }
 
         // ── Right-click context menu ─────────────────────────────────────────
@@ -1003,7 +1063,7 @@ public class Timeline : UiPanel
         ImGui.EndPopup();
     }
 
-    private void DeleteSelectedKeyframes()
+    public void DeleteSelectedKeyframes()
     {
         var toDelete = _selectedKeyframes
             .Where(kf => _keyframeOwners.TryGetValue(kf, out _))

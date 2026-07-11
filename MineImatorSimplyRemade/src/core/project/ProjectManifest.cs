@@ -45,6 +45,7 @@ public class ProjectManifest
     // Index of the active camera used by the preview viewport: 0 = work camera, 1+ = spawned cameras
     public int ActivePreviewCameraIndex { get; set; } = 0;
     public List<ProjectSceneObjectEntry> SceneObjects { get; set; } = new();
+    public List<string> SelectedObjectNames { get; set; } = new();
     public ProjectTimelineState Timeline { get; set; } = new();
 }
 
@@ -99,6 +100,13 @@ public class ProjectRenderSettings
         Z = 1f
     };
     public float AmbientLightStrength { get; set; } = 0.35f;
+    public ProjectVec3 FillLightColor { get; set; } = new()
+    {
+        X = 0.85f,
+        Y = 0.85f,
+        Z = 0.85f
+    };
+    public float FillLightStrength { get; set; } = 1f;
     public bool FillLightCastsShadows { get; set; } = true;
 }
 

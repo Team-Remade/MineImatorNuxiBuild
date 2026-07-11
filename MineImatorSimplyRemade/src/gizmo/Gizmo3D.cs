@@ -479,6 +479,42 @@ public class Gizmo3D : IDisposable
     public int GetSelectedCount() => _selections.Count;
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Object capability checks
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns true if all selected objects can be rotated.
+    /// Rotation is disabled for LightSceneObject instances.
+    /// </summary>
+    private bool CanRotateSelection()
+    {
+        if (_selections.Count == 0) return false;
+        foreach (var selection in _selections)
+        {
+            if (selection.Object is MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.LightSceneObject)
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Returns true if all selected objects can be scaled.
+    /// Scaling is disabled for CameraSceneObject and LightSceneObject instances.
+    /// </summary>
+    private bool CanScaleSelection()
+    {
+        if (_selections.Count == 0) return false;
+        foreach (var selection in _selections)
+        {
+            var obj = selection.Object;
+            if (obj is MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.CameraSceneObject ||
+                obj is MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.LightSceneObject)
+                return false;
+        }
+        return true;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Input API
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -563,8 +599,8 @@ public class Gizmo3D : IDisposable
 
         bool showGizmo    = !IsRotationArcVisible();
         bool hasMove      = (Mode & ToolMode.Move)   != 0;
-        bool hasRot       = (Mode & ToolMode.Rotate) != 0;
-        bool hasScale     = (Mode & ToolMode.Scale)  != 0;
+        bool hasRot       = (Mode & ToolMode.Rotate) != 0 && CanRotateSelection();
+        bool hasScale     = (Mode & ToolMode.Scale)  != 0 && CanScaleSelection();
 
         if (showGizmo)
         {
@@ -1133,7 +1169,7 @@ public class Gizmo3D : IDisposable
         }
 
         // ── Rotate ──────────────────────────────────────────────────────────
-        if ((Mode & ToolMode.Rotate) != 0)
+        if ((Mode & ToolMode.Rotate) != 0 && CanRotateSelection())
         {
             int colAxis = -1;
 
@@ -1165,15 +1201,12 @@ public class Gizmo3D : IDisposable
                     if (r == null) continue;
 
                     float dist = (r.Value - gt.Origin).Length;
-                    vec3  rDir = (r.Value - gt.Origin).Normalized;
-                    if (vec3.Dot(GetCameraNormal(), rDir) <= 0.005f)
+                    // Allow picking the rotation ring from any angle within the ring bounds
+                    if (dist > _gizmoScale * (GIZMO_CIRCLE_SIZE - GIZMO_RING_HALF_WIDTH) &&
+                        dist < _gizmoScale * (GIZMO_CIRCLE_SIZE + GIZMO_RING_HALF_WIDTH))
                     {
-                        if (dist > _gizmoScale * (GIZMO_CIRCLE_SIZE - GIZMO_RING_HALF_WIDTH) &&
-                            dist < _gizmoScale * (GIZMO_CIRCLE_SIZE + GIZMO_RING_HALF_WIDTH))
-                        {
-                            float d = (rayPos - r.Value).Length;
-                            if (d < colD) { colD = d; colAxis = i; }
-                        }
+                        float d = (rayPos - r.Value).Length;
+                        if (d < colD) { colD = d; colAxis = i; }
                     }
                 }
             }
@@ -1196,7 +1229,7 @@ public class Gizmo3D : IDisposable
         }
 
         // ── Scale ────────────────────────────────────────────────────────────
-        if ((Mode & ToolMode.Scale) != 0)
+        if ((Mode & ToolMode.Scale) != 0 && CanScaleSelection())
         {
             int   colAxis = -1;
             float colD    = 1e20f;
@@ -1626,7 +1659,9 @@ public class Gizmo3D : IDisposable
                         sv.y * (original.Origin.y - _edit.Center.y) + _edit.Center.y,
                         sv.z * (original.Origin.z - _edit.Center.z) + _edit.Center.z);
 
-                    mat4 newBasis = original.Basis;
+                    // Use originalLocal.Basis which contains the actual scale, not original.Basis 
+                    // which has scale stripped for gizmo display consistency.
+                    mat4 newBasis = originalLocal.Basis;
                     if (orthogonal)
                         newBasis = GizmoMath.ScaledOrthogonal(newBasis, sv);
                     else

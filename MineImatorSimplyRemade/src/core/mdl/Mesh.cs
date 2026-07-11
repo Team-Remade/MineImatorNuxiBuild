@@ -371,6 +371,17 @@ public class Mesh : IDisposable
     public static float GlobalAmbientStrength = 0.35f;
 
     /// <summary>
+    /// Global fill light (directional) colour for lit meshes.
+    /// Set by project settings UI; defaults to light gray (0.85, 0.85, 0.85).
+    /// </summary>
+    public static vec3 GlobalFillLightColor = new vec3(0.85f, 0.85f, 0.85f);
+
+    /// <summary>
+    /// Global fill light strength multiplier for lit meshes.
+    /// </summary>
+    public static float GlobalFillLightStrength = 1f;
+
+    /// <summary>
     /// Export-only shadow state configured by <see cref="CameraViewport"/> when
     /// high-quality rendered capture is enabled.
     /// </summary>
@@ -444,7 +455,15 @@ public class Mesh : IDisposable
         {
             // Light travels from upper-right-front toward origin (world space)
             SetUniformVec3("uLightDir",   new vec3(1f, 1f, 1f).Normalized);
-            SetUniformVec3("uLightColor", new vec3(0.85f, 0.85f, 0.85f));
+            
+            // Fill light color with strength multiplier
+            float fillLightStrength = Math.Clamp(GlobalFillLightStrength, 0f, 5f);
+            vec3 fillLightColor = new vec3(
+                Math.Clamp(GlobalFillLightColor.x, 0f, 1f),
+                Math.Clamp(GlobalFillLightColor.y, 0f, 1f),
+                Math.Clamp(GlobalFillLightColor.z, 0f, 1f));
+            SetUniformVec3("uLightColor", fillLightColor * fillLightStrength);
+            
             float ambientStrength = Math.Clamp(GlobalAmbientStrength, 0f, 5f);
             vec3 ambientColor = new vec3(
                 Math.Clamp(GlobalAmbientColor.x, 0f, 1f),

@@ -18,6 +18,7 @@ public class Menubar : UiPanel
     public Action? UndoRequested { get; set; }
     public Action? RedoRequested { get; set; }
     public Action? DuplicateRequested { get; set; }
+    public Action? DeleteRequested { get; set; }
     public Action? ImportAssetRequested { get; set; }
     public Action? ImportResourcePackRequested { get; set; }
     public Action? ImportResourcePackFolderRequested { get; set; }
@@ -36,11 +37,11 @@ public class Menubar : UiPanel
         {
             if (ImGui.BeginMenu("File"))
             {
-                if (ImGui.MenuItem("New Project"))
+                if (ImGui.MenuItem("New Project", "Ctrl+N"))
                 {
                     NewProjectRequested?.Invoke();
                 }
-                if (ImGui.MenuItem("Open Project"))
+                if (ImGui.MenuItem("Open Project", "Ctrl+O"))
                 {
                     OpenProjectRequested?.Invoke();
                 }
@@ -105,12 +106,13 @@ public class Menubar : UiPanel
                 {
                 }
                 ImGui.Separator();
-                if (ImGui.MenuItem("Duplicate"))
+                if (ImGui.MenuItem("Duplicate", "Ctrl+D"))
                 {
                     DuplicateRequested?.Invoke();
                 }
-                if (ImGui.MenuItem("Delete"))
+                if (ImGui.MenuItem("Delete", "Del"))
                 {
+                    DeleteRequested?.Invoke();
                 }
                 ImGui.Separator();
                 if (ImGui.MenuItem("Hide"))
@@ -129,11 +131,11 @@ public class Menubar : UiPanel
 
             if (ImGui.BeginMenu("Render"))
             {
-                if (ImGui.MenuItem("Render Image"))
+                if (ImGui.MenuItem("Render Image", "F7"))
                 {
                     RenderRequested?.Invoke(RenderRequestKind.Image);
                 }
-                if (ImGui.MenuItem("Render Animation"))
+                if (ImGui.MenuItem("Render Animation", "F8"))
                 {
                     RenderRequested?.Invoke(RenderRequestKind.Video);
                 }

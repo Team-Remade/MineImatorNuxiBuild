@@ -209,6 +209,26 @@ public class SceneTree : UiPanel
         }
     }
 
+    /// <summary>Deletes every selected object using the same logic as the context menu.</summary>
+    public void DeleteSelectedObjects()
+    {
+        var selectedObjects = SelectionManager.Instance?.SelectedObjects.ToList()
+            ?? (_selectedObject != null ? new List<SceneObject> { _selectedObject } : new List<SceneObject>());
+
+        if (selectedObjects.Count == 0)
+            return;
+
+        // Delete roots and descendants will be removed automatically
+        var deleteRoots = selectedObjects
+            .Where(original => !selectedObjects.Any(other => other != original && original.IsDescendantOf(other)))
+            .ToList();
+
+        foreach (var obj in deleteRoots)
+        {
+            DeleteObject(obj);
+        }
+    }
+
     // ── Rendering helpers ───────────────────────────────────────────────────
 
     private void RenderNode(SceneObject obj)

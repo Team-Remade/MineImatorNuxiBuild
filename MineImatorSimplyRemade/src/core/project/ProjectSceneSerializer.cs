@@ -29,6 +29,12 @@ public static class ProjectSceneSerializer
             .Select(SerializeNode)
             .ToList();
 
+        // Save currently selected object names so selection can be restored on undo/redo
+        manifest.SelectedObjectNames = SelectionManager.Instance?.SelectedObjects
+            .Select(obj => GetObjectPath(obj))
+            .Where(name => !string.IsNullOrEmpty(name))
+            .ToList() ?? new();
+
         if (timeline != null)
             manifest.Timeline = timeline.ExportProjectState();
     }
@@ -44,7 +50,18 @@ public static class ProjectSceneSerializer
         foreach (var root in manifest.SceneObjects)
             RestoreNode(root, viewport, spawnMenu, parent: null);
 
+        // Restore selection after scene is loaded
         SelectionManager.Instance?.ClearSelection();
+        if (manifest.SelectedObjectNames != null && manifest.SelectedObjectNames.Count > 0 && SelectionManager.Instance != null)
+        {
+            foreach (var objectPath in manifest.SelectedObjectNames)
+            {
+                var obj = FindObjectByPath(viewport.SceneObjects, objectPath);
+                if (obj != null)
+                    SelectionManager.Instance.SelectObject(obj);
+            }
+        }
+
         timeline?.ImportProjectState(manifest.Timeline);
 
         // Keep timeline FPS aligned with project settings after timeline state is restored.
@@ -412,5 +429,52 @@ public static class ProjectSceneSerializer
         camera.Yaw = state.Yaw;
         camera.Pitch = Math.Clamp(state.Pitch, -MathF.PI / 2f + 0.01f, MathF.PI / 2f - 0.01f);
         camera.Distance = Math.Max(0.1f, state.Distance);
+    }
+
+    /// <summary>
+    /// Gets a unique path for an object based on its hierarchy.
+    /// Format: "RootName/ChildName/GrandchildName" etc.
+    /// </summary>
+    private static string GetObjectPath(SceneObject obj)
+    {
+        var parts = new List<string>();
+        var current = obj;
+        
+        while (current != null)
+        {
+            parts.Insert(0, current.Name);
+            current = current.Parent;
+        }
+
+        return string.Join("/", parts);
+    }
+
+    /// <summary>
+    /// Finds an object by its hierarchical path in the scene.
+    /// Path format: "RootName/ChildName/GrandchildName"
+    /// </summary>
+    private static SceneObject? FindObjectByPath(List<SceneObject> rootObjects, string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return null;
+
+        var parts = path.Split('/');
+        if (parts.Length == 0)
+            return null;
+
+        // Find root object
+        SceneObject? current = rootObjects.FirstOrDefault(obj => obj.Name == parts[0]);
+        if (current == null)
+            return null;
+
+        // Find child objects through the hierarchy
+        for (int i = 1; i < parts.Length; i++)
+        {
+            current = current.Children.FirstOrDefault(child => child.Name == parts[i]);
+            if (current == null)
+                return null;
+        }
+
+        return current;
     }
 }

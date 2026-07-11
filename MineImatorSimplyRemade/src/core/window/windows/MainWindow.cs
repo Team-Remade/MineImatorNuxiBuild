@@ -216,6 +216,7 @@ public class MainWindow : Window
         _menubar.UndoRequested = PerformUndo;
         _menubar.RedoRequested = PerformRedo;
         _menubar.DuplicateRequested = () => _sceneTree?.DuplicateSelectedObjects();
+        _menubar.DeleteRequested = () => _sceneTree?.DeleteSelectedObjects();
         _menubar.ImportAssetRequested = ImportAssetFromDialog;
         _menubar.ImportResourcePackRequested = ImportResourcePackArchiveFromDialog;
         _menubar.ImportResourcePackFolderRequested = ImportResourcePackFolderFromDialog;
@@ -520,8 +521,8 @@ public class MainWindow : Window
         string title;
         if (_projectManager.HasProject)
         {
-            string state = _projectManager.IsDirty ? "Unsaved" : "Saved";
-            title = $"{_appTitle} - {_projectManager.Manifest.ProjectName} [{state}]";
+            string state = _projectManager.IsDirty ? "*" : "";
+            title = $"{_appTitle} - {_projectManager.Manifest.ProjectName}{state}";
         }
         else
         {
@@ -554,8 +555,62 @@ public class MainWindow : Window
             return;
         }
 
+        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F7, false))
+        {
+            OpenRenderPopup(Menubar.RenderRequestKind.Image);
+            return;
+        }
+
+        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F8, false))
+        {
+            OpenRenderPopup(Menubar.RenderRequestKind.Video);
+            return;
+        }
+
+        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.Delete, false))
+        {
+            // Check if Timeline window is hovered to decide whether to delete keyframes or objects
+            bool timelineHovered = false;
+            if (_timeline != null && _timeline.WindowSize.X > 0 && _timeline.WindowSize.Y > 0)
+            {
+                var mousePos = ImGui.GetMousePos();
+                var winPos = _timeline.WindowPos;
+                var winSize = _timeline.WindowSize;
+                timelineHovered = mousePos.X >= winPos.X && mousePos.X < winPos.X + winSize.X &&
+                                 mousePos.Y >= winPos.Y && mousePos.Y < winPos.Y + winSize.Y;
+            }
+
+            if (timelineHovered)
+            {
+                _timeline?.DeleteSelectedKeyframes();
+            }
+            else
+            {
+                _sceneTree?.DeleteSelectedObjects();
+            }
+            return;
+        }
+
         if (!io.KeyCtrl || io.WantTextInput)
             return;
+
+        if (ImGui.IsKeyPressed(ImGuiKey.N))
+        {
+            OpenNewProjectPopup();
+            return;
+        }
+
+        if (ImGui.IsKeyPressed(ImGuiKey.O))
+        {
+            OpenProjectFromDialog();
+            return;
+        }
+
+        if (ImGui.IsKeyPressed(ImGuiKey.D))
+        {
+            _sceneTree?.DuplicateSelectedObjects();
+            return;
+        }
 
         if (ImGui.IsKeyPressed(ImGuiKey.Z))
         {
@@ -1858,6 +1913,18 @@ public class MainWindow : Window
 
         if (_mainViewport != null)
             ProjectSceneSerializer.WriteSceneToManifest(manifestSnapshot, _mainViewport, _timeline, _propertiesPanel);
+
+        // Preserve work camera state in snapshots so undo/redo restores the correct camera position.
+        // Fly-camera-only changes are filtered out in UpdateUndoRedoTracking when they don't affect
+        // the scene fingerprint, not by clearing the camera state.
+        if (_projectManager.Manifest.WorkCamera != null)
+            manifestSnapshot.WorkCamera = new ProjectWorkCameraState
+            {
+                Target = new ProjectVec3 { X = _projectManager.Manifest.WorkCamera.Target.X, Y = _projectManager.Manifest.WorkCamera.Target.Y, Z = _projectManager.Manifest.WorkCamera.Target.Z },
+                Yaw = _projectManager.Manifest.WorkCamera.Yaw,
+                Pitch = _projectManager.Manifest.WorkCamera.Pitch,
+                Distance = _projectManager.Manifest.WorkCamera.Distance
+            };
 
         return manifestSnapshot;
     }

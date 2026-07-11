@@ -28,6 +28,8 @@ public class PropertiesPanel : UiPanel
     public bool UseAdvancedSky;
     public readonly float[] AmbientLightColor = [1f, 1f, 1f];
     public float AmbientLightStrength = 0.35f;
+    public readonly float[] FillLightColor = [0.85f, 0.85f, 0.85f];
+    public float FillLightStrength = 1f;
     public bool FillLightCastsShadows = true;
 
     private string _projectName = "Untitled Project";
@@ -156,6 +158,12 @@ public class PropertiesPanel : UiPanel
         AmbientLightColor[1] = ambient.Y;
         AmbientLightColor[2] = ambient.Z;
         AmbientLightStrength = settings.AmbientLightStrength;
+        
+        ProjectVec3 fillLight = settings.FillLightColor ?? new ProjectVec3 { X = 0.85f, Y = 0.85f, Z = 0.85f };
+        FillLightColor[0] = fillLight.X;
+        FillLightColor[1] = fillLight.Y;
+        FillLightColor[2] = fillLight.Z;
+        FillLightStrength = settings.FillLightStrength;
         FillLightCastsShadows = settings.FillLightCastsShadows;
 
         ApplyFloorSettingsToViewport();
@@ -218,6 +226,13 @@ public class PropertiesPanel : UiPanel
             Z = AmbientLightColor[2]
         };
         manifest.Settings.AmbientLightStrength = AmbientLightStrength;
+        manifest.Settings.FillLightColor = new ProjectVec3
+        {
+            X = FillLightColor[0],
+            Y = FillLightColor[1],
+            Z = FillLightColor[2]
+        };
+        manifest.Settings.FillLightStrength = FillLightStrength;
         manifest.Settings.FillLightCastsShadows = FillLightCastsShadows;
     }
 
@@ -233,6 +248,17 @@ public class PropertiesPanel : UiPanel
             AmbientLightColor[1],
             AmbientLightColor[2]);
         Mesh.GlobalAmbientStrength = AmbientLightStrength;
+        
+        FillLightColor[0] = Math.Clamp(FillLightColor[0], 0f, 1f);
+        FillLightColor[1] = Math.Clamp(FillLightColor[1], 0f, 1f);
+        FillLightColor[2] = Math.Clamp(FillLightColor[2], 0f, 1f);
+        FillLightStrength = Math.Clamp(FillLightStrength, 0f, 5f);
+
+        Mesh.GlobalFillLightColor = new vec3(
+            FillLightColor[0],
+            FillLightColor[1],
+            FillLightColor[2]);
+        Mesh.GlobalFillLightStrength = FillLightStrength;
         Mesh.DirectionalShadowEnabled = FillLightCastsShadows;
     }
 
@@ -550,6 +576,59 @@ public class PropertiesPanel : UiPanel
 
                 ImGui.Spacing();
                 bool backgroundChanged = false;
+                
+                var imageAssets = GetBackgroundImageAssets();
+                string selectedImageLabel = GetBackgroundImageLabel(BackgroundImagePath);
+                ImGui.Text("Background Image:");
+                ImGui.SetNextItemWidth(-1);
+                if (ImGui.BeginCombo("##BackgroundImage", selectedImageLabel))
+                {
+                    bool noneSelected = string.Equals(BackgroundImagePath, NoImageSelected, StringComparison.OrdinalIgnoreCase);
+                    if (ImGui.Selectable(NoImageSelected, noneSelected))
+                    {
+                        BackgroundImagePath = NoImageSelected;
+                        backgroundChanged = true;
+                    }
+
+                    foreach (var asset in imageAssets)
+                    {
+                        string candidatePath = !string.IsNullOrWhiteSpace(asset.RelativePath)
+                            ? asset.RelativePath
+                            : asset.SourcePath;
+                        if (string.IsNullOrWhiteSpace(candidatePath))
+                            continue;
+
+                        bool selected = string.Equals(candidatePath, BackgroundImagePath, StringComparison.OrdinalIgnoreCase);
+                        string optionLabel = string.IsNullOrWhiteSpace(asset.DisplayName)
+                            ? Path.GetFileName(candidatePath)
+                            : asset.DisplayName;
+
+                        if (ImGui.Selectable(optionLabel + "##" + candidatePath, selected))
+                        {
+                            BackgroundImagePath = candidatePath;
+                            backgroundChanged = true;
+                        }
+                    }
+
+                    ImGui.EndCombo();
+                }
+
+                if (ImGui.Button("Import##backgroundImport") && ImportBackgroundImageFromDialog())
+                    backgroundChanged = true;
+
+                ImGui.SameLine();
+                if (ImGui.Button("Clear##backgroundClear") && !string.Equals(BackgroundImagePath, NoImageSelected, StringComparison.OrdinalIgnoreCase))
+                {
+                    BackgroundImagePath = NoImageSelected;
+                    backgroundChanged = true;
+                }
+
+                if (backgroundChanged)
+                {
+                    ApplyBackgroundSettingsToViewport();
+                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                    ProjectManager.Instance.SetDirty(true);
+                }
 
                 string modeLabel = BackgroundRenderMode switch
                 {
@@ -643,6 +722,24 @@ public class PropertiesPanel : UiPanel
                     ambientChanged = true;
                 }
 
+                ImGui.Spacing();
+                ImGui.Text("Fill Light:");
+                ImGui.SetNextItemWidth(-1);
+                fixed (byte* fillLabel = "##FillLightColor"u8)
+                fixed (float* fillColorPtr = FillLightColor)
+                {
+                    if (ImGui.ColorEdit3(fillLabel, fillColorPtr, ImGuiColorEditFlags.None))
+                        ambientChanged = true;
+                }
+
+                float fillStrength = FillLightStrength;
+                ImGui.SetNextItemWidth(120f);
+                if (ImGui.DragFloat("Fill Strength", ref fillStrength, 0.01f, 0f, 5f))
+                {
+                    FillLightStrength = fillStrength;
+                    ambientChanged = true;
+                }
+
                 bool fillLightCastsShadows = FillLightCastsShadows;
                 if (ImGui.Checkbox("Fill Light Casts Shadows", ref fillLightCastsShadows))
                 {
@@ -653,59 +750,6 @@ public class PropertiesPanel : UiPanel
                 if (ambientChanged)
                 {
                     ApplyAmbientSettingsToRenderer();
-                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
-                    ProjectManager.Instance.SetDirty(true);
-                }
-
-                var imageAssets = GetBackgroundImageAssets();
-                string selectedImageLabel = GetBackgroundImageLabel(BackgroundImagePath);
-                ImGui.Text("Background Image:");
-                ImGui.SetNextItemWidth(-1);
-                if (ImGui.BeginCombo("##BackgroundImage", selectedImageLabel))
-                {
-                    bool noneSelected = string.Equals(BackgroundImagePath, NoImageSelected, StringComparison.OrdinalIgnoreCase);
-                    if (ImGui.Selectable(NoImageSelected, noneSelected))
-                    {
-                        BackgroundImagePath = NoImageSelected;
-                        backgroundChanged = true;
-                    }
-
-                    foreach (var asset in imageAssets)
-                    {
-                        string candidatePath = !string.IsNullOrWhiteSpace(asset.RelativePath)
-                            ? asset.RelativePath
-                            : asset.SourcePath;
-                        if (string.IsNullOrWhiteSpace(candidatePath))
-                            continue;
-
-                        bool selected = string.Equals(candidatePath, BackgroundImagePath, StringComparison.OrdinalIgnoreCase);
-                        string optionLabel = string.IsNullOrWhiteSpace(asset.DisplayName)
-                            ? Path.GetFileName(candidatePath)
-                            : asset.DisplayName;
-
-                        if (ImGui.Selectable(optionLabel + "##" + candidatePath, selected))
-                        {
-                            BackgroundImagePath = candidatePath;
-                            backgroundChanged = true;
-                        }
-                    }
-
-                    ImGui.EndCombo();
-                }
-
-                if (ImGui.Button("Import##backgroundImport") && ImportBackgroundImageFromDialog())
-                    backgroundChanged = true;
-
-                ImGui.SameLine();
-                if (ImGui.Button("Clear##backgroundClear") && !string.Equals(BackgroundImagePath, NoImageSelected, StringComparison.OrdinalIgnoreCase))
-                {
-                    BackgroundImagePath = NoImageSelected;
-                    backgroundChanged = true;
-                }
-
-                if (backgroundChanged)
-                {
-                    ApplyBackgroundSettingsToViewport();
                     WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
                     ProjectManager.Instance.SetDirty(true);
                 }
@@ -757,9 +801,13 @@ public class PropertiesPanel : UiPanel
             if (ImGui.Checkbox("Inherit Visibility", ref inheritVis))
                 _currentObject.InheritVisibility = inheritVis;
 
-            bool castShadow = _currentObject.CastShadow;
-            if (ImGui.Checkbox("Cast Shadows", ref castShadow))
-                _currentObject.CastShadow = castShadow;
+            // Hide Cast Shadows for cameras and point lights
+            if (!(_currentObject is CameraSceneObject) && !(_currentObject is LightSceneObject))
+            {
+                bool castShadow = _currentObject.CastShadow;
+                if (ImGui.Checkbox("Cast Shadows", ref castShadow))
+                    _currentObject.CastShadow = castShadow;
+            }
         }
 
         ImGui.Spacing();
@@ -812,7 +860,9 @@ public class PropertiesPanel : UiPanel
         }
 
         // ── Rotation ──────────────────────────────────────────────────────────
-        if (ImGui.CollapsingHeader("Rotation (degrees)"))
+        // Point lights cannot have rotation (they're omni-directional)
+        bool canRotate = !(_currentObject is LightSceneObject);
+        if (canRotate && ImGui.CollapsingHeader("Rotation (degrees)"))
         {
             bool inheritRot = _currentObject.InheritRotation;
             if (ImGui.Checkbox("Inherit Rotation##rot", ref inheritRot))
@@ -851,7 +901,9 @@ public class PropertiesPanel : UiPanel
         }
 
         // ── Scale ─────────────────────────────────────────────────────────────
-        if (ImGui.CollapsingHeader("Scale"))
+        // Cameras and point lights cannot have their scale changed
+        bool canScale = !(_currentObject is CameraSceneObject) && !(_currentObject is LightSceneObject);
+        if (canScale && ImGui.CollapsingHeader("Scale"))
         {
             bool inheritScale = _currentObject.InheritScale;
             if (ImGui.Checkbox("Inherit Scale##scale", ref inheritScale))
@@ -934,9 +986,8 @@ public class PropertiesPanel : UiPanel
         }
 
         // ── Material ──────────────────────────────────────────────────────────
-        bool isLight = _currentObject is LightSceneObject;
-        if (isLight) ImGui.BeginDisabled();
-        if (ImGui.CollapsingHeader("Material") && !isLight)
+        bool isLight = _currentObject is LightSceneObject || _currentObject is CameraSceneObject;
+        if (!isLight && ImGui.CollapsingHeader("Material"))
         {
             // Ensure MaterialSettings exists when we need to write
             EnsureMaterialSettings();
@@ -1206,7 +1257,6 @@ public class PropertiesPanel : UiPanel
                 _currentObject.PropagateMaterialSettingsToChildren();
             }
         }
-        if (isLight) ImGui.EndDisabled();
 
         // ── Light (shown only for LightSceneObject) ───────────────────────────
         if (_currentObject is LightSceneObject light)

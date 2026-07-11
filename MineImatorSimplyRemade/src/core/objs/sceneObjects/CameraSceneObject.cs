@@ -26,6 +26,9 @@ public class CameraSceneObject : SceneObject
     /// <see cref="SceneObject.Position"/> and it looks in the direction encoded
     /// by <see cref="SceneObject.Rotation"/> (Euler XYZ in radians).
     ///
+    /// The camera's target includes the <see cref="PivotOffset"/> so that the camera
+    /// looks at the pivot point rather than the origin position.
+    ///
     /// Sign mapping (derived from matching Camera.OffsetFromTarget against
     /// the mesh look-direction produced by GetLocalMatrix = rz*ry*rx):
     ///   ViewCamera.Yaw   =  Rotation.y   (same sign — both rotate around +Y)
@@ -49,7 +52,7 @@ public class CameraSceneObject : SceneObject
             MathF.Sin(pitch),
             cosP * MathF.Cos(yaw)) * ViewCamera.Distance;
 
-        ViewCamera.Target = Position - offset;
+        ViewCamera.Target = Position - offset + PivotOffset;
     }
 
     /// <summary>
@@ -81,7 +84,7 @@ public class CameraSceneObject : SceneObject
             MathF.Sin(pitch),
             cosP * MathF.Cos(yaw)) * ViewCamera.Distance;
 
-        ViewCamera.Target = Position - offset;
+        ViewCamera.Target = Position - offset + PivotOffset;
         SyncTransformFromCamera();
     }
 

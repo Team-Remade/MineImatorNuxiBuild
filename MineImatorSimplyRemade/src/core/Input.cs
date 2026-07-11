@@ -227,6 +227,13 @@ public class Input
         bool windowHovered)
     {
         if (!windowHovered || _freeFlyActive || mouseWheel == 0) return;
+        
+        // Skip zoom for first-person cameras (Distance near-zero).
+        // CameraSceneObject sets Distance = 0.001f to use first-person mode where
+        // the eye position directly equals the object's Position. Applying zoom
+        // would change Distance and recalculate Position, causing apparent teleports.
+        if (camera.Distance < 0.01f) return;
+        
         camera.Zoom(mouseWheel * camera.Distance * 0.1f);
     }
 

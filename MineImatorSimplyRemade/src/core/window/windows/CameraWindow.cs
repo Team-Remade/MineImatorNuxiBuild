@@ -173,14 +173,17 @@ public class CameraWindow : Window
         var avail = ImGui.GetContentRegionAvail();
         if (avail.X >= 4 && avail.Y >= 4)
         {
-            _panel.HandleFreeFlyPublic(activeCam, sceneObj, ImGui.IsWindowHovered());
-
             Vector2 drawSize = _panel.GetPreviewDrawSize(avail);
             Vector2 startPos = ImGui.GetCursorPos();
             if (avail.X > drawSize.X)
                 ImGui.SetCursorPosX(startPos.X + (avail.X - drawSize.X) * 0.5f);
             if (avail.Y > drawSize.Y)
                 ImGui.SetCursorPosY(startPos.Y + (avail.Y - drawSize.Y) * 0.5f);
+
+            // Handle input AFTER cursor is positioned (so bounds are correct for centered image)
+            var imageMin = ImGui.GetCursorScreenPos();
+            var imageSize = drawSize;
+            _panel.HandleFreeFlyPublic(activeCam, sceneObj, ImGui.IsWindowHovered(), imageMin, imageSize);
 
             ImGui.Image(
                 new ImTextureRef(texId: (ulong)_panel.ColorTexture),
