@@ -333,6 +333,8 @@ public class Viewport : UiPanel
     private int _inlineFramesSinceMouseUp = 0;
     private Vector2 _inlineWindowPosBeforeSnap = Vector2.Zero;
     private bool _inlineSnappedThisInteraction = false;
+    private Vector2 _prevImageMin = Vector2.Zero;
+    private Vector2 _prevImageSize = Vector2.Zero;
 
     public bool InlineVisible { get; private set; } = true;
 
@@ -2781,6 +2783,11 @@ public class Viewport : UiPanel
         var io = ImGui.GetIO();
         Vector2 mouse = io.MousePos;
 
+        // Detect if bounds have changed (viewport was resized)
+        bool boundsChanged = !_hasPrevInlineWindowSize || 
+                             _prevImageMin != imageMin || 
+                             _prevImageSize != imageSize;
+
         float posX = _corner switch
         {
             Corner.BottomLeft or Corner.TopLeft => imageMin.X + InlinePad,
@@ -2825,6 +2832,11 @@ public class Viewport : UiPanel
             ImGui.SetNextWindowPos(new Vector2(posX, posY), ImGuiCond.Always);
             _corner = nearestCorner;  // Update the corner tracking
             _inlineSnappedThisInteraction = true;
+        }
+        else if (boundsChanged && !_inlineDragActive && _inlineFramesSinceMouseUp > 0)
+        {
+            // Bounds changed (viewport resized) - reposition the window to stay in its current corner
+            ImGui.SetNextWindowPos(new Vector2(posX, posY), ImGuiCond.Always);
         }
         
         ImGui.SetNextWindowSize(_inlineSize, ImGuiCond.FirstUseEver);
@@ -2915,6 +2927,10 @@ public class Viewport : UiPanel
         _inlineResizeDragActiveLastFrame = _inlineResizeDragActive;
         _prevInlineWindowSize = winSz;
         _hasPrevInlineWindowSize = true;
+
+        // Store current bounds for next frame to detect viewport resizing
+        _prevImageMin = imageMin;
+        _prevImageSize = imageSize;
 
         var (activeCam, sceneObj) = DrawCameraDropdown(spawned);
 
