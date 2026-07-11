@@ -40,6 +40,11 @@ public class Viewport : UiPanel
     /// </summary>
     public PropertiesPanel? PropertiesPanel { get; set; }
 
+    /// <summary>
+    /// Reference to the preferences panel, used to apply theme colors to buttons.
+    /// </summary>
+    public PreferencesPanel? PreferencesPanel { get; set; }
+
     // ── GLFW references (for cursor lock during free-fly) ──────────────────────
 
     /// <summary>
@@ -1394,7 +1399,7 @@ public class Viewport : UiPanel
                 ImGui.SameLine();
                 ImGui.SetCursorPosY(itemY);
 
-                // Tint the button to indicate the active state.
+                // Tint the button to indicate the active state using accent color when enabled.
                 if (!OverlaysEnabled)
                 {
                     ImGui.PushStyleColor(ImGuiCol.Button,        new Vector4(0.20f, 0.20f, 0.20f, 1.0f));
@@ -1404,10 +1409,11 @@ public class Viewport : UiPanel
                 }
                 else
                 {
-                    ImGui.PushStyleColor(ImGuiCol.Button,        new Vector4(0.25f, 0.45f, 0.25f, 1.0f));
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.30f, 0.55f, 0.30f, 1.0f));
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive,  new Vector4(0.35f, 0.60f, 0.35f, 1.0f));
-                    ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(0.90f, 0.95f, 0.90f, 1.0f));
+                    var accentColor = GetAccentColorFromPreferences();
+                    ImGui.PushStyleColor(ImGuiCol.Button,        accentColor with { W = 0.6f });
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, accentColor with { W = 0.8f });
+                    ImGui.PushStyleColor(ImGuiCol.ButtonActive,  accentColor);
+                    ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(1.0f, 1.0f, 1.0f, 1.0f));
                 }
 
                 if (ImGui.Button(OverlaysEnabled ? "Overlays" : "Overlays",
@@ -1433,10 +1439,11 @@ public class Viewport : UiPanel
                 }
                 else
                 {
-                    ImGui.PushStyleColor(ImGuiCol.Button,        new Vector4(0.22f, 0.38f, 0.52f, 1.0f));
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.28f, 0.46f, 0.62f, 1.0f));
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive,  new Vector4(0.33f, 0.52f, 0.68f, 1.0f));
-                    ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(0.92f, 0.96f, 1.00f, 1.0f));
+                    var accentColor = GetAccentColorFromPreferences();
+                    ImGui.PushStyleColor(ImGuiCol.Button,        accentColor with { W = 0.6f });
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, accentColor with { W = 0.8f });
+                    ImGui.PushStyleColor(ImGuiCol.ButtonActive,  accentColor);
+                    ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(1.0f, 1.0f, 1.0f, 1.0f));
                 }
 
                 if (ImGui.Button(previewVisible ? "Hide Preview" : "Show Preview", new Vector2(0, iconSize)))
@@ -2648,6 +2655,31 @@ public class Viewport : UiPanel
             if (obj is CameraSceneObject cam) result.Add(cam);
             CollectSpawnedCameras(obj.Children, result);
         }
+    }
+
+    /// <summary>
+    /// Gets the accent color from the PreferencesPanel, or returns a default purple if not available.
+    /// Used by buttons to match the active theme accent color.
+    /// </summary>
+    private Vector4 GetAccentColorFromPreferences()
+    {
+        if (PreferencesPanel == null)
+            return new Vector4(0.8f, 0.3f, 1.0f, 1.0f); // default purple
+
+        return PreferencesPanel.Accent switch
+        {
+            PreferencesPanel.AccentColor.Red => new Vector4(1.0f, 0.2f, 0.2f, 1.0f),
+            PreferencesPanel.AccentColor.Orange => new Vector4(1.0f, 0.6f, 0.2f, 1.0f),
+            PreferencesPanel.AccentColor.Yellow => new Vector4(1.0f, 1.0f, 0.2f, 1.0f),
+            PreferencesPanel.AccentColor.Lime => new Vector4(0.7f, 1.0f, 0.2f, 1.0f),
+            PreferencesPanel.AccentColor.Green => new Vector4(0.2f, 1.0f, 0.5f, 1.0f),
+            PreferencesPanel.AccentColor.SkyBlue => new Vector4(0.4f, 0.8f, 1.0f, 1.0f),
+            PreferencesPanel.AccentColor.Blue => new Vector4(0.3f, 0.5f, 1.0f, 1.0f),
+            PreferencesPanel.AccentColor.Purple => new Vector4(0.8f, 0.3f, 1.0f, 1.0f),
+            PreferencesPanel.AccentColor.Pink => new Vector4(1.0f, 0.4f, 0.7f, 1.0f),
+            PreferencesPanel.AccentColor.Custom => new Vector4(0.5f, 0.5f, 0.5f, 1.0f),
+            _ => new Vector4(0.8f, 0.3f, 1.0f, 1.0f) // default purple
+        };
     }
 
     // ── Preview viewport support ───────────────────────────────────────────────

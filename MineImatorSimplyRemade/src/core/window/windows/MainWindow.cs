@@ -346,6 +346,8 @@ public class MainWindow : Window
             sceneTree.Viewport = viewport;
         if (viewport != null && propertiesPanel != null)
             viewport.PropertiesPanel = propertiesPanel;
+        if (viewport != null && preferencesPanel != null)
+            viewport.PreferencesPanel = preferencesPanel;
         if (timeline != null && viewport != null)
             timeline.Viewport = viewport;
         if (timeline != null && propertiesPanel != null)
@@ -375,7 +377,8 @@ public class MainWindow : Window
             {
                 Gl = gl,
                 Viewport = viewport,
-                ProjectManager = _projectManager
+                ProjectManager = _projectManager,
+                PreferencesPanel = preferencesPanel
             };
             if (propertiesPanel != null)
                 propertiesPanel.SpawnMenu = _spawnMenu;

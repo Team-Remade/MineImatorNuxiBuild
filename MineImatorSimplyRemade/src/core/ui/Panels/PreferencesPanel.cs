@@ -1,4 +1,5 @@
 using Hexa.NET.ImGui;
+using System.Numerics;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
@@ -49,10 +50,26 @@ public class PreferencesPanel : UiPanel
     public bool ZIsUp { get; set; } = false;
 
     /// <summary>
+    /// Callback invoked when the theme changes.
+    /// </summary>
+    public Action<ThemeMode>? ThemeChanged { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the accent color changes.
+    /// </summary>
+    public Action<AccentColor>? AccentColorChanged { get; set; }
+
+    /// <summary>
     /// Tracks whether the preferences panel is open/visible.
     /// Starts hidden; can be toggled via menubar or close button.
     /// </summary>
     private bool _windowOpen = false;
+
+    /// <summary>
+    /// Tracks whether the initial theme/accent have been applied.
+    /// This is done on first Render() to ensure ImGui is ready.
+    /// </summary>
+    private bool _defaultsApplied = false;
 
     /// <summary>
     /// Toggle visibility of the preferences panel.
@@ -63,10 +80,130 @@ public class PreferencesPanel : UiPanel
     }
 
     /// <summary>
+    /// Applies the selected theme (Light/Dark/Darker) to ImGui.
+    /// After applying the theme, re-applies the current accent color on top.
+    /// </summary>
+    public void ApplyTheme(ThemeMode mode)
+    {
+        var style = ImGui.GetStyle();
+
+        switch (mode)
+        {
+            case ThemeMode.Light:
+                ImGui.StyleColorsLight();
+                break;
+
+            case ThemeMode.Dark:
+                ImGui.StyleColorsDark();
+                break;
+
+            case ThemeMode.Darker:
+                ImGui.StyleColorsDark();
+                // Make the dark theme even darker
+                style.Colors[(int)ImGuiCol.WindowBg] = new Vector4(0.09f, 0.09f, 0.09f, 1.0f);
+                style.Colors[(int)ImGuiCol.FrameBg] = new Vector4(0.11f, 0.11f, 0.11f, 1.0f);
+                style.Colors[(int)ImGuiCol.FrameBgHovered] = new Vector4(0.15f, 0.15f, 0.15f, 1.0f);
+                style.Colors[(int)ImGuiCol.FrameBgActive] = new Vector4(0.20f, 0.20f, 0.20f, 1.0f);
+                style.Colors[(int)ImGuiCol.MenuBarBg] = new Vector4(0.08f, 0.08f, 0.08f, 1.0f);
+                style.Colors[(int)ImGuiCol.Header] = new Vector4(0.15f, 0.15f, 0.15f, 0.8f);
+                style.Colors[(int)ImGuiCol.HeaderHovered] = new Vector4(0.20f, 0.20f, 0.20f, 0.8f);
+                style.Colors[(int)ImGuiCol.HeaderActive] = new Vector4(0.25f, 0.25f, 0.25f, 0.8f);
+                break;
+        }
+
+        Theme = mode;
+
+        // Re-apply accent color on top of the new theme (since StyleColors* resets all colors)
+        ApplyAccentColorInternal(Accent);
+
+        ThemeChanged?.Invoke(mode);
+    }
+
+    /// <summary>
+    /// Applies the selected accent color throughout the UI.
+    /// </summary>
+    public void ApplyAccentColor(AccentColor color)
+    {
+        Accent = color;
+        ApplyAccentColorInternal(color);
+        AccentColorChanged?.Invoke(color);
+    }
+
+    /// <summary>
+    /// Internal helper to apply accent color without triggering callbacks.
+    /// Used by ApplyTheme to re-apply accent after theme changes.
+    /// </summary>
+    private void ApplyAccentColorInternal(AccentColor color)
+    {
+        var style = ImGui.GetStyle();
+        Vector4 accentVec = GetAccentColorVector(color);
+
+        // Apply accent to various UI elements
+        style.Colors[(int)ImGuiCol.Button] = accentVec with { W = 0.6f };
+        style.Colors[(int)ImGuiCol.ButtonHovered] = accentVec with { W = 0.8f };
+        style.Colors[(int)ImGuiCol.ButtonActive] = accentVec;
+        style.Colors[(int)ImGuiCol.CheckMark] = accentVec;
+        style.Colors[(int)ImGuiCol.SliderGrab] = accentVec with { W = 0.7f };
+        style.Colors[(int)ImGuiCol.SliderGrabActive] = accentVec;
+
+        // Apply accent to window title bars
+        style.Colors[(int)ImGuiCol.TitleBg] = accentVec with { W = 0.5f };
+        style.Colors[(int)ImGuiCol.TitleBgActive] = accentVec with { W = 0.8f };
+        style.Colors[(int)ImGuiCol.TitleBgCollapsed] = accentVec with { W = 0.3f };
+
+        // Apply accent to tabs using reflection to find available tab color enums
+        ApplyAccentToTabColors(accentVec);
+    }
+
+    /// <summary>
+    /// Applies accent color to tab-related ImGui colors.
+    /// </summary>
+    private void ApplyAccentToTabColors(Vector4 accentVec)
+    {
+        var style = ImGui.GetStyle();
+
+        // Apply accent to all tab-related colors
+        style.Colors[(int)ImGuiCol.Tab] = accentVec with { W = 0.4f };
+        style.Colors[(int)ImGuiCol.TabHovered] = accentVec with { W = 0.7f };
+        style.Colors[(int)ImGuiCol.TabSelected] = accentVec;
+        style.Colors[(int)ImGuiCol.TabDimmed] = accentVec with { W = 0.2f };
+        style.Colors[(int)ImGuiCol.TabDimmedSelected] = accentVec with { W = 0.5f };
+    }
+
+    /// <summary>
+    /// Converts an AccentColor enum value to an RGBA vector.
+    /// </summary>
+    private Vector4 GetAccentColorVector(AccentColor color)
+    {
+        return color switch
+        {
+            AccentColor.Red => new Vector4(1.0f, 0.2f, 0.2f, 1.0f),
+            AccentColor.Orange => new Vector4(1.0f, 0.6f, 0.2f, 1.0f),
+            AccentColor.Yellow => new Vector4(1.0f, 1.0f, 0.2f, 1.0f),
+            AccentColor.Lime => new Vector4(0.7f, 1.0f, 0.2f, 1.0f),
+            AccentColor.Green => new Vector4(0.2f, 1.0f, 0.5f, 1.0f),
+            AccentColor.SkyBlue => new Vector4(0.4f, 0.8f, 1.0f, 1.0f),
+            AccentColor.Blue => new Vector4(0.3f, 0.5f, 1.0f, 1.0f),
+            AccentColor.Purple => new Vector4(0.8f, 0.3f, 1.0f, 1.0f),
+            AccentColor.Pink => new Vector4(1.0f, 0.4f, 0.7f, 1.0f),
+            AccentColor.Custom => new Vector4(0.5f, 0.5f, 0.5f, 1.0f),
+            _ => new Vector4(0.8f, 0.3f, 1.0f, 1.0f) // Default purple
+        };
+    }
+
+    /// <summary>
     /// Renders the preferences panel as a standard docking window.
     /// </summary>
     public override void Render()
     {
+        // Apply default theme and accent on first render (after ImGui is fully initialized)
+        if (!_defaultsApplied)
+        {
+            _defaultsApplied = true;
+            ApplyTheme(Theme);
+            ApplyAccentColor(Accent);
+        }
+
         if (!_windowOpen)
             return;
 
@@ -117,7 +254,6 @@ public class PreferencesPanel : UiPanel
                 if (ImGui.Checkbox("Copy work camera into new cameras##copyCamera", ref copyCamera))
                 {
                     CopyWorkCameraIntoNewCameras = copyCamera;
-                    // TODO: Implement camera copying behavior
                 }
             }
 
@@ -149,8 +285,7 @@ public class PreferencesPanel : UiPanel
                             bool selected = Theme == mode;
                             if (ImGui.Selectable(mode.ToString(), selected))
                             {
-                                Theme = mode;
-                                // TODO: Apply theme
+                                ApplyTheme(mode);
                             }
                         }
                         ImGui.EndCombo();
@@ -172,8 +307,7 @@ public class PreferencesPanel : UiPanel
                             bool selected = Accent == color;
                             if (ImGui.Selectable(color.ToString(), selected))
                             {
-                                Accent = color;
-                                // TODO: Apply accent color
+                                ApplyAccentColor(color);
                             }
                         }
                         ImGui.EndCombo();

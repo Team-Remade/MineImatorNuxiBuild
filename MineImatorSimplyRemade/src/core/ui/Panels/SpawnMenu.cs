@@ -95,6 +95,11 @@ public class SpawnMenu : UiPanel
     /// the active project so scene save/load remains portable.
     /// </summary>
     public ProjectManager? ProjectManager { get; set; }
+    /// <summary>
+    /// Optional preferences panel reference to access spawn behavior preferences
+    /// like CopyWorkCameraIntoNewCameras.
+    /// </summary>
+    public PreferencesPanel? PreferencesPanel { get; set; }
 
     // ── Window positioning ───────────────────────────────────────────────────
     private Vector2? _nextWindowPos;
@@ -3940,6 +3945,19 @@ public class SpawnMenu : UiPanel
 
         // Sync the embedded Camera to match the scene-object transform.
         obj.SyncCameraToTransform();
+
+        // If the preference is enabled, copy the full work camera state into the new camera.
+        if (PreferencesPanel != null && PreferencesPanel.CopyWorkCameraIntoNewCameras)
+        {
+            // Copy camera view parameters (Target, Yaw, Pitch, Distance, FovY)
+            obj.ViewCamera.Target   = workCam.Target;
+            obj.ViewCamera.Yaw      = workCam.Yaw;
+            obj.ViewCamera.Pitch    = workCam.Pitch;
+            obj.ViewCamera.Distance = workCam.Distance;
+            obj.ViewCamera.FovY     = workCam.FovY;
+            obj.ViewCamera.Near     = workCam.Near;
+            obj.ViewCamera.Far      = workCam.Far;
+        }
 
         // Load the Camera.glb mesh from embedded resources and attach it as the
         // visual representation.  We extract to a temp file because AssimpModelLoader
