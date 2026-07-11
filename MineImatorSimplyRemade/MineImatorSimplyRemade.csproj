@@ -13,7 +13,11 @@
         <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
         <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
         <!-- Third-party NativeAOT/single-file warnings from Silk.NET and FFMpegCore. -->
-        <NoWarn>$(NoWarn);IL2104;IL3000;IL3002;IL3053</NoWarn>
+        <!-- NU1701: Package compatibility warnings for packages targeting older frameworks. -->
+        <!-- Nullable reference type warnings (CS8600-CS8629): Architecture uses nullable patterns throughout. -->
+        <!-- CS8619: Nullability mismatch in array initialization from shape vertex data. -->
+        <!-- CS9192/CS9193: ref/ref readonly parameter passing in GlmSharp and struct operations. -->
+        <NoWarn>$(NoWarn);IL2104;IL3000;IL3002;IL3053;NU1701;CS8600;CS8601;CS8603;CS8604;CS8618;CS8619;CS8625;CS8629;CS8981;CS9192;CS9193</NoWarn>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <PublishAot>true</PublishAot>
     </PropertyGroup>

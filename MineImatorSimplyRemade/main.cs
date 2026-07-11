@@ -25,8 +25,6 @@ public static class main
     private static GL _gl;
     private static GL? _startupGl;
     
-    private static bool isVulkan = false;
-    
     private static unsafe int Main(string[] args)
     {
         NativeLibraryBootstrap.Initialize();

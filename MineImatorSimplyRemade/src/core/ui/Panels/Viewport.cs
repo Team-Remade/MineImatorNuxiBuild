@@ -111,15 +111,10 @@ public class Viewport : UiPanel
     private bool  _dragging;
     private bool  _panning;
     private bool  _gizmoDragging;
-    private double _lastMouseX = double.NaN;
-    private double _lastMouseY = double.NaN;
-
     /// <summary>
     /// Screen position where the left mouse button was pressed this drag sequence.
     /// Used to distinguish a click (no/minimal movement) from an orbit drag.
     /// </summary>
-    private float _pressMouseX = float.NaN;
-    private float _pressMouseY = float.NaN;
 
     /// <summary>
     /// Movement threshold in pixels beyond which a left-button hold is treated as
@@ -333,7 +328,6 @@ public class Viewport : UiPanel
     /// </summary>
     private bool _inlineDragActive = false;
     private Vector2 _inlineWindowLastPos = Vector2.Zero;
-    private int _inlineFramesSinceMovement = 0;
     private bool _inlineMouseWasDownLastFrame = false;
     private Vector2 _inlineMouseDownPos = Vector2.Zero;
     private int _inlineFramesSinceMouseUp = 0;
@@ -349,10 +343,7 @@ public class Viewport : UiPanel
 
     public bool IsVisible => Undocked || IsInlineVisible;
 
-    private bool _previewFreeFly;
-    private float _previewFreeFlySpeed = 5f;
-    private double _previewLastMouseX = double.NaN;
-    private double _previewLastMouseY = double.NaN;
+
 
     // ── Spawn menu / bench button ──────────────────────────────────────────────
 
