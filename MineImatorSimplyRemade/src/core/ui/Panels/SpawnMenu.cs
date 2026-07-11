@@ -5,6 +5,7 @@ using Hexa.NET.ImGui;
 using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
@@ -150,6 +151,20 @@ public class SpawnMenu : UiPanel
     /// Reset whenever the character selection changes.
     /// </summary>
     private string _customCharTexturePath = "";
+
+    // ── Primitive texture state ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Absolute path to the selected texture for spawning textured primitives.
+    /// Reset whenever the object selection changes away from textured primitives.
+    /// </summary>
+    private string _selectedPrimitiveTexturePath = "";
+
+    /// <summary>
+    /// OpenGL texture ID for the currently selected primitive texture.
+    /// 0 means no texture (use default material).
+    /// </summary>
+    private uint _selectedPrimitiveTextureId = 0;
 
     // ── Preview renderer ──────────────────────────────────────────────────────
 
@@ -906,6 +921,67 @@ public class SpawnMenu : UiPanel
                 ImGui.Spacing();
             }
 
+            // ── Primitive texture selection ──────────────────────────────────
+            var filteredObjects = GetFilteredObjects();
+            if (_selectedCategory == "Primitives" &&
+                _selectedObjectIndex >= 0 && _selectedObjectIndex < filteredObjects.Count &&
+                filteredObjects[_selectedObjectIndex] == "Plane")
+            {
+                ImGui.TextDisabled("Texture");
+                ImGui.Spacing();
+
+                // Show current texture
+                if (!string.IsNullOrEmpty(_selectedPrimitiveTexturePath))
+                {
+                    string fileName = Path.GetFileName(_selectedPrimitiveTexturePath);
+                    ImGui.Text($"Current: {fileName}");
+                }
+                else
+                {
+                    ImGui.TextDisabled("(None)");
+                }
+
+                ImGui.Spacing();
+
+                // Texture buttons
+                if (ImGui.Button("Load texture...", new Vector2(-1, 0)))
+                {
+                    var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
+                    if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
+                    {
+                        // Clean up old texture
+                        if (_selectedPrimitiveTextureId != 0)
+                            Gl?.DeleteTexture(_selectedPrimitiveTextureId);
+
+                        // Load new texture
+                        _selectedPrimitiveTexturePath = result.Path;
+                        _selectedPrimitiveTextureId = LoadPrimitiveTextureFromFile(result.Path);
+
+                        if (_selectedPrimitiveTextureId != 0)
+                        {
+                            _selectedVariantIndex = 1; // Select "Load texture..."
+                        }
+                        else
+                        {
+                            _selectedPrimitiveTexturePath = "";
+                            _selectedVariantIndex = 0; // Reset to "None"
+                        }
+                    }
+                }
+
+                if (ImGui.Button("Clear", new Vector2(-1, 0)))
+                {
+                    if (_selectedPrimitiveTextureId != 0)
+                        Gl?.DeleteTexture(_selectedPrimitiveTextureId);
+                    _selectedPrimitiveTextureId = 0;
+                    _selectedPrimitiveTexturePath = "";
+                    _selectedVariantIndex = 0;
+                }
+
+                ImGui.Separator();
+                ImGui.Spacing();
+            }
+
             if (_currentVariants.Count > 0)
             {
                 for (int i = 0; i < _currentVariants.Count; i++)
@@ -921,7 +997,9 @@ public class SpawnMenu : UiPanel
                     }
                 }
             }
-            else
+            else if (!(_selectedCategory == "Primitives" &&
+                       _selectedObjectIndex >= 0 && _selectedObjectIndex < filteredObjects.Count &&
+                       filteredObjects[_selectedObjectIndex] == "Plane"))
             {
                 ImGui.TextDisabled("(not available)");
             }
@@ -1715,7 +1793,32 @@ public class SpawnMenu : UiPanel
             return;
         }
 
-        _currentVariants.Clear();
+        // Handle textured primitive selection: add texture option to variants
+        if (_selectedCategory == "Primitives" && objectName == "Plane")
+        {
+            _currentVariants.Clear();
+            _currentVariants.Add("None");
+            _currentVariants.Add("Load texture...");
+            // Reset texture if switching away from textured primitive
+            if (_selectedPrimitiveTextureId != 0)
+            {
+                Gl?.DeleteTexture(_selectedPrimitiveTextureId);
+                _selectedPrimitiveTextureId = 0;
+            }
+            _selectedPrimitiveTexturePath = "";
+            _selectedVariantIndex = 0; // Select "None" by default
+        }
+        else
+        {
+            _currentVariants.Clear();
+            // Clean up texture if switching to non-textured primitive
+            if (_selectedPrimitiveTextureId != 0)
+            {
+                Gl?.DeleteTexture(_selectedPrimitiveTextureId);
+                _selectedPrimitiveTextureId = 0;
+            }
+            _selectedPrimitiveTexturePath = "";
+        }
     }
 
     private void OnBlockSelected(string blockName)
@@ -3662,6 +3765,97 @@ public class SpawnMenu : UiPanel
         return $"north={(north ? "true" : "false")},east={(east ? "true" : "false")},south={(south ? "true" : "false")},west={(west ? "true" : "false")}";
     }
 
+    /// <summary>
+    /// Loads a texture from the given file path and creates an OpenGL texture.
+    /// Supports PNG, JPG, BMP, TGA, GIF, WebP, and TIFF formats with RGBA color components.
+    /// Images are flipped vertically on load to match OpenGL conventions.
+    /// </summary>
+    private unsafe uint LoadPrimitiveTextureFromFile(string filePath)
+    {
+        if (Gl == null || !File.Exists(filePath))
+            return 0;
+
+        try
+        {
+            // Flip image vertically on load for OpenGL Y-axis convention
+            StbImage.stbi_set_flip_vertically_on_load(1);
+            
+            var bytes = File.ReadAllBytes(filePath);
+            ImageResult img = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
+            
+            // Reset to default behavior
+            StbImage.stbi_set_flip_vertically_on_load(0);
+
+            uint tex = Gl.GenTexture();
+            Gl.BindTexture(GLEnum.Texture2D, tex);
+
+            fixed (byte* p = img.Data)
+                Gl.TexImage2D(GLEnum.Texture2D, 0, (int)GLEnum.Rgba,
+                    (uint)img.Width, (uint)img.Height,
+                    0, GLEnum.Rgba, GLEnum.UnsignedByte, p);
+
+            // Use linear filtering for better image quality
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
+            // Allow wrapping for tileable textures
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.Repeat);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.Repeat);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+
+            return tex;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SpawnMenu] Failed to load primitive texture '{filePath}': {ex.Message}");
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Copies a texture file to the project's assets folder and returns the project-relative path.
+    /// If no project is active, returns the original absolute path.
+    /// </summary>
+    private string CopyTextureToProject(string sourcePath)
+    {
+        if (!File.Exists(sourcePath))
+            return "";
+
+        if (ProjectManager == null || !ProjectManager.HasProject)
+            return sourcePath;
+
+        try
+        {
+            string projectRoot = ProjectManager.ProjectFolder;
+            string texturesDir = Path.Combine(projectRoot, "assets", "textures", "primitives");
+            Directory.CreateDirectory(texturesDir);
+
+            string fileName = Path.GetFileName(sourcePath);
+            string destPath = Path.Combine(texturesDir, fileName);
+
+            // Handle filename conflicts by appending a number
+            int counter = 1;
+            string baseName = Path.GetFileNameWithoutExtension(fileName);
+            string extension = Path.GetExtension(fileName);
+            while (File.Exists(destPath) && !File.Exists(sourcePath).Equals(File.Exists(destPath)))
+            {
+                fileName = $"{baseName}_{counter}{extension}";
+                destPath = Path.Combine(texturesDir, fileName);
+                counter++;
+            }
+
+            File.Copy(sourcePath, destPath, true);
+
+            // Return project-relative path
+            string relativePath = Path.GetRelativePath(projectRoot, destPath);
+            return relativePath;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SpawnMenu] Failed to copy texture to project: {ex.Message}");
+            return sourcePath;
+        }
+    }
+
     // ── Spawn logic ───────────────────────────────────────────────────────────
 
     private void TrySpawn()
@@ -3797,7 +3991,20 @@ public class SpawnMenu : UiPanel
 
             default:
                 // Primitives and any future categories that use SceneObject
-                SpawnPrimitiveObject(objectName, fullName);
+                // For textured primitives, pass the selected texture
+                if (_selectedCategory == "Primitives" && objectName == "Plane")
+                {
+                    string texturePath = "";
+                    if (_selectedPrimitiveTextureId != 0 && !string.IsNullOrEmpty(_selectedPrimitiveTexturePath))
+                    {
+                        texturePath = CopyTextureToProject(_selectedPrimitiveTexturePath);
+                    }
+                    SpawnPrimitiveObject(objectName, fullName, _selectedPrimitiveTextureId, texturePath);
+                }
+                else
+                {
+                    SpawnPrimitiveObject(objectName, fullName);
+                }
                 break;
         }
 
@@ -4067,7 +4274,7 @@ public class SpawnMenu : UiPanel
     }
 
     /// <summary>Creates and registers a primitive <see cref="SceneObject"/> in the viewport.</summary>
-    public SceneObject? SpawnPrimitiveObject(string primitiveType, string objectName)
+    public SceneObject? SpawnPrimitiveObject(string primitiveType, string objectName, uint textureId = 0, string texturePath = "")
     {
         if (Viewport == null) return null;
 
@@ -4077,7 +4284,8 @@ public class SpawnMenu : UiPanel
             ObjectType    = primitiveType,
             SpawnCategory = "Primitives",
             Position      = vec3.Zero,
-            PivotOffset   = new vec3(0f, 0.5f, 0f)
+            PivotOffset   = new vec3(0f, 0.5f, 0f),
+            AlbedoTexturePath = texturePath
         };
         obj.AssignObjectId();
 
@@ -4085,7 +4293,28 @@ public class SpawnMenu : UiPanel
         if (primitiveType == "Plane" && Gl != null)
         {
             // 1-unit × 1-unit vertical (XY) plane
-            obj.AddMesh(new PlaneMesh(Gl, 1f, 1f, PlaneOrientation.XY));
+            var mesh = new PlaneMesh(Gl, 1f, 1f, PlaneOrientation.XY);
+            
+            // Apply texture if provided
+            if (textureId != 0)
+            {
+                mesh.TextureId = textureId;
+                // Enable backface culling for proper rendering
+                mesh.DoubleSided = false;
+                
+                // Configure material for transparency
+                if (mesh.GetSurfaceCount() > 0)
+                {
+                    var material = mesh.SurfaceGetMaterial(0);
+                    if (material is StandardMaterial stdMat)
+                    {
+                        stdMat.AlbedoColor = new vec4(1f, 1f, 1f, 1f); // White for full color pass-through
+                        stdMat.DoubleSided = false;
+                    }
+                }
+            }
+            
+            obj.AddMesh(mesh);
         }
 
         if (primitiveType == "Cube" && Gl != null)

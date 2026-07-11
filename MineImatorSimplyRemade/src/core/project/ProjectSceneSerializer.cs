@@ -84,6 +84,7 @@ public static class ProjectSceneSerializer
             TextureType = obj.TextureType,
             ResourcePackId = obj.ResourcePackId,
             SourceAssetPath = obj.SourceAssetPath,
+            AlbedoTexturePath = obj.AlbedoTexturePath,
             Position = ToProjectVec3(obj.Position),
             Rotation = ToProjectVec3(obj.Rotation),
             Scale = ToProjectVec3(obj.Scale),
@@ -273,6 +274,12 @@ public static class ProjectSceneSerializer
         obj.TextureType = entry.TextureType;
         obj.ResourcePackId = entry.ResourcePackId;
         obj.SourceAssetPath = entry.SourceAssetPath;
+        
+        // Restore albedo texture path (actual texture loading happens after scene is loaded)
+        if (!string.IsNullOrEmpty(entry.AlbedoTexturePath))
+        {
+            obj.AlbedoTexturePath = entry.AlbedoTexturePath;
+        }
 
         obj.SetLocalPosition(ToVec3(entry.Position));
         obj.SetLocalRotation(ToVec3(entry.Rotation));

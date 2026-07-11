@@ -57,6 +57,13 @@ public class SceneObject
     /// </summary>
     public string SourceAssetPath = "";
 
+    /// <summary>
+    /// Path to the albedo texture file for this object (used for primitives and custom objects).
+    /// When set, the texture is loaded and applied to all meshes on scene load.
+    /// Empty means no custom albedo texture.
+    /// </summary>
+    public string AlbedoTexturePath = "";
+
     // ── Visual ────────────────────────────────────────────────────────────────
 
     /// <summary>

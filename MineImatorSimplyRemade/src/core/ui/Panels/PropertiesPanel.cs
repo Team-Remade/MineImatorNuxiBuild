@@ -3,11 +3,14 @@ using System.Linq;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using NativeFileDialogSharp;
+using Silk.NET.OpenGL;
+using StbImageSharp;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
@@ -382,6 +385,33 @@ public class PropertiesPanel : UiPanel
     {
         var sel = SelectionManager.Instance?.SelectedObjects;
         _currentObject = (sel != null && sel.Count > 0) ? sel[0] : null;
+        
+        // If object has a stored albedo texture path but hasn't loaded the texture yet, load it now
+        if (_currentObject != null && 
+            !string.IsNullOrEmpty(_currentObject.AlbedoTexturePath) &&
+            string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase))
+        {
+            // Check if any mesh already has the texture loaded
+            bool hasTexture = false;
+            foreach (var mesh in _currentObject.Visuals)
+            {
+                if (mesh.TextureId != 0)
+                {
+                    hasTexture = true;
+                    break;
+                }
+            }
+            
+            // If not loaded, load it from the stored path
+            if (!hasTexture)
+            {
+                string fullPath = Path.Combine(ProjectManager.Instance.ProjectFolder, _currentObject.AlbedoTexturePath);
+                if (File.Exists(fullPath))
+                {
+                    OnLoadAlbedoTextureForObject(fullPath);
+                }
+            }
+        }
     }
     
     public override void Render()
@@ -1200,6 +1230,57 @@ public class PropertiesPanel : UiPanel
                 ImGui.Spacing();
             }
 
+            // Albedo texture (for primitives and custom objects)
+            if (string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase))
+            {
+                ImGui.Text("Albedo Texture:");
+                
+                // Show current texture if any mesh has one
+                uint currentTextureId = 0;
+                foreach (var mesh in _currentObject.Visuals)
+                {
+                    if (mesh.TextureId != 0)
+                    {
+                        currentTextureId = mesh.TextureId;
+                        break;
+                    }
+                }
+
+                if (currentTextureId != 0)
+                {
+                    ImGui.TextDisabled("(texture loaded)");
+                }
+                else
+                {
+                    ImGui.TextDisabled("(none)");
+                }
+
+                if (ImGui.Button("Load texture...##AlbedoTexture", new Vector2(-1, 0)))
+                {
+                    var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
+                    if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
+                    {
+                        OnLoadAlbedoTextureForObject(result.Path);
+                        ProjectManager.Instance.SetDirty(true);
+                    }
+                }
+
+                if (currentTextureId != 0 && ImGui.Button("Clear texture##AlbedoTextureClear", new Vector2(-1, 0)))
+                {
+                    foreach (var mesh in _currentObject.Visuals)
+                    {
+                        if (mesh.TextureId != 0)
+                        {
+                            Gl?.DeleteTexture(mesh.TextureId);
+                            mesh.TextureId = 0;
+                        }
+                    }
+                    ProjectManager.Instance.SetDirty(true);
+                }
+
+                ImGui.Spacing();
+            }
+
             // Alpha – skip for BoneSceneObject
             if (_currentObject is not BoneSceneObject)
             {
@@ -1509,6 +1590,68 @@ public class PropertiesPanel : UiPanel
         if (_currentObject == null) return;
         if (_currentObject.MaterialSettings == null)
             _currentObject.MaterialSettings = new MaterialSettings();
+    }
+
+    /// <summary>
+    /// Loads a texture from file and applies it as the albedo texture to all meshes in the current object.
+    /// Supports PNG, JPG, BMP, TGA, GIF, WebP, and TIFF formats with RGBA color components.
+    /// </summary>
+    private unsafe void OnLoadAlbedoTextureForObject(string filePath)
+    {
+        if (_currentObject == null || Gl == null || !File.Exists(filePath))
+            return;
+
+        try
+        {
+            // Flip image vertically on load for OpenGL Y-axis convention
+            StbImage.stbi_set_flip_vertically_on_load(1);
+            
+            var bytes = File.ReadAllBytes(filePath);
+            ImageResult img = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
+            
+            // Reset to default behavior
+            StbImage.stbi_set_flip_vertically_on_load(0);
+
+            uint tex = Gl.GenTexture();
+            Gl.BindTexture(GLEnum.Texture2D, tex);
+
+            fixed (byte* p = img.Data)
+                Gl.TexImage2D(GLEnum.Texture2D, 0, (int)GLEnum.Rgba,
+                    (uint)img.Width, (uint)img.Height,
+                    0, GLEnum.Rgba, GLEnum.UnsignedByte, p);
+
+            // Use linear filtering for better image quality
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
+            // Allow wrapping for tileable textures
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.Repeat);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.Repeat);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+
+            // Apply to all meshes
+            foreach (var mesh in _currentObject.Visuals)
+            {
+                // Delete old texture if exists
+                if (mesh.TextureId != 0)
+                    Gl.DeleteTexture(mesh.TextureId);
+                
+                mesh.TextureId = tex;
+                
+                // Configure material for proper rendering
+                if (mesh.GetSurfaceCount() > 0)
+                {
+                    var material = mesh.SurfaceGetMaterial(0);
+                    if (material is StandardMaterial stdMat)
+                    {
+                        stdMat.AlbedoColor = new vec4(1f, 1f, 1f, 1f); // White for full color pass-through
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[PropertiesPanel] Failed to load albedo texture '{filePath}': {ex.Message}");
+        }
     }
 
     // ── Property context menu ─────────────────────────────────────────────────

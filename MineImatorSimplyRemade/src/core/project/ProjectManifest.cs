@@ -149,6 +149,7 @@ public class ProjectSceneObjectEntry
     public string TextureType { get; set; } = "item";
     public string ResourcePackId { get; set; } = "";
     public string SourceAssetPath { get; set; } = "";
+    public string AlbedoTexturePath { get; set; } = "";
 
     public ProjectVec3 Position { get; set; } = new();
     public ProjectVec3 Rotation { get; set; } = new();
