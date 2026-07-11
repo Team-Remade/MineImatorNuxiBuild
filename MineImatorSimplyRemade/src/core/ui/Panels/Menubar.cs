@@ -31,6 +31,7 @@ public class Menubar : UiPanel
     public Action? SupportUsRequested { get; set; }
     public Action<RenderRequestKind>? RenderRequested { get; set; }
     public Action? PreferencesRequested { get; set; }
+    public Action? CheckForUpdatesRequested { get; set; }
     public Action? ExitRequested { get; set; }
 
     public override void Render()
@@ -180,6 +181,11 @@ public class Menubar : UiPanel
 
             if (ImGui.BeginMenu("Help"))
             {
+                if (ImGui.MenuItem("Check for Updates"))
+                {
+                    CheckForUpdatesRequested?.Invoke();
+                }
+                ImGui.Separator();
                 if (ImGui.MenuItem("About"))
                 {
                     AboutRequested?.Invoke();

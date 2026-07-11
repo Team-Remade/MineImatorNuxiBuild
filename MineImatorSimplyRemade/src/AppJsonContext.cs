@@ -3,6 +3,7 @@ using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui.Panels;
+using MineImatorSimplyRemade.core.update;
 
 namespace MineImatorSimplyRemade;
 
@@ -27,6 +28,7 @@ namespace MineImatorSimplyRemade;
 [JsonSerializable(typeof(RecentProjectsState))]
 [JsonSerializable(typeof(PreferencesState))]
 [JsonSerializable(typeof(FfmpegBootstrap.FfmpegBootstrapState))]
+[JsonSerializable(typeof(UpdateChecker.UpdateState))]
 internal partial class AppJsonContext : JsonSerializerContext
 {
 }

@@ -13,6 +13,7 @@ using MineImatorSimplyRemade.core.render;
 using MineImatorSimplyRemade.core.startup;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
+using MineImatorSimplyRemade.core.update;
 using MineImatorSimplyRemadeNuxi.core;
 using NativeFileDialogSharp;
 using Silk.NET.GLFW;
@@ -142,6 +143,16 @@ public class MainWindow : Window
     private string _resourcePackImportError = "";
     private float _resourcePackImportProgress;
 
+    // Update checker fields
+    private bool _openUpdatePopup;
+    private bool _updateCheckInProgress;
+    private UpdateChecker.UpdateCheckResult? _lastUpdateCheckResult;
+    private bool _updateDownloadInProgress;
+    private float _updateDownloadProgress;
+    private string _updateDownloadStatus = "";
+    private Task? _updateCheckTask;
+    private Task? _updateDownloadTask;
+
     private static readonly ResolutionPreset[] RenderResolutionPresets =
     [
         new("Avatar 512x512", 512, 512),
@@ -234,6 +245,7 @@ public class MainWindow : Window
             _showProjectHome = true;
         };
         _menubar.AboutRequested = OpenAboutPopup;
+        _menubar.CheckForUpdatesRequested = OpenUpdatePopup;
         _menubar.ReportBugsRequested = OpenIssuesLink;
         _menubar.VisitForumsRequested = OpenForumsLink;
         _menubar.SupportUsRequested = OpenDonateLink;
@@ -888,6 +900,7 @@ public class MainWindow : Window
         }
 
         RenderAboutPopup();
+        RenderUpdatePopup();
 
         RenderRenderPopup();
     }
@@ -895,6 +908,37 @@ public class MainWindow : Window
     private void OpenAboutPopup()
     {
         _openAboutPopup = true;
+    }
+
+    private void OpenUpdatePopup()
+    {
+        _openUpdatePopup = true;
+        
+        // Start checking for updates if not already in progress
+        if (!_updateCheckInProgress && _updateCheckTask == null)
+        {
+            _updateCheckInProgress = true;
+            _lastUpdateCheckResult = null;
+            _updateCheckTask = Task.Run(async () =>
+            {
+                try
+                {
+                    _lastUpdateCheckResult = await UpdateChecker.CheckForUpdatesAsync();
+                }
+                catch (Exception ex)
+                {
+                    _lastUpdateCheckResult = new UpdateChecker.UpdateCheckResult
+                    {
+                        Success = false,
+                        Message = $"Error: {ex.Message}"
+                    };
+                }
+                finally
+                {
+                    _updateCheckInProgress = false;
+                }
+            });
+        }
     }
 
     private static string ResolveAppVersion()
@@ -951,6 +995,158 @@ public class MainWindow : Window
             ImGui.CloseCurrentPopup();
 
         ImGui.EndPopup();
+    }
+
+    private void RenderUpdatePopup()
+    {
+        if (!_openUpdatePopup)
+            return;
+
+        bool isOpen = true;
+        if (!ImGui.BeginPopupModal("Check for Updates", ref isOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            if (!isOpen) _openUpdatePopup = false;
+            return;
+        }
+
+        if (_updateCheckInProgress || _updateCheckTask != null && !_updateCheckTask.IsCompleted)
+        {
+            ImGui.Text("Checking for updates...");
+            // Simple loading animation using text
+            var spinnerChars = new[] { "|", "/", "—", "\\" };
+            var frame = (int)((DateTime.UtcNow.Ticks / 100000000) % 4);
+            ImGui.TextDisabled(spinnerChars[frame]);
+        }
+        else if (_lastUpdateCheckResult != null)
+        {
+            if (!_lastUpdateCheckResult.Success)
+            {
+                ImGui.TextColored(new Vector4(1, 0.5f, 0.5f, 1), "Check Failed");
+                ImGui.TextWrapped(_lastUpdateCheckResult.Message ?? "Unknown error");
+            }
+            else if (_lastUpdateCheckResult.UpdateAvailable)
+            {
+                ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1), "Update Available!");
+                ImGui.Text($"Current Version: {UpdateChecker.GetCurrentVersion()}");
+                ImGui.Text($"Available Version: {_lastUpdateCheckResult.AvailableVersion}");
+                ImGui.Spacing();
+                
+                if (!string.IsNullOrWhiteSpace(_lastUpdateCheckResult.AvailableVersionName))
+                {
+                    ImGui.TextDisabled("Release Name:");
+                    ImGui.TextWrapped(_lastUpdateCheckResult.AvailableVersionName);
+                    ImGui.Spacing();
+                }
+
+                if (!string.IsNullOrWhiteSpace(_lastUpdateCheckResult.ChangeLog))
+                {
+                    ImGui.TextDisabled("Changelog:");
+                    if (ImGui.BeginChild("##updateChangelog", new Vector2(600f, 200f), ImGuiChildFlags.Borders))
+                    {
+                        ImGui.TextWrapped(_lastUpdateCheckResult.ChangeLog);
+                        ImGui.EndChild();
+                    }
+                    ImGui.Spacing();
+                }
+
+                if (_updateDownloadInProgress || _updateDownloadTask != null && !_updateDownloadTask.IsCompleted)
+                {
+                    ImGui.ProgressBar(_updateDownloadProgress, new Vector2(-1, 0), $"{(_updateDownloadProgress * 100):F1}%");
+                    ImGui.TextWrapped(_updateDownloadStatus);
+                }
+                else
+                {
+                    if (ImGui.Button("Install Update", new Vector2(150, 0)))
+                    {
+                        if (!string.IsNullOrWhiteSpace(_lastUpdateCheckResult.DownloadUrl))
+                        {
+                            _updateDownloadInProgress = true;
+                            _updateDownloadProgress = 0;
+                            _updateDownloadStatus = "Installing update...";
+                            _updateDownloadTask = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    var (success, message, needsRestart) = await UpdateChecker.InstallUpdateWhileRunningAsync(
+                                        _lastUpdateCheckResult.DownloadUrl,
+                                        (downloaded, total) =>
+                                        {
+                                            _updateDownloadProgress = total > 0 ? (float)downloaded / total : 0;
+                                            _updateDownloadStatus = $"Progress: {FormatBytes(downloaded)} / {FormatBytes(total)}";
+                                        });
+
+                                    if (success && needsRestart)
+                                    {
+                                        _updateDownloadStatus = message;
+                                        // Show restart prompt on next render
+                                    }
+                                    else if (success)
+                                    {
+                                        _updateDownloadStatus = $"Success: {message}";
+                                    }
+                                    else
+                                    {
+                                        _updateDownloadStatus = $"Error: {message}";
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _updateDownloadStatus = $"Error: {ex.Message}";
+                                }
+                                finally
+                                {
+                                    _updateDownloadInProgress = false;
+                                }
+                            });
+                        }
+                    }
+
+                    ImGui.SameLine();
+                    if (ImGui.Button("Visit Release", new Vector2(120, 0)))
+                    {
+                        try
+                        {
+                            Process.Start(new ProcessStartInfo
+                            {
+                                FileName = "https://github.com/Team-Remade/MineImatorNuxiBuild/releases",
+                                UseShellExecute = true
+                            });
+                        }
+                        catch { }
+                    }
+                }
+            }
+            else
+            {
+                ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1), "Up to Date!");
+                ImGui.Text($"You are running the latest version ({UpdateChecker.GetCurrentVersion()})");
+            }
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        if (ImGui.Button("Close", new Vector2(120, 0)))
+        {
+            ImGui.CloseCurrentPopup();
+            _openUpdatePopup = false;
+        }
+
+        ImGui.EndPopup();
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
     }
 
     private static void OpenDonateLink()
