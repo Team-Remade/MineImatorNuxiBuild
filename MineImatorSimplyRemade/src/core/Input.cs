@@ -26,6 +26,8 @@ public class Input
     private bool  _gizmoDragging;
     private double _orbitLastMouseX = double.NaN;
     private double _orbitLastMouseY = double.NaN;
+    private double _panLastMouseX = double.NaN;
+    private double _panLastMouseY = double.NaN;
     private float _pressMouseX = float.NaN;
     private float _pressMouseY = float.NaN;
     private const float OrbitDragThreshold = 4f;
@@ -200,25 +202,38 @@ public class Input
         bool mouseDown_Middle,
         bool windowHovered)
     {
-        if (!windowHovered) return;
-
-        if (!double.IsNaN(_orbitLastMouseX))
+        if (!windowHovered)
         {
-            float dx = (float)(mousePos.X - _orbitLastMouseX);
-            float dy = (float)(mousePos.Y - _orbitLastMouseY);
-
-            if (mouseDown_Middle)
-            {
-                if (_panning)
-                    camera.Pan(-dx * 0.01f * (camera.Distance / 5f),
-                               dy * 0.01f * (camera.Distance / 5f));
-                _panning = true;
-            }
-            else
-            {
-                _panning = false;
-            }
+            _panLastMouseX = double.NaN;
+            _panLastMouseY = double.NaN;
+            _panning = false;
+            return;
         }
+
+        if (double.IsNaN(_panLastMouseX))
+        {
+            _panLastMouseX = mousePos.X;
+            _panLastMouseY = mousePos.Y;
+            return;
+        }
+
+        float dx = (float)(mousePos.X - _panLastMouseX);
+        float dy = (float)(mousePos.Y - _panLastMouseY);
+
+        if (mouseDown_Middle)
+        {
+            if (_panning)
+                camera.Pan(-dx * 0.01f * (camera.Distance / 5f),
+                           dy * 0.01f * (camera.Distance / 5f));
+            _panning = true;
+        }
+        else
+        {
+            _panning = false;
+        }
+
+        _panLastMouseX = mousePos.X;
+        _panLastMouseY = mousePos.Y;
     }
 
     private void ProcessZoomInput(
