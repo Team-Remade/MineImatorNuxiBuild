@@ -434,10 +434,51 @@ public class PropertiesPanel : UiPanel
                 string fullPath = Path.Combine(ProjectManager.Instance.ProjectFolder, _currentObject.AlbedoTexturePath);
                 if (File.Exists(fullPath))
                 {
-                    OnLoadAlbedoTextureForObject(fullPath);
+                    OnLoadAlbedoTextureForObject(_currentObject, fullPath);
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Loads pending albedo textures for all objects that have a stored path but
+    /// no texture loaded yet. Called after a project scene is loaded.
+    /// </summary>
+    public void LoadPendingAlbedoTextures(IEnumerable<SceneObject> sceneObjects)
+    {
+        if (Gl == null) return;
+
+        foreach (var root in sceneObjects)
+            LoadPendingAlbedoTexturesRecursive(root);
+    }
+
+    private void LoadPendingAlbedoTexturesRecursive(SceneObject obj)
+    {
+        if (obj == null) return;
+
+        if (string.Equals(obj.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrEmpty(obj.AlbedoTexturePath))
+        {
+            bool hasTexture = false;
+            foreach (var mesh in obj.Visuals)
+            {
+                if (mesh.TextureId != 0)
+                {
+                    hasTexture = true;
+                    break;
+                }
+            }
+
+            if (!hasTexture)
+            {
+                string fullPath = Path.Combine(ProjectManager.Instance.ProjectFolder, obj.AlbedoTexturePath);
+                if (File.Exists(fullPath))
+                    OnLoadAlbedoTextureForObject(obj, fullPath);
+            }
+        }
+
+        foreach (var child in obj.Children)
+            LoadPendingAlbedoTexturesRecursive(child);
     }
     
     public override void Render()
@@ -1344,14 +1385,14 @@ public class PropertiesPanel : UiPanel
                                         : path;
                                 }
                             }
-                            else
-                            {
-                                // File hasn't been loaded yet, load it now
-                                if (File.Exists(path))
-                                {
-                                    OnLoadAlbedoTextureForObject(path);
-                                }
-                            }
+                    else
+                    {
+                        // File hasn't been loaded yet, load it now
+                        if (File.Exists(path))
+                        {
+                            OnLoadAlbedoTextureForObject(_currentObject, path);
+                        }
+                    }
                             ProjectManager.Instance.SetDirty(true);
                         }
                         if (selected)
@@ -1361,13 +1402,13 @@ public class PropertiesPanel : UiPanel
                     ImGui.EndCombo();
                 }
 
-                if (ImGui.Button("Load new texture...##AlbedoTexture", new Vector2(-1, 0)))
+                    if (ImGui.Button("Load new texture...##AlbedoTexture", new Vector2(-1, 0)))
                 {
                     var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
                     if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
                     {
                         string resolvedPath = ResolveAlbedoTexturePathForProject(result.Path);
-                        OnLoadAlbedoTextureForObject(resolvedPath);
+                        OnLoadAlbedoTextureForObject(_currentObject, resolvedPath);
                         ProjectManager.Instance.SetDirty(true);
                     }
                 }
@@ -1797,9 +1838,9 @@ public class PropertiesPanel : UiPanel
     /// Loads a texture from file and applies it as the albedo texture to all meshes in the current object.
     /// Supports PNG, JPG, BMP, TGA, GIF, WebP, and TIFF formats with RGBA color components.
     /// </summary>
-    private unsafe void OnLoadAlbedoTextureForObject(string filePath)
+    private unsafe void OnLoadAlbedoTextureForObject(SceneObject obj, string filePath)
     {
-        if (_currentObject == null || Gl == null || !File.Exists(filePath))
+        if (obj == null || Gl == null || !File.Exists(filePath))
             return;
 
         try
@@ -1830,7 +1871,7 @@ public class PropertiesPanel : UiPanel
             Gl.BindTexture(GLEnum.Texture2D, 0);
 
             // Apply to all meshes
-            foreach (var mesh in _currentObject.Visuals)
+            foreach (var mesh in obj.Visuals)
             {
                 // Delete old texture if exists
                 if (mesh.TextureId != 0)
@@ -1852,11 +1893,11 @@ public class PropertiesPanel : UiPanel
             // Store the relative path for persistence
             if (filePath.Contains(ProjectManager.Instance.ProjectFolder))
             {
-                _currentObject.AlbedoTexturePath = Path.GetRelativePath(ProjectManager.Instance.ProjectFolder, filePath);
+                obj.AlbedoTexturePath = Path.GetRelativePath(ProjectManager.Instance.ProjectFolder, filePath);
             }
             else
             {
-                _currentObject.AlbedoTexturePath = filePath;
+                obj.AlbedoTexturePath = filePath;
             }
         }
         catch (Exception ex)

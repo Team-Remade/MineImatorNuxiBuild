@@ -50,6 +50,9 @@ public static class ProjectSceneSerializer
         foreach (var root in manifest.SceneObjects)
             RestoreNode(root, viewport, spawnMenu, parent: null);
 
+        // Restore albedo textures that were saved with a path but not yet loaded onto the GPU
+        propertiesPanel?.LoadPendingAlbedoTextures(viewport.SceneObjects);
+
         // Restore selection after scene is loaded
         SelectionManager.Instance?.ClearSelection();
         if (manifest.SelectedObjectNames != null && manifest.SelectedObjectNames.Count > 0 && SelectionManager.Instance != null)
