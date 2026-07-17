@@ -256,11 +256,20 @@ public class Input
         bool windowHovered)
     {
         double glfwCursorX = 0, glfwCursorY = 0;
+        int winX = 0, winY = 0;
         if (glfw != null)
+        {
             glfw.GetCursorPos(glfwWindow, out glfwCursorX, out glfwCursorY);
+            glfw.GetWindowPos(glfwWindow, out winX, out winY);
+        }
 
-        bool mouseInViewportBounds = glfwCursorX >= imageMin.X && glfwCursorX <= imageMin.X + imageSize.X &&
-                                     glfwCursorY >= imageMin.Y && glfwCursorY <= imageMin.Y + imageSize.Y;
+        // Convert GLFW window-local cursor coordinates to global screen coordinates
+        // to match ImGui's GetCursorScreenPos() when multi-viewport is enabled.
+        double globalCursorX = glfwCursorX + winX;
+        double globalCursorY = glfwCursorY + winY;
+
+        bool mouseInViewportBounds = globalCursorX >= imageMin.X && globalCursorX <= imageMin.X + imageSize.X &&
+                                     globalCursorY >= imageMin.Y && globalCursorY <= imageMin.Y + imageSize.Y;
 
         // Detect right-click to enter free-fly mode
         if (mouseClicked_Right && mouseInViewportBounds)
@@ -269,7 +278,9 @@ public class Input
             if (glfw != null)
             {
                 glfw.SetInputMode(glfwWindow, CursorStateAttribute.Cursor, CursorModeValue.CursorDisabled);
-                glfw.GetCursorPos(glfwWindow, out _lastMouseX, out _lastMouseY);
+                glfw.GetCursorPos(glfwWindow, out double localX, out double localY);
+                _lastMouseX = localX + winX;
+                _lastMouseY = localY + winY;
             }
         }
 
@@ -277,23 +288,25 @@ public class Input
         if (_freeFlyActive && !mouseReleased_Right && glfw != null)
         {
             glfw.GetCursorPos(glfwWindow, out double cursorX, out double cursorY);
+            double globalX = cursorX + winX;
+            double globalY = cursorY + winY;
 
             // Apply mouse look
-            if (!double.IsNaN(cursorX) && !double.IsNaN(cursorY) &&
-                !double.IsInfinity(cursorX) && !double.IsInfinity(cursorY) &&
+            if (!double.IsNaN(globalX) && !double.IsNaN(globalY) &&
+                !double.IsInfinity(globalX) && !double.IsInfinity(globalY) &&
                 !double.IsNaN(_lastMouseX) && !double.IsNaN(_lastMouseY))
             {
-                float lookDx = (float)(cursorX - _lastMouseX) * FreeFlyLookSensitivity;
-                float lookDy = -(float)(cursorY - _lastMouseY) * FreeFlyLookSensitivity;
+                float lookDx = (float)(globalX - _lastMouseX) * FreeFlyLookSensitivity;
+                float lookDy = -(float)(globalY - _lastMouseY) * FreeFlyLookSensitivity;
                 camera.Look(lookDx, lookDy);
             }
 
-            // Recenter cursor to viewport center
-            double centerX = imageMin.X + imageSize.X * 0.5;
-            double centerY = imageMin.Y + imageSize.Y * 0.5;
-            glfw.SetCursorPos(glfwWindow, centerX, centerY);
-            _lastMouseX = centerX;
-            _lastMouseY = centerY;
+            // Recenter cursor to viewport center (global -> local for SetCursorPos)
+            double globalCenterX = imageMin.X + imageSize.X * 0.5;
+            double globalCenterY = imageMin.Y + imageSize.Y * 0.5;
+            glfw.SetCursorPos(glfwWindow, globalCenterX - winX, globalCenterY - winY);
+            _lastMouseX = globalCenterX;
+            _lastMouseY = globalCenterY;
 
             // Calculate movement
             float speed = _freeFlySpeed * camera.Distance * 0.2f;
