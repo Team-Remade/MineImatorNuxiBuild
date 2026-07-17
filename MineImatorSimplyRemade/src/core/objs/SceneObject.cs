@@ -34,6 +34,26 @@ public class MaterialSettings
     /// When true, both faces of meshes are rendered (back-face culling disabled).
     /// </summary>
     public bool DoubleSided = false;
+
+    /// <summary>
+    /// Creates a copy of these material settings.
+    /// </summary>
+    public MaterialSettings Clone()
+    {
+        return new MaterialSettings
+        {
+            AlbedoColor = this.AlbedoColor,
+            Metallic = this.Metallic,
+            Roughness = this.Roughness,
+            NormalEnabled = this.NormalEnabled,
+            NormalTexture = this.NormalTexture,
+            Transparency = this.Transparency,
+            EmissionEnabled = this.EmissionEnabled,
+            EmissionColor = this.EmissionColor,
+            EmissionEnergy = this.EmissionEnergy,
+            DoubleSided = this.DoubleSided
+        };
+    }
 }
 
 // ── SceneObject ───────────────────────────────────────────────────────────────
@@ -272,10 +292,22 @@ public class SceneObject
     /// </summary>
     protected bool _hasExplicitMaterialSettings = false;
 
-    /// <summary>Marks this object's MaterialSettings as explicitly set (not inherited).</summary>
+    /// <summary>
+    /// Marks this object's MaterialSettings as explicitly set (not inherited).
+    /// If the current settings were inherited from a parent, they are cloned first
+    /// so subsequent edits do not affect the parent's material.
+    /// </summary>
     public void SetExplicitMaterialSettings()
     {
-        _hasExplicitMaterialSettings = _materialSettings != null;
+        if (_materialSettings == null)
+        {
+            _materialSettings = new MaterialSettings();
+        }
+        else if (!_hasExplicitMaterialSettings)
+        {
+            _materialSettings = _materialSettings.Clone();
+        }
+        _hasExplicitMaterialSettings = true;
     }
 
     /// <summary>
@@ -313,14 +345,13 @@ public class SceneObject
     }
 
     /// <summary>
-    /// Applies the current <see cref="MaterialSettings"/> to all meshes in the Visual hierarchy.
+    /// Applies the current <see cref="MaterialSettings"/> to this object's own meshes.
     /// </summary>
     public void ApplyMaterialSettingsToMeshes()
     {
         if (_materialSettings == null) return;
 
-        var meshes = GetMeshInstancesRecursively();
-        foreach (var mesh in meshes)
+        foreach (var mesh in Visuals)
         {
             mesh.Albedo = new vec3(
                 _materialSettings.AlbedoColor.x,
