@@ -2807,11 +2807,10 @@ public class MainWindow : Window
 
             if (shouldSave)
             {
-                SaveProjectWithScene();
+                SaveProjectWithSceneInternal();
                 ImGui.CloseCurrentPopup();
                 _showUnsavedChangesDialog = false;
                 _handleCloseWithUnsavedChanges = false;
-                _allowWindowClose = true;
                 _preferencesPanel?.SavePreferences();
                 Glfw.SetWindowShouldClose(WindowHandle, true);
             }
