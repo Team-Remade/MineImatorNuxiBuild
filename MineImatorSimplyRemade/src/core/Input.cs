@@ -87,19 +87,23 @@ public class Input
         bool keyPressed_G, bool keyPressed_R,
         float deltaTime,
         bool windowHovered,
-        bool ctrlHeld = false)
+        bool ctrlHeld = false,
+        bool overlaysEnabled = true)
     {
         // Cache GLFW for mouse-wrap SetCursorPos calls in the sub-methods.
         _glfw = glfw;
         _glfwWindow = glfwWindow;
 
         // ── Gizmo global-space toggle (G key) ──────────────────────────────
-        if (gizmo != null && gizmo.Visible && !gizmo.Editing && keyPressed_G)
+        // Only allow toggling local/global space when overlays (and therefore
+        // the gizmo) are visible in this viewport.
+        if (overlaysEnabled && gizmo != null && gizmo.Visible && !gizmo.Editing && keyPressed_G)
             gizmo.UseLocalSpace = !gizmo.UseLocalSpace;
 
         // ── Orbit input (left mouse button) ────────────────────────────────
         ProcessOrbitInput(camera, gizmo, ref mousePos, mouseDown_Left, mouseClicked_Left,
-                         mouseReleased_Left, windowHovered, imageMin, imageSize, ctrlHeld);
+                         mouseReleased_Left, windowHovered, imageMin, imageSize, ctrlHeld,
+                         overlaysEnabled);
 
         // ── Pan input (middle mouse button) ────────────────────────────────
         ProcessPanInput(camera, ref mousePos, mouseDown_Middle, windowHovered, imageMin, imageSize);
@@ -135,7 +139,8 @@ public class Input
         bool windowHovered,
         Vector2 imageMin,
         Vector2 imageSize,
-        bool ctrlHeld)
+        bool ctrlHeld,
+        bool overlaysEnabled = true)
     {
         // Seed last position on first call to avoid spurious delta
         if (double.IsNaN(_orbitLastMouseX))
@@ -165,8 +170,19 @@ public class Input
         float dy = (float)(mousePos.Y - _orbitLastMouseY);
 
         // Update hover when not dragging
-        if (!mouseDown_Left && gizmo != null)
+        if (!mouseDown_Left && gizmo != null && overlaysEnabled)
             gizmo.UpdateHover(mousePos, camera, imageMin, imageSize);
+
+        // If overlays are disabled for this viewport the gizmo is not visible
+        // and must not be interactive. Cancel any in-progress gizmo drag that
+        // started before overlays were toggled off so it cannot be resumed on
+        // a viewport whose gizmo is currently hidden.
+        if (!overlaysEnabled && _gizmoDragging && _gizmoOwner == this)
+        {
+            gizmo?.EndEdit();
+            _gizmoDragging = false;
+            _gizmoOwner = null;
+        }
 
         bool pressInsideImage =
             !float.IsNaN(_pressMouseX) &&
@@ -193,7 +209,7 @@ public class Input
                 // starting an orbit drag (matches free-fly's bounds check).
                 if (pressInsideImage)
                 {
-                    if (gizmo != null && gizmo.TryBeginEdit(mousePos, camera, imageMin, imageSize))
+                    if (overlaysEnabled && gizmo != null && gizmo.TryBeginEdit(mousePos, camera, imageMin, imageSize))
                     {
                         _gizmoDragging = true;
                         _gizmoOwner = this;
@@ -246,7 +262,10 @@ public class Input
             if (_gizmoOwner == this) _gizmoOwner = null;
 
             // Queue pick if not from gizmo/orbit
-            bool gizmoHovering = gizmo?.Hovering ?? false;
+            // When overlays are disabled the gizmo isn't visible in this viewport,
+            // so the hover state from the gizmo (which is shared across viewports)
+            // must not suppress scene-object picking here.
+            bool gizmoHovering = overlaysEnabled && (gizmo?.Hovering ?? false);
             if (!wasGizmoDragging && !wasOrbitDragging && !gizmoHovering)
             {
                 _pendingPickX = mousePos.X;

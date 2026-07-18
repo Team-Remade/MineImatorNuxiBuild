@@ -3573,7 +3573,8 @@ public class Viewport : UiPanel
             keyPressed_R,
             io.DeltaTime,
             hovered,
-            io.KeyCtrl
+            io.KeyCtrl,
+            OverlaysEnabled
         );
 
         // Sync camera transform only when a scene camera is active
@@ -3755,7 +3756,8 @@ public class Viewport : UiPanel
             keyPressed_G, keyPressed_R,
             io.DeltaTime,
             windowHovered,
-            io.KeyCtrl
+            io.KeyCtrl,
+            OverlaysEnabled
         );
 
         // Sync old fields for backward compatibility
