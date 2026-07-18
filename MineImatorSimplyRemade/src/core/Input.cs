@@ -21,6 +21,10 @@ public class Input
 
     // ── Orbit/pan state ─────────────────────────────────────────────────────
 
+    private static Input? _orbitOwner;
+    private static Input? _panOwner;
+    private static Input? _gizmoOwner;
+
     private bool  _dragging;
     private bool  _panning;
     private bool  _gizmoDragging;
@@ -31,6 +35,11 @@ public class Input
     private float _pressMouseX = float.NaN;
     private float _pressMouseY = float.NaN;
     private const float OrbitDragThreshold = 4f;
+
+    // ── GLFW references (for mouse wrap via SetCursorPos) ──────────────────
+
+    private Glfw? _glfw;
+    private unsafe WindowHandle* _glfwWindow;
 
     // ── Pick state ──────────────────────────────────────────────────────────
 
@@ -77,18 +86,23 @@ public class Input
         bool keyDown_E, bool keyDown_Q, bool keyDown_Space, bool keyDown_Shift,
         bool keyPressed_G, bool keyPressed_R,
         float deltaTime,
-        bool windowHovered)
+        bool windowHovered,
+        bool ctrlHeld = false)
     {
+        // Cache GLFW for mouse-wrap SetCursorPos calls in the sub-methods.
+        _glfw = glfw;
+        _glfwWindow = glfwWindow;
+
         // ── Gizmo global-space toggle (G key) ──────────────────────────────
         if (gizmo != null && gizmo.Visible && !gizmo.Editing && keyPressed_G)
             gizmo.UseLocalSpace = !gizmo.UseLocalSpace;
 
         // ── Orbit input (left mouse button) ────────────────────────────────
-        ProcessOrbitInput(camera, gizmo, mousePos, mouseDown_Left, mouseClicked_Left,
-                         mouseReleased_Left, windowHovered, imageMin, imageSize);
+        ProcessOrbitInput(camera, gizmo, ref mousePos, mouseDown_Left, mouseClicked_Left,
+                         mouseReleased_Left, windowHovered, imageMin, imageSize, ctrlHeld);
 
         // ── Pan input (middle mouse button) ────────────────────────────────
-        ProcessPanInput(camera, mousePos, mouseDown_Middle, windowHovered);
+        ProcessPanInput(camera, ref mousePos, mouseDown_Middle, windowHovered, imageMin, imageSize);
 
         // ── Zoom input (scroll wheel) ──────────────────────────────────────
         ProcessZoomInput(camera, mouseWheel, windowHovered);
@@ -114,13 +128,14 @@ public class Input
     private void ProcessOrbitInput(
         Camera camera,
         Gizmo3D? gizmo,
-        Vector2 mousePos,
+        ref Vector2 mousePos,
         bool mouseDown_Left,
         bool mouseClicked_Left,
         bool mouseReleased_Left,
         bool windowHovered,
         Vector2 imageMin,
-        Vector2 imageSize)
+        Vector2 imageSize,
+        bool ctrlHeld)
     {
         // Seed last position on first call to avoid spurious delta
         if (double.IsNaN(_orbitLastMouseX))
@@ -129,12 +144,34 @@ public class Input
             _orbitLastMouseY = mousePos.Y;
         }
 
+        // Cross-viewport guard: if another viewport's Input already owns the
+        // orbit or gizmo drag, this one must not steal it. We still need to
+        // track the mouse position so when ownership eventually returns here
+        // we don't apply a huge accumulated delta.
+        if (mouseDown_Left && (_orbitOwner != null && _orbitOwner != this) ||
+            (_gizmoOwner != null && _gizmoOwner != this))
+        {
+            _orbitLastMouseX = mousePos.X;
+            _orbitLastMouseY = mousePos.Y;
+            if (mouseReleased_Left)
+            {
+                _pressMouseX = float.NaN;
+                _pressMouseY = float.NaN;
+            }
+            return;
+        }
+
         float dx = (float)(mousePos.X - _orbitLastMouseX);
         float dy = (float)(mousePos.Y - _orbitLastMouseY);
 
         // Update hover when not dragging
         if (!mouseDown_Left && gizmo != null)
             gizmo.UpdateHover(mousePos, camera, imageMin, imageSize);
+
+        bool pressInsideImage =
+            !float.IsNaN(_pressMouseX) &&
+            _pressMouseX >= imageMin.X && _pressMouseX <= imageMin.X + imageSize.X &&
+            _pressMouseY >= imageMin.Y && _pressMouseY <= imageMin.Y + imageSize.Y;
 
         // Left-button pressed
         if (mouseDown_Left)
@@ -146,27 +183,54 @@ public class Input
                 {
                     _pressMouseX = mousePos.X;
                     _pressMouseY = mousePos.Y;
+                    pressInsideImage =
+                        mousePos.X >= imageMin.X && mousePos.X <= imageMin.X + imageSize.X &&
+                        mousePos.Y >= imageMin.Y && mousePos.Y <= imageMin.Y + imageSize.Y;
                 }
 
-                // Try gizmo first
-                if (gizmo != null && gizmo.TryBeginEdit(mousePos, camera, imageMin, imageSize))
+                // Only orbit/queue-pick if the press started on the rendered image.
+                // This prevents the title bar of a draggable preview window from
+                // starting an orbit drag (matches free-fly's bounds check).
+                if (pressInsideImage)
                 {
-                    _gizmoDragging = true;
+                    if (gizmo != null && gizmo.TryBeginEdit(mousePos, camera, imageMin, imageSize))
+                    {
+                        _gizmoDragging = true;
+                        _gizmoOwner = this;
+                    }
+                    else
+                    {
+                        // Check orbit drag threshold
+                        float moveDist = MathF.Sqrt(
+                            (mousePos.X - _pressMouseX) * (mousePos.X - _pressMouseX) +
+                            (mousePos.Y - _pressMouseY) * (mousePos.Y - _pressMouseY));
+                        if (moveDist >= OrbitDragThreshold)
+                        {
+                            _dragging = true;
+                            _orbitOwner = this;
+                        }
+                    }
                 }
-                else
+            }
+
+            // Mouse wrap: while actively orbiting or dragging a gizmo, if the
+            // cursor reaches the viewport edge, teleport it to the opposite edge
+            // and clamp the just-applied dx/dy to the movement up to the edge.
+            if (_dragging || _gizmoDragging)
+            {
+                var wrap = ComputeMouseWrap(mousePos, imageMin, imageSize);
+                if (wrap.Wrapped)
                 {
-                    // Check orbit drag threshold
-                    float moveDist = MathF.Sqrt(
-                        (mousePos.X - _pressMouseX) * (mousePos.X - _pressMouseX) +
-                        (mousePos.Y - _pressMouseY) * (mousePos.Y - _pressMouseY));
-                    if (moveDist >= OrbitDragThreshold)
-                        _dragging = true;
+                    dx = wrap.ClampedPos.X - (float)_orbitLastMouseX;
+                    dy = wrap.ClampedPos.Y - (float)_orbitLastMouseY;
+                    mousePos = wrap.WrappedPos;
+                    ApplyMouseWrap(wrap.WrappedPos);
                 }
             }
 
             if (_gizmoDragging)
                 gizmo?.ContinueEdit(mousePos);
-            else if (_dragging)
+            else if (_dragging && pressInsideImage)
                 camera.Orbit(dx * 0.005f, dy * 0.005f);
         }
         else if (mouseReleased_Left)
@@ -178,6 +242,8 @@ public class Input
             if (_gizmoDragging) gizmo?.EndEdit();
             _dragging = false;
             _gizmoDragging = false;
+            if (_orbitOwner == this) _orbitOwner = null;
+            if (_gizmoOwner == this) _gizmoOwner = null;
 
             // Queue pick if not from gizmo/orbit
             bool gizmoHovering = gizmo?.Hovering ?? false;
@@ -185,7 +251,7 @@ public class Input
             {
                 _pendingPickX = mousePos.X;
                 _pendingPickY = mousePos.Y;
-                _pendingPickCtrl = false; // Note: Ctrl state would need to be passed separately
+                _pendingPickCtrl = ctrlHeld;
             }
 
             _pressMouseX = float.NaN;
@@ -198,11 +264,26 @@ public class Input
 
     private void ProcessPanInput(
         Camera camera,
-        Vector2 mousePos,
+        ref Vector2 mousePos,
         bool mouseDown_Middle,
-        bool windowHovered)
+        bool windowHovered,
+        Vector2 imageMin,
+        Vector2 imageSize)
     {
-        if (!windowHovered)
+        // If another viewport's Input already owns the pan, this one must not
+        // participate. Sync position to avoid a stale delta later.
+        if (_panOwner != null && _panOwner != this)
+        {
+            _panLastMouseX = mousePos.X;
+            _panLastMouseY = mousePos.Y;
+            return;
+        }
+
+        // Normal release path: if the cursor leaves the viewport and we are not
+        // the active pan owner, abort. The owning viewport will keep panning
+        // because its own copy of this method short-circuits the owner check
+        // above (when _panOwner == this).
+        if (!windowHovered && _panOwner != this)
         {
             _panLastMouseX = double.NaN;
             _panLastMouseY = double.NaN;
@@ -222,14 +303,51 @@ public class Input
 
         if (mouseDown_Middle)
         {
+            // Mouse wrap: while actively panning, teleport the cursor to the
+            // opposite edge when it hits the viewport boundary, and clamp dx/dy
+            // to the movement up to the edge so fast drags don't cause a jump.
             if (_panning)
-                camera.Pan(-dx * 0.01f * (camera.Distance / 5f),
-                           dy * 0.01f * (camera.Distance / 5f));
+            {
+                var wrap = ComputeMouseWrap(mousePos, imageMin, imageSize);
+                if (wrap.Wrapped)
+                {
+                    dx = wrap.ClampedPos.X - (float)_panLastMouseX;
+                    dy = wrap.ClampedPos.Y - (float)_panLastMouseY;
+                    mousePos = wrap.WrappedPos;
+                    ApplyMouseWrap(wrap.WrappedPos);
+                }
+            }
+
+            if (_panning)
+            {
+                if (camera.Distance < 0.01f)
+                {
+                    // First-person / scene-object camera: Distance is near-zero, so the
+                    // distance-scaled Pan() factor collapses to nothing. Translate both
+                    // Target and eye by a fixed world-unit-per-pixel delta in the
+                    // camera's right/up plane so panning still works.
+                    var view = camera.GetViewMatrix();
+                    vec3 right = new vec3(view.m00, view.m10, view.m20);
+                    vec3 up    = new vec3(view.m01, view.m11, view.m21);
+                    vec3 delta = right * (-dx * 0.05f) + up * (dy * 0.05f);
+                    camera.Target += delta;
+                    // Position is derived as Target + OffsetFromTarget(); since the
+                    // offset is near-zero for first-person cameras, this also moves
+                    // the eye by `delta`.
+                }
+                else
+                {
+                    camera.Pan(-dx * 0.01f * (camera.Distance / 5f),
+                               dy * 0.01f * (camera.Distance / 5f));
+                }
+            }
             _panning = true;
+            _panOwner = this;
         }
         else
         {
             _panning = false;
+            if (_panOwner == this) _panOwner = null;
         }
 
         _panLastMouseX = mousePos.X;
@@ -359,6 +477,108 @@ public class Input
             _freeFlyActive = false;
             _lastMouseX = double.NaN;
             _lastMouseY = double.NaN;
+        }
+    }
+
+    // ── Mouse wrap helpers ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Result of <see cref="ComputeMouseWrap"/>.  When <see cref="Wrapped"/> is
+    /// true, <see cref="ClampedPos"/> is the position the cursor would have if
+    /// clamped to the viewport edge (used to compute a sane dx/dy) and
+    /// <see cref="WrappedPos"/> is the position on the opposite edge that the
+    /// OS cursor should be teleported to.
+    /// </summary>
+    private readonly struct MouseWrapResult
+    {
+        public readonly bool Wrapped;
+        public readonly Vector2 ClampedPos;
+        public readonly Vector2 WrappedPos;
+
+        public MouseWrapResult(bool wrapped, Vector2 clamped, Vector2 wrappedPos)
+        {
+            Wrapped = wrapped;
+            ClampedPos = clamped;
+            WrappedPos = wrappedPos;
+        }
+    }
+
+    /// <summary>
+    /// If the cursor is at or past the viewport edge on either axis, returns a
+    /// result describing how to wrap it.  The wrap is per-axis: a cursor at the
+    /// bottom-right corner will teleport to the top-left.
+    /// </summary>
+    private static MouseWrapResult ComputeMouseWrap(Vector2 mousePos, Vector2 imageMin, Vector2 imageSize)
+    {
+        if (imageSize.X <= 0f || imageSize.Y <= 0f)
+            return new MouseWrapResult(false, mousePos, mousePos);
+
+        // Epsilon is the "edge zone" near each border where a wrap is triggered.
+        // The wrap target is placed strictly outside the opposite edge zone
+        // (epsilon + safeOffset pixels in) so the next frame's mouse position
+        // doesn't immediately re-trigger the wrap, which would cause the
+        // cursor to oscillate between opposite edges.
+        const float epsilon = 1f;
+        const float safeOffset = 1f;
+        float right  = imageMin.X + imageSize.X;
+        float bottom = imageMin.Y + imageSize.Y;
+
+        bool wrapX = false, wrapY = false;
+        float clampedX = mousePos.X, clampedY = mousePos.Y;
+        float wrappedX = mousePos.X, wrappedY = mousePos.Y;
+
+        if (mousePos.X >= right - epsilon)
+        {
+            clampedX = right;
+            wrappedX = imageMin.X + epsilon + safeOffset;
+            wrapX = true;
+        }
+        else if (mousePos.X <= imageMin.X + epsilon)
+        {
+            clampedX = imageMin.X;
+            wrappedX = right - epsilon - safeOffset;
+            wrapX = true;
+        }
+
+        if (mousePos.Y >= bottom - epsilon)
+        {
+            clampedY = bottom;
+            wrappedY = imageMin.Y + epsilon + safeOffset;
+            wrapY = true;
+        }
+        else if (mousePos.Y <= imageMin.Y + epsilon)
+        {
+            clampedY = imageMin.Y;
+            wrappedY = bottom - epsilon - safeOffset;
+            wrapY = true;
+        }
+
+        if (!wrapX && !wrapY)
+            return new MouseWrapResult(false, mousePos, mousePos);
+
+        return new MouseWrapResult(
+            true,
+            new Vector2(clampedX, clampedY),
+            new Vector2(wrappedX, wrappedY));
+    }
+
+    /// <summary>
+    /// Applies a mouse wrap: updates the last-tracked positions for orbit and
+    /// pan to the wrapped position (so the next frame's delta is small) and
+    /// moves the OS cursor via GLFW so the OS reports the wrapped position
+    /// from the next frame onward.
+    /// </summary>
+    private unsafe void ApplyMouseWrap(Vector2 wrappedPos)
+    {
+        _orbitLastMouseX = wrappedPos.X;
+        _orbitLastMouseY = wrappedPos.Y;
+        _panLastMouseX   = wrappedPos.X;
+        _panLastMouseY   = wrappedPos.Y;
+
+        if (_glfw != null)
+        {
+            _glfw.GetWindowPos(_glfwWindow, out int winX, out int winY);
+            _glfw.SetCursorPos(_glfwWindow, wrappedPos.X - winX, wrappedPos.Y - winY);
         }
     }
 }

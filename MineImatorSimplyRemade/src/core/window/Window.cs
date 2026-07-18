@@ -123,6 +123,7 @@ public class Window : IDisposable
         io = ImGui.GetIO();
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
         io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;
+        io.ConfigWindowsMoveFromTitleBarOnly = true;
 
         io.Fonts.AddFontDefault();
         

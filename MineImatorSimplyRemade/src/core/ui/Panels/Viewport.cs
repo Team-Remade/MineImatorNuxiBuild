@@ -294,6 +294,22 @@ public class Viewport : UiPanel
     private MineImatorSimplyRemade.core.mdl.Shader? _previewPointShadowShader;
     private readonly uint[] _previewPointShadowCubeTextures = new uint[MaxPointShadowLights];
 
+    // Preview pick / silhouette FBOs. Mirrors the main viewport's resources so
+    // the camera preview can run its own GPU colour-ID pick and Sobel outline
+    // pass without disturbing the main viewport's framebuffers.
+    private uint _previewPickFbo;
+    private uint _previewPickColorTex;
+    private uint _previewPickRbo;
+    private uint _previewSilhouetteFbo;
+    private uint _previewSilhouetteTex;
+
+    // Screen-space mouse position captured on left-button release inside the
+    // preview viewport so the colour-pick read-back can happen inside the
+    // preview render (GL context active). NaN means no pick is pending.
+    private float _pendingPreviewPickX = float.NaN;
+    private float _pendingPreviewPickY = float.NaN;
+    private bool  _pendingPreviewPickCtrl;
+
     public uint ColorTexture => _previewColorTex;
 
     /// <summary>True while a GLFW CameraWindow owns the rendering.</summary>
@@ -321,7 +337,7 @@ public class Viewport : UiPanel
     private bool _inlineResizeDragActiveLastFrame;
     private Vector2 _prevInlineWindowSize;
     private bool _hasPrevInlineWindowSize;
-    
+
     /// <summary>
     /// Tracks whether the inline preview window is being manually dragged by the user.
     /// Used to suppress position forcing and camera input while dragging.
@@ -2274,21 +2290,6 @@ public class Viewport : UiPanel
     /// </summary>
     private unsafe void ExecutePendingPick(Vector2 imageMin, Vector2 imageSize)
     {
-        float screenX = _pendingPickX;
-        float screenY = _pendingPickY;
-        bool  ctrlHeld = _pendingPickCtrl;
-
-        // Clear the pending pick before doing any work (so errors don't loop).
-        _pendingPickX = float.NaN;
-        _pendingPickY = float.NaN;
-
-        if (_pickShader == null) return;
-
-        uint w = _viewportWidth;
-        uint h = _viewportHeight;
-
-        float aspect = (h > 0) ? (float)w / h : 1f;
-        // Pick pass uses the same camera as the render pass for consistency.
         var (pickCamera, pickCamObj) = GetActiveRenderCamera();
         float pickSavedFovY = pickCamera.FovY, pickSavedNear = pickCamera.Near, pickSavedFar = pickCamera.Far;
         if (pickCamObj != null)
@@ -2297,12 +2298,50 @@ public class Viewport : UiPanel
             pickCamera.Near = pickCamObj.Near;
             pickCamera.Far  = pickCamObj.Far;
         }
+        float aspect = (_viewportHeight > 0) ? (float)_viewportWidth / _viewportHeight : 1f;
         mat4 view = pickCamera.GetViewMatrix();
         mat4 proj = pickCamera.GetProjectionMatrix(aspect);
         pickCamera.FovY = pickSavedFovY; pickCamera.Near = pickSavedNear; pickCamera.Far = pickSavedFar;
 
+        ExecutePendingPickGeneric(
+            _pickFbo, _pickColorTex, _viewportWidth, _viewportHeight,
+            view, proj, SceneObjects, imageMin, imageSize,
+            _pendingPickX, _pendingPickY, _pendingPickCtrl);
+
+        // Consume the main-viewport pending pick regardless of outcome.
+        _pendingPickX = float.NaN;
+        _pendingPickY = float.NaN;
+    }
+
+    /// <summary>
+    /// Renders the pick pass into the supplied framebuffer, reads the pixel
+    /// under the cursor, decodes the pick ID and updates the global
+    /// <see cref="SelectionManager"/> accordingly.
+    ///
+    /// Shared by the main viewport and the preview viewport so both can select
+    /// objects with a left-click.  The caller is responsible for supplying the
+    /// correct view/projection matrices (matching whatever was used for the
+    /// visible scene render) and the full <see cref="SceneObject"/> list.
+    /// </summary>
+    private unsafe void ExecutePendingPickGeneric(
+        uint pickFbo,
+        uint pickColorTex,
+        uint w,
+        uint h,
+        mat4 view,
+        mat4 proj,
+        IEnumerable<SceneObject> sceneObjects,
+        Vector2 imageMin,
+        Vector2 imageSize,
+        float screenX,
+        float screenY,
+        bool ctrlHeld)
+    {
+        if (_pickShader == null) return;
+        if (pickFbo == 0 || pickColorTex == 0 || w == 0 || h == 0) return;
+
         // ── Render pick pass ─────────────────────────────────────────────────
-        Gl.BindFramebuffer(GLEnum.Framebuffer, _pickFbo);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, pickFbo);
         Gl.Viewport(0, 0, w, h);
         Gl.Enable(GLEnum.DepthTest);
         Gl.DepthFunc(GLEnum.Less);
@@ -2310,10 +2349,7 @@ public class Viewport : UiPanel
         Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
         Gl.UseProgram(_pickShader.ShaderProgram);
-        RenderPickObjects(SceneObjects, view, proj);
-
-        Gl.Disable(GLEnum.DepthTest);
-        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        RenderPickObjects(sceneObjects, view, proj);
 
         // ── Read back the clicked pixel ───────────────────────────────────────
         // Map screen-space click coords into pick texture pixel coords.
@@ -2325,6 +2361,8 @@ public class Viewport : UiPanel
         // Guard: click outside the image rect → clear selection.
         if (relX < 0f || relX > 1f || relY < 0f || relY > 1f)
         {
+            Gl.Disable(GLEnum.DepthTest);
+            Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
             if (!ctrlHeld) SelectionManager.Instance?.ClearSelection();
             return;
         }
@@ -2337,16 +2375,13 @@ public class Viewport : UiPanel
 
         // Read a single pixel from the pick texture.
         byte[] pixel = new byte[4]; // RGBA
-        Gl.BindTexture(GLEnum.Texture2D, _pickColorTex);
         fixed (byte* p = pixel)
         {
-            // Use glGetTexImage to pull the full texture, then index into it.
-            // For a single-pixel read glReadPixels against the bound FBO is cheaper,
-            // but that requires re-binding the FBO.  We use glReadPixels here.
-            Gl.BindFramebuffer(GLEnum.Framebuffer, _pickFbo);
             Gl.ReadPixels(pixelX, pixelY, 1, 1, GLEnum.Rgba, GLEnum.UnsignedByte, p);
-            Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         }
+
+        Gl.Disable(GLEnum.DepthTest);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
 
         byte r = pixel[0], g = pixel[1], b = pixel[2], a = pixel[3];
@@ -2367,7 +2402,7 @@ public class Viewport : UiPanel
         }
 
         // Resolve pick ID → SceneObject.
-        SceneObject? hit = FindObjectByPickId(SceneObjects, pickId);
+        SceneObject? hit = FindObjectByPickId(sceneObjects, pickId);
 
         var sm = SelectionManager.Instance;
         if (sm == null) return;
@@ -2446,13 +2481,27 @@ public class Viewport : UiPanel
     /// </summary>
     private unsafe void RenderSilhouettePass(mat4 view, mat4 proj)
     {
-        if (_silhouetteShader == null) return;
+        RenderSilhouettePassGeneric(_silhouetteFbo, _viewportWidth, _viewportHeight, view, proj);
+    }
+
+    /// <summary>
+    /// Pass 1 of the Sobel outline effect.
+    ///
+    /// Renders every visible mesh belonging to a selected object into the
+    /// supplied single-channel framebuffer as flat white (1.0).  The FBO has no
+    /// depth attachment; <c>GL_ALWAYS</c> ensures occluded parts of the object
+    /// still contribute to the mask, so the outline is drawn "through" other
+    /// geometry.  Shared by the main and preview viewports.
+    /// </summary>
+    private unsafe void RenderSilhouettePassGeneric(uint silhouetteFbo, uint w, uint h, mat4 view, mat4 proj)
+    {
+        if (_silhouetteShader == null || silhouetteFbo == 0) return;
 
         var sm = SelectionManager.Instance;
         if (sm == null || sm.SelectedObjects.Count == 0) return;
 
-        Gl.BindFramebuffer(GLEnum.Framebuffer, _silhouetteFbo);
-        Gl.Viewport(0, 0, _viewportWidth, _viewportHeight);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, silhouetteFbo);
+        Gl.Viewport(0, 0, w, h);
 
         Gl.Disable(GLEnum.CullFace);
         Gl.Disable(GLEnum.DepthTest);   // always stamp the full shape, even if behind other objects
@@ -2496,20 +2545,26 @@ public class Viewport : UiPanel
     /// <summary>
     /// Pass 2 of the Sobel outline effect.
     ///
-    /// Runs a full-screen Sobel gradient filter over the silhouette mask produced
-    /// by <see cref="RenderSilhouettePass"/> and blends the resulting edge pixels
-    /// on top of the main display FBO using <see cref="EdgeColor"/>.
+    /// Runs a full-screen Sobel gradient filter over the supplied silhouette
+    /// mask and blends the resulting edge pixels on top of the supplied display
+    /// framebuffer using <see cref="EdgeColor"/>.  Shared by the main and
+    /// preview viewports.
     /// </summary>
     private unsafe void RenderEdgePass()
     {
-        if (_edgeShader == null) return;
+        RenderEdgePassGeneric(_fbo, _silhouetteTex, _viewportWidth, _viewportHeight);
+    }
+
+    private unsafe void RenderEdgePassGeneric(uint displayFbo, uint silhouetteTex, uint w, uint h)
+    {
+        if (_edgeShader == null || displayFbo == 0 || silhouetteTex == 0) return;
 
         var sm = SelectionManager.Instance;
         if (sm == null || sm.SelectedObjects.Count == 0) return;
 
-        // Draw into the main scene FBO.
-        Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
-        Gl.Viewport(0, 0, _viewportWidth, _viewportHeight);
+        // Draw into the supplied scene FBO.
+        Gl.BindFramebuffer(GLEnum.Framebuffer, displayFbo);
+        Gl.Viewport(0, 0, w, h);
 
         Gl.Disable(GLEnum.DepthTest);
         Gl.Disable(GLEnum.CullFace);
@@ -2523,7 +2578,7 @@ public class Viewport : UiPanel
 
         // Bind the silhouette mask texture to unit 0.
         Gl.ActiveTexture(GLEnum.Texture0);
-        Gl.BindTexture(GLEnum.Texture2D, _silhouetteTex);
+        Gl.BindTexture(GLEnum.Texture2D, silhouetteTex);
         int maskLoc = Gl.GetUniformLocation(prog, "uMask");
         if (maskLoc >= 0) Gl.Uniform1(maskLoc, 0);
 
@@ -2532,8 +2587,8 @@ public class Viewport : UiPanel
         int texelLoc = Gl.GetUniformLocation(prog, "uTexelSize");
         if (texelLoc >= 0)
             Gl.Uniform2(texelLoc,
-                        1f / _viewportWidth,
-                        1f / _viewportHeight);
+                        1f / w,
+                        1f / h);
 
         int colorLoc = Gl.GetUniformLocation(prog, "uEdgeColor");
         if (colorLoc >= 0)
@@ -2549,8 +2604,9 @@ public class Viewport : UiPanel
 
         Gl.BindTexture(GLEnum.Texture2D, 0);
         Gl.Disable(GLEnum.Blend);
-        // Leave _fbo bound and restore depth/cull state so the gizmo (rendered
-        // immediately after this pass) draws into the correct framebuffer.
+
+        // Restore depth/cull state so subsequent passes (e.g. the gizmo in the
+        // main viewport) draw correctly.
         Gl.Enable(GLEnum.DepthTest);
         Gl.DepthFunc(GLEnum.Less);
         Gl.Enable(GLEnum.CullFace);
@@ -2722,6 +2778,88 @@ public class Viewport : UiPanel
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
+
+        // ── Pick + silhouette FBOs ──────────────────────────────────────────
+        // The preview viewport needs its own GPU picking resources so it can
+        // resolve a left-click on the preview image to a scene object.
+        EnsurePreviewPickFbo(width, height);
+        EnsurePreviewSilhouetteFbo(width, height);
+
+        // Shaders are shared conceptually with the main viewport; compile them
+        // here too so the preview can run its own passes without depending on
+        // the main viewport having initialised first.
+        if (_pickShader == null)
+        {
+            _pickShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+            _pickShader.CompileShader("pick.vert", "pick.frag");
+        }
+        if (_silhouetteShader == null)
+        {
+            _silhouetteShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+            _silhouetteShader.CompileShader("pick.vert", "silhouette.frag");
+        }
+        if (_edgeShader == null)
+        {
+            _edgeShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+            _edgeShader.CompileShader("edge.vert", "edge.frag");
+            Gl.GenVertexArrays(1, out _edgeVao);
+        }
+    }
+
+    private unsafe void EnsurePreviewPickFbo(uint width, uint height)
+    {
+        if (Gl == null || _previewPickFbo != 0) return;
+
+        Gl.GenFramebuffers(1, out _previewPickFbo);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _previewPickFbo);
+
+        Gl.GenTextures(1, out _previewPickColorTex);
+        Gl.BindTexture(GLEnum.Texture2D, _previewPickColorTex);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8, width, height, 0,
+                      PixelFormat.Rgba, GLEnum.UnsignedByte, (void*)0);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+        Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.ColorAttachment0,
+                                GLEnum.Texture2D, _previewPickColorTex, 0);
+
+        Gl.GenRenderbuffers(1, out _previewPickRbo);
+        Gl.BindRenderbuffer(GLEnum.Renderbuffer, _previewPickRbo);
+        Gl.RenderbufferStorage(GLEnum.Renderbuffer, GLEnum.DepthComponent24, width, height);
+        Gl.FramebufferRenderbuffer(GLEnum.Framebuffer, GLEnum.DepthAttachment,
+                                   GLEnum.Renderbuffer, _previewPickRbo);
+
+        var status = Gl.CheckFramebufferStatus(GLEnum.Framebuffer);
+        if (status != GLEnum.FramebufferComplete)
+            Console.Error.WriteLine($"[Viewport] Preview pick framebuffer incomplete: {status}");
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+    }
+
+    private unsafe void EnsurePreviewSilhouetteFbo(uint width, uint height)
+    {
+        if (Gl == null || _previewSilhouetteFbo != 0) return;
+
+        Gl.GenFramebuffers(1, out _previewSilhouetteFbo);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _previewSilhouetteFbo);
+
+        Gl.GenTextures(1, out _previewSilhouetteTex);
+        Gl.BindTexture(GLEnum.Texture2D, _previewSilhouetteTex);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.R8, width, height, 0,
+                      PixelFormat.Red, GLEnum.UnsignedByte, (void*)0);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToBorder);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToBorder);
+        Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.ColorAttachment0,
+                                GLEnum.Texture2D, _previewSilhouetteTex, 0);
+
+        var status = Gl.CheckFramebufferStatus(GLEnum.Framebuffer);
+        if (status != GLEnum.FramebufferComplete)
+            Console.Error.WriteLine($"[Viewport] Preview silhouette framebuffer incomplete: {status}");
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
     }
 
     public unsafe void ResizeFboPublic(uint w, uint h)
@@ -2737,6 +2875,30 @@ public class Viewport : UiPanel
         Gl.RenderbufferStorage(GLEnum.Renderbuffer, GLEnum.Depth24Stencil8, w, h);
         Gl.BindTexture(GLEnum.Texture2D, 0);
         Gl.BindRenderbuffer(GLEnum.Renderbuffer, 0);
+
+        // Lazily create the pick / silhouette FBOs the first time we have a
+        // valid size, then resize the attachments.
+        EnsurePreviewPickFbo(w, h);
+        EnsurePreviewSilhouetteFbo(w, h);
+
+        if (_previewPickColorTex != 0)
+        {
+            Gl.BindTexture(GLEnum.Texture2D, _previewPickColorTex);
+            Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8, w, h, 0,
+                          PixelFormat.Rgba, GLEnum.UnsignedByte, (void*)0);
+            Gl.BindRenderbuffer(GLEnum.Renderbuffer, _previewPickRbo);
+            Gl.RenderbufferStorage(GLEnum.Renderbuffer, GLEnum.DepthComponent24, w, h);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+            Gl.BindRenderbuffer(GLEnum.Renderbuffer, 0);
+        }
+
+        if (_previewSilhouetteTex != 0)
+        {
+            Gl.BindTexture(GLEnum.Texture2D, _previewSilhouetteTex);
+            Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.R8, w, h, 0,
+                          PixelFormat.Red, GLEnum.UnsignedByte, (void*)0);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+        }
     }
 
     public List<CameraSceneObject> GetSpawnedCamerasPublic()
@@ -2798,7 +2960,7 @@ public class Viewport : UiPanel
             Corner.TopLeft or Corner.TopRight => imageMin.Y + InlinePad,
             _ => imageMin.Y + imageSize.Y - _inlineSize.Y - InlinePad,
         };
-        
+
         // Allow free dragging while mouse is down. After release, snap to the nearest corner once.
         bool shouldSnapToCorner = _inlineFramesSinceMouseUp > 2 && _inlineFramesSinceMouseUp < 60 && !_inlineSnappedThisInteraction;
         if (shouldSnapToCorner)
@@ -2829,7 +2991,7 @@ public class Viewport : UiPanel
                 _ => imageMin.Y + imageSize.Y - _inlineSize.Y - InlinePad,
             };
                 
-            ImGui.SetNextWindowPos(new Vector2(posX, posY), ImGuiCond.Always);
+        ImGui.SetNextWindowPos(new Vector2(posX, posY), ImGuiCond.Always);
             _corner = nearestCorner;  // Update the corner tracking
             _inlineSnappedThisInteraction = true;
         }
@@ -2853,7 +3015,7 @@ public class Viewport : UiPanel
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(4, 4));
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);
         ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0.08f, 0.08f, 0.08f, 0.90f));
-        bool beginOk = ImGui.Begin("##CamViewInline", flags);
+        bool beginOk = ImGui.Begin("Camera View##CamViewInline", flags);
         ImGui.PopStyleColor();
         ImGui.PopStyleVar(2);
 
@@ -2902,7 +3064,7 @@ public class Viewport : UiPanel
         
         _inlineMouseWasDownLastFrame = leftDown && hovered;
         _inlineWindowLastPos = winPos;
-        
+
         bool overResizeGrip = mouse.X >= winPos.X + winSz.X - 28f &&
                               mouse.X <= winPos.X + winSz.X + 12f &&
                               mouse.Y >= winPos.Y + winSz.Y - 28f &&
@@ -2985,8 +3147,7 @@ public class Viewport : UiPanel
                 ImGui.SetCursorPosY(startPos.Y + (avail.Y - drawSize.Y) * 0.5f);
 
             // Handle input AFTER cursor is positioned (so bounds are correct for centered image)
-            bool recentlyInteracted = _inlineFramesSinceMouseUp < 15;
-            bool allowCameraInput = ImGui.IsWindowHovered() && !_inlineDragActive && !recentlyInteracted;
+            bool allowCameraInput = ImGui.IsWindowHovered();
             var previewImageMin = ImGui.GetCursorScreenPos();
             var previewImageSize = drawSize;
             HandleFreeFlyPublic(activeCam, sceneObj, allowCameraInput, previewImageMin, previewImageSize);
@@ -3201,6 +3362,28 @@ public class Viewport : UiPanel
                 mesh.Render(model, view, proj);
 
             MainViewport.RenderOverlaysPublic(view, proj);
+
+            // Selection outline (Sobel edge over a silhouette mask) so the
+            // user can see which object is currently selected inside the
+            // preview viewport.
+            RenderSilhouettePassGeneric(_previewSilhouetteFbo, w, h, view, proj);
+            // Composite the outline onto the preview framebuffer.
+            Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
+            Gl.Viewport(0, 0, w, h);
+            RenderEdgePassGeneric(_previewFbo, _previewSilhouetteTex, w, h);
+        }
+
+        // ── Pending pick (left-click) → GPU colour-ID pass ───────────────────
+        if (!float.IsNaN(_pendingPreviewPickX))
+        {
+            ExecutePendingPickGeneric(
+                _previewPickFbo, _previewPickColorTex, w, h,
+                view, proj, MainViewport.SceneObjects,
+                Vector2.Zero, new Vector2(w, h), // pick FBO is unscaled; coords already in FBO space
+                _pendingPreviewPickX, _pendingPreviewPickY, _pendingPreviewPickCtrl);
+
+            _pendingPreviewPickX = float.NaN;
+            _pendingPreviewPickY = float.NaN;
         }
 
         Gl.Disable(GLEnum.CullFace);
@@ -3314,12 +3497,14 @@ public class Viewport : UiPanel
 
     public unsafe void HandleFreeFlyPublic(Camera cam, CameraSceneObject? sceneObj, bool hovered, Vector2 imageMin, Vector2 imageSize)
     {
-        if (sceneObj == null) return;
-
         // Allow input to continue while free-fly is active even if the ImGui
-        // window hover state changes (the OS cursor is locked by GLFW so the real 
+        // window hover state changes (the OS cursor is locked by GLFW so the real
         // cursor never moved — only the internal ImGui position drifts).
-        if (!_previewInput.IsFreeFlyActive && !hovered) return;
+        // Also continue while an orbit/pan/gizmo drag is active so the mouse-
+        // wrap at the viewport edge can fire and the action keeps going even
+        // when the cursor has been dragged past the ImGui window boundary.
+        if (!_previewInput.IsFreeFlyActive && !hovered &&
+            !_previewInput.IsDragging && !_previewInput.IsPanning && !_previewInput.IsGizmoDragging) return;
 
         var io = ImGui.GetIO();
         Vector2 mousePos = new Vector2(io.MousePos.X, io.MousePos.Y);
@@ -3368,11 +3553,31 @@ public class Viewport : UiPanel
             keyPressed_G,
             keyPressed_R,
             io.DeltaTime,
-            hovered
+            hovered,
+            io.KeyCtrl
         );
 
-        // Sync camera transform
-        sceneObj.SyncTransformFromCamera();
+        // Sync camera transform only when a scene camera is active
+        sceneObj?.SyncTransformFromCamera();
+
+        // If the input handler queued a left-click pick, convert it from
+        // screen-space into the preview FBO's pixel space and store it so the
+        // next RenderScenePublic call can run the GPU colour-ID pick pass.
+        // Y is intentionally NOT flipped here — ExecutePendingPickGeneric
+        // handles the OpenGL bottom-left → ImGui top-left conversion itself.
+        if (_previewInput.HasPendingPick)
+        {
+            var (pickX, pickY) = _previewInput.PendingPickPosition;
+            float relX = (pickX - imageMin.X) / imageSize.X;
+            float relY = (pickY - imageMin.Y) / imageSize.Y;
+            int pixelX = (int)(relX * _previewWidth);
+            int pixelY = (int)(relY * _previewHeight);
+
+            _pendingPreviewPickX     = pixelX;
+            _pendingPreviewPickY     = pixelY;
+            _pendingPreviewPickCtrl  = _previewInput.PendingPickCtrl;
+            _previewInput.ClearPendingPick();
+        }
     }
 
     public unsafe bool CaptureCurrentViewRgb(uint w, uint h, bool highQuality, out byte[] rgbPixels)
@@ -3471,8 +3676,12 @@ public class Viewport : UiPanel
         // Allow input to continue while free-fly is active even if the ImGui
         // mouse position has drifted outside the panel (the OS cursor is locked
         // by GLFW so the real cursor never moved — only the internal position).
+        // Also continue while an orbit/pan/gizmo drag is active so the mouse-
+        // wrap at the viewport edge can fire and the action keeps going even
+        // when the cursor has been dragged past the ImGui window boundary.
         bool windowHovered = ImGui.IsWindowHovered();
-        if (!_input.IsFreeFlyActive && !windowHovered) return;
+        if (!_input.IsFreeFlyActive && !windowHovered &&
+            !_input.IsDragging && !_input.IsPanning && !_input.IsGizmoDragging) return;
 
         var io = ImGui.GetIO();
 
@@ -3526,7 +3735,8 @@ public class Viewport : UiPanel
             keyDown_E, keyDown_Q, keyDown_Space, keyDown_Shift,
             keyPressed_G, keyPressed_R,
             io.DeltaTime,
-            windowHovered
+            windowHovered,
+            io.KeyCtrl
         );
 
         // Sync old fields for backward compatibility
