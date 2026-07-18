@@ -190,6 +190,10 @@ public class CameraWindow : Window
                 drawSize,
                 new Vector2(0, 1),
                 new Vector2(1, 0));
+
+            // Gizmo rotation-arc overlay for the undocked window.
+            if (_panel.OverlaysEnabled)
+                _panel.Gizmo?.RenderOverlay(activeCam, imageMin, imageSize);
         }
 
         ImGui.End();

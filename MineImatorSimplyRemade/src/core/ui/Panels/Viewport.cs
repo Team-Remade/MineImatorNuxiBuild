@@ -1689,7 +1689,7 @@ public class Viewport : UiPanel
             RenderEdgePass();
 
             // ── Gizmo 3D ──────────────────────────────────────────────────────────
-            Gizmo?.Render(Camera, view, proj);
+            Gizmo?.Render(Camera, view, proj, imageMin, size);
         }
 
         Gl.Disable(GLEnum.CullFace);
@@ -2804,6 +2804,13 @@ public class Viewport : UiPanel
             _edgeShader.CompileShader("edge.vert", "edge.frag");
             Gl.GenVertexArrays(1, out _edgeVao);
         }
+
+        // Share the transform gizmo with the main viewport so it renders and
+        // can be interacted with from the preview as well. Selection is
+        // already global via SelectionManager, so both viewports drive the
+        // same gizmo instance and share hover/drag state.
+        if (MainViewport?.Gizmo != null)
+            Gizmo = MainViewport.Gizmo;
     }
 
     private unsafe void EnsurePreviewPickFbo(uint width, uint height)
@@ -3157,6 +3164,12 @@ public class Viewport : UiPanel
                 drawSize,
                 new Vector2(0, 1),
                 new Vector2(1, 0));
+
+            // Gizmo rotation-arc overlay (drawn on the ImGui draw list so it
+            // sits on top of the rendered preview image, using the screen
+            // rect of that image for correct screen-space projection).
+            if (OverlaysEnabled)
+                Gizmo?.RenderOverlay(activeCam, previewImageMin, previewImageSize);
         }
 
         ImGui.End();
@@ -3371,6 +3384,10 @@ public class Viewport : UiPanel
             Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
             Gl.Viewport(0, 0, w, h);
             RenderEdgePassGeneric(_previewFbo, _previewSilhouetteTex, w, h);
+
+            // Transform gizmo — uses the preview camera so the handles are
+            // sized/perspective-correct relative to what the preview shows.
+            Gizmo?.Render(cam, view, proj, Vector2.Zero, new Vector2(w, h));
         }
 
         // ── Pending pick (left-click) → GPU colour-ID pass ───────────────────
@@ -3531,10 +3548,12 @@ public class Viewport : UiPanel
         bool keyPressed_G = ImGui.IsKeyPressed(ImGuiKey.G);
         bool keyPressed_R = ImGui.IsKeyPressed(ImGuiKey.R, false);
 
-        // Process full input (orbit, pan, zoom, free-fly) through the centralized input handler
+        // Process full input (orbit, pan, zoom, free-fly, gizmo) through the
+        // centralized input handler. The gizmo is shared with the main viewport
+        // (see InitPreviewViewport) so hover/drag works here as well.
         _previewInput.ProcessInput(
             cam,
-            null, // No gizmo in preview viewport
+            MainViewport?.Gizmo,
             imageMin,
             imageSize,
             GlfwApiPreview,

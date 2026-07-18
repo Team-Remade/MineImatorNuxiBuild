@@ -229,7 +229,7 @@ public class Input
             }
 
             if (_gizmoDragging)
-                gizmo?.ContinueEdit(mousePos);
+                gizmo?.ContinueEdit(mousePos, camera, imageMin, imageSize);
             else if (_dragging && pressInsideImage)
                 camera.Orbit(dx * 0.005f, dy * 0.005f);
         }

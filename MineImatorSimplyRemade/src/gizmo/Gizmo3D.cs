@@ -548,9 +548,17 @@ public class Gizmo3D : IDisposable
         return hit;
     }
 
-    public void ContinueEdit(Vector2 screenPos)
+    public void ContinueEdit(Vector2 screenPos, Camera camera, Vector2 imageMin, Vector2 imageSize)
     {
         if (!Editing) return;
+        // Refresh the viewport parameters because Render() calls from other
+        // viewports that share this gizmo may have overwritten them between
+        // frames. Without this, an in-progress drag would briefly use the
+        // wrong camera for ray/scale calculations.
+        _camera    = camera;
+        _imageMin  = imageMin;
+        _imageSize = imageSize;
+        UpdateTransformGizmoView();
         _edit.MousePos = screenPos;
         vec3 value = UpdateTransform(false);
         TransformChanged?.Invoke(_edit.Mode, value);
@@ -582,9 +590,11 @@ public class Gizmo3D : IDisposable
     /// Draw all gizmo 3D geometry.  Call after all scene objects are rendered.
     /// <paramref name="view"/> and <paramref name="proj"/> come from the viewport camera.
     /// </summary>
-    public void Render(Camera camera, mat4 view, mat4 proj)
+    public void Render(Camera camera, mat4 view, mat4 proj, Vector2 imageMin, Vector2 imageSize)
     {
-        _camera = camera;
+        _camera    = camera;
+        _imageMin  = imageMin;
+        _imageSize = imageSize;
         UpdateTransformGizmo();
 
         if (!Visible || _selections.Count == 0 || _shader == null) return;
