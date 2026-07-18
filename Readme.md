@@ -7,6 +7,8 @@ For all your Minecraft animation needs!
 Requirements
 
 - Dotnet 9.0+
+- A C++ compiler (MSVC, GCC, or Clang)
+- OpenGL 3.3+ compatible graphics driver
 
 ## Setup
 
