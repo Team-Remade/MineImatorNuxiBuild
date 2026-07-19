@@ -626,6 +626,23 @@ public class MainWindow : Window
             return;
         }
 
+        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.Space, false))
+        {
+            if (_timeline != null && _timeline.WindowSize.X > 0 && _timeline.WindowSize.Y > 0)
+            {
+                var mousePos = ImGui.GetMousePos();
+                var winPos = _timeline.WindowPos;
+                var winSize = _timeline.WindowSize;
+                bool timelineHovered = mousePos.X >= winPos.X && mousePos.X < winPos.X + winSize.X &&
+                                       mousePos.Y >= winPos.Y && mousePos.Y < winPos.Y + winSize.Y;
+                if (timelineHovered)
+                {
+                    _timeline.TogglePlayPause();
+                    return;
+                }
+            }
+        }
+
         if (!io.KeyCtrl || io.WantTextInput)
             return;
 

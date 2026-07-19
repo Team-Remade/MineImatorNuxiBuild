@@ -152,6 +152,13 @@ public class Timeline : UiPanel
         ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
     }
 
+    public void TogglePlayPause()
+    {
+        _isPlaying = !_isPlaying;
+        if (_isPlaying)
+            _lastTimestamp = Stopwatch.GetTimestamp();
+    }
+
     public void SetCurrentFrameForRender(int frame)
     {
         _currentFrame = Math.Max(0, frame);
