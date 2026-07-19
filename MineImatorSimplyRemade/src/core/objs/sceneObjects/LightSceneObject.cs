@@ -1,4 +1,6 @@
 ﻿using GlmSharp;
+using MineImatorSimplyRemade.core.mdl;
+using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
@@ -48,4 +50,24 @@ public class LightSceneObject : SceneObject
     public static uint BillboardVao = 0;
     public static uint BillboardVbo = 0;
     public static uint BillboardEbo = 0;
+
+    // ── Range indicator (procedural ring drawn for selected lights) ──────────
+
+    /// <summary>
+    /// One unit-radius ring mesh shared by every <see cref="LightSceneObject"/>.
+    /// The viewport scales the model matrix by <see cref="LightRange"/> so the
+    /// same geometry is reused regardless of the light's actual range.
+    /// </summary>
+    public static Mesh? SharedRangeRingMesh { get; private set; }
+
+    /// <summary>
+    /// Uploads the shared unit-radius ring mesh.  Must be called once on the GL
+    /// thread (typically from <c>Viewport.InitLightBillboards</c> after context
+    /// creation).  Subsequent calls are no-ops.
+    /// </summary>
+    public static void EnsureRangeRingMesh(GL gl)
+    {
+        if (SharedRangeRingMesh != null) return;
+        SharedRangeRingMesh = new MineImatorSimplyRemade.core.mdl.meshes.LightRangeRingMesh(gl);
+    }
 }

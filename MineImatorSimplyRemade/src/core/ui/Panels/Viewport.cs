@@ -392,6 +392,9 @@ public class Viewport : UiPanel
     /// <summary>Billboard shader used to draw camera-facing light icons.</summary>
     private MineImatorSimplyRemade.core.mdl.Shader? _billboardShader;
 
+    /// <summary>Camera-facing ring shader used for selected-light range indicators.</summary>
+    private MineImatorSimplyRemade.core.mdl.Shader? _lightRingShader;
+
     /// <summary>GL texture handle for <c>light.png</c>.</summary>
     private uint _lightIconTexture;
 
@@ -839,6 +842,13 @@ public class Viewport : UiPanel
         // Bone indicator shader (flat MVP + colour, same as gizmo).
         _boneShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
         _boneShader.CompileShader("gizmo.vert", "gizmo.frag");
+
+        // Camera-facing ring shader for selected-light range indicators.
+        _lightRingShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _lightRingShader.CompileShader("lightring.vert", "lightring.frag");
+
+        // Shared procedural ring mesh for selected-light range indicators.
+        LightSceneObject.EnsureRangeRingMesh(Gl);
     }
 
     /// <summary>
@@ -1077,6 +1087,92 @@ public class Viewport : UiPanel
             RenderBoneIndicatorsRecursive(child, view, proj, mvpLoc, colorLoc, sm);
     }
 
+    // ── Light range indicator render ──────────────────────────────────────────
+
+    /// <summary>
+    /// Draws a thin ring on the XZ plane around every selected
+    /// <see cref="LightSceneObject"/>, scaled by the light's
+    /// <c>LightRange</c>.  Uses the gizmo flat-colour shader (same as bone
+    /// indicators) tinted with the light's own colour so each indicator is
+    /// visually tied to its source.  Rendered with depth-test always + no depth
+    /// writes so the range is always visible, even through walls.
+    /// </summary>
+    private unsafe void RenderLightRangeIndicators(mat4 view, mat4 proj)
+    {
+        if (_lightRingShader == null) return;
+        if (LightSceneObject.SharedRangeRingMesh == null) return;
+
+        var sm = SelectionManager.Instance;
+
+        uint prog = _lightRingShader.ShaderProgram;
+        Gl.UseProgram(prog);
+
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Always);
+        Gl.DepthMask(false);
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Disable(GLEnum.Blend);
+
+        int viewLoc   = Gl.GetUniformLocation(prog, "uView");
+        int projLoc   = Gl.GetUniformLocation(prog, "uProj");
+        int posLoc    = Gl.GetUniformLocation(prog, "uWorldPos");
+        int rangeLoc  = Gl.GetUniformLocation(prog, "uRange");
+        int colorLoc  = Gl.GetUniformLocation(prog, "uColor");
+
+        if (viewLoc >= 0)
+        {
+            float[] f =
+            {
+                view.m00, view.m01, view.m02, view.m03,
+                view.m10, view.m11, view.m12, view.m13,
+                view.m20, view.m21, view.m22, view.m23,
+                view.m30, view.m31, view.m32, view.m33,
+            };
+            fixed (float* p = f) Gl.UniformMatrix4(viewLoc, 1, false, p);
+        }
+        if (projLoc >= 0)
+        {
+            float[] f =
+            {
+                proj.m00, proj.m01, proj.m02, proj.m03,
+                proj.m10, proj.m11, proj.m12, proj.m13,
+                proj.m20, proj.m21, proj.m22, proj.m23,
+                proj.m30, proj.m31, proj.m32, proj.m33,
+            };
+            fixed (float* p = f) Gl.UniformMatrix4(projLoc, 1, false, p);
+        }
+
+        foreach (var root in SceneObjects)
+            RenderLightRangeIndicatorsRecursive(root, view, proj, posLoc, rangeLoc, colorLoc, sm);
+
+        Gl.DepthMask(true);
+        Gl.DepthFunc(GLEnum.Less);
+        Gl.Enable(GLEnum.CullFace);
+    }
+
+    private unsafe void RenderLightRangeIndicatorsRecursive(
+        SceneObject obj, mat4 view, mat4 proj,
+        int posLoc, int rangeLoc, int colorLoc, SelectionManager? sm)
+    {
+        if (!obj.GetEffectiveVisibility()) return;
+
+        if (obj is LightSceneObject light && sm != null && sm.SelectedObjects.Contains(obj))
+        {
+            mat4 world    = obj.GetWorldMatrix();
+            vec3 lightPos = new vec3(world.m30, world.m31, world.m32);
+
+            if (posLoc   >= 0) Gl.Uniform3(posLoc, lightPos.x, lightPos.y, lightPos.z);
+            if (rangeLoc >= 0) Gl.Uniform1(rangeLoc, MathF.Max(0.01f, light.LightRange));
+            if (colorLoc >= 0) Gl.Uniform4(colorLoc,
+                light.LightColor.x, light.LightColor.y, light.LightColor.z, 1f);
+
+            LightSceneObject.SharedRangeRingMesh!.RenderPickPass(Gl);
+        }
+
+        foreach (var child in obj.Children)
+            RenderLightRangeIndicatorsRecursive(child, view, proj, posLoc, rangeLoc, colorLoc, sm);
+    }
+
     /// <summary>
     /// Renders light billboards and bone indicators into the currently bound FBO
     /// using the supplied camera matrices.  Called by <see cref="CameraViewport"/>
@@ -1098,6 +1194,14 @@ public class Viewport : UiPanel
         Gl.CullFace(GLEnum.Back);
 
         RenderBoneIndicators(view, proj);
+
+        // Restore state that bone indicators may have altered.
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Less);
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
+
+        RenderLightRangeIndicators(view, proj);
     }
 
     /// <summary>
@@ -1679,6 +1783,14 @@ public class Viewport : UiPanel
 
             // ── Bone indicators ───────────────────────────────────────────────────
             RenderBoneIndicators(view, proj);
+
+            // ── Selected-light range rings ───────────────────────────────────────
+            // Drawn after bone indicators so they stack on top consistently.
+            Gl.Enable(GLEnum.DepthTest);
+            Gl.DepthFunc(GLEnum.Less);
+            Gl.Enable(GLEnum.CullFace);
+            Gl.CullFace(GLEnum.Back);
+            RenderLightRangeIndicators(view, proj);
 
             // ── Selection highlight: Sobel edge detection ─────────────────────────
             // Pass 1: stamp flat-white silhouette mask into _silhouetteFbo.
