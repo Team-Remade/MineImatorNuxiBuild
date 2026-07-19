@@ -494,6 +494,9 @@ public class SceneTree : UiPanel
         dup.TextureType     = original.TextureType;
         dup.ResourcePackId  = original.ResourcePackId;
         dup.SourceAssetPath = original.SourceAssetPath;
+        dup.TileX           = original.TileX;
+        dup.TileY           = original.TileY;
+        dup.TileZ           = original.TileZ;
 
         foreach (var mesh in original.Visuals)
             dup.AddMesh(mesh);

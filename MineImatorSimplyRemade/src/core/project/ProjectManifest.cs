@@ -151,6 +151,12 @@ public class ProjectSceneObjectEntry
     public string SourceAssetPath { get; set; } = "";
     public string AlbedoTexturePath { get; set; } = "";
 
+    // Block tiling (1 = no tiling). Only applied to objects in the Blocks
+    // spawn category. Clamped to [1, 1000] per axis on load.
+    public int TileX { get; set; } = 1;
+    public int TileY { get; set; } = 1;
+    public int TileZ { get; set; } = 1;
+
     public ProjectVec3 Position { get; set; } = new();
     public ProjectVec3 Rotation { get; set; } = new();
     public ProjectVec3 Scale { get; set; } = new() { X = 1f, Y = 1f, Z = 1f };

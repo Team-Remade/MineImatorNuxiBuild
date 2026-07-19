@@ -4343,7 +4343,11 @@ public class SpawnMenu : UiPanel
     /// For two-block-tall blocks (doors), the top half's meshes are added to the
     /// same object with their vertices offset +1 in Y so the door is a single unit.
     /// </summary>
-    public SceneObject? SpawnBlockObject(string blockName, BlockVariantEntry variant, string resourcePackId = "")
+    /// <param name="tileX">Tile count along +X (≥1, ≤ <see cref="SceneObject.MaxTilesPerAxis"/>).</param>
+    /// <param name="tileY">Tile count along +Y (≥1, ≤ <see cref="SceneObject.MaxTilesPerAxis"/>).</param>
+    /// <param name="tileZ">Tile count along +Z (≥1, ≤ <see cref="SceneObject.MaxTilesPerAxis"/>).</param>
+    public SceneObject? SpawnBlockObject(string blockName, BlockVariantEntry variant, string resourcePackId = "",
+                                         int tileX = 1, int tileY = 1, int tileZ = 1)
     {
         if (Viewport == null || Gl == null) return null;
 
@@ -4361,21 +4365,59 @@ public class SpawnMenu : UiPanel
             TextureType   = "block",
             ResourcePackId = normalizedResourcePackId,
             Position      = GlmSharp.vec3.Zero,
-            PivotOffset   = new GlmSharp.vec3(0f, 0.5f, 0f)
+            PivotOffset   = new GlmSharp.vec3(0f, 0.5f, 0f),
+            TileX         = tileX,
+            TileY         = tileY,
+            TileZ         = tileZ
         };
         obj.AssignObjectId();
 
+        int effTileX = obj.GetEffectiveTileX();
+        int effTileY = obj.GetEffectiveTileY();
+        int effTileZ = obj.GetEffectiveTileZ();
+
         // Bottom/foot part (or full single-block)
-        AddBlockMeshes(obj, variant, normalizedResourcePackId);
+        AddBlockMeshes(obj, variant, normalizedResourcePackId,
+                       0f, 0f, 0f,
+                       effTileX, effTileY, effTileZ);
 
         // Second part — bake offset directly into the mesh vertices
         if (variant.TopHalf != null)
             AddBlockMeshes(obj, variant.TopHalf,
                            normalizedResourcePackId,
-                           variant.PartOffsetX, variant.PartOffsetY, variant.PartOffsetZ);
+                           variant.PartOffsetX, variant.PartOffsetY, variant.PartOffsetZ,
+                           effTileX, effTileY, effTileZ);
 
         Viewport.SceneObjects.Add(obj);
         return obj;
+    }
+
+    /// <summary>
+    /// Regenerates the meshes on an already-spawned block to reflect the current
+    /// tile, variant, or resource-pack state.  Preserves object identity, name,
+    /// transform, and other properties.
+    /// </summary>
+    public bool RebuildBlockMeshes(SceneObject target)
+    {
+        if (target == null || Viewport == null)
+            return false;
+
+        if (!string.Equals(target.SpawnCategory, "Blocks", StringComparison.Ordinal))
+            return false;
+
+        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(target.ResourcePackId);
+
+        var variants = BlockRegistry.GetVariants(target.ObjectType);
+        var variant = variants.FirstOrDefault(v => string.Equals(v.VariantKey, target.BlockVariant, StringComparison.Ordinal))
+                      ?? variants.FirstOrDefault();
+        if (variant == null)
+            return false;
+
+        var temp = SpawnBlockObject(target.ObjectType, variant, normalizedResourcePackId,
+                                    target.GetEffectiveTileX(),
+                                    target.GetEffectiveTileY(),
+                                    target.GetEffectiveTileZ());
+        return temp != null && ReplaceObjectMeshesFromTempSpawn(target, temp, normalizedResourcePackId);
     }
 
     public bool ApplyResourcePackToSpawnedObject(SceneObject target, string resourcePackId)
@@ -4450,11 +4492,13 @@ public class SpawnMenu : UiPanel
 
     /// <summary>
     /// Builds meshes for <paramref name="variant"/> and adds them to <paramref name="obj"/>,
-    /// shifting every vertex by the given block-unit offsets.
+    /// shifting every vertex by the given block-unit offsets and replicating the
+    /// geometry according to the tile counts.
     /// </summary>
     private void AddBlockMeshes(SceneObject obj, BlockVariantEntry variant,
                                 string resourcePackId = "",
-                                float offsetX = 0f, float offsetY = 0f, float offsetZ = 0f)
+                                float offsetX = 0f, float offsetY = 0f, float offsetZ = 0f,
+                                int tileX = 1, int tileY = 1, int tileZ = 1)
     {
         ResolvedBlockModel? resolved = null;
         if (!string.IsNullOrEmpty(variant.ModelPath))
@@ -4464,10 +4508,12 @@ public class SpawnMenu : UiPanel
         if (!string.IsNullOrEmpty(variant.CemPath))
             meshes = CemLoader.Load(Gl!, variant.CemPath, BlockRegistry.VersionRoot, resourcePackId);
         else if (resolved != null)
-            meshes = MinecraftModelMesh.Build(Gl!, resolved, variant.RotationX, variant.RotationY, resourcePackId);
+            meshes = MinecraftModelMesh.Build(Gl!, resolved, variant.RotationX, variant.RotationY, resourcePackId,
+                                              tileX, tileY, tileZ);
         else
             meshes = new List<Mesh> { MinecraftModelMesh.BuildTexturedFallbackCube(Gl!, null,
-                blockNameHint: obj.ObjectType, resourcePackId: resourcePackId) };
+                blockNameHint: obj.ObjectType, resourcePackId: resourcePackId,
+                tileX: tileX, tileY: tileY, tileZ: tileZ) };
 
         if (offsetX != 0f || offsetY != 0f || offsetZ != 0f)
         {

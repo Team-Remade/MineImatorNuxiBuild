@@ -72,6 +72,53 @@ public class SceneObject
     public string ResourcePackId = "";
 
     /// <summary>
+    /// Hard cap on the tile count along any single axis.  1000 per axis keeps
+    /// the mesh update budget bounded; total vertices scale as
+    /// <c>TileX * TileY * TileZ * (block face vertex count)</c>.
+    /// </summary>
+    public const int MaxTilesPerAxis = 1000;
+
+    /// <summary>
+    /// Per-axis block repetition.  Values &lt;= 0 are treated as 1 (no tiling).
+    /// Values &gt; <see cref="MaxTilesPerAxis"/> are clamped to that limit
+    /// during <see cref="GetEffectiveTileX/Y/Z"/>.  Tiling only applies to
+    /// objects in the <c>Blocks</c> spawn category.
+    /// </summary>
+    public int TileX = 1;
+    public int TileY = 1;
+    public int TileZ = 1;
+
+    /// <summary>
+    /// Returns <see cref="TileX"/> clamped to <c>[1, MaxTilesPerAxis]</c>.
+    /// </summary>
+    public int GetEffectiveTileX() => ClampTile(TileX);
+
+    /// <summary>
+    /// Returns <see cref="TileY"/> clamped to <c>[1, MaxTilesPerAxis]</c>.
+    /// </summary>
+    public int GetEffectiveTileY() => ClampTile(TileY);
+
+    /// <summary>
+    /// Returns <see cref="TileZ"/> clamped to <c>[1, MaxTilesPerAxis]</c>.
+    /// </summary>
+    public int GetEffectiveTileZ() => ClampTile(TileZ);
+
+    /// <summary>
+    /// True when the object is in the <c>Blocks</c> category and any tile
+    /// axis is &gt; 1.
+    /// </summary>
+    public bool HasTiling =>
+        string.Equals(SpawnCategory, "Blocks", StringComparison.Ordinal) &&
+        (GetEffectiveTileX() > 1 || GetEffectiveTileY() > 1 || GetEffectiveTileZ() > 1);
+
+    private static int ClampTile(int value)
+    {
+        if (value < 1) return 1;
+        if (value > MaxTilesPerAxis) return MaxTilesPerAxis;
+        return value;
+    }
+
+    /// <summary>
     /// Absolute path to the source asset file used to create this object.
     /// Empty for built-in objects (primitives, lights, etc.).
     /// </summary>

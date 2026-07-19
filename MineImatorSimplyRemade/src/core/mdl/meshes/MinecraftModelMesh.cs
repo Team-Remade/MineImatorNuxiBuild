@@ -1,5 +1,6 @@
 using GlmSharp;
 using MineImatorSimplyRemade;
+using MineImatorSimplyRemadeNuxi.core.objs;
 using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.core.mdl.meshes;
@@ -33,15 +34,28 @@ public static class MinecraftModelMesh
     /// <param name="model">The resolved model (from <see cref="BlockRegistry.ResolveModel"/>).</param>
     /// <param name="variantRotX">Blockstate-level X rotation (degrees, 0/90/180/270).</param>
     /// <param name="variantRotY">Blockstate-level Y rotation (degrees, 0/90/180/270).</param>
+    /// <param name="tileX">Number of times to repeat the block along +X (≥1).</param>
+    /// <param name="tileY">Number of times to repeat the block along +Y (≥1).</param>
+    /// <param name="tileZ">Number of times to repeat the block along +Z (≥1).</param>
     public static List<Mesh> Build(GL gl, ResolvedBlockModel model,
                                    int variantRotX = 0, int variantRotY = 0,
-                                   string resourcePackId = "")
+                                   string resourcePackId = "",
+                                   int tileX = 1, int tileY = 1, int tileZ = 1)
     {
+        tileX = ClampTileCount(tileX);
+        tileY = ClampTileCount(tileY);
+        tileZ = ClampTileCount(tileZ);
+
         if (model.Elements.Count == 0)
         {
             // Model has no geometry elements (e.g. only references a builtin parent).
             // Try to produce a textured cube from whatever textures the model exposes.
-            return new List<Mesh> { BuildTexturedFallbackCube(gl, model, blockNameHint: null, resourcePackId: resourcePackId) };
+            return new List<Mesh>
+            {
+                BuildTiledFallbackCube(gl, model, blockNameHint: null,
+                                       resourcePackId: resourcePackId,
+                                       tileX: tileX, tileY: tileY, tileZ: tileZ)
+            };
         }
 
         // Group faces by texture key so each texture gets one draw call
@@ -51,9 +65,22 @@ public static class MinecraftModelMesh
         // Blockstate variant rotation matrix (applied on top of element geometry)
         mat4 variantTransform = BuildVariantTransform(variantRotX, variantRotY);
 
-        foreach (var element in model.Elements)
+        // Centered offsets so the tile group is anchored on the mesh origin.
+        float centerX = (tileX - 1) * 0.5f;
+        float centerY = (tileY - 1) * 0.5f;
+        float centerZ = (tileZ - 1) * 0.5f;
+
+        // Generate geometry per tile, culling internal faces between adjacent tiles.
+        for (int tz = 0; tz < tileZ; tz++)
+        for (int ty = 0; ty < tileY; ty++)
+        for (int tx = 0; tx < tileX; tx++)
         {
-            AppendElement(element, model, groups, variantTransform, resourcePackId);
+            vec3 tileOffset = new vec3(tx - centerX, ty - centerY, tz - centerZ);
+            foreach (var element in model.Elements)
+            {
+                AppendElement(element, model, groups, variantTransform, resourcePackId,
+                              tileOffset, tx, ty, tz, tileX, tileY, tileZ);
+            }
         }
 
         var result = new List<Mesh>();
@@ -78,7 +105,49 @@ public static class MinecraftModelMesh
             result.Add(mesh);
         }
 
-        return result.Count > 0 ? result : new List<Mesh> { BuildTexturedFallbackCube(gl, model, blockNameHint: null, resourcePackId: resourcePackId) };
+        if (result.Count == 0)
+        {
+            return new List<Mesh>
+            {
+                BuildTiledFallbackCube(gl, model, blockNameHint: null,
+                                       resourcePackId: resourcePackId,
+                                       tileX: tileX, tileY: tileY, tileZ: tileZ)
+            };
+        }
+
+        return result;
+    }
+
+    private static int ClampTileCount(int value)
+    {
+        if (value < 1) return 1;
+        if (value > SceneObject.MaxTilesPerAxis) return SceneObject.MaxTilesPerAxis;
+        return value;
+    }
+
+    /// <summary>
+    /// Returns true when a face is on the boundary between this tile and an
+    /// adjacent tile (i.e. it's an internal face and should be culled).
+    /// Only non-rotated elements that span the full block extent are culled,
+    /// since rotated or partial elements aren't guaranteed to sit on a tile
+    /// boundary.
+    /// </summary>
+    private static bool IsInternalFace(string faceName, BlockModelElement element,
+                                       int tx, int ty, int tz,
+                                       int tileX, int tileY, int tileZ)
+    {
+        if (element.Rotation != null) return false;
+
+        return faceName switch
+        {
+            "down"  => element.From[1] == 0f  && ty > 0,
+            "up"    => element.To[1]   == 16f && ty + 1 < tileY,
+            "north" => element.From[2] == 0f  && tz > 0,
+            "south" => element.To[2]   == 16f && tz + 1 < tileZ,
+            "west"  => element.From[0] == 0f  && tx > 0,
+            "east"  => element.To[0]   == 16f && tx + 1 < tileX,
+            _       => false
+        };
     }
 
     /// <summary>
@@ -90,7 +159,92 @@ public static class MinecraftModelMesh
     /// </summary>
     public static Mesh BuildTexturedFallbackCube(GL gl, ResolvedBlockModel? model,
                                                  string? blockNameHint = null,
-                                                 string resourcePackId = "")
+                                                 string resourcePackId = "",
+                                                 int tileX = 1, int tileY = 1, int tileZ = 1)
+    {
+        return BuildTiledFallbackCube(gl, model, blockNameHint, resourcePackId, tileX, tileY, tileZ);
+    }
+
+    /// <summary>
+    /// Tiled fallback cube generator. Emits only the externally-visible faces
+    /// of the tile group, so a 100×100×100 fallback only contains the ~6N²
+    /// shell faces instead of 6N³ interior faces.
+    /// </summary>
+    private static Mesh BuildTiledFallbackCube(GL gl, ResolvedBlockModel? model,
+                                               string? blockNameHint,
+                                               string resourcePackId,
+                                               int tileX, int tileY, int tileZ)
+    {
+        tileX = ClampTileCount(tileX);
+        tileY = ClampTileCount(tileY);
+        tileZ = ClampTileCount(tileZ);
+
+        uint texId = PickFallbackTexture(model, blockNameHint, resourcePackId);
+        if (texId == 0)
+            return BuildTiledUntexturedCube(gl, tileX, tileY, tileZ);
+
+        var mesh = new Mesh(gl);
+        mesh.TextureId = texId;
+        mesh.DoubleSided = false;
+
+        float centerX = (tileX - 1) * 0.5f;
+        float centerY = (tileY - 1) * 0.5f;
+        float centerZ = (tileZ - 1) * 0.5f;
+
+        var uvCorners = new vec2[]
+        {
+            new vec2(0, 0), new vec2(1, 0), new vec2(1, 1), new vec2(0, 1)
+        };
+
+        for (int tz = 0; tz < tileZ; tz++)
+        for (int ty = 0; ty < tileY; ty++)
+        for (int tx = 0; tx < tileX; tx++)
+        {
+            vec3 offset = new vec3(tx - centerX, ty - centerY, tz - centerZ);
+
+            AppendCubeFaceIfExternal(mesh, "down",  offset, ty > 0,         uvCorners);
+            AppendCubeFaceIfExternal(mesh, "up",    offset, ty + 1 < tileY, uvCorners);
+            AppendCubeFaceIfExternal(mesh, "north", offset, tz > 0,         uvCorners);
+            AppendCubeFaceIfExternal(mesh, "south", offset, tz + 1 < tileZ, uvCorners);
+            AppendCubeFaceIfExternal(mesh, "west",  offset, tx > 0,         uvCorners);
+            AppendCubeFaceIfExternal(mesh, "east",  offset, tx + 1 < tileX, uvCorners);
+        }
+
+        mesh.Upload();
+        return mesh;
+    }
+
+    private static void AppendCubeFaceIfExternal(Mesh mesh, string faceName, vec3 offset,
+                                                 bool hasNeighbor, vec2[] uvCorners)
+    {
+        if (hasNeighbor) return;
+
+        var (x0, y0, z0, x1, y1, z1) = faceName switch
+        {
+            "down"  => (-0.5f, -0.5f, -0.5f,  0.5f, -0.5f,  0.5f),
+            "up"    => (-0.5f,  0.5f, -0.5f,  0.5f,  0.5f,  0.5f),
+            "north" => (-0.5f, -0.5f, -0.5f,  0.5f,  0.5f, -0.5f),
+            "south" => (-0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f),
+            "west"  => (-0.5f, -0.5f, -0.5f, -0.5f,  0.5f,  0.5f),
+            "east"  => ( 0.5f, -0.5f, -0.5f,  0.5f,  0.5f,  0.5f),
+            _       => (0f, 0f, 0f, 0f, 0f, 0f)
+        };
+
+        (vec3 v0, vec3 v1, vec3 v2, vec3 v3) = FaceQuad(faceName, x0, y0, z0, x1, y1, z1);
+        vec3 n = FaceNormal(faceName);
+        v0 += offset; v1 += offset; v2 += offset; v3 += offset;
+
+        // Tri 0
+        mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
+        mesh.Vertices.Add(v1); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[1]);
+        mesh.Vertices.Add(v2); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[2]);
+        // Tri 1
+        mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
+        mesh.Vertices.Add(v2); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[2]);
+        mesh.Vertices.Add(v3); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[3]);
+    }
+
+    private static uint PickFallbackTexture(ResolvedBlockModel? model, string? blockNameHint, string resourcePackId)
     {
         uint texId = 0;
 
@@ -156,52 +310,55 @@ public static class MinecraftModelMesh
             }
         }
 
-        return texId != 0 ? BuildTexturedCube(gl, texId) : new CubeMesh(gl);
+        return texId;
     }
 
     /// <summary>
-    /// Builds a unit cube with proper per-face UVs and the given texture bound.
+    /// Builds a tiled untextured cube (white material) with internal face culling.
+    /// Used when no texture is available for a fallback.
     /// </summary>
-    private static Mesh BuildTexturedCube(GL gl, uint texId)
+    private static Mesh BuildTiledUntexturedCube(GL gl, int tileX, int tileY, int tileZ)
     {
-        // Reuse MinecraftModelMesh face geometry to get a proper textured cube
-        // by constructing a synthetic full-block ResolvedBlockModel on the fly.
-        // Simpler: just build a cube with all-face UVs (0,0)→(1,1).
+        var cube = new CubeMesh(gl);
+        // CubeMesh already generates a single unit cube; we need a tiled version.
+        // For simplicity and correctness, discard the single cube and build per-tile.
+        cube.Dispose();
+
         var mesh = new Mesh(gl);
+        mesh.DoubleSided = false;
 
-        var faces = new (string name, float x0, float y0, float z0, float x1, float y1, float z1)[]
+        float centerX = (tileX - 1) * 0.5f;
+        float centerY = (tileY - 1) * 0.5f;
+        float centerZ = (tileZ - 1) * 0.5f;
+
+        for (int tz = 0; tz < tileZ; tz++)
+        for (int ty = 0; ty < tileY; ty++)
+        for (int tx = 0; tx < tileX; tx++)
         {
-            ("down",  -0.5f, -0.5f, -0.5f,  0.5f, -0.5f,  0.5f),
-            ("up",    -0.5f,  0.5f, -0.5f,  0.5f,  0.5f,  0.5f),
-            ("north", -0.5f, -0.5f, -0.5f,  0.5f,  0.5f, -0.5f),
-            ("south", -0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f),
-            ("west",  -0.5f, -0.5f, -0.5f, -0.5f,  0.5f,  0.5f),
-            ("east",   0.5f, -0.5f, -0.5f,  0.5f,  0.5f,  0.5f),
-        };
+            vec3 offset = new vec3(tx - centerX, ty - centerY, tz - centerZ);
+            // CubeMesh face vertex layout (matches FaceQuad winding for the same faces)
+            var faces = new (string name, bool skip, vec3 v0, vec3 v1, vec3 v2, vec3 v3, vec3 n)[]
+            {
+                ("down",  ty > 0,         new vec3(-0.5f, -0.5f, -0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3( 0, -1,  0)),
+                ("up",    ty + 1 < tileY, new vec3(-0.5f,  0.5f,  0.5f), new vec3( 0.5f,  0.5f,  0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3(-0.5f,  0.5f, -0.5f), new vec3( 0,  1,  0)),
+                ("north", tz > 0,         new vec3(-0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3(-0.5f, -0.5f, -0.5f), new vec3( 0,  0, -1)),
+                ("south", tz + 1 < tileZ, new vec3( 0.5f,  0.5f,  0.5f), new vec3(-0.5f,  0.5f,  0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3( 0,  0,  1)),
+                ("west",  tx > 0,         new vec3(-0.5f,  0.5f,  0.5f), new vec3(-0.5f,  0.5f, -0.5f), new vec3(-0.5f, -0.5f, -0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3(-1,  0,  0)),
+                ("east",  tx + 1 < tileX, new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f,  0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3( 1,  0,  0)),
+            };
 
-        var uvCorners = new vec2[]
-        {
-            new vec2(0, 0), new vec2(1, 0), new vec2(1, 1), new vec2(0, 1)
-        };
-
-        foreach (var (faceName, x0, y0, z0, x1, y1, z1) in faces)
-        {
-            // QuadForFace uses element-space 0–1 coords; we can call it directly
-            // since BuildTexturedCube already works in world-space ±0.5
-            (vec3 v0, vec3 v1, vec3 v2, vec3 v3) = FaceQuad(faceName, x0, y0, z0, x1, y1, z1);
-            vec3 n = FaceNormal(faceName);
-
-            // Tri 0
-            mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
-            mesh.Vertices.Add(v1); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[1]);
-            mesh.Vertices.Add(v2); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[2]);
-            // Tri 1
-            mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
-            mesh.Vertices.Add(v2); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[2]);
-            mesh.Vertices.Add(v3); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[3]);
+            foreach (var (name, skip, v0, v1, v2, v3, n) in faces)
+            {
+                if (skip) continue;
+                mesh.Vertices.Add(v0 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
+                mesh.Vertices.Add(v1 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
+                mesh.Vertices.Add(v2 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
+                mesh.Vertices.Add(v0 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
+                mesh.Vertices.Add(v2 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
+                mesh.Vertices.Add(v3 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
+            }
         }
 
-        mesh.TextureId = texId;
         mesh.Upload();
         return mesh;
     }
@@ -250,7 +407,10 @@ public static class MinecraftModelMesh
         ResolvedBlockModel model,
         Dictionary<string, (List<vec3>, List<vec3>, List<vec2>, uint)> groups,
         mat4 variantTransform,
-        string resourcePackId)
+        string resourcePackId,
+        vec3 tileOffset,
+        int tx, int ty, int tz,
+        int tileX, int tileY, int tileZ)
     {
         float x0 = element.From[0] * Scale - 0.5f;
         float y0 = element.From[1] * Scale - 0.5f;
@@ -269,6 +429,10 @@ public static class MinecraftModelMesh
 
         foreach (var (faceName, face) in element.Faces)
         {
+            // Skip internal faces between adjacent tiles
+            if (IsInternalFace(faceName, element, tx, ty, tz, tileX, tileY, tileZ))
+                continue;
+
             // Resolve texture
             string? texKey = BlockRegistry.ResolveTextureKey(model, face.Texture);
             if (texKey == null) continue;
@@ -309,11 +473,11 @@ public static class MinecraftModelMesh
             (vec3 v0, vec3 v1, vec3 v2, vec3 v3) = QuadForFace(faceName, x0, y0, z0, x1, y1, z1);
             vec3 normal = NormalForFace(faceName);
 
-            // Apply transform to vertices and normals
-            v0 = TransformPoint(transform, v0);
-            v1 = TransformPoint(transform, v1);
-            v2 = TransformPoint(transform, v2);
-            v3 = TransformPoint(transform, v3);
+            // Apply transform to vertices and normals, then add tile offset
+            v0 = TransformPoint(transform, v0) + tileOffset;
+            v1 = TransformPoint(transform, v1) + tileOffset;
+            v2 = TransformPoint(transform, v2) + tileOffset;
+            v3 = TransformPoint(transform, v3) + tileOffset;
             normal = TransformNormal(transform, normal);
 
             // Tri 0: v0, v1, v2

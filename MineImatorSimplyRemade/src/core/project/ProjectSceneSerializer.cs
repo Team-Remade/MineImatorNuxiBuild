@@ -139,6 +139,9 @@ public static class ProjectSceneSerializer
             IsSelectable = obj.IsSelectable,
             HideInSceneTree = obj.HideInSceneTree,
             HasMaterialOverrides = obj.HasExplicitMaterialSettings,
+            TileX = obj.GetEffectiveTileX(),
+            TileY = obj.GetEffectiveTileY(),
+            TileZ = obj.GetEffectiveTileZ(),
             Keyframes = SerializeKeyframes(obj)
         };
 
@@ -268,7 +271,8 @@ public static class ProjectSceneSerializer
             var variant = variants.FirstOrDefault(v => v.VariantKey == entry.BlockVariant)
                           ?? variants.FirstOrDefault();
             if (variant == null) return null;
-            return spawnMenu.SpawnBlockObject(entry.ObjectType, variant, entry.ResourcePackId);
+            return spawnMenu.SpawnBlockObject(entry.ObjectType, variant, entry.ResourcePackId,
+                                              entry.TileX, entry.TileY, entry.TileZ);
         }
 
         if (entry.SpawnCategory == "Camera")
@@ -316,7 +320,7 @@ public static class ProjectSceneSerializer
         obj.TextureType = entry.TextureType;
         obj.ResourcePackId = entry.ResourcePackId;
         obj.SourceAssetPath = entry.SourceAssetPath;
-        
+
         // Restore albedo texture path (actual texture loading happens after scene is loaded)
         if (!string.IsNullOrEmpty(entry.AlbedoTexturePath))
         {
@@ -336,6 +340,10 @@ public static class ProjectSceneSerializer
         obj.ObjectVisible = entry.ObjectVisible;
         obj.IsSelectable = entry.IsSelectable;
         obj.HideInSceneTree = entry.HideInSceneTree;
+
+        obj.TileX = entry.TileX;
+        obj.TileY = entry.TileY;
+        obj.TileZ = entry.TileZ;
 
         if (entry.HasMaterialOverrides)
         {

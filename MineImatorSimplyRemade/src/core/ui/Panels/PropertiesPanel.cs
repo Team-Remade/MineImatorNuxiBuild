@@ -1164,6 +1164,60 @@ public class PropertiesPanel : UiPanel
                 ApplyScale(vec3.Ones);
         }
 
+        // ── Block Tiling ───────────────────────────────────────────────────────
+        if (string.Equals(_currentObject.SpawnCategory, "Blocks", StringComparison.Ordinal) &&
+            ImGui.CollapsingHeader("Block Tiling"))
+        {
+            ImGui.TextWrapped("Repeat the block along each axis. Each axis is limited to 1–1000.");
+            ImGui.Spacing();
+
+            int tileX = _currentObject.TileX;
+            int tileY = _currentObject.TileY;
+            int tileZ = _currentObject.TileZ;
+
+            ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
+
+            bool tileChanged = false;
+
+            if (ImGui.DragInt("X##tileX", ref tileX, 1f, 1, SceneObject.MaxTilesPerAxis))
+                tileChanged = true;
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "tile.x";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
+            }
+
+            if (ImGui.DragInt("Y##tileY", ref tileY, 1f, 1, SceneObject.MaxTilesPerAxis))
+                tileChanged = true;
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "tile.y";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
+            }
+
+            if (ImGui.DragInt("Z##tileZ", ref tileZ, 1f, 1, SceneObject.MaxTilesPerAxis))
+                tileChanged = true;
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "tile.z";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
+            }
+
+            ImGui.PopItemWidth();
+
+            if (tileChanged)
+                ApplyBlockTiling(tileX, tileY, tileZ);
+
+            ImGui.Spacing();
+            ImGui.TextDisabled($"Total blocks: {_currentObject.GetEffectiveTileX() * _currentObject.GetEffectiveTileY() * _currentObject.GetEffectiveTileZ()}");
+
+            if (ImGui.Button("Reset##tileReset"))
+                ApplyBlockTiling(1, 1, 1);
+        }
+
         // ── Pivot Offset ──────────────────────────────────────────────────────
         if (ImGui.CollapsingHeader("Pivot Offset"))
         {
@@ -1752,6 +1806,34 @@ public class PropertiesPanel : UiPanel
         Timeline?.RecordAutoKeyframe(_currentObject, "scale.x");
         Timeline?.RecordAutoKeyframe(_currentObject, "scale.y");
         Timeline?.RecordAutoKeyframe(_currentObject, "scale.z");
+    }
+
+    /// <summary>
+    /// Applies new block-tile values to the currently selected object, clamps
+    /// them to <see cref="SceneObject.MaxTilesPerAxis"/>, and rebuilds the
+    /// block meshes to reflect the change.
+    /// </summary>
+    private void ApplyBlockTiling(int tileX, int tileY, int tileZ)
+    {
+        if (_currentObject == null) return;
+
+        tileX = Math.Clamp(tileX, 1, SceneObject.MaxTilesPerAxis);
+        tileY = Math.Clamp(tileY, 1, SceneObject.MaxTilesPerAxis);
+        tileZ = Math.Clamp(tileZ, 1, SceneObject.MaxTilesPerAxis);
+
+        _currentObject.TileX = tileX;
+        _currentObject.TileY = tileY;
+        _currentObject.TileZ = tileZ;
+
+        Timeline?.RecordAutoKeyframe(_currentObject, "tile.x");
+        Timeline?.RecordAutoKeyframe(_currentObject, "tile.y");
+        Timeline?.RecordAutoKeyframe(_currentObject, "tile.z");
+
+        if (SpawnMenu != null && string.Equals(_currentObject.SpawnCategory, "Blocks", StringComparison.Ordinal))
+        {
+            if (SpawnMenu.RebuildBlockMeshes(_currentObject))
+                ProjectManager.Instance.SetDirty(true);
+        }
     }
 
     /// <summary>
