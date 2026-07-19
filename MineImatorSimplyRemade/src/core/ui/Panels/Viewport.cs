@@ -1162,7 +1162,7 @@ public class Viewport : UiPanel
             vec3 lightPos = new vec3(world.m30, world.m31, world.m32);
 
             if (posLoc   >= 0) Gl.Uniform3(posLoc, lightPos.x, lightPos.y, lightPos.z);
-            if (rangeLoc >= 0) Gl.Uniform1(rangeLoc, MathF.Max(0.01f, light.LightRange));
+            if (rangeLoc >= 0) Gl.Uniform1(rangeLoc, MathF.Max(0.01f, light.LightRange / 2f));
             if (colorLoc >= 0) Gl.Uniform4(colorLoc,
                 light.LightColor.x, light.LightColor.y, light.LightColor.z, 1f);
 
