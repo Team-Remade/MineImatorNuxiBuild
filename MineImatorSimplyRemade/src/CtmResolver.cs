@@ -20,43 +20,33 @@ public static class CtmResolver
         var rule = CtmAtlas.FindRule(blockName, textureKey);
         if (rule == null)
         {
-            if (blockName.Contains("bookshelf", StringComparison.OrdinalIgnoreCase))
-                Console.WriteLine($"[CTM] No rule found for block '{blockName}', texture '{textureKey}'");
             return null;
         }
-
-        Console.WriteLine($"[CTM] Found rule for block '{blockName}': method={rule.Method}, faces={string.Join(",", rule.Faces)}, tiles={rule.Tiles.Count}, tileTextures={rule.TileTextureIds.Count}");
 
         if (!string.IsNullOrEmpty(resourcePackId) &&
             !rule.PackId.Equals(MinecraftDataLoader.NormalizeResourcePackId(resourcePackId), StringComparison.OrdinalIgnoreCase))
         {
-            Console.WriteLine($"[CTM] Pack mismatch: rule pack='{rule.PackId}', requested='{resourcePackId}'");
             return null;
         }
 
         if (!FaceMatchesRule(faceName, rule))
         {
-            Console.WriteLine($"[CTM] Face '{faceName}' doesn't match rule faces: {string.Join(",", rule.Faces)}");
             return null;
         }
 
         int tileIndex = ComputeTileIndex(rule, faceName, tx, ty, tz, tileX, tileY, tileZ);
-        Console.WriteLine($"[CTM] Face '{faceName}' at tile ({tx},{ty},{tz}) computed tileIndex={tileIndex}");
 
         if (tileIndex < 0 || tileIndex >= rule.TileTextureIds.Count)
         {
-            Console.WriteLine($"[CTM] Tile index {tileIndex} out of range (0-{rule.TileTextureIds.Count - 1})");
             tileIndex = 0;
         }
 
         uint texId = tileIndex < rule.TileTextureIds.Count ? rule.TileTextureIds[tileIndex] : 0;
         if (texId == 0)
         {
-            Console.WriteLine($"[CTM] Tile {tileIndex} has no texture (texId=0)");
             return null;
         }
 
-        Console.WriteLine($"[CTM] Resolved tile {tileIndex} with texId={texId}");
 
         return new CtmResolvedTile
         {
