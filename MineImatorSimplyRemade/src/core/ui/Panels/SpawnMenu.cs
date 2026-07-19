@@ -4435,7 +4435,8 @@ public class SpawnMenu : UiPanel
             if (variant == null)
                 return false;
 
-            var temp = SpawnBlockObject(target.ObjectType, variant, normalizedResourcePackId);
+            var temp = SpawnBlockObject(target.ObjectType, variant, normalizedResourcePackId,
+                target.GetEffectiveTileX(), target.GetEffectiveTileY(), target.GetEffectiveTileZ());
             return temp != null && ReplaceObjectMeshesFromTempSpawn(target, temp, normalizedResourcePackId);
         }
 
