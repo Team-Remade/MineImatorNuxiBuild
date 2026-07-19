@@ -32,6 +32,9 @@ public class Input
     private double _orbitLastMouseY = double.NaN;
     private double _panLastMouseX = double.NaN;
     private double _panLastMouseY = double.NaN;
+    private double _gizmoVirtualMouseX = double.NaN;
+    private double _gizmoVirtualMouseY = double.NaN;
+    private bool _gizmoVirtualPosInitialized;
     private float _pressMouseX = float.NaN;
     private float _pressMouseY = float.NaN;
     private const float OrbitDragThreshold = 4f;
@@ -182,6 +185,9 @@ public class Input
             gizmo?.EndEdit();
             _gizmoDragging = false;
             _gizmoOwner = null;
+            _gizmoVirtualMouseX = double.NaN;
+            _gizmoVirtualMouseY = double.NaN;
+            _gizmoVirtualPosInitialized = false;
         }
 
         bool pressInsideImage =
@@ -213,6 +219,9 @@ public class Input
                     {
                         _gizmoDragging = true;
                         _gizmoOwner = this;
+                        _gizmoVirtualMouseX = mousePos.X;
+                        _gizmoVirtualMouseY = mousePos.Y;
+                        _gizmoVirtualPosInitialized = false;
                     }
                     else
                     {
@@ -245,7 +254,18 @@ public class Input
             }
 
             if (_gizmoDragging)
-                gizmo?.ContinueEdit(mousePos, camera, imageMin, imageSize);
+            {
+                if (!_gizmoVirtualPosInitialized)
+                {
+                    _gizmoVirtualPosInitialized = true;
+                }
+                else
+                {
+                    _gizmoVirtualMouseX += dx;
+                    _gizmoVirtualMouseY += dy;
+                }
+                gizmo?.ContinueEdit(new Vector2((float)_gizmoVirtualMouseX, (float)_gizmoVirtualMouseY), camera, imageMin, imageSize);
+            }
             else if (_dragging && pressInsideImage)
                 camera.Orbit(dx * 0.005f, dy * 0.005f);
         }
@@ -260,6 +280,9 @@ public class Input
             _gizmoDragging = false;
             if (_orbitOwner == this) _orbitOwner = null;
             if (_gizmoOwner == this) _gizmoOwner = null;
+            _gizmoVirtualMouseX = double.NaN;
+            _gizmoVirtualMouseY = double.NaN;
+            _gizmoVirtualPosInitialized = false;
 
             // Queue pick if not from gizmo/orbit
             // When overlays are disabled the gizmo isn't visible in this viewport,
