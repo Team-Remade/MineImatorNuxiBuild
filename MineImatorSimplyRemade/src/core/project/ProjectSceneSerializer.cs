@@ -74,6 +74,44 @@ public static class ProjectSceneSerializer
         // Restore preview viewport selected camera index (after scene objects restored so spawned cameras exist)
         if (viewport.PreviewViewport != null)
             viewport.PreviewViewport.SelectedCameraIndex = manifest.ActivePreviewCameraIndex;
+
+        // Re-apply active-camera flags now that the full scene exists so
+        // SetActiveExclusive can demote every other camera in a single pass.
+        var activeCam = FindActiveCameraFromEntries(manifest.SceneObjects, viewport.SceneObjects);
+        if (activeCam != null)
+            CameraSceneObject.SetActiveExclusive(activeCam);
+    }
+
+    private static CameraSceneObject? FindActiveCameraFromEntries(
+        IEnumerable<ProjectSceneObjectEntry> entries,
+        IEnumerable<SceneObject> loadedObjects)
+    {
+        // Walk entries in parallel to the loaded hierarchy and return the
+        // CameraSceneObject that corresponds to an entry with CameraActive=true.
+        using var entryEnum = entries.GetEnumerator();
+        using var objEnum   = loadedObjects.GetEnumerator();
+        while (entryEnum.MoveNext() && objEnum.MoveNext())
+        {
+            var match = FindActiveCameraRecursive(entryEnum.Current, objEnum.Current);
+            if (match != null) return match;
+        }
+        return null;
+    }
+
+    private static CameraSceneObject? FindActiveCameraRecursive(
+        ProjectSceneObjectEntry entry, SceneObject obj)
+    {
+        if (entry.CameraActive && obj is CameraSceneObject cam)
+            return cam;
+
+        using var childEntryEnum = entry.Children.GetEnumerator();
+        using var childObjEnum   = obj.Children.GetEnumerator();
+        while (childEntryEnum.MoveNext() && childObjEnum.MoveNext())
+        {
+            var match = FindActiveCameraRecursive(childEntryEnum.Current, childObjEnum.Current);
+            if (match != null) return match;
+        }
+        return null;
     }
 
     private static ProjectSceneObjectEntry SerializeNode(SceneObject obj)
@@ -127,6 +165,7 @@ public static class ProjectSceneSerializer
             entry.CameraFov = camera.Fov;
             entry.CameraNear = camera.Near;
             entry.CameraFar = camera.Far;
+            entry.CameraActive = camera.Active;
         }
 
         if (obj is LightSceneObject light)
@@ -321,6 +360,8 @@ public static class ProjectSceneSerializer
             camera.Fov = entry.CameraFov;
             camera.Near = entry.CameraNear;
             camera.Far = entry.CameraFar;
+            // CameraActive is applied after the whole scene is loaded so that
+            // SetActiveExclusive can also clear other cameras' Active flags.
             camera.SyncCameraToTransform();
         }
 

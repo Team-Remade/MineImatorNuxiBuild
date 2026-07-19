@@ -233,10 +233,18 @@ public class Viewport : UiPanel
     // ── Camera dropdown ────────────────────────────────────────────────────────
 
     /// <summary>
+    /// Sentinel value for the camera-selection indices meaning "use the
+    /// render-output camera" — i.e. the first visible active camera, or the
+    /// first visible camera if none is active, or the work camera otherwise.
+    /// </summary>
+    public const int RenderOutputIndex = -1;
+
+    /// <summary>
     /// Index of the active camera for the main viewport.
+    /// <see cref="RenderOutputIndex"/> (-1) = use the render-output camera.
     /// 0 = work camera; 1+ = spawned cameras by index.
     /// </summary>
-    private int _activeCameraIndex = 0;
+    private int _activeCameraIndex = RenderOutputIndex;
 
     // ── Overlay visibility ─────────────────────────────────────────────────────
 
@@ -271,7 +279,7 @@ public class Viewport : UiPanel
     /// <summary>Reference to the main viewport for preview instances to access scene objects.</summary>
     public Viewport? MainViewport { get; set; }
 
-    private int _selectedCameraIndex = 0;
+    private int _selectedCameraIndex = RenderOutputIndex;
     /// <summary>Public accessor for the selected camera index (0 = work camera, 1+ = spawned cameras).</summary>
     public int SelectedCameraIndex
     {
@@ -1481,16 +1489,30 @@ public class Viewport : UiPanel
             // Camera dropdown — immediately to the right of the bench button.
             {
                 var spawnedCams = GetSpawnedCameras();
-                string currentCamLabel = _activeCameraIndex == 0
-                    ? "Work Camera"
-                    : (_activeCameraIndex - 1 < spawnedCams.Count
+                string currentCamLabel;
+                if (_activeCameraIndex == RenderOutputIndex)
+                {
+                    currentCamLabel = "Render Output";
+                }
+                else if (_activeCameraIndex == 0)
+                {
+                    currentCamLabel = "Work Camera";
+                }
+                else
+                {
+                    currentCamLabel = _activeCameraIndex - 1 < spawnedCams.Count
                         ? spawnedCams[_activeCameraIndex - 1].Name
-                        : "Work Camera");
+                        : "Render Output";
+                }
 
                 ImGui.SetCursorPosY(itemY);
                 ImGui.SetNextItemWidth(160f);
                 if (ImGui.BeginCombo("##vpCamSelect", currentCamLabel))
                 {
+                    bool roSel = _activeCameraIndex == RenderOutputIndex;
+                    if (ImGui.Selectable("Render Output##vpcamRO", roSel)) _activeCameraIndex = RenderOutputIndex;
+                    if (roSel) ImGui.SetItemDefaultFocus();
+
                     bool workSel = _activeCameraIndex == 0;
                     if (ImGui.Selectable("Work Camera", workSel)) _activeCameraIndex = 0;
                     if (workSel) ImGui.SetItemDefaultFocus();
@@ -1504,7 +1526,7 @@ public class Viewport : UiPanel
                     ImGui.EndCombo();
                 }
                 if (_activeCameraIndex > spawnedCams.Count)
-                    _activeCameraIndex = 0;
+                    _activeCameraIndex = RenderOutputIndex;
             }
 
             // Overlays toggle button — right-aligned at the end of the bar.
@@ -3030,7 +3052,7 @@ public class Viewport : UiPanel
 
     public (Camera, CameraSceneObject?) DrawCameraDropdownInternal(List<CameraSceneObject> spawned)
     {
-        if (_selectedCameraIndex > spawned.Count) _selectedCameraIndex = 0;
+        if (_selectedCameraIndex > spawned.Count) _selectedCameraIndex = RenderOutputIndex;
         return GetActiveCameraPreview(spawned);
     }
 
@@ -3039,6 +3061,9 @@ public class Viewport : UiPanel
 
     private (Camera cam, CameraSceneObject? sceneObj) GetActiveCameraPreview(List<CameraSceneObject> spawned)
     {
+        if (_selectedCameraIndex == RenderOutputIndex)
+            return GetRenderOutputCamera(spawned);
+
         if (_selectedCameraIndex == 0)
             return (MainViewport?.Camera ?? Camera, null);
 
@@ -3049,8 +3074,38 @@ public class Viewport : UiPanel
             camObj.SyncCameraToTransform();
             return (camObj.ViewCamera, camObj);
         }
-        _selectedCameraIndex = 0;
+        _selectedCameraIndex = RenderOutputIndex;
+        return GetRenderOutputCamera(spawned);
+    }
+
+    /// <summary>
+    /// Resolves the camera used for render output (image / video export).
+    /// Priority:
+    ///   1. The first visible camera with <see cref="CameraSceneObject.Active"/>
+    ///      set to <c>true</c>.
+    ///   2. Otherwise, the first visible camera in the scene tree.
+    ///   3. Otherwise, the work camera (index 0).
+    /// </summary>
+    public (Camera cam, CameraSceneObject? sceneObj) GetRenderOutputCamera(List<CameraSceneObject> spawned)
+    {
+        CameraSceneObject? firstVisible = null;
+        foreach (var cam in spawned)
+        {
+            if (!cam.GetEffectiveVisibility()) continue;
+            if (cam.Active) return ResolveCamera(cam);
+            firstVisible ??= cam;
+        }
+
+        if (firstVisible != null)
+            return ResolveCamera(firstVisible);
+
         return (MainViewport?.Camera ?? Camera, null);
+    }
+
+    private (Camera cam, CameraSceneObject? sceneObj) ResolveCamera(CameraSceneObject cam)
+    {
+        cam.SyncCameraToTransform();
+        return (cam.ViewCamera, cam);
     }
 
     public unsafe void RenderInline(Vector2 imageMin, Vector2 imageSize, List<CameraSceneObject> spawned)
@@ -3289,15 +3344,29 @@ public class Viewport : UiPanel
 
     private (Camera, CameraSceneObject?) DrawCameraDropdown(List<CameraSceneObject> spawned)
     {
-        string currentLabel = _selectedCameraIndex == 0
-            ? "Work Camera"
-            : (_selectedCameraIndex - 1 < spawned.Count
+        string currentLabel;
+        if (_selectedCameraIndex == RenderOutputIndex)
+        {
+            currentLabel = "Render Output";
+        }
+        else if (_selectedCameraIndex == 0)
+        {
+            currentLabel = "Work Camera";
+        }
+        else
+        {
+            currentLabel = _selectedCameraIndex - 1 < spawned.Count
                 ? spawned[_selectedCameraIndex - 1].Name
-                : "Work Camera");
+                : "Render Output";
+        }
 
         ImGui.SetNextItemWidth(160f);
         if (ImGui.BeginCombo("##camSelect", currentLabel))
         {
+            bool roSel = _selectedCameraIndex == RenderOutputIndex;
+            if (ImGui.Selectable("Render Output##camRO", roSel)) _selectedCameraIndex = RenderOutputIndex;
+            if (roSel) ImGui.SetItemDefaultFocus();
+
             bool workSel = _selectedCameraIndex == 0;
             if (ImGui.Selectable("Work Camera", workSel)) _selectedCameraIndex = 0;
             if (workSel) ImGui.SetItemDefaultFocus();
@@ -3312,7 +3381,7 @@ public class Viewport : UiPanel
             ImGui.EndCombo();
         }
 
-        if (_selectedCameraIndex > spawned.Count) _selectedCameraIndex = 0;
+        if (_selectedCameraIndex > spawned.Count) _selectedCameraIndex = RenderOutputIndex;
         return GetActiveCameraPreview(spawned);
     }
 
@@ -3719,7 +3788,7 @@ public class Viewport : UiPanel
             return false;
 
         var spawned = GetSpawnedCamerasPublic();
-        var (activeCam, sceneObj) = DrawCameraDropdownInternal(spawned);
+        var (activeCam, sceneObj) = GetRenderOutputCamera(spawned);
 
         bool previousOverlays = OverlaysEnabled;
         OverlaysEnabled = false;
@@ -3769,6 +3838,12 @@ public class Viewport : UiPanel
     /// </summary>
     private (Camera cam, CameraSceneObject? sceneObj) GetActiveRenderCamera()
     {
+        if (_activeCameraIndex == RenderOutputIndex)
+        {
+            var spawnedRO = GetSpawnedCameras();
+            return GetRenderOutputCamera(spawnedRO);
+        }
+
         if (_activeCameraIndex == 0) return (Camera, null);
 
         var spawned = GetSpawnedCameras();

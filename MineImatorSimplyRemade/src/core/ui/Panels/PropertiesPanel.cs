@@ -919,6 +919,29 @@ public class PropertiesPanel : UiPanel
                 if (ImGui.Checkbox("Cast Shadows", ref castShadow))
                     _currentObject.CastShadow = castShadow;
             }
+
+            // Active toggle for cameras. When enabled, this camera is the
+            // preferred render-output camera and every other camera is
+            // deactivated. The "active" state is also a keyframable property.
+            if (_currentObject is CameraSceneObject activeCam)
+            {
+                bool active = activeCam.Active;
+                if (ImGui.Checkbox("Active Camera", ref active))
+                {
+                    if (active)
+                        CameraSceneObject.SetActiveExclusive(activeCam);
+                    else
+                        activeCam.Active = false;
+
+                    Timeline?.RecordAutoKeyframe(activeCam, "camera.active");
+                }
+                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                {
+                    _ctxPropertyPath = "camera.active";
+                    _ctxMenuPos = ImGui.GetMousePos();
+                    _openPropContextMenu = true;
+                }
+            }
         }
 
         ImGui.Spacing();

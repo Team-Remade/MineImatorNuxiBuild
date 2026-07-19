@@ -4159,7 +4159,7 @@ public class SpawnMenu : UiPanel
         // requires a file-system path.
         if (Gl != null)
         {
-            var cameraModelRoot = LoadEmbeddedCameraModel(Gl);
+            var cameraModelRoot = LoadEmbeddedCameraModel(Gl, "Camera.glb");
             if (cameraModelRoot != null)
             {
                 // Flatten visuals from the loaded hierarchy into the camera object.
@@ -4171,8 +4171,29 @@ public class SpawnMenu : UiPanel
                 {
                     mesh.Unlit             = true;
                     mesh.DepthTestDisabled = true;
+                    obj.InactiveVisuals.Add(mesh);
                 }
             }
+
+            // Load the active variant mesh and attach it as a separate visual set.
+            // Only one set is visible at a time, controlled by obj.Active.
+            int visualCountBeforeActive = obj.Visuals.Count;
+            var activeModelRoot = LoadEmbeddedCameraModel(Gl, "CameraActive.glb");
+            if (activeModelRoot != null)
+            {
+                FlattenVisualsInto(activeModelRoot, obj);
+                for (int i = visualCountBeforeActive; i < obj.Visuals.Count; i++)
+                {
+                    var mesh = obj.Visuals[i];
+                    mesh.Unlit             = true;
+                    mesh.DepthTestDisabled = true;
+                    obj.ActiveVisuals.Add(mesh);
+                }
+            }
+
+            // Apply the initial visibility state: a freshly spawned camera is
+            // inactive, so show the inactive mesh set and hide the active one.
+            obj.RefreshActiveMesh();
 
             // Add an invisible cube for object picking (same approach as lights).
             var pickMesh = new CubeMesh(Gl)
@@ -4189,23 +4210,25 @@ public class SpawnMenu : UiPanel
     }
 
     /// <summary>
-    /// Extracts the embedded <c>Camera.glb</c> to a temporary file and loads it
-    /// via <see cref="AssimpModelLoader"/>.  Returns null on failure.
+    /// Extracts an embedded <c>*.glb</c> camera model to a temporary file and
+    /// loads it via <see cref="AssimpModelLoader"/>.  Returns null on failure.
+    /// <paramref name="fileName"/> is the bare file name inside
+    /// <c>MineImatorSimplyRemade.assets.mesh</c> (e.g. <c>Camera.glb</c>).
     /// </summary>
-    private static SceneObject? LoadEmbeddedCameraModel(Silk.NET.OpenGL.GL gl)
+    private static SceneObject? LoadEmbeddedCameraModel(Silk.NET.OpenGL.GL gl, string fileName)
     {
-        const string resourceName = "MineImatorSimplyRemade.assets.mesh.Camera.glb";
+        string resourceName = $"MineImatorSimplyRemade.assets.mesh.{fileName}";
         var asm = System.Reflection.Assembly.GetExecutingAssembly();
         using var stream = asm.GetManifestResourceStream(resourceName);
         if (stream == null)
         {
-            Console.Error.WriteLine("[SpawnMenu] Embedded Camera.glb not found.");
+            Console.Error.WriteLine($"[SpawnMenu] Embedded {fileName} not found.");
             return null;
         }
 
         // Write to a temp file so Assimp can load it.
-        string tempPath = System.IO.Path.Combine(
-            System.IO.Path.GetTempPath(), "MineImatorSimplyRemade_Camera.glb");
+        string tempName = $"MineImatorSimplyRemade_{Path.GetFileNameWithoutExtension(fileName)}.glb";
+        string tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), tempName);
         using (var fs = System.IO.File.Create(tempPath))
             stream.CopyTo(fs);
 

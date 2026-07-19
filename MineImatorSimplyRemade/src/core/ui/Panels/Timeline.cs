@@ -1261,11 +1261,17 @@ public class Timeline : UiPanel
             "light.energy", "light.range", "light.indirect_energy", "light.specular",
             "light.color.r", "light.color.g", "light.color.b",
         };
+        string[] cameraPaths =
+        {
+            "camera.active",
+        };
 
         foreach (var obj in objects)
         {
             if (obj == null || obj.Keyframes.Count == 0) continue;
-            var paths = obj is LightSceneObject ? standardPaths.Concat(lightPaths) : standardPaths;
+            var paths = obj is LightSceneObject   ? standardPaths.Concat(lightPaths)
+                      : obj is CameraSceneObject  ? standardPaths.Concat(cameraPaths)
+                      : standardPaths;
             foreach (var path in paths)
                 if (obj.Keyframes.ContainsKey(path) && obj.Keyframes[path].Count > 0)
                     LoadKeyframesFromObject(obj, path);
@@ -1336,8 +1342,8 @@ public class Timeline : UiPanel
             return TryConvertKeyframeValue(prev.Value, out float prevDirect) ? prevDirect : null;
 
         // Between two keyframes — interpolate.
-        // "visible" and "instant" use the previous keyframe's value with no blending.
-        if (path == "visible" || prev.InterpolationType == "instant")
+        // "visible", "camera.active" and "instant" use the previous keyframe's value with no blending.
+        if (path == "visible" || path == "camera.active" || prev.InterpolationType == "instant")
             return TryConvertKeyframeValue(prev.Value, out float prevInstant) ? prevInstant : null;
 
         if (!TryConvertKeyframeValue(prev.Value, out float pv) || !TryConvertKeyframeValue(next.Value, out float nv))
@@ -1476,6 +1482,10 @@ public class Timeline : UiPanel
                             _                 => 0f,
                         };
                     break;
+                case "camera":
+                    if (comp == "active" && obj is CameraSceneObject camAct)
+                        return camAct.Active ? 1f : 0f;
+                    break;
             }
         }
         else if (parts.Length == 3 && parts[0] == "light" && parts[1] == "color" && obj is LightSceneObject lco)
@@ -1578,6 +1588,17 @@ public class Timeline : UiPanel
                             case "indirect_energy": lo.LightIndirectEnergy = value; break;
                             case "specular":        lo.LightSpecular       = value; break;
                         }
+                    }
+                    break;
+
+                case "camera":
+                    if (comp == "active" && obj is CameraSceneObject camSet)
+                    {
+                        bool shouldBeActive = value >= 0.5f;
+                        if (shouldBeActive)
+                            CameraSceneObject.SetActiveExclusive(camSet);
+                        else
+                            camSet.Active = false;
                     }
                     break;
             }
@@ -1708,6 +1729,23 @@ public class Timeline : UiPanel
                     {
                         _displayRows.Add(MakeSingle(obj, label, path, indent));
                     }
+                }
+            }
+
+            // Camera properties
+            if (obj is CameraSceneObject)
+            {
+                var cameraProps = new[]
+                {
+                    (label: "Active", path: "camera.active", parent: "", indent: 0),
+                };
+
+                foreach (var (label, path, parent, indent) in cameraProps)
+                {
+                    bool hasKeyframes = propsWithKeyframes.Contains(path);
+                    if (!hasKeyframes) continue;
+
+                    _displayRows.Add(MakeSingle(obj, label, path, indent));
                 }
             }
         }

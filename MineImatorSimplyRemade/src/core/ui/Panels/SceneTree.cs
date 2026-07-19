@@ -136,6 +136,23 @@ public class SceneTree : UiPanel
                     _contextMenuTarget = null;
                 }
 
+                if (_contextMenuTarget is CameraSceneObject cam)
+                {
+                    string activeLabel = cam.Active ? "Clear Active Camera" : "Set as Active Camera";
+                    if (ImGui.MenuItem(activeLabel))
+                    {
+                        if (cam.Active)
+                        {
+                            cam.Active = false;
+                        }
+                        else
+                        {
+                            CameraSceneObject.SetActiveExclusive(cam);
+                        }
+                        _contextMenuTarget = null;
+                    }
+                }
+
                 if (ImGui.MenuItem("Delete"))
                 {
                     DeleteObject(_contextMenuTarget);
@@ -445,6 +462,14 @@ public class SceneTree : UiPanel
                     Near = cam.Near,
                     Far  = cam.Far
                 };
+                // Duplicates always start inactive so only one camera can be
+                // active at a time.  We still copy the visual set lists so
+                // RefreshActiveMesh can hide the right meshes.
+                foreach (var mesh in cam.InactiveVisuals)
+                    ((CameraSceneObject)dup).InactiveVisuals.Add(mesh);
+                foreach (var mesh in cam.ActiveVisuals)
+                    ((CameraSceneObject)dup).ActiveVisuals.Add(mesh);
+                ((CameraSceneObject)dup).RefreshActiveMesh();
                 break;
 
             default:

@@ -184,6 +184,7 @@ public class ProjectSceneObjectEntry
     public float CameraFov { get; set; } = 70f;
     public float CameraNear { get; set; } = 0.05f;
     public float CameraFar { get; set; } = 4000f;
+    public bool CameraActive { get; set; } = false;
 
     // Light-specific data
     public ProjectVec4 LightColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f, W = 1f };
