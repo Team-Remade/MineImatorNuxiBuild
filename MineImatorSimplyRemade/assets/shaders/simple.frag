@@ -32,6 +32,9 @@ uniform vec3  uPointLightColor[MAX_POINT_LIGHTS];
 uniform float uPointLightRange[MAX_POINT_LIGHTS];
 uniform float uPointLightEnergy[MAX_POINT_LIGHTS];
 uniform int   uPointLightShadowIndex[MAX_POINT_LIGHTS];
+uniform vec3  uPointLightDir[MAX_POINT_LIGHTS];          // forward (only used by spot lights)
+uniform float uPointLightSpotCosOuter[MAX_POINT_LIGHTS]; // cos(half-angle of inner cone); 0 = point light
+uniform float uPointLightSpotCosInner[MAX_POINT_LIGHTS]; // cos(half-angle of outer cone); 0 = point light
 uniform samplerCube uPointShadowMaps[MAX_POINT_SHADOWS];
 
 out vec4 FragColor;
@@ -115,11 +118,31 @@ void main() {
         float attenuation = clamp(1.0 - (dist / range), 0.0, 1.0);
         attenuation *= attenuation;
 
+        // Spot-light cone attenuation.  uPointLightSpotCosOuter == 0 means
+        // this is a point light → the cone factor is always 1.
+        float spot = 1.0;
+        if (uPointLightSpotCosOuter[i] > 0.0) {
+            // The light's forward direction is uPointLightDir[i]; the vector
+            // from the light to the fragment is toLight.  We want the angle
+            // between -toLight and the forward direction.
+            vec3  toFragDir   = toLight / max(dist, 0.0001);
+            float cosToFrag   = dot(-toFragDir, uPointLightDir[i]);
+            if (cosToFrag <= uPointLightSpotCosInner[i]) {
+                continue;   // outside the outer cone → no contribution
+            }
+            if (cosToFrag < uPointLightSpotCosOuter[i]) {
+                // Soft falloff inside the blend band.
+                float t = (cosToFrag - uPointLightSpotCosInner[i])
+                        / max(uPointLightSpotCosOuter[i] - uPointLightSpotCosInner[i], 0.0001);
+                spot = smoothstep(0.0, 1.0, t);
+            }
+        }
+
         vec3 lightDir  = normalize(toLight);
         float diffFact = max(dot(norm, lightDir), 0.0);
         float pointShadow = calculatePointShadow(uPointLightShadowIndex[i], vFragPos, uPointLightPos[i], range, norm, lightDir);
 
-        pointLightSum += uPointLightColor[i] * diffFact * attenuation * uPointLightEnergy[i] * (1.0 - pointShadow);
+        pointLightSum += uPointLightColor[i] * diffFact * attenuation * spot * uPointLightEnergy[i] * (1.0 - pointShadow);
     }
 
     // Discard fully-transparent fragments so they don't write to the depth

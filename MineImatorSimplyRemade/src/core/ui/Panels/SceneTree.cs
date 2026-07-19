@@ -446,12 +446,15 @@ public class SceneTree : UiPanel
             case LightSceneObject light:
                 dup = new LightSceneObject
                 {
-                    LightColor          = light.LightColor,
-                    LightEnergy         = light.LightEnergy,
-                    LightRange          = light.LightRange,
+                    Type               = light.Type,
+                    LightColor         = light.LightColor,
+                    LightEnergy        = light.LightEnergy,
+                    LightRange         = light.LightRange,
                     LightIndirectEnergy = light.LightIndirectEnergy,
-                    LightSpecular       = light.LightSpecular,
-                    LightShadowEnabled  = light.LightShadowEnabled
+                    LightSpecular      = light.LightSpecular,
+                    LightShadowEnabled = light.LightShadowEnabled,
+                    LightSpotAngle     = light.LightSpotAngle,
+                    LightSpotBlend     = light.LightSpotBlend
                 };
                 break;
 

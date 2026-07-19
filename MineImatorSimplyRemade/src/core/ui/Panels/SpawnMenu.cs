@@ -196,7 +196,7 @@ public class SpawnMenu : UiPanel
         _categories = new Dictionary<string, List<string>>
         {
             { "Camera",     new List<string> { "Camera" } },
-            { "Light",      new List<string> { "Point Light" } },
+            { "Light",      new List<string> { "Point Light", "Spot Light" } },
             {
                 "Primitives", new List<string>
                 {
@@ -3966,7 +3966,7 @@ public class SpawnMenu : UiPanel
                 break;
 
             case "Light":
-                SpawnLightObject(fullName);
+                SpawnLightObject(fullName, objectName);
                 break;
 
             case "Custom Models":
@@ -4251,15 +4251,18 @@ public class SpawnMenu : UiPanel
     }
 
     /// <summary>Creates and registers a <see cref="LightSceneObject"/> in the viewport.</summary>
-    public LightSceneObject? SpawnLightObject(string objectName)
+    public LightSceneObject? SpawnLightObject(string objectName, string lightKind = "Point Light")
     {
         if (Viewport == null) return null;
+
+        var type = lightKind == "Spot Light" ? LightType.Spot : LightType.Point;
 
         var obj = new LightSceneObject
         {
             Name          = objectName,
-            ObjectType    = "Point Light",
+            ObjectType    = lightKind,
             SpawnCategory = "Light",
+            Type          = type,
             Position      = vec3.Zero,
             PivotOffset   = vec3.Zero,
         };

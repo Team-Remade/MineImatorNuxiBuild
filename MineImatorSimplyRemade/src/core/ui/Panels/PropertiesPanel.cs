@@ -1018,8 +1018,10 @@ public class PropertiesPanel : UiPanel
         }
 
         // ── Rotation ──────────────────────────────────────────────────────────
-        // Point lights cannot have rotation (they're omni-directional)
-        bool canRotate = !(_currentObject is LightSceneObject);
+        // Point lights cannot have rotation (they're omni-directional); spot
+        // lights use rotation to aim the cone so they are rotatable.
+        bool canRotate = _currentObject is not LightSceneObject rotLight ||
+                         rotLight.Type == LightType.Spot;
         if (canRotate && ImGui.CollapsingHeader("Rotation (degrees)"))
         {
             bool inheritRot = _currentObject.InheritRotation;
@@ -1662,6 +1664,17 @@ public class PropertiesPanel : UiPanel
         {
             if (ImGui.CollapsingHeader("Light"))
             {
+                // Light type (point / spot)
+                {
+                    string[] typeOptions = { "Point", "Spot" };
+                    int currentType = (int)light.Type;
+                    if (ImGui.Combo("Type##lightType", ref currentType, typeOptions, typeOptions.Length))
+                    {
+                        light.Type = (LightType)currentType;
+                        Timeline?.RecordAutoKeyframe(_currentObject, "light.type");
+                    }
+                }
+
                 // Color
                 {
                     var lc   = light.LightColor;
@@ -1746,17 +1759,40 @@ public class PropertiesPanel : UiPanel
                         light.LightShadowEnabled = shadow;
                 }
 
+                // Spot-only properties
+                if (light.Type == LightType.Spot)
+                {
+                    float angle = light.LightSpotAngle;
+                    if (ImGui.SliderFloat("Spot Angle##lightSpotAngle", ref angle, 1f, 170f))
+                    {
+                        light.LightSpotAngle = angle;
+                        light.LightSpotBlend = Math.Min(light.LightSpotBlend, angle * 0.5f);
+                        Timeline?.RecordAutoKeyframe(_currentObject, "light.spot_angle");
+                    }
+
+                    float blend = light.LightSpotBlend;
+                    float maxBlend = Math.Max(0f, light.LightSpotAngle * 0.5f);
+                    if (ImGui.SliderFloat("Spot Blend##lightSpotBlend", ref blend, 0f, maxBlend))
+                    {
+                        light.LightSpotBlend = blend;
+                        Timeline?.RecordAutoKeyframe(_currentObject, "light.spot_blend");
+                    }
+                }
+
                 ImGui.Spacing();
 
                 // Reset light
                 if (ImGui.Button("Reset Light"))
                 {
+                    light.Type               = LightType.Point;
                     light.LightEnergy         = 1f;
                     light.LightRange          = 5f;
                     light.LightIndirectEnergy = 1f;
                     light.LightSpecular       = 0.5f;
                     light.LightShadowEnabled  = true;
                     light.LightColor          = new vec4(1f, 1f, 1f, 1f);
+                    light.LightSpotAngle      = 45f;
+                    light.LightSpotBlend      = 5f;
                 }
             }
         }

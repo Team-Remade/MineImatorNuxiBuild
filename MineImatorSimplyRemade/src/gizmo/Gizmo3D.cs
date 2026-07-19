@@ -484,14 +484,16 @@ public class Gizmo3D : IDisposable
 
     /// <summary>
     /// Returns true if all selected objects can be rotated.
-    /// Rotation is disabled for LightSceneObject instances.
+    /// Rotation is disabled for point lights (omni-directional, no orientation)
+    /// but enabled for spot lights, which use rotation to aim the cone.
     /// </summary>
     private bool CanRotateSelection()
     {
         if (_selections.Count == 0) return false;
         foreach (var selection in _selections)
         {
-            if (selection.Object is MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.LightSceneObject)
+            if (selection.Object is MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.LightSceneObject light &&
+                light.Type != MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.LightType.Spot)
                 return false;
         }
         return true;

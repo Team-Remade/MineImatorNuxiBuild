@@ -353,11 +353,30 @@ public class Mesh : IDisposable
     // ── Point light data (set by Viewport before each draw call) ─────────────
 
     /// <summary>
-    /// Point lights active in the scene.  Set by <c>Viewport</c> before calling
+    /// Lights active in the scene.  Set by <c>Viewport</c> before calling
     /// <see cref="Render"/> so the shader receives per-frame lighting data.
-    /// Each entry: (world position, RGB colour, range, energy).
+    /// Each entry:
+    ///   pos               – world position of the light
+    ///   color             – RGB colour
+    ///   range             – maximum influence distance
+    ///   energy            – overall brightness multiplier
+    ///   shadowIndex       – which point-shadow cubemap to sample (-1 = none)
+    ///   direction         – unit forward direction in world space (only used by spot lights;
+    ///                       (0,0,0) for point lights)
+    ///   spotCosOuterAngle – cosine of the outer (full-intensity) spot-cone half-angle;
+    ///                       0 for point lights (disables the cone test in the shader)
+    ///   spotCosInnerAngle – cosine of the inner (zero-intensity) spot-cone half-angle;
+    ///                       0 for point lights
     /// </summary>
-    public static readonly List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex)> PointLights = new();
+    public static readonly List<(
+        vec3 pos,
+        vec3 color,
+        float range,
+        float energy,
+        int   shadowIndex,
+        vec3  direction,
+        float spotCosOuterAngle,
+        float spotCosInnerAngle)> PointLights = new();
 
     /// <summary>
     /// Global ambient light colour for lit meshes.
@@ -478,12 +497,15 @@ public class Mesh : IDisposable
         SetUniformInt("uPointLightCount", lightCount);
         for (int i = 0; i < lightCount; i++)
         {
-            var (lpos, lcol, lrange, lenergy, lshadowIndex) = PointLights[i];
+            var (lpos, lcol, lrange, lenergy, lshadowIndex, ldir, lspotOuter, lspotInner) = PointLights[i];
             SetUniformVec3($"uPointLightPos[{i}]",   lpos);
             SetUniformVec3($"uPointLightColor[{i}]", lcol);
             SetUniformFloat($"uPointLightRange[{i}]",  lrange);
             SetUniformFloat($"uPointLightEnergy[{i}]", lenergy);
             SetUniformInt($"uPointLightShadowIndex[{i}]", lshadowIndex);
+            SetUniformVec3($"uPointLightDir[{i}]", ldir);
+            SetUniformFloat($"uPointLightSpotCosOuter[{i}]", lspotOuter);
+            SetUniformFloat($"uPointLightSpotCosInner[{i}]", lspotInner);
         }
 
         // ── Animation UV offset ───────────────────────────────────────────────

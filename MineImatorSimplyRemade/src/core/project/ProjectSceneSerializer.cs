@@ -179,6 +179,9 @@ public static class ProjectSceneSerializer
             entry.LightIndirectEnergy = light.LightIndirectEnergy;
             entry.LightSpecular = light.LightSpecular;
             entry.LightShadowEnabled = light.LightShadowEnabled;
+            entry.LightType = (int)light.Type;
+            entry.LightSpotAngle = light.LightSpotAngle;
+            entry.LightSpotBlend = light.LightSpotBlend;
         }
 
         foreach (var child in obj.Children)
@@ -381,6 +384,9 @@ public static class ProjectSceneSerializer
             light.LightIndirectEnergy = entry.LightIndirectEnergy;
             light.LightSpecular = entry.LightSpecular;
             light.LightShadowEnabled = entry.LightShadowEnabled;
+            light.Type = (LightType)entry.LightType;
+            light.LightSpotAngle = entry.LightSpotAngle;
+            light.LightSpotBlend = entry.LightSpotBlend;
         }
     }
 

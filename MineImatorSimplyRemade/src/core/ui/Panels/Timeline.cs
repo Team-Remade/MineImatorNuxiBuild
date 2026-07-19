@@ -1267,6 +1267,7 @@ public class Timeline : UiPanel
         {
             "light.energy", "light.range", "light.indirect_energy", "light.specular",
             "light.color.r", "light.color.g", "light.color.b",
+            "light.spot_angle", "light.spot_blend",
         };
         string[] cameraPaths =
         {
@@ -1486,6 +1487,8 @@ public class Timeline : UiPanel
                             "range"           => lo.LightRange,
                             "indirect_energy" => lo.LightIndirectEnergy,
                             "specular"        => lo.LightSpecular,
+                            "spot_angle"      => lo.LightSpotAngle,
+                            "spot_blend"      => lo.LightSpotBlend,
                             _                 => 0f,
                         };
                     break;
@@ -1594,6 +1597,8 @@ public class Timeline : UiPanel
                             case "range":           lo.LightRange          = value; break;
                             case "indirect_energy": lo.LightIndirectEnergy = value; break;
                             case "specular":        lo.LightSpecular       = value; break;
+                            case "spot_angle":      lo.LightSpotAngle      = value; break;
+                            case "spot_blend":      lo.LightSpotBlend      = value; break;
                         }
                     }
                     break;
@@ -1782,6 +1787,8 @@ public class Timeline : UiPanel
             _displayRows.Add(MakeSingle(obj, "Light Range",     "light.range"));
             _displayRows.Add(MakeSingle(obj, "Indirect Energy", "light.indirect_energy"));
             _displayRows.Add(MakeSingle(obj, "Specular",        "light.specular"));
+            _displayRows.Add(MakeSingle(obj, "Spot Angle",      "light.spot_angle"));
+            _displayRows.Add(MakeSingle(obj, "Spot Blend",      "light.spot_blend"));
             _displayRows.Add(MakeGroup(obj,  "Light Color",     new[] { "light.color.r", "light.color.g", "light.color.b" }));
             _displayRows.Add(MakeSingle(obj, "R",               "light.color.r", 1));
             _displayRows.Add(MakeSingle(obj, "G",               "light.color.g", 1));

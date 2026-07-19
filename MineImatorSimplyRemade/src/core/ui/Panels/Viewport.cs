@@ -1181,6 +1181,111 @@ public class Viewport : UiPanel
             RenderLightRangeIndicatorsRecursive(child, view, proj, posLoc, rangeLoc, colorLoc, sm);
     }
 
+    // ── Spot-light coverage indicators ────────────────────────────────────────
+
+    /// <summary>
+    /// Draws the spot-light editor representation.  Unselected spot lights
+    /// receive a thin "stick" along their forward axis so the user can see
+    /// the aim direction; selected spot lights receive a procedurally generated
+    /// cone showing the full coverage area.  Both are drawn with depth-test
+    /// always + no depth writes so they remain visible through geometry.
+    /// Uses the same flat-colour gizmo shader as bone indicators / range rings.
+    /// </summary>
+    private unsafe void RenderSpotLightIndicators(mat4 view, mat4 proj)
+    {
+        if (_boneShader == null) return;
+        if (LightSceneObject.SharedSpotConeMesh == null ||
+            LightSceneObject.SharedSpotStickMesh == null) return;
+
+        var sm = SelectionManager.Instance;
+
+        uint prog = _boneShader.ShaderProgram;
+        Gl.UseProgram(prog);
+
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Always);
+        Gl.DepthMask(false);
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Enable(GLEnum.Blend);
+        Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+
+        int mvpLoc   = Gl.GetUniformLocation(prog, "uMVP");
+        int colorLoc = Gl.GetUniformLocation(prog, "uColor");
+
+        foreach (var root in SceneObjects)
+            RenderSpotLightIndicatorsRecursive(root, view, proj, mvpLoc, colorLoc, sm);
+
+        Gl.DepthMask(true);
+        Gl.DepthFunc(GLEnum.Less);
+        Gl.Enable(GLEnum.CullFace);
+        Gl.Disable(GLEnum.Blend);
+    }
+
+    private unsafe void RenderSpotLightIndicatorsRecursive(
+        SceneObject obj, mat4 view, mat4 proj,
+        int mvpLoc, int colorLoc, SelectionManager? sm)
+    {
+        if (!obj.GetEffectiveVisibility()) return;
+
+        if (obj is LightSceneObject light && light.Type == LightType.Spot)
+        {
+            mat4 world    = obj.GetWorldMatrix();
+            float range   = MathF.Max(0.01f, light.LightRange);
+            float halfAng = MathF.Max(0.1f, light.LightSpotAngle * 0.5f);
+            float tanHalf = MathF.Tan(glm.Radians(halfAng));
+            float baseR   = range * tanHalf;
+
+            // The light's local +Z is the cone / stick aim direction; the world
+            // matrix already encodes the rotation, so scaling the model matrix
+            // by (baseR, baseR, range) and then applying view+proj gives a
+            // correctly oriented cone in world space.
+            mat4 scale = mat4.Scale(new vec3(baseR, baseR, range));
+
+            if (sm != null && sm.SelectedObjects.Contains(obj))
+            {
+                // Selected: draw the full cone (alpha 0.25 so interior is see-through).
+                mat4 mvp = proj * view * world * scale;
+                UploadFlatMVP(mvpLoc, mvp);
+                if (colorLoc >= 0)
+                    Gl.Uniform4(colorLoc,
+                        light.LightColor.x,
+                        light.LightColor.y,
+                        light.LightColor.z,
+                        0.25f);
+                LightSceneObject.SharedSpotConeMesh!.RenderPickPass(Gl);
+            }
+            else
+            {
+                // Unselected: draw a thin stick along the aim direction.
+                mat4 mvp = proj * view * world * scale;
+                UploadFlatMVP(mvpLoc, mvp);
+                if (colorLoc >= 0)
+                    Gl.Uniform4(colorLoc,
+                        light.LightColor.x,
+                        light.LightColor.y,
+                        light.LightColor.z,
+                        1f);
+                LightSceneObject.SharedSpotStickMesh!.RenderPickPass(Gl);
+            }
+        }
+
+        foreach (var child in obj.Children)
+            RenderSpotLightIndicatorsRecursive(child, view, proj, mvpLoc, colorLoc, sm);
+    }
+
+    private unsafe void UploadFlatMVP(int mvpLoc, mat4 mvp)
+    {
+        if (mvpLoc < 0) return;
+        float[] f =
+        {
+            mvp.m00, mvp.m01, mvp.m02, mvp.m03,
+            mvp.m10, mvp.m11, mvp.m12, mvp.m13,
+            mvp.m20, mvp.m21, mvp.m22, mvp.m23,
+            mvp.m30, mvp.m31, mvp.m32, mvp.m33,
+        };
+        fixed (float* p = f) Gl.UniformMatrix4(mvpLoc, 1, false, p);
+    }
+
     /// <summary>
     /// Renders light billboards and bone indicators into the currently bound FBO
     /// using the supplied camera matrices.  Called by <see cref="CameraViewport"/>
@@ -1210,6 +1315,15 @@ public class Viewport : UiPanel
         Gl.CullFace(GLEnum.Back);
 
         RenderLightRangeIndicators(view, proj);
+
+        // Restore state that range indicators may have altered.
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Less);
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
+
+        // Spot-light coverage indicators (cone when selected, stick when unselected).
+        RenderSpotLightIndicators(view, proj);
     }
 
     /// <summary>
@@ -1813,6 +1927,17 @@ public class Viewport : UiPanel
             Gl.Enable(GLEnum.CullFace);
             Gl.CullFace(GLEnum.Back);
             RenderLightRangeIndicators(view, proj);
+
+            // ── Spot-light coverage indicators ─────────────────────────────────────
+            // Drawn after the range ring so the cone / stick stack on top.  Shown
+            // in both rendered and unrendered modes so the user can always see
+            // the spot light's aim / coverage; the billboard for spot lights is
+            // skipped below to avoid visual clutter.
+            Gl.Enable(GLEnum.DepthTest);
+            Gl.DepthFunc(GLEnum.Less);
+            Gl.Enable(GLEnum.CullFace);
+            Gl.CullFace(GLEnum.Back);
+            RenderSpotLightIndicators(view, proj);
 
             // ── Selection highlight: Sobel edge detection ─────────────────────────
             // Pass 1: stamp flat-white silhouette mask into _silhouetteFbo.
@@ -2750,6 +2875,10 @@ public class Viewport : UiPanel
     /// <summary>
     /// Recursively walks <paramref name="objects"/> and appends every visible
     /// <see cref="LightSceneObject"/> to <see cref="Mesh.PointLights"/>.
+    /// For spot lights the light's world-space forward direction is computed
+    /// by rotating the local -Z axis by the world rotation; for point lights
+    /// the direction is (0,0,0) and the spot-cosines are 0, which the shader
+    /// interprets as "no cone test".
     /// </summary>
     private static void CollectPointLights(IEnumerable<SceneObject> objects, Dictionary<LightSceneObject, int> shadowIndices)
     {
@@ -2763,7 +2892,35 @@ public class Viewport : UiPanel
                 var pos    = new vec3(world.m30, world.m31, world.m32);
                 var col    = new vec3(light.LightColor.x, light.LightColor.y, light.LightColor.z);
                 int shadowIndex = shadowIndices.TryGetValue(light, out int index) ? index : -1;
-                Mesh.PointLights.Add((pos, col, light.LightRange, light.LightEnergy, shadowIndex));
+
+                vec3  dir          = vec3.Zero;
+                float spotOuterCos = 0f;
+                float spotInnerCos = 0f;
+
+                if (light.Type == LightType.Spot)
+                {
+                    // Use the same world matrix multiplication that the cone/stick
+                    // use so the lighting direction exactly matches the visual.
+                    // The mesh is built along local +Z, so the world-space aim is
+                    // world * (0,0,1,0) (ignoring the translation column).
+                    vec4 worldForwardH = world * new vec4(0f, 0f, 1f, 0f);
+                    vec3 worldDir = new vec3(worldForwardH.x, worldForwardH.y, worldForwardH.z);
+                    float len = worldDir.Length;
+                    dir = len > 0.0001f ? worldDir / len : new vec3(0f, 0f, 1f);
+
+                    // LightSpotAngle is the FULL cone angle in degrees; the
+                    // shader uses cosine of the half-angle.  Blend is the
+                    // soft-edge band in degrees, also relative to the half-angle.
+                    float halfAngleDeg = Math.Clamp(light.LightSpotAngle * 0.5f, 0f, 89.9f);
+                    float blendDeg     = Math.Clamp(light.LightSpotBlend, 0f, halfAngleDeg);
+                    float innerDeg     = halfAngleDeg + blendDeg;   // fully off outside this
+                    spotOuterCos = MathF.Cos(glm.Radians(halfAngleDeg));
+                    spotInnerCos = MathF.Cos(glm.Radians(Math.Min(innerDeg, 89.9f)));
+                }
+
+                Mesh.PointLights.Add((
+                    pos, col, light.LightRange, light.LightEnergy, shadowIndex,
+                    dir, spotOuterCos, spotInnerCos));
             }
 
             CollectPointLights(obj.Children, shadowIndices);

@@ -199,6 +199,10 @@ public class ProjectSceneObjectEntry
     public float LightIndirectEnergy { get; set; } = 1f;
     public float LightSpecular { get; set; } = 0.5f;
     public bool LightShadowEnabled { get; set; } = true;
+    // 0 = point, 1 = spot.  Stored as int for forward compatibility.
+    public int LightType { get; set; } = 0;
+    public float LightSpotAngle { get; set; } = 45f;
+    public float LightSpotBlend { get; set; } = 5f;
 
     public Dictionary<string, List<ProjectKeyframeEntry>> Keyframes { get; set; } = new();
 
