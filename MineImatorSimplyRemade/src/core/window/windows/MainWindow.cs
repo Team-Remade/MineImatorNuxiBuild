@@ -307,6 +307,9 @@ public class MainWindow : Window
         TerrainAtlas.Initialize(gl, (value, detail) => ReportStep(3, "Uploading block textures", "Building terrain atlas...", value, detail));
         ReportStep(3, "Uploading block textures", "Terrain atlas ready.", 1f, $"{TerrainAtlas.Textures.Count} texture(s) available");
 
+        CtmAtlas.Initialize(gl);
+        ReportStep(3, "Loading connected textures", "CTM ready.", 1f, "Connected texture support initialized");
+
         ItemsAtlas.Initialize(gl, (value, detail) => ReportStep(4, "Uploading item textures", "Building item atlas...", value, detail));
         ReportStep(4, "Uploading item textures", "Item atlas ready.", 1f, $"{ItemsAtlas.Textures.Count} tile(s) available");
 

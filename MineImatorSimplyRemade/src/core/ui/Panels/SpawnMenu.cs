@@ -710,7 +710,7 @@ public class SpawnMenu : UiPanel
         if (!string.IsNullOrEmpty(variant.CemPath))
             built = CemLoader.Load(Gl, variant.CemPath, BlockRegistry.VersionRoot, textureSourceId);
         else if (resolved != null)
-            built = MinecraftModelMesh.Build(Gl, resolved, variant.RotationX, variant.RotationY, textureSourceId);
+            built = MinecraftModelMesh.Build(Gl, resolved, variant.RotationX, variant.RotationY, textureSourceId, "");
         else
             built = new List<Mesh>
             {
@@ -4509,6 +4509,7 @@ public class SpawnMenu : UiPanel
             meshes = CemLoader.Load(Gl!, variant.CemPath, BlockRegistry.VersionRoot, resourcePackId);
         else if (resolved != null)
             meshes = MinecraftModelMesh.Build(Gl!, resolved, variant.RotationX, variant.RotationY, resourcePackId,
+                                              obj.ObjectType,
                                               tileX, tileY, tileZ);
         else
             meshes = new List<Mesh> { MinecraftModelMesh.BuildTexturedFallbackCube(Gl!, null,

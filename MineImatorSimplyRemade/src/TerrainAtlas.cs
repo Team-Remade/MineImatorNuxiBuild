@@ -182,13 +182,15 @@ public static class TerrainAtlas
     {
         if (_gl == null) return;
 
-        var mcmetaByPath = MinecraftDataLoader
-            .EnumerateResourcePackFiles("assets", ".png.mcmeta", (_, containerName, current, total) =>
-            {
-                float ratio = total <= 0 ? 0f : (current - 1) / (float)total;
-                progress?.Invoke(ratio * 0.20f, $"Scanning animation metadata {current}/{total}: {containerName}");
-            })
-            .ToDictionary(f => f.RelativePath, f => MinecraftDataLoader.DecodeUtf8(f.Data), StringComparer.OrdinalIgnoreCase);
+        var mcmetaByPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png.mcmeta", (_, containerName, current, total) =>
+                 {
+                     float ratio = total <= 0 ? 0f : (current - 1) / (float)total;
+                     progress?.Invoke(ratio * 0.20f, $"Scanning animation metadata {current}/{total}: {containerName}");
+                 }))
+        {
+            mcmetaByPath.TryAdd(file.RelativePath, MinecraftDataLoader.DecodeUtf8(file.Data));
+        }
 
         // Add block textures using namespaced keys so default keys stay intact.
         foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/block", ".png", (_, containerName, current, total) =>

@@ -40,6 +40,7 @@ public static class MinecraftModelMesh
     public static List<Mesh> Build(GL gl, ResolvedBlockModel model,
                                    int variantRotX = 0, int variantRotY = 0,
                                    string resourcePackId = "",
+                                   string blockName = "",
                                    int tileX = 1, int tileY = 1, int tileZ = 1)
     {
         tileX = ClampTileCount(tileX);
@@ -52,7 +53,7 @@ public static class MinecraftModelMesh
             // Try to produce a textured cube from whatever textures the model exposes.
             return new List<Mesh>
             {
-                BuildTiledFallbackCube(gl, model, blockNameHint: null,
+                BuildTiledFallbackCube(gl, model, blockNameHint: blockName,
                                        resourcePackId: resourcePackId,
                                        tileX: tileX, tileY: tileY, tileZ: tileZ)
             };
@@ -79,7 +80,7 @@ public static class MinecraftModelMesh
             foreach (var element in model.Elements)
             {
                 AppendElement(element, model, groups, variantTransform, resourcePackId,
-                              tileOffset, tx, ty, tz, tileX, tileY, tileZ);
+                              blockName, tileOffset, tx, ty, tz, tileX, tileY, tileZ);
             }
         }
 
@@ -109,7 +110,7 @@ public static class MinecraftModelMesh
         {
             return new List<Mesh>
             {
-                BuildTiledFallbackCube(gl, model, blockNameHint: null,
+                BuildTiledFallbackCube(gl, model, blockNameHint: blockName,
                                        resourcePackId: resourcePackId,
                                        tileX: tileX, tileY: tileY, tileZ: tileZ)
             };
@@ -408,6 +409,7 @@ public static class MinecraftModelMesh
         Dictionary<string, (List<vec3>, List<vec3>, List<vec2>, uint)> groups,
         mat4 variantTransform,
         string resourcePackId,
+        string blockName,
         vec3 tileOffset,
         int tx, int ty, int tz,
         int tileX, int tileY, int tileZ)
@@ -438,11 +440,25 @@ public static class MinecraftModelMesh
             if (texKey == null) continue;
 
             string resolvedTexKey = ResolveTextureKeyForPack(texKey, resourcePackId);
-            uint texId = TerrainAtlas.Textures.TryGetValue(resolvedTexKey, out uint t)
-                ? t
-                : TerrainAtlas.Textures.TryGetValue(texKey, out t) ? t : 0;
+            uint texId;
+            CtmResolvedTile? ctmTile = CtmResolver.Resolve(blockName, texKey, faceName,
+                                                         tx, ty, tz, tileX, tileY, tileZ,
+                                                         resourcePackId);
 
-            string groupKey = resolvedTexKey;
+            if (ctmTile != null)
+            {
+                texId = ctmTile.TextureId;
+            }
+            else
+            {
+                texId = TerrainAtlas.Textures.TryGetValue(resolvedTexKey, out uint t)
+                    ? t
+                    : TerrainAtlas.Textures.TryGetValue(texKey, out t) ? t : 0;
+            }
+
+            string groupKey = ctmTile != null
+                ? $"ctm:{ctmTile.TextureId}:{ctmTile.TileIndex}"
+                : resolvedTexKey;
             if (!groups.TryGetValue(groupKey, out var group))
             {
                 group = (new List<vec3>(), new List<vec3>(), new List<vec2>(), texId);
@@ -463,6 +479,15 @@ public static class MinecraftModelMesh
             else
             {
                 (uMin, vMin, uMax, vMax) = DefaultUvForFace(faceName, element);
+            }
+
+            // Remap UV into CTM tile sub-region if a CTM tile is being used
+            if (ctmTile != null)
+            {
+                uMin = ctmTile.UMin + uMin * (ctmTile.UMax - ctmTile.UMin);
+                uMax = ctmTile.UMin + uMax * (ctmTile.UMax - ctmTile.UMin);
+                vMin = ctmTile.VMin + vMin * (ctmTile.VMax - ctmTile.VMin);
+                vMax = ctmTile.VMin + vMax * (ctmTile.VMax - ctmTile.VMin);
             }
 
             // Apply face UV rotation
