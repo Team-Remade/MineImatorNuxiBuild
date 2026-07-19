@@ -90,11 +90,11 @@ public class CameraSceneObject : SceneObject
 
     public void SyncTransformFromCamera()
     {
-        Position = ViewCamera.Position;
+        SetLocalPosition(ViewCamera.Position);
 
         // Inverse of SyncCameraToTransform:
         //   Rotation.y =  ViewCamera.Yaw
         //   Rotation.x = -ViewCamera.Pitch  (pitch sign flipped back)
-        Rotation = new GlmSharp.vec3(-ViewCamera.Pitch, ViewCamera.Yaw, 0f);
+        SetLocalRotation(new GlmSharp.vec3(-ViewCamera.Pitch, ViewCamera.Yaw, 0f));
     }
 }
