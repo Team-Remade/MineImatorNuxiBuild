@@ -334,8 +334,11 @@ public class Viewport : UiPanel
     /// </summary>
     public event Action? HideRequested;
 
-    private enum Corner { BottomRight, BottomLeft, TopRight, TopLeft }
+    public enum Corner { BottomRight, BottomLeft, TopRight, TopLeft }
     private Corner _corner = Corner.BottomRight;
+
+    /// <summary>Current corner the inline preview is anchored to.</summary>
+    public Corner InlineCorner => _corner;
 
     private Vector2 _inlineSize = new Vector2(340f, 220f);
     private const float InlineMinW = 160f;
@@ -1985,8 +1988,78 @@ public class Viewport : UiPanel
         // Draw after other viewport UI so the fly-speed badge stays readable.
         RenderFreeFlySpeedOverlay(imageMin, imageSize);
 
+        // FPS badge, only in rendered (high-quality) mode, in a corner the
+        // preview viewport isn't already occupying.
+        if (HighQualityPreviewEnabled)
+            RenderFpsOverlay(imageMin, imageSize, PickFpsCornerAvoidingPreview());
+
         ImGui.EndChild();
         ImGui.End();
+    }
+
+    /// <summary>
+    /// Draws a small framed "FPS: nn" badge in the requested corner of the
+    /// given image area. Used to indicate performance in whichever viewport
+    /// is currently in rendered (high-quality) mode.
+    /// </summary>
+    public void RenderFpsOverlay(Vector2 imageMin, Vector2 imageSize, Corner corner)
+    {
+        if (imageSize.X < 1f || imageSize.Y < 1f) return;
+
+        float fps = ImGui.GetIO().Framerate;
+        if (fps <= 0f) return;
+
+        string label = $"FPS: {fps:0}";
+        Vector2 textSize = ImGui.CalcTextSize(label);
+
+        const float margin = 10f;
+        const float padX = 10f;
+        const float padY = 6f;
+
+        Vector2 boxSize = new(textSize.X + padX * 2f, textSize.Y + padY * 2f);
+
+        float boxX = corner switch
+        {
+            Corner.BottomLeft or Corner.TopLeft => imageMin.X + margin,
+            _ => imageMin.X + imageSize.X - boxSize.X - margin,
+        };
+        float boxY = corner switch
+        {
+            Corner.TopLeft or Corner.TopRight => imageMin.Y + margin,
+            _ => imageMin.Y + imageSize.Y - boxSize.Y - margin,
+        };
+
+        Vector2 boxMin = new(boxX, boxY);
+        Vector2 boxMax = new(boxMin.X + boxSize.X, boxMin.Y + boxSize.Y);
+        Vector2 textPos = new(boxMin.X + padX, boxMin.Y + padY);
+
+        var fg = ImGui.GetForegroundDrawList();
+        uint bgColor     = ImGui.ColorConvertFloat4ToU32(new Vector4(0.05f, 0.05f, 0.05f, 0.86f));
+        uint borderColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.45f, 0.75f, 0.95f, 0.95f));
+        uint textColor   = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 1f));
+
+        fg.AddRectFilled(boxMin, boxMax, bgColor, 6f);
+        fg.AddRect(boxMin, boxMax, borderColor, 6f);
+        fg.AddText(textPos, textColor, label);
+    }
+
+    /// <summary>
+    /// Picks a bottom corner for the main viewport's FPS overlay, avoiding
+    /// the corner currently occupied by the inline preview viewport.
+    /// </summary>
+    private Corner PickFpsCornerAvoidingPreview()
+    {
+        if (PreviewViewport?.IsInlineVisible == true)
+        {
+            return PreviewViewport.InlineCorner switch
+            {
+                Corner.BottomRight => Corner.BottomLeft,
+                Corner.BottomLeft  => Corner.BottomRight,
+                _ => Corner.BottomRight,
+            };
+        }
+
+        return Corner.BottomRight;
     }
 
     private void RenderFreeFlySpeedOverlay(Vector2 imageMin, Vector2 imageSize)
@@ -3494,6 +3567,9 @@ public class Viewport : UiPanel
             // rect of that image for correct screen-space projection).
             if (OverlaysEnabled)
                 Gizmo?.RenderOverlay(activeCam, previewImageMin, previewImageSize);
+
+            if (HighQualityPreviewEnabled)
+                RenderFpsOverlay(previewImageMin, previewImageSize, Corner.BottomRight);
         }
 
         ImGui.End();

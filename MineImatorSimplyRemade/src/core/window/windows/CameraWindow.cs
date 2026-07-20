@@ -194,6 +194,9 @@ public class CameraWindow : Window
             // Gizmo rotation-arc overlay for the undocked window.
             if (_panel.OverlaysEnabled)
                 _panel.Gizmo?.RenderOverlay(activeCam, imageMin, imageSize);
+
+            if (_panel.HighQualityPreviewEnabled)
+                _panel.RenderFpsOverlay(imageMin, imageSize, Viewport.Corner.BottomRight);
         }
 
         ImGui.End();
