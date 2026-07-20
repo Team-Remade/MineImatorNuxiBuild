@@ -1,0 +1,33 @@
+{
+    "default": "",
+    "variants": [
+        {
+            "name": "Demo Man",
+            "file": "demomanbaby.png"
+        },
+        {
+            "name": "Engineer",
+            "file": "engineerbaby.png"
+        },
+        {
+            "name": "Heavy",
+            "file": "heavybaby.png"
+        },
+        {
+            "name": "Medic",
+            "file": "medicbaby.png"
+        },
+		{
+			"name": "Scout",
+			"file": "scoutbaby.png"
+		},
+		{
+			"name": "Sniper",
+			"file": "sniperbaby.png"
+		},
+		{
+			"name": "Spy",
+			"file": "spybaby.png"
+		}
+    ]
+}
