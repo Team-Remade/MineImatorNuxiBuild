@@ -37,6 +37,11 @@ public static class ProjectSceneSerializer
 
         if (timeline != null)
             manifest.Timeline = timeline.ExportProjectState();
+
+        if (timeline != null)
+            manifest.AudioTracks = timeline.AudioTracks
+                .Select(t => t.ManifestEntry)
+                .ToList();
     }
 
     public static void LoadSceneFromManifest(ProjectManifest manifest, Viewport viewport, SpawnMenu spawnMenu, Timeline? timeline = null, PropertiesPanel? propertiesPanel = null)
@@ -66,6 +71,9 @@ public static class ProjectSceneSerializer
         }
 
         timeline?.ImportProjectState(manifest.Timeline);
+
+        if (timeline != null && manifest.AudioTracks != null)
+            timeline.LoadAudioTracksFromManifest(manifest.AudioTracks);
 
         // Keep timeline FPS aligned with project settings after timeline state is restored.
         if (propertiesPanel != null)

@@ -7,6 +7,7 @@ using System.Numerics;
 using System.Text.Json;
 using GlmSharp;
 using Hexa.NET.ImGui;
+using MineImatorSimplyRemade.core.audio;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -37,6 +38,20 @@ public class TimelineProperty
     public bool        IsGroupHeader{ get; set; }
     public string[]    GroupPaths   { get; set; }
     public int         Indent       { get; set; }
+}
+
+/// <summary>
+/// Runtime representation of an audio track on the timeline.  Wraps a
+/// <see cref="ProjectAudioTrack"/> so we can hold playback state (OpenAL
+/// source, decoded clip) without polluting the serialised manifest.
+/// </summary>
+public class TimelineAudioTrack
+{
+    public ProjectAudioTrack ManifestEntry { get; set; } = new();
+    public AudioClip?        Clip          { get; set; }
+    public AudioSourceHandle Source        { get; set; }
+    public bool              IsLoaded      => Clip != null && Source.IsValid;
+    public bool              WasPlaying    { get; set; }
 }
 
 // ── Timeline panel ────────────────────────────────────────────────────────────
@@ -85,6 +100,16 @@ public class Timeline : UiPanel
 
     private readonly List<TimelineKeyframe>                                        _selectedKeyframes = new();
     private readonly Dictionary<TimelineKeyframe, (SceneObject obj, string path)> _keyframeOwners    = new();
+
+    // ── Audio tracks ──────────────────────────────────────────────────────────
+
+    public  IReadOnlyList<TimelineAudioTrack> AudioTracks => _audioTracks;
+    private readonly List<TimelineAudioTrack>  _audioTracks = new();
+
+    private TimelineAudioTrack? _selectedAudioTrack;
+    private bool                _isDraggingAudioClip;
+    private int                 _audioDragStartMouseX;
+    private int                 _audioDragStartFrame;
 
     // ── Drag-keyframe ─────────────────────────────────────────────────────────
 
@@ -150,13 +175,23 @@ public class Timeline : UiPanel
         _currentFrame = Math.Max(0, frame);
         _frameAccumulator = 0.0;
         ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
+        SyncAudioWithPlayback();
     }
 
     public void TogglePlayPause()
     {
         _isPlaying = !_isPlaying;
         if (_isPlaying)
+        {
             _lastTimestamp = Stopwatch.GetTimestamp();
+            // Force every track to restart on the next sync so the audio
+            // re-aligns with the current playhead after a pause.
+            foreach (var t in _audioTracks) t.WasPlaying = false;
+        }
+        else
+        {
+            PauseAllAudio();
+        }
     }
 
     public void SetCurrentFrameForRender(int frame)
@@ -164,6 +199,8 @@ public class Timeline : UiPanel
         _currentFrame = Math.Max(0, frame);
         _frameAccumulator = 0.0;
         ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: true);
+        // Re-sync audio offsets after a render-driven seek.
+        SyncAudioWithPlayback();
     }
 
     public ProjectTimelineState ExportProjectState()
@@ -214,6 +251,7 @@ public class Timeline : UiPanel
     public override void Render()
     {
         UpdatePlayback();
+        SyncAudioWithPlayback();
 
         if (!ImGui.Begin("Timeline"))
         {
@@ -234,10 +272,12 @@ public class Timeline : UiPanel
         float availW = ImGui.GetContentRegionAvail().X;
         float availH = ImGui.GetContentRegionAvail().Y;
         float statusH = ImGui.GetFrameHeightWithSpacing();
-        float tracksH = Math.Max(availH - RulerHeight - ImGui.GetStyle().ItemSpacing.Y - statusH, 60f);
+        float audioH  = RenderAudioTracksHeight();
+        float tracksH = Math.Max(availH - RulerHeight - ImGui.GetStyle().ItemSpacing.Y - statusH - audioH, 60f);
 
         RenderRulerRow(availW);
         RenderTrackArea(availW, tracksH);
+        RenderAudioTracks(availW, audioH);
 
         // ── Global playhead drag (works even when mouse has left the ruler) ───
         if (_isDraggingPlayhead)
@@ -332,6 +372,7 @@ public class Timeline : UiPanel
         {
             _currentFrame = 0;
             _frameAccumulator = 0.0;
+            StopAllAudio();
         }
         if (_currentFrame != prev) ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
     }
@@ -422,8 +463,424 @@ public class Timeline : UiPanel
             _maxFrames = Math.Max(10, _maxFrames);
     }
 
-    private void JumpToStart()          { _currentFrame = 0; _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
-    private void Stop()                 { _isPlaying = false; JumpToStart(); }
+    // ── Audio tracks ──────────────────────────────────────────────────────────
+
+    private const float AudioRowHeight    = 28f;
+    private const float AudioFooterHeight = 24f;
+    private const float AudioControlWidth = 176f;  // vol slider + M + L + X
+
+    private static string TruncateWithEllipsis(string text, float maxWidth)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        if (ImGui.CalcTextSize(text).X <= maxWidth) return text;
+
+        const string ellipsis = "...";
+        float ellipsisWidth = ImGui.CalcTextSize(ellipsis).X;
+        float budget = Math.Max(0f, maxWidth - ellipsisWidth);
+        if (budget <= 0f) return ellipsis;
+
+        int lo = 0, hi = text.Length, best = 0;
+        while (lo <= hi)
+        {
+            int mid = (lo + hi) / 2;
+            if (ImGui.CalcTextSize(text.Substring(0, mid)).X <= budget)
+            {
+                best = mid;
+                lo = mid + 1;
+            }
+            else
+            {
+                hi = mid - 1;
+            }
+        }
+        return text.Substring(0, best) + ellipsis;
+    }
+
+    private float RenderAudioTracksHeight()
+    {
+        // One row per clip + a footer row holding the "+ Add Audio Track" button.
+        return Math.Max(48f, _audioTracks.Count * AudioRowHeight + AudioFooterHeight + 4f);
+    }
+
+    private void RenderAudioTracks(float availW, float audioH)
+    {
+        ImGui.Separator();
+
+        // ── Scrollable track list (no visible scrollbar, synced to keyframe tracks above) ──
+        float footerH = AudioFooterHeight + 2f;
+        float tracksH = Math.Max(0f, audioH - footerH);
+
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
+        ImGui.BeginChild("##audio_tracks", new Vector2(availW, tracksH), ImGuiChildFlags.None,
+            ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+        ImGui.SetScrollX(_hScrollOffset);
+        ImGui.PopStyleVar();
+
+        if (!AudioEngine.Instance.IsInitialized)
+        {
+            var warnDl = ImGui.GetWindowDrawList();
+            var p      = ImGui.GetCursorScreenPos();
+            warnDl.AddText(p, 0xFFFFAA66, "Audio: no OpenAL device available (audio disabled).");
+            ImGui.Dummy(new Vector2(0, RowHeight));
+        }
+
+        float leftW  = LeftColumnWidth;
+        float rightW = Math.Max(0f, availW - leftW);
+
+        var   dl       = ImGui.GetWindowDrawList();
+        var   wPos     = ImGui.GetWindowPos();
+        float scrollX  = ImGui.GetScrollX();
+        float contentW = _maxFrames * _pixelsPerFrame * 1.5f;
+
+        for (int i = 0; i < _audioTracks.Count; i++)
+        {
+            var track = _audioTracks[i];
+            bool selected = _selectedAudioTrack == track;
+            float rowTopY = ImGui.GetCursorPosY();
+
+            ImGui.PushID($"aud_{i}");
+            ImGui.BeginGroup();
+
+            // Compact label — truncate to keep controls on the left column.
+            var labelColor = selected
+                ? new Vector4(0.55f, 0.85f, 1f, 1f)
+                : new Vector4(0.85f, 0.85f, 0.85f, 1f);
+            float labelMaxW = Math.Max(60f, LeftColumnWidth - AudioControlWidth - 12f);
+            string labelText = TruncateWithEllipsis(track.ManifestEntry.DisplayName, labelMaxW);
+            ImGui.TextColored(labelColor, labelText);
+            ImGui.SameLine();
+
+            // Compact volume slider
+            float vol = track.ManifestEntry.Volume;
+            ImGui.SetNextItemWidth(70f);
+            if (ImGui.SliderFloat($"##vol{i}", ref vol, 0f, 1f, "%.2f"))
+            {
+                track.ManifestEntry.Volume = vol;
+                if (track.IsLoaded)
+                    AudioEngine.Instance.SetSourceVolume(track.Source, vol);
+            }
+            ImGui.SameLine();
+
+            bool muted = track.ManifestEntry.Muted;
+            if (ImGui.Checkbox($"M##mute{i}", ref muted))
+            {
+                track.ManifestEntry.Muted = muted;
+                if (track.IsLoaded)
+                    AudioEngine.Instance.SetSourceVolume(track.Source, muted ? 0f : vol);
+            }
+            ImGui.SameLine();
+
+            bool loop = track.ManifestEntry.Loop;
+            if (ImGui.Checkbox($"L##loop{i}", ref loop))
+            {
+                track.ManifestEntry.Loop = loop;
+                if (track.IsLoaded)
+                    AudioEngine.Instance.SetSourceLooping(track.Source, loop);
+            }
+            ImGui.SameLine();
+
+            if (ImGui.SmallButton($"X##rm{i}"))
+            {
+                RemoveAudioTrack(track);
+                ImGui.EndGroup();
+                ImGui.PopID();
+                break;
+            }
+
+            ImGui.EndGroup();
+            ImGui.PopID();
+
+            // Right side: clip rectangle, full row height.
+            Vector2 rightMin  = new Vector2(wPos.X + leftW, wPos.Y + rowTopY);
+            Vector2 rightSize = new Vector2(rightW, AudioRowHeight);
+
+            dl.AddRectFilled(rightMin, rightMin + rightSize,
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0.10f, 0.10f, 0.14f, 1f)));
+
+            int durFrames = (int)Math.Ceiling(track.ManifestEntry.CachedDurationSeconds * _frameRate);
+            if (durFrames <= 0 && track.Clip != null)
+            {
+                durFrames = (int)Math.Ceiling(track.Clip.DurationSeconds * _frameRate);
+                if (durFrames > 0)
+                    track.ManifestEntry.CachedDurationSeconds = (float)track.Clip.DurationSeconds;
+            }
+            if (durFrames < 1) durFrames = 1;
+
+            float clipX0 = rightMin.X + track.ManifestEntry.StartFrame * _pixelsPerFrame - scrollX;
+            float clipX1 = clipX0 + durFrames * _pixelsPerFrame;
+            if (clipX1 >= rightMin.X && clipX0 <= rightMin.X + rightSize.X)
+            {
+                var clipMin = new Vector2(Math.Max(clipX0, rightMin.X), rightMin.Y + 2f);
+                var clipMax = new Vector2(Math.Min(clipX1, rightMin.X + rightSize.X), rightMin.Y + rightSize.Y - 2f);
+                uint clipFill = track.IsLoaded
+                    ? (selected ? 0xFF3377CC : 0xFF2266AA)
+                    : (selected ? 0xFF666677 : 0xFF444455);
+                uint clipEdge = selected ? 0xFF66BBFF : 0xFF4488CC;
+                dl.AddRectFilled(clipMin, clipMax, clipFill, 3f);
+                dl.AddRect(clipMin, clipMax, clipEdge, 3f, ImDrawFlags.RoundCornersAll, 1.5f);
+
+                // Always show the start frame at the left edge of the clip.
+                string label = $"f{track.ManifestEntry.StartFrame}";
+                if (!track.IsLoaded) label += " (decoding)";
+                dl.AddText(clipMin + new Vector2(4f, 4f), 0xFFFFFFFF, label);
+
+                // If very thin, still draw a visible left-edge handle.
+                if (clipMax.X - clipMin.X < 6f)
+                {
+                    dl.AddLine(new Vector2(clipMin.X + 1f, clipMin.Y), new Vector2(clipMin.X + 1f, clipMax.Y), 0xFF66BBFF, 2f);
+                }
+
+                Vector2 mouse = ImGui.GetMousePos();
+                bool mouseInClipArea = mouse.X >= rightMin.X && mouse.X < rightMin.X + rightSize.X
+                                    && mouse.Y >= rightMin.Y && mouse.Y < rightMin.Y + rightSize.Y;
+                if (mouseInClipArea && ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup))
+                {
+                    if (_isDraggingAudioClip)
+                        ImGui.SetTooltip("Dragging audio clip to frame " + track.ManifestEntry.StartFrame);
+                    else
+                        ImGui.SetTooltip("Drag to reposition on timeline");
+
+                    if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                    {
+                        _selectedAudioTrack   = track;
+                        _isDraggingAudioClip  = true;
+                        _audioDragStartMouseX = (int)mouse.X;
+                        _audioDragStartFrame  = track.ManifestEntry.StartFrame;
+                    }
+                    else if (ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+                    {
+                        _selectedAudioTrack = track;
+                        ImGui.OpenPopup($"##audio_ctx_{i}");
+                    }
+                }
+
+                if (ImGui.BeginPopup($"##audio_ctx_{i}"))
+                {
+                    if (ImGui.MenuItem("Remove Audio Track"))
+                    {
+                        RemoveAudioTrack(track);
+                        ImGui.EndPopup();
+                        break;
+                    }
+                    ImGui.EndPopup();
+                }
+
+                if (_isDraggingAudioClip && _selectedAudioTrack == track && ImGui.IsMouseDown(ImGuiMouseButton.Left))
+                {
+                    float localX = mouse.X - rightMin.X + scrollX;
+                    int   newFrame = Math.Max(0, (int)MathF.Round(localX / _pixelsPerFrame));
+                    if (newFrame != track.ManifestEntry.StartFrame)
+                    {
+                        track.ManifestEntry.StartFrame = newFrame;
+                        if (track.IsLoaded && _isPlaying)
+                        {
+                            float playOffset = Math.Max(0f, (_currentFrame - track.ManifestEntry.StartFrame) / _frameRate)
+                                             + track.ManifestEntry.SourceOffsetSeconds;
+                            AudioEngine.Instance.SetSourceOffsetSeconds(track.Source, playOffset);
+                        }
+                    }
+                }
+            }
+
+            ImGui.Dummy(new Vector2(contentW, AudioRowHeight));
+        }
+
+        if (_isDraggingAudioClip && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
+            _isDraggingAudioClip = false;
+
+        ImGui.EndChild();
+
+        // ── Fixed footer (outside the scrollable area) ──────────────────────
+        if (_audioTracks.Count == 0)
+        {
+            ImGui.TextDisabled("No audio tracks yet.");
+            ImGui.SameLine();
+        }
+        ImGui.SetCursorPosX(availW - 160f);
+        if (ImGui.SmallButton("+ Add Audio Track"))
+            ImGui.OpenPopup("##addAudioPopup");
+
+        if (ImGui.BeginPopup("##addAudioPopup"))
+        {
+            var assets = ProjectManager.Instance.GetProjectAssets();
+            var soundAssets = assets.Where(a => a.AssetType == ProjectAssetType.Sound).ToList();
+            if (soundAssets.Count == 0)
+            {
+                ImGui.TextDisabled("No sound assets in this project.");
+                ImGui.TextDisabled("Import a .wav / .mp3 / .ogg / .flac / .m4a first.");
+            }
+            else
+            {
+                foreach (var a in soundAssets)
+                {
+                    if (ImGui.MenuItem(a.DisplayName))
+                    {
+                        AddAudioTrackFromAsset(a);
+                        ImGui.CloseCurrentPopup();
+                    }
+                }
+            }
+            ImGui.EndPopup();
+        }
+    }
+
+    /// <summary>Add a new audio track backed by the given sound asset.</summary>
+    public TimelineAudioTrack AddAudioTrackFromAsset(ProjectAssetEntry asset)
+    {
+        string fullPath = ProjectManager.Instance.GetAssetFullPath(asset);
+        var manifest = new ProjectAudioTrack
+        {
+            AssetDisplayName    = asset.DisplayName,
+            DisplayName         = Path.GetFileNameWithoutExtension(asset.DisplayName),
+            StartFrame          = _currentFrame,
+            SourceOffsetSeconds = 0f,
+            Volume              = 1f,
+            Muted               = false,
+            Loop                = false,
+        };
+
+        var track = new TimelineAudioTrack { ManifestEntry = manifest };
+        _audioTracks.Add(track);
+
+        Task.Run(() =>
+        {
+            var clip = AudioEngine.Instance.LoadClip(fullPath);
+            if (clip == null) return;
+            track.Clip = clip;
+            var src   = AudioEngine.Instance.CreateSource(clip);
+            track.Source = src;
+            AudioEngine.Instance.SetSourceVolume(src, manifest.Muted ? 0f : manifest.Volume);
+            AudioEngine.Instance.SetSourceLooping(src, manifest.Loop);
+            if (manifest.CachedDurationSeconds <= 0f)
+                manifest.CachedDurationSeconds = (float)clip.DurationSeconds;
+        });
+
+        RecalculateTimelineLength();
+        return track;
+    }
+
+    public void RemoveAudioTrack(TimelineAudioTrack track)
+    {
+        if (track.IsLoaded)
+        {
+            AudioEngine.Instance.StopSource(track.Source);
+            AudioEngine.Instance.DestroySource(track.Source);
+        }
+        _audioTracks.Remove(track);
+        if (_selectedAudioTrack == track) _selectedAudioTrack = null;
+    }
+
+    /// <summary>
+    /// Load audio tracks from the project manifest (call once after project load).
+    /// </summary>
+    public void LoadAudioTracksFromManifest(IEnumerable<ProjectAudioTrack> entries)
+    {
+        foreach (var entry in entries)
+        {
+            var track = new TimelineAudioTrack { ManifestEntry = entry };
+            _audioTracks.Add(track);
+
+            var asset = ProjectManager.Instance.GetProjectAssets()
+                .FirstOrDefault(a => string.Equals(a.DisplayName, entry.AssetDisplayName, StringComparison.OrdinalIgnoreCase));
+            if (asset == null) continue;
+            string fullPath = ProjectManager.Instance.GetAssetFullPath(asset);
+
+            Task.Run(() =>
+            {
+                var clip = AudioEngine.Instance.LoadClip(fullPath);
+                if (clip == null) return;
+                track.Clip = clip;
+                var src   = AudioEngine.Instance.CreateSource(clip);
+                track.Source = src;
+                AudioEngine.Instance.SetSourceVolume(src, entry.Muted ? 0f : entry.Volume);
+                AudioEngine.Instance.SetSourceLooping(src, entry.Loop);
+                if (entry.CachedDurationSeconds <= 0f)
+                    entry.CachedDurationSeconds = (float)clip.DurationSeconds;
+            });
+        }
+        RecalculateTimelineLength();
+    }
+
+    /// <summary>Pause / stop every active audio source.</summary>
+    public void PauseAllAudio()
+    {
+        foreach (var t in _audioTracks)
+        {
+            if (!t.IsLoaded) continue;
+            AudioEngine.Instance.PauseSource(t.Source);
+            // Keep WasPlaying=true so resume re-syncs without restarting from 0.
+        }
+    }
+
+    public void StopAllAudio()
+    {
+        foreach (var t in _audioTracks)
+        {
+            if (!t.IsLoaded) continue;
+            AudioEngine.Instance.StopSource(t.Source);
+            t.WasPlaying = false;
+        }
+    }
+
+    /// <summary>
+    /// Called every frame while the timeline is rendering.  Starts / pauses
+    /// sources so the audio stays in sync with the current frame and play state.
+    /// Only re-seeks when the user scrubs the playhead (avoids per-frame
+    /// stutter caused by constantly rewinding the source).
+    /// </summary>
+    public void SyncAudioWithPlayback()
+    {
+        if (!AudioEngine.Instance.IsInitialized) return;
+        bool wantPlaying = _isPlaying;
+
+        foreach (var t in _audioTracks)
+        {
+            if (!t.IsLoaded) continue;
+
+            int durFrames = (int)Math.Ceiling(t.Clip!.DurationSeconds * _frameRate);
+            if (durFrames < 1) durFrames = 1;
+            int endFrame = t.ManifestEntry.StartFrame + durFrames;
+            bool inRange = _currentFrame >= t.ManifestEntry.StartFrame && _currentFrame < endFrame;
+
+            if (wantPlaying && inRange)
+            {
+                float offset = (_currentFrame - t.ManifestEntry.StartFrame) / _frameRate
+                             + t.ManifestEntry.SourceOffsetSeconds;
+                if (offset < 0f) offset = 0f;
+
+                if (!t.WasPlaying)
+                {
+                    // First time entering the play range — start the source
+                    // from the correct offset and let it run naturally.
+                    AudioEngine.Instance.SetSourceOffsetSeconds(t.Source, offset);
+                    AudioEngine.Instance.SetSourceLooping(t.Source, t.ManifestEntry.Loop);
+                    AudioEngine.Instance.SetSourceVolume(t.Source,
+                        t.ManifestEntry.Muted ? 0f : t.ManifestEntry.Volume);
+                    AudioEngine.Instance.PlaySource(t.Source);
+                    t.WasPlaying = true;
+                }
+                else
+                {
+                    // Already playing — only re-seek if the user scrubbed the
+                    // playhead by more than a small threshold.
+                    float currentOffset = AudioEngine.Instance.GetSourceOffsetSeconds(t.Source);
+                    if (MathF.Abs(currentOffset - offset) > 0.1f)
+                        AudioEngine.Instance.SetSourceOffsetSeconds(t.Source, offset);
+                }
+            }
+            else
+            {
+                if (t.WasPlaying)
+                {
+                    AudioEngine.Instance.StopSource(t.Source);
+                    t.WasPlaying = false;
+                }
+            }
+        }
+    }
+
+    private void JumpToStart()          { _currentFrame = 0; _frameAccumulator = 0.0; StopAllAudio(); ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
+    private void Stop()                 { _isPlaying = false; StopAllAudio(); JumpToStart(); }
     private void StepBackward()         { _currentFrame = Math.Max(0, _currentFrame - 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
     private void StepForward()          { _currentFrame = Math.Min(_maxFrames, _currentFrame + 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
 

@@ -8,6 +8,7 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 public class ContentBrowser : UiPanel
 {
     public SpawnMenu? SpawnMenu { get; set; }
+    public Timeline?  Timeline  { get; set; }
     public Action? ImportResourcePackRequested { get; set; }
     public Action? ImportResourcePackFolderRequested { get; set; }
 
@@ -77,6 +78,15 @@ public class ContentBrowser : UiPanel
 
             if (ImGui.BeginPopupContextItem("##assetContext" + i))
             {
+                if (asset.AssetType == ProjectAssetType.Sound && Timeline != null)
+                {
+                    if (ImGui.MenuItem("Add to Timeline as Audio Track"))
+                    {
+                        Timeline.AddAudioTrackFromAsset(asset);
+                        ImGui.CloseCurrentPopup();
+                    }
+                    ImGui.Separator();
+                }
                 if (ImGui.MenuItem("Remove asset..."))
                     _pendingRemoval = asset;
                 ImGui.EndPopup();
@@ -105,10 +115,25 @@ public class ContentBrowser : UiPanel
         RenderRemovalPopup(projectManager);
 
         bool canSpawn = CanSpawnSelectedAsset();
-        if (!canSpawn) ImGui.BeginDisabled();
-        if (ImGui.Button("Spawn Selected Asset", new Vector2(-1, 28)))
-            SpawnSelectedAsset();
-        if (!canSpawn) ImGui.EndDisabled();
+        bool canAddAudio = CanAddSelectedAssetToTimeline();
+        if (!canSpawn && !canAddAudio) ImGui.BeginDisabled();
+
+        if (canAddAudio)
+        {
+            if (ImGui.Button("Add Selected Sound to Timeline", new Vector2(-1, 28)))
+                AddSelectedAssetToTimeline();
+            if (canSpawn)
+            {
+                if (ImGui.Button("Spawn Selected Asset", new Vector2(-1, 28)))
+                    SpawnSelectedAsset();
+            }
+        }
+        else
+        {
+            if (ImGui.Button("Spawn Selected Asset", new Vector2(-1, 28)))
+                SpawnSelectedAsset();
+        }
+        if (!canSpawn && !canAddAudio) ImGui.EndDisabled();
 
         ImGui.End();
     }
@@ -240,6 +265,23 @@ public class ContentBrowser : UiPanel
 
         string ext = Path.GetExtension(fullPath).ToLowerInvariant();
         return ext is ".schematic" or ".schem";
+    }
+
+    private bool CanAddSelectedAssetToTimeline()
+    {
+        if (Timeline == null) return false;
+        var assets = ProjectManager.Instance.GetProjectAssets();
+        if (_selectedAssetIndex < 0 || _selectedAssetIndex >= assets.Count) return false;
+        var selected = assets[_selectedAssetIndex];
+        return selected.AssetType == ProjectAssetType.Sound
+            && File.Exists(ProjectManager.Instance.GetAssetFullPath(selected));
+    }
+
+    private void AddSelectedAssetToTimeline()
+    {
+        if (!CanAddSelectedAssetToTimeline()) return;
+        var assets = ProjectManager.Instance.GetProjectAssets();
+        Timeline?.AddAudioTrackFromAsset(assets[_selectedAssetIndex]);
     }
 
     private void SpawnSelectedAsset()

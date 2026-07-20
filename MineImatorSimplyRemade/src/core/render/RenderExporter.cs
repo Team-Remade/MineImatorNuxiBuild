@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MineImatorSimplyRemade.core.audio;
 using MineImatorSimplyRemade.core.ui.Panels;
 
 namespace MineImatorSimplyRemade.core.render;
@@ -176,7 +177,13 @@ public sealed class RenderExporter
         return new VideoExportSession(finalPath, process, writer, expectedFrameBytes);
     }
 
-    public static string EncodePpmSequenceToVideo(string framesDirectory, int framerate, int bitrateKbps, string videoFormat, string outputPath)
+    public static string EncodePpmSequenceToVideo(
+        string framesDirectory,
+        int framerate,
+        int bitrateKbps,
+        string videoFormat,
+        string outputPath,
+        Timeline? timeline = null)
     {
         EnsureFfmpegReady();
 
@@ -192,9 +199,19 @@ public sealed class RenderExporter
         [
             "-y",
             "-framerate", fps.ToString(),
-            "-i", pattern,
-            "-an"
+            "-i", pattern
         ];
+
+        string? audioFile = BuildTimelineAudioFile(timeline, fps, finalPath);
+        if (audioFile != null)
+        {
+            args.AddRange(["-i", audioFile]);
+            args.AddRange(["-c:a", "aac", "-b:a", "192k", "-shortest"]);
+        }
+        else
+        {
+            args.Add("-an");
+        }
 
         if (string.Equals(format, "webm", StringComparison.OrdinalIgnoreCase))
             args.AddRange(["-c:v", "libvpx-vp9", "-b:v", $"{bitrate}k", "-pix_fmt", "yuv420p"]);
@@ -212,6 +229,20 @@ public sealed class RenderExporter
             throw new InvalidOperationException($"ffmpeg failed with code {process.ExitCode}: {stderr}");
 
         return finalPath;
+    }
+
+    private static string? BuildTimelineAudioFile(Timeline? timeline, int fps, string outputVideoPath)
+    {
+        if (timeline == null) return null;
+        var tracks = timeline.AudioTracks;
+        if (tracks.Count == 0) return null;
+
+        string tempAudio = Path.Combine(
+            Path.GetDirectoryName(outputVideoPath) ?? ".",
+            $"_audio_{Guid.NewGuid():N}.wav");
+
+        bool anyAudio = AudioRenderMixer.RenderTimelineAudioToWav(tracks, fps, timeline.MaxFrames + 1, tempAudio);
+        return anyAudio ? tempAudio : null;
     }
 
     public string ExportVideo(

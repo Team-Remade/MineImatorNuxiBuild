@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade;
+using MineImatorSimplyRemade.core.audio;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.render;
@@ -301,6 +302,9 @@ public class MainWindow : Window
         SelectionManager.Initialize();
         ReportStep(1, "Bootstrapping editor services", "Selection state ready.", 1f);
 
+        AudioEngine.Instance.Initialize();
+        ReportStep(1, "Bootstrapping editor services", "Audio engine ready.", 1f, AudioEngine.Instance.IsInitialized ? "OpenAL device initialised" : "Audio disabled (no OpenAL device)");
+
         BlockRegistry.Initialize((value, detail) => ReportStep(2, "Indexing Minecraft data", "Loading block registry...", value, detail));
         ReportStep(2, "Indexing Minecraft data", "Block registry ready.", 1f, $"Loaded version {BlockRegistry.LoadedVersion}");
 
@@ -406,6 +410,7 @@ public class MainWindow : Window
             if (_contentBrowser != null)
             {
                 _contentBrowser.SpawnMenu = _spawnMenu;
+                _contentBrowser.Timeline  = _timeline;
                 _contentBrowser.ImportResourcePackRequested = ImportResourcePackArchiveFromDialog;
                 _contentBrowser.ImportResourcePackFolderRequested = ImportResourcePackFolderFromDialog;
             }
@@ -1795,7 +1800,7 @@ public class MainWindow : Window
                 int fps = _renderPopupFramerate;
                 int bitrate = _renderPopupBitrateKbps;
                 string format = _renderPopupVideoFormat;
-                _renderEncodeTask = Task.Run(() => RenderExporter.EncodePpmSequenceToVideo(tempDir, fps, bitrate, format, outputPath));
+                _renderEncodeTask = Task.Run(() => RenderExporter.EncodePpmSequenceToVideo(tempDir, fps, bitrate, format, outputPath, _timeline));
             }
 
             if (_renderEncodeTask != null)

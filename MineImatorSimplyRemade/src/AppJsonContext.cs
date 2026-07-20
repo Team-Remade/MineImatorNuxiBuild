@@ -25,6 +25,7 @@ namespace MineImatorSimplyRemade;
 [JsonSerializable(typeof(MiObject))]
 [JsonSerializable(typeof(MiModel))]
 [JsonSerializable(typeof(ProjectManifest))]
+[JsonSerializable(typeof(ProjectAudioTrack))]
 [JsonSerializable(typeof(RecentProjectsState))]
 [JsonSerializable(typeof(PreferencesState))]
 [JsonSerializable(typeof(FfmpegBootstrap.FfmpegBootstrapState))]

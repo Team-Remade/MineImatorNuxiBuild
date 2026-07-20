@@ -47,6 +47,28 @@ public class ProjectManifest
     public List<ProjectSceneObjectEntry> SceneObjects { get; set; } = new();
     public List<string> SelectedObjectNames { get; set; } = new();
     public ProjectTimelineState Timeline { get; set; } = new();
+    public List<ProjectAudioTrack> AudioTracks { get; set; } = new();
+}
+
+/// <summary>
+/// One audio clip placed on the timeline.  References an imported sound asset
+/// (matched by display name at load time) and stores playback settings.
+/// </summary>
+public class ProjectAudioTrack
+{
+    public string AssetDisplayName { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    /// <summary>Frame on the timeline where playback should start.</summary>
+    public int StartFrame { get; set; } = 0;
+    /// <summary>Offset (in seconds) into the source clip where playback starts.</summary>
+    public float SourceOffsetSeconds { get; set; } = 0f;
+    /// <summary>Linear gain (0 = silent, 1 = full).  Stored as 0..1.</summary>
+    public float Volume { get; set; } = 1f;
+    public bool Muted { get; set; } = false;
+    public bool Loop { get; set; } = false;
+    /// <summary>Optional cached duration (seconds) so the timeline can render the
+    /// clip even before the audio engine has decoded the underlying file.</summary>
+    public float CachedDurationSeconds { get; set; } = 0f;
 }
 
 public class ProjectWorkCameraState
