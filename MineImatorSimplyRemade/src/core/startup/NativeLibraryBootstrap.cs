@@ -15,7 +15,8 @@ public static class NativeLibraryBootstrap
         "ImGuiImplGLFW.dll",
         "ImGuiImpl.dll",
         "Assimp64.dll",
-        "nfd.dll"
+        "nfd.dll",
+        "OpenAL32.dll"
     ];
 
     public static void Initialize()

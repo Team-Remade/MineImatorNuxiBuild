@@ -58,6 +58,8 @@
         <EmbeddedResource Include="cimgui.dll" />
         <None Remove="Assimp64.dll" />
         <EmbeddedResource Include="Assimp64.dll" />
+        <None Remove="OpenAL32.dll" />
+        <EmbeddedResource Include="OpenAL32.dll" />
     </ItemGroup>
 
     <ItemGroup>
@@ -99,20 +101,6 @@
         <Delete Files="@(PublishedModGitkeepFiles)" />
     </Target>
 
-    <Target Name="CopyOpenAlSoft" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT' Or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">
-        <ItemGroup>
-            <OpenAlDlls Include="$(NuGetPackageRoot)\openal.soft\1.23.1\runtimes\win-x64\native\Release\OpenAL32.dll" />
-        </ItemGroup>
-        <Copy SourceFiles="@(OpenAlDlls)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
-    </Target>
-
-    <Target Name="CopyOpenAlSoftPublish" AfterTargets="_CopyResolvedFilesToPublishAlways;_CopyResolvedFilesToPublishPreserveNewest" Condition="'$(OS)' == 'Windows_NT' Or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">
-        <ItemGroup>
-            <OpenAlDlls Include="$(NuGetPackageRoot)\openal.soft\1.23.1\runtimes\win-x64\native\Release\OpenAL32.dll" />
-        </ItemGroup>
-        <Copy SourceFiles="@(OpenAlDlls)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
-    </Target>
-
     <Target Name="RemoveWindowsNativeLibrariesFromPublish" AfterTargets="_CopyResolvedFilesToPublishAlways;_CopyResolvedFilesToPublishPreserveNewest" Condition="'$(OS)' == 'Windows_NT' Or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">
         <ItemGroup>
             <PublishedNativeLibraries Include="$(PublishDir)cimgui.dll" />
@@ -121,6 +109,7 @@
             <PublishedNativeLibraries Include="$(PublishDir)ImGuiImpl.dll" />
             <PublishedNativeLibraries Include="$(PublishDir)Assimp64.dll" />
             <PublishedNativeLibraries Include="$(PublishDir)nfd.dll" />
+            <PublishedNativeLibraries Include="$(PublishDir)OpenAL32.dll" />
         </ItemGroup>
         <Delete Files="@(PublishedNativeLibraries)" />
     </Target>
