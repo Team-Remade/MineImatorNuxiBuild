@@ -145,23 +145,45 @@ public class Window : IDisposable
         Glfw.MakeContextCurrent(windowHandle);
         _gl.ClearColor(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
         _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-        
+
         ImGuiImplOpenGL3.NewFrame();
         ImGuiImplGLFW.NewFrame();
         ImGui.NewFrame();
-        
+
         RenderUi();
-        
+
         ImGui.Render();
         ImGuiImplOpenGL3.RenderDrawData(ImGui.GetDrawData());
-        
+
         if ((io.ConfigFlags & ImGuiConfigFlags.ViewportsEnable) != 0)
         {
             ImGui.UpdatePlatformWindows();
             ImGui.RenderPlatformWindowsDefault();
         }
-        
+
         Glfw.SwapBuffers(windowHandle);
+    }
+
+    /// <summary>
+    /// Tears down the ImGui backends and destroys the ImGui context for this window.
+    /// Must be called while the shared GL context is still alive (i.e. before the
+    /// owning GLFW window is destroyed) and while GLFW is still initialised.
+    /// Idempotent: safe to call more than once.
+    /// </summary>
+    public virtual unsafe void ShutdownImgui()
+    {
+        if (ImGuiContext.Handle == null)
+            return;
+
+        ImGui.SetCurrentContext(ImGuiContext);
+        ImGuiImplGLFW.SetCurrentContext(ImGuiContext);
+        ImGuiImplOpenGL3.SetCurrentContext(ImGuiContext);
+
+        ImGuiImplOpenGL3.Shutdown();
+        ImGuiImplGLFW.Shutdown();
+        ImGui.DestroyContext(ImGuiContext);
+
+        ImGuiContext = default;
     }
 
     protected virtual void RenderUi()
@@ -236,8 +258,9 @@ public class Window : IDisposable
         Glfw.SetWindowTitle(windowHandle, title);
     }
 
-    public unsafe void Dispose()
+    public virtual unsafe void Dispose()
     {
+        ShutdownImgui();
         Glfw.DestroyWindow(windowHandle);
     }
 }

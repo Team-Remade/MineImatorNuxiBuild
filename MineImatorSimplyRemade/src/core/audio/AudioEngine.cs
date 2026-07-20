@@ -6,14 +6,9 @@ namespace MineImatorSimplyRemade.core.audio;
 /// <summary>
 /// Lightweight wrapper around OpenAL that decodes audio files to PCM via
 /// FFmpeg and exposes per-track playback for the timeline.
-///
-/// Lifecycle: <see cref="Initialize"/> is called once at startup.  Each
-/// <see cref="TimelineAudioTrack"/> owns one <see cref="AudioSource"/>.
 /// </summary>
 public sealed unsafe class AudioEngine : IDisposable
 {
-    public static AudioEngine Instance { get; } = new();
-
     private const int SampleRate     = 44100;
     private const int ChannelCount   = 2;            // stereo output
     private const int BitsPerSample  = 16;
@@ -25,11 +20,8 @@ public sealed unsafe class AudioEngine : IDisposable
     private bool _initialized;
     private bool _disposed;
 
-    // Cache of decoded audio data, keyed by full file path.
     private readonly Dictionary<string, AudioClip> _clipCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
-
-    private AudioEngine() { }
 
     public bool IsInitialized => _initialized;
 
@@ -44,7 +36,6 @@ public sealed unsafe class AudioEngine : IDisposable
         }
         catch
         {
-            // OpenAL not available – audio will be silently disabled.
             _al = null;
             _alc = null;
             return;
@@ -65,10 +56,6 @@ public sealed unsafe class AudioEngine : IDisposable
         _initialized = true;
     }
 
-    /// <summary>
-    /// Decode (or return cached) PCM data for the given file.  Returns null if
-    /// the file can't be decoded or audio is disabled.
-    /// </summary>
     public AudioClip? LoadClip(string filePath)
     {
         if (!_initialized || string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
@@ -101,10 +88,6 @@ public sealed unsafe class AudioEngine : IDisposable
         return false;
     }
 
-    /// <summary>
-    /// Create (or recycle) a source bound to a clip.  The returned source is
-    /// owned by the caller and must be disposed with <see cref="DestroySource"/>.
-    /// </summary>
     public AudioSourceHandle CreateSource(AudioClip clip)
     {
         if (!_initialized || _al == null)
@@ -182,8 +165,6 @@ public sealed unsafe class AudioEngine : IDisposable
         return offset;
     }
 
-    // ── Decoding via FFmpeg ──────────────────────────────────────────────────
-
     private static AudioClip? DecodeWithFfmpeg(string filePath)
     {
         string ffmpegPath = FfmpegBootstrap.GetFfmpegExecutablePath();
@@ -233,16 +214,31 @@ public sealed unsafe class AudioEngine : IDisposable
         _disposed = true;
         if (!_initialized) return;
 
+        lock (_lock)
+        {
+            _clipCache.Clear();
+        }
+
         unsafe
         {
             if (_alc != null && _context != null)
             {
                 _alc.MakeContextCurrent(null);
                 _alc.DestroyContext(_context);
+                _context = null;
             }
             if (_alc != null && _device != null)
+            {
                 _alc.CloseDevice(_device);
+                _device = null;
+            }
         }
+
+        _alc?.Dispose();
+        _al?.Dispose();
+        _alc = null;
+        _al = null;
+        _initialized = false;
     }
 }
 

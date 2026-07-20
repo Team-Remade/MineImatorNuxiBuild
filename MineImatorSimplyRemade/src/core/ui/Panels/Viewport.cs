@@ -3342,8 +3342,8 @@ public class Viewport : UiPanel
     {
         if (!IsInlineVisible) return;
 
-        _inlineSize.X = Math.Clamp(_inlineSize.X, InlineMinW, imageSize.X - InlinePad * 2);
-        _inlineSize.Y = Math.Clamp(_inlineSize.Y, InlineMinH, imageSize.Y - InlinePad * 2);
+        _inlineSize.X = Math.Clamp(_inlineSize.X, InlineMinW, Math.Max(InlineMinW, imageSize.X - InlinePad * 2));
+        _inlineSize.Y = Math.Clamp(_inlineSize.Y, InlineMinH, Math.Max(InlineMinH, imageSize.Y - InlinePad * 2));
 
         // ── Get current mouse and window state for position control ─────────────────
         var io = ImGui.GetIO();
@@ -3408,7 +3408,7 @@ public class Viewport : UiPanel
         ImGui.SetNextWindowSize(_inlineSize, ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSizeConstraints(
             new Vector2(InlineMinW, InlineMinH),
-            new Vector2(imageSize.X - InlinePad * 2, imageSize.Y - InlinePad * 2));
+            new Vector2(Math.Max(InlineMinW, imageSize.X - InlinePad * 2), Math.Max(InlineMinH, imageSize.Y - InlinePad * 2)));
 
         ImGuiWindowFlags flags =
             ImGuiWindowFlags.NoScrollbar |

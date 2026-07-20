@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade;
+using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.audio;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
@@ -302,8 +303,8 @@ public class MainWindow : Window
         SelectionManager.Initialize();
         ReportStep(1, "Bootstrapping editor services", "Selection state ready.", 1f);
 
-        AudioEngine.Instance.Initialize();
-        ReportStep(1, "Bootstrapping editor services", "Audio engine ready.", 1f, AudioEngine.Instance.IsInitialized ? "OpenAL device initialised" : "Audio disabled (no OpenAL device)");
+Services.AudioEngine.Initialize();
+         ReportStep(1, "Bootstrapping editor services", "Audio engine ready.", 1f, Services.AudioEngine.IsInitialized ? "OpenAL device initialised" : "Audio disabled (no OpenAL device)");
 
         BlockRegistry.Initialize((value, detail) => ReportStep(2, "Indexing Minecraft data", "Loading block registry...", value, detail));
         ReportStep(2, "Indexing Minecraft data", "Block registry ready.", 1f, $"Loaded version {BlockRegistry.LoadedVersion}");

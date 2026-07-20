@@ -17,162 +17,185 @@ public static class main
     public static readonly string LocalPath =
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
-    public static string ApplicationLocalDirectoryPath {get; private set;} = Path.Combine(main.LocalPath, main.ApplicationLocalDirectory);
-    
+    public static string ApplicationLocalDirectoryPath { get; private set; } =
+        Path.Combine(main.LocalPath, main.ApplicationLocalDirectory);
+
     private static Glfw Glfw { get; set; }
     private static MainWindow MainWindow { get; set; }
     private static CameraWindow CameraWindow { get; set; }
     private static GL _gl;
     private static GL? _startupGl;
-    
+
     private static unsafe int Main(string[] args)
     {
-        NativeLibraryBootstrap.Initialize();
-
-        Glfw = Glfw.GetApi();
-        if (!Glfw.Init())
+        try
         {
-            Console.WriteLine("Failed to initialize GLFW");
-            return 1;
-        }
+            NativeLibraryBootstrap.Initialize();
 
-        var startupWindow = CreateStartupWindow();
-        UpdateStartupWindow(startupWindow, new StartupProgressState
-        {
-            CurrentStep = 1,
-            TotalSteps = 8,
-            Phase = "Bootstrapping startup",
-            Status = "Checking local dependencies...",
-            Detail = "Preparing early loading window",
-            Progress = 0.02f
-        });
+            Glfw = Glfw.GetApi();
+            if (!Glfw.Init())
+            {
+                Console.WriteLine("Failed to initialize GLFW");
+                return 1;
+            }
 
-        RunFfmpegBootstrap(startupWindow);
+            var startupWindow = CreateStartupWindow();
+            UpdateStartupWindow(startupWindow, new StartupProgressState
+            {
+                CurrentStep = 1,
+                TotalSteps = 8,
+                Phase = "Bootstrapping startup",
+                Status = "Checking local dependencies...",
+                Detail = "Preparing early loading window",
+                Progress = 0.02f
+            });
 
-        // ── Main window ───────────────────────────────────────────────────────
-        Glfw.WindowHint(WindowHintInt.ContextVersionMajor, 3);
-        Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
-        Glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
+            RunFfmpegBootstrap(startupWindow);
 
-        var monitor   = Glfw.GetPrimaryMonitor();
-        var videoMode = Glfw.GetVideoMode(monitor);
-        var size      = new ivec2(videoMode->Width - 200, videoMode->Height - 160);
+            // ── Main window ───────────────────────────────────────────────────────
+            Glfw.WindowHint(WindowHintInt.ContextVersionMajor, 3);
+            Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
+            Glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
 
-        MainWindow = new MainWindow(size.x, size.y, "Mine Imator Nuxi", Glfw, visible: false);
-        if (MainWindow.WindowHandle == null)
-        {
-            Console.WriteLine("Failed to create main window!");
+            var monitor = Glfw.GetPrimaryMonitor();
+            var videoMode = Glfw.GetVideoMode(monitor);
+            var size = new ivec2(videoMode->Width - 200, videoMode->Height - 160);
+
+            MainWindow = new MainWindow(size.x, size.y, "Mine Imator Nuxi", Glfw, visible: false);
+            if (MainWindow.WindowHandle == null)
+            {
+                Console.WriteLine("Failed to create main window!");
+                startupWindow?.Dispose();
+                _startupGl?.Dispose();
+                _startupGl = null;
+                Glfw.Terminate();
+                return 1;
+            }
+
+            MainWindow.CenterWindow();
+            MainWindow.SetClearColor(new vec4(0.3f, 0.4f, 0.5f, 1));
+
+            Glfw.MakeContextCurrent(MainWindow.WindowHandle);
+            _gl = GL.GetApi(Glfw.GetProcAddress);
+            MainWindow.SetGL(_gl);
+            MainWindow.SetupImgui();
+            Services.Initialize();
+            MainWindow.InitializeRuntime(progress => UpdateStartupWindow(startupWindow, RemapStartupState(progress)));
             startupWindow?.Dispose();
             _startupGl?.Dispose();
             _startupGl = null;
-            Glfw.Terminate();
-            return 1;
-        }
-        MainWindow.CenterWindow();
-        MainWindow.SetClearColor(new vec4(0.3f, 0.4f, 0.5f, 1));
+            MainWindow.Show();
 
-        Glfw.MakeContextCurrent(MainWindow.WindowHandle);
-        _gl = GL.GetApi(Glfw.GetProcAddress);
-        MainWindow.SetGL(_gl);
-        MainWindow.SetupImgui();
-        MainWindow.InitializeRuntime(progress => UpdateStartupWindow(startupWindow, RemapStartupState(progress)));
-        startupWindow?.Dispose();
-        _startupGl?.Dispose();
-        _startupGl = null;
-        MainWindow.Show();
+            // ── Camera window ─────────────────────────────────────────────────────
+            // Created now (before the loop) with context sharing so it can access
+            // all textures/FBOs from the main window. Starts hidden; shown on demand.
+            Glfw.WindowHint(WindowHintInt.ContextVersionMajor, 3);
+            Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
+            Glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
 
-        // ── Camera window ─────────────────────────────────────────────────────
-        // Created now (before the loop) with context sharing so it can access
-        // all textures/FBOs from the main window. Starts hidden; shown on demand.
-        Glfw.WindowHint(WindowHintInt.ContextVersionMajor, 3);
-        Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
-        Glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
-
-        CameraWindow = new CameraWindow(Glfw, _gl, MainWindow.WindowHandle);
-        CameraWindow.SetClearColor(new vec4(0.1f, 0.1f, 0.1f, 1f));
-        // Each window owns its own ImGui context. Render() sets it current before
-        // every frame so the two contexts never interfere.
-        Glfw.MakeContextCurrent(CameraWindow.WindowHandle);
-        CameraWindow.SetupImgui();
-        // Restore main window context after camera window setup.
-        Glfw.MakeContextCurrent(MainWindow.WindowHandle);
-
-        // Wire the camera viewport to this window.
-        // MainWindow.SetGL has already run, so GetCameraViewport() is valid.
-        var camViewport = MainWindow.GetCameraViewport();
-        if (camViewport != null)
-        {
-            CameraWindow.Panel = camViewport;
-
-            // Pop button → show the window and mark undocked.
-            camViewport.PopRequested += () =>
-            {
-                // Update the camera viewport's GLFW references to point to the camera window
-                // so that free-fly controls work correctly in the undocked window
-                unsafe
-                {
-                    camViewport.GlfwApiPreview = Glfw;
-                    camViewport.GlfwWindowPreview = CameraWindow.WindowHandle;
-                }
-                Glfw.MakeContextCurrent(CameraWindow.WindowHandle);
-                CameraWindow.Show();
-                Glfw.MakeContextCurrent(MainWindow.WindowHandle);
-            };
-
-            camViewport.HideRequested += () =>
-            {
-                Glfw.MakeContextCurrent(CameraWindow.WindowHandle);
-                CameraWindow.Hide();
-                Glfw.MakeContextCurrent(MainWindow.WindowHandle);
-            };
-        }
-
-        byte* versionPtr = _gl.GetString(StringName.Version);
-        string openGlVersion = SilkMarshal.PtrToString((IntPtr)versionPtr) ?? throw new InvalidOperationException();
-        Console.WriteLine($"OpenGL Version: {openGlVersion}");
-
-        byte* rendererPtr = _gl.GetString(StringName.Renderer);
-        string gpuRenderer = SilkMarshal.PtrToString((IntPtr)rendererPtr) ?? throw new InvalidOperationException();
-        Console.WriteLine($"GPU: {gpuRenderer}");
-
-        // ── Main loop ─────────────────────────────────────────────────────────
-        var frameTimer = Stopwatch.StartNew();
-        long targetFrameTicks = Stopwatch.Frequency / MainLoopTargetFps;
-
-        while (!Glfw.WindowShouldClose(MainWindow.WindowHandle) || !MainWindow.CanWindowClose())
-        {
-            long frameStartTicks = frameTimer.ElapsedTicks;
-
-            Glfw.PollEvents();
-
-            // Main window always renders.
+            CameraWindow = new CameraWindow(Glfw, _gl, MainWindow.WindowHandle);
+            CameraWindow.SetClearColor(new vec4(0.1f, 0.1f, 0.1f, 1f));
+            // Each window owns its own ImGui context. Render() sets it current before
+            // every frame so the two contexts never interfere.
+            Glfw.MakeContextCurrent(CameraWindow.WindowHandle);
+            CameraWindow.SetupImgui();
+            // Restore main window context after camera window setup.
             Glfw.MakeContextCurrent(MainWindow.WindowHandle);
-            MainWindow.Render();
 
-            // Camera window: handle OS close button, then render if visible.
-            // CameraWindow.Render() manages its own context switching internally.
-            if (CameraWindow.ShouldClose)
+            // Wire the camera viewport to this window.
+            // MainWindow.SetGL has already run, so GetCameraViewport() is valid.
+            var camViewport = MainWindow.GetCameraViewport();
+            if (camViewport != null)
             {
-                if (camViewport != null) camViewport.Undocked = false;
-                CameraWindow.Hide();
-                Glfw.SetWindowShouldClose(CameraWindow.WindowHandle, false);
+                CameraWindow.Panel = camViewport;
+
+                // Pop button → show the window and mark undocked.
+                camViewport.PopRequested += () =>
+                {
+                    // Update the camera viewport's GLFW references to point to the camera window
+                    // so that free-fly controls work correctly in the undocked window
+                    unsafe
+                    {
+                        camViewport.GlfwApiPreview = Glfw;
+                        camViewport.GlfwWindowPreview = CameraWindow.WindowHandle;
+                    }
+
+                    Glfw.MakeContextCurrent(CameraWindow.WindowHandle);
+                    CameraWindow.Show();
+                    Glfw.MakeContextCurrent(MainWindow.WindowHandle);
+                };
+
+                camViewport.HideRequested += () =>
+                {
+                    Glfw.MakeContextCurrent(CameraWindow.WindowHandle);
+                    CameraWindow.Hide();
+                    Glfw.MakeContextCurrent(MainWindow.WindowHandle);
+                };
             }
-            else if (IsWindowVisible())
+
+            byte* versionPtr = _gl.GetString(StringName.Version);
+            string openGlVersion = SilkMarshal.PtrToString((IntPtr)versionPtr) ?? throw new InvalidOperationException();
+            Console.WriteLine($"OpenGL Version: {openGlVersion}");
+
+            byte* rendererPtr = _gl.GetString(StringName.Renderer);
+            string gpuRenderer = SilkMarshal.PtrToString((IntPtr)rendererPtr) ?? throw new InvalidOperationException();
+            Console.WriteLine($"GPU: {gpuRenderer}");
+
+            // ── Main loop ─────────────────────────────────────────────────────────
+            var frameTimer = Stopwatch.StartNew();
+            long targetFrameTicks = Stopwatch.Frequency / MainLoopTargetFps;
+
+            while (!Glfw.WindowShouldClose(MainWindow.WindowHandle) || !MainWindow.CanWindowClose())
             {
-                CameraWindow.Render();
-                // Restore main context after camera window's render.
+                long frameStartTicks = frameTimer.ElapsedTicks;
+
+                Glfw.PollEvents();
+
+                // Main window always renders.
                 Glfw.MakeContextCurrent(MainWindow.WindowHandle);
+                MainWindow.Render();
+
+                // Camera window: handle OS close button, then render if visible.
+                // CameraWindow.Render() manages its own context switching internally.
+                if (CameraWindow.ShouldClose)
+                {
+                    if (camViewport != null) camViewport.Undocked = false;
+                    CameraWindow.Hide();
+                    Glfw.SetWindowShouldClose(CameraWindow.WindowHandle, false);
+                }
+                else if (IsWindowVisible())
+                {
+                    CameraWindow.Render();
+                    // Restore main context after camera window's render.
+                    Glfw.MakeContextCurrent(MainWindow.WindowHandle);
+                }
+
+                LimitFrameRate(frameTimer, frameStartTicks, targetFrameTicks);
             }
+            
+            Console.WriteLine("Stopping...");
+            
+            var rng = new Random();
+            var num = rng.Next(100);
+            if (num == 5) Console.WriteLine("Fish");
 
-            LimitFrameRate(frameTimer, frameStartTicks, targetFrameTicks);
+            Services.Shutdown();
+
+            MainWindow.ShutdownImgui();
+            CameraWindow.ShutdownImgui();
+
+            _gl.Dispose();
+            Glfw.DestroyWindow(CameraWindow.WindowHandle);
+            Glfw.DestroyWindow(MainWindow.WindowHandle);
+            Glfw.Terminate();
+
+            return 0;
         }
-
-        _gl.Dispose();
-        Glfw.DestroyWindow(CameraWindow.WindowHandle);
-        Glfw.DestroyWindow(MainWindow.WindowHandle);
-        Glfw.Terminate();
-
-        return 0;
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
     }
 
     private static void LimitFrameRate(Stopwatch frameTimer, long frameStartTicks, long targetFrameTicks)
@@ -272,7 +295,8 @@ public static class main
         });
 
         string importStatus = "No existing ffmpeg binary selected.";
-        bool importedExistingInstall = FfmpegBootstrap.TryImportExistingInstallOnFirstLaunch(message => importStatus = message);
+        bool importedExistingInstall =
+            FfmpegBootstrap.TryImportExistingInstallOnFirstLaunch(message => importStatus = message);
 
         if (importedExistingInstall && !FfmpegBootstrap.RequiresFirstTimeDownload())
         {
@@ -331,7 +355,9 @@ public static class main
             TotalSteps = 8,
             Phase = "Bootstrapping startup",
             Status = "FFmpeg check complete.",
-            Detail = downloadError == null ? "Continuing into asset initialization" : "FFmpeg failed to initialize; continuing startup",
+            Detail = downloadError == null
+                ? "Continuing into asset initialization"
+                : "FFmpeg failed to initialize; continuing startup",
             Progress = 0.10f
         });
     }

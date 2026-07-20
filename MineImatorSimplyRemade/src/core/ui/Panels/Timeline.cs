@@ -7,6 +7,7 @@ using System.Numerics;
 using System.Text.Json;
 using GlmSharp;
 using Hexa.NET.ImGui;
+using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.audio;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core;
@@ -516,7 +517,7 @@ public class Timeline : UiPanel
         ImGui.SetScrollX(_hScrollOffset);
         ImGui.PopStyleVar();
 
-        if (!AudioEngine.Instance.IsInitialized)
+        if (!Services.AudioEngine.IsInitialized)
         {
             var warnDl = ImGui.GetWindowDrawList();
             var p      = ImGui.GetCursorScreenPos();
@@ -557,7 +558,7 @@ public class Timeline : UiPanel
             {
                 track.ManifestEntry.Volume = vol;
                 if (track.IsLoaded)
-                    AudioEngine.Instance.SetSourceVolume(track.Source, vol);
+                    Services.AudioEngine.SetSourceVolume(track.Source, vol);
             }
             ImGui.SameLine();
 
@@ -566,7 +567,7 @@ public class Timeline : UiPanel
             {
                 track.ManifestEntry.Muted = muted;
                 if (track.IsLoaded)
-                    AudioEngine.Instance.SetSourceVolume(track.Source, muted ? 0f : vol);
+                    Services.AudioEngine.SetSourceVolume(track.Source, muted ? 0f : vol);
             }
             ImGui.SameLine();
 
@@ -575,7 +576,7 @@ public class Timeline : UiPanel
             {
                 track.ManifestEntry.Loop = loop;
                 if (track.IsLoaded)
-                    AudioEngine.Instance.SetSourceLooping(track.Source, loop);
+                    Services.AudioEngine.SetSourceLooping(track.Source, loop);
             }
             ImGui.SameLine();
 
@@ -676,7 +677,7 @@ public class Timeline : UiPanel
                         {
                             float playOffset = Math.Max(0f, (_currentFrame - track.ManifestEntry.StartFrame) / _frameRate)
                                              + track.ManifestEntry.SourceOffsetSeconds;
-                            AudioEngine.Instance.SetSourceOffsetSeconds(track.Source, playOffset);
+                            Services.AudioEngine.SetSourceOffsetSeconds(track.Source, playOffset);
                         }
                     }
                 }
@@ -744,13 +745,13 @@ public class Timeline : UiPanel
 
         Task.Run(() =>
         {
-            var clip = AudioEngine.Instance.LoadClip(fullPath);
+            var clip = Services.AudioEngine.LoadClip(fullPath);
             if (clip == null) return;
             track.Clip = clip;
-            var src   = AudioEngine.Instance.CreateSource(clip);
+            var src   = Services.AudioEngine.CreateSource(clip);
             track.Source = src;
-            AudioEngine.Instance.SetSourceVolume(src, manifest.Muted ? 0f : manifest.Volume);
-            AudioEngine.Instance.SetSourceLooping(src, manifest.Loop);
+            Services.AudioEngine.SetSourceVolume(src, manifest.Muted ? 0f : manifest.Volume);
+            Services.AudioEngine.SetSourceLooping(src, manifest.Loop);
             if (manifest.CachedDurationSeconds <= 0f)
                 manifest.CachedDurationSeconds = (float)clip.DurationSeconds;
         });
@@ -763,8 +764,8 @@ public class Timeline : UiPanel
     {
         if (track.IsLoaded)
         {
-            AudioEngine.Instance.StopSource(track.Source);
-            AudioEngine.Instance.DestroySource(track.Source);
+            Services.AudioEngine.StopSource(track.Source);
+            Services.AudioEngine.DestroySource(track.Source);
         }
         _audioTracks.Remove(track);
         if (_selectedAudioTrack == track) _selectedAudioTrack = null;
@@ -787,13 +788,13 @@ public class Timeline : UiPanel
 
             Task.Run(() =>
             {
-                var clip = AudioEngine.Instance.LoadClip(fullPath);
+                var clip = Services.AudioEngine.LoadClip(fullPath);
                 if (clip == null) return;
                 track.Clip = clip;
-                var src   = AudioEngine.Instance.CreateSource(clip);
+                var src   = Services.AudioEngine.CreateSource(clip);
                 track.Source = src;
-                AudioEngine.Instance.SetSourceVolume(src, entry.Muted ? 0f : entry.Volume);
-                AudioEngine.Instance.SetSourceLooping(src, entry.Loop);
+                Services.AudioEngine.SetSourceVolume(src, entry.Muted ? 0f : entry.Volume);
+                Services.AudioEngine.SetSourceLooping(src, entry.Loop);
                 if (entry.CachedDurationSeconds <= 0f)
                     entry.CachedDurationSeconds = (float)clip.DurationSeconds;
             });
@@ -807,7 +808,7 @@ public class Timeline : UiPanel
         foreach (var t in _audioTracks)
         {
             if (!t.IsLoaded) continue;
-            AudioEngine.Instance.PauseSource(t.Source);
+            Services.AudioEngine.PauseSource(t.Source);
             // Keep WasPlaying=true so resume re-syncs without restarting from 0.
         }
     }
@@ -817,7 +818,7 @@ public class Timeline : UiPanel
         foreach (var t in _audioTracks)
         {
             if (!t.IsLoaded) continue;
-            AudioEngine.Instance.StopSource(t.Source);
+            Services.AudioEngine.StopSource(t.Source);
             t.WasPlaying = false;
         }
     }
@@ -830,7 +831,7 @@ public class Timeline : UiPanel
     /// </summary>
     public void SyncAudioWithPlayback()
     {
-        if (!AudioEngine.Instance.IsInitialized) return;
+        if (!Services.AudioEngine.IsInitialized) return;
         bool wantPlaying = _isPlaying;
 
         foreach (var t in _audioTracks)
@@ -852,27 +853,27 @@ public class Timeline : UiPanel
                 {
                     // First time entering the play range — start the source
                     // from the correct offset and let it run naturally.
-                    AudioEngine.Instance.SetSourceOffsetSeconds(t.Source, offset);
-                    AudioEngine.Instance.SetSourceLooping(t.Source, t.ManifestEntry.Loop);
-                    AudioEngine.Instance.SetSourceVolume(t.Source,
+                    Services.AudioEngine.SetSourceOffsetSeconds(t.Source, offset);
+                    Services.AudioEngine.SetSourceLooping(t.Source, t.ManifestEntry.Loop);
+                    Services.AudioEngine.SetSourceVolume(t.Source,
                         t.ManifestEntry.Muted ? 0f : t.ManifestEntry.Volume);
-                    AudioEngine.Instance.PlaySource(t.Source);
+                    Services.AudioEngine.PlaySource(t.Source);
                     t.WasPlaying = true;
                 }
                 else
                 {
                     // Already playing — only re-seek if the user scrubbed the
                     // playhead by more than a small threshold.
-                    float currentOffset = AudioEngine.Instance.GetSourceOffsetSeconds(t.Source);
+                    float currentOffset = Services.AudioEngine.GetSourceOffsetSeconds(t.Source);
                     if (MathF.Abs(currentOffset - offset) > 0.1f)
-                        AudioEngine.Instance.SetSourceOffsetSeconds(t.Source, offset);
+                        Services.AudioEngine.SetSourceOffsetSeconds(t.Source, offset);
                 }
             }
             else
             {
                 if (t.WasPlaying)
                 {
-                    AudioEngine.Instance.StopSource(t.Source);
+                    Services.AudioEngine.StopSource(t.Source);
                     t.WasPlaying = false;
                 }
             }
