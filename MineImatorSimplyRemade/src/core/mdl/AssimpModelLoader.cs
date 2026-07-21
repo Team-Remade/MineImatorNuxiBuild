@@ -590,14 +590,35 @@ public static class AssimpModelLoader
 
     private static vec3 QuaternionToEulerXYZ(Quaternion q)
     {
+        float sinP = 2f * (q.W * q.Y - q.Z * q.X);
+
+        // Gimbal lock: when pitch is exactly (or very nearly) +/-90 degrees, roll and
+        // yaw become coupled (only their combined effect is defined) and the general
+        // formulas below degenerate — their numerator/denominator pairs both tend to
+        // zero, making atan2 numerically unstable and, critically, NOT guaranteed to
+        // reproduce the original rotation when recomposed as Rz*Ry*Rx. This is not a
+        // rare edge case: cube/blocky rigs (e.g. Minecraft-style GLB exports) very
+        // commonly author bone rotations that land exactly on a 90-degree pitch, which
+        // previously caused those bones (and everything parented under them) to be
+        // rotated completely wrong — scattering the skeleton. Fix it by pinning
+        // roll = 0 and folding the remaining rotation entirely into yaw, which exactly
+        // reproduces the original matrix at the pole (verified analytically and
+        // numerically against Rz*Ry*Rx recomposition).
+        const float PoleEpsilon = 1e-6f;
+        if (MathF.Abs(sinP) >= 1f - PoleEpsilon)
+        {
+            float pitchAtPole = MathF.CopySign(MathF.PI / 2f, sinP);
+            float yawAtPole = MathF.Atan2(
+                2f * (q.W * q.Z - q.X * q.Y),
+                1f - 2f * (q.X * q.X + q.Z * q.Z));
+            return new vec3(0f, pitchAtPole, yawAtPole);
+        }
+
         float sinRcosP = 2f * (q.W * q.X + q.Y * q.Z);
         float cosRcosP = 1f - 2f * (q.X * q.X + q.Y * q.Y);
         float roll  = MathF.Atan2(sinRcosP, cosRcosP);
 
-        float sinP  = 2f * (q.W * q.Y - q.Z * q.X);
-        float pitch = MathF.Abs(sinP) >= 1f
-            ? MathF.CopySign(MathF.PI / 2f, sinP)
-            : MathF.Asin(sinP);
+        float pitch = MathF.Asin(sinP);
 
         float sinYcosP = 2f * (q.W * q.Z + q.X * q.Y);
         float cosYcosP = 1f - 2f * (q.Y * q.Y + q.Z * q.Z);
