@@ -2404,7 +2404,7 @@ public class Viewport : UiPanel
         return lightProj * lightView;
     }
 
-    private void RenderShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, MineImatorSimplyRemade.core.mdl.Shader shadowShader)
+    private void RenderShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, MineImatorSimplyRemade.core.mdl.Shader shadowShader, Dictionary<string, BoneSceneObject>? boneDict = null)
     {
         foreach (var obj in objects)
         {
@@ -2412,15 +2412,22 @@ public class Viewport : UiPanel
                 continue;
 
             mat4 model = obj.GetWorldMatrix();
+            var localBoneDict = boneDict;
+            if (localBoneDict == null)
+                localBoneDict = BuildBoneDictionary(obj);
+
             foreach (var mesh in obj.Visuals)
             {
                 if (mesh.PickOnly || mesh.DepthTestDisabled)
                     continue;
 
+                if (mesh.IsSkinned)
+                    UpdateBoneMatrices(mesh, model, localBoneDict);
+
                 mesh.RenderShadow(shadowShader, lightViewProj, model);
             }
 
-            RenderShadowCasters(obj.Children, lightViewProj, shadowShader);
+            RenderShadowCasters(obj.Children, lightViewProj, shadowShader, localBoneDict);
         }
     }
 
@@ -2453,7 +2460,7 @@ public class Viewport : UiPanel
         }
     }
 
-    private void RenderPointShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, vec3 lightPos, float farPlane, MineImatorSimplyRemade.core.mdl.Shader pointShadowShader)
+    private void RenderPointShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, vec3 lightPos, float farPlane, MineImatorSimplyRemade.core.mdl.Shader pointShadowShader, Dictionary<string, BoneSceneObject>? boneDict = null)
     {
         foreach (var obj in objects)
         {
@@ -2461,15 +2468,22 @@ public class Viewport : UiPanel
                 continue;
 
             mat4 model = obj.GetWorldMatrix();
+            var localBoneDict = boneDict;
+            if (localBoneDict == null)
+                localBoneDict = BuildBoneDictionary(obj);
+
             foreach (var mesh in obj.Visuals)
             {
                 if (mesh.PickOnly || mesh.DepthTestDisabled)
                     continue;
 
+                if (mesh.IsSkinned)
+                    UpdateBoneMatrices(mesh, model, localBoneDict);
+
                 mesh.RenderPointShadow(pointShadowShader, lightViewProj, model, lightPos, farPlane);
             }
 
-            RenderPointShadowCasters(obj.Children, lightViewProj, lightPos, farPlane, pointShadowShader);
+            RenderPointShadowCasters(obj.Children, lightViewProj, lightPos, farPlane, pointShadowShader, localBoneDict);
         }
     }
 
@@ -3011,7 +3025,8 @@ public class Viewport : UiPanel
         List<(mat4 model, Mesh mesh)> opaque,
         List<(mat4 model, Mesh mesh, float dist, int sortDepth)> textured,
         List<(mat4 model, Mesh mesh, float dist, int sortDepth)> alphaBlend,
-        List<(mat4 model, Mesh mesh)> overlays)
+        List<(mat4 model, Mesh mesh)> overlays,
+        Dictionary<string, BoneSceneObject>? boneDict = null)
     {
         foreach (var obj in objects)
         {
@@ -3021,11 +3036,19 @@ public class Viewport : UiPanel
             vec3  worldPos = new vec3(model.m30, model.m31, model.m32);
             float dist     = (worldPos - camPos).LengthSqr;
 
+            // Build a bone dictionary once for each top-level model hierarchy.
+            var localBoneDict = boneDict;
+            if (localBoneDict == null)
+                localBoneDict = BuildBoneDictionary(obj);
+
             // Only this node's own Visuals — not its descendants.
             foreach (Mesh mesh in obj.Visuals)
             {
                 if (mesh.PickOnly)
                     continue;
+
+                if (mesh.IsSkinned && localBoneDict != null)
+                    UpdateBoneMatrices(mesh, model, localBoneDict);
 
                 // Overlay meshes (e.g. camera icon) are collected separately so
                 // they can be shown/hidden with the Overlays toggle and are never
@@ -3045,8 +3068,63 @@ public class Viewport : UiPanel
             }
 
             // Recurse into children so each child uses its own world matrix.
-            CollectRenderPairs(obj.Children, camPos, opaque, textured, alphaBlend, overlays);
+            CollectRenderPairs(obj.Children, camPos, opaque, textured, alphaBlend, overlays, localBoneDict);
         }
+    }
+
+    /// <summary>
+    /// Builds a name → BoneSceneObject lookup for the entire hierarchy rooted at
+    /// <paramref name="root"/>.
+    /// </summary>
+    private static Dictionary<string, BoneSceneObject> BuildBoneDictionary(SceneObject root)
+    {
+        var dict = new Dictionary<string, BoneSceneObject>(StringComparer.OrdinalIgnoreCase);
+        CollectBones(root, dict);
+        return dict;
+    }
+
+    private static void CollectBones(SceneObject obj, Dictionary<string, BoneSceneObject> dict)
+    {
+        if (obj is BoneSceneObject bone && !string.IsNullOrEmpty(bone.BoneName)
+            && !dict.ContainsKey(bone.BoneName))
+        {
+            dict[bone.BoneName] = bone;
+        }
+
+        foreach (var child in obj.Children)
+            CollectBones(child, dict);
+    }
+
+    /// <summary>
+    /// Computes the current bone-matrix palette for a skinned mesh.
+    /// Each matrix is <c>meshWorldInverse * boneWorld * inverseBindMatrix</c>,
+    /// which deforms vertices in the mesh's local space so the regular model matrix
+    /// still applies the mesh node's own transform.
+    /// </summary>
+    private static void UpdateBoneMatrices(Mesh mesh, mat4 meshWorld, Dictionary<string, BoneSceneObject> boneDict)
+    {
+        if (mesh.BoneNames.Count == 0 || mesh.BoneInverseBindMatrices.Count == 0)
+            return;
+
+        mat4 meshWorldInverse = meshWorld.Inverse;
+        var matrices = new List<mat4>(mesh.BoneNames.Count);
+
+        for (int i = 0; i < mesh.BoneNames.Count; i++)
+        {
+            string name = mesh.BoneNames[i];
+            if (boneDict.TryGetValue(name, out var bone))
+            {
+                mat4 boneWorld = bone.GetWorldMatrix();
+                mat4 ibm = mesh.BoneInverseBindMatrices[i];
+                matrices.Add(meshWorldInverse * boneWorld * ibm);
+            }
+            else
+            {
+                matrices.Add(mat4.Identity);
+            }
+        }
+
+        mesh.BoneMatrices = matrices;
     }
 
     /// <summary>

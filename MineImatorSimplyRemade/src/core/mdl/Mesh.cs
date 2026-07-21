@@ -26,7 +26,7 @@ public class Mesh : IDisposable
 {
     private readonly GL _gl;
 
-    private uint _vbo, _ebo, _vao;
+    private uint _vbo, _ebo, _vao, _skinVbo;
     private Shader _shader;
 
     // ── CPU-side geometry ─────────────────────────────────────────────────────
@@ -45,6 +45,41 @@ public class Mesh : IDisposable
     /// Leave empty for untextured meshes — the shader will use <see cref="Albedo"/> instead.
     /// </summary>
     public readonly List<vec2> TexCoords = new();
+
+    // ── Skinning ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Per-vertex bone indices (up to 4 per vertex), parallel to <see cref="Vertices"/>.
+    /// Only used when <see cref="IsSkinned"/> is true.
+    /// </summary>
+    public readonly List<ivec4> BoneIndices = new();
+
+    /// <summary>
+    /// Per-vertex bone weights (up to 4 per vertex), parallel to <see cref="Vertices"/>.
+    /// Only used when <see cref="IsSkinned"/> is true.
+    /// </summary>
+    public readonly List<vec4> BoneWeights = new();
+
+    /// <summary>
+    /// Bone names used by this mesh, indexed by the bone indices in <see cref="BoneIndices"/>.
+    /// </summary>
+    public readonly List<string> BoneNames = new();
+
+    /// <summary>
+    /// Inverse bind matrices for each bone in <see cref="BoneNames"/>.
+    /// These transform from mesh space to bone space in the bind pose.
+    /// </summary>
+    public readonly List<mat4> BoneInverseBindMatrices = new();
+
+    /// <summary>
+    /// Current bone matrices, uploaded to the shader each frame.
+    /// Computed as <c>meshWorldInverse * boneWorld * inverseBindMatrix * meshWorld</c>
+    /// so the shader can deform vertices in the mesh's local space.
+    /// </summary>
+    public List<mat4>? BoneMatrices { get; set; }
+
+    /// <summary>True when this mesh has skinning data and should be GPU-deformed.</summary>
+    public bool IsSkinned => BoneIndices.Count > 0 && BoneIndices.Count == Vertices.Count;
 
     /// <summary>
     /// Optional index buffer (uint32).  Leave null for plain <c>DrawArrays</c>.
@@ -293,6 +328,8 @@ public class Mesh : IDisposable
             _gl.DeleteVertexArrays(1, _vao);
             _gl.DeleteBuffers(1, _vbo);
             if (_ebo != 0) _gl.DeleteBuffers(1, _ebo);
+            if (_skinVbo != 0) _gl.DeleteBuffers(1, _skinVbo);
+            _vao = _vbo = _ebo = _skinVbo = 0;
         }
 
         if (Vertices.Count == 0) return;
@@ -303,6 +340,8 @@ public class Mesh : IDisposable
 
         // Pad TexCoords to match vertex count with (0,0) if not provided.
         bool hasUVs = TexCoords.Count == Vertices.Count;
+
+        bool isSkinned = IsSkinned;
 
         // Interleave: [ px py pz nx ny nz u v ] per vertex
         const int floatsPerVertex = 8;
@@ -337,6 +376,43 @@ public class Mesh : IDisposable
         // location 2: texcoord
         _gl.VertexAttribPointer(2, 2, GLEnum.Float, false, stride, 6 * sizeof(float));
         _gl.EnableVertexAttribArray(2);
+
+        // Skinning attributes
+        if (isSkinned)
+        {
+            const int boneIndicesPerVertex = 4;
+            const int boneWeightsPerVertex = 4;
+            const int skinStride = boneIndicesPerVertex * sizeof(int) + boneWeightsPerVertex * sizeof(float);
+            byte[] skinData = new byte[Vertices.Count * skinStride];
+
+            for (int i = 0; i < Vertices.Count; i++)
+            {
+                int offset = i * skinStride;
+                // Bone indices (int)
+                BitConverter.GetBytes(BoneIndices[i].x).CopyTo(skinData, offset + 0);
+                BitConverter.GetBytes(BoneIndices[i].y).CopyTo(skinData, offset + 4);
+                BitConverter.GetBytes(BoneIndices[i].z).CopyTo(skinData, offset + 8);
+                BitConverter.GetBytes(BoneIndices[i].w).CopyTo(skinData, offset + 12);
+                // Weights
+                BitConverter.GetBytes(BoneWeights[i].x).CopyTo(skinData, offset + 16);
+                BitConverter.GetBytes(BoneWeights[i].y).CopyTo(skinData, offset + 20);
+                BitConverter.GetBytes(BoneWeights[i].z).CopyTo(skinData, offset + 24);
+                BitConverter.GetBytes(BoneWeights[i].w).CopyTo(skinData, offset + 28);
+            }
+
+            _gl.GenBuffers(1, out _skinVbo);
+            _gl.BindBuffer(GLEnum.ArrayBuffer, _skinVbo);
+            fixed (byte* p = skinData)
+                _gl.BufferData(GLEnum.ArrayBuffer, (uint)skinData.Length, p, GLEnum.StaticDraw);
+
+            uint skinStrideU = (uint)skinStride;
+            // location 3: bone indices
+            _gl.VertexAttribIPointer(3, 4, GLEnum.Int, skinStrideU, 0);
+            _gl.EnableVertexAttribArray(3);
+            // location 4: bone weights
+            _gl.VertexAttribPointer(4, 4, GLEnum.Float, false, skinStrideU, boneIndicesPerVertex * sizeof(int));
+            _gl.EnableVertexAttribArray(4);
+        }
 
         // Index buffer
         if (Indices != null && Indices.Length > 0)
@@ -453,6 +529,15 @@ public class Mesh : IDisposable
         mat4 mvp = proj * view * model;
         SetUniformMat4("uMVP",   mvp);
         SetUniformMat4("uModel", model);
+
+        SetUniformBool("uIsSkinned", IsSkinned);
+        if (IsSkinned && BoneMatrices != null)
+        {
+            const int maxBones = 64;
+            int count = Math.Min(BoneMatrices.Count, maxBones);
+            for (int i = 0; i < count; i++)
+                SetUniformMat4($"uBoneMatrices[{i}]", BoneMatrices[i]);
+        }
 
         SetUniformVec3("uAlbedo", Albedo);
         SetUniformFloat("uAlpha", Alpha);
@@ -629,6 +714,15 @@ public class Mesh : IDisposable
         _gl.UseProgram(shader.ShaderProgram);
         SetUniformMat4(shader, "uMVP", lightViewProj * model);
 
+        SetUniformBool(shader, "uIsSkinned", IsSkinned);
+        if (IsSkinned && BoneMatrices != null)
+        {
+            const int maxBones = 64;
+            int count = Math.Min(BoneMatrices.Count, maxBones);
+            for (int i = 0; i < count; i++)
+                SetUniformMat4(shader, $"uBoneMatrices[{i}]", BoneMatrices[i]);
+        }
+
         float texOffsetV = 0f;
         float texScaleV  = 1f;
         if (!string.IsNullOrEmpty(AnimationKey) &&
@@ -687,6 +781,15 @@ public class Mesh : IDisposable
         SetUniformMat4(shader, "uModel", model);
         SetUniformVec3(shader, "uLightPos", lightPos);
         SetUniformFloat(shader, "uFarPlane", farPlane);
+
+        SetUniformBool(shader, "uIsSkinned", IsSkinned);
+        if (IsSkinned && BoneMatrices != null)
+        {
+            const int maxBones = 64;
+            int count = Math.Min(BoneMatrices.Count, maxBones);
+            for (int i = 0; i < count; i++)
+                SetUniformMat4(shader, $"uBoneMatrices[{i}]", BoneMatrices[i]);
+        }
 
         float texOffsetV = 0f;
         float texScaleV = 1f;
@@ -858,6 +961,7 @@ public class Mesh : IDisposable
         if (_vao != 0) _gl.DeleteVertexArrays(1, _vao);
         if (_vbo != 0) _gl.DeleteBuffers(1, _vbo);
         if (_ebo != 0) _gl.DeleteBuffers(1, _ebo);
+        if (_skinVbo != 0) _gl.DeleteBuffers(1, _skinVbo);
         _shader?.Dispose();
     }
 }

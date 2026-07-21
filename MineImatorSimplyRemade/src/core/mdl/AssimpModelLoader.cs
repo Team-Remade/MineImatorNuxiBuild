@@ -97,10 +97,25 @@ public static class AssimpModelLoader
             var texCache = new Dictionary<string, uint>();
             UploadTextures(assimp, gl, scene, modelDir, texCache, nearestFilter);
 
+            // ── Detect whether this model uses GPU skinning ─────────────────
+            // Skinned meshes carry bone weight attributes (AiMesh.MBones > 0).
+            // When skinning is present we keep bones in their authored pose and
+            // extract JOINTS_0/WEIGHTS_0/inverse-bind data instead of treating
+            // the mesh as a rigid child of a bone.
+            bool hasSkinnedMeshes = false;
+            for (uint mi = 0; mi < scene->MNumMeshes; mi++)
+            {
+                if (scene->MMeshes[mi]->MNumBones > 0)
+                {
+                    hasSkinnedMeshes = true;
+                    break;
+                }
+            }
+
             // ── Build the node hierarchy ───────────────────────────────────
             SceneObject? root = BuildNodeTree(
                 assimp, gl, scene, scene->MRootNode,
-                boneNames, texCache, filePath);
+                boneNames, texCache, filePath, hasSkinnedMeshes);
 
             if (root == null)
             {
@@ -316,7 +331,9 @@ public static class AssimpModelLoader
     /// Builds a SceneObject for <paramref name="node"/> and recurses into children.
     /// Returns null for pure mesh-display nodes that are direct children of a bone
     /// — their meshes are absorbed into the parent bone instead of creating a
-    /// separate scene object.
+    /// separate scene object.  This rigid-body behaviour is disabled when
+    /// <paramref name="hasSkinnedMeshes"/> is true so that authored bone poses and
+    /// GPU skinning are preserved.
     /// </summary>
     private static unsafe SceneObject? BuildNodeTree(
         AiAssimp assimp,
@@ -326,13 +343,14 @@ public static class AssimpModelLoader
         HashSet<string> boneNames,
         Dictionary<string, uint> texCache,
         string sourceFilePath,
+        bool hasSkinnedMeshes,
         Quaternion parentBoneQuat = default,
         SceneObject? parentObj = null)
     {
         string nodeName = node->MName.AsString;
         bool isBone = boneNames.Contains(nodeName);
         bool hasMesh = node->MNumMeshes > 0;
-        bool isMeshChildOfBone = hasMesh && !isBone && parentBoneQuat != default && parentObj != null;
+        bool isMeshChildOfBone = !hasSkinnedMeshes && hasMesh && !isBone && parentBoneQuat != default && parentObj != null;
 
         // Decompose local transform (transpose: Assimp col4-translation → row4-translation).
         Matrix4x4 local = Matrix4x4.Transpose(node->MTransformation);
@@ -374,7 +392,7 @@ public static class AssimpModelLoader
             for (uint ci = 0; ci < node->MNumChildren; ci++)
             {
                 SceneObject? child = BuildNodeTree(assimp, gl, scene, node->MChildren[ci],
-                    boneNames, texCache, sourceFilePath);
+                    boneNames, texCache, sourceFilePath, hasSkinnedMeshes);
                 if (child != null) meshObj.AddChild(child);
             }
 
@@ -398,12 +416,23 @@ public static class AssimpModelLoader
 
         if (isBone)
         {
-            // Bone: show at zero rotation.  Pass our raw quaternion down so
-            // direct mesh children can absorb the compensation.
-            obj.SetLocalPosition(pos);
-            obj.SetLocalRotation(vec3.Zero);
-            obj.SetLocalScale(scale);
-            boneQuatForChildren = lquat;
+            if (hasSkinnedMeshes)
+            {
+                // Skinned meshes need the skeleton in its authored bind pose so the
+                // inverse bind matrices and bone weights line up correctly.
+                obj.SetLocalPosition(pos);
+                obj.SetLocalRotation(QuaternionToEulerXYZ(lquat));
+                obj.SetLocalScale(scale);
+            }
+            else
+            {
+                // Rigid-body rigs: show the bone at zero rotation and pass the
+                // raw quaternion down so direct mesh children can absorb it.
+                obj.SetLocalPosition(pos);
+                obj.SetLocalRotation(vec3.Zero);
+                obj.SetLocalScale(scale);
+                boneQuatForChildren = lquat;
+            }
 
             // Build the small octahedron visual indicator for this bone.
             ((BoneSceneObject)obj).CreateIndicator(gl);
@@ -428,7 +457,7 @@ public static class AssimpModelLoader
         {
             SceneObject? child = BuildNodeTree(
                 assimp, gl, scene, node->MChildren[ci],
-                boneNames, texCache, sourceFilePath,
+                boneNames, texCache, sourceFilePath, hasSkinnedMeshes,
                 parentBoneQuat: isBone ? boneQuatForChildren : default,
                 parentObj: isBone ? obj : null);
 
@@ -482,6 +511,62 @@ public static class AssimpModelLoader
         }
         mesh.Indices = indices.ToArray();
 
+        // ── Skinning data ───────────────────────────────────────────────────
+        if (aMesh->MNumBones > 0)
+        {
+            if (aMesh->MNumBones > 64)
+            {
+                Console.Error.WriteLine(
+                    $"[AssimpModelLoader] Mesh has {aMesh->MNumBones} bones; " +
+                    "only the first 64 will be used by the GPU skinning shader.");
+            }
+
+            uint boneCount = aMesh->MNumBones;
+            for (uint bi = 0; bi < boneCount; bi++)
+            {
+                AiBone* bone = aMesh->MBones[bi];
+                mesh.BoneNames.Add(bone->MName.AsString);
+                mesh.BoneInverseBindMatrices.Add(ToGlmMat4(Matrix4x4.Transpose(bone->MOffsetMatrix)));
+            }
+
+            int vertexCount = mesh.Vertices.Count;
+            for (int vi = 0; vi < vertexCount; vi++)
+            {
+                mesh.BoneIndices.Add(new ivec4(0, 0, 0, 0));
+                mesh.BoneWeights.Add(new vec4(0f, 0f, 0f, 0f));
+            }
+
+            for (uint bi = 0; bi < boneCount; bi++)
+            {
+                AiBone* bone = aMesh->MBones[bi];
+                int boneIdx = (int)bi;
+                for (uint wi = 0; wi < bone->MNumWeights; wi++)
+                {
+                    var weight = bone->MWeights[wi];
+                    int vertexId = (int)weight.MVertexId;
+                    float w = weight.MWeight;
+
+                    for (int slot = 0; slot < 4; slot++)
+                    {
+                        if (mesh.BoneWeights[vertexId][slot] == 0f)
+                        {
+                            mesh.BoneIndices[vertexId] = SetBoneIndex(mesh.BoneIndices[vertexId], slot, boneIdx);
+                            mesh.BoneWeights[vertexId] = SetBoneWeight(mesh.BoneWeights[vertexId], slot, w);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            for (int vi = 0; vi < vertexCount; vi++)
+            {
+                vec4 w = mesh.BoneWeights[vi];
+                float sum = w.x + w.y + w.z + w.w;
+                if (sum > 0f)
+                    mesh.BoneWeights[vi] = w / sum;
+            }
+        }
+
         if (aMesh->MMaterialIndex < scene->MNumMaterials)
         {
             AiMaterial* mat = scene->MMaterials[aMesh->MMaterialIndex];
@@ -519,5 +604,43 @@ public static class AssimpModelLoader
         float yaw   = MathF.Atan2(sinYcosP, cosYcosP);
 
         return new vec3(roll, pitch, yaw);
+    }
+
+    // ── Matrix / skinning helpers ─────────────────────────────────────────────
+
+    private static mat4 ToGlmMat4(Matrix4x4 m)
+    {
+        // System.Numerics.Matrix4x4 is row-major (DirectX-style).  GlmSharp mat4
+        // is column-major (OpenGL-style).  Map each row of the System.Numerics
+        // matrix into a column of the GlmSharp matrix.
+        return new mat4(
+            m.M11, m.M12, m.M13, m.M14,
+            m.M21, m.M22, m.M23, m.M24,
+            m.M31, m.M32, m.M33, m.M34,
+            m.M41, m.M42, m.M43, m.M44);
+    }
+
+    private static ivec4 SetBoneIndex(ivec4 v, int slot, int value)
+    {
+        return slot switch
+        {
+            0 => new ivec4(value, v.y, v.z, v.w),
+            1 => new ivec4(v.x, value, v.z, v.w),
+            2 => new ivec4(v.x, v.y, value, v.w),
+            3 => new ivec4(v.x, v.y, v.z, value),
+            _ => v
+        };
+    }
+
+    private static vec4 SetBoneWeight(vec4 v, int slot, float value)
+    {
+        return slot switch
+        {
+            0 => new vec4(value, v.y, v.z, v.w),
+            1 => new vec4(v.x, value, v.z, v.w),
+            2 => new vec4(v.x, v.y, value, v.w),
+            3 => new vec4(v.x, v.y, v.z, value),
+            _ => v
+        };
     }
 }
