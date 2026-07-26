@@ -1,5 +1,6 @@
 ﻿using GlmSharp;
 using MineImatorSimplyRemade.core;
+using MineImatorSimplyRemade.core.log;
 using MineImatorSimplyRemade.core.startup;
 using MineImatorSimplyRemade.core.window;
 using MineImatorSimplyRemade.core.window.windows;
@@ -28,6 +29,10 @@ public static class main
 
     private static unsafe int Main(string[] args)
     {
+        // Set up file logging (logs\latest.log + up to 5 rotated logs\previous-N.log)
+        // as early as possible so startup output is captured too.
+        Logger.Initialize();
+
         SentrySdk.Init(options =>
         {
             // A Sentry Data Source Name (DSN) is required.
@@ -46,7 +51,11 @@ public static class main
             // Enable logs to be sent to Sentry
             options.EnableLogs = true;
         });
-        
+
+        // Catch unhandled exceptions on background threads too (e.g. Task continuations),
+        // writing a crash report and showing the native "something went wrong" dialog.
+        CrashReporter.Initialize();
+
         try
         {
             NativeLibraryBootstrap.Initialize();
@@ -212,8 +221,14 @@ public static class main
         }
         catch (Exception e)
         {
-            Console.WriteLine(e);
-            throw;
+            // Log it, send it to Sentry, write a crash report, and show the native
+            // "something went wrong" window instead of letting the exception escape.
+            CrashReporter.Report(e, "Main");
+            return 1;
+        }
+        finally
+        {
+            Logger.Shutdown();
         }
     }
 
