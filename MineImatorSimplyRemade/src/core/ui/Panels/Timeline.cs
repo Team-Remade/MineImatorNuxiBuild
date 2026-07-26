@@ -1741,6 +1741,21 @@ public class Timeline : UiPanel
             foreach (var path in paths)
                 if (obj.Keyframes.ContainsKey(path) && obj.Keyframes[path].Count > 0)
                     LoadKeyframesFromObject(obj, path);
+
+            // Shape keys use dynamic "shapekey.<meshIndex>.<keyIndex>" paths that
+            // depend on the object's mesh/morph-target layout, so they can't be
+            // enumerated from a static list like the properties above.
+            var shapeKeyMeshes = obj.GetMeshInstancesRecursively();
+            for (int m = 0; m < shapeKeyMeshes.Count; m++)
+            {
+                if (!shapeKeyMeshes[m].HasShapeKeys) continue;
+                for (int k = 0; k < shapeKeyMeshes[m].ShapeKeys.Count; k++)
+                {
+                    string skPath = $"shapekey.{m}.{k}";
+                    if (obj.Keyframes.ContainsKey(skPath) && obj.Keyframes[skPath].Count > 0)
+                        LoadKeyframesFromObject(obj, skPath);
+                }
+            }
         }
 
         RecalculateTimelineLength();
@@ -1960,8 +1975,31 @@ public class Timeline : UiPanel
         {
             return parts[2] switch { "r" => (object)lco.LightColor.x, "g" => lco.LightColor.y, "b" => lco.LightColor.z, _ => 0f };
         }
+        else if (parts.Length == 3 && parts[0] == "shapekey")
+        {
+            return (object)(GetShapeKeyWeight(obj, parts[1], parts[2]) ?? 0f);
+        }
 
         return 0f;
+    }
+
+    /// <summary>
+    /// Resolves a "shapekey.&lt;meshIndex&gt;.&lt;keyIndex&gt;" property path to the
+    /// current weight of that shape key, or <c>null</c> if either index is out of
+    /// range (e.g. the model was swapped since the keyframe was recorded).
+    /// </summary>
+    private static float? GetShapeKeyWeight(SceneObject obj, string meshIndexStr, string keyIndexStr)
+    {
+        if (!int.TryParse(meshIndexStr, out int meshIndex) || !int.TryParse(keyIndexStr, out int keyIndex))
+            return null;
+
+        var meshes = obj.GetMeshInstancesRecursively();
+        if (meshIndex < 0 || meshIndex >= meshes.Count) return null;
+
+        var shapeKeys = meshes[meshIndex].ShapeKeys;
+        if (keyIndex < 0 || keyIndex >= shapeKeys.Count) return null;
+
+        return shapeKeys[keyIndex].Weight;
     }
 
     private void SetPropertyValue(SceneObject obj, string path, float value)
@@ -2079,6 +2117,26 @@ public class Timeline : UiPanel
             switch (parts[2]) { case "r": c.x = value; break; case "g": c.y = value; break; case "b": c.z = value; break; }
             lco.LightColor = c;
         }
+        else if (parts.Length == 3 && parts[0] == "shapekey")
+        {
+            SetShapeKeyWeight(obj, parts[1], parts[2], value);
+        }
+    }
+
+    /// <summary>
+    /// Applies <paramref name="value"/> to the shape key identified by a
+    /// "shapekey.&lt;meshIndex&gt;.&lt;keyIndex&gt;" property path. No-op if either
+    /// index is out of range.
+    /// </summary>
+    private static void SetShapeKeyWeight(SceneObject obj, string meshIndexStr, string keyIndexStr, float value)
+    {
+        if (!int.TryParse(meshIndexStr, out int meshIndex) || !int.TryParse(keyIndexStr, out int keyIndex))
+            return;
+
+        var meshes = obj.GetMeshInstancesRecursively();
+        if (meshIndex < 0 || meshIndex >= meshes.Count) return;
+
+        meshes[meshIndex].SetShapeKeyWeight(keyIndex, value);
     }
 
     // ── Selection changed → rebuild display rows ──────────────────────────────
@@ -2216,6 +2274,24 @@ public class Timeline : UiPanel
                     if (!hasKeyframes) continue;
 
                     _displayRows.Add(MakeSingle(obj, label, path, indent));
+                }
+            }
+
+            // Shape key properties — dynamic per-mesh/per-key paths.
+            {
+                var meshes = obj.GetMeshInstancesRecursively();
+                for (int m = 0; m < meshes.Count; m++)
+                {
+                    if (!meshes[m].HasShapeKeys) continue;
+                    for (int k = 0; k < meshes[m].ShapeKeys.Count; k++)
+                    {
+                        string path = $"shapekey.{m}.{k}";
+                        if (!propsWithKeyframes.Contains(path)) continue;
+
+                        string keyName = meshes[m].ShapeKeys[k].Name;
+                        string label   = meshes.Count > 1 ? $"{keyName} (Mesh {m})" : keyName;
+                        _displayRows.Add(MakeSingle(obj, label, path));
+                    }
                 }
             }
         }

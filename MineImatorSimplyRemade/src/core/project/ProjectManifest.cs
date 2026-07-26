@@ -147,6 +147,20 @@ public class ProjectKeyframeEntry
     public string InterpolationType { get; set; } = "linear";
 }
 
+/// <summary>
+/// Persists the current (non-keyframed) weight of a single shape key.
+/// <see cref="MeshIndex"/> is a best-effort hint matching the object's
+/// depth-first mesh order at save time; <see cref="Name"/> is the primary
+/// match key on load so weights survive the model being re-imported with a
+/// different mesh/morph-target order.
+/// </summary>
+public class ProjectShapeKeyWeightEntry
+{
+    public int MeshIndex { get; set; }
+    public string Name { get; set; } = "";
+    public float Weight { get; set; }
+}
+
 public class ProjectVec3
 {
     public float X { get; set; }
@@ -227,6 +241,11 @@ public class ProjectSceneObjectEntry
     public float LightSpotBlend { get; set; } = 5f;
 
     public Dictionary<string, List<ProjectKeyframeEntry>> Keyframes { get; set; } = new();
+
+    // Current (non-keyframed) shape key weights. Only non-default (non-zero)
+    // weights are stored; matched primarily by name on load (see
+    // ProjectShapeKeyWeightEntry).
+    public List<ProjectShapeKeyWeightEntry> ShapeKeyWeights { get; set; } = new();
 
     public List<ProjectSceneObjectEntry> Children { get; set; } = new();
 }

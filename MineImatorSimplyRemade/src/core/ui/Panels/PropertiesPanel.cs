@@ -102,6 +102,9 @@ public class PropertiesPanel : UiPanel
 
     // ── Texture tracking for dropdown ────────────────────────────────────────
     private Dictionary<uint, string> _loadedTexturePathCache = new();
+
+    // ── Shape key search filter ──────────────────────────────────────────────
+    private string _shapeKeySearch = "";
     private uint[] _cachedTextureIds = Array.Empty<uint>();
 
     // ── Public wiring ─────────────────────────────────────────────────────────
@@ -2080,7 +2083,13 @@ public class PropertiesPanel : UiPanel
         foreach (var m in meshes) if (m.HasShapeKeys) keyCount += m.ShapeKeys.Count;
 
         ImGui.TextWrapped("Drag any slider to blend in a shape key. " +
-                          "Negative values invert the morph.");
+                          "Negative values invert the morph. Right-click a slider " +
+                          "to add a keyframe.");
+        ImGui.Spacing();
+
+        // Search box — filters the list below by shape key name (case-insensitive).
+        ImGui.SetNextItemWidth(-1f);
+        ImGui.InputTextWithHint("##shapekeySearch", "Search shape keys...", ref _shapeKeySearch, 128);
         ImGui.Spacing();
 
         if (ImGui.Button("Reset All Shape Keys##shapekeyResetAll"))
@@ -2096,21 +2105,31 @@ public class PropertiesPanel : UiPanel
         float scrollHeight = MathF.Min(320f, MathF.Max(60f, 24f * keyCount + 40f));
         if (ImGui.BeginChild("##shapekeyScroll", new Vector2(0, scrollHeight), ImGuiChildFlags.Borders))
         {
+            bool anyVisible = false;
             int meshIndex = 0;
             foreach (var mesh in meshes)
             {
-                if (!mesh.HasShapeKeys) continue;
+                if (!mesh.HasShapeKeys) { meshIndex++; continue; }
 
-                if (meshes.Count > 1)
-                {
-                    ImGui.TextDisabled($"Mesh {meshIndex}");
-                    ImGui.Separator();
-                }
+                bool meshHeaderDrawn = false;
 
                 for (int i = 0; i < mesh.ShapeKeys.Count; i++)
                 {
                     var sk = mesh.ShapeKeys[i];
+                    if (!string.IsNullOrEmpty(_shapeKeySearch) &&
+                        sk.Name.IndexOf(_shapeKeySearch, StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
+
+                    if (meshes.Count > 1 && !meshHeaderDrawn)
+                    {
+                        ImGui.TextDisabled($"Mesh {meshIndex}");
+                        ImGui.Separator();
+                        meshHeaderDrawn = true;
+                    }
+
+                    anyVisible = true;
                     float weight = sk.Weight;
+                    string path  = $"shapekey.{meshIndex}.{i}";
                     string label = $"{sk.Name}##mesh{meshIndex}_key{i}";
 
                     ImGui.SetNextItemWidth(-60f);
@@ -2118,16 +2137,27 @@ public class PropertiesPanel : UiPanel
                     {
                         mesh.SetShapeKeyWeight(i, weight);
                         ProjectManager.Instance.SetDirty(true);
+                        Timeline?.RecordAutoKeyframe(obj, path);
+                    }
+                    if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                    {
+                        _ctxPropertyPath = path;
+                        _ctxMenuPos = ImGui.GetMousePos();
+                        _openPropContextMenu = true;
                     }
                     ImGui.SameLine();
                     if (ImGui.SmallButton($"0##reset{meshIndex}_{i}"))
                     {
                         mesh.SetShapeKeyWeight(i, 0f);
                         ProjectManager.Instance.SetDirty(true);
+                        Timeline?.RecordAutoKeyframe(obj, path);
                     }
                 }
                 meshIndex++;
             }
+
+            if (!anyVisible && !string.IsNullOrEmpty(_shapeKeySearch))
+                ImGui.TextDisabled("No shape keys match your search.");
         }
         ImGui.EndChild();
     }

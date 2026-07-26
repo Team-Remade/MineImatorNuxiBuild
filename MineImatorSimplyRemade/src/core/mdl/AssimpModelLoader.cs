@@ -625,9 +625,6 @@ public static class AssimpModelLoader
                 mesh.AddShapeKey(name, deltas);
                 added++;
             }
-
-            if (added > 0)
-                Console.WriteLine($"[AssimpModelLoader] Mesh #{meshIndex} '{meshName}': loaded {added} shape key(s).");
         }
 
         return mesh;

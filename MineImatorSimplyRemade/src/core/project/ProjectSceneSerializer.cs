@@ -1,5 +1,6 @@
 using GlmSharp;
 using MineImatorSimplyRemade.core;
+using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core;
@@ -150,7 +151,8 @@ public static class ProjectSceneSerializer
             TileX = obj.GetEffectiveTileX(),
             TileY = obj.GetEffectiveTileY(),
             TileZ = obj.GetEffectiveTileZ(),
-            Keyframes = SerializeKeyframes(obj)
+            Keyframes = SerializeKeyframes(obj),
+            ShapeKeyWeights = SerializeShapeKeyWeights(obj)
         };
 
         if (obj.HasExplicitMaterialSettings && obj.MaterialSettings != null)
@@ -373,6 +375,7 @@ public static class ProjectSceneSerializer
         }
 
         obj.Keyframes = DeserializeKeyframes(entry.Keyframes);
+        ApplyShapeKeyWeights(obj, entry.ShapeKeyWeights);
 
         if (obj is CameraSceneObject camera)
         {
@@ -488,6 +491,72 @@ public static class ProjectSceneSerializer
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Captures the current (non-keyframed) weight of every non-default shape
+    /// key on <paramref name="obj"/>'s meshes. Shape key deltas/geometry are
+    /// never serialized (meshes are re-imported from <see cref="SceneObject.SourceAssetPath"/>
+    /// on load) so only the lightweight name→weight state is saved here.
+    /// </summary>
+    private static List<ProjectShapeKeyWeightEntry> SerializeShapeKeyWeights(SceneObject obj)
+    {
+        var result = new List<ProjectShapeKeyWeightEntry>();
+        var meshes = obj.GetMeshInstancesRecursively();
+
+        for (int m = 0; m < meshes.Count; m++)
+        {
+            if (!meshes[m].HasShapeKeys) continue;
+
+            foreach (var sk in meshes[m].ShapeKeys)
+            {
+                if (sk.Weight == 0f) continue; // default state, nothing to persist
+                result.Add(new ProjectShapeKeyWeightEntry { MeshIndex = m, Name = sk.Name, Weight = sk.Weight });
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Restores saved shape key weights onto <paramref name="obj"/>'s freshly
+    /// (re-)imported meshes. Matches primarily by shape key <c>Name</c> within
+    /// the mesh at the saved <c>MeshIndex</c> (robust to morph-target reordering
+    /// within a mesh); if that mesh no longer has a matching name (e.g. the
+    /// source model's mesh order changed too), falls back to searching every
+    /// mesh on the object for the first shape key with that name.
+    /// </summary>
+    private static void ApplyShapeKeyWeights(SceneObject obj, List<ProjectShapeKeyWeightEntry>? entries)
+    {
+        if (entries == null || entries.Count == 0) return;
+
+        var meshes = obj.GetMeshInstancesRecursively();
+        if (meshes.Count == 0) return;
+
+        foreach (var saved in entries)
+        {
+            if (string.IsNullOrEmpty(saved.Name)) continue;
+
+            Mesh? targetMesh = null;
+            int keyIndex = -1;
+
+            if (saved.MeshIndex >= 0 && saved.MeshIndex < meshes.Count)
+            {
+                int idx = meshes[saved.MeshIndex].ShapeKeys.FindIndex(sk => sk.Name == saved.Name);
+                if (idx >= 0) { targetMesh = meshes[saved.MeshIndex]; keyIndex = idx; }
+            }
+
+            if (targetMesh == null)
+            {
+                foreach (var mesh in meshes)
+                {
+                    int idx = mesh.ShapeKeys.FindIndex(sk => sk.Name == saved.Name);
+                    if (idx >= 0) { targetMesh = mesh; keyIndex = idx; break; }
+                }
+            }
+
+            targetMesh?.SetShapeKeyWeight(keyIndex, saved.Weight);
+        }
     }
 
     private static void ApplyWorkCameraState(ProjectWorkCameraState? state, Camera camera)
