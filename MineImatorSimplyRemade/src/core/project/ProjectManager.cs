@@ -454,7 +454,18 @@ public sealed class ProjectManager
 
     private void DeleteAssetFiles(ProjectAssetEntry asset)
     {
+        // Assets that were never copied into the project (e.g. built-in assets
+        // referenced directly from the app's "data" folder) must never be
+        // deleted from disk. Only the project manifest entry should be removed.
+        if (!asset.StoredInProject)
+            return;
+
         string fullPath = GetAssetFullPath(asset);
+
+        // Belt-and-suspenders: never delete a file that lives under the data folder,
+        // even if StoredInProject was somehow set incorrectly.
+        if (IsPathUnderDirectory(Path.GetFullPath(fullPath), DataRoot))
+            return;
 
         try
         {

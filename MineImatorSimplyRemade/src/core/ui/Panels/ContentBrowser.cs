@@ -207,7 +207,10 @@ public class ContentBrowser : UiPanel
 
         if (_pendingRemoval != null)
         {
-            ImGui.TextWrapped($"Remove '{_pendingRemoval.DisplayName}' from the project and delete it from disk?");
+            string confirmMessage = _pendingRemoval.StoredInProject
+                ? $"Remove '{_pendingRemoval.DisplayName}' from the project and delete it from disk?"
+                : $"Remove '{_pendingRemoval.DisplayName}' from the project? This is a built-in data asset, so its file will not be deleted from disk.";
+            ImGui.TextWrapped(confirmMessage);
             ImGui.Separator();
 
             if (ImGui.Button("Remove", new Vector2(120, 0)))
