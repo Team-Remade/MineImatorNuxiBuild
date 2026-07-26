@@ -1659,6 +1659,12 @@ public class PropertiesPanel : UiPanel
             }
         }
 
+        // ── Shape Keys ────────────────────────────────────────────────────────
+        if (!isLight && HasAnyShapeKeys(_currentObject) && ImGui.CollapsingHeader("Shape Keys"))
+        {
+            RenderShapeKeysSection(_currentObject);
+        }
+
         // ── Light (shown only for LightSceneObject) ───────────────────────────
         if (_currentObject is LightSceneObject light)
         {
@@ -2045,6 +2051,85 @@ public class PropertiesPanel : UiPanel
         {
             Console.Error.WriteLine($"[PropertiesPanel] Failed to load albedo texture '{filePath}': {ex.Message}");
         }
+    }
+
+    // ── Shape keys (morph targets) ────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns true when <paramref name="obj"/> or any of its descendants owns
+    /// a <see cref="Mesh"/> with at least one shape key defined.  Used to
+    /// decide whether to render the Shape Keys section.
+    /// </summary>
+    private static bool HasAnyShapeKeys(SceneObject obj)
+    {
+        foreach (var mesh in obj.GetMeshInstancesRecursively())
+            if (mesh.HasShapeKeys) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Draws a scrollable list of every shape key on every mesh that belongs
+    /// to <paramref name="obj"/> or its descendants.  Each key gets a slider
+    /// in the range [-1, 1] (default 0); a "Reset All" button at the bottom
+    /// snaps every weight back to 0.
+    /// </summary>
+    private void RenderShapeKeysSection(SceneObject obj)
+    {
+        var meshes = obj.GetMeshInstancesRecursively();
+        int keyCount = 0;
+        foreach (var m in meshes) if (m.HasShapeKeys) keyCount += m.ShapeKeys.Count;
+
+        ImGui.TextWrapped("Drag any slider to blend in a shape key. " +
+                          "Negative values invert the morph.");
+        ImGui.Spacing();
+
+        if (ImGui.Button("Reset All Shape Keys##shapekeyResetAll"))
+        {
+            foreach (var m in meshes) m.ResetShapeKeys();
+            ProjectManager.Instance.SetDirty(true);
+        }
+        ImGui.Spacing();
+
+        // Scrollable child region keeps the section from blowing up the
+        // properties panel when a model exposes dozens of morph targets
+        // (a common case for facial-rig GLBs).
+        float scrollHeight = MathF.Min(320f, MathF.Max(60f, 24f * keyCount + 40f));
+        if (ImGui.BeginChild("##shapekeyScroll", new Vector2(0, scrollHeight), ImGuiChildFlags.Borders))
+        {
+            int meshIndex = 0;
+            foreach (var mesh in meshes)
+            {
+                if (!mesh.HasShapeKeys) continue;
+
+                if (meshes.Count > 1)
+                {
+                    ImGui.TextDisabled($"Mesh {meshIndex}");
+                    ImGui.Separator();
+                }
+
+                for (int i = 0; i < mesh.ShapeKeys.Count; i++)
+                {
+                    var sk = mesh.ShapeKeys[i];
+                    float weight = sk.Weight;
+                    string label = $"{sk.Name}##mesh{meshIndex}_key{i}";
+
+                    ImGui.SetNextItemWidth(-60f);
+                    if (ImGui.SliderFloat(label, ref weight, -1f, 1f, "%.2f"))
+                    {
+                        mesh.SetShapeKeyWeight(i, weight);
+                        ProjectManager.Instance.SetDirty(true);
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton($"0##reset{meshIndex}_{i}"))
+                    {
+                        mesh.SetShapeKeyWeight(i, 0f);
+                        ProjectManager.Instance.SetDirty(true);
+                    }
+                }
+                meshIndex++;
+            }
+        }
+        ImGui.EndChild();
     }
 
     // ── Property context menu ─────────────────────────────────────────────────

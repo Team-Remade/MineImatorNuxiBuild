@@ -57,13 +57,22 @@ public static class AssimpModelLoader
 
         var assimp = AiAssimp.GetApi();
 
+        // glTF/GLB morph targets are authored per-primitive and map 1:1 to the
+        // original vertex list.  JoinIdenticalVertices welds duplicate vertices
+        // and changes that order/count, so shape-key deltas end up applied to
+        // the wrong vertices and the mesh tears apart.  Skip it for glTF/GLB.
+        string ext = System.IO.Path.GetExtension(filePath).ToLowerInvariant();
+        bool isGltf = ext is ".gltf" or ".glb";
+
         uint flags =
             (uint)Silk.NET.Assimp.PostProcessSteps.Triangulate           |
             (uint)Silk.NET.Assimp.PostProcessSteps.GenerateSmoothNormals |
-            (uint)Silk.NET.Assimp.PostProcessSteps.JoinIdenticalVertices |
             (uint)Silk.NET.Assimp.PostProcessSteps.LimitBoneWeights      |
             // GLTF/Blender UV V=0 is at the top; OpenGL expects V=0 at bottom.
             (uint)Silk.NET.Assimp.PostProcessSteps.FlipUVs;
+
+        if (!isGltf)
+            flags |= (uint)Silk.NET.Assimp.PostProcessSteps.JoinIdenticalVertices;
 
         unsafe
         {
@@ -86,8 +95,7 @@ public static class AssimpModelLoader
             // directly from the JSON.  For other formats we fall back to
             // Assimp's mesh bone list.
             var boneNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            string ext = System.IO.Path.GetExtension(filePath).ToLowerInvariant();
-            if (ext is ".gltf" or ".glb")
+            if (isGltf)
                 CollectGltfBoneNames(filePath, boneNames);
             else
                 CollectAssimpBoneNames(scene, boneNames);
@@ -113,9 +121,15 @@ public static class AssimpModelLoader
             }
 
             // ── Build the node hierarchy ───────────────────────────────────
+            // Load glTF morph-target data (shape keys) for the meshes in this
+            // scene.  Assimp's morph-target support is unreliable for glTF, so
+            // we parse the JSON + BIN chunks ourselves and attach the per-vertex
+            // deltas to each Mesh that was built from a glTF primitive.
+            GltfShapeKeySource? shapeKeySource = LoadGltfShapeKeySource(filePath);
+
             SceneObject? root = BuildNodeTree(
                 assimp, gl, scene, scene->MRootNode,
-                boneNames, texCache, filePath, hasSkinnedMeshes);
+                boneNames, texCache, filePath, hasSkinnedMeshes, shapeKeySource);
 
             if (root == null)
             {
@@ -344,6 +358,7 @@ public static class AssimpModelLoader
         Dictionary<string, uint> texCache,
         string sourceFilePath,
         bool hasSkinnedMeshes,
+        GltfShapeKeySource? shapeKeySource,
         Quaternion parentBoneQuat = default,
         SceneObject? parentObj = null)
     {
@@ -384,7 +399,8 @@ public static class AssimpModelLoader
 
             for (uint mi = 0; mi < node->MNumMeshes; mi++)
             {
-                Mesh? glMesh = BuildMesh(assimp, gl, scene, scene->MMeshes[node->MMeshes[mi]], texCache);
+                uint meshIdx = node->MMeshes[mi];
+                Mesh? glMesh = BuildMesh(assimp, gl, scene, scene->MMeshes[meshIdx], meshIdx, texCache, shapeKeySource);
                 if (glMesh != null)
                     meshObj.AddMesh(glMesh);
             }
@@ -392,7 +408,7 @@ public static class AssimpModelLoader
             for (uint ci = 0; ci < node->MNumChildren; ci++)
             {
                 SceneObject? child = BuildNodeTree(assimp, gl, scene, node->MChildren[ci],
-                    boneNames, texCache, sourceFilePath, hasSkinnedMeshes);
+                    boneNames, texCache, sourceFilePath, hasSkinnedMeshes, shapeKeySource);
                 if (child != null) meshObj.AddChild(child);
             }
 
@@ -447,7 +463,8 @@ public static class AssimpModelLoader
         // Meshes on non-bone nodes (e.g. body mesh parented directly to Body bone).
         for (uint mi = 0; mi < node->MNumMeshes; mi++)
         {
-            Mesh? glMesh = BuildMesh(assimp, gl, scene, scene->MMeshes[node->MMeshes[mi]], texCache);
+            uint meshIdx = node->MMeshes[mi];
+            Mesh? glMesh = BuildMesh(assimp, gl, scene, scene->MMeshes[meshIdx], meshIdx, texCache, shapeKeySource);
             if (glMesh != null)
                 obj.AddMesh(glMesh);
         }
@@ -457,7 +474,7 @@ public static class AssimpModelLoader
         {
             SceneObject? child = BuildNodeTree(
                 assimp, gl, scene, node->MChildren[ci],
-                boneNames, texCache, sourceFilePath, hasSkinnedMeshes,
+                boneNames, texCache, sourceFilePath, hasSkinnedMeshes, shapeKeySource,
                 parentBoneQuat: isBone ? boneQuatForChildren : default,
                 parentObj: isBone ? obj : null);
 
@@ -475,7 +492,9 @@ public static class AssimpModelLoader
         GL gl,
         AiScene* scene,
         AiMesh* aMesh,
-        Dictionary<string, uint> texCache)
+        uint meshIndex,
+        Dictionary<string, uint> texCache,
+        GltfShapeKeySource? shapeKeySource)
     {
         if (aMesh->MNumVertices == 0) return null;
 
@@ -583,6 +602,34 @@ public static class AssimpModelLoader
         }
 
         mesh.Upload();
+
+        // Attach glTF shape keys (morph targets) if this mesh was built from a
+        // glTF primitive and the file declares morph targets.  Looked up by
+        // Assimp's mesh index, which corresponds to the order of meshes in the
+        // glTF document.
+        if (shapeKeySource != null &&
+            shapeKeySource.MeshIndexToShapeKeys.TryGetValue((int)meshIndex, out var keys))
+        {
+            string meshName = aMesh->MName.AsString;
+            int added = 0;
+            foreach (var (name, deltas, _) in keys)
+            {
+                if (deltas.Length / 3 != mesh.Vertices.Count)
+                {
+                    Console.Error.WriteLine(
+                        $"[AssimpModelLoader] Mesh #{meshIndex} '{meshName}': shape key '{name}' has " +
+                        $"{deltas.Length / 3} deltas but mesh has {mesh.Vertices.Count} vertices — skipped.");
+                    continue;
+                }
+
+                mesh.AddShapeKey(name, deltas);
+                added++;
+            }
+
+            if (added > 0)
+                Console.WriteLine($"[AssimpModelLoader] Mesh #{meshIndex} '{meshName}': loaded {added} shape key(s).");
+        }
+
         return mesh;
     }
 
@@ -663,5 +710,476 @@ public static class AssimpModelLoader
             3 => new vec4(v.x, v.y, v.z, value),
             _ => v
         };
+    }
+
+    // ── glTF shape-key (morph target) loading ─────────────────────────────────
+
+    /// <summary>
+    /// Per-file cache of morph-target data, indexed by Assimp's glTF-mesh
+    /// index.  Each entry is a list of (name, raw morph-target values, flag)
+    /// tuples.  <c>IsAbsolute</c> is true when the exporter stored absolute
+    /// positions instead of the glTF-standard displacements; the actual
+    /// delta is computed in <see cref="BuildMesh"/> by subtracting the base
+    /// mesh positions.
+    /// </summary>
+    private sealed class GltfShapeKeySource
+    {
+        public Dictionary<int, List<(string Name, float[] Values, bool IsAbsolute)>> MeshIndexToShapeKeys = new();
+    }
+
+    /// <summary>
+    /// Reads a glTF/GLB file directly and extracts morph-target (shape key)
+    /// data.  Assimp's <c>AiAnimMesh</c> support is unreliable for glTF, so
+    /// we parse the JSON + BIN chunks ourselves.  The returned source is
+    /// null when the file is not a glTF variant, the file cannot be read, or
+    /// no morph targets are declared.
+    /// </summary>
+    private static GltfShapeKeySource? LoadGltfShapeKeySource(string filePath)
+    {
+        try
+        {
+            string ext = System.IO.Path.GetExtension(filePath).ToLowerInvariant();
+            if (ext is not ".gltf" and not ".glb") return null;
+
+            string json;
+            byte[]? binChunk = null;
+
+            if (ext == ".glb")
+            {
+                // GLB: 12-byte header + JSON chunk + BIN chunk.
+                // Header: magic(4) + version(4) + length(4)
+                // Each chunk: chunkLength(4) + chunkType(4) + chunkData(chunkLength)
+                using var fs = SysFile.OpenRead(filePath);
+                using var br = new System.IO.BinaryReader(fs);
+                if (fs.Length < 12) return null;
+                br.ReadBytes(12);
+                int jsonLen = (int)br.ReadUInt32();
+                uint chunkType = br.ReadUInt32();
+                if (chunkType != 0x4E4F534A) return null; // "JSON"
+                byte[] jsonBytes = br.ReadBytes(jsonLen);
+                if (jsonBytes.Length != jsonLen) return null;
+                json = Encoding.UTF8.GetString(jsonBytes);
+
+                if (fs.Position < fs.Length)
+                {
+                    int binLen = (int)br.ReadUInt32();
+                    uint binType = br.ReadUInt32();
+                    if (binType == 0x004E4942) // "BIN\0"
+                        binChunk = br.ReadBytes(binLen);
+                }
+            }
+            else
+            {
+                json = SysFile.ReadAllText(filePath);
+                // .gltf files reference an external .bin; resolve it relative
+                // to the .gltf path.
+                string? binUri = null;
+                var rootNode = JsonNode.Parse(json)?.AsObject();
+                if (rootNode != null && rootNode["buffers"] is JsonArray buffers && buffers.Count > 0)
+                {
+                    binUri = buffers[0]?["uri"]?.GetValue<string>();
+                }
+                if (!string.IsNullOrEmpty(binUri) &&
+                    !binUri.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                {
+                    string binPath = System.IO.Path.Combine(
+                        System.IO.Path.GetDirectoryName(filePath) ?? "", binUri);
+                    if (SysFile.Exists(binPath))
+                        binChunk = SysFile.ReadAllBytes(binPath);
+                }
+            }
+
+            var root = JsonNode.Parse(json)?.AsObject();
+            if (root == null) return null;
+
+            var meshesArr = root["meshes"] as JsonArray;
+            if (meshesArr == null) return null;
+
+            var accessors = root["accessors"] as JsonArray;
+            var bufferViews = root["bufferViews"] as JsonArray;
+
+            var source = new GltfShapeKeySource();
+
+            // Walk every primitive in every mesh and extract POSITION deltas
+            // from its morph targets.  Names are pulled from the mesh's
+            // "extras.targetNames" array (standard glTF location), falling
+            // back to the primitive's "extras.targetNames" if needed.
+            int assimpMeshIndex = 0;
+            for (int mi = 0; mi < meshesArr.Count; mi++)
+            {
+                var meshNode = meshesArr[mi]?.AsObject();
+                var primitives = meshNode?["primitives"] as JsonArray;
+                if (primitives == null) continue;
+
+                // Read mesh-level morph target names (standard location)
+                var meshTargetNames = (meshNode?["extras"]?["targetNames"] as JsonArray)?
+                    .Select(n => n?.GetValue<string>() ?? "")
+                    .ToList();
+
+                for (int pi = 0; pi < primitives.Count; pi++)
+                {
+                    var prim = primitives[pi]?.AsObject();
+                    if (prim == null) { assimpMeshIndex++; continue; }
+
+                    var targets = prim["targets"] as JsonArray;
+                    if (targets == null || targets.Count == 0)
+                    {
+                        assimpMeshIndex++;
+                        continue;
+                    }
+
+                    // Fall back to primitive-level names if mesh-level not present
+                    var targetNames = meshTargetNames ??
+                        (prim["extras"]?["targetNames"] as JsonArray)?
+                            .Select(n => n?.GetValue<string>() ?? "")
+                            .ToList();
+
+                    // Assimp's glTF2 importer does NOT keep each primitive's
+                    // vertex attributes in raw accessor order. It compacts
+                    // them into the order vertices are first referenced
+                    // while walking the primitive's own index/face buffer —
+                    // this happens unconditionally, independent of the
+                    // JoinIdenticalVertices post-process flag. Morph-target
+                    // deltas are authored in the raw accessor order, so they
+                    // must be permuted the same way before being handed to
+                    // Mesh.AddShapeKey, or a shape key ends up displacing
+                    // whatever vertex happens to occupy that slot in
+                    // Assimp's reordered array instead of the intended one —
+                    // "deforms the wrong vertices" rather than the right
+                    // ones by the right (or even wrong) amount.
+                    int? basePositionAccessor = (prim["attributes"]?.AsObject())?["POSITION"]?.GetValue<int>();
+                    int primVertexCount = (accessors != null && basePositionAccessor.HasValue &&
+                        basePositionAccessor.Value >= 0 && basePositionAccessor.Value < accessors.Count)
+                        ? (accessors[basePositionAccessor.Value]?.AsObject()?["count"]?.GetValue<int>() ?? 0)
+                        : 0;
+
+                    int[]? rawToAssimpIndex = (primVertexCount > 0 && accessors != null && bufferViews != null)
+                        ? BuildGltfVertexPermutation(accessors, bufferViews, prim, binChunk, primVertexCount)
+                        : null;
+
+                    if (primVertexCount > 0 && rawToAssimpIndex == null)
+                    {
+                        Console.Error.WriteLine(
+                            $"[AssimpModelLoader] glTF mesh/primitive at assimpMeshIndex={assimpMeshIndex}: " +
+                            "could not reconstruct Assimp's vertex reordering; shape keys for this " +
+                            "primitive may deform the wrong vertices.");
+                    }
+
+                    var keyList = new List<(string, float[], bool)>();
+                    for (int ti = 0; ti < targets.Count; ti++)
+                    {
+                        var target = targets[ti]?.AsObject();
+                        if (target == null || !target.ContainsKey("POSITION")) continue;
+
+                        int positionAccessor = target["POSITION"]?.GetValue<int>() ?? -1;
+                        if (positionAccessor < 0) continue;
+
+                        string name = (targetNames != null && ti < targetNames.Count && !string.IsNullOrEmpty(targetNames[ti]))
+                            ? targetNames[ti]
+                            : $"Morph {ti}";
+
+                        float[]? morphPositions = ReadVec3Accessor(root, binChunk, positionAccessor);
+                        if (morphPositions == null) continue;
+
+                        // Remap from raw glTF accessor order into Assimp's
+                        // actual per-vertex order so the delta at index v
+                        // lands on the same vertex as mesh.Vertices[v].
+                        if (rawToAssimpIndex != null && morphPositions.Length / 3 == rawToAssimpIndex.Length)
+                        {
+                            float[] remapped = new float[morphPositions.Length];
+                            for (int rawIdx = 0; rawIdx < rawToAssimpIndex.Length; rawIdx++)
+                            {
+                                int newIdx = rawToAssimpIndex[rawIdx];
+                                remapped[newIdx * 3 + 0] = morphPositions[rawIdx * 3 + 0];
+                                remapped[newIdx * 3 + 1] = morphPositions[rawIdx * 3 + 1];
+                                remapped[newIdx * 3 + 2] = morphPositions[rawIdx * 3 + 2];
+                            }
+                            morphPositions = remapped;
+                        }
+
+                        // glTF morph targets are always per-vertex displacements (deltas).
+                        keyList.Add((name, morphPositions, false));
+                    }
+
+                    if (keyList.Count > 0)
+                        source.MeshIndexToShapeKeys[assimpMeshIndex] = keyList;
+
+                    assimpMeshIndex++;
+                }
+            }
+
+            return source.MeshIndexToShapeKeys.Count > 0 ? source : null;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[AssimpModelLoader] glTF shape-key parse failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Reconstructs the permutation Assimp's glTF2 importer applies to a
+    /// primitive's per-vertex attribute arrays: rather than keeping the raw
+    /// accessor order, Assimp assigns output vertex index 0 to whichever
+    /// input vertex is <em>first referenced</em> while scanning the
+    /// primitive's index buffer, index 1 to the next distinct vertex
+    /// referenced, and so on. This happens unconditionally (it is not tied
+    /// to the JoinIdenticalVertices post-process step), so any per-vertex
+    /// data authored in raw accessor order — such as morph-target deltas —
+    /// must be run through this same mapping before it lines up with
+    /// <c>mesh.Vertices</c>. Returns a <c>rawIndex -> assimpIndex</c> map of
+    /// length <paramref name="vertexCount"/>, or <c>null</c> if it can't be
+    /// determined (e.g. non-indexed primitive, unreadable index buffer, or
+    /// any input vertex that is never referenced by a face — in which case
+    /// Assimp's own behaviour can't be reliably reproduced from this data
+    /// alone).
+    /// </summary>
+    private static int[]? BuildGltfVertexPermutation(
+        JsonArray accessors, JsonArray bufferViews, JsonObject prim, byte[]? binChunk, int vertexCount)
+    {
+        try
+        {
+            if (binChunk == null) return null;
+
+            var indicesNode = prim["indices"];
+            if (indicesNode == null) return null; // non-indexed: Assimp uses accessor order as-is
+
+            int indicesAccessorIndex = indicesNode.GetValue<int>();
+            if (indicesAccessorIndex < 0 || indicesAccessorIndex >= accessors.Count) return null;
+
+            var idxAcc = accessors[indicesAccessorIndex]?.AsObject();
+            if (idxAcc == null) return null;
+
+            int idxCount = idxAcc["count"]?.GetValue<int>() ?? 0;
+            if (idxCount <= 0) return null;
+
+            int idxComponentType = idxAcc["componentType"]?.GetValue<int>() ?? 5123;
+            int idxBufferViewIndex = idxAcc["bufferView"]?.GetValue<int>() ?? -1;
+            int idxByteOffset = idxAcc["byteOffset"]?.GetValue<int>() ?? 0;
+            if (idxBufferViewIndex < 0 || idxBufferViewIndex >= bufferViews.Count) return null;
+
+            var idxBv = bufferViews[idxBufferViewIndex]?.AsObject();
+            if (idxBv == null) return null;
+            int idxBvByteOffset = idxBv["byteOffset"]?.GetValue<int>() ?? 0;
+            int idxBufferIndex = idxBv["buffer"]?.GetValue<int>() ?? 0;
+            if (idxBufferIndex != 0) return null;
+
+            int idxElemSize = GltfComponentByteSize(idxComponentType);
+            long idxBase = (long)idxBvByteOffset + idxByteOffset;
+
+            int[] rawToNew = new int[vertexCount];
+            for (int i = 0; i < vertexCount; i++) rawToNew[i] = -1;
+
+            int nextNewIndex = 0;
+            for (int i = 0; i < idxCount; i++)
+            {
+                long pos = idxBase + (long)i * idxElemSize;
+                if (pos + idxElemSize > binChunk.Length) return null;
+                int rawIdx = (int)ReadGltfComponent(binChunk, pos, idxComponentType);
+                if (rawIdx < 0 || rawIdx >= vertexCount) return null;
+                if (rawToNew[rawIdx] == -1)
+                    rawToNew[rawIdx] = nextNewIndex++;
+            }
+
+            // Every vertex must be referenced by at least one face for this
+            // reconstruction to be complete; if not, bail out rather than
+            // guess (leaving some entries at -1 would corrupt the delta
+            // remap) — callers fall back to unpermuted deltas with a warning.
+            if (nextNewIndex != vertexCount) return null;
+
+            return rawToNew;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads a VEC3 accessor from the glTF document and returns its values
+    /// as a flat float array of length <c>count * 3</c>.  Supports
+    /// <c>5126</c> (FLOAT) and <c>5121</c>/<c>5122</c>/<c>5123</c>
+    /// (unsigned byte/short/int) component types, and both the dense
+    /// (<c>bufferView</c>) and <c>sparse</c> accessor encodings defined by
+    /// the glTF spec.  Morph-target <c>POSITION</c> accessors are commonly
+    /// exported as sparse-only (no top-level <c>bufferView</c> at all)
+    /// because each individual shape key usually only displaces a handful
+    /// of vertices — failing to handle that encoding silently drops almost
+    /// every shape key in a typical export.  Missing/implicit elements
+    /// default to (0,0,0) as required by the spec.  Only handles the single
+    /// embedded BIN chunk that this loader actually decodes.
+    /// </summary>
+    private static float[]? ReadVec3Accessor(JsonObject root, byte[]? binChunk, int accessorIndex)
+    {
+        try
+        {
+            var accessors = root["accessors"] as JsonArray;
+            var bufferViews = root["bufferViews"] as JsonArray;
+            if (accessors == null || bufferViews == null) return null;
+            if (accessorIndex < 0 || accessorIndex >= accessors.Count) return null;
+
+            var acc = accessors[accessorIndex]?.AsObject();
+            if (acc == null) return null;
+            string type = acc["type"]?.GetValue<string>() ?? "";
+            if (type != "VEC3") return null;
+
+            int count = acc["count"]?.GetValue<int>() ?? 0;
+            if (count <= 0) return null;
+
+            int componentType = acc["componentType"]?.GetValue<int>() ?? 5126;
+            int bufferViewIndex = acc["bufferView"]?.GetValue<int>() ?? -1;
+            int byteOffset = acc["byteOffset"]?.GetValue<int>() ?? 0;
+
+            // Every element defaults to (0,0,0); a dense bufferView (if any)
+            // fills these in below, and a sparse overlay (if any) patches a
+            // subset of them afterwards. This matches the glTF spec, under
+            // which an accessor may have neither, either, or both.
+            float[] result = new float[count * 3];
+
+            if (bufferViewIndex >= 0)
+            {
+                if (bufferViewIndex >= bufferViews.Count) return null;
+                if (!ReadVec3Dense(bufferViews, binChunk, bufferViewIndex, byteOffset,
+                        componentType, count, result, 0))
+                    return null;
+            }
+
+            var sparse = acc["sparse"]?.AsObject();
+            if (sparse != null)
+            {
+                if (!ApplyVec3Sparse(bufferViews, binChunk, sparse, componentType, result))
+                    return null;
+            }
+            else if (bufferViewIndex < 0)
+            {
+                // Neither dense data nor a sparse overlay — nothing to read.
+                return null;
+            }
+
+            return result;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Byte size of one glTF accessor component of <paramref name="componentType"/>.</summary>
+    private static int GltfComponentByteSize(int componentType) => componentType switch
+    {
+        5120 => 1, // BYTE
+        5121 => 1, // UNSIGNED_BYTE
+        5122 => 2, // SHORT
+        5123 => 2, // UNSIGNED_SHORT
+        5125 => 4, // UNSIGNED_INT
+        5126 => 4, // FLOAT
+        _ => 4
+    };
+
+    /// <summary>Reads one scalar component value at a byte offset for a VEC3/scalar accessor.</summary>
+    private static float ReadGltfComponent(byte[] buf, long pos, int componentType) => componentType switch
+    {
+        5120 => (sbyte)buf[pos],                          // BYTE (signed)
+        5121 => buf[pos],                                 // UNSIGNED_BYTE
+        5122 => BitConverter.ToInt16(buf, (int)pos),       // SHORT (signed)
+        5123 => BitConverter.ToUInt16(buf, (int)pos),      // UNSIGNED_SHORT
+        5125 => BitConverter.ToUInt32(buf, (int)pos),      // UNSIGNED_INT
+        _    => BitConverter.ToSingle(buf, (int)pos)       // FLOAT
+    };
+
+    /// <summary>
+    /// Reads <paramref name="count"/> tightly-strided VEC3 elements starting
+    /// at <paramref name="destStartIndex"/> (in element units, not floats)
+    /// of <paramref name="destination"/> from a dense bufferView.
+    /// </summary>
+    private static bool ReadVec3Dense(
+        JsonArray bufferViews, byte[]? binChunk, int bufferViewIndex, int byteOffset,
+        int componentType, int count, float[] destination, int destStartIndex)
+    {
+        var bv = bufferViews[bufferViewIndex]?.AsObject();
+        if (bv == null) return false;
+        int bvByteOffset = bv["byteOffset"]?.GetValue<int>() ?? 0;
+        int bvByteStride = bv["byteStride"]?.GetValue<int>() ?? 0;
+        int bufferIndex = bv["buffer"]?.GetValue<int>() ?? 0;
+        if (bufferIndex != 0 || binChunk == null) return false;
+
+        int elementSize = GltfComponentByteSize(componentType);
+        int tupleSize = elementSize * 3;
+        int stride = bvByteStride > 0 ? bvByteStride : tupleSize;
+
+        long baseOffset = (long)bvByteOffset + byteOffset;
+        for (int i = 0; i < count; i++)
+        {
+            long elemStart = baseOffset + (long)i * stride;
+            for (int c = 0; c < 3; c++)
+            {
+                long pos = elemStart + c * elementSize;
+                if (pos + elementSize > binChunk.Length) return false;
+                destination[(destStartIndex + i) * 3 + c] = ReadGltfComponent(binChunk, pos, componentType);
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Applies a glTF <c>accessor.sparse</c> overlay to <paramref name="destination"/>
+    /// (a VEC3 array already sized <c>accessor.count * 3</c>).  <c>sparse.indices</c>
+    /// gives the element index of each of the <c>sparse.count</c> overridden
+    /// elements (as UNSIGNED_BYTE/SHORT/INT); <c>sparse.values</c> gives the
+    /// replacement VEC3 values themselves, tightly packed using the
+    /// accessor's own <paramref name="componentType"/> as required by the spec.
+    /// </summary>
+    private static bool ApplyVec3Sparse(
+        JsonArray bufferViews, byte[]? binChunk, JsonObject sparse, int componentType, float[] destination)
+    {
+        int sparseCount = sparse["count"]?.GetValue<int>() ?? 0;
+        if (sparseCount <= 0) return true; // nothing to overlay, not an error
+
+        var indicesObj = sparse["indices"]?.AsObject();
+        var valuesObj = sparse["values"]?.AsObject();
+        if (indicesObj == null || valuesObj == null || binChunk == null) return false;
+
+        int indicesBufferViewIndex = indicesObj["bufferView"]?.GetValue<int>() ?? -1;
+        int indicesByteOffset = indicesObj["byteOffset"]?.GetValue<int>() ?? 0;
+        int indicesComponentType = indicesObj["componentType"]?.GetValue<int>() ?? 5123;
+        if (indicesBufferViewIndex < 0 || indicesBufferViewIndex >= bufferViews.Count) return false;
+
+        int valuesBufferViewIndex = valuesObj["bufferView"]?.GetValue<int>() ?? -1;
+        int valuesByteOffset = valuesObj["byteOffset"]?.GetValue<int>() ?? 0;
+        if (valuesBufferViewIndex < 0 || valuesBufferViewIndex >= bufferViews.Count) return false;
+
+        var indicesBv = bufferViews[indicesBufferViewIndex]?.AsObject();
+        var valuesBv = bufferViews[valuesBufferViewIndex]?.AsObject();
+        if (indicesBv == null || valuesBv == null) return false;
+
+        int indicesBvOffset = indicesBv["byteOffset"]?.GetValue<int>() ?? 0;
+        int indicesBufferIndex = indicesBv["buffer"]?.GetValue<int>() ?? 0;
+        int valuesBvOffset = valuesBv["byteOffset"]?.GetValue<int>() ?? 0;
+        int valuesBufferIndex = valuesBv["buffer"]?.GetValue<int>() ?? 0;
+        if (indicesBufferIndex != 0 || valuesBufferIndex != 0) return false;
+
+        int indexElemSize = GltfComponentByteSize(indicesComponentType);
+        long indicesBase = (long)indicesBvOffset + indicesByteOffset;
+
+        int valueElemSize = GltfComponentByteSize(componentType);
+        int valueTupleSize = valueElemSize * 3;
+        long valuesBase = (long)valuesBvOffset + valuesByteOffset;
+
+        for (int i = 0; i < sparseCount; i++)
+        {
+            long idxPos = indicesBase + (long)i * indexElemSize;
+            if (idxPos + indexElemSize > binChunk.Length) return false;
+            int elementIndex = (int)ReadGltfComponent(binChunk, idxPos, indicesComponentType);
+            if (elementIndex < 0 || elementIndex * 3 + 2 >= destination.Length) return false;
+
+            long valStart = valuesBase + (long)i * valueTupleSize;
+            for (int c = 0; c < 3; c++)
+            {
+                long pos = valStart + c * valueElemSize;
+                if (pos + valueElemSize > binChunk.Length) return false;
+                destination[elementIndex * 3 + c] = ReadGltfComponent(binChunk, pos, componentType);
+            }
+        }
+        return true;
     }
 }

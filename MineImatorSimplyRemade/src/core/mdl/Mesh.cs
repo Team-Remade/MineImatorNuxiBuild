@@ -1,4 +1,5 @@
-﻿using GlmSharp;
+﻿using System;
+using GlmSharp;
 using MineImatorSimplyRemade.core.mdl.material;
 using MineImatorSimplyRemade.core.mdl.material.materials;
 using Silk.NET.OpenGL;
@@ -147,6 +148,238 @@ public class Mesh : IDisposable
     /// silhouette masking.
     /// </summary>
     public bool PickOnly = false;
+
+    // ── Shape keys (blend shapes / morph targets) ─────────────────────────────
+
+    /// <summary>
+    /// One shape key imported from a model file (e.g. a glTF morph target such
+    /// as a facial expression).  <see cref="Deltas"/> stores the per-vertex
+    /// offset from the base mesh — the final position is
+    /// <c>basePosition + Weight * Deltas[v]</c>.  Normals are recomputed from
+    /// the deformed positions (see <see cref="RecomputeShapeKeyNormals"/>) so
+    /// lighting follows the morphed surface instead of the stale base pose.
+    /// </summary>
+    public class ShapeKey
+    {
+        public string Name = "";
+        public float[] Deltas = Array.Empty<float>(); // length == Vertices.Count * 3 (x,y,z per vertex)
+        public float Weight = 0f;                     // user-controlled, typically -1..1
+    }
+
+    /// <summary>
+    /// All shape keys defined for this mesh.  Empty for meshes without morph
+    /// data.  Order is the display / animation order.
+    /// </summary>
+    public readonly List<ShapeKey> ShapeKeys = new();
+
+    /// <summary>True if this mesh has any morph-target data.</summary>
+    public bool HasShapeKeys => ShapeKeys.Count > 0;
+
+    /// <summary>True when at least one shape key weight is non-zero.</summary>
+    public bool HasActiveShapeKey =>
+        _shapeKeyDirty || ShapeKeys.Any(sk => sk.Weight != 0f);
+
+    /// <summary>
+    /// CPU-side copy of the interleaved base vertex data (positions, normals,
+    /// UVs) created by <see cref="Upload"/>.  Used as the source for re-
+    /// generating the VBO when a shape-key weight changes.
+    /// </summary>
+    private float[]? _baseVertexData;
+
+    /// <summary>
+    /// CPU-side copy of the deformed interleaved vertex data, rebuilt from
+    /// <see cref="_baseVertexData"/> plus the current shape-key weights on
+    /// demand.  Allocated lazily and reused between refreshes.
+    /// </summary>
+    private float[]? _deformedVertexData;
+
+    /// <summary>Set whenever a shape-key weight changes so the VBO is refreshed.</summary>
+    private bool _shapeKeyDirty = false;
+
+    /// <summary>
+    /// Sets a shape key's weight in the range [-1, 1] and marks the mesh for a
+    /// VBO re-upload on the next render.  Out-of-range values are clamped.
+    /// </summary>
+    public void SetShapeKeyWeight(int index, float weight)
+    {
+        if (index < 0 || index >= ShapeKeys.Count) return;
+        float clamped = Math.Clamp(weight, -1f, 1f);
+        if (ShapeKeys[index].Weight == clamped) return;
+        ShapeKeys[index].Weight = clamped;
+        _shapeKeyDirty = true;
+    }
+
+    /// <summary>
+    /// Sets every shape key weight to 0 (effectively reverts to the base mesh).
+    /// </summary>
+    public void ResetShapeKeys()
+    {
+        bool anyNonZero = false;
+        foreach (var sk in ShapeKeys)
+        {
+            if (sk.Weight != 0f) { sk.Weight = 0f; anyNonZero = true; }
+        }
+        if (anyNonZero) _shapeKeyDirty = true;
+    }
+
+    /// <summary>
+    /// Adds a shape key to the mesh.  The deltas array length must match
+    /// <see cref="Vertices"/>.Count * 3.
+    /// </summary>
+    public void AddShapeKey(string name, float[] deltas)
+    {
+        if (deltas == null || deltas.Length != Vertices.Count * 3) return;
+        ShapeKeys.Add(new ShapeKey { Name = name, Deltas = deltas });
+        _shapeKeyDirty = true;
+    }
+
+    /// <summary>
+    /// Recomputes the deformed vertex positions by applying every shape key's
+    /// weight to its delta buffer, then re-uploads the full interleaved VBO
+    /// (<c>[px py pz nx ny nz u v]</c> × vertexCount) via
+    /// <c>glBufferSubData</c>.  The whole buffer is rewritten because the
+    /// positions are interleaved with the normal and UV streams; uploading
+    /// only the position bytes would leave the rest of each vertex slot
+    /// pointing at stale memory and collapse the mesh into a triangle.
+    /// This is a cheap, per-vertex CPU pass that runs only when a weight
+    /// changes (typically once per user slider drag), not on every frame.
+    /// </summary>
+    public unsafe void RefreshShapeKeyGeometry()
+    {
+        if (_vao == 0 || _vbo == 0) return;
+        if (_baseVertexData == null) return; // Upload() not yet called
+        if (!_shapeKeyDirty) return;
+        if (ShapeKeys.Count == 0) { _shapeKeyDirty = false; return; }
+
+        int vertexCount = Vertices.Count;
+        if (vertexCount == 0) { _shapeKeyDirty = false; return; }
+
+        const int floatsPerVertex = 8;
+        int totalFloats = vertexCount * floatsPerVertex;
+        int totalBytes  = totalFloats * sizeof(float);
+
+        bool anyActive = false;
+        for (int s = 0; s < ShapeKeys.Count; s++)
+        {
+            var sk = ShapeKeys[s];
+            if (sk.Weight != 0f && sk.Deltas != null && sk.Deltas.Length >= vertexCount * 3)
+            {
+                anyActive = true;
+                break;
+            }
+        }
+
+        if (!anyActive)
+        {
+            // All weights are 0 — restore the original interleaved data so
+            // the VBO matches what Upload() produced.
+            _gl.BindBuffer(GLEnum.ArrayBuffer, _vbo);
+            fixed (float* p = _baseVertexData)
+                _gl.BufferSubData(GLEnum.ArrayBuffer, 0, (uint)totalBytes, p);
+            _gl.BindBuffer(GLEnum.ArrayBuffer, 0);
+            _shapeKeyDirty = false;
+            return;
+        }
+
+        // Build the deformed interleaved data from the cached base data plus
+        // the weighted shape-key deltas.  Allocating once and reusing on
+        // subsequent refreshes keeps the GC happy during slider drags.
+        if (_deformedVertexData == null || _deformedVertexData.Length != totalFloats)
+            _deformedVertexData = new float[totalFloats];
+        Array.Copy(_baseVertexData, 0, _deformedVertexData, 0, totalFloats);
+
+        for (int s = 0; s < ShapeKeys.Count; s++)
+        {
+            var sk = ShapeKeys[s];
+            if (sk.Weight == 0f || sk.Deltas == null || sk.Deltas.Length < vertexCount * 3) continue;
+            float w = sk.Weight;
+            var d  = sk.Deltas;
+            var p  = _deformedVertexData;
+            for (int v = 0; v < vertexCount; v++)
+            {
+                int di = v * 3;
+                int vi = v * floatsPerVertex;
+                p[vi + 0] += w * d[di + 0];
+                p[vi + 1] += w * d[di + 1];
+                p[vi + 2] += w * d[di + 2];
+            }
+        }
+
+        // Positions moved but the normal slots above still hold the base
+        // mesh's normals — left unmodified, shading on displaced regions
+        // looks flat/inside-out and reinforces the "deforming in weird
+        // ways" appearance, especially for shape keys with large deltas.
+        // Recompute per-vertex smooth normals from the deformed positions
+        // so lighting follows the morphed surface.
+        RecomputeShapeKeyNormals(_deformedVertexData, vertexCount, floatsPerVertex);
+
+        _gl.BindBuffer(GLEnum.ArrayBuffer, _vbo);
+        fixed (float* p = _deformedVertexData)
+            _gl.BufferSubData(GLEnum.ArrayBuffer, 0, (uint)totalBytes, p);
+        _gl.BindBuffer(GLEnum.ArrayBuffer, 0);
+
+        _shapeKeyDirty = false;
+    }
+
+    /// <summary>
+    /// Recomputes area-weighted smooth per-vertex normals from
+    /// <paramref name="interleavedData"/>'s current (shape-key-deformed)
+    /// positions and writes them back into the same buffer's normal slots.
+    /// Vertices that aren't referenced by any triangle (degenerate/unused)
+    /// keep whatever normal they already had. Uses <see cref="Indices"/>
+    /// when present, otherwise treats every three consecutive vertices as
+    /// a triangle, mirroring <see cref="GenerateNormals"/>'s topology
+    /// handling but accumulating (rather than overwriting) per-vertex
+    /// contributions for smooth shading.
+    /// </summary>
+    private void RecomputeShapeKeyNormals(float[] interleavedData, int vertexCount, int floatsPerVertex)
+    {
+        var accum = new vec3[vertexCount];
+
+        void Accumulate(int i0, int i1, int i2)
+        {
+            int b0 = i0 * floatsPerVertex;
+            int b1 = i1 * floatsPerVertex;
+            int b2 = i2 * floatsPerVertex;
+
+            var p0 = new vec3(interleavedData[b0],     interleavedData[b0 + 1], interleavedData[b0 + 2]);
+            var p1 = new vec3(interleavedData[b1],     interleavedData[b1 + 1], interleavedData[b1 + 2]);
+            var p2 = new vec3(interleavedData[b2],     interleavedData[b2 + 1], interleavedData[b2 + 2]);
+
+            // Un-normalized face normal: magnitude is proportional to triangle
+            // area, giving a standard area-weighted contribution to each of
+            // its vertices' accumulated normal.
+            vec3 faceNormal = vec3.Cross(p1 - p0, p2 - p0);
+
+            accum[i0] += faceNormal;
+            accum[i1] += faceNormal;
+            accum[i2] += faceNormal;
+        }
+
+        if (Indices != null && Indices.Length >= 3)
+        {
+            for (int i = 0; i + 2 < Indices.Length; i += 3)
+                Accumulate((int)Indices[i], (int)Indices[i + 1], (int)Indices[i + 2]);
+        }
+        else
+        {
+            for (int i = 0; i + 2 < vertexCount; i += 3)
+                Accumulate(i, i + 1, i + 2);
+        }
+
+        for (int v = 0; v < vertexCount; v++)
+        {
+            vec3 n = accum[v];
+            float lenSq = n.x * n.x + n.y * n.y + n.z * n.z;
+            if (lenSq <= 1e-12f) continue; // unreferenced/degenerate — keep existing normal
+
+            vec3 norm = n.Normalized;
+            int vi = v * floatsPerVertex;
+            interleavedData[vi + 3] = norm.x;
+            interleavedData[vi + 4] = norm.y;
+            interleavedData[vi + 5] = norm.z;
+        }
+    }
 
     // ── Material ──────────────────────────────────────────────────────────────
 
@@ -424,6 +657,23 @@ public class Mesh : IDisposable
 
         _gl.BindBuffer(GLEnum.ArrayBuffer, 0);
         _gl.BindVertexArray(0);
+
+        // Cache the freshly-built interleaved base data so the shape-key
+        // refresh path can rebuild the VBO from it without re-interleaving
+        // every time.  Any previous deformed buffer is invalidated.
+        _baseVertexData    = data;
+        _deformedVertexData = null;
+        // Only mark dirty if the model already declares shape keys with
+        // non-zero weights (rare on initial load — most start at 0).  When
+        // shape keys are added later via AddShapeKey the dirty flag is set
+        // there directly.
+        if (ShapeKeys.Count > 0)
+        {
+            for (int s = 0; s < ShapeKeys.Count; s++)
+            {
+                if (ShapeKeys[s].Weight != 0f) { _shapeKeyDirty = true; break; }
+            }
+        }
     }
 
     // ── Point light data (set by Viewport before each draw call) ─────────────
@@ -519,6 +769,10 @@ public class Mesh : IDisposable
             Console.Error.WriteLine($"[Mesh] Render skipped: vao={_vao} shader null={_shader == null}");
             return;
         }
+
+        // Apply any pending shape-key weight changes to the GPU VBO before drawing.
+        if (HasShapeKeys)
+            RefreshShapeKeyGeometry();
 
         _gl.UseProgram(_shader.ShaderProgram);
 
