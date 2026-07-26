@@ -647,6 +647,17 @@ public class SpawnMenu : UiPanel
                     if (Gl == null) return new List<Mesh>();
                     character = AssimpModelLoader.Load(Gl, entry.FilePath);
                     if (character == null) return new List<Mesh>();
+
+                    // Apply the selected texture variant, same as the .mimodel branch above —
+                    // Assimp always loads whatever texture is embedded/referenced by the
+                    // model's own material, so the override must be stomped on afterwards.
+                    string? textureOverridePath = ResolveCharacterTextureOverride(entry);
+                    if (!string.IsNullOrEmpty(textureOverridePath) && File.Exists(textureOverridePath))
+                    {
+                        uint overrideTexId = MineImatorLoader.Instance.LoadTextureFromFile(textureOverridePath);
+                        if (overrideTexId != 0)
+                            ApplyTextureOverrideToCharacter(character, overrideTexId);
+                    }
                 }
 
                 // Store the hierarchy so PreviewRenderer can render it with proper world matrices.
@@ -1906,8 +1917,10 @@ public class SpawnMenu : UiPanel
     ///  - .mimodel / .miobject  — Mine Imator model files (via MineImatorLoader)
     ///  - .glb / .gltf and all Assimp-supported formats (via AssimpModelLoader)
     ///
-    /// <paramref name="textureOverridePath"/> — when not null and the model is a
-    /// <c>.mimodel</c>, overrides the model's default texture with this PNG path.
+    /// <paramref name="textureOverridePath"/> — when not null, overrides the
+    /// model's default/embedded texture with this PNG path. Applied directly
+    /// during load for <c>.mimodel</c>, and applied afterwards by walking the
+    /// resulting hierarchy for Assimp-loaded formats (.glb/.gltf/.fbx/etc.).
     ///
     /// Returns the root <see cref="SceneObject"/> on success, or <c>null</c> on error.
     /// </summary>
@@ -1932,6 +1945,18 @@ public class SpawnMenu : UiPanel
         else
         {
             root = AssimpModelLoader.Load(Gl, pathToSpawn);
+
+            // AssimpModelLoader always uses whatever diffuse/embedded texture
+            // is baked into the GLB/GLTF/etc. material — it has no concept of
+            // a texture-variant override. Apply the selected variant here by
+            // stomping mesh.TextureId across the loaded hierarchy, mirroring
+            // what SpawnMineImatorModel does internally for .mimodel.
+            if (root != null && !string.IsNullOrEmpty(textureOverridePath) && File.Exists(textureOverridePath))
+            {
+                uint overrideTexId = MineImatorLoader.Instance.LoadTextureFromFile(textureOverridePath);
+                if (overrideTexId != 0)
+                    ApplyTextureOverrideToCharacter(root, overrideTexId);
+            }
         }
 
         if (root == null)
@@ -1939,6 +1964,13 @@ public class SpawnMenu : UiPanel
             Console.Error.WriteLine($"[SpawnMenu] Failed to load model: {pathToSpawn}");
             return null;
         }
+
+        // Remember which texture variant was selected (if any) so that
+        // ProjectSceneSerializer can persist it and re-apply it the next time
+        // this object is re-imported from SourceAssetPath (e.g. on project
+        // load) — otherwise a reload always falls back to the source file's
+        // own default/embedded texture.
+        root.TextureOverridePath = textureOverridePath ?? "";
 
         string displayName = Path.GetFileNameWithoutExtension(pathToSpawn);
         if (string.IsNullOrEmpty(root.Name)) root.Name = displayName;

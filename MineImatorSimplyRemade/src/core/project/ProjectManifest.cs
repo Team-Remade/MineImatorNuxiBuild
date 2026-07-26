@@ -187,6 +187,13 @@ public class ProjectSceneObjectEntry
     public string SourceAssetPath { get; set; } = "";
     public string AlbedoTexturePath { get; set; } = "";
 
+    // Path to the character texture-variant image selected in the spawn menu
+    // at import time (e.g. a "skin" chosen from a character's textures.nux
+    // manifest). Re-applied on load after the model is re-imported from
+    // SourceAssetPath, since the source file's own default texture is always
+    // what gets loaded first.
+    public string TextureOverridePath { get; set; } = "";
+
     // Block tiling (1 = no tiling). Only applied to objects in the Blocks
     // spawn category. Clamped to [1, 1000] per axis on load.
     public int TileX { get; set; } = 1;

@@ -497,6 +497,7 @@ public class SceneTree : UiPanel
         dup.TextureType     = original.TextureType;
         dup.ResourcePackId  = original.ResourcePackId;
         dup.SourceAssetPath = original.SourceAssetPath;
+        dup.TextureOverridePath = original.TextureOverridePath;
         dup.TileX           = original.TileX;
         dup.TileY           = original.TileY;
         dup.TileZ           = original.TileZ;

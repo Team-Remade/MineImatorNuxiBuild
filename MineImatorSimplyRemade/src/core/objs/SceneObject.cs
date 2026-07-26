@@ -131,6 +131,18 @@ public class SceneObject
     /// </summary>
     public string AlbedoTexturePath = "";
 
+    /// <summary>
+    /// Path to the character texture-variant image selected in the spawn menu
+    /// at import time (e.g. a "skin" PNG chosen from a character's
+    /// <c>textures.nux</c> manifest), for objects created from
+    /// <see cref="SourceAssetPath"/>. Empty means the model's own
+    /// default/embedded texture should be used. Re-applied whenever the model
+    /// is re-imported from <see cref="SourceAssetPath"/> (e.g. on project
+    /// load), since the underlying loaders always start from the source
+    /// file's own default texture.
+    /// </summary>
+    public string TextureOverridePath = "";
+
     // ── Visual ────────────────────────────────────────────────────────────────
 
     /// <summary>
