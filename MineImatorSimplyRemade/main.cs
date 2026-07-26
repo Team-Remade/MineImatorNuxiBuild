@@ -44,7 +44,7 @@ public static class main
             // This might be helpful, or might interfere with the normal operation of your application.
             // We enable it here for demonstration purposes when first trying Sentry.
             // You shouldn't do this in your applications unless you're troubleshooting issues with Sentry.
-            options.Debug = true;
+            options.Debug = false;
 
             // This option is recommended. It enables Sentry's "Release Health" feature.
             options.AutoSessionTracking = true;
