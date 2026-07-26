@@ -1,7 +1,7 @@
 {
 	"name": "human",
 	"texture": "blank.png",
-	"texture_size": [ 16, 16 ],
+	"texture_size": [ 64, 64 ],
 	"player_skin": true,
 	"parts": [
 		{
