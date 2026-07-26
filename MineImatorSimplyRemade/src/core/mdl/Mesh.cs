@@ -934,6 +934,25 @@ public class Mesh : IDisposable
     // ── Pick pass ─────────────────────────────────────────────────────────────
 
     /// <summary>
+    /// Uploads the skinning uniforms (<c>uIsSkinned</c> and <c>uBoneMatrices</c>)
+    /// to the supplied shader.  Callers such as the pick and silhouette passes
+    /// use this after computing the current bone palette so skinned meshes are
+    /// drawn in their deformed pose.
+    /// </summary>
+    public unsafe void ApplySkinningUniforms(Shader shader)
+    {
+        if (shader == null) return;
+
+        SetUniformBool(shader, "uIsSkinned", IsSkinned);
+        if (!IsSkinned || BoneMatrices == null) return;
+
+        const int maxBones = 64;
+        int count = Math.Min(BoneMatrices.Count, maxBones);
+        for (int i = 0; i < count; i++)
+            SetUniformMat4(shader, $"uBoneMatrices[{i}]", BoneMatrices[i]);
+    }
+
+    /// <summary>
     /// Draws the mesh geometry using whatever shader program is currently bound.
     /// Used by the colour-pick pass in <c>Viewport</c>, which sets up the flat
     /// pick shader and per-object uniforms (MVP, pick colour) before calling this.

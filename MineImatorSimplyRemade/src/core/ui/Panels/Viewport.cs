@@ -2767,14 +2767,24 @@ public class Viewport : UiPanel
     /// <summary>
     /// Recursively renders every selectable scene object using the flat pick shader.
     /// Objects with no meshes (or <c>IsSelectable == false</c>) are skipped.
+    /// Skinned meshes are deformed using the current bone palette so picking
+    /// matches the rendered pose.
     /// </summary>
-    private unsafe void RenderPickObjects(IEnumerable<SceneObject> objects, mat4 view, mat4 proj)
+    private unsafe void RenderPickObjects(
+        IEnumerable<SceneObject> objects,
+        mat4 view,
+        mat4 proj,
+        Dictionary<string, BoneSceneObject>? boneDict = null)
     {
         if (_pickShader == null) return;
 
         foreach (var obj in objects)
         {
             if (!obj.GetEffectiveVisibility()) continue;
+
+            var localBoneDict = boneDict;
+            if (localBoneDict == null)
+                localBoneDict = BuildBoneDictionary(obj);
 
             bool hasBoneIndicator = obj is BoneSceneObject b && b.IndicatorMesh != null;
             if (obj.IsSelectable && (obj.Visuals.Count > 0 || hasBoneIndicator))
@@ -2804,15 +2814,23 @@ public class Viewport : UiPanel
 
                 // Draw geometry meshes.
                 foreach (var mesh in obj.Visuals)
+                {
+                    if (mesh.IsSkinned && localBoneDict != null)
+                        UpdateBoneMatrices(mesh, model, localBoneDict);
+                    mesh.ApplySkinningUniforms(_pickShader);
                     mesh.RenderPickPass(Gl);
+                }
 
                 // Draw the bone indicator octahedron as an additional pick target.
                 if (obj is BoneSceneObject bone && bone.IndicatorMesh != null)
+                {
+                    bone.IndicatorMesh.ApplySkinningUniforms(_pickShader);
                     bone.IndicatorMesh.RenderPickPass(Gl);
+                }
             }
 
             // Recurse into children.
-            RenderPickObjects(obj.Children, view, proj);
+            RenderPickObjects(obj.Children, view, proj, localBoneDict);
         }
     }
 
@@ -2860,6 +2878,8 @@ public class Viewport : UiPanel
 
         int mvpLoc = Gl.GetUniformLocation(prog, "uMVP");
 
+        var boneDictCache = new Dictionary<SceneObject, Dictionary<string, BoneSceneObject>>();
+
         foreach (var obj in sm.SelectedObjects)
         {
             if (!obj.GetEffectiveVisibility()) continue;
@@ -2881,8 +2901,25 @@ public class Viewport : UiPanel
                     Gl.UniformMatrix4(mvpLoc, 1, false, p);
             }
 
+            // Build a bone dictionary for the top-level hierarchy that contains
+            // the selected object, caching by root to avoid recomputation.
+            var root = obj;
+            while (root.Parent != null)
+                root = root.Parent;
+
+            if (!boneDictCache.TryGetValue(root, out var boneDict))
+            {
+                boneDict = BuildBoneDictionary(root);
+                boneDictCache[root] = boneDict;
+            }
+
             foreach (var mesh in obj.Visuals)
+            {
+                if (mesh.IsSkinned && boneDict != null)
+                    UpdateBoneMatrices(mesh, model, boneDict);
+                mesh.ApplySkinningUniforms(_silhouetteShader);
                 mesh.RenderPickPass(Gl);
+            }
         }
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
