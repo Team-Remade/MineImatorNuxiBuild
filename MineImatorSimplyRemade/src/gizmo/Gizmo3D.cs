@@ -254,7 +254,22 @@ internal static class GizmoMath
         //   m.m00 (col 0, row 0) =  cos(y)*cos(z)
         float yaw   = MathF.Asin(-Math.Clamp(m.m02, -1f, 1f));   // Y = asin(-m02)
         float pitch, roll;
-        if (MathF.Abs(m.m02) < 0.9999f)
+        // The gimbal-lock (y ~= +/-90 deg) fallback below pins roll = 0 and folds the
+        // remaining rotation into pitch, which is only an EXACT reconstruction of the
+        // original matrix when cos(y) is truly zero. Away from the exact pole, forcing
+        // roll = 0 introduces real error (rotates the object rather than just relabeling
+        // the same rotation). A loose threshold like 0.9999 (~0.81 degrees from the pole)
+        // made that error region wide enough to be hit by ordinary gizmo drags starting
+        // from a bone that is exactly at the pole (e.g. a Minecraft-style GLB rig bone),
+        // producing a visible rotation "flip" as soon as the user began rotating: the
+        // reconstructed matrix would be measurably wrong while inside that ~0.81 degree
+        // band, then jump back to correct once the drag crossed the threshold. Using a
+        // tight epsilon keeps the fallback restricted to the true singularity, where the
+        // general formulas below are numerically unstable, while letting the exact
+        // atan2-based formulas (which remain well-conditioned to within a small fraction
+        // of a degree of the pole) handle everything else continuously and exactly.
+        const float PoleEpsilon = 1e-6f;
+        if (MathF.Abs(m.m02) < 1f - PoleEpsilon)
         {
             pitch = MathF.Atan2(m.m12, m.m22);   // X = atan2(cos(y)*sin(x), cos(y)*cos(x))
             roll  = MathF.Atan2(m.m01, m.m00);   // Z = atan2(cos(y)*sin(z), cos(y)*cos(z))
@@ -1619,11 +1634,33 @@ public class Gizmo3D : IDisposable
                 }
                 else
                 {
+                    mat4 rotBasis = newTransform.Basis;
+
+                    // When rotating in world/view space (not local), ComputeTransform's
+                    // rotate branch returns the object's NEW WORLD-space rotation (it
+                    // rotates the captured world basis, item.TargetGlobal). SetLocalRotation
+                    // stores a rotation relative to the parent, so for a parented object we
+                    // must remove the parent's world rotation before storing it — exactly
+                    // like the Translate branch above converts a world position back to
+                    // local via the parent's inverse transform. Skipping this previously
+                    // caused the parent's rotation to be baked in twice (once from the
+                    // parent's own transform during rendering, once already present in the
+                    // stored "local" value), visibly flipping/misrotating any bone whose
+                    // parent bone itself had a non-identity rotation.
+                    if (!localCoords && obj.Parent != null)
+                    {
+                        // Must match exactly how GetWorldTransform(obj) built
+                        // item.TargetGlobal.Basis in the first place (parentRot *
+                        // localRotOnly), so invert with the same parentRot here.
+                        mat4 parentWorldRot = NormalizeRotation(obj.GetParentWorldTransform());
+                        rotBasis = parentWorldRot.Inverse * rotBasis;
+                    }
+
                     // Strip scale from the basis before extracting Euler angles.
                     // In local-rotation mode, ComputeTransform returns purRot * rotMat * scaleMat,
                     // so the basis includes scale. MatrixToEulerYXZ assumes a pure-rotation matrix
                     // (m.m21 == -sin(x) only holds without scale), so we must normalise first.
-                    obj.SetLocalRotation(GizmoMath.MatrixToEulerYXZ(NormalizeRotation(newTransform.Basis)));
+                    obj.SetLocalRotation(GizmoMath.MatrixToEulerYXZ(NormalizeRotation(rotBasis)));
                 }
             }
             else if (_edit.Mode == TransformMode.Scale)
@@ -1713,17 +1750,15 @@ public class Gizmo3D : IDisposable
                 }
                 else
                 {
+                    // NOTE: this returns the object's NEW WORLD-space rotation basis
+                    // (rotating the captured world basis "original"). It is NOT yet the
+                    // object's local rotation when it has a parent — the caller
+                    // (ApplyTransform) is responsible for converting world -> local by
+                    // removing the parent's world rotation before calling
+                    // SetLocalRotation, the same way it converts a world position back
+                    // to local for Translate.
                     vec3 newOrigin = GizmoMath.BasisTransform(rotMat, original.Origin - _edit.Center) + _edit.Center;
                     mat4 newBasis  = rotMat * original.Basis;
-
-                    if (original.Basis != originalLocal.Basis)
-                    {
-                        mat4 localToWorld = original.Basis * originalLocal.Basis.Inverse;
-                        mat4 worldToLocal = localToWorld.Inverse;
-                        newBasis = rotMat * localToWorld * originalLocal.Basis;
-                        // The local basis is what gets written back; world-relative rotation is baked in.
-                        _ = worldToLocal; // used implicitly in the expression above
-                    }
                     return new Transform3D(newBasis, newOrigin);
                 }
             }

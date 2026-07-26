@@ -283,7 +283,12 @@ public class MiBoneSceneObject : BoneSceneObject
         float pitch;
         float roll;
 
-        if (MathF.Abs(m.m02) < 0.9999f)
+        // Keep this threshold in sync with GizmoMath.MatrixToEulerYXZ (Gizmo3D.cs): a loose
+        // threshold here forces roll = 0 well before the true pole, which is only an exact
+        // reconstruction of the matrix at cos(yaw) == 0 — everywhere else it introduces real
+        // rotation error. Restrict the fallback to the true singularity.
+        const float PoleEpsilon = 1e-6f;
+        if (MathF.Abs(m.m02) < 1f - PoleEpsilon)
         {
             pitch = MathF.Atan2(m.m12, m.m22);
             roll = MathF.Atan2(m.m01, m.m00);
