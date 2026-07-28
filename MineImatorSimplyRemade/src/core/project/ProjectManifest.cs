@@ -87,6 +87,7 @@ public class ProjectWorkCameraState
 
 public class ProjectRenderSettings
 {
+    public Dictionary<string, List<ProjectBackgroundKeyframeEntry>> BackgroundKeyframes { get; set; } = new();
     public int ResolutionWidth { get; set; } = 1920;
     public int ResolutionHeight { get; set; } = 1080;
     public int Framerate { get; set; } = 30;
@@ -156,6 +157,13 @@ public class ProjectRenderSettings
     };
     public float FillLightStrength { get; set; } = 1f;
     public bool FillLightCastsShadows { get; set; } = true;
+}
+
+public class ProjectBackgroundKeyframeEntry
+{
+    public int Frame { get; set; }
+    public string Value { get; set; } = "";
+    public bool Discrete { get; set; }
 }
 
 public class ProjectTimelineState

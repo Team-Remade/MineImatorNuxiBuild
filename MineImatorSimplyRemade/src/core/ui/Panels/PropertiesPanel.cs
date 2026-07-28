@@ -1,4 +1,6 @@
 ﻿using System.Numerics;
+using System.Globalization;
+using System.Reflection;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl;
@@ -60,6 +62,8 @@ public class PropertiesPanel : UiPanel
     public bool FillLightCastsShadows = true;
 
     private string _projectName = "Untitled Project";
+    private string _selectedBackgroundKeyProperty = "SkyTime";
+    private static readonly string[] BackgroundKeyframeProperties = BuildBackgroundKeyframeProperties();
     private int _resolutionWidth = 1920;
     private int _resolutionHeight = 1080;
     private int _framerate = 30;
@@ -547,6 +551,7 @@ public class PropertiesPanel : UiPanel
     
     public override void Render()
     {
+        ApplyBackgroundAnimation(Timeline?.CurrentFrame ?? 0);
         if (ImGui.Begin("Properties"))
         {
             if (ImGui.BeginTabBar("PropertiesTabs"))
@@ -661,6 +666,7 @@ public class PropertiesPanel : UiPanel
                 bool skyChanged = false;
                 bool useSky = UseSky;
                 if (ImGui.Checkbox("Minecraft Sky", ref useSky)) { UseSky = useSky; skyChanged = true; }
+                RegisterBackgroundKeyframeContext(nameof(UseSky));
                 if (UseSky)
                 {
                     ImGui.Indent();
@@ -675,7 +681,9 @@ public class PropertiesPanel : UiPanel
                     skyChanged |= SkyTextureSelector("Cloud Texture", ref CloudTexture, "clouds.png");
                     skyChanged |= SkyColorEditor("Cloud Color", CloudColor);
                     string cloudModeLabel = CloudRenderMode == "story" ? "Story Mode" : CloudRenderMode == "flat" ? "Flat" : "3D";
-                    if (ImGui.BeginCombo("Cloud Rendering", cloudModeLabel))
+                    bool cloudModeOpen = ImGui.BeginCombo("Cloud Rendering", cloudModeLabel);
+                    RegisterBackgroundKeyframeContext(nameof(CloudRenderMode));
+                    if (cloudModeOpen)
                     {
                         if (ImGui.Selectable("3D", CloudRenderMode == "3d")) { CloudRenderMode = "3d"; skyChanged = true; }
                         if (ImGui.Selectable("Story Mode", CloudRenderMode == "story")) { CloudRenderMode = "story"; skyChanged = true; }
@@ -683,19 +691,32 @@ public class PropertiesPanel : UiPanel
                         ImGui.EndCombo();
                     }
                     skyChanged |= ImGui.DragFloat("Cloud Speed", ref CloudSpeed, 1f, -10000f, 10000f, "%.0f px/s");
+                    RegisterBackgroundKeyframeContext(nameof(CloudSpeed));
                     fixed (float* value = CloudOffset) skyChanged |= ImGui.DragFloat2("Cloud Offset", value, 1f, -100000f, 100000f, "%.0f px");
+                    RegisterBackgroundKeyframeContext(nameof(CloudOffset));
                     skyChanged |= ImGui.DragFloat("Cloud Height", ref CloudHeight, 1f, 0f, 100000f, "%.0f px");
+                    RegisterBackgroundKeyframeContext(nameof(CloudHeight));
                     skyChanged |= ImGui.DragFloat("Cloud Block Size", ref CloudBlockSize, 1f, 1f, 100000f, "%.0f px");
+                    RegisterBackgroundKeyframeContext(nameof(CloudBlockSize));
                     skyChanged |= ImGui.DragFloat("Cloud Thickness", ref CloudThickness, 1f, 1f, 100000f, "%.0f px");
+                    RegisterBackgroundKeyframeContext(nameof(CloudThickness));
                     skyChanged |= ImGui.SliderInt("Moon Phase", ref MoonPhase, 0, 7);
+                    RegisterBackgroundKeyframeContext(nameof(MoonPhase));
                     skyChanged |= ImGui.SliderFloat("Time", ref SkyTime, 0f, 24f, "%.2f h");
+                    RegisterBackgroundKeyframeContext(nameof(SkyTime));
                     skyChanged |= ImGui.DragFloat("Sun Size (degrees)", ref SunSize, 0.1f, 0.1f, 90f);
+                    RegisterBackgroundKeyframeContext(nameof(SunSize));
                     fixed (float* value = SunAngle) skyChanged |= ImGui.DragFloat3("Sun Angle (XYZ)", value, 0.25f, -360f, 360f);
+                    RegisterBackgroundKeyframeContext(nameof(SunAngle));
                     skyChanged |= ImGui.DragFloat("Moon Size (degrees)", ref MoonSize, 0.1f, 0.1f, 90f);
+                    RegisterBackgroundKeyframeContext(nameof(MoonSize));
                     fixed (float* value = MoonAngle) skyChanged |= ImGui.DragFloat3("Moon Angle (XYZ)", value, 0.25f, -360f, 360f);
+                    RegisterBackgroundKeyframeContext(nameof(MoonAngle));
                     skyChanged |= SkyColorEditor("Sun Fill Light", SunFillLightColor);
                     skyChanged |= ImGui.DragFloat("Sun Fill Strength", ref SunFillLightStrength, 0.01f, 0f, 5f);
+                    RegisterBackgroundKeyframeContext(nameof(SunFillLightStrength));
                     skyChanged |= ImGui.Checkbox("Sun Fill Casts Shadows", ref SunFillLightCastsShadows);
+                    RegisterBackgroundKeyframeContext(nameof(SunFillLightCastsShadows));
                     ImGui.Unindent();
                 }
                 else
@@ -720,6 +741,7 @@ public class PropertiesPanel : UiPanel
                         ProjectManager.Instance.SetDirty(true);
                     }
                 }
+                RegisterBackgroundKeyframeContext(nameof(BackgroundColor));
 
                 ImGui.Spacing();
                 ImGui.Text("Presets:");
@@ -755,10 +777,13 @@ public class PropertiesPanel : UiPanel
                     WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
                     ProjectManager.Instance.SetDirty(true);
                 }
+                RegisterBackgroundKeyframeContext(nameof(FloorVisible));
 
                 bool floorChanged = false;
                 string floorAtlasLabel = NormalizeFloorAtlas(FloorTextureAtlas) == "item" ? "Item Atlas" : "Block Atlas";
-                if (ImGui.BeginCombo("Floor Atlas", floorAtlasLabel))
+                bool floorAtlasOpen = ImGui.BeginCombo("Floor Atlas", floorAtlasLabel);
+                RegisterBackgroundKeyframeContext(nameof(FloorTextureAtlas));
+                if (floorAtlasOpen)
                 {
                     bool useBlock = NormalizeFloorAtlas(FloorTextureAtlas) == "block";
                     if (ImGui.Selectable("Block Atlas", useBlock))
@@ -779,7 +804,9 @@ public class PropertiesPanel : UiPanel
 
                 ImGui.Text("Floor Tile:");
                 ImGui.SetNextItemWidth(-1);
-                if (ImGui.BeginCombo("##FloorTile", FloorTileKey))
+                bool floorTileOpen = ImGui.BeginCombo("##FloorTile", FloorTileKey);
+                RegisterBackgroundKeyframeContext(nameof(FloorTileKey));
+                if (floorTileOpen)
                 {
                     foreach (string key in GetFloorAtlasKeys())
                     {
@@ -807,7 +834,9 @@ public class PropertiesPanel : UiPanel
                 string selectedImageLabel = GetBackgroundImageLabel(BackgroundImagePath);
                 ImGui.Text("Background Image:");
                 ImGui.SetNextItemWidth(-1);
-                if (ImGui.BeginCombo("##BackgroundImage", selectedImageLabel))
+                bool backgroundImageOpen = ImGui.BeginCombo("##BackgroundImage", selectedImageLabel);
+                RegisterBackgroundKeyframeContext(nameof(BackgroundImagePath));
+                if (backgroundImageOpen)
                 {
                     bool noneSelected = string.Equals(BackgroundImagePath, NoImageSelected, StringComparison.OrdinalIgnoreCase);
                     if (ImGui.Selectable(NoImageSelected, noneSelected))
@@ -863,7 +892,9 @@ public class PropertiesPanel : UiPanel
                     _ => "Stretch"
                 };
 
-                if (ImGui.BeginCombo("Background Mode", modeLabel))
+                bool backgroundModeOpen = ImGui.BeginCombo("Background Mode", modeLabel);
+                RegisterBackgroundKeyframeContext(nameof(BackgroundRenderMode));
+                if (backgroundModeOpen)
                 {
                     bool isStretch = string.Equals(BackgroundRenderMode, BackgroundModeStretch, StringComparison.OrdinalIgnoreCase);
                     if (ImGui.Selectable("Stretch", isStretch))
@@ -898,6 +929,7 @@ public class PropertiesPanel : UiPanel
                     BackgroundScale = Math.Clamp(backgroundScale, 0.01f, 20f);
                     backgroundChanged = true;
                 }
+                RegisterBackgroundKeyframeContext(nameof(BackgroundScale));
 
                 float backgroundRotation = BackgroundRotationDegrees;
                 if (ImGui.DragFloat("Background Rotation", ref backgroundRotation, 0.25f, -360f, 360f))
@@ -905,6 +937,7 @@ public class PropertiesPanel : UiPanel
                     BackgroundRotationDegrees = Math.Clamp(backgroundRotation, -360f, 360f);
                     backgroundChanged = true;
                 }
+                RegisterBackgroundKeyframeContext(nameof(BackgroundRotationDegrees));
 
                 float offsetX = BackgroundOffset[0];
                 if (ImGui.DragFloat("Background Offset X", ref offsetX, 0.005f, -3f, 3f))
@@ -912,6 +945,7 @@ public class PropertiesPanel : UiPanel
                     BackgroundOffset[0] = offsetX;
                     backgroundChanged = true;
                 }
+                RegisterBackgroundKeyframeContext(nameof(BackgroundOffset) + ".0");
 
                 float offsetY = BackgroundOffset[1];
                 if (ImGui.DragFloat("Background Offset Y", ref offsetY, 0.005f, -3f, 3f))
@@ -919,6 +953,7 @@ public class PropertiesPanel : UiPanel
                     BackgroundOffset[1] = offsetY;
                     backgroundChanged = true;
                 }
+                RegisterBackgroundKeyframeContext(nameof(BackgroundOffset) + ".1");
 
                 if (ImGui.Button("Reset Transform##backgroundResetTransform"))
                 {
@@ -939,6 +974,7 @@ public class PropertiesPanel : UiPanel
                     if (ImGui.ColorEdit3(ambientLabel, ambientColorPtr, ImGuiColorEditFlags.None))
                         ambientChanged = true;
                 }
+                RegisterBackgroundKeyframeContext(nameof(AmbientLightColor));
 
                 float ambientStrength = AmbientLightStrength;
                 ImGui.SetNextItemWidth(120f);
@@ -947,6 +983,7 @@ public class PropertiesPanel : UiPanel
                     AmbientLightStrength = ambientStrength;
                     ambientChanged = true;
                 }
+                RegisterBackgroundKeyframeContext(nameof(AmbientLightStrength));
 
                 ImGui.Spacing();
                 ImGui.Text("Fill Light:");
@@ -957,6 +994,7 @@ public class PropertiesPanel : UiPanel
                     if (ImGui.ColorEdit3(fillLabel, fillColorPtr, ImGuiColorEditFlags.None))
                         ambientChanged = true;
                 }
+                RegisterBackgroundKeyframeContext(nameof(FillLightColor));
 
                 float fillStrength = FillLightStrength;
                 ImGui.SetNextItemWidth(120f);
@@ -965,6 +1003,7 @@ public class PropertiesPanel : UiPanel
                     FillLightStrength = fillStrength;
                     ambientChanged = true;
                 }
+                RegisterBackgroundKeyframeContext(nameof(FillLightStrength));
 
                 bool fillLightCastsShadows = FillLightCastsShadows;
                 if (ImGui.Checkbox("Fill Light Casts Shadows", ref fillLightCastsShadows))
@@ -972,6 +1011,7 @@ public class PropertiesPanel : UiPanel
                     FillLightCastsShadows = fillLightCastsShadows;
                     ambientChanged = true;
                 }
+                RegisterBackgroundKeyframeContext(nameof(FillLightCastsShadows));
 
                 if (ambientChanged)
                 {
@@ -985,20 +1025,178 @@ public class PropertiesPanel : UiPanel
         ImGui.EndTabItem();
     }
 
-    private static unsafe bool SkyColorEditor(string label, float[] color)
+    private static string[] BuildBackgroundKeyframeProperties()
     {
-        fixed (float* value = color)
-            return ImGui.ColorEdit3(label, value, ImGuiColorEditFlags.None);
+        string[] scalars =
+        [
+            nameof(UseSky), nameof(SunTexture), nameof(MoonTexture), nameof(CloudTexture), nameof(MoonPhase), nameof(SkyTime),
+            nameof(SunSize), nameof(MoonSize), nameof(SunFillLightStrength), nameof(SunFillLightCastsShadows),
+            nameof(CloudRenderMode), nameof(CloudSpeed), nameof(CloudHeight), nameof(CloudBlockSize), nameof(CloudThickness),
+            nameof(FloorVisible), nameof(FloorTextureAtlas), nameof(FloorTileKey), nameof(BackgroundImagePath),
+            nameof(BackgroundRenderMode), nameof(BackgroundScale), nameof(BackgroundRotationDegrees),
+            nameof(AmbientLightStrength), nameof(FillLightStrength), nameof(FillLightCastsShadows)
+        ];
+        string[] vectors =
+        [
+            nameof(SkyHorizonDay), nameof(SkyZenithDay), nameof(SkyHorizonSunset), nameof(SkyZenithSunset),
+            nameof(SkyHorizonNight), nameof(SkyZenithNight), nameof(SunAngle), nameof(MoonAngle),
+            nameof(SunFillLightColor), nameof(CloudColor), nameof(CloudOffset), nameof(BackgroundColor),
+            nameof(BackgroundOffset), nameof(AmbientLightColor), nameof(FillLightColor)
+        ];
+        var result = new List<string>(scalars);
+        foreach (string vector in vectors)
+        {
+            int count = vector == nameof(BackgroundColor) ? 4 : vector is nameof(CloudOffset) or nameof(BackgroundOffset) ? 2 : 3;
+            for (int i = 0; i < count; i++) result.Add($"{vector}.{i}");
+        }
+        return result.OrderBy(x => x, StringComparer.Ordinal).ToArray();
     }
 
-    private static bool SkyTextureSelector(string label, ref string selected, string vanillaFile)
+    private (FieldInfo field, int component)? ResolveBackgroundProperty(string path)
+    {
+        string fieldName = path;
+        int component = -1;
+        int dot = path.LastIndexOf('.');
+        if (dot > 0 && int.TryParse(path[(dot + 1)..], out int parsed))
+        {
+            fieldName = path[..dot];
+            component = parsed;
+        }
+        FieldInfo? field = typeof(PropertiesPanel).GetField(fieldName, BindingFlags.Instance | BindingFlags.Public);
+        return field == null ? null : (field, component);
+    }
+
+    private object? GetBackgroundPropertyValue(string path)
+    {
+        var resolved = ResolveBackgroundProperty(path);
+        if (!resolved.HasValue) return null;
+        object? value = resolved.Value.field.GetValue(this);
+        return resolved.Value.component >= 0 && value is float[] array ? array[resolved.Value.component] : value;
+    }
+
+    private void SetBackgroundPropertyValue(string path, string serialized, bool discrete, float blendValue = 0f, bool useBlend = false)
+    {
+        var resolved = ResolveBackgroundProperty(path);
+        if (!resolved.HasValue) return;
+        FieldInfo field = resolved.Value.field;
+        if (resolved.Value.component >= 0 && field.GetValue(this) is float[] array)
+        {
+            array[resolved.Value.component] = useBlend ? blendValue : float.Parse(serialized, CultureInfo.InvariantCulture);
+            return;
+        }
+        if (field.FieldType == typeof(float)) field.SetValue(this, useBlend ? blendValue : float.Parse(serialized, CultureInfo.InvariantCulture));
+        else if (field.FieldType == typeof(int)) field.SetValue(this, int.Parse(serialized, CultureInfo.InvariantCulture));
+        else if (field.FieldType == typeof(bool)) field.SetValue(this, bool.Parse(serialized));
+        else if (field.FieldType == typeof(string)) field.SetValue(this, serialized);
+    }
+
+    private void AddBackgroundKeyframe(string path, int frame)
+    {
+        object? value = GetBackgroundPropertyValue(path);
+        if (value == null) return;
+        var tracks = ProjectManager.Instance.Manifest.Settings.BackgroundKeyframes;
+        if (!tracks.TryGetValue(path, out var keys)) tracks[path] = keys = new List<ProjectBackgroundKeyframeEntry>();
+        bool discrete = value is string or bool or int;
+        string serialized = value is IFormattable f ? f.ToString(null, CultureInfo.InvariantCulture) : value.ToString() ?? "";
+        var key = keys.FirstOrDefault(k => k.Frame == frame);
+        if (key == null) keys.Add(new ProjectBackgroundKeyframeEntry { Frame = frame, Value = serialized, Discrete = discrete });
+        else { key.Value = serialized; key.Discrete = discrete; }
+        keys.Sort((a, b) => a.Frame.CompareTo(b.Frame));
+        ProjectManager.Instance.SetDirty(true);
+    }
+
+    private void DrawBackgroundKeyframeControls()
+    {
+        ImGui.Text("Background Animation:");
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.BeginCombo("##BackgroundKeyProperty", _selectedBackgroundKeyProperty))
+        {
+            foreach (string path in BackgroundKeyframeProperties)
+                if (ImGui.Selectable(path, path == _selectedBackgroundKeyProperty)) _selectedBackgroundKeyProperty = path;
+            ImGui.EndCombo();
+        }
+        object? current = GetBackgroundPropertyValue(_selectedBackgroundKeyProperty);
+        if (current is float floatValue && ImGui.DragFloat("Value##BackgroundKeyValue", ref floatValue, 0.01f))
+            SetBackgroundPropertyValue(_selectedBackgroundKeyProperty, floatValue.ToString(CultureInfo.InvariantCulture), false);
+        else if (current is int intValue && ImGui.InputInt("Value##BackgroundKeyValue", ref intValue))
+            SetBackgroundPropertyValue(_selectedBackgroundKeyProperty, intValue.ToString(CultureInfo.InvariantCulture), true);
+        else if (current is bool boolValue && ImGui.Checkbox("Value##BackgroundKeyValue", ref boolValue))
+            SetBackgroundPropertyValue(_selectedBackgroundKeyProperty, boolValue.ToString(), true);
+        else if (current is string stringValue && ImGui.InputText("Value##BackgroundKeyValue", ref stringValue, 1024))
+            SetBackgroundPropertyValue(_selectedBackgroundKeyProperty, stringValue, true);
+        int frame = Timeline?.CurrentFrame ?? 0;
+        if (ImGui.Button($"Add Keyframe (Frame {frame})")) AddBackgroundKeyframe(_selectedBackgroundKeyProperty, frame);
+        ImGui.SameLine();
+        if (ImGui.Button("Remove##BackgroundKey"))
+        {
+            var tracks = ProjectManager.Instance.Manifest.Settings.BackgroundKeyframes;
+            if (tracks.TryGetValue(_selectedBackgroundKeyProperty, out var keys))
+            {
+                keys.RemoveAll(k => k.Frame == frame);
+                if (keys.Count == 0) tracks.Remove(_selectedBackgroundKeyProperty);
+                ProjectManager.Instance.SetDirty(true);
+            }
+        }
+        if (ImGui.Button("Keyframe All Background Settings"))
+            foreach (string path in BackgroundKeyframeProperties) AddBackgroundKeyframe(path, frame);
+    }
+
+    private void ApplyBackgroundAnimation(int frame)
+    {
+        var tracks = ProjectManager.Instance.Manifest?.Settings?.BackgroundKeyframes;
+        if (tracks == null || tracks.Count == 0) return;
+        bool applied = false;
+        foreach (var (path, keys) in tracks)
+        {
+            if (keys.Count == 0) continue;
+            ProjectBackgroundKeyframeEntry? previous = keys.Where(k => k.Frame <= frame).OrderByDescending(k => k.Frame).FirstOrDefault();
+            ProjectBackgroundKeyframeEntry? next = keys.Where(k => k.Frame >= frame).OrderBy(k => k.Frame).FirstOrDefault();
+            if (previous == null) continue;
+            if (previous.Discrete || next == null || next.Frame == previous.Frame)
+                SetBackgroundPropertyValue(path, previous.Value, true);
+            else
+            {
+                float a = float.Parse(previous.Value, CultureInfo.InvariantCulture);
+                float b = float.Parse(next.Value, CultureInfo.InvariantCulture);
+                float t = (frame - previous.Frame) / (float)(next.Frame - previous.Frame);
+                SetBackgroundPropertyValue(path, previous.Value, false, a + (b - a) * t, true);
+            }
+            applied = true;
+        }
+        if (applied)
+        {
+            ApplyAmbientSettingsToRenderer();
+            ApplyFloorSettingsToViewport();
+            ApplyBackgroundSettingsToViewport();
+        }
+    }
+
+    private unsafe bool SkyColorEditor(string label, float[] color)
+    {
+        bool changed;
+        fixed (float* value = color)
+            changed = ImGui.ColorEdit3(label, value, ImGuiColorEditFlags.None);
+        string path = label switch
+        {
+            "Horizon Day" => nameof(SkyHorizonDay), "Zenith Day" => nameof(SkyZenithDay),
+            "Horizon Sunset" => nameof(SkyHorizonSunset), "Zenith Sunset" => nameof(SkyZenithSunset),
+            "Night Horizon" => nameof(SkyHorizonNight), "Night Zenith" => nameof(SkyZenithNight),
+            "Cloud Color" => nameof(CloudColor), "Sun Fill Light" => nameof(SunFillLightColor), _ => label
+        };
+        RegisterBackgroundKeyframeContext(path);
+        return changed;
+    }
+
+    private bool SkyTextureSelector(string label, ref string selected, string vanillaFile)
     {
         bool changed = false;
         string vanilla = $"minecraft:environment/{vanillaFile}";
         string preview = selected.StartsWith("resourcepack:", StringComparison.OrdinalIgnoreCase)
             ? selected[13..]
             : $"Vanilla / {Path.GetFileName(selected)}";
-        if (ImGui.BeginCombo(label, preview))
+        bool open = ImGui.BeginCombo(label, preview);
+        RegisterBackgroundKeyframeContext(label.StartsWith("Sun") ? nameof(SunTexture) : label.StartsWith("Moon") ? nameof(MoonTexture) : nameof(CloudTexture));
+        if (open)
         {
             if (ImGui.Selectable($"Vanilla / {vanillaFile}", selected == vanilla))
             {
@@ -2304,16 +2502,36 @@ public class PropertiesPanel : UiPanel
     private void RenderPropertyContextMenu()
     {
         if (!ImGui.BeginPopup("##prop_keyframe_ctx")) return;
-        if (_currentObject == null || _ctxPropertyPath == null) { ImGui.EndPopup(); return; }
+        if (_ctxPropertyPath == null) { ImGui.EndPopup(); return; }
 
         ImGui.TextDisabled("Keyframe");
         ImGui.Separator();
 
         if (ImGui.MenuItem("Add Keyframe at Current Frame"))
         {
-            Timeline?.AddKeyframeForProperty(_currentObject, _ctxPropertyPath, Timeline?.CurrentFrame ?? 0);
+            if (_ctxPropertyPath.StartsWith("background:", StringComparison.Ordinal))
+                AddBackgroundKeyframeGroup(_ctxPropertyPath[11..], Timeline?.CurrentFrame ?? 0);
+            else if (_currentObject != null)
+                Timeline?.AddKeyframeForProperty(_currentObject, _ctxPropertyPath, Timeline?.CurrentFrame ?? 0);
         }
 
         ImGui.EndPopup();
+    }
+
+    private void RegisterBackgroundKeyframeContext(string path)
+    {
+        if (!ImGui.IsItemClicked(ImGuiMouseButton.Right)) return;
+        _ctxPropertyPath = "background:" + path;
+        _ctxMenuPos = ImGui.GetMousePos();
+        _openPropContextMenu = true;
+    }
+
+    private void AddBackgroundKeyframeGroup(string path, int frame)
+    {
+        if (GetBackgroundPropertyValue(path) is float[] values)
+        {
+            for (int i = 0; i < values.Length; i++) AddBackgroundKeyframe($"{path}.{i}", frame);
+        }
+        else AddBackgroundKeyframe(path, frame);
     }
 }
