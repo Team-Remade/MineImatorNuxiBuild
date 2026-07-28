@@ -547,14 +547,12 @@ public static class BlockRegistry
                 string candidate  = Path.Combine(versionsDir, folderName);
                 if (!Directory.Exists(candidate)) continue;
 
-                if (best == null ||
-                    manifest.Revision > best.Revision ||
-                    (manifest.Revision == best.Revision &&
-                     string.Compare(manifest.Name, best.Name, StringComparison.OrdinalIgnoreCase) > 0))
-                {
-                    best       = manifest;
-                    bestFolder = candidate;
-                }
+                if (best != null &&
+                    manifest.Revision <= best.Revision &&
+                    (manifest.Revision != best.Revision ||
+                     string.Compare(manifest.Name, best.Name, StringComparison.OrdinalIgnoreCase) <= 0)) continue;
+                best       = manifest;
+                bestFolder = candidate;
             }
             catch { /* skip malformed manifests */ }
         }
@@ -1018,10 +1016,7 @@ public static class BlockRegistry
         {
             string ns = path[..colon];
             string rest = path[(colon + 1)..];
-            if (string.Equals(ns, "minecraft", StringComparison.OrdinalIgnoreCase))
-                return rest;
-
-            return $"{ns.ToLowerInvariant()}:{rest}";
+            return string.Equals(ns, "minecraft", StringComparison.OrdinalIgnoreCase) ? rest : $"{ns.ToLowerInvariant()}:{rest}";
         }
 
         return path;

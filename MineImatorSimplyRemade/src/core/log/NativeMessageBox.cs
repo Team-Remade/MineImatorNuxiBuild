@@ -8,7 +8,7 @@ namespace MineImatorSimplyRemade.core.log;
 /// native OS library (P/Invoke), the same mechanism used elsewhere in this project
 /// (see <see cref="startup.NativeLibraryBootstrap"/>).
 /// </summary>
-public static class NativeMessageBox
+public static partial class NativeMessageBox
 {
     public static void Show(string title, string message)
     {
@@ -26,12 +26,12 @@ public static class NativeMessageBox
             {
                 // No native dialog toolkit is wired up for this platform yet. The crash
                 // report and log file written to disk still contain the full details.
-                Logger.Error($"[NativeMessageBox] No native dialog available on this platform for: {title}: {message}");
+                Logger.Error($"No native dialog available on this platform for: {title}: {message}");
             }
         }
         catch (Exception ex)
         {
-            Logger.Error($"[NativeMessageBox] Failed to display native dialog: {ex.Message}");
+            Logger.Error($"Failed to display native dialog: {ex.Message}");
         }
     }
 
@@ -42,8 +42,8 @@ public static class NativeMessageBox
     private const uint MB_SETFOREGROUND = 0x00010000;
     private const uint MB_TOPMOST = 0x00040000;
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
+    [LibraryImport("user32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial void MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
 
     private static void ShowWindows(string title, string message)
     {
@@ -60,15 +60,14 @@ public static class NativeMessageBox
     private const uint KCFStringEncodingUtf8 = 0x08000100;
     private const uint KCFUserNotificationStopAlertLevel = 0;
 
-    [DllImport(CoreFoundationFramework, CharSet = CharSet.Ansi)]
-    private static extern IntPtr CFStringCreateWithCString(IntPtr alloc, string cStr, uint encoding);
+    [LibraryImport(CoreFoundationFramework, StringMarshalling = StringMarshalling.Custom, StringMarshallingCustomType = typeof(System.Runtime.InteropServices.Marshalling.AnsiStringMarshaller))]
+    private static partial IntPtr CFStringCreateWithCString(IntPtr alloc, string cStr, uint encoding);
 
-    [DllImport(CoreFoundationFramework)]
-    private static extern void CFRelease(IntPtr cf);
+    [LibraryImport(CoreFoundationFramework)]
+    private static partial void CFRelease(IntPtr cf);
 
-    [DllImport(CoreFoundationFramework)]
-    private static extern int CFUserNotificationDisplayAlert(
-        double timeout,
+    [LibraryImport(CoreFoundationFramework)]
+    private static partial void CFUserNotificationDisplayAlert(double timeout,
         uint flags,
         IntPtr iconUrl,
         IntPtr soundUrl,

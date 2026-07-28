@@ -277,11 +277,7 @@ public class SceneTree : UiPanel
             ImGui.SetNextItemWidth(-1);
             ImGui.SetKeyboardFocusHere();
             if (ImGui.InputText("##rename_input", ref _renameBuffer, 128,
-                    ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.AutoSelectAll))
-            {
-                CommitRename(obj);
-            }
-            else if (!ImGui.IsItemActive() && !ImGui.IsItemFocused())
+                    ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.AutoSelectAll) || !ImGui.IsItemActive() && !ImGui.IsItemFocused())
             {
                 CommitRename(obj);
             }

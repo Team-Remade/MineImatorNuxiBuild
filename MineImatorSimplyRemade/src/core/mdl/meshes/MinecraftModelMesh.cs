@@ -51,12 +51,12 @@ public static class MinecraftModelMesh
         {
             // Model has no geometry elements (e.g. only references a builtin parent).
             // Try to produce a textured cube from whatever textures the model exposes.
-            return new List<Mesh>
-            {
+            return
+            [
                 BuildTiledFallbackCube(gl, model, blockNameHint: blockName,
-                                       resourcePackId: resourcePackId,
-                                       tileX: tileX, tileY: tileY, tileZ: tileZ)
-            };
+                    resourcePackId: resourcePackId,
+                    tileX: tileX, tileY: tileY, tileZ: tileZ)
+            ];
         }
 
         // Group faces by texture key so each texture gets one draw call
@@ -108,12 +108,12 @@ public static class MinecraftModelMesh
 
         if (result.Count == 0)
         {
-            return new List<Mesh>
-            {
+            return
+            [
                 BuildTiledFallbackCube(gl, model, blockNameHint: blockName,
-                                       resourcePackId: resourcePackId,
-                                       tileX: tileX, tileY: tileY, tileZ: tileZ)
-            };
+                    resourcePackId: resourcePackId,
+                    tileX: tileX, tileY: tileY, tileZ: tileZ)
+            ];
         }
 
         return result;
@@ -121,9 +121,12 @@ public static class MinecraftModelMesh
 
     private static int ClampTileCount(int value)
     {
-        if (value < 1) return 1;
-        if (value > SceneObject.MaxTilesPerAxis) return SceneObject.MaxTilesPerAxis;
-        return value;
+        return value switch
+        {
+            < 1 => 1,
+            > SceneObject.MaxTilesPerAxis => SceneObject.MaxTilesPerAxis,
+            _ => value
+        };
     }
 
     /// <summary>
@@ -273,17 +276,12 @@ public static class MinecraftModelMesh
             // Last resort: use whatever the first resolvable texture is
             if (texId == 0)
             {
-                foreach (var kvp in model.Textures)
+                foreach (var resolvedKey in model.Textures.Select(kvp => BlockRegistry.ResolveTextureKey(model, "#" + kvp.Key)).OfType<string>().Select(key => ResolveTextureKeyForPack(key, resourcePackId)))
                 {
-                    string? key = BlockRegistry.ResolveTextureKey(model, "#" + kvp.Key);
-                    if (key != null)
+                    if (TerrainAtlas.Textures.TryGetValue(resolvedKey, out uint t))
                     {
-                        string resolvedKey = ResolveTextureKeyForPack(key, resourcePackId);
-                        if (TerrainAtlas.Textures.TryGetValue(resolvedKey, out uint t))
-                        {
-                            texId = t;
-                            break;
-                        }
+                        texId = t;
+                        break;
                     }
                 }
             }
@@ -461,7 +459,7 @@ public static class MinecraftModelMesh
                 : resolvedTexKey;
             if (!groups.TryGetValue(groupKey, out var group))
             {
-                group = (new List<vec3>(), new List<vec3>(), new List<vec2>(), texId);
+                group = ([], [], [], texId);
                 groups[groupKey] = group;
             }
 

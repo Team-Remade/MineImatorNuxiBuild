@@ -24,7 +24,7 @@ public class LightConeMesh : Mesh
         Upload();
     }
 
-    protected override void GenerateVertices()
+    protected sealed override void GenerateVertices()
     {
         // Apex at the origin; base ring at z = +1 with radius 1.
         const float baseZ = 1f;

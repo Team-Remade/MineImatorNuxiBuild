@@ -23,7 +23,7 @@ public static class TimelineIcons
 
     private const string Prefix = "MineImatorSimplyRemade.assets.img.button.";
 
-    public static unsafe void Initialize(GL gl, int iconSize = 20)
+    public static void Initialize(GL gl, int iconSize = 20)
     {
         if (IsLoaded) return;
 
@@ -45,7 +45,7 @@ public static class TimelineIcons
         try   { img = SvgLoader.LoadEmbedded(resourceName, size); }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[TimelineIcons] Failed to load {resourceName}: {ex.Message}");
+            Console.Error.WriteLine($"Failed to load {resourceName}: {ex.Message}");
             return 0;
         }
 

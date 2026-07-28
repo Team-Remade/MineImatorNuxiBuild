@@ -121,9 +121,6 @@ public static class CharacterRegistry
     /// <summary>All discovered character entries, sorted by name.</summary>
     public static IReadOnlyList<CharacterEntry> Characters => _characters;
 
-    /// <summary>Full path to the <c>data/</c> directory that was scanned.</summary>
-    public static string DataRoot { get; private set; } = "";
-
     // ── Internal state ────────────────────────────────────────────────────────
     private static readonly List<CharacterEntry> _characters = new();
 
@@ -154,8 +151,6 @@ public static class CharacterRegistry
             Console.WriteLine($"data/ directory not found at: {dataPath}");
             return;
         }
-
-        DataRoot = dataPath;
 
         // Find every directory named "characters" anywhere under data/
         string[] characterDirectories = Directory.EnumerateDirectories(
@@ -274,7 +269,7 @@ public static class CharacterRegistry
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to parse textures.nux at {manifestPath}: {ex.Message}");
-            return Array.Empty<CharacterTextureVariant>();
+            return [];
         }
     }
 }

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Numerics;
+using System.Text;
 using System.Text.Json;
 using GlmSharp;
 using Hexa.NET.ImGui;
@@ -382,7 +383,7 @@ public class Timeline : UiPanel
 
     private void RenderTransportControls()
     {
-        var  sz  = new System.Numerics.Vector2(20, 20);
+        var  sz  = new Vector2(20, 20);
         bool ico = TimelineIcons.IsLoaded;
 
         // Jump to start
@@ -432,7 +433,7 @@ public class Timeline : UiPanel
         if (!ico)
         {
             if (autoKeyNow)
-                ImGui.PushStyleColor(ImGuiCol.Button, new System.Numerics.Vector4(0.80f, 0.10f, 0.10f, 1.00f));
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.80f, 0.10f, 0.10f, 1.00f));
             if (ImGui.Button(" \u25cf "))
                 _autoKeyframe = !_autoKeyframe;
             if (autoKeyNow)
@@ -441,8 +442,8 @@ public class Timeline : UiPanel
         else
         {
             var tint = autoKeyNow
-                ? new System.Numerics.Vector4(1f, 0.3f, 0.3f, 1f)
-                : new System.Numerics.Vector4(1f, 1f,   1f,   1f);
+                ? new Vector4(1f, 0.3f, 0.3f, 1f)
+                : new Vector4(1f, 1f,   1f,   1f);
             if (IcoBtnTinted("##ak", TimelineIcons.AutoKey, sz, tint))
                 _autoKeyframe = !_autoKeyframe;
         }
@@ -484,7 +485,7 @@ public class Timeline : UiPanel
         while (lo <= hi)
         {
             int mid = (lo + hi) / 2;
-            if (ImGui.CalcTextSize(text.Substring(0, mid)).X <= budget)
+            if (ImGui.CalcTextSize(text[..mid]).X <= budget)
             {
                 best = mid;
                 lo = mid + 1;
@@ -494,7 +495,7 @@ public class Timeline : UiPanel
                 hi = mid - 1;
             }
         }
-        return text.Substring(0, best) + ellipsis;
+        return text[..best] + ellipsis;
     }
 
     private float RenderAudioTracksHeight()
@@ -712,13 +713,10 @@ public class Timeline : UiPanel
             }
             else
             {
-                foreach (var a in soundAssets)
+                foreach (var a in soundAssets.Where(a => ImGui.MenuItem(a.DisplayName)))
                 {
-                    if (ImGui.MenuItem(a.DisplayName))
-                    {
-                        AddAudioTrackFromAsset(a);
-                        ImGui.CloseCurrentPopup();
-                    }
+                    AddAudioTrackFromAsset(a);
+                    ImGui.CloseCurrentPopup();
                 }
             }
             ImGui.EndPopup();
@@ -887,21 +885,21 @@ public class Timeline : UiPanel
 
     // ── ImageButton helpers (byte* API required by Hexa.NET.ImGui 2.x) ───────
 
-    private static unsafe bool IcoBtn(string id, uint texId, System.Numerics.Vector2 sz)
+    private static unsafe bool IcoBtn(string id, uint texId, Vector2 sz)
     {
         var tex = new ImTextureRef(texId: (ulong)texId);
-        byte[] b = System.Text.Encoding.UTF8.GetBytes(id + '\0');
+        byte[] b = Encoding.UTF8.GetBytes(id + '\0');
         fixed (byte* p = b) return ImGui.ImageButton(p, tex, sz);
     }
 
-    private static unsafe bool IcoBtnTinted(string id, uint texId, System.Numerics.Vector2 sz,
-                                             System.Numerics.Vector4 tint)
+    private static unsafe bool IcoBtnTinted(string id, uint texId, Vector2 sz,
+                                             Vector4 tint)
     {
         var tex  = new ImTextureRef(texId: (ulong)texId);
-        var uv0  = new System.Numerics.Vector2(0, 0);
-        var uv1  = new System.Numerics.Vector2(1, 1);
-        var bg   = new System.Numerics.Vector4(0, 0, 0, 0);
-        byte[] b = System.Text.Encoding.UTF8.GetBytes(id + '\0');
+        var uv0  = new Vector2(0, 0);
+        var uv1  = new Vector2(1, 1);
+        var bg   = new Vector4(0, 0, 0, 0);
+        byte[] b = Encoding.UTF8.GetBytes(id + '\0');
         fixed (byte* p = b) return ImGui.ImageButton(p, tex, sz, uv0, uv1, bg, tint);
     }
     private void JumpToLastKeyframe()
@@ -961,10 +959,10 @@ public class Timeline : UiPanel
 
         // Playhead triangle on ruler
         float phX = wPos.X + _currentFrame * _pixelsPerFrame - scrollX;
-        dl.AddLine(new Vector2(phX, wPos.Y), new Vector2(phX, wPos.Y + RulerHeight), 0xFF3377FF, 2f);
+        dl.AddLine(wPos with { X = phX }, new Vector2(phX, wPos.Y + RulerHeight), 0xFF3377FF, 2f);
         dl.AddTriangleFilled(
-            new Vector2(phX - 5f, wPos.Y),
-            new Vector2(phX + 5f, wPos.Y),
+            wPos with { X = phX - 5f },
+            wPos with { X = phX + 5f },
             new Vector2(phX, wPos.Y + 10f), 0xFF3377FF);
 
         // Start playhead drag on click (global drag handled in Render() outside this child)
@@ -1113,7 +1111,6 @@ public class Timeline : UiPanel
         var   wPos    = ImGui.GetWindowPos();
         var   wSize   = ImGui.GetWindowSize();
         float scrollX = ImGui.GetScrollX();
-        float scrollY = ImGui.GetScrollY();
 
         foreach (var row in _displayRows)
         {
@@ -1135,7 +1132,7 @@ public class Timeline : UiPanel
             var  trackPos = ImGui.GetCursorScreenPos();
 
             // Track background + grid
-            DrawTrackBg(dl, trackPos, contentW, wPos, wSize, scrollX);
+            DrawTrackBg(dl, trackPos, wPos, wSize, scrollX);
 
             // Keyframe diamonds
             if (!row.IsGroupHeader)
@@ -1152,7 +1149,7 @@ public class Timeline : UiPanel
         // Global: playhead vertical line
         float phX = wPos.X + _currentFrame * _pixelsPerFrame - scrollX;
         if (phX >= wPos.X && phX <= wPos.X + wSize.X)
-            dl.AddLine(new Vector2(phX, wPos.Y), new Vector2(phX, wPos.Y + wSize.Y), 0xBB3377FF, 2f);
+            dl.AddLine(wPos with { X = phX }, new Vector2(phX, wPos.Y + wSize.Y), 0xBB3377FF, 2f);
 
         // Drag-select box
         if (_isDragSelecting && _wasDragging)
@@ -1168,7 +1165,7 @@ public class Timeline : UiPanel
         }
     }
 
-    private void DrawTrackBg(ImDrawListPtr dl, Vector2 trackPos, float contentW,
+    private void DrawTrackBg(ImDrawListPtr dl, Vector2 trackPos,
                               Vector2 wPos, Vector2 wSize, float scrollX)
     {
         dl.PushClipRect(
@@ -1499,15 +1496,10 @@ public class Timeline : UiPanel
 
             if (rowMaxY < minSY || rowMinY > maxSY) continue;
 
-            foreach (var kf in GetKeyframesForProperty(row.Object, row.PropertyPath))
+            foreach (var kf in from kf in GetKeyframesForProperty(row.Object, row.PropertyPath) let kfSX = wPos.X + kf.Frame * _pixelsPerFrame - scrollX where !(kfSX < minSX) && !(kfSX > maxSX) where !_selectedKeyframes.Contains(kf) select kf)
             {
-                float kfSX = wPos.X + kf.Frame * _pixelsPerFrame - scrollX;
-                if (kfSX < minSX || kfSX > maxSX) continue;
-                if (!_selectedKeyframes.Contains(kf))
-                {
-                    _selectedKeyframes.Add(kf);
-                    _keyframeOwners[kf] = (row.Object, row.PropertyPath);
-                }
+                _selectedKeyframes.Add(kf);
+                _keyframeOwners[kf] = (row.Object, row.PropertyPath);
             }
         }
     }
@@ -1977,7 +1969,7 @@ public class Timeline : UiPanel
         }
         else if (parts.Length == 3 && parts[0] == "shapekey")
         {
-            return (object)(GetShapeKeyWeight(obj, parts[1], parts[2]) ?? 0f);
+            return GetShapeKeyWeight(obj, parts[1], parts[2]) ?? 0f;
         }
 
         return 0f;
@@ -2007,119 +1999,124 @@ public class Timeline : UiPanel
         if (path == "visible") { obj.ObjectVisible = value >= 0.5f; return; }
 
         var parts = path.Split('.');
-        if (parts.Length == 2)
+        switch (parts.Length)
         {
-            string prop = parts[0], comp = parts[1];
-            switch (prop)
+            case 2:
             {
-                case "position":
-                    if (obj is MiBoneSceneObject mbP)
-                    {
-                        var p = mbP.OffsetPosition;
-                        if (comp == "x") p.x = value; else if (comp == "y") p.y = value; else if (comp == "z") p.z = value;
-                        mbP.OffsetPosition = p;
-                    }
-                    else if (obj is BoneSceneObject boP)
-                    {
-                        var p = boP.TargetPosition;
-                        if (comp == "x") p.x = value; else if (comp == "y") p.y = value; else if (comp == "z") p.z = value;
-                        boP.TargetPosition = p;
-                    }
-                    else
-                    {
-                        var p = obj.LocalPosition;
-                        if (comp == "x") p.x = value; else if (comp == "y") p.y = value; else if (comp == "z") p.z = value;
-                        obj.SetLocalPosition(p);
-                    }
-                    break;
-
-                case "rotation":
+                string prop = parts[0], comp = parts[1];
+                switch (prop)
                 {
-                    // Keyframes store degrees → convert to radians
-                    float rad = value * (MathF.PI / 180f);
-                    if (obj is MiBoneSceneObject mbR)
+                    case "position":
+                        if (obj is MiBoneSceneObject mbP)
+                        {
+                            var p = mbP.OffsetPosition;
+                            if (comp == "x") p.x = value; else if (comp == "y") p.y = value; else if (comp == "z") p.z = value;
+                            mbP.OffsetPosition = p;
+                        }
+                        else if (obj is BoneSceneObject boP)
+                        {
+                            var p = boP.TargetPosition;
+                            if (comp == "x") p.x = value; else if (comp == "y") p.y = value; else if (comp == "z") p.z = value;
+                            boP.TargetPosition = p;
+                        }
+                        else
+                        {
+                            var p = obj.LocalPosition;
+                            if (comp == "x") p.x = value; else if (comp == "y") p.y = value; else if (comp == "z") p.z = value;
+                            obj.SetLocalPosition(p);
+                        }
+                        break;
+
+                    case "rotation":
                     {
-                        var r = mbR.OffsetRotation;
-                        if (comp == "x") r.x = rad; else if (comp == "y") r.y = rad; else if (comp == "z") r.z = rad;
-                        mbR.OffsetRotation = r;
+                        // Keyframes store degrees → convert to radians
+                        float rad = value * (MathF.PI / 180f);
+                        if (obj is MiBoneSceneObject mbR)
+                        {
+                            var r = mbR.OffsetRotation;
+                            if (comp == "x") r.x = rad; else if (comp == "y") r.y = rad; else if (comp == "z") r.z = rad;
+                            mbR.OffsetRotation = r;
+                        }
+                        else if (obj is BoneSceneObject boR)
+                        {
+                            var r = boR.TargetRotation;
+                            if (comp == "x") r.x = rad; else if (comp == "y") r.y = rad; else if (comp == "z") r.z = rad;
+                            boR.TargetRotation = r;
+                        }
+                        else
+                        {
+                            var r = obj.LocalRotation;
+                            if (comp == "x") r.x = rad; else if (comp == "y") r.y = rad; else if (comp == "z") r.z = rad;
+                            obj.SetLocalRotation(r);
+                        }
+                        break;
                     }
-                    else if (obj is BoneSceneObject boR)
-                    {
-                        var r = boR.TargetRotation;
-                        if (comp == "x") r.x = rad; else if (comp == "y") r.y = rad; else if (comp == "z") r.z = rad;
-                        boR.TargetRotation = r;
-                    }
-                    else
-                    {
-                        var r = obj.LocalRotation;
-                        if (comp == "x") r.x = rad; else if (comp == "y") r.y = rad; else if (comp == "z") r.z = rad;
-                        obj.SetLocalRotation(r);
-                    }
-                    break;
+
+                    case "scale":
+                        if (obj is MiBoneSceneObject mbS)
+                        {
+                            var s = mbS.OffsetScale;
+                            if (comp == "x") s.x = value; else if (comp == "y") s.y = value; else if (comp == "z") s.z = value;
+                            mbS.OffsetScale = s;
+                        }
+                        else
+                        {
+                            var s = obj.LocalScale;
+                            if (comp == "x") s.x = value; else if (comp == "y") s.y = value; else if (comp == "z") s.z = value;
+                            obj.SetLocalScale(s);
+                        }
+                        break;
+
+                    case "material":
+                        if (comp == "alpha")
+                        {
+                            if (obj.MaterialSettings == null) obj.MaterialSettings = new MaterialSettings();
+                            var c = obj.MaterialSettings.AlbedoColor;
+                            c.w = Math.Clamp(value, 0f, 1f);
+                            obj.MaterialSettings.AlbedoColor = c;
+                            obj.ApplyMaterialSettingsToMeshes();
+                        }
+                        break;
+
+                    case "light":
+                        if (obj is LightSceneObject lo)
+                        {
+                            switch (comp)
+                            {
+                                case "energy":          lo.LightEnergy         = value; break;
+                                case "range":           lo.LightRange          = value; break;
+                                case "indirect_energy": lo.LightIndirectEnergy = value; break;
+                                case "specular":        lo.LightSpecular       = value; break;
+                                case "spot_angle":      lo.LightSpotAngle      = value; break;
+                                case "spot_blend":      lo.LightSpotBlend      = value; break;
+                            }
+                        }
+                        break;
+
+                    case "camera":
+                        if (comp == "active" && obj is CameraSceneObject camSet)
+                        {
+                            bool shouldBeActive = value >= 0.5f;
+                            if (shouldBeActive)
+                                CameraSceneObject.SetActiveExclusive(camSet);
+                            else
+                                camSet.Active = false;
+                        }
+                        break;
                 }
 
-                case "scale":
-                    if (obj is MiBoneSceneObject mbS)
-                    {
-                        var s = mbS.OffsetScale;
-                        if (comp == "x") s.x = value; else if (comp == "y") s.y = value; else if (comp == "z") s.z = value;
-                        mbS.OffsetScale = s;
-                    }
-                    else
-                    {
-                        var s = obj.LocalScale;
-                        if (comp == "x") s.x = value; else if (comp == "y") s.y = value; else if (comp == "z") s.z = value;
-                        obj.SetLocalScale(s);
-                    }
-                    break;
-
-                case "material":
-                    if (comp == "alpha")
-                    {
-                        if (obj.MaterialSettings == null) obj.MaterialSettings = new MaterialSettings();
-                        var c = obj.MaterialSettings.AlbedoColor;
-                        c.w = Math.Clamp(value, 0f, 1f);
-                        obj.MaterialSettings.AlbedoColor = c;
-                        obj.ApplyMaterialSettingsToMeshes();
-                    }
-                    break;
-
-                case "light":
-                    if (obj is LightSceneObject lo)
-                    {
-                        switch (comp)
-                        {
-                            case "energy":          lo.LightEnergy         = value; break;
-                            case "range":           lo.LightRange          = value; break;
-                            case "indirect_energy": lo.LightIndirectEnergy = value; break;
-                            case "specular":        lo.LightSpecular       = value; break;
-                            case "spot_angle":      lo.LightSpotAngle      = value; break;
-                            case "spot_blend":      lo.LightSpotBlend      = value; break;
-                        }
-                    }
-                    break;
-
-                case "camera":
-                    if (comp == "active" && obj is CameraSceneObject camSet)
-                    {
-                        bool shouldBeActive = value >= 0.5f;
-                        if (shouldBeActive)
-                            CameraSceneObject.SetActiveExclusive(camSet);
-                        else
-                            camSet.Active = false;
-                    }
-                    break;
+                break;
             }
-        }
-        else if (parts.Length == 3 && parts[0] == "light" && parts[1] == "color" && obj is LightSceneObject lco)
-        {
-            var c = lco.LightColor;
-            switch (parts[2]) { case "r": c.x = value; break; case "g": c.y = value; break; case "b": c.z = value; break; }
-            lco.LightColor = c;
-        }
-        else if (parts.Length == 3 && parts[0] == "shapekey")
-        {
-            SetShapeKeyWeight(obj, parts[1], parts[2], value);
+            case 3 when parts[0] == "light" && parts[1] == "color" && obj is LightSceneObject lco:
+            {
+                var c = lco.LightColor;
+                switch (parts[2]) { case "r": c.x = value; break; case "g": c.y = value; break; case "b": c.z = value; break; }
+                lco.LightColor = c;
+                break;
+            }
+            case 3 when parts[0] == "shapekey":
+                SetShapeKeyWeight(obj, parts[1], parts[2], value);
+                break;
         }
     }
 
@@ -2249,14 +2246,9 @@ public class Timeline : UiPanel
                     bool hasKeyframes = propsWithKeyframes.Contains(path);
                     if (!hasKeyframes) continue;
 
-                    if (path == "light.color")
-                    {
-                        _displayRows.Add(MakeGroup(obj, label, new[] { "light.color.r", "light.color.g", "light.color.b" }));
-                    }
-                    else
-                    {
-                        _displayRows.Add(MakeSingle(obj, label, path, indent));
-                    }
+                    _displayRows.Add(path == "light.color"
+                        ? MakeGroup(obj, label, ["light.color.r", "light.color.g", "light.color.b"])
+                        : MakeSingle(obj, label, path, indent));
                 }
             }
 

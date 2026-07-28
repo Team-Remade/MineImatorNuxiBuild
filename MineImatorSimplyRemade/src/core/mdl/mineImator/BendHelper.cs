@@ -104,24 +104,27 @@ public static class BendHelper
         bool axisX = false, axisY = false, axisZ = false;
         var axisIndices = new List<int>();
 
-        if (bend.Axis is System.Text.Json.JsonElement axisElem)
+        switch (bend.Axis)
         {
-            if (axisElem.ValueKind == System.Text.Json.JsonValueKind.String)
-            {
+            case System.Text.Json.JsonElement axisElem when axisElem.ValueKind == System.Text.Json.JsonValueKind.String:
                 ParseAxisString(axisElem.GetString(), ref axisX, ref axisY, ref axisZ, axisIndices);
-            }
-            else if (axisElem.ValueKind == System.Text.Json.JsonValueKind.Array)
+                break;
+            case System.Text.Json.JsonElement axisElem:
             {
-                foreach (var item in axisElem.EnumerateArray())
+                if (axisElem.ValueKind == System.Text.Json.JsonValueKind.Array)
                 {
-                    if (item.ValueKind == System.Text.Json.JsonValueKind.String)
-                        ParseAxisString(item.GetString(), ref axisX, ref axisY, ref axisZ, axisIndices);
+                    foreach (var item in axisElem.EnumerateArray())
+                    {
+                        if (item.ValueKind == System.Text.Json.JsonValueKind.String)
+                            ParseAxisString(item.GetString(), ref axisX, ref axisY, ref axisZ, axisIndices);
+                    }
                 }
+
+                break;
             }
-        }
-        else if (bend.Axis is string axisStr)
-        {
-            ParseAxisString(axisStr, ref axisX, ref axisY, ref axisZ, axisIndices);
+            case string axisStr:
+                ParseAxisString(axisStr, ref axisX, ref axisY, ref axisZ, axisIndices);
+                break;
         }
 
         if (!axisX && !axisY && !axisZ) return null;

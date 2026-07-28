@@ -23,10 +23,6 @@ public sealed class ProjectManager
     public string DefaultProjectRoot => ResolveDefaultProjectRoot();
     public string RecentProjectsFilePath => Path.Combine(AppDataRoot, "recentProjects.json");
 
-    private static string AppDocumentsRoot => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-        "MineImatorSimplyRemade");
-
     private static string AppDataRoot => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "MineImatorSimplyRemade");

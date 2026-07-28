@@ -215,9 +215,9 @@ public class Mesh : IDisposable
     public void ResetShapeKeys()
     {
         bool anyNonZero = false;
-        foreach (var sk in ShapeKeys)
+        foreach (var sk in ShapeKeys.Where(sk => sk.Weight != 0f))
         {
-            if (sk.Weight != 0f) { sk.Weight = 0f; anyNonZero = true; }
+            sk.Weight = 0f; anyNonZero = true;
         }
         if (anyNonZero) _shapeKeyDirty = true;
     }
@@ -259,9 +259,8 @@ public class Mesh : IDisposable
         int totalBytes  = totalFloats * sizeof(float);
 
         bool anyActive = false;
-        for (int s = 0; s < ShapeKeys.Count; s++)
+        foreach (var sk in ShapeKeys)
         {
-            var sk = ShapeKeys[s];
             if (sk.Weight != 0f && sk.Deltas != null && sk.Deltas.Length >= vertexCount * 3)
             {
                 anyActive = true;
@@ -288,9 +287,8 @@ public class Mesh : IDisposable
             _deformedVertexData = new float[totalFloats];
         Array.Copy(_baseVertexData, 0, _deformedVertexData, 0, totalFloats);
 
-        for (int s = 0; s < ShapeKeys.Count; s++)
+        foreach (var sk in ShapeKeys)
         {
-            var sk = ShapeKeys[s];
             if (sk.Weight == 0f || sk.Deltas == null || sk.Deltas.Length < vertexCount * 3) continue;
             float w = sk.Weight;
             var d  = sk.Deltas;
@@ -648,7 +646,7 @@ public class Mesh : IDisposable
         }
 
         // Index buffer
-        if (Indices != null && Indices.Length > 0)
+        if (Indices is { Length: > 0 })
         {
             _gl.GenBuffers(1, out _ebo);
             _gl.BindBuffer(GLEnum.ElementArrayBuffer, _ebo);
@@ -669,9 +667,9 @@ public class Mesh : IDisposable
         // there directly.
         if (ShapeKeys.Count > 0)
         {
-            for (int s = 0; s < ShapeKeys.Count; s++)
+            foreach (var t in ShapeKeys)
             {
-                if (ShapeKeys[s].Weight != 0f) { _shapeKeyDirty = true; break; }
+                if (t.Weight != 0f) { _shapeKeyDirty = true; break; }
             }
         }
     }
@@ -766,7 +764,7 @@ public class Mesh : IDisposable
     {
         if (_vao == 0 || _shader == null)
         {
-            Console.Error.WriteLine($"[Mesh] Render skipped: vao={_vao} shader null={_shader == null}");
+            Console.Error.WriteLine($"Render skipped: vao={_vao} shader null={_shader == null}");
             return;
         }
 
@@ -1193,7 +1191,7 @@ public class Mesh : IDisposable
     /// use this after computing the current bone palette so skinned meshes are
     /// drawn in their deformed pose.
     /// </summary>
-    public unsafe void ApplySkinningUniforms(Shader shader)
+    public void ApplySkinningUniforms(Shader shader)
     {
         if (shader == null) return;
 

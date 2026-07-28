@@ -42,7 +42,6 @@ public class SelectionManager
     private Gizmo3D? _gizmo;
     public Gizmo3D? Gizmo
     {
-        get => _gizmo;
         set
         {
             if (_gizmo != null)

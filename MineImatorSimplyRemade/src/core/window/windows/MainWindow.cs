@@ -262,12 +262,12 @@ public class MainWindow : Window
 
         ImageResult icon;
         int rng = Rnd.Next(1, 1000);
-        if (rng == 777)
-            icon = LoadEmbeddedImage("icons.chegg");
-        else if (rng < 500)
-            icon = LoadEmbeddedImage("icons.Icon");
-        else
-            icon = LoadEmbeddedImage(Rnd.Next(0, 1) == 1 ? "icons.tamari" : "icons.prism");
+        icon = rng switch
+        {
+            777 => LoadEmbeddedImage("icons.chegg"),
+            < 500 => LoadEmbeddedImage("icons.Icon"),
+            _ => LoadEmbeddedImage(Rnd.Next(0, 1) == 1 ? "icons.tamari" : "icons.prism")
+        };
 
         SetWindowIcon(icon);
         LoadHomeSplashes();
@@ -277,11 +277,6 @@ public class MainWindow : Window
     }
 
     public Viewport? GetCameraViewport() => _cameraViewport;
-
-    public override void SetGL(GL gl)
-    {
-        base.SetGL(gl);
-    }
 
     public void InitializeRuntime(Action<StartupProgressState>? progress = null)
     {
@@ -307,8 +302,8 @@ public class MainWindow : Window
         SelectionManager.Initialize();
         ReportStep(1, "Bootstrapping editor services", "Selection state ready.", 1f);
 
-Services.AudioEngine.Initialize();
-         ReportStep(1, "Bootstrapping editor services", "Audio engine ready.", 1f, Services.AudioEngine.IsInitialized ? "OpenAL device initialised" : "Audio disabled (no OpenAL device)");
+        Services.AudioEngine.Initialize();
+        ReportStep(1, "Bootstrapping editor services", "Audio engine ready.", 1f, Services.AudioEngine.IsInitialized ? "OpenAL device initialised" : "Audio disabled (no OpenAL device)");
 
         BlockRegistry.Initialize((value, detail) => ReportStep(2, "Indexing Minecraft data", "Loading block registry...", value, detail));
         ReportStep(2, "Indexing Minecraft data", "Block registry ready.", 1f, $"Loaded version {BlockRegistry.LoadedVersion}");
@@ -558,10 +553,7 @@ Services.AudioEngine.Initialize();
             return "";
 
         string snapshotJson = CaptureSceneSnapshotJson(out string fingerprint);
-        if (string.IsNullOrEmpty(snapshotJson))
-            return "";
-
-        return fingerprint;
+        return string.IsNullOrEmpty(snapshotJson) ? "" : fingerprint;
     }
 
     private void RefreshWindowTitle()
@@ -1105,19 +1097,12 @@ Services.AudioEngine.Initialize();
                                             _updateDownloadStatus = $"Progress: {FormatBytes(downloaded)} / {FormatBytes(total)}";
                                         });
 
-                                    if (success && needsRestart)
+                                    _updateDownloadStatus = success switch
                                     {
-                                        _updateDownloadStatus = message;
-                                        // Show restart prompt on next render
-                                    }
-                                    else if (success)
-                                    {
-                                        _updateDownloadStatus = $"Success: {message}";
-                                    }
-                                    else
-                                    {
-                                        _updateDownloadStatus = $"Error: {message}";
-                                    }
+                                        true when needsRestart => message,
+                                        true => $"Success: {message}",
+                                        _ => $"Error: {message}"
+                                    };
                                 }
                                 catch (Exception ex)
                                 {
@@ -2086,13 +2071,14 @@ Services.AudioEngine.Initialize();
     private static ProjectAssetType DetectAssetType(string path)
     {
         string ext = Path.GetExtension(path).ToLowerInvariant();
-        if (ext is ".glb" or ".gltf" or ".fbx" or ".obj" or ".dae" or ".3ds" or ".blend" or ".ply" or ".stl" or ".x3d" or ".mimodel" or ".miobject")
-            return ProjectAssetType.Model;
-        if (ext is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".tga" or ".gif" or ".webp" or ".tiff")
-            return ProjectAssetType.Image;
-        if (ext is ".wav" or ".mp3" or ".ogg" or ".flac" or ".m4a")
-            return ProjectAssetType.Sound;
-        return ProjectAssetType.Other;
+        return ext switch
+        {
+            ".glb" or ".gltf" or ".fbx" or ".obj" or ".dae" or ".3ds" or ".blend" or ".ply" or ".stl" or ".x3d"
+                or ".mimodel" or ".miobject" => ProjectAssetType.Model,
+            ".png" or ".jpg" or ".jpeg" or ".bmp" or ".tga" or ".gif" or ".webp" or ".tiff" => ProjectAssetType.Image,
+            ".wav" or ".mp3" or ".ogg" or ".flac" or ".m4a" => ProjectAssetType.Sound,
+            _ => ProjectAssetType.Other
+        };
     }
 
     private void SaveProjectWithScene()
@@ -2694,11 +2680,8 @@ Services.AudioEngine.Initialize();
         }
 
         Vector2 cursor = start;
-        foreach (SplashTextSegment segment in _homeSplashSegments)
+        foreach (var segment in _homeSplashSegments.Where(segment => !string.IsNullOrEmpty(segment.Text)))
         {
-            if (string.IsNullOrEmpty(segment.Text))
-                continue;
-
             drawList.AddText(cursor, textColor, segment.Text);
 
             Vector2 size = ImGui.CalcTextSize(segment.Text);
@@ -2706,7 +2689,7 @@ Services.AudioEngine.Initialize();
             {
                 float y = cursor.Y + size.Y * 0.52f;
                 drawList.AddLine(
-                    new Vector2(cursor.X, y),
+                    cursor with { Y = y },
                     new Vector2(cursor.X + size.X, y),
                     textColor,
                     1.6f);

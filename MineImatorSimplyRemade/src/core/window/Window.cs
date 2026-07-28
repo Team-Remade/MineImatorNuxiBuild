@@ -61,7 +61,7 @@ public class Window : IDisposable
     /// Creates a visible window with its own GL context.
     /// Used for the main application window.
     /// </summary>
-    public unsafe Window(int width, int height, string title, Glfw glfw, GL gl = null, bool visible = true)
+    protected unsafe Window(int width, int height, string title, Glfw glfw, GL gl = null, bool visible = true)
     {
         Glfw = glfw;
 
@@ -87,7 +87,7 @@ public class Window : IDisposable
     /// Use this for all secondary windows (camera view, render output, etc.) so
     /// they can access textures and FBOs created on the main context.
     /// </summary>
-    public unsafe Window(int width, int height, string title, Glfw glfw, GL gl,
+    protected unsafe Window(int width, int height, string title, Glfw glfw, GL gl,
                          WindowHandle* shareWith)
     {
         Glfw = glfw;
@@ -198,7 +198,7 @@ public class Window : IDisposable
     /// owning GLFW window is destroyed) and while GLFW is still initialised.
     /// Idempotent: safe to call more than once.
     /// </summary>
-    public virtual unsafe void ShutdownImgui()
+    public unsafe void ShutdownImgui()
     {
         if (ImGuiContext.Handle == null)
             return;

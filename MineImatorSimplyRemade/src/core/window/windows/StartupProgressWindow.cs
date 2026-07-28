@@ -87,7 +87,7 @@ public class StartupProgressWindow : Window
         using Stream? stream = assembly.GetManifestResourceStream("MineImatorSimplyRemade.assets.img.loading.gif");
         if (stream == null)
         {
-            Console.WriteLine("[StartupProgressWindow] Embedded loading.gif not found.");
+            Console.WriteLine("Embedded loading.gif not found.");
             return;
         }
 
@@ -99,7 +99,7 @@ public class StartupProgressWindow : Window
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[StartupProgressWindow] Failed to decode loading.gif with stb_image: {ex.Message}");
+            Console.WriteLine($"Failed to decode loading.gif with stb_image: {ex.Message}");
             return;
         }
 

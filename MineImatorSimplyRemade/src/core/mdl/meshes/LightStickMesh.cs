@@ -26,7 +26,7 @@ public class LightStickMesh : Mesh
         Upload();
     }
 
-    protected override void GenerateVertices()
+    protected sealed override void GenerateVertices()
     {
         const float h = HalfThickness;
         const float backZ = 1f;

@@ -32,7 +32,7 @@ public class PlaneMesh : Mesh
         Orientation = orientation;
     }
     
-    protected override void GenerateVertices()
+    protected sealed override void GenerateVertices()
     {
         float halfWidth = Width / 2f;
         float halfHeight = Height / 2f;

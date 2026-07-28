@@ -53,18 +53,14 @@ public static class CtmAtlas
                 _rulesByPack[key] = new List<CtmProperties>();
             _rulesByPack[key].Add(props);
 
-            foreach (var blockName in props.MatchBlocks)
+            foreach (var normalized in props.MatchBlocks.Select(NormalizeBlockName).Where(normalized => !string.IsNullOrEmpty(normalized)))
             {
-                string normalized = NormalizeBlockName(blockName);
-                if (!string.IsNullOrEmpty(normalized))
-                    _rulesByBlockName[normalized] = props;
+                _rulesByBlockName[normalized] = props;
             }
 
-            foreach (var tileName in props.MatchTiles)
+            foreach (var normalized in props.MatchTiles.Select(NormalizeTextureKey).Where(normalized => !string.IsNullOrEmpty(normalized)))
             {
-                string normalized = NormalizeTextureKey(tileName);
-                if (!string.IsNullOrEmpty(normalized))
-                    _rulesByTextureKey[normalized] = props;
+                _rulesByTextureKey[normalized] = props;
             }
         }
     }
@@ -79,18 +75,7 @@ public static class CtmAtlas
             string dir = props.Directory.Replace('\\', '/');
             string expectedPath = $"{dir}/{tileFileName}";
 
-            uint texId = 0;
-            foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png"))
-            {
-                if (!file.RelativePath.Equals(expectedPath, StringComparison.OrdinalIgnoreCase))
-                    continue;
-                string filePackId = MinecraftDataLoader.GetResourcePackId(file.PackName);
-            if (!filePackId.Equals(props.PackId, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                texId = LoadTextureFromBytes(file.Data);
-                break;
-            }
+            uint texId = (from file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png") where file.RelativePath.Equals(expectedPath, StringComparison.OrdinalIgnoreCase) let filePackId = MinecraftDataLoader.GetResourcePackId(file.PackName) where filePackId.Equals(props.PackId, StringComparison.OrdinalIgnoreCase) select LoadTextureFromBytes(file.Data)).FirstOrDefault();
 
             props.TileTextureIds.Add(texId);
         }

@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Reflection;
 using Cyotek.Data.Nbt;
 using GlmSharp;
 using Hexa.NET.ImGui;
@@ -1027,7 +1028,7 @@ public class SpawnMenu : UiPanel
 
     // ── Standard (non-Items, non-Blocks) preview column ──────────────────────
 
-    private unsafe void RenderStandardPreviewColumn()
+    private void RenderStandardPreviewColumn()
     {
         ImGui.BeginChild("##stdPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
         ImGui.TextDisabled("Preview");
@@ -1268,7 +1269,7 @@ public class SpawnMenu : UiPanel
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[SpawnMenu] Could not register custom item image in project assets: {ex.Message}");
+            Console.Error.WriteLine($"Could not register custom item image in project assets: {ex.Message}");
             return fullSourcePath;
         }
     }
@@ -1290,7 +1291,7 @@ public class SpawnMenu : UiPanel
         return string.IsNullOrWhiteSpace(sanitized) ? "custom_item" : sanitized;
     }
 
-    private unsafe void RenderItemsPreviewColumn()
+    private void RenderItemsPreviewColumn()
     {
         ImGui.BeginChild("##itemsPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
         ImGui.TextDisabled("Preview");
@@ -1443,7 +1444,7 @@ public class SpawnMenu : UiPanel
         ImGui.EndChild();
     }
 
-    private unsafe void RenderBlocksPreviewColumn()
+    private void RenderBlocksPreviewColumn()
     {
         ImGui.BeginChild("##blocksPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
         ImGui.TextDisabled("Preview");
@@ -1457,9 +1458,9 @@ public class SpawnMenu : UiPanel
 
             if (variants.Count > 0 && variantIdx < variants.Count)
             {
-            bool hasGeometry = (_previewMeshes.Count > 0 || _previewCharacter != null) &&
-                               _previewRenderer != null &&
-                               _previewRenderer.ColorTexture != 0;
+                bool hasGeometry = (_previewMeshes.Count > 0 || _previewCharacter != null) &&
+                                   _previewRenderer != null &&
+                                   _previewRenderer.ColorTexture != 0;
 
                 ImGui.Spacing();
                 RenderPreviewImage(hasGeometry);
@@ -1779,8 +1780,6 @@ public class SpawnMenu : UiPanel
                     string.IsNullOrEmpty(_customCharTexturePath))
                     return false;
             }
-
-            return true;
         }
 
         return true;
@@ -1880,7 +1879,7 @@ public class SpawnMenu : UiPanel
         string pathToSpawn = ResolveSchematicPathForProject(result.Path);
         var root = SpawnSchematicFromPath(pathToSpawn, _spawnResourcePackId);
         if (root == null)
-            Console.Error.WriteLine($"[SpawnMenu] Failed to load schematic: {pathToSpawn}");
+            Console.Error.WriteLine($"Failed to load schematic: {pathToSpawn}");
         else
             _isOpen = false;
     }
@@ -1904,7 +1903,7 @@ public class SpawnMenu : UiPanel
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[SpawnMenu] Could not register schematic in project assets: {ex.Message}");
+            Console.Error.WriteLine($"Could not register schematic in project assets: {ex.Message}");
             return fullSourcePath;
         }
     }
@@ -1934,34 +1933,37 @@ public class SpawnMenu : UiPanel
 
         SceneObject? root;
 
-        if (ext == ".mimodel")
+        switch (ext)
         {
-            root = SpawnMineImatorModel(pathToSpawn, textureOverridePath);
-        }
-        else if (ext == ".miobject")
-        {
-            root = SpawnMineImatorObject(pathToSpawn);
-        }
-        else
-        {
-            root = AssimpModelLoader.Load(Gl, pathToSpawn);
-
-            // AssimpModelLoader always uses whatever diffuse/embedded texture
-            // is baked into the GLB/GLTF/etc. material — it has no concept of
-            // a texture-variant override. Apply the selected variant here by
-            // stomping mesh.TextureId across the loaded hierarchy, mirroring
-            // what SpawnMineImatorModel does internally for .mimodel.
-            if (root != null && !string.IsNullOrEmpty(textureOverridePath) && File.Exists(textureOverridePath))
+            case ".mimodel":
+                root = SpawnMineImatorModel(pathToSpawn, textureOverridePath);
+                break;
+            case ".miobject":
+                root = SpawnMineImatorObject(pathToSpawn);
+                break;
+            default:
             {
-                uint overrideTexId = MineImatorLoader.Instance.LoadTextureFromFile(textureOverridePath);
-                if (overrideTexId != 0)
-                    ApplyTextureOverrideToCharacter(root, overrideTexId);
+                root = AssimpModelLoader.Load(Gl, pathToSpawn);
+
+                // AssimpModelLoader always uses whatever diffuse/embedded texture
+                // is baked into the GLB/GLTF/etc. material — it has no concept of
+                // a texture-variant override. Apply the selected variant here by
+                // stomping mesh.TextureId across the loaded hierarchy, mirroring
+                // what SpawnMineImatorModel does internally for .mimodel.
+                if (root != null && !string.IsNullOrEmpty(textureOverridePath) && File.Exists(textureOverridePath))
+                {
+                    uint overrideTexId = MineImatorLoader.Instance.LoadTextureFromFile(textureOverridePath);
+                    if (overrideTexId != 0)
+                        ApplyTextureOverrideToCharacter(root, overrideTexId);
+                }
+
+                break;
             }
         }
 
         if (root == null)
         {
-            Console.Error.WriteLine($"[SpawnMenu] Failed to load model: {pathToSpawn}");
+            Console.Error.WriteLine($"Failed to load model: {pathToSpawn}");
             return null;
         }
 
@@ -2001,7 +2003,7 @@ public class SpawnMenu : UiPanel
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[SpawnMenu] Could not register model in project assets: {ex.Message}");
+            Console.Error.WriteLine($"Could not register model in project assets: {ex.Message}");
             return fullSourcePath;
         }
     }
@@ -2052,10 +2054,9 @@ public class SpawnMenu : UiPanel
         }
         else
         {
-            foreach (var mesh in root.Visuals)
+            foreach (var mesh in root.Visuals.Where(mesh => mesh.TextureId != 0))
             {
-                if (mesh.TextureId != 0)
-                    mesh.TextureId = textureId;
+                mesh.TextureId = textureId;
             }
         }
 
@@ -2117,177 +2118,176 @@ public class SpawnMenu : UiPanel
 
         try
         {
-
-        NbtDocument doc;
-        try
-        {
-            doc = NbtDocument.LoadDocument(filePath);
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[SpawnMenu] Failed reading NBT schematic '{filePath}': {ex.Message}");
-            return null;
-        }
-
-        var rootTag = doc.DocumentRoot;
-        if (rootTag == null) return null;
-
-        var schematic = rootTag.GetCompound("Schematic") ?? rootTag;
-
-        int width = GetDimension(schematic, "Width");
-        int height = GetDimension(schematic, "Height");
-        int length = GetDimension(schematic, "Length");
-
-        if (width <= 0 || height <= 0 || length <= 0)
-        {
-            Console.Error.WriteLine($"[SpawnMenu] Invalid schematic dimensions in '{filePath}'.");
-            return null;
-        }
-
-        int total = width * height * length;
-        var variantCache = new Dictionary<string, VariantRenderInfo>(StringComparer.OrdinalIgnoreCase);
-        var voxelInfos = new VariantRenderInfo?[total];
-        var availableBlocks = new HashSet<string>(BlockRegistry.Blocks, StringComparer.OrdinalIgnoreCase);
-
-        bool modernLoaded = TryLoadModernPaletteBlocks(
-            schematic,
-            total,
-            availableBlocks,
-            variantCache,
-            voxelInfos);
-
-        if (!modernLoaded)
-        {
-            if (!TryLoadLegacyBlocks(
-                    schematic,
-                    width,
-                    height,
-                    length,
-                    total,
-                    availableBlocks,
-                    variantCache,
-                    voxelInfos))
-                return null;
-        }
-
-        string baseName = Path.GetFileNameWithoutExtension(filePath);
-        int nextNum = GetNextAvailableObjectNumber(baseName);
-        string fullName = nextNum > 1 ? $"{baseName}{nextNum}" : baseName;
-
-        var root = new SceneObject
-        {
-            Name = fullName,
-            ObjectType = "Schematic",
-            SpawnCategory = "Scenery",
-            ResourcePackId = normalizedResourcePackId,
-            SourceAssetPath = filePath,
-            Position = vec3.Zero,
-            PivotOffset = vec3.Zero,
-            InheritPivotOffset = false
-        };
-        root.AssignObjectId();
-
-        float originX = (width - 1) * 0.5f;
-        float originZ = (length - 1) * 0.5f;
-
-        var largeChestPlacements = BuildLargeChestPlacements(
-            voxelInfos,
-            width,
-            height,
-            length,
-            originX,
-            originZ,
-            variantCache);
-
-        var merged = new Dictionary<uint, MeshAccumulator>();
-        int placed = 0;
-
-        for (int y = 0; y < height; y++)
-        {
-            for (int z = 0; z < length; z++)
+            NbtDocument doc;
+            try
             {
-                for (int x = 0; x < width; x++)
+                doc = NbtDocument.LoadDocument(filePath);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed reading NBT schematic '{filePath}': {ex.Message}");
+                return null;
+            }
+
+            var rootTag = doc.DocumentRoot;
+            if (rootTag == null) return null;
+
+            var schematic = rootTag.GetCompound("Schematic") ?? rootTag;
+
+            int width = GetDimension(schematic, "Width");
+            int height = GetDimension(schematic, "Height");
+            int length = GetDimension(schematic, "Length");
+
+            if (width <= 0 || height <= 0 || length <= 0)
+            {
+                Console.Error.WriteLine($"Invalid schematic dimensions in '{filePath}'.");
+                return null;
+            }
+
+            int total = width * height * length;
+            var variantCache = new Dictionary<string, VariantRenderInfo>(StringComparer.OrdinalIgnoreCase);
+            var voxelInfos = new VariantRenderInfo?[total];
+            var availableBlocks = new HashSet<string>(BlockRegistry.Blocks, StringComparer.OrdinalIgnoreCase);
+
+            bool modernLoaded = TryLoadModernPaletteBlocks(
+                schematic,
+                total,
+                availableBlocks,
+                variantCache,
+                voxelInfos);
+
+            if (!modernLoaded)
+            {
+                if (!TryLoadLegacyBlocks(
+                        schematic,
+                        width,
+                        height,
+                        length,
+                        total,
+                        availableBlocks,
+                        variantCache,
+                        voxelInfos))
+                    return null;
+            }
+
+            string baseName = Path.GetFileNameWithoutExtension(filePath);
+            int nextNum = GetNextAvailableObjectNumber(baseName);
+            string fullName = nextNum > 1 ? $"{baseName}{nextNum}" : baseName;
+
+            var root = new SceneObject
+            {
+                Name = fullName,
+                ObjectType = "Schematic",
+                SpawnCategory = "Scenery",
+                ResourcePackId = normalizedResourcePackId,
+                SourceAssetPath = filePath,
+                Position = vec3.Zero,
+                PivotOffset = vec3.Zero,
+                InheritPivotOffset = false
+            };
+            root.AssignObjectId();
+
+            float originX = (width - 1) * 0.5f;
+            float originZ = (length - 1) * 0.5f;
+
+            var largeChestPlacements = BuildLargeChestPlacements(
+                voxelInfos,
+                width,
+                height,
+                length,
+                originX,
+                originZ,
+                variantCache);
+
+            var merged = new Dictionary<uint, MeshAccumulator>();
+            int placed = 0;
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int z = 0; z < length; z++)
                 {
-                    int index = y * width * length + z * width + x;
-
-                    if (largeChestPlacements.SkippedIndices.Contains(index))
-                        continue;
-
-                    if (largeChestPlacements.ByAnchorIndex.TryGetValue(index, out var largePlacement))
+                    for (int x = 0; x < width; x++)
                     {
-                        placed++;
+                        int index = y * width * length + z * width + x;
 
-                        foreach (var template in largePlacement.Info.Templates)
+                        if (largeChestPlacements.SkippedIndices.Contains(index))
+                            continue;
+
+                        if (largeChestPlacements.ByAnchorIndex.TryGetValue(index, out var largePlacement))
                         {
-                            var acc = GetOrCreateAccumulator(merged, template.TextureId);
-                            AppendTemplate(acc, template, largePlacement.Px, largePlacement.Py, largePlacement.Pz);
+                            placed++;
+
+                            foreach (var template in largePlacement.Info.Templates)
+                            {
+                                var acc = GetOrCreateAccumulator(merged, template.TextureId);
+                                AppendTemplate(acc, template, largePlacement.Px, largePlacement.Py, largePlacement.Pz);
+                            }
+
+                            continue;
                         }
 
-                        continue;
-                    }
+                        var info = voxelInfos[index];
+                        if (info == null) continue;
 
-                    var info = voxelInfos[index];
-                    if (info == null) continue;
+                        placed++;
+                        float px = x - originX;
+                        float py = y + 0.5f;
+                        float pz = z - originZ;
 
-                    placed++;
-                    float px = x - originX;
-                    float py = y + 0.5f;
-                    float pz = z - originZ;
+                        if (info.IsCullableCube && info.CubeFaces != null)
+                        {
+                            EmitCubeFacesWithCulling(
+                                merged,
+                                info.CubeFaces,
+                                voxelInfos,
+                                width,
+                                height,
+                                length,
+                                x,
+                                y,
+                                z,
+                                px,
+                                py,
+                                pz);
+                            continue;
+                        }
 
-                    if (info.IsCullableCube && info.CubeFaces != null)
-                    {
-                        EmitCubeFacesWithCulling(
-                            merged,
-                            info.CubeFaces,
-                            voxelInfos,
-                            width,
-                            height,
-                            length,
-                            x,
-                            y,
-                            z,
-                            px,
-                            py,
-                            pz);
-                        continue;
-                    }
-
-                    foreach (var template in info.Templates)
-                    {
-                        var acc = GetOrCreateAccumulator(merged, template.TextureId);
-                        AppendTemplate(acc, template, px, py, pz);
+                        foreach (var template in info.Templates)
+                        {
+                            var acc = GetOrCreateAccumulator(merged, template.TextureId);
+                            AppendTemplate(acc, template, px, py, pz);
+                        }
                     }
                 }
             }
-        }
 
-        if (placed == 0 || merged.Count == 0)
-        {
-            Console.Error.WriteLine($"[SpawnMenu] Schematic had no spawnable blocks: {filePath}");
-            return null;
-        }
-
-        foreach (var kv in merged)
-        {
-            var acc = kv.Value;
-            if (acc.Vertices.Count == 0) continue;
-
-            var mesh = new Mesh(Gl)
+            if (placed == 0 || merged.Count == 0)
             {
-                TextureId = kv.Key
-            };
-            mesh.Vertices.AddRange(acc.Vertices);
-            mesh.Normals.AddRange(acc.Normals);
-            mesh.TexCoords.AddRange(acc.TexCoords);
-            mesh.Upload();
-            root.AddMesh(mesh);
-        }
+                Console.Error.WriteLine($"Schematic had no spawnable blocks: {filePath}");
+                return null;
+            }
 
-        if (root.Visuals.Count == 0)
-        {
-            Console.Error.WriteLine($"[SpawnMenu] Schematic produced no renderable geometry: {filePath}");
-            return null;
-        }
+            foreach (var kv in merged)
+            {
+                var acc = kv.Value;
+                if (acc.Vertices.Count == 0) continue;
+
+                var mesh = new Mesh(Gl)
+                {
+                    TextureId = kv.Key
+                };
+                mesh.Vertices.AddRange(acc.Vertices);
+                mesh.Normals.AddRange(acc.Normals);
+                mesh.TexCoords.AddRange(acc.TexCoords);
+                mesh.Upload();
+                root.AddMesh(mesh);
+            }
+
+            if (root.Visuals.Count == 0)
+            {
+                Console.Error.WriteLine($"Schematic produced no renderable geometry: {filePath}");
+                return null;
+            }
 
             Viewport.SceneObjects.Add(root);
             return root;
@@ -2530,7 +2530,7 @@ public class SpawnMenu : UiPanel
 
         if (!TryDecodeVarIntArray(blockData, total, out var paletteIndices))
         {
-            Console.Error.WriteLine("[SpawnMenu] Failed to decode BlockData varints from .schem file.");
+            Console.Error.WriteLine("Failed to decode BlockData varints from .schem file.");
             return false;
         }
 
@@ -2547,19 +2547,9 @@ public class SpawnMenu : UiPanel
             int paletteId = paletteIndices[i];
             if (!idToInfo.TryGetValue(paletteId, out var info))
             {
-                if (!paletteLookup.TryGetValue(paletteId, out string? stateText) || string.IsNullOrEmpty(stateText))
-                {
-                    idToInfo[paletteId] = null;
-                    continue;
-                }
-
-                if (!TryParsePaletteState(stateText, out var blockName, out var props))
-                {
-                    idToInfo[paletteId] = null;
-                    continue;
-                }
-
-                if (string.Equals(blockName, "air", StringComparison.OrdinalIgnoreCase) ||
+                if (!paletteLookup.TryGetValue(paletteId, out string? stateText) || string.IsNullOrEmpty(stateText) ||
+                    !TryParsePaletteState(stateText, out var blockName, out var props) ||
+                    string.Equals(blockName, "air", StringComparison.OrdinalIgnoreCase) ||
                     !availableBlocks.Contains(blockName))
                 {
                     idToInfo[paletteId] = null;
@@ -2599,7 +2589,7 @@ public class SpawnMenu : UiPanel
 
         if (blocks.Length < total)
         {
-            Console.Error.WriteLine($"[SpawnMenu] Schematic block array is truncated ({blocks.Length} < {total}).");
+            Console.Error.WriteLine($"Schematic block array is truncated ({blocks.Length} < {total}).");
             return false;
         }
 
@@ -2662,13 +2652,7 @@ public class SpawnMenu : UiPanel
 
             if (blockId == 85)
             {
-                if (!TryResolveLegacyBlock(blockId, blockData, out var fenceBlockName, out _))
-                {
-                    outVoxels[i] = null;
-                    continue;
-                }
-
-                if (!availableBlocks.Contains(fenceBlockName))
+                if (!TryResolveLegacyBlock(blockId, blockData, out var fenceBlockName, out _) || !availableBlocks.Contains(fenceBlockName))
                 {
                     outVoxels[i] = null;
                     continue;
@@ -2686,13 +2670,8 @@ public class SpawnMenu : UiPanel
 
             if (!legacyCache.TryGetValue(legacyKey, out var info))
             {
-                if (!TryResolveLegacyBlock(blockId, blockData, out var blockName, out var variantHint))
-                {
-                    legacyCache[legacyKey] = null;
-                    continue;
-                }
-
-                if (string.Equals(blockName, "air", StringComparison.OrdinalIgnoreCase) ||
+                if (!TryResolveLegacyBlock(blockId, blockData, out var blockName, out var variantHint) ||
+                    string.Equals(blockName, "air", StringComparison.OrdinalIgnoreCase) ||
                     !availableBlocks.Contains(blockName))
                 {
                     legacyCache[legacyKey] = null;
@@ -3838,7 +3817,7 @@ public class SpawnMenu : UiPanel
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[SpawnMenu] Failed to load primitive texture '{filePath}': {ex.Message}");
+            Console.Error.WriteLine($"Failed to load primitive texture '{filePath}': {ex.Message}");
             return 0;
         }
     }
@@ -3871,7 +3850,7 @@ public class SpawnMenu : UiPanel
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[SpawnMenu] Failed to copy texture to project: {ex.Message}");
+            Console.Error.WriteLine($"Failed to copy texture to project: {ex.Message}");
             return sourcePath;
         }
     }
@@ -4247,24 +4226,24 @@ public class SpawnMenu : UiPanel
     /// <paramref name="fileName"/> is the bare file name inside
     /// <c>MineImatorSimplyRemade.assets.mesh</c> (e.g. <c>Camera.glb</c>).
     /// </summary>
-    private static SceneObject? LoadEmbeddedCameraModel(Silk.NET.OpenGL.GL gl, string fileName)
+    private static SceneObject? LoadEmbeddedCameraModel(GL gl, string fileName)
     {
         string resourceName = $"MineImatorSimplyRemade.assets.mesh.{fileName}";
-        var asm = System.Reflection.Assembly.GetExecutingAssembly();
+        var asm = Assembly.GetExecutingAssembly();
         using var stream = asm.GetManifestResourceStream(resourceName);
         if (stream == null)
         {
-            Console.Error.WriteLine($"[SpawnMenu] Embedded {fileName} not found.");
+            Console.Error.WriteLine($"Embedded {fileName} not found.");
             return null;
         }
 
         // Write to a temp file so Assimp can load it.
         string tempName = $"MineImatorSimplyRemade_{Path.GetFileNameWithoutExtension(fileName)}.glb";
-        string tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), tempName);
-        using (var fs = System.IO.File.Create(tempPath))
+        string tempPath = Path.Combine(Path.GetTempPath(), tempName);
+        using (var fs = File.Create(tempPath))
             stream.CopyTo(fs);
 
-        return MineImatorSimplyRemade.core.mdl.AssimpModelLoader.Load(gl, tempPath);
+        return AssimpModelLoader.Load(gl, tempPath);
     }
 
     /// <summary>
@@ -4272,8 +4251,8 @@ public class SpawnMenu : UiPanel
     /// and its children and adds them to <paramref name="target"/>'s Visuals list.
     /// </summary>
     private static void FlattenVisualsInto(
-        MineImatorSimplyRemadeNuxi.core.objs.SceneObject source,
-        MineImatorSimplyRemadeNuxi.core.objs.SceneObject target)
+        SceneObject source,
+        SceneObject target)
     {
         foreach (var mesh in source.Visuals)
             target.AddMesh(mesh);
@@ -4399,8 +4378,8 @@ public class SpawnMenu : UiPanel
             BlockVariant  = variant.VariantKey,
             TextureType   = "block",
             ResourcePackId = normalizedResourcePackId,
-            Position      = GlmSharp.vec3.Zero,
-            PivotOffset   = new GlmSharp.vec3(0f, 0.5f, 0f),
+            Position      = vec3.Zero,
+            PivotOffset   = new vec3(0f, 0.5f, 0f),
             TileX         = tileX,
             TileY         = tileY,
             TileZ         = tileZ
@@ -4554,7 +4533,7 @@ public class SpawnMenu : UiPanel
 
         if (offsetX != 0f || offsetY != 0f || offsetZ != 0f)
         {
-            var shift = new GlmSharp.vec3(offsetX, offsetY, offsetZ);
+            var shift = new vec3(offsetX, offsetY, offsetZ);
             foreach (var mesh in meshes)
             {
                 for (int i = 0; i < mesh.Vertices.Count; i++)

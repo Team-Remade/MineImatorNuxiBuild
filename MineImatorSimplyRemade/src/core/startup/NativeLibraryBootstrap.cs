@@ -5,7 +5,7 @@ namespace MineImatorSimplyRemade.core.startup;
 
 public static class NativeLibraryBootstrap
 {
-    private static readonly object Sync = new();
+    private static readonly Lock Sync = new();
     private static bool _initialized;
 
     private static readonly string[] WindowsNativeLibraries =

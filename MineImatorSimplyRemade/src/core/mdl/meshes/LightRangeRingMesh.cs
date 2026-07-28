@@ -23,7 +23,7 @@ public class LightRangeRingMesh : Mesh
         Upload();
     }
 
-    protected override void GenerateVertices()
+    protected sealed override void GenerateVertices()
     {
         var verts = new List<vec3>(Segments * 2);
         var norms = new List<vec3>(Segments * 2);

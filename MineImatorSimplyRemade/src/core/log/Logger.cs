@@ -11,7 +11,7 @@ public static class Logger
 {
     private const int MaxPreviousLogs = 5;
 
-    private static readonly object WriteLock = new();
+    private static readonly Lock WriteLock = new();
     private static StreamWriter? _writer;
     private static TextWriter? _originalOut;
     private static TextWriter? _originalError;
@@ -72,7 +72,7 @@ public static class Logger
         catch (Exception ex)
         {
             // Logging setup must never prevent the app from starting.
-            (_originalError ?? Console.Error).WriteLine($"[Logger] Failed to initialize file logging: {ex.Message}");
+            (_originalError ?? Console.Error).WriteLine($"Failed to initialize file logging: {ex.Message}");
         }
     }
 

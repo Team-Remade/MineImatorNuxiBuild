@@ -211,7 +211,7 @@ public class UpdateChecker
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[UpdateChecker] Error saving update state: {ex.Message}");
+            Console.WriteLine($"Error saving update state: {ex.Message}");
         }
     }
 
@@ -293,7 +293,7 @@ public class UpdateChecker
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[UpdateChecker] Error launching update: {ex.Message}");
+            Console.WriteLine($"Error launching update: {ex.Message}");
         }
     }
 
@@ -326,7 +326,7 @@ public class UpdateChecker
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[UpdateChecker] Error clearing downloaded update: {ex.Message}");
+            Console.WriteLine($"Error clearing downloaded update: {ex.Message}");
         }
     }
 
@@ -422,15 +422,15 @@ public class UpdateChecker
     {
         try
         {
-            Console.WriteLine("[UpdateChecker] Starting in-place update installation...");
+            Console.WriteLine("Starting in-place update installation...");
 
             // Get running executable path and directory
             var runningExePath = GetRunningExecutablePath();
             var appDirectory = Path.GetDirectoryName(runningExePath) ?? throw new InvalidOperationException("Could not determine app directory");
             var exeName = Path.GetFileName(runningExePath);
 
-            Console.WriteLine($"[UpdateChecker] Running exe: {runningExePath}");
-            Console.WriteLine($"[UpdateChecker] App directory: {appDirectory}");
+            Console.WriteLine($"Running exe: {runningExePath}");
+            Console.WriteLine($"App directory: {appDirectory}");
 
             // Create temp extraction directory
             var tempExtractDir = Path.Combine(main.ApplicationLocalDirectoryPath, "update-temp-extract");
@@ -438,13 +438,13 @@ public class UpdateChecker
                 Directory.Delete(tempExtractDir, recursive: true);
             Directory.CreateDirectory(tempExtractDir);
 
-            Console.WriteLine($"[UpdateChecker] Temp extract dir: {tempExtractDir}");
+            Console.WriteLine($"Temp extract dir: {tempExtractDir}");
 
             // Download the update
             var fileName = Path.GetFileName(downloadUrl.Split('?')[0]);
             var downloadPath = Path.Combine(tempExtractDir, fileName);
 
-            Console.WriteLine($"[UpdateChecker] Downloading update ({fileName})...");
+            Console.WriteLine($"Downloading update ({fileName})...");
 
             using (var response = await HttpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead))
             {
@@ -476,7 +476,7 @@ public class UpdateChecker
                 }
             }
 
-            Console.WriteLine($"[UpdateChecker] Download complete: {new FileInfo(downloadPath).Length} bytes");
+            Console.WriteLine($"Download complete: {new FileInfo(downloadPath).Length} bytes");
 
             // Extract the downloaded file
             var extractedDir = Path.Combine(tempExtractDir, "extracted");
@@ -484,7 +484,7 @@ public class UpdateChecker
 
             if (downloadPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
             {
-                Console.WriteLine($"[UpdateChecker] Extracting ZIP...");
+                Console.WriteLine($"Extracting ZIP...");
                 ZipFile.ExtractToDirectory(downloadPath, extractedDir, overwriteFiles: true);
             }
             else
@@ -492,7 +492,7 @@ public class UpdateChecker
                 return (false, "Only ZIP files are supported for now", false);
             }
 
-            Console.WriteLine($"[UpdateChecker] Extraction complete");
+            Console.WriteLine($"Extraction complete");
 
             // Find the executable in the extracted content
             var extractedExe = FindExecutableInExtracted(extractedDir, exeName);
@@ -501,11 +501,11 @@ public class UpdateChecker
                 return (false, $"Could not find {exeName} in extracted release", false);
             }
 
-            Console.WriteLine($"[UpdateChecker] Found extracted exe: {extractedExe}");
+            Console.WriteLine($"Found extracted exe: {extractedExe}");
 
             // Backup the running executable
             var backupPath = runningExePath + ".bak";
-            Console.WriteLine($"[UpdateChecker] Backing up current exe to: {backupPath}");
+            Console.WriteLine($"Backing up current exe to: {backupPath}");
 
             try
             {
@@ -513,7 +513,7 @@ public class UpdateChecker
                     File.Delete(backupPath);
 
                 File.Move(runningExePath, backupPath, overwrite: true);
-                Console.WriteLine($"[UpdateChecker] Backup successful");
+                Console.WriteLine($"Backup successful");
             }
             catch (Exception ex)
             {
@@ -521,24 +521,24 @@ public class UpdateChecker
             }
 
             // Copy new executable and supporting files
-            Console.WriteLine($"[UpdateChecker] Copying new files to app directory...");
+            Console.WriteLine($"Copying new files to app directory...");
 
             try
             {
                 // Copy the extracted exe
                 File.Copy(extractedExe, runningExePath, overwrite: true);
-                Console.WriteLine($"[UpdateChecker] Copied new executable");
+                Console.WriteLine($"Copied new executable");
 
                 // Copy other files from extracted directory (maintaining structure)
                 CopyDirectoryContents(extractedDir, appDirectory, exeName);
-                Console.WriteLine($"[UpdateChecker] Copied all files");
+                Console.WriteLine($"Copied all files");
             }
             catch (Exception ex)
             {
                 // Try to restore from backup
                 try
                 {
-                    Console.WriteLine($"[UpdateChecker] Installation failed, attempting to restore from backup...");
+                    Console.WriteLine($"Installation failed, attempting to restore from backup...");
                     if (File.Exists(backupPath))
                     {
                         File.Move(backupPath, runningExePath, overwrite: true);
@@ -553,16 +553,16 @@ public class UpdateChecker
             try
             {
                 Directory.Delete(tempExtractDir, recursive: true);
-                Console.WriteLine($"[UpdateChecker] Cleaned up temp directory");
+                Console.WriteLine($"Cleaned up temp directory");
             }
             catch { }
 
-            Console.WriteLine($"[UpdateChecker] Update installation successful!");
+            Console.WriteLine($"Update installation successful!");
             return (true, "Update installed successfully. Please restart the application to apply changes.", true);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[UpdateChecker] Installation error: {ex}");
+            Console.WriteLine($"Installation error: {ex}");
             return (false, $"Update installation failed: {ex.Message}", false);
         }
     }
@@ -603,16 +603,7 @@ public class UpdateChecker
         }
 
         // Try case-insensitive search
-        foreach (var file in Directory.EnumerateFiles(extractedDir, "*.*", SearchOption.AllDirectories))
-        {
-            if (Path.GetFileName(file).Equals(exeName, StringComparison.OrdinalIgnoreCase) && 
-                (file.EndsWith(".exe") || file.EndsWith(".dll") || !file.Contains(".")))
-            {
-                return file;
-            }
-        }
-
-        return null;
+        return Directory.EnumerateFiles(extractedDir, "*.*", SearchOption.AllDirectories).FirstOrDefault(file => Path.GetFileName(file).Equals(exeName, StringComparison.OrdinalIgnoreCase) && (file.EndsWith(".exe") || file.EndsWith(".dll") || !file.Contains('.')));
     }
 
     /// <summary>

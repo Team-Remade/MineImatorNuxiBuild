@@ -1,14 +1,12 @@
-﻿using GlmSharp;
+﻿using System.Diagnostics;
+using GlmSharp;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.log;
 using MineImatorSimplyRemade.core.startup;
-using MineImatorSimplyRemade.core.window;
 using MineImatorSimplyRemade.core.window.windows;
 using Silk.NET.Core.Native;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
-using System.Diagnostics;
-
 
 public static class main
 {
@@ -18,8 +16,8 @@ public static class main
     public static readonly string LocalPath =
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
-    public static string ApplicationLocalDirectoryPath { get; private set; } =
-        Path.Combine(main.LocalPath, main.ApplicationLocalDirectory);
+    public static string ApplicationLocalDirectoryPath { get; } =
+        Path.Combine(LocalPath, ApplicationLocalDirectory);
 
     private static Glfw Glfw { get; set; }
     private static MainWindow MainWindow { get; set; }
@@ -146,11 +144,8 @@ public static class main
                 {
                     // Update the camera viewport's GLFW references to point to the camera window
                     // so that free-fly controls work correctly in the undocked window
-                    unsafe
-                    {
-                        camViewport.GlfwApiPreview = Glfw;
-                        camViewport.GlfwWindowPreview = CameraWindow.WindowHandle;
-                    }
+                    camViewport.GlfwApiPreview = Glfw;
+                    camViewport.GlfwWindowPreview = CameraWindow.WindowHandle;
 
                     Glfw.MakeContextCurrent(CameraWindow.WindowHandle);
                     CameraWindow.Show();
@@ -307,7 +302,7 @@ public static class main
         return startupWindow;
     }
 
-    private static unsafe void RunFfmpegBootstrap(StartupProgressWindow? startupWindow)
+    private static void RunFfmpegBootstrap(StartupProgressWindow? startupWindow)
     {
         if (!FfmpegBootstrap.RequiresFirstTimeDownload())
         {

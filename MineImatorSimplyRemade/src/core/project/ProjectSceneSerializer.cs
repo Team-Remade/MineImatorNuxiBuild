@@ -156,7 +156,7 @@ public static class ProjectSceneSerializer
             ShapeKeyWeights = SerializeShapeKeyWeights(obj)
         };
 
-        if (obj.HasExplicitMaterialSettings && obj.MaterialSettings != null)
+        if (obj is { HasExplicitMaterialSettings: true, MaterialSettings: not null })
         {
             entry.AlbedoColor = ToProjectVec4(obj.MaterialSettings.AlbedoColor);
             entry.Metallic = obj.MaterialSettings.Metallic;
@@ -410,10 +410,9 @@ public static class ProjectSceneSerializer
 
     private static void ClearScene(Viewport viewport)
     {
-        foreach (var obj in viewport.SceneObjects.ToList())
+        foreach (var mesh in viewport.SceneObjects.ToList().SelectMany(obj => obj.GetMeshInstancesRecursively()))
         {
-            foreach (var mesh in obj.GetMeshInstancesRecursively())
-                mesh.Dispose();
+            mesh.Dispose();
         }
 
         viewport.SceneObjects.Clear();
@@ -421,9 +420,7 @@ public static class ProjectSceneSerializer
 
     private static string? ExtractItemTileKey(SceneObject obj)
     {
-        if (!string.IsNullOrWhiteSpace(obj.ObjectType))
-            return ExtractItemTileKey(obj.ObjectType);
-        return null;
+        return !string.IsNullOrWhiteSpace(obj.ObjectType) ? ExtractItemTileKey(obj.ObjectType) : null;
     }
 
     private static string? ExtractItemTileKey(string objectType)
@@ -515,11 +512,7 @@ public static class ProjectSceneSerializer
         {
             if (!meshes[m].HasShapeKeys) continue;
 
-            foreach (var sk in meshes[m].ShapeKeys)
-            {
-                if (sk.Weight == 0f) continue; // default state, nothing to persist
-                result.Add(new ProjectShapeKeyWeightEntry { MeshIndex = m, Name = sk.Name, Weight = sk.Weight });
-            }
+            result.AddRange(from sk in meshes[m].ShapeKeys where sk.Weight != 0f select new ProjectShapeKeyWeightEntry { MeshIndex = m, Name = sk.Name, Weight = sk.Weight });
         }
 
         return result;

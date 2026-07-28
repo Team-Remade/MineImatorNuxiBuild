@@ -1,5 +1,4 @@
 ﻿using System.Numerics;
-using System.Linq;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl;
@@ -96,9 +95,9 @@ public class PropertiesPanel : UiPanel
 
     // ── Right-click keyframe context menu ──────────────────────────────────
     
-    private bool              _openPropContextMenu = false;
+    private bool              _openPropContextMenu;
     private string?           _ctxPropertyPath;
-    private System.Numerics.Vector2 _ctxMenuPos;
+    private Vector2 _ctxMenuPos;
 
     // ── Texture tracking for dropdown ────────────────────────────────────────
     private Dictionary<uint, string> _loadedTexturePathCache = new();
@@ -133,7 +132,7 @@ public class PropertiesPanel : UiPanel
 
         _projectName = string.IsNullOrWhiteSpace(manifest.ProjectName) ? "Untitled Project" : manifest.ProjectName;
 
-        ProjectRenderSettings settings = manifest.Settings ?? new ProjectRenderSettings();
+        ProjectRenderSettings settings = manifest.Settings;
         _resolutionWidth = Math.Max(1, settings.ResolutionWidth);
         _resolutionHeight = Math.Max(1, settings.ResolutionHeight);
         _framerate = Math.Clamp(settings.Framerate, 1, 120);
@@ -163,19 +162,19 @@ public class PropertiesPanel : UiPanel
             ? "grass_block_top"
             : settings.FloorTileKey;
 
-        ProjectVec4 bg = settings.BackgroundColor ?? new ProjectVec4 { X = 0.5764706f, Y = 0.5764706f, Z = 1f, W = 1f };
+        ProjectVec4 bg = settings.BackgroundColor;
         BackgroundColor[0] = bg.X;
         BackgroundColor[1] = bg.Y;
         BackgroundColor[2] = bg.Z;
         BackgroundColor[3] = bg.W;
 
-        ProjectVec3 ambient = settings.AmbientLightColor ?? new ProjectVec3 { X = 1f, Y = 1f, Z = 1f };
+        ProjectVec3 ambient = settings.AmbientLightColor;
         AmbientLightColor[0] = ambient.X;
         AmbientLightColor[1] = ambient.Y;
         AmbientLightColor[2] = ambient.Z;
         AmbientLightStrength = settings.AmbientLightStrength;
         
-        ProjectVec3 fillLight = settings.FillLightColor ?? new ProjectVec3 { X = 0.85f, Y = 0.85f, Z = 0.85f };
+        ProjectVec3 fillLight = settings.FillLightColor;
         FillLightColor[0] = fillLight.X;
         FillLightColor[1] = fillLight.Y;
         FillLightColor[2] = fillLight.Z;
@@ -197,7 +196,6 @@ public class PropertiesPanel : UiPanel
         _projectName = normalizedName;
         manifest.ProjectName = normalizedName;
 
-        manifest.Settings ??= new ProjectRenderSettings();
         manifest.Settings.ResolutionWidth = Math.Max(1, _resolutionWidth);
         manifest.Settings.ResolutionHeight = Math.Max(1, _resolutionHeight);
         manifest.Settings.Framerate = Math.Clamp(_framerate, 1, 120);
@@ -403,7 +401,7 @@ public class PropertiesPanel : UiPanel
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[PropertiesPanel] Could not register albedo texture in project assets: {ex.Message}");
+            Console.Error.WriteLine($"Could not register albedo texture in project assets: {ex.Message}");
             return fullSourcePath;
         }
     }
@@ -421,16 +419,8 @@ public class PropertiesPanel : UiPanel
             string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase))
         {
             // Check if any mesh already has the texture loaded
-            bool hasTexture = false;
-            foreach (var mesh in _currentObject.Visuals)
-            {
-                if (mesh.TextureId != 0)
-                {
-                    hasTexture = true;
-                    break;
-                }
-            }
-            
+            bool hasTexture = _currentObject.Visuals.Any(mesh => mesh.TextureId != 0);
+
             // If not loaded, load it from the stored path
             if (!hasTexture)
             {
@@ -1467,14 +1457,14 @@ public class PropertiesPanel : UiPanel
                                         : path;
                                 }
                             }
-                    else
-                    {
-                        // File hasn't been loaded yet, load it now
-                        if (File.Exists(path))
-                        {
-                            OnLoadAlbedoTextureForObject(_currentObject, path);
-                        }
-                    }
+                            else
+                            {
+                                // File hasn't been loaded yet, load it now
+                                if (File.Exists(path))
+                                {
+                                    OnLoadAlbedoTextureForObject(_currentObject, path);
+                                }
+                            }
                             ProjectManager.Instance.SetDirty(true);
                         }
                         if (selected)
@@ -1484,7 +1474,7 @@ public class PropertiesPanel : UiPanel
                     ImGui.EndCombo();
                 }
 
-                    if (ImGui.Button("Load new texture...##AlbedoTexture", new Vector2(-1, 0)))
+                if (ImGui.Button("Load new texture...##AlbedoTexture", new Vector2(-1, 0)))
                 {
                     var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
                     if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
@@ -1497,13 +1487,10 @@ public class PropertiesPanel : UiPanel
 
                 if (currentTextureId != 0 && ImGui.Button("Clear texture##AlbedoTextureClear", new Vector2(-1, 0)))
                 {
-                    foreach (var mesh in _currentObject.Visuals)
+                    foreach (var mesh in _currentObject.Visuals.Where(mesh => mesh.TextureId != 0))
                     {
-                        if (mesh.TextureId != 0)
-                        {
-                            Gl?.DeleteTexture(mesh.TextureId);
-                            mesh.TextureId = 0;
-                        }
+                        Gl?.DeleteTexture(mesh.TextureId);
+                        mesh.TextureId = 0;
                     }
                     _currentObject.AlbedoTexturePath = "";
                     ProjectManager.Instance.SetDirty(true);
@@ -1941,38 +1928,35 @@ public class PropertiesPanel : UiPanel
         if (string.Equals(obj.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase))
         {
             // Scan this object's meshes for loaded textures
-            foreach (var mesh in obj.Visuals)
+            foreach (var mesh in obj.Visuals.Where(mesh => mesh.TextureId != 0 && !_loadedTexturePathCache.ContainsKey(mesh.TextureId)))
             {
-                if (mesh.TextureId != 0 && !_loadedTexturePathCache.ContainsKey(mesh.TextureId))
+                // Map the real texture ID to its path
+                if (!string.IsNullOrEmpty(obj.AlbedoTexturePath))
                 {
-                    // Map the real texture ID to its path
-                    if (!string.IsNullOrEmpty(obj.AlbedoTexturePath))
-                    {
-                        string fullPath = Path.Combine(ProjectManager.Instance.ProjectFolder, obj.AlbedoTexturePath);
+                    string fullPath = Path.Combine(ProjectManager.Instance.ProjectFolder, obj.AlbedoTexturePath);
 
-                        // Replace any existing fake/import entry that points to the same file
-                        // so this texture appears only once in the dropdown.
-                        uint duplicateKey = 0;
-                        foreach (var (existingKey, existingPath) in _loadedTexturePathCache)
+                    // Replace any existing fake/import entry that points to the same file
+                    // so this texture appears only once in the dropdown.
+                    uint duplicateKey = 0;
+                    foreach (var (existingKey, existingPath) in _loadedTexturePathCache)
+                    {
+                        if (existingKey == mesh.TextureId) continue;
+                        if (string.Equals(Path.GetFullPath(existingPath), Path.GetFullPath(fullPath), StringComparison.OrdinalIgnoreCase))
                         {
-                            if (existingKey == mesh.TextureId) continue;
-                            if (string.Equals(Path.GetFullPath(existingPath), Path.GetFullPath(fullPath), StringComparison.OrdinalIgnoreCase))
-                            {
-                                duplicateKey = existingKey;
-                                break;
-                            }
+                            duplicateKey = existingKey;
+                            break;
                         }
-
-                        if (duplicateKey != 0)
-                            _loadedTexturePathCache.Remove(duplicateKey);
-
-                        _loadedTexturePathCache[mesh.TextureId] = fullPath;
                     }
-                    else
-                    {
-                        // Fallback if no path is stored
-                        _loadedTexturePathCache[mesh.TextureId] = $"Texture_{mesh.TextureId}";
-                    }
+
+                    if (duplicateKey != 0)
+                        _loadedTexturePathCache.Remove(duplicateKey);
+
+                    _loadedTexturePathCache[mesh.TextureId] = fullPath;
+                }
+                else
+                {
+                    // Fallback if no path is stored
+                    _loadedTexturePathCache[mesh.TextureId] = $"Texture_{mesh.TextureId}";
                 }
             }
         }
@@ -2041,18 +2025,11 @@ public class PropertiesPanel : UiPanel
             }
 
             // Store the relative path for persistence
-            if (filePath.Contains(ProjectManager.Instance.ProjectFolder))
-            {
-                obj.AlbedoTexturePath = Path.GetRelativePath(ProjectManager.Instance.ProjectFolder, filePath);
-            }
-            else
-            {
-                obj.AlbedoTexturePath = filePath;
-            }
+            obj.AlbedoTexturePath = filePath.Contains(ProjectManager.Instance.ProjectFolder) ? Path.GetRelativePath(ProjectManager.Instance.ProjectFolder, filePath) : filePath;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[PropertiesPanel] Failed to load albedo texture '{filePath}': {ex.Message}");
+            Console.Error.WriteLine($"Failed to load albedo texture '{filePath}': {ex.Message}");
         }
     }
 

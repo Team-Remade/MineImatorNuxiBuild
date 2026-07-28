@@ -63,11 +63,9 @@ public static class SvgLoader
             var d = elem.Attribute("d")?.Value;
             if (string.IsNullOrWhiteSpace(d)) continue;
 
-            foreach (var poly in ParsePath(d))
+            foreach (var scaled in from poly in ParsePath(d) where poly.Count >= 2 select poly.ConvertAll(pt =>
+                         new Vector2((pt.X - vbX) * sx, (pt.Y - vbY) * sy)))
             {
-                if (poly.Count < 2) continue;
-                var scaled = poly.ConvertAll(pt =>
-                    new Vector2((pt.X - vbX) * sx, (pt.Y - vbY) * sy));
                 FillPolygon(pixels, size, size, scaled);
             }
         }
@@ -87,7 +85,7 @@ public static class SvgLoader
 
         void CommitSub()
         {
-            if (sub.Count >= 2) result.Add(new List<Vector2>(sub));
+            if (sub.Count >= 2) result.Add([..sub]);
             sub.Clear();
         }
 

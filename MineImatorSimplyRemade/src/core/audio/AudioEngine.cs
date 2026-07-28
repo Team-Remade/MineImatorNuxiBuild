@@ -15,7 +15,7 @@ public sealed unsafe class AudioEngine : IDisposable
 
     private AL? _al;
     private ALContext? _alc;
-    private unsafe Device* _device;
+    private Device* _device;
     private Context* _context;
     private bool _initialized;
     private bool _disposed;
@@ -41,17 +41,14 @@ public sealed unsafe class AudioEngine : IDisposable
             return;
         }
 
-        unsafe
-        {
-            _device = _alc!.OpenDevice(null);
-            if (_device == null) return;
+        _device = _alc!.OpenDevice(null);
+        if (_device == null) return;
 
-            _context = _alc.CreateContext(_device, null);
-            if (_context == null) return;
+        _context = _alc.CreateContext(_device, null);
+        if (_context == null) return;
 
-            _alc.MakeContextCurrent(_context);
-            _alc.ProcessContext(_context);
-        }
+        _alc.MakeContextCurrent(_context);
+        _alc.ProcessContext(_context);
 
         _initialized = true;
     }
@@ -219,19 +216,16 @@ public sealed unsafe class AudioEngine : IDisposable
             _clipCache.Clear();
         }
 
-        unsafe
+        if (_alc != null && _context != null)
         {
-            if (_alc != null && _context != null)
-            {
-                _alc.MakeContextCurrent(null);
-                _alc.DestroyContext(_context);
-                _context = null;
-            }
-            if (_alc != null && _device != null)
-            {
-                _alc.CloseDevice(_device);
-                _device = null;
-            }
+            _alc.MakeContextCurrent(null);
+            _alc.DestroyContext(_context);
+            _context = null;
+        }
+        if (_alc != null && _device != null)
+        {
+            _alc.CloseDevice(_device);
+            _device = null;
         }
 
         _alc?.Dispose();

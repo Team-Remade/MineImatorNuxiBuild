@@ -4,6 +4,7 @@ using GlmSharp;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using System.Text.Json.Nodes;
+using Silk.NET.Assimp;
 using Silk.NET.OpenGL;
 using StbImageSharp;
 
@@ -46,7 +47,7 @@ public static class AssimpModelLoader
     {
         if (!SysFile.Exists(filePath))
         {
-            Console.Error.WriteLine($"[AssimpModelLoader] File not found: {filePath}");
+            Console.Error.WriteLine($"File not found: {filePath}");
             return null;
         }
 
@@ -61,7 +62,7 @@ public static class AssimpModelLoader
         // original vertex list.  JoinIdenticalVertices welds duplicate vertices
         // and changes that order/count, so shape-key deltas end up applied to
         // the wrong vertices and the mesh tears apart.  Skip it for glTF/GLB.
-        string ext = System.IO.Path.GetExtension(filePath).ToLowerInvariant();
+        string ext = Path.GetExtension(filePath).ToLowerInvariant();
         bool isGltf = ext is ".gltf" or ".glb";
 
         uint flags =
@@ -83,7 +84,7 @@ public static class AssimpModelLoader
                 || scene->MRootNode == null)
             {
                 string err = assimp.GetErrorStringS();
-                Console.Error.WriteLine($"[AssimpModelLoader] Assimp error for '{filePath}': {err}");
+                Console.Error.WriteLine($"Assimp error for '{filePath}': {err}");
                 if (scene != null) assimp.ReleaseImport(scene);
                 assimp.Dispose();
                 return null;
@@ -101,7 +102,7 @@ public static class AssimpModelLoader
                 CollectAssimpBoneNames(scene, boneNames);
 
             // ── Upload textures ────────────────────────────────────────────
-            string modelDir = System.IO.Path.GetDirectoryName(filePath) ?? "";
+            string modelDir = Path.GetDirectoryName(filePath) ?? "";
             var texCache = new Dictionary<string, uint>();
             UploadTextures(assimp, gl, scene, modelDir, texCache, nearestFilter);
 
@@ -156,7 +157,7 @@ public static class AssimpModelLoader
         try
         {
             string json;
-            string ext = System.IO.Path.GetExtension(filePath).ToLowerInvariant();
+            string ext = Path.GetExtension(filePath).ToLowerInvariant();
 
             if (ext == ".glb")
             {
@@ -164,7 +165,7 @@ public static class AssimpModelLoader
                 // Header: magic(4) + version(4) + length(4)
                 // Chunk:  chunkLength(4) + chunkType(4) + chunkData(chunkLength)
                 using var fs = SysFile.OpenRead(filePath);
-                using var br = new System.IO.BinaryReader(fs);
+                using var br = new BinaryReader(fs);
                 br.ReadBytes(12);               // skip header
                 int jsonLen  = (int)br.ReadUInt32();
                 br.ReadUInt32();                // chunkType = 0x4E4F534A ("JSON")
@@ -204,7 +205,7 @@ public static class AssimpModelLoader
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[AssimpModelLoader] GLTF bone-name parse failed: {ex.Message}");
+            Console.Error.WriteLine($"GLTF bone-name parse failed: {ex.Message}");
         }
     }
 
@@ -239,11 +240,11 @@ public static class AssimpModelLoader
         {
             AiMaterial* mat = scene->MMaterials[mi];
 
-            uint texCount = assimp.GetMaterialTextureCount(mat, Silk.NET.Assimp.TextureType.Diffuse);
+            uint texCount = assimp.GetMaterialTextureCount(mat, TextureType.Diffuse);
             for (uint ti = 0; ti < texCount; ti++)
             {
-                Silk.NET.Assimp.AssimpString path = default;
-                assimp.GetMaterialTexture(mat, Silk.NET.Assimp.TextureType.Diffuse, ti,
+                AssimpString path = default;
+                assimp.GetMaterialTexture(mat, TextureType.Diffuse, ti,
                     ref path, null, null, null, null, null, null);
 
                 string texPath = path.AsString;
@@ -252,9 +253,9 @@ public static class AssimpModelLoader
 
                 uint handle = texPath.StartsWith('*')
                     ? UploadEmbeddedTexture(gl, assimp.GetEmbeddedTexture(scene, texPath), nearest)
-                    : UploadFileTexture(gl, System.IO.Path.IsPathRooted(texPath)
+                    : UploadFileTexture(gl, Path.IsPathRooted(texPath)
                         ? texPath
-                        : System.IO.Path.Combine(modelDir, texPath), nearest);
+                        : Path.Combine(modelDir, texPath), nearest);
 
                 if (handle != 0)
                     cache[texPath] = handle;
@@ -430,13 +431,13 @@ public static class AssimpModelLoader
 
         Quaternion boneQuatForChildren = default;
 
+        obj.SetLocalPosition(pos);
         if (isBone)
         {
             if (hasSkinnedMeshes)
             {
                 // Skinned meshes need the skeleton in its authored bind pose so the
                 // inverse bind matrices and bone weights line up correctly.
-                obj.SetLocalPosition(pos);
                 obj.SetLocalRotation(QuaternionToEulerXYZ(lquat));
                 obj.SetLocalScale(scale);
             }
@@ -444,7 +445,6 @@ public static class AssimpModelLoader
             {
                 // Rigid-body rigs: show the bone at zero rotation and pass the
                 // raw quaternion down so direct mesh children can absorb it.
-                obj.SetLocalPosition(pos);
                 obj.SetLocalRotation(vec3.Zero);
                 obj.SetLocalScale(scale);
                 boneQuatForChildren = lquat;
@@ -455,7 +455,6 @@ public static class AssimpModelLoader
         }
         else
         {
-            obj.SetLocalPosition(pos);
             obj.SetLocalRotation(QuaternionToEulerXYZ(lquat));
             obj.SetLocalScale(scale);
         }
@@ -536,7 +535,7 @@ public static class AssimpModelLoader
             if (aMesh->MNumBones > 64)
             {
                 Console.Error.WriteLine(
-                    $"[AssimpModelLoader] Mesh has {aMesh->MNumBones} bones; " +
+                    $"Mesh has {aMesh->MNumBones} bones; " +
                     "only the first 64 will be used by the GPU skinning shader.");
             }
 
@@ -617,7 +616,7 @@ public static class AssimpModelLoader
                 if (deltas.Length / 3 != mesh.Vertices.Count)
                 {
                     Console.Error.WriteLine(
-                        $"[AssimpModelLoader] Mesh #{meshIndex} '{meshName}': shape key '{name}' has " +
+                        $"Mesh #{meshIndex} '{meshName}': shape key '{name}' has " +
                         $"{deltas.Length / 3} deltas but mesh has {mesh.Vertices.Count} vertices — skipped.");
                     continue;
                 }
@@ -721,7 +720,7 @@ public static class AssimpModelLoader
     /// </summary>
     private sealed class GltfShapeKeySource
     {
-        public Dictionary<int, List<(string Name, float[] Values, bool IsAbsolute)>> MeshIndexToShapeKeys = new();
+        public readonly Dictionary<int, List<(string Name, float[] Values, bool IsAbsolute)>> MeshIndexToShapeKeys = new();
     }
 
     /// <summary>
@@ -735,7 +734,7 @@ public static class AssimpModelLoader
     {
         try
         {
-            string ext = System.IO.Path.GetExtension(filePath).ToLowerInvariant();
+            string ext = Path.GetExtension(filePath).ToLowerInvariant();
             if (ext is not ".gltf" and not ".glb") return null;
 
             string json;
@@ -747,7 +746,7 @@ public static class AssimpModelLoader
                 // Header: magic(4) + version(4) + length(4)
                 // Each chunk: chunkLength(4) + chunkType(4) + chunkData(chunkLength)
                 using var fs = SysFile.OpenRead(filePath);
-                using var br = new System.IO.BinaryReader(fs);
+                using var br = new BinaryReader(fs);
                 if (fs.Length < 12) return null;
                 br.ReadBytes(12);
                 int jsonLen = (int)br.ReadUInt32();
@@ -779,8 +778,8 @@ public static class AssimpModelLoader
                 if (!string.IsNullOrEmpty(binUri) &&
                     !binUri.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
                 {
-                    string binPath = System.IO.Path.Combine(
-                        System.IO.Path.GetDirectoryName(filePath) ?? "", binUri);
+                    string binPath = Path.Combine(
+                        Path.GetDirectoryName(filePath) ?? "", binUri);
                     if (SysFile.Exists(binPath))
                         binChunk = SysFile.ReadAllBytes(binPath);
                 }
@@ -802,9 +801,9 @@ public static class AssimpModelLoader
             // "extras.targetNames" array (standard glTF location), falling
             // back to the primitive's "extras.targetNames" if needed.
             int assimpMeshIndex = 0;
-            for (int mi = 0; mi < meshesArr.Count; mi++)
+            foreach (var t in meshesArr)
             {
-                var meshNode = meshesArr[mi]?.AsObject();
+                var meshNode = t?.AsObject();
                 var primitives = meshNode?["primitives"] as JsonArray;
                 if (primitives == null) continue;
 
@@ -813,9 +812,9 @@ public static class AssimpModelLoader
                     .Select(n => n?.GetValue<string>() ?? "")
                     .ToList();
 
-                for (int pi = 0; pi < primitives.Count; pi++)
+                foreach (var t1 in primitives)
                 {
-                    var prim = primitives[pi]?.AsObject();
+                    var prim = t1?.AsObject();
                     if (prim == null) { assimpMeshIndex++; continue; }
 
                     var targets = prim["targets"] as JsonArray;
@@ -827,9 +826,9 @@ public static class AssimpModelLoader
 
                     // Fall back to primitive-level names if mesh-level not present
                     var targetNames = meshTargetNames ??
-                        (prim["extras"]?["targetNames"] as JsonArray)?
-                            .Select(n => n?.GetValue<string>() ?? "")
-                            .ToList();
+                                      (prim["extras"]?["targetNames"] as JsonArray)?
+                                      .Select(n => n?.GetValue<string>() ?? "")
+                                      .ToList();
 
                     // Assimp's glTF2 importer does NOT keep each primitive's
                     // vertex attributes in raw accessor order. It compacts
@@ -846,7 +845,7 @@ public static class AssimpModelLoader
                     // ones by the right (or even wrong) amount.
                     int? basePositionAccessor = (prim["attributes"]?.AsObject())?["POSITION"]?.GetValue<int>();
                     int primVertexCount = (accessors != null && basePositionAccessor.HasValue &&
-                        basePositionAccessor.Value >= 0 && basePositionAccessor.Value < accessors.Count)
+                                           basePositionAccessor.Value >= 0 && basePositionAccessor.Value < accessors.Count)
                         ? (accessors[basePositionAccessor.Value]?.AsObject()?["count"]?.GetValue<int>() ?? 0)
                         : 0;
 
@@ -857,7 +856,7 @@ public static class AssimpModelLoader
                     if (primVertexCount > 0 && rawToAssimpIndex == null)
                     {
                         Console.Error.WriteLine(
-                            $"[AssimpModelLoader] glTF mesh/primitive at assimpMeshIndex={assimpMeshIndex}: " +
+                            $"glTF mesh/primitive at assimpMeshIndex={assimpMeshIndex}: " +
                             "could not reconstruct Assimp's vertex reordering; shape keys for this " +
                             "primitive may deform the wrong vertices.");
                     }
@@ -909,7 +908,7 @@ public static class AssimpModelLoader
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[AssimpModelLoader] glTF shape-key parse failed: {ex.Message}");
+            Console.Error.WriteLine($"glTF shape-key parse failed: {ex.Message}");
             return null;
         }
     }

@@ -90,16 +90,13 @@ public static class CtmResolver
     {
         string method = rule.Method;
 
-        if (method == "horizontal")
-            return ComputeHorizontalTileIndex(faceName, tx, ty, tz, tileX, tileY, tileZ);
-
-        if (method == "vertical")
-            return ComputeVerticalTileIndex(faceName, tx, ty, tz, tileX, tileY, tileZ);
-
-        if (method == "top" && faceName == "up")
-            return ComputeCompactTileIndex(faceName, tx, ty, tz, tileX, tileY, tileZ);
-
-        return ComputeCompactTileIndex(faceName, tx, ty, tz, tileX, tileY, tileZ);
+        return method switch
+        {
+            "horizontal" => ComputeHorizontalTileIndex(faceName, tx, ty, tz, tileX, tileY, tileZ),
+            "vertical" => ComputeVerticalTileIndex(faceName, tx, ty, tz, tileX, tileY, tileZ),
+            "top" when faceName == "up" => ComputeCompactTileIndex(faceName, tx, ty, tz, tileX, tileY, tileZ),
+            _ => ComputeCompactTileIndex(faceName, tx, ty, tz, tileX, tileY, tileZ)
+        };
     }
 
     private static int ComputeHorizontalTileIndex(string faceName, int tx, int ty, int tz,
@@ -156,14 +153,20 @@ public static class CtmResolver
         bool allEdges = top && bottom && left && right;
         bool allCorners = topLeft && topRight && bottomLeft && bottomRight;
 
-        // OptiFine/Continuity compact CTM mapping (5 tiles):
-        // 0: fully surrounded (all edges + all corners)
-        // 1: vertical strip (top+bottom, no left/right)
-        // 2: horizontal strip (left+right, no top/bottom)
-        // 3: isolated
-        // 4: outer corners (all edges, not all corners)
-        if (allEdges && allCorners) return 0;
-        if (allEdges && !allCorners) return 4;
+        switch (allEdges)
+        {
+            // OptiFine/Continuity compact CTM mapping (5 tiles):
+            // 0: fully surrounded (all edges + all corners)
+            // 1: vertical strip (top+bottom, no left/right)
+            // 2: horizontal strip (left+right, no top/bottom)
+            // 3: isolated
+            // 4: outer corners (all edges, not all corners)
+            case true when allCorners:
+                return 0;
+            case true when !allCorners:
+                return 4;
+        }
+
         if (top && bottom && !left && !right) return 1;
         if (left && right && !top && !bottom) return 2;
         return 3;
@@ -182,13 +185,13 @@ public static class CtmResolver
     {
         return face.ToLowerInvariant() switch
         {
-            "up"    => (new[] { 0, 0, -1 }, new[] { 1, 0, 0 }),
-            "down"  => (new[] { 0, 0, 1 }, new[] { 1, 0, 0 }),
-            "north" => (new[] { 0, 1, 0 }, new[] { -1, 0, 0 }),
-            "south" => (new[] { 0, 1, 0 }, new[] { 1, 0, 0 }),
-            "east"  => (new[] { 0, 1, 0 }, new[] { 0, 0, -1 }),
-            "west"  => (new[] { 0, 1, 0 }, new[] { 0, 0, 1 }),
-            _       => (new[] { 0, 1, 0 }, new[] { 1, 0, 0 }),
+            "up"    => ([0, 0, -1], [1, 0, 0]),
+            "down"  => ([0, 0, 1], [1, 0, 0]),
+            "north" => ([0, 1, 0], [-1, 0, 0]),
+            "south" => ([0, 1, 0], [1, 0, 0]),
+            "east"  => ([0, 1, 0], [0, 0, -1]),
+            "west"  => ([0, 1, 0], [0, 0, 1]),
+            _       => ([0, 1, 0], [1, 0, 0]),
         };
     }
 }

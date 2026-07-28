@@ -54,10 +54,7 @@ public static class MinecraftDataLoader
             return fallback;
 
         string[] dirs = Directory.GetDirectories(versionsDir);
-        if (dirs.Length == 0)
-            return fallback;
-
-        return dirs.OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase).First();
+        return dirs.Length == 0 ? fallback : dirs.OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase).First();
     }
 
     public static IEnumerable<ResourcePackFile> EnumerateResourcePackFiles(string pathPrefix, string suffix, AssetContainerScanCallback? scanProgress = null)
@@ -277,13 +274,7 @@ public static class MinecraftDataLoader
 
         foreach (char ch in raw)
         {
-            if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9'))
-            {
-                sb.Append(ch);
-                continue;
-            }
-
-            if (ch == '_' || ch == '-')
+            if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-')
             {
                 sb.Append(ch);
                 continue;

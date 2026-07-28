@@ -97,7 +97,7 @@ public class MiBoneSceneObject : BoneSceneObject
     /// </summary>
     public vec3 OffsetScale
     {
-        get => new vec3(
+        get => new(
             _basePoseScale.x != 0 ? LocalScale.x / _basePoseScale.x : LocalScale.x,
             _basePoseScale.y != 0 ? LocalScale.y / _basePoseScale.y : LocalScale.y,
             _basePoseScale.z != 0 ? LocalScale.z / _basePoseScale.z : LocalScale.z);
@@ -167,17 +167,15 @@ public class MiBoneSceneObject : BoneSceneObject
     public void OverrideTexture(uint textureId)
     {
         // Update live meshes
-        foreach (var mesh in Visuals)
+        foreach (var mesh in Visuals.Where(mesh => mesh.TextureId != 0))
         {
-            if (mesh.TextureId != 0)
-                mesh.TextureId = textureId;
+            mesh.TextureId = textureId;
         }
 
         // Update stored shape data so the override survives RegenerateMeshes()
-        foreach (var sd in _shapeDataList)
+        foreach (var sd in _shapeDataList.Where(sd => sd.TextureId != 0))
         {
-            if (sd.TextureId != 0)
-                sd.TextureId = textureId;
+            sd.TextureId = textureId;
         }
     }
 
@@ -215,14 +213,12 @@ public class MiBoneSceneObject : BoneSceneObject
             }
 
             var loader = MineImatorLoader.Instance;
-            foreach (var sd in _shapeDataList)
+            foreach (var mesh in _shapeDataList.Select(sd => loader.CreateShapeMeshPublic(
+                         sd.PartName, sd.ShapeIndex, sd.Shape, sd.Model,
+                         sd.TextureId, sd.AccumulatedScale, effectiveBendParams,
+                         sd.ModelBendStyle, sd.PartColorAlpha, sd.PartDepth)).OfType<Mesh>())
             {
-                var mesh = loader.CreateShapeMeshPublic(
-                    sd.PartName, sd.ShapeIndex, sd.Shape, sd.Model,
-                    sd.TextureId, sd.AccumulatedScale, effectiveBendParams,
-                    sd.ModelBendStyle, sd.PartColorAlpha, sd.PartDepth);
-
-                if (mesh != null) AddMesh(mesh);
+                AddMesh(mesh);
             }
         }
 

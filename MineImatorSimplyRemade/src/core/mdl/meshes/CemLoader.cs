@@ -43,28 +43,27 @@ public static class CemLoader
     {
         if (!File.Exists(cemPath))
         {
-            Console.WriteLine($"[CemLoader] File not found: {cemPath}");
-            return new List<Mesh> { new CubeMesh(gl) };
+            Console.WriteLine($"File not found: {cemPath}");
+            return [new CubeMesh(gl)];
         }
 
         JsonObject root;
         try
         {
             var parsed = JsonNode.Parse(File.ReadAllText(cemPath))?.AsObject();
-            if (parsed == null) throw new Exception("Root is not a JSON object");
-            root = parsed;
+            root = parsed ?? throw new Exception("Root is not a JSON object");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[CemLoader] Parse error in '{cemPath}': {ex.Message}");
-            return new List<Mesh> { new CubeMesh(gl) };
+            Console.WriteLine($"Parse error in '{cemPath}': {ex.Message}");
+            return [new CubeMesh(gl)];
         }
 
         // ── Resolve texture ───────────────────────────────────────────────────
         string texturePath = root["texture"]?.GetValue<string>() ?? "";
         uint   texId       = ResolveTexture(texturePath, versionRoot, resourcePackId);
 
-        int[]  texSize     = JsonNodeToIntArray(root["textureSize"]) ?? new[] { 64, 64 };
+        int[]  texSize     = JsonNodeToIntArray(root["textureSize"]) ?? [64, 64];
         float  texW        = texSize.Length > 0 ? texSize[0] : 64f;
         float  texH        = texSize.Length > 1 ? texSize[1] : 64f;
 
@@ -78,7 +77,7 @@ public static class CemLoader
             if (part["boxes"] is not JsonArray boxes) continue;
 
             // Part-level transform (rotate is intentionally ignored — see BuildPartTransform)
-            float[] translate  = JsonNodeToFloatArray(part["translate"]) ?? new float[] { 0, 0, 0 };
+            float[] translate  = JsonNodeToFloatArray(part["translate"]) ?? [0, 0, 0];
             string  invertAxis = part["invertAxis"]?.GetValue<string>()  ?? "";
             string  partId     = part["id"]?.GetValue<string>()          ?? "";
 
@@ -100,7 +99,7 @@ public static class CemLoader
             }
         }
 
-        return result.Count > 0 ? result : new List<Mesh> { new CubeMesh(gl) };
+        return result.Count > 0 ? result : [new CubeMesh(gl)];
     }
 
     // ── Texture resolution ────────────────────────────────────────────────────
@@ -127,7 +126,7 @@ public static class CemLoader
         string fullPath = Path.Combine(versionRoot, texturePath.Replace('/', Path.DirectorySeparatorChar));
         if (File.Exists(fullPath))
         {
-            Console.WriteLine($"[CemLoader] Texture '{key}' not in atlas, loading from disk: {fullPath}");
+            Console.WriteLine($"Texture '{key}' not in atlas, loading from disk: {fullPath}");
             // We can't easily load a GL texture here without the GL context captured in
             // TerrainAtlas, so just return 0 and let it render untextured.
         }

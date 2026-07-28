@@ -119,11 +119,8 @@ public class LightSceneObject : SceneObject
     /// </summary>
     public static void EnsureRangeRingMesh(GL gl)
     {
-        if (SharedRangeRingMesh == null)
-            SharedRangeRingMesh = new MineImatorSimplyRemade.core.mdl.meshes.LightRangeRingMesh(gl);
-        if (SharedSpotConeMesh == null)
-            SharedSpotConeMesh = new MineImatorSimplyRemade.core.mdl.meshes.LightConeMesh(gl);
-        if (SharedSpotStickMesh == null)
-            SharedSpotStickMesh = new MineImatorSimplyRemade.core.mdl.meshes.LightStickMesh(gl);
+        SharedRangeRingMesh ??= new MineImatorSimplyRemade.core.mdl.meshes.LightRangeRingMesh(gl);
+        SharedSpotConeMesh ??= new MineImatorSimplyRemade.core.mdl.meshes.LightConeMesh(gl);
+        SharedSpotStickMesh ??= new MineImatorSimplyRemade.core.mdl.meshes.LightStickMesh(gl);
     }
 }

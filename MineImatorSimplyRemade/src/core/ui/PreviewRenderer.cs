@@ -72,7 +72,7 @@ public class PreviewRenderer : IDisposable
     {
         Dispose(); // release previous resources if any
 
-        uint size = (uint)TextureSize;
+        uint size = TextureSize;
 
         // Color texture (RGBA so ImGui can sample it)
         _gl.GenTextures(1, out uint colorTex);
@@ -101,7 +101,7 @@ public class PreviewRenderer : IDisposable
 
         var status = _gl.CheckFramebufferStatus(GLEnum.Framebuffer);
         if (status != GLEnum.FramebufferComplete)
-            Console.Error.WriteLine($"[PreviewRenderer] FBO incomplete: {status}");
+            Console.Error.WriteLine($"FBO incomplete: {status}");
 
         _gl.BindFramebuffer(GLEnum.Framebuffer, 0);
 
@@ -125,7 +125,7 @@ public class PreviewRenderer : IDisposable
     /// Each node in the hierarchy is rendered with its own world matrix so that a
     /// character's bones appear in their correct poses.
     /// </summary>
-    public unsafe void Render(
+    public void Render(
         IReadOnlyList<Mesh> meshes,
         string              selectionKey,
         double              deltaTime,

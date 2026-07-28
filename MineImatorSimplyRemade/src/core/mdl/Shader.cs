@@ -57,7 +57,7 @@ public class Shader : IDisposable
         if (status == 0)
         {
             string log = _gl.GetShaderInfoLog(shader);
-            Console.Error.WriteLine($"[Shader] Compile error in '{name}':\n{log}");
+            Console.Error.WriteLine($"Compile error in '{name}':\n{log}");
         }
     }
 
@@ -67,7 +67,7 @@ public class Shader : IDisposable
         if (status == 0)
         {
             string log = _gl.GetProgramInfoLog(program);
-            Console.Error.WriteLine($"[Shader] Link error:\n{log}");
+            Console.Error.WriteLine($"Link error:\n{log}");
         }
     }
 

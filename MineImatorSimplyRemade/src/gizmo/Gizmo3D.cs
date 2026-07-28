@@ -85,7 +85,7 @@ public struct Transform3D
     }
 
     /// <summary>Builds a full 4×4 world matrix from this transform (GlmSharp column-major).</summary>
-    public mat4 ToMat4()
+    public readonly mat4 ToMat4()
     {
         mat4 m = Basis;
         m.m30 = Origin.x;
@@ -430,7 +430,7 @@ public class Gizmo3D : IDisposable
     // ── OpenGL ────────────────────────────────────────────────────────────────
 
     private readonly GL _gl;
-    private MineImatorSimplyRemade.core.mdl.Shader? _shader;
+    private core.mdl.Shader? _shader;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Constructor
@@ -447,7 +447,7 @@ public class Gizmo3D : IDisposable
     /// </summary>
     public void Init()
     {
-        _shader = new MineImatorSimplyRemade.core.mdl.Shader(_gl);
+        _shader = new core.mdl.Shader(_gl);
         _shader.CompileShader("gizmo.vert", "gizmo.frag");
         InitIndicators();
     }
@@ -459,8 +459,10 @@ public class Gizmo3D : IDisposable
     public void Select(SceneObject obj)
     {
         if (obj == null) return;
-        foreach (var s in _selections)
-            if (s.Object == obj) return;
+        if (_selections.Any(s => s.Object == obj))
+        {
+            return;
+        }
 
         _selections.Add(new SelectedItem
         {
@@ -486,9 +488,7 @@ public class Gizmo3D : IDisposable
 
     public bool IsSelected(SceneObject obj)
     {
-        foreach (var s in _selections)
-            if (s.Object == obj) return true;
-        return false;
+        return _selections.Any(s => s.Object == obj);
     }
 
     public int GetSelectedCount() => _selections.Count;
@@ -507,8 +507,8 @@ public class Gizmo3D : IDisposable
         if (_selections.Count == 0) return false;
         foreach (var selection in _selections)
         {
-            if (selection.Object is MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.LightSceneObject light &&
-                light.Type != MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.LightType.Spot)
+            if (selection.Object is LightSceneObject light &&
+                light.Type != LightType.Spot)
                 return false;
         }
         return true;
@@ -524,8 +524,8 @@ public class Gizmo3D : IDisposable
         foreach (var selection in _selections)
         {
             var obj = selection.Object;
-            if (obj is MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.CameraSceneObject ||
-                obj is MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.LightSceneObject)
+            if (obj is CameraSceneObject ||
+                obj is LightSceneObject)
                 return false;
         }
         return true;
@@ -985,7 +985,7 @@ public class Gizmo3D : IDisposable
     // Draw helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private unsafe void DrawPart(ref GizmoPart part, mat4 mvp, int highlightAxisCode)
+    private void DrawPart(ref GizmoPart part, mat4 mvp, int highlightAxisCode)
     {
         if (part.Vao == 0 || part.VertexCount == 0 || _shader == null) return;
         bool hl = _highlightAxis == highlightAxisCode;
@@ -1012,10 +1012,7 @@ public class Gizmo3D : IDisposable
         _gl.Uniform4(colorLoc, color.x, color.y, color.z, color.w);
 
         _gl.BindVertexArray(part.Vao);
-        if (part.IsLines)
-            _gl.DrawArrays(GLEnum.Lines, 0, (uint)part.VertexCount);
-        else
-            _gl.DrawArrays(GLEnum.Triangles, 0, (uint)part.VertexCount);
+        _gl.DrawArrays(part.IsLines ? GLEnum.Lines : GLEnum.Triangles, 0, (uint)part.VertexCount);
         _gl.BindVertexArray(0);
     }
 
@@ -1388,6 +1385,8 @@ public class Gizmo3D : IDisposable
                         planeNorm   = gt.BasisColumn(2).Normalized;
                         splaneMv    = true;
                         break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
                 }
 
                 vec3? si = GizmoMath.PlaneIntersectsRay(planeNorm, planePt, rayPos, ray);
@@ -1462,6 +1461,8 @@ public class Gizmo3D : IDisposable
                         planeNorm = gt.BasisColumn(2).Normalized;
                         tplaneMv  = true;
                         break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
                 }
 
                 vec3? ti = GizmoMath.PlaneIntersectsRay(planeNorm, planePt, rayPos, ray);
@@ -1489,10 +1490,7 @@ public class Gizmo3D : IDisposable
             {
                 vec3 camToObj = _edit.Center - (_camera?.Position ?? vec3.Zero);
                 vec3 planeNorm;
-                if (camToObj != vec3.Zero)
-                    planeNorm = camToObj.Normalized;
-                else
-                    planeNorm = GetCameraNormal();
+                planeNorm = camToObj != vec3.Zero ? camToObj.Normalized : GetCameraNormal();
 
                 vec3 planePt    = _edit.Center;
                 vec3 localAxis  = vec3.Zero;
@@ -1515,6 +1513,8 @@ public class Gizmo3D : IDisposable
                         localAxis = vec3.UnitZ;
                         globalAxis = vec3.UnitZ;
                         break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
                 }
 
                 if (UseLocalSpace && _edit.Plane != TransformPlane.View)
@@ -1597,9 +1597,8 @@ public class Gizmo3D : IDisposable
     {
         bool localCoords = UseLocalSpace && _edit.Plane != TransformPlane.View;
 
-        for (int i = 0; i < _selections.Count; i++)
+        foreach (var item in _selections)
         {
-            var item = _selections[i];
             Transform3D newTransform = ComputeTransform(
                 _edit.Mode,
                 item.TargetGlobal,
@@ -1609,30 +1608,33 @@ public class Gizmo3D : IDisposable
 
             SceneObject obj = item.Object;
 
-            if (_edit.Mode == TransformMode.Translate)
+            switch (_edit.Mode)
             {
-                vec3 newWorldPos = newTransform.Origin;
+                case TransformMode.Translate:
+                {
+                    vec3 newWorldPos = newTransform.Origin;
 
-                if (obj.Parent != null)
-                {
-                    mat4 parentTransform = obj.GetParentWorldTransform();
-                    mat4 parentInverse   = parentTransform.Inverse;
-                    vec4 localH          = parentInverse * new vec4(newWorldPos, 1f);
-                    obj.SetLocalPosition(new vec3(localH.x, localH.y, localH.z));
+                    if (obj.Parent != null)
+                    {
+                        mat4 parentTransform = obj.GetParentWorldTransform();
+                        mat4 parentInverse   = parentTransform.Inverse;
+                        vec4 localH          = parentInverse * new vec4(newWorldPos, 1f);
+                        obj.SetLocalPosition(new vec3(localH.x, localH.y, localH.z));
+                    }
+                    else
+                    {
+                        obj.SetLocalPosition(newWorldPos);
+                    }
+
+                    break;
                 }
-                else
-                {
-                    obj.SetLocalPosition(newWorldPos);
-                }
-            }
-            else if (_edit.Mode == TransformMode.Rotate)
-            {
-                if (obj is CameraSceneObject cameraObject)
+                case TransformMode.Rotate when obj is CameraSceneObject cameraObject:
                 {
                     vec3 forward = GizmoMath.BasisTransform(newTransform.Basis, vec3.UnitZ);
                     cameraObject.ApplyLookDirection(forward);
+                    break;
                 }
-                else
+                case TransformMode.Rotate:
                 {
                     mat4 rotBasis = newTransform.Basis;
 
@@ -1661,11 +1663,11 @@ public class Gizmo3D : IDisposable
                     // so the basis includes scale. MatrixToEulerYXZ assumes a pure-rotation matrix
                     // (m.m21 == -sin(x) only holds without scale), so we must normalise first.
                     obj.SetLocalRotation(GizmoMath.MatrixToEulerYXZ(NormalizeRotation(rotBasis)));
+                    break;
                 }
-            }
-            else if (_edit.Mode == TransformMode.Scale)
-            {
-                obj.SetLocalScale(GizmoMath.ExtractScale(newTransform.Basis));
+                case TransformMode.Scale:
+                    obj.SetLocalScale(GizmoMath.ExtractScale(newTransform.Basis));
+                    break;
             }
         }
 
@@ -1727,9 +1729,7 @@ public class Gizmo3D : IDisposable
             case TransformMode.Translate:
             {
                 if (Snapping) motion = GizmoMath.Snapped(motion, extra);
-                if (local)
-                    return original.TranslatedLocal(motion);
-                return original.Translated(motion);
+                return local ? original.TranslatedLocal(motion) : original.Translated(motion);
             }
 
             case TransformMode.Rotate:
@@ -1748,19 +1748,17 @@ public class Gizmo3D : IDisposable
                     mat4 purRot   = originalLocal.Basis * scaleMat.Inverse;
                     return new Transform3D(purRot * rotMat * scaleMat, originalLocal.Origin);
                 }
-                else
-                {
-                    // NOTE: this returns the object's NEW WORLD-space rotation basis
-                    // (rotating the captured world basis "original"). It is NOT yet the
-                    // object's local rotation when it has a parent — the caller
-                    // (ApplyTransform) is responsible for converting world -> local by
-                    // removing the parent's world rotation before calling
-                    // SetLocalRotation, the same way it converts a world position back
-                    // to local for Translate.
-                    vec3 newOrigin = GizmoMath.BasisTransform(rotMat, original.Origin - _edit.Center) + _edit.Center;
-                    mat4 newBasis  = rotMat * original.Basis;
-                    return new Transform3D(newBasis, newOrigin);
-                }
+
+                // NOTE: this returns the object's NEW WORLD-space rotation basis
+                // (rotating the captured world basis "original"). It is NOT yet the
+                // object's local rotation when it has a parent — the caller
+                // (ApplyTransform) is responsible for converting world -> local by
+                // removing the parent's world rotation before calling
+                // SetLocalRotation, the same way it converts a world position back
+                // to local for Translate.
+                vec3 newOrigin = GizmoMath.BasisTransform(rotMat, original.Origin - _edit.Center) + _edit.Center;
+                mat4 newBasis  = rotMat * original.Basis;
+                return new Transform3D(newBasis, newOrigin);
             }
 
             default:
@@ -1795,14 +1793,12 @@ public class Gizmo3D : IDisposable
 
     private Vector2 PointToScreen(vec3 worldPos)
     {
-        if (_camera == null) return default;
-        return _camera.UnprojectPosition(worldPos, _imageMin, _imageSize);
+        return _camera?.UnprojectPosition(worldPos, _imageMin, _imageSize) ?? default;
     }
 
     private Vector2 UnprojectPos(vec3 worldPos)
     {
-        if (_camera == null) return Vector2.Zero;
-        return _camera.UnprojectPosition(worldPos, _imageMin, _imageSize);
+        return _camera?.UnprojectPosition(worldPos, _imageMin, _imageSize) ?? Vector2.Zero;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

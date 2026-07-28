@@ -2,10 +2,8 @@
 using System.IO.Compression;
 using System.Numerics;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using GlmSharp;
 using Hexa.NET.ImGui;
-using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.project;
@@ -17,6 +15,8 @@ using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
 using StbImageSharp;
+using Buffer = System.Buffer;
+using Shader = MineImatorSimplyRemade.core.mdl.Shader;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
@@ -73,7 +73,7 @@ public class Viewport : UiPanel
 
     // ── Background image plane ───────────────────────────────────────────────
 
-    private MineImatorSimplyRemade.core.mdl.Shader? _backgroundShader;
+    private Shader? _backgroundShader;
     private uint _backgroundVao;
     private uint _backgroundVbo;
     private uint _backgroundTexture;
@@ -157,9 +157,9 @@ public class Viewport : UiPanel
     private uint _shadowFbo;
     private uint _shadowTex;
     private uint _shadowMapSize = 2048;
-    private MineImatorSimplyRemade.core.mdl.Shader? _shadowShader;
+    private Shader? _shadowShader;
     private uint _pointShadowFbo;
-    private MineImatorSimplyRemade.core.mdl.Shader? _pointShadowShader;
+    private Shader? _pointShadowShader;
     private const int MaxPointShadowLights = 4;
     private const uint PointShadowMapSize = 1024;
     private readonly uint[] _pointShadowCubeTextures = new uint[MaxPointShadowLights];
@@ -198,7 +198,7 @@ public class Viewport : UiPanel
     private uint _pickRbo;
 
     /// <summary>Flat-colour shader used in the pick pass (outputs uPickColor).</summary>
-    private MineImatorSimplyRemade.core.mdl.Shader? _pickShader;
+    private Shader? _pickShader;
 
     // ── Sobel selection highlight ──────────────────────────────────────────────
 
@@ -210,13 +210,13 @@ public class Viewport : UiPanel
     private uint _silhouetteTex;
 
     /// <summary>Shader that writes flat white into the silhouette mask FBO.</summary>
-    private MineImatorSimplyRemade.core.mdl.Shader? _silhouetteShader;
+    private Shader? _silhouetteShader;
 
     /// <summary>
     /// Full-screen Sobel edge detection shader.  Reads <see cref="_silhouetteTex"/>
     /// and paints the detected edges into the main display FBO.
     /// </summary>
-    private MineImatorSimplyRemade.core.mdl.Shader? _edgeShader;
+    private Shader? _edgeShader;
 
     /// <summary>
     /// Empty VAO required by the full-screen triangle draw call used in the edge pass.
@@ -254,8 +254,8 @@ public class Viewport : UiPanel
     /// Set to false by the "Overlays" toggle button in the top bar.
     /// </summary>
     public bool OverlaysEnabled { get; set; } = true;
-    public bool HighQualityPreviewEnabled { get; private set; } = false;
-    public bool ShadowDebugEnabled { get; private set; } = false;
+    public bool HighQualityPreviewEnabled { get; private set; }
+    public bool ShadowDebugEnabled { get; private set; }
 
     // ── Secondary camera viewport ──────────────────────────────────────────────
 
@@ -297,9 +297,9 @@ public class Viewport : UiPanel
     private uint _previewHeight = 1;
     private uint _previewShadowFbo;
     private uint _previewShadowTex;
-    private MineImatorSimplyRemade.core.mdl.Shader? _previewShadowShader;
+    private Shader? _previewShadowShader;
     private uint _previewPointShadowFbo;
-    private MineImatorSimplyRemade.core.mdl.Shader? _previewPointShadowShader;
+    private Shader? _previewPointShadowShader;
     private readonly uint[] _previewPointShadowCubeTextures = new uint[MaxPointShadowLights];
 
     // Preview pick / silhouette FBOs. Mirrors the main viewport's resources so
@@ -321,7 +321,7 @@ public class Viewport : UiPanel
     public uint ColorTexture => _previewColorTex;
 
     /// <summary>True while a GLFW CameraWindow owns the rendering.</summary>
-    public bool Undocked { get; set; } = false;
+    public bool Undocked { get; set; }
 
     /// <summary>
     /// Raised when the user clicks "Pop".  The subscriber (MainWindow / main.cs)
@@ -353,13 +353,13 @@ public class Viewport : UiPanel
     /// Tracks whether the inline preview window is being manually dragged by the user.
     /// Used to suppress position forcing and camera input while dragging.
     /// </summary>
-    private bool _inlineDragActive = false;
+    private bool _inlineDragActive;
     private Vector2 _inlineWindowLastPos = Vector2.Zero;
-    private bool _inlineMouseWasDownLastFrame = false;
+    private bool _inlineMouseWasDownLastFrame;
     private Vector2 _inlineMouseDownPos = Vector2.Zero;
-    private int _inlineFramesSinceMouseUp = 0;
+    private int _inlineFramesSinceMouseUp;
     private Vector2 _inlineWindowPosBeforeSnap = Vector2.Zero;
-    private bool _inlineSnappedThisInteraction = false;
+    private bool _inlineSnappedThisInteraction;
     private Vector2 _prevImageMin = Vector2.Zero;
     private Vector2 _prevImageSize = Vector2.Zero;
 
@@ -391,7 +391,7 @@ public class Viewport : UiPanel
     // ── Bone indicator ─────────────────────────────────────────────────────────
 
     /// <summary>Flat-colour shader used to draw the bone octahedron indicators.</summary>
-    private MineImatorSimplyRemade.core.mdl.Shader? _boneShader;
+    private Shader? _boneShader;
 
     /// <summary>RGBA colour for unselected bone indicators.</summary>
     private static readonly vec4 BoneColor         = new(0.80f, 0.65f, 0.10f, 1f); // amber
@@ -401,10 +401,10 @@ public class Viewport : UiPanel
     // ── Light billboard ────────────────────────────────────────────────────────
 
     /// <summary>Billboard shader used to draw camera-facing light icons.</summary>
-    private MineImatorSimplyRemade.core.mdl.Shader? _billboardShader;
+    private Shader? _billboardShader;
 
     /// <summary>Camera-facing ring shader used for selected-light range indicators.</summary>
-    private MineImatorSimplyRemade.core.mdl.Shader? _lightRingShader;
+    private Shader? _lightRingShader;
 
     /// <summary>GL texture handle for <c>light.png</c>.</summary>
     private uint _lightIconTexture;
@@ -447,7 +447,7 @@ public class Viewport : UiPanel
         string normalizedAtlas = string.Equals(atlasKind, "item", StringComparison.OrdinalIgnoreCase)
             ? "item"
             : "block";
-        string normalizedKey = (tileKey ?? string.Empty).Trim();
+        string normalizedKey = tileKey.Trim();
         if (string.IsNullOrWhiteSpace(normalizedKey))
             return false;
 
@@ -505,7 +505,7 @@ public class Viewport : UiPanel
 
         var status = Gl.CheckFramebufferStatus(GLEnum.Framebuffer);
         if (status != GLEnum.FramebufferComplete)
-            Console.Error.WriteLine($"[Viewport] Framebuffer incomplete: {status}");
+            Console.Error.WriteLine($"Framebuffer incomplete: {status}");
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
@@ -514,18 +514,18 @@ public class Viewport : UiPanel
         InitPickFramebuffer(width, height);
 
         // ── Pick shader ───────────────────────────────────────────────────────
-        _pickShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _pickShader = new Shader(Gl);
         _pickShader.CompileShader("pick.vert", "pick.frag");
 
         // ── Silhouette mask FBO ───────────────────────────────────────────────
         InitSilhouetteFbo(width, height);
 
         // ── Silhouette shader (flat white into the mask FBO) ──────────────────
-        _silhouetteShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _silhouetteShader = new Shader(Gl);
         _silhouetteShader.CompileShader("pick.vert", "silhouette.frag");
 
         // ── Sobel edge shader (full-screen quad, reads mask, writes edges) ────
-        _edgeShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _edgeShader = new Shader(Gl);
         _edgeShader.CompileShader("edge.vert", "edge.frag");
 
         // ── Background quad shader + geometry ───────────────────────────────
@@ -566,7 +566,7 @@ public class Viewport : UiPanel
 
     private unsafe void InitBackgroundRenderer()
     {
-        _backgroundShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _backgroundShader = new Shader(Gl);
         _backgroundShader.CompileShader("background.vert", "background.frag");
 
         float[] quadVertices =
@@ -678,7 +678,7 @@ public class Viewport : UiPanel
             for (int row = 0; row < img.Height; row++)
             {
                 int srcRow = img.Height - 1 - row;
-                System.Buffer.BlockCopy(img.Data, srcRow * rowBytes, flipped, row * rowBytes, rowBytes);
+                Buffer.BlockCopy(img.Data, srcRow * rowBytes, flipped, row * rowBytes, rowBytes);
             }
 
             Gl.GenTextures(1, out _backgroundTexture);
@@ -698,7 +698,7 @@ public class Viewport : UiPanel
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[Viewport] Failed to load background image '{path}': {ex.Message}");
+            Console.Error.WriteLine($"Failed to load background image '{path}': {ex.Message}");
             DisposeBackgroundTexture();
         }
     }
@@ -720,7 +720,7 @@ public class Viewport : UiPanel
         RenderBackgroundPlane(viewportWidth, viewportHeight);
     }
 
-    private unsafe void RenderBackgroundPlane(uint viewportWidth, uint viewportHeight)
+    private void RenderBackgroundPlane(uint viewportWidth, uint viewportHeight)
     {
         if (_backgroundShader == null || _backgroundTexture == 0 || _backgroundVao == 0)
             return;
@@ -750,10 +750,10 @@ public class Viewport : UiPanel
         if (userOffsetLoc >= 0) Gl.Uniform2(userOffsetLoc, _backgroundUserOffset.X, _backgroundUserOffset.Y);
 
         int viewportLoc = Gl.GetUniformLocation(program, "uViewportSize");
-        if (viewportLoc >= 0) Gl.Uniform2(viewportLoc, (float)viewportWidth, (float)viewportHeight);
+        if (viewportLoc >= 0) Gl.Uniform2(viewportLoc, (float)viewportWidth, viewportHeight);
 
         int imageLoc = Gl.GetUniformLocation(program, "uImageSize");
-        if (imageLoc >= 0) Gl.Uniform2(imageLoc, (float)_backgroundImageWidth, (float)_backgroundImageHeight);
+        if (imageLoc >= 0) Gl.Uniform2(imageLoc, _backgroundImageWidth, (float)_backgroundImageHeight);
 
         Gl.ActiveTexture(GLEnum.Texture0);
         Gl.BindTexture(GLEnum.Texture2D, _backgroundTexture);
@@ -796,7 +796,7 @@ public class Viewport : UiPanel
 
         var status = Gl.CheckFramebufferStatus(GLEnum.Framebuffer);
         if (status != GLEnum.FramebufferComplete)
-            Console.Error.WriteLine($"[Viewport] Pick framebuffer incomplete: {status}");
+            Console.Error.WriteLine($"Pick framebuffer incomplete: {status}");
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
@@ -823,7 +823,7 @@ public class Viewport : UiPanel
         // No depth needed — we use GL_ALWAYS depth test in the silhouette pass.
         var status = Gl.CheckFramebufferStatus(GLEnum.Framebuffer);
         if (status != GLEnum.FramebufferComplete)
-            Console.Error.WriteLine($"[Viewport] Silhouette framebuffer incomplete: {status}");
+            Console.Error.WriteLine($"Silhouette framebuffer incomplete: {status}");
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
@@ -835,7 +835,7 @@ public class Viewport : UiPanel
     /// Loads light billboard textures and creates the shared screen-aligned quad
     /// VAO used by <see cref="RenderLightBillboards"/>.
     /// </summary>
-    private unsafe void InitLightBillboards()
+    private void InitLightBillboards()
     {
         if (Gl == null) return;
 
@@ -847,15 +847,15 @@ public class Viewport : UiPanel
         LightSceneObject.BillboardVao = CreateBillboardVao();
 
         // Compile billboard shader.
-        _billboardShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _billboardShader = new Shader(Gl);
         _billboardShader.CompileShader("billboard.vert", "billboard.frag");
 
         // Bone indicator shader (flat MVP + colour, same as gizmo).
-        _boneShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _boneShader = new Shader(Gl);
         _boneShader.CompileShader("gizmo.vert", "gizmo.frag");
 
         // Camera-facing ring shader for selected-light range indicators.
-        _lightRingShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _lightRingShader = new Shader(Gl);
         _lightRingShader.CompileShader("lightring.vert", "lightring.frag");
 
         // Shared procedural ring mesh for selected-light range indicators.
@@ -1038,7 +1038,7 @@ public class Viewport : UiPanel
     /// Rendered with depth-test on so occluded bones are hidden by geometry,
     /// but depth-write off so they never occlude other objects.
     /// </summary>
-    private unsafe void RenderBoneIndicators(mat4 view, mat4 proj)
+    private void RenderBoneIndicators(mat4 view, mat4 proj)
     {
         if (_boneShader == null) return;
 
@@ -1161,7 +1161,7 @@ public class Viewport : UiPanel
         Gl.Enable(GLEnum.CullFace);
     }
 
-    private unsafe void RenderLightRangeIndicatorsRecursive(
+    private void RenderLightRangeIndicatorsRecursive(
         SceneObject obj, mat4 view, mat4 proj,
         int posLoc, int rangeLoc, int colorLoc, SelectionManager? sm)
     {
@@ -1194,7 +1194,7 @@ public class Viewport : UiPanel
     /// always + no depth writes so they remain visible through geometry.
     /// Uses the same flat-colour gizmo shader as bone indicators / range rings.
     /// </summary>
-    private unsafe void RenderSpotLightIndicators(mat4 view, mat4 proj)
+    private void RenderSpotLightIndicators(mat4 view, mat4 proj)
     {
         if (_boneShader == null) return;
         if (LightSceneObject.SharedSpotConeMesh == null ||
@@ -1224,7 +1224,7 @@ public class Viewport : UiPanel
         Gl.Disable(GLEnum.Blend);
     }
 
-    private unsafe void RenderSpotLightIndicatorsRecursive(
+    private void RenderSpotLightIndicatorsRecursive(
         SceneObject obj, mat4 view, mat4 proj,
         int mvpLoc, int colorLoc, SelectionManager? sm)
     {
@@ -1347,7 +1347,7 @@ public class Viewport : UiPanel
             $"MineImatorSimplyRemade.assets.img.{resourceName}.png");
         if (stream == null)
         {
-            Console.Error.WriteLine($"[Viewport] Embedded texture not found: {resourceName}");
+            Console.Error.WriteLine($"Embedded texture not found: {resourceName}");
             return 0;
         }
 
@@ -1360,7 +1360,7 @@ public class Viewport : UiPanel
         for (int row = 0; row < img.Height; row++)
         {
             int srcRow = img.Height - 1 - row;
-            System.Buffer.BlockCopy(img.Data, srcRow * rowBytes, flipped, row * rowBytes, rowBytes);
+            Buffer.BlockCopy(img.Data, srcRow * rowBytes, flipped, row * rowBytes, rowBytes);
         }
 
         uint tex = Gl.GenTexture();
@@ -1468,7 +1468,7 @@ public class Viewport : UiPanel
             int destRow = y * (stride + 1);
             int srcY = height - 1 - y;
             int srcRow = srcY * stride;
-            System.Buffer.BlockCopy(rgbPixels, srcRow, scanlines, destRow + 1, stride);
+            Buffer.BlockCopy(rgbPixels, srcRow, scanlines, destRow + 1, stride);
         }
 
         byte[] ihdr = new byte[13];
@@ -1784,7 +1784,7 @@ public class Viewport : UiPanel
         float savedFar  = activeCamera.Far;
         if (activeCamObj != null)
         {
-            activeCamera.FovY = GlmSharp.glm.Radians(activeCamObj.Fov);
+            activeCamera.FovY = glm.Radians(activeCamObj.Fov);
             activeCamera.Near = activeCamObj.Near;
             activeCamera.Far  = activeCamObj.Far;
         }
@@ -2097,7 +2097,7 @@ public class Viewport : UiPanel
         if (Gl == null || _shadowShader != null)
             return;
 
-        _shadowShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _shadowShader = new Shader(Gl);
         _shadowShader.CompileShader("shadow_depth.vert", "shadow_depth.frag");
 
         Gl.GenFramebuffers(1, out _shadowFbo);
@@ -2134,7 +2134,7 @@ public class Viewport : UiPanel
         if (Gl == null || _pointShadowShader != null)
             return;
 
-        _pointShadowShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _pointShadowShader = new Shader(Gl);
         _pointShadowShader.CompileShader("point_shadow_depth.vert", "point_shadow_depth.frag");
 
         Gl.GenFramebuffers(1, out _pointShadowFbo);
@@ -2176,7 +2176,7 @@ public class Viewport : UiPanel
         if (Gl == null || !IsPreviewViewport || _previewShadowShader != null)
             return;
 
-        _previewShadowShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _previewShadowShader = new Shader(Gl);
         _previewShadowShader.CompileShader("shadow_depth.vert", "shadow_depth.frag");
 
         Gl.GenFramebuffers(1, out _previewShadowFbo);
@@ -2213,7 +2213,7 @@ public class Viewport : UiPanel
         if (Gl == null || !IsPreviewViewport || _previewPointShadowShader != null)
             return;
 
-        _previewPointShadowShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+        _previewPointShadowShader = new Shader(Gl);
         _previewPointShadowShader.CompileShader("point_shadow_depth.vert", "point_shadow_depth.frag");
 
         Gl.GenFramebuffers(1, out _previewPointShadowFbo);
@@ -2250,7 +2250,7 @@ public class Viewport : UiPanel
         Gl.BindTexture(GLEnum.TextureCubeMap, 0);
     }
 
-    private unsafe void RenderShadowMap()
+    private void RenderShadowMap()
     {
         if (Gl == null)
             return;
@@ -2281,7 +2281,7 @@ public class Viewport : UiPanel
         Gl.Viewport(0, 0, _viewportWidth, _viewportHeight);
     }
 
-    private unsafe Dictionary<LightSceneObject, int> RenderPointShadowMaps()
+    private Dictionary<LightSceneObject, int> RenderPointShadowMaps()
     {
         Dictionary<LightSceneObject, int> shadowIndices = new();
         if (Gl == null)
@@ -2303,7 +2303,7 @@ public class Viewport : UiPanel
             Mesh.PointShadowCubeTextures[lightIndex] = _pointShadowCubeTextures[lightIndex];
 
             float farPlane = Math.Max(range, 0.5f);
-            mat4 projection = mat4.Perspective(GlmSharp.glm.Radians(90f), 1f, 0.05f, farPlane);
+            mat4 projection = mat4.Perspective(glm.Radians(90f), 1f, 0.05f, farPlane);
 
             for (int face = 0; face < 6; face++)
             {
@@ -2404,7 +2404,7 @@ public class Viewport : UiPanel
         return lightProj * lightView;
     }
 
-    private void RenderShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, MineImatorSimplyRemade.core.mdl.Shader shadowShader, Dictionary<string, BoneSceneObject>? boneDict = null)
+    private void RenderShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, Shader shadowShader, Dictionary<string, BoneSceneObject>? boneDict = null)
     {
         foreach (var obj in objects)
         {
@@ -2412,15 +2412,10 @@ public class Viewport : UiPanel
                 continue;
 
             mat4 model = obj.GetWorldMatrix();
-            var localBoneDict = boneDict;
-            if (localBoneDict == null)
-                localBoneDict = BuildBoneDictionary(obj);
+            var localBoneDict = boneDict ?? BuildBoneDictionary(obj);
 
-            foreach (var mesh in obj.Visuals)
+            foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly && !mesh.DepthTestDisabled))
             {
-                if (mesh.PickOnly || mesh.DepthTestDisabled)
-                    continue;
-
                 if (mesh.IsSkinned)
                     UpdateBoneMatrices(mesh, model, localBoneDict);
 
@@ -2440,15 +2435,11 @@ public class Viewport : UiPanel
 
             mat4 world = obj.GetWorldMatrix();
             bool includedMeshVertex = false;
-            foreach (var mesh in obj.Visuals)
+            foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly && !mesh.DepthTestDisabled && mesh.Vertices.Count != 0))
             {
-                if (mesh.PickOnly || mesh.DepthTestDisabled || mesh.Vertices.Count == 0)
-                    continue;
-
                 includedMeshVertex = true;
-                foreach (vec3 vertex in mesh.Vertices)
+                foreach (var worldVertex in mesh.Vertices.Select(vertex => world * new vec4(vertex, 1f)))
                 {
-                    vec4 worldVertex = world * new vec4(vertex, 1f);
                     bounds.Include(new vec3(worldVertex.x, worldVertex.y, worldVertex.z));
                 }
             }
@@ -2460,7 +2451,7 @@ public class Viewport : UiPanel
         }
     }
 
-    private void RenderPointShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, vec3 lightPos, float farPlane, MineImatorSimplyRemade.core.mdl.Shader pointShadowShader, Dictionary<string, BoneSceneObject>? boneDict = null)
+    private void RenderPointShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, vec3 lightPos, float farPlane, Shader pointShadowShader, Dictionary<string, BoneSceneObject>? boneDict = null)
     {
         foreach (var obj in objects)
         {
@@ -2472,11 +2463,8 @@ public class Viewport : UiPanel
             if (localBoneDict == null)
                 localBoneDict = BuildBoneDictionary(obj);
 
-            foreach (var mesh in obj.Visuals)
+            foreach (var mesh in obj.Visuals.Where(mesh => mesh is { PickOnly: false, DepthTestDisabled: false }))
             {
-                if (mesh.PickOnly || mesh.DepthTestDisabled)
-                    continue;
-
                 if (mesh.IsSkinned)
                     UpdateBoneMatrices(mesh, model, localBoneDict);
 
@@ -2508,7 +2496,7 @@ public class Viewport : UiPanel
     /// Public method for preview viewport to render directional shadow map.
     /// Renders shadows into the preview viewport's own shadow framebuffer.
     /// </summary>
-    public unsafe void RenderShadowMapPublic()
+    public void RenderShadowMapPublic()
     {
         if (Gl == null || !IsPreviewViewport)
             return;
@@ -2544,7 +2532,7 @@ public class Viewport : UiPanel
     /// Public method for preview viewport to render point shadow maps.
     /// Renders shadows into the preview viewport's own point shadow framebuffer.
     /// </summary>
-    public unsafe Dictionary<LightSceneObject, int> RenderPointShadowMapsPublic()
+    public Dictionary<LightSceneObject, int> RenderPointShadowMapsPublic()
     {
         Dictionary<LightSceneObject, int> shadowIndices = new();
         if (Gl == null || !IsPreviewViewport)
@@ -2566,7 +2554,7 @@ public class Viewport : UiPanel
             Mesh.PointShadowCubeTextures[lightIndex] = _previewPointShadowCubeTextures[lightIndex];
 
             float farPlane = Math.Max(range, 0.5f);
-            mat4 projection = mat4.Perspective(GlmSharp.glm.Radians(90f), 1f, 0.05f, farPlane);
+            mat4 projection = mat4.Perspective(glm.Radians(90f), 1f, 0.05f, farPlane);
 
             for (int face = 0; face < 6; face++)
             {
@@ -2634,13 +2622,13 @@ public class Viewport : UiPanel
     /// screen-space rectangle of the rendered image so we can map screen
     /// coordinates to FBO pixel coordinates correctly.
     /// </summary>
-    private unsafe void ExecutePendingPick(Vector2 imageMin, Vector2 imageSize)
+    private void ExecutePendingPick(Vector2 imageMin, Vector2 imageSize)
     {
         var (pickCamera, pickCamObj) = GetActiveRenderCamera();
         float pickSavedFovY = pickCamera.FovY, pickSavedNear = pickCamera.Near, pickSavedFar = pickCamera.Far;
         if (pickCamObj != null)
         {
-            pickCamera.FovY = GlmSharp.glm.Radians(pickCamObj.Fov);
+            pickCamera.FovY = glm.Radians(pickCamObj.Fov);
             pickCamera.Near = pickCamObj.Near;
             pickCamera.Far  = pickCamObj.Far;
         }
@@ -2843,7 +2831,7 @@ public class Viewport : UiPanel
     /// object still contribute to the mask, so the outline is drawn "through"
     /// other geometry.
     /// </summary>
-    private unsafe void RenderSilhouettePass(mat4 view, mat4 proj)
+    private void RenderSilhouettePass(mat4 view, mat4 proj)
     {
         RenderSilhouettePassGeneric(_silhouetteFbo, _viewportWidth, _viewportHeight, view, proj);
     }
@@ -2933,12 +2921,12 @@ public class Viewport : UiPanel
     /// framebuffer using <see cref="EdgeColor"/>.  Shared by the main and
     /// preview viewports.
     /// </summary>
-    private unsafe void RenderEdgePass()
+    private void RenderEdgePass()
     {
         RenderEdgePassGeneric(_fbo, _silhouetteTex, _viewportWidth, _viewportHeight);
     }
 
-    private unsafe void RenderEdgePassGeneric(uint displayFbo, uint silhouetteTex, uint w, uint h)
+    private void RenderEdgePassGeneric(uint displayFbo, uint silhouetteTex, uint w, uint h)
     {
         if (_edgeShader == null || displayFbo == 0 || silhouetteTex == 0) return;
 
@@ -3074,16 +3062,11 @@ public class Viewport : UiPanel
             float dist     = (worldPos - camPos).LengthSqr;
 
             // Build a bone dictionary once for each top-level model hierarchy.
-            var localBoneDict = boneDict;
-            if (localBoneDict == null)
-                localBoneDict = BuildBoneDictionary(obj);
+            var localBoneDict = boneDict ?? BuildBoneDictionary(obj);
 
             // Only this node's own Visuals — not its descendants.
-            foreach (Mesh mesh in obj.Visuals)
+            foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly))
             {
-                if (mesh.PickOnly)
-                    continue;
-
                 if (mesh.IsSkinned && localBoneDict != null)
                     UpdateBoneMatrices(mesh, model, localBoneDict);
 
@@ -3122,10 +3105,9 @@ public class Viewport : UiPanel
 
     private static void CollectBones(SceneObject obj, Dictionary<string, BoneSceneObject> dict)
     {
-        if (obj is BoneSceneObject bone && !string.IsNullOrEmpty(bone.BoneName)
-            && !dict.ContainsKey(bone.BoneName))
+        if (obj is BoneSceneObject bone && !string.IsNullOrEmpty(bone.BoneName))
         {
-            dict[bone.BoneName] = bone;
+            dict.TryAdd(bone.BoneName, bone);
         }
 
         foreach (var child in obj.Children)
@@ -3253,7 +3235,7 @@ public class Viewport : UiPanel
 
         var status = Gl.CheckFramebufferStatus(GLEnum.Framebuffer);
         if (status != GLEnum.FramebufferComplete)
-            Console.Error.WriteLine($"[Viewport] Preview framebuffer incomplete: {status}");
+            Console.Error.WriteLine($"Preview framebuffer incomplete: {status}");
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
@@ -3269,17 +3251,17 @@ public class Viewport : UiPanel
         // the main viewport having initialised first.
         if (_pickShader == null)
         {
-            _pickShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+            _pickShader = new Shader(Gl);
             _pickShader.CompileShader("pick.vert", "pick.frag");
         }
         if (_silhouetteShader == null)
         {
-            _silhouetteShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+            _silhouetteShader = new Shader(Gl);
             _silhouetteShader.CompileShader("pick.vert", "silhouette.frag");
         }
         if (_edgeShader == null)
         {
-            _edgeShader = new MineImatorSimplyRemade.core.mdl.Shader(Gl);
+            _edgeShader = new Shader(Gl);
             _edgeShader.CompileShader("edge.vert", "edge.frag");
             Gl.GenVertexArrays(1, out _edgeVao);
         }
@@ -3316,7 +3298,7 @@ public class Viewport : UiPanel
 
         var status = Gl.CheckFramebufferStatus(GLEnum.Framebuffer);
         if (status != GLEnum.FramebufferComplete)
-            Console.Error.WriteLine($"[Viewport] Preview pick framebuffer incomplete: {status}");
+            Console.Error.WriteLine($"Preview pick framebuffer incomplete: {status}");
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
@@ -3342,7 +3324,7 @@ public class Viewport : UiPanel
 
         var status = Gl.CheckFramebufferStatus(GLEnum.Framebuffer);
         if (status != GLEnum.FramebufferComplete)
-            Console.Error.WriteLine($"[Viewport] Preview silhouette framebuffer incomplete: {status}");
+            Console.Error.WriteLine($"Preview silhouette framebuffer incomplete: {status}");
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
@@ -3406,11 +3388,13 @@ public class Viewport : UiPanel
 
     private (Camera cam, CameraSceneObject? sceneObj) GetActiveCameraPreview(List<CameraSceneObject> spawned)
     {
-        if (_selectedCameraIndex == RenderOutputIndex)
-            return GetRenderOutputCamera(spawned);
-
-        if (_selectedCameraIndex == 0)
-            return (MainViewport?.Camera ?? Camera, null);
+        switch (_selectedCameraIndex)
+        {
+            case RenderOutputIndex:
+                return GetRenderOutputCamera(spawned);
+            case 0:
+                return (MainViewport?.Camera ?? Camera, null);
+        }
 
         int idx = _selectedCameraIndex - 1;
         if (idx >= 0 && idx < spawned.Count)
@@ -3434,17 +3418,13 @@ public class Viewport : UiPanel
     public (Camera cam, CameraSceneObject? sceneObj) GetRenderOutputCamera(List<CameraSceneObject> spawned)
     {
         CameraSceneObject? firstVisible = null;
-        foreach (var cam in spawned)
+        foreach (var cam in spawned.Where(cam => cam.GetEffectiveVisibility()))
         {
-            if (!cam.GetEffectiveVisibility()) continue;
             if (cam.Active) return ResolveCamera(cam);
             firstVisible ??= cam;
         }
 
-        if (firstVisible != null)
-            return ResolveCamera(firstVisible);
-
-        return (MainViewport?.Camera ?? Camera, null);
+        return firstVisible != null ? ResolveCamera(firstVisible) : (MainViewport?.Camera ?? Camera, null);
     }
 
     private (Camera cam, CameraSceneObject? sceneObj) ResolveCamera(CameraSceneObject cam)
@@ -3557,28 +3537,27 @@ public class Viewport : UiPanel
         
         // ── Track mouse interaction state for camera input suppression ─────────────
         bool mouseJustPressed = leftDown && !_inlineMouseWasDownLastFrame;
-        if (leftDown && hovered)
+        switch (leftDown)
         {
-            if (mouseJustPressed)
+            case true when hovered:
             {
-                _inlineMouseDownPos = mouse;
-                _inlineSnappedThisInteraction = false;  // Reset snap flag for new drag
-            }
+                if (mouseJustPressed)
+                {
+                    _inlineMouseDownPos = mouse;
+                    _inlineSnappedThisInteraction = false;  // Reset snap flag for new drag
+                }
             
-            _inlineFramesSinceMouseUp = 0;
-        }
-        else if (!leftDown)
-        {
+                _inlineFramesSinceMouseUp = 0;
+                break;
+            }
             // Mouse was just released - end drag mode
-            if (_inlineMouseWasDownLastFrame)
-            {
+            case false when _inlineMouseWasDownLastFrame:
                 _inlineDragActive = false;
                 _inlineFramesSinceMouseUp = 0;
-            }
-            else
-            {
+                break;
+            case false:
                 _inlineFramesSinceMouseUp++;
-            }
+                break;
         }
         
         _inlineMouseWasDownLastFrame = leftDown && hovered;
@@ -3692,21 +3671,12 @@ public class Viewport : UiPanel
 
     private (Camera, CameraSceneObject?) DrawCameraDropdown(List<CameraSceneObject> spawned)
     {
-        string currentLabel;
-        if (_selectedCameraIndex == RenderOutputIndex)
+        string currentLabel = _selectedCameraIndex switch
         {
-            currentLabel = "Render Output";
-        }
-        else if (_selectedCameraIndex == 0)
-        {
-            currentLabel = "Work Camera";
-        }
-        else
-        {
-            currentLabel = _selectedCameraIndex - 1 < spawned.Count
-                ? spawned[_selectedCameraIndex - 1].Name
-                : "Render Output";
-        }
+            RenderOutputIndex => "Render Output",
+            0 => "Work Camera",
+            _ => _selectedCameraIndex - 1 < spawned.Count ? spawned[_selectedCameraIndex - 1].Name : "Render Output"
+        };
 
         ImGui.SetNextItemWidth(160f);
         if (ImGui.BeginCombo("##camSelect", currentLabel))
@@ -3787,7 +3757,7 @@ public class Viewport : UiPanel
         return new Vector2(drawW, drawH);
     }
 
-    public unsafe void RenderScenePublic(Camera cam, CameraSceneObject? sceneObj, uint w, uint h, bool highQuality = false)
+    public void RenderScenePublic(Camera cam, CameraSceneObject? sceneObj, uint w, uint h, bool highQuality = false)
     {
         if (Gl == null || MainViewport == null) return;
 
@@ -3815,7 +3785,7 @@ public class Viewport : UiPanel
         float savedFovY = cam.FovY, savedNear = cam.Near, savedFar = cam.Far;
         if (sceneObj != null)
         {
-            cam.FovY = GlmSharp.glm.Radians(sceneObj.Fov);
+            cam.FovY = glm.Radians(sceneObj.Fov);
             cam.Near = sceneObj.Near;
             cam.Far = sceneObj.Far;
         }
@@ -3940,105 +3910,6 @@ public class Viewport : UiPanel
         Mesh.ShadowLightSpaceMatrix = mat4.Identity;
         Mesh.ShadowDebugMode = 0;
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
-    }
-
-    /// <summary>
-    /// Core free-fly control logic (unified source of truth for all viewports).
-    /// Handles mouse look, keyboard movement, speed adjustments, and cursor management.
-    /// </summary>
-    private unsafe void DoFreeFlyMovement(
-        ref bool freeFlyActive,
-        ref float freeFlySpeed,
-        ref double lastMouseX,
-        ref double lastMouseY,
-        Camera camera,
-        Glfw? glfw,
-        WindowHandle* window,
-        Vector2 imageMin,
-        Vector2 imageSize)
-    {
-        var io = ImGui.GetIO();
-
-        double glfwCursorX = 0, glfwCursorY = 0;
-        if (glfw != null)
-        {
-            glfw.GetCursorPos(window, out glfwCursorX, out glfwCursorY);
-        }
-
-        bool mouseInViewportBounds = glfwCursorX >= imageMin.X && glfwCursorX <= imageMin.X + imageSize.X &&
-                                     glfwCursorY >= imageMin.Y && glfwCursorY <= imageMin.Y + imageSize.Y;
-
-        // Detect initial right-click within viewport bounds to enter free-fly mode
-        if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && mouseInViewportBounds)
-        {
-            freeFlyActive = true;
-            if (glfw != null)
-            {
-                glfw.SetInputMode(window, CursorStateAttribute.Cursor, CursorModeValue.CursorDisabled);
-                // Seed last position on entry so we don't get a spurious camera jump on first frame
-                glfw.GetCursorPos(window, out lastMouseX, out lastMouseY);
-            }
-        }
-
-        // Continue free-fly logic while mouse button is held and free-fly is active
-        if (freeFlyActive && ImGui.IsMouseDown(ImGuiMouseButton.Right) && glfw != null)
-        {
-            ImGui.SetNextFrameWantCaptureMouse(true);
-
-            glfw.GetCursorPos(window, out double cursorX, out double cursorY);
-
-            // Apply look (mouse rotation)
-            if (!double.IsNaN(cursorX) && !double.IsNaN(cursorY) &&
-                !double.IsInfinity(cursorX) && !double.IsInfinity(cursorY) &&
-                !double.IsNaN(lastMouseX) && !double.IsNaN(lastMouseY))
-            {
-                float lookDx = (float)(cursorX - lastMouseX) * FreeFlyLookSensitivity;
-                float lookDy = -(float)(cursorY - lastMouseY) * FreeFlyLookSensitivity;
-                camera.Look(lookDx, lookDy);
-            }
-
-            // Recenter mouse to viewport center after each frame to prevent hitting edges
-            // and to ensure the mouse always has room to move in any direction
-            double centerX = imageMin.X + imageSize.X * 0.5;
-            double centerY = imageMin.Y + imageSize.Y * 0.5;
-            glfw.SetCursorPos(window, centerX, centerY);
-            lastMouseX = centerX;
-            lastMouseY = centerY;
-
-            // Calculate movement speed
-            float dt = io.DeltaTime;
-            float speed = freeFlySpeed * camera.Distance * 0.2f;
-            if (ImGui.IsKeyDown(ImGuiKey.Space)) speed *= 2.5f;
-            else if (ImGui.IsKeyDown(ImGuiKey.ModShift)) speed *= 0.4f;
-
-            // Apply keyboard movement (WASD + QE)
-            float fwd = 0f, rt = 0f, up = 0f;
-            if (ImGui.IsKeyDown(ImGuiKey.W)) fwd += speed * dt;
-            if (ImGui.IsKeyDown(ImGuiKey.S)) fwd -= speed * dt;
-            if (ImGui.IsKeyDown(ImGuiKey.D)) rt += speed * dt;
-            if (ImGui.IsKeyDown(ImGuiKey.A)) rt -= speed * dt;
-            if (ImGui.IsKeyDown(ImGuiKey.E)) up += speed * dt;
-            if (ImGui.IsKeyDown(ImGuiKey.Q)) up -= speed * dt;
-            if (fwd != 0f || rt != 0f || up != 0f) camera.MoveFreeFly(fwd, rt, up);
-
-            // Handle scroll wheel for speed adjustment
-            if (io.MouseWheel != 0)
-            {
-                float factor = io.MouseWheel > 0 ? 1.3f : 1f / 1.3f;
-                for (int i = 0; i < (int)MathF.Abs(io.MouseWheel); i++) freeFlySpeed *= factor;
-                freeFlySpeed = Math.Clamp(freeFlySpeed, 0.1f, 500f);
-            }
-        }
-        else if (!ImGui.IsMouseDown(ImGuiMouseButton.Right) && freeFlyActive)
-        {
-            // Exit free-fly when mouse button is released
-            if (glfw != null)
-                glfw.SetInputMode(window, CursorStateAttribute.Cursor, CursorModeValue.CursorNormal);
-            freeFlyActive = false;
-            // Reset mouse position tracking on free-fly exit
-            lastMouseX = double.NaN;
-            lastMouseY = double.NaN;
-        }
     }
 
     public unsafe void HandleFreeFlyPublic(Camera cam, CameraSceneObject? sceneObj, bool hovered, Vector2 imageMin, Vector2 imageSize)
@@ -4173,9 +4044,9 @@ public class Viewport : UiPanel
             int top = y * stride;
             int bottom = (height - 1 - y) * stride;
 
-            System.Buffer.BlockCopy(rgbPixels, top, row, 0, stride);
-            System.Buffer.BlockCopy(rgbPixels, bottom, rgbPixels, top, stride);
-            System.Buffer.BlockCopy(row, 0, rgbPixels, bottom, stride);
+            Buffer.BlockCopy(rgbPixels, top, row, 0, stride);
+            Buffer.BlockCopy(rgbPixels, bottom, rgbPixels, top, stride);
+            Buffer.BlockCopy(row, 0, rgbPixels, bottom, stride);
         }
     }
 

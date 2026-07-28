@@ -13,7 +13,7 @@ public static class Services
 
     public static void Shutdown()
     {
-        AudioEngine?.Dispose();
+        AudioEngine.Dispose();
         AudioEngine = null;
     }
 }

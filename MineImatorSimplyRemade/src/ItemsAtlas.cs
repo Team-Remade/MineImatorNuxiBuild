@@ -133,7 +133,7 @@ public static class ItemsAtlas
         using (var stream = File.OpenRead(atlasPath))
             atlas = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
 
-        int atlasSize = AtlasTiles * TileSize;
+        const int atlasSize = AtlasTiles * TileSize;
         if (atlas.Width != atlasSize || atlas.Height != atlasSize)
         {
             Console.WriteLine($"Size mismatch: expected {atlasSize}×{atlasSize}, got {atlas.Width}×{atlas.Height}");
@@ -172,7 +172,7 @@ public static class ItemsAtlas
                 continue;
             }
 
-            int atlasSize = AtlasTiles * TileSize;
+            const int atlasSize = AtlasTiles * TileSize;
             if (atlas.Width != atlasSize || atlas.Height != atlasSize)
             {
                 Console.WriteLine($"Ignoring sheet override '{file.RelativePath}' from '{file.PackName}' due to size mismatch.");

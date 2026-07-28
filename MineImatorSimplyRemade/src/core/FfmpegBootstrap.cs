@@ -76,7 +76,7 @@ public static class FfmpegBootstrap
             if (RequiresFirstTimeDownload())
             {
                 statusCallback?.Invoke("Downloading FFmpeg binaries...");
-                Console.WriteLine($"[FFmpeg] Downloading binaries to '{FfmpegBinaryDirectory}'...");
+                Console.WriteLine($"Downloading binaries to '{FfmpegBinaryDirectory}'...");
 
                 var options = new FFOptions
                 {

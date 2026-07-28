@@ -95,10 +95,7 @@ public sealed class RenderExporter
     {
         EnsureFfmpegReady();
 
-        if (!_cameraViewport.CaptureCurrentViewRgb((uint)width, (uint)height, highQuality, out byte[] frame))
-            throw new InvalidOperationException("Failed to capture render frame.");
-
-        return ExportImageFromRgb(width, height, imageFormat, outputPath, frame);
+        return !_cameraViewport.CaptureCurrentViewRgb((uint)width, (uint)height, highQuality, out byte[] frame) ? throw new InvalidOperationException("Failed to capture render frame.") : ExportImageFromRgb(width, height, imageFormat, outputPath, frame);
     }
 
     public string ExportImageFromRgb(int width, int height, string imageFormat, string outputPath, byte[] rgbFrame)
@@ -225,10 +222,7 @@ public sealed class RenderExporter
         string stderr = process.StandardError.ReadToEnd();
         process.WaitForExit();
 
-        if (process.ExitCode != 0)
-            throw new InvalidOperationException($"ffmpeg failed with code {process.ExitCode}: {stderr}");
-
-        return finalPath;
+        return process.ExitCode != 0 ? throw new InvalidOperationException($"ffmpeg failed with code {process.ExitCode}: {stderr}") : finalPath;
     }
 
     private static string? BuildTimelineAudioFile(Timeline? timeline, int fps, string outputVideoPath)

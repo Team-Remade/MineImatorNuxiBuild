@@ -3,6 +3,7 @@ using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.GLFW;
 using Hexa.NET.ImGui.Backends.OpenGL3;
 using MineImatorSimplyRemade.core.ui.Panels;
+using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
 
@@ -33,7 +34,6 @@ public class CameraWindow : Window
 
     public Viewport? Panel
     {
-        get => _panel;
         set => _panel = value;
     }
 
@@ -75,8 +75,8 @@ public class CameraWindow : Window
         Glfw.MakeContextCurrent(WindowHandle);
 
         GL.ClearColor(ClearR, ClearG, ClearB, ClearA);
-        GL.Clear(Silk.NET.OpenGL.ClearBufferMask.ColorBufferBit |
-                 Silk.NET.OpenGL.ClearBufferMask.DepthBufferBit);
+        GL.Clear(ClearBufferMask.ColorBufferBit |
+                 ClearBufferMask.DepthBufferBit);
 
         ImGuiImplOpenGL3.NewFrame();
         ImGuiImplGLFW.NewFrame();
@@ -105,8 +105,8 @@ public class CameraWindow : Window
     protected override void RenderUi() { } // unused; overridden by the typed version below
 
     private unsafe void RenderUi(
-        MineImatorSimplyRemade.core.Camera activeCam,
-        MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.CameraSceneObject? sceneObj,
+        Camera activeCam,
+        CameraSceneObject? sceneObj,
         uint sceneW, uint sceneH)
     {
         // Handle keyboard shortcuts specific to this undocked window
@@ -135,10 +135,7 @@ public class CameraWindow : Window
         {
             _panel.Undocked = false;
             // Reset the camera viewport's GLFW references back to the main window
-            unsafe
-            {
-                _panel.GlfwWindowPreview = _mainHandle;
-            }
+            _panel.GlfwWindowPreview = _mainHandle;
             Hide();
         }
 
@@ -215,18 +212,16 @@ public class CameraWindow : Window
 
         ImGuiIOPtr io = ImGui.GetIO();
 
-        // F5: Toggle high-quality preview (shadows) for the camera viewport
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F5, false))
+        switch (io.WantTextInput)
         {
-            _panel.ToggleHighQualityPreview();
-            return;
-        }
-
-        // F6: Toggle shadow debug mode
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F6, false))
-        {
-            _panel.ToggleShadowDebugMode();
-            return;
+            // F5: Toggle high-quality preview (shadows) for the camera viewport
+            case false when ImGui.IsKeyPressed(ImGuiKey.F5, false):
+                _panel.ToggleHighQualityPreview();
+                return;
+            // F6: Toggle shadow debug mode
+            case false when ImGui.IsKeyPressed(ImGuiKey.F6, false):
+                _panel.ToggleShadowDebugMode();
+                return;
         }
     }
 }

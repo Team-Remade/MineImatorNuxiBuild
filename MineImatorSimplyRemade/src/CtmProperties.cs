@@ -10,9 +10,8 @@ public class CtmProperties
     public List<string> MatchBlocks { get; set; } = new();
     public string Method { get; set; } = "ctm_compact";
     public List<int> Tiles { get; set; } = new();
-    public string Connect { get; set; } = "block";
     public List<string> Faces { get; set; } = new();
-    public List<uint> TileTextureIds { get; set; } = new();
+    public List<uint> TileTextureIds { get; } = new();
     
     public static CtmProperties Parse(string text, string propertiesPath, string packId)
     {
@@ -52,7 +51,7 @@ public class CtmProperties
                     props.Tiles = ParseTileRange(value);
                     break;
                 case "connect":
-                    props.Connect = value.ToLowerInvariant();
+                    value.ToLowerInvariant();
                     break;
                 case "faces":
                     props.Faces = value.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();

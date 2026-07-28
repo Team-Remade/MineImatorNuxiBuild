@@ -39,7 +39,7 @@ public static class CrashReporter
     {
         // Unobserved task exceptions do not terminate the process, so log/report them
         // without showing the crash window (which is reserved for fatal errors).
-        Logger.Error($"[CrashReporter] Unobserved task exception: {e.Exception}");
+        Logger.Error($"Unobserved task exception: {e.Exception}");
         TryCaptureSentry(e.Exception);
         e.SetObserved();
     }
@@ -54,13 +54,13 @@ public static class CrashReporter
     {
         if (Interlocked.Exchange(ref _reported, 1) != 0)
         {
-            Logger.Error($"[CrashReporter] Additional crash from '{source}' suppressed (already handling a crash): {exception}");
+            Logger.Error($"Additional crash from '{source}' suppressed (already handling a crash): {exception}");
             return;
         }
 
         exception ??= new Exception("Unknown fatal error (no exception information available).");
 
-        Logger.Error($"[CrashReporter] Fatal exception from {source}: {exception}");
+        Logger.Error($"Fatal exception from {source}: {exception}");
 
         TryCaptureSentry(exception);
 
@@ -78,7 +78,7 @@ public static class CrashReporter
         }
         catch (Exception sentryEx)
         {
-            Logger.Error($"[CrashReporter] Failed to report exception to Sentry: {sentryEx.Message}");
+            Logger.Error($"Failed to report exception to Sentry: {sentryEx.Message}");
         }
     }
 
@@ -107,13 +107,13 @@ public static class CrashReporter
             sb.AppendLine(Logger.ReadLatestLogTail());
 
             File.WriteAllText(path, sb.ToString());
-            Logger.Error($"[CrashReporter] Crash report written to '{path}'");
+            Logger.Error($"Crash report written to '{path}'");
 
             return path;
         }
         catch (Exception ex)
         {
-            Logger.Error($"[CrashReporter] Failed to write crash report: {ex.Message}");
+            Logger.Error($"Failed to write crash report: {ex.Message}");
             return Logger.CrashReportsDirectory;
         }
     }

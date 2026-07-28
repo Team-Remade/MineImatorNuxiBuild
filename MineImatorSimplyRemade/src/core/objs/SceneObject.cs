@@ -151,7 +151,7 @@ public class SceneObject
     /// sub-meshes, or a block with separate overlay geometry).
     /// Use <see cref="AddMesh"/> / <see cref="RemoveMesh"/> to modify the list.
     /// </summary>
-    public List<Mesh> Visuals { get; } = new();
+    public List<Mesh> Visuals { get; } = [];
 
     /// <summary>Attaches a mesh to this object's visual list.</summary>
     public void AddMesh(Mesh mesh)
@@ -296,21 +296,19 @@ public class SceneObject
 
     // ── Shadow casting ────────────────────────────────────────────────────────
 
-    private bool _castShadow = true;
-
     /// <summary>
     /// Controls whether this object casts shadows.  Changing this propagates to
     /// all <see cref="Mesh"/> instances in the Visual hierarchy.
     /// </summary>
     public bool CastShadow
     {
-        get => _castShadow;
+        get;
         set
         {
-            _castShadow = value;
+            field = value;
             ApplyCastShadow();
         }
-    }
+    } = true;
 
     /// <summary>
     /// Propagates the current <see cref="CastShadow"/> value to all meshes.
@@ -740,8 +738,8 @@ public class SceneObject
 
         mat4 inherited = mat4.Identity;
         if (InheritPosition) inherited = mat4.Translate(parentPos) * inherited;
-        if (InheritRotation) inherited = inherited * parentRot;
-        if (InheritScale)    inherited = inherited * mat4.Scale(parentScale);
+        if (InheritRotation) inherited *= parentRot;
+        if (InheritScale)    inherited *= mat4.Scale(parentScale);
 
         return inherited * local;
     }
@@ -795,8 +793,8 @@ public class SceneObject
         if (parentScale.z != 0) { parentRot.m20 = row2.x / parentScale.z; parentRot.m21 = row2.y / parentScale.z; parentRot.m22 = row2.z / parentScale.z; }
 
         mat4 result = mat4.Identity;
-        if (InheritScale)    result = result * mat4.Scale(parentScale);
-        if (InheritRotation) result = result * parentRot;
+        if (InheritScale)    result *= mat4.Scale(parentScale);
+        if (InheritRotation) result *= parentRot;
         if (InheritPosition) result = mat4.Translate(parentPos) * result;
         return result;
     }

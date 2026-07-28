@@ -86,7 +86,7 @@ public class ExtrudedItemMesh : Mesh
 
     // ── Geometry generation ───────────────────────────────────────────────────
 
-    protected override void GenerateVertices()
+    protected sealed override void GenerateVertices()
     {
         if (!Is3D)
             BuildFlatPlane();

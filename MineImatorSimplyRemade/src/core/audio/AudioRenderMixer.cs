@@ -59,10 +59,14 @@ public static class AudioRenderMixer
                 int sourceSampleIndex = (outSample - startOutputSample) * Channels;
                 if (sourceSampleIndex < 0) continue;
 
-                if (!entry.Loop && sourceSampleIndex >= clipTotalSamples) continue;
-
-                if (entry.Loop && clipTotalSamples > 0)
-                    sourceSampleIndex %= clipTotalSamples;
+                switch (entry.Loop)
+                {
+                    case false when sourceSampleIndex >= clipTotalSamples:
+                        continue;
+                    case true when clipTotalSamples > 0:
+                        sourceSampleIndex %= clipTotalSamples;
+                        break;
+                }
 
                 // Convert source byte offset to sample frame and clip channel data.
                 for (int ch = 0; ch < Channels; ch++)
@@ -86,9 +90,7 @@ public static class AudioRenderMixer
         if (!anyAudio) return false;
 
         // Soft clip / prevent hard clipping by scaling down if peaks exceed 1.0.
-        float maxAbs = 0f;
-        for (int i = 0; i < mixBuffer.Length; i++)
-            maxAbs = Math.Max(maxAbs, Math.Abs(mixBuffer[i]));
+        float maxAbs = mixBuffer.Select(Math.Abs).Prepend(0f).Max();
 
         float scale = maxAbs > 1f ? 1f / maxAbs : 1f;
 
