@@ -260,7 +260,26 @@ public class Window : IDisposable
 
     public virtual unsafe void Dispose()
     {
+        // ShutdownImgui() -> ImGuiImplOpenGL3.Shutdown() deletes this window's
+        // GL objects (shader program, VBO/VAO, font texture) via raw GL calls
+        // that operate on whatever context is CURRENTLY bound on this thread -
+        // not necessarily this window's own context. Every GL context numbers
+        // its objects independently starting from 1, so two unrelated windows'
+        // "first shader program ever created" can both end up with the same ID
+        // (e.g. both land on program 3). If Dispose() is called while a
+        // DIFFERENT window's context happens to be current (as main.cs does
+        // for the startup splash window, which is disposed while the main
+        // window's context is active), the delete calls silently corrupt that
+        // other context's same-numbered objects instead of this window's own -
+        // e.g. wiping out the main viewport's pick shader program.
+        // Switching to this window's own context first (and restoring whatever
+        // was current afterward) makes cleanup target the right objects
+        // regardless of what the caller forgot to do.
+        var previousContext = Glfw.GetCurrentContext();
+        Glfw.MakeContextCurrent(windowHandle);
         ShutdownImgui();
         Glfw.DestroyWindow(windowHandle);
+        if (previousContext != null)
+            Glfw.MakeContextCurrent(previousContext);
     }
 }

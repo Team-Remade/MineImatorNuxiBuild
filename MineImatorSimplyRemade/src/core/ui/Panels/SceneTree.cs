@@ -480,6 +480,12 @@ public class SceneTree : UiPanel
                 break;
         }
 
+        // Assign a fresh object ID / pick-colour ID. Without this the duplicate
+        // keeps the default PickColorId of 0, which the viewport's colour-pick
+        // pass treats as "nothing" — the object would render correctly but
+        // could never be selected again by clicking on it.
+        dup.AssignObjectId();
+
         var baseName = GetBaseName(original.GetDisplayName());
         int nextNum  = GetNextAvailableNameNumber(baseName);
         dup.Name = nextNum > 1 ? $"{baseName}{nextNum}" : baseName;
