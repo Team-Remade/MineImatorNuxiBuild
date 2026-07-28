@@ -300,20 +300,54 @@ public static class ProjectSceneSerializer
 
         if (entry.SpawnCategory == "Scenery")
         {
-            if (!string.IsNullOrWhiteSpace(entry.SourceAssetPath) && File.Exists(entry.SourceAssetPath))
-                return spawnMenu.SpawnSchematicFromPath(entry.SourceAssetPath, entry.ResourcePackId);
+            string resolved = ResolveSourcePath(entry);
+            if (File.Exists(resolved))
+                return spawnMenu.SpawnSchematicFromPath(resolved, entry.ResourcePackId);
             return null;
         }
 
-        if (!string.IsNullOrWhiteSpace(entry.SourceAssetPath) && File.Exists(entry.SourceAssetPath))
+        string resolvedPath = ResolveSourcePath(entry);
+        if (File.Exists(resolvedPath))
         {
             string? textureOverride = string.IsNullOrWhiteSpace(entry.TextureOverridePath)
                 ? null
                 : entry.TextureOverridePath;
-            return spawnMenu.SpawnCustomModelFromPath(entry.SourceAssetPath, textureOverride);
+            return spawnMenu.SpawnCustomModelFromPath(resolvedPath, textureOverride);
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Resolves <see cref="ProjectSceneObjectEntry.SourceAssetPath"/> through the
+    /// project's asset list so that assets copied into the project folder (and
+    /// stored with an absolute path at save time) can be found on a different
+    /// machine where the absolute path does not match but the project-relative
+    /// path is valid.
+    /// </summary>
+    private static string ResolveSourcePath(ProjectSceneObjectEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.SourceAssetPath))
+            return entry.SourceAssetPath;
+
+        if (File.Exists(entry.SourceAssetPath))
+            return entry.SourceAssetPath;
+
+        // The absolute path saved in the project file doesn't exist here
+        // (different machine, different drive, etc.). Try to find an asset
+        // in the project manifest whose display name matches the filename.
+        var pm = ProjectManager.Instance;
+        if (!pm.HasProject)
+            return entry.SourceAssetPath;
+
+        string fileName = Path.GetFileName(entry.SourceAssetPath);
+        if (string.IsNullOrWhiteSpace(fileName))
+            return entry.SourceAssetPath;
+
+        var asset = pm.GetProjectAssets()
+            .FirstOrDefault(a => string.Equals(a.DisplayName, fileName, StringComparison.OrdinalIgnoreCase));
+
+        return asset != null ? pm.GetAssetFullPath(asset) : entry.SourceAssetPath;
     }
 
     private static SceneObject CreateFallbackObject(ProjectSceneObjectEntry entry, Viewport viewport)
