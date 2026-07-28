@@ -568,12 +568,12 @@ public class SpawnMenu : UiPanel
                 var variant  = variants[variantIdx];
                 var meshes   = new List<Mesh>();
 
-                AppendBlockMeshesForPreview(meshes, variant);
+                AppendBlockMeshesForPreview(meshes, variant, blockName);
                 if (variant.TopHalf != null)
                 {
                     // Centre two-block-tall objects vertically (shift down by -0.5)
                     var topMeshes = new List<Mesh>();
-                    AppendBlockMeshesForPreview(topMeshes, variant.TopHalf);
+                    AppendBlockMeshesForPreview(topMeshes, variant.TopHalf, blockName);
                     var shift = new vec3(variant.PartOffsetX,
                                         variant.PartOffsetY - 0.5f,
                                         variant.PartOffsetZ);
@@ -719,7 +719,7 @@ public class SpawnMenu : UiPanel
     /// to <paramref name="meshes"/>.  Mirrors <see cref="AddBlockMeshes"/> but does
     /// not attach anything to a SceneObject.
     /// </summary>
-    private void AppendBlockMeshesForPreview(List<Mesh> meshes, BlockVariantEntry variant)
+    private void AppendBlockMeshesForPreview(List<Mesh> meshes, BlockVariantEntry variant, string blockName = "")
     {
         if (Gl == null) return;
 
@@ -733,7 +733,7 @@ public class SpawnMenu : UiPanel
         if (!string.IsNullOrEmpty(variant.CemPath))
             built = CemLoader.Load(Gl, variant.CemPath, BlockRegistry.VersionRoot, textureSourceId);
         else if (resolved != null)
-            built = MinecraftModelMesh.Build(Gl, resolved, variant.RotationX, variant.RotationY, textureSourceId, "");
+            built = MinecraftModelMesh.Build(Gl, resolved, variant.RotationX, variant.RotationY, textureSourceId, blockName);
         else
             built = new List<Mesh>
             {
@@ -2237,6 +2237,12 @@ public class SpawnMenu : UiPanel
             int total = width * height * length;
             var variantCache = new Dictionary<string, VariantRenderInfo>(StringComparer.OrdinalIgnoreCase);
             var voxelInfos = new VariantRenderInfo?[total];
+            // Minecraft fluid "level" state (0-7 = flowing amount, 8-15 = falling) per voxel.
+            // Only meaningful when the voxel's VariantRenderInfo.BlockName is "water"/"lava";
+            // populated by both loaders below. Kept out of VariantRenderInfo/variantCache since
+            // fluid geometry depends on neighbouring voxels, not just the block's own variant,
+            // so it can't be precomputed/shared the way cube-face geometry is.
+            var liquidLevels = new int[total];
             var availableBlocks = new HashSet<string>(BlockRegistry.Blocks, StringComparer.OrdinalIgnoreCase);
 
             bool modernLoaded = TryLoadModernPaletteBlocks(
@@ -2244,7 +2250,8 @@ public class SpawnMenu : UiPanel
                 total,
                 availableBlocks,
                 variantCache,
-                voxelInfos);
+                voxelInfos,
+                liquidLevels);
 
             if (!modernLoaded)
             {
@@ -2256,7 +2263,8 @@ public class SpawnMenu : UiPanel
                         total,
                         availableBlocks,
                         variantCache,
-                        voxelInfos))
+                        voxelInfos,
+                        liquidLevels))
                 {
                     _lastSchematicLoadError = "The block data could not be decoded in either the modern (.schem) or legacy (.schematic) format.";
                     return null;
@@ -2293,6 +2301,10 @@ public class SpawnMenu : UiPanel
                 variantCache);
 
             var merged = new Dictionary<uint, MeshAccumulator>();
+            // Texture id -> TerrainAtlas animation key, populated by EmitLiquidVoxel whenever it
+            // resolves an animated fluid texture (e.g. "water_still"), so the merged mesh for that
+            // texture can be marked animated once assembly finishes below.
+            var liquidAnimKeys = new Dictionary<uint, string>();
             int placed = 0;
 
             for (int y = 0; y < height; y++)
@@ -2326,6 +2338,33 @@ public class SpawnMenu : UiPanel
                         float px = x - originX;
                         float py = y + 0.5f;
                         float pz = z - originZ;
+
+                        // Fluids get their own neighbour-aware, height-blended mesh instead of a
+                        // plain cube: Minecraft water/lava blocks carry a "level" state (0-7 flowing
+                        // amounts, 8-15 falling) and slope their top surface toward lower neighbours,
+                        // so a fixed full-height cube is only correct for an isolated source block.
+                        if (string.Equals(info.BlockName, "water", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(info.BlockName, "lava", StringComparison.OrdinalIgnoreCase))
+                        {
+                            EmitLiquidVoxel(
+                                merged,
+                                liquidAnimKeys,
+                                voxelInfos,
+                                liquidLevels,
+                                width,
+                                height,
+                                length,
+                                x,
+                                y,
+                                z,
+                                px,
+                                py,
+                                pz,
+                                info.BlockName,
+                                liquidLevels[index],
+                                normalizedResourcePackId);
+                            continue;
+                        }
 
                         if (info.IsCullableCube && info.CubeFaces != null)
                         {
@@ -2368,7 +2407,8 @@ public class SpawnMenu : UiPanel
 
                 var mesh = new Mesh(Gl)
                 {
-                    TextureId = kv.Key
+                    TextureId = kv.Key,
+                    AnimationKey = liquidAnimKeys.TryGetValue(kv.Key, out string? animKey) ? animKey : ""
                 };
                 mesh.Vertices.AddRange(acc.Vertices);
                 mesh.Normals.AddRange(acc.Normals);
@@ -2616,7 +2656,8 @@ public class SpawnMenu : UiPanel
         int total,
         HashSet<string> availableBlocks,
         Dictionary<string, VariantRenderInfo> variantCache,
-        VariantRenderInfo?[] outVoxels)
+        VariantRenderInfo?[] outVoxels,
+        int[] outLiquidLevels)
     {
         var palette = schematic.GetCompound("Palette");
         byte[] blockData = schematic.GetByteArrayValue("BlockData", Array.Empty<byte>());
@@ -2637,6 +2678,7 @@ public class SpawnMenu : UiPanel
         }
 
         var idToInfo = new Dictionary<int, VariantRenderInfo?>();
+        var idToLevel = new Dictionary<int, int>();
         for (int i = 0; i < total; i++)
         {
             int paletteId = paletteIndices[i];
@@ -2660,9 +2702,22 @@ public class SpawnMenu : UiPanel
 
                 info = GetOrCreateVariantRenderInfo(blockName, variant, variantCache);
                 idToInfo[paletteId] = info;
+
+                // Fluid "level" state (0-7 flowing amount, 8-15 falling) — carried separately
+                // from the variant since our water/lava blockstate has no per-level variants and
+                // fluid geometry is generated fresh per-voxel from neighbour data (see EmitLiquidVoxel).
+                if ((string.Equals(blockName, "water", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(blockName, "lava", StringComparison.OrdinalIgnoreCase)) &&
+                    props.TryGetValue("level", out string? levelStr) &&
+                    int.TryParse(levelStr, out int parsedLevel))
+                {
+                    idToLevel[paletteId] = Math.Clamp(parsedLevel, 0, 15);
+                }
             }
 
             outVoxels[i] = info;
+            if (idToLevel.TryGetValue(paletteId, out int level))
+                outLiquidLevels[i] = level;
         }
 
         return true;
@@ -2676,7 +2731,8 @@ public class SpawnMenu : UiPanel
         int total,
         HashSet<string> availableBlocks,
         Dictionary<string, VariantRenderInfo> variantCache,
-        VariantRenderInfo?[] outVoxels)
+        VariantRenderInfo?[] outVoxels,
+        int[] outLiquidLevels)
     {
         byte[] blocks = schematic.GetByteArrayValue("Blocks", Array.Empty<byte>());
         byte[] data = schematic.GetByteArrayValue("Data", Array.Empty<byte>());
@@ -2701,6 +2757,11 @@ public class SpawnMenu : UiPanel
             }
 
             int blockData = i < data.Length ? data[i] & 0x0F : 0;
+
+            // Legacy fluid metadata is the "level" state directly (0-7 flowing amount,
+            // 8-15 falling) for both the flowing (8/10) and stationary/source (9/11) block IDs.
+            if (blockId == 8 || blockId == 9 || blockId == 10 || blockId == 11)
+                outLiquidLevels[i] = blockData;
 
             if (blockId == 64 || blockId == 71)
             {
@@ -3365,6 +3426,265 @@ public class SpawnMenu : UiPanel
         acc.Vertices.Add(v0); acc.Normals.Add(n); acc.TexCoords.Add(face.Uv[0]);
         acc.Vertices.Add(v2); acc.Normals.Add(n); acc.TexCoords.Add(face.Uv[2]);
         acc.Vertices.Add(v3); acc.Normals.Add(n); acc.TexCoords.Add(face.Uv[3]);
+    }
+
+    // ── Liquid (water/lava) mesh generation ─────────────────────────────────────
+    //
+    // Vanilla fluid blocks carry a "level" state — 0-7 for flowing amount (0 = a
+    // full/source-height block, 7 = the thinnest visible trickle) and 8-15 for
+    // "falling" (waterfalls/lavafalls, always rendered as a full-height cube).
+    // Neighbouring fluid blocks of a lower level pull this block's *corners*
+    // (not just a single flat top) down to blend smoothly between them, which is
+    // why a fixed full cube looks wrong once more than one fluid block is placed
+    // next to another — this mirrors Mine-imator's `block_generate_liquid` script.
+    //
+    // Corner order used throughout (looking down the +Y axis, our world is X/Z
+    // horizontal, Y up): 0=(x-,z-) 1=(x+,z-) 2=(x+,z+) 3=(x-,z+).
+
+    /// <summary>Vanilla's fluid height curve: source (level 0) caps at 14/16, the
+    /// lowest flowing level (7) is almost flat, and any "falling" level (8-15) is
+    /// always a full-height block.</summary>
+    private static float LiquidLevelHeight(int level) =>
+        level >= 8 ? 1f : (14f - (level / 7f) * 13.5f) / 16f;
+
+    /// <summary>
+    /// Appends a triangle to <paramref name="acc"/>, automatically reordering
+    /// (a,b,c) so the winding faces <paramref name="expectedDir"/> and storing the
+    /// triangle's own (possibly sloped) geometric normal rather than a fixed one,
+    /// so sloped liquid surfaces still shade correctly.
+    /// </summary>
+    private static void AddLiquidTri(
+        MeshAccumulator acc,
+        vec3 a, vec3 b, vec3 c,
+        vec3 expectedDir,
+        vec2 ua, vec2 ub, vec2 uc)
+    {
+        vec3 cross = vec3.Cross(b - a, c - a);
+        if (vec3.Dot(cross, expectedDir) < 0f)
+        {
+            (b, c) = (c, b);
+            (ub, uc) = (uc, ub);
+            cross = vec3.Cross(b - a, c - a);
+        }
+
+        vec3 normal = cross.LengthSqr > 1e-12f ? cross.Normalized : expectedDir.Normalized;
+
+        acc.Vertices.Add(a); acc.Normals.Add(normal); acc.TexCoords.Add(ua);
+        acc.Vertices.Add(b); acc.Normals.Add(normal); acc.TexCoords.Add(ub);
+        acc.Vertices.Add(c); acc.Normals.Add(normal); acc.TexCoords.Add(uc);
+    }
+
+    /// <summary>
+    /// Emits one side face of a liquid voxel between two adjacent top corners at
+    /// (<paramref name="xA"/>,<paramref name="zA"/>) and (<paramref name="xB"/>,<paramref name="zB"/>),
+    /// whose heights (0-1 fraction of a block) may differ. The shared, lower
+    /// portion (up to the shorter corner) is a plain quad; any extra height on the
+    /// taller corner is filled with a triangle, matching how Minecraft crops the
+    /// flow texture from the bottom up rather than stretching it.
+    /// </summary>
+    private static void EmitLiquidSideFace(
+        MeshAccumulator acc,
+        vec3 normal,
+        float baseY,
+        float xA, float zA, float heightA, float uA,
+        float xB, float zB, float heightB, float uB)
+    {
+        float minH = MathF.Min(heightA, heightB);
+        var topA = new vec3(xA, baseY + minH, zA);
+        var topB = new vec3(xB, baseY + minH, zB);
+        var botA = new vec3(xA, baseY, zA);
+        var botB = new vec3(xB, baseY, zB);
+
+        float vTop = 1f - minH;
+        const float vBot = 1f;
+
+        AddLiquidTri(acc, topA, topB, botB, normal, new vec2(uA, vTop), new vec2(uB, vTop), new vec2(uB, vBot));
+        AddLiquidTri(acc, topA, botB, botA, normal, new vec2(uA, vTop), new vec2(uB, vBot), new vec2(uA, vBot));
+
+        if (MathF.Abs(heightA - heightB) > 1e-4f)
+        {
+            if (heightA > heightB)
+            {
+                var extra = new vec3(xA, baseY + heightA, zA);
+                AddLiquidTri(acc, topA, topB, extra, normal,
+                    new vec2(uA, vTop), new vec2(uB, vTop), new vec2(uA, 1f - heightA));
+            }
+            else
+            {
+                var extra = new vec3(xB, baseY + heightB, zB);
+                AddLiquidTri(acc, topA, topB, extra, normal,
+                    new vec2(uA, vTop), new vec2(uB, vTop), new vec2(uB, 1f - heightB));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Builds a neighbour-aware liquid mesh (sloped/blended top surface, cropped
+    /// flow-textured sides, falling-column full cubes) for one water/lava voxel
+    /// during schematic import, appending geometry directly into <paramref name="merged"/>.
+    /// Face culling matches same-fluid neighbours (no internal faces between two
+    /// touching water blocks) and fully opaque neighbours (no faces buried inside
+    /// solid terrain).
+    /// </summary>
+    private static void EmitLiquidVoxel(
+        Dictionary<uint, MeshAccumulator> merged,
+        Dictionary<uint, string> animKeysOut,
+        VariantRenderInfo?[] voxels,
+        int[] liquidLevels,
+        int width, int height, int length,
+        int x, int y, int z,
+        float px, float py, float pz,
+        string blockName,
+        int level,
+        string resourcePackId)
+    {
+        int GetIndex(int nx, int ny, int nz)
+        {
+            if (nx < 0 || ny < 0 || nz < 0 || nx >= width || ny >= height || nz >= length)
+                return -1;
+            return ny * width * length + nz * width + nx;
+        }
+
+        bool SameFluid(int nx, int ny, int nz)
+        {
+            int idx = GetIndex(nx, ny, nz);
+            if (idx < 0) return false;
+            var n = voxels[idx];
+            return n != null && string.Equals(n.BlockName, blockName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        int NeighborLevel(int nx, int ny, int nz)
+        {
+            int idx = GetIndex(nx, ny, nz);
+            return idx < 0 ? 0 : liquidLevels[idx];
+        }
+
+        bool IsSolid(int nx, int ny, int nz)
+        {
+            int idx = GetIndex(nx, ny, nz);
+            if (idx < 0) return false;
+            var n = voxels[idx];
+            return n != null && n.IsCullableCube;
+        }
+
+        bool matchXp = SameFluid(x + 1, y, z);
+        bool matchXn = SameFluid(x - 1, y, z);
+        bool matchZp = SameFluid(x, y, z + 1);
+        bool matchZn = SameFluid(x, y, z - 1);
+        bool matchUp = SameFluid(x, y + 1, z);
+        bool matchDown = SameFluid(x, y - 1, z);
+
+        bool solidXp = IsSolid(x + 1, y, z);
+        bool solidXn = IsSolid(x - 1, y, z);
+        bool solidZp = IsSolid(x, y, z + 1);
+        bool solidZn = IsSolid(x, y, z - 1);
+        bool solidDown = IsSolid(x, y - 1, z);
+
+        // Fully enclosed by the same fluid / solid terrain on every side — nothing visible.
+        if ((matchXp || solidXp) && (matchXn || solidXn) &&
+            (matchZp || solidZp) && (matchZn || solidZn) &&
+            matchUp && (matchDown || solidDown))
+            return;
+
+        string stillKey = ResolveTerrainTextureKeyForPack(blockName + "_still", resourcePackId);
+        string flowKey = ResolveTerrainTextureKeyForPack(blockName + "_flow", resourcePackId);
+
+        if (!TerrainAtlas.Textures.TryGetValue(stillKey, out uint stillTex) || stillTex == 0)
+            return;
+        if (!TerrainAtlas.Textures.TryGetValue(flowKey, out uint flowTex) || flowTex == 0)
+            flowTex = stillTex;
+
+        if (TerrainAtlas.AnimatedTextures.ContainsKey(stillKey)) animKeysOut[stillTex] = stillKey;
+        if (TerrainAtlas.AnimatedTextures.ContainsKey(flowKey)) animKeysOut[flowTex] = flowKey;
+
+        var stillAcc = GetOrCreateAccumulator(merged, stillTex);
+        var flowAcc = GetOrCreateAccumulator(merged, flowTex);
+
+        bool falling = level >= 8;
+        float myHeight = LiquidLevelHeight(level);
+
+        float corner0z, corner1z, corner2z, corner3z;
+
+        // A block with fluid directly above it never shows its own top surface, so its
+        // exact height doesn't matter visually — treat it (and falling columns) as full
+        // height, matching Mine-imator's "fix wave gaps" handling.
+        if (falling || matchUp)
+        {
+            corner0z = corner1z = corner2z = corner3z = 1f;
+        }
+        else
+        {
+            int SideOrCornerLevel(int nx, int nz)
+            {
+                if (!SameFluid(nx, y, nz)) return level;
+                if (SameFluid(nx, y + 1, nz)) return 8; // stacked fluid above -> treat as full
+                return NeighborLevel(nx, y, nz);
+            }
+
+            float sideXp = LiquidLevelHeight(SideOrCornerLevel(x + 1, z));
+            float sideXn = LiquidLevelHeight(SideOrCornerLevel(x - 1, z));
+            float sideZp = LiquidLevelHeight(SideOrCornerLevel(x, z + 1));
+            float sideZn = LiquidLevelHeight(SideOrCornerLevel(x, z - 1));
+
+            float c0 = LiquidLevelHeight(SideOrCornerLevel(x - 1, z - 1));
+            float c1 = LiquidLevelHeight(SideOrCornerLevel(x + 1, z - 1));
+            float c2 = LiquidLevelHeight(SideOrCornerLevel(x + 1, z + 1));
+            float c3 = LiquidLevelHeight(SideOrCornerLevel(x - 1, z + 1));
+
+            corner0z = MathF.Max(myHeight, MathF.Max(c0, MathF.Max(sideXn, sideZn)));
+            corner1z = MathF.Max(myHeight, MathF.Max(c1, MathF.Max(sideXp, sideZn)));
+            corner2z = MathF.Max(myHeight, MathF.Max(c2, MathF.Max(sideXp, sideZp)));
+            corner3z = MathF.Max(myHeight, MathF.Max(c3, MathF.Max(sideXn, sideZp)));
+        }
+
+        float baseY = py - 0.5f;
+        float xn = px - 0.5f, xp = px + 0.5f;
+        float zn = pz - 0.5f, zp = pz + 0.5f;
+
+        // ── Top face: a 4-triangle fan (not a flat quad) so each corner can sit at
+        //    its own blended height. ──────────────────────────────────────────────
+        if (!matchUp)
+        {
+            float avgZ = (corner0z + corner1z + corner2z + corner3z) * 0.25f;
+            var mid = new vec3(px, baseY + avgZ, pz);
+            var t0 = new vec3(xn, baseY + corner0z, zn);
+            var t1 = new vec3(xp, baseY + corner1z, zn);
+            var t2 = new vec3(xp, baseY + corner2z, zp);
+            var t3 = new vec3(xn, baseY + corner3z, zp);
+            var uMid = new vec2(0.5f, 0.5f);
+            var u0 = new vec2(0f, 0f);
+            var u1 = new vec2(1f, 0f);
+            var u2 = new vec2(1f, 1f);
+            var u3 = new vec2(0f, 1f);
+
+            vec3 up = new vec3(0f, 1f, 0f);
+            AddLiquidTri(stillAcc, mid, t0, t1, up, uMid, u0, u1);
+            AddLiquidTri(stillAcc, mid, t1, t2, up, uMid, u1, u2);
+            AddLiquidTri(stillAcc, mid, t2, t3, up, uMid, u2, u3);
+            AddLiquidTri(stillAcc, mid, t3, t0, up, uMid, u3, u0);
+        }
+
+        // ── Bottom face (flat; fluids always touch the block's floor). ───────────
+        if (!matchDown && !solidDown)
+        {
+            var b0 = new vec3(xn, baseY, zn);
+            var b1 = new vec3(xp, baseY, zn);
+            var b2 = new vec3(xp, baseY, zp);
+            var b3 = new vec3(xn, baseY, zp);
+            vec3 down = new vec3(0f, -1f, 0f);
+            AddLiquidTri(stillAcc, b0, b2, b1, down, new vec2(0, 0), new vec2(1, 1), new vec2(1, 0));
+            AddLiquidTri(stillAcc, b0, b3, b2, down, new vec2(0, 0), new vec2(0, 1), new vec2(1, 1));
+        }
+
+        // ── Side faces, cropped from the flow texture's bottom edge upward. ──────
+        if (!matchXp && !solidXp)
+            EmitLiquidSideFace(flowAcc, new vec3(1f, 0f, 0f), baseY, xp, zn, corner1z, 0f, xp, zp, corner2z, 1f);
+        if (!matchXn && !solidXn)
+            EmitLiquidSideFace(flowAcc, new vec3(-1f, 0f, 0f), baseY, xn, zp, corner3z, 0f, xn, zn, corner0z, 1f);
+        if (!matchZn && !solidZn)
+            EmitLiquidSideFace(flowAcc, new vec3(0f, 0f, -1f), baseY, xn, zn, corner0z, 0f, xp, zn, corner1z, 1f);
+        if (!matchZp && !solidZp)
+            EmitLiquidSideFace(flowAcc, new vec3(0f, 0f, 1f), baseY, xp, zp, corner2z, 0f, xn, zp, corner3z, 1f);
     }
 
     private static bool TryResolveLegacyBlock(

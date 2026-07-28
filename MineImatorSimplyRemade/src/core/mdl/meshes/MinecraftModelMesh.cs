@@ -25,6 +25,44 @@ public static class MinecraftModelMesh
     // Minecraft model coordinates are 0–16; we normalise to 0–1 (one block unit)
     private const float Scale = 1f / 16f;
 
+    // ── Default block tints ───────────────────────────────────────────────────
+    //
+    // Vanilla applies a per-biome colour multiply to certain block faces
+    // (tracked via the model's "tintindex" — see BlockModelFace.TintIndex).
+    // This tool has no biome/world data to sample, so instead of wiring up
+    // full per-face tint support we apply one fixed colour per block, keyed
+    // by block name, to every submesh generated for that block.
+    //
+    // Only blocks whose *currently bundled* textures actually need a tint to
+    // look correct are listed here. Several vanilla-era textures in this
+    // asset set (e.g. grass top, leaves) already bake their tint directly
+    // into the PNG, so adding entries for those would double-tint them.
+    // Water's real texture (water_still.png) is a light desaturated grey
+    // that vanilla tints blue at render time — 0x3F76E4 is Minecraft's
+    // biome-independent default water colour, used here since there's no
+    // biome to sample. Lava needs no entry: lava_still.png is already fully
+    // opaque and coloured.
+    private static readonly Dictionary<string, vec3> DefaultBlockTints =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            { "water", new vec3(63f / 255f, 118f / 255f, 228f / 255f) },
+        };
+
+    /// <summary>
+    /// Applies <see cref="DefaultBlockTints"/> (if any) for <paramref name="blockName"/>
+    /// to every mesh in <paramref name="meshes"/>. No-op for blocks without a
+    /// registered tint or when <paramref name="blockName"/> is empty (e.g. spawn-menu
+    /// preview thumbnails built without a block-name hint).
+    /// </summary>
+    private static void ApplyDefaultBlockTint(List<Mesh> meshes, string blockName)
+    {
+        if (string.IsNullOrEmpty(blockName)) return;
+        if (!DefaultBlockTints.TryGetValue(blockName, out vec3 tint)) return;
+
+        foreach (var mesh in meshes)
+            mesh.Albedo = tint;
+    }
+
     /// <summary>
     /// Builds one or more <see cref="Mesh"/> objects from a fully-resolved
     /// Minecraft block model. Returns an empty list when the model has no
@@ -51,12 +89,14 @@ public static class MinecraftModelMesh
         {
             // Model has no geometry elements (e.g. only references a builtin parent).
             // Try to produce a textured cube from whatever textures the model exposes.
-            return
-            [
+            var fallbackMeshes = new List<Mesh>
+            {
                 BuildTiledFallbackCube(gl, model, blockNameHint: blockName,
                     resourcePackId: resourcePackId,
                     tileX: tileX, tileY: tileY, tileZ: tileZ)
-            ];
+            };
+            ApplyDefaultBlockTint(fallbackMeshes, blockName);
+            return fallbackMeshes;
         }
 
         // Group faces by texture key so each texture gets one draw call
@@ -108,14 +148,17 @@ public static class MinecraftModelMesh
 
         if (result.Count == 0)
         {
-            return
-            [
+            var fallbackMeshes = new List<Mesh>
+            {
                 BuildTiledFallbackCube(gl, model, blockNameHint: blockName,
                     resourcePackId: resourcePackId,
                     tileX: tileX, tileY: tileY, tileZ: tileZ)
-            ];
+            };
+            ApplyDefaultBlockTint(fallbackMeshes, blockName);
+            return fallbackMeshes;
         }
 
+        ApplyDefaultBlockTint(result, blockName);
         return result;
     }
 

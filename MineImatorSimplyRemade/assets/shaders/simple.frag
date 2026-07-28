@@ -100,7 +100,11 @@ void main() {
 
     if (uUseTexture) {
         vec4 texSample = texture(uTexture, vTexCoord);
-        baseColor = texSample.rgb;
+        // Multiply by uAlbedo so it acts as a tint on top of the texture
+        // (defaults to white, i.e. no-op, for untinted meshes). This is what
+        // lets biome-independent block tints (e.g. water) and the per-object
+        // Albedo Color material setting affect textured meshes.
+        baseColor = texSample.rgb * uAlbedo;
         alpha     = texSample.a;
     }
 
