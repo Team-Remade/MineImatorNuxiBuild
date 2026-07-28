@@ -36,6 +36,14 @@ public class PropertiesPanel : UiPanel
     public readonly float[] SkyZenithNight = [0.008f, 0.012f, 0.045f];
     public string SunTexture = "minecraft:environment/sun.png";
     public string MoonTexture = "minecraft:environment/moon_phases.png";
+    public string CloudTexture = "minecraft:environment/clouds.png";
+    public readonly float[] CloudColor = [1f, 1f, 1f];
+    public string CloudRenderMode = "3d";
+    public float CloudSpeed;
+    public readonly float[] CloudOffset = [0f, 0f];
+    public float CloudHeight = 2294f;
+    public float CloudBlockSize = 1536f;
+    public float CloudThickness = 64f;
     public int MoonPhase;
     public float SkyTime;
     public float SunSize = 16f;
@@ -166,6 +174,14 @@ public class PropertiesPanel : UiPanel
         ReadColor(settings.SkyHorizonNight, SkyHorizonNight); ReadColor(settings.SkyZenithNight, SkyZenithNight);
         SunTexture = string.IsNullOrWhiteSpace(settings.SunTexture) ? "minecraft:environment/sun.png" : settings.SunTexture;
         MoonTexture = string.IsNullOrWhiteSpace(settings.MoonTexture) ? "minecraft:environment/moon_phases.png" : settings.MoonTexture;
+        CloudTexture = string.IsNullOrWhiteSpace(settings.CloudTexture) ? "minecraft:environment/clouds.png" : settings.CloudTexture;
+        ReadColor(settings.CloudColor, CloudColor);
+        CloudRenderMode = settings.CloudRenderMode is "story" or "flat" ? settings.CloudRenderMode : "3d";
+        CloudSpeed = settings.CloudSpeed;
+        CloudOffset[0] = settings.CloudOffsetX; CloudOffset[1] = settings.CloudOffsetY;
+        CloudHeight = Math.Max(0f, settings.CloudHeight);
+        CloudBlockSize = Math.Max(1f, settings.CloudBlockSize);
+        CloudThickness = Math.Max(1f, settings.CloudThickness);
         MoonPhase = Math.Clamp(settings.MoonPhase, 0, 7);
         SkyTime = Math.Clamp(settings.SkyTime, 0f, 24f);
         SunSize = Math.Clamp(settings.SunSize, 0.1f, 90f); MoonSize = Math.Clamp(settings.MoonSize, 0.1f, 90f);
@@ -240,6 +256,14 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.SkyHorizonSunset = ToVec3(SkyHorizonSunset); manifest.Settings.SkyZenithSunset = ToVec3(SkyZenithSunset);
         manifest.Settings.SkyHorizonNight = ToVec3(SkyHorizonNight); manifest.Settings.SkyZenithNight = ToVec3(SkyZenithNight);
         manifest.Settings.SunTexture = SunTexture; manifest.Settings.MoonTexture = MoonTexture;
+        manifest.Settings.CloudTexture = CloudTexture;
+        manifest.Settings.CloudColor = ToVec3(CloudColor);
+        manifest.Settings.CloudRenderMode = CloudRenderMode;
+        manifest.Settings.CloudSpeed = CloudSpeed;
+        manifest.Settings.CloudOffsetX = CloudOffset[0]; manifest.Settings.CloudOffsetY = CloudOffset[1];
+        manifest.Settings.CloudHeight = Math.Max(0f, CloudHeight);
+        manifest.Settings.CloudBlockSize = Math.Max(1f, CloudBlockSize);
+        manifest.Settings.CloudThickness = Math.Max(1f, CloudThickness);
         manifest.Settings.MoonPhase = Math.Clamp(MoonPhase, 0, 7);
         manifest.Settings.SkyTime = Math.Clamp(SkyTime, 0f, 24f);
         manifest.Settings.SunSize = Math.Clamp(SunSize, 0.1f, 90f); manifest.Settings.MoonSize = Math.Clamp(MoonSize, 0.1f, 90f);
@@ -648,6 +672,21 @@ public class PropertiesPanel : UiPanel
                     skyChanged |= SkyColorEditor("Night Zenith", SkyZenithNight);
                     skyChanged |= SkyTextureSelector("Sun Texture", ref SunTexture, "sun.png");
                     skyChanged |= SkyTextureSelector("Moon Texture", ref MoonTexture, "moon_phases.png");
+                    skyChanged |= SkyTextureSelector("Cloud Texture", ref CloudTexture, "clouds.png");
+                    skyChanged |= SkyColorEditor("Cloud Color", CloudColor);
+                    string cloudModeLabel = CloudRenderMode == "story" ? "Story Mode" : CloudRenderMode == "flat" ? "Flat" : "3D";
+                    if (ImGui.BeginCombo("Cloud Rendering", cloudModeLabel))
+                    {
+                        if (ImGui.Selectable("3D", CloudRenderMode == "3d")) { CloudRenderMode = "3d"; skyChanged = true; }
+                        if (ImGui.Selectable("Story Mode", CloudRenderMode == "story")) { CloudRenderMode = "story"; skyChanged = true; }
+                        if (ImGui.Selectable("Flat", CloudRenderMode == "flat")) { CloudRenderMode = "flat"; skyChanged = true; }
+                        ImGui.EndCombo();
+                    }
+                    skyChanged |= ImGui.DragFloat("Cloud Speed", ref CloudSpeed, 1f, -10000f, 10000f, "%.0f px/s");
+                    fixed (float* value = CloudOffset) skyChanged |= ImGui.DragFloat2("Cloud Offset", value, 1f, -100000f, 100000f, "%.0f px");
+                    skyChanged |= ImGui.DragFloat("Cloud Height", ref CloudHeight, 1f, 0f, 100000f, "%.0f px");
+                    skyChanged |= ImGui.DragFloat("Cloud Block Size", ref CloudBlockSize, 1f, 1f, 100000f, "%.0f px");
+                    skyChanged |= ImGui.DragFloat("Cloud Thickness", ref CloudThickness, 1f, 1f, 100000f, "%.0f px");
                     skyChanged |= ImGui.SliderInt("Moon Phase", ref MoonPhase, 0, 7);
                     skyChanged |= ImGui.SliderFloat("Time", ref SkyTime, 0f, 24f, "%.2f h");
                     skyChanged |= ImGui.DragFloat("Sun Size (degrees)", ref SunSize, 0.1f, 0.1f, 90f);

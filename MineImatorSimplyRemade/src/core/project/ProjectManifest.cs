@@ -106,6 +106,15 @@ public class ProjectRenderSettings
     public ProjectVec3 SkyZenithNight { get; set; } = new() { X = 0.008f, Y = 0.012f, Z = 0.045f };
     public string SunTexture { get; set; } = "minecraft:environment/sun.png";
     public string MoonTexture { get; set; } = "minecraft:environment/moon_phases.png";
+    public string CloudTexture { get; set; } = "minecraft:environment/clouds.png";
+    public ProjectVec3 CloudColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f };
+    public string CloudRenderMode { get; set; } = "3d";
+    public float CloudSpeed { get; set; } = 0f;
+    public float CloudOffsetX { get; set; } = 0f;
+    public float CloudOffsetY { get; set; } = 0f;
+    public float CloudHeight { get; set; } = 2294f;
+    public float CloudBlockSize { get; set; } = 1536f;
+    public float CloudThickness { get; set; } = 64f;
     public int MoonPhase { get; set; } = 0;
     public float SkyTime { get; set; } = 0f;
     public float SunSize { get; set; } = 16f;
