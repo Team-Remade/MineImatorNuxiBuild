@@ -106,7 +106,9 @@ public static class main
             Glfw.MakeContextCurrent(MainWindow.WindowHandle);
             _gl = GL.GetApi(Glfw.GetProcAddress);
             MainWindow.SetGL(_gl);
-            MainWindow.SetupImgui();
+            Directory.CreateDirectory(ApplicationLocalDirectoryPath);
+            string mainWindowIniPath = Path.Combine(ApplicationLocalDirectoryPath, "imgui.ini");
+            MainWindow.SetupImgui(mainWindowIniPath);
             Services.Initialize();
             MainWindow.InitializeRuntime(progress => UpdateStartupWindow(startupWindow, RemapStartupState(progress)));
             startupWindow?.Dispose();
@@ -126,7 +128,9 @@ public static class main
             // Each window owns its own ImGui context. Render() sets it current before
             // every frame so the two contexts never interfere.
             Glfw.MakeContextCurrent(CameraWindow.WindowHandle);
-            CameraWindow.SetupImgui();
+            // No dockable panels in the camera preview window either - disable ini
+            // load/save for the same reason as the startup window above.
+            CameraWindow.SetupImgui(null);
             // Restore main window context after camera window setup.
             Glfw.MakeContextCurrent(MainWindow.WindowHandle);
 
@@ -296,7 +300,9 @@ public static class main
         Glfw.MakeContextCurrent(startupWindow.WindowHandle);
         _startupGl = GL.GetApi(Glfw.GetProcAddress);
         startupWindow.SetGL(_startupGl);
-        startupWindow.SetupImgui();
+        // No dockable panels in the startup splash - disable ini load/save entirely so
+        // this context can never race the main window's context over imgui.ini.
+        startupWindow.SetupImgui(null);
 
         return startupWindow;
     }

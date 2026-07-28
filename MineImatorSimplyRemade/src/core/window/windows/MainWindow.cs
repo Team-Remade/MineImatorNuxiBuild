@@ -69,7 +69,11 @@ public class MainWindow : Window
 
     public static Random Rnd = new Random();
 
-    private static readonly string ImGuiIniPath = "imgui.ini";
+    // Anchored to the per-user app-data directory (not AppContext.BaseDirectory/CWD) so the
+    // path is stable regardless of the process's working directory or install location's
+    // write permissions - see Window.SetupImgui for why every context needs an explicit,
+    // non-default ini path.
+    private static readonly string ImGuiIniPath = Path.Combine(main.ApplicationLocalDirectoryPath, "imgui.ini");
     private static readonly string SplashImagePath = Path.Combine(AppContext.BaseDirectory, "data/splashes", "splash.png");
     private static readonly string SplashCreditPath = Path.Combine(AppContext.BaseDirectory, "data/splashes", "credit.txt");
     private static readonly string SplashTextPath = Path.Combine(AppContext.BaseDirectory, "data/splashes", "splash.txt");

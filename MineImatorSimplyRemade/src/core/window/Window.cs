@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.GLFW;
@@ -24,6 +25,11 @@ public class Window : IDisposable
     private vec4 clearColor = new vec4(0, 0, 0, 1);
     private ImGuiIOPtr io;
     protected ImGuiContextPtr ImGuiContext { get; private set; }
+
+    // Dear ImGui stores io.IniFilename as a raw pointer (it never copies or owns the
+    // string), so the backing buffer must be allocated on the unmanaged heap and kept
+    // alive for the lifetime of this window's context. Freed in ShutdownImgui().
+    private unsafe byte* _iniFilenameBuffer;
 
     // Exposed to subclasses for custom render paths.
     protected float ClearR => clearColor.r;
@@ -115,7 +121,20 @@ public class Window : IDisposable
     /// Each window that calls this owns its own context; <see cref="Render"/> sets
     /// it current at the start of every frame so windows never interfere.
     /// </summary>
-    public unsafe void SetupImgui()
+    /// <param name="iniFilename">
+    /// Absolute path this context should use for its imgui.ini (docking/window layout)
+    /// settings, or <c>null</c> to disable ini load/save entirely for this context.
+    /// Every window created via <see cref="Window"/> gets its own independent ImGui
+    /// context, but Dear ImGui's default <c>io.IniFilename</c> is the bare relative
+    /// name <c>"imgui.ini"</c> for every context. Left unset, every window in the
+    /// process (startup splash, main window, camera window, ...) would silently read
+    /// from and autosave to that same relative-to-CWD file, racing each other and
+    /// making "is this the first launch" checks unreliable. Callers must pass an
+    /// explicit absolute path (for windows whose layout should persist) or explicit
+    /// <c>null</c> (for windows that have no dockable layout to persist) so only one
+    /// context ever owns a given ini file.
+    /// </param>
+    public unsafe void SetupImgui(string? iniFilename)
     {
         ImGuiContext = ImGui.CreateContext();
         ImGui.SetCurrentContext(ImGuiContext);
@@ -124,6 +143,15 @@ public class Window : IDisposable
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
         io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;
         io.ConfigWindowsMoveFromTitleBarOnly = true;
+
+        // io.IniFilename is a raw byte* that Dear ImGui reads from directly (on
+        // NewFrame()/autosave) without ever copying it, so the buffer must be
+        // allocated on the unmanaged heap and kept alive - see _iniFilenameBuffer.
+        // Passing null disables ini load/save entirely for this context.
+        _iniFilenameBuffer = iniFilename != null
+            ? (byte*)Marshal.StringToCoTaskMemUTF8(iniFilename)
+            : null;
+        io.IniFilename = _iniFilenameBuffer;
 
         io.Fonts.AddFontDefault();
         
@@ -184,6 +212,12 @@ public class Window : IDisposable
         ImGui.DestroyContext(ImGuiContext);
 
         ImGuiContext = default;
+
+        if (_iniFilenameBuffer != null)
+        {
+            Marshal.FreeCoTaskMem((IntPtr)_iniFilenameBuffer);
+            _iniFilenameBuffer = null;
+        }
     }
 
     protected virtual void RenderUi()
