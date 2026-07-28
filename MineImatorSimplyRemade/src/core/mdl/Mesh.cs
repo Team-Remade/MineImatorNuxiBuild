@@ -87,14 +87,6 @@ public class Mesh : IDisposable
     /// </summary>
     public uint[]? Indices;
 
-    // ── Texture ───────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// OpenGL texture handle to bind when rendering this mesh.
-    /// Set to 0 (default) to render with the flat <see cref="Albedo"/> colour.
-    /// </summary>
-    public uint TextureId = 0;
-
     // ── Animation ─────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -110,14 +102,6 @@ public class Mesh : IDisposable
 
     /// <summary>Minecraft runs at 20 ticks/s; each frametime unit = 1 tick.</summary>
     private const double SecondsPerTick = 1.0 / 20.0;
-
-    // ── Culling ───────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// When true, back-face culling is disabled for this mesh so both sides are
-    /// visible.  When false (default), only front faces (CCW winding) are drawn.
-    /// </summary>
-    public bool DoubleSided = false;
 
     // ── Overlay / unlit flags ─────────────────────────────────────────────────
 
@@ -380,6 +364,15 @@ public class Mesh : IDisposable
     }
 
     // ── Material ──────────────────────────────────────────────────────────────
+    //
+    // A mesh owns one Material per surface (currently always exactly one — multi
+    // -surface support is scaffolded via the surface accessors below but every
+    // caller in this codebase renders single-material meshes). All shading
+    // properties (base colour/alpha, texture, emission, double-sidedness, …)
+    // live on that Material and are exposed below as simple properties so
+    // existing call sites (loaders, UI panels, viewport) keep working exactly
+    // as before while the actual storage/source-of-truth is the Material
+    // object itself instead of duplicate loose fields on the mesh.
 
     private readonly List<Material> _surfaces = new() { new StandardMaterial() };
 
@@ -387,35 +380,114 @@ public class Mesh : IDisposable
     public Material SurfaceGetMaterial(int index) => _surfaces[index];
     public void SurfaceSetMaterial(int index, Material mat) => _surfaces[index] = mat;
 
-    // ── Albedo colour (set by material layer) ─────────────────────────────────
+    /// <summary>
+    /// The <see cref="StandardMaterial"/> driving this mesh's appearance
+    /// (surface 0). If surface 0 has been replaced with a non-<see cref="StandardMaterial"/>
+    /// via <see cref="SurfaceSetMaterial"/>, a fresh <see cref="StandardMaterial"/> is
+    /// substituted so rendering always has valid shading data to read from.
+    /// </summary>
+    private StandardMaterial DefaultMaterial
+    {
+        get
+        {
+            if (_surfaces.Count == 0)
+                _surfaces.Add(new StandardMaterial());
+
+            if (_surfaces[0] is not StandardMaterial std)
+            {
+                std = new StandardMaterial();
+                _surfaces[0] = std;
+            }
+
+            return std;
+        }
+    }
 
     /// <summary>
-    /// Fallback base colour passed to the fragment shader as <c>uAlbedo</c> when
-    /// no <see cref="StandardMaterial"/> surface is assigned.
+    /// OpenGL texture handle to bind when rendering this mesh.
+    /// Set to 0 (default) to render with the flat <see cref="Albedo"/> colour.
+    /// Backed by <see cref="StandardMaterial.AlbedoTexture"/>.
     /// </summary>
-    public vec3 Albedo = vec3.Ones;
+    public uint TextureId
+    {
+        get => DefaultMaterial.AlbedoTexture;
+        set => DefaultMaterial.AlbedoTexture = value;
+    }
+
+    /// <summary>
+    /// When true, back-face culling is disabled for this mesh so both sides are
+    /// visible.  When false (default), only front faces (CCW winding) are drawn.
+    /// Backed by <see cref="StandardMaterial.DoubleSided"/>.
+    /// </summary>
+    public bool DoubleSided
+    {
+        get => DefaultMaterial.DoubleSided;
+        set => DefaultMaterial.DoubleSided = value;
+    }
+
+    /// <summary>
+    /// Base colour passed to the fragment shader as <c>uAlbedo</c>.
+    /// Backed by the RGB channels of <see cref="StandardMaterial.AlbedoColor"/>.
+    /// </summary>
+    public vec3 Albedo
+    {
+        get => DefaultMaterial.AlbedoColor.xyz;
+        set
+        {
+            var mat = DefaultMaterial;
+            mat.AlbedoColor = new vec4(value, mat.AlbedoColor.w);
+        }
+    }
 
     /// <summary>
     /// Overall opacity of this mesh [0 = fully transparent, 1 = fully opaque].
     /// Combined with the texture alpha (if any) in the fragment shader.
+    /// Backed by the alpha channel of <see cref="StandardMaterial.AlbedoColor"/>.
     /// </summary>
-    public float Alpha = 1.0f;
+    public float Alpha
+    {
+        get => DefaultMaterial.AlbedoColor.w;
+        set
+        {
+            var mat = DefaultMaterial;
+            mat.AlbedoColor = new vec4(mat.AlbedoColor.xyz, value);
+        }
+    }
 
     /// <summary>
     /// When true, adds emissive lighting to the final shaded result.
+    /// Backed by <see cref="StandardMaterial.EmissionEnabled"/>.
     /// </summary>
-    public bool EmissionEnabled = false;
+    public bool EmissionEnabled
+    {
+        get => DefaultMaterial.EmissionEnabled;
+        set => DefaultMaterial.EmissionEnabled = value;
+    }
 
     /// <summary>
-    /// Emissive RGB color added in the fragment shader when
+    /// Emissive RGB colour added in the fragment shader when
     /// <see cref="EmissionEnabled"/> is true.
+    /// Backed by the RGB channels of <see cref="StandardMaterial.Emission"/>.
     /// </summary>
-    public vec3 EmissionColor = vec3.Zero;
+    public vec3 EmissionColor
+    {
+        get => DefaultMaterial.Emission.xyz;
+        set
+        {
+            var mat = DefaultMaterial;
+            mat.Emission = new vec4(value, mat.Emission.w);
+        }
+    }
 
     /// <summary>
     /// Scalar multiplier for <see cref="EmissionColor"/>.
+    /// Backed by <see cref="StandardMaterial.EmissionEnergyMultiplier"/>.
     /// </summary>
-    public float EmissionEnergy = 1.0f;
+    public float EmissionEnergy
+    {
+        get => DefaultMaterial.EmissionEnergyMultiplier;
+        set => DefaultMaterial.EmissionEnergyMultiplier = value;
+    }
 
     // ── Construction ──────────────────────────────────────────────────────────
 
