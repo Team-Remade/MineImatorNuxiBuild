@@ -23,8 +23,8 @@ uniform bool      uUseTexture;
 
 // ── Point lights ─────────────────────────────────────────────────────────────
 // Maximum number of point lights processed per draw call.
-#define MAX_POINT_LIGHTS 16
-#define MAX_POINT_SHADOWS 4
+#define MAX_POINT_LIGHTS 32
+#define MAX_POINT_SHADOWS 8
 
 uniform int   uPointLightCount;
 uniform vec3  uPointLightPos[MAX_POINT_LIGHTS];
@@ -69,6 +69,10 @@ float samplePointShadowCube(int shadowIndex, vec3 lightToFrag)
     if (shadowIndex == 1) return texture(uPointShadowMaps[1], lightToFrag).r;
     if (shadowIndex == 2) return texture(uPointShadowMaps[2], lightToFrag).r;
     if (shadowIndex == 3) return texture(uPointShadowMaps[3], lightToFrag).r;
+    if (shadowIndex == 4) return texture(uPointShadowMaps[4], lightToFrag).r;
+    if (shadowIndex == 5) return texture(uPointShadowMaps[5], lightToFrag).r;
+    if (shadowIndex == 6) return texture(uPointShadowMaps[6], lightToFrag).r;
+    if (shadowIndex == 7) return texture(uPointShadowMaps[7], lightToFrag).r;
     return 1.0;
 }
 

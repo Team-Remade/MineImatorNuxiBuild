@@ -517,6 +517,64 @@ public class Mesh : IDisposable
         Upload();
     }
 
+    /// <summary>
+    /// Creates an independent deep copy of this mesh: geometry, skinning data,
+    /// shape keys, animation state, and material are all copied so edits made
+    /// to the clone (material colour, shape-key weights, texture, …) never
+    /// affect the original instance and vice versa. The clone gets its own
+    /// GPU buffers via <see cref="Upload"/>.
+    /// </summary>
+    public Mesh Clone()
+    {
+        var clone = new Mesh(_gl);
+
+        clone.Vertices.AddRange(Vertices);
+        clone.Normals.AddRange(Normals);
+        clone.TexCoords.AddRange(TexCoords);
+        clone.BoneIndices.AddRange(BoneIndices);
+        clone.BoneWeights.AddRange(BoneWeights);
+        clone.BoneNames.AddRange(BoneNames);
+        clone.BoneInverseBindMatrices.AddRange(BoneInverseBindMatrices);
+        clone.Indices = Indices != null ? (uint[])Indices.Clone() : null;
+
+        clone.AnimationKey        = AnimationKey;
+        clone.Unlit                = Unlit;
+        clone.DepthTestDisabled    = DepthTestDisabled;
+        clone.SortDepth            = SortDepth;
+        clone.PickOnly             = PickOnly;
+
+        foreach (var sk in ShapeKeys)
+        {
+            clone.ShapeKeys.Add(new ShapeKey
+            {
+                Name   = sk.Name,
+                Deltas = (float[])sk.Deltas.Clone(),
+                Weight = sk.Weight
+            });
+        }
+
+        // Deep-copy surface 0's material so palette/colour edits on the clone
+        // never write through to the source mesh's shared StandardMaterial.
+        var srcMat = DefaultMaterial;
+        var dstMat = clone.DefaultMaterial;
+        dstMat.AlbedoColor              = srcMat.AlbedoColor;
+        dstMat.AlbedoTexture            = srcMat.AlbedoTexture;
+        dstMat.Metallic                 = srcMat.Metallic;
+        dstMat.Roughness                = srcMat.Roughness;
+        dstMat.NormalEnabled             = srcMat.NormalEnabled;
+        dstMat.NormalTexture             = srcMat.NormalTexture;
+        dstMat.Transparency              = srcMat.Transparency;
+        dstMat.EmissionEnabled           = srcMat.EmissionEnabled;
+        dstMat.Emission                  = srcMat.Emission;
+        dstMat.EmissionEnergyMultiplier  = srcMat.EmissionEnergyMultiplier;
+        dstMat.DoubleSided               = srcMat.DoubleSided;
+
+        if (Vertices.Count > 0)
+            clone.Upload();
+
+        return clone;
+    }
+
     protected virtual void GenerateVertices()
     {
         
@@ -749,9 +807,14 @@ public class Mesh : IDisposable
     // ── Point light data (set by Viewport before each draw call) ─────────────
 
     /// <summary>
-    /// Lights active in the scene.  Set by <c>Viewport</c> before calling
-    /// <see cref="Render"/> so the shader receives per-frame lighting data.
-    /// Each entry:
+    /// The lights this specific draw call should use. Repopulated by
+    /// <c>Viewport.SelectPointLightsForMesh</c> immediately before every
+    /// individual mesh's <see cref="Render"/> call — it is <b>not</b> the full
+    /// list of every light in the scene. Each mesh gets only its own
+    /// nearest/brightest/longest-range lights (mirroring how Godot's Forward
+    /// Mobile / Compatibility renderers pick lights per mesh instance), so a
+    /// mesh's lighting never depends on how many other lights exist elsewhere
+    /// in the scene. Each entry:
     ///   pos               – world position of the light
     ///   color             – RGB colour
     ///   range             – maximum influence distance
@@ -805,7 +868,11 @@ public class Mesh : IDisposable
     public static mat4 ShadowLightSpaceMatrix = mat4.Identity;
     public static int ShadowDebugMode = 0;
     public static bool DirectionalShadowEnabled = true;
-    public static readonly uint[] PointShadowCubeTextures = new uint[4];
+
+    /// <summary>
+    /// Must match <c>MAX_POINT_SHADOWS</c> in simple.frag.
+    /// </summary>
+    public static readonly uint[] PointShadowCubeTextures = new uint[8];
 
     /// <summary>
     /// Elapsed seconds since the last frame.  Set by the Viewport once per frame
@@ -901,7 +968,8 @@ public class Mesh : IDisposable
         }
 
         // ── Point lights ──────────────────────────────────────────────────────
-        const int maxLights = 16;
+        // Must match MAX_POINT_LIGHTS in simple.frag.
+        const int maxLights = 32;
         int lightCount = Math.Min(PointLights.Count, maxLights);
         SetUniformInt("uPointLightCount", lightCount);
         for (int i = 0; i < lightCount; i++)

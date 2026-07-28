@@ -297,8 +297,12 @@ public class SceneObject
     // ── Shadow casting ────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Controls whether this object casts shadows.  Changing this propagates to
-    /// all <see cref="Mesh"/> instances in the Visual hierarchy.
+    /// Controls whether this object casts shadows into both the directional
+    /// (sun) shadow map and the point/spot-light shadow cubemaps. Read
+    /// directly by <c>Viewport.RenderShadowCasters</c> and
+    /// <c>Viewport.RenderPointShadowCasters</c> each frame — objects with this
+    /// set to <c>false</c> still render normally but are skipped from every
+    /// shadow pass.
     /// </summary>
     public bool CastShadow
     {
@@ -311,13 +315,12 @@ public class SceneObject
     } = true;
 
     /// <summary>
-    /// Propagates the current <see cref="CastShadow"/> value to all meshes.
-    /// No-op when <see cref="Visual"/> is null or returns no meshes.
+    /// Reserved for future per-mesh shadow-state caching. Shadow casting is
+    /// currently applied by the renderer reading <see cref="CastShadow"/>
+    /// directly each frame, so no push-down is needed here.
     /// </summary>
     public void ApplyCastShadow()
     {
-        // Shadow casting is handled by the renderer; nothing to push here until
-        // the rendering pipeline tracks per-mesh shadow state.
     }
 
     // ── MaterialSettings ──────────────────────────────────────────────────────
@@ -371,6 +374,23 @@ public class SceneObject
     /// True when this object owns explicit material overrides instead of inheriting.
     /// </summary>
     public bool HasExplicitMaterialSettings => _hasExplicitMaterialSettings;
+
+    /// <summary>
+    /// Copies <paramref name="other"/>'s current material state (a cloned
+    /// <see cref="MaterialSettings"/> plus whether it is explicit or inherited)
+    /// directly onto this object and re-applies it to this object's own meshes.
+    /// Used by duplication so a copy starts out looking identical to the
+    /// object it was copied from instead of losing its material back to the
+    /// un-set (null) default, which previously got silently overwritten by the
+    /// next material edit made through the Properties panel.
+    /// </summary>
+    public void CopyMaterialSettingsFrom(SceneObject other)
+    {
+        if (other == null) return;
+        _materialSettings = other._materialSettings?.Clone();
+        _hasExplicitMaterialSettings = other._hasExplicitMaterialSettings;
+        ApplyMaterialSettingsToMeshes();
+    }
 
     private void OnMaterialSettingsChanged()
     {

@@ -160,7 +160,8 @@ public class Viewport : UiPanel
     private Shader? _shadowShader;
     private uint _pointShadowFbo;
     private Shader? _pointShadowShader;
-    private const int MaxPointShadowLights = 4;
+    // Must match MAX_POINT_SHADOWS in simple.frag.
+    private const int MaxPointShadowLights = 8;
     private const uint PointShadowMapSize = 1024;
     private readonly uint[] _pointShadowCubeTextures = new uint[MaxPointShadowLights];
 
@@ -1810,10 +1811,13 @@ public class Viewport : UiPanel
         Mesh.DirectionalShadowEnabled = PropertiesPanel?.FillLightCastsShadows ?? true;
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
-        // Rebuild the static light list used by Mesh.Render() every frame so
-        // that moved / deleted lights are always up-to-date.
-        Mesh.PointLights.Clear();
+        // Rebuild the full scene light list every frame so that moved / deleted
+        // lights are always up-to-date. This is the unfiltered candidate list;
+        // Mesh.PointLights (what the shader actually reads) is repopulated per
+        // mesh by SelectPointLightsForMesh just before each draw call.
         Dictionary<LightSceneObject, int> pointShadowIndices = new();
+        var allPointLights = new List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)>();
+        vec3 camPos = activeCamera.Position;
 
         SceneRenderMode renderMode = HighQualityPreviewEnabled ? SceneRenderMode.Rendered : SceneRenderMode.Unrendered;
         if (renderMode == SceneRenderMode.Rendered)
@@ -1821,14 +1825,17 @@ public class Viewport : UiPanel
             Mesh.ShadowDebugMode = ShadowDebugEnabled ? 1 : 0;
             if (Mesh.DirectionalShadowEnabled)
                 RenderShadowMap();
-            pointShadowIndices = RenderPointShadowMaps();
+            pointShadowIndices = RenderPointShadowMaps(camPos);
         }
 
-        CollectPointLights(SceneObjects, pointShadowIndices);
+        CollectPointLights(SceneObjects, pointShadowIndices, allPointLights);
 
         // ── Ground plane ──────────────────────────────────────────────────────
         if (_groundPlane != null && GroundPlaneVisible)
+        {
+            SelectPointLightsForMesh(vec3.Zero, allPointLights);
             _groundPlane.Render(mat4.Identity, view, proj);
+        }
 
         // ── Scene objects ─────────────────────────────────────────────────────
         // Split meshes into three buckets:
@@ -1840,13 +1847,14 @@ public class Viewport : UiPanel
         var alphaBlendPairs = new List<(mat4 model, Mesh mesh, float dist, int sortDepth)>();
         var overlayPairs   = new List<(mat4 model, Mesh mesh)>();
 
-        vec3 camPos = activeCamera.Position;
-
         CollectRenderPairs(SceneObjects, camPos, opaquePairs, texturedPairs, alphaBlendPairs, overlayPairs);
 
         // Pass 1 – Opaque geometry (depth read + write, no blending).
         foreach (var (model, mesh) in opaquePairs)
+        {
+            SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
             mesh.Render(model, view, proj);
+        }
 
         // Pass 2 – Textured meshes (may have per-pixel alpha from the texture).
         //   2a. Depth pre-pass: populate depth buffer with color writes masked off so
@@ -1863,7 +1871,10 @@ public class Viewport : UiPanel
 
             Gl.ColorMask(false, false, false, false);
             foreach (var (model, mesh, _, _) in texturedPairs)
+            {
+                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
                 mesh.Render(model, view, proj);
+            }
             Gl.ColorMask(true, true, true, true);
 
             Gl.DepthFunc(GLEnum.Lequal);
@@ -1872,7 +1883,10 @@ public class Viewport : UiPanel
             Gl.DepthMask(false);
 
             foreach (var (model, mesh, _, _) in texturedPairs)
+            {
+                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
                 mesh.Render(model, view, proj);
+            }
 
             Gl.DepthMask(true);
             Gl.DepthFunc(GLEnum.Less);
@@ -1895,7 +1909,10 @@ public class Viewport : UiPanel
             Gl.DepthMask(false);
 
             foreach (var (model, mesh, _, _) in alphaBlendPairs)
+            {
+                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
                 mesh.Render(model, view, proj);
+            }
 
             Gl.DepthMask(true);
             Gl.Disable(GLEnum.Blend);
@@ -1907,7 +1924,10 @@ public class Viewport : UiPanel
             // Rendered with depth-test off so they always appear on top.
             // Mesh.Render() handles the DepthTestDisabled / Unlit flags internally.
             foreach (var (model, mesh) in overlayPairs)
+            {
+                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
                 mesh.Render(model, view, proj);
+            }
 
             // ── Light billboards ──────────────────────────────────────────────────
             // Drawn after transparent geometry, before the selection outline so
@@ -2281,7 +2301,7 @@ public class Viewport : UiPanel
         Gl.Viewport(0, 0, _viewportWidth, _viewportHeight);
     }
 
-    private Dictionary<LightSceneObject, int> RenderPointShadowMaps()
+    private Dictionary<LightSceneObject, int> RenderPointShadowMaps(vec3 cameraPos)
     {
         Dictionary<LightSceneObject, int> shadowIndices = new();
         if (Gl == null)
@@ -2293,6 +2313,15 @@ public class Viewport : UiPanel
 
         List<(LightSceneObject Light, vec3 Position, float Range)> shadowLights = [];
         CollectPointShadowCasters(SceneObjects, shadowLights);
+
+        // When there are more shadow-enabled lights than cubemap slots, give
+        // the slots to the lights closest to the camera instead of whichever
+        // came first in scene-tree order, so nearby shadows never "randomly"
+        // disappear just because a duplicate happened to land earlier in the
+        // hierarchy (same closest-wins principle as SelectPointLightsForMesh).
+        if (shadowLights.Count > MaxPointShadowLights)
+            shadowLights.Sort((a, b) => (a.Position - cameraPos).LengthSqr.CompareTo((b.Position - cameraPos).LengthSqr));
+
         int lightCount = Math.Min(shadowLights.Count, MaxPointShadowLights);
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
@@ -2414,12 +2443,18 @@ public class Viewport : UiPanel
             mat4 model = obj.GetWorldMatrix();
             var localBoneDict = boneDict ?? BuildBoneDictionary(obj);
 
-            foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly && !mesh.DepthTestDisabled))
+            // Respect the per-object "Cast Shadow" toggle: objects with it
+            // disabled still render normally but are skipped from the
+            // directional (sun) shadow-map pass.
+            if (obj.CastShadow)
             {
-                if (mesh.IsSkinned)
-                    UpdateBoneMatrices(mesh, model, localBoneDict);
+                foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly && !mesh.DepthTestDisabled))
+                {
+                    if (mesh.IsSkinned)
+                        UpdateBoneMatrices(mesh, model, localBoneDict);
 
-                mesh.RenderShadow(shadowShader, lightViewProj, model);
+                    mesh.RenderShadow(shadowShader, lightViewProj, model);
+                }
             }
 
             RenderShadowCasters(obj.Children, lightViewProj, shadowShader, localBoneDict);
@@ -2463,12 +2498,20 @@ public class Viewport : UiPanel
             if (localBoneDict == null)
                 localBoneDict = BuildBoneDictionary(obj);
 
-            foreach (var mesh in obj.Visuals.Where(mesh => mesh is { PickOnly: false, DepthTestDisabled: false }))
+            // Respect the per-object "Cast Shadow" toggle for point/spot
+            // light shadow cubemaps too — previously this flag was only
+            // ever read by the (now identical) directional-shadow pass'
+            // stub, so it was silently ignored everywhere and every visible
+            // mesh always cast point/spot shadows regardless of the setting.
+            if (obj.CastShadow)
             {
-                if (mesh.IsSkinned)
-                    UpdateBoneMatrices(mesh, model, localBoneDict);
+                foreach (var mesh in obj.Visuals.Where(mesh => mesh is { PickOnly: false, DepthTestDisabled: false }))
+                {
+                    if (mesh.IsSkinned)
+                        UpdateBoneMatrices(mesh, model, localBoneDict);
 
-                mesh.RenderPointShadow(pointShadowShader, lightViewProj, model, lightPos, farPlane);
+                    mesh.RenderPointShadow(pointShadowShader, lightViewProj, model, lightPos, farPlane);
+                }
             }
 
             RenderPointShadowCasters(obj.Children, lightViewProj, lightPos, farPlane, pointShadowShader, localBoneDict);
@@ -2532,7 +2575,7 @@ public class Viewport : UiPanel
     /// Public method for preview viewport to render point shadow maps.
     /// Renders shadows into the preview viewport's own point shadow framebuffer.
     /// </summary>
-    public Dictionary<LightSceneObject, int> RenderPointShadowMapsPublic()
+    public Dictionary<LightSceneObject, int> RenderPointShadowMapsPublic(vec3 cameraPos)
     {
         Dictionary<LightSceneObject, int> shadowIndices = new();
         if (Gl == null || !IsPreviewViewport)
@@ -2544,6 +2587,11 @@ public class Viewport : UiPanel
 
         List<(LightSceneObject Light, vec3 Position, float Range)> shadowLights = [];
         CollectPointShadowCasters(MainViewport?.SceneObjects ?? [], shadowLights);
+
+        // Same closest-wins prioritization as the main viewport's shadow pass.
+        if (shadowLights.Count > MaxPointShadowLights)
+            shadowLights.Sort((a, b) => (a.Position - cameraPos).LengthSqr.CompareTo((b.Position - cameraPos).LengthSqr));
+
         int lightCount = Math.Min(shadowLights.Count, MaxPointShadowLights);
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
@@ -2986,13 +3034,22 @@ public class Viewport : UiPanel
 
     /// <summary>
     /// Recursively walks <paramref name="objects"/> and appends every visible
-    /// <see cref="LightSceneObject"/> to <see cref="Mesh.PointLights"/>.
+    /// <see cref="LightSceneObject"/> to <paramref name="result"/> — the full,
+    /// unfiltered list of every light in the scene this frame. This is no
+    /// longer written directly into <see cref="Mesh.PointLights"/>: that field
+    /// is now a small per-draw-call scratch buffer that
+    /// <see cref="SelectPointLightsForMesh"/> repopulates before every
+    /// individual mesh render, picking only the lights most relevant to that
+    /// mesh (see remarks there for why).
     /// For spot lights the light's world-space forward direction is computed
     /// by rotating the local -Z axis by the world rotation; for point lights
     /// the direction is (0,0,0) and the spot-cosines are 0, which the shader
     /// interprets as "no cone test".
     /// </summary>
-    private static void CollectPointLights(IEnumerable<SceneObject> objects, Dictionary<LightSceneObject, int> shadowIndices)
+    private static void CollectPointLights(
+        IEnumerable<SceneObject> objects,
+        Dictionary<LightSceneObject, int> shadowIndices,
+        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)> result)
     {
         foreach (var obj in objects)
         {
@@ -3030,13 +3087,75 @@ public class Viewport : UiPanel
                     spotInnerCos = MathF.Cos(glm.Radians(Math.Min(innerDeg, 89.9f)));
                 }
 
-                Mesh.PointLights.Add((
+                result.Add((
                     pos, col, light.LightRange, light.LightEnergy, shadowIndex,
                     dir, spotOuterCos, spotInnerCos));
             }
 
-            CollectPointLights(obj.Children, shadowIndices);
+            CollectPointLights(obj.Children, shadowIndices, result);
         }
+    }
+
+    /// <summary>
+    /// Maximum number of point/spot lights selected per individual mesh draw
+    /// call. Kept comfortably below the shader's absolute <c>MAX_POINT_LIGHTS</c>
+    /// (32, see simple.frag) so there is headroom.
+    /// </summary>
+    private const int MaxLightsPerMesh = 16;
+
+    /// <summary>
+    /// Scratch buffer reused every call to avoid a per-mesh, per-frame
+    /// allocation while scoring candidate lights.
+    /// </summary>
+    private static readonly List<(float score, int index)> _lightScoreScratch = new();
+
+    /// <summary>
+    /// Picks the <see cref="MaxLightsPerMesh"/> lights most relevant to a mesh
+    /// centred at <paramref name="meshWorldPos"/> out of every light in the
+    /// scene (<paramref name="allLights"/>) and writes them into
+    /// <see cref="Mesh.PointLights"/> — the small per-draw-call buffer that
+    /// <see cref="Mesh.Render"/> reads uniforms from — immediately before that
+    /// mesh's <c>Render</c> call.
+    ///
+    /// Before this existed, <see cref="Mesh.PointLights"/> held one shared,
+    /// scene-tree-order list used identically by every mesh, truncated at a
+    /// flat cap; duplicating enough lights meant some lights fell off the end
+    /// of that single list and stopped affecting *every* mesh in the scene,
+    /// regardless of whether they were actually near enough to matter. This
+    /// mirrors how Godot's Forward Mobile / Compatibility renderers select
+    /// lights per mesh instance once a scene exceeds their per-object light
+    /// cap (see https://github.com/godotengine/godot/pull/107234): score
+    /// every candidate light by distance to the mesh divided by its
+    /// range*energy (closer / brighter / longer-range light wins), and keep
+    /// only the best-scoring <see cref="MaxLightsPerMesh"/> — so a mesh always
+    /// lights from its own nearest/brightest lights no matter how many other
+    /// lights exist elsewhere in the scene.
+    /// </summary>
+    private static void SelectPointLightsForMesh(
+        vec3 meshWorldPos,
+        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)> allLights)
+    {
+        Mesh.PointLights.Clear();
+
+        if (allLights.Count <= MaxLightsPerMesh)
+        {
+            Mesh.PointLights.AddRange(allLights);
+            return;
+        }
+
+        _lightScoreScratch.Clear();
+        for (int i = 0; i < allLights.Count; i++)
+        {
+            var l = allLights[i];
+            float rangeEnergy = MathF.Max(0.01f, l.range * MathF.Max(l.energy, 0.01f));
+            float score = (l.pos - meshWorldPos).Length / rangeEnergy;
+            _lightScoreScratch.Add((score, i));
+        }
+
+        _lightScoreScratch.Sort((a, b) => a.score.CompareTo(b.score));
+
+        for (int i = 0; i < MaxLightsPerMesh; i++)
+            Mesh.PointLights.Add(allLights[_lightScoreScratch[i].index]);
     }
 
     /// <summary>
@@ -3807,23 +3926,26 @@ public class Viewport : UiPanel
         Mesh.DirectionalShadowEnabled = MainViewport.PropertiesPanel?.FillLightCastsShadows ?? true;
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
-        Mesh.PointLights.Clear();
         Dictionary<LightSceneObject, int> pointShadowIndices = new();
+        var allPointLights = new List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)>();
+        vec3 camPos = cam.Position;
 
         if (renderMode == SceneRenderMode.Rendered)
         {
             Mesh.ShadowDebugMode = MainViewport.ShadowDebugEnabled ? 1 : 0;
             if (Mesh.DirectionalShadowEnabled)
                 RenderShadowMapPublic();
-            pointShadowIndices = RenderPointShadowMapsPublic();
+            pointShadowIndices = RenderPointShadowMapsPublic(camPos);
         }
 
-        CollectPointLights(MainViewport.SceneObjects, pointShadowIndices);
+        CollectPointLights(MainViewport.SceneObjects, pointShadowIndices, allPointLights);
 
         if (MainViewport.GroundPlane != null && MainViewport.GroundPlaneVisible)
+        {
+            SelectPointLightsForMesh(vec3.Zero, allPointLights);
             MainViewport.GroundPlane.Render(mat4.Identity, view, proj);
+        }
 
-        vec3 camPos = cam.Position;
         var opaque = new List<(mat4, Mesh)>();
         var textured = new List<(mat4, Mesh, float, int)>();
         var alphaBlend = new List<(mat4, Mesh, float, int)>();
@@ -3831,7 +3953,10 @@ public class Viewport : UiPanel
         CollectRenderPairs(MainViewport.SceneObjects, camPos, opaque, textured, alphaBlend, overlays);
 
         foreach (var (model, mesh) in opaque)
+        {
+            SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
             mesh.Render(model, view, proj);
+        }
 
         if (textured.Count > 0)
         {
@@ -3841,13 +3966,21 @@ public class Viewport : UiPanel
                 return byDist != 0 ? byDist : a.Item4.CompareTo(b.Item4);
             });
             Gl.ColorMask(false, false, false, false);
-            foreach (var (model, mesh, _, _) in textured) mesh.Render(model, view, proj);
+            foreach (var (model, mesh, _, _) in textured)
+            {
+                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
+                mesh.Render(model, view, proj);
+            }
             Gl.ColorMask(true, true, true, true);
             Gl.DepthFunc(GLEnum.Lequal);
             Gl.Enable(GLEnum.Blend);
             Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
             Gl.DepthMask(false);
-            foreach (var (model, mesh, _, _) in textured) mesh.Render(model, view, proj);
+            foreach (var (model, mesh, _, _) in textured)
+            {
+                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
+                mesh.Render(model, view, proj);
+            }
             Gl.DepthMask(true);
             Gl.DepthFunc(GLEnum.Less);
             Gl.Disable(GLEnum.Blend);
@@ -3863,7 +3996,11 @@ public class Viewport : UiPanel
             Gl.Enable(GLEnum.Blend);
             Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
             Gl.DepthMask(false);
-            foreach (var (model, mesh, _, _) in alphaBlend) mesh.Render(model, view, proj);
+            foreach (var (model, mesh, _, _) in alphaBlend)
+            {
+                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
+                mesh.Render(model, view, proj);
+            }
             Gl.DepthMask(true);
             Gl.Disable(GLEnum.Blend);
         }
@@ -3871,7 +4008,10 @@ public class Viewport : UiPanel
         if (OverlaysEnabled)
         {
             foreach (var (model, mesh) in overlays)
+            {
+                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
                 mesh.Render(model, view, proj);
+            }
 
             MainViewport.RenderOverlaysPublic(view, proj);
 

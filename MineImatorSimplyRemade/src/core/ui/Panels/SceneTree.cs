@@ -494,18 +494,33 @@ public class SceneTree : UiPanel
         dup.PivotOffset         = original.PivotOffset;
         dup.InheritPivotOffset  = original.InheritPivotOffset;
         dup.ObjectVisible       = original.ObjectVisible;
+        dup.InheritVisibility   = original.InheritVisibility;
+        dup.InheritPosition     = original.InheritPosition;
+        dup.InheritRotation     = original.InheritRotation;
+        dup.InheritScale        = original.InheritScale;
+        dup.CastShadow          = original.CastShadow;
         dup.SpawnCategory   = original.SpawnCategory;
         dup.BlockVariant    = original.BlockVariant;
         dup.TextureType     = original.TextureType;
         dup.ResourcePackId  = original.ResourcePackId;
         dup.SourceAssetPath = original.SourceAssetPath;
+        dup.AlbedoTexturePath   = original.AlbedoTexturePath;
         dup.TextureOverridePath = original.TextureOverridePath;
         dup.TileX           = original.TileX;
         dup.TileY           = original.TileY;
         dup.TileZ           = original.TileZ;
 
+        // Clone each mesh instead of sharing the original's instance — sharing
+        // meant editing material/geometry on either object silently mutated
+        // both, and the duplicate's material settings were lost the moment
+        // any Properties-panel edit lazily created a fresh default
+        // MaterialSettings and stomped the shared mesh.
         foreach (var mesh in original.Visuals)
-            dup.AddMesh(mesh);
+            dup.AddMesh(mesh.Clone());
+
+        // Preserve the exact material state (own explicit settings, or
+        // inherited-from-parent) instead of leaving it null/default.
+        dup.CopyMaterialSettingsFrom(original);
 
         return dup;
     }
