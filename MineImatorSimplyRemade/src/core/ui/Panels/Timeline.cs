@@ -65,6 +65,13 @@ public class TimelineAudioTrack
 /// Features: frame-based playback, collapsible property groups, keyframe
 /// add/remove/move, interpolation types, multi-select, apply-to-all-objects.
 /// </summary>
+public class TimelineMarker
+{
+    public int Frame { get; set; }
+    public string Label { get; set; } = "Marker";
+    public Vector4 Color { get; set; } = new(0.9f, 0.2f, 0.2f, 1f);
+}
+
 public class Timeline : UiPanel
 {
     // ── Singleton ─────────────────────────────────────────────────────────────
@@ -84,6 +91,7 @@ public class Timeline : UiPanel
     private float  _pixelsPerFrame   = 5f;
     private bool   _isPlaying        = false;
     private bool   _autoKeyframe     = false;
+    private bool   _loopPlayback     = false;
     private double _frameAccumulator = 0.0;
     private long   _lastTimestamp    = Stopwatch.GetTimestamp();
 
@@ -102,6 +110,21 @@ public class Timeline : UiPanel
 
     private readonly List<TimelineKeyframe>                                        _selectedKeyframes = new();
     private readonly Dictionary<TimelineKeyframe, (SceneObject obj, string path)> _keyframeOwners    = new();
+
+    private readonly List<TimelineMarker> _markers = new();
+    private TimelineMarker? _activeMarker;
+    private TimelineMarker? _draggedMarker;
+    private bool _isDraggingMarker;
+    private int _contextFrame;
+    private int? _selectedRegionStart;
+    private int? _selectedRegionEnd;
+    private int? _playbackRegionStart;
+    private int? _playbackRegionEnd;
+    private readonly List<(SceneObject obj, string path, int offset, object value, string interpolation)> _keyframeClipboard = new();
+    private bool _openMarkerEditor;
+    private string _markerLabel = "Marker";
+    private Vector4 _markerColor = new(0.9f, 0.2f, 0.2f, 1f);
+    private float _timelineAreaTop;
 
     // ── Audio tracks ──────────────────────────────────────────────────────────
 
@@ -128,6 +151,9 @@ public class Timeline : UiPanel
     private float _rulerScreenLeftAtDrag = 0f;
     /// <summary>Horizontal scroll offset at the moment the drag started.</summary>
     private float _rulerScrollAtDrag = 0f;
+    private bool  _isDraggingPlaybackRegion;
+    private bool  _playbackRegionDragged;
+    private int   _playbackRegionAnchorFrame;
 
     // ── Drag-select ───────────────────────────────────────────────────────────
 
@@ -148,6 +174,7 @@ public class Timeline : UiPanel
 
     // ── Layout ────────────────────────────────────────────────────────────────
 
+    private const float MarkerRowHeight    = 26f;
     private const float LeftColumnWidth    = 200f;
     private const float RowHeight          = 22f;
     private const float RulerHeight        = 24f;
@@ -185,6 +212,7 @@ public class Timeline : UiPanel
         _isPlaying = !_isPlaying;
         if (_isPlaying)
         {
+            MoveIntoPlaybackRegionIfNeeded();
             _lastTimestamp = Stopwatch.GetTimestamp();
             // Force every track to restart on the next sync so the audio
             // re-aligns with the current playhead after a pause.
@@ -212,7 +240,13 @@ public class Timeline : UiPanel
             CurrentFrame = _currentFrame,
             MaxFrames = _maxFrames,
             FrameRate = _frameRate,
-            AutoKeyframe = _autoKeyframe
+            AutoKeyframe = _autoKeyframe,
+            LoopPlayback = _loopPlayback,
+            PlaybackRegionStart = _playbackRegionStart,
+            PlaybackRegionEnd = _playbackRegionEnd,
+            Markers = _markers.Select(m => new ProjectTimelineMarker
+                { Frame = m.Frame, Label = m.Label, Red = m.Color.X, Green = m.Color.Y,
+                    Blue = m.Color.Z, Alpha = m.Color.W }).ToList()
         };
     }
 
@@ -222,6 +256,12 @@ public class Timeline : UiPanel
 
         if (state == null)
         {
+            _markers.Clear();
+            _loopPlayback = false;
+            _selectedRegionStart = null;
+            _selectedRegionEnd = null;
+            _playbackRegionStart = null;
+            _playbackRegionEnd = null;
             _currentFrame = 0;
             _frameAccumulator = 0.0;
             ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
@@ -231,6 +271,14 @@ public class Timeline : UiPanel
         _maxFrames = Math.Max(10, state.MaxFrames);
         _frameRate = Math.Clamp(state.FrameRate, 1f, 120f);
         _autoKeyframe = state.AutoKeyframe;
+        _loopPlayback = state.LoopPlayback;
+        _playbackRegionStart = state.PlaybackRegionStart;
+        _playbackRegionEnd = state.PlaybackRegionEnd;
+        _markers.Clear();
+        foreach (var marker in state.Markers ?? new List<ProjectTimelineMarker>())
+            _markers.Add(new TimelineMarker
+                { Frame = Math.Max(0, marker.Frame), Label = marker.Label,
+                    Color = new Vector4(marker.Red, marker.Green, marker.Blue, marker.Alpha) });
         _currentFrame = Math.Max(0, state.CurrentFrame);
         _frameAccumulator = 0.0;
         ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
@@ -275,10 +323,11 @@ public class Timeline : UiPanel
         float availH = ImGui.GetContentRegionAvail().Y;
         float statusH = ImGui.GetFrameHeightWithSpacing();
         float audioH  = RenderAudioTracksHeight();
-        float tracksH = Math.Max(availH - RulerHeight - ImGui.GetStyle().ItemSpacing.Y - statusH - audioH, 60f);
+        float tracksH = Math.Max(availH - RulerHeight - MarkerRowHeight - ImGui.GetStyle().ItemSpacing.Y - statusH - audioH, 60f);
 
         RenderRulerRow(availW);
         RenderTrackArea(availW, tracksH);
+        RenderMarkers(availW);
         RenderAudioTracks(availW, audioH);
 
         // ── Global playhead drag (works even when mouse has left the ruler) ───
@@ -319,6 +368,7 @@ public class Timeline : UiPanel
             ImGui.OpenPopup("##kf_add");
         }
         RenderAddKeyframeMenu();
+        RenderMarkerEditor();
 
         ImGui.End();
     }
@@ -370,11 +420,21 @@ public class Timeline : UiPanel
             foreach (var kf in kvp.Value)
                 if (kf.Frame > furthest) furthest = kf.Frame;
 
-        if (_currentFrame > furthest)
+        int loopStart = 0;
+        int playbackEnd = furthest;
+        if (_playbackRegionStart.HasValue && _playbackRegionEnd.HasValue &&
+            _playbackRegionEnd.Value > _playbackRegionStart.Value)
         {
-            _currentFrame = 0;
+            loopStart = _playbackRegionStart.Value;
+            playbackEnd = _playbackRegionEnd.Value;
+        }
+
+        if (_currentFrame > playbackEnd)
+        {
+            _currentFrame = _loopPlayback ? loopStart : playbackEnd;
             _frameAccumulator = 0.0;
             StopAllAudio();
+            if (!_loopPlayback) _isPlaying = false;
         }
         if (_currentFrame != prev) ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
     }
@@ -406,6 +466,9 @@ public class Timeline : UiPanel
         {
             if (ico ? IcoBtn("##pp", TimelineIcons.Play,  sz) : ImGui.Button(" > "))
             {
+                if (_loopPlayback && _playbackRegionStart.HasValue && _playbackRegionEnd.HasValue &&
+                    (_currentFrame < _playbackRegionStart.Value || _currentFrame > _playbackRegionEnd.Value))
+                    _currentFrame = _playbackRegionStart.Value;
                 _isPlaying = true;
                 _lastTimestamp = Stopwatch.GetTimestamp();
             }
@@ -425,6 +488,17 @@ public class Timeline : UiPanel
         // Jump to end
         if (ico ? IcoBtn("##je", TimelineIcons.JumpEnd,     sz) : ImGui.Button(">|"))
             JumpToLastKeyframe();
+        ImGui.SameLine();
+
+        var loopTint = _loopPlayback
+            ? new Vector4(0.35f, 0.75f, 1f, 1f)
+            : Vector4.One;
+        if (ico ? IcoBtnTinted("##loop", TimelineIcons.Loop, sz, loopTint) : ImGui.Button(_loopPlayback ? "Loop*" : "Loop"))
+            _loopPlayback = !_loopPlayback;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(_loopPlayback
+                ? "Looping enabled (selected playback region takes priority)"
+                : "Looping disabled");
         ImGui.SameLine();
 
         // ── Auto-keyframe record button ──────────────────────────────────────
@@ -931,9 +1005,20 @@ public class Timeline : UiPanel
         var   wPos    = ImGui.GetWindowPos();
         var   wSize   = ImGui.GetWindowSize();
         float scrollX = ImGui.GetScrollX();
+        _timelineAreaTop = wPos.Y;
 
         dl.AddRectFilled(wPos, wPos + wSize,
             ImGui.ColorConvertFloat4ToU32(new Vector4(0.14f, 0.14f, 0.14f, 1f)));
+
+        if (_playbackRegionStart.HasValue && _playbackRegionEnd.HasValue)
+        {
+            float regionX0 = wPos.X + _playbackRegionStart.Value * _pixelsPerFrame - scrollX;
+            float regionX1 = wPos.X + _playbackRegionEnd.Value * _pixelsPerFrame - scrollX;
+            dl.AddRectFilled(new Vector2(Math.Max(wPos.X, regionX0), wPos.Y),
+                new Vector2(Math.Min(wPos.X + wSize.X, regionX1), wPos.Y + RulerHeight), 0x443399FF);
+            dl.AddLine(new Vector2(regionX0, wPos.Y), new Vector2(regionX0, wPos.Y + RulerHeight), 0xFF66AAFF, 2f);
+            dl.AddLine(new Vector2(regionX1, wPos.Y), new Vector2(regionX1, wPos.Y + RulerHeight), 0xFF66AAFF, 2f);
+        }
 
         int startF = Math.Max(0, (int)(scrollX / _pixelsPerFrame) - 1);
         int endF   = Math.Min((int)(_maxFrames * 1.5f), (int)((scrollX + wSize.X) / _pixelsPerFrame) + 2);
@@ -976,10 +1061,141 @@ public class Timeline : UiPanel
             if (newFrame != _currentFrame) { _currentFrame = newFrame; _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
         }
 
+        if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+        {
+            _contextFrame = Math.Max(0, (int)MathF.Round((ImGui.GetMousePos().X - wPos.X + scrollX) / _pixelsPerFrame));
+            _playbackRegionAnchorFrame = _contextFrame;
+            _playbackRegionStart = _contextFrame;
+            _playbackRegionEnd = _contextFrame;
+            _isDraggingPlaybackRegion = true;
+            _playbackRegionDragged = false;
+        }
+
+        if (_isDraggingPlaybackRegion && ImGui.IsMouseDown(ImGuiMouseButton.Right))
+        {
+            int frame = Math.Max(0, (int)MathF.Round((ImGui.GetMousePos().X - wPos.X + scrollX) / _pixelsPerFrame));
+            _playbackRegionStart = Math.Min(_playbackRegionAnchorFrame, frame);
+            _playbackRegionEnd = Math.Max(_playbackRegionAnchorFrame, frame);
+            _playbackRegionDragged |= Math.Abs(frame - _playbackRegionAnchorFrame) > 0;
+        }
+
+        if (_isDraggingPlaybackRegion && ImGui.IsMouseReleased(ImGuiMouseButton.Right))
+        {
+            _isDraggingPlaybackRegion = false;
+            if (!_playbackRegionDragged)
+            {
+                _playbackRegionStart = null;
+                _playbackRegionEnd = null;
+                _ctxKeyframe = null;
+                _activeMarker = null;
+                _openContextMenu = true;
+            }
+        }
+
         ImGui.EndChild();
     }
 
     // ── Main track area ───────────────────────────────────────────────────────
+
+    private void RenderMarkers(float availW)
+    {
+        // Docked windows can report a zero-width content region for one frame
+        // while ImGui restores the layout. InvisibleButton asserts on either
+        // dimension being exactly zero, so keep its hit target valid.
+        float markerWidth = Math.Max(1f, availW);
+        Vector2 rowPos = ImGui.GetCursorScreenPos();
+        var dl = ImGui.GetWindowDrawList();
+        dl.AddRectFilled(rowPos, rowPos + new Vector2(markerWidth, MarkerRowHeight), 0xFF202020);
+        dl.AddText(rowPos + new Vector2(5f, 5f), 0xFFAAAAAA, "Markers");
+
+        float rightX = rowPos.X + LeftColumnWidth;
+        Vector2 mouse = ImGui.GetMousePos();
+        TimelineMarker? hovered = null;
+        foreach (var marker in _markers.OrderBy(m => m.Frame))
+        {
+            float x = rightX + marker.Frame * _pixelsPerFrame - _hScrollOffset;
+            if (x < rightX || x > rowPos.X + markerWidth) continue;
+            uint color = ImGui.ColorConvertFloat4ToU32(marker.Color);
+            dl.AddLine(new Vector2(x, _timelineAreaTop), new Vector2(x, rowPos.Y + MarkerRowHeight), color, 1.5f);
+            dl.AddTriangleFilled(new Vector2(x - 6f, rowPos.Y + 2f), new Vector2(x + 6f, rowPos.Y + 2f),
+                new Vector2(x, rowPos.Y + 10f), color);
+            string text = string.IsNullOrWhiteSpace(marker.Label) ? $"Frame {marker.Frame}" : marker.Label;
+            dl.AddText(new Vector2(x + 7f, rowPos.Y + 7f), color, text);
+            if (MathF.Abs(mouse.X - x) <= 7f && mouse.Y >= rowPos.Y && mouse.Y < rowPos.Y + MarkerRowHeight)
+                hovered = marker;
+        }
+
+        ImGui.InvisibleButton("##marker_row", new Vector2(markerWidth, MarkerRowHeight));
+        if (hovered != null && ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        {
+            _draggedMarker = hovered;
+            _activeMarker = hovered;
+            _isDraggingMarker = true;
+        }
+
+        if (_isDraggingMarker && _draggedMarker != null)
+        {
+            if (ImGui.IsMouseDown(ImGuiMouseButton.Left))
+            {
+                _draggedMarker.Frame = Math.Max(0,
+                    (int)MathF.Round((mouse.X - rightX + _hScrollOffset) / _pixelsPerFrame));
+                ImGui.SetTooltip($"{_draggedMarker.Label} · frame {_draggedMarker.Frame}");
+            }
+            else
+            {
+                _isDraggingMarker = false;
+                _draggedMarker = null;
+                _markers.Sort((a, b) => a.Frame.CompareTo(b.Frame));
+            }
+        }
+
+        if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+        {
+            _contextFrame = Math.Max(0, (int)MathF.Round((mouse.X - rightX + _hScrollOffset) / _pixelsPerFrame));
+            _activeMarker = hovered;
+            _ctxKeyframe = null;
+            _openContextMenu = true;
+        }
+        if (hovered != null && ImGui.IsItemHovered())
+            ImGui.SetTooltip($"{hovered.Label} (frame {hovered.Frame})\nRight-click for options");
+    }
+
+    private void RenderMarkerEditor()
+    {
+        if (_openMarkerEditor)
+        {
+            _openMarkerEditor = false;
+            ImGui.OpenPopup("Add Marker");
+        }
+        bool open = true;
+        if (!ImGui.BeginPopupModal("Add Marker", ref open, ImGuiWindowFlags.AlwaysAutoResize)) return;
+        ImGui.InputText("Label", ref _markerLabel, 128);
+        if (ImGui.BeginCombo("Preset", "Choose color..."))
+        {
+            foreach (var preset in new (string name, Vector4 color)[]
+            {
+                ("Red", new(0.90f, 0.18f, 0.18f, 1f)), ("Orange", new(1f, 0.48f, 0.10f, 1f)),
+                ("Yellow", new(0.95f, 0.82f, 0.12f, 1f)), ("Green", new(0.30f, 0.80f, 0.25f, 1f)),
+                ("Forest Green", new(0.10f, 0.42f, 0.18f, 1f)), ("Teal", new(0.08f, 0.68f, 0.65f, 1f)),
+                ("Blue", new(0.18f, 0.45f, 0.95f, 1f)), ("Purple", new(0.56f, 0.28f, 0.85f, 1f)),
+                ("Pink", new(0.95f, 0.35f, 0.65f, 1f))
+            })
+                if (ImGui.Selectable(preset.name)) _markerColor = preset.color;
+            ImGui.EndCombo();
+        }
+        ImGui.ColorEdit4("Color", ref _markerColor);
+        ImGui.TextDisabled($"Frame {_contextFrame}");
+        if (ImGui.Button("Add"))
+        {
+            _markers.Add(new TimelineMarker { Frame = _contextFrame,
+                Label = string.IsNullOrWhiteSpace(_markerLabel) ? "Marker" : _markerLabel.Trim(), Color = _markerColor });
+            _markers.Sort((a, b) => a.Frame.CompareTo(b.Frame));
+            ImGui.CloseCurrentPopup();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Cancel")) ImGui.CloseCurrentPopup();
+        ImGui.EndPopup();
+    }
 
     private void RenderTrackArea(float availW, float tracksH)
     {
@@ -1416,12 +1632,21 @@ public class Timeline : UiPanel
                     _keyframeOwners[hoveredKf] = (row.Object, row.PropertyPath);
                 }
                 _openContextMenu = true;
+                _contextFrame = hoveredKf.Frame;
+                _activeMarker = null;
             }
             else if (row.PropertyPath == "__header__")
             {
                 // Right-click on object header row
                 _ctxAddKeyframeObj = row.Object;
                 _openAddKeyframeMenu = true;
+            }
+            else
+            {
+                _contextFrame = frame;
+                _ctxKeyframe = null;
+                _activeMarker = null;
+                _openContextMenu = true;
             }
         }
 
@@ -1474,6 +1699,8 @@ public class Timeline : UiPanel
         float maxSX = MathF.Max(_dragSelectStart.X, _dragSelectEnd.X);
         float minSY = MathF.Min(_dragSelectStart.Y, _dragSelectEnd.Y);
         float maxSY = MathF.Max(_dragSelectStart.Y, _dragSelectEnd.Y);
+        _selectedRegionStart = Math.Max(0, (int)MathF.Round((minSX - wPos.X + scrollX) / _pixelsPerFrame));
+        _selectedRegionEnd = Math.Max(0, (int)MathF.Round((maxSX - wPos.X + scrollX) / _pixelsPerFrame));
 
         if (!shiftHeld)
         {
@@ -1510,10 +1737,51 @@ public class Timeline : UiPanel
     {
         if (!ImGui.BeginPopup("##kf_ctx")) return;
 
-        ImGui.TextDisabled("Keyframe");
+        ImGui.TextDisabled(_activeMarker != null ? $"Marker: {_activeMarker.Label}" : "Timeline");
         ImGui.Separator();
 
-        if (ImGui.BeginMenu("Interpolation"))
+        bool hasSelection = _selectedKeyframes.Count > 0;
+        if (ImGui.MenuItem("Cut Keyframes", "Ctrl+X", false, hasSelection)) { CopySelectedKeyframes(); DeleteSelectedKeyframes(); }
+        if (ImGui.MenuItem("Copy Keyframes", "Ctrl+C", false, hasSelection)) CopySelectedKeyframes();
+        if (ImGui.MenuItem("Paste Keyframes", "Ctrl+V", false, _keyframeClipboard.Count > 0)) PasteKeyframes(_contextFrame);
+        if (ImGui.MenuItem("Reverse Selected Keyframes", "", false, _selectedKeyframes.Count > 1)) TransformSelectedFrames(reverse: true);
+        if (ImGui.MenuItem("Randomize Selected Keyframes", "", false, _selectedKeyframes.Count > 1)) TransformSelectedFrames(reverse: false);
+
+        if (ImGui.BeginMenu("Select Keyframes"))
+        {
+            int markerFrame = _activeMarker?.Frame ?? _contextFrame;
+            if (ImGui.MenuItem("Before Marker")) SelectKeyframes(k => k.Frame < markerFrame);
+            if (ImGui.MenuItem("After Marker")) SelectKeyframes(k => k.Frame > markerFrame);
+            if (ImGui.MenuItem("First")) SelectExtreme(first: true);
+            if (ImGui.MenuItem("Last")) SelectExtreme(first: false);
+            if (ImGui.MenuItem("At Current Frame")) SelectKeyframes(k => k.Frame == _currentFrame);
+            bool hasRegion = _selectedRegionStart.HasValue && _selectedRegionEnd.HasValue;
+            if (ImGui.MenuItem("In Selected Timeline Region", "", false, hasRegion))
+                SelectKeyframes(k => k.Frame >= _selectedRegionStart && k.Frame <= _selectedRegionEnd);
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.MenuItem("Add Marker"))
+        {
+            _markerLabel = "Marker";
+            _markerColor = new Vector4(0.9f, 0.2f, 0.2f, 1f);
+            _openMarkerEditor = true;
+        }
+        if (ImGui.MenuItem("Clear Playback Region", "", false,
+                _playbackRegionStart.HasValue && _playbackRegionEnd.HasValue))
+        {
+            _playbackRegionStart = null;
+            _playbackRegionEnd = null;
+        }
+        if (_activeMarker != null && ImGui.MenuItem("Delete Marker"))
+        {
+            _markers.Remove(_activeMarker);
+            _activeMarker = null;
+        }
+
+        ImGui.Separator();
+
+        if (ImGui.BeginMenu("Interpolation", hasSelection))
         {
             foreach (var (lbl, val) in new[]
             {
@@ -1528,18 +1796,121 @@ public class Timeline : UiPanel
                 if (ImGui.MenuItem(lbl, "", active))
                 {
                     foreach (var kf in _selectedKeyframes) kf.InterpolationType = val;
-                    if (_ctxObject != null && _ctxPropPath != null)
-                        SaveKeyframesToObject(_ctxObject, _ctxPropPath);
+                    SaveSelectedOwners();
                 }
             }
             ImGui.EndMenu();
         }
 
         ImGui.Separator();
-        if (ImGui.MenuItem("Delete Keyframe(s)"))
+        if (ImGui.MenuItem("Delete Keyframe(s)", "Delete", false, hasSelection))
             DeleteSelectedKeyframes();
 
         ImGui.EndPopup();
+    }
+
+    private IEnumerable<(TimelineKeyframe keyframe, SceneObject obj, string path)> EnumerateKeyframes()
+    {
+        foreach (var row in _displayRows.Where(r => !r.IsGroupHeader && r.PropertyPath != "__header__"))
+            foreach (var keyframe in GetKeyframesForProperty(row.Object, row.PropertyPath))
+                yield return (keyframe, row.Object, row.PropertyPath);
+    }
+
+    private void SelectKeyframes(Func<TimelineKeyframe, bool> predicate)
+    {
+        _selectedKeyframes.Clear();
+        _keyframeOwners.Clear();
+        foreach (var (keyframe, obj, path) in EnumerateKeyframes().Where(x => predicate(x.keyframe)))
+        {
+            _selectedKeyframes.Add(keyframe);
+            _keyframeOwners[keyframe] = (obj, path);
+        }
+    }
+
+    private void MoveIntoPlaybackRegionIfNeeded()
+    {
+        if (_loopPlayback && _playbackRegionStart.HasValue && _playbackRegionEnd.HasValue &&
+            (_currentFrame < _playbackRegionStart.Value || _currentFrame > _playbackRegionEnd.Value))
+        {
+            _currentFrame = _playbackRegionStart.Value;
+            _frameAccumulator = 0.0;
+            ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
+        }
+    }
+
+    private void SelectExtreme(bool first)
+    {
+        var all = EnumerateKeyframes().ToList();
+        if (all.Count == 0) { SelectKeyframes(_ => false); return; }
+        int frame = first ? all.Min(x => x.keyframe.Frame) : all.Max(x => x.keyframe.Frame);
+        SelectKeyframes(k => k.Frame == frame);
+    }
+
+    private void CopySelectedKeyframes()
+    {
+        _keyframeClipboard.Clear();
+        if (_selectedKeyframes.Count == 0) return;
+        int origin = _selectedKeyframes.Min(k => k.Frame);
+        foreach (var keyframe in _selectedKeyframes)
+            if (_keyframeOwners.TryGetValue(keyframe, out var owner))
+                _keyframeClipboard.Add((owner.obj, owner.path, keyframe.Frame - origin, keyframe.Value, keyframe.InterpolationType));
+    }
+
+    private void PasteKeyframes(int frame)
+    {
+        _selectedKeyframes.Clear();
+        _keyframeOwners.Clear();
+        foreach (var item in _keyframeClipboard)
+        {
+            int target = Math.Max(0, frame + item.offset);
+            var list = GetKeyframesForProperty(item.obj, item.path);
+            list.RemoveAll(k => k.Frame == target);
+            var pasted = new TimelineKeyframe { Frame = target, Value = item.value, InterpolationType = item.interpolation };
+            list.Add(pasted);
+            list.Sort((a, b) => a.Frame.CompareTo(b.Frame));
+            _selectedKeyframes.Add(pasted);
+            _keyframeOwners[pasted] = (item.obj, item.path);
+            SaveKeyframesToObject(item.obj, item.path);
+        }
+        RecalculateTimelineLength();
+    }
+
+    private void TransformSelectedFrames(bool reverse)
+    {
+        int min = _selectedKeyframes.Min(k => k.Frame);
+        int max = _selectedKeyframes.Max(k => k.Frame);
+        var random = Random.Shared;
+        foreach (var keyframe in _selectedKeyframes)
+            keyframe.Frame = reverse ? min + max - keyframe.Frame : random.Next(min, max + 1);
+        RemoveSelectedCollisionsAndSave();
+    }
+
+    private void RemoveSelectedCollisionsAndSave()
+    {
+        foreach (var group in _selectedKeyframes.Where(_keyframeOwners.ContainsKey)
+                     .GroupBy(k => _keyframeOwners[k]))
+        {
+            string key = $"{group.Key.obj.ObjectId}.{group.Key.path}";
+            if (!_propertyKeyframes.TryGetValue(key, out var list)) continue;
+            var selected = group.ToHashSet();
+            foreach (int frame in selected.Select(k => k.Frame).Distinct())
+                list.RemoveAll(k => k.Frame == frame && !selected.Contains(k));
+            foreach (var duplicate in group.GroupBy(k => k.Frame).SelectMany(g => g.Skip(1)).ToList())
+            {
+                list.Remove(duplicate);
+                _selectedKeyframes.Remove(duplicate);
+                _keyframeOwners.Remove(duplicate);
+            }
+            list.Sort((a, b) => a.Frame.CompareTo(b.Frame));
+            SaveKeyframesToObject(group.Key.obj, group.Key.path);
+        }
+        RecalculateTimelineLength();
+    }
+
+    private void SaveSelectedOwners()
+    {
+        foreach (var owner in _selectedKeyframes.Where(_keyframeOwners.ContainsKey).Select(k => _keyframeOwners[k]).Distinct())
+            SaveKeyframesToObject(owner.obj, owner.path);
     }
 
     private void RenderAddKeyframeMenu()

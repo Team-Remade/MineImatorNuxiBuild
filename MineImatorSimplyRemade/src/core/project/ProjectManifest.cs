@@ -172,6 +172,20 @@ public class ProjectTimelineState
     public int MaxFrames { get; set; } = 300;
     public float FrameRate { get; set; } = 30f;
     public bool AutoKeyframe { get; set; } = false;
+    public bool LoopPlayback { get; set; } = false;
+    public int? PlaybackRegionStart { get; set; }
+    public int? PlaybackRegionEnd { get; set; }
+    public List<ProjectTimelineMarker> Markers { get; set; } = new();
+}
+
+public class ProjectTimelineMarker
+{
+    public int Frame { get; set; }
+    public string Label { get; set; } = "Marker";
+    public float Red { get; set; } = 0.9f;
+    public float Green { get; set; } = 0.2f;
+    public float Blue { get; set; } = 0.2f;
+    public float Alpha { get; set; } = 1f;
 }
 
 public class ProjectKeyframeEntry

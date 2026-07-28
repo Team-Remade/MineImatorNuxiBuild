@@ -18,6 +18,7 @@ public static class TimelineIcons
     public static uint JumpStart  { get; private set; }
     public static uint JumpEnd    { get; private set; }
     public static uint AutoKey    { get; private set; }
+    public static uint Loop       { get; private set; }
 
     public static bool IsLoaded   { get; private set; }
 
@@ -35,6 +36,7 @@ public static class TimelineIcons
         JumpStart   = Load(gl, Prefix + "vaadin--step-backward.svg",  iconSize);
         JumpEnd     = Load(gl, Prefix + "vaadin--step-forward.svg",   iconSize);
         AutoKey     = Load(gl, Prefix + "bi--dot.svg",                iconSize);
+        Loop        = Load(gl, Prefix + "ic--outline-loop.svg",       iconSize);
 
         IsLoaded = true;
     }
