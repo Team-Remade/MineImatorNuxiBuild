@@ -151,6 +151,11 @@ public static class MinecraftModelMesh
             if (TerrainAtlas.AnimatedTextures.ContainsKey(texKey))
                 mesh.AnimationKey = texKey;
 
+            // Route true alpha-blend textures (water) through the depth-tested,
+            // depth-write-off blend pass instead of the cutout/opaque path — see
+            // Mesh.IsTranslucent.
+            mesh.IsTranslucent = TerrainAtlas.IsTextureTranslucent(texKey);
+
             mesh.Upload();
             result.Add(mesh);
         }
@@ -242,6 +247,11 @@ public static class MinecraftModelMesh
         var mesh = new Mesh(gl);
         mesh.TextureId = texId;
         mesh.DoubleSided = false;
+
+        // Rare fallback path — a linear reverse lookup is fine here (see Mesh.IsTranslucent).
+        string? texKeyForTranslucency = TerrainAtlas.Textures.FirstOrDefault(kv => kv.Value == texId).Key;
+        if (texKeyForTranslucency != null)
+            mesh.IsTranslucent = TerrainAtlas.IsTextureTranslucent(texKeyForTranslucency);
 
         float centerX = (tileX - 1) * 0.5f;
         float centerY = (tileY - 1) * 0.5f;

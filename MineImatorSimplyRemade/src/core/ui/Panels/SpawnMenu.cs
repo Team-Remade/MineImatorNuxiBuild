@@ -2405,6 +2405,14 @@ public class SpawnMenu : UiPanel
                 return null;
             }
 
+            // Reverse lookup so every merged mesh (not just liquids) can be classified as
+            // alpha-blend vs cutout/opaque from its texture id alone — see Mesh.IsTranslucent.
+            // Built once here rather than per-mesh since TerrainAtlas.Textures has no
+            // texture-id -> key index of its own.
+            var texIdToKey = new Dictionary<uint, string>();
+            foreach (var kv in TerrainAtlas.Textures)
+                texIdToKey[kv.Value] = kv.Key;
+
             foreach (var kv in merged)
             {
                 var acc = kv.Value;
@@ -2413,7 +2421,9 @@ public class SpawnMenu : UiPanel
                 var mesh = new Mesh(Gl)
                 {
                     TextureId = kv.Key,
-                    AnimationKey = liquidAnimKeys.TryGetValue(kv.Key, out string? animKey) ? animKey : ""
+                    AnimationKey = liquidAnimKeys.TryGetValue(kv.Key, out string? animKey) ? animKey : "",
+                    IsTranslucent = texIdToKey.TryGetValue(kv.Key, out string? texKey) &&
+                                    TerrainAtlas.IsTextureTranslucent(texKey)
                 };
                 if (liquidTintColors.TryGetValue(kv.Key, out vec3 tint))
                     mesh.Albedo = tint;

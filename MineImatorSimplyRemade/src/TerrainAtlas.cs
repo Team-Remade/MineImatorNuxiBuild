@@ -62,12 +62,54 @@ public static class TerrainAtlas
     /// </summary>
     public static readonly Dictionary<string, AnimatedTextureInfo> AnimatedTextures = new();
 
+    /// <summary>Memoised results of <see cref="IsTextureTranslucent"/>, cleared on reload.</summary>
+    private static readonly Dictionary<string, bool> _translucencyCache = new();
+
     private static GL? _gl;
 
     public static void Initialize(GL gl, Action<float, string>? progress = null)
     {
         _gl = gl;
         LoadTextures(progress);
+    }
+
+    /// <summary>
+    /// True when the texture identified by <paramref name="key"/> has at least one
+    /// pixel with a "meaningfully partial" alpha value (neither essentially opaque
+    /// nor essentially transparent). This distinguishes true alpha-*blend* textures
+    /// like water (every pixel around ~0.7 alpha) from alpha-*cutout* textures like
+    /// leaves or glass panes (pixels are either fully opaque or fully transparent,
+    /// with a hard edge between shape and cutout). Callers use this to decide
+    /// whether a mesh needs proper depth-tested, non-depth-writing blend rendering
+    /// (see <see cref="Mesh.IsTranslucent"/>) instead of the cheaper cutout path,
+    /// which — because it writes full depth for any non-transparent pixel — would
+    /// otherwise make blend-style textures wrongly occlude geometry behind them.
+    /// Result is memoised; the cache is cleared whenever textures are reloaded.
+    /// </summary>
+    public static bool IsTextureTranslucent(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return false;
+        if (_translucencyCache.TryGetValue(key, out bool cached))
+            return cached;
+
+        bool result = false;
+        if (TilePixels.TryGetValue(key, out byte[]? pixels))
+        {
+            for (int i = 3; i < pixels.Length; i += 4)
+            {
+                byte a = pixels[i];
+                // Leave a little headroom around 0/255 for compression/quantisation
+                // noise on otherwise-binary cutout edges.
+                if (a > 8 && a < 248)
+                {
+                    result = true;
+                    break;
+                }
+            }
+        }
+
+        _translucencyCache[key] = result;
+        return result;
     }
 
     private static unsafe void LoadTextures(Action<float, string>? progress = null)
@@ -82,6 +124,7 @@ public static class TerrainAtlas
         Textures.Clear();
         TilePixels.Clear();
         AnimatedTextures.Clear();
+        _translucencyCache.Clear();
 
         string versionRoot = MinecraftDataLoader.GetVersionRoot();
         string texturesDir = Path.Combine(versionRoot, "textures");

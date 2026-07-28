@@ -121,6 +121,18 @@ public class Mesh : IDisposable
     public bool DepthTestDisabled = false;
 
     /// <summary>
+    /// When true, this mesh is genuinely alpha-*blended* (e.g. water, whose texture
+    /// is a uniform ~70% opacity) rather than merely alpha-*cutout* (e.g. leaves,
+    /// glass panes — pixels are either fully opaque or fully transparent). The
+    /// viewport routes translucent meshes through the depth-tested,
+    /// depth-write-off blend pass instead of the textured/cutout depth-pre-pass
+    /// path, since that pre-pass writes full depth for any non-transparent pixel
+    /// and would otherwise make a partially-see-through surface like water wrongly
+    /// hide opaque geometry behind it. See <see cref="TerrainAtlas.IsTextureTranslucent"/>.
+    /// </summary>
+    public bool IsTranslucent = false;
+
+    /// <summary>
     /// Optional render ordering hint used by the viewport for coplanar layered
     /// meshes (e.g. Mine-imator facial rigs). Lower values render first.
     /// </summary>
@@ -540,6 +552,7 @@ public class Mesh : IDisposable
         clone.AnimationKey        = AnimationKey;
         clone.Unlit                = Unlit;
         clone.DepthTestDisabled    = DepthTestDisabled;
+        clone.IsTranslucent        = IsTranslucent;
         clone.SortDepth            = SortDepth;
         clone.PickOnly             = PickOnly;
 

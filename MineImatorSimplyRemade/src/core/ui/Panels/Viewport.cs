@@ -3198,7 +3198,14 @@ public class Viewport : UiPanel
                     continue;
                 }
 
-                if (mesh.TextureId != 0)
+                // Translucent (true alpha-blend) meshes must go through the depth-tested,
+                // depth-write-off blend pass rather than the textured/cutout depth-pre-pass
+                // path below, which writes full depth for any non-transparent pixel and
+                // would otherwise make a partially-see-through surface like water wrongly
+                // occlude opaque geometry behind it.
+                if (mesh.IsTranslucent)
+                    alphaBlend.Add((model, mesh, dist, mesh.SortDepth));
+                else if (mesh.TextureId != 0)
                     textured.Add((model, mesh, dist, mesh.SortDepth));
                 else if (mesh.Alpha < 1.0f)
                     alphaBlend.Add((model, mesh, dist, mesh.SortDepth));
