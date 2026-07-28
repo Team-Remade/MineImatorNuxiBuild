@@ -2305,6 +2305,10 @@ public class SpawnMenu : UiPanel
             // resolves an animated fluid texture (e.g. "water_still"), so the merged mesh for that
             // texture can be marked animated once assembly finishes below.
             var liquidAnimKeys = new Dictionary<uint, string>();
+            // Texture id -> tint colour, populated by EmitLiquidVoxel for fluid textures that
+            // need a biome-independent default tint (currently just water) since the merged
+            // mesh assembly below has no other per-block way to apply Mesh.Albedo.
+            var liquidTintColors = new Dictionary<uint, vec3>();
             int placed = 0;
 
             for (int y = 0; y < height; y++)
@@ -2349,6 +2353,7 @@ public class SpawnMenu : UiPanel
                             EmitLiquidVoxel(
                                 merged,
                                 liquidAnimKeys,
+                                liquidTintColors,
                                 voxelInfos,
                                 liquidLevels,
                                 width,
@@ -2410,6 +2415,8 @@ public class SpawnMenu : UiPanel
                     TextureId = kv.Key,
                     AnimationKey = liquidAnimKeys.TryGetValue(kv.Key, out string? animKey) ? animKey : ""
                 };
+                if (liquidTintColors.TryGetValue(kv.Key, out vec3 tint))
+                    mesh.Albedo = tint;
                 mesh.Vertices.AddRange(acc.Vertices);
                 mesh.Normals.AddRange(acc.Normals);
                 mesh.TexCoords.AddRange(acc.TexCoords);
@@ -2641,6 +2648,46 @@ public class SpawnMenu : UiPanel
         public bool IsCullableCube;
         public CubeFaceSet? CubeFaces;
         public List<MeshTemplate> Templates = new();
+
+        /// <summary>
+        /// Whether this block should hide the touching face of an adjacent block
+        /// (i.e. count as an occluder in <see cref="EmitCubeFacesWithCulling"/>'s
+        /// and <see cref="EmitLiquidVoxel"/>'s neighbour checks).
+        /// Distinct from <see cref="IsCullableCube"/>: that flag only says the
+        /// block's *own* geometry is a plain full cube eligible for the fast
+        /// per-face-culling path — it says nothing about whether the block is
+        /// actually opaque. Glass, leaves, ice and liquids are all full cubes
+        /// (<c>IsCullableCube == true</c>) but must never occlude a neighbour,
+        /// since you can see through/past them to the neighbour's face.
+        /// Defaults to false so non-cube render paths (fences, templates, etc.)
+        /// never accidentally occlude anything.
+        /// </summary>
+        public bool IsOpaque;
+    }
+
+    /// <summary>
+    /// Vanilla-block name patterns that are geometrically a full cube (so
+    /// <see cref="TryBuildCullableCubeFaces"/> succeeds and <c>IsCullableCube</c>
+    /// is true) but are not actually opaque, and therefore must not occlude a
+    /// neighbouring block's face. Matched case-insensitively as a substring so
+    /// coloured/variant names (stained_glass, azalea_leaves, packed_ice, …) are
+    /// all covered by one entry. Over-including here only costs a few extra
+    /// triangles on the neighbour; under-including causes missing faces, so this
+    /// list errs on the side of including anything remotely translucent.
+    /// </summary>
+    private static readonly string[] NonOccludingBlockNamePatterns =
+    {
+        "glass", "leaves", "ice",
+    };
+
+    private static bool IsNonOccludingBlock(string blockName)
+    {
+        foreach (string pattern in NonOccludingBlockNamePatterns)
+        {
+            if (blockName.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     private static int GetDimension(TagCompound root, string key)
@@ -2934,6 +2981,12 @@ public class SpawnMenu : UiPanel
 
         info.CubeFaces = TryBuildCullableCubeFaces(variant);
         info.IsCullableCube = info.CubeFaces != null;
+        // Water/lava are always full cubes geometrically but are handled entirely by
+        // EmitLiquidVoxel and must never occlude a neighbour's face (see IsOpaque doc).
+        info.IsOpaque = info.IsCullableCube &&
+                        !string.Equals(blockName, "water", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(blockName, "lava", StringComparison.OrdinalIgnoreCase) &&
+                        !IsNonOccludingBlock(blockName);
 
         if (!info.IsCullableCube)
             info.Templates = BuildVariantTemplates(variant);
@@ -3339,7 +3392,9 @@ public class SpawnMenu : UiPanel
 
             int nIndex = ny * width * length + nz * width + nx;
             var n = voxels[nIndex];
-            return n != null && n.IsCullableCube;
+            // IsOpaque (not IsCullableCube): glass/leaves/ice/liquids are full cubes
+            // geometrically but must never hide a neighbour's face — see VariantRenderInfo.IsOpaque.
+            return n != null && n.IsOpaque;
         }
 
         if (!IsOccluded(x, y + 1, z) && faces.Up != null)
@@ -3529,6 +3584,7 @@ public class SpawnMenu : UiPanel
     private static void EmitLiquidVoxel(
         Dictionary<uint, MeshAccumulator> merged,
         Dictionary<uint, string> animKeysOut,
+        Dictionary<uint, vec3> tintColorsOut,
         VariantRenderInfo?[] voxels,
         int[] liquidLevels,
         int width, int height, int length,
@@ -3564,7 +3620,7 @@ public class SpawnMenu : UiPanel
             int idx = GetIndex(nx, ny, nz);
             if (idx < 0) return false;
             var n = voxels[idx];
-            return n != null && n.IsCullableCube;
+            return n != null && n.IsOpaque;
         }
 
         bool matchXp = SameFluid(x + 1, y, z);
@@ -3596,6 +3652,16 @@ public class SpawnMenu : UiPanel
 
         if (TerrainAtlas.AnimatedTextures.ContainsKey(stillKey)) animKeysOut[stillTex] = stillKey;
         if (TerrainAtlas.AnimatedTextures.ContainsKey(flowKey)) animKeysOut[flowTex] = flowKey;
+
+        // Water's real texture is a light desaturated grey vanilla tints blue at render
+        // time; apply the same biome-independent default used for spawn-menu-placed water
+        // (see MinecraftModelMesh.TryGetDefaultBlockTint) since this schematic path builds
+        // its own merged Mesh instances instead of going through MinecraftModelMesh.Build.
+        if (MinecraftModelMesh.TryGetDefaultBlockTint(blockName, out vec3 tint))
+        {
+            tintColorsOut[stillTex] = tint;
+            tintColorsOut[flowTex] = tint;
+        }
 
         var stillAcc = GetOrCreateAccumulator(merged, stillTex);
         var flowAcc = GetOrCreateAccumulator(merged, flowTex);

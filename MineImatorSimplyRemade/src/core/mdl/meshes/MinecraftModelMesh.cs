@@ -64,6 +64,15 @@ public static class MinecraftModelMesh
     }
 
     /// <summary>
+    /// Public lookup into <see cref="DefaultBlockTints"/> for callers that build
+    /// their own meshes for a block outside <see cref="Build"/> (e.g. the schematic
+    /// importer's per-voxel liquid mesher in <c>SpawnMenu</c>, which merges geometry
+    /// directly into shared accumulators instead of going through this class).
+    /// </summary>
+    public static bool TryGetDefaultBlockTint(string blockName, out vec3 tint) =>
+        DefaultBlockTints.TryGetValue(blockName, out tint);
+
+    /// <summary>
     /// Builds one or more <see cref="Mesh"/> objects from a fully-resolved
     /// Minecraft block model. Returns an empty list when the model has no
     /// renderable geometry.
