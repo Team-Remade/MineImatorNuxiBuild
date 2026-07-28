@@ -299,7 +299,7 @@ public class ContentBrowser : UiPanel
         string ext = Path.GetExtension(fullPath).ToLowerInvariant();
         if (ext is ".schematic" or ".schem")
         {
-            SpawnMenu?.SpawnSchematicFromPath(fullPath);
+            SpawnMenu?.SpawnSchematicFromPathInteractive(fullPath);
             return;
         }
 

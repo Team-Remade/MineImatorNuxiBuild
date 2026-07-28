@@ -52,6 +52,12 @@ public class SpawnMenu : UiPanel
     // ── State ────────────────────────────────────────────────────────────────
     private bool _isOpen = false;
 
+    // Retry-prompt state for schematic loads that fail on invalid/corrupt data.
+    private string? _pendingSchematicRetryPath;
+    private string  _pendingSchematicRetryResourcePackId = "";
+    private string? _pendingSchematicRetryError;
+    private string? _lastSchematicLoadError;
+
     private string _selectedCategory  = "Primitives";
     private int    _selectedObjectIndex  = -1;
     private int    _selectedVariantIndex = -1;
@@ -357,6 +363,11 @@ public class SpawnMenu : UiPanel
 
     public override unsafe void Render()
     {
+        // Rendered every frame regardless of _isOpen so a schematic load
+        // failure triggered from the content browser or elsewhere can still
+        // prompt the user, even if the spawn menu window itself isn't shown.
+        RenderSchematicLoadRetryDialog();
+
         if (!_isOpen) return;
 
         if (_nextWindowPos.HasValue)
@@ -1877,10 +1888,8 @@ public class SpawnMenu : UiPanel
         if (!result.IsOk || string.IsNullOrEmpty(result.Path)) return;
 
         string pathToSpawn = ResolveSchematicPathForProject(result.Path);
-        var root = SpawnSchematicFromPath(pathToSpawn, _spawnResourcePackId);
-        if (root == null)
-            Console.Error.WriteLine($"Failed to load schematic: {pathToSpawn}");
-        else
+        var root = SpawnSchematicFromPathInteractive(pathToSpawn, _spawnResourcePackId);
+        if (root != null)
             _isOpen = false;
     }
 
@@ -2105,12 +2114,87 @@ public class SpawnMenu : UiPanel
     }
 
     /// <summary>
+    /// Loads a schematic file in response to a direct user action (the file-open
+    /// dialog, or double-clicking it in the content browser). Unlike
+    /// <see cref="SpawnSchematicFromPath"/>, if the file contains invalid/corrupt
+    /// data and loading fails, this shows a Retry/Cancel dialog asking the user
+    /// whether they want to try loading it again, instead of silently giving up.
+    /// </summary>
+    public SceneObject? SpawnSchematicFromPathInteractive(string filePath, string resourcePackId = "")
+    {
+        var root = SpawnSchematicFromPath(filePath, resourcePackId);
+        if (root == null)
+        {
+            _pendingSchematicRetryPath = filePath;
+            _pendingSchematicRetryResourcePackId = resourcePackId;
+            _pendingSchematicRetryError = _lastSchematicLoadError ?? "The file could not be loaded.";
+        }
+        return root;
+    }
+
+    /// <summary>
+    /// Renders the "schematic failed to load, try again?" confirmation popup.
+    /// Safe to call every frame; it only opens/draws when a retry is pending.
+    /// </summary>
+    private void RenderSchematicLoadRetryDialog()
+    {
+        if (_pendingSchematicRetryPath != null)
+            ImGui.OpenPopup("##schematicLoadRetryConfirm");
+
+        bool popupOpen = true;
+        if (!ImGui.BeginPopupModal("##schematicLoadRetryConfirm", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            return;
+
+        if (_pendingSchematicRetryPath != null)
+        {
+            string fileName = Path.GetFileName(_pendingSchematicRetryPath);
+            ImGui.TextWrapped($"Failed to load schematic '{fileName}'.");
+            ImGui.TextWrapped(_pendingSchematicRetryError ?? "The file contains invalid data.");
+            ImGui.Separator();
+            ImGui.TextWrapped("Do you want to try loading it again?");
+
+            if (ImGui.Button("Retry", new Vector2(120, 0)))
+            {
+                string retryPath = _pendingSchematicRetryPath;
+                string retryPack = _pendingSchematicRetryResourcePackId;
+
+                var root = SpawnSchematicFromPath(retryPath, retryPack);
+                if (root == null)
+                {
+                    // Still failing — keep the popup open with the fresh error.
+                    _pendingSchematicRetryError = _lastSchematicLoadError ?? "The file could not be loaded.";
+                }
+                else
+                {
+                    _pendingSchematicRetryPath = null;
+                    _pendingSchematicRetryError = null;
+                    _isOpen = false;
+                    ImGui.CloseCurrentPopup();
+                }
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel", new Vector2(120, 0)))
+            {
+                Console.Error.WriteLine($"Gave up loading schematic: {_pendingSchematicRetryPath}");
+                _pendingSchematicRetryPath = null;
+                _pendingSchematicRetryError = null;
+                ImGui.CloseCurrentPopup();
+            }
+        }
+
+        ImGui.EndPopup();
+    }
+
+    /// <summary>
     /// Loads legacy <c>.schematic</c> and Sponge/WorldEdit <c>.schem</c> files and
     /// spawns them as a merged scenery object.
     /// </summary>
     public SceneObject? SpawnSchematicFromPath(string filePath, string resourcePackId = "")
     {
         if (Viewport == null || Gl == null) return null;
+
+        _lastSchematicLoadError = null;
 
         string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
         string previousResourcePackId = _spawnResourcePackId;
@@ -2125,12 +2209,17 @@ public class SpawnMenu : UiPanel
             }
             catch (Exception ex)
             {
+                _lastSchematicLoadError = $"The NBT data could not be read: {ex.Message}";
                 Console.Error.WriteLine($"Failed reading NBT schematic '{filePath}': {ex.Message}");
                 return null;
             }
 
             var rootTag = doc.DocumentRoot;
-            if (rootTag == null) return null;
+            if (rootTag == null)
+            {
+                _lastSchematicLoadError = "The file has no NBT root tag.";
+                return null;
+            }
 
             var schematic = rootTag.GetCompound("Schematic") ?? rootTag;
 
@@ -2140,6 +2229,7 @@ public class SpawnMenu : UiPanel
 
             if (width <= 0 || height <= 0 || length <= 0)
             {
+                _lastSchematicLoadError = "The schematic dimensions are invalid.";
                 Console.Error.WriteLine($"Invalid schematic dimensions in '{filePath}'.");
                 return null;
             }
@@ -2167,7 +2257,10 @@ public class SpawnMenu : UiPanel
                         availableBlocks,
                         variantCache,
                         voxelInfos))
+                {
+                    _lastSchematicLoadError = "The block data could not be decoded in either the modern (.schem) or legacy (.schematic) format.";
                     return null;
+                }
             }
 
             string baseName = Path.GetFileNameWithoutExtension(filePath);
@@ -2263,6 +2356,7 @@ public class SpawnMenu : UiPanel
 
             if (placed == 0 || merged.Count == 0)
             {
+                _lastSchematicLoadError = "The schematic had no spawnable blocks.";
                 Console.Error.WriteLine($"Schematic had no spawnable blocks: {filePath}");
                 return null;
             }
@@ -2285,6 +2379,7 @@ public class SpawnMenu : UiPanel
 
             if (root.Visuals.Count == 0)
             {
+                _lastSchematicLoadError = "The schematic produced no renderable geometry.";
                 Console.Error.WriteLine($"Schematic produced no renderable geometry: {filePath}");
                 return null;
             }
