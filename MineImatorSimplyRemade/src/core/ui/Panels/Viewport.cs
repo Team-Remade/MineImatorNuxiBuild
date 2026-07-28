@@ -3510,7 +3510,7 @@ public class Viewport : UiPanel
     }
 
     public (Camera, CameraSceneObject?) DrawCameraDropdownPublic(List<CameraSceneObject> spawned)
-        => DrawCameraDropdownInternal(spawned);
+        => DrawCameraDropdown(spawned);
 
     private (Camera cam, CameraSceneObject? sceneObj) GetActiveCameraPreview(List<CameraSceneObject> spawned)
     {
@@ -3795,7 +3795,7 @@ public class Viewport : UiPanel
         ImGui.End();
     }
 
-    private (Camera, CameraSceneObject?) DrawCameraDropdown(List<CameraSceneObject> spawned)
+    public (Camera, CameraSceneObject?) DrawCameraDropdown(List<CameraSceneObject> spawned)
     {
         string currentLabel = _selectedCameraIndex switch
         {
@@ -3829,7 +3829,7 @@ public class Viewport : UiPanel
         return GetActiveCameraPreview(spawned);
     }
 
-    private void DrawCornerPicker()
+    public void DrawCornerPicker()
     {
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(2, 2));
 

@@ -278,6 +278,8 @@ public class MainWindow : Window
 
     public Viewport? GetCameraViewport() => _cameraViewport;
 
+    public PreferencesPanel? GetPreferencesPanel() => _preferencesPanel;
+
     public void InitializeRuntime(Action<StartupProgressState>? progress = null)
     {
         GL gl = GL;

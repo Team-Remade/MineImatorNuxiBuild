@@ -51,6 +51,33 @@ public class Window : IDisposable
         }
     }
 
+    /// <summary>
+    /// Runs <paramref name="action"/> with this window's ImGui context set current,
+    /// then restores whatever ImGui context was current beforehand.
+    ///
+    /// Every <see cref="Window"/> owns an independent <see cref="ImGuiContext"/> (see
+    /// <see cref="SetupImgui"/>), each with its own <c>ImGuiStyle</c>. Style-only calls
+    /// (e.g. <c>ImGui.StyleColorsDark()</c>, direct <c>style.Colors[...]</c> writes) apply
+    /// only to whichever context is current when they run, so callers that need to sync
+    /// styling (theme/accent color) across multiple windows must repeat those calls once
+    /// per window's context. This helper makes that safe to do from outside the window's
+    /// own render loop (e.g. from a "theme changed" callback firing while a different
+    /// window's context is current) without leaving the wrong context active afterward.
+    /// </summary>
+    public unsafe void WithContextCurrent(Action action)
+    {
+        if (ImGuiContext.Handle == null || action == null)
+            return;
+
+        ImGuiContextPtr previous = ImGui.GetCurrentContext();
+        ImGui.SetCurrentContext(ImGuiContext);
+
+        action();
+
+        if (previous.Handle != null)
+            ImGui.SetCurrentContext(previous);
+    }
+
     private unsafe void FrameBufferResizeCallback(WindowHandle* windowHandle, int width, int height)
     {
         WindowWidth = width;

@@ -132,6 +132,21 @@ public static class main
             // Restore main window context after camera window setup.
             Glfw.MakeContextCurrent(MainWindow.WindowHandle);
 
+            // CameraWindow.SetupImgui() gave it its own independent ImGui context/style,
+            // which otherwise stays on ImGui's default blue theme forever. Apply the
+            // user's saved theme/accent to it now, and keep it in sync whenever the user
+            // changes theme/accent in Preferences (which only touches MainWindow's context).
+            var preferencesPanel = MainWindow.GetPreferencesPanel();
+            if (preferencesPanel != null)
+            {
+                CameraWindow.WithContextCurrent(preferencesPanel.ApplyThemeAndAccentToCurrentContext);
+
+                preferencesPanel.ThemeChanged += _ =>
+                    CameraWindow.WithContextCurrent(preferencesPanel.ApplyThemeAndAccentToCurrentContext);
+                preferencesPanel.AccentColorChanged += _ =>
+                    CameraWindow.WithContextCurrent(preferencesPanel.ApplyThemeAndAccentToCurrentContext);
+            }
+
             // Wire the camera viewport to this window.
             // MainWindow.SetGL has already run, so GetCameraViewport() is valid.
             var camViewport = MainWindow.GetCameraViewport();

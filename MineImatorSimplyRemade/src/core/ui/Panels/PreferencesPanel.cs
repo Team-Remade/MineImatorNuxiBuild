@@ -83,8 +83,39 @@ public class PreferencesPanel : UiPanel
     /// <summary>
     /// Applies the selected theme (Light/Dark/Darker) to ImGui.
     /// After applying the theme, re-applies the current accent color on top.
+    /// Only affects whichever ImGui context is current when called - see
+    /// <see cref="ApplyThemeAndAccentToCurrentContext"/> for syncing other windows.
     /// </summary>
     public void ApplyTheme(ThemeMode mode)
+    {
+        Theme = mode;
+        ApplyThemeInternal(mode);
+
+        ThemeChanged?.Invoke(mode);
+    }
+
+    /// <summary>
+    /// Re-applies the currently selected theme and accent color (<see cref="Theme"/>/
+    /// <see cref="Accent"/>) to whichever ImGui context is current, without changing
+    /// the stored preference or firing <see cref="ThemeChanged"/>/<see cref="AccentColorChanged"/>.
+    ///
+    /// Each secondary window (e.g. the popped-out camera window) owns its own independent
+    /// ImGui context/style (see <see cref="core.window.Window.SetupImgui"/>), so the
+    /// Darker theme + accent overrides applied here only ever land on whichever context
+    /// was current at the time. Callers that own a secondary window should call this via
+    /// <see cref="core.window.Window.WithContextCurrent"/> both once at startup (after that
+    /// window's context is created) and whenever <see cref="ThemeChanged"/> or
+    /// <see cref="AccentColorChanged"/> fires, so its style stays in sync with the main
+    /// window instead of falling back to ImGui's default blue theme.
+    /// </summary>
+    public void ApplyThemeAndAccentToCurrentContext() => ApplyThemeInternal(Theme);
+
+    /// <summary>
+    /// Applies <paramref name="mode"/>'s base colors plus the current accent color to
+    /// whichever ImGui context is current. Does not update <see cref="Theme"/> or fire
+    /// any change events - callers decide whether/when to do that.
+    /// </summary>
+    private void ApplyThemeInternal(ThemeMode mode)
     {
         var style = ImGui.GetStyle();
 
@@ -112,12 +143,8 @@ public class PreferencesPanel : UiPanel
                 break;
         }
 
-        Theme = mode;
-
         // Re-apply accent color on top of the new theme (since StyleColors* resets all colors)
         ApplyAccentColorInternal(Accent);
-
-        ThemeChanged?.Invoke(mode);
     }
 
     /// <summary>

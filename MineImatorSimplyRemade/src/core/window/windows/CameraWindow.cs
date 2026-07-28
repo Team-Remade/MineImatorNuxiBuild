@@ -128,7 +128,7 @@ public class CameraWindow : Window
 
         // Header row.
         var spawned = _panel!.GetSpawnedCamerasPublic();
-        _panel.DrawCameraDropdownPublic(spawned); // redraws dropdown for this context
+        _panel.DrawCameraDropdownPublic(spawned); // real combo box UI, mirrors the inline preview header
 
         ImGui.SameLine();
         if (ImGui.Button("Dock"))
@@ -163,6 +163,11 @@ public class CameraWindow : Window
 
             ImGui.PopStyleColor(4);
         }
+
+        // Corner picker — mirrors the inline preview header. This sets the
+        // corner the preview will snap to once this window is docked again.
+        ImGui.SameLine();
+        _panel.DrawCornerPicker();
 
         ImGui.Separator();
 
