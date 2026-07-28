@@ -89,6 +89,9 @@ public class Timeline : UiPanel
     private int    _maxFrames        = 300;
     private float  _frameRate        = 30f;
     private float  _pixelsPerFrame   = 5f;
+    private const float MinPixelsPerFrame = 1f;
+    private const float MaxPixelsPerFrame = 40f;
+    private const float ZoomStep = 1.25f;
     private bool   _isPlaying        = false;
     private bool   _autoKeyframe     = false;
     private bool   _loopPlayback     = false;
@@ -99,6 +102,8 @@ public class Timeline : UiPanel
 
     private float _hScrollOffset = 0f;
     private float _vScrollOffset = 0f;
+    private float _trackViewportWidth = 0f;
+    private float? _pendingHScrollOffset;
 
     // ── Keyframe data ─────────────────────────────────────────────────────────
 
@@ -315,6 +320,8 @@ public class Timeline : UiPanel
         IsWindowHovered = ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup);
         WindowPos = ImGui.GetWindowPos();
         WindowSize = ImGui.GetWindowSize();
+
+        HandleTimelineZoomShortcut();
 
         RenderTransportControls();
         ImGui.Separator();
@@ -537,6 +544,48 @@ public class Timeline : UiPanel
         ImGui.SetNextItemWidth(60f);
         if (ImGui.InputInt("##maxf", ref _maxFrames, 0, 0))
             _maxFrames = Math.Max(10, _maxFrames);
+
+        ImGui.SameLine();
+        ImGui.Text("  Zoom:");
+        ImGui.SameLine();
+        if (ImGui.SmallButton("-##timeline_zoom_out"))
+            ZoomTimeline(1f / ZoomStep, GetPlayheadZoomAnchor());
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Zoom out (Ctrl + mouse wheel)");
+        ImGui.SameLine();
+        ImGui.TextDisabled($"{_pixelsPerFrame:0.#} px/f");
+        ImGui.SameLine();
+        if (ImGui.SmallButton("+##timeline_zoom_in"))
+            ZoomTimeline(ZoomStep, GetPlayheadZoomAnchor());
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Zoom in (Ctrl + mouse wheel)");
+    }
+
+    private void HandleTimelineZoomShortcut()
+    {
+        var io = ImGui.GetIO();
+        if (!IsWindowHovered || !io.KeyCtrl || MathF.Abs(io.MouseWheel) < float.Epsilon)
+            return;
+
+        float timelineLeft = WindowPos.X + LeftColumnWidth;
+        float mouseViewportX = Math.Clamp(io.MousePos.X - timelineLeft, 0f, Math.Max(0f, _trackViewportWidth));
+        float anchorFrame = (_hScrollOffset + mouseViewportX) / _pixelsPerFrame;
+        ZoomTimeline(MathF.Pow(ZoomStep, io.MouseWheel), (anchorFrame, mouseViewportX));
+    }
+
+    private (float frame, float viewportX) GetPlayheadZoomAnchor()
+    {
+        float viewportX = _currentFrame * _pixelsPerFrame - _hScrollOffset;
+        viewportX = Math.Clamp(viewportX, 0f, Math.Max(0f, _trackViewportWidth));
+        float frame = (_hScrollOffset + viewportX) / _pixelsPerFrame;
+        return (frame, viewportX);
+    }
+
+    private void ZoomTimeline(float factor, (float frame, float viewportX) anchor)
+    {
+        float newScale = Math.Clamp(_pixelsPerFrame * factor, MinPixelsPerFrame, MaxPixelsPerFrame);
+        if (MathF.Abs(newScale - _pixelsPerFrame) < 0.001f) return;
+
+        _pixelsPerFrame = newScale;
+        _pendingHScrollOffset = Math.Max(0f, anchor.frame * newScale - anchor.viewportX);
     }
 
     // ── Audio tracks ──────────────────────────────────────────────────────────
@@ -1200,6 +1249,7 @@ public class Timeline : UiPanel
     private void RenderTrackArea(float availW, float tracksH)
     {
         float rightW = availW - LeftColumnWidth;
+        _trackViewportWidth = Math.Max(0f, rightW);
 
         // Left column: property labels (no horizontal scroll)
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(4f, 2f));
@@ -1218,6 +1268,12 @@ public class Timeline : UiPanel
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
         ImGui.BeginChild("##right_tracks", new Vector2(rightW, tracksH), ImGuiChildFlags.None,
             ImGuiWindowFlags.HorizontalScrollbar | ImGuiWindowFlags.AlwaysHorizontalScrollbar);
+
+        if (_pendingHScrollOffset.HasValue)
+        {
+            ImGui.SetScrollX(_pendingHScrollOffset.Value);
+            _pendingHScrollOffset = null;
+        }
 
         // Right panel is the scroll master; left panel mirrors it each frame.
         _hScrollOffset = ImGui.GetScrollX();
