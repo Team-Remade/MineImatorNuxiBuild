@@ -67,6 +67,8 @@ public class Viewport : UiPanel
     /// </summary>
     public PlaneMesh? GroundPlane => _groundPlane;
     private PlaneMesh? _groundPlane;
+    private mat4 _groundPlaneModel = mat4.Identity;
+    public mat4 GroundPlaneModel => _groundPlaneModel;
     public bool GroundPlaneVisible { get; private set; } = true;
     public string GroundTileAtlas { get; private set; } = "block";
     public string GroundTileKey { get; private set; } = "grass_block_top";
@@ -427,7 +429,7 @@ public class Viewport : UiPanel
     // ── Ground plane setup ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// Creates the 64×64 XZ ground plane and assigns the <c>grass_block_top</c>
+    /// Creates a camera-following tiled XZ ground plane and assigns the <c>grass_block_top</c>
     /// texture as its surface.  Must be called after both the GL context and
     /// <see cref="TerrainAtlas"/> are initialised.
     /// </summary>
@@ -435,7 +437,10 @@ public class Viewport : UiPanel
     {
         if (Gl == null) return;
 
-        _groundPlane = new PlaneMesh(Gl, 64f, 64f, PlaneOrientation.XZ);
+        // This only needs four vertices. Its centre follows the camera, making
+        // the repeated surface effectively infinite while staying inside the
+        // useful floating-point range.
+        _groundPlane = new PlaneMesh(Gl, 4096f, 4096f, PlaneOrientation.XZ);
 
         SetGroundPlaneTexture("block", "grass_block_top");
     }
@@ -692,6 +697,8 @@ public class Viewport : UiPanel
         float orbit = p.SkyTime * 15f;
         float[] sunAngles = [p.SunAngle[0] + orbit, p.SunAngle[1], p.SunAngle[2]];
         vec3 sunDirection = DirectionFromEuler(sunAngles);
+        _groundPlaneModel = mat4.Translate(new vec3(
+            MathF.Floor(camera.Position.x), 0f, MathF.Floor(camera.Position.z)));
         Mesh.GlobalSunFillLightDirection = sunDirection;
         Mesh.GlobalSunFillLightColor = new vec3(p.SunFillLightColor[0], p.SunFillLightColor[1], p.SunFillLightColor[2]);
         Mesh.GlobalSunFillLightStrength = p.UseSky ? p.SunFillLightStrength : 0f;
@@ -703,13 +710,14 @@ public class Viewport : UiPanel
         vec3 right = vec3.Cross(forward, vec3.UnitY).Normalized;
         vec3 up = vec3.Cross(right, forward).Normalized;
         uint program = _skyShader.ShaderProgram;
-        Gl.Disable(GLEnum.DepthTest); Gl.DepthMask(false); Gl.Disable(GLEnum.CullFace); Gl.UseProgram(program);
+        Gl.Enable(GLEnum.DepthTest); Gl.DepthFunc(GLEnum.Always); Gl.DepthMask(true); Gl.Disable(GLEnum.CullFace); Gl.UseProgram(program);
         void V3(string n, vec3 v) { int l = Gl.GetUniformLocation(program, n); if (l >= 0) Gl.Uniform3(l, v.x, v.y, v.z); }
         void C3(string n, float[] v) { int l = Gl.GetUniformLocation(program, n); if (l >= 0) Gl.Uniform3(l, v[0], v[1], v[2]); }
         void F(string n, float v) { int l = Gl.GetUniformLocation(program, n); if (l >= 0) Gl.Uniform1(l, v); }
         V3("uCameraForward", forward); V3("uCameraRight", right); V3("uCameraUp", up);
         V3("uCameraPosition", camera.Position);
         F("uTanHalfFov", MathF.Tan(camera.FovY * 0.5f)); F("uAspect", height > 0 ? (float)width / height : 1f);
+        F("uCameraNear", camera.Near); F("uCameraFar", camera.Far);
         C3("uHorizonDay", p.SkyHorizonDay); C3("uZenithDay", p.SkyZenithDay);
         C3("uHorizonSunset", p.SkyHorizonSunset); C3("uZenithSunset", p.SkyZenithSunset);
         C3("uHorizonNight", p.SkyHorizonNight); C3("uZenithNight", p.SkyZenithNight);
@@ -731,7 +739,7 @@ public class Viewport : UiPanel
         Gl.ActiveTexture(GLEnum.Texture2); Gl.BindTexture(GLEnum.Texture2D, _cloudTexture);
         int clouds = Gl.GetUniformLocation(program, "uCloudTex"); if (clouds >= 0) Gl.Uniform1(clouds, 2);
         Gl.BindVertexArray(_backgroundVao); Gl.DrawArrays(GLEnum.Triangles, 0, 6); Gl.BindVertexArray(0);
-        Gl.ActiveTexture(GLEnum.Texture0); Gl.DepthMask(true); Gl.Enable(GLEnum.DepthTest); Gl.Enable(GLEnum.CullFace);
+        Gl.ActiveTexture(GLEnum.Texture0); Gl.DepthMask(true); Gl.Enable(GLEnum.DepthTest); Gl.DepthFunc(GLEnum.Less); Gl.Enable(GLEnum.CullFace);
     }
 
     public void RenderSkyPublic(Camera camera, uint width, uint height) => RenderSky(camera, width, height);
@@ -1973,7 +1981,7 @@ public class Viewport : UiPanel
         if (_groundPlane != null && GroundPlaneVisible)
         {
             SelectPointLightsForMesh(vec3.Zero, allPointLights);
-            _groundPlane.Render(mat4.Identity, view, proj);
+            _groundPlane.Render(_groundPlaneModel, view, proj);
         }
 
         // ── Scene objects ─────────────────────────────────────────────────────
@@ -2430,7 +2438,7 @@ public class Viewport : UiPanel
         Gl.Disable(GLEnum.CullFace);
 
         if (_groundPlane != null && GroundPlaneVisible)
-            _groundPlane.RenderShadow(_shadowShader, lightViewProj, mat4.Identity);
+            _groundPlane.RenderShadow(_shadowShader, lightViewProj, _groundPlaneModel);
 
         RenderShadowCasters(SceneObjects, lightViewProj, _shadowShader!);
 
@@ -2491,7 +2499,7 @@ public class Viewport : UiPanel
                 Gl.Disable(GLEnum.CullFace);
 
                 if (_groundPlane != null && GroundPlaneVisible)
-                    _groundPlane.RenderPointShadow(_pointShadowShader, lightViewProj, mat4.Identity, position, farPlane);
+                    _groundPlane.RenderPointShadow(_pointShadowShader, lightViewProj, _groundPlaneModel, position, farPlane);
 
                 RenderPointShadowCasters(SceneObjects, lightViewProj, position, farPlane, _pointShadowShader!);
             }
@@ -2701,7 +2709,7 @@ public class Viewport : UiPanel
         Gl.Disable(GLEnum.CullFace);
 
         if (MainViewport?.GroundPlane != null && MainViewport.GroundPlaneVisible)
-            MainViewport.GroundPlane.RenderShadow(_previewShadowShader, lightViewProj, mat4.Identity);
+            MainViewport.GroundPlane.RenderShadow(_previewShadowShader, lightViewProj, MainViewport.GroundPlaneModel);
 
         RenderShadowCasters(MainViewport?.SceneObjects ?? [], lightViewProj, _previewShadowShader!);
 
@@ -2763,7 +2771,7 @@ public class Viewport : UiPanel
                 Gl.Disable(GLEnum.CullFace);
 
                 if (MainViewport?.GroundPlane != null && MainViewport.GroundPlaneVisible)
-                    MainViewport.GroundPlane.RenderPointShadow(_previewPointShadowShader, lightViewProj, mat4.Identity, position, farPlane);
+                    MainViewport.GroundPlane.RenderPointShadow(_previewPointShadowShader, lightViewProj, MainViewport.GroundPlaneModel, position, farPlane);
 
                 RenderPointShadowCasters(MainViewport?.SceneObjects ?? [], lightViewProj, position, farPlane, _previewPointShadowShader!);
             }
@@ -4093,7 +4101,7 @@ public class Viewport : UiPanel
         if (MainViewport.GroundPlane != null && MainViewport.GroundPlaneVisible)
         {
             SelectPointLightsForMesh(vec3.Zero, allPointLights);
-            MainViewport.GroundPlane.Render(mat4.Identity, view, proj);
+            MainViewport.GroundPlane.Render(MainViewport.GroundPlaneModel, view, proj);
         }
 
         var opaque = new List<(mat4, Mesh)>();

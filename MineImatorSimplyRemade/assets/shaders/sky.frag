@@ -5,6 +5,7 @@ out vec4 FragColor;
 uniform vec3 uCameraForward, uCameraRight, uCameraUp;
 uniform vec3 uCameraPosition;
 uniform float uTanHalfFov, uAspect;
+uniform float uCameraNear, uCameraFar;
 uniform vec3 uHorizonDay, uZenithDay, uHorizonSunset, uZenithSunset, uHorizonNight, uZenithNight;
 uniform sampler2D uSunTex, uMoonTex, uCloudTex;
 uniform vec3 uCloudColor;
@@ -32,8 +33,9 @@ vec4 celestial(sampler2D tex, vec3 ray, vec3 direction, float angularSize, bool 
     return texture(tex, uv);
 }
 
-vec4 raycastClouds(vec3 ray, float night)
+vec4 raycastClouds(vec3 ray, float night, out float hitDistance)
 {
+    hitDistance = -1.0;
     float bottom = uCloudHeight;
     // Cloud thickness uses a four-times-denser internal scale than the other
     // cloud dimensions; keep the UI/project value in standard pixel units.
@@ -51,6 +53,7 @@ vec4 raycastClouds(vec3 ray, float night)
         vec3 world = cameraPixels + ray * planeDistance;
         vec4 texel = texture(uCloudTex, (world.xz + uCloudOffset) / textureSpan);
         float fade = 1.0 - smoothstep(11520.0, 26880.0, planeDistance);
+        hitDistance = planeDistance;
         return vec4(uCloudColor * texel.rgb * mix(0.28, 1.0, 1.0 - night), texel.a * fade);
     }
 
@@ -88,7 +91,10 @@ vec4 raycastClouds(vec3 ray, float night)
                 ? clamp((top - world.y) / max(top - bottom, 1.0), 0.0, 1.0)
                 : 1.0;
             if (storyFade > 0.015)
+            {
+                hitDistance = distanceAlongRay;
                 return vec4(cloud, texel.a * distanceFade * storyFade);
+            }
             previousMask = 0.0;
             continue;
         }
@@ -115,7 +121,15 @@ void main()
     color = mix(color, moon.rgb, moon.a * night);
     // Clouds sit in front of the celestial layer, but Minecraft's cloud layer
     // remains translucent enough for bright bodies to show through it.
-    vec4 clouds = raycastClouds(ray, night);
+    float cloudDistance;
+    vec4 clouds = raycastClouds(ray, night, cloudDistance);
     color = mix(color, clouds.rgb, clouds.a * 0.78);
+    gl_FragDepth = 1.0;
+    if (cloudDistance > 0.0 && clouds.a > 0.001)
+    {
+        float viewDistance = max((cloudDistance / 64.0) * dot(ray, uCameraForward), uCameraNear);
+        gl_FragDepth = uCameraFar / (uCameraFar - uCameraNear)
+                     - (uCameraFar * uCameraNear) / ((uCameraFar - uCameraNear) * viewDistance);
+    }
     FragColor = vec4(color, 1.0);
 }
