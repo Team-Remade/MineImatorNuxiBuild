@@ -85,6 +85,11 @@ public class Viewport : UiPanel
     private Vector2 _backgroundUserOffset = Vector2.Zero;
     private string _backgroundImagePath = "No image selected";
 
+    // ── Minecraft-style procedural sky ─────────────────────────────────────
+    private Shader? _skyShader;
+    private uint _sunTexture, _moonTexture;
+    private string _loadedSunPath = "", _loadedMoonPath = "";
+
     // ── Camera ─────────────────────────────────────────────────────────────────
 
     public Camera Camera { get; } = new Camera();
@@ -531,6 +536,7 @@ public class Viewport : UiPanel
 
         // ── Background quad shader + geometry ───────────────────────────────
         InitBackgroundRenderer();
+        InitSkyRenderer();
 
         // ── Empty VAO for the full-screen triangle draw (Core Profile req.) ───
         Gl.GenVertexArrays(1, out _edgeVao);
@@ -598,6 +604,126 @@ public class Viewport : UiPanel
         Gl.BindBuffer(GLEnum.ArrayBuffer, 0);
         Gl.BindVertexArray(0);
     }
+
+    private void InitSkyRenderer()
+    {
+        _skyShader = new Shader(Gl);
+        _skyShader.CompileShader("sky.vert", "sky.frag");
+        ReloadSkyTextures();
+    }
+
+    public void ReloadSkyTextures()
+    {
+        if (Gl == null || PropertiesPanel == null) return;
+        LoadSkyTexture(PropertiesPanel.SunTexture, ref _sunTexture, ref _loadedSunPath);
+        LoadSkyTexture(PropertiesPanel.MoonTexture, ref _moonTexture, ref _loadedMoonPath);
+    }
+
+    private unsafe void LoadSkyTexture(string configuredPath, ref uint texture, ref string loadedPath)
+    {
+        if (string.IsNullOrWhiteSpace(configuredPath)) return;
+        if (string.Equals(configuredPath, loadedPath, StringComparison.OrdinalIgnoreCase) && texture != 0) return;
+        byte[]? data = null;
+        if (configuredPath.StartsWith("resourcepack:", StringComparison.OrdinalIgnoreCase))
+        {
+            string[] parts = configuredPath.Split(':', 3);
+            if (parts.Length == 3)
+                data = MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png")
+                    .FirstOrDefault(f => MinecraftDataLoader.GetResourcePackId(f.PackName) == parts[1] &&
+                                         f.RelativePath.Equals(parts[2], StringComparison.OrdinalIgnoreCase))?.Data;
+        }
+        else
+        {
+            string path = configuredPath.StartsWith("minecraft:", StringComparison.OrdinalIgnoreCase)
+                ? Path.Combine(MinecraftDataLoader.GetVersionRoot(), "textures", configuredPath[10..].Replace('/', Path.DirectorySeparatorChar))
+                : Path.GetFullPath(configuredPath);
+            if (File.Exists(path)) data = File.ReadAllBytes(path);
+        }
+        if (data == null || data.Length == 0) return;
+        try
+        {
+            using MemoryStream stream = new(data);
+            ImageResult image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+            // Legacy sun/moon PNGs are RGB and encode transparency as black.
+            bool pngHasAlpha = data.Length > 25 && (data[25] == 4 || data[25] == 6);
+            if (!pngHasAlpha)
+            {
+                for (int i = 0; i < image.Data.Length; i += 4)
+                {
+                    byte alpha = Math.Max(image.Data[i], Math.Max(image.Data[i + 1], image.Data[i + 2]));
+                    image.Data[i + 3] = alpha;
+                    if (alpha > 0)
+                    {
+                        image.Data[i] = (byte)Math.Min(255, image.Data[i] * 255 / alpha);
+                        image.Data[i + 1] = (byte)Math.Min(255, image.Data[i + 1] * 255 / alpha);
+                        image.Data[i + 2] = (byte)Math.Min(255, image.Data[i + 2] * 255 / alpha);
+                    }
+                }
+            }
+            if (texture != 0) Gl.DeleteTexture(texture);
+            Gl.GenTextures(1, out texture);
+            Gl.BindTexture(GLEnum.Texture2D, texture);
+            fixed (byte* pixels = image.Data)
+                Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8, (uint)image.Width, (uint)image.Height, 0, GLEnum.Rgba, GLEnum.UnsignedByte, pixels);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)GLEnum.Nearest);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)GLEnum.Nearest);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)GLEnum.ClampToEdge);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.ClampToEdge);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+            loadedPath = configuredPath;
+        }
+        catch (Exception ex) { Console.Error.WriteLine($"Failed to load sky texture '{configuredPath}': {ex.Message}"); }
+    }
+
+    private static vec3 DirectionFromEuler(float[] degrees)
+    {
+        float x = glm.Radians(degrees[0]), y = glm.Radians(degrees[1]), z = glm.Radians(degrees[2]);
+        vec3 v = new(0f, 0f, -1f);
+        v = new vec3(v.x, v.y * MathF.Cos(x) - v.z * MathF.Sin(x), v.y * MathF.Sin(x) + v.z * MathF.Cos(x));
+        v = new vec3(v.x * MathF.Cos(y) + v.z * MathF.Sin(y), v.y, -v.x * MathF.Sin(y) + v.z * MathF.Cos(y));
+        return new vec3(v.x * MathF.Cos(z) - v.y * MathF.Sin(z), v.x * MathF.Sin(z) + v.y * MathF.Cos(z), v.z).Normalized;
+    }
+
+    private void RenderSky(Camera camera, uint width, uint height)
+    {
+        var p = PropertiesPanel;
+        if (p == null) return;
+        float orbit = p.SkyTime * 15f;
+        float[] sunAngles = [p.SunAngle[0] + orbit, p.SunAngle[1], p.SunAngle[2]];
+        vec3 sunDirection = DirectionFromEuler(sunAngles);
+        Mesh.GlobalSunFillLightDirection = sunDirection;
+        Mesh.GlobalSunFillLightColor = new vec3(p.SunFillLightColor[0], p.SunFillLightColor[1], p.SunFillLightColor[2]);
+        Mesh.GlobalSunFillLightStrength = p.UseSky ? p.SunFillLightStrength : 0f;
+        Mesh.SunFillLightCastsShadows = p.UseSky && p.SunFillLightCastsShadows;
+        Mesh.MainFillLightCastsShadows = p.FillLightCastsShadows;
+        if (!p.UseSky || _skyShader == null || _backgroundVao == 0) return;
+        ReloadSkyTextures();
+        vec3 forward = (camera.Target - camera.Position).Normalized;
+        vec3 right = vec3.Cross(forward, vec3.UnitY).Normalized;
+        vec3 up = vec3.Cross(right, forward).Normalized;
+        uint program = _skyShader.ShaderProgram;
+        Gl.Disable(GLEnum.DepthTest); Gl.DepthMask(false); Gl.Disable(GLEnum.CullFace); Gl.UseProgram(program);
+        void V3(string n, vec3 v) { int l = Gl.GetUniformLocation(program, n); if (l >= 0) Gl.Uniform3(l, v.x, v.y, v.z); }
+        void C3(string n, float[] v) { int l = Gl.GetUniformLocation(program, n); if (l >= 0) Gl.Uniform3(l, v[0], v[1], v[2]); }
+        void F(string n, float v) { int l = Gl.GetUniformLocation(program, n); if (l >= 0) Gl.Uniform1(l, v); }
+        V3("uCameraForward", forward); V3("uCameraRight", right); V3("uCameraUp", up);
+        F("uTanHalfFov", MathF.Tan(camera.FovY * 0.5f)); F("uAspect", height > 0 ? (float)width / height : 1f);
+        C3("uHorizonDay", p.SkyHorizonDay); C3("uZenithDay", p.SkyZenithDay);
+        C3("uHorizonSunset", p.SkyHorizonSunset); C3("uZenithSunset", p.SkyZenithSunset);
+        C3("uHorizonNight", p.SkyHorizonNight); C3("uZenithNight", p.SkyZenithNight);
+        float[] moonAngles = [p.MoonAngle[0] + orbit, p.MoonAngle[1], p.MoonAngle[2]];
+        V3("uSunDirection", sunDirection); V3("uMoonDirection", DirectionFromEuler(moonAngles));
+        F("uSunSize", p.SunSize); F("uMoonSize", p.MoonSize);
+        int phase = Gl.GetUniformLocation(program, "uMoonPhase"); if (phase >= 0) Gl.Uniform1(phase, p.MoonPhase);
+        Gl.ActiveTexture(GLEnum.Texture0); Gl.BindTexture(GLEnum.Texture2D, _sunTexture);
+        int sun = Gl.GetUniformLocation(program, "uSunTex"); if (sun >= 0) Gl.Uniform1(sun, 0);
+        Gl.ActiveTexture(GLEnum.Texture1); Gl.BindTexture(GLEnum.Texture2D, _moonTexture);
+        int moon = Gl.GetUniformLocation(program, "uMoonTex"); if (moon >= 0) Gl.Uniform1(moon, 1);
+        Gl.BindVertexArray(_backgroundVao); Gl.DrawArrays(GLEnum.Triangles, 0, 6); Gl.BindVertexArray(0);
+        Gl.ActiveTexture(GLEnum.Texture0); Gl.DepthMask(true); Gl.Enable(GLEnum.DepthTest); Gl.Enable(GLEnum.CullFace);
+    }
+
+    public void RenderSkyPublic(Camera camera, uint width, uint height) => RenderSky(camera, width, height);
 
     private static int ParseBackgroundRenderMode(string mode)
     {
@@ -1772,8 +1898,6 @@ public class Viewport : UiPanel
         Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
         Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-        RenderBackgroundPlane(w, h);
-
         float aspect = (h > 0) ? (float)w / h : 1f;
 
         // Use the active camera (work camera or a spawned camera).
@@ -1793,6 +1917,9 @@ public class Viewport : UiPanel
         mat4 view = activeCamera.GetViewMatrix();
         mat4 proj = activeCamera.GetProjectionMatrix(aspect);
 
+        RenderSky(activeCamera, w, h);
+        RenderBackgroundPlane(w, h);
+
         // Restore camera settings after extracting matrices.
         activeCamera.FovY = savedFovY;
         activeCamera.Near = savedNear;
@@ -1808,7 +1935,8 @@ public class Viewport : UiPanel
         Mesh.ShadowMapTexture = 0;
         Mesh.ShadowLightSpaceMatrix = mat4.Identity;
         Mesh.ShadowDebugMode = 0;
-        Mesh.DirectionalShadowEnabled = PropertiesPanel?.FillLightCastsShadows ?? true;
+        Mesh.DirectionalShadowEnabled = (PropertiesPanel?.FillLightCastsShadows ?? true) ||
+                                        (PropertiesPanel?.UseSky == true && PropertiesPanel.SunFillLightCastsShadows);
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         // Rebuild the full scene light list every frame so that moved / deleted
@@ -2385,7 +2513,9 @@ public class Viewport : UiPanel
         vec3 center = (bounds.Min + bounds.Max) * 0.5f;
         vec3 extents = bounds.Max - bounds.Min;
         float radius = Math.Max(12f, Math.Max(extents.x, Math.Max(extents.y, extents.z)) * 0.8f + 8f);
-        vec3 lightDir = new vec3(1f, 1f, 1f).Normalized;
+        vec3 lightDir = Mesh.SunFillLightCastsShadows
+            ? Mesh.GlobalSunFillLightDirection
+            : new vec3(1f, 1f, 1f).Normalized;
         vec3 lightPos = center + lightDir * (radius * 1.8f);
 
         mat4 lightView = mat4.LookAt(lightPos, center, vec3.UnitY);
@@ -3904,8 +4034,6 @@ public class Viewport : UiPanel
         Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
         Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-        MainViewport.RenderBackgroundPlanePublic(w, h);
-
         float aspect = h > 0 ? (float)w / h : 1f;
 
         float savedFovY = cam.FovY, savedNear = cam.Near, savedFar = cam.Far;
@@ -3919,6 +4047,9 @@ public class Viewport : UiPanel
         mat4 view = cam.GetViewMatrix();
         mat4 proj = cam.GetProjectionMatrix(aspect);
 
+        MainViewport.RenderSkyPublic(cam, w, h);
+        MainViewport.RenderBackgroundPlanePublic(w, h);
+
         cam.FovY = savedFovY; cam.Near = savedNear; cam.Far = savedFar;
 
         Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
@@ -3930,7 +4061,8 @@ public class Viewport : UiPanel
         Mesh.ShadowMapTexture = 0;
         Mesh.ShadowLightSpaceMatrix = mat4.Identity;
         Mesh.ShadowDebugMode = 0;
-        Mesh.DirectionalShadowEnabled = MainViewport.PropertiesPanel?.FillLightCastsShadows ?? true;
+        Mesh.DirectionalShadowEnabled = (MainViewport.PropertiesPanel?.FillLightCastsShadows ?? true) ||
+                                        (MainViewport.PropertiesPanel?.UseSky == true && MainViewport.PropertiesPanel.SunFillLightCastsShadows);
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         Dictionary<LightSceneObject, int> pointShadowIndices = new();

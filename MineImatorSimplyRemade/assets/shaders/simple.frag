@@ -12,6 +12,10 @@ uniform vec3  uEmissionColor;
 uniform float uEmissionEnergy;
 uniform vec3  uLightDir;
 uniform vec3  uLightColor;
+uniform vec3  uSunFillLightDir;
+uniform vec3  uSunFillLightColor;
+uniform bool  uMainLightCastsShadows;
+uniform bool  uSunFillLightCastsShadows;
 uniform vec3  uAmbient;
 uniform sampler2D uShadowMap;
 uniform bool  uUseShadowMap;
@@ -158,7 +162,8 @@ void main() {
     // from clipping geometry drawn afterwards (e.g. light billboards).
     if (alpha < 0.01) discard;
 
-    float shadow = calculateShadow(norm, sunDir);
+    vec3 shadowLightDir = uSunFillLightCastsShadows ? normalize(uSunFillLightDir) : sunDir;
+    float shadow = calculateShadow(norm, shadowLightDir);
     if (uShadowDebugMode == 1) {
         FragColor = uUseShadowMap
             ? vec4(vec3(shadow), 1.0)
@@ -166,7 +171,10 @@ void main() {
         return;
     }
 
-    vec3 result = (uAmbient + diffuse * (1.0 - shadow) + pointLightSum) * baseColor;
+    float sunFillDiffuse = max(dot(norm, normalize(uSunFillLightDir)), 0.0);
+    float mainVisibility = uMainLightCastsShadows ? (1.0 - shadow) : 1.0;
+    float sunVisibility = uSunFillLightCastsShadows ? (1.0 - shadow) : 1.0;
+    vec3 result = (uAmbient + diffuse * mainVisibility + uSunFillLightColor * sunFillDiffuse * sunVisibility + pointLightSum) * baseColor;
     if (uEmissionEnabled) {
         result += uEmissionColor * max(uEmissionEnergy, 0.0);
     }

@@ -26,8 +26,25 @@ public class PropertiesPanel : UiPanel
 
     public readonly float[] BackgroundColor = [0.5764706f, 0.5764706f, 1f, 1f];
 
-    public bool UseSky;
+    public bool UseSky = true;
     public bool UseAdvancedSky;
+    public readonly float[] SkyHorizonDay = [0.72f, 0.84f, 1f];
+    public readonly float[] SkyZenithDay = [0.28f, 0.55f, 0.95f];
+    public readonly float[] SkyHorizonSunset = [1f, 0.48f, 0.2f];
+    public readonly float[] SkyZenithSunset = [0.22f, 0.3f, 0.62f];
+    public readonly float[] SkyHorizonNight = [0.055f, 0.075f, 0.16f];
+    public readonly float[] SkyZenithNight = [0.008f, 0.012f, 0.045f];
+    public string SunTexture = "minecraft:environment/sun.png";
+    public string MoonTexture = "minecraft:environment/moon_phases.png";
+    public int MoonPhase;
+    public float SkyTime;
+    public float SunSize = 16f;
+    public readonly float[] SunAngle = [135f, 0f, 0f];
+    public float MoonSize = 16f;
+    public readonly float[] MoonAngle = [315f, 0f, 0f];
+    public readonly float[] SunFillLightColor = [1f, 0.96862745f, 0.89411765f];
+    public float SunFillLightStrength = 0.25f;
+    public bool SunFillLightCastsShadows = true;
     public readonly float[] AmbientLightColor = [1f, 1f, 1f];
     public float AmbientLightStrength = 0.35f;
     public readonly float[] FillLightColor = [0.85f, 0.85f, 0.85f];
@@ -144,6 +161,18 @@ public class PropertiesPanel : UiPanel
         TextureAnimationFps = Math.Clamp(settings.TextureAnimationFps, 1, 240);
         UseSky = settings.UseSky;
         UseAdvancedSky = settings.UseAdvancedSky;
+        ReadColor(settings.SkyHorizonDay, SkyHorizonDay); ReadColor(settings.SkyZenithDay, SkyZenithDay);
+        ReadColor(settings.SkyHorizonSunset, SkyHorizonSunset); ReadColor(settings.SkyZenithSunset, SkyZenithSunset);
+        ReadColor(settings.SkyHorizonNight, SkyHorizonNight); ReadColor(settings.SkyZenithNight, SkyZenithNight);
+        SunTexture = string.IsNullOrWhiteSpace(settings.SunTexture) ? "minecraft:environment/sun.png" : settings.SunTexture;
+        MoonTexture = string.IsNullOrWhiteSpace(settings.MoonTexture) ? "minecraft:environment/moon_phases.png" : settings.MoonTexture;
+        MoonPhase = Math.Clamp(settings.MoonPhase, 0, 7);
+        SkyTime = Math.Clamp(settings.SkyTime, 0f, 24f);
+        SunSize = Math.Clamp(settings.SunSize, 0.1f, 90f); MoonSize = Math.Clamp(settings.MoonSize, 0.1f, 90f);
+        ReadColor(settings.SunAngle, SunAngle); ReadColor(settings.MoonAngle, MoonAngle);
+        ReadColor(settings.SunFillLightColor, SunFillLightColor);
+        SunFillLightStrength = Math.Clamp(settings.SunFillLightStrength, 0f, 5f);
+        SunFillLightCastsShadows = settings.SunFillLightCastsShadows;
         BackgroundRenderMode = NormalizeBackgroundRenderMode(settings.BackgroundRenderMode);
         StretchBackground = settings.StretchBackground;
         if (string.IsNullOrWhiteSpace(settings.BackgroundRenderMode))
@@ -207,6 +236,17 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.TextureAnimationFps = Math.Clamp(TextureAnimationFps, 1, 240);
         manifest.Settings.UseSky = UseSky;
         manifest.Settings.UseAdvancedSky = UseAdvancedSky;
+        manifest.Settings.SkyHorizonDay = ToVec3(SkyHorizonDay); manifest.Settings.SkyZenithDay = ToVec3(SkyZenithDay);
+        manifest.Settings.SkyHorizonSunset = ToVec3(SkyHorizonSunset); manifest.Settings.SkyZenithSunset = ToVec3(SkyZenithSunset);
+        manifest.Settings.SkyHorizonNight = ToVec3(SkyHorizonNight); manifest.Settings.SkyZenithNight = ToVec3(SkyZenithNight);
+        manifest.Settings.SunTexture = SunTexture; manifest.Settings.MoonTexture = MoonTexture;
+        manifest.Settings.MoonPhase = Math.Clamp(MoonPhase, 0, 7);
+        manifest.Settings.SkyTime = Math.Clamp(SkyTime, 0f, 24f);
+        manifest.Settings.SunSize = Math.Clamp(SunSize, 0.1f, 90f); manifest.Settings.MoonSize = Math.Clamp(MoonSize, 0.1f, 90f);
+        manifest.Settings.SunAngle = ToVec3(SunAngle); manifest.Settings.MoonAngle = ToVec3(MoonAngle);
+        manifest.Settings.SunFillLightColor = ToVec3(SunFillLightColor);
+        manifest.Settings.SunFillLightStrength = Math.Clamp(SunFillLightStrength, 0f, 5f);
+        manifest.Settings.SunFillLightCastsShadows = SunFillLightCastsShadows;
         BackgroundRenderMode = NormalizeBackgroundRenderMode(BackgroundRenderMode);
         BackgroundScale = Math.Clamp(BackgroundScale, 0.01f, 20f);
         BackgroundRotationDegrees = Math.Clamp(BackgroundRotationDegrees, -360f, 360f);
@@ -249,6 +289,13 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.FillLightStrength = FillLightStrength;
         manifest.Settings.FillLightCastsShadows = FillLightCastsShadows;
     }
+
+    private static void ReadColor(ProjectVec3 value, float[] target)
+    {
+        target[0] = value.X; target[1] = value.Y; target[2] = value.Z;
+    }
+
+    private static ProjectVec3 ToVec3(float[] value) => new() { X = value[0], Y = value[1], Z = value[2] };
 
     private void ApplyAmbientSettingsToRenderer()
     {
@@ -587,6 +634,42 @@ public class PropertiesPanel : UiPanel
         {
             unsafe
             {
+                bool skyChanged = false;
+                bool useSky = UseSky;
+                if (ImGui.Checkbox("Minecraft Sky", ref useSky)) { UseSky = useSky; skyChanged = true; }
+                if (UseSky)
+                {
+                    ImGui.Indent();
+                    skyChanged |= SkyColorEditor("Horizon Day", SkyHorizonDay);
+                    skyChanged |= SkyColorEditor("Zenith Day", SkyZenithDay);
+                    skyChanged |= SkyColorEditor("Horizon Sunset", SkyHorizonSunset);
+                    skyChanged |= SkyColorEditor("Zenith Sunset", SkyZenithSunset);
+                    skyChanged |= SkyColorEditor("Night Horizon", SkyHorizonNight);
+                    skyChanged |= SkyColorEditor("Night Zenith", SkyZenithNight);
+                    skyChanged |= SkyTextureSelector("Sun Texture", ref SunTexture, "sun.png");
+                    skyChanged |= SkyTextureSelector("Moon Texture", ref MoonTexture, "moon_phases.png");
+                    skyChanged |= ImGui.SliderInt("Moon Phase", ref MoonPhase, 0, 7);
+                    skyChanged |= ImGui.SliderFloat("Time", ref SkyTime, 0f, 24f, "%.2f h");
+                    skyChanged |= ImGui.DragFloat("Sun Size (degrees)", ref SunSize, 0.1f, 0.1f, 90f);
+                    fixed (float* value = SunAngle) skyChanged |= ImGui.DragFloat3("Sun Angle (XYZ)", value, 0.25f, -360f, 360f);
+                    skyChanged |= ImGui.DragFloat("Moon Size (degrees)", ref MoonSize, 0.1f, 0.1f, 90f);
+                    fixed (float* value = MoonAngle) skyChanged |= ImGui.DragFloat3("Moon Angle (XYZ)", value, 0.25f, -360f, 360f);
+                    skyChanged |= SkyColorEditor("Sun Fill Light", SunFillLightColor);
+                    skyChanged |= ImGui.DragFloat("Sun Fill Strength", ref SunFillLightStrength, 0.01f, 0f, 5f);
+                    skyChanged |= ImGui.Checkbox("Sun Fill Casts Shadows", ref SunFillLightCastsShadows);
+                    ImGui.Unindent();
+                }
+                else
+                    ImGui.TextDisabled("Solid background color is active.");
+
+                if (skyChanged)
+                {
+                    Viewport?.ReloadSkyTextures();
+                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                    ProjectManager.Instance.SetDirty(true);
+                }
+
+                ImGui.Separator();
                 ImGui.Text("Background Color:");
                 ImGui.SetNextItemWidth(-1);
                 fixed (byte* label = "##BackgroundColor"u8)
@@ -861,6 +944,44 @@ public class PropertiesPanel : UiPanel
         }
 
         ImGui.EndTabItem();
+    }
+
+    private static unsafe bool SkyColorEditor(string label, float[] color)
+    {
+        fixed (float* value = color)
+            return ImGui.ColorEdit3(label, value, ImGuiColorEditFlags.None);
+    }
+
+    private static bool SkyTextureSelector(string label, ref string selected, string vanillaFile)
+    {
+        bool changed = false;
+        string vanilla = $"minecraft:environment/{vanillaFile}";
+        string preview = selected.StartsWith("resourcepack:", StringComparison.OrdinalIgnoreCase)
+            ? selected[13..]
+            : $"Vanilla / {Path.GetFileName(selected)}";
+        if (ImGui.BeginCombo(label, preview))
+        {
+            if (ImGui.Selectable($"Vanilla / {vanillaFile}", selected == vanilla))
+            {
+                selected = vanilla;
+                changed = true;
+            }
+
+            foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png"))
+            {
+                string normalized = file.RelativePath.Replace('\\', '/');
+                if (!normalized.Contains("/textures/environment/", StringComparison.OrdinalIgnoreCase)) continue;
+                string key = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, normalized);
+                string option = $"{file.PackName} / {Path.GetFileName(normalized)}";
+                if (ImGui.Selectable(option, selected == key))
+                {
+                    selected = key;
+                    changed = true;
+                }
+            }
+            ImGui.EndCombo();
+        }
+        return changed;
     }
     
     private void RenderObjectTab()

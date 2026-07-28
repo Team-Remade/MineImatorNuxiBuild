@@ -872,6 +872,12 @@ public class Mesh : IDisposable
     /// </summary>
     public static float GlobalFillLightStrength = 1f;
 
+    public static vec3 GlobalSunFillLightColor = new(1f, 0.96862745f, 0.89411765f);
+    public static float GlobalSunFillLightStrength = 0.25f;
+    public static vec3 GlobalSunFillLightDirection = vec3.UnitY;
+    public static bool SunFillLightCastsShadows = true;
+    public static bool MainFillLightCastsShadows = true;
+
     /// <summary>
     /// Export-only shadow state configured by <see cref="CameraViewport"/> when
     /// high-quality rendered capture is enabled.
@@ -957,6 +963,10 @@ public class Mesh : IDisposable
             // Unlit: full ambient (1,1,1), no directional light, no point lights
             SetUniformVec3("uLightDir",   new vec3(0f, 1f, 0f));
             SetUniformVec3("uLightColor", new vec3(0f, 0f, 0f));
+            SetUniformVec3("uSunFillLightDir", vec3.UnitY);
+            SetUniformVec3("uSunFillLightColor", vec3.Zero);
+            SetUniformBool("uMainLightCastsShadows", false);
+            SetUniformBool("uSunFillLightCastsShadows", false);
             SetUniformVec3("uAmbient",    new vec3(1f, 1f, 1f));
         }
         else
@@ -971,6 +981,10 @@ public class Mesh : IDisposable
                 Math.Clamp(GlobalFillLightColor.y, 0f, 1f),
                 Math.Clamp(GlobalFillLightColor.z, 0f, 1f));
             SetUniformVec3("uLightColor", fillLightColor * fillLightStrength);
+            SetUniformVec3("uSunFillLightDir", GlobalSunFillLightDirection);
+            SetUniformVec3("uSunFillLightColor", GlobalSunFillLightColor * Math.Clamp(GlobalSunFillLightStrength, 0f, 5f));
+            SetUniformBool("uMainLightCastsShadows", MainFillLightCastsShadows && !SunFillLightCastsShadows);
+            SetUniformBool("uSunFillLightCastsShadows", SunFillLightCastsShadows);
             
             float ambientStrength = Math.Clamp(GlobalAmbientStrength, 0f, 5f);
             vec3 ambientColor = new vec3(
