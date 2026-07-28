@@ -245,7 +245,7 @@ public class Viewport : UiPanel
     /// <see cref="RenderOutputIndex"/> (-1) = use the render-output camera.
     /// 0 = work camera; 1+ = spawned cameras by index.
     /// </summary>
-    private int _activeCameraIndex = RenderOutputIndex;
+    private int _activeCameraIndex = 0;
 
     // ── Overlay visibility ─────────────────────────────────────────────────────
 
@@ -280,7 +280,7 @@ public class Viewport : UiPanel
     /// <summary>Reference to the main viewport for preview instances to access scene objects.</summary>
     public Viewport? MainViewport { get; set; }
 
-    private int _selectedCameraIndex = RenderOutputIndex;
+    private int _selectedCameraIndex = 0;
     /// <summary>Public accessor for the selected camera index (0 = work camera, 1+ = spawned cameras).</summary>
     public int SelectedCameraIndex
     {
@@ -1644,7 +1644,7 @@ public class Viewport : UiPanel
                     ImGui.EndCombo();
                 }
                 if (_activeCameraIndex > spawnedCams.Count)
-                    _activeCameraIndex = RenderOutputIndex;
+                    _activeCameraIndex = 0;
             }
 
             // Overlays toggle button — right-aligned at the end of the bar.
@@ -3505,7 +3505,7 @@ public class Viewport : UiPanel
 
     public (Camera, CameraSceneObject?) DrawCameraDropdownInternal(List<CameraSceneObject> spawned)
     {
-        if (_selectedCameraIndex > spawned.Count) _selectedCameraIndex = RenderOutputIndex;
+        if (_selectedCameraIndex > spawned.Count) _selectedCameraIndex = 0;
         return GetActiveCameraPreview(spawned);
     }
 
@@ -3529,8 +3529,8 @@ public class Viewport : UiPanel
             camObj.SyncCameraToTransform();
             return (camObj.ViewCamera, camObj);
         }
-        _selectedCameraIndex = RenderOutputIndex;
-        return GetRenderOutputCamera(spawned);
+        _selectedCameraIndex = 0;
+        return (MainViewport?.Camera ?? Camera, null);
     }
 
     /// <summary>
@@ -3825,7 +3825,7 @@ public class Viewport : UiPanel
             ImGui.EndCombo();
         }
 
-        if (_selectedCameraIndex > spawned.Count) _selectedCameraIndex = RenderOutputIndex;
+        if (_selectedCameraIndex > spawned.Count) _selectedCameraIndex = 0;
         return GetActiveCameraPreview(spawned);
     }
 
