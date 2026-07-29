@@ -571,25 +571,34 @@ public class SpawnMenu : UiPanel
                 AppendBlockMeshesForPreview(meshes, variant, blockName);
                 if (variant.TopHalf != null)
                 {
-                    // Centre two-block-tall objects vertically (shift down by -0.5)
+                    // Centre combined two-block object at the origin
                     var topMeshes = new List<Mesh>();
                     AppendBlockMeshesForPreview(topMeshes, variant.TopHalf, blockName);
-                    var shift = new vec3(variant.PartOffsetX,
-                                        variant.PartOffsetY - 0.5f,
-                                        variant.PartOffsetZ);
+                    vec3 combinedCenter = new vec3(
+                        variant.PartOffsetX * 0.5f,
+                        variant.PartOffsetY * 0.5f,
+                        variant.PartOffsetZ * 0.5f);
+                    vec3 topShift = new vec3(
+                        variant.PartOffsetX,
+                        variant.PartOffsetY,
+                        variant.PartOffsetZ) - combinedCenter;
+                    foreach (var m in meshes)
+                    {
+                        for (int i = 0; i < m.Vertices.Count; i++)
+                            m.Vertices[i] -= combinedCenter;
+                        m.Upload();
+                    }
                     foreach (var m in topMeshes)
                     {
                         for (int i = 0; i < m.Vertices.Count; i++)
-                            m.Vertices[i] += shift;
+                            m.Vertices[i] += topShift;
                         m.Upload();
                     }
                     meshes.AddRange(topMeshes);
                 }
-
-                // Centre single-block meshes so they orbit around (0,0,0) nicely:
-                // offset vertices down by 0.5 (block origin is at base, centre at 0.5)
-                if (variant.TopHalf == null)
+                else
                 {
+                    // Centre single-block meshes so they orbit around (0,0,0) nicely
                     var downShift = new vec3(0f, -0.5f, 0f);
                     foreach (var m in meshes)
                     {

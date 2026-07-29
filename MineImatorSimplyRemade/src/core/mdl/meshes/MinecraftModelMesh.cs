@@ -300,14 +300,26 @@ public static class MinecraftModelMesh
         vec3 n = FaceNormal(faceName);
         v0 += offset; v1 += offset; v2 += offset; v3 += offset;
 
-        // Tri 0
-        mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
-        mesh.Vertices.Add(v1); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[1]);
-        mesh.Vertices.Add(v2); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[2]);
-        // Tri 1
-        mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
-        mesh.Vertices.Add(v2); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[2]);
-        mesh.Vertices.Add(v3); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[3]);
+            if (faceName is "east" or "up" or "south")
+            {
+                // Positive faces (+X,+Y,+Z): (V0,V3,V2) and (V0,V2,V1) — CCW
+                mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
+                mesh.Vertices.Add(v3); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[3]);
+                mesh.Vertices.Add(v2); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[2]);
+                mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
+                mesh.Vertices.Add(v2); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[2]);
+                mesh.Vertices.Add(v1); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[1]);
+            }
+            else
+            {
+                // Negative faces (-X,-Y,-Z): (V0,V1,V2) and (V0,V2,V3) — CCW
+                mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
+                mesh.Vertices.Add(v1); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[1]);
+                mesh.Vertices.Add(v2); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[2]);
+                mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
+                mesh.Vertices.Add(v2); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[2]);
+                mesh.Vertices.Add(v3); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[3]);
+            }
     }
 
     private static uint PickFallbackTexture(ResolvedBlockModel? model, string? blockNameHint, string resourcePackId)
@@ -401,22 +413,24 @@ public static class MinecraftModelMesh
             var faces = new (string name, bool skip, vec3 v0, vec3 v1, vec3 v2, vec3 v3, vec3 n)[]
             {
                 ("down",  ty > 0,         new vec3(-0.5f, -0.5f, -0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3( 0, -1,  0)),
-                ("up",    ty + 1 < tileY, new vec3(-0.5f,  0.5f,  0.5f), new vec3( 0.5f,  0.5f,  0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3(-0.5f,  0.5f, -0.5f), new vec3( 0,  1,  0)),
+                ("up",    ty + 1 < tileY, new vec3(-0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f,  0.5f), new vec3(-0.5f,  0.5f,  0.5f), new vec3( 0,  1,  0)),
                 ("north", tz > 0,         new vec3(-0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3(-0.5f, -0.5f, -0.5f), new vec3( 0,  0, -1)),
-                ("south", tz + 1 < tileZ, new vec3( 0.5f,  0.5f,  0.5f), new vec3(-0.5f,  0.5f,  0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3( 0,  0,  1)),
+                ("south", tz + 1 < tileZ, new vec3(-0.5f,  0.5f,  0.5f), new vec3( 0.5f,  0.5f,  0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3( 0,  0,  1)),
                 ("west",  tx > 0,         new vec3(-0.5f,  0.5f,  0.5f), new vec3(-0.5f,  0.5f, -0.5f), new vec3(-0.5f, -0.5f, -0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3(-1,  0,  0)),
-                ("east",  tx + 1 < tileX, new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f,  0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3( 1,  0,  0)),
+                ("east",  tx + 1 < tileX, new vec3( 0.5f,  0.5f,  0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3( 1,  0,  0)),
             };
 
             foreach (var (name, skip, v0, v1, v2, v3, n) in faces)
             {
                 if (skip) continue;
+                // Tri 0: v0(TL), v3(BL), v2(BR) — CCW
                 mesh.Vertices.Add(v0 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-                mesh.Vertices.Add(v1 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-                mesh.Vertices.Add(v2 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-                mesh.Vertices.Add(v0 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-                mesh.Vertices.Add(v2 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
                 mesh.Vertices.Add(v3 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
+                mesh.Vertices.Add(v2 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
+                // Tri 1: v0(TL), v2(BR), v1(TR) — CCW
+                mesh.Vertices.Add(v0 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
+                mesh.Vertices.Add(v2 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
+                mesh.Vertices.Add(v1 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
             }
         }
 
@@ -424,18 +438,18 @@ public static class MinecraftModelMesh
         return mesh;
     }
 
-    // Same winding as QuadForFace but using direct world-space coords
+    // Same vertex order as QuadForFace but using direct world-space coords.
     private static (vec3, vec3, vec3, vec3) FaceQuad(string face,
         float x0, float y0, float z0, float x1, float y1, float z1)
     {
         return face switch
         {
             "down"  => (new vec3(x0, y0, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
-            "up"    => (new vec3(x0, y1, z1), new vec3(x1, y1, z1), new vec3(x1, y1, z0), new vec3(x0, y1, z0)),
+            "up"    => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y1, z1), new vec3(x0, y1, z1)),
             "north" => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x0, y0, z0)),
-            "south" => (new vec3(x1, y1, z1), new vec3(x0, y1, z1), new vec3(x0, y0, z1), new vec3(x1, y0, z1)),
+            "south" => (new vec3(x0, y1, z1), new vec3(x1, y1, z1), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
             "west"  => (new vec3(x0, y1, z1), new vec3(x0, y1, z0), new vec3(x0, y0, z0), new vec3(x0, y0, z1)),
-            "east"  => (new vec3(x1, y1, z0), new vec3(x1, y1, z1), new vec3(x1, y0, z1), new vec3(x1, y0, z0)),
+            "east"  => (new vec3(x1, y1, z1), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1)),
             _       => (vec3.Zero, vec3.Zero, vec3.Zero, vec3.Zero)
         };
     }
@@ -497,7 +511,11 @@ public static class MinecraftModelMesh
 
             // Resolve texture
             string? texKey = BlockRegistry.ResolveTextureKey(model, face.Texture);
-            if (texKey == null) continue;
+            if (texKey == null)
+            {
+            // texture ref missing — skip this face
+                continue;
+            }
 
             string resolvedTexKey = ResolveTextureKeyForPack(texKey, resourcePackId);
             uint texId;
@@ -565,14 +583,26 @@ public static class MinecraftModelMesh
             v3 = TransformPoint(transform, v3) + tileOffset;
             normal = TransformNormal(transform, normal);
 
-            // Tri 0: v0, v1, v2
-            verts.Add(v0); norms.Add(normal); uvs.Add(new vec2(ru0, rv0));
-            verts.Add(v1); norms.Add(normal); uvs.Add(new vec2(ru1, rv1));
-            verts.Add(v2); norms.Add(normal); uvs.Add(new vec2(ru2, rv2));
-            // Tri 1: v0, v2, v3
-            verts.Add(v0); norms.Add(normal); uvs.Add(new vec2(ru0, rv0));
-            verts.Add(v2); norms.Add(normal); uvs.Add(new vec2(ru2, rv2));
-            verts.Add(v3); norms.Add(normal); uvs.Add(new vec2(ru3, rv3));
+            if (faceName is "east" or "up" or "south")
+            {
+                // Positive faces (+X,+Y,+Z): (V0,V3,V2) and (V0,V2,V1) — CCW
+                verts.Add(v0); norms.Add(normal); uvs.Add(new vec2(ru0, rv0));
+                verts.Add(v3); norms.Add(normal); uvs.Add(new vec2(ru3, rv3));
+                verts.Add(v2); norms.Add(normal); uvs.Add(new vec2(ru2, rv2));
+                verts.Add(v0); norms.Add(normal); uvs.Add(new vec2(ru0, rv0));
+                verts.Add(v2); norms.Add(normal); uvs.Add(new vec2(ru2, rv2));
+                verts.Add(v1); norms.Add(normal); uvs.Add(new vec2(ru1, rv1));
+            }
+            else
+            {
+                // Negative faces (-X,-Y,-Z): (V0,V1,V2) and (V0,V2,V3) — CCW
+                verts.Add(v0); norms.Add(normal); uvs.Add(new vec2(ru0, rv0));
+                verts.Add(v1); norms.Add(normal); uvs.Add(new vec2(ru1, rv1));
+                verts.Add(v2); norms.Add(normal); uvs.Add(new vec2(ru2, rv2));
+                verts.Add(v0); norms.Add(normal); uvs.Add(new vec2(ru0, rv0));
+                verts.Add(v2); norms.Add(normal); uvs.Add(new vec2(ru2, rv2));
+                verts.Add(v3); norms.Add(normal); uvs.Add(new vec2(ru3, rv3));
+            }
         }
     }
 
@@ -581,16 +611,18 @@ public static class MinecraftModelMesh
     private static (vec3, vec3, vec3, vec3) QuadForFace(
         string face, float x0, float y0, float z0, float x1, float y1, float z1)
     {
-        // Vertex order is CCW when viewed from the outside (front face),
-        // matching OpenGL's default front-face winding convention.
+        // Vertex order: V0=TL, V1=TR, V2=BR, V3=BL when viewed from outside.
+        // (West's original Mojang order happens to be V0=TR in view, but is
+        // kept here to preserve correct UV binding with this codebase's
+        // V0→ru0, V1→ru1, V2→ru2, V3→ru3 assignment scheme.)
         return face switch
         {
             "down"  => (new vec3(x0, y0, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
-            "up"    => (new vec3(x0, y1, z1), new vec3(x1, y1, z1), new vec3(x1, y1, z0), new vec3(x0, y1, z0)),
+            "up"    => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y1, z1), new vec3(x0, y1, z1)),
             "north" => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x0, y0, z0)),
-            "south" => (new vec3(x1, y1, z1), new vec3(x0, y1, z1), new vec3(x0, y0, z1), new vec3(x1, y0, z1)),
+            "south" => (new vec3(x0, y1, z1), new vec3(x1, y1, z1), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
             "west"  => (new vec3(x0, y1, z1), new vec3(x0, y1, z0), new vec3(x0, y0, z0), new vec3(x0, y0, z1)),
-            "east"  => (new vec3(x1, y1, z0), new vec3(x1, y1, z1), new vec3(x1, y0, z1), new vec3(x1, y0, z0)),
+            "east"  => (new vec3(x1, y1, z1), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1)),
             _       => (vec3.Zero, vec3.Zero, vec3.Zero, vec3.Zero)
         };
     }
@@ -635,35 +667,33 @@ public static class MinecraftModelMesh
     // ── UV rotation ───────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Applies a UV rotation (0/90/180/270 degrees clockwise) to the four
-    /// corner UVs of a quad.
+    /// Applies a UV rotation (0/90/180/270 degrees) to the four corner UVs of a
+    /// quad by remapping which corner of the original UV rectangle each vertex
+    /// receives.
     ///
-    /// Minecraft face UV rotation rotates the texture clockwise within the face.
-    /// The quad corner order is: v0=TL, v1=TR, v2=BR, v3=BL.
-    /// Each 90° CW rotation shifts which texture corner maps to TL:
-    ///   0°  → TL=(uMin,vMin)  TR=(uMax,vMin)  BR=(uMax,vMax)  BL=(uMin,vMax)
-    ///   90° → TL=(uMin,vMax)  TR=(uMin,vMin)  BR=(uMax,vMin)  BL=(uMax,vMax)
-    ///  180° → TL=(uMax,vMax)  TR=(uMin,vMax)  BR=(uMin,vMin)  BL=(uMax,vMin)
-    ///  270° → TL=(uMax,vMin)  TR=(uMax,vMax)  BR=(uMin,vMax)  BL=(uMin,vMin)
+    /// All quad faces use V0=TL, V1=TR, V2=BR, V3=BL (CCW from outside).
+    /// A clockwise rotation of N degrees maps to a backward shift of N/90 steps
+    /// through the corner array: step = (4 - rotation/90) % 4.
     /// </summary>
     private static (float, float, float, float, float, float, float, float)
         RotateUv(int rotation, float uMin, float vMin, float uMax, float vMax)
     {
-        // Corner order: TL=v0, TR=v1, BR=v2, BL=v3
-        // Matches Blockbench's UV rotation: each 90° step rotates the UV lookup CCW.
-        // Derived from Blockbench js/outliner/types/cube.js updateUV rotation loop.
-        (float u, float v)[] corners = rotation switch
+        var corners = new[]
         {
-            90  => new[] { (uMin, vMax), (uMin, vMin), (uMax, vMin), (uMax, vMax) },
-            180 => new[] { (uMax, vMax), (uMin, vMax), (uMin, vMin), (uMax, vMin) },
-            270 => new[] { (uMax, vMin), (uMax, vMax), (uMin, vMax), (uMin, vMin) },
-            _   => new[] { (uMin, vMin), (uMax, vMin), (uMax, vMax), (uMin, vMax) },
+            (uMin, vMin), // 0 = TL
+            (uMax, vMin), // 1 = TR
+            (uMax, vMax), // 2 = BR
+            (uMin, vMax)  // 3 = BL
         };
 
-        return (corners[0].u, corners[0].v,
-                corners[1].u, corners[1].v,
-                corners[2].u, corners[2].v,
-                corners[3].u, corners[3].v);
+        int step = (4 - (rotation / 90) % 4) % 4;
+
+        var (ru0, rv0) = corners[(step + 0) % 4];
+        var (ru1, rv1) = corners[(step + 1) % 4];
+        var (ru2, rv2) = corners[(step + 2) % 4];
+        var (ru3, rv3) = corners[(step + 3) % 4];
+
+        return (ru0, rv0, ru1, rv1, ru2, rv2, ru3, rv3);
     }
 
     // ── Element rotation ──────────────────────────────────────────────────────

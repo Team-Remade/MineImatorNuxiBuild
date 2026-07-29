@@ -245,14 +245,26 @@ public static class CemLoader
             var uvBR = new vec2(uBR, vBR);
             var uvBL = new vec2(uTL, vBR);
 
-            // Tri 0: v0(TL), v1(TR), v2(BR)
-            mesh.Vertices.Add(v0p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvTL);
-            mesh.Vertices.Add(v1p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvTR);
-            mesh.Vertices.Add(v2p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvBR);
-            // Tri 1: v0(TL), v2(BR), v3(BL)
-            mesh.Vertices.Add(v0p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvTL);
-            mesh.Vertices.Add(v2p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvBR);
-            mesh.Vertices.Add(v3p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvBL);
+            if (faceName is "east" or "up" or "south")
+            {
+                // Positive faces (+X,+Y,+Z): (V0,V3,V2) and (V0,V2,V1) — CCW
+                mesh.Vertices.Add(v0p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvTL);
+                mesh.Vertices.Add(v3p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvBL);
+                mesh.Vertices.Add(v2p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvBR);
+                mesh.Vertices.Add(v0p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvTL);
+                mesh.Vertices.Add(v2p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvBR);
+                mesh.Vertices.Add(v1p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvTR);
+            }
+            else
+            {
+                // Negative faces (-X,-Y,-Z): (V0,V1,V2) and (V0,V2,V3) — CCW
+                mesh.Vertices.Add(v0p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvTL);
+                mesh.Vertices.Add(v1p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvTR);
+                mesh.Vertices.Add(v2p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvBR);
+                mesh.Vertices.Add(v0p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvTL);
+                mesh.Vertices.Add(v2p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvBR);
+                mesh.Vertices.Add(v3p); mesh.Normals.Add(normal); mesh.TexCoords.Add(uvBL);
+            }
         }
 
         if (mesh.Vertices.Count == 0) return null;
@@ -272,11 +284,11 @@ public static class CemLoader
         return face switch
         {
             "down"  => (new vec3(x0, y0, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
-            "up"    => (new vec3(x0, y1, z1), new vec3(x1, y1, z1), new vec3(x1, y1, z0), new vec3(x0, y1, z0)),
+            "up"    => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y1, z1), new vec3(x0, y1, z1)),
             "north" => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x0, y0, z0)),
-            "south" => (new vec3(x1, y1, z1), new vec3(x0, y1, z1), new vec3(x0, y0, z1), new vec3(x1, y0, z1)),
+            "south" => (new vec3(x0, y1, z1), new vec3(x1, y1, z1), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
             "west"  => (new vec3(x0, y1, z1), new vec3(x0, y1, z0), new vec3(x0, y0, z0), new vec3(x0, y0, z1)),
-            "east"  => (new vec3(x1, y1, z0), new vec3(x1, y1, z1), new vec3(x1, y0, z1), new vec3(x1, y0, z0)),
+            "east"  => (new vec3(x1, y1, z1), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1)),
             _       => (vec3.Zero, vec3.Zero, vec3.Zero, vec3.Zero)
         };
     }
