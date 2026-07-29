@@ -733,8 +733,10 @@ public static class MinecraftModelMesh
         float radX = rotX * MathF.PI / 180f;
         float radY = rotY * MathF.PI / 180f;
 
-        // Block model convention: X rotation tilts, Y rotation spins
-        mat4 rx = mat4.RotateX(radX);
+        // Block model convention: X rotation = clockwise when looking from +X,
+        // which is the opposite of standard math (right-hand rule). Y rotation
+        // uses the same direction as standard math.
+        mat4 rx = mat4.RotateX(-radX);
         mat4 ry = mat4.RotateY(radY);
         return ry * rx;
     }
