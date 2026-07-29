@@ -15,14 +15,13 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 /// Supported features
 /// ──────────────────
 ///  • Recursive tree built from Viewport.SceneObjects + SceneObject.Children
-///  • Single-click selection (synced bidirectionally with SelectionManager)
+///  • Multi-selection (Ctrl+click toggle, Shift+click range)
 ///  • Inline rename (double-click label area)
-///  • Right-click context menu: Duplicate / Delete
+///  • Right-click context menu (preserves multi-selection)
 ///  • Drag-and-drop reparenting (drop on item = child; drop on blank = unparent to root)
 ///
 /// Not yet implemented
 /// ────────────────────
-///  • Multi-selection
 ///  • Per-type object icons
 ///  • Keyframe deep-copy on Duplicate
 /// </summary>
@@ -38,6 +37,7 @@ public class SceneTree : UiPanel
     /// via the SelectionChanged event for efficient per-frame highlight lookups.
     /// </summary>
     private SceneObject _selectedObject;
+    private SceneObject _lastClickedObject;
     private SceneObject _renamingObject;
     private string      _renameBuffer = "";
 
@@ -287,18 +287,22 @@ public class SceneTree : UiPanel
             nodeOpen = ImGui.TreeNodeEx(obj.GetDisplayName() + "##node", flags);
         }
 
-        // Single click → select
+        // Single click → select (multi-select with Ctrl/Shift)
         if (ImGui.IsItemClicked(ImGuiMouseButton.Left) && !ImGui.IsItemToggledOpen())
-            SelectObject(obj);
+            HandleClick(obj);
 
         // Double click → begin inline rename
         if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
             BeginRename(obj);
 
-        // Right click → context menu
+        // Right click → context menu (don't clear multi-selection)
         if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
         {
-            SelectObject(obj);
+            if (SelectionManager.Instance != null && !SelectionManager.Instance.IsSelected(obj))
+            {
+                SelectionManager.Instance.ClearSelection();
+                SelectionManager.Instance.SelectObject(obj);
+            }
             _contextMenuTarget = obj;
             _openContextMenu   = true;
         }
@@ -346,6 +350,52 @@ public class SceneTree : UiPanel
 
     // ── Selection ───────────────────────────────────────────────────────────
 
+    private void HandleClick(SceneObject obj)
+    {
+        bool ctrlHeld  = ImGui.GetIO().KeyCtrl;
+        bool shiftHeld = ImGui.GetIO().KeyShift;
+
+        if (SelectionManager.Instance != null)
+        {
+            if (ctrlHeld)
+            {
+                SelectionManager.Instance.ToggleSelection(obj);
+                _lastClickedObject = obj;
+            }
+            else if (shiftHeld && _lastClickedObject != null)
+            {
+                var flatTree = FlattenVisibleTree();
+                int startIdx = flatTree.IndexOf(_lastClickedObject);
+                int endIdx   = flatTree.IndexOf(obj);
+                if (startIdx >= 0 && endIdx >= 0)
+                {
+                    int low  = Math.Min(startIdx, endIdx);
+                    int high = Math.Max(startIdx, endIdx);
+                    for (int i = low; i <= high; i++)
+                    {
+                        if (!SelectionManager.Instance.IsSelected(flatTree[i]))
+                            SelectionManager.Instance.SelectObject(flatTree[i]);
+                    }
+                }
+                _lastClickedObject = obj;
+            }
+            else
+            {
+                SelectionManager.Instance.ClearSelection();
+                if (obj != null)
+                    SelectionManager.Instance.SelectObject(obj);
+                _lastClickedObject = obj;
+            }
+        }
+        else
+        {
+            if (_selectedObject != null) _selectedObject.IsSelected = false;
+            _selectedObject = obj;
+            if (_selectedObject != null) _selectedObject.IsSelected = true;
+            _lastClickedObject = obj;
+        }
+    }
+
     private void SelectObject(SceneObject obj)
     {
         if (SelectionManager.Instance != null)
@@ -367,6 +417,23 @@ public class SceneTree : UiPanel
         _selectedObject = SelectionManager.Instance?.SelectedObjects.Count > 0
             ? SelectionManager.Instance.SelectedObjects[0]
             : null;
+    }
+
+    private List<SceneObject> FlattenVisibleTree()
+    {
+        var result = new List<SceneObject>();
+        if (Viewport == null) return result;
+        foreach (var root in Viewport.SceneObjects)
+            FlattenNode(root, result);
+        return result;
+    }
+
+    private void FlattenNode(SceneObject obj, List<SceneObject> result)
+    {
+        if (obj.HideInSceneTree) return;
+        result.Add(obj);
+        foreach (var child in obj.Children)
+            FlattenNode(child, result);
     }
 
     // ── Rename ──────────────────────────────────────────────────────────────
