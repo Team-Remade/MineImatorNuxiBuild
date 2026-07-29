@@ -300,9 +300,9 @@ public static class MinecraftModelMesh
         vec3 n = FaceNormal(faceName);
         v0 += offset; v1 += offset; v2 += offset; v3 += offset;
 
-            if (faceName is "east" or "up" or "south")
+            if (faceName is "east" or "up" or "south" or "west")
             {
-                // Positive faces (+X,+Y,+Z): (V0,V3,V2) and (V0,V2,V1) — CCW
+                // Positive-direction faces: (V0,V3,V2) and (V0,V2,V1) — CCW
                 mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
                 mesh.Vertices.Add(v3); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[3]);
                 mesh.Vertices.Add(v2); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[2]);
@@ -312,7 +312,7 @@ public static class MinecraftModelMesh
             }
             else
             {
-                // Negative faces (-X,-Y,-Z): (V0,V1,V2) and (V0,V2,V3) — CCW
+                // Negative-direction faces: (V0,V1,V2) and (V0,V2,V3) — CCW
                 mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
                 mesh.Vertices.Add(v1); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[1]);
                 mesh.Vertices.Add(v2); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[2]);
@@ -416,7 +416,7 @@ public static class MinecraftModelMesh
                 ("up",    ty + 1 < tileY, new vec3(-0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f,  0.5f), new vec3(-0.5f,  0.5f,  0.5f), new vec3( 0,  1,  0)),
                 ("north", tz > 0,         new vec3(-0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3(-0.5f, -0.5f, -0.5f), new vec3( 0,  0, -1)),
                 ("south", tz + 1 < tileZ, new vec3(-0.5f,  0.5f,  0.5f), new vec3( 0.5f,  0.5f,  0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3( 0,  0,  1)),
-                ("west",  tx > 0,         new vec3(-0.5f,  0.5f,  0.5f), new vec3(-0.5f,  0.5f, -0.5f), new vec3(-0.5f, -0.5f, -0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3(-1,  0,  0)),
+                ("west",  tx > 0,         new vec3(-0.5f,  0.5f, -0.5f), new vec3(-0.5f,  0.5f,  0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3(-0.5f, -0.5f, -0.5f), new vec3(-1,  0,  0)),
                 ("east",  tx + 1 < tileX, new vec3( 0.5f,  0.5f,  0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3( 1,  0,  0)),
             };
 
@@ -448,7 +448,7 @@ public static class MinecraftModelMesh
             "up"    => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y1, z1), new vec3(x0, y1, z1)),
             "north" => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x0, y0, z0)),
             "south" => (new vec3(x0, y1, z1), new vec3(x1, y1, z1), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
-            "west"  => (new vec3(x0, y1, z1), new vec3(x0, y1, z0), new vec3(x0, y0, z0), new vec3(x0, y0, z1)),
+            "west"  => (new vec3(x0, y1, z0), new vec3(x0, y1, z1), new vec3(x0, y0, z1), new vec3(x0, y0, z0)),
             "east"  => (new vec3(x1, y1, z1), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1)),
             _       => (vec3.Zero, vec3.Zero, vec3.Zero, vec3.Zero)
         };
@@ -583,9 +583,9 @@ public static class MinecraftModelMesh
             v3 = TransformPoint(transform, v3) + tileOffset;
             normal = TransformNormal(transform, normal);
 
-            if (faceName is "east" or "up" or "south")
+            if (faceName is "east" or "up" or "south" or "west")
             {
-                // Positive faces (+X,+Y,+Z): (V0,V3,V2) and (V0,V2,V1) — CCW
+                // Positive-direction faces: (V0,V3,V2) and (V0,V2,V1) — CCW
                 verts.Add(v0); norms.Add(normal); uvs.Add(new vec2(ru0, rv0));
                 verts.Add(v3); norms.Add(normal); uvs.Add(new vec2(ru3, rv3));
                 verts.Add(v2); norms.Add(normal); uvs.Add(new vec2(ru2, rv2));
@@ -595,7 +595,7 @@ public static class MinecraftModelMesh
             }
             else
             {
-                // Negative faces (-X,-Y,-Z): (V0,V1,V2) and (V0,V2,V3) — CCW
+                // Negative-direction faces: (V0,V1,V2) and (V0,V2,V3) — CCW
                 verts.Add(v0); norms.Add(normal); uvs.Add(new vec2(ru0, rv0));
                 verts.Add(v1); norms.Add(normal); uvs.Add(new vec2(ru1, rv1));
                 verts.Add(v2); norms.Add(normal); uvs.Add(new vec2(ru2, rv2));
@@ -612,16 +612,18 @@ public static class MinecraftModelMesh
         string face, float x0, float y0, float z0, float x1, float y1, float z1)
     {
         // Vertex order: V0=TL, V1=TR, V2=BR, V3=BL when viewed from outside.
-        // (West's original Mojang order happens to be V0=TR in view, but is
-        // kept here to preserve correct UV binding with this codebase's
-        // V0→ru0, V1→ru1, V2→ru2, V3→ru3 assignment scheme.)
+        // West is flipped (V0↔V1, V2↔V3) so its V0 lands at TL in view and
+        // receives ru0 (TL of UV) — fixing a UV flip that existed in the
+        // original Mojang vertex order for the west face.
+        // Down/north keep original order (already V0=TL) and use negative-face
+        // winding; west uses positive-face winding.
         return face switch
         {
             "down"  => (new vec3(x0, y0, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
             "up"    => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y1, z1), new vec3(x0, y1, z1)),
             "north" => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x0, y0, z0)),
             "south" => (new vec3(x0, y1, z1), new vec3(x1, y1, z1), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
-            "west"  => (new vec3(x0, y1, z1), new vec3(x0, y1, z0), new vec3(x0, y0, z0), new vec3(x0, y0, z1)),
+            "west"  => (new vec3(x0, y1, z0), new vec3(x0, y1, z1), new vec3(x0, y0, z1), new vec3(x0, y0, z0)),
             "east"  => (new vec3(x1, y1, z1), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1)),
             _       => (vec3.Zero, vec3.Zero, vec3.Zero, vec3.Zero)
         };
