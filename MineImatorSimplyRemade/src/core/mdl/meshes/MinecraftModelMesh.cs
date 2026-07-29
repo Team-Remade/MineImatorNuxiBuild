@@ -300,7 +300,7 @@ public static class MinecraftModelMesh
         vec3 n = FaceNormal(faceName);
         v0 += offset; v1 += offset; v2 += offset; v3 += offset;
 
-            if (faceName is "east" or "up" or "south" or "west")
+            if (faceName is "east" or "up" or "south" or "west" or "down")
             {
                 // Positive-direction faces: (V0,V3,V2) and (V0,V2,V1) — CCW
                 mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
@@ -583,7 +583,7 @@ public static class MinecraftModelMesh
             v3 = TransformPoint(transform, v3) + tileOffset;
             normal = TransformNormal(transform, normal);
 
-            if (faceName is "east" or "up" or "south" or "west")
+            if (faceName is "east" or "up" or "south" or "west" or "down")
             {
                 // Positive-direction faces: (V0,V3,V2) and (V0,V2,V1) — CCW
                 verts.Add(v0); norms.Add(normal); uvs.Add(new vec2(ru0, rv0));
@@ -612,14 +612,12 @@ public static class MinecraftModelMesh
         string face, float x0, float y0, float z0, float x1, float y1, float z1)
     {
         // Vertex order: V0=TL, V1=TR, V2=BR, V3=BL when viewed from outside.
-        // West is flipped (V0↔V1, V2↔V3) so its V0 lands at TL in view and
-        // receives ru0 (TL of UV) — fixing a UV flip that existed in the
-        // original Mojang vertex order for the west face.
-        // Down/north keep original order (already V0=TL) and use negative-face
-        // winding; west uses positive-face winding.
+        // West and down use Mojang's original vertex order (V0=BL for up/down,
+        // V0↔V1, V2↔V3 for west); up uses the standard V0=TL convention.
+        // Down/north use negative-face winding; west uses positive-face winding.
         return face switch
         {
-            "down"  => (new vec3(x0, y0, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
+            "down"  => (new vec3(x0, y0, z1), new vec3(x1, y0, z1), new vec3(x1, y0, z0), new vec3(x0, y0, z0)),
             "up"    => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y1, z1), new vec3(x0, y1, z1)),
             "north" => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x0, y0, z0)),
             "south" => (new vec3(x0, y1, z1), new vec3(x1, y1, z1), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
