@@ -125,6 +125,7 @@ public static class ProjectSceneSerializer
 
     private static ProjectSceneObjectEntry SerializeNode(SceneObject obj)
     {
+        var pm = ProjectManager.Instance;
         var entry = new ProjectSceneObjectEntry
         {
             Name = obj.Name,
@@ -133,9 +134,9 @@ public static class ProjectSceneSerializer
             BlockVariant = obj.BlockVariant,
             TextureType = obj.TextureType,
             ResourcePackId = obj.ResourcePackId,
-            SourceAssetPath = obj.SourceAssetPath,
-            AlbedoTexturePath = obj.AlbedoTexturePath,
-            TextureOverridePath = obj.TextureOverridePath,
+            SourceAssetPath = pm.ToProjectRelativePath(obj.SourceAssetPath),
+            AlbedoTexturePath = pm.ToProjectRelativePath(obj.AlbedoTexturePath),
+            TextureOverridePath = pm.ToProjectRelativePath(obj.TextureOverridePath),
             Position = ToProjectVec3(obj.Position),
             Rotation = ToProjectVec3(obj.Rotation),
             Scale = ToProjectVec3(obj.Scale),
@@ -311,7 +312,7 @@ public static class ProjectSceneSerializer
         {
             string? textureOverride = string.IsNullOrWhiteSpace(entry.TextureOverridePath)
                 ? null
-                : entry.TextureOverridePath;
+                : ResolveTextureOverridePath(entry.TextureOverridePath);
             return spawnMenu.SpawnCustomModelFromPath(resolvedPath, textureOverride);
         }
 
@@ -320,26 +321,34 @@ public static class ProjectSceneSerializer
 
     /// <summary>
     /// Resolves <see cref="ProjectSceneObjectEntry.SourceAssetPath"/> through the
-    /// project's asset list so that assets copied into the project folder (and
-    /// stored with an absolute path at save time) can be found on a different
-    /// machine where the absolute path does not match but the project-relative
-    /// path is valid.
+    /// project's asset list so that assets copied into the project folder can be
+    /// found regardless of whether the path is stored as absolute (legacy saves)
+    /// or project-relative (current saves).
     /// </summary>
     private static string ResolveSourcePath(ProjectSceneObjectEntry entry)
     {
         if (string.IsNullOrWhiteSpace(entry.SourceAssetPath))
             return entry.SourceAssetPath;
 
+        var pm = ProjectManager.Instance;
+
+        // New saves store paths relative to ProjectFolder — try combining first.
+        if (!Path.IsPathRooted(entry.SourceAssetPath) && pm.HasProject)
+        {
+            string combined = Path.GetFullPath(Path.Combine(pm.ProjectFolder, entry.SourceAssetPath));
+            if (File.Exists(combined))
+                return combined;
+        }
+
+        // Legacy saves store absolute paths — try direct existence check.
         if (File.Exists(entry.SourceAssetPath))
             return entry.SourceAssetPath;
 
-        // The absolute path saved in the project file doesn't exist here
-        // (different machine, different drive, etc.). Try to find an asset
-        // in the project manifest whose display name matches the filename.
-        var pm = ProjectManager.Instance;
         if (!pm.HasProject)
             return entry.SourceAssetPath;
 
+        // Still not found — try to match by filename in the project's asset list
+        // (handles the case where the project was moved to a different machine).
         string fileName = Path.GetFileName(entry.SourceAssetPath);
         if (string.IsNullOrWhiteSpace(fileName))
             return entry.SourceAssetPath;
@@ -348,6 +357,32 @@ public static class ProjectSceneSerializer
             .FirstOrDefault(a => string.Equals(a.DisplayName, fileName, StringComparison.OrdinalIgnoreCase));
 
         return asset != null ? pm.GetAssetFullPath(asset) : entry.SourceAssetPath;
+    }
+
+    /// <summary>
+    /// Resolves a texture-override path that may be absolute (legacy) or
+    /// project-relative (current saves) back to an absolute path.
+    /// </summary>
+    private static string ResolveTextureOverridePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return path;
+
+        if (File.Exists(path))
+            return path;
+
+        var pm = ProjectManager.Instance;
+        if (!pm.HasProject)
+            return path;
+
+        if (!Path.IsPathRooted(path))
+        {
+            string combined = Path.GetFullPath(Path.Combine(pm.ProjectFolder, path));
+            if (File.Exists(combined))
+                return combined;
+        }
+
+        return path;
     }
 
     private static SceneObject CreateFallbackObject(ProjectSceneObjectEntry entry, Viewport viewport)
@@ -372,10 +407,12 @@ public static class ProjectSceneSerializer
         obj.BlockVariant = entry.BlockVariant;
         obj.TextureType = entry.TextureType;
         obj.ResourcePackId = entry.ResourcePackId;
-        obj.SourceAssetPath = entry.SourceAssetPath;
-        obj.TextureOverridePath = entry.TextureOverridePath;
+        obj.SourceAssetPath = ResolveSourcePath(entry);
+        obj.TextureOverridePath = ResolveTextureOverridePath(entry.TextureOverridePath);
 
-        // Restore albedo texture path (actual texture loading happens after scene is loaded)
+        // Restore albedo texture path (actual texture loading happens after scene is loaded).
+        // AlbedoTexturePath is intentionally kept project-relative because the loading code
+        // does Path.Combine(ProjectFolder, obj.AlbedoTexturePath).
         if (!string.IsNullOrEmpty(entry.AlbedoTexturePath))
         {
             obj.AlbedoTexturePath = entry.AlbedoTexturePath;

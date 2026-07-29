@@ -36,6 +36,33 @@ public sealed class ProjectManager
         !string.IsNullOrEmpty(ProjectFilePath) &&
         Directory.Exists(ProjectFolder);
 
+    public string ToProjectRelativePath(string absolutePath)
+    {
+        if (string.IsNullOrWhiteSpace(absolutePath) || !HasProject)
+            return absolutePath;
+        if (!Path.IsPathRooted(absolutePath))
+            return absolutePath;
+        try
+        {
+            return Path.GetRelativePath(ProjectFolder, absolutePath);
+        }
+        catch
+        {
+            return absolutePath;
+        }
+    }
+
+    public string ResolveProjectPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !HasProject)
+            return path;
+
+        if (Path.IsPathRooted(path))
+            return path;
+
+        return Path.GetFullPath(Path.Combine(ProjectFolder, path));
+    }
+
     public string ImagesFolder => Path.Combine(ProjectFolder, "images");
     public string ModelsFolder => Path.Combine(ProjectFolder, "models");
     public string SoundsFolder => Path.Combine(ProjectFolder, "sounds");

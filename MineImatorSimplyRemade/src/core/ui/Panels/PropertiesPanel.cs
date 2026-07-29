@@ -287,7 +287,7 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.BackgroundOffsetY = BackgroundOffset[1];
         manifest.Settings.BackgroundImagePath = string.IsNullOrWhiteSpace(BackgroundImagePath)
             ? NoImageSelected
-            : BackgroundImagePath;
+            : ProjectManager.Instance.ToProjectRelativePath(BackgroundImagePath);
         manifest.Settings.FloorVisible = FloorVisible;
         manifest.Settings.FloorTextureAtlas = NormalizeFloorAtlas(FloorTextureAtlas);
         manifest.Settings.FloorTileKey = string.IsNullOrWhiteSpace(FloorTileKey)
@@ -453,7 +453,7 @@ public class PropertiesPanel : UiPanel
         ProjectAssetEntry entry = ProjectManager.Instance.AddAsset(result.Path, ProjectAssetType.Image);
         string importedPath = entry.StoredInProject && !string.IsNullOrWhiteSpace(entry.RelativePath)
             ? entry.RelativePath
-            : entry.SourcePath;
+            : ProjectManager.Instance.ToProjectRelativePath(entry.SourcePath);
 
         BackgroundImagePath = string.IsNullOrWhiteSpace(importedPath) ? NoImageSelected : importedPath;
         return true;
@@ -1810,9 +1810,7 @@ public class PropertiesPanel : UiPanel
                                 }
                                 if (!string.IsNullOrEmpty(path))
                                 {
-                                    _currentObject.AlbedoTexturePath = path.Contains(ProjectManager.Instance.ProjectFolder)
-                                        ? Path.GetRelativePath(ProjectManager.Instance.ProjectFolder, path)
-                                        : path;
+                                    _currentObject.AlbedoTexturePath = ProjectManager.Instance.ToProjectRelativePath(path);
                                 }
                             }
                             else
@@ -2383,7 +2381,7 @@ public class PropertiesPanel : UiPanel
             }
 
             // Store the relative path for persistence
-            obj.AlbedoTexturePath = filePath.Contains(ProjectManager.Instance.ProjectFolder) ? Path.GetRelativePath(ProjectManager.Instance.ProjectFolder, filePath) : filePath;
+            obj.AlbedoTexturePath = ProjectManager.Instance.ToProjectRelativePath(filePath);
         }
         catch (Exception ex)
         {
