@@ -329,12 +329,50 @@ public class MineImatorLoader
         return null;
     }
 
+    /// <summary>
+    /// Converts Mine Imator Euler angles (extrinsic XYZ, degrees) to the engine's
+    /// intrinsic X→Y→Z (Rz*Ry*Rx) Euler angles (radians).
+    ///
+    /// Mine Imator convention:  R_mi = Rx(rot[0]) * Ry(rot[1]) * Rz(rot[2])
+    /// Engine convention:        R_en = Rz(z) * Ry(y) * Rx(x)
+    ///
+    /// The reference project (Godot) negates rot[2] AND uses Basis(Forward, rotZ)
+    /// where Forward = (0,0,-1), so the two negations cancel — the net rotation
+    /// around +Z equals the original Mine Imator Z value.  Our engine uses
+    /// mat4.RotateZ (+Z) directly, so no Z negation is needed.
+    /// </summary>
     private static vec3 ConvertMiRotation(float[] rotDeg)
     {
-        return new vec3(
-            BendHelper.DegToRad(rotDeg[0]),
-            BendHelper.DegToRad(rotDeg[1]),
-            BendHelper.DegToRad(rotDeg[2]));
+        float x = BendHelper.DegToRad(rotDeg[0]);
+        float y = BendHelper.DegToRad(rotDeg[1]);
+        float z = BendHelper.DegToRad(rotDeg[2]);
+
+        // Build R_mi = Rx(x) * Ry(y) * Rz(z)
+        mat4 m = mat4.RotateX(x) * mat4.RotateY(y) * mat4.RotateZ(z);
+
+        // Decompose into Rz(z') * Ry(y') * Rx(x') (engine convention)
+        // For R = Rz(z') * Ry(y') * Rx(x'):
+        //   m02 = -sin(y')
+        //   m12 =  cos(y')*sin(x')
+        //   m22 =  cos(y')*cos(x')
+        //   m01 =  cos(y')*sin(z')
+        //   m00 =  cos(y')*cos(z')
+        const float eps = 1e-6f;
+        float yy = MathF.Asin(-Math.Clamp(m.m02, -1f, 1f));
+        float xx, zz;
+
+        if (MathF.Abs(m.m02) < 1f - eps)
+        {
+            xx = MathF.Atan2(m.m12, m.m22);
+            zz = MathF.Atan2(m.m01, m.m00);
+        }
+        else
+        {
+            xx = MathF.Atan2(-m.m21, m.m11);
+            zz = 0f;
+        }
+
+        return new vec3(xx, yy, zz);
     }
 
     private static bool ValidateModelRoot(JsonElement root, string modelPath)
@@ -523,6 +561,10 @@ public class MineImatorLoader
 
             // Port of model_file_load_part.gml lock_bend positioning:
             // children of a bent part can be shifted by parent bend offset.
+            // In GML, both position and bend_offset are scaled by other.scale (the full
+            // accumulated parent scale). accumulatedParentScale here already holds the
+            // product of all ancestor scales (including the parent), so we multiply the
+            // raw offset by the relevant axis component to match GML behaviour.
             if (parentIdx >= 0)
             {
                 var parentPart = boneDataList[parentIdx].part;
@@ -534,15 +576,15 @@ public class MineImatorLoader
                     {
                         case "left":
                         case "right":
-                            position.x -= parentOffset / 16f;
+                            position.x -= (parentOffset * accumulatedParentScale.x) / 16f;
                             break;
                         case "front":
                         case "back":
-                            position.y -= parentOffset / 16f;
+                            position.y -= (parentOffset * accumulatedParentScale.y) / 16f;
                             break;
                         case "upper":
                         case "lower":
-                            position.z -= parentOffset / 16f;
+                            position.z -= (parentOffset * accumulatedParentScale.z) / 16f;
                             break;
                     }
                 }
@@ -819,10 +861,7 @@ public class MineImatorLoader
 
         vec3 shapeRotation = vec3.Zero;
         if (shape.Rotation != null && shape.Rotation.Length >= 3)
-            shapeRotation = new vec3(
-                BendHelper.DegToRad(shape.Rotation[0]),
-                BendHelper.DegToRad(shape.Rotation[1]),
-                BendHelper.DegToRad(shape.Rotation[2]));
+            shapeRotation = ConvertMiRotation(shape.Rotation);
 
         vec3 shapeScale = vec3.Ones;
         if (shape.Scale != null && shape.Scale.Length >= 3)
@@ -922,32 +961,37 @@ public class MineImatorLoader
         float texV = uvV / texHeight;
 
         float texSizeX = sizeX / texWidth;
+        float texSizeY = sizeY / texHeight;
         float texSizeZ = sizeZ / texHeight;
 
         float texSizeFixX = (sizeX - 1f / 256f) / texWidth;
         float texSizeFixY = (sizeY - 1f / 256f) / texHeight;
         float texSizeFixZ = (sizeZ - 1f / 256f) / texHeight;
 
-        // Face UV coords (see UV layout comment in original source)
+        // Face UV coords matching GML model_shape_generate_block layout
+        // South face: at (uvU, uvV), extends by (sizeX, sizeZ)
         var texSouth1 = new vec2(texU, texV);
         var texSouth2 = new vec2(texU + texSizeFixX, texV);
-        var texSouth3 = new vec2(texU + texSizeFixX, texV + texSizeFixY);
-        var texSouth4 = new vec2(texU, texV + texSizeFixY);
+        var texSouth3 = new vec2(texU + texSizeFixX, texV + texSizeFixZ);
+        var texSouth4 = new vec2(texU, texV + texSizeFixZ);
 
-        var texEast1 = new vec2(texU - texSizeZ, texV);
-        var texEast2 = new vec2(texU - texSizeZ + texSizeFixZ, texV);
-        var texEast3 = new vec2(texU - texSizeZ + texSizeFixZ, texV + texSizeFixY);
-        var texEast4 = new vec2(texU - texSizeZ, texV + texSizeFixY);
+        // East face: at (uvU + sizeX, uvV), extends by (sizeY, sizeZ)
+        var texEast1 = new vec2(texU + texSizeX, texV);
+        var texEast2 = new vec2(texU + texSizeX + texSizeFixY, texV);
+        var texEast3 = new vec2(texU + texSizeX + texSizeFixY, texV + texSizeFixZ);
+        var texEast4 = new vec2(texU + texSizeX, texV + texSizeFixZ);
 
-        var texWest1 = new vec2(texU + texSizeZ, texV);
-        var texWest2 = new vec2(texU + texSizeZ + texSizeFixZ, texV);
-        var texWest3 = new vec2(texU + texSizeZ + texSizeFixZ, texV + texSizeFixY);
-        var texWest4 = new vec2(texU + texSizeZ, texV + texSizeFixY);
+        // West face: at (uvU - sizeY, uvV), extends by (sizeY, sizeZ)
+        var texWest1 = new vec2(texU - texSizeY, texV);
+        var texWest2 = new vec2(texU - texSizeY + texSizeFixY, texV);
+        var texWest3 = new vec2(texU - texSizeY + texSizeFixY, texV + texSizeFixZ);
+        var texWest4 = new vec2(texU - texSizeY, texV + texSizeFixZ);
 
-        var texNorth1 = new vec2(texU + texSizeZ + texSizeX, texV);
-        var texNorth2 = new vec2(texU + texSizeZ + texSizeX + texSizeFixX, texV);
-        var texNorth3 = new vec2(texU + texSizeZ + texSizeX + texSizeFixX, texV + texSizeFixY);
-        var texNorth4 = new vec2(texU + texSizeZ + texSizeX, texV + texSizeFixY);
+        // North face: at (uvU + sizeX + sizeY, uvV), extends by (sizeX, sizeZ)
+        var texNorth1 = new vec2(texU + texSizeX + texSizeY, texV);
+        var texNorth2 = new vec2(texU + texSizeX + texSizeY + texSizeFixX, texV);
+        var texNorth3 = new vec2(texU + texSizeX + texSizeY + texSizeFixX, texV + texSizeFixZ);
+        var texNorth4 = new vec2(texU + texSizeX + texSizeY, texV + texSizeFixZ);
 
         // Flip East and West face UVs horizontally
         (texEast1, texEast2) = (texEast2, texEast1);
@@ -955,17 +999,17 @@ public class MineImatorLoader
         (texWest1, texWest2) = (texWest2, texWest1);
         (texWest3, texWest4) = (texWest4, texWest3);
 
-        float texUpHeight = Math.Min(sizeY, sizeZ);
-        float texUpHeightFix = (texUpHeight - 1f / 256f) / texHeight;
-        var texUp1 = new vec2(texU, texV - texUpHeightFix);
-        var texUp2 = new vec2(texU + texSizeFixX, texV - texUpHeightFix);
-        var texUp3 = new vec2(texU + texSizeFixX, texV - texUpHeightFix + texUpHeightFix);
-        var texUp4 = new vec2(texU, texV - texUpHeightFix + texUpHeightFix);
+        // Up face: at (uvU, uvV - sizeY), extends by (sizeX, sizeY)
+        var texUp1 = new vec2(texU, texV - texSizeY);
+        var texUp2 = new vec2(texU + texSizeFixX, texV - texSizeY);
+        var texUp3 = new vec2(texU + texSizeFixX, texV - texSizeY + texSizeFixY);
+        var texUp4 = new vec2(texU, texV - texSizeY + texSizeFixY);
 
-        var texDown4 = new vec2(texU + texSizeX, texV - texUpHeightFix);
-        var texDown3 = new vec2(texU + texSizeX + texSizeFixX, texV - texUpHeightFix);
-        var texDown2 = new vec2(texU + texSizeX + texSizeFixX, texV - texUpHeightFix + texUpHeightFix);
-        var texDown1 = new vec2(texU + texSizeX, texV - texUpHeightFix + texUpHeightFix);
+        // Down face: at (uvU + sizeX, uvV - sizeY), extends by (sizeX, sizeY)
+        var texDown1 = new vec2(texU + texSizeX, texV - texSizeY);
+        var texDown2 = new vec2(texU + texSizeX + texSizeFixX, texV - texSizeY);
+        var texDown3 = new vec2(texU + texSizeX + texSizeFixX, texV - texSizeY + texSizeFixY);
+        var texDown4 = new vec2(texU + texSizeX, texV - texSizeY + texSizeFixY);
 
         if (textureMirror)
         {
@@ -1053,7 +1097,7 @@ public class MineImatorLoader
             int segAxis = b.Part switch
             {
                 BendPart.Right or BendPart.Left => 0,
-                BendPart.Upper or BendPart.Lower => 1,
+                BendPart.Front or BendPart.Back => 1,
                 _ => 2
             };
 
@@ -1724,7 +1768,7 @@ public class MineImatorLoader
         }
 
         var b = bend;
-        int segAxis = (b.Part == BendPart.Right || b.Part == BendPart.Left) ? 0 : 1;
+        int segAxis = (b.Part == BendPart.Right || b.Part == BendPart.Left) ? 0 : 2;
 
         float bendSize = b.BendSize / 16f;
         float bendOffset = b.BendOffset / 16f;
@@ -1905,7 +1949,7 @@ public class MineImatorLoader
         bool singleXorZ = (b.AxisX && !b.AxisY && !b.AxisZ) || (!b.AxisX && !b.AxisY && b.AxisZ);
         bool sharpBend = (effectiveStyle == BendStyle.Blocky) && !b.ExplicitBendSize && singleXorZ;
 
-        int segAxis = bendAlongX ? 0 : 1;
+        int segAxis = bendAlongX ? 0 : 2;
         float detail = BendHelper.CalculateSegmentCount(b.BendSize, sharpBend, b.Detail);
         if (b.BendSize >= 1 && shapeScale[segAxis] > 0.5f) detail /= shapeScale[segAxis];
         float segSize = bendSize / detail;

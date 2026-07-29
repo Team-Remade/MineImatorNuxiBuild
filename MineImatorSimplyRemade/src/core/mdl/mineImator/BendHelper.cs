@@ -230,11 +230,11 @@ public static class BendHelper
                 offset *= scaleX;
                 size   *= scaleX;
                 break;
-            case BendPart.Upper: case BendPart.Lower:
+            case BendPart.Front: case BendPart.Back:
                 offset *= scaleY;
                 size   *= scaleY;
                 break;
-            case BendPart.Front: case BendPart.Back:
+            case BendPart.Upper: case BendPart.Lower:
                 offset *= scaleZ;
                 size   *= scaleZ;
                 break;
@@ -268,8 +268,8 @@ public static class BendHelper
     {
         return new vec3(
             angle.x * EaseInOutQuint(weight),
-            angle.y * weight,
-            angle.z * EaseInOutQuint(weight)
+            angle.y * EaseInOutQuint(weight),
+            angle.z * weight
         );
     }
 
@@ -314,11 +314,11 @@ public static class BendHelper
                 break;
             case BendPart.Front:
             case BendPart.Back:
-                pivotPos.z = b.BendOffset / 16.0f - scaledShapePos.z;
+                pivotPos.y = b.BendOffset / 16.0f - scaledShapePos.y;
                 break;
             case BendPart.Upper:
             case BendPart.Lower:
-                pivotPos.y = b.BendOffset / 16.0f - scaledShapePos.y;
+                pivotPos.z = b.BendOffset / 16.0f - scaledShapePos.z;
                 break;
         }
 
@@ -422,8 +422,8 @@ public static class BendHelper
         switch (axis?.ToLowerInvariant())
         {
             case "x": axisX = true; indices.Add(0); break;
-                case "y": axisY = true; indices.Add(1); break;
-                case "z": axisZ = true; indices.Add(2); break;
+            case "y": axisY = true; indices.Add(1); break;
+            case "z": axisZ = true; indices.Add(2); break;
         }
     }
 
