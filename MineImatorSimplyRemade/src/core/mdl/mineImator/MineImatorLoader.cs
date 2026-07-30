@@ -562,33 +562,10 @@ public class MineImatorLoader
             // Port of model_file_load_part.gml lock_bend positioning:
             // children of a bent part can be shifted by parent bend offset.
             // In GML, both position and bend_offset are scaled by other.scale (the full
-            // accumulated parent scale). accumulatedParentScale here already holds the
-            // product of all ancestor scales (including the parent), so we multiply the
-            // raw offset by the relevant axis component to match GML behaviour.
-            if (parentIdx >= 0)
-            {
-                var parentPart = boneDataList[parentIdx].part;
-                bool lockBend = !part.LockBend.HasValue || part.LockBend.Value != 0f;
-                if (lockBend && parentPart?.Bend?.Part != null)
-                {
-                    float parentOffset = parentPart.Bend.Offset ?? 0f;
-                    switch (parentPart.Bend.Part.ToLowerInvariant())
-                    {
-                        case "left":
-                        case "right":
-                            position.x -= (parentOffset * accumulatedParentScale.x) / 16f;
-                            break;
-                        case "front":
-                        case "back":
-                            position.y -= (parentOffset * accumulatedParentScale.y) / 16f;
-                            break;
-                        case "upper":
-                        case "lower":
-                            position.z -= (parentOffset * accumulatedParentScale.z) / 16f;
-                            break;
-                    }
-                }
-            }
+            // Note: No load-time bend offset subtraction here. The parent's bend
+            // transform is applied at runtime via GetBentHalfTransform(), which
+            // correctly rotates children around the bend pivot.  Pre-subtracting
+            // the offset would place the child at the pivot rather than beyond it.
 
             vec3 rotation = vec3.Zero;
             if (part.Rotation != null && part.Rotation.Length >= 3)
@@ -852,11 +829,6 @@ public class MineImatorLoader
         if (shape.Position != null && shape.Position.Length >= 3)
         {
             shapePosition = new vec3(shape.Position[0] / 16f, shape.Position[1] / 16f, shape.Position[2] / 16f);
-            // Scale shapePosition by the accumulated parent scale so it moves proportionally
-            // with the rest of the shape geometry. The from/to bounding box vertices are scaled
-            // via shapeScaleMat (which already incorporates accumulatedParentScale); this offset
-            // lives in the same pixel/16 space and must receive the same treatment.
-            shapePosition *= accumulatedParentScale;
         }
 
         vec3 shapeRotation = vec3.Zero;
@@ -972,26 +944,26 @@ public class MineImatorLoader
         // South face: at (uvU, uvV), extends by (sizeX, sizeZ)
         var texSouth1 = new vec2(texU, texV);
         var texSouth2 = new vec2(texU + texSizeFixX, texV);
-        var texSouth3 = new vec2(texU + texSizeFixX, texV + texSizeFixZ);
-        var texSouth4 = new vec2(texU, texV + texSizeFixZ);
+        var texSouth3 = new vec2(texU + texSizeFixX, texV + texSizeFixY);
+        var texSouth4 = new vec2(texU, texV + texSizeFixY);
 
-        // East face: at (uvU + sizeX, uvV), extends by (sizeY, sizeZ)
-        var texEast1 = new vec2(texU + texSizeX, texV);
-        var texEast2 = new vec2(texU + texSizeX + texSizeFixY, texV);
-        var texEast3 = new vec2(texU + texSizeX + texSizeFixY, texV + texSizeFixZ);
-        var texEast4 = new vec2(texU + texSizeX, texV + texSizeFixZ);
+        // East face (Right, X+) - to the LEFT of South by Z, uses Z for width, Y for height
+        var texEast1 = new vec2(texU - texSizeZ, texV);
+        var texEast2 = new vec2(texU - texSizeZ + texSizeFixZ, texV);
+        var texEast3 = new vec2(texU - texSizeZ + texSizeFixZ, texV + texSizeFixY);
+        var texEast4 = new vec2(texU - texSizeZ, texV + texSizeFixY);
 
-        // West face: at (uvU - sizeY, uvV), extends by (sizeY, sizeZ)
-        var texWest1 = new vec2(texU - texSizeY, texV);
-        var texWest2 = new vec2(texU - texSizeY + texSizeFixY, texV);
-        var texWest3 = new vec2(texU - texSizeY + texSizeFixY, texV + texSizeFixZ);
-        var texWest4 = new vec2(texU - texSizeY, texV + texSizeFixZ);
+        // West face (Left, X-) - to the RIGHT of South by Z, uses Z for width, Y for height
+        var texWest1 = new vec2(texU + texSizeZ, texV);
+        var texWest2 = new vec2(texU + texSizeZ + texSizeFixZ, texV);
+        var texWest3 = new vec2(texU + texSizeZ + texSizeFixZ, texV + texSizeFixY);
+        var texWest4 = new vec2(texU + texSizeZ, texV + texSizeFixY);
 
-        // North face: at (uvU + sizeX + sizeY, uvV), extends by (sizeX, sizeZ)
-        var texNorth1 = new vec2(texU + texSizeX + texSizeY, texV);
-        var texNorth2 = new vec2(texU + texSizeX + texSizeY + texSizeFixX, texV);
-        var texNorth3 = new vec2(texU + texSizeX + texSizeY + texSizeFixX, texV + texSizeFixZ);
-        var texNorth4 = new vec2(texU + texSizeX + texSizeY, texV + texSizeFixZ);
+        // North face (Back, Z-) - to the right of West by X, uses X for width, Y for height
+        var texNorth1 = new vec2(texU + texSizeZ + texSizeX, texV);
+        var texNorth2 = new vec2(texU + texSizeZ + texSizeX + texSizeFixX, texV);
+        var texNorth3 = new vec2(texU + texSizeZ + texSizeX + texSizeFixX, texV + texSizeFixY);
+        var texNorth4 = new vec2(texU + texSizeZ + texSizeX, texV + texSizeFixY);
 
         // Flip East and West face UVs horizontally
         (texEast1, texEast2) = (texEast2, texEast1);
@@ -999,17 +971,19 @@ public class MineImatorLoader
         (texWest1, texWest2) = (texWest2, texWest1);
         (texWest3, texWest4) = (texWest4, texWest3);
 
-        // Up face: at (uvU, uvV - sizeY), extends by (sizeX, sizeY)
-        var texUp1 = new vec2(texU, texV - texSizeY);
-        var texUp2 = new vec2(texU + texSizeFixX, texV - texSizeY);
-        var texUp3 = new vec2(texU + texSizeFixX, texV - texSizeY + texSizeFixY);
-        var texUp4 = new vec2(texU, texV - texSizeY + texSizeFixY);
+        // Up face (Top, Y+) - above South, uses X for width, min(Y,Z) for height
+        float texUpHeight = Math.Min(sizeY, sizeZ);
+        float texUpHeightFix = (texUpHeight - 1f / 256f) / texHeight;
+        var texUp1 = new vec2(texU, texV - texUpHeightFix);
+        var texUp2 = new vec2(texU + texSizeFixX, texV - texUpHeightFix);
+        var texUp3 = new vec2(texU + texSizeFixX, texV - texUpHeightFix + texUpHeightFix);
+        var texUp4 = new vec2(texU, texV - texUpHeightFix + texUpHeightFix);
 
-        // Down face: at (uvU + sizeX, uvV - sizeY), extends by (sizeX, sizeY)
-        var texDown1 = new vec2(texU + texSizeX, texV - texSizeY);
-        var texDown2 = new vec2(texU + texSizeX + texSizeFixX, texV - texSizeY);
-        var texDown3 = new vec2(texU + texSizeX + texSizeFixX, texV - texSizeY + texSizeFixY);
-        var texDown4 = new vec2(texU + texSizeX, texV - texSizeY + texSizeFixY);
+        // Down face (Bottom, Y-) - to the right of Up by X, uses X for width, min(Y,Z) for height
+        var texDown1 = new vec2(texU + texSizeX, texV - texUpHeightFix);
+        var texDown2 = new vec2(texU + texSizeX + texSizeFixX, texV - texUpHeightFix);
+        var texDown3 = new vec2(texU + texSizeX + texSizeFixX, texV - texUpHeightFix + texUpHeightFix);
+        var texDown4 = new vec2(texU + texSizeX, texV - texUpHeightFix + texUpHeightFix);
 
         if (textureMirror)
         {
@@ -1097,7 +1071,7 @@ public class MineImatorLoader
             int segAxis = b.Part switch
             {
                 BendPart.Right or BendPart.Left => 0,
-                BendPart.Front or BendPart.Back => 1,
+                BendPart.Upper or BendPart.Lower => 1,
                 _ => 2
             };
 
@@ -1768,7 +1742,13 @@ public class MineImatorLoader
         }
 
         var b = bend;
-        int segAxis = (b.Part == BendPart.Right || b.Part == BendPart.Left) ? 0 : 2;
+        // Plane is flat on Z — Front/Back (Z-axis) and Upper/Lower (Y-axis) both bend along Y
+        int segAxis = b.Part switch
+        {
+            BendPart.Right or BendPart.Left => 0,
+            BendPart.Upper or BendPart.Lower => 1,
+            _ => 1
+        };
 
         float bendSize = b.BendSize / 16f;
         float bendOffset = b.BendOffset / 16f;
@@ -1778,7 +1758,7 @@ public class MineImatorLoader
         bool sharpBend = (effectiveStyle == BendStyle.Blocky) && !b.ExplicitBendSize && singleXorZ;
 
         float detail = BendHelper.CalculateSegmentCount(b.BendSize, sharpBend, b.Detail);
-        if (b.BendSize >= 1 && shapeScale[segAxis] > 0.5f) detail /= shapeScale[segAxis];
+        if (b.ExplicitBendSize && b.BendSize >= 1 && shapeScale[segAxis] > 0.5f) detail /= shapeScale[segAxis];
         float segSize = bendSize / detail;
 
         bool invAngle = (b.Part == BendPart.Lower || b.Part == BendPart.Back || b.Part == BendPart.Left);
@@ -1949,9 +1929,15 @@ public class MineImatorLoader
         bool singleXorZ = (b.AxisX && !b.AxisY && !b.AxisZ) || (!b.AxisX && !b.AxisY && b.AxisZ);
         bool sharpBend = (effectiveStyle == BendStyle.Blocky) && !b.ExplicitBendSize && singleXorZ;
 
-        int segAxis = bendAlongX ? 0 : 2;
+        // Extruded plane bends map Front/Back to Y-axis (same as Upper/Lower) since the plane is XY-aligned
+        int segAxis = b.Part switch
+        {
+            BendPart.Right or BendPart.Left => 0,
+            BendPart.Upper or BendPart.Lower => 1,
+            _ => 1
+        };
         float detail = BendHelper.CalculateSegmentCount(b.BendSize, sharpBend, b.Detail);
-        if (b.BendSize >= 1 && shapeScale[segAxis] > 0.5f) detail /= shapeScale[segAxis];
+        if (b.ExplicitBendSize && b.BendSize >= 1 && shapeScale[segAxis] > 0.5f) detail /= shapeScale[segAxis];
         float segSize = bendSize / detail;
 
         bool invAngle = (b.Part == BendPart.Lower || b.Part == BendPart.Back || b.Part == BendPart.Left);
@@ -2435,7 +2421,7 @@ public class MiPart
 
     [JsonPropertyName("locked")] public bool Locked { get; set; }
     [JsonPropertyName("depth")] public int Depth { get; set; }
-    [JsonPropertyName("backfaces")] public bool Backfaces { get; set; }
+    [JsonPropertyName("backfaces")] [JsonConverter(typeof(MiBoolConverter))] public bool Backfaces { get; set; }
     [JsonPropertyName("shadows")] public bool Shadows { get; set; } = true;
 
     [JsonPropertyName("color_alpha")]
@@ -2453,7 +2439,7 @@ public class MiShape
     [JsonPropertyName("visible")] public bool Visible { get; set; } = true;
     [JsonPropertyName("type")] public string Type { get; set; } = "block";
     [JsonPropertyName("description")] public string Description { get; set; }
-    [JsonPropertyName("use_model_color")] public bool UseModelColor { get; set; }
+    [JsonPropertyName("use_model_color")] [JsonConverter(typeof(MiBoolConverter))] public bool UseModelColor { get; set; }
     [JsonPropertyName("from")] public float[] From { get; set; }
     [JsonPropertyName("to")] public float[] To { get; set; }
     [JsonPropertyName("uv")] public float[] Uv { get; set; }
@@ -2749,6 +2735,35 @@ public class MiStringOrArrayStringConverter : JsonConverter<string[]>
         writer.WriteStartArray();
         foreach (var v in value) writer.WriteStringValue(v);
         writer.WriteEndArray();
+    }
+}
+
+public class MiBoolConverter : JsonConverter<bool>
+{
+    public override bool Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        switch (reader.TokenType)
+        {
+            case JsonTokenType.True: return true;
+            case JsonTokenType.False: return false;
+            case JsonTokenType.String:
+                var s = reader.GetString()?.Trim().ToLowerInvariant();
+                return s switch
+                {
+                    "true" or "1" or "yes" or "on" => true,
+                    "false" or "0" or "no" or "off" or "" or null => false,
+                    _ => throw new JsonException($"Cannot parse boolean from string \"{s}\"")
+                };
+            case JsonTokenType.Number:
+                return reader.TryGetInt64(out var l) ? l != 0 : reader.GetDouble() != 0.0;
+            case JsonTokenType.Null: return false;
+            default: throw new JsonException($"Unexpected token {reader.TokenType} for boolean");
+        }
+    }
+
+    public override void Write(Utf8JsonWriter writer, bool value, JsonSerializerOptions options)
+    {
+        writer.WriteBooleanValue(value);
     }
 }
 
