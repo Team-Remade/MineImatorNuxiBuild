@@ -6,13 +6,41 @@ layout (location = 2) in vec2 aTexCoord;
 layout (location = 3) in ivec4 aBoneIndices;
 layout (location = 4) in vec4 aBoneWeights;
 
+// Instance model matrix (4 consecutive vec4 attributes, divisor = 1).
+layout (location = 5) in vec4 aInstanceM0;
+layout (location = 6) in vec4 aInstanceM1;
+layout (location = 7) in vec4 aInstanceM2;
+layout (location = 8) in vec4 aInstanceM3;
+
 uniform mat4  uMVP;
 uniform mat4  uModel;
-uniform mat4  uLightSpaceMatrix;
-uniform vec2  uTexOffset;   // per-frame UV offset for animated textures (0,0 = static)
-uniform float uTexScaleV;   // V scale for spritesheet (frameH / totalH), 1.0 = static
+uniform vec2  uTexOffset;
+uniform float uTexScaleV;
 uniform bool  uIsSkinned;
+uniform bool  uUseInstancing;
 uniform mat4  uBoneMatrices[64];
+
+layout(std140) uniform SceneData {
+    mat4  uLightSpaceMatrix;
+    vec3  uAmbient;
+    float _pad0;
+    vec3  uLightDir;
+    float _pad1;
+    vec3  uLightColor;
+    float _pad2;
+    vec3  uSunFillLightDir;
+    float _pad3;
+    vec3  uSunFillLightColor;
+    float _pad4;
+    vec3  uMoonFillLightDir;
+    float _pad5;
+    vec3  uMoonFillLightColor;
+    float _pad6;
+    int   uShadowDebugMode;
+    int   uMainLightCastsShadows;
+    int   uSunFillLightCastsShadows;
+    int   uMoonFillLightCastsShadows;
+};
 
 out vec3 vNormal;
 out vec3 vFragPos;
@@ -20,6 +48,10 @@ out vec2 vTexCoord;
 out vec4 vShadowCoord;
 
 void main() {
+    mat4 modelMat = uUseInstancing
+        ? mat4(aInstanceM0, aInstanceM1, aInstanceM2, aInstanceM3)
+        : uModel;
+
     vec4 pos;
     vec3 normal;
 
@@ -37,11 +69,9 @@ void main() {
         normal = aNormal;
     }
 
-    vec4 worldPos   = uModel * pos;
+    vec4 worldPos   = modelMat * pos;
     vFragPos        = worldPos.xyz;
-    // Normal matrix: inverse-transpose of upper-left 3x3 of model matrix
-    vNormal         = normalize(mat3(transpose(inverse(uModel))) * normal);
-    // Scale V into the frame's slice of the spritesheet, then shift to the right frame
+    vNormal         = normalize(mat3(transpose(inverse(modelMat))) * normal);
     vTexCoord       = vec2(aTexCoord.x, aTexCoord.y * uTexScaleV + uTexOffset.y);
     vShadowCoord    = uLightSpaceMatrix * worldPos;
     gl_Position     = uMVP * pos;

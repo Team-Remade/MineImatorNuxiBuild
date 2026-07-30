@@ -156,6 +156,29 @@ public class Viewport : UiPanel
     /// <summary>Whether Ctrl was held at the time of the pending pick click.</summary>
     private bool _pendingPickCtrl;
 
+    // ── Shared scene UBO ──────────────────────────────────────────────────────
+
+    private SceneUniformBuffer? _sceneUBO;
+
+    // ── Shadow dirty tracking ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// When true (default), shadow maps will be re-rendered on the next frame.
+    /// Set to false after rendering; set back to true whenever the scene changes
+    /// (object transform, mesh re-upload, light change, etc.) so GPU shadow
+    /// passes are skipped entirely for static scenes.
+    /// </summary>
+    private bool _shadowDirty = true;
+
+    /// <summary>
+    /// Marks shadow maps as stale so they are re-rendered on the next frame.
+    /// Idempotent — safe to call redundantly.
+    /// </summary>
+    public void MarkShadowDirty()
+    {
+        _shadowDirty = true;
+    }
+
     // ── Framebuffer ────────────────────────────────────────────────────────────
 
     private uint _fbo;
@@ -561,6 +584,10 @@ public class Viewport : UiPanel
 
         // ── Light billboard resources ──────────────────────────────────────────
         InitLightBillboards();
+
+        // ── Scene UBO (shared by all meshes) ──────────────────────────────────
+        _sceneUBO = new SceneUniformBuffer(Gl);
+        Mesh.SceneUBO = _sceneUBO;
 
         // ── Export-quality shadow resources reused for viewport preview ───────
         EnsureShadowResources();
@@ -1970,6 +1997,9 @@ public class Viewport : UiPanel
         activeCamera.Near = savedNear;
         activeCamera.Far  = savedFar;
 
+        // Build frustum for per-frame culling.
+        Frustum frustum = Frustum.FromViewProj(proj * view);
+
         // ── Per-frame mesh globals ─────────────────────────────────────────────
         Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
         bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
@@ -1990,24 +2020,61 @@ public class Viewport : UiPanel
         // Mesh.PointLights (what the shader actually reads) is repopulated per
         // mesh by SelectPointLightsForMesh just before each draw call.
         Dictionary<LightSceneObject, int> pointShadowIndices = new();
-        var allPointLights = new List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)>();
+        _cachedAllPointLights.Clear();
         vec3 camPos = activeCamera.Position;
 
         SceneRenderMode renderMode = HighQualityPreviewEnabled ? SceneRenderMode.Rendered : SceneRenderMode.Unrendered;
         if (renderMode == SceneRenderMode.Rendered)
         {
             Mesh.ShadowDebugMode = ShadowDebugEnabled ? 1 : 0;
-            if (Mesh.DirectionalShadowEnabled)
+            if (Mesh.DirectionalShadowEnabled && _shadowDirty)
                 RenderShadowMap();
-            pointShadowIndices = RenderPointShadowMaps(camPos);
+            if (_shadowDirty)
+                pointShadowIndices = RenderPointShadowMaps(camPos);
+            _shadowDirty = false;
         }
 
-        CollectPointLights(SceneObjects, pointShadowIndices, allPointLights);
+        CollectPointLights(SceneObjects, pointShadowIndices, _cachedAllPointLights);
+
+        // ── Upload scene UBO ──────────────────────────────────────────────────
+        if (_sceneUBO != null)
+        {
+            float fillStrength   = Math.Clamp(Mesh.GlobalFillLightStrength, 0f, 5f);
+            var   fillColor      = new vec3(
+                Math.Clamp(Mesh.GlobalFillLightColor.x, 0f, 1f),
+                Math.Clamp(Mesh.GlobalFillLightColor.y, 0f, 1f),
+                Math.Clamp(Mesh.GlobalFillLightColor.z, 0f, 1f));
+            float sunStrength    = Math.Clamp(Mesh.GlobalSunFillLightStrength, 0f, 5f);
+            float moonStrength   = Math.Clamp(Mesh.GlobalMoonFillLightStrength, 0f, 5f);
+            float ambientStrength= Math.Clamp(Mesh.GlobalAmbientStrength, 0f, 5f);
+            var   ambientColor   = new vec3(
+                Math.Clamp(Mesh.GlobalAmbientColor.x, 0f, 1f),
+                Math.Clamp(Mesh.GlobalAmbientColor.y, 0f, 1f),
+                Math.Clamp(Mesh.GlobalAmbientColor.z, 0f, 1f));
+
+            bool mainShadows  = Mesh.MainFillLightCastsShadows && !Mesh.SunFillLightCastsShadows && !Mesh.MoonFillLightCastsShadows;
+            bool sunShadows   = Mesh.SunFillLightCastsShadows && !Mesh.MoonFillLightCastsShadows;
+            bool moonShadows  = Mesh.MoonFillLightCastsShadows;
+
+            _sceneUBO.Upload(
+                Mesh.ShadowLightSpaceMatrix,
+                ambientColor * ambientStrength,
+                new vec3(1f, 1f, 1f).Normalized,
+                fillColor * fillStrength,
+                Mesh.GlobalSunFillLightDirection,
+                Mesh.GlobalSunFillLightColor * sunStrength,
+                Mesh.GlobalMoonFillLightDirection,
+                Mesh.GlobalMoonFillLightColor * moonStrength,
+                Mesh.ShadowDebugMode,
+                mainShadows,
+                sunShadows,
+                moonShadows);
+        }
 
         // ── Ground plane ──────────────────────────────────────────────────────
         if (_groundPlane != null && GroundPlaneVisible)
         {
-            SelectPointLightsForMesh(vec3.Zero, allPointLights);
+            SelectPointLightsForMesh(vec3.Zero, _cachedAllPointLights);
             _groundPlane.Render(_groundPlaneModel, view, proj);
         }
 
@@ -2016,17 +2083,17 @@ public class Viewport : UiPanel
         //   opaque       – Alpha == 1, no texture  → normal depth read+write
         //   textured     – has a TextureId          → depth pre-pass + color pass (LEQUAL)
         //   alphaBlend   – Alpha < 1, no texture    → straight back-to-front blend, no pre-pass
-        var opaquePairs    = new List<(mat4 model, Mesh mesh)>();
-        var texturedPairs  = new List<(mat4 model, Mesh mesh, float dist, int sortDepth)>();
-        var alphaBlendPairs = new List<(mat4 model, Mesh mesh, float dist, int sortDepth)>();
-        var overlayPairs   = new List<(mat4 model, Mesh mesh)>();
+        _cachedOpaque.Clear();
+        _cachedTextured.Clear();
+        _cachedAlphaBlend.Clear();
+        _cachedOverlays.Clear();
 
-        CollectRenderPairs(SceneObjects, camPos, opaquePairs, texturedPairs, alphaBlendPairs, overlayPairs);
+        CollectRenderPairs(SceneObjects, camPos, frustum, _cachedOpaque, _cachedTextured, _cachedAlphaBlend, _cachedOverlays);
 
         // Pass 1 – Opaque geometry (depth read + write, no blending).
-        foreach (var (model, mesh) in opaquePairs)
+        foreach (var (model, mesh) in _cachedOpaque)
         {
-            SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
+            SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), _cachedAllPointLights);
             mesh.Render(model, view, proj);
         }
 
@@ -2035,18 +2102,18 @@ public class Viewport : UiPanel
         //       each mesh self-occludes (front faces block back faces of the same object).
         //   2b. Color pass: LEQUAL depth so the pre-pass depth values pass, depth writes
         //       off for correct back-to-front blending between separate objects.
-        if (texturedPairs.Count > 0)
+        if (_cachedTextured.Count > 0)
         {
-            texturedPairs.Sort((a, b) =>
+            _cachedTextured.Sort((a, b) =>
             {
                 int byDist = b.dist.CompareTo(a.dist);
                 return byDist != 0 ? byDist : a.sortDepth.CompareTo(b.sortDepth);
             });
 
             Gl.ColorMask(false, false, false, false);
-            foreach (var (model, mesh, _, _) in texturedPairs)
+            foreach (var (model, mesh, _, _) in _cachedTextured)
             {
-                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
+                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), _cachedAllPointLights);
                 mesh.Render(model, view, proj);
             }
             Gl.ColorMask(true, true, true, true);
@@ -2056,9 +2123,9 @@ public class Viewport : UiPanel
             Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
             Gl.DepthMask(false);
 
-            foreach (var (model, mesh, _, _) in texturedPairs)
+            foreach (var (model, mesh, _, _) in _cachedTextured)
             {
-                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
+                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), _cachedAllPointLights);
                 mesh.Render(model, view, proj);
             }
 
@@ -2070,9 +2137,9 @@ public class Viewport : UiPanel
         // Pass 3 – Plain alpha-blended meshes (no texture, no pre-pass).
         //   Sorted back-to-front; depth test reads but does not write so they
         //   composite correctly behind/in-front of each other and textured meshes.
-        if (alphaBlendPairs.Count > 0)
+        if (_cachedAlphaBlend.Count > 0)
         {
-            alphaBlendPairs.Sort((a, b) =>
+            _cachedAlphaBlend.Sort((a, b) =>
             {
                 int byDist = b.dist.CompareTo(a.dist);
                 return byDist != 0 ? byDist : a.sortDepth.CompareTo(b.sortDepth);
@@ -2082,9 +2149,9 @@ public class Viewport : UiPanel
             Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
             Gl.DepthMask(false);
 
-            foreach (var (model, mesh, _, _) in alphaBlendPairs)
+            foreach (var (model, mesh, _, _) in _cachedAlphaBlend)
             {
-                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
+                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), _cachedAllPointLights);
                 mesh.Render(model, view, proj);
             }
 
@@ -2097,9 +2164,9 @@ public class Viewport : UiPanel
             // ── Object-mesh overlays (e.g. camera icon) ───────────────────────────
             // Rendered with depth-test off so they always appear on top.
             // Mesh.Render() handles the DepthTestDisabled / Unlit flags internally.
-            foreach (var (model, mesh) in overlayPairs)
+            foreach (var (model, mesh) in _cachedOverlays)
             {
-                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
+                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), _cachedAllPointLights);
                 mesh.Render(model, view, proj);
             }
 
@@ -2613,6 +2680,8 @@ public class Viewport : UiPanel
 
     private void RenderShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, Shader shadowShader, Dictionary<string, BoneSceneObject>? boneDict = null)
     {
+        Frustum shadowFrustum = Frustum.FromViewProj(lightViewProj);
+
         foreach (var obj in objects)
         {
             if (!obj.GetEffectiveVisibility())
@@ -2628,6 +2697,17 @@ public class Viewport : UiPanel
             {
                 foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly && !mesh.DepthTestDisabled))
                 {
+                    // Frustum cull against the shadow light frustum.
+                    vec3 worldCenter = new vec3((model * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
+                    float scale = MathF.Max(
+                        new vec3(model.m00, model.m10, model.m20).Length,
+                        MathF.Max(
+                            new vec3(model.m01, model.m11, model.m21).Length,
+                            new vec3(model.m02, model.m12, model.m22).Length));
+                    float worldRadius = mesh.BoundingSphereRadius * scale;
+                    if (!shadowFrustum.TestSphere(worldCenter, worldRadius))
+                        continue;
+
                     if (mesh.IsSkinned)
                         UpdateBoneMatrices(mesh, model, localBoneDict);
 
@@ -2648,13 +2728,20 @@ public class Viewport : UiPanel
 
             mat4 world = obj.GetWorldMatrix();
             bool includedMeshVertex = false;
-            foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly && !mesh.DepthTestDisabled && mesh.Vertices.Count != 0))
+            foreach (var mesh in obj.Visuals.Where(m => !m.PickOnly && !m.DepthTestDisabled && m.Vertices.Count != 0))
             {
                 includedMeshVertex = true;
-                foreach (var worldVertex in mesh.Vertices.Select(vertex => world * new vec4(vertex, 1f)))
-                {
-                    bounds.Include(new vec3(worldVertex.x, worldVertex.y, worldVertex.z));
-                }
+                // Use the local bounding sphere to compute world-space extents,
+                // avoiding per-vertex iteration over every mesh.
+                vec3 worldCenter = new vec3((world * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
+                float scale = MathF.Max(
+                    new vec3(world.m00, world.m10, world.m20).Length,
+                    MathF.Max(
+                        new vec3(world.m01, world.m11, world.m21).Length,
+                        new vec3(world.m02, world.m12, world.m22).Length));
+                float worldRadius = mesh.BoundingSphereRadius * scale;
+                bounds.Include(worldCenter - new vec3(worldRadius));
+                bounds.Include(worldCenter + new vec3(worldRadius));
             }
 
             if (!includedMeshVertex)
@@ -2685,6 +2772,18 @@ public class Viewport : UiPanel
             {
                 foreach (var mesh in obj.Visuals.Where(mesh => mesh is { PickOnly: false, DepthTestDisabled: false }))
                 {
+                    // Distance cull: skip meshes outside the light's range.
+                    vec3 worldCenter = new vec3((model * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
+                    float distToLight = (worldCenter - lightPos).Length;
+                    float scale = MathF.Max(
+                        new vec3(model.m00, model.m10, model.m20).Length,
+                        MathF.Max(
+                            new vec3(model.m01, model.m11, model.m21).Length,
+                            new vec3(model.m02, model.m12, model.m22).Length));
+                    float worldRadius = mesh.BoundingSphereRadius * scale;
+                    if (distToLight - worldRadius > farPlane)
+                        continue;
+
                     if (mesh.IsSkinned)
                         UpdateBoneMatrices(mesh, model, localBoneDict);
 
@@ -3274,6 +3373,14 @@ public class Viewport : UiPanel
         }
     }
 
+    // ── Reusable per-frame lists (reduces allocations) ────────────────────────
+
+    private readonly List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)> _cachedAllPointLights = new();
+    private readonly List<(mat4 model, Mesh mesh)> _cachedOpaque = new();
+    private readonly List<(mat4 model, Mesh mesh, float dist, int sortDepth)> _cachedTextured = new();
+    private readonly List<(mat4 model, Mesh mesh, float dist, int sortDepth)> _cachedAlphaBlend = new();
+    private readonly List<(mat4 model, Mesh mesh)> _cachedOverlays = new();
+
     /// <summary>
     /// Maximum number of point/spot lights selected per individual mesh draw
     /// call. Kept comfortably below the shader's absolute <c>MAX_POINT_LIGHTS</c>
@@ -3344,6 +3451,7 @@ public class Viewport : UiPanel
     private static void CollectRenderPairs(
         IEnumerable<SceneObject> objects,
         vec3 camPos,
+        Frustum frustum,
         List<(mat4 model, Mesh mesh)> opaque,
         List<(mat4 model, Mesh mesh, float dist, int sortDepth)> textured,
         List<(mat4 model, Mesh mesh, float dist, int sortDepth)> alphaBlend,
@@ -3364,6 +3472,21 @@ public class Viewport : UiPanel
             // Only this node's own Visuals — not its descendants.
             foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly))
             {
+                // Frustum culling: test mesh bounding sphere against the view frustum.
+                // Overlay / always-visible meshes skip the test.
+                if (!mesh.DepthTestDisabled)
+                {
+                    vec3 worldCenter = new vec3((model * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
+                    float scale = MathF.Max(
+                        new vec3(model.m00, model.m10, model.m20).Length,
+                        MathF.Max(
+                            new vec3(model.m01, model.m11, model.m21).Length,
+                            new vec3(model.m02, model.m12, model.m22).Length));
+                    float worldRadius = mesh.BoundingSphereRadius * scale;
+                    if (!frustum.TestSphere(worldCenter, worldRadius))
+                        continue;
+                }
+
                 if (mesh.IsSkinned && localBoneDict != null)
                     UpdateBoneMatrices(mesh, model, localBoneDict);
 
@@ -3392,7 +3515,7 @@ public class Viewport : UiPanel
             }
 
             // Recurse into children so each child uses its own world matrix.
-            CollectRenderPairs(obj.Children, camPos, opaque, textured, alphaBlend, overlays, localBoneDict);
+            CollectRenderPairs(obj.Children, camPos, frustum, opaque, textured, alphaBlend, overlays, localBoneDict);
         }
     }
 
@@ -4121,9 +4244,46 @@ public class Viewport : UiPanel
         if (renderMode == SceneRenderMode.Rendered)
         {
             Mesh.ShadowDebugMode = MainViewport.ShadowDebugEnabled ? 1 : 0;
-            if (Mesh.DirectionalShadowEnabled)
+            if (Mesh.DirectionalShadowEnabled && _shadowDirty)
                 RenderShadowMapPublic();
-            pointShadowIndices = RenderPointShadowMapsPublic(camPos);
+            if (_shadowDirty)
+                pointShadowIndices = RenderPointShadowMapsPublic(camPos);
+            _shadowDirty = false;
+        }
+
+        // ── Upload scene UBO ─────────────────────────────────────────────────
+        if (_sceneUBO != null)
+        {
+            float fillStrength    = Math.Clamp(Mesh.GlobalFillLightStrength, 0f, 5f);
+            var   fillColor       = new vec3(
+                Math.Clamp(Mesh.GlobalFillLightColor.x, 0f, 1f),
+                Math.Clamp(Mesh.GlobalFillLightColor.y, 0f, 1f),
+                Math.Clamp(Mesh.GlobalFillLightColor.z, 0f, 1f));
+            float sunStrength     = Math.Clamp(Mesh.GlobalSunFillLightStrength, 0f, 5f);
+            float moonStrength    = Math.Clamp(Mesh.GlobalMoonFillLightStrength, 0f, 5f);
+            float ambientStrength = Math.Clamp(Mesh.GlobalAmbientStrength, 0f, 5f);
+            var   ambientColor    = new vec3(
+                Math.Clamp(Mesh.GlobalAmbientColor.x, 0f, 1f),
+                Math.Clamp(Mesh.GlobalAmbientColor.y, 0f, 1f),
+                Math.Clamp(Mesh.GlobalAmbientColor.z, 0f, 1f));
+
+            bool mainShadows = Mesh.MainFillLightCastsShadows && !Mesh.SunFillLightCastsShadows && !Mesh.MoonFillLightCastsShadows;
+            bool sunShadows  = Mesh.SunFillLightCastsShadows && !Mesh.MoonFillLightCastsShadows;
+            bool moonShadows = Mesh.MoonFillLightCastsShadows;
+
+            _sceneUBO.Upload(
+                Mesh.ShadowLightSpaceMatrix,
+                ambientColor * ambientStrength,
+                new vec3(1f, 1f, 1f).Normalized,
+                fillColor * fillStrength,
+                Mesh.GlobalSunFillLightDirection,
+                Mesh.GlobalSunFillLightColor * sunStrength,
+                Mesh.GlobalMoonFillLightDirection,
+                Mesh.GlobalMoonFillLightColor * moonStrength,
+                Mesh.ShadowDebugMode,
+                mainShadows,
+                sunShadows,
+                moonShadows);
         }
 
         CollectPointLights(MainViewport.SceneObjects, pointShadowIndices, allPointLights);
@@ -4138,7 +4298,8 @@ public class Viewport : UiPanel
         var textured = new List<(mat4, Mesh, float, int)>();
         var alphaBlend = new List<(mat4, Mesh, float, int)>();
         var overlays = new List<(mat4, Mesh)>();
-        CollectRenderPairs(MainViewport.SceneObjects, camPos, opaque, textured, alphaBlend, overlays);
+        Frustum previewFrustum = Frustum.FromViewProj(proj * view);
+        CollectRenderPairs(MainViewport.SceneObjects, camPos, previewFrustum, opaque, textured, alphaBlend, overlays);
 
         foreach (var (model, mesh) in opaque)
         {

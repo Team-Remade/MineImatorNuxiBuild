@@ -10,26 +10,36 @@ uniform float uAlpha;
 uniform bool  uEmissionEnabled;
 uniform vec3  uEmissionColor;
 uniform float uEmissionEnergy;
-uniform vec3  uLightDir;
-uniform vec3  uLightColor;
-uniform vec3  uSunFillLightDir;
-uniform vec3  uSunFillLightColor;
-uniform vec3  uMoonFillLightDir;
-uniform vec3  uMoonFillLightColor;
-uniform bool  uMainLightCastsShadows;
-uniform bool  uSunFillLightCastsShadows;
-uniform bool  uMoonFillLightCastsShadows;
-uniform vec3  uAmbient;
 uniform sampler2D uShadowMap;
 uniform bool  uUseShadowMap;
-uniform int   uShadowDebugMode;
 
-// Texture support
+uniform bool  uIsUnlit;
+
+layout(std140) uniform SceneData {
+    mat4  uLightSpaceMatrix;
+    vec3  uAmbient;
+    float _pad0;
+    vec3  uLightDir;
+    float _pad1;
+    vec3  uLightColor;
+    float _pad2;
+    vec3  uSunFillLightDir;
+    float _pad3;
+    vec3  uSunFillLightColor;
+    float _pad4;
+    vec3  uMoonFillLightDir;
+    float _pad5;
+    vec3  uMoonFillLightColor;
+    float _pad6;
+    int   uShadowDebugMode;
+    int   uMainLightCastsShadows;
+    int   uSunFillLightCastsShadows;
+    int   uMoonFillLightCastsShadows;
+};
+
 uniform sampler2D uTexture;
 uniform bool      uUseTexture;
 
-// ── Point lights ─────────────────────────────────────────────────────────────
-// Maximum number of point lights processed per draw call.
 #define MAX_POINT_LIGHTS 32
 #define MAX_POINT_SHADOWS 8
 
@@ -39,9 +49,9 @@ uniform vec3  uPointLightColor[MAX_POINT_LIGHTS];
 uniform float uPointLightRange[MAX_POINT_LIGHTS];
 uniform float uPointLightEnergy[MAX_POINT_LIGHTS];
 uniform int   uPointLightShadowIndex[MAX_POINT_LIGHTS];
-uniform vec3  uPointLightDir[MAX_POINT_LIGHTS];          // forward (only used by spot lights)
-uniform float uPointLightSpotCosOuter[MAX_POINT_LIGHTS]; // cos(half-angle of inner cone); 0 = point light
-uniform float uPointLightSpotCosInner[MAX_POINT_LIGHTS]; // cos(half-angle of outer cone); 0 = point light
+uniform vec3  uPointLightDir[MAX_POINT_LIGHTS];
+uniform float uPointLightSpotCosOuter[MAX_POINT_LIGHTS];
+uniform float uPointLightSpotCosInner[MAX_POINT_LIGHTS];
 uniform samplerCube uPointShadowMaps[MAX_POINT_SHADOWS];
 
 out vec4 FragColor;
@@ -97,56 +107,48 @@ float calculatePointShadow(int shadowIndex, vec3 fragPos, vec3 lightPos, float f
 }
 
 void main() {
-    vec3 norm    = normalize(vNormal);
-    vec3 sunDir  = normalize(uLightDir);
-    float diff   = max(dot(norm, sunDir), 0.0);
-    vec3 diffuse = diff * uLightColor;
-
     vec3  baseColor = uAlbedo;
     float alpha     = 1.0;
 
     if (uUseTexture) {
         vec4 texSample = texture(uTexture, vTexCoord);
-        // Multiply by uAlbedo so it acts as a tint on top of the texture
-        // (defaults to white, i.e. no-op, for untinted meshes). This is what
-        // lets biome-independent block tints (e.g. water) and the per-object
-        // Albedo Color material setting affect textured meshes.
         baseColor = texSample.rgb * uAlbedo;
         alpha     = texSample.a;
     }
 
-    // Multiply by the per-mesh alpha so transparency works for both
-    // textured and flat-colour meshes.
     alpha *= uAlpha;
 
-    // Accumulate point-light contributions.
+    if (alpha < 0.01) discard;
+
+    if (uIsUnlit) {
+        FragColor = vec4(baseColor, alpha);
+        return;
+    }
+
+    vec3 norm    = normalize(vNormal);
+    vec3 sunDir  = normalize(uLightDir);
+    float diff   = max(dot(norm, sunDir), 0.0);
+    vec3 diffuse = diff * uLightColor;
+
     vec3 pointLightSum = vec3(0.0);
     for (int i = 0; i < uPointLightCount; i++) {
         vec3  toLight   = uPointLightPos[i] - vFragPos;
         float dist      = length(toLight);
         float range     = uPointLightRange[i];
 
-        // Skip if the fragment is outside the light's range.
         if (dist >= range) continue;
 
-        // Smooth quadratic falloff: 1 at center, 0 at range boundary.
         float attenuation = clamp(1.0 - (dist / range), 0.0, 1.0);
         attenuation *= attenuation;
 
-        // Spot-light cone attenuation.  uPointLightSpotCosOuter == 0 means
-        // this is a point light → the cone factor is always 1.
         float spot = 1.0;
         if (uPointLightSpotCosOuter[i] > 0.0) {
-            // The light's forward direction is uPointLightDir[i]; the vector
-            // from the light to the fragment is toLight.  We want the angle
-            // between -toLight and the forward direction.
             vec3  toFragDir   = toLight / max(dist, 0.0001);
             float cosToFrag   = dot(-toFragDir, uPointLightDir[i]);
             if (cosToFrag <= uPointLightSpotCosInner[i]) {
-                continue;   // outside the outer cone → no contribution
+                continue;
             }
             if (cosToFrag < uPointLightSpotCosOuter[i]) {
-                // Soft falloff inside the blend band.
                 float t = (cosToFrag - uPointLightSpotCosInner[i])
                         / max(uPointLightSpotCosOuter[i] - uPointLightSpotCosInner[i], 0.0001);
                 spot = smoothstep(0.0, 1.0, t);
@@ -160,13 +162,8 @@ void main() {
         pointLightSum += uPointLightColor[i] * diffFact * attenuation * spot * uPointLightEnergy[i] * (1.0 - pointShadow);
     }
 
-    // Discard fully-transparent fragments so they don't write to the depth
-    // buffer during the pre-pass, preventing transparent item-model pixels
-    // from clipping geometry drawn afterwards (e.g. light billboards).
-    if (alpha < 0.01) discard;
-
-    vec3 shadowLightDir = uMoonFillLightCastsShadows ? normalize(uMoonFillLightDir)
-                        : uSunFillLightCastsShadows  ? normalize(uSunFillLightDir)
+    vec3 shadowLightDir = uMoonFillLightCastsShadows != 0 ? normalize(uMoonFillLightDir)
+                        : uSunFillLightCastsShadows  != 0 ? normalize(uSunFillLightDir)
                         : sunDir;
     float shadow = calculateShadow(norm, shadowLightDir);
     if (uShadowDebugMode == 1) {
@@ -178,9 +175,9 @@ void main() {
 
     float sunFillDiffuse = max(dot(norm, normalize(uSunFillLightDir)), 0.0);
     float moonFillDiffuse = max(dot(norm, normalize(uMoonFillLightDir)), 0.0);
-    float mainVisibility = uMainLightCastsShadows ? (1.0 - shadow) : 1.0;
-    float sunVisibility = uSunFillLightCastsShadows ? (1.0 - shadow) : 1.0;
-    float moonVisibility = uMoonFillLightCastsShadows ? (1.0 - shadow) : 1.0;
+    float mainVisibility = uMainLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
+    float sunVisibility = uSunFillLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
+    float moonVisibility = uMoonFillLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
     vec3 result = (uAmbient + diffuse * mainVisibility + uSunFillLightColor * sunFillDiffuse * sunVisibility + uMoonFillLightColor * moonFillDiffuse * moonVisibility + pointLightSum) * baseColor;
     if (uEmissionEnabled) {
         result += uEmissionColor * max(uEmissionEnergy, 0.0);

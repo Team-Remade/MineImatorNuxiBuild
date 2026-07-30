@@ -83,6 +83,16 @@ public class Mesh : IDisposable
     public bool IsSkinned => BoneIndices.Count > 0 && BoneIndices.Count == Vertices.Count;
 
     /// <summary>
+    /// Local-space bounding sphere center (computed from vertices during Upload).
+    /// </summary>
+    public vec3 BoundingSphereCenter;
+
+    /// <summary>
+    /// Local-space bounding sphere radius (computed from vertices during Upload).
+    /// </summary>
+    public float BoundingSphereRadius;
+
+    /// <summary>
     /// Optional index buffer (uint32).  Leave null for plain <c>DrawArrays</c>.
     /// </summary>
     public uint[]? Indices;
@@ -799,6 +809,9 @@ public class Mesh : IDisposable
         _gl.BindBuffer(GLEnum.ArrayBuffer, 0);
         _gl.BindVertexArray(0);
 
+        // Compute local-space bounding sphere from the vertex positions.
+        ComputeBoundingSphere();
+
         // Cache the freshly-built interleaved base data so the shape-key
         // refresh path can rebuild the VBO from it without re-interleaving
         // every time.  Any previous deformed buffer is invalidated.
@@ -815,6 +828,31 @@ public class Mesh : IDisposable
                 if (t.Weight != 0f) { _shapeKeyDirty = true; break; }
             }
         }
+    }
+
+    private void ComputeBoundingSphere()
+    {
+        if (Vertices.Count == 0)
+        {
+            BoundingSphereCenter = vec3.Zero;
+            BoundingSphereRadius = 0.5f;
+            return;
+        }
+
+        vec3 min = new(float.MaxValue);
+        vec3 max = new(float.MinValue);
+        foreach (var v in Vertices)
+        {
+            min = vec3.Min(min, v);
+            max = vec3.Max(max, v);
+        }
+
+        BoundingSphereCenter = (min + max) * 0.5f;
+        BoundingSphereRadius = MathF.Sqrt(
+            vec3.DistanceSqr(min, max)) * 0.5f;
+
+        if (BoundingSphereRadius < 0.001f)
+            BoundingSphereRadius = 0.5f;
     }
 
     // ── Point light data (set by Viewport before each draw call) ─────────────
@@ -910,6 +948,13 @@ public class Mesh : IDisposable
     public static bool AdvanceAnimatedTextures = true;
 
     /// <summary>
+    /// Shared scene-uniform buffer set by Viewport once per frame.
+    /// When non-null, Mesh.Render binds it to the current shader program and
+    /// skips uploading the scene-constant lighting uniforms that it contains.
+    /// </summary>
+    public static SceneUniformBuffer? SceneUBO;
+
+    /// <summary>
     /// Global playback speed multiplier for animated textures.
     /// A value of 1.0 reproduces vanilla 20 FPS timing.
     /// </summary>
@@ -936,6 +981,9 @@ public class Mesh : IDisposable
 
         _gl.UseProgram(_shader.ShaderProgram);
 
+        // Bind the shared scene UBO (initializes link on first use).
+        SceneUBO?.EnsureInitialized(_shader.ShaderProgram);
+
         // Combine into single MVP matrix exactly as the opengl-tutorial.org tutorial does:
         //   glm::mat4 mvp = Projection * View * Model;
         //   glUniformMatrix4fv(id, 1, GL_FALSE, &mvp[0][0]);
@@ -959,50 +1007,11 @@ public class Mesh : IDisposable
         SetUniformVec3("uEmissionColor", EmissionColor);
         SetUniformFloat("uEmissionEnergy", EmissionEnergy);
         SetUniformBool("uUseShadowMap", DirectionalShadowEnabled && ShadowsEnabled && !Unlit && ShadowMapTexture != 0);
-        SetUniformInt("uShadowDebugMode", ShadowDebugMode);
-        SetUniformMat4("uLightSpaceMatrix", ShadowLightSpaceMatrix);
 
-        if (Unlit)
-        {
-            // Unlit: full ambient (1,1,1), no directional light, no point lights
-            SetUniformVec3("uLightDir",   new vec3(0f, 1f, 0f));
-            SetUniformVec3("uLightColor", new vec3(0f, 0f, 0f));
-            SetUniformVec3("uSunFillLightDir", vec3.UnitY);
-            SetUniformVec3("uSunFillLightColor", vec3.Zero);
-            SetUniformVec3("uMoonFillLightDir", vec3.UnitY);
-            SetUniformVec3("uMoonFillLightColor", vec3.Zero);
-            SetUniformBool("uMainLightCastsShadows", false);
-            SetUniformBool("uSunFillLightCastsShadows", false);
-            SetUniformBool("uMoonFillLightCastsShadows", false);
-            SetUniformVec3("uAmbient",    new vec3(1f, 1f, 1f));
-        }
-        else
-        {
-            // Light travels from upper-right-front toward origin (world space)
-            SetUniformVec3("uLightDir",   new vec3(1f, 1f, 1f).Normalized);
-            
-            // Fill light color with strength multiplier
-            float fillLightStrength = Math.Clamp(GlobalFillLightStrength, 0f, 5f);
-            vec3 fillLightColor = new vec3(
-                Math.Clamp(GlobalFillLightColor.x, 0f, 1f),
-                Math.Clamp(GlobalFillLightColor.y, 0f, 1f),
-                Math.Clamp(GlobalFillLightColor.z, 0f, 1f));
-            SetUniformVec3("uLightColor", fillLightColor * fillLightStrength);
-            SetUniformVec3("uSunFillLightDir", GlobalSunFillLightDirection);
-            SetUniformVec3("uSunFillLightColor", GlobalSunFillLightColor * Math.Clamp(GlobalSunFillLightStrength, 0f, 5f));
-            SetUniformVec3("uMoonFillLightDir", GlobalMoonFillLightDirection);
-            SetUniformVec3("uMoonFillLightColor", GlobalMoonFillLightColor * Math.Clamp(GlobalMoonFillLightStrength, 0f, 5f));
-            SetUniformBool("uMainLightCastsShadows", MainFillLightCastsShadows && !SunFillLightCastsShadows && !MoonFillLightCastsShadows);
-            SetUniformBool("uSunFillLightCastsShadows", SunFillLightCastsShadows && !MoonFillLightCastsShadows);
-            SetUniformBool("uMoonFillLightCastsShadows", MoonFillLightCastsShadows);
-            
-            float ambientStrength = Math.Clamp(GlobalAmbientStrength, 0f, 5f);
-            vec3 ambientColor = new vec3(
-                Math.Clamp(GlobalAmbientColor.x, 0f, 1f),
-                Math.Clamp(GlobalAmbientColor.y, 0f, 1f),
-                Math.Clamp(GlobalAmbientColor.z, 0f, 1f));
-            SetUniformVec3("uAmbient", ambientColor * ambientStrength);
-        }
+        // The rest of the lighting data (uLightDir, uLightColor, uAmbient, fill
+        // lights, shadow flags, uLightSpaceMatrix, uShadowDebugMode) comes from
+        // the shared SceneData UBO uploaded once per frame by the Viewport.
+        SetUniformBool("uIsUnlit", Unlit);
 
         // ── Point lights ──────────────────────────────────────────────────────
         // Must match MAX_POINT_LIGHTS in simple.frag.
@@ -1268,11 +1277,11 @@ public class Mesh : IDisposable
         if (DoubleSided) _gl.Enable(GLEnum.CullFace);
     }
 
-    // ── Uniform helpers ───────────────────────────────────────────────────────
+    // ── Uniform helpers (cached locations via Shader) ─────────────────────────
 
     private unsafe void SetUniformMat4(string name, mat4 m)
     {
-        int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
+        int loc = _shader.GetUniformLocation(name);
         if (loc < 0) return;
         
         float[] f =
@@ -1287,7 +1296,7 @@ public class Mesh : IDisposable
 
     private unsafe void SetUniformMat4(Shader shader, string name, mat4 m)
     {
-        int loc = _gl.GetUniformLocation(shader.ShaderProgram, name);
+        int loc = shader.GetUniformLocation(name);
         if (loc < 0) return;
 
         float[] f =
@@ -1302,61 +1311,61 @@ public class Mesh : IDisposable
 
     private void SetUniformVec2(string name, vec2 v)
     {
-        int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
+        int loc = _shader.GetUniformLocation(name);
         if (loc >= 0) _gl.Uniform2(loc, v.x, v.y);
     }
 
     private void SetUniformVec2(Shader shader, string name, vec2 v)
     {
-        int loc = _gl.GetUniformLocation(shader.ShaderProgram, name);
+        int loc = shader.GetUniformLocation(name);
         if (loc >= 0) _gl.Uniform2(loc, v.x, v.y);
     }
 
     private void SetUniformVec3(string name, vec3 v)
     {
-        int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
+        int loc = _shader.GetUniformLocation(name);
         if (loc >= 0) _gl.Uniform3(loc, v.x, v.y, v.z);
     }
 
     private void SetUniformVec3(Shader shader, string name, vec3 v)
     {
-        int loc = _gl.GetUniformLocation(shader.ShaderProgram, name);
+        int loc = shader.GetUniformLocation(name);
         if (loc >= 0) _gl.Uniform3(loc, v.x, v.y, v.z);
     }
 
     private void SetUniformBool(string name, bool value)
     {
-        int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
+        int loc = _shader.GetUniformLocation(name);
         if (loc >= 0) _gl.Uniform1(loc, value ? 1 : 0);
     }
 
     private void SetUniformBool(Shader shader, string name, bool value)
     {
-        int loc = _gl.GetUniformLocation(shader.ShaderProgram, name);
+        int loc = shader.GetUniformLocation(name);
         if (loc >= 0) _gl.Uniform1(loc, value ? 1 : 0);
     }
 
     private void SetUniformInt(string name, int value)
     {
-        int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
+        int loc = _shader.GetUniformLocation(name);
         if (loc >= 0) _gl.Uniform1(loc, value);
     }
 
     private void SetUniformInt(Shader shader, string name, int value)
     {
-        int loc = _gl.GetUniformLocation(shader.ShaderProgram, name);
+        int loc = shader.GetUniformLocation(name);
         if (loc >= 0) _gl.Uniform1(loc, value);
     }
 
     private void SetUniformFloat(string name, float value)
     {
-        int loc = _gl.GetUniformLocation(_shader.ShaderProgram, name);
+        int loc = _shader.GetUniformLocation(name);
         if (loc >= 0) _gl.Uniform1(loc, value);
     }
 
     private void SetUniformFloat(Shader shader, string name, float value)
     {
-        int loc = _gl.GetUniformLocation(shader.ShaderProgram, name);
+        int loc = shader.GetUniformLocation(name);
         if (loc >= 0) _gl.Uniform1(loc, value);
     }
 
