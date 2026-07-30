@@ -125,6 +125,9 @@ public class ProjectRenderSettings
     public ProjectVec3 SunFillLightColor { get; set; } = new() { X = 1f, Y = 0.96862745f, Z = 0.89411765f };
     public float SunFillLightStrength { get; set; } = 0.25f;
     public bool SunFillLightCastsShadows { get; set; } = true;
+    public ProjectVec3 MoonFillLightColor { get; set; } = new() { X = 0.6f, Y = 0.65f, Z = 1f };
+    public float MoonFillLightStrength { get; set; } = 0.1f;
+    public bool MoonFillLightCastsShadows { get; set; } = false;
     public string BackgroundRenderMode { get; set; } = "stretch";
     public bool StretchBackground { get; set; } = true;
     public float BackgroundScale { get; set; } = 1f;
@@ -142,6 +145,13 @@ public class ProjectRenderSettings
         Z = 1f,
         W = 1f
     };
+    public bool Twilight { get; set; } = true;
+    public bool ShowStars { get; set; } = true;
+    public float StarDensity { get; set; } = 1f;
+    public float StarBrightness { get; set; } = 1f;
+    public float StarTwinkleSpeed { get; set; } = 1f;
+    public ProjectVec3 StarColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f };
+    public ProjectVec3 NightCloudColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f };
     public ProjectVec3 AmbientLightColor { get; set; } = new()
     {
         X = 1f,
@@ -149,6 +159,8 @@ public class ProjectRenderSettings
         Z = 1f
     };
     public float AmbientLightStrength { get; set; } = 0.35f;
+    public ProjectVec3 NightAmbientLightColor { get; set; } = new() { X = 0.05f, Y = 0.05f, Z = 0.2f };
+    public float NightAmbientLightStrength { get; set; } = 0.15f;
     public ProjectVec3 FillLightColor { get; set; } = new()
     {
         X = 0.85f,

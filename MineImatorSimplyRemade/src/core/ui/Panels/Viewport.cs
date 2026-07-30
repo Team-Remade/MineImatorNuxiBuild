@@ -703,7 +703,20 @@ public class Viewport : UiPanel
         Mesh.GlobalSunFillLightColor = new vec3(p.SunFillLightColor[0], p.SunFillLightColor[1], p.SunFillLightColor[2]);
         Mesh.GlobalSunFillLightStrength = p.UseSky ? p.SunFillLightStrength : 0f;
         Mesh.SunFillLightCastsShadows = p.UseSky && p.SunFillLightCastsShadows;
+        float[] moonAngles = [p.MoonAngle[0] + orbit, p.MoonAngle[1], p.MoonAngle[2]];
+        vec3 moonDirection = DirectionFromEuler(moonAngles);
+        Mesh.GlobalMoonFillLightDirection = moonDirection;
+        Mesh.GlobalMoonFillLightColor = new vec3(p.MoonFillLightColor[0], p.MoonFillLightColor[1], p.MoonFillLightColor[2]);
+        Mesh.GlobalMoonFillLightStrength = p.UseSky ? p.MoonFillLightStrength : 0f;
+        Mesh.MoonFillLightCastsShadows = p.UseSky && p.MoonFillLightCastsShadows;
         Mesh.MainFillLightCastsShadows = p.FillLightCastsShadows;
+        float nightFactor = ComputeNightBlend(sunDirection.y);
+        float ambR = p.AmbientLightColor[0] * (1f - nightFactor) + p.NightAmbientLightColor[0] * nightFactor;
+        float ambG = p.AmbientLightColor[1] * (1f - nightFactor) + p.NightAmbientLightColor[1] * nightFactor;
+        float ambB = p.AmbientLightColor[2] * (1f - nightFactor) + p.NightAmbientLightColor[2] * nightFactor;
+        float ambStr = p.AmbientLightStrength * (1f - nightFactor) + p.NightAmbientLightStrength * nightFactor;
+        Mesh.GlobalAmbientColor = new vec3(Math.Clamp(ambR, 0f, 1f), Math.Clamp(ambG, 0f, 1f), Math.Clamp(ambB, 0f, 1f));
+        Mesh.GlobalAmbientStrength = Math.Clamp(ambStr, 0f, 5f);
         if (!p.UseSky || _skyShader == null || _backgroundVao == 0) return;
         ReloadSkyTextures();
         vec3 forward = (camera.Target - camera.Position).Normalized;
@@ -722,16 +735,23 @@ public class Viewport : UiPanel
         C3("uHorizonSunset", p.SkyHorizonSunset); C3("uZenithSunset", p.SkyZenithSunset);
         C3("uHorizonNight", p.SkyHorizonNight); C3("uZenithNight", p.SkyZenithNight);
         C3("uCloudColor", p.CloudColor);
+        C3("uNightCloudColor", p.NightCloudColor);
         int cloudMode = Gl.GetUniformLocation(program, "uCloudMode");
         if (cloudMode >= 0) Gl.Uniform1(cloudMode, p.CloudRenderMode == "story" ? 1 : p.CloudRenderMode == "flat" ? 2 : 0);
         float animationSeconds = (Timeline.Instance?.CurrentFrame ?? 0) / (float)Math.Max(1, p.GetFramerate());
         int cloudOffset = Gl.GetUniformLocation(program, "uCloudOffset");
         if (cloudOffset >= 0) Gl.Uniform2(cloudOffset, p.CloudOffset[0] + p.CloudSpeed * animationSeconds, p.CloudOffset[1]);
         F("uCloudHeight", p.CloudHeight); F("uCloudBlockSize", p.CloudBlockSize); F("uCloudThickness", p.CloudThickness);
-        float[] moonAngles = [p.MoonAngle[0] + orbit, p.MoonAngle[1], p.MoonAngle[2]];
-        V3("uSunDirection", sunDirection); V3("uMoonDirection", DirectionFromEuler(moonAngles));
+        V3("uSunDirection", sunDirection); V3("uMoonDirection", moonDirection);
         F("uSunSize", p.SunSize); F("uMoonSize", p.MoonSize);
         int phase = Gl.GetUniformLocation(program, "uMoonPhase"); if (phase >= 0) Gl.Uniform1(phase, p.MoonPhase);
+        int twilight = Gl.GetUniformLocation(program, "uTwilight"); if (twilight >= 0) Gl.Uniform1(twilight, p.Twilight ? 1 : 0);
+        int showStars = Gl.GetUniformLocation(program, "uShowStars"); if (showStars >= 0) Gl.Uniform1(showStars, p.ShowStars ? 1 : 0);
+        F("uStarDensity", p.StarDensity);
+        F("uStarBrightness", p.StarBrightness);
+        F("uStarTwinkleSpeed", p.StarTwinkleSpeed);
+        C3("uStarColor", p.StarColor);
+        F("uTime", animationSeconds);
         Gl.ActiveTexture(GLEnum.Texture0); Gl.BindTexture(GLEnum.Texture2D, _sunTexture);
         int sun = Gl.GetUniformLocation(program, "uSunTex"); if (sun >= 0) Gl.Uniform1(sun, 0);
         Gl.ActiveTexture(GLEnum.Texture1); Gl.BindTexture(GLEnum.Texture2D, _moonTexture);
@@ -740,6 +760,12 @@ public class Viewport : UiPanel
         int clouds = Gl.GetUniformLocation(program, "uCloudTex"); if (clouds >= 0) Gl.Uniform1(clouds, 2);
         Gl.BindVertexArray(_backgroundVao); Gl.DrawArrays(GLEnum.Triangles, 0, 6); Gl.BindVertexArray(0);
         Gl.ActiveTexture(GLEnum.Texture0); Gl.DepthMask(true); Gl.Enable(GLEnum.DepthTest); Gl.DepthFunc(GLEnum.Less); Gl.Enable(GLEnum.CullFace);
+    }
+
+    private static float ComputeNightBlend(float sunY)
+    {
+        float t = Math.Clamp((sunY + 0.18f) / 0.2f, 0f, 1f);
+        return 1f - t * t * (3f - 2f * t);
     }
 
     public void RenderSkyPublic(Camera camera, uint width, uint height) => RenderSky(camera, width, height);
@@ -1955,7 +1981,8 @@ public class Viewport : UiPanel
         Mesh.ShadowLightSpaceMatrix = mat4.Identity;
         Mesh.ShadowDebugMode = 0;
         Mesh.DirectionalShadowEnabled = (PropertiesPanel?.FillLightCastsShadows ?? true) ||
-                                        (PropertiesPanel?.UseSky == true && PropertiesPanel.SunFillLightCastsShadows);
+                                        (PropertiesPanel?.UseSky == true && PropertiesPanel.SunFillLightCastsShadows) ||
+                                        (PropertiesPanel?.UseSky == true && PropertiesPanel.MoonFillLightCastsShadows);
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         // Rebuild the full scene light list every frame so that moved / deleted
@@ -2532,9 +2559,11 @@ public class Viewport : UiPanel
         vec3 center = (bounds.Min + bounds.Max) * 0.5f;
         vec3 extents = bounds.Max - bounds.Min;
         float radius = Math.Max(12f, Math.Max(extents.x, Math.Max(extents.y, extents.z)) * 0.8f + 8f);
-        vec3 lightDir = Mesh.SunFillLightCastsShadows
-            ? Mesh.GlobalSunFillLightDirection
-            : new vec3(1f, 1f, 1f).Normalized;
+        vec3 lightDir = Mesh.MoonFillLightCastsShadows
+            ? Mesh.GlobalMoonFillLightDirection
+            : Mesh.SunFillLightCastsShadows
+                ? Mesh.GlobalSunFillLightDirection
+                : new vec3(1f, 1f, 1f).Normalized;
         vec3 lightPos = center + lightDir * (radius * 1.8f);
 
         mat4 lightView = mat4.LookAt(lightPos, center, vec3.UnitY);
@@ -4081,7 +4110,8 @@ public class Viewport : UiPanel
         Mesh.ShadowLightSpaceMatrix = mat4.Identity;
         Mesh.ShadowDebugMode = 0;
         Mesh.DirectionalShadowEnabled = (MainViewport.PropertiesPanel?.FillLightCastsShadows ?? true) ||
-                                        (MainViewport.PropertiesPanel?.UseSky == true && MainViewport.PropertiesPanel.SunFillLightCastsShadows);
+                                        (MainViewport.PropertiesPanel?.UseSky == true && MainViewport.PropertiesPanel.SunFillLightCastsShadows) ||
+                                        (MainViewport.PropertiesPanel?.UseSky == true && MainViewport.PropertiesPanel.MoonFillLightCastsShadows);
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         Dictionary<LightSceneObject, int> pointShadowIndices = new();

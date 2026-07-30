@@ -55,8 +55,20 @@ public class PropertiesPanel : UiPanel
     public readonly float[] SunFillLightColor = [1f, 0.96862745f, 0.89411765f];
     public float SunFillLightStrength = 0.25f;
     public bool SunFillLightCastsShadows = true;
+    public readonly float[] MoonFillLightColor = [0.6f, 0.65f, 1f];
+    public float MoonFillLightStrength = 0.1f;
+    public bool MoonFillLightCastsShadows = false;
+    public bool Twilight = true;
+    public bool ShowStars = true;
+    public float StarDensity = 1f;
+    public float StarBrightness = 1f;
+    public float StarTwinkleSpeed = 1f;
+    public readonly float[] StarColor = [1f, 1f, 1f];
+    public readonly float[] NightCloudColor = [1f, 1f, 1f];
     public readonly float[] AmbientLightColor = [1f, 1f, 1f];
     public float AmbientLightStrength = 0.35f;
+    public readonly float[] NightAmbientLightColor = [0.05f, 0.05f, 0.2f];
+    public float NightAmbientLightStrength = 0.15f;
     public readonly float[] FillLightColor = [0.85f, 0.85f, 0.85f];
     public float FillLightStrength = 1f;
     public bool FillLightCastsShadows = true;
@@ -180,6 +192,13 @@ public class PropertiesPanel : UiPanel
         MoonTexture = string.IsNullOrWhiteSpace(settings.MoonTexture) ? "minecraft:environment/moon_phases.png" : settings.MoonTexture;
         CloudTexture = string.IsNullOrWhiteSpace(settings.CloudTexture) ? "minecraft:environment/clouds.png" : settings.CloudTexture;
         ReadColor(settings.CloudColor, CloudColor);
+        ReadColor(settings.NightCloudColor, NightCloudColor);
+        Twilight = settings.Twilight;
+        ShowStars = settings.ShowStars;
+        StarDensity = Math.Clamp(settings.StarDensity, 0f, 5f);
+        StarBrightness = Math.Clamp(settings.StarBrightness, 0f, 5f);
+        StarTwinkleSpeed = Math.Clamp(settings.StarTwinkleSpeed, 0f, 5f);
+        ReadColor(settings.StarColor, StarColor);
         CloudRenderMode = settings.CloudRenderMode is "story" or "flat" ? settings.CloudRenderMode : "3d";
         CloudSpeed = settings.CloudSpeed;
         CloudOffset[0] = settings.CloudOffsetX; CloudOffset[1] = settings.CloudOffsetY;
@@ -193,6 +212,9 @@ public class PropertiesPanel : UiPanel
         ReadColor(settings.SunFillLightColor, SunFillLightColor);
         SunFillLightStrength = Math.Clamp(settings.SunFillLightStrength, 0f, 5f);
         SunFillLightCastsShadows = settings.SunFillLightCastsShadows;
+        ReadColor(settings.MoonFillLightColor, MoonFillLightColor);
+        MoonFillLightStrength = Math.Clamp(settings.MoonFillLightStrength, 0f, 5f);
+        MoonFillLightCastsShadows = settings.MoonFillLightCastsShadows;
         BackgroundRenderMode = NormalizeBackgroundRenderMode(settings.BackgroundRenderMode);
         StretchBackground = settings.StretchBackground;
         if (string.IsNullOrWhiteSpace(settings.BackgroundRenderMode))
@@ -222,6 +244,11 @@ public class PropertiesPanel : UiPanel
         AmbientLightColor[1] = ambient.Y;
         AmbientLightColor[2] = ambient.Z;
         AmbientLightStrength = settings.AmbientLightStrength;
+        ProjectVec3 nightAmbient = settings.NightAmbientLightColor;
+        NightAmbientLightColor[0] = nightAmbient.X;
+        NightAmbientLightColor[1] = nightAmbient.Y;
+        NightAmbientLightColor[2] = nightAmbient.Z;
+        NightAmbientLightStrength = settings.NightAmbientLightStrength;
         
         ProjectVec3 fillLight = settings.FillLightColor;
         FillLightColor[0] = fillLight.X;
@@ -262,6 +289,13 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.SunTexture = SunTexture; manifest.Settings.MoonTexture = MoonTexture;
         manifest.Settings.CloudTexture = CloudTexture;
         manifest.Settings.CloudColor = ToVec3(CloudColor);
+        manifest.Settings.NightCloudColor = ToVec3(NightCloudColor);
+        manifest.Settings.Twilight = Twilight;
+        manifest.Settings.ShowStars = ShowStars;
+        manifest.Settings.StarDensity = StarDensity;
+        manifest.Settings.StarBrightness = StarBrightness;
+        manifest.Settings.StarTwinkleSpeed = StarTwinkleSpeed;
+        manifest.Settings.StarColor = ToVec3(StarColor);
         manifest.Settings.CloudRenderMode = CloudRenderMode;
         manifest.Settings.CloudSpeed = CloudSpeed;
         manifest.Settings.CloudOffsetX = CloudOffset[0]; manifest.Settings.CloudOffsetY = CloudOffset[1];
@@ -275,6 +309,9 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.SunFillLightColor = ToVec3(SunFillLightColor);
         manifest.Settings.SunFillLightStrength = Math.Clamp(SunFillLightStrength, 0f, 5f);
         manifest.Settings.SunFillLightCastsShadows = SunFillLightCastsShadows;
+        manifest.Settings.MoonFillLightColor = ToVec3(MoonFillLightColor);
+        manifest.Settings.MoonFillLightStrength = Math.Clamp(MoonFillLightStrength, 0f, 5f);
+        manifest.Settings.MoonFillLightCastsShadows = MoonFillLightCastsShadows;
         BackgroundRenderMode = NormalizeBackgroundRenderMode(BackgroundRenderMode);
         BackgroundScale = Math.Clamp(BackgroundScale, 0.01f, 20f);
         BackgroundRotationDegrees = Math.Clamp(BackgroundRotationDegrees, -360f, 360f);
@@ -308,6 +345,13 @@ public class PropertiesPanel : UiPanel
             Z = AmbientLightColor[2]
         };
         manifest.Settings.AmbientLightStrength = AmbientLightStrength;
+        manifest.Settings.NightAmbientLightColor = new ProjectVec3
+        {
+            X = NightAmbientLightColor[0],
+            Y = NightAmbientLightColor[1],
+            Z = NightAmbientLightColor[2]
+        };
+        manifest.Settings.NightAmbientLightStrength = NightAmbientLightStrength;
         manifest.Settings.FillLightColor = new ProjectVec3
         {
             X = FillLightColor[0],
@@ -676,10 +720,33 @@ public class PropertiesPanel : UiPanel
                     skyChanged |= SkyColorEditor("Zenith Sunset", SkyZenithSunset);
                     skyChanged |= SkyColorEditor("Night Horizon", SkyHorizonNight);
                     skyChanged |= SkyColorEditor("Night Zenith", SkyZenithNight);
+                    bool twilight = Twilight;
+                    if (ImGui.Checkbox("Twilight", ref twilight)) { Twilight = twilight; skyChanged = true; }
+                    RegisterBackgroundKeyframeContext(nameof(Twilight));
+                    ImGui.Spacing();
+                    ImGui.Text("Stars:");
+                    bool showStars = ShowStars;
+                    if (ImGui.Checkbox("Show Stars##stars", ref showStars)) { ShowStars = showStars; skyChanged = true; }
+                    RegisterBackgroundKeyframeContext(nameof(ShowStars));
+                    if (ShowStars)
+                    {
+                        ImGui.Indent();
+                        skyChanged |= ImGui.DragFloat("Density", ref StarDensity, 0.01f, 0f, 5f, "%.2f");
+                        RegisterBackgroundKeyframeContext(nameof(StarDensity));
+                        skyChanged |= ImGui.DragFloat("Brightness", ref StarBrightness, 0.01f, 0f, 5f, "%.2f");
+                        RegisterBackgroundKeyframeContext(nameof(StarBrightness));
+                        skyChanged |= ImGui.DragFloat("Twinkle Speed", ref StarTwinkleSpeed, 0.01f, 0f, 5f, "%.2f");
+                        RegisterBackgroundKeyframeContext(nameof(StarTwinkleSpeed));
+                        skyChanged |= SkyColorEditor("Star Color", StarColor);
+                        ImGui.Unindent();
+                    }
+                    ImGui.Spacing();
+                    skyChanged |= SkyColorEditor("Cloud Color", CloudColor);
+                    skyChanged |= SkyColorEditor("Night Cloud Color", NightCloudColor);
+                    ImGui.Spacing();
                     skyChanged |= SkyTextureSelector("Sun Texture", ref SunTexture, "sun.png");
                     skyChanged |= SkyTextureSelector("Moon Texture", ref MoonTexture, "moon_phases.png");
                     skyChanged |= SkyTextureSelector("Cloud Texture", ref CloudTexture, "clouds.png");
-                    skyChanged |= SkyColorEditor("Cloud Color", CloudColor);
                     string cloudModeLabel = CloudRenderMode == "story" ? "Story Mode" : CloudRenderMode == "flat" ? "Flat" : "3D";
                     bool cloudModeOpen = ImGui.BeginCombo("Cloud Rendering", cloudModeLabel);
                     RegisterBackgroundKeyframeContext(nameof(CloudRenderMode));
@@ -717,6 +784,11 @@ public class PropertiesPanel : UiPanel
                     RegisterBackgroundKeyframeContext(nameof(SunFillLightStrength));
                     skyChanged |= ImGui.Checkbox("Sun Fill Casts Shadows", ref SunFillLightCastsShadows);
                     RegisterBackgroundKeyframeContext(nameof(SunFillLightCastsShadows));
+                    skyChanged |= SkyColorEditor("Moon Fill Light", MoonFillLightColor);
+                    skyChanged |= ImGui.DragFloat("Moon Fill Strength", ref MoonFillLightStrength, 0.01f, 0f, 5f);
+                    RegisterBackgroundKeyframeContext(nameof(MoonFillLightStrength));
+                    skyChanged |= ImGui.Checkbox("Moon Fill Casts Shadows", ref MoonFillLightCastsShadows);
+                    RegisterBackgroundKeyframeContext(nameof(MoonFillLightCastsShadows));
                     ImGui.Unindent();
                 }
                 else
@@ -986,6 +1058,26 @@ public class PropertiesPanel : UiPanel
                 RegisterBackgroundKeyframeContext(nameof(AmbientLightStrength));
 
                 ImGui.Spacing();
+                ImGui.Text("Night Ambient:");
+                ImGui.SetNextItemWidth(-1);
+                fixed (byte* nightAmbientLabel = "##NightAmbientLightColor"u8)
+                fixed (float* nightAmbientColorPtr = NightAmbientLightColor)
+                {
+                    if (ImGui.ColorEdit3(nightAmbientLabel, nightAmbientColorPtr, ImGuiColorEditFlags.None))
+                        ambientChanged = true;
+                }
+                RegisterBackgroundKeyframeContext(nameof(NightAmbientLightColor));
+
+                float nightAmbientStrength = NightAmbientLightStrength;
+                ImGui.SetNextItemWidth(120f);
+                if (ImGui.DragFloat("Night Ambient Strength", ref nightAmbientStrength, 0.01f, 0f, 5f))
+                {
+                    NightAmbientLightStrength = nightAmbientStrength;
+                    ambientChanged = true;
+                }
+                RegisterBackgroundKeyframeContext(nameof(NightAmbientLightStrength));
+
+                ImGui.Spacing();
                 ImGui.Text("Fill Light:");
                 ImGui.SetNextItemWidth(-1);
                 fixed (byte* fillLabel = "##FillLightColor"u8)
@@ -1031,17 +1123,21 @@ public class PropertiesPanel : UiPanel
         [
             nameof(UseSky), nameof(SunTexture), nameof(MoonTexture), nameof(CloudTexture), nameof(MoonPhase), nameof(SkyTime),
             nameof(SunSize), nameof(MoonSize), nameof(SunFillLightStrength), nameof(SunFillLightCastsShadows),
+            nameof(MoonFillLightStrength), nameof(MoonFillLightCastsShadows),
             nameof(CloudRenderMode), nameof(CloudSpeed), nameof(CloudHeight), nameof(CloudBlockSize), nameof(CloudThickness),
             nameof(FloorVisible), nameof(FloorTextureAtlas), nameof(FloorTileKey), nameof(BackgroundImagePath),
             nameof(BackgroundRenderMode), nameof(BackgroundScale), nameof(BackgroundRotationDegrees),
-            nameof(AmbientLightStrength), nameof(FillLightStrength), nameof(FillLightCastsShadows)
+            nameof(AmbientLightStrength), nameof(NightAmbientLightStrength), nameof(FillLightStrength), nameof(FillLightCastsShadows),
+            nameof(Twilight), nameof(ShowStars), nameof(StarDensity), nameof(StarBrightness), nameof(StarTwinkleSpeed)
         ];
         string[] vectors =
         [
             nameof(SkyHorizonDay), nameof(SkyZenithDay), nameof(SkyHorizonSunset), nameof(SkyZenithSunset),
             nameof(SkyHorizonNight), nameof(SkyZenithNight), nameof(SunAngle), nameof(MoonAngle),
-            nameof(SunFillLightColor), nameof(CloudColor), nameof(CloudOffset), nameof(BackgroundColor),
-            nameof(BackgroundOffset), nameof(AmbientLightColor), nameof(FillLightColor)
+            nameof(SunFillLightColor), nameof(MoonFillLightColor), nameof(CloudColor), nameof(NightCloudColor),
+            nameof(CloudOffset), nameof(BackgroundColor),
+            nameof(BackgroundOffset), nameof(AmbientLightColor), nameof(NightAmbientLightColor), nameof(FillLightColor),
+            nameof(StarColor)
         ];
         var result = new List<string>(scalars);
         foreach (string vector in vectors)
@@ -1181,7 +1277,10 @@ public class PropertiesPanel : UiPanel
             "Horizon Day" => nameof(SkyHorizonDay), "Zenith Day" => nameof(SkyZenithDay),
             "Horizon Sunset" => nameof(SkyHorizonSunset), "Zenith Sunset" => nameof(SkyZenithSunset),
             "Night Horizon" => nameof(SkyHorizonNight), "Night Zenith" => nameof(SkyZenithNight),
-            "Cloud Color" => nameof(CloudColor), "Sun Fill Light" => nameof(SunFillLightColor), _ => label
+            "Cloud Color" => nameof(CloudColor), "Night Cloud Color" => nameof(NightCloudColor),
+            "Star Color" => nameof(StarColor),
+            "Sun Fill Light" => nameof(SunFillLightColor),
+            "Moon Fill Light" => nameof(MoonFillLightColor), _ => label
         };
         RegisterBackgroundKeyframeContext(path);
         return changed;

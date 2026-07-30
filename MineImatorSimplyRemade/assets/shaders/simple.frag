@@ -14,8 +14,11 @@ uniform vec3  uLightDir;
 uniform vec3  uLightColor;
 uniform vec3  uSunFillLightDir;
 uniform vec3  uSunFillLightColor;
+uniform vec3  uMoonFillLightDir;
+uniform vec3  uMoonFillLightColor;
 uniform bool  uMainLightCastsShadows;
 uniform bool  uSunFillLightCastsShadows;
+uniform bool  uMoonFillLightCastsShadows;
 uniform vec3  uAmbient;
 uniform sampler2D uShadowMap;
 uniform bool  uUseShadowMap;
@@ -162,7 +165,9 @@ void main() {
     // from clipping geometry drawn afterwards (e.g. light billboards).
     if (alpha < 0.01) discard;
 
-    vec3 shadowLightDir = uSunFillLightCastsShadows ? normalize(uSunFillLightDir) : sunDir;
+    vec3 shadowLightDir = uMoonFillLightCastsShadows ? normalize(uMoonFillLightDir)
+                        : uSunFillLightCastsShadows  ? normalize(uSunFillLightDir)
+                        : sunDir;
     float shadow = calculateShadow(norm, shadowLightDir);
     if (uShadowDebugMode == 1) {
         FragColor = uUseShadowMap
@@ -172,9 +177,11 @@ void main() {
     }
 
     float sunFillDiffuse = max(dot(norm, normalize(uSunFillLightDir)), 0.0);
+    float moonFillDiffuse = max(dot(norm, normalize(uMoonFillLightDir)), 0.0);
     float mainVisibility = uMainLightCastsShadows ? (1.0 - shadow) : 1.0;
     float sunVisibility = uSunFillLightCastsShadows ? (1.0 - shadow) : 1.0;
-    vec3 result = (uAmbient + diffuse * mainVisibility + uSunFillLightColor * sunFillDiffuse * sunVisibility + pointLightSum) * baseColor;
+    float moonVisibility = uMoonFillLightCastsShadows ? (1.0 - shadow) : 1.0;
+    vec3 result = (uAmbient + diffuse * mainVisibility + uSunFillLightColor * sunFillDiffuse * sunVisibility + uMoonFillLightColor * moonFillDiffuse * moonVisibility + pointLightSum) * baseColor;
     if (uEmissionEnabled) {
         result += uEmissionColor * max(uEmissionEnergy, 0.0);
     }

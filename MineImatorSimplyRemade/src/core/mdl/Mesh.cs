@@ -876,6 +876,10 @@ public class Mesh : IDisposable
     public static float GlobalSunFillLightStrength = 0.25f;
     public static vec3 GlobalSunFillLightDirection = vec3.UnitY;
     public static bool SunFillLightCastsShadows = true;
+    public static vec3 GlobalMoonFillLightColor = new(0.6f, 0.65f, 1f);
+    public static float GlobalMoonFillLightStrength = 0.1f;
+    public static vec3 GlobalMoonFillLightDirection = vec3.UnitY;
+    public static bool MoonFillLightCastsShadows = false;
     public static bool MainFillLightCastsShadows = true;
 
     /// <summary>
@@ -965,8 +969,11 @@ public class Mesh : IDisposable
             SetUniformVec3("uLightColor", new vec3(0f, 0f, 0f));
             SetUniformVec3("uSunFillLightDir", vec3.UnitY);
             SetUniformVec3("uSunFillLightColor", vec3.Zero);
+            SetUniformVec3("uMoonFillLightDir", vec3.UnitY);
+            SetUniformVec3("uMoonFillLightColor", vec3.Zero);
             SetUniformBool("uMainLightCastsShadows", false);
             SetUniformBool("uSunFillLightCastsShadows", false);
+            SetUniformBool("uMoonFillLightCastsShadows", false);
             SetUniformVec3("uAmbient",    new vec3(1f, 1f, 1f));
         }
         else
@@ -983,8 +990,11 @@ public class Mesh : IDisposable
             SetUniformVec3("uLightColor", fillLightColor * fillLightStrength);
             SetUniformVec3("uSunFillLightDir", GlobalSunFillLightDirection);
             SetUniformVec3("uSunFillLightColor", GlobalSunFillLightColor * Math.Clamp(GlobalSunFillLightStrength, 0f, 5f));
-            SetUniformBool("uMainLightCastsShadows", MainFillLightCastsShadows && !SunFillLightCastsShadows);
-            SetUniformBool("uSunFillLightCastsShadows", SunFillLightCastsShadows);
+            SetUniformVec3("uMoonFillLightDir", GlobalMoonFillLightDirection);
+            SetUniformVec3("uMoonFillLightColor", GlobalMoonFillLightColor * Math.Clamp(GlobalMoonFillLightStrength, 0f, 5f));
+            SetUniformBool("uMainLightCastsShadows", MainFillLightCastsShadows && !SunFillLightCastsShadows && !MoonFillLightCastsShadows);
+            SetUniformBool("uSunFillLightCastsShadows", SunFillLightCastsShadows && !MoonFillLightCastsShadows);
+            SetUniformBool("uMoonFillLightCastsShadows", MoonFillLightCastsShadows);
             
             float ambientStrength = Math.Clamp(GlobalAmbientStrength, 0f, 5f);
             vec3 ambientColor = new vec3(
