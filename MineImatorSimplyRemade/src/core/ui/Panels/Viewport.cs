@@ -160,25 +160,6 @@ public class Viewport : UiPanel
 
     private SceneUniformBuffer? _sceneUBO;
 
-    // ── Shadow dirty tracking ─────────────────────────────────────────────────
-
-    /// <summary>
-    /// When true (default), shadow maps will be re-rendered on the next frame.
-    /// Set to false after rendering; set back to true whenever the scene changes
-    /// (object transform, mesh re-upload, light change, etc.) so GPU shadow
-    /// passes are skipped entirely for static scenes.
-    /// </summary>
-    private bool _shadowDirty = true;
-
-    /// <summary>
-    /// Marks shadow maps as stale so they are re-rendered on the next frame.
-    /// Idempotent — safe to call redundantly.
-    /// </summary>
-    public void MarkShadowDirty()
-    {
-        _shadowDirty = true;
-    }
-
     // ── Framebuffer ────────────────────────────────────────────────────────────
 
     private uint _fbo;
@@ -2027,11 +2008,9 @@ public class Viewport : UiPanel
         if (renderMode == SceneRenderMode.Rendered)
         {
             Mesh.ShadowDebugMode = ShadowDebugEnabled ? 1 : 0;
-            if (Mesh.DirectionalShadowEnabled && _shadowDirty)
+            if (Mesh.DirectionalShadowEnabled)
                 RenderShadowMap();
-            if (_shadowDirty)
-                pointShadowIndices = RenderPointShadowMaps(camPos);
-            _shadowDirty = false;
+            pointShadowIndices = RenderPointShadowMaps(camPos);
         }
 
         CollectPointLights(SceneObjects, pointShadowIndices, _cachedAllPointLights);
@@ -4244,11 +4223,9 @@ public class Viewport : UiPanel
         if (renderMode == SceneRenderMode.Rendered)
         {
             Mesh.ShadowDebugMode = MainViewport.ShadowDebugEnabled ? 1 : 0;
-            if (Mesh.DirectionalShadowEnabled && _shadowDirty)
+            if (Mesh.DirectionalShadowEnabled)
                 RenderShadowMapPublic();
-            if (_shadowDirty)
-                pointShadowIndices = RenderPointShadowMapsPublic(camPos);
-            _shadowDirty = false;
+            pointShadowIndices = RenderPointShadowMapsPublic(camPos);
         }
 
         // ── Upload scene UBO ─────────────────────────────────────────────────
