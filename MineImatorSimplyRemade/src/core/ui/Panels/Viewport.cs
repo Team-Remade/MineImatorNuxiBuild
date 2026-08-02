@@ -1244,13 +1244,17 @@ public class Viewport : UiPanel
         Gl.Enable(GLEnum.CullFace);
     }
 
+    private bool ShouldShowBoneIndicator(BoneSceneObject bone) => bone is MiBoneSceneObject
+        ? PreferencesPanel?.HideMineImatorBoneDisplayShapes != true
+        : PreferencesPanel?.HideRegularAssetBoneDisplayShapes != true;
+
     private unsafe void RenderBoneIndicatorsRecursive(
         SceneObject obj, mat4 view, mat4 proj,
         int mvpLoc, int colorLoc, SelectionManager? sm)
     {
         if (!obj.GetEffectiveVisibility()) return;
 
-        if (obj is BoneSceneObject bone && bone.IndicatorMesh != null)
+        if (obj is BoneSceneObject bone && bone.IndicatorMesh != null && ShouldShowBoneIndicator(bone))
         {
             mat4 model = obj.GetWorldMatrix();
             mat4 mvp   = proj * view * model;
@@ -3078,7 +3082,7 @@ public class Viewport : UiPanel
             if (localBoneDict == null)
                 localBoneDict = BuildBoneDictionary(obj);
 
-            bool hasBoneIndicator = obj is BoneSceneObject b && b.IndicatorMesh != null;
+            bool hasBoneIndicator = obj is BoneSceneObject b && b.IndicatorMesh != null && ShouldShowBoneIndicator(b);
             if (obj.IsSelectable && (obj.Visuals.Count > 0 || hasBoneIndicator))
             {
                 mat4 model = obj.GetWorldMatrix();
@@ -3114,7 +3118,7 @@ public class Viewport : UiPanel
                 }
 
                 // Draw the bone indicator octahedron as an additional pick target.
-                if (obj is BoneSceneObject bone && bone.IndicatorMesh != null)
+                if (obj is BoneSceneObject bone && bone.IndicatorMesh != null && ShouldShowBoneIndicator(bone))
                 {
                     bone.IndicatorMesh.ApplySkinningUniforms(_pickShader);
                     bone.IndicatorMesh.RenderPickPass(Gl);

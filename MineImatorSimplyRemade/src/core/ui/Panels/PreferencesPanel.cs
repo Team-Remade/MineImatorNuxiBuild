@@ -49,6 +49,8 @@ public class PreferencesPanel : UiPanel
 
     // Tools
     public bool ZIsUp { get; set; } = false;
+    public bool HideMineImatorBoneDisplayShapes { get; set; } = true;
+    public bool HideRegularAssetBoneDisplayShapes { get; set; } = false;
 
     /// <summary>
     /// Callback invoked when the theme changes.
@@ -407,6 +409,24 @@ public class PreferencesPanel : UiPanel
                     // TODO: Implement Z-up coordinate system
                 }
 
+                ImGui.Spacing();
+
+                bool hideBoneDisplayShapes = HideMineImatorBoneDisplayShapes;
+                if (ImGui.Checkbox("Hide bone display shapes on Mine-imator assets##hideMiBoneDisplayShapes", ref hideBoneDisplayShapes))
+                {
+                    HideMineImatorBoneDisplayShapes = hideBoneDisplayShapes;
+                    preferencesChanged = true;
+                }
+
+                ImGui.Spacing();
+
+                bool hideRegularBoneDisplayShapes = HideRegularAssetBoneDisplayShapes;
+                if (ImGui.Checkbox("Hide bone display shapes on regular assets##hideRegularBoneDisplayShapes", ref hideRegularBoneDisplayShapes))
+                {
+                    HideRegularAssetBoneDisplayShapes = hideRegularBoneDisplayShapes;
+                    preferencesChanged = true;
+                }
+
                 ImGui.Unindent();
                 ImGui.TreePop();
             }
@@ -437,7 +457,9 @@ public class PreferencesPanel : UiPanel
             Accent = Accent,
             Language = Language,
             AutoScrollWhilePlaying = AutoScrollWhilePlaying,
-            ZIsUp = ZIsUp
+            ZIsUp = ZIsUp,
+            HideMineImatorBoneDisplayShapes = HideMineImatorBoneDisplayShapes,
+            HideRegularAssetBoneDisplayShapes = HideRegularAssetBoneDisplayShapes
         };
 
         SavePreferencesState(state);
@@ -461,6 +483,8 @@ public class PreferencesPanel : UiPanel
         Language = state.Language;
         AutoScrollWhilePlaying = state.AutoScrollWhilePlaying;
         ZIsUp = state.ZIsUp;
+        HideMineImatorBoneDisplayShapes = state.HideMineImatorBoneDisplayShapes;
+        HideRegularAssetBoneDisplayShapes = state.HideRegularAssetBoneDisplayShapes;
 
         return true;
     }
@@ -530,4 +554,6 @@ public class PreferencesState
     public string Language { get; set; } = "English";
     public bool AutoScrollWhilePlaying { get; set; } = true;
     public bool ZIsUp { get; set; } = false;
+    public bool HideMineImatorBoneDisplayShapes { get; set; } = true;
+    public bool HideRegularAssetBoneDisplayShapes { get; set; } = false;
 }
