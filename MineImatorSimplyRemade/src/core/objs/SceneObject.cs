@@ -377,6 +377,46 @@ public class SceneObject
     {
     }
 
+    // ── Per-object render toggles ──────────────────────────────────────────
+
+    /// <summary>
+    /// Enables linear texture filtering for this object's textured meshes.
+    /// Disabled by default for crisp nearest-neighbour sampling.
+    /// </summary>
+    public bool BlurTexture = false;
+
+    /// <summary>
+    /// Enables mipmap filtering for this object's textured meshes.
+    /// Disabled by default.
+    /// </summary>
+    public bool TextureMipmaps = false;
+
+    /// <summary>
+    /// Controls whether this object contributes to and receives ambient occlusion.
+    /// </summary>
+    public bool IncludeInAmbientOcclusion = true;
+
+    /// <summary>
+    /// Controls whether this object is affected by scene fog.
+    /// </summary>
+    public bool IncludeInFog = true;
+
+    /// <summary>
+    /// Controls whether this object renders while the viewport is in rendered mode.
+    /// </summary>
+    public bool RenderInHighQuality = true;
+
+    /// <summary>
+    /// Controls whether this object renders while the viewport is in unrendered modes.
+    /// </summary>
+    public bool RenderInLowQuality = true;
+
+    /// <summary>
+    /// Per-object render depth offset added to each mesh sort depth.
+    /// Positive values render later, negative values render earlier.
+    /// </summary>
+    public float RenderDepthOffset = 0f;
+
     // ── MaterialSettings ──────────────────────────────────────────────────────
 
     private MaterialSettings _materialSettings;

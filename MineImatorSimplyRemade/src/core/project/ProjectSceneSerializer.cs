@@ -167,6 +167,13 @@ public static class ProjectSceneSerializer
             InheritVisibility = obj.InheritVisibility,
             ObjectVisible = obj.ObjectVisible,
             InvertFaces = obj.InvertFaces,
+            BlurTexture = obj.BlurTexture,
+            TextureMipmaps = obj.TextureMipmaps,
+            IncludeInAmbientOcclusion = obj.IncludeInAmbientOcclusion,
+            IncludeInFog = obj.IncludeInFog,
+            RenderInHighQuality = obj.RenderInHighQuality,
+            RenderInLowQuality = obj.RenderInLowQuality,
+            RenderDepthOffset = obj.RenderDepthOffset,
             IsSelectable = obj.IsSelectable,
             HideInSceneTree = obj.HideInSceneTree,
             HasMaterialOverrides = obj.HasExplicitMaterialSettings,
@@ -472,6 +479,13 @@ public static class ProjectSceneSerializer
         obj.InheritVisibility = entry.InheritVisibility;
         obj.ObjectVisible = entry.ObjectVisible;
         obj.InvertFaces = entry.InvertFaces;
+        obj.BlurTexture = entry.BlurTexture;
+        obj.TextureMipmaps = entry.TextureMipmaps;
+        obj.IncludeInAmbientOcclusion = entry.IncludeInAmbientOcclusion;
+        obj.IncludeInFog = entry.IncludeInFog;
+        obj.RenderInHighQuality = entry.RenderInHighQuality;
+        obj.RenderInLowQuality = entry.RenderInLowQuality;
+        obj.RenderDepthOffset = entry.RenderDepthOffset;
         obj.IsSelectable = entry.IsSelectable;
         obj.HideInSceneTree = entry.HideInSceneTree;
 

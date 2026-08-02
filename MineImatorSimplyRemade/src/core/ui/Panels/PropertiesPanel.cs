@@ -665,6 +665,13 @@ public class PropertiesPanel : UiPanel
             InheritVisibility = source.InheritVisibility,
             ObjectVisible = source.ObjectVisible,
             InvertFaces = source.InvertFaces,
+            BlurTexture = source.BlurTexture,
+            TextureMipmaps = source.TextureMipmaps,
+            IncludeInAmbientOcclusion = source.IncludeInAmbientOcclusion,
+            IncludeInFog = source.IncludeInFog,
+            RenderInHighQuality = source.RenderInHighQuality,
+            RenderInLowQuality = source.RenderInLowQuality,
+            RenderDepthOffset = source.RenderDepthOffset,
             IsSelectable = source.IsSelectable,
             HideInSceneTree = source.HideInSceneTree,
             HasMaterialOverrides = source.HasMaterialOverrides,
@@ -2037,79 +2044,7 @@ public class PropertiesPanel : UiPanel
 
         ImGui.Separator();
 
-        // ── Visibility & shadows ──────────────────────────────────────────────
-        {
-            bool vis = _currentObject.ObjectVisible;
-            if (ImGui.Checkbox("Visible", ref vis))
-            {
-                _currentObject.SetObjectVisible(vis);
-                Timeline?.RecordAutoKeyframe(_currentObject, "visible");
-            }
-
-            bool inheritVis = _currentObject.InheritVisibility;
-            if (ImGui.Checkbox("Inherit Visibility", ref inheritVis))
-                _currentObject.InheritVisibility = inheritVis;
-
-            // Hide Cast Shadows for cameras and point lights
-            if (!(_currentObject is CameraSceneObject) && !(_currentObject is LightSceneObject))
-            {
-                bool castShadow = _currentObject.CastShadow;
-                if (ImGui.Checkbox("Cast Shadows", ref castShadow))
-                    _currentObject.CastShadow = castShadow;
-            }
-
-            bool invertFaces = _currentObject.InvertFaces;
-            if (ImGui.Checkbox("Invert (Render Backfaces)", ref invertFaces))
-            {
-                _currentObject.InvertFaces = invertFaces;
-                ProjectManager.Instance.SetDirty(true);
-            }
-
-            // Active toggle for cameras. When enabled, this camera is the
-            // preferred render-output camera and every other camera is
-            // deactivated. The "active" state is also a keyframable property.
-            if (_currentObject is CameraSceneObject activeCam)
-            {
-                bool active = activeCam.Active;
-                if (ImGui.Checkbox("Active Camera", ref active))
-                {
-                    if (active)
-                        CameraSceneObject.SetActiveExclusive(activeCam);
-                    else
-                        activeCam.Active = false;
-
-                    Timeline?.RecordAutoKeyframe(activeCam, "camera.active");
-                }
-                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
-                {
-                    _ctxPropertyPath = "camera.active";
-                    _ctxMenuPos = ImGui.GetMousePos();
-                    _openPropContextMenu = true;
-                }
-            }
-        }
-
         ImGui.Spacing();
-
-        // Mine-imator models can switch between Modelbench's block-preserving
-        // sharp bends and the more finely segmented smooth bend style.
-        if (_currentObject is CharacterSceneObject character &&
-            character.BoneObjects.Values.Any(bone => bone is MiBoneSceneObject))
-        {
-            bool sharpBends = character.ModelBendStyle == BendStyle.Blocky;
-            if (ImGui.Checkbox("Sharp bends", ref sharpBends))
-            {
-                character.ModelBendStyle = sharpBends ? BendStyle.Blocky : BendStyle.Realistic;
-                ProjectManager.Instance.SetDirty(true);
-            }
-
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(sharpBends
-                    ? "Preserves Minecraft's blocky limb shape while bending."
-                    : "Uses additional segments for a smoother bend.");
-
-            ImGui.Spacing();
-        }
 
         // ── Position ──────────────────────────────────────────────────────────
         if (ImGui.CollapsingHeader("Position"))
@@ -3132,6 +3067,134 @@ public class PropertiesPanel : UiPanel
             }
         }
 
+        if (ImGui.CollapsingHeader("Appearance"))
+        {
+            bool vis = _currentObject.ObjectVisible;
+            if (ImGui.Checkbox("Visible", ref vis))
+            {
+                _currentObject.SetObjectVisible(vis);
+                ApplyToDescendants(_currentObject, child => child.SetObjectVisible(vis));
+                ProjectManager.Instance.SetDirty(true);
+                Timeline?.RecordAutoKeyframe(_currentObject, "visible");
+            }
+
+            bool inheritVis = _currentObject.InheritVisibility;
+            if (ImGui.Checkbox("Inherit Visibility", ref inheritVis))
+            {
+                _currentObject.InheritVisibility = inheritVis;
+                ApplyToDescendants(_currentObject, child => child.InheritVisibility = inheritVis);
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            // Hide Cast Shadows for cameras and point lights
+            if (!(_currentObject is CameraSceneObject) && !(_currentObject is LightSceneObject))
+            {
+                bool castShadow = _currentObject.CastShadow;
+                if (ImGui.Checkbox("Cast Shadows", ref castShadow))
+                {
+                    ApplyToSubtree(_currentObject, obj => obj.CastShadow = castShadow);
+                    ProjectManager.Instance.SetDirty(true);
+                }
+            }
+
+            bool invertFaces = _currentObject.InvertFaces;
+            if (ImGui.Checkbox("Invert (Render Backfaces)", ref invertFaces))
+            {
+                ApplyToSubtree(_currentObject, obj => obj.InvertFaces = invertFaces);
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            bool blurTexture = _currentObject.BlurTexture;
+            if (ImGui.Checkbox("Blur Texture (Linear Filtering)", ref blurTexture))
+            {
+                ApplyToSubtree(_currentObject, obj => obj.BlurTexture = blurTexture);
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            bool textureMipmaps = _currentObject.TextureMipmaps;
+            if (ImGui.Checkbox("Texture Filtering (Mip Maps)", ref textureMipmaps))
+            {
+                ApplyToSubtree(_currentObject, obj => obj.TextureMipmaps = textureMipmaps);
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            bool includeAo = _currentObject.IncludeInAmbientOcclusion;
+            if (ImGui.Checkbox("Include In Ambient Occlusion", ref includeAo))
+            {
+                ApplyToSubtree(_currentObject, obj => obj.IncludeInAmbientOcclusion = includeAo);
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            bool includeFog = _currentObject.IncludeInFog;
+            if (ImGui.Checkbox("Include In Fog", ref includeFog))
+            {
+                ApplyToSubtree(_currentObject, obj => obj.IncludeInFog = includeFog);
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            bool renderHighQuality = _currentObject.RenderInHighQuality;
+            if (ImGui.Checkbox("Render In High Quality", ref renderHighQuality))
+            {
+                ApplyToSubtree(_currentObject, obj => obj.RenderInHighQuality = renderHighQuality);
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            bool renderLowQuality = _currentObject.RenderInLowQuality;
+            if (ImGui.Checkbox("Render In Low Quality", ref renderLowQuality))
+            {
+                ApplyToSubtree(_currentObject, obj => obj.RenderInLowQuality = renderLowQuality);
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            float renderDepth = _currentObject.RenderDepthOffset;
+            if (ImGui.DragFloat("Render Depth", ref renderDepth, 0.01f, -1000f, 1000f, "%.2f"))
+            {
+                ApplyToSubtree(_currentObject, obj => obj.RenderDepthOffset = renderDepth);
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            // Active toggle for cameras. When enabled, this camera is the
+            // preferred render-output camera and every other camera is
+            // deactivated. The "active" state is also a keyframable property.
+            if (_currentObject is CameraSceneObject activeCam)
+            {
+                bool active = activeCam.Active;
+                if (ImGui.Checkbox("Active Camera", ref active))
+                {
+                    if (active)
+                        CameraSceneObject.SetActiveExclusive(activeCam);
+                    else
+                        activeCam.Active = false;
+
+                    Timeline?.RecordAutoKeyframe(activeCam, "camera.active");
+                }
+                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                {
+                    _ctxPropertyPath = "camera.active";
+                    _ctxMenuPos = ImGui.GetMousePos();
+                    _openPropContextMenu = true;
+                }
+            }
+
+            // Mine-imator models can switch between Modelbench's block-preserving
+            // sharp bends and the more finely segmented smooth bend style.
+            if (_currentObject is CharacterSceneObject character &&
+                character.BoneObjects.Values.Any(bone => bone is MiBoneSceneObject))
+            {
+                bool sharpBends = character.ModelBendStyle == BendStyle.Blocky;
+                if (ImGui.Checkbox("Sharp bends", ref sharpBends))
+                {
+                    character.ModelBendStyle = sharpBends ? BendStyle.Blocky : BendStyle.Realistic;
+                    ProjectManager.Instance.SetDirty(true);
+                }
+
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(sharpBends
+                        ? "Preserves Minecraft's blocky limb shape while bending."
+                        : "Uses additional segments for a smoother bend.");
+            }
+        }
+
         ImGui.EndTabItem();
     }
     
@@ -3237,6 +3300,29 @@ public class PropertiesPanel : UiPanel
         _currentObject.AddMesh(rebuilt);
         _currentObject.PrimitiveCubeMapped = mapped;
         ProjectManager.Instance.SetDirty(true);
+    }
+
+    /// <summary>
+    /// Applies an appearance-setting mutation to this object and all current descendants.
+    /// </summary>
+    private static void ApplyToSubtree(SceneObject root, Action<SceneObject> apply)
+    {
+        if (root == null) return;
+
+        apply(root);
+        foreach (var child in root.GetAllDescendants())
+            apply(child);
+    }
+
+    /// <summary>
+    /// Applies an appearance-setting mutation to descendants only.
+    /// </summary>
+    private static void ApplyToDescendants(SceneObject root, Action<SceneObject> apply)
+    {
+        if (root == null) return;
+
+        foreach (var child in root.GetAllDescendants())
+            apply(child);
     }
 
     /// <summary>

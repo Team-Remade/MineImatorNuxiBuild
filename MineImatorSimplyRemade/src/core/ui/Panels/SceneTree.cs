@@ -589,6 +589,13 @@ public class SceneTree : UiPanel
         dup.InheritRotation     = original.InheritRotation;
         dup.InheritScale        = original.InheritScale;
         dup.CastShadow          = original.CastShadow;
+        dup.BlurTexture         = original.BlurTexture;
+        dup.TextureMipmaps      = original.TextureMipmaps;
+        dup.IncludeInAmbientOcclusion = original.IncludeInAmbientOcclusion;
+        dup.IncludeInFog        = original.IncludeInFog;
+        dup.RenderInHighQuality = original.RenderInHighQuality;
+        dup.RenderInLowQuality  = original.RenderInLowQuality;
+        dup.RenderDepthOffset   = original.RenderDepthOffset;
         dup.SpawnCategory   = original.SpawnCategory;
         dup.BlockVariant    = original.BlockVariant;
         dup.TextureType     = original.TextureType;

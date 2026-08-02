@@ -312,6 +312,13 @@ public class ProjectSceneObjectEntry
     public bool InheritVisibility { get; set; } = true;
     public bool ObjectVisible { get; set; } = true;
     public bool InvertFaces { get; set; } = false;
+    public bool BlurTexture { get; set; } = false;
+    public bool TextureMipmaps { get; set; } = false;
+    public bool IncludeInAmbientOcclusion { get; set; } = true;
+    public bool IncludeInFog { get; set; } = true;
+    public bool RenderInHighQuality { get; set; } = true;
+    public bool RenderInLowQuality { get; set; } = true;
+    public float RenderDepthOffset { get; set; } = 0f;
     public bool IsSelectable { get; set; } = true;
     public bool HideInSceneTree { get; set; } = false;
 

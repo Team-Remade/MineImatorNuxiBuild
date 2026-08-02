@@ -2217,7 +2217,7 @@ public class Viewport : UiPanel
                 pointShadowIndices = RenderPointShadowMaps(camPos);
         }
 
-        CollectPointLights(SceneObjects, pointShadowIndices, _cachedAllPointLights);
+        CollectPointLights(SceneObjects, renderMode, pointShadowIndices, _cachedAllPointLights);
 
         // ── Upload scene UBO ──────────────────────────────────────────────────
         if (_sceneUBO != null)
@@ -2270,15 +2270,32 @@ public class Viewport : UiPanel
         //   textured     – has a TextureId          → depth pre-pass + color pass (LEQUAL)
         //   alphaBlend   – Alpha < 1, no texture    → straight back-to-front blend, no pre-pass
         _cachedRenderItems.Clear();
+        _cachedRenderItemsNoAo.Clear();
         _cachedOverlays.Clear();
 
-        CollectRenderPairs(SceneObjects, camPos, frustum, _cachedRenderItems, _cachedOverlays);
-        RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights, forceUnshaded);
+        CollectRenderPairs(SceneObjects, camPos, renderMode, frustum, _cachedRenderItems, _cachedRenderItemsNoAo, _cachedOverlays);
+
+        bool splitAoObjects = renderMode == SceneRenderMode.Rendered &&
+                              _ambientOcclusionShader != null &&
+                              PropertiesPanel?.AmbientOcclusionEnabled == true;
+
+        if (splitAoObjects)
+        {
+            RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights, forceUnshaded);
+        }
+        else
+        {
+            _cachedRenderItems.AddRange(_cachedRenderItemsNoAo);
+            RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights, forceUnshaded);
+        }
         if (wireframeMode)
             Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Fill);
 
         if (renderMode == SceneRenderMode.Rendered)
             RenderAmbientOcclusion(_fbo, _depthTex, w, h, renderNear, renderFar, PropertiesPanel, _renderedPassMode);
+
+        if (splitAoObjects && _renderedPassMode != RenderedPassMode.AmbientOcclusion)
+            RenderDepthOrdered(view, proj, _cachedRenderItemsNoAo, _cachedAllPointLights, forceUnshaded);
 
         if (OverlaysEnabled)
         {
@@ -2670,7 +2687,7 @@ public class Viewport : UiPanel
         if (_groundPlane != null && GroundPlaneVisible)
             _groundPlane.RenderShadow(_shadowShader, lightViewProj, _groundPlaneModel);
 
-        RenderShadowCasters(SceneObjects, lightViewProj, _shadowShader!);
+        RenderShadowCasters(SceneObjects, lightViewProj, _shadowShader!, SceneRenderMode.Rendered);
 
         Gl.Enable(GLEnum.CullFace);
         Gl.CullFace(GLEnum.Back);
@@ -2689,7 +2706,7 @@ public class Viewport : UiPanel
             return shadowIndices;
 
         List<(LightSceneObject Light, vec3 Position, float Range)> shadowLights = [];
-        CollectPointShadowCasters(SceneObjects, shadowLights);
+        CollectPointShadowCasters(SceneObjects, SceneRenderMode.Rendered, shadowLights);
 
         // When there are more shadow-enabled lights than cubemap slots, give
         // the slots to the lights closest to the camera instead of whichever
@@ -2735,7 +2752,7 @@ public class Viewport : UiPanel
                 if (_groundPlane != null && GroundPlaneVisible)
                     _groundPlane.RenderPointShadow(_pointShadowShader, lightViewProj, _groundPlaneModel, position, farPlane);
 
-                RenderPointShadowCasters(SceneObjects, lightViewProj, position, farPlane, _pointShadowShader!);
+                RenderPointShadowCasters(SceneObjects, lightViewProj, position, farPlane, _pointShadowShader!, SceneRenderMode.Rendered);
             }
         }
 
@@ -2762,7 +2779,7 @@ public class Viewport : UiPanel
     private mat4 ComputeShadowLightSpaceMatrix()
     {
         var bounds = new SceneShadowBounds();
-        CollectShadowBounds(SceneObjects, ref bounds);
+        CollectShadowBounds(SceneObjects, ref bounds, SceneRenderMode.Rendered);
 
         if (GroundPlaneVisible)
         {
@@ -2831,13 +2848,15 @@ public class Viewport : UiPanel
         return lightProj * lightView;
     }
 
-    private void RenderShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, Shader shadowShader, Dictionary<string, BoneSceneObject>? boneDict = null)
+    private void RenderShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, Shader shadowShader, SceneRenderMode renderMode, Dictionary<string, BoneSceneObject>? boneDict = null)
     {
         Frustum shadowFrustum = Frustum.FromViewProj(lightViewProj);
 
         foreach (var obj in objects)
         {
             if (!obj.GetEffectiveVisibility())
+                continue;
+            if (!ShouldRenderInQuality(obj, renderMode))
                 continue;
 
             mat4 model = obj.GetWorldMatrix();
@@ -2870,15 +2889,17 @@ public class Viewport : UiPanel
                 }
             }
 
-            RenderShadowCasters(obj.Children, lightViewProj, shadowShader, localBoneDict);
+            RenderShadowCasters(obj.Children, lightViewProj, shadowShader, renderMode, localBoneDict);
         }
     }
 
-    private static void CollectShadowBounds(IEnumerable<SceneObject> objects, ref SceneShadowBounds bounds)
+    private static void CollectShadowBounds(IEnumerable<SceneObject> objects, ref SceneShadowBounds bounds, SceneRenderMode renderMode)
     {
         foreach (var obj in objects)
         {
             if (!obj.GetEffectiveVisibility())
+                continue;
+            if (!ShouldRenderInQuality(obj, renderMode))
                 continue;
 
             mat4 world = obj.GetWorldMatrix();
@@ -2902,15 +2923,17 @@ public class Viewport : UiPanel
             if (!includedMeshVertex)
                 bounds.Include(new vec3(world.m30, world.m31, world.m32));
 
-            CollectShadowBounds(obj.Children, ref bounds);
+            CollectShadowBounds(obj.Children, ref bounds, renderMode);
         }
     }
 
-    private void RenderPointShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, vec3 lightPos, float farPlane, Shader pointShadowShader, Dictionary<string, BoneSceneObject>? boneDict = null)
+    private void RenderPointShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, vec3 lightPos, float farPlane, Shader pointShadowShader, SceneRenderMode renderMode, Dictionary<string, BoneSceneObject>? boneDict = null)
     {
         foreach (var obj in objects)
         {
             if (!obj.GetEffectiveVisibility())
+                continue;
+            if (!ShouldRenderInQuality(obj, renderMode))
                 continue;
 
             mat4 model = obj.GetWorldMatrix();
@@ -2948,15 +2971,17 @@ public class Viewport : UiPanel
                 }
             }
 
-            RenderPointShadowCasters(obj.Children, lightViewProj, lightPos, farPlane, pointShadowShader, localBoneDict);
+            RenderPointShadowCasters(obj.Children, lightViewProj, lightPos, farPlane, pointShadowShader, renderMode, localBoneDict);
         }
     }
 
-    private static void CollectPointShadowCasters(IEnumerable<SceneObject> objects, List<(LightSceneObject Light, vec3 Position, float Range)> result)
+    private static void CollectPointShadowCasters(IEnumerable<SceneObject> objects, SceneRenderMode renderMode, List<(LightSceneObject Light, vec3 Position, float Range)> result)
     {
         foreach (var obj in objects)
         {
             if (!obj.GetEffectiveVisibility())
+                continue;
+            if (!ShouldRenderInQuality(obj, renderMode))
                 continue;
 
             if (obj is LightSceneObject light && light.LightShadowEnabled)
@@ -2965,7 +2990,7 @@ public class Viewport : UiPanel
                 result.Add((light, new vec3(world.m30, world.m31, world.m32), Math.Max(light.LightRange, 0.5f)));
             }
 
-            CollectPointShadowCasters(obj.Children, result);
+            CollectPointShadowCasters(obj.Children, renderMode, result);
         }
     }
 
@@ -2996,7 +3021,7 @@ public class Viewport : UiPanel
         if (MainViewport?.GroundPlane != null && MainViewport.GroundPlaneVisible)
             MainViewport.GroundPlane.RenderShadow(_previewShadowShader, lightViewProj, MainViewport.GroundPlaneModel);
 
-        RenderShadowCasters(MainViewport?.SceneObjects ?? [], lightViewProj, _previewShadowShader!);
+        RenderShadowCasters(MainViewport?.SceneObjects ?? [], lightViewProj, _previewShadowShader!, SceneRenderMode.Rendered);
 
 
         Gl.Enable(GLEnum.CullFace);
@@ -3020,7 +3045,7 @@ public class Viewport : UiPanel
             return shadowIndices;
 
         List<(LightSceneObject Light, vec3 Position, float Range)> shadowLights = [];
-        CollectPointShadowCasters(MainViewport?.SceneObjects ?? [], shadowLights);
+        CollectPointShadowCasters(MainViewport?.SceneObjects ?? [], SceneRenderMode.Rendered, shadowLights);
 
         // Same closest-wins prioritization as the main viewport's shadow pass.
         if (shadowLights.Count > MaxPointShadowLights)
@@ -3058,7 +3083,7 @@ public class Viewport : UiPanel
                 if (MainViewport?.GroundPlane != null && MainViewport.GroundPlaneVisible)
                     MainViewport.GroundPlane.RenderPointShadow(_previewPointShadowShader, lightViewProj, MainViewport.GroundPlaneModel, position, farPlane);
 
-                RenderPointShadowCasters(MainViewport?.SceneObjects ?? [], lightViewProj, position, farPlane, _previewPointShadowShader!);
+                RenderPointShadowCasters(MainViewport?.SceneObjects ?? [], lightViewProj, position, farPlane, _previewPointShadowShader!, SceneRenderMode.Rendered);
             }
         }
 
@@ -3482,12 +3507,14 @@ public class Viewport : UiPanel
     /// </summary>
     private static void CollectPointLights(
         IEnumerable<SceneObject> objects,
+        SceneRenderMode renderMode,
         Dictionary<LightSceneObject, int> shadowIndices,
         List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)> result)
     {
         foreach (var obj in objects)
         {
             if (!obj.GetEffectiveVisibility()) continue;
+            if (!ShouldRenderInQuality(obj, renderMode)) continue;
 
             if (obj is LightSceneObject light)
             {
@@ -3526,14 +3553,22 @@ public class Viewport : UiPanel
                     dir, spotOuterCos, spotInnerCos));
             }
 
-            CollectPointLights(obj.Children, shadowIndices, result);
+            CollectPointLights(obj.Children, renderMode, shadowIndices, result);
         }
+    }
+
+    private static bool ShouldRenderInQuality(SceneObject obj, SceneRenderMode renderMode)
+    {
+        return renderMode == SceneRenderMode.Rendered
+            ? obj.RenderInHighQuality
+            : obj.RenderInLowQuality;
     }
 
     // ── Reusable per-frame lists (reduces allocations) ────────────────────────
 
     private readonly List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)> _cachedAllPointLights = new();
-    private readonly List<(mat4 model, Mesh mesh, float sortDepth)> _cachedRenderItems = new();
+    private readonly List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> _cachedRenderItems = new();
+    private readonly List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> _cachedRenderItemsNoAo = new();
     private readonly List<(mat4 model, Mesh mesh)> _cachedOverlays = new();
 
     /// <summary>
@@ -3695,7 +3730,7 @@ public class Viewport : UiPanel
     /// </summary>
     private void RenderDepthOrdered(
         mat4 view, mat4 proj,
-        List<(mat4 model, Mesh mesh, float sortDepth)> renderItems,
+        List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> renderItems,
         List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction,
             float spotCosOuterAngle, float spotCosInnerAngle)> allLights,
         bool forceUnshaded)
@@ -3705,17 +3740,33 @@ public class Viewport : UiPanel
         Gl.Enable(GLEnum.Blend);
         Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
         Gl.DepthMask(true);
-        foreach (var (model, mesh, _) in renderItems.OrderBy(x => x.sortDepth))
+        foreach (var (model, mesh, _, includeFog, blurTexture, textureMipmaps) in renderItems.OrderBy(x => x.sortDepth))
         {
             SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allLights);
-            RenderMeshWithModeOverride(mesh, model, view, proj, forceUnshaded);
+            RenderMeshWithModeOverride(mesh, model, view, proj, forceUnshaded, includeFog, blurTexture, textureMipmaps);
         }
         Gl.Disable(GLEnum.Blend);
     }
 
-    private static void RenderMeshWithModeOverride(Mesh mesh, mat4 model, mat4 view, mat4 proj, bool forceUnshaded)
+    private static void RenderMeshWithModeOverride(
+        Mesh mesh,
+        mat4 model,
+        mat4 view,
+        mat4 proj,
+        bool forceUnshaded,
+        bool includeFog = true,
+        bool blurTexture = false,
+        bool textureMipmaps = false)
     {
         bool previousUnlit = mesh.Unlit;
+        bool previousIncludeFog = mesh.IncludeInFog;
+        bool previousBlurTexture = mesh.BlurTexture;
+        bool previousTextureMipmaps = mesh.TextureMipmaps;
+
+        mesh.IncludeInFog = includeFog;
+        mesh.BlurTexture = blurTexture;
+        mesh.TextureMipmaps = textureMipmaps;
+
         if (forceUnshaded)
             mesh.Unlit = true;
 
@@ -3723,6 +3774,10 @@ public class Viewport : UiPanel
 
         if (forceUnshaded)
             mesh.Unlit = previousUnlit;
+
+        mesh.IncludeInFog = previousIncludeFog;
+        mesh.BlurTexture = previousBlurTexture;
+        mesh.TextureMipmaps = previousTextureMipmaps;
     }
 
     /// <summary>
@@ -3733,14 +3788,17 @@ public class Viewport : UiPanel
     private void CollectRenderPairs(
         IEnumerable<SceneObject> objects,
         vec3 camPos,
+        SceneRenderMode renderMode,
         Frustum frustum,
-        List<(mat4 model, Mesh mesh, float sortDepth)> renderItems,
+        List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> renderItems,
+        List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> renderItemsNoAo,
         List<(mat4 model, Mesh mesh)> overlays,
         Dictionary<string, BoneSceneObject>? boneDict = null)
     {
         foreach (var obj in objects)
         {
             if (!obj.GetEffectiveVisibility()) continue;
+            if (!ShouldRenderInQuality(obj, renderMode)) continue;
 
             mat4  model    = GetRenderableWorldMatrix(obj, camPos);
             vec3  worldPos = new vec3(model.m30, model.m31, model.m32);
@@ -3781,11 +3839,18 @@ public class Viewport : UiPanel
                     continue;
                 }
 
-                renderItems.Add((model, mesh, mesh.SortDepth));
+                var targetList = obj.IncludeInAmbientOcclusion ? renderItems : renderItemsNoAo;
+                targetList.Add((
+                    model,
+                    mesh,
+                    mesh.SortDepth + obj.RenderDepthOffset,
+                    obj.IncludeInFog,
+                    obj.BlurTexture,
+                    obj.TextureMipmaps));
             }
 
             // Recurse into children so each child uses its own world matrix.
-            CollectRenderPairs(obj.Children, camPos, frustum, renderItems, overlays, localBoneDict);
+            CollectRenderPairs(obj.Children, camPos, renderMode, frustum, renderItems, renderItemsNoAo, overlays, localBoneDict);
         }
     }
 
@@ -4623,7 +4688,7 @@ public class Viewport : UiPanel
                 moonShadows);
         }
 
-        CollectPointLights(MainViewport.SceneObjects, pointShadowIndices, allPointLights);
+        CollectPointLights(MainViewport.SceneObjects, renderMode, pointShadowIndices, allPointLights);
 
         if (wireframeMode)
             Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
@@ -4634,17 +4699,33 @@ public class Viewport : UiPanel
             RenderMeshWithModeOverride(MainViewport.GroundPlane, MainViewport.GroundPlaneModel, view, proj, forceUnshaded);
         }
 
-        var renderItems = new List<(mat4, Mesh, float)>();
+        var renderItems = new List<(mat4, Mesh, float, bool, bool, bool)>();
+        var renderItemsNoAo = new List<(mat4, Mesh, float, bool, bool, bool)>();
         var overlays = new List<(mat4, Mesh)>();
         Frustum previewFrustum = Frustum.FromViewProj(proj * view);
-        CollectRenderPairs(MainViewport.SceneObjects, camPos, previewFrustum, renderItems, overlays);
+        CollectRenderPairs(MainViewport.SceneObjects, camPos, renderMode, previewFrustum, renderItems, renderItemsNoAo, overlays);
 
-        RenderDepthOrdered(view, proj, renderItems, allPointLights, forceUnshaded);
+        bool splitAoObjects = renderMode == SceneRenderMode.Rendered &&
+                              _ambientOcclusionShader != null &&
+                              MainViewport.PropertiesPanel?.AmbientOcclusionEnabled == true;
+
+        if (splitAoObjects)
+        {
+            RenderDepthOrdered(view, proj, renderItems, allPointLights, forceUnshaded);
+        }
+        else
+        {
+            renderItems.AddRange(renderItemsNoAo);
+            RenderDepthOrdered(view, proj, renderItems, allPointLights, forceUnshaded);
+        }
         if (wireframeMode)
             Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Fill);
 
         if (renderMode == SceneRenderMode.Rendered)
             RenderAmbientOcclusion(_previewFbo, _previewDepthTex, w, h, cam.Near, cam.Far, MainViewport.PropertiesPanel, effectivePassMode);
+
+        if (splitAoObjects && effectivePassMode != RenderedPassMode.AmbientOcclusion)
+            RenderDepthOrdered(view, proj, renderItemsNoAo, allPointLights, forceUnshaded);
 
         if (OverlaysEnabled)
         {

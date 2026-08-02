@@ -155,6 +155,21 @@ public class Mesh : IDisposable
     /// </summary>
     public bool PickOnly = false;
 
+    /// <summary>
+    /// When false this mesh is excluded from fog even when global fog is enabled.
+    /// </summary>
+    public bool IncludeInFog = true;
+
+    /// <summary>
+    /// When true this mesh uses linear texture filtering; when false nearest filtering.
+    /// </summary>
+    public bool BlurTexture = false;
+
+    /// <summary>
+    /// When true this mesh samples with mipmap minification filters.
+    /// </summary>
+    public bool TextureMipmaps = false;
+
     // ── Shape keys (blend shapes / morph targets) ─────────────────────────────
 
     /// <summary>
@@ -602,6 +617,9 @@ public class Mesh : IDisposable
         clone.SortDepth            = SortDepth;
         clone.PickOnly             = PickOnly;
         clone.CullFrontFaces       = CullFrontFaces;
+        clone.IncludeInFog         = IncludeInFog;
+        clone.BlurTexture          = BlurTexture;
+        clone.TextureMipmaps       = TextureMipmaps;
 
         foreach (var sk in ShapeKeys)
         {
@@ -1069,7 +1087,7 @@ public class Mesh : IDisposable
         // the shared SceneData UBO uploaded once per frame by the Viewport.
         SetUniformBool("uIsUnlit", Unlit);
         SetUniformVec3("uCameraPosition", GlobalCameraPosition);
-        SetUniformBool("uFogEnabled", FogEnabled);
+        SetUniformBool("uFogEnabled", FogEnabled && IncludeInFog);
         SetUniformVec3("uFogColor", FogColor);
         SetUniformFloat("uFogDistance", FogDistance);
         SetUniformFloat("uFogFadeSize", FogFadeSize);
@@ -1132,6 +1150,26 @@ public class Mesh : IDisposable
         {
             _gl.ActiveTexture(GLEnum.Texture0);
             _gl.BindTexture(GLEnum.Texture2D, TextureId);
+            if (TextureMipmaps)
+            {
+                _gl.GenerateMipmap(GLEnum.Texture2D);
+                _gl.TexParameter(
+                    GLEnum.Texture2D,
+                    GLEnum.TextureMinFilter,
+                    (int)(BlurTexture ? TextureMinFilter.LinearMipmapLinear : TextureMinFilter.NearestMipmapNearest));
+            }
+            else
+            {
+                _gl.TexParameter(
+                    GLEnum.Texture2D,
+                    GLEnum.TextureMinFilter,
+                    (int)(BlurTexture ? TextureMinFilter.Linear : TextureMinFilter.Nearest));
+            }
+
+            _gl.TexParameter(
+                GLEnum.Texture2D,
+                GLEnum.TextureMagFilter,
+                (int)(BlurTexture ? TextureMagFilter.Linear : TextureMagFilter.Nearest));
             SetUniformInt("uTexture", 0);
         }
 
