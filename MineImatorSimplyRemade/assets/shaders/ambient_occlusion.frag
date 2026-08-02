@@ -11,6 +11,7 @@ uniform float uStrength;
 uniform vec3 uColor;
 uniform float uRatio;
 uniform float uRatioBalance;
+uniform int uOutputMode;
 
 float linearDepth(float depth)
 {
@@ -49,5 +50,13 @@ void main()
     occlusion = clamp(occlusion / max(weightSum, 0.0001), 0.0, 1.0);
     occlusion = smoothstep(0.0, 1.0, occlusion);
     occlusion = pow(occlusion, mix(1.8, 0.55, uRatioBalance));
-    FragColor = vec4(clamp(uColor, 0.0, 1.0), clamp(occlusion * uStrength * 0.65, 0.0, 1.0));
+
+    float aoMask = clamp(occlusion * uStrength * 0.65, 0.0, 1.0);
+    if (uOutputMode == 1)
+    {
+        FragColor = vec4(vec3(aoMask), 1.0);
+        return;
+    }
+
+    FragColor = vec4(clamp(uColor, 0.0, 1.0), aoMask);
 }

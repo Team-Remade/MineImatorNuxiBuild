@@ -169,6 +169,9 @@ public class CameraWindow : Window
         ImGui.SameLine();
         _panel.DrawCornerPicker();
 
+        ImGui.SameLine();
+        _panel.DrawRenderModeSelectorPublic("PreviewWindowHeader", 176f);
+
         ImGui.Separator();
 
         // Display the FBO texture (texture objects are shared across GL contexts).

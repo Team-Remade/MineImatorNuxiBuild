@@ -28,6 +28,21 @@ public class Viewport : UiPanel
         Rendered
     }
 
+    private enum ViewportRenderMode
+    {
+        Wireframe,
+        FlatUnshaded,
+        Shaded,
+        Rendered
+    }
+
+    private enum RenderedPassMode
+    {
+        Combined,
+        AmbientOcclusion,
+        Shadow
+    }
+
     // ── Scene ──────────────────────────────────────────────────────────────────
 
     public List<SceneObject> SceneObjects { get; } = new();
@@ -268,6 +283,8 @@ public class Viewport : UiPanel
     /// Set to false by the "Overlays" toggle button in the top bar.
     /// </summary>
     public bool OverlaysEnabled { get; set; } = true;
+    private ViewportRenderMode _viewportRenderMode = ViewportRenderMode.Shaded;
+    private RenderedPassMode _renderedPassMode = RenderedPassMode.Combined;
     public bool HighQualityPreviewEnabled { get; private set; }
     public bool ShadowDebugEnabled { get; private set; }
 
@@ -478,18 +495,125 @@ public class Viewport : UiPanel
         return true;
     }
 
+    private void SyncLegacyRenderFlags()
+    {
+        HighQualityPreviewEnabled = _viewportRenderMode == ViewportRenderMode.Rendered;
+        ShadowDebugEnabled = HighQualityPreviewEnabled && _renderedPassMode == RenderedPassMode.Shadow;
+    }
+
+    private void SetRenderMode(ViewportRenderMode mode)
+    {
+        _viewportRenderMode = mode;
+        if (_viewportRenderMode != ViewportRenderMode.Rendered)
+            _renderedPassMode = RenderedPassMode.Combined;
+        SyncLegacyRenderFlags();
+    }
+
+    private void SetRenderedPass(RenderedPassMode pass)
+    {
+        _renderedPassMode = pass;
+        if (_viewportRenderMode != ViewportRenderMode.Rendered)
+            _viewportRenderMode = ViewportRenderMode.Rendered;
+        SyncLegacyRenderFlags();
+    }
+
+    private string GetRenderModeLabel()
+    {
+        return _viewportRenderMode switch
+        {
+            ViewportRenderMode.Wireframe => "Wireframe",
+            ViewportRenderMode.FlatUnshaded => "Flat",
+            ViewportRenderMode.Shaded => "Shaded",
+            ViewportRenderMode.Rendered => "Rendered",
+            _ => "Shaded"
+        };
+    }
+
+    private string GetRenderedPassLabel()
+    {
+        return _renderedPassMode switch
+        {
+            RenderedPassMode.Combined => "Combined",
+            RenderedPassMode.AmbientOcclusion => "AO",
+            RenderedPassMode.Shadow => "Shadow",
+            _ => "Combined"
+        };
+    }
+
+    private void DrawRenderModeSelector(string idSuffix, float width = 170f)
+    {
+        string previewLabel = _viewportRenderMode == ViewportRenderMode.Rendered
+            ? $"{GetRenderModeLabel()} | {GetRenderedPassLabel()}"
+            : GetRenderModeLabel();
+
+        ImGui.SetNextItemWidth(width);
+
+        ImGui.PushStyleColor(ImGuiCol.FrameBg, new Vector4(0.05f, 0.05f, 0.05f, 0.88f));
+        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, new Vector4(0.12f, 0.12f, 0.12f, 0.95f));
+        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, new Vector4(0.16f, 0.16f, 0.16f, 0.98f));
+
+        if (ImGui.BeginCombo($"##renderModeCombo{idSuffix}", previewLabel))
+        {
+            bool wire = _viewportRenderMode == ViewportRenderMode.Wireframe;
+            if (ImGui.Selectable("Wireframe", wire)) SetRenderMode(ViewportRenderMode.Wireframe);
+            if (wire) ImGui.SetItemDefaultFocus();
+
+            bool flat = _viewportRenderMode == ViewportRenderMode.FlatUnshaded;
+            if (ImGui.Selectable("Flat (Unshaded)", flat)) SetRenderMode(ViewportRenderMode.FlatUnshaded);
+
+            bool shaded = _viewportRenderMode == ViewportRenderMode.Shaded;
+            if (ImGui.Selectable("Shaded", shaded)) SetRenderMode(ViewportRenderMode.Shaded);
+
+            bool rendered = _viewportRenderMode == ViewportRenderMode.Rendered;
+            if (ImGui.Selectable("Rendered", rendered)) SetRenderMode(ViewportRenderMode.Rendered);
+
+            if (_viewportRenderMode == ViewportRenderMode.Rendered)
+            {
+                ImGui.Separator();
+                ImGui.TextDisabled("Render Pass");
+
+                bool combined = _renderedPassMode == RenderedPassMode.Combined;
+                if (ImGui.Selectable("Combined", combined)) SetRenderedPass(RenderedPassMode.Combined);
+
+                bool ao = _renderedPassMode == RenderedPassMode.AmbientOcclusion;
+                if (ImGui.Selectable("AO", ao)) SetRenderedPass(RenderedPassMode.AmbientOcclusion);
+
+                bool shadow = _renderedPassMode == RenderedPassMode.Shadow;
+                if (ImGui.Selectable("Shadow", shadow)) SetRenderedPass(RenderedPassMode.Shadow);
+            }
+
+            ImGui.EndCombo();
+        }
+
+        ImGui.PopStyleColor(3);
+    }
+
+    public void DrawRenderModeSelectorPublic(string idSuffix, float width = 170f)
+    {
+        DrawRenderModeSelector(idSuffix, width);
+    }
+
     public void ToggleHighQualityPreview()
     {
-        HighQualityPreviewEnabled = !HighQualityPreviewEnabled;
-        if (!HighQualityPreviewEnabled)
-            ShadowDebugEnabled = false;
+        if (_viewportRenderMode == ViewportRenderMode.Rendered)
+            SetRenderMode(ViewportRenderMode.Shaded);
+        else
+            SetRenderMode(ViewportRenderMode.Rendered);
     }
 
     public void ToggleShadowDebugMode()
     {
-        ShadowDebugEnabled = !ShadowDebugEnabled;
-        if (ShadowDebugEnabled)
-            HighQualityPreviewEnabled = true;
+        if (_viewportRenderMode != ViewportRenderMode.Rendered)
+        {
+            SetRenderMode(ViewportRenderMode.Rendered);
+            SetRenderedPass(RenderedPassMode.Shadow);
+            return;
+        }
+
+        if (_renderedPassMode == RenderedPassMode.Shadow)
+            SetRenderedPass(RenderedPassMode.Combined);
+        else
+            SetRenderedPass(RenderedPassMode.Shadow);
     }
 
     // ── FBO setup ──────────────────────────────────────────────────────────────
@@ -1936,6 +2060,12 @@ public class Viewport : UiPanel
             ImGui.SetCursorPosY(itemY + 4f);
             ImGui.TextDisabled(ShadowDebugEnabled ? "Shadow Debug (Ctrl+F6)" : "Shadow Debug Off (Ctrl+F6)");
 
+            // Render mode selector (header, top-right).
+            const float renderModeWidth = 176f;
+            float rightAlignedX = MathF.Max(4f, totalSize.X - renderModeWidth - 8f);
+            ImGui.SetCursorPos(new Vector2(rightAlignedX, itemY));
+            DrawRenderModeSelector("MainHeader", renderModeWidth);
+
             // Advance the layout cursor to the bottom edge of the bar.
             var winPos  = ImGui.GetWindowPos();
             float barBottomLocal = (barMin.Y + TopBarHeight) - winPos.Y - ImGui.GetScrollY();
@@ -2050,11 +2180,16 @@ public class Viewport : UiPanel
         _cachedAllPointLights.Clear();
         vec3 camPos = activeCamera.Position;
 
-        SceneRenderMode renderMode = HighQualityPreviewEnabled ? SceneRenderMode.Rendered : SceneRenderMode.Unrendered;
+        SceneRenderMode renderMode = _viewportRenderMode == ViewportRenderMode.Rendered
+            ? SceneRenderMode.Rendered
+            : SceneRenderMode.Unrendered;
+        bool forceUnshaded = _viewportRenderMode == ViewportRenderMode.FlatUnshaded ||
+                             _viewportRenderMode == ViewportRenderMode.Wireframe;
+        bool wireframeMode = _viewportRenderMode == ViewportRenderMode.Wireframe;
         if (renderMode == SceneRenderMode.Rendered)
         {
             Mesh.ShadowBlurStrength = Math.Clamp(PropertiesPanel?.ShadowBlurStrength ?? 1f, 0f, 4f);
-            Mesh.ShadowDebugMode = ShadowDebugEnabled ? 1 : 0;
+            Mesh.ShadowDebugMode = _renderedPassMode == RenderedPassMode.Shadow ? 1 : 0;
             if (Mesh.DirectionalShadowEnabled)
                 RenderShadowMap();
             if (globalShadows)
@@ -2099,10 +2234,13 @@ public class Viewport : UiPanel
         }
 
         // ── Ground plane ──────────────────────────────────────────────────────
+        if (wireframeMode)
+            Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
+
         if (_groundPlane != null && GroundPlaneVisible)
         {
             SelectPointLightsForMesh(vec3.Zero, _cachedAllPointLights);
-            _groundPlane.Render(_groundPlaneModel, view, proj);
+            RenderMeshWithModeOverride(_groundPlane, _groundPlaneModel, view, proj, forceUnshaded);
         }
 
         // ── Scene objects ─────────────────────────────────────────────────────
@@ -2114,9 +2252,12 @@ public class Viewport : UiPanel
         _cachedOverlays.Clear();
 
         CollectRenderPairs(SceneObjects, camPos, frustum, _cachedRenderItems, _cachedOverlays);
-        RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights);
+        RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights, forceUnshaded);
+        if (wireframeMode)
+            Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Fill);
+
         if (renderMode == SceneRenderMode.Rendered)
-            RenderAmbientOcclusion(_fbo, _depthTex, w, h, renderNear, renderFar, PropertiesPanel);
+            RenderAmbientOcclusion(_fbo, _depthTex, w, h, renderNear, renderFar, PropertiesPanel, _renderedPassMode);
 
         if (OverlaysEnabled)
         {
@@ -3433,11 +3574,27 @@ public class Viewport : UiPanel
     }
 
     private void RenderAmbientOcclusion(uint displayFbo, uint depthTexture, uint width, uint height,
-        float nearPlane, float farPlane, PropertiesPanel? settings)
+        float nearPlane, float farPlane, PropertiesPanel? settings, RenderedPassMode passMode)
     {
-        if (_ambientOcclusionShader == null || settings?.AmbientOcclusionEnabled != true ||
-            displayFbo == 0 || depthTexture == 0 || width == 0 || height == 0)
+        if (displayFbo == 0 || depthTexture == 0 || width == 0 || height == 0)
             return;
+
+        bool aoOnlyPass = passMode == RenderedPassMode.AmbientOcclusion;
+        bool aoEnabled = _ambientOcclusionShader != null && settings?.AmbientOcclusionEnabled == true;
+
+        if (!aoEnabled)
+        {
+            if (aoOnlyPass)
+            {
+                Gl.BindFramebuffer(GLEnum.Framebuffer, displayFbo);
+                Gl.DrawBuffer(GLEnum.ColorAttachment0);
+                Gl.ReadBuffer(GLEnum.ColorAttachment0);
+                Gl.Viewport(0, 0, width, height);
+                Gl.ClearColor(0f, 0f, 0f, 1f);
+                Gl.Clear(ClearBufferMask.ColorBufferBit);
+            }
+            return;
+        }
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, displayFbo);
         Gl.DrawBuffer(GLEnum.ColorAttachment0);
@@ -3447,10 +3604,21 @@ public class Viewport : UiPanel
         Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.DepthAttachment, GLEnum.Texture2D, 0, 0);
         Gl.Disable(GLEnum.DepthTest);
         Gl.Disable(GLEnum.CullFace);
-        Gl.Enable(GLEnum.Blend);
-        Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+        if (aoOnlyPass)
+        {
+            Gl.Disable(GLEnum.Blend);
+            Gl.ClearColor(0f, 0f, 0f, 1f);
+            Gl.Clear(ClearBufferMask.ColorBufferBit);
+        }
+        else
+        {
+            Gl.Enable(GLEnum.Blend);
+            Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+        }
 
-        uint program = _ambientOcclusionShader.ShaderProgram;
+        Shader aoShader = _ambientOcclusionShader!;
+        PropertiesPanel aoSettings = settings!;
+        uint program = aoShader.ShaderProgram;
         Gl.UseProgram(program);
         Gl.ActiveTexture(GLEnum.Texture0);
         Gl.BindTexture(GLEnum.Texture2D, depthTexture);
@@ -3467,14 +3635,17 @@ public class Viewport : UiPanel
         if (texelLocation >= 0) Gl.Uniform2(texelLocation, 1f / width, 1f / height);
         Float("uNear", Math.Max(0.001f, nearPlane));
         Float("uFar", Math.Max(nearPlane + 0.001f, farPlane));
-        Float("uRadius", Math.Clamp(settings.AmbientOcclusionRadius, 0f, 128f));
-        Float("uStrength", Math.Clamp(settings.AmbientOcclusionStrength, 0f, 2f));
-        Float("uRatio", Math.Clamp(settings.AmbientOcclusionRatio, 0f, 1f));
-        Float("uRatioBalance", Math.Clamp(settings.AmbientOcclusionRatioBalance, 0f, 1f));
+        Float("uRadius", Math.Clamp(aoSettings.AmbientOcclusionRadius, 0f, 128f));
+        Float("uStrength", Math.Clamp(aoSettings.AmbientOcclusionStrength, 0f, 2f));
+        Float("uRatio", Math.Clamp(aoSettings.AmbientOcclusionRatio, 0f, 1f));
+        Float("uRatioBalance", Math.Clamp(aoSettings.AmbientOcclusionRatioBalance, 0f, 1f));
+        int outputModeLocation = Gl.GetUniformLocation(program, "uOutputMode");
+        if (outputModeLocation >= 0)
+            Gl.Uniform1(outputModeLocation, aoOnlyPass ? 1 : 0);
         int colorLocation = Gl.GetUniformLocation(program, "uColor");
         if (colorLocation >= 0)
-            Gl.Uniform3(colorLocation, settings.AmbientOcclusionColor[0], settings.AmbientOcclusionColor[1],
-                settings.AmbientOcclusionColor[2]);
+            Gl.Uniform3(colorLocation, aoSettings.AmbientOcclusionColor[0], aoSettings.AmbientOcclusionColor[1],
+                aoSettings.AmbientOcclusionColor[2]);
 
         Gl.BindVertexArray(_edgeVao);
         Gl.DrawArrays(GLEnum.Triangles, 0, 3);
@@ -3501,7 +3672,8 @@ public class Viewport : UiPanel
         mat4 view, mat4 proj,
         List<(mat4 model, Mesh mesh, float sortDepth)> renderItems,
         List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction,
-            float spotCosOuterAngle, float spotCosInnerAngle)> allLights)
+            float spotCosOuterAngle, float spotCosInnerAngle)> allLights,
+        bool forceUnshaded)
     {
         // LINQ OrderBy is stable, matching Modelbench's insertion behavior for
         // parts with equal depth. Camera distance intentionally has no role.
@@ -3511,9 +3683,21 @@ public class Viewport : UiPanel
         foreach (var (model, mesh, _) in renderItems.OrderBy(x => x.sortDepth))
         {
             SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allLights);
-            mesh.Render(model, view, proj);
+            RenderMeshWithModeOverride(mesh, model, view, proj, forceUnshaded);
         }
         Gl.Disable(GLEnum.Blend);
+    }
+
+    private static void RenderMeshWithModeOverride(Mesh mesh, mat4 model, mat4 view, mat4 proj, bool forceUnshaded)
+    {
+        bool previousUnlit = mesh.Unlit;
+        if (forceUnshaded)
+            mesh.Unlit = true;
+
+        mesh.Render(model, view, proj);
+
+        if (forceUnshaded)
+            mesh.Unlit = previousUnlit;
     }
 
     /// <summary>
@@ -4127,6 +4311,9 @@ public class Viewport : UiPanel
         ImGui.SameLine();
         DrawCornerPicker();
 
+        ImGui.SameLine();
+        DrawRenderModeSelector("PreviewInlineHeader", 176f);
+
         var avail = ImGui.GetContentRegionAvail();
         if (avail.X >= 4 && avail.Y >= 4)
         {
@@ -4259,9 +4446,14 @@ public class Viewport : UiPanel
     {
         if (Gl == null || MainViewport == null) return;
 
-        SceneRenderMode renderMode = (highQuality || HighQualityPreviewEnabled)
+        ViewportRenderMode effectiveMode = highQuality ? ViewportRenderMode.Rendered : _viewportRenderMode;
+        SceneRenderMode renderMode = effectiveMode == ViewportRenderMode.Rendered
             ? SceneRenderMode.Rendered
             : SceneRenderMode.Unrendered;
+        bool forceUnshaded = effectiveMode == ViewportRenderMode.FlatUnshaded ||
+                             effectiveMode == ViewportRenderMode.Wireframe;
+        bool wireframeMode = effectiveMode == ViewportRenderMode.Wireframe;
+        RenderedPassMode effectivePassMode = highQuality ? RenderedPassMode.Combined : _renderedPassMode;
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
         Gl.DrawBuffer(GLEnum.ColorAttachment0);
@@ -4319,7 +4511,7 @@ public class Viewport : UiPanel
         if (renderMode == SceneRenderMode.Rendered)
         {
             Mesh.ShadowBlurStrength = Math.Clamp(MainViewport.PropertiesPanel?.ShadowBlurStrength ?? 1f, 0f, 4f);
-            Mesh.ShadowDebugMode = MainViewport.ShadowDebugEnabled ? 1 : 0;
+            Mesh.ShadowDebugMode = effectivePassMode == RenderedPassMode.Shadow ? 1 : 0;
             if (Mesh.DirectionalShadowEnabled)
                 RenderShadowMapPublic();
             if (globalShadows)
@@ -4363,10 +4555,13 @@ public class Viewport : UiPanel
 
         CollectPointLights(MainViewport.SceneObjects, pointShadowIndices, allPointLights);
 
+        if (wireframeMode)
+            Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
+
         if (MainViewport.GroundPlane != null && MainViewport.GroundPlaneVisible)
         {
             SelectPointLightsForMesh(vec3.Zero, allPointLights);
-            MainViewport.GroundPlane.Render(MainViewport.GroundPlaneModel, view, proj);
+            RenderMeshWithModeOverride(MainViewport.GroundPlane, MainViewport.GroundPlaneModel, view, proj, forceUnshaded);
         }
 
         var renderItems = new List<(mat4, Mesh, float)>();
@@ -4374,9 +4569,12 @@ public class Viewport : UiPanel
         Frustum previewFrustum = Frustum.FromViewProj(proj * view);
         CollectRenderPairs(MainViewport.SceneObjects, camPos, previewFrustum, renderItems, overlays);
 
-        RenderDepthOrdered(view, proj, renderItems, allPointLights);
+        RenderDepthOrdered(view, proj, renderItems, allPointLights, forceUnshaded);
+        if (wireframeMode)
+            Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Fill);
+
         if (renderMode == SceneRenderMode.Rendered)
-            RenderAmbientOcclusion(_previewFbo, _previewDepthTex, w, h, cam.Near, cam.Far, MainViewport.PropertiesPanel);
+            RenderAmbientOcclusion(_previewFbo, _previewDepthTex, w, h, cam.Near, cam.Far, MainViewport.PropertiesPanel, effectivePassMode);
 
         if (OverlaysEnabled)
         {
