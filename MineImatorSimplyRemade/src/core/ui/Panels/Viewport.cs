@@ -2850,6 +2850,8 @@ public class Viewport : UiPanel
             {
                 foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly && !mesh.DepthTestDisabled))
                 {
+                    mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
+
                     // Frustum cull against the shadow light frustum.
                     vec3 worldCenter = new vec3((model * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
                     float scale = MathF.Max(
@@ -2925,6 +2927,8 @@ public class Viewport : UiPanel
             {
                 foreach (var mesh in obj.Visuals.Where(mesh => mesh is { PickOnly: false, DepthTestDisabled: false }))
                 {
+                    mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
+
                     // Distance cull: skip meshes outside the light's range.
                     vec3 worldCenter = new vec3((model * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
                     float distToLight = (worldCenter - lightPos).Length;
@@ -3748,6 +3752,8 @@ public class Viewport : UiPanel
             // Only this node's own Visuals — not its descendants.
             foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly))
             {
+                mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
+
                 // Frustum culling: test mesh bounding sphere against the view frustum.
                 // Overlay / always-visible meshes skip the test.
                 if (!mesh.DepthTestDisabled)

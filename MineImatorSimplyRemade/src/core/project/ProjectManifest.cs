@@ -45,6 +45,7 @@ public class ProjectManifest
     // Index of the active camera used by the preview viewport: 0 = work camera, 1+ = spawned cameras
     public int ActivePreviewCameraIndex { get; set; } = 0;
     public List<ProjectSceneObjectEntry> SceneObjects { get; set; } = new();
+    public List<ProjectSceneObjectEntry> ObjectLibrary { get; set; } = new();
     public List<string> SelectedObjectNames { get; set; } = new();
     public ProjectTimelineState Timeline { get; set; } = new();
     public List<ProjectAudioTrack> AudioTracks { get; set; } = new();
@@ -263,6 +264,8 @@ public class ProjectVec4
 
 public class ProjectSceneObjectEntry
 {
+    public string LibraryEntryId { get; set; } = "";
+    public string LibrarySourceId { get; set; } = "";
     public string Name { get; set; } = "";
     public string ObjectType { get; set; } = "";
     public string SpawnCategory { get; set; } = "";
@@ -297,6 +300,7 @@ public class ProjectSceneObjectEntry
     public bool InheritPivotOffset { get; set; } = false;
     public bool InheritVisibility { get; set; } = true;
     public bool ObjectVisible { get; set; } = true;
+    public bool InvertFaces { get; set; } = false;
     public bool IsSelectable { get; set; } = true;
     public bool HideInSceneTree { get; set; } = false;
 

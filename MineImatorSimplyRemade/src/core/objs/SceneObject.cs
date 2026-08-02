@@ -69,6 +69,7 @@ public class SceneObject
     public string ObjectType = "Object";
     public string Name;
     public string ObjectId;
+    public string LibrarySourceId = "";
 
     public string SpawnCategory = "";
     public string BlockVariant = "";
@@ -295,6 +296,12 @@ public class SceneObject
     // ── Visibility ────────────────────────────────────────────────────────────
 
     public bool ObjectVisible = true;
+
+    /// <summary>
+    /// When true this object renders backfaces instead of front faces.
+    /// Descendants inherit this through <see cref="GetEffectiveInvertFaces"/>.
+    /// </summary>
+    public bool InvertFaces = false;
 
     private bool _inheritVisibility = true;
 
@@ -674,6 +681,17 @@ public class SceneObject
             return ObjectVisible && Parent.GetEffectiveVisibility();
 
         return ObjectVisible;
+    }
+
+    /// <summary>
+    /// Gets whether this object should render backfaces, including parent inheritance.
+    /// </summary>
+    public bool GetEffectiveInvertFaces()
+    {
+        if (InvertFaces)
+            return true;
+
+        return Parent != null && Parent.GetEffectiveInvertFaces();
     }
 
     /// <summary>

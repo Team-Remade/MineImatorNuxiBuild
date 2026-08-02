@@ -111,6 +111,8 @@ public class PropertiesPanel : UiPanel
     private string _renderVideoFormat = "mp4";
     private int _renderVideoBitrateKbps = 12000;
     private string _renderResolutionPreset = "1080P";
+    private string _librarySearch = "";
+    private string _selectedLibraryEntryId = "";
 
     public int GetResolutionWidth()  => _resolutionWidth;
     public int GetResolutionHeight() => _resolutionHeight;
@@ -547,6 +549,518 @@ public class PropertiesPanel : UiPanel
             .ToList();
     }
 
+    private void RenderObjectLibrarySection(ProjectManager projectManager)
+    {
+        if (Viewport == null || SpawnMenu == null)
+        {
+            ImGui.TextDisabled("Object library is unavailable until the viewport is ready.");
+            return;
+        }
+
+        EnsureObjectLibraryInitialized(projectManager.Manifest);
+
+        var library = projectManager.Manifest.ObjectLibrary;
+        var selected = FindLibraryEntryById(library, _selectedLibraryEntryId);
+
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputTextWithHint("##ProjectObjectLibrarySearch", "Search spawned objects...", ref _librarySearch, 256);
+        ImGui.Spacing();
+
+        float treeHeight = MathF.Min(360f, MathF.Max(120f, ImGui.GetContentRegionAvail().Y * 0.6f));
+        if (ImGui.BeginChild("##ProjectObjectLibraryTree", new Vector2(0f, treeHeight), ImGuiChildFlags.Borders))
+        {
+            bool anyVisible = false;
+            foreach (var root in BuildLibraryTreeRoots(library).OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase))
+                anyVisible |= RenderObjectLibraryTreeNode(root);
+
+            if (!anyVisible)
+                ImGui.TextDisabled("No library objects match your search.");
+        }
+        ImGui.EndChild();
+
+        selected = FindLibraryEntryById(library, _selectedLibraryEntryId);
+        if (selected != null)
+        {
+            int usageCount = CountLibraryUsage(selected.LibraryEntryId);
+            string type = string.IsNullOrWhiteSpace(selected.ObjectType) ? "Object" : selected.ObjectType;
+            ImGui.TextDisabled($"Type: {type}");
+            ImGui.TextDisabled($"Used in scene: {usageCount}");
+
+            if (ImGui.Button("Create In Scene From Base"))
+            {
+                SceneObject? created = ProjectSceneSerializer.SpawnObjectFromEntry(selected, Viewport, SpawnMenu);
+                if (created != null)
+                {
+                    SelectionManager.Instance?.ClearSelection();
+                    SelectionManager.Instance?.SelectObject(created);
+                    projectManager.SetDirty(true);
+                }
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Delete From Library"))
+            {
+                string nextSelectionId = GetNextLibrarySelectionIdAfterDeletion(projectManager.Manifest.ObjectLibrary, selected.LibraryEntryId);
+                RemoveLibraryEntry(projectManager.Manifest, selected.LibraryEntryId);
+                RemoveSceneObjectsFromLibrary(selected.LibraryEntryId);
+                _selectedLibraryEntryId = nextSelectionId;
+                projectManager.SetDirty(true);
+            }
+        }
+        else if (library.Count == 0)
+        {
+            ImGui.TextDisabled("No objects have been spawned yet.");
+        }
+
+        bool hasSelectedLibraryObject = selected != null;
+        if (!hasSelectedLibraryObject)
+            ImGui.BeginDisabled();
+
+        if (ImGui.Button("Duplicate Selected Library Object") && selected != null)
+        {
+            var newEntry = CloneLibraryEntryRecursive(selected);
+            var usedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            CollectLibraryEntryIds(projectManager.Manifest.ObjectLibrary, usedIds);
+            EnsureUniqueLibraryIdsRecursive(newEntry, usedIds);
+            newEntry.Name = EnsureUniqueLibraryName(projectManager.Manifest.ObjectLibrary, (selected.Name ?? "Object") + " Copy");
+            projectManager.Manifest.ObjectLibrary.Add(newEntry);
+            _selectedLibraryEntryId = newEntry.LibraryEntryId;
+            projectManager.SetDirty(true);
+        }
+
+        if (!hasSelectedLibraryObject)
+            ImGui.EndDisabled();
+    }
+
+    private static ProjectSceneObjectEntry CloneLibraryEntryRecursive(ProjectSceneObjectEntry source)
+    {
+        var clone = new ProjectSceneObjectEntry
+        {
+            LibraryEntryId = source.LibraryEntryId,
+            LibrarySourceId = source.LibrarySourceId,
+            Name = source.Name,
+            ObjectType = source.ObjectType,
+            SpawnCategory = source.SpawnCategory,
+            BlockVariant = source.BlockVariant,
+            TextureType = source.TextureType,
+            ResourcePackId = source.ResourcePackId,
+            SourceAssetPath = source.SourceAssetPath,
+            AlbedoTexturePath = source.AlbedoTexturePath,
+            TextureOverridePath = source.TextureOverridePath,
+            TileX = source.TileX,
+            TileY = source.TileY,
+            TileZ = source.TileZ,
+            Position = new ProjectVec3 { X = source.Position.X, Y = source.Position.Y, Z = source.Position.Z },
+            Rotation = new ProjectVec3 { X = source.Rotation.X, Y = source.Rotation.Y, Z = source.Rotation.Z },
+            Scale = new ProjectVec3 { X = source.Scale.X, Y = source.Scale.Y, Z = source.Scale.Z },
+            BendAngle = source.BendAngle == null
+                ? null
+                : new ProjectVec3 { X = source.BendAngle.X, Y = source.BendAngle.Y, Z = source.BendAngle.Z },
+            PivotOffset = new ProjectVec3 { X = source.PivotOffset.X, Y = source.PivotOffset.Y, Z = source.PivotOffset.Z },
+            InheritPosition = source.InheritPosition,
+            InheritRotation = source.InheritRotation,
+            InheritScale = source.InheritScale,
+            InheritPivotOffset = source.InheritPivotOffset,
+            InheritVisibility = source.InheritVisibility,
+            ObjectVisible = source.ObjectVisible,
+            InvertFaces = source.InvertFaces,
+            IsSelectable = source.IsSelectable,
+            HideInSceneTree = source.HideInSceneTree,
+            HasMaterialOverrides = source.HasMaterialOverrides,
+            AlbedoColor = new ProjectVec4 { X = source.AlbedoColor.X, Y = source.AlbedoColor.Y, Z = source.AlbedoColor.Z, W = source.AlbedoColor.W },
+            BlendColor = new ProjectVec4 { X = source.BlendColor.X, Y = source.BlendColor.Y, Z = source.BlendColor.Z, W = source.BlendColor.W },
+            MixColor = new ProjectVec4 { X = source.MixColor.X, Y = source.MixColor.Y, Z = source.MixColor.Z, W = source.MixColor.W },
+            Metallic = source.Metallic,
+            Roughness = source.Roughness,
+            Transparency = source.Transparency,
+            DoubleSided = source.DoubleSided,
+            EmissionEnabled = source.EmissionEnabled,
+            EmissionColor = new ProjectVec4 { X = source.EmissionColor.X, Y = source.EmissionColor.Y, Z = source.EmissionColor.Z, W = source.EmissionColor.W },
+            EmissionEnergy = source.EmissionEnergy,
+            ItemTileKey = source.ItemTileKey,
+            ItemIs3D = source.ItemIs3D,
+            CameraFov = source.CameraFov,
+            CameraNear = source.CameraNear,
+            CameraFar = source.CameraFar,
+            CameraActive = source.CameraActive,
+            LightColor = new ProjectVec4 { X = source.LightColor.X, Y = source.LightColor.Y, Z = source.LightColor.Z, W = source.LightColor.W },
+            LightEnergy = source.LightEnergy,
+            LightRange = source.LightRange,
+            LightIndirectEnergy = source.LightIndirectEnergy,
+            LightSpecular = source.LightSpecular,
+            LightShadowEnabled = source.LightShadowEnabled,
+            LightType = source.LightType,
+            LightSpotAngle = source.LightSpotAngle,
+            LightSpotBlend = source.LightSpotBlend,
+            Keyframes = source.Keyframes.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.Select(k => new ProjectKeyframeEntry
+                {
+                    Frame = k.Frame,
+                    Value = k.Value,
+                    InterpolationType = k.InterpolationType
+                }).ToList()),
+            ShapeKeyWeights = source.ShapeKeyWeights.Select(weight => new ProjectShapeKeyWeightEntry
+            {
+                MeshIndex = weight.MeshIndex,
+                Name = weight.Name,
+                Weight = weight.Weight
+            }).ToList()
+        };
+
+        foreach (var child in source.Children)
+            clone.Children.Add(CloneLibraryEntryRecursive(child));
+
+        return clone;
+    }
+
+    private bool RenderObjectLibraryTreeNode(ProjectSceneObjectEntry entry)
+    {
+        if (!ShouldShowLibraryEntry(entry))
+            return false;
+
+        bool isSelected = string.Equals(entry.LibraryEntryId, _selectedLibraryEntryId, StringComparison.OrdinalIgnoreCase);
+        string label = $"{GetLibraryDisplayLabel(entry)} ({CountLibraryUsage(entry.LibraryEntryId)} in scene)##{entry.LibraryEntryId}";
+        bool hasChildren = entry.Children.Count > 0;
+
+        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen;
+        if (isSelected)
+            flags |= ImGuiTreeNodeFlags.Selected;
+        if (!hasChildren)
+            flags |= ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen;
+
+        bool open = ImGui.TreeNodeEx(label, flags);
+        if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
+            _selectedLibraryEntryId = entry.LibraryEntryId;
+
+        if (hasChildren && open)
+        {
+            foreach (var child in entry.Children)
+                RenderObjectLibraryTreeNode(child);
+            ImGui.TreePop();
+        }
+
+        return true;
+    }
+
+    private bool ShouldShowLibraryEntry(ProjectSceneObjectEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(_librarySearch))
+            return true;
+
+        string type = string.IsNullOrWhiteSpace(entry.ObjectType) ? "Object" : entry.ObjectType;
+        string name = string.IsNullOrWhiteSpace(entry.Name) ? type : entry.Name;
+        if (name.IndexOf(_librarySearch, StringComparison.OrdinalIgnoreCase) >= 0)
+            return true;
+        if (type.IndexOf(_librarySearch, StringComparison.OrdinalIgnoreCase) >= 0)
+            return true;
+
+        foreach (var child in entry.Children)
+            if (ShouldShowLibraryEntry(child))
+                return true;
+
+        return false;
+    }
+
+    private static List<ProjectSceneObjectEntry> BuildLibraryTreeRoots(IReadOnlyList<ProjectSceneObjectEntry> library)
+    {
+        var roots = new List<ProjectSceneObjectEntry>();
+        var referencedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in library)
+            CollectReferencedLibraryIds(entry, referencedIds);
+
+        foreach (var entry in library)
+        {
+            if (string.IsNullOrWhiteSpace(entry.LibraryEntryId) || !referencedIds.Contains(entry.LibraryEntryId))
+                roots.Add(entry);
+        }
+
+        return roots;
+    }
+
+    private static void CollectReferencedLibraryIds(ProjectSceneObjectEntry node, HashSet<string> referencedIds)
+    {
+        foreach (var child in node.Children)
+        {
+            if (!string.IsNullOrWhiteSpace(child.LibraryEntryId))
+                referencedIds.Add(child.LibraryEntryId);
+            CollectReferencedLibraryIds(child, referencedIds);
+        }
+    }
+
+    private static string GetNextLibrarySelectionIdAfterDeletion(IReadOnlyList<ProjectSceneObjectEntry> library, string deletedLibraryEntryId)
+    {
+        if (string.IsNullOrWhiteSpace(deletedLibraryEntryId))
+            return "";
+
+        var target = FindLibraryEntryById(library, deletedLibraryEntryId);
+        if (target == null)
+            return "";
+
+        var removedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        CollectLibrarySubtreeIds(target, removedIds);
+
+        var orderedIds = new List<string>();
+        foreach (var root in BuildLibraryTreeRoots(library).OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase))
+            AppendLibraryDisplayOrderIds(root, orderedIds);
+
+        int deletedIndex = orderedIds.FindIndex(id => string.Equals(id, deletedLibraryEntryId, StringComparison.OrdinalIgnoreCase));
+        if (deletedIndex < 0)
+            return "";
+
+        for (int i = deletedIndex + 1; i < orderedIds.Count; i++)
+        {
+            if (!removedIds.Contains(orderedIds[i]))
+                return orderedIds[i];
+        }
+
+        for (int i = deletedIndex - 1; i >= 0; i--)
+        {
+            if (!removedIds.Contains(orderedIds[i]))
+                return orderedIds[i];
+        }
+
+        return "";
+    }
+
+    private static void CollectLibrarySubtreeIds(ProjectSceneObjectEntry node, HashSet<string> ids)
+    {
+        if (!string.IsNullOrWhiteSpace(node.LibraryEntryId))
+            ids.Add(node.LibraryEntryId);
+
+        foreach (var child in node.Children)
+            CollectLibrarySubtreeIds(child, ids);
+    }
+
+    private static void AppendLibraryDisplayOrderIds(ProjectSceneObjectEntry node, List<string> orderedIds)
+    {
+        if (!string.IsNullOrWhiteSpace(node.LibraryEntryId))
+            orderedIds.Add(node.LibraryEntryId);
+
+        foreach (var child in node.Children)
+            AppendLibraryDisplayOrderIds(child, orderedIds);
+    }
+
+    private static string GetLibraryDisplayLabel(ProjectSceneObjectEntry entry)
+    {
+        string type = string.IsNullOrWhiteSpace(entry.ObjectType) ? "Object" : entry.ObjectType;
+        string name = string.IsNullOrWhiteSpace(entry.Name) ? type : entry.Name;
+        return $"{name} [{type}]";
+    }
+
+    private void EnsureObjectLibraryInitialized(ProjectManifest manifest)
+    {
+        manifest.ObjectLibrary ??= new List<ProjectSceneObjectEntry>();
+
+        var usedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in manifest.ObjectLibrary)
+            EnsureUniqueLibraryIdsRecursive(entry, usedIds);
+
+        if (Viewport == null)
+            return;
+
+        foreach (var root in Viewport.SceneObjects)
+        {
+            EnsureSceneLibrarySourceIdsRecursive(root);
+
+            if (ContainsLibraryEntryId(manifest.ObjectLibrary, root.LibrarySourceId))
+                continue;
+
+            var libraryEntry = ProjectSceneSerializer.SerializeObjectForLibrary(root);
+            libraryEntry.LibraryEntryId = root.LibrarySourceId;
+            libraryEntry.LibrarySourceId = root.LibrarySourceId;
+            EnsureUniqueLibraryIdsRecursive(libraryEntry, usedIds);
+            if (string.IsNullOrWhiteSpace(libraryEntry.Name))
+                libraryEntry.Name = string.IsNullOrWhiteSpace(libraryEntry.ObjectType) ? "Object" : libraryEntry.ObjectType;
+            manifest.ObjectLibrary.Add(libraryEntry);
+        }
+    }
+
+    private static void EnsureUniqueLibraryIdsRecursive(ProjectSceneObjectEntry entry, HashSet<string> usedIds)
+    {
+        string id = entry.LibraryEntryId;
+        if (string.IsNullOrWhiteSpace(id) || usedIds.Contains(id))
+            id = Guid.NewGuid().ToString("N");
+
+        entry.LibraryEntryId = id;
+        entry.LibrarySourceId = id;
+        if (string.IsNullOrWhiteSpace(entry.Name))
+            entry.Name = string.IsNullOrWhiteSpace(entry.ObjectType) ? "Object" : entry.ObjectType;
+
+        usedIds.Add(id);
+
+        foreach (var child in entry.Children)
+            EnsureUniqueLibraryIdsRecursive(child, usedIds);
+    }
+
+    private IEnumerable<SceneObject> EnumerateSceneObjects()
+    {
+        if (Viewport == null)
+            yield break;
+
+        foreach (var root in Viewport.SceneObjects)
+        {
+            yield return root;
+            foreach (var child in EnumerateSceneObjectsRecursive(root))
+                yield return child;
+        }
+    }
+
+    private static IEnumerable<SceneObject> EnumerateSceneObjectsRecursive(SceneObject node)
+    {
+        foreach (var child in node.Children)
+        {
+            yield return child;
+            foreach (var nested in EnumerateSceneObjectsRecursive(child))
+                yield return nested;
+        }
+    }
+
+    private int CountLibraryUsage(string libraryEntryId)
+    {
+        if (string.IsNullOrWhiteSpace(libraryEntryId))
+            return 0;
+
+        return EnumerateSceneObjects().Count(obj =>
+            string.Equals(obj.LibrarySourceId, libraryEntryId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static ProjectSceneObjectEntry? FindLibraryEntryById(IEnumerable<ProjectSceneObjectEntry> nodes, string libraryEntryId)
+    {
+        if (string.IsNullOrWhiteSpace(libraryEntryId))
+            return null;
+
+        foreach (var entry in nodes)
+        {
+            if (string.Equals(entry.LibraryEntryId, libraryEntryId, StringComparison.OrdinalIgnoreCase))
+                return entry;
+
+            var nested = FindLibraryEntryById(entry.Children, libraryEntryId);
+            if (nested != null)
+                return nested;
+        }
+
+        return null;
+    }
+
+    private static void RemoveLibraryEntry(ProjectManifest manifest, string libraryEntryId)
+    {
+        if (string.IsNullOrWhiteSpace(libraryEntryId))
+            return;
+
+        manifest.ObjectLibrary.RemoveAll(entry =>
+            string.Equals(entry.LibraryEntryId, libraryEntryId, StringComparison.OrdinalIgnoreCase));
+
+        foreach (var entry in manifest.ObjectLibrary)
+            RemoveLibraryEntryRecursive(entry, libraryEntryId);
+    }
+
+    private static void RemoveLibraryEntryRecursive(ProjectSceneObjectEntry node, string libraryEntryId)
+    {
+        node.Children.RemoveAll(child =>
+            string.Equals(child.LibraryEntryId, libraryEntryId, StringComparison.OrdinalIgnoreCase));
+
+        foreach (var child in node.Children)
+            RemoveLibraryEntryRecursive(child, libraryEntryId);
+    }
+
+    private static void CollectLibraryEntryIds(IEnumerable<ProjectSceneObjectEntry> nodes, HashSet<string> ids)
+    {
+        foreach (var node in nodes)
+        {
+            if (!string.IsNullOrWhiteSpace(node.LibraryEntryId))
+                ids.Add(node.LibraryEntryId);
+            CollectLibraryEntryIds(node.Children, ids);
+        }
+    }
+
+    private static bool ContainsLibraryEntryId(IEnumerable<ProjectSceneObjectEntry> nodes, string libraryEntryId)
+    {
+        if (string.IsNullOrWhiteSpace(libraryEntryId))
+            return false;
+
+        foreach (var node in nodes)
+        {
+            if (string.Equals(node.LibraryEntryId, libraryEntryId, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (ContainsLibraryEntryId(node.Children, libraryEntryId))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static void EnsureSceneLibrarySourceIdsRecursive(SceneObject obj)
+    {
+        if (string.IsNullOrWhiteSpace(obj.LibrarySourceId))
+            obj.LibrarySourceId = string.IsNullOrWhiteSpace(obj.ObjectId) ? Guid.NewGuid().ToString("N") : obj.ObjectId;
+
+        foreach (var child in obj.Children)
+            EnsureSceneLibrarySourceIdsRecursive(child);
+    }
+
+    private void RemoveSceneObjectsFromLibrary(string libraryEntryId)
+    {
+        if (Viewport == null || string.IsNullOrWhiteSpace(libraryEntryId))
+            return;
+
+        foreach (var root in Viewport.SceneObjects.ToList())
+        {
+            if (string.Equals(root.LibrarySourceId, libraryEntryId, StringComparison.OrdinalIgnoreCase))
+            {
+                DeleteSceneObjectRecursive(root);
+                continue;
+            }
+
+            RemoveSceneObjectsFromLibraryRecursive(root, libraryEntryId);
+        }
+    }
+
+    private void RemoveSceneObjectsFromLibraryRecursive(SceneObject parent, string libraryEntryId)
+    {
+        foreach (var child in parent.Children.ToList())
+        {
+            if (string.Equals(child.LibrarySourceId, libraryEntryId, StringComparison.OrdinalIgnoreCase))
+            {
+                DeleteSceneObjectRecursive(child);
+                continue;
+            }
+
+            RemoveSceneObjectsFromLibraryRecursive(child, libraryEntryId);
+        }
+    }
+
+    private void DeleteSceneObjectRecursive(SceneObject obj)
+    {
+        foreach (var child in obj.Children.ToList())
+            DeleteSceneObjectRecursive(child);
+
+        SelectionManager.Instance?.DeselectObject(obj);
+        if (obj.Parent != null)
+            obj.Parent.RemoveChild(obj);
+        else
+            Viewport?.SceneObjects.Remove(obj);
+    }
+
+    private static string EnsureUniqueLibraryName(IReadOnlyCollection<ProjectSceneObjectEntry> library, string desiredName)
+    {
+        string baseName = string.IsNullOrWhiteSpace(desiredName) ? "Object Copy" : desiredName.Trim();
+        var used = new HashSet<string>(
+            library.Select(entry => string.IsNullOrWhiteSpace(entry.Name) ? "" : entry.Name.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+
+        if (!used.Contains(baseName))
+            return baseName;
+
+        int suffix = 2;
+        while (used.Contains($"{baseName} {suffix}"))
+            suffix++;
+
+        return $"{baseName} {suffix}";
+    }
+
     private static string GetBackgroundImageLabel(string backgroundImagePath)
     {
         return string.IsNullOrWhiteSpace(backgroundImagePath) ||
@@ -771,7 +1285,11 @@ public class PropertiesPanel : UiPanel
                 WriteProjectSettingsToManifest(projectManager.Manifest);
                 projectManager.SetDirty(true);
             }
+
         }
+
+        if (ImGui.CollapsingHeader("Library", ImGuiTreeNodeFlags.DefaultOpen))
+            RenderObjectLibrarySection(ProjectManager.Instance);
 
         if (ImGui.CollapsingHeader("Render Settings"))
             RenderRenderSettings();
@@ -1528,6 +2046,13 @@ public class PropertiesPanel : UiPanel
                 bool castShadow = _currentObject.CastShadow;
                 if (ImGui.Checkbox("Cast Shadows", ref castShadow))
                     _currentObject.CastShadow = castShadow;
+            }
+
+            bool invertFaces = _currentObject.InvertFaces;
+            if (ImGui.Checkbox("Invert (Render Backfaces)", ref invertFaces))
+            {
+                _currentObject.InvertFaces = invertFaces;
+                ProjectManager.Instance.SetDirty(true);
             }
 
             // Active toggle for cameras. When enabled, this camera is the

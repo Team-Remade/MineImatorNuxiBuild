@@ -575,6 +575,7 @@ public class SceneTree : UiPanel
         dup.Name = nextNum > 1 ? $"{baseName}{nextNum}" : baseName;
 
         dup.ObjectType          = original.ObjectType;
+        dup.LibrarySourceId     = original.LibrarySourceId;
         dup.IsSelectable        = original.IsSelectable;
         dup.Position            = original.Position;
         dup.Rotation            = original.Rotation;
@@ -582,6 +583,7 @@ public class SceneTree : UiPanel
         dup.PivotOffset         = original.PivotOffset;
         dup.InheritPivotOffset  = original.InheritPivotOffset;
         dup.ObjectVisible       = original.ObjectVisible;
+        dup.InvertFaces         = original.InvertFaces;
         dup.InheritVisibility   = original.InheritVisibility;
         dup.InheritPosition     = original.InheritPosition;
         dup.InheritRotation     = original.InheritRotation;

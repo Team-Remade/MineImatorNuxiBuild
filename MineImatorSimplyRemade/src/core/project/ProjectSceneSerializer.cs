@@ -11,9 +11,24 @@ namespace MineImatorSimplyRemade.core.project;
 
 public static class ProjectSceneSerializer
 {
+    public static ProjectSceneObjectEntry SerializeObjectForLibrary(SceneObject obj)
+    {
+        return SerializeNode(obj);
+    }
+
+    public static SceneObject? SpawnObjectFromEntry(ProjectSceneObjectEntry entry, Viewport viewport, SpawnMenu spawnMenu, SceneObject? parent = null)
+    {
+        if (entry == null || viewport == null || spawnMenu == null)
+            return null;
+
+        return RestoreNode(entry, viewport, spawnMenu, parent);
+    }
+
     public static void WriteSceneToManifest(ProjectManifest manifest, Viewport viewport, Timeline? timeline = null, PropertiesPanel? propertiesPanel = null)
     {
         propertiesPanel?.WriteProjectSettingsToManifest(manifest);
+
+        SyncObjectLibraryFromScene(manifest, viewport.SceneObjects);
 
         manifest.WorkCamera = new ProjectWorkCameraState
         {
@@ -128,6 +143,7 @@ public static class ProjectSceneSerializer
         var pm = ProjectManager.Instance;
         var entry = new ProjectSceneObjectEntry
         {
+            LibrarySourceId = obj.LibrarySourceId,
             Name = obj.Name,
             ObjectType = obj.ObjectType,
             SpawnCategory = obj.SpawnCategory,
@@ -150,6 +166,7 @@ public static class ProjectSceneSerializer
             InheritPivotOffset = obj.InheritPivotOffset,
             InheritVisibility = obj.InheritVisibility,
             ObjectVisible = obj.ObjectVisible,
+            InvertFaces = obj.InvertFaces,
             IsSelectable = obj.IsSelectable,
             HideInSceneTree = obj.HideInSceneTree,
             HasMaterialOverrides = obj.HasExplicitMaterialSettings,
@@ -406,6 +423,9 @@ public static class ProjectSceneSerializer
 
     private static void ApplyEntryToObject(SceneObject obj, ProjectSceneObjectEntry entry)
     {
+        obj.LibrarySourceId = string.IsNullOrWhiteSpace(entry.LibrarySourceId)
+            ? entry.LibraryEntryId
+            : entry.LibrarySourceId;
         obj.Name = entry.Name;
         obj.ObjectType = entry.ObjectType;
         obj.SpawnCategory = entry.SpawnCategory;
@@ -436,6 +456,7 @@ public static class ProjectSceneSerializer
         obj.InheritPivotOffset = entry.InheritPivotOffset;
         obj.InheritVisibility = entry.InheritVisibility;
         obj.ObjectVisible = entry.ObjectVisible;
+        obj.InvertFaces = entry.InvertFaces;
         obj.IsSelectable = entry.IsSelectable;
         obj.HideInSceneTree = entry.HideInSceneTree;
 
@@ -698,5 +719,53 @@ public static class ProjectSceneSerializer
         }
 
         return current;
+    }
+
+    private static void SyncObjectLibraryFromScene(ProjectManifest manifest, IReadOnlyList<SceneObject> sceneRoots)
+    {
+        manifest.ObjectLibrary ??= new List<ProjectSceneObjectEntry>();
+
+        foreach (var root in sceneRoots)
+        {
+            EnsureLibrarySourceIdsRecursive(root);
+
+            string sourceId = root.LibrarySourceId;
+            if (ContainsLibraryEntryId(manifest.ObjectLibrary, sourceId))
+                continue;
+
+            var libraryEntry = SerializeNode(root);
+            libraryEntry.LibraryEntryId = sourceId;
+            libraryEntry.LibrarySourceId = sourceId;
+            if (string.IsNullOrWhiteSpace(libraryEntry.Name))
+                libraryEntry.Name = string.IsNullOrWhiteSpace(libraryEntry.ObjectType) ? "Object" : libraryEntry.ObjectType;
+
+            manifest.ObjectLibrary.Add(libraryEntry);
+        }
+    }
+
+    private static bool ContainsLibraryEntryId(IEnumerable<ProjectSceneObjectEntry> nodes, string libraryEntryId)
+    {
+        if (string.IsNullOrWhiteSpace(libraryEntryId))
+            return false;
+
+        foreach (var node in nodes)
+        {
+            if (string.Equals(node.LibraryEntryId, libraryEntryId, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (ContainsLibraryEntryId(node.Children, libraryEntryId))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static void EnsureLibrarySourceIdsRecursive(SceneObject obj)
+    {
+        if (string.IsNullOrWhiteSpace(obj.LibrarySourceId))
+            obj.LibrarySourceId = string.IsNullOrWhiteSpace(obj.ObjectId) ? Guid.NewGuid().ToString("N") : obj.ObjectId;
+
+        foreach (var child in obj.Children)
+            EnsureLibrarySourceIdsRecursive(child);
     }
 }
