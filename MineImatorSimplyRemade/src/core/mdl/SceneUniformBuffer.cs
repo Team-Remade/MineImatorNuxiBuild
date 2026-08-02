@@ -64,8 +64,14 @@ public sealed class SceneUniformBuffer : IDisposable
             _gl.GenBuffers(1, out _ubo);
             _gl.BindBuffer(GLEnum.UniformBuffer, _ubo);
             _gl.BufferData(GLEnum.UniformBuffer, (uint)_data.Length, (void*)0, GLEnum.DynamicDraw);
+            // Upload the latest cached scene data immediately so the first draw
+            // does not sample uninitialized/zeroed UBO contents.
+            fixed (byte* p = _data)
+                _gl.BufferSubData(GLEnum.UniformBuffer, 0, (uint)_data.Length, p);
             _gl.BindBuffer(GLEnum.UniformBuffer, 0);
         }
+
+        _lastHash = HashData();
 
         BindToShader(shaderProgram);
         _initialized = true;

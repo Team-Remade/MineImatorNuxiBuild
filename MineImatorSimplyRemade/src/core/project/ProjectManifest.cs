@@ -87,6 +87,17 @@ public class ProjectWorkCameraState
 
 public class ProjectRenderSettings
 {
+    public bool AmbientOcclusionEnabled { get; set; } = true;
+    public float AmbientOcclusionRadius { get; set; } = 12f;
+    public float AmbientOcclusionStrength { get; set; } = 1f;
+    public ProjectVec3 AmbientOcclusionColor { get; set; } = new() { X = 0f, Y = 0f, Z = 0f };
+    public float AmbientOcclusionRatio { get; set; } = 0.222f;
+    public float AmbientOcclusionRatioBalance { get; set; } = 0.35f;
+    public bool ShadowsEnabled { get; set; } = true;
+    public int SunShadowBufferSize { get; set; } = 2048;
+    public int SpotShadowBufferSize { get; set; } = 1024;
+    public int PointShadowBufferSize { get; set; } = 1024;
+    public float ShadowBlurStrength { get; set; } = 1f;
     public Dictionary<string, List<ProjectBackgroundKeyframeEntry>> BackgroundKeyframes { get; set; } = new();
     public int ResolutionWidth { get; set; } = 1920;
     public int ResolutionHeight { get; set; } = 1080;

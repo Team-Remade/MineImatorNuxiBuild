@@ -210,12 +210,21 @@ public class CameraWindow : Window
     /// keyboard shortcuts are processed by this window's ImGui context instead of 
     /// being lost to the main window's context.
     /// </summary>
+    private bool _keyboardShortcutsArmed;
+
     private void HandleCameraWindowKeyboardShortcuts()
     {
         if (_panel == null)
             return;
 
         ImGuiIOPtr io = ImGui.GetIO();
+
+        if (!_keyboardShortcutsArmed)
+        {
+            if (!ImGui.IsKeyDown(ImGuiKey.F5) && !ImGui.IsKeyDown(ImGuiKey.F6))
+                _keyboardShortcutsArmed = true;
+            return;
+        }
 
         switch (io.WantTextInput)
         {
@@ -224,7 +233,7 @@ public class CameraWindow : Window
                 _panel.ToggleHighQualityPreview();
                 return;
             // F6: Toggle shadow debug mode
-            case false when ImGui.IsKeyPressed(ImGuiKey.F6, false):
+            case false when io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.F6, false):
                 _panel.ToggleShadowDebugMode();
                 return;
         }

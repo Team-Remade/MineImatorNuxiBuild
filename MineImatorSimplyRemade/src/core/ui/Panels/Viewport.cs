@@ -164,17 +164,19 @@ public class Viewport : UiPanel
 
     private uint _fbo;
     private uint _colorTex;
-    private uint _rbo;
+    private uint _depthTex;
+    private Shader? _ambientOcclusionShader;
     private uint _shadowFbo;
     private uint _shadowTex;
     private uint _shadowMapSize = 2048;
+    private uint _allocatedShadowMapSize;
     private Shader? _shadowShader;
     private uint _pointShadowFbo;
     private Shader? _pointShadowShader;
     // Must match MAX_POINT_SHADOWS in simple.frag.
     private const int MaxPointShadowLights = 8;
-    private const uint PointShadowMapSize = 1024;
     private readonly uint[] _pointShadowCubeTextures = new uint[MaxPointShadowLights];
+    private readonly int[] _pointShadowTextureSizes = new int[MaxPointShadowLights];
 
     private static readonly vec3[] PointShadowFaceDirections =
     [
@@ -304,7 +306,7 @@ public class Viewport : UiPanel
 
     private uint _previewFbo;
     private uint _previewColorTex;
-    private uint _previewRbo;
+    private uint _previewDepthTex;
     private uint _previewWidth = 1;
     private uint _previewHeight = 1;
     private uint _previewShadowFbo;
@@ -511,12 +513,18 @@ public class Viewport : UiPanel
         Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.ColorAttachment0,
                                 GLEnum.Texture2D, _colorTex, 0);
 
-        // Depth+stencil renderbuffer
-        Gl.GenRenderbuffers(1, out _rbo);
-        Gl.BindRenderbuffer(GLEnum.Renderbuffer, _rbo);
-        Gl.RenderbufferStorage(GLEnum.Renderbuffer, GLEnum.Depth24Stencil8, width, height);
-        Gl.FramebufferRenderbuffer(GLEnum.Framebuffer, GLEnum.DepthStencilAttachment,
-                                   GLEnum.Renderbuffer, _rbo);
+        // Sampleable depth texture used by the ambient-occlusion post pass.
+        Gl.GenTextures(1, out _depthTex);
+        Gl.BindTexture(GLEnum.Texture2D, _depthTex);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.DepthComponent24, width, height, 0,
+            PixelFormat.DepthComponent, GLEnum.UnsignedInt, null);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+        Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.DepthAttachment, GLEnum.Texture2D, _depthTex, 0);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
 
         var status = Gl.CheckFramebufferStatus(GLEnum.Framebuffer);
         if (status != GLEnum.FramebufferComplete)
@@ -542,6 +550,8 @@ public class Viewport : UiPanel
         // ── Sobel edge shader (full-screen quad, reads mask, writes edges) ────
         _edgeShader = new Shader(Gl);
         _edgeShader.CompileShader("edge.vert", "edge.frag");
+        _ambientOcclusionShader = new Shader(Gl);
+        _ambientOcclusionShader.CompileShader("edge.vert", "ambient_occlusion.frag");
 
         // ── Background quad shader + geometry ───────────────────────────────
         InitBackgroundRenderer();
@@ -1598,8 +1608,9 @@ public class Viewport : UiPanel
         Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb, width, height, 0,
                       PixelFormat.Rgb, GLEnum.UnsignedByte, (void*)0);
 
-        Gl.BindRenderbuffer(GLEnum.Renderbuffer, _rbo);
-        Gl.RenderbufferStorage(GLEnum.Renderbuffer, GLEnum.Depth24Stencil8, width, height);
+        Gl.BindTexture(GLEnum.Texture2D, _depthTex);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.DepthComponent24, width, height, 0,
+            PixelFormat.DepthComponent, GLEnum.UnsignedInt, null);
 
         // Resize pick FBO attachments.
         Gl.BindTexture(GLEnum.Texture2D, _pickColorTex);
@@ -1923,7 +1934,7 @@ public class Viewport : UiPanel
 
             ImGui.SameLine();
             ImGui.SetCursorPosY(itemY + 4f);
-            ImGui.TextDisabled(ShadowDebugEnabled ? "Shadow Debug (F6)" : "Shadow Debug Off (F6)");
+            ImGui.TextDisabled(ShadowDebugEnabled ? "Shadow Debug (Ctrl+F6)" : "Shadow Debug Off (Ctrl+F6)");
 
             // Advance the layout cursor to the bottom edge of the bar.
             var winPos  = ImGui.GetWindowPos();
@@ -1965,6 +1976,8 @@ public class Viewport : UiPanel
 
         // ── 3D render into FBO ────────────────────────────────────────────────
         Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
         Gl.Viewport(0, 0, w, h);
 
         Gl.Enable(GLEnum.DepthTest);
@@ -1996,9 +2009,14 @@ public class Viewport : UiPanel
 
         mat4 view = activeCamera.GetViewMatrix();
         mat4 proj = activeCamera.GetProjectionMatrix(aspect);
+        float renderNear = activeCamera.Near;
+        float renderFar = activeCamera.Far;
 
         RenderSky(activeCamera, w, h);
         RenderBackgroundPlane(w, h);
+        // Sky and procedural clouds are background elements, not AO geometry.
+        // Preserve their colour while resetting depth before scene objects draw.
+        Gl.Clear(ClearBufferMask.DepthBufferBit);
 
         // Restore camera settings after extracting matrices.
         activeCamera.FovY = savedFovY;
@@ -2018,9 +2036,10 @@ public class Viewport : UiPanel
         Mesh.ShadowMapTexture = 0;
         Mesh.ShadowLightSpaceMatrix = mat4.Identity;
         Mesh.ShadowDebugMode = 0;
-        Mesh.DirectionalShadowEnabled = (PropertiesPanel?.FillLightCastsShadows ?? true) ||
+        bool globalShadows = PropertiesPanel?.ShadowsEnabled ?? true;
+        Mesh.DirectionalShadowEnabled = globalShadows && ((PropertiesPanel?.FillLightCastsShadows ?? true) ||
                                         (PropertiesPanel?.UseSky == true && PropertiesPanel.SunFillLightCastsShadows) ||
-                                        (PropertiesPanel?.UseSky == true && PropertiesPanel.MoonFillLightCastsShadows);
+                                        (PropertiesPanel?.UseSky == true && PropertiesPanel.MoonFillLightCastsShadows));
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         // Rebuild the full scene light list every frame so that moved / deleted
@@ -2034,10 +2053,12 @@ public class Viewport : UiPanel
         SceneRenderMode renderMode = HighQualityPreviewEnabled ? SceneRenderMode.Rendered : SceneRenderMode.Unrendered;
         if (renderMode == SceneRenderMode.Rendered)
         {
+            Mesh.ShadowBlurStrength = Math.Clamp(PropertiesPanel?.ShadowBlurStrength ?? 1f, 0f, 4f);
             Mesh.ShadowDebugMode = ShadowDebugEnabled ? 1 : 0;
             if (Mesh.DirectionalShadowEnabled)
                 RenderShadowMap();
-            pointShadowIndices = RenderPointShadowMaps(camPos);
+            if (globalShadows)
+                pointShadowIndices = RenderPointShadowMaps(camPos);
         }
 
         CollectPointLights(SceneObjects, pointShadowIndices, _cachedAllPointLights);
@@ -2094,6 +2115,8 @@ public class Viewport : UiPanel
 
         CollectRenderPairs(SceneObjects, camPos, frustum, _cachedRenderItems, _cachedOverlays);
         RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights);
+        if (renderMode == SceneRenderMode.Rendered)
+            RenderAmbientOcclusion(_fbo, _depthTex, w, h, renderNear, renderFar, PropertiesPanel);
 
         if (OverlaysEnabled)
         {
@@ -2291,8 +2314,21 @@ public class Viewport : UiPanel
 
     private unsafe void EnsureShadowResources()
     {
-        if (Gl == null || _shadowShader != null)
+        _shadowMapSize = (uint)Math.Clamp(PropertiesPanel?.SunShadowBufferSize ?? 2048, 256, 8192);
+        if (Gl == null)
             return;
+        if (_shadowShader != null)
+        {
+            if (_allocatedShadowMapSize != _shadowMapSize)
+            {
+                Gl.BindTexture(GLEnum.Texture2D, _shadowTex);
+                Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.DepthComponent32f, _shadowMapSize,
+                    _shadowMapSize, 0, PixelFormat.DepthComponent, GLEnum.Float, null);
+                Gl.BindTexture(GLEnum.Texture2D, 0);
+                _allocatedShadowMapSize = _shadowMapSize;
+            }
+            return;
+        }
 
         _shadowShader = new Shader(Gl);
         _shadowShader.CompileShader("shadow_depth.vert", "shadow_depth.frag");
@@ -2324,6 +2360,7 @@ public class Viewport : UiPanel
         Gl.ReadBuffer(GLEnum.None);
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
+        _allocatedShadowMapSize = _shadowMapSize;
     }
 
     private unsafe void EnsurePointShadowResources()
@@ -2349,8 +2386,8 @@ public class Viewport : UiPanel
                     GLEnum.TextureCubeMapPositiveX + face,
                     0,
                     InternalFormat.DepthComponent32f,
-                    PointShadowMapSize,
-                    PointShadowMapSize,
+                    1024,
+                    1024,
                     0,
                     PixelFormat.DepthComponent,
                     GLEnum.Float,
@@ -2362,6 +2399,7 @@ public class Viewport : UiPanel
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapR, (int)TextureWrapMode.ClampToEdge);
+            _pointShadowTextureSizes[i] = 1024;
         }
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
@@ -2428,8 +2466,8 @@ public class Viewport : UiPanel
                     GLEnum.TextureCubeMapPositiveX + face,
                     0,
                     InternalFormat.DepthComponent32f,
-                    PointShadowMapSize,
-                    PointShadowMapSize,
+                    1024,
+                    1024,
                     0,
                     PixelFormat.DepthComponent,
                     GLEnum.Float,
@@ -2505,6 +2543,10 @@ public class Viewport : UiPanel
         for (int lightIndex = 0; lightIndex < lightCount; lightIndex++)
         {
             var (light, position, range) = shadowLights[lightIndex];
+            int shadowSize = light.Type == LightType.Spot
+                ? PropertiesPanel?.SpotShadowBufferSize ?? 1024
+                : PropertiesPanel?.PointShadowBufferSize ?? 1024;
+            ResizePointShadowTexture(lightIndex, shadowSize);
             shadowIndices[light] = lightIndex;
             Mesh.PointShadowCubeTextures[lightIndex] = _pointShadowCubeTextures[lightIndex];
 
@@ -2523,7 +2565,7 @@ public class Viewport : UiPanel
                     GLEnum.TextureCubeMapPositiveX + face,
                     _pointShadowCubeTextures[lightIndex],
                     0);
-                Gl.Viewport(0, 0, PointShadowMapSize, PointShadowMapSize);
+                Gl.Viewport(0, 0, (uint)shadowSize, (uint)shadowSize);
                 Gl.Clear(ClearBufferMask.DepthBufferBit);
                 Gl.Enable(GLEnum.DepthTest);
                 Gl.Disable(GLEnum.CullFace);
@@ -2540,6 +2582,19 @@ public class Viewport : UiPanel
         Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
         Gl.Viewport(0, 0, _viewportWidth, _viewportHeight);
         return shadowIndices;
+    }
+
+    private unsafe void ResizePointShadowTexture(int index, int requestedSize)
+    {
+        int size = Math.Clamp(requestedSize, 256, 8192);
+        if (Gl == null || _pointShadowTextureSizes[index] == size)
+            return;
+        Gl.BindTexture(GLEnum.TextureCubeMap, _pointShadowCubeTextures[index]);
+        for (int face = 0; face < 6; face++)
+            Gl.TexImage2D(GLEnum.TextureCubeMapPositiveX + face, 0, InternalFormat.DepthComponent32f,
+                (uint)size, (uint)size, 0, PixelFormat.DepthComponent, GLEnum.Float, null);
+        Gl.BindTexture(GLEnum.TextureCubeMap, 0);
+        _pointShadowTextureSizes[index] = size;
     }
 
     private mat4 ComputeShadowLightSpaceMatrix()
@@ -2829,7 +2884,7 @@ public class Viewport : UiPanel
                     GLEnum.TextureCubeMapPositiveX + face,
                     _previewPointShadowCubeTextures[lightIndex],
                     0);
-                Gl.Viewport(0, 0, PointShadowMapSize, PointShadowMapSize);
+                Gl.Viewport(0, 0, 1024, 1024);
                 Gl.Clear(ClearBufferMask.DepthBufferBit);
                 Gl.Enable(GLEnum.DepthTest);
                 Gl.Disable(GLEnum.CullFace);
@@ -3377,6 +3432,64 @@ public class Viewport : UiPanel
             Mesh.PointLights.Add(allLights[_lightScoreScratch[i].index]);
     }
 
+    private void RenderAmbientOcclusion(uint displayFbo, uint depthTexture, uint width, uint height,
+        float nearPlane, float farPlane, PropertiesPanel? settings)
+    {
+        if (_ambientOcclusionShader == null || settings?.AmbientOcclusionEnabled != true ||
+            displayFbo == 0 || depthTexture == 0 || width == 0 || height == 0)
+            return;
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, displayFbo);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
+        Gl.Viewport(0, 0, width, height);
+        // Avoid a framebuffer feedback loop while the attached depth texture is sampled.
+        Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.DepthAttachment, GLEnum.Texture2D, 0, 0);
+        Gl.Disable(GLEnum.DepthTest);
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Enable(GLEnum.Blend);
+        Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+
+        uint program = _ambientOcclusionShader.ShaderProgram;
+        Gl.UseProgram(program);
+        Gl.ActiveTexture(GLEnum.Texture0);
+        Gl.BindTexture(GLEnum.Texture2D, depthTexture);
+
+        void Float(string name, float value)
+        {
+            int location = Gl.GetUniformLocation(program, name);
+            if (location >= 0) Gl.Uniform1(location, value);
+        }
+
+        int depthLocation = Gl.GetUniformLocation(program, "uDepth");
+        if (depthLocation >= 0) Gl.Uniform1(depthLocation, 0);
+        int texelLocation = Gl.GetUniformLocation(program, "uTexelSize");
+        if (texelLocation >= 0) Gl.Uniform2(texelLocation, 1f / width, 1f / height);
+        Float("uNear", Math.Max(0.001f, nearPlane));
+        Float("uFar", Math.Max(nearPlane + 0.001f, farPlane));
+        Float("uRadius", Math.Clamp(settings.AmbientOcclusionRadius, 0f, 128f));
+        Float("uStrength", Math.Clamp(settings.AmbientOcclusionStrength, 0f, 2f));
+        Float("uRatio", Math.Clamp(settings.AmbientOcclusionRatio, 0f, 1f));
+        Float("uRatioBalance", Math.Clamp(settings.AmbientOcclusionRatioBalance, 0f, 1f));
+        int colorLocation = Gl.GetUniformLocation(program, "uColor");
+        if (colorLocation >= 0)
+            Gl.Uniform3(colorLocation, settings.AmbientOcclusionColor[0], settings.AmbientOcclusionColor[1],
+                settings.AmbientOcclusionColor[2]);
+
+        Gl.BindVertexArray(_edgeVao);
+        Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+        Gl.BindVertexArray(0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.DepthAttachment, GLEnum.Texture2D, depthTexture, 0);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
+        Gl.Disable(GLEnum.Blend);
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Less);
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
+    }
+
     /// <summary>
     /// Matches Modelbench's render_world pipeline: parts are drawn once in
     /// ascending render-depth order with both blending and depth writes enabled.
@@ -3600,11 +3713,17 @@ public class Viewport : UiPanel
         Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.ColorAttachment0,
                                 GLEnum.Texture2D, _previewColorTex, 0);
 
-        Gl.GenRenderbuffers(1, out _previewRbo);
-        Gl.BindRenderbuffer(GLEnum.Renderbuffer, _previewRbo);
-        Gl.RenderbufferStorage(GLEnum.Renderbuffer, GLEnum.Depth24Stencil8, width, height);
-        Gl.FramebufferRenderbuffer(GLEnum.Framebuffer, GLEnum.DepthStencilAttachment,
-                                   GLEnum.Renderbuffer, _previewRbo);
+        Gl.GenTextures(1, out _previewDepthTex);
+        Gl.BindTexture(GLEnum.Texture2D, _previewDepthTex);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.DepthComponent24, width, height, 0,
+            PixelFormat.DepthComponent, GLEnum.UnsignedInt, null);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+        Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.DepthAttachment, GLEnum.Texture2D, _previewDepthTex, 0);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
 
         var status = Gl.CheckFramebufferStatus(GLEnum.Framebuffer);
         if (status != GLEnum.FramebufferComplete)
@@ -3637,6 +3756,11 @@ public class Viewport : UiPanel
             _edgeShader = new Shader(Gl);
             _edgeShader.CompileShader("edge.vert", "edge.frag");
             Gl.GenVertexArrays(1, out _edgeVao);
+        }
+        if (_ambientOcclusionShader == null)
+        {
+            _ambientOcclusionShader = new Shader(Gl);
+            _ambientOcclusionShader.CompileShader("edge.vert", "ambient_occlusion.frag");
         }
 
         // Share the transform gizmo with the main viewport so it renders and
@@ -3712,8 +3836,9 @@ public class Viewport : UiPanel
         Gl.BindTexture(GLEnum.Texture2D, _previewColorTex);
         Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb, w, h, 0,
                       PixelFormat.Rgb, GLEnum.UnsignedByte, (void*)0);
-        Gl.BindRenderbuffer(GLEnum.Renderbuffer, _previewRbo);
-        Gl.RenderbufferStorage(GLEnum.Renderbuffer, GLEnum.Depth24Stencil8, w, h);
+        Gl.BindTexture(GLEnum.Texture2D, _previewDepthTex);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.DepthComponent24, w, h, 0,
+            PixelFormat.DepthComponent, GLEnum.UnsignedInt, null);
         Gl.BindTexture(GLEnum.Texture2D, 0);
         Gl.BindRenderbuffer(GLEnum.Renderbuffer, 0);
 
@@ -4139,6 +4264,8 @@ public class Viewport : UiPanel
             : SceneRenderMode.Unrendered;
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
         Gl.Viewport(0, 0, w, h);
 
         Gl.Enable(GLEnum.DepthTest);
@@ -4166,6 +4293,7 @@ public class Viewport : UiPanel
 
         MainViewport.RenderSkyPublic(cam, w, h);
         MainViewport.RenderBackgroundPlanePublic(w, h);
+        Gl.Clear(ClearBufferMask.DepthBufferBit);
 
         cam.FovY = savedFovY; cam.Near = savedNear; cam.Far = savedFar;
 
@@ -4178,9 +4306,10 @@ public class Viewport : UiPanel
         Mesh.ShadowMapTexture = 0;
         Mesh.ShadowLightSpaceMatrix = mat4.Identity;
         Mesh.ShadowDebugMode = 0;
-        Mesh.DirectionalShadowEnabled = (MainViewport.PropertiesPanel?.FillLightCastsShadows ?? true) ||
+        bool globalShadows = MainViewport.PropertiesPanel?.ShadowsEnabled ?? true;
+        Mesh.DirectionalShadowEnabled = globalShadows && ((MainViewport.PropertiesPanel?.FillLightCastsShadows ?? true) ||
                                         (MainViewport.PropertiesPanel?.UseSky == true && MainViewport.PropertiesPanel.SunFillLightCastsShadows) ||
-                                        (MainViewport.PropertiesPanel?.UseSky == true && MainViewport.PropertiesPanel.MoonFillLightCastsShadows);
+                                        (MainViewport.PropertiesPanel?.UseSky == true && MainViewport.PropertiesPanel.MoonFillLightCastsShadows));
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         Dictionary<LightSceneObject, int> pointShadowIndices = new();
@@ -4189,10 +4318,12 @@ public class Viewport : UiPanel
 
         if (renderMode == SceneRenderMode.Rendered)
         {
+            Mesh.ShadowBlurStrength = Math.Clamp(MainViewport.PropertiesPanel?.ShadowBlurStrength ?? 1f, 0f, 4f);
             Mesh.ShadowDebugMode = MainViewport.ShadowDebugEnabled ? 1 : 0;
             if (Mesh.DirectionalShadowEnabled)
                 RenderShadowMapPublic();
-            pointShadowIndices = RenderPointShadowMapsPublic(camPos);
+            if (globalShadows)
+                pointShadowIndices = RenderPointShadowMapsPublic(camPos);
         }
 
         // ── Upload scene UBO ─────────────────────────────────────────────────
@@ -4244,6 +4375,8 @@ public class Viewport : UiPanel
         CollectRenderPairs(MainViewport.SceneObjects, camPos, previewFrustum, renderItems, overlays);
 
         RenderDepthOrdered(view, proj, renderItems, allPointLights);
+        if (renderMode == SceneRenderMode.Rendered)
+            RenderAmbientOcclusion(_previewFbo, _previewDepthTex, w, h, cam.Near, cam.Far, MainViewport.PropertiesPanel);
 
         if (OverlaysEnabled)
         {

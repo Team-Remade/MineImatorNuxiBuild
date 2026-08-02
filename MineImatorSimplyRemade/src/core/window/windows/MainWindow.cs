@@ -578,9 +578,22 @@ public class MainWindow : Window
         _lastAppliedWindowTitle = title;
     }
 
+    private bool _keyboardShortcutsArmed;
+
     private void HandleKeyboardShortcuts()
     {
         ImGuiIOPtr io = ImGui.GetIO();
+
+        // Ignore function keys inherited from the IDE/launcher while the app
+        // window is opening. Shortcuts become active after all of them have
+        // been observed released for at least one frame.
+        if (!_keyboardShortcutsArmed)
+        {
+            if (!ImGui.IsKeyDown(ImGuiKey.F5) && !ImGui.IsKeyDown(ImGuiKey.F6) &&
+                !ImGui.IsKeyDown(ImGuiKey.F7) && !ImGui.IsKeyDown(ImGuiKey.F8))
+                _keyboardShortcutsArmed = true;
+            return;
+        }
 
         if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F5, false))
         {
@@ -591,7 +604,7 @@ public class MainWindow : Window
             return;
         }
 
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F6, false))
+        if (!io.WantTextInput && io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.F6, false))
         {
             _mainViewport?.ToggleShadowDebugMode();
             return;

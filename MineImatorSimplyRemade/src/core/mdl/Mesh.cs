@@ -953,6 +953,7 @@ public class Mesh : IDisposable
     public static mat4 ShadowLightSpaceMatrix = mat4.Identity;
     public static int ShadowDebugMode = 0;
     public static bool DirectionalShadowEnabled = true;
+    public static float ShadowBlurStrength = 1f;
 
     /// <summary>
     /// Must match <c>MAX_POINT_SHADOWS</c> in simple.frag.
@@ -1033,6 +1034,7 @@ public class Mesh : IDisposable
         SetUniformVec3("uEmissionColor", EmissionColor);
         SetUniformFloat("uEmissionEnergy", EmissionEnergy);
         SetUniformBool("uUseShadowMap", DirectionalShadowEnabled && ShadowsEnabled && !Unlit && ShadowMapTexture != 0);
+        SetUniformFloat("uShadowBlurStrength", ShadowBlurStrength);
 
         // The rest of the lighting data (uLightDir, uLightColor, uAmbient, fill
         // lights, shadow flags, uLightSpaceMatrix, uShadowDebugMode) comes from

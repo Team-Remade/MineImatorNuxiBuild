@@ -14,6 +14,7 @@ uniform vec3  uEmissionColor;
 uniform float uEmissionEnergy;
 uniform sampler2D uShadowMap;
 uniform bool  uUseShadowMap;
+uniform float uShadowBlurStrength;
 
 uniform bool  uIsUnlit;
 uniform vec3 uCameraPosition, uFogColor, uHeightFogColor;
@@ -77,7 +78,7 @@ float calculateShadow(vec3 norm, vec3 lightDir) {
     float shadow = 0.0;
     for (int x = -1; x <= 1; x++) {
         for (int y = -1; y <= 1; y++) {
-            float pcfDepth = texture(uShadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
+            float pcfDepth = texture(uShadowMap, projCoords.xy + vec2(x, y) * texelSize * uShadowBlurStrength).r;
             shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
         }
     }
@@ -173,6 +174,7 @@ void main() {
                         : uSunFillLightCastsShadows  != 0 ? normalize(uSunFillLightDir)
                         : sunDir;
     float shadow = calculateShadow(norm, shadowLightDir);
+
     if (uShadowDebugMode == 1) {
         FragColor = uUseShadowMap
             ? vec4(vec3(shadow), 1.0)

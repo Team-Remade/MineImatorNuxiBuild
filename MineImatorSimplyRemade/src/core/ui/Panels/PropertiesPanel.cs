@@ -88,6 +88,18 @@ public class PropertiesPanel : UiPanel
     public float FillLightStrength = 1f;
     public bool FillLightCastsShadows = true;
 
+    public bool AmbientOcclusionEnabled = true;
+    public float AmbientOcclusionRadius = 12f;
+    public float AmbientOcclusionStrength = 1f;
+    public readonly float[] AmbientOcclusionColor = [0f, 0f, 0f];
+    public float AmbientOcclusionRatio = 0.222f;
+    public float AmbientOcclusionRatioBalance = 0.35f;
+    public bool ShadowsEnabled = true;
+    public int SunShadowBufferSize = 2048;
+    public int SpotShadowBufferSize = 1024;
+    public int PointShadowBufferSize = 1024;
+    public float ShadowBlurStrength = 1f;
+
     private string _projectName = "Untitled Project";
     private string _selectedBackgroundKeyProperty = "SkyTime";
     private static readonly string[] BackgroundKeyframeProperties = BuildBackgroundKeyframeProperties();
@@ -189,6 +201,17 @@ public class PropertiesPanel : UiPanel
         _projectName = string.IsNullOrWhiteSpace(manifest.ProjectName) ? "Untitled Project" : manifest.ProjectName;
 
         ProjectRenderSettings settings = manifest.Settings;
+        AmbientOcclusionEnabled = settings.AmbientOcclusionEnabled;
+        AmbientOcclusionRadius = Math.Clamp(settings.AmbientOcclusionRadius, 0f, 128f);
+        AmbientOcclusionStrength = Math.Clamp(settings.AmbientOcclusionStrength, 0f, 2f);
+        ReadColor(settings.AmbientOcclusionColor, AmbientOcclusionColor);
+        AmbientOcclusionRatio = Math.Clamp(settings.AmbientOcclusionRatio, 0f, 1f);
+        AmbientOcclusionRatioBalance = Math.Clamp(settings.AmbientOcclusionRatioBalance, 0f, 1f);
+        ShadowsEnabled = settings.ShadowsEnabled;
+        SunShadowBufferSize = NormalizeShadowBufferSize(settings.SunShadowBufferSize, 2048);
+        SpotShadowBufferSize = NormalizeShadowBufferSize(settings.SpotShadowBufferSize, 1024);
+        PointShadowBufferSize = NormalizeShadowBufferSize(settings.PointShadowBufferSize, 1024);
+        ShadowBlurStrength = Math.Clamp(settings.ShadowBlurStrength, 0f, 4f);
         _resolutionWidth = Math.Max(1, settings.ResolutionWidth);
         _resolutionHeight = Math.Max(1, settings.ResolutionHeight);
         _framerate = Math.Clamp(settings.Framerate, 1, 120);
@@ -294,6 +317,18 @@ public class PropertiesPanel : UiPanel
         _projectName = normalizedName;
         manifest.ProjectName = normalizedName;
 
+        manifest.Settings.AmbientOcclusionEnabled = AmbientOcclusionEnabled;
+        manifest.Settings.AmbientOcclusionRadius = Math.Clamp(AmbientOcclusionRadius, 0f, 128f);
+        manifest.Settings.AmbientOcclusionStrength = Math.Clamp(AmbientOcclusionStrength, 0f, 2f);
+        manifest.Settings.AmbientOcclusionColor = ToVec3(AmbientOcclusionColor);
+        manifest.Settings.AmbientOcclusionRatio = Math.Clamp(AmbientOcclusionRatio, 0f, 1f);
+        manifest.Settings.AmbientOcclusionRatioBalance = Math.Clamp(AmbientOcclusionRatioBalance, 0f, 1f);
+        manifest.Settings.ShadowsEnabled = ShadowsEnabled;
+        manifest.Settings.SunShadowBufferSize = NormalizeShadowBufferSize(SunShadowBufferSize, 2048);
+        manifest.Settings.SpotShadowBufferSize = NormalizeShadowBufferSize(SpotShadowBufferSize, 1024);
+        manifest.Settings.PointShadowBufferSize = NormalizeShadowBufferSize(PointShadowBufferSize, 1024);
+        manifest.Settings.ShadowBlurStrength = Math.Clamp(ShadowBlurStrength, 0f, 4f);
+
         manifest.Settings.ResolutionWidth = Math.Max(1, _resolutionWidth);
         manifest.Settings.ResolutionHeight = Math.Max(1, _resolutionHeight);
         manifest.Settings.Framerate = Math.Clamp(_framerate, 1, 120);
@@ -397,6 +432,12 @@ public class PropertiesPanel : UiPanel
     }
 
     private static ProjectVec3 ToVec3(float[] value) => new() { X = value[0], Y = value[1], Z = value[2] };
+
+    private static int NormalizeShadowBufferSize(int value, int fallback)
+    {
+        int[] sizes = [256, 512, 1024, 2048, 4096, 8192];
+        return sizes.Contains(value) ? value : fallback;
+    }
 
     private void ApplyAmbientSettingsToRenderer()
     {
@@ -731,6 +772,9 @@ public class PropertiesPanel : UiPanel
                 projectManager.SetDirty(true);
             }
         }
+
+        if (ImGui.CollapsingHeader("Render Settings"))
+            RenderRenderSettings();
 
         if (ImGui.CollapsingHeader("Background Settings"))
         {
@@ -1173,6 +1217,64 @@ public class PropertiesPanel : UiPanel
         }
 
         ImGui.EndTabItem();
+    }
+
+    private unsafe void RenderRenderSettings()
+    {
+        bool changed = false;
+
+        ImGui.Text("Ambient Occlusion");
+        changed |= ImGui.Checkbox("Enabled##ambientOcclusion", ref AmbientOcclusionEnabled);
+        if (AmbientOcclusionEnabled)
+        {
+            ImGui.Indent();
+            changed |= ImGui.DragFloat("Radius (px)", ref AmbientOcclusionRadius, 0.25f, 0f, 128f, "%.1f");
+            changed |= PercentageSlider("Strength##ao", ref AmbientOcclusionStrength, 0f, 200f);
+            fixed (float* color = AmbientOcclusionColor)
+                changed |= ImGui.ColorEdit3("Color##ao", color, ImGuiColorEditFlags.None);
+            changed |= ImGui.DragFloat("Ratio##ao", ref AmbientOcclusionRatio, 0.001f, 0f, 1f, "%.3f");
+            changed |= ImGui.DragFloat("Ratio Balance##ao", ref AmbientOcclusionRatioBalance, 0.005f, 0f, 1f, "%.3f");
+            ImGui.Unindent();
+        }
+
+        ImGui.Separator();
+        ImGui.Text("Shadows");
+        changed |= ImGui.Checkbox("Enabled##globalShadows", ref ShadowsEnabled);
+        if (ShadowsEnabled)
+        {
+            ImGui.Indent();
+            changed |= ShadowBufferCombo("Sun lamps", ref SunShadowBufferSize);
+            changed |= ShadowBufferCombo("Spot lights", ref SpotShadowBufferSize);
+            changed |= ShadowBufferCombo("Point lights", ref PointShadowBufferSize);
+            changed |= PercentageSlider("Blur Strength", ref ShadowBlurStrength, 0f, 400f);
+            ImGui.Unindent();
+        }
+
+        if (changed)
+        {
+            WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+            ProjectManager.Instance.SetDirty(true);
+        }
+    }
+
+    private static bool ShadowBufferCombo(string label, ref int value)
+    {
+        string[] labels = ["256", "512", "1024", "2048", "4096", "8192"];
+        int[] values = [256, 512, 1024, 2048, 4096, 8192];
+        int selected = Math.Max(0, Array.IndexOf(values, value));
+        if (!ImGui.Combo(label, ref selected, labels, labels.Length))
+            return false;
+        value = values[selected];
+        return true;
+    }
+
+    private static bool PercentageSlider(string label, ref float normalizedValue, float minimum, float maximum)
+    {
+        float percent = normalizedValue * 100f;
+        if (!ImGui.SliderFloat(label, ref percent, minimum, maximum, "%.0f%%", ImGuiSliderFlags.None))
+            return false;
+        normalizedValue = percent / 100f;
+        return true;
     }
 
     private static string[] BuildBackgroundKeyframeProperties()
