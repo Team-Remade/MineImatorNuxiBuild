@@ -160,6 +160,8 @@ public static class ProjectSceneSerializer
         if (obj is { HasExplicitMaterialSettings: true, MaterialSettings: not null })
         {
             entry.AlbedoColor = ToProjectVec4(obj.MaterialSettings.AlbedoColor);
+            entry.BlendColor = ToProjectVec4(obj.MaterialSettings.BlendColor);
+            entry.MixColor = ToProjectVec4(obj.MaterialSettings.MixColor);
             entry.Metallic = obj.MaterialSettings.Metallic;
             entry.Roughness = obj.MaterialSettings.Roughness;
             entry.Transparency = obj.MaterialSettings.Transparency;
@@ -440,6 +442,8 @@ public static class ProjectSceneSerializer
         {
             var material = obj.MaterialSettings ?? new MaterialSettings();
             material.AlbedoColor = ToVec4(entry.AlbedoColor);
+            material.BlendColor = ToVec4(entry.BlendColor);
+            material.MixColor = ToVec4(entry.MixColor);
             material.Metallic = entry.Metallic;
             material.Roughness = entry.Roughness;
             material.Transparency = entry.Transparency;

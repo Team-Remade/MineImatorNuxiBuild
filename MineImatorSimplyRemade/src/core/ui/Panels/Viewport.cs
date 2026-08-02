@@ -2066,81 +2066,11 @@ public class Viewport : UiPanel
         //   opaque       – Alpha == 1, no texture  → normal depth read+write
         //   textured     – has a TextureId          → depth pre-pass + color pass (LEQUAL)
         //   alphaBlend   – Alpha < 1, no texture    → straight back-to-front blend, no pre-pass
-        _cachedOpaque.Clear();
-        _cachedTextured.Clear();
-        _cachedAlphaBlend.Clear();
+        _cachedRenderItems.Clear();
         _cachedOverlays.Clear();
 
-        CollectRenderPairs(SceneObjects, camPos, frustum, _cachedOpaque, _cachedTextured, _cachedAlphaBlend, _cachedOverlays);
-
-        // Pass 1 – Opaque geometry (depth read + write, no blending).
-        foreach (var (model, mesh) in _cachedOpaque)
-        {
-            SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), _cachedAllPointLights);
-            mesh.Render(model, view, proj);
-        }
-
-        // Pass 2 – Textured meshes (may have per-pixel alpha from the texture).
-        //   2a. Depth pre-pass: populate depth buffer with color writes masked off so
-        //       each mesh self-occludes (front faces block back faces of the same object).
-        //   2b. Color pass: LEQUAL depth so the pre-pass depth values pass, depth writes
-        //       off for correct back-to-front blending between separate objects.
-        if (_cachedTextured.Count > 0)
-        {
-            _cachedTextured.Sort((a, b) =>
-            {
-                int byDist = b.dist.CompareTo(a.dist);
-                return byDist != 0 ? byDist : a.sortDepth.CompareTo(b.sortDepth);
-            });
-
-            Gl.ColorMask(false, false, false, false);
-            foreach (var (model, mesh, _, _) in _cachedTextured)
-            {
-                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), _cachedAllPointLights);
-                mesh.Render(model, view, proj);
-            }
-            Gl.ColorMask(true, true, true, true);
-
-            Gl.DepthFunc(GLEnum.Lequal);
-            Gl.Enable(GLEnum.Blend);
-            Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
-            Gl.DepthMask(false);
-
-            foreach (var (model, mesh, _, _) in _cachedTextured)
-            {
-                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), _cachedAllPointLights);
-                mesh.Render(model, view, proj);
-            }
-
-            Gl.DepthMask(true);
-            Gl.DepthFunc(GLEnum.Less);
-            Gl.Disable(GLEnum.Blend);
-        }
-
-        // Pass 3 – Plain alpha-blended meshes (no texture, no pre-pass).
-        //   Sorted back-to-front; depth test reads but does not write so they
-        //   composite correctly behind/in-front of each other and textured meshes.
-        if (_cachedAlphaBlend.Count > 0)
-        {
-            _cachedAlphaBlend.Sort((a, b) =>
-            {
-                int byDist = b.dist.CompareTo(a.dist);
-                return byDist != 0 ? byDist : a.sortDepth.CompareTo(b.sortDepth);
-            });
-
-            Gl.Enable(GLEnum.Blend);
-            Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
-            Gl.DepthMask(false);
-
-            foreach (var (model, mesh, _, _) in _cachedAlphaBlend)
-            {
-                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), _cachedAllPointLights);
-                mesh.Render(model, view, proj);
-            }
-
-            Gl.DepthMask(true);
-            Gl.Disable(GLEnum.Blend);
-        }
+        CollectRenderPairs(SceneObjects, camPos, frustum, _cachedRenderItems, _cachedOverlays);
+        RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights);
 
         if (OverlaysEnabled)
         {
@@ -3359,9 +3289,7 @@ public class Viewport : UiPanel
     // ── Reusable per-frame lists (reduces allocations) ────────────────────────
 
     private readonly List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)> _cachedAllPointLights = new();
-    private readonly List<(mat4 model, Mesh mesh)> _cachedOpaque = new();
-    private readonly List<(mat4 model, Mesh mesh, float dist, int sortDepth)> _cachedTextured = new();
-    private readonly List<(mat4 model, Mesh mesh, float dist, int sortDepth)> _cachedAlphaBlend = new();
+    private readonly List<(mat4 model, Mesh mesh, float sortDepth)> _cachedRenderItems = new();
     private readonly List<(mat4 model, Mesh mesh)> _cachedOverlays = new();
 
     /// <summary>
@@ -3427,6 +3355,32 @@ public class Viewport : UiPanel
     }
 
     /// <summary>
+    /// Matches Modelbench's render_world pipeline: parts are drawn once in
+    /// ascending render-depth order with both blending and depth writes enabled.
+    /// Thus a partially transparent earlier part leaves its colour on screen and
+    /// its depth prevents later parts behind it from drawing. Fully transparent
+    /// fragments are discarded by the material shader and write no depth.
+    /// </summary>
+    private void RenderDepthOrdered(
+        mat4 view, mat4 proj,
+        List<(mat4 model, Mesh mesh, float sortDepth)> renderItems,
+        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction,
+            float spotCosOuterAngle, float spotCosInnerAngle)> allLights)
+    {
+        // LINQ OrderBy is stable, matching Modelbench's insertion behavior for
+        // parts with equal depth. Camera distance intentionally has no role.
+        Gl.Enable(GLEnum.Blend);
+        Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+        Gl.DepthMask(true);
+        foreach (var (model, mesh, _) in renderItems.OrderBy(x => x.sortDepth))
+        {
+            SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allLights);
+            mesh.Render(model, view, proj);
+        }
+        Gl.Disable(GLEnum.Blend);
+    }
+
+    /// <summary>
     /// Recursively collects (worldMatrix, mesh) pairs from every visible node in the
     /// scene hierarchy.  Each node uses its own <see cref="SceneObject.GetWorldMatrix"/>
     /// so that child nodes are correctly positioned relative to their parents.
@@ -3435,9 +3389,7 @@ public class Viewport : UiPanel
         IEnumerable<SceneObject> objects,
         vec3 camPos,
         Frustum frustum,
-        List<(mat4 model, Mesh mesh)> opaque,
-        List<(mat4 model, Mesh mesh, float dist, int sortDepth)> textured,
-        List<(mat4 model, Mesh mesh, float dist, int sortDepth)> alphaBlend,
+        List<(mat4 model, Mesh mesh, float sortDepth)> renderItems,
         List<(mat4 model, Mesh mesh)> overlays,
         Dictionary<string, BoneSceneObject>? boneDict = null)
     {
@@ -3482,23 +3434,11 @@ public class Viewport : UiPanel
                     continue;
                 }
 
-                // Translucent (true alpha-blend) meshes must go through the depth-tested,
-                // depth-write-off blend pass rather than the textured/cutout depth-pre-pass
-                // path below, which writes full depth for any non-transparent pixel and
-                // would otherwise make a partially-see-through surface like water wrongly
-                // occlude opaque geometry behind it.
-                if (mesh.IsTranslucent)
-                    alphaBlend.Add((model, mesh, dist, mesh.SortDepth));
-                else if (mesh.TextureId != 0)
-                    textured.Add((model, mesh, dist, mesh.SortDepth));
-                else if (mesh.Alpha < 1.0f)
-                    alphaBlend.Add((model, mesh, dist, mesh.SortDepth));
-                else
-                    opaque.Add((model, mesh));
+                renderItems.Add((model, mesh, mesh.SortDepth));
             }
 
             // Recurse into children so each child uses its own world matrix.
-            CollectRenderPairs(obj.Children, camPos, frustum, opaque, textured, alphaBlend, overlays, localBoneDict);
+            CollectRenderPairs(obj.Children, camPos, frustum, renderItems, overlays, localBoneDict);
         }
     }
 
@@ -4275,65 +4215,12 @@ public class Viewport : UiPanel
             MainViewport.GroundPlane.Render(MainViewport.GroundPlaneModel, view, proj);
         }
 
-        var opaque = new List<(mat4, Mesh)>();
-        var textured = new List<(mat4, Mesh, float, int)>();
-        var alphaBlend = new List<(mat4, Mesh, float, int)>();
+        var renderItems = new List<(mat4, Mesh, float)>();
         var overlays = new List<(mat4, Mesh)>();
         Frustum previewFrustum = Frustum.FromViewProj(proj * view);
-        CollectRenderPairs(MainViewport.SceneObjects, camPos, previewFrustum, opaque, textured, alphaBlend, overlays);
+        CollectRenderPairs(MainViewport.SceneObjects, camPos, previewFrustum, renderItems, overlays);
 
-        foreach (var (model, mesh) in opaque)
-        {
-            SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
-            mesh.Render(model, view, proj);
-        }
-
-        if (textured.Count > 0)
-        {
-            textured.Sort((a, b) =>
-            {
-                int byDist = b.Item3.CompareTo(a.Item3);
-                return byDist != 0 ? byDist : a.Item4.CompareTo(b.Item4);
-            });
-            Gl.ColorMask(false, false, false, false);
-            foreach (var (model, mesh, _, _) in textured)
-            {
-                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
-                mesh.Render(model, view, proj);
-            }
-            Gl.ColorMask(true, true, true, true);
-            Gl.DepthFunc(GLEnum.Lequal);
-            Gl.Enable(GLEnum.Blend);
-            Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
-            Gl.DepthMask(false);
-            foreach (var (model, mesh, _, _) in textured)
-            {
-                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
-                mesh.Render(model, view, proj);
-            }
-            Gl.DepthMask(true);
-            Gl.DepthFunc(GLEnum.Less);
-            Gl.Disable(GLEnum.Blend);
-        }
-
-        if (alphaBlend.Count > 0)
-        {
-            alphaBlend.Sort((a, b) =>
-            {
-                int byDist = b.Item3.CompareTo(a.Item3);
-                return byDist != 0 ? byDist : a.Item4.CompareTo(b.Item4);
-            });
-            Gl.Enable(GLEnum.Blend);
-            Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
-            Gl.DepthMask(false);
-            foreach (var (model, mesh, _, _) in alphaBlend)
-            {
-                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
-                mesh.Render(model, view, proj);
-            }
-            Gl.DepthMask(true);
-            Gl.Disable(GLEnum.Blend);
-        }
+        RenderDepthOrdered(view, proj, renderItems, allPointLights);
 
         if (OverlaysEnabled)
         {

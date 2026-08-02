@@ -285,16 +285,22 @@ public class MineImatorLoader
                     uint shapeTexture = GetShapeTexture(shape, part, model);
                     int[]? textureSize = ResolveTextureSize(part, model);
 
-                    float? colorAlpha = miBone?.ColorAlpha;
-                    int depth = miBone?.Depth ?? 0;
+                    // Shape material values override the containing part. This
+                    // is used heavily by facial rigs (for example PikanModel's
+                    // R_Eye plane is 0.01 alpha while the R_Eye part is opaque).
+                    float? colorAlpha = shape.ColorAlpha ?? miBone?.ColorAlpha;
+                    vec3? colorBlend = ParseMiColor(shape.ColorBlend) ?? miBone?.ColorBlend;
+                    float depth = miBone?.Depth ?? 0f;
 
                     var mesh = CreateShapeMesh(part.Name, shapeIndex, shape, model, shapeTexture,
                         accumulatedScale, effectiveBendParams, _currentCharacter.ModelBendStyle,
-                        colorAlpha, depth, textureSize: textureSize);
+                        colorBlend, colorAlpha, depth, textureSize: textureSize);
 
                     if (mesh != null)
                     {
                         if (miBone != null) ApplyMaterialSettings(mesh, miBone, shapeTexture);
+                        if (colorBlend.HasValue) mesh.BlendColor = new vec4(colorBlend.Value, 1f);
+                        if (colorAlpha.HasValue) mesh.Alpha = colorAlpha.Value;
                         mesh.DoubleSided = part.Backfaces;
                         boneObject.AddMesh(mesh);
                         miBone?.RegisterShapeData(new BoneShapeData
@@ -306,6 +312,7 @@ public class MineImatorLoader
                             TextureId = shapeTexture,
                             AccumulatedScale = accumulatedScale,
                             ModelBendStyle = _currentCharacter.ModelBendStyle,
+                            PartColorBlend = colorBlend,
                             PartColorAlpha = colorAlpha,
                             PartDepth = depth
                         });
@@ -324,10 +331,11 @@ public class MineImatorLoader
     /// </summary>
     public Mesh CreateShapeMeshPublic(string partName, int shapeIndex, MiShape shape, MiModel model,
         uint textureId, vec3 accumulatedParentScale, BendParams? bendParams = null,
-        BendStyle bendStyle = BendStyle.ProjectDefault, float? partColorAlpha = null,
-        int depth = 0, int[]? textureSize = null)
+        BendStyle bendStyle = BendStyle.ProjectDefault, vec3? partColorBlend = null,
+        float? partColorAlpha = null,
+        float depth = 0f, int[]? textureSize = null)
         => CreateShapeMesh(partName, shapeIndex, shape, model, textureId, accumulatedParentScale,
-            bendParams, bendStyle, partColorAlpha, depth, textureSize);
+            bendParams, bendStyle, partColorBlend, partColorAlpha, depth, textureSize);
 
     private static int[]? ResolveTextureSize(MiPart? part, MiModel model)
     {
@@ -628,6 +636,7 @@ public class MineImatorLoader
             if (boneObject is MiBoneSceneObject mibone)
             {
                 mibone.ColorAlpha = part.ColorAlpha;
+                mibone.ColorBlend = ParseMiColor(part.ColorBlend);
                 mibone.Depth = part.Depth;
             }
 
@@ -649,7 +658,7 @@ public class MineImatorLoader
             if (boneObject is MiBoneSceneObject mib)
             {
                 mib.InheritColorAlphaFromParent();
-                mib.InheritDepthFromParent();
+                mib.InheritColorBlendFromParent();
                 mib.CommitBasePose();
             }
         }
@@ -846,6 +855,27 @@ public class MineImatorLoader
         }
     }
 
+    private static vec3? ParseMiColor(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        string hex = value.Trim().TrimStart('#');
+        if (hex.Length == 3)
+            hex = string.Concat(hex.Select(c => new string(c, 2)));
+        if (hex.Length != 6) return null;
+
+        try
+        {
+            return new vec3(
+                Convert.ToByte(hex.Substring(0, 2), 16) / 255f,
+                Convert.ToByte(hex.Substring(2, 2), 16) / 255f,
+                Convert.ToByte(hex.Substring(4, 2), 16) / 255f);
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
+
     private static void ApplyMaterialSettings(Mesh mesh, MiBoneSceneObject bone, uint textureId)
     {
         if (textureId != 0)
@@ -853,6 +883,8 @@ public class MineImatorLoader
 
         if (bone.ColorAlpha.HasValue)
             mesh.Alpha = bone.ColorAlpha.Value;
+        if (bone.ColorBlend.HasValue)
+            mesh.BlendColor = new vec4(bone.ColorBlend.Value, 1f);
 
         mesh.SortDepth = bone.Depth;
     }
@@ -863,8 +895,9 @@ public class MineImatorLoader
 
     private Mesh CreateShapeMesh(string partName, int shapeIndex, MiShape shape, MiModel model,
         uint textureId, vec3 accumulatedParentScale, BendParams? bendParams = null,
-        BendStyle bendStyle = BendStyle.ProjectDefault, float? partColorAlpha = null,
-        int depth = 0, int[]? textureSize = null)
+        BendStyle bendStyle = BendStyle.ProjectDefault, vec3? partColorBlend = null,
+        float? partColorAlpha = null,
+        float depth = 0f, int[]? textureSize = null)
     {
         if (shape?.From == null || shape.To == null) return null;
 
@@ -952,6 +985,7 @@ public class MineImatorLoader
             mesh.SortDepth = depth;
 
             if (textureId != 0) mesh.TextureId = textureId;
+            if (partColorBlend.HasValue) mesh.BlendColor = new vec4(partColorBlend.Value, 1f);
             if (partColorAlpha.HasValue) mesh.Alpha = partColorAlpha.Value;
 
             // Apply shapePosition only for non-bent meshes. Bent branches already
@@ -2469,13 +2503,15 @@ public class MiPart
     public float? LockBend { get; set; }
 
     [JsonPropertyName("locked")] [JsonConverter(typeof(MiBoolConverter))] public bool Locked { get; set; }
-    [JsonPropertyName("depth")] public int Depth { get; set; }
+    [JsonPropertyName("depth")] public float Depth { get; set; }
     [JsonPropertyName("backfaces")] [JsonConverter(typeof(MiBoolConverter))] public bool Backfaces { get; set; }
     [JsonPropertyName("shadows")] [JsonConverter(typeof(MiBoolConverter))] public bool Shadows { get; set; } = true;
 
     [JsonPropertyName("color_alpha")]
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
     public float? ColorAlpha { get; set; }
+
+    [JsonPropertyName("color_blend")] public string? ColorBlend { get; set; }
 
     [JsonPropertyName("shapes")] public List<MiShape> Shapes { get; set; }
     [JsonPropertyName("parts")] public List<MiPart> Parts { get; set; }
@@ -2489,6 +2525,12 @@ public class MiShape
     [JsonPropertyName("type")] public string Type { get; set; } = "block";
     [JsonPropertyName("description")] public string Description { get; set; }
     [JsonPropertyName("use_model_color")] [JsonConverter(typeof(MiBoolConverter))] public bool UseModelColor { get; set; }
+
+    [JsonPropertyName("color_alpha")]
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float? ColorAlpha { get; set; }
+
+    [JsonPropertyName("color_blend")] public string? ColorBlend { get; set; }
     [JsonPropertyName("from")] public float[] From { get; set; }
     [JsonPropertyName("to")] public float[] To { get; set; }
     [JsonPropertyName("uv")] public float[] Uv { get; set; }

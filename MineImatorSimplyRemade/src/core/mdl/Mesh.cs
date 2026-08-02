@@ -146,7 +146,7 @@ public class Mesh : IDisposable
     /// Optional render ordering hint used by the viewport for coplanar layered
     /// meshes (e.g. Mine-imator facial rigs). Lower values render first.
     /// </summary>
-    public int SortDepth = 0;
+    public float SortDepth = 0f;
 
     /// <summary>
     /// When true, this mesh is excluded from normal scene rendering and is
@@ -476,6 +476,18 @@ public class Mesh : IDisposable
         }
     }
 
+    public vec4 BlendColor
+    {
+        get => DefaultMaterial.BlendColor;
+        set => DefaultMaterial.BlendColor = value;
+    }
+
+    public vec4 MixColor
+    {
+        get => DefaultMaterial.MixColor;
+        set => DefaultMaterial.MixColor = value;
+    }
+
     /// <summary>
     /// When true, adds emissive lighting to the final shaded result.
     /// Backed by <see cref="StandardMaterial.EmissionEnabled"/>.
@@ -581,6 +593,8 @@ public class Mesh : IDisposable
         var srcMat = DefaultMaterial;
         var dstMat = clone.DefaultMaterial;
         dstMat.AlbedoColor              = srcMat.AlbedoColor;
+        dstMat.BlendColor               = srcMat.BlendColor;
+        dstMat.MixColor                 = srcMat.MixColor;
         dstMat.AlbedoTexture            = srcMat.AlbedoTexture;
         dstMat.Metallic                 = srcMat.Metallic;
         dstMat.Roughness                = srcMat.Roughness;
@@ -1002,6 +1016,8 @@ public class Mesh : IDisposable
         }
 
         SetUniformVec3("uAlbedo", Albedo);
+        SetUniformVec4("uBlendColor", BlendColor);
+        SetUniformVec4("uMixColor", MixColor);
         SetUniformFloat("uAlpha", Alpha);
         SetUniformBool("uEmissionEnabled", EmissionEnabled);
         SetUniformVec3("uEmissionColor", EmissionColor);
@@ -1325,6 +1341,12 @@ public class Mesh : IDisposable
     {
         int loc = _shader.GetUniformLocation(name);
         if (loc >= 0) _gl.Uniform3(loc, v.x, v.y, v.z);
+    }
+
+    private void SetUniformVec4(string name, vec4 v)
+    {
+        int loc = _shader.GetUniformLocation(name);
+        if (loc >= 0) _gl.Uniform4(loc, v.x, v.y, v.z, v.w);
     }
 
     private void SetUniformVec3(Shader shader, string name, vec3 v)

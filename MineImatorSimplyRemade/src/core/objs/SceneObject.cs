@@ -13,6 +13,8 @@ namespace MineImatorSimplyRemadeNuxi.core.objs;
 public class MaterialSettings
 {
     public vec4 AlbedoColor = new vec4(1f, 1f, 1f, 1f);
+    public vec4 BlendColor = new vec4(1f, 1f, 1f, 1f);
+    public vec4 MixColor = new vec4(0f, 0f, 0f, 0f);
     public float Metallic = 0f;
     public float Roughness = 0.5f;
     public bool NormalEnabled = false;
@@ -43,6 +45,8 @@ public class MaterialSettings
         return new MaterialSettings
         {
             AlbedoColor = this.AlbedoColor,
+            BlendColor = this.BlendColor,
+            MixColor = this.MixColor,
             Metallic = this.Metallic,
             Roughness = this.Roughness,
             NormalEnabled = this.NormalEnabled,
@@ -448,6 +452,8 @@ public class SceneObject
                 _materialSettings.AlbedoColor.x,
                 _materialSettings.AlbedoColor.y,
                 _materialSettings.AlbedoColor.z);
+            mesh.BlendColor = _materialSettings.BlendColor;
+            mesh.MixColor = _materialSettings.MixColor;
             mesh.DoubleSided = _materialSettings.DoubleSided;
             // Combine AlbedoColor.a with (1 - Transparency) so both routes
             // can control opacity: 0 Transparency = fully opaque.

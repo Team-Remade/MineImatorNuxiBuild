@@ -277,6 +277,8 @@ public class ProjectSceneObjectEntry
     // Material override data
     public bool HasMaterialOverrides { get; set; } = false;
     public ProjectVec4 AlbedoColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f, W = 1f };
+    public ProjectVec4 BlendColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f, W = 1f };
+    public ProjectVec4 MixColor { get; set; } = new() { X = 0f, Y = 0f, Z = 0f, W = 0f };
     public float Metallic { get; set; } = 0f;
     public float Roughness { get; set; } = 0.5f;
     public float Transparency { get; set; } = 0f;

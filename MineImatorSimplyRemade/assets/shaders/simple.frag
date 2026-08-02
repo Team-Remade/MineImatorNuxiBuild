@@ -6,6 +6,8 @@ in vec2 vTexCoord;
 in vec4 vShadowCoord;
 
 uniform vec3  uAlbedo;
+uniform vec4  uBlendColor;
+uniform vec4  uMixColor;
 uniform float uAlpha;
 uniform bool  uEmissionEnabled;
 uniform vec3  uEmissionColor;
@@ -116,9 +118,13 @@ void main() {
         alpha     = texSample.a;
     }
 
-    alpha *= uAlpha;
+    baseColor *= uBlendColor.rgb;
+    baseColor = mix(baseColor, uMixColor.rgb, clamp(uMixColor.a, 0.0, 1.0));
+    alpha *= uAlpha * uBlendColor.a;
 
-    if (alpha < 0.01) discard;
+    // Modelbench discards only completely transparent fragments. Even very low
+    // non-zero alpha must survive so it can write depth for render-depth masks.
+    if (alpha <= 0.0) discard;
 
     if (uIsUnlit) {
         FragColor = vec4(baseColor, alpha);

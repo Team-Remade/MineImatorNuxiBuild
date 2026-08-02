@@ -1991,6 +1991,42 @@ public class PropertiesPanel : UiPanel
                 }
             }
 
+            // Mine-imator-style multiplicative blend colour.
+            {
+                vec4 bc = mat?.BlendColor ?? new vec4(1f, 1f, 1f, 1f);
+                var color = new Vector3(bc.r, bc.g, bc.b);
+                if (ImGui.ColorEdit3("Blend Color", ref color))
+                {
+                    EnsureMaterialSettings();
+                    _currentObject.MaterialSettings.BlendColor = new vec4(color.X, color.Y, color.Z, 1f);
+                    _currentObject.SetExplicitMaterialSettings();
+                    _currentObject.PropagateMaterialSettingsToChildren();
+                }
+            }
+
+            // Mix colour uses its alpha channel as the interpolation amount.
+            {
+                vec4 mc = mat?.MixColor ?? new vec4(0f, 0f, 0f, 0f);
+                var color = new Vector3(mc.r, mc.g, mc.b);
+                if (ImGui.ColorEdit3("Mix Color", ref color))
+                {
+                    EnsureMaterialSettings();
+                    _currentObject.MaterialSettings.MixColor = new vec4(color.X, color.Y, color.Z, mc.a);
+                    _currentObject.SetExplicitMaterialSettings();
+                    _currentObject.PropagateMaterialSettingsToChildren();
+                }
+
+                float mixAmount = mc.a;
+                if (ImGui.SliderFloat("Mix Amount", ref mixAmount, 0f, 1f))
+                {
+                    EnsureMaterialSettings();
+                    var c = _currentObject.MaterialSettings.MixColor;
+                    _currentObject.MaterialSettings.MixColor = new vec4(c.r, c.g, c.b, mixAmount);
+                    _currentObject.SetExplicitMaterialSettings();
+                    _currentObject.PropagateMaterialSettingsToChildren();
+                }
+            }
+
             // Metallic
             {
                 float metallic = mat?.Metallic ?? 0f;
@@ -2092,6 +2128,8 @@ public class PropertiesPanel : UiPanel
                 EnsureMaterialSettings();
                 var m = _currentObject.MaterialSettings;
                 m.AlbedoColor     = new vec4(1f, 1f, 1f, 1f);
+                m.BlendColor      = new vec4(1f, 1f, 1f, 1f);
+                m.MixColor        = new vec4(0f, 0f, 0f, 0f);
                 m.Metallic        = 0f;
                 m.Roughness       = 0.5f;
                 m.EmissionEnabled = false;
