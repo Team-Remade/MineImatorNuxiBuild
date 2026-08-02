@@ -1580,7 +1580,6 @@ public class MineImatorLoader
         mat4 rsm = BuildShapeRotMat(shapeRotation) *
                    (shapeScale != default && shapeScale != vec3.Ones ? mat4.Scale(shapeScale) : mat4.Identity);
         vec3 Rv(vec3 v) => BendHelper.TransformPoint(rsm, v);
-        vec3 Rn(vec3 n) => BendHelper.TransformDirection(rsm, n);
 
         vec3 GetOffset(int index)
         {
@@ -1602,11 +1601,17 @@ public class MineImatorLoader
         if (!hideFront)
         {
             int bv = vertices.Count;
-            vertices.Add(Rv(c4));
-            vertices.Add(Rv(c3));
-            vertices.Add(Rv(c2));
-            vertices.Add(Rv(c1));
-            var bn = Rn(new vec3(0, 0, -1));
+            vec3 v0 = Rv(c4);
+            vec3 v1 = Rv(c3);
+            vec3 v2 = Rv(c2);
+            vec3 v3 = Rv(c1);
+            vertices.Add(v0);
+            vertices.Add(v1);
+            vertices.Add(v2);
+            vertices.Add(v3);
+            // Generate from the final rotated vertices in the same direction as
+            // this side's triangle winding (0, 1, 2).
+            var bn = CalculateFaceNormal(v0, v1, v2);
             normals.Add(bn);
             normals.Add(bn);
             normals.Add(bn);
@@ -1632,11 +1637,16 @@ public class MineImatorLoader
         if (!hideBack)
         {
             int bv = vertices.Count;
-            vertices.Add(Rv(c8));
-            vertices.Add(Rv(c7));
-            vertices.Add(Rv(c6));
-            vertices.Add(Rv(c5));
-            var fn = Rn(new vec3(0, 0, 1));
+            vec3 v0 = Rv(c8);
+            vec3 v1 = Rv(c7);
+            vec3 v2 = Rv(c6);
+            vec3 v3 = Rv(c5);
+            vertices.Add(v0);
+            vertices.Add(v1);
+            vertices.Add(v2);
+            vertices.Add(v3);
+            // The back uses reversed triangle indices (0, 2, 1).
+            var fn = CalculateFaceNormal(v0, v2, v1);
             normals.Add(fn);
             normals.Add(fn);
             normals.Add(fn);
@@ -1702,7 +1712,6 @@ public class MineImatorLoader
         mat4 rsm = BuildShapeRotMat(shapeRotation) *
                    (shapeScale != default && shapeScale != vec3.Ones ? mat4.Scale(shapeScale) : mat4.Identity);
         vec3 Rv(vec3 v) => BendHelper.TransformPoint(rsm, v);
-        vec3 Rn(vec3 n) => BendHelper.TransformDirection(rsm, n);
 
         var vertices = new List<vec3>();
         var normals = new List<vec3>();
@@ -1740,7 +1749,7 @@ public class MineImatorLoader
                     Rv(new vec3(posX + adjPSX, posY, centerZ + halfThickness)),
                     Rv(new vec3(posX + adjPSX, posY + adjPSY, centerZ + halfThickness)),
                     Rv(new vec3(posX, posY + adjPSY, centerZ + halfThickness)),
-                    Rn(new vec3(0, 0, -1)), uvX, uvY, invert);
+                    uvX, uvY, invert);
 
                 bv = vertices.Count;
                 AddExtrudedQuad(vertices, normals, uvs, indices, (uint)bv,
@@ -1748,7 +1757,7 @@ public class MineImatorLoader
                     Rv(new vec3(posX, posY, centerZ - halfThickness)),
                     Rv(new vec3(posX, posY + adjPSY, centerZ - halfThickness)),
                     Rv(new vec3(posX + adjPSX, posY + adjPSY, centerZ - halfThickness)),
-                    Rn(new vec3(0, 0, 1)), uvX, uvY, invert);
+                    uvX, uvY, invert);
 
                 bool leftEmpty = px == 0 || GetAlpha(pixels, uvStartX + px - 1, texY, imgW) <= 0.5f;
                 bool rightEmpty = px == regionW - 1 || GetAlpha(pixels, uvStartX + px + 1, texY, imgW) <= 0.5f;
@@ -1766,7 +1775,7 @@ public class MineImatorLoader
                         Rv(new vec3(posX, posY, centerZ + halfThickness)),
                         Rv(new vec3(posX, posY + adjPSY, centerZ + halfThickness)),
                         Rv(new vec3(posX, posY + adjPSY, centerZ - halfThickness)),
-                        Rn(new vec3(-1, 0, 0)), uvX, uvY, invert);
+                        uvX, uvY, invert);
                 }
 
                 if (geoRight)
@@ -1777,7 +1786,7 @@ public class MineImatorLoader
                         Rv(new vec3(posX + adjPSX, posY, centerZ - halfThickness)),
                         Rv(new vec3(posX + adjPSX, posY + adjPSY, centerZ - halfThickness)),
                         Rv(new vec3(posX + adjPSX, posY + adjPSY, centerZ + halfThickness)),
-                        Rn(new vec3(1, 0, 0)), uvX, uvY, invert);
+                        uvX, uvY, invert);
                 }
 
                 if (topEmpty)
@@ -1788,7 +1797,7 @@ public class MineImatorLoader
                         Rv(new vec3(posX + adjPSX, posY + adjPSY, centerZ + halfThickness)),
                         Rv(new vec3(posX + adjPSX, posY + adjPSY, centerZ - halfThickness)),
                         Rv(new vec3(posX, posY + adjPSY, centerZ - halfThickness)),
-                        Rn(new vec3(0, 1, 0)), uvX, uvY, invert);
+                        uvX, uvY, invert);
                 }
 
                 if (bottomEmpty)
@@ -1799,7 +1808,7 @@ public class MineImatorLoader
                         Rv(new vec3(posX + adjPSX, posY, centerZ - halfThickness)),
                         Rv(new vec3(posX + adjPSX, posY, centerZ + halfThickness)),
                         Rv(new vec3(posX, posY, centerZ + halfThickness)),
-                        Rn(new vec3(0, -1, 0)), uvX, uvY, invert);
+                        uvX, uvY, invert);
                 }
             }
         }
@@ -2332,11 +2341,7 @@ public class MineImatorLoader
     private static void AddSimpleQuad(List<vec3> verts, List<vec3> normals, List<vec2> uvs, List<uint> indices,
         vec3 v0, vec3 v1, vec3 v2, vec3 v3, vec2 uv, bool invert)
     {
-        var edge1 = v1 - v0;
-        var edge2 = v2 - v0;
-        var normal = vec3.Cross(edge1, edge2);
-        if (normal.LengthSqr < 1e-10f) normal = vec3.UnitY;
-        else normal = normal.Normalized;
+        var normal = CalculateFaceNormal(v0, v1, v2);
         if (invert) normal = -normal;
 
         uint bv = (uint)verts.Count;
@@ -2356,13 +2361,23 @@ public class MineImatorLoader
         AddQuadIndices(indices, bv, invert);
     }
 
+    private static vec3 CalculateFaceNormal(vec3 v0, vec3 v1, vec3 v2)
+    {
+        vec3 normal = vec3.Cross(v1 - v0, v2 - v0);
+        return normal.LengthSqr < 1e-10f ? vec3.UnitY : normal.Normalized;
+    }
+
     private static void AddExtrudedQuad(List<vec3> verts, List<vec3> normals, List<vec2> uvs, List<uint> indices,
-        uint baseVertex, vec3 v0, vec3 v1, vec3 v2, vec3 v3, vec3 normal, float uvX, float uvY, bool invert)
+        uint baseVertex, vec3 v0, vec3 v1, vec3 v2, vec3 v3, float uvX, float uvY, bool invert)
     {
         verts.Add(v0);
         verts.Add(v1);
         verts.Add(v2);
         verts.Add(v3);
+        // Positions already contain the plane's shape rotation and scale. Match
+        // the generated normal to the actual (0, 1, 2) triangle winding instead
+        // of relying on the pre-transform axis normal supplied by the caller.
+        vec3 normal = CalculateFaceNormal(v0, v1, v2);
         normal = invert ? -normal : normal;
         normals.Add(normal);
         normals.Add(normal);
