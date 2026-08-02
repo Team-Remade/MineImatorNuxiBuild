@@ -292,6 +292,9 @@ public class ProjectSceneObjectEntry
     // Primitive plane orientation. Only used for Primitives/Plane objects.
     public PlaneOrientation PrimitivePlaneOrientation { get; set; } = PlaneOrientation.XY;
 
+    // Primitive plane billboard option. Only used for Primitives/Plane objects.
+    public bool PrimitivePlaneFaceCamera { get; set; } = false;
+
     // Primitive cube UV mode. Only used for Primitives/Cube objects.
     // False = each face maps to the full texture; true = 3x2 cubemap unwrap.
     public bool PrimitiveCubeMapped { get; set; } = false;
@@ -321,6 +324,12 @@ public class ProjectSceneObjectEntry
     public float Roughness { get; set; } = 0.5f;
     public float Transparency { get; set; } = 0f;
     public bool DoubleSided { get; set; } = false;
+    public float TextureOffsetH { get; set; } = 0f;
+    public float TextureOffsetV { get; set; } = 0f;
+    public float TextureRepeatH { get; set; } = 1f;
+    public float TextureRepeatV { get; set; } = 1f;
+    public bool TextureMirrorH { get; set; } = false;
+    public bool TextureMirrorV { get; set; } = false;
     public bool EmissionEnabled { get; set; } = false;
     public ProjectVec4 EmissionColor { get; set; } = new() { X = 0f, Y = 0f, Z = 0f, W = 1f };
     public float EmissionEnergy { get; set; } = 1f;

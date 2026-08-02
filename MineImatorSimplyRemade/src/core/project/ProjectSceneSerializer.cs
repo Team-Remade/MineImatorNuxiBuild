@@ -176,6 +176,9 @@ public static class ProjectSceneSerializer
             PrimitivePlaneOrientation = obj.SpawnCategory == "Primitives" && obj.ObjectType == "Plane"
                 ? obj.Visuals.OfType<PlaneMesh>().FirstOrDefault()?.Orientation ?? PlaneOrientation.XY
                 : PlaneOrientation.XY,
+            PrimitivePlaneFaceCamera = obj.SpawnCategory == "Primitives" && obj.ObjectType == "Plane"
+                ? obj.PrimitivePlaneFaceCamera
+                : false,
             PrimitiveCubeMapped = obj.SpawnCategory == "Primitives" && obj.ObjectType == "Cube"
                 ? obj.PrimitiveCubeMapped
                 : false,
@@ -192,6 +195,12 @@ public static class ProjectSceneSerializer
             entry.Roughness = obj.MaterialSettings.Roughness;
             entry.Transparency = obj.MaterialSettings.Transparency;
             entry.DoubleSided = obj.MaterialSettings.DoubleSided;
+            entry.TextureOffsetH = obj.MaterialSettings.TextureOffset.x;
+            entry.TextureOffsetV = obj.MaterialSettings.TextureOffset.y;
+            entry.TextureRepeatH = obj.MaterialSettings.TextureRepeat.x;
+            entry.TextureRepeatV = obj.MaterialSettings.TextureRepeat.y;
+            entry.TextureMirrorH = obj.MaterialSettings.TextureMirror.x;
+            entry.TextureMirrorV = obj.MaterialSettings.TextureMirror.y;
             entry.EmissionEnabled = obj.MaterialSettings.EmissionEnabled;
             entry.EmissionColor = ToProjectVec4(obj.MaterialSettings.EmissionColor);
             entry.EmissionEnergy = obj.MaterialSettings.EmissionEnergy;
@@ -475,6 +484,7 @@ public static class ProjectSceneSerializer
             var planeMesh = obj.Visuals.OfType<PlaneMesh>().FirstOrDefault();
             if (planeMesh != null)
                 planeMesh.SetOrientation(entry.PrimitivePlaneOrientation);
+            obj.PrimitivePlaneFaceCamera = entry.PrimitivePlaneFaceCamera;
         }
 
         if (obj.SpawnCategory == "Primitives" && obj.ObjectType == "Cube")
@@ -495,6 +505,9 @@ public static class ProjectSceneSerializer
             material.Roughness = entry.Roughness;
             material.Transparency = entry.Transparency;
             material.DoubleSided = entry.DoubleSided;
+            material.TextureOffset = new vec2(entry.TextureOffsetH, entry.TextureOffsetV);
+            material.TextureRepeat = new vec2(Math.Max(0.0001f, entry.TextureRepeatH), Math.Max(0.0001f, entry.TextureRepeatV));
+            material.TextureMirror = new bvec2(entry.TextureMirrorH, entry.TextureMirrorV);
             material.EmissionEnabled = entry.EmissionEnabled;
             material.EmissionColor = ToVec4(entry.EmissionColor);
             material.EmissionEnergy = entry.EmissionEnergy;

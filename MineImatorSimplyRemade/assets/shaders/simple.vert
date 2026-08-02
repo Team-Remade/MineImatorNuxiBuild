@@ -16,6 +16,9 @@ uniform mat4  uMVP;
 uniform mat4  uModel;
 uniform vec2  uTexOffset;
 uniform float uTexScaleV;
+uniform vec2  uTexUvOffset;
+uniform vec2  uTexUvRepeat;
+uniform vec2  uTexUvMirror;
 uniform bool  uIsSkinned;
 uniform bool  uUseInstancing;
 uniform mat4  uBoneMatrices[64];
@@ -47,6 +50,19 @@ out vec3 vFragPos;
 out vec2 vTexCoord;
 out vec4 vShadowCoord;
 
+vec2 applyUvTransform(vec2 uv)
+{
+    vec2 repeated = uv * uTexUvRepeat;
+
+    if (uTexUvMirror.x > 0.5)
+        repeated.x = abs(fract(repeated.x * 0.5) * 2.0 - 1.0);
+
+    if (uTexUvMirror.y > 0.5)
+        repeated.y = abs(fract(repeated.y * 0.5) * 2.0 - 1.0);
+
+    return repeated + uTexUvOffset;
+}
+
 void main() {
     mat4 modelMat = uUseInstancing
         ? mat4(aInstanceM0, aInstanceM1, aInstanceM2, aInstanceM3)
@@ -72,7 +88,8 @@ void main() {
     vec4 worldPos   = modelMat * pos;
     vFragPos        = worldPos.xyz;
     vNormal         = normalize(mat3(transpose(inverse(modelMat))) * normal);
-    vTexCoord       = vec2(aTexCoord.x, aTexCoord.y * uTexScaleV + uTexOffset.y);
+    vec2 baseUv     = vec2(aTexCoord.x, aTexCoord.y * uTexScaleV + uTexOffset.y);
+    vTexCoord       = applyUvTransform(baseUv);
     vShadowCoord    = uLightSpaceMatrix * worldPos;
     gl_Position     = uMVP * pos;
 }

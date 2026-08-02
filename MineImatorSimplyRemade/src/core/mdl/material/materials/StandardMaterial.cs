@@ -53,4 +53,19 @@ public class StandardMaterial : Material
     /// disabled for this surface).
     /// </summary>
     public bool DoubleSided = false;
+
+    /// <summary>
+    /// Per-axis UV offset applied after repeat/mirroring.
+    /// </summary>
+    public vec2 TextureOffset = vec2.Zero;
+
+    /// <summary>
+    /// Per-axis UV repeat multiplier.
+    /// </summary>
+    public vec2 TextureRepeat = new vec2(1f, 1f);
+
+    /// <summary>
+    /// Per-axis UV mirroring toggle.
+    /// </summary>
+    public bvec2 TextureMirror = new bvec2(false, false);
 }

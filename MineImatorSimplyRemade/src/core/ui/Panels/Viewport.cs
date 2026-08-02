@@ -3259,7 +3259,7 @@ public class Viewport : UiPanel
             bool hasBoneIndicator = obj is BoneSceneObject b && b.IndicatorMesh != null && ShouldShowBoneIndicator(b);
             if (obj.IsSelectable && (obj.Visuals.Count > 0 || hasBoneIndicator))
             {
-                mat4 model = obj.GetWorldMatrix();
+                mat4 model = GetRenderableWorldMatrix(obj, Mesh.GlobalCameraPosition);
                 mat4 mvp   = proj * view * model;
 
                 // Upload MVP.
@@ -3355,7 +3355,7 @@ public class Viewport : UiPanel
             if (!obj.GetEffectiveVisibility()) continue;
             if (obj.Visuals.Count == 0) continue;
 
-            mat4 model = obj.GetWorldMatrix();
+            mat4 model = GetRenderableWorldMatrix(obj, Mesh.GlobalCameraPosition);
             mat4 mvp   = proj * view * model;
 
             if (mvpLoc >= 0)
@@ -3730,7 +3730,7 @@ public class Viewport : UiPanel
     /// scene hierarchy.  Each node uses its own <see cref="SceneObject.GetWorldMatrix"/>
     /// so that child nodes are correctly positioned relative to their parents.
     /// </summary>
-    private static void CollectRenderPairs(
+    private void CollectRenderPairs(
         IEnumerable<SceneObject> objects,
         vec3 camPos,
         Frustum frustum,
@@ -3742,7 +3742,7 @@ public class Viewport : UiPanel
         {
             if (!obj.GetEffectiveVisibility()) continue;
 
-            mat4  model    = obj.GetWorldMatrix();
+            mat4  model    = GetRenderableWorldMatrix(obj, camPos);
             vec3  worldPos = new vec3(model.m30, model.m31, model.m32);
             float dist     = (worldPos - camPos).LengthSqr;
 
@@ -3787,6 +3787,49 @@ public class Viewport : UiPanel
             // Recurse into children so each child uses its own world matrix.
             CollectRenderPairs(obj.Children, camPos, frustum, renderItems, overlays, localBoneDict);
         }
+    }
+
+    private static mat4 GetRenderableWorldMatrix(SceneObject obj, vec3 cameraPos)
+    {
+        mat4 world = obj.GetWorldMatrix();
+
+        if (!obj.PrimitivePlaneFaceCamera ||
+            !string.Equals(obj.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(obj.ObjectType, "Plane", StringComparison.OrdinalIgnoreCase) ||
+            obj.Visuals.OfType<PlaneMesh>().FirstOrDefault() == null)
+            return world;
+
+        vec3 worldPos = new vec3(world.m30, world.m31, world.m32);
+        vec3 toCamera = cameraPos - worldPos;
+        if (toCamera.LengthSqr <= 1e-10f)
+            toCamera = new vec3(0f, 0f, -1f);
+
+        vec3 forward = toCamera.Normalized;
+        vec3 upRef = vec3.UnitY;
+        if (MathF.Abs(vec3.Dot(forward, upRef)) > 0.999f)
+            upRef = new vec3(0f, 0f, 1f);
+
+        vec3 right = vec3.Cross(upRef, forward).Normalized;
+        vec3 up = vec3.Cross(forward, right).Normalized;
+        vec3 back = -forward;
+
+        vec3 row0 = new vec3(world.m00, world.m01, world.m02);
+        vec3 row1 = new vec3(world.m10, world.m11, world.m12);
+        vec3 row2 = new vec3(world.m20, world.m21, world.m22);
+        vec3 scale = new vec3(
+            MathF.Max(row0.Length, 1e-6f),
+            MathF.Max(row1.Length, 1e-6f),
+            MathF.Max(row2.Length, 1e-6f));
+
+        mat4 rotation = mat4.Identity;
+        rotation.m00 = right.x; rotation.m01 = right.y; rotation.m02 = right.z;
+        rotation.m10 = up.x;    rotation.m11 = up.y;    rotation.m12 = up.z;
+        rotation.m20 = back.x;  rotation.m21 = back.y;  rotation.m22 = back.z;
+
+        mat4 translation = mat4.Translate(worldPos);
+        mat4 scaling = mat4.Scale(scale);
+        mat4 pivot = mat4.Translate(obj.GetAccumulatedPivotOffset());
+        return translation * rotation * scaling * pivot;
     }
 
     /// <summary>

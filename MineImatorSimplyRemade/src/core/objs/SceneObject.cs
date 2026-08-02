@@ -38,6 +38,21 @@ public class MaterialSettings
     public bool DoubleSided = false;
 
     /// <summary>
+    /// Per-axis UV offset applied after repeat/mirroring.
+    /// </summary>
+    public vec2 TextureOffset = vec2.Zero;
+
+    /// <summary>
+    /// Per-axis UV repeat multiplier.
+    /// </summary>
+    public vec2 TextureRepeat = new vec2(1f, 1f);
+
+    /// <summary>
+    /// Per-axis UV mirroring toggle.
+    /// </summary>
+    public bvec2 TextureMirror = new bvec2(false, false);
+
+    /// <summary>
     /// Creates a copy of these material settings.
     /// </summary>
     public MaterialSettings Clone()
@@ -55,7 +70,10 @@ public class MaterialSettings
             EmissionEnabled = this.EmissionEnabled,
             EmissionColor = this.EmissionColor,
             EmissionEnergy = this.EmissionEnergy,
-            DoubleSided = this.DoubleSided
+            DoubleSided = this.DoubleSided,
+            TextureOffset = this.TextureOffset,
+            TextureRepeat = this.TextureRepeat,
+            TextureMirror = this.TextureMirror
         };
     }
 }
@@ -141,6 +159,11 @@ public class SceneObject
     /// true = use a 3x2 cubemap unwrap layout.
     /// </summary>
     public bool PrimitiveCubeMapped = false;
+
+    /// <summary>
+    /// Primitive-plane option. When true, the plane rotates at render-time so it faces the active camera.
+    /// </summary>
+    public bool PrimitivePlaneFaceCamera = false;
 
     /// <summary>
     /// Path to the character texture-variant image selected in the spawn menu
@@ -468,6 +491,9 @@ public class SceneObject
             mesh.BlendColor = _materialSettings.BlendColor;
             mesh.MixColor = _materialSettings.MixColor;
             mesh.DoubleSided = _materialSettings.DoubleSided;
+            mesh.TextureOffset = _materialSettings.TextureOffset;
+            mesh.TextureRepeat = _materialSettings.TextureRepeat;
+            mesh.TextureMirror = _materialSettings.TextureMirror;
             // Combine AlbedoColor.a with (1 - Transparency) so both routes
             // can control opacity: 0 Transparency = fully opaque.
             mesh.Alpha = _materialSettings.AlbedoColor.w * (1f - _materialSettings.Transparency);

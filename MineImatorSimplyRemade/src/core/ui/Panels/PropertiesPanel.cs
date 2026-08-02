@@ -675,12 +675,19 @@ public class PropertiesPanel : UiPanel
             Roughness = source.Roughness,
             Transparency = source.Transparency,
             DoubleSided = source.DoubleSided,
+            TextureOffsetH = source.TextureOffsetH,
+            TextureOffsetV = source.TextureOffsetV,
+            TextureRepeatH = source.TextureRepeatH,
+            TextureRepeatV = source.TextureRepeatV,
+            TextureMirrorH = source.TextureMirrorH,
+            TextureMirrorV = source.TextureMirrorV,
             EmissionEnabled = source.EmissionEnabled,
             EmissionColor = new ProjectVec4 { X = source.EmissionColor.X, Y = source.EmissionColor.Y, Z = source.EmissionColor.Z, W = source.EmissionColor.W },
             EmissionEnergy = source.EmissionEnergy,
             ItemTileKey = source.ItemTileKey,
             ItemIs3D = source.ItemIs3D,
             PrimitivePlaneOrientation = source.PrimitivePlaneOrientation,
+            PrimitivePlaneFaceCamera = source.PrimitivePlaneFaceCamera,
             PrimitiveCubeMapped = source.PrimitiveCubeMapped,
             CameraFov = source.CameraFov,
             CameraNear = source.CameraNear,
@@ -2450,6 +2457,13 @@ public class PropertiesPanel : UiPanel
                     planeMesh.SetOrientation(orientationIndex == 1 ? PlaneOrientation.XZ : PlaneOrientation.XY);
                     ProjectManager.Instance.SetDirty(true);
                 }
+
+                bool faceCamera = _currentObject.PrimitivePlaneFaceCamera;
+                if (ImGui.Checkbox("Face Camera##planeFaceCamera", ref faceCamera))
+                {
+                    _currentObject.PrimitivePlaneFaceCamera = faceCamera;
+                    ProjectManager.Instance.SetDirty(true);
+                }
             }
             else
             {
@@ -2907,6 +2921,48 @@ public class PropertiesPanel : UiPanel
                 }
             }
 
+            // Texture UV transform
+            {
+                vec2 uvOffset = mat?.TextureOffset ?? vec2.Zero;
+                var offset = new Vector2(uvOffset.x, uvOffset.y);
+                if (ImGui.DragFloat2("Texture Offset HV", ref offset, 0.01f))
+                {
+                    EnsureMaterialSettings();
+                    _currentObject.MaterialSettings.TextureOffset = new vec2(offset.X, offset.Y);
+                    _currentObject.SetExplicitMaterialSettings();
+                    _currentObject.PropagateMaterialSettingsToChildren();
+                }
+
+                vec2 uvRepeat = mat?.TextureRepeat ?? new vec2(1f, 1f);
+                var repeat = new Vector2(uvRepeat.x, uvRepeat.y);
+                if (ImGui.DragFloat2("Texture Repeat HV", ref repeat, 0.01f, 0.0001f, 256f))
+                {
+                    EnsureMaterialSettings();
+                    _currentObject.MaterialSettings.TextureRepeat = new vec2(Math.Max(0.0001f, repeat.X), Math.Max(0.0001f, repeat.Y));
+                    _currentObject.SetExplicitMaterialSettings();
+                    _currentObject.PropagateMaterialSettingsToChildren();
+                }
+
+                bvec2 uvMirror = mat?.TextureMirror ?? new bvec2(false, false);
+                bool mirrorH = uvMirror.x;
+                bool mirrorV = uvMirror.y;
+                bool mirrorChanged = false;
+
+                if (ImGui.Checkbox("Texture Mirror H", ref mirrorH))
+                    mirrorChanged = true;
+
+                if (ImGui.Checkbox("Texture Mirror V", ref mirrorV))
+                    mirrorChanged = true;
+
+                if (mirrorChanged)
+                {
+                    EnsureMaterialSettings();
+                    _currentObject.MaterialSettings.TextureMirror = new bvec2(mirrorH, mirrorV);
+                    _currentObject.SetExplicitMaterialSettings();
+                    _currentObject.PropagateMaterialSettingsToChildren();
+                }
+            }
+
             ImGui.Spacing();
 
             // Reset material
@@ -2924,6 +2980,9 @@ public class PropertiesPanel : UiPanel
                 m.NormalTexture   = 0;
                 m.NormalEnabled   = false;
                 m.DoubleSided     = false;
+                m.TextureOffset   = vec2.Zero;
+                m.TextureRepeat   = new vec2(1f, 1f);
+                m.TextureMirror   = new bvec2(false, false);
                 _currentObject.SetExplicitMaterialSettings();
                 _currentObject.PropagateMaterialSettingsToChildren();
             }

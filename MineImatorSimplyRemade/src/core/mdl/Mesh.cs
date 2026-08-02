@@ -494,6 +494,24 @@ public class Mesh : IDisposable
         set => DefaultMaterial.MixColor = value;
     }
 
+    public vec2 TextureOffset
+    {
+        get => DefaultMaterial.TextureOffset;
+        set => DefaultMaterial.TextureOffset = value;
+    }
+
+    public vec2 TextureRepeat
+    {
+        get => DefaultMaterial.TextureRepeat;
+        set => DefaultMaterial.TextureRepeat = new vec2(Math.Max(0.0001f, value.x), Math.Max(0.0001f, value.y));
+    }
+
+    public bvec2 TextureMirror
+    {
+        get => DefaultMaterial.TextureMirror;
+        set => DefaultMaterial.TextureMirror = value;
+    }
+
     /// <summary>
     /// When true, adds emissive lighting to the final shaded result.
     /// Backed by <see cref="StandardMaterial.EmissionEnabled"/>.
@@ -612,6 +630,9 @@ public class Mesh : IDisposable
         dstMat.Emission                  = srcMat.Emission;
         dstMat.EmissionEnergyMultiplier  = srcMat.EmissionEnergyMultiplier;
         dstMat.DoubleSided               = srcMat.DoubleSided;
+        dstMat.TextureOffset              = srcMat.TextureOffset;
+        dstMat.TextureRepeat              = srcMat.TextureRepeat;
+        dstMat.TextureMirror              = srcMat.TextureMirror;
 
         if (Vertices.Count > 0)
             clone.Upload();
@@ -1100,6 +1121,9 @@ public class Mesh : IDisposable
 
         SetUniformVec2("uTexOffset",  new vec2(0f, texOffsetV));
         SetUniformFloat("uTexScaleV", texScaleV);
+        SetUniformVec2("uTexUvOffset", TextureOffset);
+        SetUniformVec2("uTexUvRepeat", TextureRepeat);
+        SetUniformVec2("uTexUvMirror", new vec2(TextureMirror.x ? 1f : 0f, TextureMirror.y ? 1f : 0f));
 
         // Texture binding
         bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;
@@ -1245,6 +1269,9 @@ public class Mesh : IDisposable
         SetUniformBool(shader, "uUseTexture", useTexture);
         SetUniformVec2(shader, "uTexOffset", new vec2(0f, texOffsetV));
         SetUniformFloat(shader, "uTexScaleV", texScaleV);
+        SetUniformVec2(shader, "uTexUvOffset", TextureOffset);
+        SetUniformVec2(shader, "uTexUvRepeat", TextureRepeat);
+        SetUniformVec2(shader, "uTexUvMirror", new vec2(TextureMirror.x ? 1f : 0f, TextureMirror.y ? 1f : 0f));
 
         if (useTexture)
         {
@@ -1332,6 +1359,9 @@ public class Mesh : IDisposable
         SetUniformBool(shader, "uUseTexture", useTexture);
         SetUniformVec2(shader, "uTexOffset", new vec2(0f, texOffsetV));
         SetUniformFloat(shader, "uTexScaleV", texScaleV);
+        SetUniformVec2(shader, "uTexUvOffset", TextureOffset);
+        SetUniformVec2(shader, "uTexUvRepeat", TextureRepeat);
+        SetUniformVec2(shader, "uTexUvMirror", new vec2(TextureMirror.x ? 1f : 0f, TextureMirror.y ? 1f : 0f));
 
         if (useTexture)
         {
