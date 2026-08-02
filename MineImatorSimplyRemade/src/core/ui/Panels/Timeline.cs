@@ -1232,7 +1232,7 @@ public class Timeline : UiPanel
                 if (ImGui.Selectable(preset.name)) _markerColor = preset.color;
             ImGui.EndCombo();
         }
-        ImGui.ColorEdit4("Color", ref _markerColor);
+        ImGui.ColorEdit4("Color", ref _markerColor, ImGuiColorEditFlags.NoInputs);
         ImGui.TextDisabled($"Frame {_contextFrame}");
         if (ImGui.Button("Add"))
         {

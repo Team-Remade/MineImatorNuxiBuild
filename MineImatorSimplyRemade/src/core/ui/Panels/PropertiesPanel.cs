@@ -1427,7 +1427,7 @@ public class PropertiesPanel : UiPanel
                 fixed (byte* label = "##BackgroundColor"u8)
                 fixed (float* bgColorPtr = BackgroundColor)
                 {
-                    if (ImGui.ColorEdit4(label, bgColorPtr, ImGuiColorEditFlags.None))
+                    if (ImGui.ColorEdit4(label, bgColorPtr, ImGuiColorEditFlags.NoInputs))
                     {
                         WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
                         ProjectManager.Instance.SetDirty(true);
@@ -1663,7 +1663,7 @@ public class PropertiesPanel : UiPanel
                 fixed (byte* ambientLabel = "##AmbientLightColor"u8)
                 fixed (float* ambientColorPtr = AmbientLightColor)
                 {
-                    if (ImGui.ColorEdit3(ambientLabel, ambientColorPtr, ImGuiColorEditFlags.None))
+                    if (ImGui.ColorEdit3(ambientLabel, ambientColorPtr, ImGuiColorEditFlags.NoInputs))
                         ambientChanged = true;
                 }
                 RegisterBackgroundKeyframeContext(nameof(AmbientLightColor));
@@ -1683,7 +1683,7 @@ public class PropertiesPanel : UiPanel
                 fixed (byte* nightAmbientLabel = "##NightAmbientLightColor"u8)
                 fixed (float* nightAmbientColorPtr = NightAmbientLightColor)
                 {
-                    if (ImGui.ColorEdit3(nightAmbientLabel, nightAmbientColorPtr, ImGuiColorEditFlags.None))
+                    if (ImGui.ColorEdit3(nightAmbientLabel, nightAmbientColorPtr, ImGuiColorEditFlags.NoInputs))
                         ambientChanged = true;
                 }
                 RegisterBackgroundKeyframeContext(nameof(NightAmbientLightColor));
@@ -1703,7 +1703,7 @@ public class PropertiesPanel : UiPanel
                 fixed (byte* fillLabel = "##FillLightColor"u8)
                 fixed (float* fillColorPtr = FillLightColor)
                 {
-                    if (ImGui.ColorEdit3(fillLabel, fillColorPtr, ImGuiColorEditFlags.None))
+                    if (ImGui.ColorEdit3(fillLabel, fillColorPtr, ImGuiColorEditFlags.NoInputs))
                         ambientChanged = true;
                 }
                 RegisterBackgroundKeyframeContext(nameof(FillLightColor));
@@ -1749,7 +1749,7 @@ public class PropertiesPanel : UiPanel
             changed |= ImGui.DragFloat("Radius (px)", ref AmbientOcclusionRadius, 0.25f, 0f, 128f, "%.1f");
             changed |= PercentageSlider("Strength##ao", ref AmbientOcclusionStrength, 0f, 200f);
             fixed (float* color = AmbientOcclusionColor)
-                changed |= ImGui.ColorEdit3("Color##ao", color, ImGuiColorEditFlags.None);
+                changed |= ImGui.ColorEdit3("Color##ao", color, ImGuiColorEditFlags.NoInputs);
             changed |= ImGui.DragFloat("Ratio##ao", ref AmbientOcclusionRatio, 0.001f, 0f, 1f, "%.3f");
             changed |= ImGui.DragFloat("Ratio Balance##ao", ref AmbientOcclusionRatioBalance, 0.005f, 0f, 1f, "%.3f");
             ImGui.Unindent();
@@ -1949,7 +1949,7 @@ public class PropertiesPanel : UiPanel
     {
         bool changed;
         fixed (float* value = color)
-            changed = ImGui.ColorEdit3(label, value, ImGuiColorEditFlags.None);
+            changed = ImGui.ColorEdit3(label, value, ImGuiColorEditFlags.NoInputs);
         string path = label switch
         {
             "Horizon Day" => nameof(SkyHorizonDay), "Zenith Day" => nameof(SkyZenithDay),
@@ -2731,7 +2731,7 @@ public class PropertiesPanel : UiPanel
             {
                 vec4 ac = mat?.AlbedoColor ?? new vec4(1f, 1f, 1f, 1f);
                 var vec4 = new Vector4(ac.r, ac.g, ac.b, ac.a);
-                if (ImGui.ColorEdit4("Albedo", ref vec4))
+                if (ImGui.ColorEdit4("Albedo", ref vec4, ImGuiColorEditFlags.NoInputs))
                 {
                     EnsureMaterialSettings();
                     _currentObject.MaterialSettings.AlbedoColor = new vec4(vec4.X, vec4.Y, vec4.Z, vec4.W);
@@ -2744,7 +2744,7 @@ public class PropertiesPanel : UiPanel
             {
                 vec4 bc = mat?.BlendColor ?? new vec4(1f, 1f, 1f, 1f);
                 var color = new Vector3(bc.r, bc.g, bc.b);
-                if (ImGui.ColorEdit3("Blend Color", ref color))
+                if (ImGui.ColorEdit3("Blend Color", ref color, ImGuiColorEditFlags.NoInputs))
                 {
                     EnsureMaterialSettings();
                     _currentObject.MaterialSettings.BlendColor = new vec4(color.X, color.Y, color.Z, 1f);
@@ -2757,7 +2757,7 @@ public class PropertiesPanel : UiPanel
             {
                 vec4 mc = mat?.MixColor ?? new vec4(0f, 0f, 0f, 0f);
                 var color = new Vector3(mc.r, mc.g, mc.b);
-                if (ImGui.ColorEdit3("Mix Color", ref color))
+                if (ImGui.ColorEdit3("Mix Color", ref color, ImGuiColorEditFlags.NoInputs))
                 {
                     EnsureMaterialSettings();
                     _currentObject.MaterialSettings.MixColor = new vec4(color.X, color.Y, color.Z, mc.a);
@@ -2816,7 +2816,7 @@ public class PropertiesPanel : UiPanel
             {
                 vec4 ec = mat?.EmissionColor ?? new vec4(0f, 0f, 0f, 1f);
                 var vec3 = new Vector3(ec.r, ec.g, ec.b);
-                if (ImGui.ColorEdit3("Emission Color", ref vec3))
+                if (ImGui.ColorEdit3("Emission Color", ref vec3, ImGuiColorEditFlags.NoInputs))
                 {
                     EnsureMaterialSettings();
                     _currentObject.MaterialSettings.EmissionColor = new vec4(vec3.X, vec3.Y, vec3.Z, 1f);
@@ -2917,7 +2917,7 @@ public class PropertiesPanel : UiPanel
                 {
                     var lc   = light.LightColor;
                     var vec3 = new Vector3(lc.r, lc.g, lc.b);
-                    if (ImGui.ColorEdit3("Color##lightColor", ref vec3))
+                    if (ImGui.ColorEdit3("Color##lightColor", ref vec3, ImGuiColorEditFlags.NoInputs))
                     {
                         light.LightColor = new vec4(vec3.X, vec3.Y, vec3.Z, 1);
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.color.r");
