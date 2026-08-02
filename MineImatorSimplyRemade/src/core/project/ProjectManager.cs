@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using MineImatorSimplyRemade;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 
 namespace MineImatorSimplyRemade.core.project;
 
@@ -317,6 +318,23 @@ public sealed class ProjectManager
         return Manifest.Assets.AsReadOnly();
     }
 
+    public void EnsureModelAssetIntegrity(ProjectAssetEntry asset)
+    {
+        if (!HasProject || asset == null || asset.AssetType != ProjectAssetType.Model || !asset.StoredInProject)
+            return;
+
+        if (string.IsNullOrWhiteSpace(asset.SourcePath) || !File.Exists(asset.SourcePath))
+            return;
+
+        string targetModelPath = GetAssetFullPath(asset);
+        string? modelFolder = Path.GetDirectoryName(targetModelPath);
+        if (string.IsNullOrWhiteSpace(modelFolder))
+            return;
+
+        Directory.CreateDirectory(modelFolder);
+        CopyModelDependencyTree(asset.SourcePath, modelFolder);
+    }
+
     public bool RemoveAsset(ProjectAssetEntry asset)
     {
         if (!HasProject)
@@ -518,25 +536,257 @@ public sealed class ProjectManager
         string modelFolder = Path.Combine(ModelsFolder, modelFolderName);
         Directory.CreateDirectory(modelFolder);
 
-        string targetModelPath = Path.Combine(modelFolder, Path.GetFileName(sourcePath));
-        File.Copy(sourcePath, targetModelPath, overwrite: false);
+        CopyModelDependencyTree(sourcePath, modelFolder);
 
-        // Copy sibling textures into this model-specific folder to avoid conflicts
-        // between files with identical names imported by different models.
-        string sourceDir = Path.GetDirectoryName(sourcePath) ?? string.Empty;
-        if (Directory.Exists(sourceDir))
+        return Path.Combine("models", modelFolderName, Path.GetFileName(sourcePath));
+    }
+
+    private static void CopyModelDependencyTree(string sourcePath, string modelFolder)
+    {
+        string fullSourcePath = Path.GetFullPath(sourcePath);
+        string sourceRoot = Path.GetDirectoryName(fullSourcePath) ?? string.Empty;
+
+        var collected = CollectModelDependencyFiles(fullSourcePath);
+        foreach (string dep in collected)
+            CopyDependencyFileIntoFolder(dep, sourceRoot, modelFolder);
+
+        // Keep legacy behaviour: include direct sibling textures even when they are
+        // not explicitly referenced in JSON.
+        if (Directory.Exists(sourceRoot))
         {
-            foreach (string textureFile in Directory.GetFiles(sourceDir))
+            foreach (string textureFile in Directory.GetFiles(sourceRoot))
             {
                 if (!IsTextureFile(textureFile)) continue;
+                CopyDependencyFileIntoFolder(textureFile, sourceRoot, modelFolder);
+            }
+        }
+    }
 
-                string textureTarget = Path.Combine(modelFolder, Path.GetFileName(textureFile));
-                if (!File.Exists(textureTarget))
-                    File.Copy(textureFile, textureTarget, overwrite: false);
+    private static HashSet<string> CollectModelDependencyFiles(string rootFile)
+    {
+        var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pending = new Queue<string>();
+        pending.Enqueue(Path.GetFullPath(rootFile));
+
+        while (pending.Count > 0)
+        {
+            string current = pending.Dequeue();
+            if (!File.Exists(current))
+                continue;
+            if (!files.Add(current))
+                continue;
+
+            string ext = Path.GetExtension(current).ToLowerInvariant();
+            string currentDir = Path.GetDirectoryName(current) ?? string.Empty;
+
+            if (ext == ".miobject")
+            {
+                foreach (string dep in GetMiObjectDependencies(current, currentDir))
+                    if (!files.Contains(dep))
+                        pending.Enqueue(dep);
+            }
+            else if (ext == ".mimodel")
+            {
+                foreach (string dep in GetMiModelDependencies(current, currentDir))
+                    if (!files.Contains(dep))
+                        pending.Enqueue(dep);
             }
         }
 
-        return Path.Combine("models", modelFolderName, Path.GetFileName(sourcePath));
+        return files;
+    }
+
+    private static IEnumerable<string> GetMiObjectDependencies(string miObjectPath, string baseDir)
+    {
+        MiObject? miObject;
+        try
+        {
+            miObject = JsonSerializer.Deserialize(File.ReadAllText(miObjectPath), AppJsonContext.Default.MiObject);
+        }
+        catch
+        {
+            yield break;
+        }
+
+        if (miObject == null)
+            yield break;
+
+        var resourceMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (miObject.Resources != null)
+        {
+            foreach (var resource in miObject.Resources)
+            {
+                if (string.IsNullOrWhiteSpace(resource?.Id) || string.IsNullOrWhiteSpace(resource.Filename))
+                    continue;
+                resourceMap[resource.Id] = resource.Filename;
+
+                string? filenamePath = ResolveDependencyPath(baseDir, resource.Filename);
+                if (filenamePath != null)
+                    yield return filenamePath;
+            }
+        }
+
+        if (miObject.Templates == null)
+            yield break;
+
+        foreach (var template in miObject.Templates)
+        {
+            foreach (string reference in EnumerateTemplateFileRefs(template))
+            {
+                string resolvedRef = resourceMap.TryGetValue(reference, out var mapped)
+                    ? mapped
+                    : reference;
+                string? depPath = ResolveDependencyPath(baseDir, resolvedRef);
+                if (depPath != null)
+                    yield return depPath;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateTemplateFileRefs(MiTemplate template)
+    {
+        if (template == null)
+            yield break;
+
+        if (!string.IsNullOrWhiteSpace(template.Model))
+            yield return template.Model;
+        if (!string.IsNullOrWhiteSpace(template.ModelTex))
+            yield return template.ModelTex;
+        if (!string.IsNullOrWhiteSpace(template.ModelTexMaterial))
+            yield return template.ModelTexMaterial;
+        if (!string.IsNullOrWhiteSpace(template.ModelTexNormal))
+            yield return template.ModelTexNormal;
+    }
+
+    private static IEnumerable<string> GetMiModelDependencies(string miModelPath, string baseDir)
+    {
+        MiModel? model;
+        try
+        {
+            model = JsonSerializer.Deserialize(File.ReadAllText(miModelPath), AppJsonContext.Default.MiModel);
+        }
+        catch
+        {
+            yield break;
+        }
+
+        if (model == null)
+            yield break;
+
+        foreach (string reference in EnumerateMiModelFileRefs(model))
+        {
+            string? depPath = ResolveDependencyPath(baseDir, reference);
+            if (depPath != null)
+                yield return depPath;
+        }
+    }
+
+    private static IEnumerable<string> EnumerateMiModelFileRefs(MiModel model)
+    {
+        if (!string.IsNullOrWhiteSpace(model.Texture))
+            yield return model.Texture;
+        if (!string.IsNullOrWhiteSpace(model.TextureMaterial))
+            yield return model.TextureMaterial;
+        if (!string.IsNullOrWhiteSpace(model.TextureNormal))
+            yield return model.TextureNormal;
+
+        if (model.Textures != null)
+        {
+            foreach (var kv in model.Textures)
+            {
+                if (!string.IsNullOrWhiteSpace(kv.Value))
+                    yield return kv.Value;
+            }
+        }
+
+        if (model.Parts != null)
+        {
+            foreach (string partRef in EnumeratePartFileRefs(model.Parts))
+                yield return partRef;
+        }
+    }
+
+    private static IEnumerable<string> EnumeratePartFileRefs(IEnumerable<MiPart> parts)
+    {
+        foreach (var part in parts)
+        {
+            if (!string.IsNullOrWhiteSpace(part.Texture))
+                yield return part.Texture;
+            if (!string.IsNullOrWhiteSpace(part.TextureMaterial))
+                yield return part.TextureMaterial;
+            if (!string.IsNullOrWhiteSpace(part.TextureNormal))
+                yield return part.TextureNormal;
+
+            if (part.Textures != null)
+            {
+                foreach (var kv in part.Textures)
+                {
+                    if (!string.IsNullOrWhiteSpace(kv.Value))
+                        yield return kv.Value;
+                }
+            }
+
+            if (part.Shapes != null)
+            {
+                foreach (var shape in part.Shapes)
+                {
+                    if (!string.IsNullOrWhiteSpace(shape.Texture))
+                        yield return shape.Texture;
+                    if (!string.IsNullOrWhiteSpace(shape.TextureMaterial))
+                        yield return shape.TextureMaterial;
+                    if (!string.IsNullOrWhiteSpace(shape.TextureNormal))
+                        yield return shape.TextureNormal;
+                }
+            }
+
+            if (part.Parts is { Count: > 0 })
+            {
+                foreach (string nestedRef in EnumeratePartFileRefs(part.Parts))
+                    yield return nestedRef;
+            }
+        }
+    }
+
+    private static string? ResolveDependencyPath(string baseDir, string pathRef)
+    {
+        if (string.IsNullOrWhiteSpace(pathRef))
+            return null;
+
+        try
+        {
+            string resolved = Path.IsPathRooted(pathRef)
+                ? Path.GetFullPath(pathRef)
+                : Path.GetFullPath(Path.Combine(baseDir, pathRef));
+            return File.Exists(resolved) ? resolved : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void CopyDependencyFileIntoFolder(string sourceFile, string sourceRoot, string modelFolder)
+    {
+        string relativePath;
+        try
+        {
+            relativePath = Path.GetRelativePath(sourceRoot, sourceFile);
+        }
+        catch
+        {
+            relativePath = Path.GetFileName(sourceFile);
+        }
+
+        if (string.IsNullOrWhiteSpace(relativePath) || relativePath.StartsWith(".."))
+            relativePath = Path.GetFileName(sourceFile);
+
+        string targetPath = Path.Combine(modelFolder, relativePath);
+        string? targetDir = Path.GetDirectoryName(targetPath);
+        if (!string.IsNullOrWhiteSpace(targetDir))
+            Directory.CreateDirectory(targetDir);
+
+        if (!File.Exists(targetPath))
+            File.Copy(sourceFile, targetPath, overwrite: false);
     }
 
     private static bool IsTextureFile(string path)

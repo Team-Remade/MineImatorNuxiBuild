@@ -93,6 +93,12 @@ public class SceneObject
     public string BlockVariant = "";
     public string TextureType = "item";
     public string ResourcePackId = "";
+    public string TemporaryItemSheetPath = "";
+    public string TemporaryItemSheetCacheKey = "";
+    public int TemporaryItemSheetColumns = 0;
+    public int TemporaryItemSheetRows = 0;
+    public int TemporaryItemSheetColumnIndex = 0;
+    public int TemporaryItemSheetRowIndex = 0;
 
     /// <summary>
     /// Hard cap on the tile count along any single axis.  1000 per axis keeps

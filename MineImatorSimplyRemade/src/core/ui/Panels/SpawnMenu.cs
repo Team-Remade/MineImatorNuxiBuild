@@ -552,17 +552,22 @@ public class SpawnMenu : UiPanel
                 uint tileTexId = 0;
                 byte[]? tilePixels = null;
                 int tileSize;
+                int tileWidth;
+                int tileHeight;
 
                 if (_itemAtlasSource == ItemAtlasSource.ItemAtlas)
                 {
                     ItemsAtlas.Textures.TryGetValue(_selectedTileKey, out tileTexId);
                     ItemsAtlas.TilePixels.TryGetValue(_selectedTileKey, out tilePixels);
-                    tileSize = InferTileSizeFromPixels(tilePixels, ItemsAtlas.TileSize);
+                    ItemsAtlas.TryGetTileDimensions(_selectedTileKey, out tileWidth, out tileHeight);
+                    tileSize = Math.Max(tileWidth, tileHeight);
                 }
                 else
                 {
                     TerrainAtlas.Textures.TryGetValue(_selectedTileKey, out tileTexId);
                     TerrainAtlas.TilePixels.TryGetValue(_selectedTileKey, out tilePixels);
+                    tileWidth = TerrainAtlas.TileSize;
+                    tileHeight = TerrainAtlas.TileSize;
                     tileSize = InferTileSizeFromPixels(tilePixels, TerrainAtlas.TileSize);
                 }
 
@@ -570,7 +575,8 @@ public class SpawnMenu : UiPanel
 
                 var mesh = new ExtrudedItemMesh(
                     Gl, tileTexId, tilePixels,
-                    is3D: _item3DMode, tileSize: tileSize, extrudeDepth: 1f / 16f);
+                    is3D: _item3DMode, tileSize: tileSize, tileWidth: tileWidth, tileHeight: tileHeight,
+                    extrudeDepth: 1f / 16f);
                 return new List<Mesh> { mesh };
             }
 
@@ -2060,7 +2066,11 @@ public class SpawnMenu : UiPanel
                 string.Equals(Path.GetFullPath(ProjectManager.GetAssetFullPath(a)), fullSourcePath,
                     StringComparison.OrdinalIgnoreCase));
             if (existing != null)
+            {
+                if (existing.AssetType == ProjectAssetType.Model)
+                    ProjectManager.EnsureModelAssetIntegrity(existing);
                 return ProjectManager.GetAssetFullPath(existing);
+            }
 
             var added = ProjectManager.AddAsset(fullSourcePath, ProjectAssetType.Model);
             return ProjectManager.GetAssetFullPath(added);
@@ -2137,13 +2147,144 @@ public class SpawnMenu : UiPanel
         var miObject = loader.LoadMiObject(filePath);
         if (miObject == null) return null;
 
-        var scene = loader.CreateSceneFromMiObject(miObject);
+        var scene = loader.CreateSceneFromMiObject(miObject, SpawnMiObjectItemViaSpawnMenu);
         if (scene == null) return null;
 
         scene.Name = Path.GetFileNameWithoutExtension(filePath);
         scene.SourceAssetPath = filePath;
         scene.AssignObjectId();
         return scene;
+    }
+
+    private SceneObject? SpawnMiObjectItemViaSpawnMenu(MiTemplate template, MiTimeline timeline,
+        IReadOnlyDictionary<string, MiResource> resourceInfoById, string objectDirectory)
+    {
+        if (Viewport == null || Gl == null || template?.Item == null || string.IsNullOrWhiteSpace(template.Item.Tex))
+            return null;
+        if (!resourceInfoById.TryGetValue(template.Item.Tex, out var resource) || string.IsNullOrWhiteSpace(resource?.Filename))
+            return null;
+
+        string texturePath = Path.IsPathRooted(resource.Filename)
+            ? resource.Filename
+            : Path.Combine(objectDirectory, resource.Filename);
+        if (!File.Exists(texturePath))
+            return null;
+
+        ImageResult image;
+        try
+        {
+            image = ImageResult.FromMemory(File.ReadAllBytes(texturePath), ColorComponents.RedGreenBlueAlpha);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Failed to load MIObject item texture '{texturePath}': {ex.Message}");
+            return null;
+        }
+
+        int texWidth = image.Width;
+        int texHeight = image.Height;
+        int columns = Math.Max(1, resource.ItemSheetSize is { Length: >= 1 } ? resource.ItemSheetSize[0] : 1);
+        int rows = Math.Max(1, resource.ItemSheetSize is { Length: >= 2 } ? resource.ItemSheetSize[1] : 1);
+        int cellWidth = Math.Max(1, texWidth / columns);
+        int cellHeight = Math.Max(1, texHeight / rows);
+
+        MiKeyframe? firstKf = GetFirstTimelineKeyframe(timeline);
+        int columnIndex = 0;
+        int rowIndex = 0;
+
+        if (firstKf?.ItemSlot.HasValue == true)
+            columnIndex = Math.Clamp(firstKf.ItemSlot.Value, 0, columns - 1);
+        else if (template.Item.Slot.HasValue)
+            columnIndex = Math.Clamp(template.Item.Slot.Value, 0, columns - 1);
+
+        if (firstKf?.CustomItemSlot.HasValue == true)
+            rowIndex = Math.Clamp(firstKf.CustomItemSlot.Value - 1, 0, rows - 1);
+
+        byte[] tilePixels = ExtractItemSheetTile(image.Data, texWidth, texHeight,
+            columnIndex * cellWidth, rowIndex * cellHeight, cellWidth, cellHeight);
+
+        string sheetKey = ItemsAtlas.BuildTemporaryItemSheetKey(texturePath, columns, rows);
+        if (!ItemsAtlas.TryRegisterTemporaryItemSheet(sheetKey, texturePath, columns, rows))
+            return null;
+
+        string keyBase = Path.GetFileNameWithoutExtension(texturePath);
+        if (string.IsNullOrWhiteSpace(keyBase))
+            keyBase = timeline.Name;
+        if (string.IsNullOrWhiteSpace(keyBase))
+            keyBase = "miobject_item";
+
+        string key = $"miobject:{SanitizeCustomItemKey(keyBase)}_{columnIndex}_{rowIndex}";
+        while (ItemsAtlas.Textures.ContainsKey(key))
+            key = $"miobject:{SanitizeCustomItemKey(keyBase)}_{columnIndex}_{rowIndex}_{_customItemTextureCounter++}";
+
+        if (!ItemsAtlas.TryRegisterTemporaryItemTile(sheetKey, key, columnIndex, rowIndex))
+            return null;
+
+        var obj = SpawnItemObject(key, ItemAtlasSource.ItemAtlas, template.Item.ThreeD);
+        if (obj == null)
+            return null;
+
+        Viewport.SceneObjects.Remove(obj);
+        obj.Name = !string.IsNullOrWhiteSpace(timeline.Name) ? timeline.Name : "Item";
+        obj.ObjectType = "Item";
+        obj.PrimitivePlaneFaceCamera = template.Item.FaceCamera;
+        obj.ResourcePackId = "";
+        obj.TemporaryItemSheetPath = texturePath;
+        obj.TemporaryItemSheetCacheKey = sheetKey;
+        obj.TemporaryItemSheetColumns = columns;
+        obj.TemporaryItemSheetRows = rows;
+        obj.TemporaryItemSheetColumnIndex = columnIndex;
+        obj.TemporaryItemSheetRowIndex = rowIndex;
+        return obj;
+    }
+
+    public bool EnsureTemporaryItemSheetTile(ProjectSceneObjectEntry entry, string tileKey)
+    {
+        if (string.IsNullOrWhiteSpace(tileKey) || ItemsAtlas.Textures.ContainsKey(tileKey))
+            return true;
+        if (string.IsNullOrWhiteSpace(entry.TemporaryItemSheetPath) ||
+            entry.TemporaryItemSheetColumns <= 0 || entry.TemporaryItemSheetRows <= 0)
+            return false;
+
+        string sheetPath = ProjectManager?.ResolveProjectPath(entry.TemporaryItemSheetPath) ?? entry.TemporaryItemSheetPath;
+        string sheetKey = !string.IsNullOrWhiteSpace(entry.TemporaryItemSheetCacheKey)
+            ? entry.TemporaryItemSheetCacheKey
+            : ItemsAtlas.BuildTemporaryItemSheetKey(sheetPath, entry.TemporaryItemSheetColumns, entry.TemporaryItemSheetRows);
+
+        if (!ItemsAtlas.TryRegisterTemporaryItemSheet(sheetKey, sheetPath, entry.TemporaryItemSheetColumns, entry.TemporaryItemSheetRows))
+            return false;
+
+        return ItemsAtlas.TryRegisterTemporaryItemTile(sheetKey, tileKey,
+            entry.TemporaryItemSheetColumnIndex, entry.TemporaryItemSheetRowIndex);
+    }
+
+    private static MiKeyframe? GetFirstTimelineKeyframe(MiTimeline timeline)
+    {
+        if (timeline.Keyframes == null || timeline.Keyframes.Count == 0)
+            return null;
+
+        if (timeline.Keyframes.TryGetValue("0", out var zeroFrame) && zeroFrame != null)
+            return zeroFrame;
+
+        return timeline.Keyframes
+            .OrderBy(kv => int.TryParse(kv.Key, out var n) ? n : int.MaxValue)
+            .Select(kv => kv.Value)
+            .FirstOrDefault(kf => kf != null);
+    }
+
+    private static byte[] ExtractItemSheetTile(byte[] rgbaPixels, int imageWidth, int imageHeight,
+        int startX, int startY, int tileWidth, int tileHeight)
+    {
+        var tilePixels = new byte[tileWidth * tileHeight * 4];
+
+        for (int y = 0; y < tileHeight; y++)
+        {
+            int srcIndex = ((startY + y) * imageWidth + startX) * 4;
+            int dstIndex = y * tileWidth * 4;
+            System.Buffer.BlockCopy(rgbaPixels, srcIndex, tilePixels, dstIndex, tileWidth * 4);
+        }
+
+        return tilePixels;
     }
 
     private void SpawnCustomModel(string objectName)
@@ -4579,16 +4720,21 @@ public class SpawnMenu : UiPanel
         // Resolve texture ID and pixel data from the appropriate atlas
         uint tileTexId = 0;
         byte[]? tilePixels = null;
+        int tileWidth;
+        int tileHeight;
 
         if (atlasSource == ItemAtlasSource.ItemAtlas)
         {
             ItemsAtlas.Textures.TryGetValue(tileKey, out tileTexId);
             ItemsAtlas.TilePixels.TryGetValue(tileKey, out tilePixels);
+            ItemsAtlas.TryGetTileDimensions(tileKey, out tileWidth, out tileHeight);
         }
         else
         {
             TerrainAtlas.Textures.TryGetValue(tileKey, out tileTexId);
             TerrainAtlas.TilePixels.TryGetValue(tileKey, out tilePixels);
+            tileWidth = TerrainAtlas.TileSize;
+            tileHeight = TerrainAtlas.TileSize;
         }
 
         if (tileTexId == 0 || tilePixels == null) return null;
@@ -4609,15 +4755,15 @@ public class SpawnMenu : UiPanel
         };
         obj.AssignObjectId();
 
-        int tileSize = InferTileSizeFromPixels(
-            tilePixels,
-            atlasSource == ItemAtlasSource.ItemAtlas ? ItemsAtlas.TileSize : TerrainAtlas.TileSize);
+        int tileSize = Math.Max(tileWidth, tileHeight);
         var mesh = new ExtrudedItemMesh(
             Gl,
             tileTexId,
             tilePixels,
             is3D: is3D,
             tileSize: tileSize,
+            tileWidth: tileWidth,
+            tileHeight: tileHeight,
             extrudeDepth: 1f / 16f);
 
         obj.AddMesh(mesh);

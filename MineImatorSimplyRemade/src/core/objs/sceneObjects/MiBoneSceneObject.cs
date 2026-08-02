@@ -146,6 +146,12 @@ public class MiBoneSceneObject : BoneSceneObject
         base.LockBend = LockBend;
     }
 
+    public void SetLockBend(float lockBend)
+    {
+        LockBend = Math.Clamp(lockBend, 0f, 1f);
+        base.LockBend = LockBend;
+    }
+
     /// <summary>
     /// Returns this bone's bend with inherited default/current angles applied.
     /// This is also used during initial import, before any UI edit has caused a
@@ -185,17 +191,21 @@ public class MiBoneSceneObject : BoneSceneObject
     /// override persists through future <see cref="RegenerateMeshes"/> calls.
     /// Only affects meshes/shapes that already carry a non-zero texture.
     /// </summary>
-    public void OverrideTexture(uint textureId)
+    public void OverrideTexture(uint textureId, uint onlyIfTextureId = 0)
     {
         // Update live meshes
         foreach (var mesh in Visuals.Where(mesh => mesh.TextureId != 0))
         {
+            if (onlyIfTextureId != 0 && mesh.TextureId != onlyIfTextureId)
+                continue;
             mesh.TextureId = textureId;
         }
 
         // Update stored shape data so the override survives RegenerateMeshes()
         foreach (var sd in _shapeDataList.Where(sd => sd.TextureId != 0))
         {
+            if (onlyIfTextureId != 0 && sd.TextureId != onlyIfTextureId)
+                continue;
             sd.TextureId = textureId;
         }
     }
@@ -206,6 +216,11 @@ public class MiBoneSceneObject : BoneSceneObject
         if (!BendParameters.HasValue) return;
 
         var bp = BendParameters.Value;
+        // Never allow bend on axes disabled by the model's bend definition.
+        if (!bp.AxisX) newAngle.x = 0f;
+        if (!bp.AxisY) newAngle.y = 0f;
+        if (!bp.AxisZ) newAngle.z = 0f;
+
         newAngle.x = Math.Clamp(newAngle.x, bp.DirectionMin.x, bp.DirectionMax.x);
         newAngle.y = Math.Clamp(newAngle.y, bp.DirectionMin.y, bp.DirectionMax.y);
         newAngle.z = Math.Clamp(newAngle.z, bp.DirectionMin.z, bp.DirectionMax.z);
@@ -274,9 +289,21 @@ public class MiBoneSceneObject : BoneSceneObject
     private vec3 GetEffectiveBendAngle()
     {
         if (!BendParameters.HasValue) return vec3.Zero;
-        var angle = BendParameters.Value.Angle;
-        if (BendParameters.Value.InheritBend && Parent is MiBoneSceneObject parentBone && parentBone.BendParameters.HasValue)
+        var bp = BendParameters.Value;
+        var angle = bp.Angle;
+        if (bp.InheritBend && Parent is MiBoneSceneObject parentBone && parentBone.BendParameters.HasValue)
             angle += parentBone.GetEffectiveBendAngle();
+
+        // After inheritance, enforce this bone's own axis permissions and ranges.
+        if (!bp.AxisX) angle.x = 0f;
+        else angle.x = Math.Clamp(angle.x, bp.DirectionMin.x, bp.DirectionMax.x);
+
+        if (!bp.AxisY) angle.y = 0f;
+        else angle.y = Math.Clamp(angle.y, bp.DirectionMin.y, bp.DirectionMax.y);
+
+        if (!bp.AxisZ) angle.z = 0f;
+        else angle.z = Math.Clamp(angle.z, bp.DirectionMin.z, bp.DirectionMax.z);
+
         return angle;
     }
 

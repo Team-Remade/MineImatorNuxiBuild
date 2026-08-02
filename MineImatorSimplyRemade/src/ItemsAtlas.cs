@@ -15,6 +15,16 @@ namespace MineImatorSimplyRemade;
 /// </summary>
 public static class ItemsAtlas
 {
+    public sealed class TemporaryItemSheet
+    {
+        public string SourcePath { get; init; } = "";
+        public byte[] Pixels { get; init; } = Array.Empty<byte>();
+        public int Width { get; init; }
+        public int Height { get; init; }
+        public int Columns { get; init; }
+        public int Rows { get; init; }
+    }
+
     public const int TileSize   = 16;
     public const int AtlasTiles = 16;
 
@@ -26,6 +36,18 @@ public static class ItemsAtlas
     /// Each value is a <c>TileSize * TileSize * 4</c> byte array (top-to-bottom, RGBA).
     /// </summary>
     public static readonly Dictionary<string, byte[]> TilePixels = new();
+
+    /// <summary>
+    /// Actual texture dimensions for each tile or custom item image.
+    /// Grid-atlas entries are <c>16x16</c>; imported/custom images may be rectangular.
+    /// </summary>
+    public static readonly Dictionary<string, (int Width, int Height)> TileDimensions = new();
+
+    /// <summary>
+    /// Cached temporary item sheets imported from external sources such as MIObject assets.
+    /// These survive atlas rebuilds so individual tiles can be re-sliced later.
+    /// </summary>
+    public static readonly Dictionary<string, TemporaryItemSheet> TemporaryItemSheets = new();
 
     private static GL? _gl;
 
@@ -67,13 +89,87 @@ public static class ItemsAtlas
             return false;
         }
 
-        if (img.Width != img.Height)
+        return TryRegisterCustomTexture(key, img.Data, img.Width, img.Height);
+    }
+
+    public static bool TryRegisterCustomTexture(string key, byte[] pixels, int width, int height)
+    {
+        if (_gl == null || string.IsNullOrWhiteSpace(key) || pixels == null || pixels.Length == 0 || width <= 0 || height <= 0)
+            return false;
+
+        UpsertTileTexture(key, pixels, width, height);
+        return true;
+    }
+
+    public static bool TryGetTileDimensions(string key, out int width, out int height)
+    {
+        if (TileDimensions.TryGetValue(key, out var dims))
         {
-            Console.WriteLine($"Custom item image must be square: {filePath}");
+            width = dims.Width;
+            height = dims.Height;
+            return true;
+        }
+
+        width = TileSize;
+        height = TileSize;
+        return false;
+    }
+
+    public static string BuildTemporaryItemSheetKey(string sheetPath, int columns, int rows)
+    {
+        string normalizedPath = Path.GetFullPath(sheetPath ?? string.Empty)
+            .Replace('\\', '/')
+            .ToLowerInvariant();
+        return $"miobjectsheet:{normalizedPath}|{columns}|{rows}";
+    }
+
+    public static bool TryRegisterTemporaryItemSheet(string sheetKey, string sheetPath, int columns, int rows)
+    {
+        if (string.IsNullOrWhiteSpace(sheetKey) || string.IsNullOrWhiteSpace(sheetPath) || columns <= 0 || rows <= 0)
+            return false;
+
+        if (TemporaryItemSheets.ContainsKey(sheetKey))
+            return true;
+
+        ImageResult img;
+        try
+        {
+            using var stream = File.OpenRead(sheetPath);
+            img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load temporary item sheet '{sheetPath}': {ex.Message}");
             return false;
         }
 
-        UpsertTileTexture(key, img.Data, img.Width, img.Height);
+        TemporaryItemSheets[sheetKey] = new TemporaryItemSheet
+        {
+            SourcePath = Path.GetFullPath(sheetPath),
+            Pixels = img.Data,
+            Width = img.Width,
+            Height = img.Height,
+            Columns = columns,
+            Rows = rows
+        };
+
+        return true;
+    }
+
+    public static bool TryRegisterTemporaryItemTile(string sheetKey, string tileKey, int columnIndex, int rowIndex)
+    {
+        if (_gl == null || string.IsNullOrWhiteSpace(sheetKey) || string.IsNullOrWhiteSpace(tileKey))
+            return false;
+        if (!TemporaryItemSheets.TryGetValue(sheetKey, out var sheet))
+            return false;
+
+        int cellWidth = Math.Max(1, sheet.Width / Math.Max(1, sheet.Columns));
+        int cellHeight = Math.Max(1, sheet.Height / Math.Max(1, sheet.Rows));
+        int clampedColumn = Math.Clamp(columnIndex, 0, Math.Max(0, sheet.Columns - 1));
+        int clampedRow = Math.Clamp(rowIndex, 0, Math.Max(0, sheet.Rows - 1));
+        byte[] tilePixels = ExtractTile(sheet.Pixels, sheet.Width, clampedColumn * cellWidth, clampedRow * cellHeight, cellWidth, cellHeight);
+
+        UpsertTileTexture(tileKey, tilePixels, cellWidth, cellHeight);
         return true;
     }
 
@@ -117,6 +213,7 @@ public static class ItemsAtlas
             _gl.DeleteTexture(tex);
         Textures.Clear();
         TilePixels.Clear();
+        TileDimensions.Clear();
 
         string versionRoot = MinecraftDataLoader.GetVersionRoot();
         string atlasPath = Path.Combine(versionRoot, "gui", "items.png");
@@ -288,6 +385,20 @@ public static class ItemsAtlas
         }
     }
 
+    private static byte[] ExtractTile(byte[] rgbaPixels, int imageWidth, int startX, int startY, int tileWidth, int tileHeight)
+    {
+        var tilePixels = new byte[tileWidth * tileHeight * 4];
+
+        for (int y = 0; y < tileHeight; y++)
+        {
+            int srcIndex = ((startY + y) * imageWidth + startX) * 4;
+            int dstIndex = y * tileWidth * 4;
+            System.Buffer.BlockCopy(rgbaPixels, srcIndex, tilePixels, dstIndex, tileWidth * 4);
+        }
+
+        return tilePixels;
+    }
+
     private static unsafe void UpsertTileTexture(string key, byte[] pixels, int width, int height)
     {
         if (_gl == null) return;
@@ -314,5 +425,6 @@ public static class ItemsAtlas
 
         Textures[key] = texId;
         TilePixels[key] = pixels;
+        TileDimensions[key] = (width, height);
     }
 }

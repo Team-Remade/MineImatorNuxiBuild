@@ -276,6 +276,12 @@ public class ProjectSceneObjectEntry
     public string ResourcePackId { get; set; } = "";
     public string SourceAssetPath { get; set; } = "";
     public string AlbedoTexturePath { get; set; } = "";
+    public string TemporaryItemSheetPath { get; set; } = "";
+    public string TemporaryItemSheetCacheKey { get; set; } = "";
+    public int TemporaryItemSheetColumns { get; set; } = 0;
+    public int TemporaryItemSheetRows { get; set; } = 0;
+    public int TemporaryItemSheetColumnIndex { get; set; } = 0;
+    public int TemporaryItemSheetRowIndex { get; set; } = 0;
 
     // Path to the character texture-variant image selected in the spawn menu
     // at import time (e.g. a "skin" chosen from a character's textures.nux

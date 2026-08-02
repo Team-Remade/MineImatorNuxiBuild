@@ -26,8 +26,14 @@ public class ExtrudedItemMesh : Mesh
     /// <summary>When false a plain double-sided plane is produced instead.</summary>
     public bool Is3D { get; }
 
-    /// <summary>Width and height of the tile in pixels (default: 16).</summary>
+    /// <summary>Maximum tile dimension in pixels used to normalize the mesh to unit size.</summary>
     public int TileSize { get; }
+
+    /// <summary>Tile width in pixels.</summary>
+    public int TileWidth { get; }
+
+    /// <summary>Tile height in pixels.</summary>
+    public int TileHeight { get; }
 
     /// <summary>
     /// Total depth of the extrusion in world units.
@@ -47,7 +53,7 @@ public class ExtrudedItemMesh : Mesh
 
     /// <summary>
     /// RGBA pixel data, row-major, top-to-bottom.
-    /// Length must equal <c>TileSize * TileSize * 4</c>.
+    /// Length must equal <c>TileWidth * TileHeight * 4</c>.
     /// </summary>
     private readonly byte[] _pixels;
 
@@ -57,10 +63,12 @@ public class ExtrudedItemMesh : Mesh
     /// <param name="tileTextureId">GL texture handle of the pre-sliced tile.</param>
     /// <param name="tilePixels">
     ///   Raw RGBA bytes for the tile (top-to-bottom, 4 bytes per pixel).
-    ///   Must be <c>tileSize * tileSize * 4</c> bytes long.
+    ///   Must be <c>tileWidth * tileHeight * 4</c> bytes long.
     /// </param>
     /// <param name="is3D">True = extruded hull; false = flat plane.</param>
-    /// <param name="tileSize">Pixel dimension of the square tile (default 16).</param>
+    /// <param name="tileSize">Maximum tile dimension used to normalize the mesh to unit size.</param>
+    /// <param name="tileWidth">Actual tile width in pixels. Defaults to <paramref name="tileSize"/>.</param>
+    /// <param name="tileHeight">Actual tile height in pixels. Defaults to <paramref name="tileSize"/>.</param>
     /// <param name="extrudeDepth">Total Z depth of the extrusion in world units.</param>
     /// <param name="alphaThreshold">Minimum alpha (0–255) to treat a pixel as opaque.</param>
     public ExtrudedItemMesh(
@@ -69,12 +77,16 @@ public class ExtrudedItemMesh : Mesh
         byte[] tilePixels,
         bool is3D = true,
         int tileSize = 16,
+        int? tileWidth = null,
+        int? tileHeight = null,
         float extrudeDepth = 1f / 16f,
         byte alphaThreshold = 128)
         : base(gl)
     {
         Is3D           = is3D;
-        TileSize       = tileSize;
+        TileWidth      = Math.Max(1, tileWidth ?? tileSize);
+        TileHeight     = Math.Max(1, tileHeight ?? tileSize);
+        TileSize       = Math.Max(TileWidth, TileHeight);
         ExtrudeDepth   = extrudeDepth;
         AlphaThreshold = alphaThreshold;
         TextureId      = tileTextureId;
@@ -100,21 +112,23 @@ public class ExtrudedItemMesh : Mesh
     {
         // A 1×1 double-sided XY plane centred at origin.
         // Front face (+Z normal), back face (-Z normal).
+        // Front face (+Z normal), back face (-Z normal).
         // UV: top-right=(1,1), bottom-right=(1,0), bottom-left=(0,0), top-left=(0,1)
 
-        float h = 0.5f;
+        float halfWidth = TileWidth / (float)TileSize * 0.5f;
+        float halfHeight = TileHeight / (float)TileSize * 0.5f;
 
         vec3[] positions =
         [
-            new vec3( h,  h, 0),   // 0 top-right
-            new vec3( h, -h, 0),   // 1 bottom-right
-            new vec3(-h, -h, 0),   // 2 bottom-left
-            new vec3(-h,  h, 0),   // 3 top-left
+            new vec3( halfWidth,  halfHeight, 0),   // 0 top-right
+            new vec3( halfWidth, -halfHeight, 0),   // 1 bottom-right
+            new vec3(-halfWidth, -halfHeight, 0),   // 2 bottom-left
+            new vec3(-halfWidth,  halfHeight, 0),   // 3 top-left
             // back face duplicates
-            new vec3( h,  h, 0),   // 4
-            new vec3( h, -h, 0),   // 5
-            new vec3(-h, -h, 0),   // 6
-            new vec3(-h,  h, 0),   // 7
+            new vec3( halfWidth,  halfHeight, 0),   // 4
+            new vec3( halfWidth, -halfHeight, 0),   // 5
+            new vec3(-halfWidth, -halfHeight, 0),   // 6
+            new vec3(-halfWidth,  halfHeight, 0),   // 7
         ];
 
         Vertices.AddRange(positions);
@@ -146,8 +160,9 @@ public class ExtrudedItemMesh : Mesh
 
     private void BuildExtrudedHull()
     {
-        int n   = TileSize;
-        float s = 1f / n;              // world size of one pixel
+        int width = TileWidth;
+        int height = TileHeight;
+        float s = 1f / TileSize;       // world size of one pixel on the dominant axis
         float zF = +ExtrudeDepth / 2f; // front face Z
         float zB = -ExtrudeDepth / 2f; // back face Z
 
@@ -177,8 +192,8 @@ public class ExtrudedItemMesh : Mesh
 
         bool IsOpaque(int px, int py)
         {
-            if (px < 0 || py < 0 || px >= n || py >= n) return false;
-            int idx = (py * n + px) * 4 + 3; // alpha channel
+            if (px < 0 || py < 0 || px >= width || py >= height) return false;
+            int idx = (py * width + px) * 4 + 3; // alpha channel
             return _pixels[idx] >= AlphaThreshold;
         }
 
@@ -190,22 +205,24 @@ public class ExtrudedItemMesh : Mesh
 
         vec2 PixelCenterUV(int px, int py)
         {
-            float u = (px + 0.5f) / n;
-            float v = (py + 0.5f) / n;
+            float u = (px + 0.5f) / width;
+            float v = (py + 0.5f) / height;
             return new vec2(u, v);
         }
 
         // World-space X,Y corners of pixel (px, py).
         // X: pixel column 0 → left edge at -0.5, column n-1 → right edge at +0.5.
         // Y: image row 0 is the top; world Y increases upward, so row 0 → y near +0.5.
-        float WorldX(int px) => px * s - 0.5f;
-        float WorldY(int py) => 0.5f - (py + 1) * s; // bottom edge of row py in world
+        float totalWidth = width * s;
+        float totalHeight = height * s;
+        float WorldX(int px) => px * s - totalWidth * 0.5f;
+        float WorldY(int py) => totalHeight * 0.5f - (py + 1) * s; // bottom edge of row py in world
 
         // ── Build geometry ────────────────────────────────────────────────────
 
-        for (int py = 0; py < n; py++)
+        for (int py = 0; py < height; py++)
         {
-            for (int px = 0; px < n; px++)
+            for (int px = 0; px < width; px++)
             {
                 if (!IsOpaque(px, py)) continue;
 

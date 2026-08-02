@@ -152,6 +152,12 @@ public static class ProjectSceneSerializer
             ResourcePackId = obj.ResourcePackId,
             SourceAssetPath = pm.ToProjectRelativePath(obj.SourceAssetPath),
             AlbedoTexturePath = pm.ToProjectRelativePath(obj.AlbedoTexturePath),
+            TemporaryItemSheetPath = pm.ToProjectRelativePath(obj.TemporaryItemSheetPath),
+            TemporaryItemSheetCacheKey = obj.TemporaryItemSheetCacheKey,
+            TemporaryItemSheetColumns = obj.TemporaryItemSheetColumns,
+            TemporaryItemSheetRows = obj.TemporaryItemSheetRows,
+            TemporaryItemSheetColumnIndex = obj.TemporaryItemSheetColumnIndex,
+            TemporaryItemSheetRowIndex = obj.TemporaryItemSheetRowIndex,
             TextureOverridePath = pm.ToProjectRelativePath(obj.TextureOverridePath),
             Position = ToProjectVec3(obj.Position),
             Rotation = ToProjectVec3(obj.Rotation),
@@ -320,6 +326,9 @@ public static class ProjectSceneSerializer
             ItemAtlasSource atlasSource = entry.TextureType == "block"
                 ? ItemAtlasSource.BlockAtlas
                 : ItemAtlasSource.ItemAtlas;
+
+            if (atlasSource == ItemAtlasSource.ItemAtlas)
+                spawnMenu.EnsureTemporaryItemSheetTile(entry, tileKey);
 
             return spawnMenu.SpawnItemObject(tileKey, atlasSource, entry.ItemIs3D);
         }
@@ -492,6 +501,12 @@ public static class ProjectSceneSerializer
         obj.TileX = entry.TileX;
         obj.TileY = entry.TileY;
         obj.TileZ = entry.TileZ;
+        obj.TemporaryItemSheetPath = entry.TemporaryItemSheetPath;
+        obj.TemporaryItemSheetCacheKey = entry.TemporaryItemSheetCacheKey;
+        obj.TemporaryItemSheetColumns = entry.TemporaryItemSheetColumns;
+        obj.TemporaryItemSheetRows = entry.TemporaryItemSheetRows;
+        obj.TemporaryItemSheetColumnIndex = entry.TemporaryItemSheetColumnIndex;
+        obj.TemporaryItemSheetRowIndex = entry.TemporaryItemSheetRowIndex;
 
         if (obj.SpawnCategory == "Primitives" && obj.ObjectType == "Plane")
         {
