@@ -38,6 +38,7 @@ public class SceneTree : UiPanel
     /// </summary>
     private SceneObject _selectedObject;
     private SceneObject _lastClickedObject;
+    private SceneObject _selectionToReveal;
     private SceneObject _renamingObject;
     private string      _renameBuffer = "";
 
@@ -95,6 +96,10 @@ public class SceneTree : UiPanel
         {
             RenderNode(obj);
         }
+
+        // The reveal request is only needed for one frame. By this point all
+        // ancestors have been opened and the selected row has requested scroll.
+        _selectionToReveal = null;
 
         // ── Root-level drop target ───────────────────────────────────────────
         // Covers the remaining empty space so dropping onto blank area
@@ -268,6 +273,15 @@ public class SceneTree : UiPanel
 
         ImGui.PushID(nodeId);
 
+        // A viewport pick can select an item whose branch is collapsed. Open
+        // every ancestor on the way to it before rendering the node so the
+        // selected row exists this frame and can be scrolled into view.
+        if (_selectionToReveal != null &&
+            (_selectionToReveal == obj || _selectionToReveal.IsDescendantOf(obj)))
+        {
+            ImGui.SetNextItemOpen(true, ImGuiCond.Always);
+        }
+
         bool nodeOpen;
 
         if (isRenaming)
@@ -286,6 +300,9 @@ public class SceneTree : UiPanel
         {
             nodeOpen = ImGui.TreeNodeEx(obj.GetDisplayName() + "##node", flags);
         }
+
+        if (_selectionToReveal == obj)
+            ImGui.SetScrollHereY(0.5f);
 
         // Single click → select (multi-select with Ctrl/Shift)
         if (ImGui.IsItemClicked(ImGuiMouseButton.Left) && !ImGui.IsItemToggledOpen())
@@ -417,6 +434,10 @@ public class SceneTree : UiPanel
         _selectedObject = SelectionManager.Instance?.SelectedObjects.Count > 0
             ? SelectionManager.Instance.SelectedObjects[0]
             : null;
+
+        // The most recently-added object is the useful target for Ctrl-click
+        // multi-selection; for ordinary selection it is also the sole object.
+        _selectionToReveal = SelectionManager.Instance?.SelectedObjects.LastOrDefault();
     }
 
     private List<SceneObject> FlattenVisibleTree()
