@@ -219,7 +219,10 @@ public static class BendHelper
         float defaultBendSize = (effectiveStyle == BendStyle.Realistic) ? 4.0f : 1.0f;
         float size = bend.Size ?? defaultBendSize;
 
-        // Scale offset/size by part scale (matching el_update_part.gml)
+        // Scale offset and authored custom sizes by part scale (matching
+        // Modelbench's el_update_part.gml). An omitted bend size stays an
+        // implicit render-style default (1 sharp / 4 smooth) and must not be
+        // treated like a custom size.
         float scaleX = partScale != null && partScale.Length > 0 ? partScale[0] : 1.0f;
         float scaleY = partScale != null && partScale.Length > 1 ? partScale[1] : 1.0f;
         float scaleZ = partScale != null && partScale.Length > 2 ? partScale[2] : 1.0f;
@@ -228,15 +231,15 @@ public static class BendHelper
         {
             case BendPart.Right: case BendPart.Left:
                 offset *= scaleX;
-                size   *= scaleX;
+                if (explicitBendSize) size *= scaleX;
                 break;
             case BendPart.Upper: case BendPart.Lower:
                 offset *= scaleY;
-                size   *= scaleY;
+                if (explicitBendSize) size *= scaleY;
                 break;
             case BendPart.Front: case BendPart.Back:
                 offset *= scaleZ;
-                size   *= scaleZ;
+                if (explicitBendSize) size *= scaleZ;
                 break;
         }
 

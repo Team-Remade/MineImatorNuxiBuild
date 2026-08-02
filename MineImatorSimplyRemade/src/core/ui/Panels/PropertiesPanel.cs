@@ -4,6 +4,7 @@ using System.Reflection;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core;
@@ -1395,6 +1396,26 @@ public class PropertiesPanel : UiPanel
         }
 
         ImGui.Spacing();
+
+        // Mine-imator models can switch between Modelbench's block-preserving
+        // sharp bends and the more finely segmented smooth bend style.
+        if (_currentObject is CharacterSceneObject character &&
+            character.BoneObjects.Values.Any(bone => bone is MiBoneSceneObject))
+        {
+            bool sharpBends = character.ModelBendStyle == BendStyle.Blocky;
+            if (ImGui.Checkbox("Sharp bends", ref sharpBends))
+            {
+                character.ModelBendStyle = sharpBends ? BendStyle.Blocky : BendStyle.Realistic;
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(sharpBends
+                    ? "Preserves Minecraft's blocky limb shape while bending."
+                    : "Uses additional segments for a smoother bend.");
+
+            ImGui.Spacing();
+        }
 
         // ── Position ──────────────────────────────────────────────────────────
         if (ImGui.CollapsingHeader("Position"))

@@ -214,11 +214,29 @@ public class MiBoneSceneObject : BoneSceneObject
         RegenerateMeshes();
     }
 
+    /// <summary>Updates stored shape data and implicit bend widths for a model style change.</summary>
+    public void SetModelBendStyle(BendStyle oldStyle, BendStyle newStyle)
+    {
+        foreach (var shapeData in _shapeDataList)
+            shapeData.ModelBendStyle = newStyle;
+
+        if (!BendParameters.HasValue || BendParameters.Value.ExplicitBendSize || oldStyle == newStyle)
+            return;
+
+        var bend = BendParameters.Value;
+        // Modelbench leaves an omitted bend_size null and resolves it from the
+        // current viewport style on every mesh generation. BendParams stores
+        // the resolved value, so replace it directly instead of scaling it as
+        // though it were a custom/authored size.
+        bend.BendSize = newStyle == BendStyle.Blocky ? 1f : 4f;
+        BendParameters = bend;
+    }
+
     /// <summary>
     /// Rebuilds all mesh instances for this bone using the current bend angle.
     /// Also triggers regeneration on child bones whose InheritBend is true.
     /// </summary>
-    public void RegenerateMeshes()
+    public void RegenerateMeshes(bool propagateInheritedBends = true)
     {
         if (_shapeDataList.Count > 0)
         {
@@ -237,6 +255,9 @@ public class MiBoneSceneObject : BoneSceneObject
         }
 
         // Propagate to inheriting children
+        if (!propagateInheritedBends)
+            return;
+
         foreach (var child in GetChildrenObjects())
         {
             if (child is MiBoneSceneObject childBone &&

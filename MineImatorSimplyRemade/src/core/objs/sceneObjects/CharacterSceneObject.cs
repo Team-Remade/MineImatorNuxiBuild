@@ -26,9 +26,37 @@ public class CharacterSceneObject : SceneObject
 
     /// <summary>
     /// Bend style for Mine Imator character models.
-    /// When set to ProjectDefault, uses <see cref="MineImatorLoader.ProjectBendStyle"/>.
+    /// Defaults to sharp/blocky; ProjectDefault resolves through
+    /// <see cref="MineImatorLoader.ProjectBendStyle"/> when assigned.
     /// </summary>
-    public BendStyle ModelBendStyle { get; set; } = BendStyle.ProjectDefault;
+    private BendStyle _modelBendStyle = BendStyle.Blocky;
+
+    public BendStyle ModelBendStyle
+    {
+        get => _modelBendStyle;
+        set => SetModelBendStyle(value);
+    }
+
+    /// <summary>
+    /// Changes the bend style for this imported Mine-imator model and rebuilds
+    /// its meshes. Imported models default to Modelbench's sharp/blocky style.
+    /// </summary>
+    public void SetModelBendStyle(BendStyle style)
+    {
+        if (style == BendStyle.ProjectDefault)
+            style = MineImatorLoader.ProjectBendStyle;
+        if (_modelBendStyle == style)
+            return;
+
+        BendStyle oldStyle = _modelBendStyle;
+        _modelBendStyle = style;
+
+        var mineImatorBones = BoneObjects.Values.OfType<MiBoneSceneObject>().ToArray();
+        foreach (var bone in mineImatorBones)
+            bone.SetModelBendStyle(oldStyle, style);
+        foreach (var bone in mineImatorBones)
+            bone.RegenerateMeshes(propagateInheritedBends: false);
+    }
 
     /// <summary>
     /// Dictionary mapping bone name → BoneSceneObject (or MiBoneSceneObject for .mimodel).

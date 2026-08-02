@@ -1325,7 +1325,7 @@ public class MineImatorLoader
 
             vec3 startBendVec = BendHelper.GetBendVector(b.Angle, startP);
             vec3 startScaleCorr = sharpBend
-                ? BendHelper.GetBendScaleCorrection(bendStart, bendEnd, startP, 0, startBendVec, b)
+                ? BendHelper.GetBendScaleCorrection(bendStart, bendEnd, startP, 0, b.Angle, b)
                 : vec3.Zero;
             mat4 startMat =
                 BendHelper.GetBendMatrix(b, startBendVec, shapePosition, shapeScale, vec3.Ones + startScaleCorr);
@@ -1456,7 +1456,7 @@ public class MineImatorLoader
 
                 vec3 segBendVec = sharpBend ? b.Angle * segP : BendHelper.GetBendVector(b.Angle, segP);
                 vec3 segScaleCorr = sharpBend
-                    ? BendHelper.GetBendScaleCorrection(bendStart, bendEnd, segP, segPos, segBendVec, b)
+                    ? BendHelper.GetBendScaleCorrection(bendStart, bendEnd, segP, segPos, b.Angle, b)
                     : vec3.Zero;
                 vec3 segMatScale = vec3.Ones + segScaleCorr + new vec3(segP * scaleFactor);
                 mat4 segMat = BendHelper.GetBendMatrix(b, segBendVec, shapePosition, shapeScale, segMatScale);
@@ -1469,6 +1469,11 @@ public class MineImatorLoader
                 nn2 = BendHelper.TransformDirection(segMat, nn2);
                 nn3 = BendHelper.TransformDirection(segMat, nn3);
                 nn4 = BendHelper.TransformDirection(segMat, nn4);
+
+                // Modelbench clears supplied normals for sharp bends, causing
+                // vbuffer_add_triangle to calculate a flat normal per face.
+                if (sharpBend)
+                    n1 = n2 = n3 = n4 = nn1 = nn2 = nn3 = nn4 = vec3.Zero;
 
                 switch (segAxis)
                 {
@@ -1902,7 +1907,7 @@ public class MineImatorLoader
         if (invAngle) startP = 1f - startP;
         vec3 startBendVec = BendHelper.GetBendVector(b.Angle, startP);
         vec3 startScaleCorr = sharpBend
-            ? BendHelper.GetBendScaleCorrection(bendStart, bendEnd, startP, 0, startBendVec, b)
+            ? BendHelper.GetBendScaleCorrection(bendStart, bendEnd, startP, 0, b.Angle, b)
             : vec3.Zero;
         mat4 startMat =
             BendHelper.GetBendMatrix(b, startBendVec, shapePosition, shapeScale, vec3.Ones + startScaleCorr);
@@ -1956,7 +1961,7 @@ public class MineImatorLoader
 
             vec3 segBendVec = sharpBend ? b.Angle * segP : BendHelper.GetBendVector(b.Angle, segP);
             vec3 segScaleCorr = sharpBend
-                ? BendHelper.GetBendScaleCorrection(bendStart, bendEnd, segP, segPos, segBendVec, b)
+                ? BendHelper.GetBendScaleCorrection(bendStart, bendEnd, segP, segPos, b.Angle, b)
                 : vec3.Zero;
             mat4 segMat = BendHelper.GetBendMatrix(b, segBendVec, shapePosition, shapeScale, vec3.Ones + segScaleCorr);
 
@@ -1964,6 +1969,9 @@ public class MineImatorLoader
             np2 = BendHelper.TransformPoint(segMat, np2);
             var nn1 = BendHelper.TransformDirection(segMat * rsm, new vec3(0, 0, -1));
             var nn2 = BendHelper.TransformDirection(segMat * rsm, new vec3(0, 0, 1));
+
+            if (sharpBend)
+                n1 = n2 = nn1 = nn2 = vec3.Zero;
 
             vec2 t1, t2, t3, t4;
             if (segAxis == 0)
@@ -2122,7 +2130,7 @@ public class MineImatorLoader
 
                 vec3 bendVec = sharpBend ? b.Angle * segP : BendHelper.GetBendVector(b.Angle, segP);
                 vec3 scCorr = sharpBend
-                    ? BendHelper.GetBendScaleCorrection(bendStart, bendEnd, segP, innerPos, bendVec, b)
+                    ? BendHelper.GetBendScaleCorrection(bendStart, bendEnd, segP, innerPos, b.Angle, b)
                     : vec3.Zero;
                 mat4 mat = BendHelper.GetBendMatrix(b, bendVec, shapePosition, shapeScale, vec3.Ones + scCorr);
                 gridBot[outer, inner] = BendHelper.TransformPoint(mat, pBot);
@@ -2297,6 +2305,17 @@ public class MineImatorLoader
         vec3 n0, vec3 n1, vec3 n2, vec3 n3,
         vec2 uv0, vec2 uv1, vec2 uv2, vec2 uv3, bool invert)
     {
+        // A zero-normal quad is the sharp-bend equivalent of Modelbench's
+        // null normal arguments. Emit separate triangles so even a slightly
+        // non-planar corrected quad retains a genuinely hard edge.
+        if (n0.LengthSqr < 1e-10f && n1.LengthSqr < 1e-10f &&
+            n2.LengthSqr < 1e-10f && n3.LengthSqr < 1e-10f)
+        {
+            AddFlatTriangle(verts, normals, uvs, indices, v0, v1, v2, uv0, uv1, uv2, invert);
+            AddFlatTriangle(verts, normals, uvs, indices, v0, v2, v3, uv0, uv2, uv3, invert);
+            return;
+        }
+
         uint bv = (uint)verts.Count;
         verts.Add(v0);
         verts.Add(v1);
@@ -2314,6 +2333,31 @@ public class MineImatorLoader
         uvs.Add(uv2);
         uvs.Add(uv3);
         AddQuadIndices(indices, bv, invert);
+    }
+
+    private static void AddFlatTriangle(List<vec3> verts, List<vec3> normals, List<vec2> uvs,
+        List<uint> indices, vec3 v0, vec3 v1, vec3 v2, vec2 uv0, vec2 uv1, vec2 uv2, bool invert)
+    {
+        if (invert)
+        {
+            (v0, v1) = (v1, v0);
+            (uv0, uv1) = (uv1, uv0);
+        }
+
+        vec3 normal = CalculateFaceNormal(v0, v1, v2);
+        uint baseVertex = (uint)verts.Count;
+        verts.Add(v0);
+        verts.Add(v1);
+        verts.Add(v2);
+        normals.Add(normal);
+        normals.Add(normal);
+        normals.Add(normal);
+        uvs.Add(uv0);
+        uvs.Add(uv1);
+        uvs.Add(uv2);
+        indices.Add(baseVertex);
+        indices.Add(baseVertex + 1);
+        indices.Add(baseVertex + 2);
     }
 
     private static void AddQuadIndices(List<uint> indices, uint baseVertex, bool invert)
