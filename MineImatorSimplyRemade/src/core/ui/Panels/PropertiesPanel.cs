@@ -218,36 +218,7 @@ public class PropertiesPanel : UiPanel
 
     private static string SanitizeNumericText(string text, bool allowDecimal, bool allowExponent)
     {
-        if (string.IsNullOrWhiteSpace(text))
-            return "0";
-
-        var builder = new System.Text.StringBuilder(text.Length);
-        bool hasDecimal = false;
-        bool hasExponent = false;
-
-        foreach (char c in text)
-        {
-            if (char.IsDigit(c))
-            {
-                builder.Append(c);
-            }
-            else if ((c == '-' || c == '+') && builder.Length == 0)
-            {
-                builder.Append(c);
-            }
-            else if (allowDecimal && c == '.' && !hasDecimal && !hasExponent)
-            {
-                builder.Append(c);
-                hasDecimal = true;
-            }
-            else if (allowExponent && (c == 'e' || c == 'E') && !hasExponent && builder.Length > 0)
-            {
-                builder.Append(c);
-                hasExponent = true;
-            }
-        }
-
-        return builder.Length > 0 ? builder.ToString() : "0";
+        return NumericExpressionParser.SanitizeText(text, allowDecimal, allowExponent);
     }
     public string GetRenderImageFormat() => _renderImageFormat;
     public string GetRenderVideoFormat() => _renderVideoFormat;

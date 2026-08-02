@@ -76,17 +76,7 @@ public class Timeline : UiPanel
 {
     public static string SanitizeIntegerText(string text)
     {
-        if (string.IsNullOrWhiteSpace(text))
-            return "0";
-
-        var builder = new StringBuilder(text.Length);
-        foreach (char c in text)
-        {
-            if (char.IsDigit(c) || (c == '-' && builder.Length == 0))
-                builder.Append(c);
-        }
-
-        return builder.Length > 0 ? builder.ToString() : "0";
+        return NumericExpressionParser.SanitizeText(text, allowDecimal: false, allowExponent: false);
     }
 
     // ── Singleton ─────────────────────────────────────────────────────────────
