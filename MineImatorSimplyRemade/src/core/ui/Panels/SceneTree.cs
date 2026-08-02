@@ -41,6 +41,8 @@ public class SceneTree : UiPanel
     private SceneObject _selectionToReveal;
     private SceneObject _renamingObject;
     private string      _renameBuffer = "";
+    private string      _searchQuery = "";
+    private HashSet<SceneObject>? _filteredVisibleSet;
 
     // Context-menu state
     private SceneObject _contextMenuTarget;
@@ -90,12 +92,29 @@ public class SceneTree : UiPanel
         _nodeIdCounter  = 0;
         _openContextMenu = false;
 
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputTextWithHint("##sceneTreeSearch", "Search scene objects...", ref _searchQuery, 128);
+        ImGui.Separator();
+
+        string searchTerm = _searchQuery.Trim();
+        _filteredVisibleSet = string.IsNullOrEmpty(searchTerm)
+            ? null
+            : BuildFilterVisibleSet(searchTerm);
+
         // Draw each top-level object — snapshot the list first so that a
         // reparent/delete triggered during the same frame doesn't mutate it.
+        int renderedRootCount = 0;
         foreach (var obj in Viewport.SceneObjects.ToList())
         {
-            RenderNode(obj);
+            if (_filteredVisibleSet != null && !_filteredVisibleSet.Contains(obj))
+                continue;
+
+            RenderNode(obj, _filteredVisibleSet);
+            renderedRootCount++;
         }
+
+        if (_filteredVisibleSet != null && renderedRootCount == 0)
+            ImGui.TextDisabled("No scene objects match the current search.");
 
         // The reveal request is only needed for one frame. By this point all
         // ancestors have been opened and the selected row has requested scroll.
@@ -253,12 +272,13 @@ public class SceneTree : UiPanel
 
     // ── Rendering helpers ───────────────────────────────────────────────────
 
-    private void RenderNode(SceneObject obj)
+    private void RenderNode(SceneObject obj, HashSet<SceneObject>? visibilityFilter)
     {
         if (obj.HideInSceneTree) return;
 
         int nodeId    = ++_nodeIdCounter;
-        bool hasChildren = obj.Children.Any(c => !c.HideInSceneTree);
+        bool hasChildren = obj.Children.Any(c => !c.HideInSceneTree &&
+            (visibilityFilter == null || visibilityFilter.Contains(c)));
         bool isSelected  = SelectionManager.Instance != null
             ? SelectionManager.Instance.IsSelected(obj)
             : _selectedObject == obj;
@@ -358,7 +378,11 @@ public class SceneTree : UiPanel
         if (nodeOpen)
         {
             foreach (var child in obj.Children.ToList())
-                RenderNode(child);
+            {
+                if (child.HideInSceneTree) continue;
+                if (visibilityFilter != null && !visibilityFilter.Contains(child)) continue;
+                RenderNode(child, visibilityFilter);
+            }
             ImGui.TreePop();
         }
 
@@ -381,7 +405,7 @@ public class SceneTree : UiPanel
             }
             else if (shiftHeld && _lastClickedObject != null)
             {
-                var flatTree = FlattenVisibleTree();
+                var flatTree = FlattenVisibleTree(_filteredVisibleSet);
                 int startIdx = flatTree.IndexOf(_lastClickedObject);
                 int endIdx   = flatTree.IndexOf(obj);
                 if (startIdx >= 0 && endIdx >= 0)
@@ -440,21 +464,55 @@ public class SceneTree : UiPanel
         _selectionToReveal = SelectionManager.Instance?.SelectedObjects.LastOrDefault();
     }
 
-    private List<SceneObject> FlattenVisibleTree()
+    private List<SceneObject> FlattenVisibleTree(HashSet<SceneObject>? visibilityFilter = null)
     {
         var result = new List<SceneObject>();
         if (Viewport == null) return result;
         foreach (var root in Viewport.SceneObjects)
-            FlattenNode(root, result);
+            FlattenNode(root, result, visibilityFilter);
         return result;
     }
 
-    private void FlattenNode(SceneObject obj, List<SceneObject> result)
+    private void FlattenNode(SceneObject obj, List<SceneObject> result, HashSet<SceneObject>? visibilityFilter)
     {
         if (obj.HideInSceneTree) return;
+        if (visibilityFilter != null && !visibilityFilter.Contains(obj)) return;
         result.Add(obj);
         foreach (var child in obj.Children)
-            FlattenNode(child, result);
+            FlattenNode(child, result, visibilityFilter);
+    }
+
+    private HashSet<SceneObject> BuildFilterVisibleSet(string searchTerm)
+    {
+        var visible = new HashSet<SceneObject>();
+
+        if (Viewport == null)
+            return visible;
+
+        foreach (var root in Viewport.SceneObjects)
+            PopulateFilterVisibleSet(root, searchTerm, visible);
+
+        return visible;
+    }
+
+    private bool PopulateFilterVisibleSet(SceneObject obj, string searchTerm, HashSet<SceneObject> visible)
+    {
+        if (obj.HideInSceneTree)
+            return false;
+
+        bool selfMatches = obj.GetDisplayName().Contains(searchTerm, StringComparison.OrdinalIgnoreCase);
+        bool childMatches = false;
+
+        foreach (var child in obj.Children)
+            childMatches |= PopulateFilterVisibleSet(child, searchTerm, visible);
+
+        if (selfMatches || childMatches)
+        {
+            visible.Add(obj);
+            return true;
+        }
+
+        return false;
     }
 
     // ── Rename ──────────────────────────────────────────────────────────────
