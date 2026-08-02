@@ -1,12 +1,33 @@
 #version 330 core
 
 layout (location = 0) in vec3 aPos;
+layout (location = 2) in vec2 aTexCoord;
 layout (location = 3) in ivec4 aBoneIndices;
 layout (location = 4) in vec4 aBoneWeights;
 
 uniform mat4 uMVP;
 uniform bool uIsSkinned;
 uniform mat4 uBoneMatrices[64];
+uniform vec2  uTexOffset;
+uniform float uTexScaleV;
+uniform vec2  uTexUvOffset;
+uniform vec2  uTexUvRepeat;
+uniform vec2  uTexUvMirror;
+
+out vec2 vTexCoord;
+
+vec2 applyUvTransform(vec2 uv)
+{
+    vec2 repeated = uv * uTexUvRepeat;
+
+    if (uTexUvMirror.x > 0.5)
+        repeated.x = abs(fract(repeated.x * 0.5) * 2.0 - 1.0);
+
+    if (uTexUvMirror.y > 0.5)
+        repeated.y = abs(fract(repeated.y * 0.5) * 2.0 - 1.0);
+
+    return repeated + uTexUvOffset;
+}
 
 void main() {
     vec4 pos;
@@ -23,5 +44,7 @@ void main() {
         pos = vec4(aPos, 1.0);
     }
 
+    vec2 baseUv = vec2(aTexCoord.x, aTexCoord.y * uTexScaleV + uTexOffset.y);
+    vTexCoord = applyUvTransform(baseUv);
     gl_Position = uMVP * pos;
 }

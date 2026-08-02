@@ -1503,6 +1503,12 @@ public class Mesh : IDisposable
         if (loc >= 0) _gl.Uniform4(loc, v.x, v.y, v.z, v.w);
     }
 
+    private void SetUniformVec4(Shader shader, string name, vec4 v)
+    {
+        int loc = shader.GetUniformLocation(name);
+        if (loc >= 0) _gl.Uniform4(loc, v.x, v.y, v.z, v.w);
+    }
+
     private void SetUniformVec3(Shader shader, string name, vec3 v)
     {
         int loc = shader.GetUniformLocation(name);
@@ -1585,6 +1591,63 @@ public class Mesh : IDisposable
             gl.DrawArrays(GLEnum.Triangles, 0, (uint)Vertices.Count);
 
         gl.BindVertexArray(0);
+    }
+
+    /// <summary>
+    /// Draws the mesh for the pick and silhouette passes using the supplied
+    /// shader.  This mirrors the main material path just enough to discard fully
+    /// transparent texels before writing the helper-pass output.
+    /// </summary>
+    public unsafe void RenderPickPass(Shader shader)
+    {
+        if (_vao == 0 || shader == null) return;
+
+        float texOffsetV = 0f;
+        float texScaleV = 1f;
+        if (!string.IsNullOrEmpty(AnimationKey) &&
+            TerrainAtlas.AnimatedTextures.TryGetValue(AnimationKey, out var animInfo))
+        {
+            double ticksPerFrame = animInfo.FrameTime * SecondsPerTick;
+            double totalDuration = animInfo.Frames.Length * ticksPerFrame;
+            double t = _animTime % totalDuration;
+            int sequenceIndex = (int)(t / ticksPerFrame);
+            sequenceIndex = Math.Clamp(sequenceIndex, 0, animInfo.Frames.Length - 1);
+            int frameIndex = animInfo.Frames[sequenceIndex];
+            texScaleV = (float)animInfo.FrameHeight / (animInfo.FrameHeight * animInfo.TotalFrames);
+            texOffsetV = frameIndex * texScaleV;
+        }
+
+        bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;
+        SetUniformFloat(shader, "uAlpha", Alpha);
+        SetUniformVec4(shader, "uBlendColor", BlendColor);
+        SetUniformBool(shader, "uUseTexture", useTexture);
+        SetUniformVec2(shader, "uTexOffset", new vec2(0f, texOffsetV));
+        SetUniformFloat(shader, "uTexScaleV", texScaleV);
+        SetUniformVec2(shader, "uTexUvOffset", TextureOffset);
+        SetUniformVec2(shader, "uTexUvRepeat", TextureRepeat);
+        SetUniformVec2(shader, "uTexUvMirror", new vec2(TextureMirror.x ? 1f : 0f, TextureMirror.y ? 1f : 0f));
+
+        if (useTexture)
+        {
+            _gl.ActiveTexture(GLEnum.Texture0);
+            _gl.BindTexture(GLEnum.Texture2D, TextureId);
+            SetUniformInt(shader, "uTexture", 0);
+        }
+
+        _gl.BindVertexArray(_vao);
+
+        if (Indices != null && _ebo != 0)
+            _gl.DrawElements(GLEnum.Triangles, (uint)Indices.Length, GLEnum.UnsignedInt, (void*)0);
+        else
+            _gl.DrawArrays(GLEnum.Triangles, 0, (uint)Vertices.Count);
+
+        _gl.BindVertexArray(0);
+
+        if (useTexture)
+        {
+            _gl.ActiveTexture(GLEnum.Texture0);
+            _gl.BindTexture(GLEnum.Texture2D, 0);
+        }
     }
 
     // ── IDisposable ───────────────────────────────────────────────────────────

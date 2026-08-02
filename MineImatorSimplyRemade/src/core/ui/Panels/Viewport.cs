@@ -3313,14 +3313,14 @@ public class Viewport : UiPanel
                     if (mesh.IsSkinned && localBoneDict != null)
                         UpdateBoneMatrices(mesh, model, localBoneDict);
                     mesh.ApplySkinningUniforms(_pickShader);
-                    mesh.RenderPickPass(Gl);
+                    mesh.RenderPickPass(_pickShader);
                 }
 
                 // Draw the bone indicator octahedron as an additional pick target.
                 if (obj is BoneSceneObject bone && bone.IndicatorMesh != null && ShouldShowBoneIndicator(bone))
                 {
                     bone.IndicatorMesh.ApplySkinningUniforms(_pickShader);
-                    bone.IndicatorMesh.RenderPickPass(Gl);
+                    bone.IndicatorMesh.RenderPickPass(_pickShader);
                 }
             }
 
@@ -3413,7 +3413,7 @@ public class Viewport : UiPanel
                 if (mesh.IsSkinned && boneDict != null)
                     UpdateBoneMatrices(mesh, model, boneDict);
                 mesh.ApplySkinningUniforms(_silhouetteShader);
-                mesh.RenderPickPass(Gl);
+                mesh.RenderPickPass(_silhouetteShader);
             }
         }
 
