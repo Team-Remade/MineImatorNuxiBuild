@@ -933,6 +933,16 @@ public class Mesh : IDisposable
     public static vec3 GlobalMoonFillLightDirection = vec3.UnitY;
     public static bool MoonFillLightCastsShadows = false;
     public static bool MainFillLightCastsShadows = true;
+    public static vec3 GlobalCameraPosition;
+    public static bool FogEnabled;
+    public static vec3 FogColor = new(0.5764706f, 0.5764706f, 1f);
+    public static float FogDistance = 10000f;
+    public static float FogFadeSize = 2000f;
+    public static float FogHeight = 1250f;
+    public static bool HeightFogEnabled;
+    public static vec3 HeightFogColor = new(0.5764706f, 0.5764706f, 1f);
+    public static float HeightFogSize = 4000f;
+    public static float HeightFogOffset = -3850f;
 
     /// <summary>
     /// Export-only shadow state configured by <see cref="CameraViewport"/> when
@@ -1028,6 +1038,16 @@ public class Mesh : IDisposable
         // lights, shadow flags, uLightSpaceMatrix, uShadowDebugMode) comes from
         // the shared SceneData UBO uploaded once per frame by the Viewport.
         SetUniformBool("uIsUnlit", Unlit);
+        SetUniformVec3("uCameraPosition", GlobalCameraPosition);
+        SetUniformBool("uFogEnabled", FogEnabled);
+        SetUniformVec3("uFogColor", FogColor);
+        SetUniformFloat("uFogDistance", FogDistance);
+        SetUniformFloat("uFogFadeSize", FogFadeSize);
+        SetUniformFloat("uFogHeight", FogHeight);
+        SetUniformBool("uHeightFogEnabled", HeightFogEnabled);
+        SetUniformVec3("uHeightFogColor", HeightFogColor);
+        SetUniformFloat("uHeightFogSize", HeightFogSize);
+        SetUniformFloat("uHeightFogOffset", HeightFogOffset);
 
         // ── Point lights ──────────────────────────────────────────────────────
         // Must match MAX_POINT_LIGHTS in simple.frag.

@@ -725,6 +725,23 @@ public class Viewport : UiPanel
         float ambStr = p.AmbientLightStrength * (1f - nightFactor) + p.NightAmbientLightStrength * nightFactor;
         Mesh.GlobalAmbientColor = new vec3(Math.Clamp(ambR, 0f, 1f), Math.Clamp(ambG, 0f, 1f), Math.Clamp(ambB, 0f, 1f));
         Mesh.GlobalAmbientStrength = Math.Clamp(ambStr, 0f, 5f);
+        vec3 fogColor = p.CustomFogColor
+            ? new vec3(p.FogColor[0], p.FogColor[1], p.FogColor[2])
+            : new vec3(p.BackgroundColor[0], p.BackgroundColor[1], p.BackgroundColor[2]);
+        Mesh.GlobalCameraPosition = camera.Position;
+        Mesh.FogEnabled = p.FogEnabled;
+        Mesh.FogColor = p.CustomObjectFogColor
+            ? new vec3(p.ObjectFogColor[0], p.ObjectFogColor[1], p.ObjectFogColor[2])
+            : fogColor;
+        Mesh.FogDistance = Math.Max(0f, p.FogDistance);
+        Mesh.FogFadeSize = Math.Max(1f, p.FogFadeSize);
+        Mesh.FogHeight = p.FogHeight;
+        Mesh.HeightFogEnabled = p.HeightFog;
+        Mesh.HeightFogColor = p.CustomHeightFogColor
+            ? new vec3(p.HeightFogColor[0], p.HeightFogColor[1], p.HeightFogColor[2])
+            : Mesh.FogColor;
+        Mesh.HeightFogSize = Math.Max(1f, p.HeightFogSize);
+        Mesh.HeightFogOffset = p.HeightFogOffset;
         if (!p.UseSky || _skyShader == null || _backgroundVao == 0) return;
         ReloadSkyTextures();
         vec3 forward = (camera.Target - camera.Position).Normalized;
@@ -760,6 +777,12 @@ public class Viewport : UiPanel
         F("uStarTwinkleSpeed", p.StarTwinkleSpeed);
         C3("uStarColor", p.StarColor);
         F("uTime", animationSeconds);
+        int fogEnabled = Gl.GetUniformLocation(program, "uFogEnabled"); if (fogEnabled >= 0) Gl.Uniform1(fogEnabled, p.FogEnabled && p.SkyFog ? 1 : 0);
+        V3("uFogColor", fogColor);
+        int cloudFogEnabled = Gl.GetUniformLocation(program, "uCloudFogEnabled"); if (cloudFogEnabled >= 0) Gl.Uniform1(cloudFogEnabled, p.FogEnabled ? 1 : 0);
+        V3("uObjectFogColor", Mesh.FogColor);
+        F("uFogDistance", Mesh.FogDistance);
+        F("uFogFadeSize", Mesh.FogFadeSize);
         Gl.ActiveTexture(GLEnum.Texture0); Gl.BindTexture(GLEnum.Texture2D, _sunTexture);
         int sun = Gl.GetUniformLocation(program, "uSunTex"); if (sun >= 0) Gl.Uniform1(sun, 0);
         Gl.ActiveTexture(GLEnum.Texture1); Gl.BindTexture(GLEnum.Texture2D, _moonTexture);

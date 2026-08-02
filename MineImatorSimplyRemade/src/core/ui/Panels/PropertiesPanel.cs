@@ -31,6 +31,20 @@ public class PropertiesPanel : UiPanel
 
     public bool UseSky = true;
     public bool UseAdvancedSky;
+    public bool FogEnabled;
+    public bool SkyFog = true;
+    public bool CustomFogColor;
+    public readonly float[] FogColor = [0.5764706f, 0.5764706f, 1f];
+    public bool CustomObjectFogColor;
+    public readonly float[] ObjectFogColor = [0.5764706f, 0.5764706f, 1f];
+    public float FogDistance = 10000f;
+    public float FogFadeSize = 2000f;
+    public float FogHeight = 1250f;
+    public bool HeightFog;
+    public bool CustomHeightFogColor;
+    public readonly float[] HeightFogColor = [0.5764706f, 0.5764706f, 1f];
+    public float HeightFogSize = 4000f;
+    public float HeightFogOffset = -3850f;
     public readonly float[] SkyHorizonDay = [0.72f, 0.84f, 1f];
     public readonly float[] SkyZenithDay = [0.28f, 0.55f, 0.95f];
     public readonly float[] SkyHorizonSunset = [1f, 0.48f, 0.2f];
@@ -186,6 +200,13 @@ public class PropertiesPanel : UiPanel
         TextureAnimationFps = Math.Clamp(settings.TextureAnimationFps, 1, 240);
         UseSky = settings.UseSky;
         UseAdvancedSky = settings.UseAdvancedSky;
+        FogEnabled = settings.FogEnabled; SkyFog = settings.SkyFog;
+        CustomFogColor = settings.CustomFogColor; ReadColor(settings.FogColor, FogColor);
+        CustomObjectFogColor = settings.CustomObjectFogColor; ReadColor(settings.ObjectFogColor, ObjectFogColor);
+        FogDistance = Math.Max(0f, settings.FogDistance); FogFadeSize = Math.Max(1f, settings.FogFadeSize); FogHeight = settings.FogHeight;
+        HeightFog = settings.HeightFog; CustomHeightFogColor = settings.CustomHeightFogColor;
+        ReadColor(settings.HeightFogColor, HeightFogColor);
+        HeightFogSize = Math.Max(1f, settings.HeightFogSize); HeightFogOffset = settings.HeightFogOffset;
         ReadColor(settings.SkyHorizonDay, SkyHorizonDay); ReadColor(settings.SkyZenithDay, SkyZenithDay);
         ReadColor(settings.SkyHorizonSunset, SkyHorizonSunset); ReadColor(settings.SkyZenithSunset, SkyZenithSunset);
         ReadColor(settings.SkyHorizonNight, SkyHorizonNight); ReadColor(settings.SkyZenithNight, SkyZenithNight);
@@ -284,6 +305,13 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.TextureAnimationFps = Math.Clamp(TextureAnimationFps, 1, 240);
         manifest.Settings.UseSky = UseSky;
         manifest.Settings.UseAdvancedSky = UseAdvancedSky;
+        manifest.Settings.FogEnabled = FogEnabled; manifest.Settings.SkyFog = SkyFog;
+        manifest.Settings.CustomFogColor = CustomFogColor; manifest.Settings.FogColor = ToVec3(FogColor);
+        manifest.Settings.CustomObjectFogColor = CustomObjectFogColor; manifest.Settings.ObjectFogColor = ToVec3(ObjectFogColor);
+        manifest.Settings.FogDistance = Math.Max(0f, FogDistance); manifest.Settings.FogFadeSize = Math.Max(1f, FogFadeSize); manifest.Settings.FogHeight = FogHeight;
+        manifest.Settings.HeightFog = HeightFog; manifest.Settings.CustomHeightFogColor = CustomHeightFogColor;
+        manifest.Settings.HeightFogColor = ToVec3(HeightFogColor);
+        manifest.Settings.HeightFogSize = Math.Max(1f, HeightFogSize); manifest.Settings.HeightFogOffset = HeightFogOffset;
         manifest.Settings.SkyHorizonDay = ToVec3(SkyHorizonDay); manifest.Settings.SkyZenithDay = ToVec3(SkyZenithDay);
         manifest.Settings.SkyHorizonSunset = ToVec3(SkyHorizonSunset); manifest.Settings.SkyZenithSunset = ToVec3(SkyZenithSunset);
         manifest.Settings.SkyHorizonNight = ToVec3(SkyHorizonNight); manifest.Settings.SkyZenithNight = ToVec3(SkyZenithNight);
@@ -798,6 +826,35 @@ public class PropertiesPanel : UiPanel
                 if (skyChanged)
                 {
                     Viewport?.ReloadSkyTextures();
+                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                    ProjectManager.Instance.SetDirty(true);
+                }
+
+                ImGui.SeparatorText("Fog");
+                bool fogChanged = ImGui.Checkbox("Enable Fog", ref FogEnabled);
+                if (FogEnabled)
+                {
+                    ImGui.Indent();
+                    fogChanged |= ImGui.Checkbox("Fog the Sky", ref SkyFog);
+                    fogChanged |= ImGui.Checkbox("Custom Fog Color", ref CustomFogColor);
+                    if (CustomFogColor) fogChanged |= SkyColorEditor("Fog Color", FogColor);
+                    fogChanged |= ImGui.Checkbox("Custom Object Fog Color", ref CustomObjectFogColor);
+                    if (CustomObjectFogColor) fogChanged |= SkyColorEditor("Object Fog Color", ObjectFogColor);
+                    fogChanged |= ImGui.DragFloat("Distance", ref FogDistance, 10f, 0f, 1000000f, "%.0f px");
+                    fogChanged |= ImGui.DragFloat("Fade Size", ref FogFadeSize, 10f, 1f, 1000000f, "%.0f px");
+                    fogChanged |= ImGui.DragFloat("Height", ref FogHeight, 10f, -1000000f, 1000000f, "%.0f px");
+                    fogChanged |= ImGui.Checkbox("Height Fog", ref HeightFog);
+                    if (HeightFog)
+                    {
+                        fogChanged |= ImGui.Checkbox("Custom Height Fog Color", ref CustomHeightFogColor);
+                        if (CustomHeightFogColor) fogChanged |= SkyColorEditor("Height Fog Color", HeightFogColor);
+                        fogChanged |= ImGui.DragFloat("Height Fog Size", ref HeightFogSize, 10f, 1f, 1000000f, "%.0f px");
+                        fogChanged |= ImGui.DragFloat("Height Fog Offset", ref HeightFogOffset, 10f, -1000000f, 1000000f, "%.0f px");
+                    }
+                    ImGui.Unindent();
+                }
+                if (fogChanged)
+                {
                     WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
                     ProjectManager.Instance.SetDirty(true);
                 }

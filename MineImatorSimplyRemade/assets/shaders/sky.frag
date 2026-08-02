@@ -19,6 +19,11 @@ uniform bool uShowStars, uTwilight;
 uniform float uStarBrightness, uStarDensity, uStarTwinkleSpeed;
 uniform vec3 uStarColor;
 uniform float uTime;
+uniform bool uFogEnabled;
+uniform vec3 uFogColor;
+uniform bool uCloudFogEnabled;
+uniform vec3 uObjectFogColor;
+uniform float uFogDistance, uFogFadeSize;
 
 vec4 celestial(sampler2D tex, vec3 ray, vec3 direction, float angularSize, bool atlas)
 {
@@ -172,7 +177,15 @@ void main()
 
     float cloudDistance;
     vec4 clouds = raycastClouds(ray, night, cloudDistance);
+    if (uCloudFogEnabled && cloudDistance > 0.0) {
+        float cloudFog = smoothstep(max(uFogDistance - uFogFadeSize, 0.0), max(uFogDistance, 1.0), cloudDistance);
+        clouds.rgb = mix(clouds.rgb, uObjectFogColor, cloudFog);
+    }
     color = mix(color, clouds.rgb, clouds.a * 0.78);
+    if (uFogEnabled) {
+        float skyFog = 1.0 - smoothstep(0.0, 0.65, abs(ray.y));
+        color = mix(color, uFogColor, skyFog);
+    }
     gl_FragDepth = 1.0;
     if (cloudDistance > 0.0 && clouds.a > 0.001)
     {

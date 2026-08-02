@@ -16,6 +16,9 @@ uniform sampler2D uShadowMap;
 uniform bool  uUseShadowMap;
 
 uniform bool  uIsUnlit;
+uniform vec3 uCameraPosition, uFogColor, uHeightFogColor;
+uniform bool uFogEnabled, uHeightFogEnabled;
+uniform float uFogDistance, uFogFadeSize, uFogHeight, uHeightFogSize, uHeightFogOffset;
 
 layout(std140) uniform SceneData {
     mat4  uLightSpaceMatrix;
@@ -126,11 +129,9 @@ void main() {
     // non-zero alpha must survive so it can write depth for render-depth masks.
     if (alpha <= 0.0) discard;
 
-    if (uIsUnlit) {
-        FragColor = vec4(baseColor, alpha);
-        return;
-    }
+    vec3 result = baseColor;
 
+    if (!uIsUnlit) {
     vec3 norm    = normalize(vNormal);
     vec3 sunDir  = normalize(uLightDir);
     float diff   = max(dot(norm, sunDir), 0.0);
@@ -184,9 +185,21 @@ void main() {
     float mainVisibility = uMainLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
     float sunVisibility = uSunFillLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
     float moonVisibility = uMoonFillLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
-    vec3 result = (uAmbient + diffuse * mainVisibility + uSunFillLightColor * sunFillDiffuse * sunVisibility + uMoonFillLightColor * moonFillDiffuse * moonVisibility + pointLightSum) * baseColor;
+    result = (uAmbient + diffuse * mainVisibility + uSunFillLightColor * sunFillDiffuse * sunVisibility + uMoonFillLightColor * moonFillDiffuse * moonVisibility + pointLightSum) * baseColor;
     if (uEmissionEnabled) {
         result += uEmissionColor * max(uEmissionEnergy, 0.0);
+    }
+    }
+    if (uFogEnabled) {
+        float distancePixels = length(vFragPos - uCameraPosition) * 64.0;
+        float distanceFog = smoothstep(max(uFogDistance - uFogFadeSize, 0.0), max(uFogDistance, 1.0), distancePixels);
+        result = mix(result, uFogColor, distanceFog);
+        if (uHeightFogEnabled) {
+            float worldHeightPixels = vFragPos.y * 64.0;
+            float heightStart = uFogHeight + uHeightFogOffset;
+            float heightFog = 1.0 - smoothstep(heightStart, heightStart + max(uHeightFogSize, 1.0), worldHeightPixels);
+            result = mix(result, uHeightFogColor, heightFog);
+        }
     }
     FragColor   = vec4(result, alpha);
 }
