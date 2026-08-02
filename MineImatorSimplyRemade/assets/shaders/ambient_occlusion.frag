@@ -11,6 +11,7 @@ uniform float uStrength;
 uniform vec3 uColor;
 uniform float uRatio;
 uniform float uRatioBalance;
+uniform int uSampleCount;
 uniform int uOutputMode;
 
 float linearDepth(float depth)
@@ -32,11 +33,15 @@ void main()
     float dzdy = dFdy(center);
     float occlusion = 0.0;
     float weightSum = 0.0;
-    const int sampleCount = 32;
+    int sampleCount = clamp(uSampleCount, 1, 128);
     const float goldenAngle = 2.39996323;
+    const int maxSamples = 128;
 
-    for (int i = 0; i < sampleCount; ++i)
+    for (int i = 0; i < maxSamples; ++i)
     {
+        if (i >= sampleCount)
+            break;
+
         float t = (float(i) + 0.5) / float(sampleCount);
         float sampleRadius = uRadius * mix(sqrt(t), t, uRatioBalance);
         vec2 direction = vec2(cos(float(i) * goldenAngle), sin(float(i) * goldenAngle));

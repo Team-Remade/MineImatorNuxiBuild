@@ -3699,6 +3699,9 @@ public class Viewport : UiPanel
         Float("uStrength", Math.Clamp(aoSettings.AmbientOcclusionStrength, 0f, 2f));
         Float("uRatio", Math.Clamp(aoSettings.AmbientOcclusionRatio, 0f, 1f));
         Float("uRatioBalance", Math.Clamp(aoSettings.AmbientOcclusionRatioBalance, 0f, 1f));
+        int sampleCountLocation = Gl.GetUniformLocation(program, "uSampleCount");
+        if (sampleCountLocation >= 0)
+            Gl.Uniform1(sampleCountLocation, Math.Clamp(aoSettings.AmbientOcclusionSampleCount, 1, 128));
         int outputModeLocation = Gl.GetUniformLocation(program, "uOutputMode");
         if (outputModeLocation >= 0)
             Gl.Uniform1(outputModeLocation, aoOnlyPass ? 1 : 0);

@@ -92,6 +92,7 @@ public class PropertiesPanel : UiPanel
     public bool AmbientOcclusionEnabled = true;
     public float AmbientOcclusionRadius = 12f;
     public float AmbientOcclusionStrength = 1f;
+    public int AmbientOcclusionSampleCount = 24;
     public readonly float[] AmbientOcclusionColor = [0f, 0f, 0f];
     public float AmbientOcclusionRatio = 0.222f;
     public float AmbientOcclusionRatioBalance = 0.35f;
@@ -207,6 +208,7 @@ public class PropertiesPanel : UiPanel
         AmbientOcclusionEnabled = settings.AmbientOcclusionEnabled;
         AmbientOcclusionRadius = Math.Clamp(settings.AmbientOcclusionRadius, 0f, 128f);
         AmbientOcclusionStrength = Math.Clamp(settings.AmbientOcclusionStrength, 0f, 2f);
+        AmbientOcclusionSampleCount = Math.Clamp(settings.AmbientOcclusionSampleCount, 1, 128);
         ReadColor(settings.AmbientOcclusionColor, AmbientOcclusionColor);
         AmbientOcclusionRatio = Math.Clamp(settings.AmbientOcclusionRatio, 0f, 1f);
         AmbientOcclusionRatioBalance = Math.Clamp(settings.AmbientOcclusionRatioBalance, 0f, 1f);
@@ -323,6 +325,7 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.AmbientOcclusionEnabled = AmbientOcclusionEnabled;
         manifest.Settings.AmbientOcclusionRadius = Math.Clamp(AmbientOcclusionRadius, 0f, 128f);
         manifest.Settings.AmbientOcclusionStrength = Math.Clamp(AmbientOcclusionStrength, 0f, 2f);
+        manifest.Settings.AmbientOcclusionSampleCount = Math.Clamp(AmbientOcclusionSampleCount, 1, 128);
         manifest.Settings.AmbientOcclusionColor = ToVec3(AmbientOcclusionColor);
         manifest.Settings.AmbientOcclusionRatio = Math.Clamp(AmbientOcclusionRatio, 0f, 1f);
         manifest.Settings.AmbientOcclusionRatioBalance = Math.Clamp(AmbientOcclusionRatioBalance, 0f, 1f);
@@ -1765,6 +1768,7 @@ public class PropertiesPanel : UiPanel
             ImGui.Indent();
             changed |= ImGui.DragFloat("Radius (px)", ref AmbientOcclusionRadius, 0.25f, 0f, 128f, "%.1f");
             changed |= PercentageSlider("Strength##ao", ref AmbientOcclusionStrength, 0f, 200f);
+            changed |= ImGui.SliderInt("Samples##ao", ref AmbientOcclusionSampleCount, 1, 128);
             fixed (float* color = AmbientOcclusionColor)
                 changed |= ImGui.ColorEdit3("Color##ao", color, ImGuiColorEditFlags.NoInputs);
             changed |= ImGui.DragFloat("Ratio##ao", ref AmbientOcclusionRatio, 0.001f, 0f, 1f, "%.3f");

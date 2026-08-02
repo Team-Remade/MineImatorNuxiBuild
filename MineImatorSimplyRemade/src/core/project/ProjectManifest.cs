@@ -92,6 +92,7 @@ public class ProjectRenderSettings
     public bool AmbientOcclusionEnabled { get; set; } = true;
     public float AmbientOcclusionRadius { get; set; } = 12f;
     public float AmbientOcclusionStrength { get; set; } = 1f;
+    public int AmbientOcclusionSampleCount { get; set; } = 24;
     public ProjectVec3 AmbientOcclusionColor { get; set; } = new() { X = 0f, Y = 0f, Z = 0f };
     public float AmbientOcclusionRatio { get; set; } = 0.222f;
     public float AmbientOcclusionRatioBalance { get; set; } = 0.35f;
