@@ -3289,7 +3289,6 @@ public class PropertiesPanel : UiPanel
             if (ImGui.Checkbox("Visible", ref vis))
             {
                 _currentObject.SetObjectVisible(vis);
-                ApplyToDescendants(_currentObject, child => child.SetObjectVisible(vis));
                 ProjectManager.Instance.SetDirty(true);
                 Timeline?.RecordAutoKeyframe(_currentObject, "visible");
             }
