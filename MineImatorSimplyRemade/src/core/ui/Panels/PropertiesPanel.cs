@@ -120,6 +120,135 @@ public class PropertiesPanel : UiPanel
     public int GetResolutionHeight() => _resolutionHeight;
     public int GetFramerate()        => _framerate;
     public string GetRenderMode() => _renderMode;
+
+    private static bool InputFloatEditor(string label, ref float value, float speed, float min, float max, string? format = null)
+    {
+        if (ImGui.GetIO().WantTextInput)
+        {
+            string buffer = value.ToString(format ?? "G", CultureInfo.InvariantCulture);
+            string previousBuffer = buffer;
+            ImGui.SetNextItemWidth(90f);
+            bool changed = ImGui.InputText(label, ref buffer, 64, ImGuiInputTextFlags.CharsScientific);
+
+            if (buffer != previousBuffer)
+            {
+                buffer = SanitizeNumericText(buffer, allowDecimal: true, allowExponent: true);
+                if (float.TryParse(buffer, NumberStyles.Float | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedValue))
+                {
+                    value = SanitizeFloatValue(parsedValue, min, max);
+                    return true;
+                }
+
+                value = SanitizeFloatValue(value, min, max);
+            }
+
+            return changed;
+        }
+
+        value = SanitizeFloatValue(value, min, max);
+
+        bool changedByDrag = ImGui.DragFloat(
+            label,
+            ref value,
+            speed,
+            min,
+            max,
+            format ?? "%.3f",
+            ImGuiSliderFlags.AlwaysClamp);
+
+        if (changedByDrag)
+            value = SanitizeFloatValue(value, min, max);
+
+        return changedByDrag;
+    }
+
+    private static bool InputIntEditor(string label, ref int value, int step, int stepFast, int min, int max)
+    {
+        if (ImGui.GetIO().WantTextInput)
+        {
+            string buffer = value.ToString(CultureInfo.InvariantCulture);
+            string previousBuffer = buffer;
+            ImGui.SetNextItemWidth(90f);
+            bool changed = ImGui.InputText(label, ref buffer, 64, ImGuiInputTextFlags.CharsDecimal);
+
+            if (buffer != previousBuffer)
+            {
+                buffer = SanitizeNumericText(buffer, allowDecimal: false, allowExponent: false);
+                if (int.TryParse(buffer, NumberStyles.Integer | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedValue))
+                {
+                    value = SanitizeIntValue(parsedValue, min, max);
+                    return true;
+                }
+
+                value = SanitizeIntValue(value, min, max);
+            }
+
+            return changed;
+        }
+
+        value = SanitizeIntValue(value, min, max);
+
+        bool changedByDrag = ImGui.DragInt(
+            label,
+            ref value,
+            step,
+            min,
+            max,
+            "%d",
+            ImGuiSliderFlags.AlwaysClamp);
+
+        if (changedByDrag)
+            value = SanitizeIntValue(value, min, max);
+
+        return changedByDrag;
+    }
+
+    private static float SanitizeFloatValue(float value, float min, float max)
+    {
+        if (float.IsNaN(value) || float.IsInfinity(value))
+            value = min;
+
+        return Math.Clamp(value, min, max);
+    }
+
+    private static int SanitizeIntValue(int value, int min, int max)
+    {
+        return Math.Clamp(value, min, max);
+    }
+
+    private static string SanitizeNumericText(string text, bool allowDecimal, bool allowExponent)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "0";
+
+        var builder = new System.Text.StringBuilder(text.Length);
+        bool hasDecimal = false;
+        bool hasExponent = false;
+
+        foreach (char c in text)
+        {
+            if (char.IsDigit(c))
+            {
+                builder.Append(c);
+            }
+            else if ((c == '-' || c == '+') && builder.Length == 0)
+            {
+                builder.Append(c);
+            }
+            else if (allowDecimal && c == '.' && !hasDecimal && !hasExponent)
+            {
+                builder.Append(c);
+                hasDecimal = true;
+            }
+            else if (allowExponent && (c == 'e' || c == 'E') && !hasExponent && builder.Length > 0)
+            {
+                builder.Append(c);
+                hasExponent = true;
+            }
+        }
+
+        return builder.Length > 0 ? builder.ToString() : "0";
+    }
     public string GetRenderImageFormat() => _renderImageFormat;
     public string GetRenderVideoFormat() => _renderVideoFormat;
     public int GetRenderVideoBitrateKbps() => _renderVideoBitrateKbps;
@@ -1242,12 +1371,12 @@ public class PropertiesPanel : UiPanel
             ImGui.Spacing();
             ImGui.Text("Resolution:");
             ImGui.SetNextItemWidth(80);
-            bool resolutionChanged = ImGui.InputInt("##ResWidth", ref _resolutionWidth, 0, 0, ImGuiInputTextFlags.None);
+            bool resolutionChanged = InputIntEditor("##ResWidth", ref _resolutionWidth, 1, 10, 1, int.MaxValue);
             ImGui.SameLine();
             ImGui.Text(" x ");
             ImGui.SameLine();
             ImGui.SetNextItemWidth(80);
-            resolutionChanged |= ImGui.InputInt("##ResHeight", ref _resolutionHeight, 0, 0, ImGuiInputTextFlags.None);
+            resolutionChanged |= InputIntEditor("##ResHeight", ref _resolutionHeight, 1, 10, 1, int.MaxValue);
             ImGui.Text("Presets:");
             if (ImGui.Button("720p"))  { _resolutionWidth = 1280; _resolutionHeight = 720; resolutionChanged = true; }
             ImGui.SameLine();
@@ -1267,7 +1396,7 @@ public class PropertiesPanel : UiPanel
             ImGui.Spacing();
             ImGui.Text("Framerate:");
             ImGui.SetNextItemWidth(80);
-            bool frameRateChanged = ImGui.InputInt("##Framerate", ref _framerate, 0, 0, ImGuiInputTextFlags.None);
+            bool frameRateChanged = InputIntEditor("##Framerate", ref _framerate, 1, 10, 1, 120);
             ImGui.SameLine();
             ImGui.Text(" fps");
             ImGui.Text("Presets:");
@@ -1288,7 +1417,7 @@ public class PropertiesPanel : UiPanel
             ImGui.Spacing();
             ImGui.Text("Texture Animation Speed:");
             ImGui.SetNextItemWidth(80);
-            bool textureFpsChanged = ImGui.InputInt("##TexAnimSpeed", ref TextureAnimationFps, 0, 0, ImGuiInputTextFlags.None);
+            bool textureFpsChanged = InputIntEditor("##TexAnimSpeed", ref TextureAnimationFps, 1, 10, 1, 120);
             ImGui.SameLine();
             ImGui.Text(" fps");
             ImGui.Text("Presets:");
@@ -1342,11 +1471,11 @@ public class PropertiesPanel : UiPanel
                     if (ShowStars)
                     {
                         ImGui.Indent();
-                        skyChanged |= ImGui.DragFloat("Density", ref StarDensity, 0.01f, 0f, 5f, "%.2f");
+                        skyChanged |= InputFloatEditor("Density", ref StarDensity, 0.01f, 0f, 5f, "%.2f");
                         RegisterBackgroundKeyframeContext(nameof(StarDensity));
-                        skyChanged |= ImGui.DragFloat("Brightness", ref StarBrightness, 0.01f, 0f, 5f, "%.2f");
+                        skyChanged |= InputFloatEditor("Brightness", ref StarBrightness, 0.01f, 0f, 5f, "%.2f");
                         RegisterBackgroundKeyframeContext(nameof(StarBrightness));
-                        skyChanged |= ImGui.DragFloat("Twinkle Speed", ref StarTwinkleSpeed, 0.01f, 0f, 5f, "%.2f");
+                        skyChanged |= InputFloatEditor("Twinkle Speed", ref StarTwinkleSpeed, 0.01f, 0f, 5f, "%.2f");
                         RegisterBackgroundKeyframeContext(nameof(StarTwinkleSpeed));
                         skyChanged |= SkyColorEditor("Star Color", StarColor);
                         ImGui.Unindent();
@@ -1368,35 +1497,35 @@ public class PropertiesPanel : UiPanel
                         if (ImGui.Selectable("Flat", CloudRenderMode == "flat")) { CloudRenderMode = "flat"; skyChanged = true; }
                         ImGui.EndCombo();
                     }
-                    skyChanged |= ImGui.DragFloat("Cloud Speed", ref CloudSpeed, 1f, -10000f, 10000f, "%.0f px/s");
+                    skyChanged |= InputFloatEditor("Cloud Speed", ref CloudSpeed, 1f, -10000f, 10000f, "%.0f px/s");
                     RegisterBackgroundKeyframeContext(nameof(CloudSpeed));
                     fixed (float* value = CloudOffset) skyChanged |= ImGui.DragFloat2("Cloud Offset", value, 1f, -100000f, 100000f, "%.0f px");
                     RegisterBackgroundKeyframeContext(nameof(CloudOffset));
-                    skyChanged |= ImGui.DragFloat("Cloud Height", ref CloudHeight, 1f, 0f, 100000f, "%.0f px");
+                    skyChanged |= InputFloatEditor("Cloud Height", ref CloudHeight, 1f, 0f, 100000f, "%.0f px");
                     RegisterBackgroundKeyframeContext(nameof(CloudHeight));
-                    skyChanged |= ImGui.DragFloat("Cloud Block Size", ref CloudBlockSize, 1f, 1f, 100000f, "%.0f px");
+                    skyChanged |= InputFloatEditor("Cloud Block Size", ref CloudBlockSize, 1f, 1f, 100000f, "%.0f px");
                     RegisterBackgroundKeyframeContext(nameof(CloudBlockSize));
-                    skyChanged |= ImGui.DragFloat("Cloud Thickness", ref CloudThickness, 1f, 1f, 100000f, "%.0f px");
+                    skyChanged |= InputFloatEditor("Cloud Thickness", ref CloudThickness, 1f, 1f, 100000f, "%.0f px");
                     RegisterBackgroundKeyframeContext(nameof(CloudThickness));
                     skyChanged |= ImGui.SliderInt("Moon Phase", ref MoonPhase, 0, 7);
                     RegisterBackgroundKeyframeContext(nameof(MoonPhase));
                     skyChanged |= ImGui.SliderFloat("Time", ref SkyTime, 0f, 24f, "%.2f h");
                     RegisterBackgroundKeyframeContext(nameof(SkyTime));
-                    skyChanged |= ImGui.DragFloat("Sun Size (degrees)", ref SunSize, 0.1f, 0.1f, 90f);
+                    skyChanged |= InputFloatEditor("Sun Size (degrees)", ref SunSize, 0.1f, 0.1f, 90f);
                     RegisterBackgroundKeyframeContext(nameof(SunSize));
                     fixed (float* value = SunAngle) skyChanged |= ImGui.DragFloat3("Sun Angle (XYZ)", value, 0.25f, -360f, 360f);
                     RegisterBackgroundKeyframeContext(nameof(SunAngle));
-                    skyChanged |= ImGui.DragFloat("Moon Size (degrees)", ref MoonSize, 0.1f, 0.1f, 90f);
+                    skyChanged |= InputFloatEditor("Moon Size (degrees)", ref MoonSize, 0.1f, 0.1f, 90f);
                     RegisterBackgroundKeyframeContext(nameof(MoonSize));
                     fixed (float* value = MoonAngle) skyChanged |= ImGui.DragFloat3("Moon Angle (XYZ)", value, 0.25f, -360f, 360f);
                     RegisterBackgroundKeyframeContext(nameof(MoonAngle));
                     skyChanged |= SkyColorEditor("Sun Fill Light", SunFillLightColor);
-                    skyChanged |= ImGui.DragFloat("Sun Fill Strength", ref SunFillLightStrength, 0.01f, 0f, 5f);
+                    skyChanged |= InputFloatEditor("Sun Fill Strength", ref SunFillLightStrength, 0.01f, 0f, 5f);
                     RegisterBackgroundKeyframeContext(nameof(SunFillLightStrength));
                     skyChanged |= ImGui.Checkbox("Sun Fill Casts Shadows", ref SunFillLightCastsShadows);
                     RegisterBackgroundKeyframeContext(nameof(SunFillLightCastsShadows));
                     skyChanged |= SkyColorEditor("Moon Fill Light", MoonFillLightColor);
-                    skyChanged |= ImGui.DragFloat("Moon Fill Strength", ref MoonFillLightStrength, 0.01f, 0f, 5f);
+                    skyChanged |= InputFloatEditor("Moon Fill Strength", ref MoonFillLightStrength, 0.01f, 0f, 5f);
                     RegisterBackgroundKeyframeContext(nameof(MoonFillLightStrength));
                     skyChanged |= ImGui.Checkbox("Moon Fill Casts Shadows", ref MoonFillLightCastsShadows);
                     RegisterBackgroundKeyframeContext(nameof(MoonFillLightCastsShadows));
@@ -1422,16 +1551,16 @@ public class PropertiesPanel : UiPanel
                     if (CustomFogColor) fogChanged |= SkyColorEditor("Fog Color", FogColor);
                     fogChanged |= ImGui.Checkbox("Custom Object Fog Color", ref CustomObjectFogColor);
                     if (CustomObjectFogColor) fogChanged |= SkyColorEditor("Object Fog Color", ObjectFogColor);
-                    fogChanged |= ImGui.DragFloat("Distance", ref FogDistance, 10f, 0f, 1000000f, "%.0f px");
-                    fogChanged |= ImGui.DragFloat("Fade Size", ref FogFadeSize, 10f, 1f, 1000000f, "%.0f px");
-                    fogChanged |= ImGui.DragFloat("Height", ref FogHeight, 10f, -1000000f, 1000000f, "%.0f px");
+                    fogChanged |= InputFloatEditor("Distance", ref FogDistance, 10f, 0f, 1000000f, "%.0f px");
+                    fogChanged |= InputFloatEditor("Fade Size", ref FogFadeSize, 10f, 1f, 1000000f, "%.0f px");
+                    fogChanged |= InputFloatEditor("Height", ref FogHeight, 10f, -1000000f, 1000000f, "%.0f px");
                     fogChanged |= ImGui.Checkbox("Height Fog", ref HeightFog);
                     if (HeightFog)
                     {
                         fogChanged |= ImGui.Checkbox("Custom Height Fog Color", ref CustomHeightFogColor);
                         if (CustomHeightFogColor) fogChanged |= SkyColorEditor("Height Fog Color", HeightFogColor);
-                        fogChanged |= ImGui.DragFloat("Height Fog Size", ref HeightFogSize, 10f, 1f, 1000000f, "%.0f px");
-                        fogChanged |= ImGui.DragFloat("Height Fog Offset", ref HeightFogOffset, 10f, -1000000f, 1000000f, "%.0f px");
+                        fogChanged |= InputFloatEditor("Height Fog Size", ref HeightFogSize, 10f, 1f, 1000000f, "%.0f px");
+                        fogChanged |= InputFloatEditor("Height Fog Offset", ref HeightFogOffset, 10f, -1000000f, 1000000f, "%.0f px");
                     }
                     ImGui.Unindent();
                 }
@@ -1636,7 +1765,7 @@ public class PropertiesPanel : UiPanel
                 }
 
                 float backgroundScale = BackgroundScale;
-                if (ImGui.DragFloat("Background Scale", ref backgroundScale, 0.01f, 0.01f, 20f))
+                if (InputFloatEditor("Background Scale", ref backgroundScale, 0.01f, 0.01f, 20f))
                 {
                     BackgroundScale = Math.Clamp(backgroundScale, 0.01f, 20f);
                     backgroundChanged = true;
@@ -1644,7 +1773,7 @@ public class PropertiesPanel : UiPanel
                 RegisterBackgroundKeyframeContext(nameof(BackgroundScale));
 
                 float backgroundRotation = BackgroundRotationDegrees;
-                if (ImGui.DragFloat("Background Rotation", ref backgroundRotation, 0.25f, -360f, 360f))
+                if (InputFloatEditor("Background Rotation", ref backgroundRotation, 0.25f, -360f, 360f))
                 {
                     BackgroundRotationDegrees = Math.Clamp(backgroundRotation, -360f, 360f);
                     backgroundChanged = true;
@@ -1652,7 +1781,7 @@ public class PropertiesPanel : UiPanel
                 RegisterBackgroundKeyframeContext(nameof(BackgroundRotationDegrees));
 
                 float offsetX = BackgroundOffset[0];
-                if (ImGui.DragFloat("Background Offset X", ref offsetX, 0.005f, -3f, 3f))
+                if (InputFloatEditor("Background Offset X", ref offsetX, 0.005f, -3f, 3f))
                 {
                     BackgroundOffset[0] = offsetX;
                     backgroundChanged = true;
@@ -1660,7 +1789,7 @@ public class PropertiesPanel : UiPanel
                 RegisterBackgroundKeyframeContext(nameof(BackgroundOffset) + ".0");
 
                 float offsetY = BackgroundOffset[1];
-                if (ImGui.DragFloat("Background Offset Y", ref offsetY, 0.005f, -3f, 3f))
+                if (InputFloatEditor("Background Offset Y", ref offsetY, 0.005f, -3f, 3f))
                 {
                     BackgroundOffset[1] = offsetY;
                     backgroundChanged = true;
@@ -1690,7 +1819,7 @@ public class PropertiesPanel : UiPanel
 
                 float ambientStrength = AmbientLightStrength;
                 ImGui.SetNextItemWidth(120f);
-                if (ImGui.DragFloat("Ambient Strength", ref ambientStrength, 0.01f, 0f, 5f))
+                if (InputFloatEditor("Ambient Strength", ref ambientStrength, 0.01f, 0f, 5f))
                 {
                     AmbientLightStrength = ambientStrength;
                     ambientChanged = true;
@@ -1710,7 +1839,7 @@ public class PropertiesPanel : UiPanel
 
                 float nightAmbientStrength = NightAmbientLightStrength;
                 ImGui.SetNextItemWidth(120f);
-                if (ImGui.DragFloat("Night Ambient Strength", ref nightAmbientStrength, 0.01f, 0f, 5f))
+                if (InputFloatEditor("Night Ambient Strength", ref nightAmbientStrength, 0.01f, 0f, 5f))
                 {
                     NightAmbientLightStrength = nightAmbientStrength;
                     ambientChanged = true;
@@ -1730,7 +1859,7 @@ public class PropertiesPanel : UiPanel
 
                 float fillStrength = FillLightStrength;
                 ImGui.SetNextItemWidth(120f);
-                if (ImGui.DragFloat("Fill Strength", ref fillStrength, 0.01f, 0f, 5f))
+                if (InputFloatEditor("Fill Strength", ref fillStrength, 0.01f, 0f, 5f))
                 {
                     FillLightStrength = fillStrength;
                     ambientChanged = true;
@@ -1766,13 +1895,13 @@ public class PropertiesPanel : UiPanel
         if (AmbientOcclusionEnabled)
         {
             ImGui.Indent();
-            changed |= ImGui.DragFloat("Radius (px)", ref AmbientOcclusionRadius, 0.25f, 0f, 128f, "%.1f");
+            changed |= InputFloatEditor("Radius (px)", ref AmbientOcclusionRadius, 0.25f, 0f, 128f, "%.1f");
             changed |= PercentageSlider("Strength##ao", ref AmbientOcclusionStrength, 0f, 200f);
             changed |= ImGui.SliderInt("Samples##ao", ref AmbientOcclusionSampleCount, 1, 128);
             fixed (float* color = AmbientOcclusionColor)
                 changed |= ImGui.ColorEdit3("Color##ao", color, ImGuiColorEditFlags.NoInputs);
-            changed |= ImGui.DragFloat("Ratio##ao", ref AmbientOcclusionRatio, 0.001f, 0f, 1f, "%.3f");
-            changed |= ImGui.DragFloat("Ratio Balance##ao", ref AmbientOcclusionRatioBalance, 0.005f, 0f, 1f, "%.3f");
+            changed |= InputFloatEditor("Ratio##ao", ref AmbientOcclusionRatio, 0.001f, 0f, 1f, "%.3f");
+            changed |= InputFloatEditor("Ratio Balance##ao", ref AmbientOcclusionRatioBalance, 0.005f, 0f, 1f, "%.3f");
             ImGui.Unindent();
         }
 
@@ -1911,9 +2040,9 @@ public class PropertiesPanel : UiPanel
             ImGui.EndCombo();
         }
         object? current = GetBackgroundPropertyValue(_selectedBackgroundKeyProperty);
-        if (current is float floatValue && ImGui.DragFloat("Value##BackgroundKeyValue", ref floatValue, 0.01f))
+        if (current is float floatValue && InputFloatEditor("Value##BackgroundKeyValue", ref floatValue, 0.01f, float.MinValue, float.MaxValue))
             SetBackgroundPropertyValue(_selectedBackgroundKeyProperty, floatValue.ToString(CultureInfo.InvariantCulture), false);
-        else if (current is int intValue && ImGui.InputInt("Value##BackgroundKeyValue", ref intValue))
+        else if (current is int intValue && InputIntEditor("Value##BackgroundKeyValue", ref intValue, 1, 10, int.MinValue, int.MaxValue))
             SetBackgroundPropertyValue(_selectedBackgroundKeyProperty, intValue.ToString(CultureInfo.InvariantCulture), true);
         else if (current is bool boolValue && ImGui.Checkbox("Value##BackgroundKeyValue", ref boolValue))
             SetBackgroundPropertyValue(_selectedBackgroundKeyProperty, boolValue.ToString(), true);
@@ -2072,7 +2201,7 @@ public class PropertiesPanel : UiPanel
             ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
             
             // Position X
-            if (ImGui.DragFloat("X##posX", ref posX, 0.1f))
+            if (InputFloatEditor("X##posX", ref posX, 0.1f, float.MinValue, float.MaxValue))
             {
                 rawPos.x = posX / 16f;
                 rawPos.y = posY / 16f;
@@ -2087,7 +2216,7 @@ public class PropertiesPanel : UiPanel
             }
             
             // Position Y
-            if (ImGui.DragFloat("Y##posY", ref posY, 0.1f))
+            if (InputFloatEditor("Y##posY", ref posY, 0.1f, float.MinValue, float.MaxValue))
             {
                 rawPos.x = posX / 16f;
                 rawPos.y = posY / 16f;
@@ -2102,7 +2231,7 @@ public class PropertiesPanel : UiPanel
             }
             
             // Position Z
-            if (ImGui.DragFloat("Z##posZ", ref posZ, 0.1f))
+            if (InputFloatEditor("Z##posZ", ref posZ, 0.1f, float.MinValue, float.MaxValue))
             {
                 rawPos.x = posX / 16f;
                 rawPos.y = posY / 16f;
@@ -2145,7 +2274,7 @@ public class PropertiesPanel : UiPanel
             ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
             
             // Rotation X
-            if (ImGui.DragFloat("X##rotX", ref rotX, 0.5f))
+            if (InputFloatEditor("X##rotX", ref rotX, 0.5f, float.MinValue, float.MaxValue))
             {
                 rawRot = new vec3(rotX * (MathF.PI / 180f), rotY * (MathF.PI / 180f), rotZ * (MathF.PI / 180f));
                 ApplyRotation(rawRot);
@@ -2158,7 +2287,7 @@ public class PropertiesPanel : UiPanel
             }
             
             // Rotation Y
-            if (ImGui.DragFloat("Y##rotY", ref rotY, 0.5f))
+            if (InputFloatEditor("Y##rotY", ref rotY, 0.5f, float.MinValue, float.MaxValue))
             {
                 rawRot = new vec3(rotX * (MathF.PI / 180f), rotY * (MathF.PI / 180f), rotZ * (MathF.PI / 180f));
                 ApplyRotation(rawRot);
@@ -2171,7 +2300,7 @@ public class PropertiesPanel : UiPanel
             }
             
             // Rotation Z
-            if (ImGui.DragFloat("Z##rotZ", ref rotZ, 0.5f))
+            if (InputFloatEditor("Z##rotZ", ref rotZ, 0.5f, float.MinValue, float.MaxValue))
             {
                 rawRot = new vec3(rotX * (MathF.PI / 180f), rotY * (MathF.PI / 180f), rotZ * (MathF.PI / 180f));
                 ApplyRotation(rawRot);
@@ -2209,7 +2338,7 @@ public class PropertiesPanel : UiPanel
             ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
             
             // Scale X
-            if (ImGui.DragFloat("X##scaleX", ref scaleX, 0.01f, 0.001f, float.MaxValue))
+            if (InputFloatEditor("X##scaleX", ref scaleX, 0.01f, 0.001f, float.MaxValue))
             {
                 scaleX = MathF.Max(scaleX, 0.001f);
                 if (_linkScale)
@@ -2228,7 +2357,7 @@ public class PropertiesPanel : UiPanel
             }
             
             // Scale Y
-            if (ImGui.DragFloat("Y##scaleY", ref scaleY, 0.01f, 0.001f, float.MaxValue))
+            if (InputFloatEditor("Y##scaleY", ref scaleY, 0.01f, 0.001f, float.MaxValue))
             {
                 scaleY = MathF.Max(scaleY, 0.001f);
                 if (_linkScale)
@@ -2247,7 +2376,7 @@ public class PropertiesPanel : UiPanel
             }
             
             // Scale Z
-            if (ImGui.DragFloat("Z##scaleZ", ref scaleZ, 0.01f, 0.001f, float.MaxValue))
+            if (InputFloatEditor("Z##scaleZ", ref scaleZ, 0.01f, 0.001f, float.MaxValue))
             {
                 scaleZ = MathF.Max(scaleZ, 0.001f);
                 if (_linkScale)
@@ -2284,7 +2413,7 @@ public class PropertiesPanel : UiPanel
             if (bend.AxisX)
             {
                 float value = angle.x;
-                if (ImGui.DragFloat("X##bendX", ref value, 0.5f, bend.DirectionMin.x, bend.DirectionMax.x))
+                if (InputFloatEditor("X##bendX", ref value, 0.5f, bend.DirectionMin.x, bend.DirectionMax.x))
                 {
                     angle.x = value;
                     ApplyBend(bendBone, angle);
@@ -2293,7 +2422,7 @@ public class PropertiesPanel : UiPanel
             if (bend.AxisY)
             {
                 float value = angle.y;
-                if (ImGui.DragFloat("Y##bendY", ref value, 0.5f, bend.DirectionMin.y, bend.DirectionMax.y))
+                if (InputFloatEditor("Y##bendY", ref value, 0.5f, bend.DirectionMin.y, bend.DirectionMax.y))
                 {
                     angle.y = value;
                     ApplyBend(bendBone, angle);
@@ -2302,7 +2431,7 @@ public class PropertiesPanel : UiPanel
             if (bend.AxisZ)
             {
                 float value = angle.z;
-                if (ImGui.DragFloat("Z##bendZ", ref value, 0.5f, bend.DirectionMin.z, bend.DirectionMax.z))
+                if (InputFloatEditor("Z##bendZ", ref value, 0.5f, bend.DirectionMin.z, bend.DirectionMax.z))
                 {
                     angle.z = value;
                     ApplyBend(bendBone, angle);
@@ -2329,7 +2458,7 @@ public class PropertiesPanel : UiPanel
 
             bool tileChanged = false;
 
-            if (ImGui.DragInt("X##tileX", ref tileX, 1f, 1, SceneObject.MaxTilesPerAxis))
+            if (InputIntEditor("X##tileX", ref tileX, 1, 10, 1, SceneObject.MaxTilesPerAxis))
                 tileChanged = true;
             if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
             {
@@ -2338,7 +2467,7 @@ public class PropertiesPanel : UiPanel
                 _openPropContextMenu = true;
             }
 
-            if (ImGui.DragInt("Y##tileY", ref tileY, 1f, 1, SceneObject.MaxTilesPerAxis))
+            if (InputIntEditor("Y##tileY", ref tileY, 1, 10, 1, SceneObject.MaxTilesPerAxis))
                 tileChanged = true;
             if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
             {
@@ -2347,7 +2476,7 @@ public class PropertiesPanel : UiPanel
                 _openPropContextMenu = true;
             }
 
-            if (ImGui.DragInt("Z##tileZ", ref tileZ, 1f, 1, SceneObject.MaxTilesPerAxis))
+            if (InputIntEditor("Z##tileZ", ref tileZ, 1, 10, 1, SceneObject.MaxTilesPerAxis))
                 tileChanged = true;
             if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
             {
@@ -2423,13 +2552,13 @@ public class PropertiesPanel : UiPanel
             float pivZ = pivot.z * 16f;
 
             ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
-            if (ImGui.DragFloat("X##pivX", ref pivX, 0.1f))
+            if (InputFloatEditor("X##pivX", ref pivX, 0.1f, float.MinValue, float.MaxValue))
                 _currentObject.PivotOffset = new vec3(pivX / 16f, pivY / 16f, pivZ / 16f);
 
-            if (ImGui.DragFloat("Y##pivY", ref pivY, 0.1f))
+            if (InputFloatEditor("Y##pivY", ref pivY, 0.1f, float.MinValue, float.MaxValue))
                 _currentObject.PivotOffset = new vec3(pivX / 16f, pivY / 16f, pivZ / 16f);
 
-            if (ImGui.DragFloat("Z##pivZ", ref pivZ, 0.1f))
+            if (InputFloatEditor("Z##pivZ", ref pivZ, 0.1f, float.MinValue, float.MaxValue))
                 _currentObject.PivotOffset = new vec3(pivX / 16f, pivY / 16f, pivZ / 16f);
             ImGui.PopItemWidth();
 
@@ -2965,7 +3094,7 @@ public class PropertiesPanel : UiPanel
                 // Energy
                 {
                     float energy = light.LightEnergy;
-                    if (ImGui.DragFloat("Energy##lightEnergy", ref energy, 0.05f, 0f, 100f))
+                    if (InputFloatEditor("Energy##lightEnergy", ref energy, 0.05f, 0f, 100f))
                     {
                         light.LightEnergy = energy;
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.energy");
@@ -2981,7 +3110,7 @@ public class PropertiesPanel : UiPanel
                 // Range
                 {
                     float range = light.LightRange;
-                    if (ImGui.DragFloat("Range##lightRange", ref range, 0.1f, 0.01f, 500f))
+                    if (InputFloatEditor("Range##lightRange", ref range, 0.1f, 0.01f, 500f))
                     {
                         light.LightRange = range;
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.range");
@@ -2997,7 +3126,7 @@ public class PropertiesPanel : UiPanel
                 // Indirect Energy
                 {
                     float indirect = light.LightIndirectEnergy;
-                    if (ImGui.DragFloat("Indirect Energy##lightIndirect", ref indirect, 0.05f, 0f, 16f))
+                    if (InputFloatEditor("Indirect Energy##lightIndirect", ref indirect, 0.05f, 0f, 16f))
                     {
                         light.LightIndirectEnergy = indirect;
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.indirect_energy");
@@ -3151,7 +3280,7 @@ public class PropertiesPanel : UiPanel
             }
 
             float renderDepth = _currentObject.RenderDepthOffset;
-            if (ImGui.DragFloat("Render Depth", ref renderDepth, 0.01f, -1000f, 1000f, "%.2f"))
+            if (InputFloatEditor("Render Depth", ref renderDepth, 0.01f, -1000f, 1000f, "%.2f"))
             {
                 ApplyToSubtree(_currentObject, obj => obj.RenderDepthOffset = renderDepth);
                 ProjectManager.Instance.SetDirty(true);

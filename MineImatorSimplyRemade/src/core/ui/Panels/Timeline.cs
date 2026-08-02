@@ -74,6 +74,21 @@ public class TimelineMarker
 
 public class Timeline : UiPanel
 {
+    public static string SanitizeIntegerText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "0";
+
+        var builder = new StringBuilder(text.Length);
+        foreach (char c in text)
+        {
+            if (char.IsDigit(c) || (c == '-' && builder.Length == 0))
+                builder.Append(c);
+        }
+
+        return builder.Length > 0 ? builder.ToString() : "0";
+    }
+
     // ── Singleton ─────────────────────────────────────────────────────────────
 
     public static Timeline Instance { get; private set; }
@@ -533,17 +548,38 @@ public class Timeline : UiPanel
 
         ImGui.Text("  FPS:");
         ImGui.SameLine();
-        int fps = (int)_frameRate;
+        int fps = (int)Math.Clamp(_frameRate, 1, 120);
         ImGui.SetNextItemWidth(55f);
-        if (ImGui.InputInt("##fps", ref fps, 0, 0))
+        if (ImGui.GetIO().WantTextInput)
+        {
+            string fpsBuffer = fps.ToString();
+            if (ImGui.InputText("##fps", ref fpsBuffer, 16, ImGuiInputTextFlags.CharsDecimal))
+            {
+                fpsBuffer = SanitizeIntegerText(fpsBuffer);
+                if (int.TryParse(fpsBuffer, NumberStyles.Integer | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedFps))
+                    _frameRate = Math.Clamp(parsedFps, 1, 120);
+            }
+        }
+        else if (ImGui.DragInt("##fps", ref fps, 1f, 1, 120, "%d", ImGuiSliderFlags.AlwaysClamp))
             _frameRate = Math.Clamp(fps, 1, 120);
 
         ImGui.SameLine();
         ImGui.Text("  Frames:");
         ImGui.SameLine();
         ImGui.SetNextItemWidth(60f);
-        if (ImGui.InputInt("##maxf", ref _maxFrames, 0, 0))
-            _maxFrames = Math.Max(10, _maxFrames);
+        int maxFrames = Math.Max(10, _maxFrames);
+        if (ImGui.GetIO().WantTextInput)
+        {
+            string maxFramesBuffer = maxFrames.ToString();
+            if (ImGui.InputText("##maxf", ref maxFramesBuffer, 16, ImGuiInputTextFlags.CharsDecimal))
+            {
+                maxFramesBuffer = SanitizeIntegerText(maxFramesBuffer);
+                if (int.TryParse(maxFramesBuffer, NumberStyles.Integer | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedMaxFrames))
+                    _maxFrames = Math.Max(10, parsedMaxFrames);
+            }
+        }
+        else if (ImGui.DragInt("##maxf", ref maxFrames, 1f, 10, 100000, "%d", ImGuiSliderFlags.AlwaysClamp))
+            _maxFrames = Math.Max(10, maxFrames);
 
         ImGui.SameLine();
         ImGui.Text("  Zoom:");

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Numerics;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -1350,13 +1351,48 @@ public class MainWindow : Window
             ImGui.EndCombo();
         }
 
-        int width = _renderPopupWidth;
-        int height = _renderPopupHeight;
-        bool widthChanged = ImGui.InputInt("Width", ref width, 0, 0, ImGuiInputTextFlags.None);
-        bool heightChanged = ImGui.InputInt("Height", ref height, 0, 0, ImGuiInputTextFlags.None);
-        if (widthChanged || heightChanged)
+        int width = Math.Max(1, _renderPopupWidth);
+        int height = Math.Max(1, _renderPopupHeight);
+        ImGui.SetNextItemWidth(120f);
+        if (ImGui.GetIO().WantTextInput)
+        {
+            string widthBuffer = width.ToString(CultureInfo.InvariantCulture);
+            if (ImGui.InputText("Width", ref widthBuffer, 16, ImGuiInputTextFlags.CharsDecimal))
+            {
+                widthBuffer = Timeline.SanitizeIntegerText(widthBuffer);
+                if (int.TryParse(widthBuffer, NumberStyles.Integer | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedWidth))
+                {
+                    _renderPopupWidth = Math.Max(1, parsedWidth);
+                    _renderPopupPreset = "Custom";
+                    settingsChanged = true;
+                }
+            }
+        }
+        else if (ImGui.DragInt("Width", ref width, 1f, 1, 100000, "%d", ImGuiSliderFlags.AlwaysClamp))
         {
             _renderPopupWidth = Math.Max(1, width);
+            _renderPopupPreset = "Custom";
+            settingsChanged = true;
+        }
+
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(120f);
+        if (ImGui.GetIO().WantTextInput)
+        {
+            string heightBuffer = height.ToString(CultureInfo.InvariantCulture);
+            if (ImGui.InputText("Height", ref heightBuffer, 16, ImGuiInputTextFlags.CharsDecimal))
+            {
+                heightBuffer = Timeline.SanitizeIntegerText(heightBuffer);
+                if (int.TryParse(heightBuffer, NumberStyles.Integer | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedHeight))
+                {
+                    _renderPopupHeight = Math.Max(1, parsedHeight);
+                    _renderPopupPreset = "Custom";
+                    settingsChanged = true;
+                }
+            }
+        }
+        else if (ImGui.DragInt("Height", ref height, 1f, 1, 100000, "%d", ImGuiSliderFlags.AlwaysClamp))
+        {
             _renderPopupHeight = Math.Max(1, height);
             _renderPopupPreset = "Custom";
             settingsChanged = true;
