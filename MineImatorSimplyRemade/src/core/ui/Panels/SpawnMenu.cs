@@ -168,6 +168,11 @@ public class SpawnMenu : UiPanel
     private string _selectedPrimitiveTexturePath = "";
 
     /// <summary>
+    /// Orientation used when spawning the Plane primitive.
+    /// </summary>
+    private PlaneOrientation _selectedPrimitivePlaneOrientation = PlaneOrientation.XY;
+
+    /// <summary>
     /// OpenGL texture ID for the currently selected primitive texture.
     /// 0 means no texture (use default material).
     /// </summary>
@@ -370,26 +375,36 @@ public class SpawnMenu : UiPanel
 
         if (!_isOpen) return;
 
+        ImGuiViewportPtr mainViewport = ImGui.GetMainViewport();
+        Vector2 workPos = mainViewport.WorkPos;
+        Vector2 workSize = mainViewport.WorkSize;
+        const float spawnMenuWidth = 1150f;
+        const float spawnMenuHeight = 440f;
+
         if (_nextWindowPos.HasValue)
         {
-            // Clamp so the window doesn't fall off the right/bottom edge.
-            var io = ImGui.GetIO();
-            float wx = Math.Min(_nextWindowPos.Value.X, io.DisplaySize.X - 1160f);
-            float wy = Math.Min(_nextWindowPos.Value.Y, io.DisplaySize.Y - 450f);
+            // Clamp to the active viewport work rect so monitor moves don't snap
+            // the menu back to the primary display.
+            float minX = workPos.X;
+            float minY = workPos.Y;
+            float maxX = workPos.X + Math.Max(0f, workSize.X - spawnMenuWidth);
+            float maxY = workPos.Y + Math.Max(0f, workSize.Y - spawnMenuHeight);
+            float wx = Math.Clamp(_nextWindowPos.Value.X, minX, maxX);
+            float wy = Math.Clamp(_nextWindowPos.Value.Y, minY, maxY);
             ImGui.SetNextWindowPos(new Vector2(wx, wy), ImGuiCond.Always);
             _nextWindowPos = null; // only force position on the first frame
         }
         else
         {
-            // Centre on screen the first time (no explicit anchor given).
-            var io = ImGui.GetIO();
+            // Centre in the current viewport work area.
             ImGui.SetNextWindowPos(
-                new Vector2(io.DisplaySize.X * 0.5f, io.DisplaySize.Y * 0.5f),
+                new Vector2(workPos.X + workSize.X * 0.5f, workPos.Y + workSize.Y * 0.5f),
                 ImGuiCond.Appearing,
                 new Vector2(0.5f, 0.5f));
         }
 
-        ImGui.SetNextWindowSize(new Vector2(1150, 440), ImGuiCond.Appearing);
+        ImGui.SetNextWindowSize(new Vector2(spawnMenuWidth, spawnMenuHeight), ImGuiCond.Appearing);
+        ImGui.SetNextWindowViewport(mainViewport.ID);
 
         // Update the off-screen 3-D preview before the window draws
         UpdatePreview(Mesh.DeltaTime);
@@ -621,7 +636,7 @@ public class SpawnMenu : UiPanel
                 if (name == "Empty") return new List<Mesh>();
 
                 if (name == "Cube")   return new List<Mesh> { new CubeMesh(Gl) };
-                if (name == "Plane")  return new List<Mesh> { new PlaneMesh(Gl, 1f, 1f, PlaneOrientation.XY) };
+                if (name == "Plane")  return new List<Mesh> { new PlaneMesh(Gl, 1f, 1f, _selectedPrimitivePlaneOrientation) };
 
                 // For shapes not yet implemented, show a cube placeholder
                 return new List<Mesh> { new CubeMesh(Gl) };
@@ -959,6 +974,14 @@ public class SpawnMenu : UiPanel
                 _selectedObjectIndex >= 0 && _selectedObjectIndex < filteredObjects.Count &&
                 filteredObjects[_selectedObjectIndex] == "Plane")
             {
+                ImGui.TextDisabled("Orientation");
+                string[] orientationOptions = { "XY", "XZ" };
+                int orientationIndex = _selectedPrimitivePlaneOrientation == PlaneOrientation.XZ ? 1 : 0;
+                if (ImGui.Combo("##planeOrientation", ref orientationIndex, orientationOptions, orientationOptions.Length))
+                    _selectedPrimitivePlaneOrientation = orientationIndex == 1 ? PlaneOrientation.XZ : PlaneOrientation.XY;
+
+                ImGui.Spacing();
+
                 ImGui.TextDisabled("Texture");
                 ImGui.Spacing();
 
@@ -2149,6 +2172,13 @@ public class SpawnMenu : UiPanel
     {
         if (_pendingSchematicRetryPath != null)
             ImGui.OpenPopup("##schematicLoadRetryConfirm");
+
+        ImGuiViewportPtr mainViewport = ImGui.GetMainViewport();
+        Vector2 center = new Vector2(
+            mainViewport.WorkPos.X + mainViewport.WorkSize.X * 0.5f,
+            mainViewport.WorkPos.Y + mainViewport.WorkSize.Y * 0.5f);
+        ImGui.SetNextWindowPos(center, ImGuiCond.Appearing, new Vector2(0.5f, 0.5f));
+        ImGui.SetNextWindowViewport(mainViewport.ID);
 
         bool popupOpen = true;
         if (!ImGui.BeginPopupModal("##schematicLoadRetryConfirm", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
@@ -4498,7 +4528,7 @@ public class SpawnMenu : UiPanel
                     {
                         texturePath = CopyTextureToProject(_selectedPrimitiveTexturePath);
                     }
-                    SpawnPrimitiveObject(objectName, fullName, _selectedPrimitiveTextureId, texturePath);
+                    SpawnPrimitiveObject(objectName, fullName, _selectedPrimitiveTextureId, texturePath, _selectedPrimitivePlaneOrientation);
                 }
                 else
                 {
@@ -4799,7 +4829,7 @@ public class SpawnMenu : UiPanel
     }
 
     /// <summary>Creates and registers a primitive <see cref="SceneObject"/> in the viewport.</summary>
-    public SceneObject? SpawnPrimitiveObject(string primitiveType, string objectName, uint textureId = 0, string texturePath = "")
+    public SceneObject? SpawnPrimitiveObject(string primitiveType, string objectName, uint textureId = 0, string texturePath = "", PlaneOrientation planeOrientation = PlaneOrientation.XY)
     {
         if (Viewport == null) return null;
 
@@ -4817,8 +4847,8 @@ public class SpawnMenu : UiPanel
         // Create mesh geometry for supported primitive types.
         if (primitiveType == "Plane" && Gl != null)
         {
-            // 1-unit × 1-unit vertical (XY) plane
-            var mesh = new PlaneMesh(Gl, 1f, 1f, PlaneOrientation.XY);
+            // 1-unit × 1-unit plane using the selected orientation.
+            var mesh = new PlaneMesh(Gl, 1f, 1f, planeOrientation);
             
             // Apply texture if provided
             if (textureId != 0)

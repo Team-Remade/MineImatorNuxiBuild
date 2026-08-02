@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MineImatorSimplyRemade.core.mdl.meshes;
 
 namespace MineImatorSimplyRemade.core.project;
 
@@ -287,6 +288,9 @@ public class ProjectSceneObjectEntry
     public int TileX { get; set; } = 1;
     public int TileY { get; set; } = 1;
     public int TileZ { get; set; } = 1;
+
+    // Primitive plane orientation. Only used for Primitives/Plane objects.
+    public PlaneOrientation PrimitivePlaneOrientation { get; set; } = PlaneOrientation.XY;
 
     public ProjectVec3 Position { get; set; } = new();
     public ProjectVec3 Rotation { get; set; } = new();

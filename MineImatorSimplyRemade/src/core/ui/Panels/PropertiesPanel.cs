@@ -4,6 +4,7 @@ using System.Reflection;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.project;
@@ -679,6 +680,7 @@ public class PropertiesPanel : UiPanel
             EmissionEnergy = source.EmissionEnergy,
             ItemTileKey = source.ItemTileKey,
             ItemIs3D = source.ItemIs3D,
+            PrimitivePlaneOrientation = source.PrimitivePlaneOrientation,
             CameraFov = source.CameraFov,
             CameraNear = source.CameraNear,
             CameraFar = source.CameraFar,
@@ -2417,6 +2419,27 @@ public class PropertiesPanel : UiPanel
 
             if (ImGui.Button("Reset##tileReset"))
                 ApplyBlockTiling(1, 1, 1);
+        }
+
+        if (string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_currentObject.ObjectType, "Plane", StringComparison.OrdinalIgnoreCase) &&
+            ImGui.CollapsingHeader("Plane"))
+        {
+            var planeMesh = _currentObject.Visuals.OfType<PlaneMesh>().FirstOrDefault();
+            if (planeMesh != null)
+            {
+                string[] orientationOptions = { "XY", "XZ" };
+                int orientationIndex = planeMesh.Orientation == PlaneOrientation.XZ ? 1 : 0;
+                if (ImGui.Combo("Orientation##planeOrientation", ref orientationIndex, orientationOptions, orientationOptions.Length))
+                {
+                    planeMesh.SetOrientation(orientationIndex == 1 ? PlaneOrientation.XZ : PlaneOrientation.XY);
+                    ProjectManager.Instance.SetDirty(true);
+                }
+            }
+            else
+            {
+                ImGui.TextDisabled("Plane mesh is unavailable.");
+            }
         }
 
         // ── Pivot Offset ──────────────────────────────────────────────────────

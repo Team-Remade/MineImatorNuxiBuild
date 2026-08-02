@@ -913,6 +913,7 @@ public class MainWindow : Window
             ImGui.OpenPopup("About Mine Imator Nuxi Build");
         }
 
+        SetNextModalToMainViewport();
         bool popupOpen = true;
         string popupTitle = GetProjectDialogTitle();
         if (ImGui.BeginPopupModal(popupTitle, ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
@@ -994,6 +995,7 @@ public class MainWindow : Window
 
     private void RenderAboutPopup()
     {
+        SetNextModalToMainViewport();
         bool popupOpen = true;
         if (!ImGui.BeginPopupModal("About Mine Imator Nuxi Build", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
             return;
@@ -1039,6 +1041,7 @@ public class MainWindow : Window
         if (!_openUpdatePopup)
             return;
 
+        SetNextModalToMainViewport();
         bool isOpen = true;
         if (!ImGui.BeginPopupModal("Check for Updates", ref isOpen, ImGuiWindowFlags.AlwaysAutoResize))
         {
@@ -1280,6 +1283,7 @@ public class MainWindow : Window
         if (_renderJobActive)
             ImGui.OpenPopup("Render Output");
 
+        SetNextModalToMainViewport();
         bool popupOpen = true;
         if (!ImGui.BeginPopupModal("Render Output", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
             return;
@@ -1555,6 +1559,7 @@ public class MainWindow : Window
         if (_resourcePackImportActive || _resourcePackImportFinished)
             ImGui.OpenPopup("Import Resource Pack");
 
+        SetNextModalToMainViewport();
         bool popupOpen = true;
         if (!ImGui.BeginPopupModal("Import Resource Pack", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
             return;
@@ -2789,6 +2794,7 @@ public class MainWindow : Window
         ImGuiViewportPtr viewport = ImGui.GetMainViewport();
         Vector2 center = new Vector2(viewport.Pos.X + viewport.Size.X * 0.5f, viewport.Pos.Y + viewport.Size.Y * 0.5f);
         ImGui.SetNextWindowPos(center, ImGuiCond.Appearing, new Vector2(0.5f, 0.5f));
+        ImGui.SetNextWindowViewport(viewport.ID);
 
         if (ImGui.BeginPopupModal("Unsaved Changes", ref _showUnsavedChangesDialog, ImGuiWindowFlags.AlwaysAutoResize))
         {
@@ -2854,5 +2860,15 @@ public class MainWindow : Window
 
             ImGui.EndPopup();
         }
+    }
+
+    private static void SetNextModalToMainViewport()
+    {
+        ImGuiViewportPtr viewport = ImGui.GetMainViewport();
+        Vector2 center = new Vector2(
+            viewport.WorkPos.X + viewport.WorkSize.X * 0.5f,
+            viewport.WorkPos.Y + viewport.WorkSize.Y * 0.5f);
+        ImGui.SetNextWindowPos(center, ImGuiCond.Appearing, new Vector2(0.5f, 0.5f));
+        ImGui.SetNextWindowViewport(viewport.ID);
     }
 }

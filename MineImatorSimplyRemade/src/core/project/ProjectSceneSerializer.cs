@@ -173,6 +173,9 @@ public static class ProjectSceneSerializer
             TileX = obj.GetEffectiveTileX(),
             TileY = obj.GetEffectiveTileY(),
             TileZ = obj.GetEffectiveTileZ(),
+            PrimitivePlaneOrientation = obj.SpawnCategory == "Primitives" && obj.ObjectType == "Plane"
+                ? obj.Visuals.OfType<PlaneMesh>().FirstOrDefault()?.Orientation ?? PlaneOrientation.XY
+                : PlaneOrientation.XY,
             Keyframes = SerializeKeyframes(obj),
             ShapeKeyWeights = SerializeShapeKeyWeights(obj)
         };
@@ -319,7 +322,7 @@ public static class ProjectSceneSerializer
             return spawnMenu.SpawnLightObject(entry.Name);
 
         if (entry.SpawnCategory == "Primitives")
-            return spawnMenu.SpawnPrimitiveObject(entry.ObjectType, entry.Name);
+            return spawnMenu.SpawnPrimitiveObject(entry.ObjectType, entry.Name, 0, "", entry.PrimitivePlaneOrientation);
 
         if (entry.SpawnCategory == "Scenery")
         {
@@ -463,6 +466,13 @@ public static class ProjectSceneSerializer
         obj.TileX = entry.TileX;
         obj.TileY = entry.TileY;
         obj.TileZ = entry.TileZ;
+
+        if (obj.SpawnCategory == "Primitives" && obj.ObjectType == "Plane")
+        {
+            var planeMesh = obj.Visuals.OfType<PlaneMesh>().FirstOrDefault();
+            if (planeMesh != null)
+                planeMesh.SetOrientation(entry.PrimitivePlaneOrientation);
+        }
 
         if (entry.HasMaterialOverrides)
         {

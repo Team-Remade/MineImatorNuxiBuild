@@ -31,6 +31,21 @@ public class PlaneMesh : Mesh
         Height = height;
         Orientation = orientation;
     }
+
+    public void SetOrientation(PlaneOrientation orientation)
+    {
+        if (Orientation == orientation)
+            return;
+
+        Orientation = orientation;
+        Vertices.Clear();
+        Normals.Clear();
+        TexCoords.Clear();
+        Indices = null;
+
+        GenerateVertices();
+        Upload();
+    }
     
     protected sealed override void GenerateVertices()
     {
