@@ -583,13 +583,35 @@ public class MineImatorLoader
                 position *= accumulatedParentScale;
             }
 
-            // Port of model_file_load_part.gml lock_bend positioning:
-            // children of a bent part can be shifted by parent bend offset.
-            // In GML, both position and bend_offset are scaled by other.scale (the full
-            // Note: No load-time bend offset subtraction here. The parent's bend
-            // transform is applied at runtime via GetBentHalfTransform(), which
-            // correctly rotates children around the bend pivot.  Pre-subtracting
-            // the offset would place the child at the pivot rather than beyond it.
+            // Port of Modelbench el_update_part.gml lock_bend positioning. A child
+            // locked to a bent half first subtracts the parent's scaled bend offset
+            // from its local position, then inherits the parent's bent-half matrix.
+            // Omitting this adjustment leaves a gap at every joint in chains made
+            // from adjacent planes (PikanModel's JacketBend is a representative case).
+            if (parentIdx >= 0)
+            {
+                MiPart parentPart = boneDataList[parentIdx].part;
+                bool lockBend = !part.LockBend.HasValue || part.LockBend.Value != 0f;
+                if (lockBend && parentPart?.Bend?.Part != null)
+                {
+                    float scaledParentOffset = parentPart.Bend.Offset ?? 0f;
+                    switch (parentPart.Bend.Part.ToLowerInvariant())
+                    {
+                        case "left":
+                        case "right":
+                            position.x -= scaledParentOffset * accumulatedParentScale.x / 16f;
+                            break;
+                        case "upper":
+                        case "lower":
+                            position.y -= scaledParentOffset * accumulatedParentScale.y / 16f;
+                            break;
+                        case "front":
+                        case "back":
+                            position.z -= scaledParentOffset * accumulatedParentScale.z / 16f;
+                            break;
+                    }
+                }
+            }
 
             vec3 rotation = vec3.Zero;
             if (part.Rotation != null && part.Rotation.Length >= 3)
@@ -1843,8 +1865,11 @@ public class MineImatorLoader
             BendHelper.GetBendMatrix(b, startBendVec, shapePosition, shapeScale, vec3.Ones + startScaleCorr);
         p1 = BendHelper.TransformPoint(startMat, p1);
         p2 = BendHelper.TransformPoint(startMat, p2);
-        var n1 = BendHelper.TransformDirection(startMat * rsm, new vec3(0, 0, 1));
-        var n2 = BendHelper.TransformDirection(startMat * rsm, new vec3(0, 0, -1));
+        // Match CreatePlaneMesh and Modelbench's South/Front vs North/Back
+        // convention after converting its Y-normal planes into our Z-normal
+        // model space: Front is -Z and Back is +Z.
+        var n1 = BendHelper.TransformDirection(startMat * rsm, new vec3(0, 0, -1));
+        var n2 = BendHelper.TransformDirection(startMat * rsm, new vec3(0, 0, 1));
 
         float segPos = 0f;
         while (segPos < totalSize)
@@ -1894,8 +1919,8 @@ public class MineImatorLoader
 
             np1 = BendHelper.TransformPoint(segMat, np1);
             np2 = BendHelper.TransformPoint(segMat, np2);
-            var nn1 = BendHelper.TransformDirection(segMat * rsm, new vec3(0, 0, 1));
-            var nn2 = BendHelper.TransformDirection(segMat * rsm, new vec3(0, 0, -1));
+            var nn1 = BendHelper.TransformDirection(segMat * rsm, new vec3(0, 0, -1));
+            var nn2 = BendHelper.TransformDirection(segMat * rsm, new vec3(0, 0, 1));
 
             vec2 t1, t2, t3, t4;
             if (segAxis == 0)
@@ -1904,10 +1929,12 @@ public class MineImatorLoader
                 t2 = new vec2(ntexp1, tex1.y);
                 t3 = new vec2(ntexp1, tex3.y);
                 t4 = new vec2(texp1, tex3.y);
-                if (!hideFront)
+                // Bent planes arrive from Modelbench with South/North mapped to
+                // the opposite serialized front/back flag in our Y-up space.
+                if (!hideBack)
                     AddFaceWithUVs(vertices, normals, uvs, indices, p1, np1, np2, p2, n1, nn1, nn1, n1, t1, t2, t3, t4,
                         invert);
-                if (!hideBack)
+                if (!hideFront)
                     AddFaceWithUVs(vertices, normals, uvs, indices, np1, p1, p2, np2, nn2, n2, n2, nn2, t2, t1, t4, t3,
                         invert);
             }
@@ -1917,10 +1944,10 @@ public class MineImatorLoader
                 t2 = new vec2(tex2.x, ntexp1);
                 t3 = new vec2(tex2.x, texp1);
                 t4 = new vec2(tex1.x, texp1);
-                if (!hideFront)
+                if (!hideBack)
                     AddFaceWithUVs(vertices, normals, uvs, indices, np1, np2, p2, p1, nn1, nn1, n1, n1, t1, t2, t3, t4,
                         invert);
-                if (!hideBack)
+                if (!hideFront)
                     AddFaceWithUVs(vertices, normals, uvs, indices, np2, np1, p1, p2, nn2, nn2, n2, n2, t2, t1, t4, t3,
                         invert);
             }

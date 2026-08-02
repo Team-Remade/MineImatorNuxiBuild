@@ -308,6 +308,21 @@ public static class BendHelper
         return tPos * rotScaleMat * tNeg;
     }
 
+    /// <summary>
+    /// Returns Modelbench's bent-half attachment matrix for a child part.
+    /// Unlike shape vertices, child parts have already had the bend offset
+    /// subtracted from their local position, so this is T(pivot) * R without
+    /// the trailing T(-pivot).
+    /// </summary>
+    public static mat4 GetPartBendMatrix(BendParams b, vec3 bendVec)
+    {
+        mat4 rotation = mat4.RotateY(DegToRad(bendVec.y)) *
+                        mat4.RotateX(DegToRad(bendVec.x)) *
+                        mat4.RotateZ(DegToRad(bendVec.z));
+        vec3 pivot = GetBendPivot(b, vec3.Zero);
+        return mat4.Translate(pivot) * rotation;
+    }
+
     /// <summary>Returns the bend pivot in the loader's Y-up model space.</summary>
     public static vec3 GetBendPivot(BendParams b, vec3 shapePosition)
     {

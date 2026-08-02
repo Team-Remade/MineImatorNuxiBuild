@@ -864,8 +864,7 @@ public class SceneObject
 
         if (LockBend > 0f && Parent is MiBoneSceneObject bendAncestor)
         {
-            vec3 pivotOffset = -GetAccumulatedPivotOffset();
-            parentWorld *= bendAncestor.GetBentHalfTransform(pivotOffset);
+            parentWorld *= bendAncestor.GetBentHalfTransform(vec3.Zero);
         }
 
         return parentWorld;

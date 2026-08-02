@@ -165,7 +165,7 @@ public class MiBoneSceneObject : BoneSceneObject
 
         var bendParams = BendParameters.Value;
         var bendVector = BendHelper.GetBendVector(GetEffectiveBendAngle(), 1.0f);
-        return BendHelper.GetBendMatrix(bendParams, bendVector, shapePosition);
+        return BendHelper.GetPartBendMatrix(bendParams, bendVector);
     }
 
     /// <summary>Registers shape data so meshes can be regenerated when the bend angle changes.</summary>
