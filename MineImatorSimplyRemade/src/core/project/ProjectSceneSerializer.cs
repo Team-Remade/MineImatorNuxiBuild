@@ -221,7 +221,9 @@ public static class ProjectSceneSerializer
 
         if (obj.SpawnCategory == "Items")
         {
-            entry.ItemTileKey = ExtractItemTileKey(obj) ?? "";
+            entry.ItemTileKey = obj.ItemTileKey;
+            if (string.IsNullOrWhiteSpace(entry.ItemTileKey))
+                entry.ItemTileKey = ExtractItemTileKey(obj) ?? "";
             entry.ItemIs3D = obj.Visuals.OfType<ExtrudedItemMesh>().FirstOrDefault()?.Is3D ?? true;
         }
 
@@ -327,7 +329,7 @@ public static class ProjectSceneSerializer
                 ? ItemAtlasSource.BlockAtlas
                 : ItemAtlasSource.ItemAtlas;
 
-            if (atlasSource == ItemAtlasSource.ItemAtlas)
+            if (entry.TextureType != "block")
                 spawnMenu.EnsureTemporaryItemSheetTile(entry, tileKey);
 
             return spawnMenu.SpawnItemObject(tileKey, atlasSource, entry.ItemIs3D);
@@ -501,6 +503,7 @@ public static class ProjectSceneSerializer
         obj.TileX = entry.TileX;
         obj.TileY = entry.TileY;
         obj.TileZ = entry.TileZ;
+        obj.ItemTileKey = entry.ItemTileKey;
         obj.TemporaryItemSheetPath = entry.TemporaryItemSheetPath;
         obj.TemporaryItemSheetCacheKey = entry.TemporaryItemSheetCacheKey;
         obj.TemporaryItemSheetColumns = entry.TemporaryItemSheetColumns;

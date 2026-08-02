@@ -8,6 +8,7 @@ using Silk.NET.OpenGL;
 using StbImageSharp;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -731,9 +732,23 @@ public class MineImatorLoader
             ObjectType = "Item",
             PrimitivePlaneFaceCamera = template.Item.FaceCamera,
             SpawnCategory = "Items",
+            TextureType = "local",
             Position = vec3.Zero
         };
         obj.AssignObjectId();
+
+        string sheetKey = ItemsAtlas.BuildTemporaryItemSheetKey(texturePath, columns, rows);
+        ItemsAtlas.TryRegisterTemporaryItemSheet(sheetKey, texturePath, columns, rows);
+        string tileKey = BuildImportedItemTileKey(texturePath, obj.ObjectId, columnIndex, rowIndex);
+        ItemsAtlas.TryRegisterTemporaryItemTile(sheetKey, tileKey, columnIndex, rowIndex);
+
+        obj.ItemTileKey = tileKey;
+        obj.TemporaryItemSheetPath = texturePath;
+        obj.TemporaryItemSheetCacheKey = sheetKey;
+        obj.TemporaryItemSheetColumns = columns;
+        obj.TemporaryItemSheetRows = rows;
+        obj.TemporaryItemSheetColumnIndex = columnIndex;
+        obj.TemporaryItemSheetRowIndex = rowIndex;
 
         Mesh mesh = new ExtrudedItemMesh(
             _gl,
@@ -747,7 +762,67 @@ public class MineImatorLoader
 
         mesh.DoubleSided = true;
         obj.AddMesh(mesh);
+        ImportItemSlotKeyframes(obj, timeline, columns, rows);
         return obj;
+    }
+
+    private static string BuildImportedItemTileKey(string texturePath, string objectId, int columnIndex, int rowIndex)
+    {
+        string keyBase = Path.GetFileNameWithoutExtension(texturePath);
+        if (string.IsNullOrWhiteSpace(keyBase))
+            keyBase = "miobject_item";
+
+        return $"miobject:{SanitizeImportedItemKey(keyBase)}_{objectId}_{columnIndex}_{rowIndex}";
+    }
+
+    private static string SanitizeImportedItemKey(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "miobject_item";
+
+        var chars = value.Select(ch => char.IsLetterOrDigit(ch) || ch == '_' || ch == '-' ? ch : '_').ToArray();
+        string sanitized = new string(chars).Trim('_');
+        return string.IsNullOrWhiteSpace(sanitized) ? "miobject_item" : sanitized;
+    }
+
+    private static void ImportItemSlotKeyframes(SceneObject obj, MiTimeline timeline, int columns, int rows)
+    {
+        if (obj == null || timeline?.Keyframes == null || timeline.Keyframes.Count == 0)
+            return;
+
+        var itemSlotKeyframes = new List<ObjectKeyframe>();
+        var customSlotKeyframes = new List<ObjectKeyframe>();
+
+        foreach (var kvp in timeline.Keyframes)
+        {
+            if (!int.TryParse(kvp.Key, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frame) || kvp.Value == null)
+                continue;
+
+            if (kvp.Value.ItemSlot.HasValue)
+            {
+                itemSlotKeyframes.Add(new ObjectKeyframe
+                {
+                    Frame = frame,
+                    Value = Math.Clamp(kvp.Value.ItemSlot.Value, 0, columns - 1),
+                    InterpolationType = "instant"
+                });
+            }
+
+            if (kvp.Value.CustomItemSlot.HasValue)
+            {
+                customSlotKeyframes.Add(new ObjectKeyframe
+                {
+                    Frame = frame,
+                    Value = Math.Clamp(kvp.Value.CustomItemSlot.Value - 1, 0, rows - 1),
+                    InterpolationType = "instant"
+                });
+            }
+        }
+
+        if (itemSlotKeyframes.Count > 0)
+            obj.Keyframes["item.slot"] = itemSlotKeyframes.OrderBy(kf => kf.Frame).ToList();
+        if (customSlotKeyframes.Count > 0)
+            obj.Keyframes["item.custom_slot"] = customSlotKeyframes.OrderBy(kf => kf.Frame).ToList();
     }
 
     private static byte[] ExtractItemSheetTile(byte[] rgbaPixels, int imageWidth, int imageHeight,

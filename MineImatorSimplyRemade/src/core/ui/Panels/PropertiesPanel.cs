@@ -603,8 +603,42 @@ public class PropertiesPanel : UiPanel
         if (atlasSource == ItemAtlasSource.ItemAtlas)
             ItemsAtlas.EnsureProjectCustomTexturesLoaded();
 
+        if (atlasSource == ItemAtlasSource.LocalAtlas)
+            return Enumerable.Empty<string>();
+
         var atlas = atlasSource == ItemAtlasSource.BlockAtlas ? TerrainAtlas.Textures : ItemsAtlas.Textures;
         return atlas.Keys.OrderBy(x => x, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private ItemAtlasSource GetObjectItemAtlasSource(SceneObject obj)
+    {
+        if (!string.Equals(obj.SpawnCategory, "Items", StringComparison.Ordinal))
+            return ItemAtlasSource.ItemAtlas;
+
+        if (string.Equals(obj.TextureType, "block", StringComparison.OrdinalIgnoreCase))
+            return ItemAtlasSource.BlockAtlas;
+
+        if (string.Equals(obj.TextureType, "local", StringComparison.OrdinalIgnoreCase) &&
+            obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
+            return ItemAtlasSource.LocalAtlas;
+
+        return ItemAtlasSource.ItemAtlas;
+    }
+
+    private IEnumerable<(string Key, int Column, int Row)> GetLocalItemSheetKeys(SceneObject obj)
+    {
+        if (SpawnMenu == null || obj == null || obj.TemporaryItemSheetColumns <= 0 || obj.TemporaryItemSheetRows <= 0)
+            yield break;
+
+        for (int row = 0; row < obj.TemporaryItemSheetRows; row++)
+        {
+            for (int column = 0; column < obj.TemporaryItemSheetColumns; column++)
+            {
+                string? key = SpawnMenu.EnsureTemporaryItemSheetTile(obj, column, row);
+                if (!string.IsNullOrWhiteSpace(key))
+                    yield return (key, column, row);
+            }
+        }
     }
 
     private IEnumerable<string> GetFloorAtlasKeys()
@@ -2551,21 +2585,41 @@ public class PropertiesPanel : UiPanel
 
             if (supportsItemImage)
             {
-                var atlasSource = string.Equals(_currentObject.TextureType, "block", StringComparison.OrdinalIgnoreCase)
-                    ? ItemAtlasSource.BlockAtlas
-                    : ItemAtlasSource.ItemAtlas;
+                var atlasSource = GetObjectItemAtlasSource(_currentObject);
+                var localItemSheetKeys = atlasSource == ItemAtlasSource.LocalAtlas
+                    ? GetLocalItemSheetKeys(_currentObject).ToList()
+                    : null;
 
-                string currentKey = ExtractItemTileKeyFromObjectType(_currentObject.ObjectType)
-                                    ?? GetItemAtlasKeys(atlasSource).FirstOrDefault()
+                string currentKey = !string.IsNullOrWhiteSpace(_currentObject.ItemTileKey)
+                                    ? _currentObject.ItemTileKey
+                                    : ExtractItemTileKeyFromObjectType(_currentObject.ObjectType)
+                                    ?? (atlasSource == ItemAtlasSource.LocalAtlas
+                                        ? localItemSheetKeys?.FirstOrDefault().Key
+                                        : GetItemAtlasKeys(atlasSource).FirstOrDefault())
                                     ?? "";
 
-                string atlasLabel = atlasSource == ItemAtlasSource.BlockAtlas ? "Block Atlas" : "Item Atlas";
+                string atlasLabel = atlasSource switch
+                {
+                    ItemAtlasSource.BlockAtlas => "Block Atlas",
+                    ItemAtlasSource.LocalAtlas => "Local Atlas",
+                    _ => "Item Atlas"
+                };
                 if (ImGui.BeginCombo("Item Atlas", atlasLabel))
                 {
+                    bool useLocal = atlasSource == ItemAtlasSource.LocalAtlas;
+                    if (_currentObject.TemporaryItemSheetColumns > 0 && _currentObject.TemporaryItemSheetRows > 0 &&
+                        ImGui.Selectable("Local Atlas", useLocal))
+                    {
+                        atlasSource = ItemAtlasSource.LocalAtlas;
+                        localItemSheetKeys = GetLocalItemSheetKeys(_currentObject).ToList();
+                        currentKey = localItemSheetKeys.FirstOrDefault().Key ?? currentKey;
+                    }
+
                     bool useItem = atlasSource == ItemAtlasSource.ItemAtlas;
                     if (ImGui.Selectable("Item Atlas", useItem))
                     {
                         atlasSource = ItemAtlasSource.ItemAtlas;
+                        _currentObject.TextureType = "item";
                         currentKey = GetItemAtlasKeys(atlasSource).FirstOrDefault() ?? currentKey;
                     }
 
@@ -2573,6 +2627,7 @@ public class PropertiesPanel : UiPanel
                     if (ImGui.Selectable("Block Atlas", useBlock))
                     {
                         atlasSource = ItemAtlasSource.BlockAtlas;
+                        _currentObject.TextureType = "block";
                         currentKey = GetItemAtlasKeys(atlasSource).FirstOrDefault() ?? currentKey;
                     }
 
@@ -2583,19 +2638,42 @@ public class PropertiesPanel : UiPanel
                 ImGui.SetNextItemWidth(-1);
                 if (ImGui.BeginCombo("##ItemImageKey", string.IsNullOrWhiteSpace(currentKey) ? "(none)" : currentKey))
                 {
-                    foreach (string key in GetItemAtlasKeys(atlasSource))
+                    if (atlasSource == ItemAtlasSource.LocalAtlas)
                     {
-                        bool selected = string.Equals(key, currentKey, StringComparison.Ordinal);
-                        if (ImGui.Selectable(key, selected))
+                        localItemSheetKeys ??= GetLocalItemSheetKeys(_currentObject).ToList();
+                        foreach (var entry in localItemSheetKeys)
                         {
-                            if (SpawnMenu != null && SpawnMenu.ApplyItemTextureToSpawnedObject(_currentObject, atlasSource, key))
+                            bool selected = string.Equals(entry.Key, currentKey, StringComparison.Ordinal);
+                            string label = $"Column {entry.Column}, Row {entry.Row + 1}##{entry.Key}";
+                            if (ImGui.Selectable(label, selected))
                             {
-                                ProjectManager.Instance.SetDirty(true);
-                                currentKey = key;
+                                _currentObject.TextureType = "local";
+                                if (SpawnMenu != null && SpawnMenu.ApplyTemporaryItemSheetSlotToSpawnedObject(_currentObject, entry.Column, entry.Row))
+                                {
+                                    ProjectManager.Instance.SetDirty(true);
+                                    currentKey = _currentObject.ItemTileKey;
+                                }
                             }
+                            if (selected)
+                                ImGui.SetItemDefaultFocus();
                         }
-                        if (selected)
-                            ImGui.SetItemDefaultFocus();
+                    }
+                    else
+                    {
+                        foreach (string key in GetItemAtlasKeys(atlasSource))
+                        {
+                            bool selected = string.Equals(key, currentKey, StringComparison.Ordinal);
+                            if (ImGui.Selectable(key, selected))
+                            {
+                                if (SpawnMenu != null && SpawnMenu.ApplyItemTextureToSpawnedObject(_currentObject, atlasSource, key))
+                                {
+                                    ProjectManager.Instance.SetDirty(true);
+                                    currentKey = key;
+                                }
+                            }
+                            if (selected)
+                                ImGui.SetItemDefaultFocus();
+                        }
                     }
 
                     ImGui.EndCombo();
@@ -2610,6 +2688,40 @@ public class PropertiesPanel : UiPanel
                     {
                         ProjectManager.Instance.SetDirty(true);
                     }
+                }
+
+                if (_currentObject.TemporaryItemSheetColumns > 0 && _currentObject.TemporaryItemSheetRows > 0)
+                {
+                    ImGui.SeparatorText("Item Sheet Slot");
+
+                    int slotColumn = _currentObject.TemporaryItemSheetColumnIndex;
+                    int slotRow = _currentObject.TemporaryItemSheetRowIndex;
+                    bool slotChanged = false;
+
+                    ImGui.PushItemWidth(-ImGui.CalcTextSize("Row").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
+
+                    if (InputIntEditor("Column##itemSlotColumn", ref slotColumn, 1, 4, 0, _currentObject.TemporaryItemSheetColumns - 1))
+                        slotChanged = true;
+                    if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                    {
+                        _ctxPropertyPath = "item.slot";
+                        _ctxMenuPos = ImGui.GetMousePos();
+                        _openPropContextMenu = true;
+                    }
+
+                    if (InputIntEditor("Row##itemSlotRow", ref slotRow, 1, 4, 0, _currentObject.TemporaryItemSheetRows - 1))
+                        slotChanged = true;
+                    if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                    {
+                        _ctxPropertyPath = "item.custom_slot";
+                        _ctxMenuPos = ImGui.GetMousePos();
+                        _openPropContextMenu = true;
+                    }
+
+                    ImGui.PopItemWidth();
+
+                    if (slotChanged)
+                        ApplyTemporaryItemSheetSlot(slotColumn, slotRow);
                 }
 
                 ImGui.Spacing();
@@ -3375,6 +3487,19 @@ public class PropertiesPanel : UiPanel
             if (SpawnMenu.RebuildBlockMeshes(_currentObject))
                 ProjectManager.Instance.SetDirty(true);
         }
+    }
+
+    private void ApplyTemporaryItemSheetSlot(int columnIndex, int rowIndex)
+    {
+        if (_currentObject == null || SpawnMenu == null)
+            return;
+
+        if (!SpawnMenu.ApplyTemporaryItemSheetSlotToSpawnedObject(_currentObject, columnIndex, rowIndex))
+            return;
+
+        Timeline?.RecordAutoKeyframe(_currentObject, "item.slot");
+        Timeline?.RecordAutoKeyframe(_currentObject, "item.custom_slot");
+        ProjectManager.Instance.SetDirty(true);
     }
 
     private void ApplyCubeUvMapping(bool mapped)

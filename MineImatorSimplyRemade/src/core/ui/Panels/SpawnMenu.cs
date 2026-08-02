@@ -25,7 +25,8 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 public enum ItemAtlasSource
 {
     ItemAtlas,
-    BlockAtlas
+    BlockAtlas,
+    LocalAtlas
 }
 
 /// <summary>
@@ -4750,6 +4751,7 @@ public class SpawnMenu : UiPanel
             ObjectType    = baseName,
             SpawnCategory = "Items",
             TextureType   = atlasSource == ItemAtlasSource.ItemAtlas ? "item" : "block",
+            ItemTileKey   = tileKey,
             ResourcePackId = GetSourceIdFromTextureKey(tileKey),
             Position      = vec3.Zero
         };
@@ -5238,7 +5240,86 @@ public class SpawnMenu : UiPanel
 
         target.ObjectType = temp.ObjectType;
         target.TextureType = atlasSource == ItemAtlasSource.BlockAtlas ? "block" : "item";
+        target.ItemTileKey = tileKey;
         return true;
+    }
+
+    public bool ApplyTemporaryItemSheetSlotToSpawnedObject(SceneObject target, int columnIndex, int rowIndex)
+    {
+        if (target == null || Viewport == null)
+            return false;
+        if (string.IsNullOrWhiteSpace(target.TemporaryItemSheetPath) ||
+            target.TemporaryItemSheetColumns <= 0 || target.TemporaryItemSheetRows <= 0)
+            return false;
+
+        string sheetPath = ProjectManager?.ResolveProjectPath(target.TemporaryItemSheetPath) ?? target.TemporaryItemSheetPath;
+        string sheetKey = !string.IsNullOrWhiteSpace(target.TemporaryItemSheetCacheKey)
+            ? target.TemporaryItemSheetCacheKey
+            : ItemsAtlas.BuildTemporaryItemSheetKey(sheetPath, target.TemporaryItemSheetColumns, target.TemporaryItemSheetRows);
+
+        if (!ItemsAtlas.TryRegisterTemporaryItemSheet(sheetKey, sheetPath, target.TemporaryItemSheetColumns, target.TemporaryItemSheetRows))
+            return false;
+
+        int clampedColumn = Math.Clamp(columnIndex, 0, target.TemporaryItemSheetColumns - 1);
+        int clampedRow = Math.Clamp(rowIndex, 0, target.TemporaryItemSheetRows - 1);
+        string tileKey = BuildTemporaryItemSheetTileKey(target, clampedColumn, clampedRow);
+
+        if (!ItemsAtlas.Textures.ContainsKey(tileKey) &&
+            !ItemsAtlas.TryRegisterTemporaryItemTile(sheetKey, tileKey, clampedColumn, clampedRow))
+            return false;
+
+        bool is3D = target.Visuals.OfType<ExtrudedItemMesh>().FirstOrDefault()?.Is3D ?? true;
+        var temp = SpawnItemObject(tileKey, ItemAtlasSource.ItemAtlas, is3D);
+        if (temp == null)
+            return false;
+
+        if (!ReplaceObjectMeshesFromTempSpawn(target, temp, ""))
+            return false;
+
+        target.ItemTileKey = tileKey;
+        target.TextureType = "local";
+        target.ResourcePackId = "";
+        target.TemporaryItemSheetCacheKey = sheetKey;
+        target.TemporaryItemSheetColumnIndex = clampedColumn;
+        target.TemporaryItemSheetRowIndex = clampedRow;
+        return true;
+    }
+
+    public string? EnsureTemporaryItemSheetTile(SceneObject target, int columnIndex, int rowIndex)
+    {
+        if (target == null)
+            return null;
+        if (string.IsNullOrWhiteSpace(target.TemporaryItemSheetPath) ||
+            target.TemporaryItemSheetColumns <= 0 || target.TemporaryItemSheetRows <= 0)
+            return null;
+
+        string sheetPath = ProjectManager?.ResolveProjectPath(target.TemporaryItemSheetPath) ?? target.TemporaryItemSheetPath;
+        string sheetKey = !string.IsNullOrWhiteSpace(target.TemporaryItemSheetCacheKey)
+            ? target.TemporaryItemSheetCacheKey
+            : ItemsAtlas.BuildTemporaryItemSheetKey(sheetPath, target.TemporaryItemSheetColumns, target.TemporaryItemSheetRows);
+
+        if (!ItemsAtlas.TryRegisterTemporaryItemSheet(sheetKey, sheetPath, target.TemporaryItemSheetColumns, target.TemporaryItemSheetRows))
+            return null;
+
+        int clampedColumn = Math.Clamp(columnIndex, 0, target.TemporaryItemSheetColumns - 1);
+        int clampedRow = Math.Clamp(rowIndex, 0, target.TemporaryItemSheetRows - 1);
+        string tileKey = BuildTemporaryItemSheetTileKey(target, clampedColumn, clampedRow);
+
+        if (!ItemsAtlas.Textures.ContainsKey(tileKey) &&
+            !ItemsAtlas.TryRegisterTemporaryItemTile(sheetKey, tileKey, clampedColumn, clampedRow))
+            return null;
+
+        target.TemporaryItemSheetCacheKey = sheetKey;
+        return tileKey;
+    }
+
+    private static string BuildTemporaryItemSheetTileKey(SceneObject target, int columnIndex, int rowIndex)
+    {
+        string keyBase = Path.GetFileNameWithoutExtension(target.TemporaryItemSheetPath);
+        if (string.IsNullOrWhiteSpace(keyBase))
+            keyBase = !string.IsNullOrWhiteSpace(target.Name) ? target.Name : "miobject_item";
+
+        return $"miobject:{SanitizeCustomItemKey(keyBase)}_{target.ObjectId}_{columnIndex}_{rowIndex}";
     }
 
     private bool ReplaceObjectMeshesFromTempSpawn(SceneObject target, SceneObject temp, string normalizedResourcePackId)

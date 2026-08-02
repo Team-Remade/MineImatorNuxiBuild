@@ -92,6 +92,7 @@ public class SceneObject
     public string SpawnCategory = "";
     public string BlockVariant = "";
     public string TextureType = "item";
+    public string ItemTileKey = "";
     public string ResourcePackId = "";
     public string TemporaryItemSheetPath = "";
     public string TemporaryItemSheetCacheKey = "";

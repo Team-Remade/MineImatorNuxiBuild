@@ -2166,6 +2166,10 @@ public class Timeline : UiPanel
             "rotation.x", "rotation.y", "rotation.z",
             "scale.x",    "scale.y",    "scale.z",
         };
+        string[] itemPaths =
+        {
+            "item.slot", "item.custom_slot",
+        };
         string[] lightPaths =
         {
             "light.energy", "light.range", "light.indirect_energy", "light.specular",
@@ -2183,6 +2187,8 @@ public class Timeline : UiPanel
             var paths = obj is LightSceneObject   ? standardPaths.Concat(lightPaths)
                       : obj is CameraSceneObject  ? standardPaths.Concat(cameraPaths)
                       : standardPaths;
+            if (obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
+                paths = paths.Concat(itemPaths);
             foreach (var path in paths)
                 if (obj.Keyframes.ContainsKey(path) && obj.Keyframes[path].Count > 0)
                     LoadKeyframesFromObject(obj, path);
@@ -2269,7 +2275,7 @@ public class Timeline : UiPanel
 
         // Between two keyframes — interpolate.
         // "visible", "camera.active" and "instant" use the previous keyframe's value with no blending.
-        if (path == "visible" || path == "camera.active" || prev.InterpolationType == "instant")
+        if (path == "visible" || path == "camera.active" || path == "item.slot" || path == "item.custom_slot" || prev.InterpolationType == "instant")
             return TryConvertKeyframeValue(prev.Value, out float prevInstant) ? prevInstant : null;
 
         if (!TryConvertKeyframeValue(prev.Value, out float pv) || !TryConvertKeyframeValue(next.Value, out float nv))
@@ -2397,6 +2403,13 @@ public class Timeline : UiPanel
                 case "material":
                     if (comp == "alpha") return obj.MaterialSettings?.AlbedoColor.w ?? 1f;
                     break;
+                case "item":
+                    return comp switch
+                    {
+                        "slot" => obj.TemporaryItemSheetColumnIndex,
+                        "custom_slot" => obj.TemporaryItemSheetRowIndex,
+                        _ => 0f,
+                    };
                 case "light":
                     if (obj is LightSceneObject lo)
                         return comp switch
@@ -2531,6 +2544,22 @@ public class Timeline : UiPanel
                         }
                         break;
 
+                    case "item":
+                        if (Viewport?.SpawnMenu == null || obj.TemporaryItemSheetColumns <= 0 || obj.TemporaryItemSheetRows <= 0)
+                            break;
+
+                        int columnIndex = obj.TemporaryItemSheetColumnIndex;
+                        int rowIndex = obj.TemporaryItemSheetRowIndex;
+                        if (comp == "slot")
+                            columnIndex = Math.Clamp((int)MathF.Round(value), 0, obj.TemporaryItemSheetColumns - 1);
+                        else if (comp == "custom_slot")
+                            rowIndex = Math.Clamp((int)MathF.Round(value), 0, obj.TemporaryItemSheetRows - 1);
+                        else
+                            break;
+
+                        Viewport.SpawnMenu.ApplyTemporaryItemSheetSlotToSpawnedObject(obj, columnIndex, rowIndex);
+                        break;
+
                     case "light":
                         if (obj is LightSceneObject lo)
                         {
@@ -2654,6 +2683,11 @@ public class Timeline : UiPanel
                 (label: "Y",               path: "scale.y", parent: "scale", indent: 1),
                 (label: "Z",               path: "scale.z", parent: "scale", indent: 1),
             };
+            var itemProps = new[]
+            {
+                (label: "Item Slot",       path: "item.slot", parent: "", indent: 0),
+                (label: "Custom Item Slot", path: "item.custom_slot", parent: "", indent: 0),
+            };
 
             // Add rows for properties with keyframes
             foreach (var (label, path, parent, indent) in standardProps)
@@ -2678,6 +2712,15 @@ public class Timeline : UiPanel
                 else if (propsWithKeyframes.Contains(path))
                 {
                     _displayRows.Add(MakeSingle(obj, label, path, indent));
+                }
+            }
+
+            if (obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
+            {
+                foreach (var (label, path, parent, indent) in itemProps)
+                {
+                    if (propsWithKeyframes.Contains(path))
+                        _displayRows.Add(MakeSingle(obj, label, path, indent));
                 }
             }
 
@@ -2765,6 +2808,12 @@ public class Timeline : UiPanel
         _displayRows.Add(MakeSingle(obj, "X",               "scale.x", 1));
         _displayRows.Add(MakeSingle(obj, "Y",               "scale.y", 1));
         _displayRows.Add(MakeSingle(obj, "Z",               "scale.z", 1));
+
+        if (obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
+        {
+            _displayRows.Add(MakeSingle(obj, "Item Slot",        "item.slot"));
+            _displayRows.Add(MakeSingle(obj, "Custom Item Slot", "item.custom_slot"));
+        }
 
         if (obj is LightSceneObject)
         {
