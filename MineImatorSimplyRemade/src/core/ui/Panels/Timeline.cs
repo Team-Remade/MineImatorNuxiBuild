@@ -2632,9 +2632,6 @@ public class Timeline : UiPanel
             // Add rows for properties with keyframes
             foreach (var (label, path, parent, indent) in standardProps)
             {
-                bool hasKeyframes = propsWithKeyframes.Contains(path);
-                if (!hasKeyframes) continue;
-
                 if (path == "position" || path == "rotation" || path == "scale")
                 {
                     // This is a group header
@@ -2645,9 +2642,14 @@ public class Timeline : UiPanel
                         "scale" => new[] { "scale.x", "scale.y", "scale.z" },
                         _ => Array.Empty<string>()
                     };
-                    _displayRows.Add(MakeGroup(obj, label, groupPaths));
+
+                    // Group paths are organizational rows and never receive
+                    // keyframes themselves. Show the header whenever at least
+                    // one of its component tracks has keyframes.
+                    if (groupPaths.Any(propsWithKeyframes.Contains))
+                        _displayRows.Add(MakeGroup(obj, label, groupPaths));
                 }
-                else
+                else if (propsWithKeyframes.Contains(path))
                 {
                     _displayRows.Add(MakeSingle(obj, label, path, indent));
                 }
@@ -2670,12 +2672,16 @@ public class Timeline : UiPanel
 
                 foreach (var (label, path, parent, indent) in lightProps)
                 {
-                    bool hasKeyframes = propsWithKeyframes.Contains(path);
-                    if (!hasKeyframes) continue;
-
-                    _displayRows.Add(path == "light.color"
-                        ? MakeGroup(obj, label, ["light.color.r", "light.color.g", "light.color.b"])
-                        : MakeSingle(obj, label, path, indent));
+                    if (path == "light.color")
+                    {
+                        string[] groupPaths = ["light.color.r", "light.color.g", "light.color.b"];
+                        if (groupPaths.Any(propsWithKeyframes.Contains))
+                            _displayRows.Add(MakeGroup(obj, label, groupPaths));
+                    }
+                    else if (propsWithKeyframes.Contains(path))
+                    {
+                        _displayRows.Add(MakeSingle(obj, label, path, indent));
+                    }
                 }
             }
 
