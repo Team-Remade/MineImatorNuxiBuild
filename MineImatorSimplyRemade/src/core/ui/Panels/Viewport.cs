@@ -832,25 +832,46 @@ public class Viewport : UiPanel
         return new vec3(v.x * MathF.Cos(z) - v.y * MathF.Sin(z), v.x * MathF.Sin(z) + v.y * MathF.Cos(z), v.z).Normalized;
     }
 
+    // Keep celestial fill lights from affecting the world when they are too
+    // close to/below the horizon by X-rotation.
+    private const float CelestialFillLightMinXAngle = 5f;
+    private const float CelestialFillLightMaxXAngle = 175f;
+
+    private static float NormalizeAngle360(float angleDegrees)
+    {
+        float wrapped = angleDegrees % 360f;
+        if (wrapped < 0f)
+            wrapped += 360f;
+        return wrapped;
+    }
+
+    private static bool IsCelestialFillLightActive(float xAngleDegrees)
+    {
+        float normalizedX = NormalizeAngle360(xAngleDegrees);
+        return normalizedX >= CelestialFillLightMinXAngle && normalizedX <= CelestialFillLightMaxXAngle;
+    }
+
     private void RenderSky(Camera camera, uint width, uint height)
     {
         var p = PropertiesPanel;
         if (p == null) return;
         float orbit = p.SkyTime * 15f;
         float[] sunAngles = [p.SunAngle[0] + orbit, p.SunAngle[1], p.SunAngle[2]];
+        bool sunFillLightActive = IsCelestialFillLightActive(sunAngles[0]);
         vec3 sunDirection = DirectionFromEuler(sunAngles);
         _groundPlaneModel = mat4.Translate(new vec3(
             MathF.Floor(camera.Position.x), 0f, MathF.Floor(camera.Position.z)));
         Mesh.GlobalSunFillLightDirection = sunDirection;
         Mesh.GlobalSunFillLightColor = new vec3(p.SunFillLightColor[0], p.SunFillLightColor[1], p.SunFillLightColor[2]);
-        Mesh.GlobalSunFillLightStrength = p.UseSky ? p.SunFillLightStrength : 0f;
-        Mesh.SunFillLightCastsShadows = p.UseSky && p.SunFillLightCastsShadows;
+        Mesh.GlobalSunFillLightStrength = (p.UseSky && sunFillLightActive) ? p.SunFillLightStrength : 0f;
+        Mesh.SunFillLightCastsShadows = p.UseSky && sunFillLightActive && p.SunFillLightCastsShadows;
         float[] moonAngles = [p.MoonAngle[0] + orbit, p.MoonAngle[1], p.MoonAngle[2]];
+        bool moonFillLightActive = IsCelestialFillLightActive(moonAngles[0]);
         vec3 moonDirection = DirectionFromEuler(moonAngles);
         Mesh.GlobalMoonFillLightDirection = moonDirection;
         Mesh.GlobalMoonFillLightColor = new vec3(p.MoonFillLightColor[0], p.MoonFillLightColor[1], p.MoonFillLightColor[2]);
-        Mesh.GlobalMoonFillLightStrength = p.UseSky ? p.MoonFillLightStrength : 0f;
-        Mesh.MoonFillLightCastsShadows = p.UseSky && p.MoonFillLightCastsShadows;
+        Mesh.GlobalMoonFillLightStrength = (p.UseSky && moonFillLightActive) ? p.MoonFillLightStrength : 0f;
+        Mesh.MoonFillLightCastsShadows = p.UseSky && moonFillLightActive && p.MoonFillLightCastsShadows;
         Mesh.MainFillLightCastsShadows = p.FillLightCastsShadows;
         float nightFactor = ComputeNightBlend(sunDirection.y);
         float ambR = p.AmbientLightColor[0] * (1f - nightFactor) + p.NightAmbientLightColor[0] * nightFactor;
@@ -2167,9 +2188,9 @@ public class Viewport : UiPanel
         Mesh.ShadowLightSpaceMatrix = mat4.Identity;
         Mesh.ShadowDebugMode = 0;
         bool globalShadows = PropertiesPanel?.ShadowsEnabled ?? true;
-        Mesh.DirectionalShadowEnabled = globalShadows && ((PropertiesPanel?.FillLightCastsShadows ?? true) ||
-                                        (PropertiesPanel?.UseSky == true && PropertiesPanel.SunFillLightCastsShadows) ||
-                                        (PropertiesPanel?.UseSky == true && PropertiesPanel.MoonFillLightCastsShadows));
+        Mesh.DirectionalShadowEnabled = globalShadows && (Mesh.MainFillLightCastsShadows ||
+                        Mesh.SunFillLightCastsShadows ||
+                        Mesh.MoonFillLightCastsShadows);
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         // Rebuild the full scene light list every frame so that moved / deleted
@@ -4499,9 +4520,9 @@ public class Viewport : UiPanel
         Mesh.ShadowLightSpaceMatrix = mat4.Identity;
         Mesh.ShadowDebugMode = 0;
         bool globalShadows = MainViewport.PropertiesPanel?.ShadowsEnabled ?? true;
-        Mesh.DirectionalShadowEnabled = globalShadows && ((MainViewport.PropertiesPanel?.FillLightCastsShadows ?? true) ||
-                                        (MainViewport.PropertiesPanel?.UseSky == true && MainViewport.PropertiesPanel.SunFillLightCastsShadows) ||
-                                        (MainViewport.PropertiesPanel?.UseSky == true && MainViewport.PropertiesPanel.MoonFillLightCastsShadows));
+        Mesh.DirectionalShadowEnabled = globalShadows && (Mesh.MainFillLightCastsShadows ||
+                        Mesh.SunFillLightCastsShadows ||
+                        Mesh.MoonFillLightCastsShadows);
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         Dictionary<LightSceneObject, int> pointShadowIndices = new();
