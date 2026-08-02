@@ -228,7 +228,10 @@ public class MineImatorLoader
         LoadModelTextures(model);
 
         var boneDataList = new List<(MiPart part, int boneIdx, int parentIdx, vec3 accumulatedParentScale)>();
-        FlattenPartsForBones(model.Parts, -1, vec3.Ones, boneDataList);
+        vec3 modelScale = vec3.Ones;
+        if (model.Scale is { Length: >= 3 })
+            modelScale = new vec3(model.Scale[0], model.Scale[1], model.Scale[2]);
+        FlattenPartsForBones(model.Parts, -1, modelScale, boneDataList);
 
         var character = new CharacterSceneObject();
         character.Name = model.Name;
@@ -263,6 +266,11 @@ public class MineImatorLoader
             float lockBend = part.LockBend ?? 1f;
             miBone?.SetBendParameters(bendParams, lockBend);
 
+            // Mine-imator applies inherit_bend to the default pose immediately.
+            // Previously it was only applied after the parent was edited and the
+            // meshes regenerated, so inherited bends loaded in the wrong pose.
+            BendParams? effectiveBendParams = miBone?.GetEffectiveBendParameters() ?? bendParams;
+
             if (part.Shapes is { Count: > 0 })
             {
                 int shapeIndex = 0;
@@ -281,12 +289,13 @@ public class MineImatorLoader
                     int depth = miBone?.Depth ?? 0;
 
                     var mesh = CreateShapeMesh(part.Name, shapeIndex, shape, model, shapeTexture,
-                        accumulatedScale, bendParams, _currentCharacter.ModelBendStyle,
+                        accumulatedScale, effectiveBendParams, _currentCharacter.ModelBendStyle,
                         colorAlpha, depth, textureSize: textureSize);
 
                     if (mesh != null)
                     {
                         if (miBone != null) ApplyMaterialSettings(mesh, miBone, shapeTexture);
+                        mesh.DoubleSided = part.Backfaces;
                         boneObject.AddMesh(mesh);
                         miBone?.RegisterShapeData(new BoneShapeData
                         {
@@ -330,10 +339,12 @@ public class MineImatorLoader
     }
 
     /// <summary>
-    /// Converts Mine Imator Euler angles (extrinsic XYZ, degrees) to the engine's
+    /// Converts Mine Imator part Euler angles (Y-X-Z composition, degrees) to the engine's
     /// intrinsic X→Y→Z (Rz*Ry*Rx) Euler angles (radians).
     ///
-    /// Mine Imator convention:  R_mi = Rx(rot[0]) * Ry(rot[1]) * Rz(rot[2])
+    /// GameMaker stores matrices for row-vector multiplication. Transposing its
+    /// matrix_build result into the engine's column-vector convention gives:
+    ///                           R_mi = Ry(rot[1]) * Rx(rot[0]) * Rz(rot[2])
     /// Engine convention:        R_en = Rz(z) * Ry(y) * Rx(x)
     ///
     /// The reference project (Godot) negates rot[2] AND uses Basis(Forward, rotZ)
@@ -343,12 +354,7 @@ public class MineImatorLoader
     /// </summary>
     private static vec3 ConvertMiRotation(float[] rotDeg)
     {
-        float x = BendHelper.DegToRad(rotDeg[0]);
-        float y = BendHelper.DegToRad(rotDeg[1]);
-        float z = BendHelper.DegToRad(rotDeg[2]);
-
-        // Build R_mi = Rx(x) * Ry(y) * Rz(z)
-        mat4 m = mat4.RotateX(x) * mat4.RotateY(y) * mat4.RotateZ(z);
+        mat4 m = ConvertMiRotationMatrix(rotDeg);
 
         // Decompose into Rz(z') * Ry(y') * Rx(x') (engine convention)
         // For R = Rz(z') * Ry(y') * Rx(x'):
@@ -373,6 +379,24 @@ public class MineImatorLoader
         }
 
         return new vec3(xx, yy, zz);
+    }
+
+    private static mat4 ConvertMiRotationMatrix(float[] rotDeg)
+    {
+        float x = BendHelper.DegToRad(rotDeg[0]);
+        float y = BendHelper.DegToRad(rotDeg[1]);
+        float z = BendHelper.DegToRad(rotDeg[2]);
+        return mat4.RotateY(y) * mat4.RotateX(x) * mat4.RotateZ(z);
+    }
+
+    /// <summary>
+    /// Converts a shape rotation. Modelbench uses the same GameMaker
+    /// matrix_build Y-X-Z operation order for generated shape vertices and part
+    /// transforms, so both must pass through the same conversion.
+    /// </summary>
+    private static vec3 ConvertMiShapeRotation(float[] rotDeg)
+    {
+        return ConvertMiRotation(rotDeg);
     }
 
     private static bool ValidateModelRoot(JsonElement root, string modelPath)
@@ -572,7 +596,11 @@ public class MineImatorLoader
                 rotation = ConvertMiRotation(part.Rotation);
 
             boneObject.SetLocalPosition(position);
-            boneObject.SetLocalRotation(rotation);
+            if (part.Rotation is { Length: >= 3 })
+                boneObject.SetLocalRotationMatrix(ConvertMiRotationMatrix(part.Rotation), rotation);
+            else
+                boneObject.SetLocalRotation(rotation);
+            boneObject.CastShadow = part.Shadows;
 
             // Attach alpha/depth from part
             if (boneObject is MiBoneSceneObject mibone)
@@ -634,6 +662,7 @@ public class MineImatorLoader
         {
             if (string.IsNullOrEmpty(textureName))
             {
+                if (part.LoadedTextures.TryGetValue("resolved_texture", out uint inherited)) return inherited;
                 if (part.LoadedTextures.TryGetValue("skin", out uint t1)) return t1;
                 if (part.LoadedTextures.TryGetValue("texture", out uint t2)) return t2;
             }
@@ -694,10 +723,10 @@ public class MineImatorLoader
             }
         }
 
-        if (model.Parts != null) LoadPartTextures(model.Parts, model);
+        if (model.Parts != null) LoadPartTextures(model.Parts, model, model.GetTexture());
     }
 
-    private void LoadPartTextures(List<MiPart> parts, MiModel model)
+    private void LoadPartTextures(List<MiPart> parts, MiModel model, uint inheritedTexture)
     {
         if (parts == null) return;
         foreach (var part in parts)
@@ -746,8 +775,17 @@ public class MineImatorLoader
                 }
             }
 
+            // A Mine-imator part inherits the nearest ancestor's selected
+            // texture. Texture-owning grouping parts frequently contain no
+            // shapes themselves (hair and facial rigs are common examples).
+            uint resolvedTexture = inheritedTexture;
+            if (part.LoadedTextures.TryGetValue("texture", out uint ownTexture) && ownTexture != 0)
+                resolvedTexture = ownTexture;
+            if (resolvedTexture != 0)
+                part.LoadedTextures["resolved_texture"] = resolvedTexture;
+
             if (part.Parts is { Count: > 0 })
-                LoadPartTextures(part.Parts, model);
+                LoadPartTextures(part.Parts, model, resolvedTexture);
         }
     }
 
@@ -829,11 +867,14 @@ public class MineImatorLoader
         if (shape.Position != null && shape.Position.Length >= 3)
         {
             shapePosition = new vec3(shape.Position[0] / 16f, shape.Position[1] / 16f, shape.Position[2] / 16f);
+            // Mine-imator scales a shape offset by its owning part hierarchy,
+            // but not by the shape's own scale.
+            shapePosition *= accumulatedParentScale;
         }
 
         vec3 shapeRotation = vec3.Zero;
         if (shape.Rotation != null && shape.Rotation.Length >= 3)
-            shapeRotation = ConvertMiRotation(shape.Rotation);
+            shapeRotation = ConvertMiShapeRotation(shape.Rotation);
 
         vec3 shapeScale = vec3.Ones;
         if (shape.Scale != null && shape.Scale.Length >= 3)
@@ -1076,8 +1117,13 @@ public class MineImatorLoader
             };
 
             float x1 = min.x, x2 = max.x, y1 = min.y, y2 = max.y, z1 = min.z, z2 = max.z;
-            float bendSize = b.BendSize / 16f;
-            float bendOffset = b.BendOffset / 16f;
+            float axisScale = MathF.Max(MathF.Abs(shapeScale[segAxis]), 1e-6f);
+            // The segmentation loop operates on the unscaled source box, while
+            // Mine-imator's bend offset/size and shape position are in scaled
+            // part space. Convert the bend region back into the loop's space.
+            float bendSize = b.BendSize / 16f / axisScale;
+            float bendOffset = b.BendOffset / 16f / axisScale;
+            float bendShapePosition = shapePosition[segAxis] / axisScale;
 
             BendStyle effectiveStyle = (bendStyle == BendStyle.ProjectDefault)
                 ? ProjectBendStyle
@@ -1098,23 +1144,27 @@ public class MineImatorLoader
             mat4 shapeScaleMat = shapeScale != default && shapeScale != vec3.Ones
                 ? mat4.Scale(shapeScale)
                 : mat4.Identity;
-            mat4 rsm = shapeRotMat * shapeScaleMat;
+            vec3 bendPivot = BendHelper.GetBendPivot(b, shapePosition);
+            // Mine-imator applies the shape rotation around the same pivot used
+            // by the bend, before applying the bend rotation itself.
+            mat4 rsm = mat4.Translate(bendPivot) * shapeRotMat *
+                       mat4.Translate(-bendPivot) * shapeScaleMat;
             float axisStart = segAxis == 0 ? x1 : segAxis == 1 ? y1 : z1;
 
             float bendStart, bendEnd;
             switch (segAxis)
             {
                 case 0:
-                    bendStart = bendOffset - (shapePosition.x + axisStart) - bendSize / 2f;
-                    bendEnd = bendOffset - (shapePosition.x + axisStart) + bendSize / 2f;
+                    bendStart = bendOffset - (bendShapePosition + axisStart) - bendSize / 2f;
+                    bendEnd = bendOffset - (bendShapePosition + axisStart) + bendSize / 2f;
                     break;
                 case 1:
-                    bendStart = bendOffset - (shapePosition.y + axisStart) - bendSize / 2f;
-                    bendEnd = bendOffset - (shapePosition.y + axisStart) + bendSize / 2f;
+                    bendStart = bendOffset - (bendShapePosition + axisStart) - bendSize / 2f;
+                    bendEnd = bendOffset - (bendShapePosition + axisStart) + bendSize / 2f;
                     break;
                 default:
-                    bendStart = bendOffset - (shapePosition.z + axisStart) - bendSize / 2f;
-                    bendEnd = bendOffset - (shapePosition.z + axisStart) + bendSize / 2f;
+                    bendStart = bendOffset - (bendShapePosition + axisStart) - bendSize / 2f;
+                    bendEnd = bendOffset - (bendShapePosition + axisStart) + bendSize / 2f;
                     break;
             }
 
@@ -1750,8 +1800,10 @@ public class MineImatorLoader
             _ => 1
         };
 
-        float bendSize = b.BendSize / 16f;
-        float bendOffset = b.BendOffset / 16f;
+        float axisScale = MathF.Max(MathF.Abs(shapeScale[segAxis]), 1e-6f);
+        float bendSize = b.BendSize / 16f / axisScale;
+        float bendOffset = b.BendOffset / 16f / axisScale;
+        float bendShapePosition = shapePosition[segAxis] / axisScale;
 
         BendStyle effectiveStyle = (bendStyle == BendStyle.ProjectDefault) ? ProjectBendStyle : bendStyle;
         bool singleXorZ = (b.AxisX && !b.AxisY && !b.AxisZ) || (!b.AxisX && !b.AxisY && b.AxisZ);
@@ -1765,11 +1817,13 @@ public class MineImatorLoader
         float totalSize = segAxis == 0 ? (x2 - x1) : (y2 - y1);
 
         float bendStart = segAxis == 0
-            ? bendOffset - (shapePosition.x + x1) - bendSize / 2f
-            : bendOffset - (shapePosition.y + y1) - bendSize / 2f;
+            ? bendOffset - (bendShapePosition + x1) - bendSize / 2f
+            : bendOffset - (bendShapePosition + y1) - bendSize / 2f;
         float bendEnd = bendStart + bendSize;
 
-        mat4 rsm = BuildShapeRotMat(shapeRotation) *
+        vec3 bendPivot = BendHelper.GetBendPivot(b, shapePosition);
+        mat4 rsm = mat4.Translate(bendPivot) * BuildShapeRotMat(shapeRotation) *
+                   mat4.Translate(-bendPivot) *
                    (shapeScale != default && shapeScale != vec3.Ones ? mat4.Scale(shapeScale) : mat4.Identity);
 
         vec3 p1 = segAxis == 0 ? new vec3(x1, y2, z1) : new vec3(x1, y1, z1);
@@ -1922,9 +1976,6 @@ public class MineImatorLoader
 
         var b = bend;
         bool bendAlongX = (b.Part == BendPart.Left || b.Part == BendPart.Right);
-        float bendSize = b.BendSize / 16f;
-        float bendOffset = b.BendOffset / 16f;
-
         BendStyle effectiveStyle = (bendStyle == BendStyle.ProjectDefault) ? ProjectBendStyle : bendStyle;
         bool singleXorZ = (b.AxisX && !b.AxisY && !b.AxisZ) || (!b.AxisX && !b.AxisY && b.AxisZ);
         bool sharpBend = (effectiveStyle == BendStyle.Blocky) && !b.ExplicitBendSize && singleXorZ;
@@ -1936,6 +1987,10 @@ public class MineImatorLoader
             BendPart.Upper or BendPart.Lower => 1,
             _ => 1
         };
+        float axisScale = MathF.Max(MathF.Abs(shapeScale[segAxis]), 1e-6f);
+        float bendSize = b.BendSize / 16f / axisScale;
+        float bendOffset = b.BendOffset / 16f / axisScale;
+        float bendShapePosition = shapePosition[segAxis] / axisScale;
         float detail = BendHelper.CalculateSegmentCount(b.BendSize, sharpBend, b.Detail);
         if (b.ExplicitBendSize && b.BendSize >= 1 && shapeScale[segAxis] > 0.5f) detail /= shapeScale[segAxis];
         float segSize = bendSize / detail;
@@ -1943,13 +1998,14 @@ public class MineImatorLoader
         bool invAngle = (b.Part == BendPart.Lower || b.Part == BendPart.Back || b.Part == BendPart.Left);
 
         mat4 shapeRotMat = BuildShapeRotMat(shapeRotation);
-        mat4 rsm = shapeRotMat *
+        vec3 bendPivot = BendHelper.GetBendPivot(b, shapePosition);
+        mat4 rsm = mat4.Translate(bendPivot) * shapeRotMat * mat4.Translate(-bendPivot) *
                    (shapeScale != default && shapeScale != vec3.Ones ? mat4.Scale(shapeScale) : mat4.Identity);
         float axisStart = bendAlongX ? x1 : y1;
 
         float bendStart = bendAlongX
-            ? bendOffset - (shapePosition.x + axisStart) - bendSize / 2f
-            : bendOffset - (shapePosition.y + axisStart) - bendSize / 2f;
+            ? bendOffset - (bendShapePosition + axisStart) - bendSize / 2f
+            : bendOffset - (bendShapePosition + axisStart) - bendSize / 2f;
         float bendEnd = bendStart + bendSize;
 
         int outerCount = bendAlongX ? regionH : regionW;
@@ -2176,33 +2232,18 @@ public class MineImatorLoader
         verts.Add(v1);
         verts.Add(v2);
         verts.Add(v3);
-        normals.Add(n0);
-        normals.Add(n1);
-        normals.Add(n2);
-        normals.Add(n3);
+        normals.Add(invert ? -n0 : n0);
+        normals.Add(invert ? -n1 : n1);
+        normals.Add(invert ? -n2 : n2);
+        normals.Add(invert ? -n3 : n3);
 
-        if (invert)
-        {
-            uvs.Add(uv2);
-            uvs.Add(uv3);
-            uvs.Add(uv0);
-            uvs.Add(uv1);
-        }
-        else
-        {
-            uvs.Add(uv0);
-            uvs.Add(uv1);
-            uvs.Add(uv2);
-            uvs.Add(uv3);
-        }
-
-        // CCW winding for OpenGL front faces (FrontFace = CCW, CullFace = Back)
-        indices.Add(bv + 0);
-        indices.Add(bv + 1);
-        indices.Add(bv + 2);
-        indices.Add(bv + 0);
-        indices.Add(bv + 2);
-        indices.Add(bv + 3);
+        // In Mine-imator, invert changes face orientation only. UVs remain
+        // attached to their original vertices.
+        uvs.Add(uv0);
+        uvs.Add(uv1);
+        uvs.Add(uv2);
+        uvs.Add(uv3);
+        AddQuadIndices(indices, bv, invert);
     }
 
     private static void AddQuadIndices(List<uint> indices, uint baseVertex, bool invert)
@@ -2235,6 +2276,7 @@ public class MineImatorLoader
         var normal = vec3.Cross(edge1, edge2);
         if (normal.LengthSqr < 1e-10f) normal = vec3.UnitY;
         else normal = normal.Normalized;
+        if (invert) normal = -normal;
 
         uint bv = (uint)verts.Count;
         verts.Add(v0);
@@ -2250,24 +2292,7 @@ public class MineImatorLoader
         uvs.Add(uv);
         uvs.Add(uv);
 
-        if (invert)
-        {
-            indices.Add(bv + 0);
-            indices.Add(bv + 2);
-            indices.Add(bv + 1);
-            indices.Add(bv + 0);
-            indices.Add(bv + 3);
-            indices.Add(bv + 2);
-        }
-        else
-        {
-            indices.Add(bv + 0);
-            indices.Add(bv + 1);
-            indices.Add(bv + 2);
-            indices.Add(bv + 0);
-            indices.Add(bv + 2);
-            indices.Add(bv + 3);
-        }
+        AddQuadIndices(indices, bv, invert);
     }
 
     private static void AddExtrudedQuad(List<vec3> verts, List<vec3> normals, List<vec2> uvs, List<uint> indices,
@@ -2277,21 +2302,17 @@ public class MineImatorLoader
         verts.Add(v1);
         verts.Add(v2);
         verts.Add(v3);
+        normal = invert ? -normal : normal;
         normals.Add(normal);
         normals.Add(normal);
         normals.Add(normal);
         normals.Add(normal);
-        var uv = new vec2(invert ? 1f - uvX : uvX, uvY);
+        var uv = new vec2(uvX, uvY);
         uvs.Add(uv);
         uvs.Add(uv);
         uvs.Add(uv);
         uvs.Add(uv);
-        indices.Add(baseVertex + 0);
-        indices.Add(baseVertex + 1);
-        indices.Add(baseVertex + 2);
-        indices.Add(baseVertex + 0);
-        indices.Add(baseVertex + 2);
-        indices.Add(baseVertex + 3);
+        AddQuadIndices(indices, baseVertex, invert);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2367,9 +2388,10 @@ public class MiModel
     [JsonPropertyName("texture_size")] public int[] TextureSize { get; set; }
     [JsonPropertyName("textures")] public Dictionary<string, string> Textures { get; set; }
     [JsonPropertyName("parts")] public List<MiPart> Parts { get; set; }
-    [JsonPropertyName("player_skin")] public bool? PlayerSkin { get; set; }
-    [JsonPropertyName("floor_box_uvs")] public bool? FloorBoxUvs { get; set; }
+    [JsonPropertyName("player_skin")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? PlayerSkin { get; set; }
+    [JsonPropertyName("floor_box_uvs")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? FloorBoxUvs { get; set; }
     [JsonPropertyName("model_color")] public string ModelColor { get; set; }
+    [JsonPropertyName("scale")] public float[] Scale { get; set; }
 
     [JsonIgnore] public string DirectoryPath { get; set; }
     [JsonIgnore] public string FullPath { get; set; }
@@ -2394,7 +2416,7 @@ public class MiModel
 public class MiPart
 {
     [JsonPropertyName("name")] public string Name { get; set; }
-    [JsonPropertyName("visible")] public bool Visible { get; set; } = true;
+    [JsonPropertyName("visible")] [JsonConverter(typeof(MiBoolConverter))] public bool Visible { get; set; } = true;
     [JsonPropertyName("description")] public string Description { get; set; }
     [JsonPropertyName("texture")] public string Texture { get; set; }
     [JsonPropertyName("texture_material")] public string TextureMaterial { get; set; }
@@ -2416,13 +2438,13 @@ public class MiPart
     [JsonPropertyName("bend")] public MiBend Bend { get; set; }
 
     [JsonPropertyName("lock_bend")]
-    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    [JsonConverter(typeof(MiBoolOrNumberConverter))]
     public float? LockBend { get; set; }
 
-    [JsonPropertyName("locked")] public bool Locked { get; set; }
+    [JsonPropertyName("locked")] [JsonConverter(typeof(MiBoolConverter))] public bool Locked { get; set; }
     [JsonPropertyName("depth")] public int Depth { get; set; }
     [JsonPropertyName("backfaces")] [JsonConverter(typeof(MiBoolConverter))] public bool Backfaces { get; set; }
-    [JsonPropertyName("shadows")] public bool Shadows { get; set; } = true;
+    [JsonPropertyName("shadows")] [JsonConverter(typeof(MiBoolConverter))] public bool Shadows { get; set; } = true;
 
     [JsonPropertyName("color_alpha")]
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
@@ -2436,7 +2458,7 @@ public class MiPart
 
 public class MiShape
 {
-    [JsonPropertyName("visible")] public bool Visible { get; set; } = true;
+    [JsonPropertyName("visible")] [JsonConverter(typeof(MiBoolConverter))] public bool Visible { get; set; } = true;
     [JsonPropertyName("type")] public string Type { get; set; } = "block";
     [JsonPropertyName("description")] public string Description { get; set; }
     [JsonPropertyName("use_model_color")] [JsonConverter(typeof(MiBoolConverter))] public bool UseModelColor { get; set; }
@@ -2446,9 +2468,9 @@ public class MiShape
     [JsonPropertyName("position")] public float[] Position { get; set; }
     [JsonPropertyName("rotation")] public float[] Rotation { get; set; }
     [JsonPropertyName("scale")] public float[] Scale { get; set; }
-    [JsonPropertyName("invert")] public bool Invert { get; set; }
-    [JsonPropertyName("texture_mirror")] public bool TextureMirror { get; set; }
-    [JsonPropertyName("texture_mirror_y")] public bool TextureMirrorY { get; set; }
+    [JsonPropertyName("invert")] [JsonConverter(typeof(MiBoolConverter))] public bool Invert { get; set; }
+    [JsonPropertyName("texture_mirror")] [JsonConverter(typeof(MiBoolConverter))] public bool TextureMirror { get; set; }
+    [JsonPropertyName("texture_mirror_y")] [JsonConverter(typeof(MiBoolConverter))] public bool TextureMirrorY { get; set; }
     [JsonPropertyName("texture")] public string Texture { get; set; }
     [JsonPropertyName("texture_material")] public string TextureMaterial { get; set; }
     [JsonPropertyName("texture_normal")] public string TextureNormal { get; set; }
@@ -2462,15 +2484,15 @@ public class MiShape
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
     public float? TextureScrollDirection { get; set; }
 
-    [JsonPropertyName("3d")] public bool ThreeD { get; set; }
+    [JsonPropertyName("3d")] [JsonConverter(typeof(MiBoolConverter))] public bool ThreeD { get; set; }
     [JsonPropertyName("inflate")] public float Inflate { get; set; }
-    [JsonPropertyName("bend")] public bool Bend { get; set; } = true;
-    [JsonPropertyName("hide_front")] public bool HideFront { get; set; }
-    [JsonPropertyName("hide_back")] public bool HideBack { get; set; }
-    [JsonPropertyName("hide_backface")] public bool? HideBackfaceLegacy { get; set; }
-    [JsonPropertyName("face_camera")] public bool FaceCamera { get; set; }
-    [JsonPropertyName("item_bounce")] public bool ItemBounce { get; set; }
-    [JsonPropertyName("locked")] public bool Locked { get; set; }
+    [JsonPropertyName("bend")] [JsonConverter(typeof(MiBoolConverter))] public bool Bend { get; set; } = true;
+    [JsonPropertyName("hide_front")] [JsonConverter(typeof(MiBoolConverter))] public bool HideFront { get; set; }
+    [JsonPropertyName("hide_back")] [JsonConverter(typeof(MiBoolConverter))] public bool HideBack { get; set; }
+    [JsonPropertyName("hide_backface")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? HideBackfaceLegacy { get; set; }
+    [JsonPropertyName("face_camera")] [JsonConverter(typeof(MiBoolConverter))] public bool FaceCamera { get; set; }
+    [JsonPropertyName("item_bounce")] [JsonConverter(typeof(MiBoolConverter))] public bool ItemBounce { get; set; }
+    [JsonPropertyName("locked")] [JsonConverter(typeof(MiBoolConverter))] public bool Locked { get; set; }
     [JsonPropertyName("move_required")] public float[]? MoveRequired { get; set; }
     [JsonPropertyName("vert1")] public float[]? Vert1 { get; set; }
     [JsonPropertyName("vert2")] public float[]? Vert2 { get; set; }
@@ -2497,7 +2519,7 @@ public class MiBend
     public float? Detail { get; set; }
 
     [JsonPropertyName("inherit_bend")]
-    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    [JsonConverter(typeof(MiBoolOrNumberConverter))]
     public float? InheritBend { get; set; }
 
     [JsonPropertyName("end_offset")]
@@ -2599,6 +2621,31 @@ public class MiInherit
 }
 
 // ── JSON converters ───────────────────────────────────────────────────────────
+
+/// <summary>Mine-imator stores several flags as either booleans or 0/1 numbers.</summary>
+public sealed class MiBoolOrNumberConverter : JsonConverter<float?>
+{
+    public override float? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return reader.TokenType switch
+        {
+            JsonTokenType.True => 1f,
+            JsonTokenType.False => 0f,
+            JsonTokenType.Number => reader.GetSingle(),
+            JsonTokenType.String when float.TryParse(reader.GetString(),
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out float value) => value,
+            JsonTokenType.Null => null,
+            _ => throw new JsonException($"Unexpected token {reader.TokenType} for boolean/number")
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, float? value, JsonSerializerOptions options)
+    {
+        if (value.HasValue) writer.WriteNumberValue(value.Value);
+        else writer.WriteNullValue();
+    }
+}
 
 public class MiSingleOrArrayConverter : JsonConverter<float[]>
 {
@@ -2764,6 +2811,20 @@ public class MiBoolConverter : JsonConverter<bool>
     public override void Write(Utf8JsonWriter writer, bool value, JsonSerializerOptions options)
     {
         writer.WriteBooleanValue(value);
+    }
+}
+
+public sealed class MiNullableBoolConverter : JsonConverter<bool?>
+{
+    private static readonly MiBoolConverter Inner = new();
+
+    public override bool? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        => reader.TokenType == JsonTokenType.Null ? null : Inner.Read(ref reader, typeof(bool), options);
+
+    public override void Write(Utf8JsonWriter writer, bool? value, JsonSerializerOptions options)
+    {
+        if (value.HasValue) writer.WriteBooleanValue(value.Value);
+        else writer.WriteNullValue();
     }
 }
 

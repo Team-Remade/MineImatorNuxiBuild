@@ -135,7 +135,23 @@ public class MiBoneSceneObject : BoneSceneObject
     public void SetBendParameters(BendParams? bendParams, float lockBend)
     {
         BendParameters = bendParams;
-        LockBend = lockBend;
+        LockBend = Math.Clamp(lockBend, 0f, 1f);
+        // SceneObject.GetWorldMatrix reads the inherited field. Keep it in sync
+        // with the Mine-imator-facing property; otherwise lock_bend=0 is ignored.
+        base.LockBend = LockBend;
+    }
+
+    /// <summary>
+    /// Returns this bone's bend with inherited default/current angles applied.
+    /// This is also used during initial import, before any UI edit has caused a
+    /// mesh regeneration.
+    /// </summary>
+    public BendParams? GetEffectiveBendParameters()
+    {
+        if (!BendParameters.HasValue) return null;
+        var result = BendParameters.Value;
+        result.Angle = GetEffectiveBendAngle();
+        return result;
     }
 
     /// <summary>
@@ -204,13 +220,7 @@ public class MiBoneSceneObject : BoneSceneObject
         {
             Visuals.Clear();
 
-            BendParams? effectiveBendParams = null;
-            if (BendParameters.HasValue)
-            {
-                var bp = BendParameters.Value;
-                bp.Angle           = GetEffectiveBendAngle();
-                effectiveBendParams = bp;
-            }
+            BendParams? effectiveBendParams = GetEffectiveBendParameters();
 
             var loader = MineImatorLoader.Instance;
             foreach (var mesh in _shapeDataList.Select(sd => loader.CreateShapeMeshPublic(

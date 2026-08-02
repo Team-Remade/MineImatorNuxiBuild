@@ -298,35 +298,36 @@ public static class BendHelper
         mat4 scaleMat = mat4.Scale(matrixScale);
         mat4 rotScaleMat = rotMat * scaleMat;
 
-        // Calculate the bend pivot position in part-local space
-        if (shapeScale == vec3.Zero) shapeScale = vec3.Ones;
-        vec3 scaledShapePos = new vec3(
-            shapePosition.x * shapeScale.x,
-            shapePosition.y * shapeScale.y,
-            shapePosition.z * shapeScale.z
-        );
-        vec3 pivotPos = vec3.Zero;
-        switch (b.Part)
-        {
-            case BendPart.Right:
-            case BendPart.Left:
-                pivotPos.x = b.BendOffset / 16.0f - scaledShapePos.x;
-                break;
-            case BendPart.Upper:
-            case BendPart.Lower:
-                pivotPos.y = b.BendOffset / 16.0f - scaledShapePos.y;
-                break;
-            case BendPart.Front:
-            case BendPart.Back:
-                pivotPos.z = b.BendOffset / 16.0f - scaledShapePos.z;
-                break;
-        }
+        // Calculate the bend pivot position in part-local space.
+        vec3 pivotPos = GetBendPivot(b, shapePosition);
 
         // Build: Translate(pivot) * RotScale * Translate(-pivot)
         // Which is equivalent to: v' = RotScale*(v - pivot) + pivot
         mat4 tPos  = mat4.Translate(pivotPos);
         mat4 tNeg  = mat4.Translate(-pivotPos);
         return tPos * rotScaleMat * tNeg;
+    }
+
+    /// <summary>Returns the bend pivot in the loader's Y-up model space.</summary>
+    public static vec3 GetBendPivot(BendParams b, vec3 shapePosition)
+    {
+        vec3 pivotPos = vec3.Zero;
+        switch (b.Part)
+        {
+            case BendPart.Right:
+            case BendPart.Left:
+                pivotPos.x = b.BendOffset / 16.0f - shapePosition.x;
+                break;
+            case BendPart.Upper:
+            case BendPart.Lower:
+                pivotPos.y = b.BendOffset / 16.0f - shapePosition.y;
+                break;
+            case BendPart.Front:
+            case BendPart.Back:
+                pivotPos.z = b.BendOffset / 16.0f - shapePosition.z;
+                break;
+        }
+        return pivotPos;
     }
 
     // ── Easing functions ──────────────────────────────────────────────────────

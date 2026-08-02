@@ -185,6 +185,7 @@ public class SceneObject
     /// </summary>
     private vec3 _localRotation = vec3.Zero;
     public vec3 LocalRotation => _localRotation;
+    private mat4? _localRotationMatrixOverride;
 
     /// <summary>
     /// The local scale set by the user (before inheritance is applied).
@@ -205,6 +206,19 @@ public class SceneObject
     {
         _localRotation = rot;
         Rotation = rot;
+        _localRotationMatrixOverride = null;
+    }
+
+    /// <summary>
+    /// Sets a local rotation using an exact authored matrix while retaining an
+    /// equivalent Euler value for editors and animation. The exact matrix is
+    /// used until the rotation is subsequently edited through SetLocalRotation.
+    /// </summary>
+    public void SetLocalRotationMatrix(mat4 matrix, vec3 equivalentEuler)
+    {
+        _localRotation = equivalentEuler;
+        Rotation = equivalentEuler;
+        _localRotationMatrixOverride = matrix;
     }
 
     /// <summary>Sets the local scale and keeps the cache in sync.</summary>
@@ -712,8 +726,9 @@ public class SceneObject
         mat4 rx = mat4.RotateX(Rotation.x);
         mat4 ry = mat4.RotateY(Rotation.y);
         mat4 rz = mat4.RotateZ(Rotation.z);
+        mat4 rotation = _localRotationMatrixOverride ?? (rz * ry * rx);
         mat4 s  = mat4.Scale(Scale);
-        return t * rz * ry * rx * s * tPivot;
+        return t * rotation * s * tPivot;
     }
 
     /// <summary>
@@ -830,8 +845,9 @@ public class SceneObject
         mat4 rx = mat4.RotateX(Rotation.x);
         mat4 ry = mat4.RotateY(Rotation.y);
         mat4 rz = mat4.RotateZ(Rotation.z);
+        mat4 rotation = _localRotationMatrixOverride ?? (rz * ry * rx);
         mat4 s = mat4.Scale(Scale);
-        mat4 localNoPivot = t * rz * ry * rx * s;
+        mat4 localNoPivot = t * rotation * s;
 
         if (Parent == null)
             return localNoPivot;
