@@ -1637,6 +1637,50 @@ public class PropertiesPanel : UiPanel
                 ApplyScale(vec3.Ones);
         }
 
+        // ── Bend ──────────────────────────────────────────────────────────────
+        // Bend axes are authored per Mine-imator part. Do not offer controls
+        // that the selected part cannot actually deform along.
+        if (_currentObject is MiBoneSceneObject bendBone &&
+            bendBone.BendParameters is BendParams bend &&
+            (bend.AxisX || bend.AxisY || bend.AxisZ) &&
+            ImGui.CollapsingHeader("Bend (degrees)"))
+        {
+            vec3 angle = bend.Angle;
+            ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
+
+            if (bend.AxisX)
+            {
+                float value = angle.x;
+                if (ImGui.DragFloat("X##bendX", ref value, 0.5f, bend.DirectionMin.x, bend.DirectionMax.x))
+                {
+                    angle.x = value;
+                    ApplyBend(bendBone, angle);
+                }
+            }
+            if (bend.AxisY)
+            {
+                float value = angle.y;
+                if (ImGui.DragFloat("Y##bendY", ref value, 0.5f, bend.DirectionMin.y, bend.DirectionMax.y))
+                {
+                    angle.y = value;
+                    ApplyBend(bendBone, angle);
+                }
+            }
+            if (bend.AxisZ)
+            {
+                float value = angle.z;
+                if (ImGui.DragFloat("Z##bendZ", ref value, 0.5f, bend.DirectionMin.z, bend.DirectionMax.z))
+                {
+                    angle.z = value;
+                    ApplyBend(bendBone, angle);
+                }
+            }
+            ImGui.PopItemWidth();
+
+            if (ImGui.Button("Reset##bendReset"))
+                ApplyBend(bendBone, vec3.Zero);
+        }
+
         // ── Block Tiling ───────────────────────────────────────────────────────
         if (string.Equals(_currentObject.SpawnCategory, "Blocks", StringComparison.Ordinal) &&
             ImGui.CollapsingHeader("Block Tiling"))
@@ -2307,9 +2351,6 @@ public class PropertiesPanel : UiPanel
             }
         }
 
-        // ── Bend section (not yet implemented) ────────────────────────────────
-        // TODO: implement Bend section once BoneSceneObject.BendParameters is available
-
         ImGui.EndTabItem();
     }
     
@@ -2352,6 +2393,12 @@ public class PropertiesPanel : UiPanel
         Timeline?.RecordAutoKeyframe(_currentObject, "scale.x");
         Timeline?.RecordAutoKeyframe(_currentObject, "scale.y");
         Timeline?.RecordAutoKeyframe(_currentObject, "scale.z");
+    }
+
+    private void ApplyBend(MiBoneSceneObject bone, vec3 angle)
+    {
+        bone.SetBendAngle(angle);
+        ProjectManager.Instance.SetDirty(true);
     }
 
     /// <summary>

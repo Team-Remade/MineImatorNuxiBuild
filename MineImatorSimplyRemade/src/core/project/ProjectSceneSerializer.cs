@@ -140,6 +140,9 @@ public static class ProjectSceneSerializer
             Position = ToProjectVec3(obj.Position),
             Rotation = ToProjectVec3(obj.Rotation),
             Scale = ToProjectVec3(obj.Scale),
+            BendAngle = obj is MiBoneSceneObject bendBone && bendBone.BendParameters is { } bend
+                ? ToProjectVec3(bend.Angle)
+                : null,
             PivotOffset = ToProjectVec3(obj.PivotOffset),
             InheritPosition = obj.InheritPosition,
             InheritRotation = obj.InheritRotation,
@@ -423,6 +426,8 @@ public static class ProjectSceneSerializer
         obj.SetLocalPosition(ToVec3(entry.Position));
         obj.SetLocalRotation(ToVec3(entry.Rotation));
         obj.SetLocalScale(ToVec3(entry.Scale));
+        if (obj is MiBoneSceneObject bendBone && entry.BendAngle != null)
+            bendBone.SetBendAngle(ToVec3(entry.BendAngle));
 
         obj.PivotOffset = ToVec3(entry.PivotOffset);
         obj.InheritPosition = entry.InheritPosition;

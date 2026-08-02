@@ -83,6 +83,9 @@ public class SelectionManager
 
     private void OnGizmoTransformEnd(Gizmo3D.TransformMode mode, Gizmo3D.TransformPlane plane)
     {
+        if (mode == Gizmo3D.TransformMode.Bend)
+            MineImatorSimplyRemade.core.project.ProjectManager.Instance.SetDirty(true);
+
         // Record auto-keyframes for the transformed properties.
         if (Timeline != null)
         {

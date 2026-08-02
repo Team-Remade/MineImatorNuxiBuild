@@ -21,6 +21,7 @@ public class BoneShapeData
     public vec3?     PartColorBlend;
     public float?    PartColorAlpha;
     public float     PartDepth;
+    public int[]?    TextureSize;
 }
 
 /// <summary>
@@ -248,7 +249,8 @@ public class MiBoneSceneObject : BoneSceneObject
             foreach (var mesh in _shapeDataList.Select(sd => loader.CreateShapeMeshPublic(
                          sd.PartName, sd.ShapeIndex, sd.Shape, sd.Model,
                          sd.TextureId, sd.AccumulatedScale, effectiveBendParams,
-                         sd.ModelBendStyle, sd.PartColorBlend, sd.PartColorAlpha, sd.PartDepth)).OfType<Mesh>())
+                         sd.ModelBendStyle, sd.PartColorBlend, sd.PartColorAlpha, sd.PartDepth,
+                         sd.TextureSize)).OfType<Mesh>())
             {
                 AddMesh(mesh);
             }

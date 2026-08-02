@@ -314,8 +314,9 @@ public class Gizmo3D : IDisposable
     const float GIZMO_ARROW_SIZE      = 0.35f;
     const float GIZMO_RING_HALF_WIDTH = 0.1f;
     const float GIZMO_PLANE_SIZE      = 0.2f;
-    const float GIZMO_PLANE_DST       = 0.3f;
     const float GIZMO_CIRCLE_SIZE     = 1.1f;
+    const float GIZMO_PLANE_DST       = GIZMO_CIRCLE_SIZE - 0.1f;
+    const float BEND_GIZMO_SCALE      = 0.68f;
     const float GIZMO_SCALE_OFFSET    = GIZMO_CIRCLE_SIZE - 0.3f;
     const float GIZMO_ARROW_OFFSET    = GIZMO_CIRCLE_SIZE + 0.15f;
     const int   CIRCLE_SEGMENTS       = 128;
@@ -324,13 +325,13 @@ public class Gizmo3D : IDisposable
     // ── Enums ─────────────────────────────────────────────────────────────────
 
     [Flags]
-    public enum ToolMode { Move = 1, Rotate = 2, Scale = 4, All = 7 }
-    public enum TransformMode  { None, Rotate, Translate, Scale }
+    public enum ToolMode { Move = 1, Rotate = 2, Scale = 4, Bend = 8, All = 15 }
+    public enum TransformMode  { None, Rotate, Translate, Scale, Bend }
     public enum TransformPlane { View, X, Y, Z, YZ, XZ, XY }
 
     // ── Public properties ─────────────────────────────────────────────────────
 
-    public ToolMode Mode             { get; set; } = ToolMode.Move | ToolMode.Scale | ToolMode.Rotate;
+    public ToolMode Mode             { get; set; } = ToolMode.All;
     public bool     Snapping         { get; set; }
     public bool     ShiftSnap        { get; set; }
     public string   Message          { get; private set; } = "";
@@ -362,6 +363,12 @@ public class Gizmo3D : IDisposable
         new(0.53f, 0.84f, 0.01f, 1f),   // Y – green
         new(0.16f, 0.55f, 0.96f, 1f),   // Z – blue
     ];
+    private readonly vec4[] _bendColors =
+    [
+        new(0.45f, 0.82f, 1.00f, 1f),   // X – baby blue
+        new(1.00f, 0.86f, 0.12f, 1f),   // Y – yellow
+        new(1.00f, 0.35f, 0.68f, 1f),   // Z – pink
+    ];
     private readonly vec4 _selBoxColor = new(1.0f, 0.5f, 0f, 1f);
 
     // ── Internal geometry buffers ─────────────────────────────────────────────
@@ -379,6 +386,7 @@ public class Gizmo3D : IDisposable
     private GizmoPart[] _moveGizmo       = new GizmoPart[3];
     private GizmoPart[] _movePlaneGizmo  = new GizmoPart[3];
     private GizmoPart[] _rotateGizmo     = new GizmoPart[3];
+    private GizmoPart[] _bendGizmo       = new GizmoPart[3];
     private GizmoPart[] _scaleGizmo      = new GizmoPart[3];
     private GizmoPart[] _scalePlaneGizmo = new GizmoPart[3];
     private GizmoPart[] _axisGizmo       = new GizmoPart[3];
@@ -395,6 +403,7 @@ public class Gizmo3D : IDisposable
         public SceneObject Object;
         public Transform3D TargetOriginal;
         public Transform3D TargetGlobal;
+        public vec3 BendOriginal;
     }
 
     private readonly List<SelectedItem> _selections = new();
@@ -531,6 +540,19 @@ public class Gizmo3D : IDisposable
         return true;
     }
 
+    private bool CanBendAxis(int axis)
+    {
+        if (_selections.Count == 0) return false;
+        foreach (var selection in _selections)
+        {
+            if (selection.Object is not MiBoneSceneObject bone || bone.BendParameters is not { } bend)
+                return false;
+            if (axis == 0 ? !bend.AxisX : axis == 1 ? !bend.AxisY : !bend.AxisZ)
+                return false;
+        }
+        return true;
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Input API
     // ─────────────────────────────────────────────────────────────────────────
@@ -628,6 +650,7 @@ public class Gizmo3D : IDisposable
         bool hasMove      = (Mode & ToolMode.Move)   != 0;
         bool hasRot       = (Mode & ToolMode.Rotate) != 0 && CanRotateSelection();
         bool hasScale     = (Mode & ToolMode.Scale)  != 0 && CanScaleSelection();
+        bool hasBend      = (Mode & ToolMode.Bend)   != 0;
 
         if (showGizmo)
         {
@@ -655,6 +678,15 @@ public class Gizmo3D : IDisposable
                     mat4 axisWorld = BuildAxisTransform(i);
                     mat4 mvp       = proj * view * axisWorld;
                     DrawPart(ref _rotateGizmo[i], mvp, i + 3);
+                }
+            }
+            if (hasBend)
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    if (!CanBendAxis(i)) continue;
+                    mat4 axisWorld = BuildAxisTransform(i, BEND_GIZMO_SCALE);
+                    DrawPart(ref _bendGizmo[i], proj * view * axisWorld, i + 15);
                 }
             }
         }
@@ -825,6 +857,9 @@ public class Gizmo3D : IDisposable
             _moveGizmo[i]       = MakePart(canonMoveVerts,  col, colHl, isLines: false);
             _movePlaneGizmo[i]  = MakePart(canonPlaneVerts, col, colHl, isLines: false);
             _rotateGizmo[i]     = MakePart(canonRingVerts,  col, colHl, isLines: false);
+            vec4 bendCol = WithAlpha(_bendColors[i], Opacity);
+            vec4 bendHl  = HsvAdjust(_bendColors[i], 0.25f, 1f, 1f);
+            _bendGizmo[i]       = MakePart(canonRingVerts, bendCol, bendHl, isLines: false);
             _scaleGizmo[i]      = MakePart(canonScaleVerts, col, colHl, isLines: false);
             _scalePlaneGizmo[i] = MakePart(canonPlaneVerts, col, colHl, isLines: false);
 
@@ -1163,7 +1198,7 @@ public class Gizmo3D : IDisposable
                 {
                     vec3  iv2        = gt.BasisColumn((i + 1) % 3).Normalized;
                     vec3  iv3        = gt.BasisColumn((i + 2) % 3).Normalized;
-                    vec3  grabberPos = gt.Origin + (iv2 + iv3) * _gizmoScale * (GIZMO_PLANE_SIZE + GIZMO_PLANE_DST * 0.6667f);
+                    vec3  grabberPos = gt.Origin + (iv2 + iv3) * _gizmoScale * (GIZMO_PLANE_DST + GIZMO_PLANE_SIZE * 0.5f);
                     vec3  planeNorm  = gt.BasisColumn(i).Normalized;
                     vec3? r          = GizmoMath.PlaneIntersectsRay(planeNorm, gt.Origin, rayPos, ray);
                     if (r != null)
@@ -1193,6 +1228,41 @@ public class Gizmo3D : IDisposable
         }
 
         // ── Rotate ──────────────────────────────────────────────────────────
+        if ((Mode & ToolMode.Bend) != 0)
+        {
+            int colAxis = -1;
+            float radius = _gizmoScale * GIZMO_CIRCLE_SIZE * BEND_GIZMO_SCALE;
+            float halfWidth = _gizmoScale * GIZMO_RING_HALF_WIDTH * BEND_GIZMO_SCALE;
+            float colD = 1e20f;
+            for (int i = 0; i < 3; i++)
+            {
+                if (!CanBendAxis(i)) continue;
+                vec3 planeNorm = gt.BasisColumn(i).Normalized;
+                vec3? r = GizmoMath.PlaneIntersectsRay(planeNorm, gt.Origin, rayPos, ray);
+                if (r == null) continue;
+                float dist = (r.Value - gt.Origin).Length;
+                if (dist > radius - halfWidth && dist < radius + halfWidth)
+                {
+                    float d = (rayPos - r.Value).Length;
+                    if (d < colD) { colD = d; colAxis = i; }
+                }
+            }
+            if (colAxis != -1)
+            {
+                if (highlightOnly) _highlightAxis = colAxis + 15;
+                else
+                {
+                    _edit.Mode = TransformMode.Bend;
+                    ComputeEdit(screenpos);
+                    _edit.Plane = TransformPlane.X + colAxis;
+                    _edit.AccumulatedRotationAngle = 0f;
+                    _edit.RotationAxis = gt.BasisColumn(colAxis).Normalized;
+                    _edit.GizmoInitiated = true;
+                }
+                return true;
+            }
+        }
+
         if ((Mode & ToolMode.Rotate) != 0 && CanRotateSelection())
         {
             int colAxis = -1;
@@ -1279,7 +1349,7 @@ public class Gizmo3D : IDisposable
                 {
                     vec3  iv2        = gt.BasisColumn((i + 1) % 3).Normalized;
                     vec3  iv3        = gt.BasisColumn((i + 2) % 3).Normalized;
-                    vec3  grabberPos = gt.Origin + (iv2 + iv3) * _gizmoScale * (GIZMO_PLANE_SIZE + GIZMO_PLANE_DST * 0.6667f);
+                    vec3  grabberPos = gt.Origin + (iv2 + iv3) * _gizmoScale * (GIZMO_PLANE_DST + GIZMO_PLANE_SIZE * 0.5f);
                     vec3  planeNorm  = gt.BasisColumn(i).Normalized;
                     vec3? r          = GizmoMath.PlaneIntersectsRay(planeNorm, gt.Origin, rayPos, ray);
                     if (r != null)
@@ -1331,6 +1401,9 @@ public class Gizmo3D : IDisposable
             var item = _selections[i];
             item.TargetGlobal   = GetWorldTransform(item.Object);
             item.TargetOriginal = GetLocalTransform(item.Object);
+            item.BendOriginal = item.Object is MiBoneSceneObject bone && bone.BendParameters is { } bend
+                ? bend.Angle
+                : vec3.Zero;
             _selections[i] = item;
         }
     }
@@ -1487,6 +1560,7 @@ public class Gizmo3D : IDisposable
             }
 
             case TransformMode.Rotate:
+            case TransformMode.Bend:
             {
                 vec3 camToObj = _edit.Center - (_camera?.Position ?? vec3.Zero);
                 vec3 planeNorm;
@@ -1544,7 +1618,8 @@ public class Gizmo3D : IDisposable
                     vec3  projAxis = vec3.Cross(planeNorm, globalAxis);
                     vec3  delta    = ri.Value - rc.Value;
                     float proj     = vec3.Dot(delta, projAxis);
-                    angle = (proj * (MathF.PI / 2f)) / (_gizmoScale * GIZMO_CIRCLE_SIZE);
+                    float handleScale = _edit.Mode == TransformMode.Bend ? BEND_GIZMO_SCALE : 1f;
+                    angle = (proj * (MathF.PI / 2f)) / (_gizmoScale * GIZMO_CIRCLE_SIZE * handleScale);
                 }
                 else
                 {
@@ -1582,7 +1657,9 @@ public class Gizmo3D : IDisposable
 
                 float angleDeg = glm.Degrees(angle);
                 if (Snapping) angleDeg = GizmoMath.Snapped(angleDeg, snap);
-                Message = $"Rotating: {angleDeg:0.###} degrees";
+                Message = _edit.Mode == TransformMode.Bend
+                    ? $"Bending: {angleDeg:0.###} degrees"
+                    : $"Rotating: {angleDeg:0.###} degrees";
                 angle   = glm.Radians(angleDeg);
 
                 ApplyTransform(computeAxis, angle);
@@ -1610,6 +1687,14 @@ public class Gizmo3D : IDisposable
 
             switch (_edit.Mode)
             {
+                case TransformMode.Bend when obj is MiBoneSceneObject bone:
+                {
+                    int axis = (int)_edit.Plane - (int)TransformPlane.X;
+                    vec3 bendAngle = item.BendOriginal;
+                    bendAngle[axis] += glm.Degrees(snap);
+                    bone.SetBendAngle(bendAngle);
+                    break;
+                }
                 case TransformMode.Translate:
                 {
                     vec3 newWorldPos = newTransform.Origin;
@@ -1761,6 +1846,11 @@ public class Gizmo3D : IDisposable
                 return new Transform3D(newBasis, newOrigin);
             }
 
+            // Bend changes MiBoneSceneObject.BendParameters directly in
+            // ApplyTransform; it does not alter the object's TRS transform.
+            case TransformMode.Bend:
+                return original;
+
             default:
                 Console.Error.WriteLine("Gizmo3D#ComputeTransform: Invalid mode");
                 return Transform3D.Identity;
@@ -1868,7 +1958,7 @@ public class Gizmo3D : IDisposable
     // Axis transform for gizmo handle rendering
     // ─────────────────────────────────────────────────────────────────────────
 
-    private mat4 BuildAxisTransform(int axis)
+    private mat4 BuildAxisTransform(int axis, float sizeScale = 1f)
     {
         vec3 basisAxis = _gizmoTransform.BasisColumn(axis).Normalized;
         vec3 basisUp   = _gizmoTransform.BasisColumn((axis + 1) % 3).Normalized;
@@ -1893,7 +1983,7 @@ public class Gizmo3D : IDisposable
         }
 
         // Scale then translate
-        mat4 scaleMat = mat4.Scale(new vec3(_gizmoScale));
+        mat4 scaleMat = mat4.Scale(new vec3(_gizmoScale * sizeScale));
         mat4 transMat = mat4.Translate(_gizmoTransform.Origin);
         return transMat * scaleMat * orient;
     }
@@ -1981,6 +2071,7 @@ public class Gizmo3D : IDisposable
             FreePart(ref _moveGizmo[i]);
             FreePart(ref _movePlaneGizmo[i]);
             FreePart(ref _rotateGizmo[i]);
+            FreePart(ref _bendGizmo[i]);
             FreePart(ref _scaleGizmo[i]);
             FreePart(ref _scalePlaneGizmo[i]);
             FreePart(ref _axisGizmo[i]);

@@ -314,7 +314,8 @@ public class MineImatorLoader
                             ModelBendStyle = _currentCharacter.ModelBendStyle,
                             PartColorBlend = colorBlend,
                             PartColorAlpha = colorAlpha,
-                            PartDepth = depth
+                            PartDepth = depth,
+                            TextureSize = textureSize
                         });
                     }
 
@@ -976,7 +977,7 @@ public class MineImatorLoader
         else
         {
             mesh = CreateBlockMesh(partName, shapeIndex, from, to, uvU, uvV, sizeX, sizeY, sizeZ,
-                texWidth, texHeight, shape.TextureMirror, shape.Invert, inflate, effectiveBend,
+                texWidth, texHeight, shape.TextureMirror, shape.TextureMirrorY, shape.Invert, inflate, effectiveBend,
                 shapePosition, shapeRotation, shapeScale, bendStyle, shapeVertexOffsets);
         }
 
@@ -1007,7 +1008,7 @@ public class MineImatorLoader
 
     private Mesh CreateBlockMesh(string partName, int shapeIndex, vec3 from, vec3 to,
         float uvU, float uvV, float sizeX, float sizeY, float sizeZ,
-        int texWidth, int texHeight, bool textureMirror, bool invert, float inflate = 0f,
+        int texWidth, int texHeight, bool textureMirror, bool textureMirrorY, bool invert, float inflate = 0f,
         BendParams? bend = null, vec3 shapePosition = default, vec3 shapeRotation = default,
         vec3 shapeScale = default, BendStyle bendStyle = BendStyle.ProjectDefault,
         vec3[]? shapeVertexOffsets = null)
@@ -1044,43 +1045,32 @@ public class MineImatorLoader
         var texSouth3 = new vec2(texU + texSizeFixX, texV + texSizeFixY);
         var texSouth4 = new vec2(texU, texV + texSizeFixY);
 
-        // East face (Right, X+) - to the LEFT of South by Z, uses Z for width, Y for height
-        var texEast1 = new vec2(texU - texSizeZ, texV);
-        var texEast2 = new vec2(texU - texSizeZ + texSizeFixZ, texV);
-        var texEast3 = new vec2(texU - texSizeZ + texSizeFixZ, texV + texSizeFixY);
-        var texEast4 = new vec2(texU - texSizeZ, texV + texSizeFixY);
+        // Exact Modelbench cube-atlas layout, with its Z-up Y/Z dimensions
+        // converted to this renderer's Y-up coordinates.
+        var texEast1 = new vec2(texU + texSizeX, texV);
+        var texEast2 = new vec2(texEast1.x + texSizeFixZ, texV);
+        var texEast3 = new vec2(texEast1.x + texSizeFixZ, texV + texSizeFixY);
+        var texEast4 = new vec2(texEast1.x, texV + texSizeFixY);
 
-        // West face (Left, X-) - to the RIGHT of South by Z, uses Z for width, Y for height
-        var texWest1 = new vec2(texU + texSizeZ, texV);
-        var texWest2 = new vec2(texU + texSizeZ + texSizeFixZ, texV);
-        var texWest3 = new vec2(texU + texSizeZ + texSizeFixZ, texV + texSizeFixY);
-        var texWest4 = new vec2(texU + texSizeZ, texV + texSizeFixY);
+        var texWest1 = new vec2(texU - texSizeZ, texV);
+        var texWest2 = new vec2(texWest1.x + texSizeFixZ, texV);
+        var texWest3 = new vec2(texWest1.x + texSizeFixZ, texV + texSizeFixY);
+        var texWest4 = new vec2(texWest1.x, texV + texSizeFixY);
 
-        // North face (Back, Z-) - to the right of West by X, uses X for width, Y for height
-        var texNorth1 = new vec2(texU + texSizeZ + texSizeX, texV);
-        var texNorth2 = new vec2(texU + texSizeZ + texSizeX + texSizeFixX, texV);
-        var texNorth3 = new vec2(texU + texSizeZ + texSizeX + texSizeFixX, texV + texSizeFixY);
-        var texNorth4 = new vec2(texU + texSizeZ + texSizeX, texV + texSizeFixY);
+        var texNorth1 = new vec2(texEast1.x + texSizeZ, texV);
+        var texNorth2 = new vec2(texNorth1.x + texSizeFixX, texV);
+        var texNorth3 = new vec2(texNorth1.x + texSizeFixX, texV + texSizeFixY);
+        var texNorth4 = new vec2(texNorth1.x, texV + texSizeFixY);
 
-        // Flip East and West face UVs horizontally
-        (texEast1, texEast2) = (texEast2, texEast1);
-        (texEast3, texEast4) = (texEast4, texEast3);
-        (texWest1, texWest2) = (texWest2, texWest1);
-        (texWest3, texWest4) = (texWest4, texWest3);
+        var texUp1 = new vec2(texU, texV - texSizeZ);
+        var texUp2 = new vec2(texUp1.x + texSizeFixX, texUp1.y);
+        var texUp3 = new vec2(texUp1.x + texSizeFixX, texUp1.y + texSizeFixZ);
+        var texUp4 = new vec2(texUp1.x, texUp1.y + texSizeFixZ);
 
-        // Up face (Top, Y+) - above South, uses X for width, min(Y,Z) for height
-        float texUpHeight = Math.Min(sizeY, sizeZ);
-        float texUpHeightFix = (texUpHeight - 1f / 256f) / texHeight;
-        var texUp1 = new vec2(texU, texV - texUpHeightFix);
-        var texUp2 = new vec2(texU + texSizeFixX, texV - texUpHeightFix);
-        var texUp3 = new vec2(texU + texSizeFixX, texV - texUpHeightFix + texUpHeightFix);
-        var texUp4 = new vec2(texU, texV - texUpHeightFix + texUpHeightFix);
-
-        // Down face (Bottom, Y-) - to the right of Up by X, uses X for width, min(Y,Z) for height
-        var texDown1 = new vec2(texU + texSizeX, texV - texUpHeightFix);
-        var texDown2 = new vec2(texU + texSizeX + texSizeFixX, texV - texUpHeightFix);
-        var texDown3 = new vec2(texU + texSizeX + texSizeFixX, texV - texUpHeightFix + texUpHeightFix);
-        var texDown4 = new vec2(texU + texSizeX, texV - texUpHeightFix + texUpHeightFix);
+        var texDown4 = new vec2(texUp1.x + texSizeX, texUp1.y);
+        var texDown3 = new vec2(texDown4.x + texSizeFixX, texDown4.y);
+        var texDown2 = new vec2(texDown4.x + texSizeFixX, texDown4.y + texSizeFixZ);
+        var texDown1 = new vec2(texDown4.x, texDown4.y + texSizeFixZ);
 
         if (textureMirror)
         {
@@ -1100,6 +1090,19 @@ public class MineImatorLoader
             (texUp3, texUp4) = (texUp4, texUp3);
             (texDown1, texDown2) = (texDown2, texDown1);
             (texDown3, texDown4) = (texDown4, texDown3);
+        }
+
+        // texture_mirror_y mirrors each atlas face in place. These UVs are
+        // shared by both the ordinary and segmented bend paths, so applying it
+        // here also preserves the flag when a bend causes the mesh to rebuild.
+        if (textureMirrorY)
+        {
+            FlipFaceVertically(ref texEast1, ref texEast2, ref texEast3, ref texEast4);
+            FlipFaceVertically(ref texWest1, ref texWest2, ref texWest3, ref texWest4);
+            FlipFaceVertically(ref texSouth1, ref texSouth2, ref texSouth3, ref texSouth4);
+            FlipFaceVertically(ref texNorth1, ref texNorth2, ref texNorth3, ref texNorth4);
+            FlipFaceVertically(ref texUp1, ref texUp2, ref texUp3, ref texUp4);
+            FlipFaceVertically(ref texDown1, ref texDown2, ref texDown3, ref texDown4);
         }
 
         bool isBent = bend.HasValue &&
@@ -1200,11 +1203,12 @@ public class MineImatorLoader
             mat4 shapeScaleMat = shapeScale != default && shapeScale != vec3.Ones
                 ? mat4.Scale(shapeScale)
                 : mat4.Identity;
-            vec3 bendPivot = BendHelper.GetBendPivot(b, shapePosition);
-            // Mine-imator applies the shape rotation around the same pivot used
-            // by the bend, before applying the bend rotation itself.
-            mat4 rsm = mat4.Translate(bendPivot) * shapeRotMat *
-                       mat4.Translate(-bendPivot) * shapeScaleMat;
+            // Modelbench rotates/scales the shape around its ordinary shape
+            // origin first. model_part_get_bend_matrix then bends those rotated
+            // vertices around the bend pivot. Rotating around the bend pivot
+            // here changes the authored shape transform and separates adjacent
+            // rotated shapes as soon as a non-zero bend is applied.
+            mat4 rsm = shapeRotMat * shapeScaleMat;
             float axisStart = segAxis == 0 ? x1 : segAxis == 1 ? y1 : z1;
 
             float bendStart, bendEnd;
@@ -1496,14 +1500,14 @@ public class MineImatorLoader
                         break;
                     case 1:
                         AddFaceWithUVs(vertices, normals, uvs, indices, np1, p1, p4, np4, nn1, n1, n1, nn1,
-                            new vec2(texEast1.x, ntexpSide1), new vec2(texEast2.x, ntexpSide1),
-                            new vec2(texEast2.x, texpSide1), new vec2(texEast1.x, texpSide1), invert);
+                            new vec2(texEast1.x, ntexpSide1), new vec2(texEast1.x, texpSide1),
+                            new vec2(texEast2.x, texpSide1), new vec2(texEast2.x, ntexpSide1), invert);
                         AddFaceWithUVs(vertices, normals, uvs, indices, p2, np2, np3, p3, n2, nn2, nn2, n2,
-                            new vec2(texWest1.x, ntexpSide1), new vec2(texWest2.x, ntexpSide1),
-                            new vec2(texWest2.x, texpSide1), new vec2(texWest1.x, texpSide1), invert);
+                            new vec2(texWest1.x, texpSide1), new vec2(texWest1.x, ntexpSide1),
+                            new vec2(texWest2.x, ntexpSide1), new vec2(texWest2.x, texpSide1), invert);
                         AddFaceWithUVs(vertices, normals, uvs, indices, p2, p1, np1, np2, n3, n3, nn3, nn3,
-                            new vec2(texSouth1.x, ntexpSide1), new vec2(texSouth2.x, ntexpSide1),
-                            new vec2(texSouth2.x, texpSide1), new vec2(texSouth1.x, texpSide1), invert);
+                            new vec2(texSouth1.x, texpSide1), new vec2(texSouth2.x, texpSide1),
+                            new vec2(texSouth2.x, ntexpSide1), new vec2(texSouth1.x, ntexpSide1), invert);
                         AddFaceWithUVs(vertices, normals, uvs, indices, np3, np4, p4, p3, nn4, nn4, n4, n4,
                             new vec2(texNorth1.x, ntexpSide1), new vec2(texNorth2.x, ntexpSide1),
                             new vec2(texNorth2.x, texpSide1), new vec2(texNorth1.x, texpSide1), invert);
@@ -1891,9 +1895,7 @@ public class MineImatorLoader
             : bendOffset - (bendShapePosition + y1) - bendSize / 2f;
         float bendEnd = bendStart + bendSize;
 
-        vec3 bendPivot = BendHelper.GetBendPivot(b, shapePosition);
-        mat4 rsm = mat4.Translate(bendPivot) * BuildShapeRotMat(shapeRotation) *
-                   mat4.Translate(-bendPivot) *
+        mat4 rsm = BuildShapeRotMat(shapeRotation) *
                    (shapeScale != default && shapeScale != vec3.Ones ? mat4.Scale(shapeScale) : mat4.Identity);
 
         vec3 p1 = segAxis == 0 ? new vec3(x1, y2, z1) : new vec3(x1, y1, z1);
@@ -2076,8 +2078,7 @@ public class MineImatorLoader
         bool invAngle = (b.Part == BendPart.Lower || b.Part == BendPart.Back || b.Part == BendPart.Left);
 
         mat4 shapeRotMat = BuildShapeRotMat(shapeRotation);
-        vec3 bendPivot = BendHelper.GetBendPivot(b, shapePosition);
-        mat4 rsm = mat4.Translate(bendPivot) * shapeRotMat * mat4.Translate(-bendPivot) *
+        mat4 rsm = shapeRotMat *
                    (shapeScale != default && shapeScale != vec3.Ones ? mat4.Scale(shapeScale) : mat4.Identity);
         float axisStart = bendAlongX ? x1 : y1;
 
@@ -2286,6 +2287,12 @@ public class MineImatorLoader
         }
 
         return hasAny ? result : null;
+    }
+
+    private static void FlipFaceVertically(ref vec2 uv1, ref vec2 uv2, ref vec2 uv3, ref vec2 uv4)
+    {
+        (uv1, uv4) = (uv4, uv1);
+        (uv2, uv3) = (uv3, uv2);
     }
 
     // Adds a face quad with uniform normal and per-vertex UVs

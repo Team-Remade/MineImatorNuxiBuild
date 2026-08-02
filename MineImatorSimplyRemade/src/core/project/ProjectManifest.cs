@@ -263,6 +263,7 @@ public class ProjectSceneObjectEntry
     public ProjectVec3 Position { get; set; } = new();
     public ProjectVec3 Rotation { get; set; } = new();
     public ProjectVec3 Scale { get; set; } = new() { X = 1f, Y = 1f, Z = 1f };
+    public ProjectVec3? BendAngle { get; set; }
     public ProjectVec3 PivotOffset { get; set; } = new() { X = 0f, Y = 0.5f, Z = 0f };
 
     public bool InheritPosition { get; set; } = true;
