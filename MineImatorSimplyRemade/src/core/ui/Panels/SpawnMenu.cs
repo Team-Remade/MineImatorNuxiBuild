@@ -173,6 +173,12 @@ public class SpawnMenu : UiPanel
     private PlaneOrientation _selectedPrimitivePlaneOrientation = PlaneOrientation.XY;
 
     /// <summary>
+    /// Cube UV mode for textured cube spawning. False maps each face to the
+    /// full texture; true uses a 3x2 cubemap unwrap.
+    /// </summary>
+    private bool _selectedPrimitiveCubeMapped = false;
+
+    /// <summary>
     /// OpenGL texture ID for the currently selected primitive texture.
     /// 0 means no texture (use default material).
     /// </summary>
@@ -635,7 +641,7 @@ public class SpawnMenu : UiPanel
                 string name = filtered[_selectedObjectIndex];
                 if (name == "Empty") return new List<Mesh>();
 
-                if (name == "Cube")   return new List<Mesh> { new CubeMesh(Gl) };
+                if (name == "Cube")   return new List<Mesh> { new CubeMesh(Gl, _selectedPrimitiveCubeMapped) };
                 if (name == "Plane")  return new List<Mesh> { new PlaneMesh(Gl, 1f, 1f, _selectedPrimitivePlaneOrientation) };
 
                 // For shapes not yet implemented, show a cube placeholder
@@ -970,17 +976,35 @@ public class SpawnMenu : UiPanel
 
             // ── Primitive texture selection ──────────────────────────────────
             var filteredObjects = GetFilteredObjects();
-            if (_selectedCategory == "Primitives" &&
+            bool isPrimitiveWithTexture = _selectedCategory == "Primitives" &&
                 _selectedObjectIndex >= 0 && _selectedObjectIndex < filteredObjects.Count &&
-                filteredObjects[_selectedObjectIndex] == "Plane")
-            {
-                ImGui.TextDisabled("Orientation");
-                string[] orientationOptions = { "XY", "XZ" };
-                int orientationIndex = _selectedPrimitivePlaneOrientation == PlaneOrientation.XZ ? 1 : 0;
-                if (ImGui.Combo("##planeOrientation", ref orientationIndex, orientationOptions, orientationOptions.Length))
-                    _selectedPrimitivePlaneOrientation = orientationIndex == 1 ? PlaneOrientation.XZ : PlaneOrientation.XY;
+                (filteredObjects[_selectedObjectIndex] == "Plane" || filteredObjects[_selectedObjectIndex] == "Cube");
 
-                ImGui.Spacing();
+            if (isPrimitiveWithTexture)
+            {
+                string primitiveName = filteredObjects[_selectedObjectIndex];
+                if (primitiveName == "Plane")
+                {
+                    ImGui.TextDisabled("Orientation");
+                    string[] orientationOptions = { "XY", "XZ" };
+                    int orientationIndex = _selectedPrimitivePlaneOrientation == PlaneOrientation.XZ ? 1 : 0;
+                    if (ImGui.Combo("##planeOrientation", ref orientationIndex, orientationOptions, orientationOptions.Length))
+                        _selectedPrimitivePlaneOrientation = orientationIndex == 1 ? PlaneOrientation.XZ : PlaneOrientation.XY;
+
+                    ImGui.Spacing();
+                }
+                else if (primitiveName == "Cube")
+                {
+                    ImGui.TextDisabled("UV Mapping");
+                    if (ImGui.Checkbox("Mapped##cubeMappedSpawn", ref _selectedPrimitiveCubeMapped))
+                        _previewKey = ""; // force preview rebuild when UV mode changes
+
+                    if (ImGui.Button("Save UV map...##cubeUvMap", new Vector2(-1, 0)))
+                        SaveCubeUvMapGuide();
+
+                    ImGui.TextDisabled("Exports the cube layout reference image.");
+                    ImGui.Spacing();
+                }
 
                 ImGui.TextDisabled("Texture");
                 ImGui.Spacing();
@@ -1052,9 +1076,7 @@ public class SpawnMenu : UiPanel
                     }
                 }
             }
-            else if (!(_selectedCategory == "Primitives" &&
-                       _selectedObjectIndex >= 0 && _selectedObjectIndex < filteredObjects.Count &&
-                       filteredObjects[_selectedObjectIndex] == "Plane"))
+            else if (!isPrimitiveWithTexture)
             {
                 ImGui.TextDisabled("(not available)");
             }
@@ -1847,11 +1869,12 @@ public class SpawnMenu : UiPanel
         }
 
         // Handle textured primitive selection: add texture option to variants
-        if (_selectedCategory == "Primitives" && objectName == "Plane")
+        if (_selectedCategory == "Primitives" && (objectName == "Plane" || objectName == "Cube"))
         {
             _currentVariants.Clear();
             _currentVariants.Add("None");
             _currentVariants.Add("Load texture...");
+            _selectedPrimitiveCubeMapped = false;
             // Reset texture if switching away from textured primitive
             if (_selectedPrimitiveTextureId != 0)
             {
@@ -4521,14 +4544,15 @@ public class SpawnMenu : UiPanel
             default:
                 // Primitives and any future categories that use SceneObject
                 // For textured primitives, pass the selected texture
-                if (_selectedCategory == "Primitives" && objectName == "Plane")
+                if (_selectedCategory == "Primitives" && (objectName == "Plane" || objectName == "Cube"))
                 {
                     string texturePath = "";
                     if (_selectedPrimitiveTextureId != 0 && !string.IsNullOrEmpty(_selectedPrimitiveTexturePath))
                     {
                         texturePath = CopyTextureToProject(_selectedPrimitiveTexturePath);
                     }
-                    SpawnPrimitiveObject(objectName, fullName, _selectedPrimitiveTextureId, texturePath, _selectedPrimitivePlaneOrientation);
+                    SpawnPrimitiveObject(objectName, fullName, _selectedPrimitiveTextureId, texturePath,
+                                         _selectedPrimitivePlaneOrientation, _selectedPrimitiveCubeMapped);
                 }
                 else
                 {
@@ -4776,6 +4800,46 @@ public class SpawnMenu : UiPanel
         return AssimpModelLoader.Load(gl, tempPath);
     }
 
+    private static void SaveCubeUvMapGuide()
+    {
+        const string embeddedName = "MineImatorSimplyRemade.assets.img.map.cube.png";
+        const string defaultFileName = "cube-uv-map.png";
+
+        string defaultPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            defaultFileName);
+
+        var saveResult = Dialog.FileSave("png", defaultPath);
+        if (!saveResult.IsOk || string.IsNullOrWhiteSpace(saveResult.Path))
+            return;
+
+        string outputPath = saveResult.Path;
+        if (!string.Equals(Path.GetExtension(outputPath), ".png", StringComparison.OrdinalIgnoreCase))
+            outputPath = Path.ChangeExtension(outputPath, ".png");
+
+        try
+        {
+            var asm = Assembly.GetExecutingAssembly();
+            using Stream? sourceStream = asm.GetManifestResourceStream(embeddedName);
+            if (sourceStream == null)
+            {
+                Console.Error.WriteLine($"Cube UV map resource not found: {embeddedName}");
+                return;
+            }
+
+            string? outputDir = Path.GetDirectoryName(outputPath);
+            if (!string.IsNullOrWhiteSpace(outputDir))
+                Directory.CreateDirectory(outputDir);
+
+            using var output = File.Create(outputPath);
+            sourceStream.CopyTo(output);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Failed to save cube UV map guide: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Recursively collects all <see cref="Mesh"/> visuals from <paramref name="source"/>
     /// and its children and adds them to <paramref name="target"/>'s Visuals list.
@@ -4829,7 +4893,9 @@ public class SpawnMenu : UiPanel
     }
 
     /// <summary>Creates and registers a primitive <see cref="SceneObject"/> in the viewport.</summary>
-    public SceneObject? SpawnPrimitiveObject(string primitiveType, string objectName, uint textureId = 0, string texturePath = "", PlaneOrientation planeOrientation = PlaneOrientation.XY)
+    public SceneObject? SpawnPrimitiveObject(string primitiveType, string objectName, uint textureId = 0,
+                                             string texturePath = "", PlaneOrientation planeOrientation = PlaneOrientation.XY,
+                                             bool cubeMapped = false)
     {
         if (Viewport == null) return null;
 
@@ -4840,7 +4906,8 @@ public class SpawnMenu : UiPanel
             SpawnCategory = "Primitives",
             Position      = vec3.Zero,
             PivotOffset   = new vec3(0f, 0.5f, 0f),
-            AlbedoTexturePath = texturePath
+            AlbedoTexturePath = texturePath,
+            PrimitiveCubeMapped = cubeMapped
         };
         obj.AssignObjectId();
 
@@ -4874,7 +4941,20 @@ public class SpawnMenu : UiPanel
 
         if (primitiveType == "Cube" && Gl != null)
         {
-            obj.AddMesh(new CubeMesh(Gl));
+            var mesh = new CubeMesh(Gl, cubeMapped);
+
+            if (textureId != 0)
+            {
+                mesh.TextureId = textureId;
+                if (mesh.GetSurfaceCount() > 0)
+                {
+                    var material = mesh.SurfaceGetMaterial(0);
+                    if (material is StandardMaterial stdMat)
+                        stdMat.AlbedoColor = new vec4(1f, 1f, 1f, 1f);
+                }
+            }
+
+            obj.AddMesh(mesh);
         }
 
         Viewport.SceneObjects.Add(obj);

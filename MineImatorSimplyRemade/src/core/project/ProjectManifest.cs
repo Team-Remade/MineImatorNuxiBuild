@@ -292,6 +292,10 @@ public class ProjectSceneObjectEntry
     // Primitive plane orientation. Only used for Primitives/Plane objects.
     public PlaneOrientation PrimitivePlaneOrientation { get; set; } = PlaneOrientation.XY;
 
+    // Primitive cube UV mode. Only used for Primitives/Cube objects.
+    // False = each face maps to the full texture; true = 3x2 cubemap unwrap.
+    public bool PrimitiveCubeMapped { get; set; } = false;
+
     public ProjectVec3 Position { get; set; } = new();
     public ProjectVec3 Rotation { get; set; } = new();
     public ProjectVec3 Scale { get; set; } = new() { X = 1f, Y = 1f, Z = 1f };

@@ -681,6 +681,7 @@ public class PropertiesPanel : UiPanel
             ItemTileKey = source.ItemTileKey,
             ItemIs3D = source.ItemIs3D,
             PrimitivePlaneOrientation = source.PrimitivePlaneOrientation,
+            PrimitiveCubeMapped = source.PrimitiveCubeMapped,
             CameraFov = source.CameraFov,
             CameraNear = source.CameraNear,
             CameraFar = source.CameraFar,
@@ -2422,6 +2423,20 @@ public class PropertiesPanel : UiPanel
         }
 
         if (string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_currentObject.ObjectType, "Cube", StringComparison.OrdinalIgnoreCase) &&
+            ImGui.CollapsingHeader("Cube"))
+        {
+            bool mapped = _currentObject.PrimitiveCubeMapped;
+            if (ImGui.Checkbox("Mapped UVs##cubeMapped", ref mapped))
+            {
+                ApplyCubeUvMapping(mapped);
+            }
+
+            ImGui.TextDisabled("Off: each face fills the full texture.");
+            ImGui.TextDisabled("On: unwrap to a 3x2 cubemap layout.");
+        }
+
+        if (string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(_currentObject.ObjectType, "Plane", StringComparison.OrdinalIgnoreCase) &&
             ImGui.CollapsingHeader("Plane"))
         {
@@ -3134,6 +3149,35 @@ public class PropertiesPanel : UiPanel
             if (SpawnMenu.RebuildBlockMeshes(_currentObject))
                 ProjectManager.Instance.SetDirty(true);
         }
+    }
+
+    private void ApplyCubeUvMapping(bool mapped)
+    {
+        if (_currentObject == null) return;
+
+        var cubeMesh = _currentObject.Visuals.OfType<CubeMesh>().FirstOrDefault();
+        if (cubeMesh != null)
+        {
+            cubeMesh.SetMapped(mapped);
+            _currentObject.PrimitiveCubeMapped = mapped;
+            ProjectManager.Instance.SetDirty(true);
+            return;
+        }
+
+        if (Gl == null) return;
+
+        uint existingTextureId = _currentObject.Visuals.FirstOrDefault()?.TextureId ?? 0;
+        foreach (var mesh in _currentObject.Visuals.ToList())
+            mesh.Dispose();
+        _currentObject.Visuals.Clear();
+
+        var rebuilt = new CubeMesh(Gl, mapped)
+        {
+            TextureId = existingTextureId
+        };
+        _currentObject.AddMesh(rebuilt);
+        _currentObject.PrimitiveCubeMapped = mapped;
+        ProjectManager.Instance.SetDirty(true);
     }
 
     /// <summary>

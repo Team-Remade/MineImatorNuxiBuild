@@ -176,6 +176,9 @@ public static class ProjectSceneSerializer
             PrimitivePlaneOrientation = obj.SpawnCategory == "Primitives" && obj.ObjectType == "Plane"
                 ? obj.Visuals.OfType<PlaneMesh>().FirstOrDefault()?.Orientation ?? PlaneOrientation.XY
                 : PlaneOrientation.XY,
+            PrimitiveCubeMapped = obj.SpawnCategory == "Primitives" && obj.ObjectType == "Cube"
+                ? obj.PrimitiveCubeMapped
+                : false,
             Keyframes = SerializeKeyframes(obj),
             ShapeKeyWeights = SerializeShapeKeyWeights(obj)
         };
@@ -322,7 +325,7 @@ public static class ProjectSceneSerializer
             return spawnMenu.SpawnLightObject(entry.Name);
 
         if (entry.SpawnCategory == "Primitives")
-            return spawnMenu.SpawnPrimitiveObject(entry.ObjectType, entry.Name, 0, "", entry.PrimitivePlaneOrientation);
+            return spawnMenu.SpawnPrimitiveObject(entry.ObjectType, entry.Name, 0, "", entry.PrimitivePlaneOrientation, entry.PrimitiveCubeMapped);
 
         if (entry.SpawnCategory == "Scenery")
         {
@@ -472,6 +475,14 @@ public static class ProjectSceneSerializer
             var planeMesh = obj.Visuals.OfType<PlaneMesh>().FirstOrDefault();
             if (planeMesh != null)
                 planeMesh.SetOrientation(entry.PrimitivePlaneOrientation);
+        }
+
+        if (obj.SpawnCategory == "Primitives" && obj.ObjectType == "Cube")
+        {
+            obj.PrimitiveCubeMapped = entry.PrimitiveCubeMapped;
+            var cubeMesh = obj.Visuals.OfType<CubeMesh>().FirstOrDefault();
+            if (cubeMesh != null)
+                cubeMesh.SetMapped(entry.PrimitiveCubeMapped);
         }
 
         if (entry.HasMaterialOverrides)

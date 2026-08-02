@@ -137,6 +137,12 @@ public class SceneObject
     public string AlbedoTexturePath = "";
 
     /// <summary>
+    /// Primitive-cube UV mode. False = each face fills the whole texture;
+    /// true = use a 3x2 cubemap unwrap layout.
+    /// </summary>
+    public bool PrimitiveCubeMapped = false;
+
+    /// <summary>
     /// Path to the character texture-variant image selected in the spawn menu
     /// at import time (e.g. a "skin" PNG chosen from a character's
     /// <c>textures.nux</c> manifest), for objects created from
