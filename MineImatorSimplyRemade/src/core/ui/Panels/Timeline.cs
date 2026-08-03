@@ -1387,10 +1387,14 @@ public class Timeline : UiPanel
         {
             if (!header.IsGroupHeader || header.Object != childRow.Object) continue;
             if (header.GroupPaths == null || !header.GroupPaths.Contains(childRow.PropertyPath)) continue;
+
             string gk = $"{header.Object.ObjectId}.{header.PropertyPath}";
-            return _groupExpanded.TryGetValue(gk, out bool exp) && exp;
+            if (!_groupExpanded.TryGetValue(gk, out bool exp) || !exp)
+                return false;
         }
-        return true; // Not inside any group → always visible
+
+        // Not inside any group -> always visible.
+        return true;
     }
 
     // ── Keyframe tracks ───────────────────────────────────────────────────────
@@ -2910,10 +2914,13 @@ public class Timeline : UiPanel
 
                         string basePath = $"camera.effect.{i}.shake";
                         string modePath = $"{basePath}.mode";
+                        string strengthGroupPath = $"camera.effect.{i}.strength";
+                        string speedGroupPath = $"camera.effect.{i}.speed";
+                        string offsetGroupPath = $"camera.effect.{i}.offset";
                         string[] strengthPaths = { $"{basePath}.strength.x", $"{basePath}.strength.y", $"{basePath}.strength.z" };
                         string[] speedPaths = { $"{basePath}.speed.x", $"{basePath}.speed.y", $"{basePath}.speed.z" };
                         string[] offsetPaths = { $"{basePath}.offset.x", $"{basePath}.offset.y", $"{basePath}.offset.z" };
-                        string[] allPaths = [modePath, ..strengthPaths, ..speedPaths, ..offsetPaths];
+                        string[] allPaths = [modePath, strengthGroupPath, ..strengthPaths, speedGroupPath, ..speedPaths, offsetGroupPath, ..offsetPaths];
 
                         if (!allPaths.Any(propsWithKeyframes.Contains))
                             continue;
@@ -2928,7 +2935,7 @@ public class Timeline : UiPanel
 
                         if (strengthPaths.Any(propsWithKeyframes.Contains))
                         {
-                            _displayRows.Add(MakeGroup(obj, "Strength", strengthPaths, $"camera.effect.{i}.strength"));
+                            _displayRows.Add(MakeGroup(obj, "Strength", strengthPaths, strengthGroupPath, 1));
                             _displayRows.Add(MakeSingle(obj, "X", strengthPaths[0], 2));
                             _displayRows.Add(MakeSingle(obj, "Y", strengthPaths[1], 2));
                             _displayRows.Add(MakeSingle(obj, "Z", strengthPaths[2], 2));
@@ -2936,7 +2943,7 @@ public class Timeline : UiPanel
 
                         if (speedPaths.Any(propsWithKeyframes.Contains))
                         {
-                            _displayRows.Add(MakeGroup(obj, "Speed", speedPaths, $"camera.effect.{i}.speed"));
+                            _displayRows.Add(MakeGroup(obj, "Speed", speedPaths, speedGroupPath, 1));
                             _displayRows.Add(MakeSingle(obj, "X", speedPaths[0], 2));
                             _displayRows.Add(MakeSingle(obj, "Y", speedPaths[1], 2));
                             _displayRows.Add(MakeSingle(obj, "Z", speedPaths[2], 2));
@@ -2944,7 +2951,7 @@ public class Timeline : UiPanel
 
                         if (offsetPaths.Any(propsWithKeyframes.Contains))
                         {
-                            _displayRows.Add(MakeGroup(obj, "Offset", offsetPaths, $"camera.effect.{i}.offset"));
+                            _displayRows.Add(MakeGroup(obj, "Offset", offsetPaths, offsetGroupPath, 1));
                             _displayRows.Add(MakeSingle(obj, "X", offsetPaths[0], 2));
                             _displayRows.Add(MakeSingle(obj, "Y", offsetPaths[1], 2));
                             _displayRows.Add(MakeSingle(obj, "Z", offsetPaths[2], 2));
@@ -3023,21 +3030,24 @@ public class Timeline : UiPanel
 
                 string basePath = $"camera.effect.{i}.shake";
                 string modePath = $"{basePath}.mode";
+                string strengthGroupPath = $"camera.effect.{i}.strength";
+                string speedGroupPath = $"camera.effect.{i}.speed";
+                string offsetGroupPath = $"camera.effect.{i}.offset";
                 string[] strengthPaths = { $"{basePath}.strength.x", $"{basePath}.strength.y", $"{basePath}.strength.z" };
                 string[] speedPaths = { $"{basePath}.speed.x", $"{basePath}.speed.y", $"{basePath}.speed.z" };
                 string[] offsetPaths = { $"{basePath}.offset.x", $"{basePath}.offset.y", $"{basePath}.offset.z" };
 
-                _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Camera Shake", [modePath, ..strengthPaths, ..speedPaths, ..offsetPaths], $"camera.effect.{i}"));
+                _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Camera Shake", [modePath, strengthGroupPath, ..strengthPaths, speedGroupPath, ..speedPaths, offsetGroupPath, ..offsetPaths], $"camera.effect.{i}"));
                 _displayRows.Add(MakeSingle(obj, "Mode", modePath, 1));
-                _displayRows.Add(MakeGroup(obj, "Strength", strengthPaths, $"camera.effect.{i}.strength"));
+                _displayRows.Add(MakeGroup(obj, "Strength", strengthPaths, strengthGroupPath, 1));
                 _displayRows.Add(MakeSingle(obj, "X", strengthPaths[0], 2));
                 _displayRows.Add(MakeSingle(obj, "Y", strengthPaths[1], 2));
                 _displayRows.Add(MakeSingle(obj, "Z", strengthPaths[2], 2));
-                _displayRows.Add(MakeGroup(obj, "Speed", speedPaths, $"camera.effect.{i}.speed"));
+                _displayRows.Add(MakeGroup(obj, "Speed", speedPaths, speedGroupPath, 1));
                 _displayRows.Add(MakeSingle(obj, "X", speedPaths[0], 2));
                 _displayRows.Add(MakeSingle(obj, "Y", speedPaths[1], 2));
                 _displayRows.Add(MakeSingle(obj, "Z", speedPaths[2], 2));
-                _displayRows.Add(MakeGroup(obj, "Offset", offsetPaths, $"camera.effect.{i}.offset"));
+                _displayRows.Add(MakeGroup(obj, "Offset", offsetPaths, offsetGroupPath, 1));
                 _displayRows.Add(MakeSingle(obj, "X", offsetPaths[0], 2));
                 _displayRows.Add(MakeSingle(obj, "Y", offsetPaths[1], 2));
                 _displayRows.Add(MakeSingle(obj, "Z", offsetPaths[2], 2));
@@ -3051,8 +3061,8 @@ public class Timeline : UiPanel
     private static TimelineProperty MakeSingle(SceneObject obj, string label, string path, int indent = 0) =>
         new() { Object = obj, Label = label, PropertyPath = path, Indent = indent };
 
-    private static TimelineProperty MakeGroup(SceneObject obj, string name, string[] paths, string? keyPath = null) =>
-        new() { Object = obj, Label = name, PropertyPath = keyPath ?? name.ToLower(), IsGroupHeader = true, GroupPaths = paths };
+    private static TimelineProperty MakeGroup(SceneObject obj, string name, string[] paths, string? keyPath = null, int indent = 0) =>
+        new() { Object = obj, Label = name, PropertyPath = keyPath ?? name.ToLower(), IsGroupHeader = true, GroupPaths = paths, Indent = indent };
 
     // ── Object lookup ─────────────────────────────────────────────────────────
 
