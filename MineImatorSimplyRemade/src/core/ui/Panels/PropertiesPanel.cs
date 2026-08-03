@@ -847,6 +847,7 @@ public class PropertiesPanel : UiPanel
                     Shake = new ProjectCameraShakeSettings
                     {
                         Mode = effect.Shake.Mode,
+                        Trauma = effect.Shake.Trauma,
                         Strength = new ProjectVec3
                         {
                             X = effect.Shake.Strength.X,
@@ -3384,6 +3385,20 @@ public class PropertiesPanel : UiPanel
                                     _openPropContextMenu = true;
                                 }
 
+                                float trauma = effect.Shake.Trauma;
+                                if (ImGui.SliderFloat($"Trauma##cameraShakeTrauma{i}", ref trauma, 0f, 5f, "%.3f"))
+                                {
+                                    effect.Shake.Trauma = trauma;
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.trauma");
+                                    changed = true;
+                                }
+                                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                                {
+                                    _ctxPropertyPath = $"{basePath}.trauma";
+                                    _ctxMenuPos = ImGui.GetMousePos();
+                                    _openPropContextMenu = true;
+                                }
+
                                 vec3 strength = effect.Shake.Strength;
                                 if (EditVec3Editor(cameraObject, $"shakeStrength{i}", ref strength, 0.001f, -100f, 100f, "%.3f", "Strength", $"{basePath}.strength"))
                                 {
@@ -3408,10 +3423,12 @@ public class PropertiesPanel : UiPanel
                                 if (ImGui.Button($"Reset##cameraShakeReset{i}"))
                                 {
                                     effect.Shake.Mode = CameraShakeMode.Both;
+                                    effect.Shake.Trauma = 1f;
                                     effect.Shake.Strength = new vec3(0.03f, 0.03f, 0.03f);
                                     effect.Shake.Speed = new vec3(3f, 3.5f, 2.5f);
                                     effect.Shake.Offset = vec3.Zero;
                                     Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.mode");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.trauma");
                                     Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.strength.x");
                                     Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.strength.y");
                                     Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.strength.z");

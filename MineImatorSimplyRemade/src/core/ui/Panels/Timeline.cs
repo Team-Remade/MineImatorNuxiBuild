@@ -2234,6 +2234,7 @@ public class Timeline : UiPanel
         {
             string basePath = $"camera.effect.{i}.shake";
             yield return $"{basePath}.mode";
+            yield return $"{basePath}.trauma";
             yield return $"{basePath}.strength.x";
             yield return $"{basePath}.strength.y";
             yield return $"{basePath}.strength.z";
@@ -2485,6 +2486,9 @@ public class Timeline : UiPanel
                 if (parts.Length == 5 && parts[4] == "mode")
                     return (float)effect.Shake.Mode;
 
+                if (parts.Length == 5 && parts[4] == "trauma")
+                    return effect.Shake.Trauma;
+
                 if (parts.Length == 6)
                 {
                     vec3 valueVec = parts[4] switch
@@ -2678,6 +2682,18 @@ public class Timeline : UiPanel
 
                 int modeValue = Math.Clamp((int)MathF.Round(value), 0, CameraShakeModeOptionsCount - 1);
                 effect.Shake.Mode = (CameraShakeMode)modeValue;
+                break;
+            }
+            case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "shake" && parts[4] == "trauma" && obj is CameraSceneObject camTrauma:
+            {
+                if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camTrauma.Effects.Count)
+                    break;
+
+                var effect = camTrauma.Effects[effectIndex];
+                if (effect.Type != CameraEffectType.CameraShake)
+                    break;
+
+                effect.Shake.Trauma = value;
                 break;
             }
             case 6 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "shake" && obj is CameraSceneObject camVec:
@@ -2914,13 +2930,14 @@ public class Timeline : UiPanel
 
                         string basePath = $"camera.effect.{i}.shake";
                         string modePath = $"{basePath}.mode";
+                        string traumaPath = $"{basePath}.trauma";
                         string strengthGroupPath = $"camera.effect.{i}.strength";
                         string speedGroupPath = $"camera.effect.{i}.speed";
                         string offsetGroupPath = $"camera.effect.{i}.offset";
                         string[] strengthPaths = { $"{basePath}.strength.x", $"{basePath}.strength.y", $"{basePath}.strength.z" };
                         string[] speedPaths = { $"{basePath}.speed.x", $"{basePath}.speed.y", $"{basePath}.speed.z" };
                         string[] offsetPaths = { $"{basePath}.offset.x", $"{basePath}.offset.y", $"{basePath}.offset.z" };
-                        string[] allPaths = [modePath, strengthGroupPath, ..strengthPaths, speedGroupPath, ..speedPaths, offsetGroupPath, ..offsetPaths];
+                        string[] allPaths = [modePath, traumaPath, strengthGroupPath, ..strengthPaths, speedGroupPath, ..speedPaths, offsetGroupPath, ..offsetPaths];
 
                         if (!allPaths.Any(propsWithKeyframes.Contains))
                             continue;
@@ -2932,6 +2949,9 @@ public class Timeline : UiPanel
 
                         if (propsWithKeyframes.Contains(modePath))
                             _displayRows.Add(MakeSingle(obj, "Mode", modePath, 1));
+
+                        if (propsWithKeyframes.Contains(traumaPath))
+                            _displayRows.Add(MakeSingle(obj, "Trauma", traumaPath, 1));
 
                         if (strengthPaths.Any(propsWithKeyframes.Contains))
                         {
@@ -3030,6 +3050,7 @@ public class Timeline : UiPanel
 
                 string basePath = $"camera.effect.{i}.shake";
                 string modePath = $"{basePath}.mode";
+                string traumaPath = $"{basePath}.trauma";
                 string strengthGroupPath = $"camera.effect.{i}.strength";
                 string speedGroupPath = $"camera.effect.{i}.speed";
                 string offsetGroupPath = $"camera.effect.{i}.offset";
@@ -3037,8 +3058,9 @@ public class Timeline : UiPanel
                 string[] speedPaths = { $"{basePath}.speed.x", $"{basePath}.speed.y", $"{basePath}.speed.z" };
                 string[] offsetPaths = { $"{basePath}.offset.x", $"{basePath}.offset.y", $"{basePath}.offset.z" };
 
-                _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Camera Shake", [modePath, strengthGroupPath, ..strengthPaths, speedGroupPath, ..speedPaths, offsetGroupPath, ..offsetPaths], $"camera.effect.{i}"));
+                _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Camera Shake", [modePath, traumaPath, strengthGroupPath, ..strengthPaths, speedGroupPath, ..speedPaths, offsetGroupPath, ..offsetPaths], $"camera.effect.{i}"));
                 _displayRows.Add(MakeSingle(obj, "Mode", modePath, 1));
+                _displayRows.Add(MakeSingle(obj, "Trauma", traumaPath, 1));
                 _displayRows.Add(MakeGroup(obj, "Strength", strengthPaths, strengthGroupPath, 1));
                 _displayRows.Add(MakeSingle(obj, "X", strengthPaths[0], 2));
                 _displayRows.Add(MakeSingle(obj, "Y", strengthPaths[1], 2));

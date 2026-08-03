@@ -4299,6 +4299,7 @@ public class Viewport : UiPanel
                 continue;
 
             var shake = effect.Shake ?? new CameraShakeSettings();
+            float trauma = Math.Clamp(shake.Trauma, 0f, 100f);
             vec3 noise = new vec3(
                 SampleShakeNoise(timeSeconds, shake.Speed.x, shake.Offset.x, 0.73f),
                 SampleShakeNoise(timeSeconds, shake.Speed.y, shake.Offset.y, 1.61f),
@@ -4315,21 +4316,21 @@ public class Viewport : UiPanel
 
                 vec3 up = vec3.Cross(right, forward).Normalized;
                 vec3 positionalOffset =
-                    right * (noise.x * shake.Strength.x) +
-                    up * (noise.y * shake.Strength.y) +
-                    forward * (noise.z * shake.Strength.z);
+                    right * (noise.x * shake.Strength.x * trauma) +
+                    up * (noise.y * shake.Strength.y * trauma) +
+                    forward * (noise.z * shake.Strength.z * trauma);
 
                 camera.Target += positionalOffset;
             }
 
             if (shake.Mode is CameraShakeMode.Rotational or CameraShakeMode.Both)
             {
-                camera.Yaw += noise.x * shake.Strength.x;
+                camera.Yaw += noise.x * shake.Strength.x * trauma;
                 camera.Pitch = Math.Clamp(
-                    camera.Pitch + noise.y * shake.Strength.y,
+                    camera.Pitch + noise.y * shake.Strength.y * trauma,
                     -MathF.PI / 2f + 0.01f,
                     MathF.PI / 2f - 0.01f);
-                camera.Yaw += noise.z * shake.Strength.z * 0.25f;
+                camera.Yaw += noise.z * shake.Strength.z * trauma * 0.25f;
             }
         }
     }

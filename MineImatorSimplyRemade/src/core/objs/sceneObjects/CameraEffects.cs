@@ -18,6 +18,9 @@ public class CameraShakeSettings
 {
     public CameraShakeMode Mode = CameraShakeMode.Both;
 
+    // Overall shake multiplier applied to all shake axes.
+    public float Trauma = 1f;
+
     // For rotational shake these are radians. For positional shake these are world units.
     public vec3 Strength = new vec3(0.03f, 0.03f, 0.03f);
 

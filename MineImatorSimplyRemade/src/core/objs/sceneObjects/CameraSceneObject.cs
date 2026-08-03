@@ -111,6 +111,7 @@ public class CameraSceneObject : SceneObject
             Shake = new CameraShakeSettings
             {
                 Mode = source.Shake.Mode,
+                Trauma = source.Shake.Trauma,
                 Strength = source.Shake.Strength,
                 Speed = source.Shake.Speed,
                 Offset = source.Shake.Offset

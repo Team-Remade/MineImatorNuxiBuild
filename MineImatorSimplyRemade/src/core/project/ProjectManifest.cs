@@ -391,6 +391,7 @@ public class ProjectCameraEffectEntry
 public class ProjectCameraShakeSettings
 {
     public CameraShakeMode Mode { get; set; } = CameraShakeMode.Both;
+    public float Trauma { get; set; } = 1f;
     public ProjectVec3 Strength { get; set; } = new() { X = 0.03f, Y = 0.03f, Z = 0.03f };
     public ProjectVec3 Speed { get; set; } = new() { X = 3f, Y = 3.5f, Z = 2.5f };
     public ProjectVec3 Offset { get; set; } = new() { X = 0f, Y = 0f, Z = 0f };

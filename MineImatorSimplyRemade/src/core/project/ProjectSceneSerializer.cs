@@ -632,6 +632,7 @@ public static class ProjectSceneSerializer
             Shake = new ProjectCameraShakeSettings
             {
                 Mode = effect.Shake.Mode,
+                Trauma = effect.Shake.Trauma,
                 Strength = ToProjectVec3(effect.Shake.Strength),
                 Speed = ToProjectVec3(effect.Shake.Speed),
                 Offset = ToProjectVec3(effect.Shake.Offset)
@@ -647,6 +648,7 @@ public static class ProjectSceneSerializer
             Shake = new CameraShakeSettings
             {
                 Mode = effect.Shake?.Mode ?? CameraShakeMode.Both,
+                Trauma = effect.Shake?.Trauma ?? 1f,
                 Strength = effect.Shake != null ? ToVec3(effect.Shake.Strength) : new vec3(0.03f, 0.03f, 0.03f),
                 Speed = effect.Shake != null ? ToVec3(effect.Shake.Speed) : new vec3(3f, 3.5f, 2.5f),
                 Offset = effect.Shake != null ? ToVec3(effect.Shake.Offset) : vec3.Zero
