@@ -27,7 +27,7 @@ namespace MineImatorSimplyRemade.core.window.windows;
 
 public class MainWindow : Window
 {
-    private readonly record struct SplashTextSegment(string Text, bool Strikethrough);
+    private readonly record struct SplashTextSegment(string Text, bool Strikethrough, bool Italic);
 
     public static bool IsAnimationRenderExportActive { get; private set; }
 
@@ -99,6 +99,9 @@ public class MainWindow : Window
     private readonly Dictionary<string, uint> _thumbnailTextures = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _homeSplashPool = new();
     private readonly List<SplashTextSegment> _homeSplashSegments = new();
+    private ImFontPtr _homeSplashItalicFont;
+    private bool _homeSplashItalicFontLoaded;
+    private bool _homeSplashItalicFontAttempted;
     private string _homeSplashPlainText = "Splash Screen Placeholder";
     private string _homeSplashCreditText = "(unassigned)";
 
@@ -224,6 +227,14 @@ public class MainWindow : Window
         new PreferencesPanel()
     ];
 
+    private static readonly string[] SplashItalicFontCandidates =
+    [
+        "segoeuii.ttf",
+        "ariali.ttf",
+        "calibrii.ttf",
+        "tahomai.ttf"
+    ];
+
     public MainWindow(int width, int height, string title, Glfw glfw, GL? gl = null, bool visible = true) : base(width, height, title, glfw, gl!, visible)
     {
         _appTitle = title;
@@ -283,6 +294,8 @@ public class MainWindow : Window
 
     public void InitializeRuntime(Action<StartupProgressState>? progress = null)
     {
+        EnsureHomeSplashItalicFont();
+
         GL gl = GL;
 
         const int totalSteps = 7;
@@ -773,8 +786,16 @@ public class MainWindow : Window
 
         if (splashTexture != 0)
         {
-            ImGui.SetCursorScreenPos(splashMin);
-            ImGui.Image(new ImTextureRef(texId: (ulong)splashTexture), splashSize, Vector2.Zero, Vector2.One);
+            drawList.AddImageRounded(
+                new ImTextureRef(texId: (ulong)splashTexture),
+                splashMin,
+                splashMax,
+                Vector2.Zero,
+                Vector2.One,
+                0xFFFFFFFF,
+                18f,
+                ImDrawFlags.RoundCornersAll);
+            ImGui.Dummy(splashSize);
         }
         else
         {
@@ -783,13 +804,29 @@ public class MainWindow : Window
         }
 
         drawList.AddRect(splashMin, splashMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.34f, 0.40f, 0.48f, 1f)), 18f, ImDrawFlags.RoundCornersAll, 2f);
+        Vector2 titlePos = splashMin + new Vector2(24f, 24f);
+        string titleText = "Mine Imator Simply Remade";
+        Vector2 titleSize = ImGui.CalcTextSize(titleText);
+        Vector2 titlePanelMin = titlePos - new Vector2(10f, 6f);
+        Vector2 titlePanelMax = titlePos + titleSize + new Vector2(10f, 6f);
+        uint labelPanelColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.05f, 0.06f, 0.08f, 0.68f));
+        drawList.AddRectFilled(titlePanelMin, titlePanelMax, labelPanelColor, 8f);
+
         drawList.AddText(
-            splashMin + new Vector2(24f, 24f),
+            titlePos,
             ImGui.ColorConvertFloat4ToU32(new Vector4(0.92f, 0.95f, 0.98f, 1f)),
-            "Mine Imator Simply Remade");
+            titleText);
+
+        string splashPreview = _homeSplashPlainText;
+        Vector2 splashTextPos = splashMin + new Vector2(24f, 56f);
+        Vector2 splashTextSize = ImGui.CalcTextSize(splashPreview);
+        Vector2 splashPanelMin = splashTextPos - new Vector2(10f, 5f);
+        Vector2 splashPanelMax = splashTextPos + splashTextSize + new Vector2(10f, 5f);
+        drawList.AddRectFilled(splashPanelMin, splashPanelMax, labelPanelColor, 8f);
+
         DrawHomeSplashText(
             drawList,
-            splashMin + new Vector2(24f, 56f),
+            splashTextPos,
             ImGui.ColorConvertFloat4ToU32(new Vector4(0.70f, 0.75f, 0.82f, 1f)));
 
         ImGui.TextDisabled($"Splash art credits: {_homeSplashCreditText}");
@@ -2686,19 +2723,20 @@ public class MainWindow : Window
         var result = new List<SplashTextSegment>();
         if (string.IsNullOrEmpty(source))
         {
-            result.Add(new SplashTextSegment("", false));
+            result.Add(new SplashTextSegment("", false, false));
             return result;
         }
 
         var buffer = new StringBuilder();
         bool strike = false;
+        bool italic = false;
 
         void Flush()
         {
             if (buffer.Length == 0)
                 return;
 
-            result.Add(new SplashTextSegment(buffer.ToString(), strike));
+            result.Add(new SplashTextSegment(buffer.ToString(), strike, italic));
             buffer.Clear();
         }
 
@@ -2716,18 +2754,36 @@ public class MainWindow : Window
                 continue;
             }
 
+            if (source[i] == '*')
+            {
+                int runLength = 1;
+                while (i + runLength < source.Length && source[i + runLength] == '*')
+                    runLength++;
+
+                if (runLength == 1)
+                {
+                    Flush();
+                    italic = !italic;
+                    continue;
+                }
+
+                buffer.Append('*', runLength);
+                i += runLength - 1;
+                continue;
+            }
+
             buffer.Append(source[i]);
         }
 
         Flush();
 
         if (result.Count == 0)
-            result.Add(new SplashTextSegment(source, false));
+            result.Add(new SplashTextSegment(source, false, false));
 
         return result;
     }
 
-    private void DrawHomeSplashText(ImDrawListPtr drawList, Vector2 start, uint textColor)
+    private unsafe void DrawHomeSplashText(ImDrawListPtr drawList, Vector2 start, uint textColor)
     {
         if (_homeSplashSegments.Count == 0)
         {
@@ -2738,9 +2794,14 @@ public class MainWindow : Window
         Vector2 cursor = start;
         foreach (var segment in _homeSplashSegments.Where(segment => !string.IsNullOrEmpty(segment.Text)))
         {
-            drawList.AddText(cursor, textColor, segment.Text);
-
+            bool useItalic = segment.Italic && _homeSplashItalicFontLoaded;
             Vector2 size = ImGui.CalcTextSize(segment.Text);
+
+            if (useItalic)
+                drawList.AddText(_homeSplashItalicFont, 13f, cursor, textColor, segment.Text);
+            else
+                drawList.AddText(cursor, textColor, segment.Text);
+
             if (segment.Strikethrough)
             {
                 float y = cursor.Y + size.Y * 0.52f;
@@ -2752,6 +2813,39 @@ public class MainWindow : Window
             }
 
             cursor.X += size.X;
+        }
+    }
+
+    private unsafe void EnsureHomeSplashItalicFont()
+    {
+        if (_homeSplashItalicFontAttempted)
+            return;
+
+        _homeSplashItalicFontAttempted = true;
+
+        try
+        {
+            string fontsDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+            if (string.IsNullOrWhiteSpace(fontsDirectory) || !Directory.Exists(fontsDirectory))
+                return;
+
+            ImGuiIOPtr io = ImGui.GetIO();
+            const float fontSize = 13f;
+
+            foreach (string candidate in SplashItalicFontCandidates)
+            {
+                string candidatePath = Path.Combine(fontsDirectory, candidate);
+                if (!File.Exists(candidatePath))
+                    continue;
+
+                _homeSplashItalicFont = io.Fonts.AddFontFromFileTTF(candidatePath, fontSize);
+                _homeSplashItalicFontLoaded = true;
+                break;
+            }
+        }
+        catch
+        {
+            // Fallback to non-italic rendering if loading an italic system font fails.
         }
     }
 
