@@ -3373,9 +3373,15 @@ public class Viewport : UiPanel
 
         int mvpLoc = Gl.GetUniformLocation(prog, "uMVP");
 
+        // Outline the full selected hierarchy: each selected object plus all descendants.
+        var outlineObjects = new List<SceneObject>();
+        var outlineVisited = new HashSet<SceneObject>();
+        foreach (var selected in sm.SelectedObjects)
+            CollectObjectAndDescendants(selected, outlineObjects, outlineVisited);
+
         var boneDictCache = new Dictionary<SceneObject, Dictionary<string, BoneSceneObject>>();
 
-        foreach (var obj in sm.SelectedObjects)
+        foreach (var obj in outlineObjects)
         {
             if (!obj.GetEffectiveVisibility()) continue;
             if (obj.Visuals.Count == 0) continue;
@@ -3418,6 +3424,17 @@ public class Viewport : UiPanel
         }
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+    }
+
+    private static void CollectObjectAndDescendants(SceneObject root, List<SceneObject> output, HashSet<SceneObject> visited)
+    {
+        if (!visited.Add(root))
+            return;
+
+        output.Add(root);
+
+        foreach (var child in root.Children)
+            CollectObjectAndDescendants(child, output, visited);
     }
 
     /// <summary>
