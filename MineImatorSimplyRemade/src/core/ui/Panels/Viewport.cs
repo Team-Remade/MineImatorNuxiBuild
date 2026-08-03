@@ -460,10 +460,9 @@ public class Viewport : UiPanel
     {
         if (Gl == null) return;
 
-        // This only needs four vertices. Its centre follows the camera, making
-        // the repeated surface effectively infinite while staying inside the
-        // useful floating-point range.
-        _groundPlane = new PlaneMesh(Gl, 4096f, 4096f, PlaneOrientation.XZ);
+        // Keep the quad reasonably sized to avoid visible interpolation artifacts
+        // on very large two-triangle planes; recentering still makes it feel infinite.
+        _groundPlane = new PlaneMesh(Gl, 512f, 512f, PlaneOrientation.XZ);
 
         SetGroundPlaneTexture("block", "grass_block_top");
     }
@@ -859,8 +858,16 @@ public class Viewport : UiPanel
         float[] sunAngles = [p.SunAngle[0] + orbit, p.SunAngle[1], p.SunAngle[2]];
         bool sunFillLightActive = IsCelestialFillLightActive(sunAngles[0]);
         vec3 sunDirection = DirectionFromEuler(sunAngles);
-        _groundPlaneModel = mat4.Translate(new vec3(
-            MathF.Floor(camera.Position.x), 0f, MathF.Floor(camera.Position.z)));
+        vec3 groundCenter = new vec3(
+            MathF.Floor(camera.Position.x),
+            0f,
+            MathF.Floor(camera.Position.z));
+        _groundPlaneModel = mat4.Translate(groundCenter);
+        if (_groundPlane != null)
+        {
+            // Keep UV sampling anchored in world space while the mesh recenters.
+            _groundPlane.TextureOffset = new vec2(groundCenter.x, groundCenter.z);
+        }
         Mesh.GlobalSunFillLightDirection = sunDirection;
         Mesh.GlobalSunFillLightColor = new vec3(p.SunFillLightColor[0], p.SunFillLightColor[1], p.SunFillLightColor[2]);
         Mesh.GlobalSunFillLightStrength = (p.UseSky && sunFillLightActive) ? p.SunFillLightStrength : 0f;
