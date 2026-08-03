@@ -3271,7 +3271,9 @@ public class MiTemplate
     [JsonPropertyName("id")] public string Id { get; set; }
     [JsonPropertyName("type")] public string Type { get; set; }
     [JsonPropertyName("name")] public string Name { get; set; }
-    [JsonPropertyName("model")] public string Model { get; set; }
+    [JsonPropertyName("model")]
+    [JsonConverter(typeof(MiStringOrObjectRefConverter))]
+    public string Model { get; set; }
     [JsonPropertyName("model_tex")] public string ModelTex { get; set; }
     [JsonPropertyName("model_tex_material")] public string ModelTexMaterial { get; set; }
     [JsonPropertyName("model_tex_normal")] public string ModelTexNormal { get; set; }
@@ -3614,6 +3616,69 @@ public class MiStringOrArrayStringConverter : JsonConverter<string[]>
         writer.WriteStartArray();
         foreach (var v in value) writer.WriteStringValue(v);
         writer.WriteEndArray();
+    }
+}
+
+/// <summary>
+/// Mine-imator template refs are usually strings, but some template types
+/// (for example spblock) encode "model" as an object payload.
+/// Keep object payloads non-fatal and extract only known ref keys.
+/// </summary>
+public sealed class MiStringOrObjectRefConverter : JsonConverter<string>
+{
+    private static readonly string[] RefKeys =
+    [
+        "id",
+        "resource",
+        "filename",
+        "file",
+        "path",
+        "model"
+    ];
+
+    public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        switch (reader.TokenType)
+        {
+            case JsonTokenType.String:
+                return reader.GetString() ?? string.Empty;
+            case JsonTokenType.Number:
+                return reader.GetDouble().ToString(CultureInfo.InvariantCulture);
+            case JsonTokenType.True:
+                return "1";
+            case JsonTokenType.False:
+                return "0";
+            case JsonTokenType.Null:
+                return string.Empty;
+            case JsonTokenType.StartObject:
+            {
+                using JsonDocument doc = JsonDocument.ParseValue(ref reader);
+                JsonElement root = doc.RootElement;
+
+                foreach (string key in RefKeys)
+                {
+                    if (!root.TryGetProperty(key, out JsonElement valueElement))
+                        continue;
+
+                    if (valueElement.ValueKind == JsonValueKind.String)
+                        return valueElement.GetString() ?? string.Empty;
+                    if (valueElement.ValueKind == JsonValueKind.Number)
+                        return valueElement.GetDouble().ToString(CultureInfo.InvariantCulture);
+                }
+
+                return string.Empty;
+            }
+            default:
+                throw new JsonException($"Unexpected token {reader.TokenType} for string/object reference");
+        }
+    }
+
+    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
+    {
+        if (string.IsNullOrEmpty(value))
+            writer.WriteNullValue();
+        else
+            writer.WriteStringValue(value);
     }
 }
 
