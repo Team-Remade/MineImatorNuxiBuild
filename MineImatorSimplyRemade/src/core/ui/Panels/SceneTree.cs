@@ -607,6 +607,8 @@ public class SceneTree : UiPanel
                     Near = cam.Near,
                     Far  = cam.Far
                 };
+                foreach (var effect in cam.Effects)
+                    ((CameraSceneObject)dup).Effects.Add(CameraSceneObject.CloneEffect(effect));
                 // Duplicates always start inactive so only one camera can be
                 // active at a time.  We still copy the visual set lists so
                 // RefreshActiveMesh can hide the right meshes.

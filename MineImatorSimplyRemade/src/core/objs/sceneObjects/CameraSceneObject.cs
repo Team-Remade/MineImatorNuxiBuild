@@ -14,6 +14,8 @@ public class CameraSceneObject : SceneObject
     public float Near = 0.05f;
     public float Far  = 4000f;
 
+    public List<CameraEffect> Effects { get; } = new();
+
     private bool _active;
 
     /// <summary>
@@ -86,6 +88,35 @@ public class CameraSceneObject : SceneObject
     /// transform by <see cref="SyncCameraToTransform"/> and vice-versa.
     /// </summary>
     public Camera ViewCamera { get; } = new Camera();
+
+    public void AddEffect(CameraEffectType type)
+    {
+        switch (type)
+        {
+            case CameraEffectType.CameraShake:
+                Effects.Add(new CameraEffect
+                {
+                    Type = CameraEffectType.CameraShake,
+                    Shake = new CameraShakeSettings()
+                });
+                break;
+        }
+    }
+
+    public static CameraEffect CloneEffect(CameraEffect source)
+    {
+        return new CameraEffect
+        {
+            Type = source.Type,
+            Shake = new CameraShakeSettings
+            {
+                Mode = source.Shake.Mode,
+                Strength = source.Shake.Strength,
+                Speed = source.Shake.Speed,
+                Offset = source.Shake.Offset
+            }
+        };
+    }
 
     /// <summary>
     /// Visual meshes that should be displayed while this camera is inactive.

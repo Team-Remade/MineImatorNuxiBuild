@@ -2187,11 +2187,23 @@ public class Timeline : UiPanel
             var paths = obj is LightSceneObject   ? standardPaths.Concat(lightPaths)
                       : obj is CameraSceneObject  ? standardPaths.Concat(cameraPaths)
                       : standardPaths;
+            if (obj is CameraSceneObject cameraObj)
+                paths = paths.Concat(GetCameraEffectPropertyPaths(cameraObj));
             if (obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
                 paths = paths.Concat(itemPaths);
             foreach (var path in paths)
                 if (obj.Keyframes.ContainsKey(path) && obj.Keyframes[path].Count > 0)
                     LoadKeyframesFromObject(obj, path);
+
+            if (obj is CameraSceneObject)
+            {
+                foreach (var path in obj.Keyframes.Keys
+                             .Where(k => k.StartsWith("camera.effect.", StringComparison.Ordinal)))
+                {
+                    if (obj.Keyframes[path].Count > 0)
+                        LoadKeyframesFromObject(obj, path);
+                }
+            }
 
             // Shape keys use dynamic "shapekey.<meshIndex>.<keyIndex>" paths that
             // depend on the object's mesh/morph-target layout, so they can't be
@@ -2210,6 +2222,24 @@ public class Timeline : UiPanel
         }
 
         RecalculateTimelineLength();
+    }
+
+    private static IEnumerable<string> GetCameraEffectPropertyPaths(CameraSceneObject cam)
+    {
+        for (int i = 0; i < cam.Effects.Count; i++)
+        {
+            string basePath = $"camera.effect.{i}.shake";
+            yield return $"{basePath}.mode";
+            yield return $"{basePath}.strength.x";
+            yield return $"{basePath}.strength.y";
+            yield return $"{basePath}.strength.z";
+            yield return $"{basePath}.speed.x";
+            yield return $"{basePath}.speed.y";
+            yield return $"{basePath}.speed.z";
+            yield return $"{basePath}.offset.x";
+            yield return $"{basePath}.offset.y";
+            yield return $"{basePath}.offset.z";
+        }
     }
 
     private void RecalculateTimelineLength()
@@ -2274,8 +2304,10 @@ public class Timeline : UiPanel
             return TryConvertKeyframeValue(prev.Value, out float prevDirect) ? prevDirect : null;
 
         // Between two keyframes — interpolate.
-        // "visible", "camera.active" and "instant" use the previous keyframe's value with no blending.
-        if (path == "visible" || path == "camera.active" || path == "item.slot" || path == "item.custom_slot" || prev.InterpolationType == "instant")
+        // Discrete state-like properties and "instant" interpolation use the
+        // previous keyframe's value with no blending.
+        if (path == "visible" || path == "camera.active" || path == "item.slot" || path == "item.custom_slot" ||
+            path.EndsWith(".mode", StringComparison.Ordinal) || prev.InterpolationType == "instant")
             return TryConvertKeyframeValue(prev.Value, out float prevInstant) ? prevInstant : null;
 
         if (!TryConvertKeyframeValue(prev.Value, out float pv) || !TryConvertKeyframeValue(next.Value, out float nv))
@@ -2436,6 +2468,38 @@ public class Timeline : UiPanel
         else if (parts.Length == 3 && parts[0] == "shapekey")
         {
             return GetShapeKeyWeight(obj, parts[1], parts[2]) ?? 0f;
+        }
+        else if ((parts.Length == 5 || parts.Length == 6) &&
+                 parts[0] == "camera" && parts[1] == "effect" &&
+                 obj is CameraSceneObject camFx &&
+                 int.TryParse(parts[2], out int effectIndex) &&
+                 effectIndex >= 0 && effectIndex < camFx.Effects.Count)
+        {
+            var effect = camFx.Effects[effectIndex];
+            if (effect.Type == CameraEffectType.CameraShake && parts[3] == "shake")
+            {
+                if (parts.Length == 5 && parts[4] == "mode")
+                    return (float)effect.Shake.Mode;
+
+                if (parts.Length == 6)
+                {
+                    vec3 valueVec = parts[4] switch
+                    {
+                        "strength" => effect.Shake.Strength,
+                        "speed" => effect.Shake.Speed,
+                        "offset" => effect.Shake.Offset,
+                        _ => vec3.Zero
+                    };
+
+                    return parts[5] switch
+                    {
+                        "x" => valueVec.x,
+                        "y" => valueVec.y,
+                        "z" => valueVec.z,
+                        _ => 0f
+                    };
+                }
+            }
         }
 
         return 0f;
@@ -2599,8 +2663,74 @@ public class Timeline : UiPanel
             case 3 when parts[0] == "shapekey":
                 SetShapeKeyWeight(obj, parts[1], parts[2], value);
                 break;
+            case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "shake" && parts[4] == "mode" && obj is CameraSceneObject camMode:
+            {
+                if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camMode.Effects.Count)
+                    break;
+
+                var effect = camMode.Effects[effectIndex];
+                if (effect.Type != CameraEffectType.CameraShake)
+                    break;
+
+                int modeValue = Math.Clamp((int)MathF.Round(value), 0, CameraShakeModeOptionsCount - 1);
+                effect.Shake.Mode = (CameraShakeMode)modeValue;
+                break;
+            }
+            case 6 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "shake" && obj is CameraSceneObject camVec:
+            {
+                if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camVec.Effects.Count)
+                    break;
+
+                var effect = camVec.Effects[effectIndex];
+                if (effect.Type != CameraEffectType.CameraShake)
+                    break;
+
+                vec3 targetVec = vec3.Zero;
+                switch (parts[4])
+                {
+                    case "strength":
+                        targetVec = effect.Shake.Strength;
+                        break;
+                    case "speed":
+                        targetVec = effect.Shake.Speed;
+                        break;
+                    case "offset":
+                        targetVec = effect.Shake.Offset;
+                        break;
+                    default:
+                        break;
+                }
+
+                if (parts[4] != "strength" && parts[4] != "speed" && parts[4] != "offset")
+                    break;
+
+                switch (parts[5])
+                {
+                    case "x": targetVec.x = value; break;
+                    case "y": targetVec.y = value; break;
+                    case "z": targetVec.z = value; break;
+                    default:
+                        break;
+                }
+
+                switch (parts[4])
+                {
+                    case "strength":
+                        effect.Shake.Strength = targetVec;
+                        break;
+                    case "speed":
+                        effect.Shake.Speed = targetVec;
+                        break;
+                    case "offset":
+                        effect.Shake.Offset = targetVec;
+                        break;
+                }
+                break;
+            }
         }
     }
+
+    private const int CameraShakeModeOptionsCount = 3;
 
     /// <summary>
     /// Applies <paramref name="value"/> to the shape key identified by a
@@ -2769,6 +2899,58 @@ public class Timeline : UiPanel
 
                     _displayRows.Add(MakeSingle(obj, label, path, indent));
                 }
+
+                if (obj is CameraSceneObject cameraObj)
+                {
+                    for (int i = 0; i < cameraObj.Effects.Count; i++)
+                    {
+                        var effect = cameraObj.Effects[i];
+                        if (effect.Type != CameraEffectType.CameraShake)
+                            continue;
+
+                        string basePath = $"camera.effect.{i}.shake";
+                        string modePath = $"{basePath}.mode";
+                        string[] strengthPaths = { $"{basePath}.strength.x", $"{basePath}.strength.y", $"{basePath}.strength.z" };
+                        string[] speedPaths = { $"{basePath}.speed.x", $"{basePath}.speed.y", $"{basePath}.speed.z" };
+                        string[] offsetPaths = { $"{basePath}.offset.x", $"{basePath}.offset.y", $"{basePath}.offset.z" };
+                        string[] allPaths = [modePath, ..strengthPaths, ..speedPaths, ..offsetPaths];
+
+                        if (!allPaths.Any(propsWithKeyframes.Contains))
+                            continue;
+
+                        _displayRows.Add(MakeGroup(obj,
+                            $"Effect {i + 1}: Camera Shake",
+                            allPaths,
+                            $"camera.effect.{i}"));
+
+                        if (propsWithKeyframes.Contains(modePath))
+                            _displayRows.Add(MakeSingle(obj, "Mode", modePath, 1));
+
+                        if (strengthPaths.Any(propsWithKeyframes.Contains))
+                        {
+                            _displayRows.Add(MakeGroup(obj, "Strength", strengthPaths, $"camera.effect.{i}.strength"));
+                            _displayRows.Add(MakeSingle(obj, "X", strengthPaths[0], 2));
+                            _displayRows.Add(MakeSingle(obj, "Y", strengthPaths[1], 2));
+                            _displayRows.Add(MakeSingle(obj, "Z", strengthPaths[2], 2));
+                        }
+
+                        if (speedPaths.Any(propsWithKeyframes.Contains))
+                        {
+                            _displayRows.Add(MakeGroup(obj, "Speed", speedPaths, $"camera.effect.{i}.speed"));
+                            _displayRows.Add(MakeSingle(obj, "X", speedPaths[0], 2));
+                            _displayRows.Add(MakeSingle(obj, "Y", speedPaths[1], 2));
+                            _displayRows.Add(MakeSingle(obj, "Z", speedPaths[2], 2));
+                        }
+
+                        if (offsetPaths.Any(propsWithKeyframes.Contains))
+                        {
+                            _displayRows.Add(MakeGroup(obj, "Offset", offsetPaths, $"camera.effect.{i}.offset"));
+                            _displayRows.Add(MakeSingle(obj, "X", offsetPaths[0], 2));
+                            _displayRows.Add(MakeSingle(obj, "Y", offsetPaths[1], 2));
+                            _displayRows.Add(MakeSingle(obj, "Z", offsetPaths[2], 2));
+                        }
+                    }
+                }
             }
 
             // Shape key properties — dynamic per-mesh/per-key paths.
@@ -2829,6 +3011,39 @@ public class Timeline : UiPanel
             _displayRows.Add(MakeSingle(obj, "B",               "light.color.b", 1));
         }
 
+        if (obj is CameraSceneObject cameraObj)
+        {
+            _displayRows.Add(MakeSingle(obj, "Active", "camera.active"));
+
+            for (int i = 0; i < cameraObj.Effects.Count; i++)
+            {
+                var effect = cameraObj.Effects[i];
+                if (effect.Type != CameraEffectType.CameraShake)
+                    continue;
+
+                string basePath = $"camera.effect.{i}.shake";
+                string modePath = $"{basePath}.mode";
+                string[] strengthPaths = { $"{basePath}.strength.x", $"{basePath}.strength.y", $"{basePath}.strength.z" };
+                string[] speedPaths = { $"{basePath}.speed.x", $"{basePath}.speed.y", $"{basePath}.speed.z" };
+                string[] offsetPaths = { $"{basePath}.offset.x", $"{basePath}.offset.y", $"{basePath}.offset.z" };
+
+                _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Camera Shake", [modePath, ..strengthPaths, ..speedPaths, ..offsetPaths], $"camera.effect.{i}"));
+                _displayRows.Add(MakeSingle(obj, "Mode", modePath, 1));
+                _displayRows.Add(MakeGroup(obj, "Strength", strengthPaths, $"camera.effect.{i}.strength"));
+                _displayRows.Add(MakeSingle(obj, "X", strengthPaths[0], 2));
+                _displayRows.Add(MakeSingle(obj, "Y", strengthPaths[1], 2));
+                _displayRows.Add(MakeSingle(obj, "Z", strengthPaths[2], 2));
+                _displayRows.Add(MakeGroup(obj, "Speed", speedPaths, $"camera.effect.{i}.speed"));
+                _displayRows.Add(MakeSingle(obj, "X", speedPaths[0], 2));
+                _displayRows.Add(MakeSingle(obj, "Y", speedPaths[1], 2));
+                _displayRows.Add(MakeSingle(obj, "Z", speedPaths[2], 2));
+                _displayRows.Add(MakeGroup(obj, "Offset", offsetPaths, $"camera.effect.{i}.offset"));
+                _displayRows.Add(MakeSingle(obj, "X", offsetPaths[0], 2));
+                _displayRows.Add(MakeSingle(obj, "Y", offsetPaths[1], 2));
+                _displayRows.Add(MakeSingle(obj, "Z", offsetPaths[2], 2));
+            }
+        }
+
         foreach (var row in _displayRows.Where(r => r.Object == obj && !r.IsGroupHeader && r.PropertyPath != "__header__"))
             LoadKeyframesFromObject(obj, row.PropertyPath);
     }
@@ -2836,8 +3051,8 @@ public class Timeline : UiPanel
     private static TimelineProperty MakeSingle(SceneObject obj, string label, string path, int indent = 0) =>
         new() { Object = obj, Label = label, PropertyPath = path, Indent = indent };
 
-    private static TimelineProperty MakeGroup(SceneObject obj, string name, string[] paths) =>
-        new() { Object = obj, Label = name, PropertyPath = name.ToLower(), IsGroupHeader = true, GroupPaths = paths };
+    private static TimelineProperty MakeGroup(SceneObject obj, string name, string[] paths, string? keyPath = null) =>
+        new() { Object = obj, Label = name, PropertyPath = keyPath ?? name.ToLower(), IsGroupHeader = true, GroupPaths = paths };
 
     // ── Object lookup ─────────────────────────────────────────────────────────
 

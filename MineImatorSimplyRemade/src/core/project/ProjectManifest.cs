@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 namespace MineImatorSimplyRemade.core.project;
 
@@ -357,6 +358,7 @@ public class ProjectSceneObjectEntry
     public float CameraNear { get; set; } = 0.05f;
     public float CameraFar { get; set; } = 4000f;
     public bool CameraActive { get; set; } = false;
+    public List<ProjectCameraEffectEntry> CameraEffects { get; set; } = new();
 
     // Light-specific data
     public ProjectVec4 LightColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f, W = 1f };
@@ -378,4 +380,18 @@ public class ProjectSceneObjectEntry
     public List<ProjectShapeKeyWeightEntry> ShapeKeyWeights { get; set; } = new();
 
     public List<ProjectSceneObjectEntry> Children { get; set; } = new();
+}
+
+public class ProjectCameraEffectEntry
+{
+    public CameraEffectType Type { get; set; } = CameraEffectType.CameraShake;
+    public ProjectCameraShakeSettings Shake { get; set; } = new();
+}
+
+public class ProjectCameraShakeSettings
+{
+    public CameraShakeMode Mode { get; set; } = CameraShakeMode.Both;
+    public ProjectVec3 Strength { get; set; } = new() { X = 0.03f, Y = 0.03f, Z = 0.03f };
+    public ProjectVec3 Speed { get; set; } = new() { X = 3f, Y = 3.5f, Z = 2.5f };
+    public ProjectVec3 Offset { get; set; } = new() { X = 0f, Y = 0f, Z = 0f };
 }

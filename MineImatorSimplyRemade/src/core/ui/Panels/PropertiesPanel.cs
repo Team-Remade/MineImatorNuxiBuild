@@ -264,6 +264,9 @@ public class PropertiesPanel : UiPanel
 
     // Scale link toggle
     private bool _linkScale = true;
+    private int _cameraEffectToAddIndex;
+    private static readonly string[] CameraEffectAddOptions = { "Camera Shake" };
+    private static readonly string[] CameraShakeModeOptions = { "Rotational", "Positional", "Both" };
 
     // ── Right-click keyframe context menu ──────────────────────────────────
     
@@ -837,6 +840,34 @@ public class PropertiesPanel : UiPanel
             CameraNear = source.CameraNear,
             CameraFar = source.CameraFar,
             CameraActive = source.CameraActive,
+            CameraEffects = source.CameraEffects
+                .Select(effect => new ProjectCameraEffectEntry
+                {
+                    Type = effect.Type,
+                    Shake = new ProjectCameraShakeSettings
+                    {
+                        Mode = effect.Shake.Mode,
+                        Strength = new ProjectVec3
+                        {
+                            X = effect.Shake.Strength.X,
+                            Y = effect.Shake.Strength.Y,
+                            Z = effect.Shake.Strength.Z
+                        },
+                        Speed = new ProjectVec3
+                        {
+                            X = effect.Shake.Speed.X,
+                            Y = effect.Shake.Speed.Y,
+                            Z = effect.Shake.Speed.Z
+                        },
+                        Offset = new ProjectVec3
+                        {
+                            X = effect.Shake.Offset.X,
+                            Y = effect.Shake.Offset.Y,
+                            Z = effect.Shake.Offset.Z
+                        }
+                    }
+                })
+                .ToList(),
             LightColor = new ProjectVec4 { X = source.LightColor.X, Y = source.LightColor.Y, Z = source.LightColor.Z, W = source.LightColor.W },
             LightEnergy = source.LightEnergy,
             LightRange = source.LightRange,
@@ -3283,6 +3314,133 @@ public class PropertiesPanel : UiPanel
             }
         }
 
+        // ── Effects (shown only for CameraSceneObject) ────────────────────────
+        if (_currentObject is CameraSceneObject cameraObject)
+        {
+            if (ImGui.CollapsingHeader("Effects"))
+            {
+                if (_cameraEffectToAddIndex < 0 || _cameraEffectToAddIndex >= CameraEffectAddOptions.Length)
+                    _cameraEffectToAddIndex = 0;
+
+                ImGui.TextUnformatted("Effect Type");
+                ImGui.SetNextItemWidth(-1f);
+                if (ImGui.BeginCombo("##cameraEffectAddCombo", CameraEffectAddOptions[_cameraEffectToAddIndex]))
+                {
+                    for (int i = 0; i < CameraEffectAddOptions.Length; i++)
+                    {
+                        bool selected = i == _cameraEffectToAddIndex;
+                        if (ImGui.Selectable(CameraEffectAddOptions[i], selected))
+                            _cameraEffectToAddIndex = i;
+                        if (selected)
+                            ImGui.SetItemDefaultFocus();
+                    }
+                    ImGui.EndCombo();
+                }
+
+                if (ImGui.Button("Add Effect +##cameraEffectAddButton", new Vector2(-1f, 0f)))
+                {
+                    cameraObject.AddEffect((CameraEffectType)_cameraEffectToAddIndex);
+                    ProjectManager.Instance.SetDirty(true);
+                }
+
+                if (cameraObject.Effects.Count == 0)
+                {
+                    ImGui.TextDisabled("No effects added.");
+                }
+                else
+                {
+                    int removeIndex = -1;
+
+                    for (int i = 0; i < cameraObject.Effects.Count; i++)
+                    {
+                        var effect = cameraObject.Effects[i];
+                        string title = effect.Type switch
+                        {
+                            CameraEffectType.CameraShake => $"Camera Shake##cameraEffect{i}",
+                            _ => $"Effect {i + 1}##cameraEffect{i}"
+                        };
+
+                        if (ImGui.TreeNodeEx(title, ImGuiTreeNodeFlags.DefaultOpen))
+                        {
+                            ImGui.SameLine();
+                            if (ImGui.SmallButton($"Remove##cameraEffectRemove{i}"))
+                                removeIndex = i;
+
+                            if (effect.Type == CameraEffectType.CameraShake)
+                            {
+                                bool changed = false;
+                                string basePath = $"camera.effect.{i}.shake";
+                                int mode = (int)effect.Shake.Mode;
+                                if (ImGui.Combo($"Mode##cameraShakeMode{i}", ref mode, CameraShakeModeOptions, CameraShakeModeOptions.Length))
+                                {
+                                    effect.Shake.Mode = (CameraShakeMode)Math.Clamp(mode, 0, CameraShakeModeOptions.Length - 1);
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.mode");
+                                    changed = true;
+                                }
+                                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                                {
+                                    _ctxPropertyPath = $"{basePath}.mode";
+                                    _ctxMenuPos = ImGui.GetMousePos();
+                                    _openPropContextMenu = true;
+                                }
+
+                                vec3 strength = effect.Shake.Strength;
+                                if (EditVec3Editor(cameraObject, $"shakeStrength{i}", ref strength, 0.001f, -100f, 100f, "%.3f", "Strength", $"{basePath}.strength"))
+                                {
+                                    effect.Shake.Strength = strength;
+                                    changed = true;
+                                }
+
+                                vec3 speed = effect.Shake.Speed;
+                                if (EditVec3Editor(cameraObject, $"shakeSpeed{i}", ref speed, 0.01f, -200f, 200f, "%.3f", "Speed", $"{basePath}.speed"))
+                                {
+                                    effect.Shake.Speed = speed;
+                                    changed = true;
+                                }
+
+                                vec3 offset = effect.Shake.Offset;
+                                if (EditVec3Editor(cameraObject, $"shakeOffset{i}", ref offset, 0.01f, -1000f, 1000f, "%.3f", "Offset", $"{basePath}.offset"))
+                                {
+                                    effect.Shake.Offset = offset;
+                                    changed = true;
+                                }
+
+                                if (ImGui.Button($"Reset##cameraShakeReset{i}"))
+                                {
+                                    effect.Shake.Mode = CameraShakeMode.Both;
+                                    effect.Shake.Strength = new vec3(0.03f, 0.03f, 0.03f);
+                                    effect.Shake.Speed = new vec3(3f, 3.5f, 2.5f);
+                                    effect.Shake.Offset = vec3.Zero;
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.mode");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.strength.x");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.strength.y");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.strength.z");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.speed.x");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.speed.y");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.speed.z");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.offset.x");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.offset.y");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.offset.z");
+                                    changed = true;
+                                }
+
+                                if (changed)
+                                    ProjectManager.Instance.SetDirty(true);
+                            }
+
+                            ImGui.TreePop();
+                        }
+                    }
+
+                    if (removeIndex >= 0 && removeIndex < cameraObject.Effects.Count)
+                    {
+                        cameraObject.Effects.RemoveAt(removeIndex);
+                        ProjectManager.Instance.SetDirty(true);
+                    }
+                }
+            }
+        }
+
         if (ImGui.CollapsingHeader("Appearance"))
         {
             bool vis = _currentObject.ObjectVisible;
@@ -3458,6 +3616,70 @@ public class PropertiesPanel : UiPanel
     {
         bone.SetEditableBendAngle(angle);
         ProjectManager.Instance.SetDirty(true);
+    }
+
+    private bool EditVec3Editor(SceneObject keyframeObject, string idPrefix, ref vec3 value, float speed, float min, float max, string format, string label, string keyframePathPrefix)
+    {
+        bool changed = false;
+        bool xChanged = false;
+        bool yChanged = false;
+        bool zChanged = false;
+        float x = value.x;
+        float y = value.y;
+        float z = value.z;
+
+        ImGui.Text(label);
+        ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
+        if (InputFloatEditor($"X##{idPrefix}X", ref x, speed, min, max, format))
+        {
+            changed = true;
+            xChanged = true;
+        }
+        if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+        {
+            _ctxPropertyPath = $"{keyframePathPrefix}.x";
+            _ctxMenuPos = ImGui.GetMousePos();
+            _openPropContextMenu = true;
+        }
+
+        if (InputFloatEditor($"Y##{idPrefix}Y", ref y, speed, min, max, format))
+        {
+            changed = true;
+            yChanged = true;
+        }
+        if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+        {
+            _ctxPropertyPath = $"{keyframePathPrefix}.y";
+            _ctxMenuPos = ImGui.GetMousePos();
+            _openPropContextMenu = true;
+        }
+
+        if (InputFloatEditor($"Z##{idPrefix}Z", ref z, speed, min, max, format))
+        {
+            changed = true;
+            zChanged = true;
+        }
+        if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+        {
+            _ctxPropertyPath = $"{keyframePathPrefix}.z";
+            _ctxMenuPos = ImGui.GetMousePos();
+            _openPropContextMenu = true;
+        }
+        ImGui.PopItemWidth();
+
+        if (changed)
+        {
+            value = new vec3(x, y, z);
+
+            if (xChanged)
+                Timeline?.RecordAutoKeyframe(keyframeObject, $"{keyframePathPrefix}.x");
+            if (yChanged)
+                Timeline?.RecordAutoKeyframe(keyframeObject, $"{keyframePathPrefix}.y");
+            if (zChanged)
+                Timeline?.RecordAutoKeyframe(keyframeObject, $"{keyframePathPrefix}.z");
+        }
+
+        return changed;
     }
 
     /// <summary>

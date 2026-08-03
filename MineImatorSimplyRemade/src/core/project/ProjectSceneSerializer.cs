@@ -233,6 +233,9 @@ public static class ProjectSceneSerializer
             entry.CameraNear = camera.Near;
             entry.CameraFar = camera.Far;
             entry.CameraActive = camera.Active;
+            entry.CameraEffects = camera.Effects
+                .Select(SerializeCameraEffect)
+                .ToList();
         }
 
         if (obj is LightSceneObject light)
@@ -556,6 +559,14 @@ public static class ProjectSceneSerializer
             camera.Fov = entry.CameraFov;
             camera.Near = entry.CameraNear;
             camera.Far = entry.CameraFar;
+            camera.Effects.Clear();
+            if (entry.CameraEffects != null)
+            {
+                foreach (var effect in entry.CameraEffects)
+                {
+                    camera.Effects.Add(DeserializeCameraEffect(effect));
+                }
+            }
             // CameraActive is applied after the whole scene is loaded so that
             // SetActiveExclusive can also clear other cameras' Active flags.
             camera.SyncCameraToTransform();
@@ -611,6 +622,36 @@ public static class ProjectSceneSerializer
     private static ProjectVec4 ToProjectVec4(vec4 value)
     {
         return new ProjectVec4 { X = value.x, Y = value.y, Z = value.z, W = value.w };
+    }
+
+    private static ProjectCameraEffectEntry SerializeCameraEffect(CameraEffect effect)
+    {
+        return new ProjectCameraEffectEntry
+        {
+            Type = effect.Type,
+            Shake = new ProjectCameraShakeSettings
+            {
+                Mode = effect.Shake.Mode,
+                Strength = ToProjectVec3(effect.Shake.Strength),
+                Speed = ToProjectVec3(effect.Shake.Speed),
+                Offset = ToProjectVec3(effect.Shake.Offset)
+            }
+        };
+    }
+
+    private static CameraEffect DeserializeCameraEffect(ProjectCameraEffectEntry effect)
+    {
+        return new CameraEffect
+        {
+            Type = effect.Type,
+            Shake = new CameraShakeSettings
+            {
+                Mode = effect.Shake?.Mode ?? CameraShakeMode.Both,
+                Strength = effect.Shake != null ? ToVec3(effect.Shake.Strength) : new vec3(0.03f, 0.03f, 0.03f),
+                Speed = effect.Shake != null ? ToVec3(effect.Shake.Speed) : new vec3(3f, 3.5f, 2.5f),
+                Offset = effect.Shake != null ? ToVec3(effect.Shake.Offset) : vec3.Zero
+            }
+        };
     }
 
     private static vec4 ToVec4(ProjectVec4 value)

@@ -2146,33 +2146,19 @@ public class Viewport : UiPanel
 
         // Use the active camera (work camera or a spawned camera).
         var (activeCamera, activeCamObj) = GetActiveRenderCamera();
+        var renderCamera = BuildPreparedCamera(activeCamera, activeCamObj);
 
-        // Apply spawned-camera projection settings if a scene camera is active.
-        float savedFovY = activeCamera.FovY;
-        float savedNear = activeCamera.Near;
-        float savedFar  = activeCamera.Far;
-        if (activeCamObj != null)
-        {
-            activeCamera.FovY = glm.Radians(activeCamObj.Fov);
-            activeCamera.Near = activeCamObj.Near;
-            activeCamera.Far  = activeCamObj.Far;
-        }
+        mat4 view = renderCamera.GetViewMatrix();
+        mat4 proj = renderCamera.GetProjectionMatrix(aspect);
+        float renderNear = renderCamera.Near;
+        float renderFar = renderCamera.Far;
 
-        mat4 view = activeCamera.GetViewMatrix();
-        mat4 proj = activeCamera.GetProjectionMatrix(aspect);
-        float renderNear = activeCamera.Near;
-        float renderFar = activeCamera.Far;
-
-        RenderSky(activeCamera, w, h);
+        RenderSky(renderCamera, w, h);
         RenderBackgroundPlane(w, h);
         // Sky and procedural clouds are background elements, not AO geometry.
         // Preserve their colour while resetting depth before scene objects draw.
         Gl.Clear(ClearBufferMask.DepthBufferBit);
 
-        // Restore camera settings after extracting matrices.
-        activeCamera.FovY = savedFovY;
-        activeCamera.Near = savedNear;
-        activeCamera.Far  = savedFar;
 
         // Build frustum for per-frame culling.
         Frustum frustum = Frustum.FromViewProj(proj * view);
@@ -2199,7 +2185,7 @@ public class Viewport : UiPanel
         // mesh by SelectPointLightsForMesh just before each draw call.
         Dictionary<LightSceneObject, int> pointShadowIndices = new();
         _cachedAllPointLights.Clear();
-        vec3 camPos = activeCamera.Position;
+        vec3 camPos = renderCamera.Position;
 
         SceneRenderMode renderMode = _viewportRenderMode == ViewportRenderMode.Rendered
             ? SceneRenderMode.Rendered
@@ -3132,17 +3118,10 @@ public class Viewport : UiPanel
     private void ExecutePendingPick(Vector2 imageMin, Vector2 imageSize)
     {
         var (pickCamera, pickCamObj) = GetActiveRenderCamera();
-        float pickSavedFovY = pickCamera.FovY, pickSavedNear = pickCamera.Near, pickSavedFar = pickCamera.Far;
-        if (pickCamObj != null)
-        {
-            pickCamera.FovY = glm.Radians(pickCamObj.Fov);
-            pickCamera.Near = pickCamObj.Near;
-            pickCamera.Far  = pickCamObj.Far;
-        }
+        var preparedPickCamera = BuildPreparedCamera(pickCamera, pickCamObj);
         float aspect = (_viewportHeight > 0) ? (float)_viewportWidth / _viewportHeight : 1f;
-        mat4 view = pickCamera.GetViewMatrix();
-        mat4 proj = pickCamera.GetProjectionMatrix(aspect);
-        pickCamera.FovY = pickSavedFovY; pickCamera.Near = pickSavedNear; pickCamera.Far = pickSavedFar;
+        mat4 view = preparedPickCamera.GetViewMatrix();
+        mat4 proj = preparedPickCamera.GetProjectionMatrix(aspect);
 
         ExecutePendingPickGeneric(
             _pickFbo, _pickColorTex, _viewportWidth, _viewportHeight,
@@ -4270,6 +4249,100 @@ public class Viewport : UiPanel
         return (cam.ViewCamera, cam);
     }
 
+    private Camera BuildPreparedCamera(Camera source, CameraSceneObject? sceneObj)
+    {
+        var prepared = CloneCamera(source);
+        float effectTimeSeconds = GetTimelineEffectTimeSeconds();
+
+        if (sceneObj != null)
+        {
+            prepared.FovY = glm.Radians(sceneObj.Fov);
+            prepared.Near = sceneObj.Near;
+            prepared.Far = sceneObj.Far;
+
+            if (sceneObj.Effects.Count > 0)
+                ApplyCameraEffects(prepared, sceneObj.Effects, effectTimeSeconds);
+        }
+
+        return prepared;
+    }
+
+    private static float GetTimelineEffectTimeSeconds()
+    {
+        var timeline = Timeline.Instance;
+        if (timeline == null)
+            return 0f;
+
+        float fps = MathF.Max(1f, timeline.Framerate);
+        return timeline.CurrentFrame / fps;
+    }
+
+    private static Camera CloneCamera(Camera source)
+    {
+        return new Camera
+        {
+            Target = source.Target,
+            Yaw = source.Yaw,
+            Pitch = source.Pitch,
+            Distance = source.Distance,
+            FovY = source.FovY,
+            Near = source.Near,
+            Far = source.Far
+        };
+    }
+
+    private static void ApplyCameraEffects(Camera camera, IEnumerable<CameraEffect> effects, float timeSeconds)
+    {
+        foreach (var effect in effects)
+        {
+            if (effect.Type != CameraEffectType.CameraShake)
+                continue;
+
+            var shake = effect.Shake ?? new CameraShakeSettings();
+            vec3 noise = new vec3(
+                SampleShakeNoise(timeSeconds, shake.Speed.x, shake.Offset.x, 0.73f),
+                SampleShakeNoise(timeSeconds, shake.Speed.y, shake.Offset.y, 1.61f),
+                SampleShakeNoise(timeSeconds, shake.Speed.z, shake.Offset.z, 2.29f));
+
+            if (shake.Mode is CameraShakeMode.Positional or CameraShakeMode.Both)
+            {
+                vec3 forward = (camera.Target - camera.Position).Normalized;
+                vec3 right = vec3.Cross(forward, vec3.UnitY);
+                if (right.LengthSqr < 1e-8f)
+                    right = vec3.UnitX;
+                else
+                    right = right.Normalized;
+
+                vec3 up = vec3.Cross(right, forward).Normalized;
+                vec3 positionalOffset =
+                    right * (noise.x * shake.Strength.x) +
+                    up * (noise.y * shake.Strength.y) +
+                    forward * (noise.z * shake.Strength.z);
+
+                camera.Target += positionalOffset;
+            }
+
+            if (shake.Mode is CameraShakeMode.Rotational or CameraShakeMode.Both)
+            {
+                camera.Yaw += noise.x * shake.Strength.x;
+                camera.Pitch = Math.Clamp(
+                    camera.Pitch + noise.y * shake.Strength.y,
+                    -MathF.PI / 2f + 0.01f,
+                    MathF.PI / 2f - 0.01f);
+                camera.Yaw += noise.z * shake.Strength.z * 0.25f;
+            }
+        }
+    }
+
+    private static float SampleShakeNoise(float timeSeconds, float speed, float offset, float seed)
+    {
+        float phase = timeSeconds * speed + offset + seed;
+        float harmonic1 = MathF.Sin(phase);
+        float harmonic2 = 0.5f * MathF.Sin(phase * 2.13f + 1.37f + seed * 0.7f);
+        float harmonic3 = 0.25f * MathF.Sin(phase * 4.37f + 2.51f + seed * 1.3f);
+        return (harmonic1 + harmonic2 + harmonic3) / 1.75f;
+    }
+
     public unsafe void RenderInline(Vector2 imageMin, Vector2 imageSize, List<CameraSceneObject> spawned)
     {
         if (!IsInlineVisible) return;
@@ -4627,22 +4700,15 @@ public class Viewport : UiPanel
 
         float aspect = h > 0 ? (float)w / h : 1f;
 
-        float savedFovY = cam.FovY, savedNear = cam.Near, savedFar = cam.Far;
-        if (sceneObj != null)
-        {
-            cam.FovY = glm.Radians(sceneObj.Fov);
-            cam.Near = sceneObj.Near;
-            cam.Far = sceneObj.Far;
-        }
+        var renderCamera = BuildPreparedCamera(cam, sceneObj);
 
-        mat4 view = cam.GetViewMatrix();
-        mat4 proj = cam.GetProjectionMatrix(aspect);
+        mat4 view = renderCamera.GetViewMatrix();
+        mat4 proj = renderCamera.GetProjectionMatrix(aspect);
 
-        MainViewport.RenderSkyPublic(cam, w, h);
+        MainViewport.RenderSkyPublic(renderCamera, w, h);
         MainViewport.RenderBackgroundPlanePublic(w, h);
         Gl.Clear(ClearBufferMask.DepthBufferBit);
 
-        cam.FovY = savedFovY; cam.Near = savedNear; cam.Far = savedFar;
 
         Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
         bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
@@ -4661,7 +4727,7 @@ public class Viewport : UiPanel
 
         Dictionary<LightSceneObject, int> pointShadowIndices = new();
         var allPointLights = new List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)>();
-        vec3 camPos = cam.Position;
+        vec3 camPos = renderCamera.Position;
 
         if (renderMode == SceneRenderMode.Rendered)
         {
