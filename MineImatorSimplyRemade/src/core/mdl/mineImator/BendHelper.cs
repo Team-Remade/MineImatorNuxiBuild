@@ -265,7 +265,9 @@ public static class BendHelper
 
     /// <summary>
     /// Computes the bend vector for a given weight (0-1).
-    /// X and Z use ease-in-out-quint; Y (height) uses linear weighting.
+    /// With this loader's bend-axis mapping, authored Z-axis bends should use
+    /// quint easing and authored Y-axis bends should remain linear to match
+    /// Mine-imator behavior on imported models (for example Emily lower bends).
     /// </summary>
     public static vec3 GetBendVector(vec3 angle, float weight)
     {
@@ -368,13 +370,12 @@ public static class BendHelper
     }
 
     /// <summary>
-    /// Calculates the number of bend segments for a given bend size.
+    /// Calculates bend segmentation count following Mine-imator's runtime shape
+    /// generators (model_shape_generate_block/plane): sharp bends use 2
+    /// segments; smooth bends use max(bendSize, 2).
     /// </summary>
-    public static float CalculateSegmentCount(float bendSize, bool sharpBend, float? detail = null)
+    public static float CalculateSegmentCount(float bendSize, bool sharpBend)
     {
-        // Modelbench allows detail=1 on authored parts (for example facial rigs).
-        // Clamping to 2 subtly changes the bend profile.
-        if (detail.HasValue) return Math.Max(1, detail.Value);
         if (sharpBend) return 2;
         return Math.Max(bendSize, 2);
     }

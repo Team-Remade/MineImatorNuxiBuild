@@ -1750,7 +1750,7 @@ public class MineImatorLoader
             bool singleXorZ = (b.AxisX && !b.AxisY && !b.AxisZ) || (!b.AxisX && !b.AxisY && b.AxisZ);
             bool sharpBend = (effectiveStyle == BendStyle.Blocky) && !b.ExplicitBendSize && singleXorZ;
 
-            float detail = BendHelper.CalculateSegmentCount(b.BendSize, sharpBend, b.Detail);
+            float detail = BendHelper.CalculateSegmentCount(b.BendSize, sharpBend);
             if (b.ExplicitBendSize && b.BendSize >= 1 && shapeScale[segAxis] > 0.5f)
                 detail /= shapeScale[segAxis];
 
@@ -1936,10 +1936,12 @@ public class MineImatorLoader
                     curSegSize = segSize;
                     if (segPos == 0f)
                     {
-                        float fromCoord = segAxis == 0 ? (x1 + shapePosition.x)
-                            : segAxis == 1 ? (y1 + shapePosition.y)
-                            : (z1 + shapePosition.z);
-                        curSegSize -= (fromCoord - bendStart) % segSize;
+                        // Mine-imator uses local from[segAxis] here. bendStart
+                        // already includes the shape position term.
+                        float fromCoord = segAxis == 0 ? x1
+                            : segAxis == 1 ? y1
+                            : z1;
+                        curSegSize -= ModFix(fromCoord - bendStart, segSize);
                     }
 
                     curSegSize = Math.Min(totalSize - segPos, curSegSize);
@@ -2442,7 +2444,7 @@ public class MineImatorLoader
         bool singleXorZ = (b.AxisX && !b.AxisY && !b.AxisZ) || (!b.AxisX && !b.AxisY && b.AxisZ);
         bool sharpBend = (effectiveStyle == BendStyle.Blocky) && !b.ExplicitBendSize && singleXorZ;
 
-        float detail = BendHelper.CalculateSegmentCount(b.BendSize, sharpBend, b.Detail);
+        float detail = BendHelper.CalculateSegmentCount(b.BendSize, sharpBend);
         if (b.ExplicitBendSize && b.BendSize >= 1 && shapeScale[segAxis] > 0.5f) detail /= shapeScale[segAxis];
         float segSize = bendSize / detail;
 
@@ -2491,8 +2493,10 @@ public class MineImatorLoader
                 curSegSize = segSize;
                 if (segPos == 0f)
                 {
-                    float fromCoord = segAxis == 0 ? (x1 + shapePosition.x) : (y1 + shapePosition.y);
-                    curSegSize -= (fromCoord - bendStart) % segSize;
+                    // Mine-imator uses local from[segAxis] here. bendStart
+                    // already includes the shape position term.
+                    float fromCoord = segAxis == 0 ? x1 : y1;
+                    curSegSize -= ModFix(fromCoord - bendStart, segSize);
                 }
 
                 curSegSize = Math.Min(totalSize - segPos, curSegSize);
@@ -2521,10 +2525,9 @@ public class MineImatorLoader
             if (invAngle) segP = 1f - segP;
 
             vec3 segBendVec = sharpBend ? b.Angle * segP : BendHelper.GetBendVector(b.Angle, segP);
-            vec3 segScaleCorr = sharpBend
-                ? BendHelper.GetBendScaleCorrection(bendStart, bendEnd, segP, segPos, b.Angle, b)
-                : vec3.Zero;
-            mat4 segMat = BendHelper.GetBendMatrix(b, segBendVec, shapePosition, shapeScale, vec3.Ones + segScaleCorr);
+            // Official non-3D plane generation keeps per-segment scale at 1
+            // (sharp-bend correction is only applied on the initial bend).
+            mat4 segMat = BendHelper.GetBendMatrix(b, segBendVec, shapePosition, shapeScale, vec3.Ones);
 
             np1 = BendHelper.TransformPoint(segMat, np1);
             np2 = BendHelper.TransformPoint(segMat, np2);
@@ -2630,10 +2633,6 @@ public class MineImatorLoader
         float bendSize = b.BendSize / 16f / axisScale;
         float bendOffset = b.BendOffset / 16f / axisScale;
         float bendShapePosition = shapePosition[segAxis] / axisScale;
-        float detail = BendHelper.CalculateSegmentCount(b.BendSize, sharpBend, b.Detail);
-        if (b.ExplicitBendSize && b.BendSize >= 1 && shapeScale[segAxis] > 0.5f) detail /= shapeScale[segAxis];
-        float segSize = bendSize / detail;
-
         bool invAngle = (b.Part == BendPart.Lower || b.Part == BendPart.Back || b.Part == BendPart.Left);
 
         mat4 shapeRotMat = BuildShapeRotMat(shapeRotation);
@@ -2682,15 +2681,7 @@ public class MineImatorLoader
                 else
                 {
                     float relPos = innerPos - bendStart;
-                    float segIdx = Math.Min((float)Math.Floor(relPos / segSize), detail - 1);
-                    if (detail <= 1f)
-                    {
-                        segP = bendSize <= 0f ? 0f : Math.Clamp(relPos / bendSize, 0f, 1f);
-                    }
-                    else
-                    {
-                        segP = segIdx / (detail - 1f);
-                    }
+                    segP = bendSize <= 0f ? 0f : Math.Clamp(relPos / bendSize, 0f, 1f);
                 }
 
                 if (invAngle) segP = 1f - segP;
@@ -2859,6 +2850,18 @@ public class MineImatorLoader
     {
         (uv1, uv4) = (uv4, uv1);
         (uv2, uv3) = (uv3, uv2);
+    }
+
+    // Matches Mine-imator's mod_fix(x, y): wrap negative values before modulo.
+    private static float ModFix(float x, float y)
+    {
+        if (MathF.Abs(y) <= 1e-6f)
+            return 0f;
+
+        while (x < 0f)
+            x += y;
+
+        return x % y;
     }
 
     // Adds a face quad with uniform normal and per-vertex UVs
