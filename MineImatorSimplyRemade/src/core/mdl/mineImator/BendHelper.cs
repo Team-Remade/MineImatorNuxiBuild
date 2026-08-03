@@ -206,7 +206,7 @@ public static class BendHelper
         // Clamp angle to direction limits and apply invert
         angle = ClampAndInvertAngle(angle, dirMin, dirMax, invertX, invertY, invertZ, axisX, axisY, axisZ);
 
-        // Parse offset, size, and detail (in pixels)
+        // Parse offset/size/detail (in pixels)
         float offset = bend.Offset ?? 0.0f;
         bool explicitBendSize = bend.Size.HasValue;
         float? detail = bend.Detail;
@@ -372,7 +372,9 @@ public static class BendHelper
     /// </summary>
     public static float CalculateSegmentCount(float bendSize, bool sharpBend, float? detail = null)
     {
-        if (detail.HasValue) return Math.Max(2, detail.Value);
+        // Modelbench allows detail=1 on authored parts (for example facial rigs).
+        // Clamping to 2 subtly changes the bend profile.
+        if (detail.HasValue) return Math.Max(1, detail.Value);
         if (sharpBend) return 2;
         return Math.Max(bendSize, 2);
     }

@@ -221,13 +221,55 @@ public class MiBoneSceneObject : BoneSceneObject
         if (!bp.AxisY) newAngle.y = 0f;
         if (!bp.AxisZ) newAngle.z = 0f;
 
-        newAngle.x = Math.Clamp(newAngle.x, bp.DirectionMin.x, bp.DirectionMax.x);
-        newAngle.y = Math.Clamp(newAngle.y, bp.DirectionMin.y, bp.DirectionMax.y);
-        newAngle.z = Math.Clamp(newAngle.z, bp.DirectionMin.z, bp.DirectionMax.z);
+        newAngle.x = ClampStoredAxis(newAngle.x, bp.DirectionMin.x, bp.DirectionMax.x, bp.InvertX, bp.AxisX);
+        newAngle.y = ClampStoredAxis(newAngle.y, bp.DirectionMin.y, bp.DirectionMax.y, bp.InvertY, bp.AxisY);
+        newAngle.z = ClampStoredAxis(newAngle.z, bp.DirectionMin.z, bp.DirectionMax.z, bp.InvertZ, bp.AxisZ);
         bp.Angle   = newAngle;
         BendParameters = bp;
 
         RegenerateMeshes();
+    }
+
+    /// <summary>
+    /// Returns bend angles in authored/editable space (invert flags removed).
+    /// Use this for UI and gizmo editing so invert behaves like Mine-imator.
+    /// </summary>
+    public vec3 GetEditableBendAngle()
+    {
+        if (!BendParameters.HasValue) return vec3.Zero;
+
+        var bp = BendParameters.Value;
+        vec3 angle = bp.Angle;
+        if (bp.InvertX) angle.x *= -1f;
+        if (bp.InvertY) angle.y *= -1f;
+        if (bp.InvertZ) angle.z *= -1f;
+        return angle;
+    }
+
+    /// <summary>
+    /// Sets bend angles in authored/editable space (pre-invert), then stores
+    /// them in the internal effective space used by mesh generation.
+    /// </summary>
+    public void SetEditableBendAngle(vec3 editableAngle)
+    {
+        if (!BendParameters.HasValue) return;
+
+        var bp = BendParameters.Value;
+
+        if (!bp.AxisX) editableAngle.x = 0f;
+        if (!bp.AxisY) editableAngle.y = 0f;
+        if (!bp.AxisZ) editableAngle.z = 0f;
+
+        editableAngle.x = Math.Clamp(editableAngle.x, bp.DirectionMin.x, bp.DirectionMax.x);
+        editableAngle.y = Math.Clamp(editableAngle.y, bp.DirectionMin.y, bp.DirectionMax.y);
+        editableAngle.z = Math.Clamp(editableAngle.z, bp.DirectionMin.z, bp.DirectionMax.z);
+
+        vec3 stored = editableAngle;
+        if (bp.InvertX) stored.x *= -1f;
+        if (bp.InvertY) stored.y *= -1f;
+        if (bp.InvertZ) stored.z *= -1f;
+
+        SetBendAngle(stored);
     }
 
     /// <summary>Updates stored shape data and implicit bend widths for a model style change.</summary>
@@ -295,16 +337,27 @@ public class MiBoneSceneObject : BoneSceneObject
             angle += parentBone.GetEffectiveBendAngle();
 
         // After inheritance, enforce this bone's own axis permissions and ranges.
-        if (!bp.AxisX) angle.x = 0f;
-        else angle.x = Math.Clamp(angle.x, bp.DirectionMin.x, bp.DirectionMax.x);
-
-        if (!bp.AxisY) angle.y = 0f;
-        else angle.y = Math.Clamp(angle.y, bp.DirectionMin.y, bp.DirectionMax.y);
-
-        if (!bp.AxisZ) angle.z = 0f;
-        else angle.z = Math.Clamp(angle.z, bp.DirectionMin.z, bp.DirectionMax.z);
+        angle.x = ClampStoredAxis(angle.x, bp.DirectionMin.x, bp.DirectionMax.x, bp.InvertX, bp.AxisX);
+        angle.y = ClampStoredAxis(angle.y, bp.DirectionMin.y, bp.DirectionMax.y, bp.InvertY, bp.AxisY);
+        angle.z = ClampStoredAxis(angle.z, bp.DirectionMin.z, bp.DirectionMax.z, bp.InvertZ, bp.AxisZ);
 
         return angle;
+    }
+
+    private static float ClampStoredAxis(float value, float dirMin, float dirMax, bool invert, bool axisEnabled)
+    {
+        if (!axisEnabled) return 0f;
+
+        if (!invert)
+            return Math.Clamp(value, dirMin, dirMax);
+
+        // Direction limits are authored in pre-invert space.
+        // Stored/internal values are post-invert, so their range is mirrored.
+        float minMirrored = -dirMax;
+        float maxMirrored = -dirMin;
+        float low = Math.Min(minMirrored, maxMirrored);
+        float high = Math.Max(minMirrored, maxMirrored);
+        return Math.Clamp(value, low, high);
     }
 
     // ── Inheritance helpers ───────────────────────────────────────────────────

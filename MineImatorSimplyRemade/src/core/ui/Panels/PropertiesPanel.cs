@@ -2412,7 +2412,7 @@ public class PropertiesPanel : UiPanel
             (bend.AxisX || bend.AxisY || bend.AxisZ) &&
             ImGui.CollapsingHeader("Bend (degrees)"))
         {
-            vec3 angle = bend.Angle;
+            vec3 angle = bendBone.GetEditableBendAngle();
             ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
 
             if (bend.AxisX)
@@ -3456,7 +3456,7 @@ public class PropertiesPanel : UiPanel
 
     private void ApplyBend(MiBoneSceneObject bone, vec3 angle)
     {
-        bone.SetBendAngle(angle);
+        bone.SetEditableBendAngle(angle);
         ProjectManager.Instance.SetDirty(true);
     }
 

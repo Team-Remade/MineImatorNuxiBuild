@@ -1547,9 +1547,10 @@ public class MineImatorLoader
             if (partColorBlend.HasValue) mesh.BlendColor = new vec4(partColorBlend.Value, 1f);
             if (partColorAlpha.HasValue) mesh.Alpha = partColorAlpha.Value;
 
-            // Apply shapePosition only for non-bent meshes. Bent branches already
-            // incorporate the position into the bend matrix/pivot math.
-            if (shapePosition != vec3.Zero && !planeBent)
+            // Bend matrix setup uses shapePosition to align the pivot region,
+            // but the authored shape translation itself still needs to be
+            // applied to the final vertices (matching non-bent paths).
+            if (shapePosition != vec3.Zero)
             {
                 for (int i = 0; i < mesh.Vertices.Count; i++)
                     mesh.Vertices[i] += shapePosition;
@@ -2682,7 +2683,14 @@ public class MineImatorLoader
                 {
                     float relPos = innerPos - bendStart;
                     float segIdx = Math.Min((float)Math.Floor(relPos / segSize), detail - 1);
-                    segP = segIdx / (detail - 1);
+                    if (detail <= 1f)
+                    {
+                        segP = bendSize <= 0f ? 0f : Math.Clamp(relPos / bendSize, 0f, 1f);
+                    }
+                    else
+                    {
+                        segP = segIdx / (detail - 1f);
+                    }
                 }
 
                 if (invAngle) segP = 1f - segP;
