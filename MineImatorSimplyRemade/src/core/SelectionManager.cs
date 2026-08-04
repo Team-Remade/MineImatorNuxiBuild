@@ -1,6 +1,7 @@
 ﻿using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemade.gizmo;
 using MineImatorSimplyRemadeNuxi.core.objs;
+using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 namespace MineImatorSimplyRemadeNuxi.core;
 
@@ -107,6 +108,11 @@ public class SelectionManager
                         Timeline.RecordAutoKeyframe(obj, "scale.x");
                         Timeline.RecordAutoKeyframe(obj, "scale.y");
                         Timeline.RecordAutoKeyframe(obj, "scale.z");
+                        break;
+                    case Gizmo3D.TransformMode.Bend when obj is MiBoneSceneObject bendBone:
+                        Timeline.RecordAutoKeyframe(obj, "bend.x");
+                        Timeline.RecordAutoKeyframe(obj, "bend.y");
+                        Timeline.RecordAutoKeyframe(obj, "bend.z");
                         break;
                 }
             }

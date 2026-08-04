@@ -181,6 +181,9 @@ public class Timeline : UiPanel
     private string?           _ctxPropPath;
     private bool              _openAddKeyframeMenu = false;
     private SceneObject?      _ctxAddKeyframeObj;
+    private bool              _openSpeedScaleMenu;
+    private bool              _speedScaleSlowDown = true;
+    private float             _speedScaleFactor   = 2f;
 
     // ── Layout ────────────────────────────────────────────────────────────────
 
@@ -380,6 +383,7 @@ public class Timeline : UiPanel
             ImGui.OpenPopup("##kf_add");
         }
         RenderAddKeyframeMenu();
+        RenderSpeedScaleMenu();
         RenderMarkerEditor();
 
         ImGui.End();
@@ -1830,6 +1834,12 @@ public class Timeline : UiPanel
         if (ImGui.MenuItem("Cut Keyframes", "Ctrl+X", false, hasSelection)) { CopySelectedKeyframes(); DeleteSelectedKeyframes(); }
         if (ImGui.MenuItem("Copy Keyframes", "Ctrl+C", false, hasSelection)) CopySelectedKeyframes();
         if (ImGui.MenuItem("Paste Keyframes", "Ctrl+V", false, _keyframeClipboard.Count > 0)) PasteKeyframes(_contextFrame);
+        if (ImGui.MenuItem("Scale Selected Keyframe Speed...", "", false, _selectedKeyframes.Count > 1))
+        {
+            _speedScaleSlowDown = true;
+            _speedScaleFactor = 2f;
+            _openSpeedScaleMenu = true;
+        }
         if (ImGui.MenuItem("Reverse Selected Keyframes", "", false, _selectedKeyframes.Count > 1)) TransformSelectedFrames(reverse: true);
         if (ImGui.MenuItem("Randomize Selected Keyframes", "", false, _selectedKeyframes.Count > 1)) TransformSelectedFrames(reverse: false);
 
@@ -1971,6 +1981,25 @@ public class Timeline : UiPanel
         RemoveSelectedCollisionsAndSave();
     }
 
+    private void ScaleSelectedKeyframeSpeed(float factor, bool slowDown)
+    {
+        if (_selectedKeyframes.Count < 2)
+            return;
+
+        float clampedFactor = Math.Clamp(factor, 1.01f, 20f);
+        float scale = slowDown ? clampedFactor : 1f / clampedFactor;
+        int anchorFrame = _selectedKeyframes.Min(k => k.Frame);
+
+        foreach (var keyframe in _selectedKeyframes)
+        {
+            int offset = keyframe.Frame - anchorFrame;
+            int scaledOffset = (int)MathF.Round(offset * scale);
+            keyframe.Frame = Math.Max(0, anchorFrame + scaledOffset);
+        }
+
+        RemoveSelectedCollisionsAndSave();
+    }
+
     private void RemoveSelectedCollisionsAndSave()
     {
         foreach (var group in _selectedKeyframes.Where(_keyframeOwners.ContainsKey)
@@ -2054,6 +2083,51 @@ public class Timeline : UiPanel
             AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.y", _currentFrame);
             AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.z", _currentFrame);
         }
+
+        ImGui.EndPopup();
+    }
+
+    private void RenderSpeedScaleMenu()
+    {
+        if (_openSpeedScaleMenu)
+        {
+            _openSpeedScaleMenu = false;
+            ImGui.OpenPopup("Scale Selected Keyframe Speed");
+        }
+
+        bool open = true;
+        if (!ImGui.BeginPopupModal("Scale Selected Keyframe Speed", ref open, ImGuiWindowFlags.AlwaysAutoResize))
+            return;
+
+        ImGui.TextDisabled("Scale the selected keyframe timing around the first selected frame.");
+        ImGui.Separator();
+
+        if (ImGui.RadioButton("Slow Down", _speedScaleSlowDown))
+            _speedScaleSlowDown = true;
+        ImGui.SameLine();
+        if (ImGui.RadioButton("Speed Up", !_speedScaleSlowDown))
+            _speedScaleSlowDown = false;
+
+        float factor = _speedScaleFactor;
+        if (ImGui.DragFloat("Scale Factor", ref factor, 0.05f, 1.01f, 20f, "%.2fx", ImGuiSliderFlags.AlwaysClamp))
+            _speedScaleFactor = Math.Clamp(factor, 1.01f, 20f);
+
+        int beforeMin = _selectedKeyframes.Count > 0 ? _selectedKeyframes.Min(k => k.Frame) : 0;
+        int beforeMax = _selectedKeyframes.Count > 0 ? _selectedKeyframes.Max(k => k.Frame) : 0;
+        int beforeSpan = Math.Max(0, beforeMax - beforeMin);
+        float previewScale = _speedScaleSlowDown ? _speedScaleFactor : 1f / Math.Max(1.01f, _speedScaleFactor);
+        int afterSpan = (int)MathF.Round(beforeSpan * previewScale);
+        ImGui.TextDisabled($"Span preview: {beforeSpan}f -> {afterSpan}f");
+
+        bool canApply = _selectedKeyframes.Count > 1;
+        if (ImGui.Button("Apply") && canApply)
+        {
+            ScaleSelectedKeyframeSpeed(_speedScaleFactor, _speedScaleSlowDown);
+            ImGui.CloseCurrentPopup();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Cancel"))
+            ImGui.CloseCurrentPopup();
 
         ImGui.EndPopup();
     }
@@ -2188,9 +2262,11 @@ public class Timeline : UiPanel
         foreach (var obj in objects)
         {
             if (obj == null || obj.Keyframes.Count == 0) continue;
-            var paths = obj is LightSceneObject   ? standardPaths.Concat(lightPaths)
-                      : obj is CameraSceneObject  ? standardPaths.Concat(cameraPaths)
-                      : standardPaths;
+            IEnumerable<string> paths = obj is LightSceneObject   ? standardPaths.Concat(lightPaths)
+                                      : obj is CameraSceneObject  ? standardPaths.Concat(cameraPaths)
+                                      : standardPaths;
+            if (obj is MiBoneSceneObject)
+                paths = paths.Concat(new[] { "bend.x", "bend.y", "bend.z" });
             if (obj is CameraSceneObject cameraObj)
                 paths = paths.Concat(GetCameraEffectPropertyPaths(cameraObj));
             if (obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
@@ -2437,6 +2513,15 @@ public class Timeline : UiPanel
                     vec3 s = obj is MiBoneSceneObject mb ? mb.OffsetScale : obj.LocalScale;
                     return comp switch { "x" => (object)s.x, "y" => s.y, "z" => s.z, _ => 1f };
                 }
+                case "bend":
+                {
+                    if (obj is MiBoneSceneObject mb)
+                    {
+                        vec3 angle = mb.GetEditableBendAngle();
+                        return comp switch { "x" => (object)angle.x, "y" => angle.y, "z" => angle.z, _ => 0f };
+                    }
+                    break;
+                }
                 case "material":
                     if (comp == "alpha") return obj.MaterialSettings?.AlbedoColor.w ?? 1f;
                     break;
@@ -2602,6 +2687,15 @@ public class Timeline : UiPanel
                             var s = obj.LocalScale;
                             if (comp == "x") s.x = value; else if (comp == "y") s.y = value; else if (comp == "z") s.z = value;
                             obj.SetLocalScale(s);
+                        }
+                        break;
+
+                    case "bend":
+                        if (obj is MiBoneSceneObject mbB)
+                        {
+                            var angle = mbB.GetEditableBendAngle();
+                            if (comp == "x") angle.x = value; else if (comp == "y") angle.y = value; else if (comp == "z") angle.z = value;
+                            mbB.SetEditableBendAngle(angle);
                         }
                         break;
 
@@ -2833,6 +2927,15 @@ public class Timeline : UiPanel
                 (label: "Y",               path: "scale.y", parent: "scale", indent: 1),
                 (label: "Z",               path: "scale.z", parent: "scale", indent: 1),
             };
+            var bendProps = obj is MiBoneSceneObject miBone && miBone.BendParameters is { } bend && (bend.AxisX || bend.AxisY || bend.AxisZ)
+                ? new[]
+                {
+                    (label: "Bend", path: "bend", parent: "", indent: 0),
+                    (label: "X", path: "bend.x", parent: "bend", indent: 1),
+                    (label: "Y", path: "bend.y", parent: "bend", indent: 1),
+                    (label: "Z", path: "bend.z", parent: "bend", indent: 1),
+                }
+                : Array.Empty<(string label, string path, string parent, int indent)>();
             var itemProps = new[]
             {
                 (label: "Item Slot",       path: "item.slot", parent: "", indent: 0),
@@ -2858,6 +2961,20 @@ public class Timeline : UiPanel
                     // one of its component tracks has keyframes.
                     if (groupPaths.Any(propsWithKeyframes.Contains))
                         _displayRows.Add(MakeGroup(obj, label, groupPaths));
+                }
+                else if (propsWithKeyframes.Contains(path))
+                {
+                    _displayRows.Add(MakeSingle(obj, label, path, indent));
+                }
+            }
+
+            foreach (var (label, path, parent, indent) in bendProps)
+            {
+                if (path == "bend")
+                {
+                    string[] groupPaths = ["bend.x", "bend.y", "bend.z"];
+                    if (groupPaths.Any(propsWithKeyframes.Contains))
+                        _displayRows.Add(MakeGroup(obj, label, groupPaths, path));
                 }
                 else if (propsWithKeyframes.Contains(path))
                 {
@@ -3017,6 +3134,14 @@ public class Timeline : UiPanel
         _displayRows.Add(MakeSingle(obj, "X",               "scale.x", 1));
         _displayRows.Add(MakeSingle(obj, "Y",               "scale.y", 1));
         _displayRows.Add(MakeSingle(obj, "Z",               "scale.z", 1));
+
+        if (obj is MiBoneSceneObject miBone && miBone.BendParameters is { } bend && (bend.AxisX || bend.AxisY || bend.AxisZ))
+        {
+            _displayRows.Add(MakeGroup(obj, "Bend", ["bend.x", "bend.y", "bend.z"], "bend"));
+            if (bend.AxisX) _displayRows.Add(MakeSingle(obj, "X", "bend.x", 1));
+            if (bend.AxisY) _displayRows.Add(MakeSingle(obj, "Y", "bend.y", 1));
+            if (bend.AxisZ) _displayRows.Add(MakeSingle(obj, "Z", "bend.z", 1));
+        }
 
         if (obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
         {

@@ -2453,7 +2453,13 @@ public class PropertiesPanel : UiPanel
                 if (InputFloatEditor("X##bendX", ref value, 0.5f, bend.DirectionMin.x, bend.DirectionMax.x))
                 {
                     angle.x = value;
-                    ApplyBend(bendBone, angle);
+                    ApplyBend(bendBone, angle, "bend.x");
+                }
+                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                {
+                    _ctxPropertyPath = "bend.x";
+                    _ctxMenuPos = ImGui.GetMousePos();
+                    _openPropContextMenu = true;
                 }
             }
             if (bend.AxisY)
@@ -2462,7 +2468,13 @@ public class PropertiesPanel : UiPanel
                 if (InputFloatEditor("Y##bendY", ref value, 0.5f, bend.DirectionMin.y, bend.DirectionMax.y))
                 {
                     angle.y = value;
-                    ApplyBend(bendBone, angle);
+                    ApplyBend(bendBone, angle, "bend.y");
+                }
+                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                {
+                    _ctxPropertyPath = "bend.y";
+                    _ctxMenuPos = ImGui.GetMousePos();
+                    _openPropContextMenu = true;
                 }
             }
             if (bend.AxisZ)
@@ -2471,13 +2483,19 @@ public class PropertiesPanel : UiPanel
                 if (InputFloatEditor("Z##bendZ", ref value, 0.5f, bend.DirectionMin.z, bend.DirectionMax.z))
                 {
                     angle.z = value;
-                    ApplyBend(bendBone, angle);
+                    ApplyBend(bendBone, angle, "bend.z");
+                }
+                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                {
+                    _ctxPropertyPath = "bend.z";
+                    _ctxMenuPos = ImGui.GetMousePos();
+                    _openPropContextMenu = true;
                 }
             }
             ImGui.PopItemWidth();
 
             if (ImGui.Button("Reset##bendReset"))
-                ApplyBend(bendBone, vec3.Zero);
+                ApplyBend(bendBone, vec3.Zero, "bend.x", "bend.y", "bend.z");
         }
 
         // ── Block Tiling ───────────────────────────────────────────────────────
@@ -3629,10 +3647,12 @@ public class PropertiesPanel : UiPanel
         Timeline?.RecordAutoKeyframe(_currentObject, "scale.z");
     }
 
-    private void ApplyBend(MiBoneSceneObject bone, vec3 angle)
+    private void ApplyBend(MiBoneSceneObject bone, vec3 angle, params string[] propertyPaths)
     {
         bone.SetEditableBendAngle(angle);
         ProjectManager.Instance.SetDirty(true);
+        foreach (var propertyPath in propertyPaths)
+            Timeline?.RecordAutoKeyframe(bone, propertyPath);
     }
 
     private bool EditVec3Editor(SceneObject keyframeObject, string idPrefix, ref vec3 value, float speed, float min, float max, string format, string label, string keyframePathPrefix)
