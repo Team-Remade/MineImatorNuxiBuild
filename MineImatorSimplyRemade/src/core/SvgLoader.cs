@@ -63,16 +63,16 @@ public static class SvgLoader
         float oy = (rasterSize - vbH * scale) * 0.5f;
         var raster = new byte[rasterSize * rasterSize];
 
-        foreach (var elem in root.Descendants())
+        var masks = new Dictionary<string, XElement>(StringComparer.Ordinal);
+        foreach (var mask in root.Descendants().Where(e => e.Name.LocalName == "mask"))
         {
-            if (elem.Name.LocalName != "path") continue;
-            var d = elem.Attribute("d")?.Value;
-            if (string.IsNullOrWhiteSpace(d)) continue;
-
-            var scaled = ParsePath(d).Where(poly => poly.Count >= 2).Select(poly => poly.ConvertAll(pt =>
-                new Vector2((pt.X - vbX) * scale + ox, (pt.Y - vbY) * scale + oy))).ToList();
-            FillPath(raster, rasterSize, rasterSize, scaled);
+            var id = mask.Attribute("id")?.Value;
+            if (!string.IsNullOrWhiteSpace(id))
+                masks[id] = mask;
         }
+
+        foreach (var child in root.Elements())
+            RenderElement(child, raster, rasterSize, rasterSize, masks, vbX, vbY, scale, ox, oy, asMask: false);
 
         var pixels = new byte[size * size * 4];
         for (int y = 0; y < size; y++)
@@ -89,6 +89,198 @@ public static class SvgLoader
             pixels[idx + 3] = alpha;
         }
         return new SvgImage { Data = pixels, Width = size, Height = size };
+    }
+
+    private static void RenderElement(
+        XElement elem,
+        byte[] target,
+        int w,
+        int h,
+        IReadOnlyDictionary<string, XElement> masks,
+        float vbX,
+        float vbY,
+        float scale,
+        float ox,
+        float oy,
+        bool asMask)
+    {
+        string name = elem.Name.LocalName;
+        if (name == "defs")
+            return;
+
+        if (name == "g" || name == "svg" || name == "mask")
+        {
+            foreach (var child in elem.Elements())
+                RenderElement(child, target, w, h, masks, vbX, vbY, scale, ox, oy, asMask);
+            return;
+        }
+
+        if (name != "path")
+            return;
+
+        var d = elem.Attribute("d")?.Value;
+        if (string.IsNullOrWhiteSpace(d))
+            return;
+
+        var polys = ParsePath(d)
+            .Where(poly => poly.Count >= 2)
+            .Select(poly => poly.ConvertAll(pt => new Vector2((pt.X - vbX) * scale + ox, (pt.Y - vbY) * scale + oy)))
+            .ToList();
+        if (polys.Count == 0)
+            return;
+
+        string? fillPaint = GetCascadedAttribute(elem, "fill");
+        string? strokePaint = GetCascadedAttribute(elem, "stroke");
+        string? strokeWidthRaw = GetCascadedAttribute(elem, "stroke-width");
+
+        bool hasFill = !string.Equals(fillPaint?.Trim(), "none", StringComparison.OrdinalIgnoreCase);
+        bool hasStroke = !string.Equals(strokePaint?.Trim(), "none", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(strokePaint);
+
+        float strokeWidthUser = 1f;
+        if (!string.IsNullOrWhiteSpace(strokeWidthRaw))
+            float.TryParse(strokeWidthRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out strokeWidthUser);
+        float strokeWidthPx = Math.Max(0f, strokeWidthUser * scale);
+
+        string? maskId = null;
+        bool hasMaskRef = !asMask
+            && TryParseMaskRef(elem.Attribute("mask")?.Value, out maskId)
+            && maskId != null
+            && masks.ContainsKey(maskId);
+
+        byte[] paintTarget = hasMaskRef ? new byte[w * h] : target;
+
+        if (hasFill)
+        {
+            byte fillValue = asMask
+                ? (byte)Math.Clamp((int)MathF.Round(ParsePaintIntensity(fillPaint, 1f) * 255f), 0, 255)
+                : (byte)255;
+            FillPath(paintTarget, w, h, polys, fillValue, overwrite: asMask);
+        }
+
+        if (hasStroke && strokeWidthPx > 0.01f)
+        {
+            byte strokeValue = asMask
+                ? (byte)Math.Clamp((int)MathF.Round(ParsePaintIntensity(strokePaint, 1f) * 255f), 0, 255)
+                : (byte)255;
+            StrokePath(paintTarget, w, h, polys, strokeWidthPx, strokeValue, overwrite: asMask);
+        }
+
+        if (!hasMaskRef)
+            return;
+
+        byte[] maskRaster = new byte[w * h];
+        RenderElement(masks[maskId!], maskRaster, w, h, masks, vbX, vbY, scale, ox, oy, asMask: true);
+
+        for (int i = 0; i < paintTarget.Length; i++)
+        {
+            byte masked = (byte)((paintTarget[i] * maskRaster[i]) / 255);
+            if (masked > target[i])
+                target[i] = masked;
+        }
+    }
+
+    private static bool TryParseMaskRef(string? value, out string? id)
+    {
+        id = null;
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        string s = value.Trim();
+        if (!s.StartsWith("url(#", StringComparison.OrdinalIgnoreCase) || !s.EndsWith(')'))
+            return false;
+
+        id = s[5..^1].Trim();
+        return !string.IsNullOrWhiteSpace(id);
+    }
+
+    private static string? GetCascadedAttribute(XElement elem, string name)
+    {
+        foreach (var node in elem.AncestorsAndSelf())
+        {
+            var direct = node.Attribute(name)?.Value;
+            if (!string.IsNullOrWhiteSpace(direct))
+                return direct;
+
+            var style = node.Attribute("style")?.Value;
+            if (TryReadStyleProperty(style, name, out string? value) && !string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
+    }
+
+    private static bool TryReadStyleProperty(string? style, string name, out string? value)
+    {
+        value = null;
+        if (string.IsNullOrWhiteSpace(style))
+            return false;
+
+        foreach (var part in style.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int colon = part.IndexOf(':');
+            if (colon <= 0)
+                continue;
+
+            string key = part[..colon].Trim();
+            if (!string.Equals(key, name, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            value = part[(colon + 1)..].Trim();
+            return true;
+        }
+
+        return false;
+    }
+
+    private static float ParsePaintIntensity(string? paint, float defaultValue)
+    {
+        if (string.IsNullOrWhiteSpace(paint))
+            return defaultValue;
+
+        string s = paint.Trim();
+        if (string.Equals(s, "none", StringComparison.OrdinalIgnoreCase))
+            return 0f;
+        if (string.Equals(s, "currentColor", StringComparison.OrdinalIgnoreCase))
+            return 1f;
+        if (string.Equals(s, "white", StringComparison.OrdinalIgnoreCase))
+            return 1f;
+        if (string.Equals(s, "black", StringComparison.OrdinalIgnoreCase))
+            return 0f;
+
+        if (s.StartsWith('#'))
+        {
+            string hex = s[1..];
+            if (hex.Length == 3)
+            {
+                int r = Convert.ToInt32(new string(hex[0], 2), 16);
+                int g = Convert.ToInt32(new string(hex[1], 2), 16);
+                int b = Convert.ToInt32(new string(hex[2], 2), 16);
+                return (r + g + b) / (3f * 255f);
+            }
+
+            if (hex.Length >= 6)
+            {
+                int r = Convert.ToInt32(hex[..2], 16);
+                int g = Convert.ToInt32(hex[2..4], 16);
+                int b = Convert.ToInt32(hex[4..6], 16);
+                return (r + g + b) / (3f * 255f);
+            }
+        }
+
+        if (s.StartsWith("rgb(", StringComparison.OrdinalIgnoreCase) && s.EndsWith(')'))
+        {
+            var parts = s[4..^1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length >= 3
+                && float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float r)
+                && float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float g)
+                && float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float b))
+            {
+                return Math.Clamp((r + g + b) / (3f * 255f), 0f, 1f);
+            }
+        }
+
+        return defaultValue;
     }
 
     // ── SVG path parser ───────────────────────────────────────────────────────
@@ -342,7 +534,7 @@ public static class SvgLoader
 
     // ── Scanline fill (even-odd rule) ─────────────────────────────────────────
 
-    private static void FillPath(byte[] pixels, int w, int h, List<List<Vector2>> polygons)
+    private static void FillPath(byte[] pixels, int w, int h, List<List<Vector2>> polygons, byte value = 255, bool overwrite = false)
     {
         for (int y = 0; y < h; y++)
         {
@@ -367,8 +559,79 @@ public static class SvgLoader
                 int x1 = Math.Min(w - 1, (int)MathF.Floor  (xs[p + 1]));
                 for (int x = x0; x <= x1; x++)
                 {
-                    pixels[y * w + x] = 255;
+                    int idx = y * w + x;
+                    if (overwrite)
+                        pixels[idx] = value;
+                    else if (value > pixels[idx])
+                        pixels[idx] = value;
                 }
+            }
+        }
+    }
+
+    private static void StrokePath(byte[] pixels, int w, int h, List<List<Vector2>> polygons, float width, byte value, bool overwrite)
+    {
+        float radius = width * 0.5f;
+        if (radius <= 0f)
+            return;
+
+        foreach (var poly in polygons)
+        {
+            for (int i = 1; i < poly.Count; i++)
+                DrawStrokeSegment(pixels, w, h, poly[i - 1], poly[i], radius, value, overwrite);
+        }
+    }
+
+    private static void DrawStrokeSegment(byte[] pixels, int w, int h, Vector2 a, Vector2 b, float radius, byte value, bool overwrite)
+    {
+        float minX = MathF.Min(a.X, b.X) - radius;
+        float minY = MathF.Min(a.Y, b.Y) - radius;
+        float maxX = MathF.Max(a.X, b.X) + radius;
+        float maxY = MathF.Max(a.Y, b.Y) + radius;
+
+        int x0 = Math.Max(0, (int)MathF.Floor(minX));
+        int y0 = Math.Max(0, (int)MathF.Floor(minY));
+        int x1 = Math.Min(w - 1, (int)MathF.Ceiling(maxX));
+        int y1 = Math.Min(h - 1, (int)MathF.Ceiling(maxY));
+
+        float abX = b.X - a.X;
+        float abY = b.Y - a.Y;
+        float abLenSq = abX * abX + abY * abY;
+
+        for (int y = y0; y <= y1; y++)
+        {
+            float py = y + 0.5f;
+            for (int x = x0; x <= x1; x++)
+            {
+                float px = x + 0.5f;
+                float dist;
+
+                if (abLenSq < 1e-6f)
+                {
+                    float dx = px - a.X;
+                    float dy = py - a.Y;
+                    dist = MathF.Sqrt(dx * dx + dy * dy);
+                }
+                else
+                {
+                    float apX = px - a.X;
+                    float apY = py - a.Y;
+                    float t = Math.Clamp((apX * abX + apY * abY) / abLenSq, 0f, 1f);
+                    float cx = a.X + abX * t;
+                    float cy = a.Y + abY * t;
+                    float dx = px - cx;
+                    float dy = py - cy;
+                    dist = MathF.Sqrt(dx * dx + dy * dy);
+                }
+
+                if (dist > radius)
+                    continue;
+
+                int idx = y * w + x;
+                if (overwrite)
+                    pixels[idx] = value;
+                else if (value > pixels[idx])
+                    pixels[idx] = value;
             }
         }
     }

@@ -19,6 +19,7 @@ public static class TimelineIcons
     public static uint JumpEnd    { get; private set; }
     public static uint AutoKey    { get; private set; }
     public static uint Loop       { get; private set; }
+    public static uint Ghost      { get; private set; }
 
     public static bool IsLoaded   { get; private set; }
 
@@ -37,6 +38,7 @@ public static class TimelineIcons
         JumpEnd     = Load(gl, Prefix + "vaadin--step-forward.svg",   iconSize);
         AutoKey     = Load(gl, Prefix + "bi--dot.svg",                iconSize);
         Loop        = Load(gl, Prefix + "ic--outline-loop.svg",       iconSize);
+        Ghost       = Load(gl, Prefix + "icon-park-solid--ghost.svg", iconSize);
 
         IsLoaded = true;
     }
@@ -51,19 +53,10 @@ public static class TimelineIcons
             return 0;
         }
 
-        // OpenGL expects row 0 at the bottom; flip the rows.
-        int rowBytes = img.Width * 4;
-        var flipped  = new byte[img.Data.Length];
-        for (int row = 0; row < img.Height; row++)
-        {
-            int srcRow = img.Height - 1 - row;
-            System.Buffer.BlockCopy(img.Data, srcRow * rowBytes, flipped, row * rowBytes, rowBytes);
-        }
-
         uint tex = gl.GenTexture();
         gl.BindTexture(GLEnum.Texture2D, tex);
 
-        fixed (byte* p = flipped)
+        fixed (byte* p = img.Data)
         {
             gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8,
                 (uint)img.Width, (uint)img.Height, 0,

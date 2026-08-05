@@ -214,6 +214,8 @@ public class ProjectTimelineState
     public float FrameRate { get; set; } = 30f;
     public bool AutoKeyframe { get; set; } = false;
     public bool LoopPlayback { get; set; } = false;
+    public bool GhostModeEnabled { get; set; } = false;
+    public List<string> GhostTracks { get; set; } = new();
     public int? PlaybackRegionStart { get; set; }
     public int? PlaybackRegionEnd { get; set; }
     public List<ProjectTimelineMarker> Markers { get; set; } = new();

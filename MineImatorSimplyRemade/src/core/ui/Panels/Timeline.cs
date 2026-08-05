@@ -100,6 +100,7 @@ public class Timeline : UiPanel
     private bool   _isPlaying        = false;
     private bool   _autoKeyframe     = false;
     private bool   _loopPlayback     = false;
+    private bool   _ghostModeEnabled = false;
     private double _frameAccumulator = 0.0;
     private long   _lastTimestamp    = Stopwatch.GetTimestamp();
 
@@ -115,6 +116,7 @@ public class Timeline : UiPanel
     private readonly Dictionary<string, List<TimelineKeyframe>> _propertyKeyframes = new();
     private readonly List<TimelineProperty>                     _displayRows        = new();
     private readonly Dictionary<string, bool>                   _groupExpanded      = new();
+    private readonly HashSet<string>                            _ghostTracks        = new(StringComparer.Ordinal);
 
     // ── Selection ─────────────────────────────────────────────────────────────
 
@@ -179,6 +181,7 @@ public class Timeline : UiPanel
     private TimelineKeyframe? _ctxKeyframe;
     private SceneObject?      _ctxObject;
     private string?           _ctxPropPath;
+    private TimelineProperty? _ctxTrackRow;
     private bool              _openAddKeyframeMenu = false;
     private SceneObject?      _ctxAddKeyframeObj;
     private bool              _openSpeedScaleMenu;
@@ -255,6 +258,8 @@ public class Timeline : UiPanel
             FrameRate = _frameRate,
             AutoKeyframe = _autoKeyframe,
             LoopPlayback = _loopPlayback,
+            GhostModeEnabled = _ghostModeEnabled,
+            GhostTracks = _ghostTracks.ToList(),
             PlaybackRegionStart = _playbackRegionStart,
             PlaybackRegionEnd = _playbackRegionEnd,
             Markers = _markers.Select(m => new ProjectTimelineMarker
@@ -271,6 +276,8 @@ public class Timeline : UiPanel
         {
             _markers.Clear();
             _loopPlayback = false;
+            _ghostModeEnabled = false;
+            _ghostTracks.Clear();
             _selectedRegionStart = null;
             _selectedRegionEnd = null;
             _playbackRegionStart = null;
@@ -285,6 +292,14 @@ public class Timeline : UiPanel
         _frameRate = Math.Clamp(state.FrameRate, 1f, 120f);
         _autoKeyframe = state.AutoKeyframe;
         _loopPlayback = state.LoopPlayback;
+        _ghostModeEnabled = state.GhostModeEnabled;
+        _ghostTracks.Clear();
+        foreach (var track in state.GhostTracks ?? new List<string>())
+        {
+            if (!string.IsNullOrWhiteSpace(track))
+                _ghostTracks.Add(track);
+        }
+        PruneHiddenSelection();
         _playbackRegionStart = state.PlaybackRegionStart;
         _playbackRegionEnd = state.PlaybackRegionEnd;
         _markers.Clear();
@@ -517,6 +532,23 @@ public class Timeline : UiPanel
                 : "Looping disabled");
         ImGui.SameLine();
 
+        var ghostTint = _ghostModeEnabled
+            ? new Vector4(0.75f, 0.95f, 1f, 1f)
+            : Vector4.One;
+        bool canUseGhostIcon = ico && TimelineIcons.Ghost != 0;
+        if (canUseGhostIcon
+                ? IcoBtnTinted("##ghost_mode", TimelineIcons.Ghost, sz, ghostTint)
+                : ImGui.Button(_ghostModeEnabled ? "Ghost*" : "Ghost"))
+        {
+            _ghostModeEnabled = !_ghostModeEnabled;
+            PruneHiddenSelection();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(_ghostModeEnabled
+                ? "Ghost mode ON (ghost tracks hidden)"
+                : "Ghost mode OFF (show all tracks)");
+        ImGui.SameLine();
+
         // ── Auto-keyframe record button ──────────────────────────────────────
         ImGui.Spacing(); ImGui.SameLine();
         bool autoKeyNow = _autoKeyframe;
@@ -616,6 +648,107 @@ public class Timeline : UiPanel
 
         _pixelsPerFrame = newScale;
         _pendingHScrollOffset = Math.Max(0f, anchor.frame * newScale - anchor.viewportX);
+    }
+
+    private string GetStableObjectTrackId(SceneObject obj)
+    {
+        return !string.IsNullOrWhiteSpace(obj.LibrarySourceId)
+            ? obj.LibrarySourceId
+            : obj.ObjectId;
+    }
+
+    private string BuildGhostTrackKey(SceneObject obj, string propertyPath)
+    {
+        return $"{GetStableObjectTrackId(obj)}.{propertyPath}";
+    }
+
+    private bool IsGhostTrack(SceneObject obj, string propertyPath)
+    {
+        return _ghostTracks.Contains(BuildGhostTrackKey(obj, propertyPath));
+    }
+
+    private bool IsTrackRowGhost(TimelineProperty row)
+    {
+        if (row.PropertyPath == "__header__")
+            return false;
+
+        if (!row.IsGroupHeader)
+            return IsGhostTrack(row.Object, row.PropertyPath);
+
+        if (row.GroupPaths == null || row.GroupPaths.Length == 0)
+            return IsGhostTrack(row.Object, row.PropertyPath);
+
+        return row.GroupPaths.All(path => IsGhostTrack(row.Object, path));
+    }
+
+    private void SetTrackGhostState(SceneObject obj, string propertyPath, bool ghost)
+    {
+        string key = BuildGhostTrackKey(obj, propertyPath);
+        if (ghost)
+            _ghostTracks.Add(key);
+        else
+            _ghostTracks.Remove(key);
+    }
+
+    private void SetTrackRowGhostState(TimelineProperty row, bool ghost)
+    {
+        if (!row.IsGroupHeader)
+        {
+            SetTrackGhostState(row.Object, row.PropertyPath, ghost);
+            return;
+        }
+
+        if (row.GroupPaths == null || row.GroupPaths.Length == 0)
+        {
+            SetTrackGhostState(row.Object, row.PropertyPath, ghost);
+            return;
+        }
+
+        foreach (var path in row.GroupPaths)
+            SetTrackGhostState(row.Object, path, ghost);
+    }
+
+    private bool IsTrackRowVisible(TimelineProperty row)
+    {
+        if (row.PropertyPath == "__header__")
+            return true;
+
+        if (_ghostModeEnabled && IsTrackRowGhost(row))
+            return false;
+
+        if (row.Indent > 0 && !IsGroupChildVisible(row))
+            return false;
+
+        return true;
+    }
+
+    private bool ShouldShowGhostIndicator(TimelineProperty row)
+    {
+        return !_ghostModeEnabled
+               && row.PropertyPath != "__header__"
+               && IsTrackRowGhost(row);
+    }
+
+    private void PruneHiddenSelection()
+    {
+        if (!_ghostModeEnabled || _selectedKeyframes.Count == 0)
+            return;
+
+        var hidden = _selectedKeyframes.Where(kf =>
+        {
+            if (!_keyframeOwners.TryGetValue(kf, out var owner))
+                return false;
+            return IsGhostTrack(owner.obj, owner.path);
+        }).ToList();
+
+        if (hidden.Count == 0)
+            return;
+
+        foreach (var keyframe in hidden)
+        {
+            _selectedKeyframes.Remove(keyframe);
+            _keyframeOwners.Remove(keyframe);
+        }
     }
 
     // ── Audio tracks ──────────────────────────────────────────────────────────
@@ -1166,6 +1299,7 @@ public class Timeline : UiPanel
                 _playbackRegionStart = null;
                 _playbackRegionEnd = null;
                 _ctxKeyframe = null;
+                _ctxTrackRow = null;
                 _activeMarker = null;
                 _openContextMenu = true;
             }
@@ -1233,6 +1367,7 @@ public class Timeline : UiPanel
             _contextFrame = Math.Max(0, (int)MathF.Round((mouse.X - rightX + _hScrollOffset) / _pixelsPerFrame));
             _activeMarker = hovered;
             _ctxKeyframe = null;
+            _ctxTrackRow = null;
             _openContextMenu = true;
         }
         if (hovered != null && ImGui.IsItemHovered())
@@ -1327,6 +1462,9 @@ public class Timeline : UiPanel
 
         foreach (var row in _displayRows)
         {
+            if (!IsTrackRowVisible(row))
+                continue;
+
             if (row.PropertyPath == "__header__")
             {
                 float hY = ImGui.GetCursorPosY();
@@ -1340,12 +1478,10 @@ public class Timeline : UiPanel
                 continue;
             }
 
-            if (row.Indent > 0 && !IsGroupChildVisible(row))
-                continue;
-
             float rowY = ImGui.GetCursorPosY();
 
             if (row.Indent > 0) ImGui.Indent(12f);
+            bool showGhostIndicator = ShouldShowGhostIndicator(row);
 
             if (row.IsGroupHeader)
             {
@@ -1359,6 +1495,11 @@ public class Timeline : UiPanel
                 ImGui.SameLine();
                 ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetTextLineHeight()) * 0.5f);
                 ImGui.Text(row.Label);
+                if (showGhostIndicator)
+                {
+                    ImGui.SameLine();
+                    ImGui.TextColored(new Vector4(0.70f, 0.86f, 0.98f, 1f), "(ghost)");
+                }
                 ImGui.SameLine();
                 ImGui.SetCursorPosX(LeftColumnWidth - 26f);
                 ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetFrameHeight()) * 0.5f);
@@ -1370,6 +1511,11 @@ public class Timeline : UiPanel
             {
                 ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetTextLineHeight()) * 0.5f);
                 ImGui.Text(row.Label);
+                if (showGhostIndicator)
+                {
+                    ImGui.SameLine();
+                    ImGui.TextColored(new Vector4(0.70f, 0.86f, 0.98f, 1f), "(ghost)");
+                }
                 ImGui.SameLine();
                 ImGui.SetCursorPosX(LeftColumnWidth - 26f);
                 ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetFrameHeight()) * 0.5f);
@@ -1420,8 +1566,7 @@ public class Timeline : UiPanel
 
         foreach (var row in _displayRows)
         {
-            // Skip hidden rows (collapsed groups)
-            if (row.Indent > 0 && !IsGroupChildVisible(row)) continue;
+            if (!IsTrackRowVisible(row)) continue;
             if (row.PropertyPath == "__header__")
             {
                 // Object header — draw a separator-like bar
@@ -1436,9 +1581,10 @@ public class Timeline : UiPanel
             }
 
             var  trackPos = ImGui.GetCursorScreenPos();
+            bool showGhostIndicator = ShouldShowGhostIndicator(row);
 
             // Track background + grid
-            DrawTrackBg(dl, trackPos, wPos, wSize, scrollX);
+            DrawTrackBg(dl, trackPos, wPos, wSize, scrollX, showGhostIndicator);
 
             // Keyframe diamonds
             if (!row.IsGroupHeader)
@@ -1472,16 +1618,20 @@ public class Timeline : UiPanel
     }
 
     private void DrawTrackBg(ImDrawListPtr dl, Vector2 trackPos,
-                              Vector2 wPos, Vector2 wSize, float scrollX)
+                              Vector2 wPos, Vector2 wSize, float scrollX, bool ghostTint)
     {
         dl.PushClipRect(
             new Vector2(wPos.X, trackPos.Y),
             new Vector2(wPos.X + wSize.X, trackPos.Y + RowHeight), true);
 
+        var bgColor = ghostTint
+            ? new Vector4(0.10f, 0.15f, 0.19f, 1f)
+            : new Vector4(0.12f, 0.12f, 0.12f, 1f);
+
         dl.AddRectFilled(
             new Vector2(wPos.X, trackPos.Y),
             new Vector2(wPos.X + wSize.X, trackPos.Y + RowHeight),
-            ImGui.ColorConvertFloat4ToU32(new Vector4(0.12f, 0.12f, 0.12f, 1f)));
+            ImGui.ColorConvertFloat4ToU32(bgColor));
 
         int startF = Math.Max(0, (int)(scrollX / _pixelsPerFrame) - 1);
         int endF   = Math.Min((int)(_maxFrames * 1.5f), (int)((scrollX + wSize.X) / _pixelsPerFrame) + 1);
@@ -1714,6 +1864,7 @@ public class Timeline : UiPanel
                 _ctxKeyframe = hoveredKf;
                 _ctxObject   = row.Object;
                 _ctxPropPath = row.PropertyPath;
+                _ctxTrackRow = row;
                 if (!_selectedKeyframes.Contains(hoveredKf))
                 {
                     _selectedKeyframes.Clear();
@@ -1729,12 +1880,16 @@ public class Timeline : UiPanel
             {
                 // Right-click on object header row
                 _ctxAddKeyframeObj = row.Object;
+                _ctxTrackRow = null;
                 _openAddKeyframeMenu = true;
             }
             else
             {
                 _contextFrame = frame;
                 _ctxKeyframe = null;
+                _ctxObject = row.Object;
+                _ctxPropPath = row.PropertyPath;
+                _ctxTrackRow = row;
                 _activeMarker = null;
                 _openContextMenu = true;
             }
@@ -1804,7 +1959,7 @@ public class Timeline : UiPanel
             if (row.PropertyPath == "__header__" || row.IsGroupHeader)
             { curY += RowHeight; continue; }
 
-            if (row.Indent > 0 && !IsGroupChildVisible(row))
+            if (!IsTrackRowVisible(row))
                 continue;
 
             float rowMinY = curY;
@@ -1899,6 +2054,18 @@ public class Timeline : UiPanel
         }
 
         ImGui.Separator();
+
+        if (_ctxTrackRow is { PropertyPath: not "__header__" } row)
+        {
+            bool rowGhost = IsTrackRowGhost(row);
+            if (ImGui.MenuItem(rowGhost ? "Remove Track from Ghost Timeline" : "Make Track Ghost Timeline"))
+            {
+                SetTrackRowGhostState(row, !rowGhost);
+                PruneHiddenSelection();
+            }
+            ImGui.Separator();
+        }
+
         if (ImGui.MenuItem("Delete Keyframe(s)", "Delete", false, hasSelection))
             DeleteSelectedKeyframes();
 
@@ -1908,8 +2075,12 @@ public class Timeline : UiPanel
     private IEnumerable<(TimelineKeyframe keyframe, SceneObject obj, string path)> EnumerateKeyframes()
     {
         foreach (var row in _displayRows.Where(r => !r.IsGroupHeader && r.PropertyPath != "__header__"))
+        {
+            if (!IsTrackRowVisible(row))
+                continue;
             foreach (var keyframe in GetKeyframesForProperty(row.Object, row.PropertyPath))
                 yield return (keyframe, row.Object, row.PropertyPath);
+        }
     }
 
     private void SelectKeyframes(Func<TimelineKeyframe, bool> predicate)
