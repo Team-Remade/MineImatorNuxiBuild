@@ -133,7 +133,7 @@ public class CameraWindow : Window
         ImGui.SameLine();
         if (ImGui.Button("Dock"))
         {
-            _panel.Undocked = false;
+            _panel.DockToInlineVisible();
             // Reset the camera viewport's GLFW references back to the main window
             _panel.GlfwWindowPreview = _mainHandle;
             Hide();

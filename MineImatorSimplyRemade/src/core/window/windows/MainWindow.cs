@@ -458,11 +458,20 @@ public class MainWindow : Window
         if (_preferencesPanel != null)
         {
             _preferencesPanel.LoadPreferences();
+
+            if (_cameraViewport != null)
+            {
+                _cameraViewport.ApplySavedVisibilityState(
+                    _preferencesPanel.PreviewViewportVisible,
+                    _preferencesPanel.PreviewViewportUndocked);
+            }
         }
     }
 
     protected override void RenderUi()
     {
+        SyncPreviewViewportPreferenceState();
+
         if (_mainViewport != null)
             _mainViewport.SuppressInlinePreviewViewport = _showProjectHome;
 
@@ -523,6 +532,23 @@ public class MainWindow : Window
     private void RequestDockSpaceRebuild()
     {
         _dockSpaceRebuildRequested = true;
+    }
+
+    private void SyncPreviewViewportPreferenceState()
+    {
+        if (_preferencesPanel == null || _cameraViewport == null)
+            return;
+
+        bool nextUndocked = _cameraViewport.Undocked;
+        bool nextVisible = _cameraViewport.Undocked || _cameraViewport.InlineVisible;
+
+        if (_preferencesPanel.PreviewViewportUndocked == nextUndocked &&
+            _preferencesPanel.PreviewViewportVisible == nextVisible)
+            return;
+
+        _preferencesPanel.PreviewViewportUndocked = nextUndocked;
+        _preferencesPanel.PreviewViewportVisible = nextVisible;
+        _preferencesPanel.SavePreferences();
     }
 
     private void UpdateDirtyStateFromScene()

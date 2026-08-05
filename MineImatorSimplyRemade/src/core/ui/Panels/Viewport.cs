@@ -4020,6 +4020,41 @@ public class Viewport : UiPanel
         }
     }
 
+    /// <summary>
+    /// Applies a persisted preview visibility state.
+    /// Valid states are:
+    /// - docked + visible
+    /// - docked + hidden
+    /// - undocked + visible
+    /// </summary>
+    public void ApplySavedVisibilityState(bool visible, bool undocked)
+    {
+        if (!IsPreviewViewport)
+            return;
+
+        if (undocked)
+        {
+            Undocked = true;
+            InlineVisible = false;
+            return;
+        }
+
+        Undocked = false;
+        InlineVisible = visible;
+    }
+
+    /// <summary>
+    /// Transitions an undocked preview back to inline mode and shows it.
+    /// </summary>
+    public void DockToInlineVisible()
+    {
+        if (!IsPreviewViewport)
+            return;
+
+        Undocked = false;
+        InlineVisible = true;
+    }
+
     public unsafe void InitPreviewViewport(uint width, uint height)
     {
         if (!IsPreviewViewport || Gl == null) return;

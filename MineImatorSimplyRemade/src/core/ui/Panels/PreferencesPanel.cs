@@ -47,6 +47,10 @@ public class PreferencesPanel : UiPanel
     // Timeline
     public bool AutoScrollWhilePlaying { get; set; } = true;
 
+    // Preview viewport
+    public bool PreviewViewportVisible { get; set; } = true;
+    public bool PreviewViewportUndocked { get; set; } = false;
+
     // Tools
     public bool ZIsUp { get; set; } = false;
     public bool HideMineImatorBoneDisplayShapes { get; set; } = true;
@@ -434,6 +438,16 @@ public class PreferencesPanel : UiPanel
             ImGui.Unindent();
         }
 
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        if (ImGui.Button("Restore Defaults"))
+        {
+            RestoreDefaults();
+            preferencesChanged = false;
+        }
+
         // Save preferences if any changed
         if (preferencesChanged)
         {
@@ -457,6 +471,8 @@ public class PreferencesPanel : UiPanel
             Accent = Accent,
             Language = Language,
             AutoScrollWhilePlaying = AutoScrollWhilePlaying,
+            PreviewViewportVisible = PreviewViewportVisible,
+            PreviewViewportUndocked = PreviewViewportUndocked,
             ZIsUp = ZIsUp,
             HideMineImatorBoneDisplayShapes = HideMineImatorBoneDisplayShapes,
             HideRegularAssetBoneDisplayShapes = HideRegularAssetBoneDisplayShapes
@@ -482,11 +498,39 @@ public class PreferencesPanel : UiPanel
         Accent = state.Accent;
         Language = state.Language;
         AutoScrollWhilePlaying = state.AutoScrollWhilePlaying;
+        PreviewViewportVisible = state.PreviewViewportVisible;
+        PreviewViewportUndocked = state.PreviewViewportUndocked;
         ZIsUp = state.ZIsUp;
         HideMineImatorBoneDisplayShapes = state.HideMineImatorBoneDisplayShapes;
         HideRegularAssetBoneDisplayShapes = state.HideRegularAssetBoneDisplayShapes;
 
         return true;
+    }
+
+    /// <summary>
+    /// Restores all preferences to their default values and persists them.
+    /// </summary>
+    public void RestoreDefaults()
+    {
+        var defaults = new PreferencesState();
+
+        MinecraftVersion = defaults.MinecraftVersion;
+        AutomaticBackups = defaults.AutomaticBackups;
+        CopyWorkCameraIntoNewCameras = defaults.CopyWorkCameraIntoNewCameras;
+        Theme = defaults.Theme;
+        Accent = defaults.Accent;
+        Language = defaults.Language;
+        AutoScrollWhilePlaying = defaults.AutoScrollWhilePlaying;
+        PreviewViewportVisible = defaults.PreviewViewportVisible;
+        PreviewViewportUndocked = defaults.PreviewViewportUndocked;
+        ZIsUp = defaults.ZIsUp;
+        HideMineImatorBoneDisplayShapes = defaults.HideMineImatorBoneDisplayShapes;
+        HideRegularAssetBoneDisplayShapes = defaults.HideRegularAssetBoneDisplayShapes;
+
+        // Re-apply styling and notify listeners so secondary windows stay in sync.
+        ApplyTheme(Theme);
+
+        SavePreferences();
     }
 
     /// <summary>
@@ -553,6 +597,8 @@ public class PreferencesState
     public PreferencesPanel.AccentColor Accent { get; set; } = PreferencesPanel.AccentColor.Purple;
     public string Language { get; set; } = "English";
     public bool AutoScrollWhilePlaying { get; set; } = true;
+    public bool PreviewViewportVisible { get; set; } = true;
+    public bool PreviewViewportUndocked { get; set; } = false;
     public bool ZIsUp { get; set; } = false;
     public bool HideMineImatorBoneDisplayShapes { get; set; } = true;
     public bool HideRegularAssetBoneDisplayShapes { get; set; } = false;

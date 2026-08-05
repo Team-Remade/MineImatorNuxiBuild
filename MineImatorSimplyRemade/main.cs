@@ -154,18 +154,20 @@ public static class main
             {
                 CameraWindow.Panel = camViewport;
 
-                // Pop button → show the window and mark undocked.
-                camViewport.PopRequested += () =>
+                void ShowUndockedCameraWindow()
                 {
                     // Update the camera viewport's GLFW references to point to the camera window
-                    // so that free-fly controls work correctly in the undocked window
+                    // so that free-fly controls work correctly in the undocked window.
                     camViewport.GlfwApiPreview = Glfw;
                     camViewport.GlfwWindowPreview = CameraWindow.WindowHandle;
 
                     Glfw.MakeContextCurrent(CameraWindow.WindowHandle);
                     CameraWindow.Show();
                     Glfw.MakeContextCurrent(MainWindow.WindowHandle);
-                };
+                }
+
+                // Pop button → show the window and mark undocked.
+                camViewport.PopRequested += ShowUndockedCameraWindow;
 
                 camViewport.HideRequested += () =>
                 {
@@ -173,6 +175,10 @@ public static class main
                     CameraWindow.Hide();
                     Glfw.MakeContextCurrent(MainWindow.WindowHandle);
                 };
+
+                // Restore undocked preview window between launches.
+                if (camViewport.Undocked)
+                    ShowUndockedCameraWindow();
             }
 
             byte* versionPtr = _gl.GetString(StringName.Version);
@@ -201,7 +207,7 @@ public static class main
                 // CameraWindow.Render() manages its own context switching internally.
                 if (CameraWindow.ShouldClose)
                 {
-                    if (camViewport != null) camViewport.Undocked = false;
+                    if (camViewport != null) camViewport.DockToInlineVisible();
                     CameraWindow.Hide();
                     Glfw.SetWindowShouldClose(CameraWindow.WindowHandle, false);
                 }
