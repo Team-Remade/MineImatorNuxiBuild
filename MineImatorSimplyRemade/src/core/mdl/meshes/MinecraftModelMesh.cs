@@ -2,6 +2,7 @@ using GlmSharp;
 using MineImatorSimplyRemade;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using Silk.NET.OpenGL;
+using StbImageSharp;
 
 namespace MineImatorSimplyRemade.core.mdl.meshes;
 
@@ -48,6 +49,22 @@ public static class MinecraftModelMesh
             { "water", new vec3(63f / 255f, 118f / 255f, 228f / 255f) },
         };
 
+    private static readonly HashSet<string> NoBiomeTintBlocks =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "cherry_leaves",
+            "pale_oak_leaves",
+        };
+
+    private static readonly Lazy<vec3> DefaultGrassTint = new(() =>
+        LoadDefaultColormapTint("grass.png", new vec3(145f / 255f, 189f / 255f, 89f / 255f)));
+
+    private static readonly Lazy<vec3> DefaultFoliageTint = new(() =>
+        LoadDefaultColormapTint("foliage.png", new vec3(72f / 255f, 181f / 255f, 24f / 255f)));
+
+    private static readonly Dictionary<string, bool> GrayscaleTextureCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Applies <see cref="DefaultBlockTints"/> (if any) for <paramref name="blockName"/>
     /// to every mesh in <paramref name="meshes"/>. No-op for blocks without a
@@ -71,6 +88,197 @@ public static class MinecraftModelMesh
     /// </summary>
     public static bool TryGetDefaultBlockTint(string blockName, out vec3 tint) =>
         DefaultBlockTints.TryGetValue(blockName, out tint);
+
+    private enum BiomeTintKind
+    {
+        None,
+        Grass,
+        Foliage,
+    }
+
+    private static vec3 LoadDefaultColormapTint(string colormapFileName, vec3 fallback)
+    {
+        // Vanilla-style fallback uses the default climate sample (temp=0.8, downfall=0.4)
+        // when colormap data is unavailable.
+        try
+        {
+            string versionRoot = MinecraftDataLoader.GetVersionRoot();
+            string colormapPath = Path.Combine(versionRoot, "textures", "colormap", colormapFileName);
+            if (!File.Exists(colormapPath))
+                return fallback;
+
+            using var stream = File.OpenRead(colormapPath);
+            ImageResult img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+            if (img.Width <= 0 || img.Height <= 0 || img.Data.Length < 4)
+                return fallback;
+
+            const float temperature = 0.8f;
+            const float downfall = 0.4f;
+
+            int x = (int)MathF.Round((1f - Math.Clamp(temperature, 0f, 1f)) * (img.Width - 1));
+            int y = (int)MathF.Round((1f - Math.Clamp(downfall * temperature, 0f, 1f)) * (img.Height - 1));
+
+            x = Math.Clamp(x, 0, img.Width - 1);
+            y = Math.Clamp(y, 0, img.Height - 1);
+
+            int i = (y * img.Width + x) * 4;
+            byte[] p = img.Data;
+            return new vec3(p[i] / 255f, p[i + 1] / 255f, p[i + 2] / 255f);
+        }
+        catch
+        {
+            return fallback;
+        }
+    }
+
+    private static vec3 GetBiomeTint(BiomeTintKind kind)
+    {
+        return kind switch
+        {
+            BiomeTintKind.Grass => DefaultGrassTint.Value,
+            BiomeTintKind.Foliage => DefaultFoliageTint.Value,
+            _ => new vec3(1f, 1f, 1f),
+        };
+    }
+
+    private static bool TryGetFaceBiomeTint(string blockName, BlockModelFace face, string baseTextureKey, string resolvedTextureKey,
+                                            out BiomeTintKind tintKind, out vec3 tint)
+    {
+        tintKind = BiomeTintKind.None;
+        tint = new vec3(1f, 1f, 1f);
+
+        if (face.TintIndex < 0)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(blockName) && NoBiomeTintBlocks.Contains(blockName))
+            return false;
+
+        // If a face declares tintindex, trust the model metadata and tint it.
+        // Name inference decides grass vs foliage when possible; tintindex then
+        // provides a deterministic fallback for unknown naming patterns.
+        tintKind = InferBiomeTintKind(blockName, baseTextureKey, resolvedTextureKey, face.TintIndex);
+        if (tintKind == BiomeTintKind.None)
+            return false;
+
+        tint = GetBiomeTint(tintKind);
+        return true;
+    }
+
+    private static bool IsTextureGrayscale(string primaryKey, string secondaryKey)
+    {
+        if (!string.IsNullOrWhiteSpace(primaryKey) && GrayscaleTextureCache.TryGetValue(primaryKey, out bool cached))
+            return cached;
+        if (!string.IsNullOrWhiteSpace(secondaryKey) && GrayscaleTextureCache.TryGetValue(secondaryKey, out cached))
+            return cached;
+
+        byte[]? pixels = null;
+        string cacheKey = !string.IsNullOrWhiteSpace(primaryKey) ? primaryKey : secondaryKey;
+
+        if (!string.IsNullOrWhiteSpace(primaryKey) && TerrainAtlas.TilePixels.TryGetValue(primaryKey, out byte[]? primaryPixels))
+            pixels = primaryPixels;
+        else if (!string.IsNullOrWhiteSpace(secondaryKey) && TerrainAtlas.TilePixels.TryGetValue(secondaryKey, out byte[]? secondaryPixels))
+            pixels = secondaryPixels;
+
+        if (pixels == null)
+        {
+            if (!string.IsNullOrWhiteSpace(cacheKey))
+                GrayscaleTextureCache[cacheKey] = false;
+            return false;
+        }
+
+        bool sawVisible = false;
+        bool grayscale = true;
+        for (int i = 0; i + 3 < pixels.Length; i += 4)
+        {
+            byte a = pixels[i + 3];
+            if (a <= 8) continue;
+
+            sawVisible = true;
+            int r = pixels[i];
+            int g = pixels[i + 1];
+            int b = pixels[i + 2];
+            if (Math.Abs(r - g) > 6 || Math.Abs(g - b) > 6 || Math.Abs(r - b) > 6)
+            {
+                grayscale = false;
+                break;
+            }
+        }
+
+        bool result = sawVisible && grayscale;
+        if (!string.IsNullOrWhiteSpace(cacheKey))
+            GrayscaleTextureCache[cacheKey] = result;
+
+        return result;
+    }
+
+    private static BiomeTintKind InferBiomeTintKind(string blockName, string baseTextureKey, string resolvedTextureKey, int tintIndex = -1)
+    {
+        string[] parts =
+        {
+            blockName ?? string.Empty,
+            baseTextureKey ?? string.Empty,
+            resolvedTextureKey ?? string.Empty
+        };
+
+        foreach (string part in parts)
+        {
+            if (string.IsNullOrWhiteSpace(part)) continue;
+
+            if (part.Contains("pale_oak_leaves", StringComparison.OrdinalIgnoreCase))
+                return BiomeTintKind.None;
+
+            if (part.Contains("grass", StringComparison.OrdinalIgnoreCase) ||
+                part.Contains("fern", StringComparison.OrdinalIgnoreCase))
+                return BiomeTintKind.Grass;
+
+            if (part.Contains("leaves", StringComparison.OrdinalIgnoreCase) ||
+                part.Contains("leaf", StringComparison.OrdinalIgnoreCase) ||
+                part.Contains("vine", StringComparison.OrdinalIgnoreCase) ||
+                part.Contains("foliage", StringComparison.OrdinalIgnoreCase) ||
+                part.Contains("ivy", StringComparison.OrdinalIgnoreCase) ||
+                part.Contains("hedge", StringComparison.OrdinalIgnoreCase) ||
+                part.Contains("canopy", StringComparison.OrdinalIgnoreCase))
+                return BiomeTintKind.Foliage;
+        }
+
+        return InferBiomeTintKindFromTintIndex(tintIndex);
+    }
+
+    private static BiomeTintKind InferBiomeTintKindFromTintIndex(int tintIndex)
+    {
+        return tintIndex switch
+        {
+            1 => BiomeTintKind.Grass,
+            2 => BiomeTintKind.Foliage,
+            < 0 => BiomeTintKind.None,
+            _ => BiomeTintKind.Foliage,
+        };
+    }
+
+    /// <summary>
+    /// Infers and returns a biome tint for a standalone texture key (for example
+    /// floor/ground plane tiles) when that texture is grayscale and its name
+    /// matches known grass/foliage patterns.
+    /// </summary>
+    public static bool TryGetBiomeTintForTextureKey(string textureKey, out vec3 tint)
+    {
+        tint = new vec3(1f, 1f, 1f);
+        if (string.IsNullOrWhiteSpace(textureKey))
+            return false;
+
+        if (textureKey.Contains("pale_oak_leaves", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (!IsTextureGrayscale(textureKey, textureKey))
+            return false;
+
+        BiomeTintKind kind = InferBiomeTintKind(textureKey, textureKey, textureKey);
+        if (kind == BiomeTintKind.None)
+            return false;
+
+        tint = GetBiomeTint(kind);
+        return true;
+    }
 
     /// <summary>
     /// Builds one or more <see cref="Mesh"/> objects from a fully-resolved
@@ -110,7 +318,7 @@ public static class MinecraftModelMesh
 
         // Group faces by texture key so each texture gets one draw call
         // key → (vertices, normals, texCoords)
-        var groups = new Dictionary<string, (List<vec3> verts, List<vec3> norms, List<vec2> uvs, uint texId)>();
+        var groups = new Dictionary<string, (List<vec3> verts, List<vec3> norms, List<vec2> uvs, uint texId, BiomeTintKind tintKind, vec3 tint)>();
 
         // Blockstate variant rotation matrix (applied on top of element geometry)
         mat4 variantTransform = BuildVariantTransform(variantRotX, variantRotY);
@@ -136,7 +344,7 @@ public static class MinecraftModelMesh
         var result = new List<Mesh>();
         foreach (var kvp in groups)
         {
-            var (verts, norms, uvs, texId) = kvp.Value;
+            var (verts, norms, uvs, texId, tintKind, tint) = kvp.Value;
             if (verts.Count == 0) continue;
 
             var mesh = new Mesh(gl);
@@ -145,6 +353,8 @@ public static class MinecraftModelMesh
             mesh.TexCoords.AddRange(uvs);
             mesh.TextureId   = texId;
             mesh.DoubleSided = false;
+            if (tintKind != BiomeTintKind.None)
+                mesh.Albedo = tint;
 
             // If this texture has animation data, wire up the animation key
             string texKey = kvp.Key;
@@ -480,7 +690,7 @@ public static class MinecraftModelMesh
     private static void AppendElement(
         BlockModelElement element,
         ResolvedBlockModel model,
-        Dictionary<string, (List<vec3>, List<vec3>, List<vec2>, uint)> groups,
+        Dictionary<string, (List<vec3>, List<vec3>, List<vec2>, uint, BiomeTintKind, vec3)> groups,
         mat4 variantTransform,
         string resourcePackId,
         string blockName,
@@ -534,16 +744,18 @@ public static class MinecraftModelMesh
                     : TerrainAtlas.Textures.TryGetValue(texKey, out t) ? t : 0;
             }
 
+            bool hasFaceTint = TryGetFaceBiomeTint(blockName, face, texKey, resolvedTexKey, out BiomeTintKind tintKind, out vec3 faceTint);
+
             string groupKey = ctmTile != null
-                ? $"ctm:{ctmTile.TextureId}:{ctmTile.TileIndex}"
-                : resolvedTexKey;
+                ? $"ctm:{ctmTile.TextureId}:{ctmTile.TileIndex}:{(hasFaceTint ? tintKind.ToString() : "none")}"
+                : $"{resolvedTexKey}:{(hasFaceTint ? tintKind.ToString() : "none")}";
             if (!groups.TryGetValue(groupKey, out var group))
             {
-                group = ([], [], [], texId);
+                group = ([], [], [], texId, hasFaceTint ? tintKind : BiomeTintKind.None, hasFaceTint ? faceTint : new vec3(1f, 1f, 1f));
                 groups[groupKey] = group;
             }
 
-            var (verts, norms, uvs, _) = group;
+            var (verts, norms, uvs, _, _, _) = group;
 
             // Determine UV from face data or derive from face extents
             float uMin, vMin, uMax, vMax;

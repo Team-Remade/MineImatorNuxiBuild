@@ -12,7 +12,7 @@ public class PreferencesPanel : UiPanel
 {
     // ── Program Preferences ────────────────────────────────────────────────────
 
-    public string MinecraftVersion { get; set; } = "1.3.2";
+    public string MinecraftVersion { get; set; } = PreferencesDefaults.GetDefaultMinecraftVersion();
     public bool AutomaticBackups { get; set; } = true;
     public bool CopyWorkCameraIntoNewCameras { get; set; } = true;
 
@@ -257,18 +257,24 @@ public class PreferencesPanel : UiPanel
         {
             ImGui.Indent();
 
-            // Minecraft version (stub)
+            IReadOnlyList<string> availableMinecraftVersions = PreferencesDefaults.GetAvailableMinecraftVersions();
+
             {
                 ImGui.TextUnformatted("Minecraft version:");
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(150);
                 if (ImGui.BeginCombo("##minecraftVersion", MinecraftVersion))
                 {
-                    if (ImGui.Selectable("1.3.2", MinecraftVersion == "1.3.2"))
+                    foreach (string version in availableMinecraftVersions)
                     {
-                        MinecraftVersion = "1.3.2";
-                        preferencesChanged = true;
+                        bool selected = MinecraftVersion == version;
+                        if (ImGui.Selectable(version, selected))
+                        {
+                            MinecraftVersion = version;
+                            preferencesChanged = true;
+                        }
                     }
+
                     ImGui.EndCombo();
                 }
             }
@@ -491,7 +497,9 @@ public class PreferencesPanel : UiPanel
         if (state == null)
             return false;
 
-        MinecraftVersion = state.MinecraftVersion;
+        MinecraftVersion = string.IsNullOrWhiteSpace(state.MinecraftVersion)
+            ? PreferencesDefaults.GetDefaultMinecraftVersion()
+            : state.MinecraftVersion;
         AutomaticBackups = state.AutomaticBackups;
         CopyWorkCameraIntoNewCameras = state.CopyWorkCameraIntoNewCameras;
         Theme = state.Theme;
@@ -584,13 +592,52 @@ public class PreferencesPanel : UiPanel
     }
 }
 
+internal static class PreferencesDefaults
+{
+    private const string LegacyFallbackMinecraftVersion = "1.3.2";
+
+    public static string GetDefaultMinecraftVersion()
+    {
+        if (!string.IsNullOrWhiteSpace(BlockRegistry.LoadedVersion))
+            return BlockRegistry.LoadedVersion;
+
+        string versionRoot = MinecraftDataLoader.GetVersionRoot(LegacyFallbackMinecraftVersion);
+        string? version = Path.GetFileName(versionRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        return string.IsNullOrWhiteSpace(version) ? LegacyFallbackMinecraftVersion : version;
+    }
+
+    public static IReadOnlyList<string> GetAvailableMinecraftVersions()
+    {
+        string currentVersion = GetDefaultMinecraftVersion();
+        string versionsDir = Path.Combine(MinecraftDataLoader.GetBasePath(), "data", "minecraft", "versions");
+
+        if (!Directory.Exists(versionsDir))
+            return new[] { currentVersion };
+
+        List<string> versions = Directory
+            .GetDirectories(versionsDir)
+            .Select(Path.GetFileName)
+            .Where(static version => !string.IsNullOrWhiteSpace(version))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(static version => version, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!versions.Contains(currentVersion, StringComparer.OrdinalIgnoreCase))
+            versions.Insert(0, currentVersion);
+
+        return versions;
+    }
+}
+
 /// <summary>
 /// Serializable representation of user preferences.
 /// This class is used for JSON serialization/deserialization of preference state.
 /// </summary>
 public class PreferencesState
 {
-    public string MinecraftVersion { get; set; } = "1.3.2";
+    public string MinecraftVersion { get; set; } = PreferencesDefaults.GetDefaultMinecraftVersion();
     public bool AutomaticBackups { get; set; } = true;
     public bool CopyWorkCameraIntoNewCameras { get; set; } = true;
     public PreferencesPanel.ThemeMode Theme { get; set; } = PreferencesPanel.ThemeMode.Darker;

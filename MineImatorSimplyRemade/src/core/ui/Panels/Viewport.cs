@@ -105,7 +105,26 @@ public class Viewport : UiPanel
     // ── Minecraft-style procedural sky ─────────────────────────────────────
     private Shader? _skyShader;
     private uint _sunTexture, _moonTexture, _cloudTexture;
+    private readonly uint[] _moonPhaseTextures = new uint[8];
+    private readonly string[] _loadedMoonPhasePaths = new string[8];
+    private bool _moonTextureIsAtlas = true;
     private string _loadedSunPath = "", _loadedMoonPath = "", _loadedCloudPath = "";
+
+    private const string LegacySunTexturePath = "minecraft:environment/sun.png";
+    private const string ModernSunTexturePath = "minecraft:environment/celestial/sun.png";
+    private const string LegacyMoonTexturePath = "minecraft:environment/moon_phases.png";
+    private static readonly string[] ModernMoonPhaseFileNames =
+    [
+        // Preserve vanilla legacy moon phase order (indices 0..7).
+        "full_moon.png",
+        "waning_gibbous.png",
+        "third_quarter.png",
+        "waning_crescent.png",
+        "new_moon.png",
+        "waxing_crescent.png",
+        "first_quarter.png",
+        "waxing_gibbous.png"
+    ];
 
     // ── Camera ─────────────────────────────────────────────────────────────────
 
@@ -489,6 +508,10 @@ public class Viewport : UiPanel
             return false;
 
         _groundPlane.TextureId = tileId;
+        _groundPlane.Albedo = new vec3(1f, 1f, 1f);
+        if (normalizedAtlas == "block" && MinecraftModelMesh.TryGetBiomeTintForTextureKey(normalizedKey, out vec3 tint))
+            _groundPlane.Albedo = tint;
+
         GroundTileAtlas = normalizedAtlas;
         GroundTileKey = normalizedKey;
         return true;
@@ -761,15 +784,118 @@ public class Viewport : UiPanel
     public void ReloadSkyTextures()
     {
         if (Gl == null || PropertiesPanel == null) return;
-        LoadSkyTexture(PropertiesPanel.SunTexture, ref _sunTexture, ref _loadedSunPath);
-        LoadSkyTexture(PropertiesPanel.MoonTexture, ref _moonTexture, ref _loadedMoonPath);
+        LoadSunSkyTexture(PropertiesPanel.SunTexture);
+        LoadMoonSkyTextures(PropertiesPanel.MoonTexture);
         LoadSkyTexture(PropertiesPanel.CloudTexture, ref _cloudTexture, ref _loadedCloudPath, true);
+    }
+
+    private void LoadSunSkyTexture(string configuredPath)
+    {
+        if (TryLoadSkyTexture(configuredPath, ref _sunTexture, ref _loadedSunPath, out _, out _))
+            return;
+
+        if (string.Equals(configuredPath, LegacySunTexturePath, StringComparison.OrdinalIgnoreCase))
+            TryLoadSkyTexture(ModernSunTexturePath, ref _sunTexture, ref _loadedSunPath, out _, out _);
+        else if (string.Equals(configuredPath, ModernSunTexturePath, StringComparison.OrdinalIgnoreCase))
+            TryLoadSkyTexture(LegacySunTexturePath, ref _sunTexture, ref _loadedSunPath, out _, out _);
+    }
+
+    private void LoadMoonSkyTextures(string configuredPath)
+    {
+        // Prefer the configured moon texture when available.
+        if (TryLoadSkyTexture(configuredPath, ref _moonTexture, ref _loadedMoonPath, out int width, out int height))
+        {
+            _moonTextureIsAtlas = IsMoonAtlasSize(width, height);
+            if (_moonTextureIsAtlas)
+                DeleteMoonPhaseTextures();
+            return;
+        }
+
+        // Legacy moon atlas path moved to split phase files in modern versions.
+        if (string.Equals(configuredPath, LegacyMoonTexturePath, StringComparison.OrdinalIgnoreCase) &&
+            TryLoadModernMoonPhaseTextures())
+        {
+            _moonTextureIsAtlas = false;
+            return;
+        }
+
+        _moonTextureIsAtlas = true;
+    }
+
+    private bool TryLoadModernMoonPhaseTextures()
+    {
+        bool loadedAll = true;
+        for (int i = 0; i < ModernMoonPhaseFileNames.Length; i++)
+        {
+            string phasePath = $"minecraft:environment/celestial/moon/{ModernMoonPhaseFileNames[i]}";
+            if (!TryLoadSkyTexture(phasePath, ref _moonPhaseTextures[i], ref _loadedMoonPhasePaths[i], out _, out _))
+                loadedAll = false;
+        }
+
+        if (!loadedAll)
+        {
+            DeleteMoonPhaseTextures();
+            return false;
+        }
+
+        if (_moonTexture != 0)
+        {
+            Gl.DeleteTexture(_moonTexture);
+            _moonTexture = 0;
+        }
+        _loadedMoonPath = LegacyMoonTexturePath;
+        return true;
+    }
+
+    private void DeleteMoonPhaseTextures()
+    {
+        if (Gl == null) return;
+        for (int i = 0; i < _moonPhaseTextures.Length; i++)
+        {
+            if (_moonPhaseTextures[i] != 0)
+                Gl.DeleteTexture(_moonPhaseTextures[i]);
+            _moonPhaseTextures[i] = 0;
+            _loadedMoonPhasePaths[i] = "";
+        }
+    }
+
+    private uint GetMoonTextureForPhase(int phase)
+    {
+        if (_moonTextureIsAtlas)
+            return _moonTexture;
+
+        int index = Math.Clamp(phase, 0, _moonPhaseTextures.Length - 1);
+        uint phaseTexture = _moonPhaseTextures[index];
+        return phaseTexture != 0 ? phaseTexture : _moonTexture;
+    }
+
+    private static bool IsMoonAtlasSize(int width, int height)
+    {
+        if (width <= 0 || height <= 0)
+            return false;
+        if (width % 4 != 0 || height % 2 != 0)
+            return false;
+        return (width / 4) == (height / 2);
     }
 
     private unsafe void LoadSkyTexture(string configuredPath, ref uint texture, ref string loadedPath, bool repeat = false)
     {
-        if (string.IsNullOrWhiteSpace(configuredPath)) return;
-        if (string.Equals(configuredPath, loadedPath, StringComparison.OrdinalIgnoreCase) && texture != 0) return;
+        TryLoadSkyTexture(configuredPath, ref texture, ref loadedPath, out _, out _, repeat);
+    }
+
+    private unsafe bool TryLoadSkyTexture(
+        string configuredPath,
+        ref uint texture,
+        ref string loadedPath,
+        out int width,
+        out int height,
+        bool repeat = false)
+    {
+        width = 0;
+        height = 0;
+        if (string.IsNullOrWhiteSpace(configuredPath)) return false;
+        if (string.Equals(configuredPath, loadedPath, StringComparison.OrdinalIgnoreCase) && texture != 0)
+            return true;
         byte[]? data = null;
         if (configuredPath.StartsWith("resourcepack:", StringComparison.OrdinalIgnoreCase))
         {
@@ -786,11 +912,13 @@ public class Viewport : UiPanel
                 : Path.GetFullPath(configuredPath);
             if (File.Exists(path)) data = File.ReadAllBytes(path);
         }
-        if (data == null || data.Length == 0) return;
+        if (data == null || data.Length == 0) return false;
         try
         {
             using MemoryStream stream = new(data);
             ImageResult image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+            width = image.Width;
+            height = image.Height;
             // Legacy sun/moon PNGs are RGB and encode transparency as black.
             bool pngHasAlpha = data.Length > 25 && (data[25] == 4 || data[25] == 6);
             if (!pngHasAlpha)
@@ -818,8 +946,10 @@ public class Viewport : UiPanel
             Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)(repeat ? GLEnum.Repeat : GLEnum.ClampToEdge));
             Gl.BindTexture(GLEnum.Texture2D, 0);
             loadedPath = configuredPath;
+            return true;
         }
         catch (Exception ex) { Console.Error.WriteLine($"Failed to load sky texture '{configuredPath}': {ex.Message}"); }
+        return false;
     }
 
     private static vec3 DirectionFromEuler(float[] degrees)
@@ -932,6 +1062,7 @@ public class Viewport : UiPanel
         V3("uSunDirection", sunDirection); V3("uMoonDirection", moonDirection);
         F("uSunSize", p.SunSize); F("uMoonSize", p.MoonSize);
         int phase = Gl.GetUniformLocation(program, "uMoonPhase"); if (phase >= 0) Gl.Uniform1(phase, p.MoonPhase);
+        int moonAtlas = Gl.GetUniformLocation(program, "uMoonAtlasEnabled"); if (moonAtlas >= 0) Gl.Uniform1(moonAtlas, _moonTextureIsAtlas ? 1 : 0);
         int twilight = Gl.GetUniformLocation(program, "uTwilight"); if (twilight >= 0) Gl.Uniform1(twilight, p.Twilight ? 1 : 0);
         int showStars = Gl.GetUniformLocation(program, "uShowStars"); if (showStars >= 0) Gl.Uniform1(showStars, p.ShowStars ? 1 : 0);
         F("uStarDensity", p.StarDensity);
@@ -947,7 +1078,7 @@ public class Viewport : UiPanel
         F("uFogFadeSize", Mesh.FogFadeSize);
         Gl.ActiveTexture(GLEnum.Texture0); Gl.BindTexture(GLEnum.Texture2D, _sunTexture);
         int sun = Gl.GetUniformLocation(program, "uSunTex"); if (sun >= 0) Gl.Uniform1(sun, 0);
-        Gl.ActiveTexture(GLEnum.Texture1); Gl.BindTexture(GLEnum.Texture2D, _moonTexture);
+        Gl.ActiveTexture(GLEnum.Texture1); Gl.BindTexture(GLEnum.Texture2D, GetMoonTextureForPhase(p.MoonPhase));
         int moon = Gl.GetUniformLocation(program, "uMoonTex"); if (moon >= 0) Gl.Uniform1(moon, 1);
         Gl.ActiveTexture(GLEnum.Texture2); Gl.BindTexture(GLEnum.Texture2D, _cloudTexture);
         int clouds = Gl.GetUniformLocation(program, "uCloudTex"); if (clouds >= 0) Gl.Uniform1(clouds, 2);

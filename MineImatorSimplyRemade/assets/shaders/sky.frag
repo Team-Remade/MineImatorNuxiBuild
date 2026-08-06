@@ -15,6 +15,7 @@ uniform float uCloudHeight, uCloudBlockSize, uCloudThickness;
 uniform vec3 uSunDirection, uMoonDirection;
 uniform float uSunSize, uMoonSize;
 uniform int uMoonPhase;
+uniform bool uMoonAtlasEnabled;
 uniform bool uShowStars, uTwilight;
 uniform float uStarBrightness, uStarDensity, uStarTwinkleSpeed;
 uniform vec3 uStarColor;
@@ -25,7 +26,7 @@ uniform bool uCloudFogEnabled;
 uniform vec3 uObjectFogColor;
 uniform float uFogDistance, uFogFadeSize;
 
-vec4 celestial(sampler2D tex, vec3 ray, vec3 direction, float angularSize, bool atlas)
+vec4 celestial(sampler2D tex, vec3 ray, vec3 direction, float angularSize, bool atlas, int phase)
 {
     vec3 upRef = abs(direction.y) > 0.98 ? vec3(0, 0, 1) : vec3(0, 1, 0);
     vec3 right = normalize(cross(direction, upRef));
@@ -36,8 +37,8 @@ vec4 celestial(sampler2D tex, vec3 ray, vec3 direction, float angularSize, bool 
     vec2 uv = vec2(dot(ray, right), dot(ray, up)) / (facing * radius) * 0.5 + 0.5;
     if (any(lessThan(uv, vec2(0))) || any(greaterThan(uv, vec2(1)))) return vec4(0.0);
     if (atlas) {
-        int phase = clamp(uMoonPhase, 0, 7);
-        uv = (uv + vec2(float(phase % 4), float(phase / 4))) / vec2(4.0, 2.0);
+        int moonPhase = clamp(phase, 0, 7);
+        uv = (uv + vec2(float(moonPhase % 4), float(moonPhase / 4))) / vec2(4.0, 2.0);
     }
     return texture(tex, uv);
 }
@@ -167,8 +168,8 @@ void main()
     vec3 nightColor = mix(uHorizonNight, uZenithNight, vertical);
     vec3 color = mix(mix(dayColor, sunsetColor, sunset), nightColor, night);
 
-    vec4 sun = celestial(uSunTex, ray, uSunDirection, uSunSize, false);
-    vec4 moon = celestial(uMoonTex, ray, uMoonDirection, uMoonSize, true);
+    vec4 sun = celestial(uSunTex, ray, uSunDirection, uSunSize, false, 0);
+    vec4 moon = celestial(uMoonTex, ray, uMoonDirection, uMoonSize, uMoonAtlasEnabled, uMoonPhase);
     color = mix(color, sun.rgb, sun.a * (1.0 - night));
     color = mix(color, moon.rgb, moon.a * night);
 

@@ -443,22 +443,31 @@ public static class BlockRegistry
         AddModelVariant("oak_wall_sign", "facing=south", "minecraft:block/oak_wall_sign", 180, useCemOverride: false);
         AddModelVariant("oak_wall_sign", "facing=west", "minecraft:block/oak_wall_sign", 270, useCemOverride: false);
 
-        // Bed: pair foot + head as a single two-block object (head is +1 in Z).
-        // Replace the useless "minecraft:block/bed" default variant entirely.
-        AddBedVariant("red_bed");
-        _replaceVariants.Add("red_bed");
+        // Bed: pair head + foot as a single two-block object.
+        // The bed's head portion is spawned at the origin and the foot portion
+        // is offset by +1 in Z, matching the updated bed layout.
+        string bedStatesDir = Path.Combine(VersionRoot, "blockstates");
+        if (Directory.Exists(bedStatesDir))
+        {
+            foreach (string bedStateFile in Directory.GetFiles(bedStatesDir, "*_bed.json"))
+            {
+                string blockName = Path.GetFileNameWithoutExtension(bedStateFile);
+                AddBedVariant(blockName);
+                _replaceVariants.Add(blockName);
+            }
+        }
     }
 
     private static void AddBedVariant(string blockName)
     {
-        // Foot and head share the same texture: minecraft:entity/bed/red
+        // Bed textures are shared per-color: minecraft:entity/bed/red
         // blockName is e.g. "red_bed" → models are "red_bed_foot" and "red_bed_head"
         string footModel = $"minecraft:block/{blockName}_foot";
         string headModel = $"minecraft:block/{blockName}_head";
 
         var foot = new BlockVariantEntry
         {
-            VariantKey = "default",
+            VariantKey = "foot",
             ModelPath  = footModel,
         };
 
@@ -471,11 +480,11 @@ public static class BlockRegistry
         var combined = new BlockVariantEntry
         {
             VariantKey  = "default",
-            ModelPath   = footModel,   // foot at Z=0
-            TopHalf     = head,
+            ModelPath   = headModel,   // head at Z=0
+            TopHalf     = foot,
             PartOffsetX = 0f,
             PartOffsetY = 0f,
-            PartOffsetZ = 1f           // head (pillow) at Z=+1
+            PartOffsetZ = 1f           // foot offset by +1 in Z
         };
 
         if (!_extraVariants.TryGetValue(blockName, out var list))
