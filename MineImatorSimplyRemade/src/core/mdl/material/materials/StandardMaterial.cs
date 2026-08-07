@@ -49,6 +49,17 @@ public class StandardMaterial : Material
     public float EmissionEnergyMultiplier = 1f;
 
     /// <summary>
+    /// When true, emissive surfaces only contribute to indirect lighting and
+    /// do not emit direct light into nearby geometry.
+    /// </summary>
+    public bool EmissionIndirectOnly = false;
+
+    /// <summary>
+    /// Per-mesh auto-emission level (0..15) inferred from Minecraft block data.
+    /// </summary>
+    public byte AutoEmissionLevel = 0;
+
+    /// <summary>
     /// When true, both faces of every triangle are rendered (back-face culling
     /// disabled for this surface).
     /// </summary>

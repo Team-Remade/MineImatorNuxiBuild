@@ -871,6 +871,8 @@ public class PropertiesPanel : UiPanel
             EmissionEnabled = source.EmissionEnabled,
             EmissionColor = new ProjectVec4 { X = source.EmissionColor.X, Y = source.EmissionColor.Y, Z = source.EmissionColor.Z, W = source.EmissionColor.W },
             EmissionEnergy = source.EmissionEnergy,
+            EmissionIndirectOnly = source.EmissionIndirectOnly,
+            AutoEmission = source.AutoEmission,
             ItemTileKey = source.ItemTileKey,
             ItemIs3D = source.ItemIs3D,
             ParticleLibraryEntryId = source.ParticleLibraryEntryId,
@@ -3515,6 +3517,33 @@ public class PropertiesPanel : UiPanel
                 }
             }
 
+            // Auto emission from Minecraft block metadata (schema/block imports)
+            {
+                bool autoEmission = mat?.AutoEmission ?? true;
+                if (ImGui.Checkbox("Auto Emission", ref autoEmission))
+                {
+                    EnsureMaterialSettings();
+                    _currentObject.MaterialSettings.AutoEmission = autoEmission;
+                    _currentObject.SetExplicitMaterialSettings();
+                    _currentObject.PropagateMaterialSettingsToChildren();
+
+                    // Rebuild spawned Minecraft-derived meshes so merged schematic
+                    // buckets and per-mesh auto-emission levels are refreshed.
+                    if (SpawnMenu != null)
+                    {
+                        if (string.Equals(_currentObject.SpawnCategory, "Blocks", StringComparison.Ordinal))
+                        {
+                            SpawnMenu.RebuildBlockMeshes(_currentObject);
+                        }
+                        else if (string.Equals(_currentObject.SpawnCategory, "Scenery", StringComparison.Ordinal) &&
+                                 !string.IsNullOrWhiteSpace(_currentObject.SourceAssetPath))
+                        {
+                            SpawnMenu.ApplyResourcePackToSpawnedObject(_currentObject, _currentObject.ResourcePackId);
+                        }
+                    }
+                }
+            }
+
             // Emission color (no alpha)
             {
                 vec4 ec = mat?.EmissionColor ?? new vec4(0f, 0f, 0f, 1f);
@@ -3535,6 +3564,18 @@ public class PropertiesPanel : UiPanel
                 {
                     EnsureMaterialSettings();
                     _currentObject.MaterialSettings.EmissionEnergy = emEnergy;
+                    _currentObject.SetExplicitMaterialSettings();
+                    _currentObject.PropagateMaterialSettingsToChildren();
+                }
+            }
+
+            // Emission indirect-only toggle
+            {
+                bool emissionIndirectOnly = mat?.EmissionIndirectOnly ?? false;
+                if (ImGui.Checkbox("Emission Indirect Only", ref emissionIndirectOnly))
+                {
+                    EnsureMaterialSettings();
+                    _currentObject.MaterialSettings.EmissionIndirectOnly = emissionIndirectOnly;
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
@@ -3628,6 +3669,8 @@ public class PropertiesPanel : UiPanel
                 m.Roughness       = 0.5f;
                 m.EmissionEnabled = false;
                 m.EmissionEnergy  = 1f;
+                m.EmissionIndirectOnly = false;
+                m.AutoEmission = true;
                 m.NormalTexture   = 0;
                 m.NormalEnabled   = false;
                 m.DoubleSided     = false;

@@ -74,6 +74,12 @@ public class BlockModelElement
     public float[] From { get; set; } = { 0, 0, 0 };
     public float[] To   { get; set; } = { 16, 16, 16 };
 
+    /// <summary>
+    /// Optional element-level emitted light (0..15) used by modern block models.
+    /// -1 means not specified.
+    /// </summary>
+    public int LightEmission { get; set; } = -1;
+
     /// <summary>Optional per-element rotation.</summary>
     public ElementRotation? Rotation { get; set; }
 
@@ -99,6 +105,12 @@ public class BlockModelFace
     public string?  Cullface  { get; set; }
     public int      TintIndex { get; set; } = -1;
     public int      Rotation  { get; set; } = 0;
+
+    /// <summary>
+    /// Optional face-level emitted light (0..15) used by modern block models.
+    /// -1 means not specified.
+    /// </summary>
+    public int      LightEmission { get; set; } = -1;
 }
 
 // ── NUX manifest ──────────────────────────────────────────────────────────────
@@ -900,6 +912,7 @@ public static class BlockRegistry
         {
             From = fromArr,
             To   = toArr,
+            LightEmission = obj["light_emission"]?.GetValue<int>() ?? -1,
         };
 
         // Optional element rotation
@@ -926,7 +939,8 @@ public static class BlockRegistry
                     Texture   = faceObj["texture"]?.GetValue<string>() ?? "",
                     Cullface  = faceObj["cullface"]?.GetValue<string>(),
                     TintIndex = faceObj["tintindex"]?.GetValue<int>() ?? -1,
-                    Rotation  = faceObj["rotation"]?.GetValue<int>() ?? 0
+                    Rotation  = faceObj["rotation"]?.GetValue<int>() ?? 0,
+                    LightEmission = faceObj["light_emission"]?.GetValue<int>() ?? -1
                 };
 
                 if (faceObj["uv"] is JsonArray uvArr && uvArr.Count == 4)

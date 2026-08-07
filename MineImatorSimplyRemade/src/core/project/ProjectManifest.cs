@@ -361,6 +361,8 @@ public class ProjectSceneObjectEntry
     public bool EmissionEnabled { get; set; } = false;
     public ProjectVec4 EmissionColor { get; set; } = new() { X = 0f, Y = 0f, Z = 0f, W = 1f };
     public float EmissionEnergy { get; set; } = 1f;
+    public bool EmissionIndirectOnly { get; set; } = false;
+    public bool AutoEmission { get; set; } = true;
 
     // Item-specific data
     public string ItemTileKey { get; set; } = "";

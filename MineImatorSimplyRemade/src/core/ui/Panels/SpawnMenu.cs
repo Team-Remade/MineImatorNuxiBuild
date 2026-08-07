@@ -2723,7 +2723,7 @@ public class SpawnMenu : UiPanel
                 originZ,
                 variantCache);
 
-            var merged = new Dictionary<uint, MeshAccumulator>();
+            var merged = new Dictionary<MeshBatchKey, MeshAccumulator>();
             // Texture id -> TerrainAtlas animation key, populated by EmitLiquidVoxel whenever it
             // resolves an animated fluid texture (e.g. "water_still"), so the merged mesh for that
             // texture can be marked animated once assembly finishes below.
@@ -2751,7 +2751,7 @@ public class SpawnMenu : UiPanel
 
                             foreach (var template in largePlacement.Info.Templates)
                             {
-                                var acc = GetOrCreateAccumulator(merged, template.TextureId);
+                                var acc = GetOrCreateAccumulator(merged, template.TextureId, largePlacement.Info.AutoEmissionLevel);
                                 AppendTemplate(acc, template, largePlacement.Px, largePlacement.Py, largePlacement.Pz);
                             }
 
@@ -2790,6 +2790,7 @@ public class SpawnMenu : UiPanel
                                 pz,
                                 info.BlockName,
                                 liquidLevels[index],
+                                info.AutoEmissionLevel,
                                 normalizedResourcePackId);
                             continue;
                         }
@@ -2808,13 +2809,14 @@ public class SpawnMenu : UiPanel
                                 z,
                                 px,
                                 py,
-                                pz);
+                                pz,
+                                info.AutoEmissionLevel);
                             continue;
                         }
 
                         foreach (var template in info.Templates)
                         {
-                            var acc = GetOrCreateAccumulator(merged, template.TextureId);
+                            var acc = GetOrCreateAccumulator(merged, template.TextureId, info.AutoEmissionLevel);
                             AppendTemplate(acc, template, px, py, pz);
                         }
                     }
@@ -2841,21 +2843,27 @@ public class SpawnMenu : UiPanel
                 var acc = kv.Value;
                 if (acc.Vertices.Count == 0) continue;
 
+                uint textureId = kv.Key.TextureId;
+                byte autoEmissionLevel = kv.Key.AutoEmissionLevel;
+
                 var mesh = new Mesh(Gl)
                 {
-                    TextureId = kv.Key,
-                    AnimationKey = liquidAnimKeys.TryGetValue(kv.Key, out string? animKey) ? animKey : "",
-                    IsTranslucent = texIdToKey.TryGetValue(kv.Key, out string? texKey) &&
+                    TextureId = textureId,
+                    AnimationKey = liquidAnimKeys.TryGetValue(textureId, out string? animKey) ? animKey : "",
+                    IsTranslucent = texIdToKey.TryGetValue(textureId, out string? texKey) &&
                                     TerrainAtlas.IsTextureTranslucent(texKey)
                 };
-                if (liquidTintColors.TryGetValue(kv.Key, out vec3 tint))
+                if (liquidTintColors.TryGetValue(textureId, out vec3 tint))
                     mesh.Albedo = tint;
+                mesh.AutoEmissionLevel = autoEmissionLevel;
                 mesh.Vertices.AddRange(acc.Vertices);
                 mesh.Normals.AddRange(acc.Normals);
                 mesh.TexCoords.AddRange(acc.TexCoords);
                 mesh.Upload();
                 root.AddMesh(mesh);
             }
+
+            root.ApplyMaterialSettingsToMeshes();
 
             if (root.Visuals.Count == 0)
             {
@@ -3050,6 +3058,25 @@ public class SpawnMenu : UiPanel
         public readonly List<vec2> TexCoords = new();
     }
 
+    private readonly struct MeshBatchKey : IEquatable<MeshBatchKey>
+    {
+        public readonly uint TextureId;
+        public readonly byte AutoEmissionLevel;
+
+        public MeshBatchKey(uint textureId, byte autoEmissionLevel)
+        {
+            TextureId = textureId;
+            AutoEmissionLevel = autoEmissionLevel;
+        }
+
+        public bool Equals(MeshBatchKey other) =>
+            TextureId == other.TextureId && AutoEmissionLevel == other.AutoEmissionLevel;
+
+        public override bool Equals(object? obj) => obj is MeshBatchKey other && Equals(other);
+
+        public override int GetHashCode() => HashCode.Combine(TextureId, AutoEmissionLevel);
+    }
+
     private sealed class MeshTemplate
     {
         public uint TextureId;
@@ -3081,6 +3108,7 @@ public class SpawnMenu : UiPanel
         public bool IsCullableCube;
         public CubeFaceSet? CubeFaces;
         public List<MeshTemplate> Templates = new();
+        public byte AutoEmissionLevel;
 
         /// <summary>
         /// Whether this block should hide the touching face of an adjacent block
@@ -3112,6 +3140,106 @@ public class SpawnMenu : UiPanel
     {
         "glass", "leaves", "ice",
     };
+
+    private static readonly Dictionary<string, byte> AutoEmissiveBlockLightLevels =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["lava"] = 15,
+            ["glowstone"] = 15,
+            ["sea_lantern"] = 15,
+            ["beacon"] = 15,
+            ["jack_o_lantern"] = 15,
+            ["shroomlight"] = 15,
+            ["campfire"] = 15,
+            ["soul_campfire"] = 10,
+            ["lantern"] = 15,
+            ["soul_lantern"] = 10,
+            ["redstone_torch"] = 7,
+            ["torch"] = 14,
+            ["soul_torch"] = 10,
+            ["end_rod"] = 14,
+            ["respawn_anchor"] = 15,
+            ["furnace"] = 13,
+            ["blast_furnace"] = 13,
+            ["smoker"] = 13,
+            ["crying_obsidian"] = 10,
+            ["magma_block"] = 3,
+            ["redstone_ore"] = 9,
+            ["deepslate_redstone_ore"] = 9,
+            ["ochre_froglight"] = 15,
+            ["pearlescent_froglight"] = 15,
+            ["verdant_froglight"] = 15,
+            ["glow_lichen"] = 7,
+            ["light"] = 15,
+            ["fire"] = 15,
+            ["soul_fire"] = 10,
+            ["nether_portal"] = 11,
+            ["end_portal"] = 15,
+            ["end_gateway"] = 15,
+            ["sculk_catalyst"] = 6,
+            ["sculk_sensor"] = 1,
+            ["calibrated_sculk_sensor"] = 1,
+            ["sculk_shrieker"] = 2,
+            ["copper_bulb"] = 15,
+            ["lightning_rod"] = 14
+        };
+
+    private static byte GetFallbackAutoEmissionLevel(string blockName)
+    {
+        if (AutoEmissiveBlockLightLevels.TryGetValue(blockName, out byte level))
+            return level;
+
+        if (blockName.EndsWith("_torch", StringComparison.OrdinalIgnoreCase))
+            return 14;
+        if (blockName.EndsWith("_lantern", StringComparison.OrdinalIgnoreCase))
+            return 15;
+        if (blockName.Contains("portal", StringComparison.OrdinalIgnoreCase))
+            return 11;
+        if (blockName.Contains("candle", StringComparison.OrdinalIgnoreCase))
+            return 12;
+
+        return 0;
+    }
+
+    private static byte GetModelEmissionLevel(ResolvedBlockModel? model)
+    {
+        if (model == null)
+            return 0;
+
+        int maxLevel = 0;
+        foreach (var element in model.Elements)
+        {
+            if (element.LightEmission >= 0)
+                maxLevel = Math.Max(maxLevel, Math.Clamp(element.LightEmission, 0, 15));
+
+            foreach (var face in element.Faces.Values)
+            {
+                if (face.LightEmission >= 0)
+                    maxLevel = Math.Max(maxLevel, Math.Clamp(face.LightEmission, 0, 15));
+            }
+        }
+
+        return (byte)Math.Clamp(maxLevel, 0, 15);
+    }
+
+    private byte ComputeAutoEmissionLevel(string blockName, BlockVariantEntry variant)
+    {
+        byte maxLevel = GetFallbackAutoEmissionLevel(blockName);
+
+        if (!string.IsNullOrEmpty(variant.ModelPath))
+        {
+            var resolved = BlockRegistry.ResolveModel(variant.ModelPath);
+            maxLevel = Math.Max(maxLevel, GetModelEmissionLevel(resolved));
+        }
+
+        if (variant.TopHalf != null && !string.IsNullOrEmpty(variant.TopHalf.ModelPath))
+        {
+            var topResolved = BlockRegistry.ResolveModel(variant.TopHalf.ModelPath);
+            maxLevel = Math.Max(maxLevel, GetModelEmissionLevel(topResolved));
+        }
+
+        return maxLevel;
+    }
 
     private static bool IsNonOccludingBlock(string blockName)
     {
@@ -3393,6 +3521,11 @@ public class SpawnMenu : UiPanel
             Templates = BuildVariantTemplates(parts)
         };
 
+        byte emissionLevel = ComputeAutoEmissionLevel(blockName, post);
+        foreach (var part in parts)
+            emissionLevel = Math.Max(emissionLevel, ComputeAutoEmissionLevel(blockName, part));
+        info.AutoEmissionLevel = emissionLevel;
+
         cache[cacheKey] = info;
         return info;
     }
@@ -3411,6 +3544,8 @@ public class SpawnMenu : UiPanel
             BlockName = blockName,
             Variant = variant
         };
+
+        info.AutoEmissionLevel = ComputeAutoEmissionLevel(blockName, variant);
 
         info.CubeFaces = TryBuildCullableCubeFaces(variant);
         info.IsCullableCube = info.CubeFaces != null;
@@ -3782,12 +3917,16 @@ public class SpawnMenu : UiPanel
         return containing ?? variants[0];
     }
 
-    private static MeshAccumulator GetOrCreateAccumulator(Dictionary<uint, MeshAccumulator> merged, uint textureId)
+    private static MeshAccumulator GetOrCreateAccumulator(
+        Dictionary<MeshBatchKey, MeshAccumulator> merged,
+        uint textureId,
+        byte autoEmissionLevel)
     {
-        if (!merged.TryGetValue(textureId, out var acc))
+        var key = new MeshBatchKey(textureId, autoEmissionLevel);
+        if (!merged.TryGetValue(key, out var acc))
         {
             acc = new MeshAccumulator();
-            merged[textureId] = acc;
+            merged[key] = acc;
         }
 
         return acc;
@@ -3805,7 +3944,7 @@ public class SpawnMenu : UiPanel
     }
 
     private static void EmitCubeFacesWithCulling(
-        Dictionary<uint, MeshAccumulator> merged,
+        Dictionary<MeshBatchKey, MeshAccumulator> merged,
         CubeFaceSet faces,
         VariantRenderInfo?[] voxels,
         int width,
@@ -3816,7 +3955,8 @@ public class SpawnMenu : UiPanel
         int z,
         float px,
         float py,
-        float pz)
+        float pz,
+        byte autoEmissionLevel)
     {
         bool IsOccluded(int nx, int ny, int nz)
         {
@@ -3831,28 +3971,29 @@ public class SpawnMenu : UiPanel
         }
 
         if (!IsOccluded(x, y + 1, z) && faces.Up != null)
-            EmitFace(merged, faces.Up, px, py, pz, "up");
+            EmitFace(merged, faces.Up, px, py, pz, "up", autoEmissionLevel);
         if (!IsOccluded(x, y - 1, z) && faces.Down != null)
-            EmitFace(merged, faces.Down, px, py, pz, "down");
+            EmitFace(merged, faces.Down, px, py, pz, "down", autoEmissionLevel);
         if (!IsOccluded(x, y, z - 1) && faces.North != null)
-            EmitFace(merged, faces.North, px, py, pz, "north");
+            EmitFace(merged, faces.North, px, py, pz, "north", autoEmissionLevel);
         if (!IsOccluded(x, y, z + 1) && faces.South != null)
-            EmitFace(merged, faces.South, px, py, pz, "south");
+            EmitFace(merged, faces.South, px, py, pz, "south", autoEmissionLevel);
         if (!IsOccluded(x - 1, y, z) && faces.West != null)
-            EmitFace(merged, faces.West, px, py, pz, "west");
+            EmitFace(merged, faces.West, px, py, pz, "west", autoEmissionLevel);
         if (!IsOccluded(x + 1, y, z) && faces.East != null)
-            EmitFace(merged, faces.East, px, py, pz, "east");
+            EmitFace(merged, faces.East, px, py, pz, "east", autoEmissionLevel);
     }
 
     private static void EmitFace(
-        Dictionary<uint, MeshAccumulator> merged,
+        Dictionary<MeshBatchKey, MeshAccumulator> merged,
         CubeFaceInfo face,
         float px,
         float py,
         float pz,
-        string faceName)
+        string faceName,
+        byte autoEmissionLevel)
     {
-        var acc = GetOrCreateAccumulator(merged, face.TextureId);
+        var acc = GetOrCreateAccumulator(merged, face.TextureId, autoEmissionLevel);
 
         vec3 v0;
         vec3 v1;
@@ -4015,7 +4156,7 @@ public class SpawnMenu : UiPanel
     /// solid terrain).
     /// </summary>
     private static void EmitLiquidVoxel(
-        Dictionary<uint, MeshAccumulator> merged,
+        Dictionary<MeshBatchKey, MeshAccumulator> merged,
         Dictionary<uint, string> animKeysOut,
         Dictionary<uint, vec3> tintColorsOut,
         VariantRenderInfo?[] voxels,
@@ -4025,6 +4166,7 @@ public class SpawnMenu : UiPanel
         float px, float py, float pz,
         string blockName,
         int level,
+        byte autoEmissionLevel,
         string resourcePackId)
     {
         int GetIndex(int nx, int ny, int nz)
@@ -4096,8 +4238,8 @@ public class SpawnMenu : UiPanel
             tintColorsOut[flowTex] = tint;
         }
 
-        var stillAcc = GetOrCreateAccumulator(merged, stillTex);
-        var flowAcc = GetOrCreateAccumulator(merged, flowTex);
+        var stillAcc = GetOrCreateAccumulator(merged, stillTex, autoEmissionLevel);
+        var flowAcc = GetOrCreateAccumulator(merged, flowTex, autoEmissionLevel);
 
         bool falling = level >= 8;
         float myHeight = LiquidLevelHeight(level);
@@ -5441,6 +5583,8 @@ public class SpawnMenu : UiPanel
                            variant.PartOffsetX, variant.PartOffsetY, variant.PartOffsetZ,
                            effTileX, effTileY, effTileZ);
 
+        obj.ApplyMaterialSettingsToMeshes();
+
         Viewport.SceneObjects.Add(obj);
         return obj;
     }
@@ -5659,6 +5803,10 @@ public class SpawnMenu : UiPanel
                 mesh.Upload();
             }
         }
+
+        byte autoEmissionLevel = ComputeAutoEmissionLevel(obj.ObjectType, variant);
+        foreach (var mesh in meshes)
+            mesh.AutoEmissionLevel = autoEmissionLevel;
 
         foreach (var mesh in meshes)
             obj.AddMesh(mesh);

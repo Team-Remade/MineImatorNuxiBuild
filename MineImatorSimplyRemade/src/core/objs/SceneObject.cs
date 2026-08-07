@@ -31,6 +31,8 @@ public class MaterialSettings
     public bool EmissionEnabled = false;
     public vec4 EmissionColor = new vec4(0f, 0f, 0f, 1f);
     public float EmissionEnergy = 1f;
+    public bool EmissionIndirectOnly = false;
+    public bool AutoEmission = true;
 
     /// <summary>
     /// When true, both faces of meshes are rendered (back-face culling disabled).
@@ -70,6 +72,8 @@ public class MaterialSettings
             EmissionEnabled = this.EmissionEnabled,
             EmissionColor = this.EmissionColor,
             EmissionEnergy = this.EmissionEnergy,
+            EmissionIndirectOnly = this.EmissionIndirectOnly,
+            AutoEmission = this.AutoEmission,
             DoubleSided = this.DoubleSided,
             TextureOffset = this.TextureOffset,
             TextureRepeat = this.TextureRepeat,
@@ -544,12 +548,23 @@ public class SceneObject
             // Combine AlbedoColor.a with (1 - Transparency) so both routes
             // can control opacity: 0 Transparency = fully opaque.
             mesh.Alpha = _materialSettings.AlbedoColor.w * (1f - _materialSettings.Transparency);
-            mesh.EmissionEnabled = _materialSettings.EmissionEnabled;
-            mesh.EmissionColor = new vec3(
-                _materialSettings.EmissionColor.x,
-                _materialSettings.EmissionColor.y,
-                _materialSettings.EmissionColor.z);
-            mesh.EmissionEnergy = _materialSettings.EmissionEnergy;
+            bool useAutoEmission = _materialSettings.AutoEmission && mesh.AutoEmissionLevel > 0;
+            if (useAutoEmission)
+            {
+                mesh.EmissionEnabled = true;
+                mesh.EmissionColor = vec3.Ones;
+                mesh.EmissionEnergy = Math.Clamp(mesh.AutoEmissionLevel / 7.5f, 0f, 10f);
+            }
+            else
+            {
+                mesh.EmissionEnabled = _materialSettings.EmissionEnabled;
+                mesh.EmissionColor = new vec3(
+                    _materialSettings.EmissionColor.x,
+                    _materialSettings.EmissionColor.y,
+                    _materialSettings.EmissionColor.z);
+                mesh.EmissionEnergy = _materialSettings.EmissionEnergy;
+            }
+            mesh.EmissionIndirectOnly = _materialSettings.EmissionIndirectOnly;
         }
     }
 

@@ -562,6 +562,24 @@ public class Mesh : IDisposable
         set => DefaultMaterial.EmissionEnergyMultiplier = value;
     }
 
+    /// <summary>
+    /// When true, emissive lighting from this mesh is treated as indirect-only.
+    /// </summary>
+    public bool EmissionIndirectOnly
+    {
+        get => DefaultMaterial.EmissionIndirectOnly;
+        set => DefaultMaterial.EmissionIndirectOnly = value;
+    }
+
+    /// <summary>
+    /// Per-mesh auto-emission level (0..15) inferred from Minecraft block data.
+    /// </summary>
+    public byte AutoEmissionLevel
+    {
+        get => DefaultMaterial.AutoEmissionLevel;
+        set => DefaultMaterial.AutoEmissionLevel = value;
+    }
+
     // ── Construction ──────────────────────────────────────────────────────────
 
     /// <summary>
@@ -647,6 +665,8 @@ public class Mesh : IDisposable
         dstMat.EmissionEnabled           = srcMat.EmissionEnabled;
         dstMat.Emission                  = srcMat.Emission;
         dstMat.EmissionEnergyMultiplier  = srcMat.EmissionEnergyMultiplier;
+        dstMat.EmissionIndirectOnly      = srcMat.EmissionIndirectOnly;
+        dstMat.AutoEmissionLevel         = srcMat.AutoEmissionLevel;
         dstMat.DoubleSided               = srcMat.DoubleSided;
         dstMat.TextureOffset              = srcMat.TextureOffset;
         dstMat.TextureRepeat              = srcMat.TextureRepeat;

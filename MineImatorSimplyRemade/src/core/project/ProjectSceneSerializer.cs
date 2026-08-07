@@ -217,6 +217,8 @@ public static class ProjectSceneSerializer
             entry.EmissionEnabled = obj.MaterialSettings.EmissionEnabled;
             entry.EmissionColor = ToProjectVec4(obj.MaterialSettings.EmissionColor);
             entry.EmissionEnergy = obj.MaterialSettings.EmissionEnergy;
+            entry.EmissionIndirectOnly = obj.MaterialSettings.EmissionIndirectOnly;
+            entry.AutoEmission = obj.MaterialSettings.AutoEmission;
         }
 
         if (obj.SpawnCategory == "Items")
@@ -622,6 +624,8 @@ public static class ProjectSceneSerializer
             material.EmissionEnabled = entry.EmissionEnabled;
             material.EmissionColor = ToVec4(entry.EmissionColor);
             material.EmissionEnergy = entry.EmissionEnergy;
+            material.EmissionIndirectOnly = entry.EmissionIndirectOnly;
+            material.AutoEmission = entry.AutoEmission;
             obj.MaterialSettings = material;
             obj.SetExplicitMaterialSettings();
             obj.PropagateMaterialSettingsToChildren();

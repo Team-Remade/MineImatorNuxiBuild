@@ -4069,7 +4069,9 @@ public class Viewport : UiPanel
             // Keep emissive influence local and stable: scale mostly by object
             // size and emission amount, with a hard upper clamp.
             float lightRange = Math.Clamp((worldRadius * 3.5f) + (emissionEnergy * 2.0f), 0.5f, 40f);
-            float lightEnergy = Math.Clamp(emissionEnergy * 0.6f, 0f, 10f);
+            float lightEnergy = mesh.EmissionIndirectOnly
+                ? 0f
+                : Math.Clamp(emissionEnergy * 0.6f, 0f, 10f);
             float indirectEnergy = Math.Clamp(emissionEnergy, 0f, 16f);
 
             result.Add((
