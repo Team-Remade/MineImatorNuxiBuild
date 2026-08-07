@@ -202,7 +202,13 @@ public class Viewport : UiPanel
     private uint _colorTex;
     private uint _depthTex;
     private Shader? _ambientOcclusionShader;
+    private Shader? _indirectLightingShader;
+    private Shader? _indirectDenoiseShader;
     private Shader? _glowShader;
+    private uint _indirectFbo;
+    private uint _indirectTex;
+    private uint _indirectPingFbo;
+    private uint _indirectPingTex;
     private uint _glowFbo;
     private uint _glowTex;
     private uint _glowPingFbo;
@@ -361,6 +367,10 @@ public class Viewport : UiPanel
     private uint _previewGlowTex;
     private uint _previewGlowPingFbo;
     private uint _previewGlowPingTex;
+    private uint _previewIndirectFbo;
+    private uint _previewIndirectTex;
+    private uint _previewIndirectPingFbo;
+    private uint _previewIndirectPingTex;
     private uint _previewWidth = 1;
     private uint _previewHeight = 1;
     private uint _previewShadowFbo;
@@ -716,6 +726,10 @@ public class Viewport : UiPanel
         _edgeShader.CompileShader("edge.vert", "edge.frag");
         _ambientOcclusionShader = new Shader(Gl);
         _ambientOcclusionShader.CompileShader("edge.vert", "ambient_occlusion.frag");
+        _indirectLightingShader = new Shader(Gl);
+        _indirectLightingShader.CompileShader("edge.vert", "indirect_lighting.frag");
+        _indirectDenoiseShader = new Shader(Gl);
+        _indirectDenoiseShader.CompileShader("edge.vert", "indirect_denoise.frag");
         _glowShader = new Shader(Gl);
         _glowShader.CompileShader("edge.vert", "glow.frag");
 
@@ -724,6 +738,8 @@ public class Viewport : UiPanel
         InitSkyRenderer();
 
         // ── Glow ping texture/FBO ───────────────────────────────────────────
+        InitGlowResources(ref _indirectFbo, ref _indirectTex, width, height, "Main indirect");
+        InitGlowResources(ref _indirectPingFbo, ref _indirectPingTex, width, height, "Main indirect ping");
         InitGlowResources(ref _glowFbo, ref _glowTex, width, height, "Main glow");
         InitGlowResources(ref _glowPingFbo, ref _glowPingTex, width, height, "Main glow ping");
 
@@ -2022,6 +2038,8 @@ public class Viewport : UiPanel
         Gl.BindTexture(GLEnum.Texture2D, 0);
         Gl.BindRenderbuffer(GLEnum.Renderbuffer, 0);
 
+        ResizeGlowResources(_indirectTex, width, height);
+        ResizeGlowResources(_indirectPingTex, width, height);
         ResizeGlowResources(_glowTex, width, height);
         ResizeGlowResources(_glowPingTex, width, height);
     }
@@ -2628,6 +2646,11 @@ public class Viewport : UiPanel
         bool forceUnshaded = _viewportRenderMode == ViewportRenderMode.FlatUnshaded ||
                              _viewportRenderMode == ViewportRenderMode.Wireframe;
         bool wireframeMode = _viewportRenderMode == ViewportRenderMode.Wireframe;
+        bool useWorldGi = renderMode == SceneRenderMode.Rendered &&
+                  PropertiesPanel?.IndirectLightingEnabled == true &&
+                  string.Equals(PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
+        Mesh.IndirectWorldEnabled = useWorldGi;
+        Mesh.IndirectWorldStrength = Math.Clamp(PropertiesPanel?.IndirectLightingStrength ?? 1f, 0f, 4f);
         if (renderMode == SceneRenderMode.Rendered)
         {
             Mesh.ShadowBlurStrength = Math.Clamp(PropertiesPanel?.ShadowBlurStrength ?? 1f, 0f, 4f);
@@ -2719,6 +2742,10 @@ public class Viewport : UiPanel
             RenderDepthOrdered(view, proj, _cachedRenderItemsNoAo, _cachedAllPointLights, forceUnshaded);
 
         if (renderMode == SceneRenderMode.Rendered)
+            ApplyIndirectLightingPassGeneric(_fbo, _colorTex, _depthTex, _indirectFbo, _indirectTex, _indirectPingFbo, _indirectPingTex,
+                w, h, renderNear, renderFar, PropertiesPanel, _renderedPassMode);
+
+        if (renderMode == SceneRenderMode.Rendered)
             ApplyGlowPassGeneric(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, PropertiesPanel, _renderedPassMode);
 
         if (OverlaysEnabled)
@@ -2787,6 +2814,7 @@ public class Viewport : UiPanel
         Mesh.ShadowMapTexture = 0;
         Mesh.ShadowLightSpaceMatrix = mat4.Identity;
         Mesh.ShadowDebugMode = 0;
+        Mesh.IndirectWorldEnabled = false;
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         // ── Colour-pick pass (only when a click was queued this frame) ─────────
@@ -3946,7 +3974,7 @@ public class Viewport : UiPanel
         IEnumerable<SceneObject> objects,
         SceneRenderMode renderMode,
         Dictionary<LightSceneObject, int> shadowIndices,
-        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)> result)
+        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle)> result)
     {
         foreach (var obj in objects)
         {
@@ -3987,10 +4015,73 @@ public class Viewport : UiPanel
 
                 result.Add((
                     pos, col, light.LightRange, light.LightEnergy, shadowIndex,
-                    dir, spotOuterCos, spotInnerCos));
+                    dir, light.LightIndirectEnergy,
+                    spotOuterCos, spotInnerCos));
             }
 
+            AddEmissivePointLightsForObject(obj, result);
+
             CollectPointLights(obj.Children, renderMode, shadowIndices, result);
+        }
+    }
+
+    /// <summary>
+    /// Converts emissive mesh materials into lightweight local point lights so
+    /// emissive blocks (for example glowstone) can illuminate nearby surfaces.
+    /// These pseudo-lights are unshadowed and use a bounded range derived from
+    /// mesh size and emissive energy.
+    /// </summary>
+    private static void AddEmissivePointLightsForObject(
+        SceneObject obj,
+        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle)> result)
+    {
+        if (obj.Visuals.Count == 0)
+            return;
+
+        mat4 world = obj.GetWorldMatrix();
+        float worldScale = MathF.Max(
+            new vec3(world.m00, world.m10, world.m20).Length,
+            MathF.Max(
+                new vec3(world.m01, world.m11, world.m21).Length,
+                new vec3(world.m02, world.m12, world.m22).Length));
+
+        foreach (var mesh in obj.Visuals)
+        {
+            if (mesh.PickOnly || mesh.Vertices.Count == 0)
+                continue;
+            if (!mesh.EmissionEnabled)
+                continue;
+
+            float emissionEnergy = MathF.Max(mesh.EmissionEnergy, 0f);
+            vec3 emissionColor = new vec3(
+                MathF.Max(mesh.EmissionColor.x, 0f),
+                MathF.Max(mesh.EmissionColor.y, 0f),
+                MathF.Max(mesh.EmissionColor.z, 0f));
+
+            float colorLuma = MathF.Max(emissionColor.x, MathF.Max(emissionColor.y, emissionColor.z));
+            if (emissionEnergy <= 0.0001f || colorLuma <= 0.0001f)
+                continue;
+
+            vec3 localCenter = mesh.BoundingSphereCenter;
+            vec3 worldCenter = new vec3((world * new vec4(localCenter, 1f)).xyz);
+            float worldRadius = MathF.Max(mesh.BoundingSphereRadius * worldScale, 0.15f);
+
+            // Keep emissive influence local and stable: scale mostly by object
+            // size and emission amount, with a hard upper clamp.
+            float lightRange = Math.Clamp((worldRadius * 3.5f) + (emissionEnergy * 2.0f), 0.5f, 40f);
+            float lightEnergy = Math.Clamp(emissionEnergy * 0.6f, 0f, 10f);
+            float indirectEnergy = Math.Clamp(emissionEnergy, 0f, 16f);
+
+            result.Add((
+                worldCenter,
+                emissionColor,
+                lightRange,
+                lightEnergy,
+                -1,
+                vec3.Zero,
+                indirectEnergy,
+                0f,
+                0f));
         }
     }
 
@@ -4003,7 +4094,7 @@ public class Viewport : UiPanel
 
     // ── Reusable per-frame lists (reduces allocations) ────────────────────────
 
-    private readonly List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)> _cachedAllPointLights = new();
+    private readonly List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle)> _cachedAllPointLights = new();
     private readonly List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> _cachedRenderItems = new();
     private readonly List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> _cachedRenderItemsNoAo = new();
     private readonly List<(mat4 model, Mesh mesh)> _cachedOverlays = new();
@@ -4045,7 +4136,7 @@ public class Viewport : UiPanel
     /// </summary>
     private static void SelectPointLightsForMesh(
         vec3 meshWorldPos,
-        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)> allLights)
+        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle)> allLights)
     {
         Mesh.PointLights.Clear();
 
@@ -4161,6 +4252,191 @@ public class Viewport : UiPanel
         Gl.CullFace(GLEnum.Back);
     }
 
+    private void ApplyIndirectLightingPassGeneric(
+        uint sceneFbo,
+        uint sourceColorTex,
+        uint depthTexture,
+        uint indirectFbo,
+        uint indirectTex,
+        uint indirectPingFbo,
+        uint indirectPingTex,
+        uint width,
+        uint height,
+        float nearPlane,
+        float farPlane,
+        PropertiesPanel? settings,
+        RenderedPassMode passMode)
+    {
+        if (Gl == null || settings == null || passMode != RenderedPassMode.Combined)
+            return;
+        if (_indirectLightingShader == null || _glowShader == null || sourceColorTex == 0 || depthTexture == 0 ||
+            indirectFbo == 0 || indirectTex == 0 || indirectPingFbo == 0 || indirectPingTex == 0 ||
+            width == 0 || height == 0)
+            return;
+
+        if (!settings.IndirectLightingEnabled)
+            return;
+        if (string.Equals(settings.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        float precision = Math.Clamp(settings.IndirectLightingPrecision, 0f, 1f);
+        float strength = Math.Clamp(settings.IndirectLightingStrength, 0f, 4f);
+        float rayStep = Math.Clamp(settings.IndirectLightingRayStep, 1f, 64f);
+        float blurRadius = Math.Clamp(settings.IndirectLightingBlurRadius, 0f, 8f);
+        float denoiserStrength = Math.Clamp(settings.IndirectLightingDenoiserStrength, 0f, 200f);
+        int sampleCount = Math.Clamp((int)MathF.Round(6f + (precision * 26f)), 4, 32);
+
+        if (strength <= 0f)
+            return;
+
+        Gl.Disable(GLEnum.DepthTest);
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Disable(GLEnum.Blend);
+
+        // Pass 1: generate raw screen-space indirect lighting from scene color/depth.
+        Gl.BindFramebuffer(GLEnum.Framebuffer, indirectFbo);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
+        Gl.Viewport(0, 0, width, height);
+        Gl.ClearColor(0f, 0f, 0f, 1f);
+        Gl.Clear(ClearBufferMask.ColorBufferBit);
+
+        uint indirectProgram = _indirectLightingShader.ShaderProgram;
+        Gl.UseProgram(indirectProgram);
+        Gl.ActiveTexture(GLEnum.Texture0);
+        Gl.BindTexture(GLEnum.Texture2D, sourceColorTex);
+        Gl.ActiveTexture(GLEnum.Texture1);
+        Gl.BindTexture(GLEnum.Texture2D, depthTexture);
+
+        int sceneLoc = Gl.GetUniformLocation(indirectProgram, "uScene");
+        int depthLoc = Gl.GetUniformLocation(indirectProgram, "uDepth");
+        int texelLoc = Gl.GetUniformLocation(indirectProgram, "uTexelSize");
+        int nearLoc = Gl.GetUniformLocation(indirectProgram, "uNear");
+        int farLoc = Gl.GetUniformLocation(indirectProgram, "uFar");
+        int precisionLoc = Gl.GetUniformLocation(indirectProgram, "uPrecision");
+        int rayStepLoc = Gl.GetUniformLocation(indirectProgram, "uRayStep");
+        int sampleLoc = Gl.GetUniformLocation(indirectProgram, "uSampleCount");
+
+        if (sceneLoc >= 0) Gl.Uniform1(sceneLoc, 0);
+        if (depthLoc >= 0) Gl.Uniform1(depthLoc, 1);
+        if (texelLoc >= 0) Gl.Uniform2(texelLoc, 1f / width, 1f / height);
+        if (nearLoc >= 0) Gl.Uniform1(nearLoc, Math.Max(0.001f, nearPlane));
+        if (farLoc >= 0) Gl.Uniform1(farLoc, Math.Max(nearPlane + 0.001f, farPlane));
+        if (precisionLoc >= 0) Gl.Uniform1(precisionLoc, precision);
+        if (rayStepLoc >= 0) Gl.Uniform1(rayStepLoc, rayStep);
+        if (sampleLoc >= 0) Gl.Uniform1(sampleLoc, sampleCount);
+
+        Gl.BindVertexArray(_edgeVao);
+        Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+
+        // Pass 2: optional blur, matching the reference pipeline controls.
+        if (blurRadius > 0.001f)
+        {
+            uint blurProgram = _glowShader.ShaderProgram;
+            int blurSceneLoc = Gl.GetUniformLocation(blurProgram, "uScene");
+            int blurTexelLoc = Gl.GetUniformLocation(blurProgram, "uTexelSize");
+            int blurStrengthLoc = Gl.GetUniformLocation(blurProgram, "uStrength");
+            int blurSizeLoc = Gl.GetUniformLocation(blurProgram, "uSize");
+            int blurDirectionLoc = Gl.GetUniformLocation(blurProgram, "uDirection");
+            int blurModeLoc = Gl.GetUniformLocation(blurProgram, "uMode");
+
+            Gl.UseProgram(blurProgram);
+            if (blurSceneLoc >= 0) Gl.Uniform1(blurSceneLoc, 0);
+            if (blurTexelLoc >= 0) Gl.Uniform2(blurTexelLoc, 1f / width, 1f / height);
+            if (blurStrengthLoc >= 0) Gl.Uniform1(blurStrengthLoc, 1f);
+            if (blurSizeLoc >= 0) Gl.Uniform1(blurSizeLoc, blurRadius);
+            if (blurModeLoc >= 0) Gl.Uniform1(blurModeLoc, 1);
+
+            Gl.BindFramebuffer(GLEnum.Framebuffer, indirectPingFbo);
+            Gl.Viewport(0, 0, width, height);
+            Gl.ActiveTexture(GLEnum.Texture0);
+            Gl.BindTexture(GLEnum.Texture2D, indirectTex);
+            if (blurDirectionLoc >= 0) Gl.Uniform2(blurDirectionLoc, 1f, 0f);
+            Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+
+            Gl.BindFramebuffer(GLEnum.Framebuffer, indirectFbo);
+            Gl.Viewport(0, 0, width, height);
+            Gl.ActiveTexture(GLEnum.Texture0);
+            Gl.BindTexture(GLEnum.Texture2D, indirectPingTex);
+            if (blurDirectionLoc >= 0) Gl.Uniform2(blurDirectionLoc, 0f, 1f);
+            Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+        }
+
+        uint compositeTexture = indirectTex;
+
+        // Pass 3: optional bilateral denoise using depth-aware weighting.
+        if (settings.IndirectLightingDenoiser && denoiserStrength > 0.001f && _indirectDenoiseShader != null)
+        {
+            uint denoiseProgram = _indirectDenoiseShader.ShaderProgram;
+            Gl.UseProgram(denoiseProgram);
+            Gl.BindFramebuffer(GLEnum.Framebuffer, indirectPingFbo);
+            Gl.DrawBuffer(GLEnum.ColorAttachment0);
+            Gl.ReadBuffer(GLEnum.ColorAttachment0);
+            Gl.Viewport(0, 0, width, height);
+
+            Gl.ActiveTexture(GLEnum.Texture0);
+            Gl.BindTexture(GLEnum.Texture2D, indirectTex);
+            Gl.ActiveTexture(GLEnum.Texture1);
+            Gl.BindTexture(GLEnum.Texture2D, depthTexture);
+
+            int indirectLoc = Gl.GetUniformLocation(denoiseProgram, "uIndirectTex");
+            int denoiseDepthLoc = Gl.GetUniformLocation(denoiseProgram, "uDepth");
+            int denoiseTexelLoc = Gl.GetUniformLocation(denoiseProgram, "uTexelSize");
+            int denoiseStrengthLoc = Gl.GetUniformLocation(denoiseProgram, "uDenoiseStrength");
+            int denoiseNearLoc = Gl.GetUniformLocation(denoiseProgram, "uNear");
+            int denoiseFarLoc = Gl.GetUniformLocation(denoiseProgram, "uFar");
+
+            if (indirectLoc >= 0) Gl.Uniform1(indirectLoc, 0);
+            if (denoiseDepthLoc >= 0) Gl.Uniform1(denoiseDepthLoc, 1);
+            if (denoiseTexelLoc >= 0) Gl.Uniform2(denoiseTexelLoc, 1f / width, 1f / height);
+            if (denoiseStrengthLoc >= 0) Gl.Uniform1(denoiseStrengthLoc, denoiserStrength);
+            if (denoiseNearLoc >= 0) Gl.Uniform1(denoiseNearLoc, Math.Max(0.001f, nearPlane));
+            if (denoiseFarLoc >= 0) Gl.Uniform1(denoiseFarLoc, Math.Max(nearPlane + 0.001f, farPlane));
+
+            Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+            compositeTexture = indirectPingTex;
+        }
+
+        // Pass 4: additive composite of indirect contribution into the scene.
+        uint compositeProgram = _glowShader.ShaderProgram;
+        int compSceneLoc = Gl.GetUniformLocation(compositeProgram, "uScene");
+        int compTexelLoc = Gl.GetUniformLocation(compositeProgram, "uTexelSize");
+        int compStrengthLoc = Gl.GetUniformLocation(compositeProgram, "uStrength");
+        int compSizeLoc = Gl.GetUniformLocation(compositeProgram, "uSize");
+        int compDirectionLoc = Gl.GetUniformLocation(compositeProgram, "uDirection");
+        int compModeLoc = Gl.GetUniformLocation(compositeProgram, "uMode");
+
+        Gl.UseProgram(compositeProgram);
+        if (compSceneLoc >= 0) Gl.Uniform1(compSceneLoc, 0);
+        if (compTexelLoc >= 0) Gl.Uniform2(compTexelLoc, 1f / width, 1f / height);
+        if (compStrengthLoc >= 0) Gl.Uniform1(compStrengthLoc, strength);
+        if (compSizeLoc >= 0) Gl.Uniform1(compSizeLoc, 1f);
+        if (compDirectionLoc >= 0) Gl.Uniform2(compDirectionLoc, 1f, 0f);
+        if (compModeLoc >= 0) Gl.Uniform1(compModeLoc, 2);
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
+        Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.ColorAttachment0, GLEnum.Texture2D, sourceColorTex, 0);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
+        Gl.Viewport(0, 0, width, height);
+        Gl.Enable(GLEnum.Blend);
+        Gl.BlendFunc(GLEnum.One, GLEnum.One);
+        Gl.ActiveTexture(GLEnum.Texture0);
+        Gl.BindTexture(GLEnum.Texture2D, compositeTexture);
+        Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+
+        Gl.BindVertexArray(0);
+        Gl.ActiveTexture(GLEnum.Texture1);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        Gl.ActiveTexture(GLEnum.Texture0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        Gl.Disable(GLEnum.Blend);
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Less);
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
+    }
+
     /// <summary>
     /// Matches Modelbench's render_world pipeline: parts are drawn once in
     /// ascending render-depth order with both blending and depth writes enabled.
@@ -4171,7 +4447,7 @@ public class Viewport : UiPanel
     private void RenderDepthOrdered(
         mat4 view, mat4 proj,
         List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> renderItems,
-        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction,
+        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy,
             float spotCosOuterAngle, float spotCosInnerAngle)> allLights,
         bool forceUnshaded)
     {
@@ -4589,12 +4865,24 @@ public class Viewport : UiPanel
             _ambientOcclusionShader = new Shader(Gl);
             _ambientOcclusionShader.CompileShader("edge.vert", "ambient_occlusion.frag");
         }
+        if (_indirectLightingShader == null)
+        {
+            _indirectLightingShader = new Shader(Gl);
+            _indirectLightingShader.CompileShader("edge.vert", "indirect_lighting.frag");
+        }
+        if (_indirectDenoiseShader == null)
+        {
+            _indirectDenoiseShader = new Shader(Gl);
+            _indirectDenoiseShader.CompileShader("edge.vert", "indirect_denoise.frag");
+        }
         if (_glowShader == null)
         {
             _glowShader = new Shader(Gl);
             _glowShader.CompileShader("edge.vert", "glow.frag");
         }
 
+        InitGlowResources(ref _previewIndirectFbo, ref _previewIndirectTex, width, height, "Preview indirect");
+        InitGlowResources(ref _previewIndirectPingFbo, ref _previewIndirectPingTex, width, height, "Preview indirect ping");
         InitGlowResources(ref _previewGlowFbo, ref _previewGlowTex, width, height, "Preview glow");
         InitGlowResources(ref _previewGlowPingFbo, ref _previewGlowPingTex, width, height, "Preview glow ping");
 
@@ -4701,6 +4989,8 @@ public class Viewport : UiPanel
             Gl.BindTexture(GLEnum.Texture2D, 0);
         }
 
+        ResizeGlowResources(_previewIndirectTex, w, h);
+        ResizeGlowResources(_previewIndirectPingTex, w, h);
         ResizeGlowResources(_previewGlowTex, w, h);
         ResizeGlowResources(_previewGlowPingTex, w, h);
     }
@@ -5203,6 +5493,11 @@ public class Viewport : UiPanel
                              effectiveMode == ViewportRenderMode.Wireframe;
         bool wireframeMode = effectiveMode == ViewportRenderMode.Wireframe;
         RenderedPassMode effectivePassMode = highQuality ? RenderedPassMode.Combined : _renderedPassMode;
+        bool previewWorldGi = renderMode == SceneRenderMode.Rendered &&
+                      MainViewport.PropertiesPanel?.IndirectLightingEnabled == true &&
+                      string.Equals(MainViewport.PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
+        Mesh.IndirectWorldEnabled = previewWorldGi;
+        Mesh.IndirectWorldStrength = Math.Clamp(MainViewport.PropertiesPanel?.IndirectLightingStrength ?? 1f, 0f, 4f);
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
         Gl.DrawBuffer(GLEnum.ColorAttachment0);
@@ -5250,7 +5545,7 @@ public class Viewport : UiPanel
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         Dictionary<LightSceneObject, int> pointShadowIndices = new();
-        var allPointLights = new List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float spotCosOuterAngle, float spotCosInnerAngle)>();
+        var allPointLights = new List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle)>();
         vec3 camPos = renderCamera.Position;
 
         if (renderMode == SceneRenderMode.Rendered)
@@ -5338,6 +5633,11 @@ public class Viewport : UiPanel
             RenderDepthOrdered(view, proj, renderItemsNoAo, allPointLights, forceUnshaded);
 
         if (renderMode == SceneRenderMode.Rendered)
+            ApplyIndirectLightingPassGeneric(_previewFbo, _previewColorTex, _previewDepthTex,
+                _previewIndirectFbo, _previewIndirectTex, _previewIndirectPingFbo, _previewIndirectPingTex,
+                w, h, cam.Near, cam.Far, MainViewport.PropertiesPanel, effectivePassMode);
+
+        if (renderMode == SceneRenderMode.Rendered)
             ApplyGlowPassGeneric(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, _previewGlowPingFbo, _previewGlowPingTex, w, h, MainViewport.PropertiesPanel, effectivePassMode);
 
         if (OverlaysEnabled)
@@ -5383,6 +5683,7 @@ public class Viewport : UiPanel
         Mesh.ShadowsEnabled = false;
         Mesh.ShadowMapTexture = 0;
         Mesh.ShadowLightSpaceMatrix = mat4.Identity;
+        Mesh.IndirectWorldEnabled = false;
         Mesh.ShadowDebugMode = 0;
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
     }

@@ -933,6 +933,7 @@ public class Mesh : IDisposable
     ///   shadowIndex       – which point-shadow cubemap to sample (-1 = none)
     ///   direction         – unit forward direction in world space (only used by spot lights;
     ///                       (0,0,0) for point lights)
+    ///   indirectEnergy    – scalar for non-screen-space bounce contribution
     ///   spotCosOuterAngle – cosine of the outer (full-intensity) spot-cone half-angle;
     ///                       0 for point lights (disables the cone test in the shader)
     ///   spotCosInnerAngle – cosine of the inner (zero-intensity) spot-cone half-angle;
@@ -945,6 +946,7 @@ public class Mesh : IDisposable
         float energy,
         int   shadowIndex,
         vec3  direction,
+        float indirectEnergy,
         float spotCosOuterAngle,
         float spotCosInnerAngle)> PointLights = new();
 
@@ -989,6 +991,8 @@ public class Mesh : IDisposable
     public static vec3 HeightFogColor = new(0.5764706f, 0.5764706f, 1f);
     public static float HeightFogSize = 4000f;
     public static float HeightFogOffset = -3850f;
+    public static bool IndirectWorldEnabled;
+    public static float IndirectWorldStrength = 1f;
 
     /// <summary>
     /// Export-only shadow state configured by <see cref="CameraViewport"/> when
@@ -1096,6 +1100,8 @@ public class Mesh : IDisposable
         SetUniformVec3("uHeightFogColor", HeightFogColor);
         SetUniformFloat("uHeightFogSize", HeightFogSize);
         SetUniformFloat("uHeightFogOffset", HeightFogOffset);
+        SetUniformBool("uIndirectWorldEnabled", IndirectWorldEnabled && !Unlit);
+        SetUniformFloat("uIndirectWorldStrength", Math.Max(IndirectWorldStrength, 0f));
 
         // ── Point lights ──────────────────────────────────────────────────────
         // Must match MAX_POINT_LIGHTS in simple.frag.
@@ -1104,13 +1110,14 @@ public class Mesh : IDisposable
         SetUniformInt("uPointLightCount", lightCount);
         for (int i = 0; i < lightCount; i++)
         {
-            var (lpos, lcol, lrange, lenergy, lshadowIndex, ldir, lspotOuter, lspotInner) = PointLights[i];
+            var (lpos, lcol, lrange, lenergy, lshadowIndex, ldir, lindirect, lspotOuter, lspotInner) = PointLights[i];
             SetUniformVec3($"uPointLightPos[{i}]",   lpos);
             SetUniformVec3($"uPointLightColor[{i}]", lcol);
             SetUniformFloat($"uPointLightRange[{i}]",  lrange);
             SetUniformFloat($"uPointLightEnergy[{i}]", lenergy);
             SetUniformInt($"uPointLightShadowIndex[{i}]", lshadowIndex);
             SetUniformVec3($"uPointLightDir[{i}]", ldir);
+            SetUniformFloat($"uPointLightIndirectEnergy[{i}]", lindirect);
             SetUniformFloat($"uPointLightSpotCosOuter[{i}]", lspotOuter);
             SetUniformFloat($"uPointLightSpotCosInner[{i}]", lspotInner);
         }

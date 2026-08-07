@@ -54,11 +54,14 @@ uniform vec3  uPointLightPos[MAX_POINT_LIGHTS];
 uniform vec3  uPointLightColor[MAX_POINT_LIGHTS];
 uniform float uPointLightRange[MAX_POINT_LIGHTS];
 uniform float uPointLightEnergy[MAX_POINT_LIGHTS];
+uniform float uPointLightIndirectEnergy[MAX_POINT_LIGHTS];
 uniform int   uPointLightShadowIndex[MAX_POINT_LIGHTS];
 uniform vec3  uPointLightDir[MAX_POINT_LIGHTS];
 uniform float uPointLightSpotCosOuter[MAX_POINT_LIGHTS];
 uniform float uPointLightSpotCosInner[MAX_POINT_LIGHTS];
 uniform samplerCube uPointShadowMaps[MAX_POINT_SHADOWS];
+uniform bool  uIndirectWorldEnabled;
+uniform float uIndirectWorldStrength;
 
 out vec4 FragColor;
 
@@ -141,6 +144,7 @@ void main() {
     vec3 diffuse = diff * uLightColor;
 
     vec3 pointLightSum = vec3(0.0);
+    vec3 pointIndirectSum = vec3(0.0);
     for (int i = 0; i < uPointLightCount; i++) {
         vec3  toLight   = uPointLightPos[i] - vFragPos;
         float dist      = length(toLight);
@@ -170,6 +174,13 @@ void main() {
         float pointShadow = calculatePointShadow(uPointLightShadowIndex[i], vFragPos, uPointLightPos[i], range, norm, lightDir);
 
         pointLightSum += uPointLightColor[i] * diffFact * attenuation * spot * uPointLightEnergy[i] * (1.0 - pointShadow);
+
+        if (uIndirectWorldEnabled) {
+            float indirectEnergy = max(uPointLightIndirectEnergy[i], 0.0);
+            float diffuseWrap = max(dot(norm, lightDir) * 0.5 + 0.5, 0.0);
+            float shadowVisibility = 1.0 - (pointShadow * 0.5);
+            pointIndirectSum += uPointLightColor[i] * indirectEnergy * attenuation * spot * diffuseWrap * shadowVisibility;
+        }
     }
 
     vec3 shadowLightDir = uMoonFillLightCastsShadows != 0 ? normalize(uMoonFillLightDir)
@@ -190,6 +201,9 @@ void main() {
     float sunVisibility = uSunFillLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
     float moonVisibility = uMoonFillLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
     result = (uAmbient + diffuse * mainVisibility + uSunFillLightColor * sunFillDiffuse * sunVisibility + uMoonFillLightColor * moonFillDiffuse * moonVisibility + pointLightSum) * baseColor;
+    if (uIndirectWorldEnabled) {
+        result += baseColor * pointIndirectSum * max(uIndirectWorldStrength, 0.0);
+    }
     if (uEmissionEnabled) {
         result += (uEmissionColor * emissionMask) * max(uEmissionEnergy, 0.0);
     }

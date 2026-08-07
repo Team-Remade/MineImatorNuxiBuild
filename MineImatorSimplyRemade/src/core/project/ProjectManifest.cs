@@ -97,6 +97,14 @@ public class ProjectRenderSettings
     public ProjectVec3 AmbientOcclusionColor { get; set; } = new() { X = 0f, Y = 0f, Z = 0f };
     public float AmbientOcclusionRatio { get; set; } = 0.222f;
     public float AmbientOcclusionRatioBalance { get; set; } = 0.35f;
+    public bool IndirectLightingEnabled { get; set; } = true;
+    public string GlobalIlluminationMode { get; set; } = "screenspace";
+    public float IndirectLightingPrecision { get; set; } = 0.3f;
+    public float IndirectLightingStrength { get; set; } = 1f;
+    public float IndirectLightingRayStep { get; set; } = 3f;
+    public float IndirectLightingBlurRadius { get; set; } = 1f;
+    public bool IndirectLightingDenoiser { get; set; } = true;
+    public float IndirectLightingDenoiserStrength { get; set; } = 100f;
     public bool ShadowsEnabled { get; set; } = true;
     public int SunShadowBufferSize { get; set; } = 2048;
     public int SpotShadowBufferSize { get; set; } = 1024;

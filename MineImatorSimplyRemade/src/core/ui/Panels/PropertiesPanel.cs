@@ -96,6 +96,14 @@ public class PropertiesPanel : UiPanel
     public readonly float[] AmbientOcclusionColor = [0f, 0f, 0f];
     public float AmbientOcclusionRatio = 0.222f;
     public float AmbientOcclusionRatioBalance = 0.35f;
+    public bool IndirectLightingEnabled = true;
+    public string GlobalIlluminationMode = "screenspace";
+    public float IndirectLightingPrecision = 0.3f;
+    public float IndirectLightingStrength = 1f;
+    public float IndirectLightingRayStep = 3f;
+    public float IndirectLightingBlurRadius = 1f;
+    public bool IndirectLightingDenoiser = true;
+    public float IndirectLightingDenoiserStrength = 100f;
     public bool ShadowsEnabled = true;
     public int SunShadowBufferSize = 2048;
     public int SpotShadowBufferSize = 1024;
@@ -318,6 +326,14 @@ public class PropertiesPanel : UiPanel
         ReadColor(settings.AmbientOcclusionColor, AmbientOcclusionColor);
         AmbientOcclusionRatio = Math.Clamp(settings.AmbientOcclusionRatio, 0f, 1f);
         AmbientOcclusionRatioBalance = Math.Clamp(settings.AmbientOcclusionRatioBalance, 0f, 1f);
+        IndirectLightingEnabled = settings.IndirectLightingEnabled;
+        GlobalIlluminationMode = NormalizeGlobalIlluminationMode(settings.GlobalIlluminationMode);
+        IndirectLightingPrecision = Math.Clamp(settings.IndirectLightingPrecision, 0f, 1f);
+        IndirectLightingStrength = Math.Clamp(settings.IndirectLightingStrength, 0f, 4f);
+        IndirectLightingRayStep = Math.Clamp(settings.IndirectLightingRayStep, 1f, 64f);
+        IndirectLightingBlurRadius = Math.Clamp(settings.IndirectLightingBlurRadius, 0f, 8f);
+        IndirectLightingDenoiser = settings.IndirectLightingDenoiser;
+        IndirectLightingDenoiserStrength = Math.Clamp(settings.IndirectLightingDenoiserStrength, 0f, 200f);
         ShadowsEnabled = settings.ShadowsEnabled;
         SunShadowBufferSize = NormalizeShadowBufferSize(settings.SunShadowBufferSize, 2048);
         SpotShadowBufferSize = NormalizeShadowBufferSize(settings.SpotShadowBufferSize, 1024);
@@ -438,6 +454,14 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.AmbientOcclusionColor = ToVec3(AmbientOcclusionColor);
         manifest.Settings.AmbientOcclusionRatio = Math.Clamp(AmbientOcclusionRatio, 0f, 1f);
         manifest.Settings.AmbientOcclusionRatioBalance = Math.Clamp(AmbientOcclusionRatioBalance, 0f, 1f);
+        manifest.Settings.IndirectLightingEnabled = IndirectLightingEnabled;
+        manifest.Settings.GlobalIlluminationMode = NormalizeGlobalIlluminationMode(GlobalIlluminationMode);
+        manifest.Settings.IndirectLightingPrecision = Math.Clamp(IndirectLightingPrecision, 0f, 1f);
+        manifest.Settings.IndirectLightingStrength = Math.Clamp(IndirectLightingStrength, 0f, 4f);
+        manifest.Settings.IndirectLightingRayStep = Math.Clamp(IndirectLightingRayStep, 1f, 64f);
+        manifest.Settings.IndirectLightingBlurRadius = Math.Clamp(IndirectLightingBlurRadius, 0f, 8f);
+        manifest.Settings.IndirectLightingDenoiser = IndirectLightingDenoiser;
+        manifest.Settings.IndirectLightingDenoiserStrength = Math.Clamp(IndirectLightingDenoiserStrength, 0f, 200f);
         manifest.Settings.ShadowsEnabled = ShadowsEnabled;
         manifest.Settings.SunShadowBufferSize = NormalizeShadowBufferSize(SunShadowBufferSize, 2048);
         manifest.Settings.SpotShadowBufferSize = NormalizeShadowBufferSize(SpotShadowBufferSize, 1024);
@@ -555,6 +579,13 @@ public class PropertiesPanel : UiPanel
     {
         int[] sizes = [256, 512, 1024, 2048, 4096, 8192];
         return sizes.Contains(value) ? value : fallback;
+    }
+
+    private static string NormalizeGlobalIlluminationMode(string mode)
+    {
+        return string.Equals(mode, "world", StringComparison.OrdinalIgnoreCase)
+            ? "world"
+            : "screenspace";
     }
 
     private void ApplyAmbientSettingsToRenderer()
@@ -2034,6 +2065,46 @@ public class PropertiesPanel : UiPanel
                 changed |= ImGui.ColorEdit3("Color##ao", color, ImGuiColorEditFlags.NoInputs);
             changed |= InputFloatEditor("Ratio##ao", ref AmbientOcclusionRatio, 0.001f, 0f, 1f, "%.3f");
             changed |= InputFloatEditor("Ratio Balance##ao", ref AmbientOcclusionRatioBalance, 0.005f, 0f, 1f, "%.3f");
+            ImGui.Unindent();
+        }
+
+        ImGui.Separator();
+        ImGui.Text("Indirect Lighting");
+        changed |= ImGui.Checkbox("Enabled##indirectLighting", ref IndirectLightingEnabled);
+        if (IndirectLightingEnabled)
+        {
+            ImGui.Indent();
+
+            string giModeLabel = string.Equals(GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase)
+                ? "World Space (Experimental)"
+                : "Screen Space";
+
+            if (ImGui.BeginCombo("Global Illumination", giModeLabel))
+            {
+                bool screenSelected = !string.Equals(GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
+                if (ImGui.Selectable("Screen Space", screenSelected))
+                {
+                    GlobalIlluminationMode = "screenspace";
+                    changed = true;
+                }
+
+                bool worldSelected = string.Equals(GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
+                if (ImGui.Selectable("World Space (Experimental)", worldSelected))
+                {
+                    GlobalIlluminationMode = "world";
+                    changed = true;
+                }
+                ImGui.EndCombo();
+            }
+
+            changed |= PercentageSlider("Precision##indirect", ref IndirectLightingPrecision, 0f, 100f);
+            changed |= PercentageSlider("Strength##indirect", ref IndirectLightingStrength, 0f, 400f);
+            changed |= InputFloatEditor("Ray Step##indirect", ref IndirectLightingRayStep, 0.1f, 1f, 64f, "%.1f");
+            changed |= InputFloatEditor("Blur Radius##indirect", ref IndirectLightingBlurRadius, 0.05f, 0f, 8f, "%.2f");
+            changed |= ImGui.Checkbox("Denoiser##indirect", ref IndirectLightingDenoiser);
+            if (IndirectLightingDenoiser)
+                changed |= ImGui.SliderFloat("Denoiser Strength##indirect", ref IndirectLightingDenoiserStrength, 0f, 200f, "%.0f%%");
+
             ImGui.Unindent();
         }
 
