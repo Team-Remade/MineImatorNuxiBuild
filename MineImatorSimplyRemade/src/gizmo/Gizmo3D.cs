@@ -722,7 +722,7 @@ public class Gizmo3D : IDisposable
         _imageMin  = imageMin;
         _imageSize = imageSize;
 
-        if (_edit.Mode != TransformMode.Rotate) return;
+        if (_edit.Mode != TransformMode.Rotate && _edit.Mode != TransformMode.Bend) return;
 
         var dl = ImGui.GetWindowDrawList();
 
@@ -813,7 +813,7 @@ public class Gizmo3D : IDisposable
     }
 
     public bool IsRotationArcVisible()
-        => _edit.Mode == TransformMode.Rotate && ShowRotationArc
+        => (_edit.Mode == TransformMode.Rotate || _edit.Mode == TransformMode.Bend) && ShowRotationArc
            && _edit.AccumulatedRotationAngle != 0f && _edit.GizmoInitiated;
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1635,6 +1635,10 @@ public class Gizmo3D : IDisposable
                 }
                 _edit.PreviousRotationVector = curVec;
 
+                float motionAngle = _edit.Mode == TransformMode.Bend
+                    ? _edit.AccumulatedRotationAngle
+                    : angle;
+
                 if (Snapping)
                 {
                     snap = GetRotationSnap();
@@ -1646,24 +1650,27 @@ public class Gizmo3D : IDisposable
                     _edit.DisplayRotationAngle = _edit.AccumulatedRotationAngle;
                 }
 
+                if (_edit.Mode == TransformMode.Bend && Snapping)
+                    motionAngle = glm.Radians(GizmoMath.Snapped(glm.Degrees(motionAngle), snap));
+
                 bool    rlocalCoords = UseLocalSpace && _edit.Plane != TransformPlane.View;
                 vec3    computeAxis  = rlocalCoords ? localAxis : globalAxis;
-                vec3    rotResult    = EditRotate(computeAxis * angle);
-                if (rotResult != computeAxis * angle)
+                vec3    rotResult    = EditRotate(computeAxis * motionAngle);
+                if (rotResult != computeAxis * motionAngle)
                 {
                     computeAxis = rotResult.Normalized;
-                    angle       = rotResult.Length;
+                    motionAngle  = rotResult.Length;
                 }
 
-                float angleDeg = glm.Degrees(angle);
-                if (Snapping) angleDeg = GizmoMath.Snapped(angleDeg, snap);
+                float angleDeg = glm.Degrees(motionAngle);
+                if (!(_edit.Mode == TransformMode.Bend && Snapping)) angleDeg = Snapping ? GizmoMath.Snapped(angleDeg, snap) : angleDeg;
                 Message = _edit.Mode == TransformMode.Bend
                     ? $"Bending: {angleDeg:0.###} degrees"
                     : $"Rotating: {angleDeg:0.###} degrees";
-                angle   = glm.Radians(angleDeg);
+                motionAngle = glm.Radians(angleDeg);
 
-                ApplyTransform(computeAxis, angle);
-                return computeAxis * angle;
+                ApplyTransform(computeAxis, motionAngle);
+                return computeAxis * motionAngle;
             }
         }
 
