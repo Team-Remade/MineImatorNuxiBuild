@@ -82,6 +82,8 @@ public class Viewport : UiPanel
     /// </summary>
     public PlaneMesh? GroundPlane => _groundPlane;
     private PlaneMesh? _groundPlane;
+    private CubeMesh? _particleEmissionWireCube;
+    private LightRangeRingMesh? _particleEmissionWireRing;
     private mat4 _groundPlaneModel = mat4.Identity;
     public mat4 GroundPlaneModel => _groundPlaneModel;
     public bool GroundPlaneVisible { get; private set; } = true;
@@ -1849,6 +1851,93 @@ public class Viewport : UiPanel
 
         // Spot-light coverage indicators (cone when selected, stick when unselected).
         RenderSpotLightIndicators(view, proj);
+
+        // Particle spawner emission bounds (wireframe box / ellipsoid).
+        RenderParticleSpawnerEmissionShapes(view, proj);
+    }
+
+    private void RenderParticleSpawnerEmissionShapes(mat4 view, mat4 proj)
+    {
+        if (Gl == null)
+            return;
+
+        _particleEmissionWireCube ??= new CubeMesh(Gl)
+        {
+            Unlit = true,
+            DoubleSided = true,
+            IncludeInFog = false,
+            Albedo = new vec3(0.25f, 0.85f, 1f),
+            Alpha = 1f
+        };
+
+        _particleEmissionWireRing ??= new LightRangeRingMesh(Gl)
+        {
+            Unlit = true,
+            DoubleSided = true,
+            IncludeInFog = false,
+            Albedo = new vec3(0.25f, 0.85f, 1f),
+            Alpha = 1f
+        };
+
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Always);
+        Gl.DepthMask(false);
+        Gl.Disable(GLEnum.CullFace);
+        Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
+
+        foreach (var root in SceneObjects)
+            RenderParticleSpawnerEmissionShapesRecursive(root, view, proj);
+
+        Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Fill);
+        Gl.DepthMask(true);
+        Gl.DepthFunc(GLEnum.Less);
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
+    }
+
+    private void RenderParticleSpawnerEmissionShapesRecursive(SceneObject obj, mat4 view, mat4 proj)
+    {
+        if (!obj.GetEffectiveVisibility())
+            return;
+
+        if (obj is ParticleSpawnerSceneObject spawner && !spawner.IsRuntimeTransient)
+        {
+            vec3 extents = new vec3(
+                MathF.Max(0f, spawner.SpawnBoxExtents.x),
+                MathF.Max(0f, spawner.SpawnBoxExtents.y),
+                MathF.Max(0f, spawner.SpawnBoxExtents.z));
+
+            vec3 emissionScale = new vec3(
+                MathF.Max(0.0001f, extents.x * 2f),
+                MathF.Max(0.0001f, extents.y * 2f),
+                MathF.Max(0.0001f, extents.z * 2f));
+
+            mat4 baseTransform = spawner.TopLevelParticles
+                ? mat4.Translate(spawner.GetWorldPosition())
+                : spawner.GetWorldMatrix();
+
+            if (spawner.EmissionShape == ParticleEmissionShape.Box)
+            {
+                mat4 boxModel = baseTransform * mat4.Scale(emissionScale);
+                RenderMeshWithModeOverride(_particleEmissionWireCube!, boxModel, view, proj, true, includeFog: false);
+            }
+            else
+            {
+                mat4 scaled = baseTransform * mat4.Scale(emissionScale);
+
+                // Draw 3 orthogonal rings to represent a wireframe ellipsoid.
+                RenderMeshWithModeOverride(_particleEmissionWireRing!, scaled, view, proj, true, includeFog: false);
+
+                mat4 xyRing = scaled * mat4.Rotate(MathF.PI * 0.5f, vec3.UnitX);
+                RenderMeshWithModeOverride(_particleEmissionWireRing!, xyRing, view, proj, true, includeFog: false);
+
+                mat4 yzRing = scaled * mat4.Rotate(MathF.PI * 0.5f, vec3.UnitZ);
+                RenderMeshWithModeOverride(_particleEmissionWireRing!, yzRing, view, proj, true, includeFog: false);
+            }
+        }
+
+        foreach (var child in obj.Children)
+            RenderParticleSpawnerEmissionShapesRecursive(child, view, proj);
     }
 
     /// <summary>
@@ -2675,6 +2764,9 @@ public class Viewport : UiPanel
             Gl.Enable(GLEnum.CullFace);
             Gl.CullFace(GLEnum.Back);
             RenderSpotLightIndicators(view, proj);
+
+            // Selected particle spawner emission bounds (wireframe box / ellipsoid).
+            RenderParticleSpawnerEmissionShapes(view, proj);
 
             // ── Selection highlight: Sobel edge detection ─────────────────────────
             // Pass 1: stamp flat-white silhouette mask into _silhouetteFbo.
