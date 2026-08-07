@@ -265,13 +265,15 @@ public static class ProjectSceneSerializer
     {
         SceneObject obj = CreateSpawnedObject(entry, spawnMenu) ?? CreateFallbackObject(entry, viewport);
 
-        ApplyEntryToObject(obj, entry);
-
         if (parent != null)
         {
             viewport.SceneObjects.Remove(obj);
             parent.AddChild(obj);
         }
+
+        // Apply serialized state after parent linkage so inherited bend can
+        // resolve against the correct parent during SetBendAngle regeneration.
+        ApplyEntryToObject(obj, entry);
 
         RestoreChildren(entry, obj, viewport, spawnMenu);
 

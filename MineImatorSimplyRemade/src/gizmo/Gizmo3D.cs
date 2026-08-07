@@ -1401,8 +1401,8 @@ public class Gizmo3D : IDisposable
             var item = _selections[i];
             item.TargetGlobal   = GetWorldTransform(item.Object);
             item.TargetOriginal = GetLocalTransform(item.Object);
-            item.BendOriginal = item.Object is MiBoneSceneObject bone && bone.BendParameters is { } bend
-                ? bend.Angle
+            item.BendOriginal = item.Object is MiBoneSceneObject bone && bone.BendParameters is { }
+                ? bone.GetEditableBendAngle()
                 : vec3.Zero;
             _selections[i] = item;
         }
@@ -1692,7 +1692,7 @@ public class Gizmo3D : IDisposable
                     int axis = (int)_edit.Plane - (int)TransformPlane.X;
                     vec3 bendAngle = item.BendOriginal;
                     bendAngle[axis] += glm.Degrees(snap);
-                    bone.SetBendAngle(bendAngle);
+                    bone.SetEditableBendAngle(bendAngle);
                     break;
                 }
                 case TransformMode.Translate:

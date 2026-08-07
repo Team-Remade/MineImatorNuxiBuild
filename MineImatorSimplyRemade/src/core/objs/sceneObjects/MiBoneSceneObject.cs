@@ -239,11 +239,9 @@ public class MiBoneSceneObject : BoneSceneObject
         if (!BendParameters.HasValue) return vec3.Zero;
 
         var bp = BendParameters.Value;
-        vec3 angle = bp.Angle;
-        if (bp.InvertX) angle.x *= -1f;
-        if (bp.InvertY) angle.y *= -1f;
-        if (bp.InvertZ) angle.z *= -1f;
-        return angle;
+        return bp.InheritBend
+            ? GetEffectiveEditableBendAngle()
+            : StoredToEditable(bp.Angle, bp);
     }
 
     /// <summary>
@@ -264,10 +262,11 @@ public class MiBoneSceneObject : BoneSceneObject
         editableAngle.y = Math.Clamp(editableAngle.y, bp.DirectionMin.y, bp.DirectionMax.y);
         editableAngle.z = Math.Clamp(editableAngle.z, bp.DirectionMin.z, bp.DirectionMax.z);
 
-        vec3 stored = editableAngle;
-        if (bp.InvertX) stored.x *= -1f;
-        if (bp.InvertY) stored.y *= -1f;
-        if (bp.InvertZ) stored.z *= -1f;
+        vec3 localEditable = editableAngle;
+        if (bp.InheritBend && Parent is MiBoneSceneObject parentBone && parentBone.BendParameters.HasValue)
+            localEditable -= parentBone.GetEffectiveEditableBendAngle();
+
+        vec3 stored = EditableToStored(localEditable, bp);
 
         SetBendAngle(stored);
     }
@@ -332,16 +331,45 @@ public class MiBoneSceneObject : BoneSceneObject
     {
         if (!BendParameters.HasValue) return vec3.Zero;
         var bp = BendParameters.Value;
-        var angle = bp.Angle;
+        vec3 editable = GetEffectiveEditableBendAngle();
+        return EditableToStored(editable, bp);
+    }
+
+    private vec3 GetEffectiveEditableBendAngle()
+    {
+        if (!BendParameters.HasValue) return vec3.Zero;
+
+        var bp = BendParameters.Value;
+        vec3 editable = StoredToEditable(bp.Angle, bp);
+
         if (bp.InheritBend && Parent is MiBoneSceneObject parentBone && parentBone.BendParameters.HasValue)
-            angle += parentBone.GetEffectiveBendAngle();
+            editable += parentBone.GetEffectiveEditableBendAngle();
 
-        // After inheritance, enforce this bone's own axis permissions and ranges.
-        angle.x = ClampStoredAxis(angle.x, bp.DirectionMin.x, bp.DirectionMax.x, bp.InvertX, bp.AxisX);
-        angle.y = ClampStoredAxis(angle.y, bp.DirectionMin.y, bp.DirectionMax.y, bp.InvertY, bp.AxisY);
-        angle.z = ClampStoredAxis(angle.z, bp.DirectionMin.z, bp.DirectionMax.z, bp.InvertZ, bp.AxisZ);
+        if (!bp.AxisX) editable.x = 0f;
+        if (!bp.AxisY) editable.y = 0f;
+        if (!bp.AxisZ) editable.z = 0f;
 
-        return angle;
+        editable.x = bp.AxisX ? Math.Clamp(editable.x, bp.DirectionMin.x, bp.DirectionMax.x) : 0f;
+        editable.y = bp.AxisY ? Math.Clamp(editable.y, bp.DirectionMin.y, bp.DirectionMax.y) : 0f;
+        editable.z = bp.AxisZ ? Math.Clamp(editable.z, bp.DirectionMin.z, bp.DirectionMax.z) : 0f;
+
+        return editable;
+    }
+
+    private static vec3 StoredToEditable(vec3 stored, BendParams bp)
+    {
+        if (bp.InvertX) stored.x *= -1f;
+        if (bp.InvertY) stored.y *= -1f;
+        if (bp.InvertZ) stored.z *= -1f;
+        return stored;
+    }
+
+    private static vec3 EditableToStored(vec3 editable, BendParams bp)
+    {
+        if (bp.InvertX) editable.x *= -1f;
+        if (bp.InvertY) editable.y *= -1f;
+        if (bp.InvertZ) editable.z *= -1f;
+        return editable;
     }
 
     private static float ClampStoredAxis(float value, float dirMin, float dirMax, bool invert, bool axisEnabled)
