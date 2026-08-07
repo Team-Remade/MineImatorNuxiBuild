@@ -33,6 +33,13 @@ public class MaterialSettings
     public float EmissionEnergy = 1f;
     public bool EmissionIndirectOnly = false;
     public bool AutoEmission = true;
+    public bool SubsurfaceScatteringEnabled = false;
+    public float SubsurfaceScatteringStrength = 0.45f;
+    public vec3 SubsurfaceScatteringRadius = new vec3(0.65f, 0.35f, 0.2f);
+    public vec3 SubsurfaceScatteringColor = new vec3(1f, 0.78f, 0.72f);
+    public float SubsurfaceScatteringDesaturation = 0.35f;
+    public float SubsurfaceScatteringAbsorption = 0.35f;
+    public float SubsurfaceScatteringDepthScale = 28f;
 
     /// <summary>
     /// When true, both faces of meshes are rendered (back-face culling disabled).
@@ -74,6 +81,13 @@ public class MaterialSettings
             EmissionEnergy = this.EmissionEnergy,
             EmissionIndirectOnly = this.EmissionIndirectOnly,
             AutoEmission = this.AutoEmission,
+            SubsurfaceScatteringEnabled = this.SubsurfaceScatteringEnabled,
+            SubsurfaceScatteringStrength = this.SubsurfaceScatteringStrength,
+            SubsurfaceScatteringRadius = this.SubsurfaceScatteringRadius,
+            SubsurfaceScatteringColor = this.SubsurfaceScatteringColor,
+            SubsurfaceScatteringDesaturation = this.SubsurfaceScatteringDesaturation,
+            SubsurfaceScatteringAbsorption = this.SubsurfaceScatteringAbsorption,
+            SubsurfaceScatteringDepthScale = this.SubsurfaceScatteringDepthScale,
             DoubleSided = this.DoubleSided,
             TextureOffset = this.TextureOffset,
             TextureRepeat = this.TextureRepeat,
@@ -565,6 +579,19 @@ public class SceneObject
                 mesh.EmissionEnergy = _materialSettings.EmissionEnergy;
             }
             mesh.EmissionIndirectOnly = _materialSettings.EmissionIndirectOnly;
+            mesh.SubsurfaceScatteringEnabled = _materialSettings.SubsurfaceScatteringEnabled;
+            mesh.SubsurfaceScatteringStrength = Math.Clamp(_materialSettings.SubsurfaceScatteringStrength, 0f, 2f);
+            mesh.SubsurfaceScatteringRadius = new vec3(
+                Math.Clamp(_materialSettings.SubsurfaceScatteringRadius.x, 0.01f, 8f),
+                Math.Clamp(_materialSettings.SubsurfaceScatteringRadius.y, 0.01f, 8f),
+                Math.Clamp(_materialSettings.SubsurfaceScatteringRadius.z, 0.01f, 8f));
+            mesh.SubsurfaceScatteringColor = new vec3(
+                Math.Clamp(_materialSettings.SubsurfaceScatteringColor.x, 0f, 1f),
+                Math.Clamp(_materialSettings.SubsurfaceScatteringColor.y, 0f, 1f),
+                Math.Clamp(_materialSettings.SubsurfaceScatteringColor.z, 0f, 1f));
+            mesh.SubsurfaceScatteringDesaturation = Math.Clamp(_materialSettings.SubsurfaceScatteringDesaturation, 0f, 1f);
+            mesh.SubsurfaceScatteringAbsorption = Math.Clamp(_materialSettings.SubsurfaceScatteringAbsorption, 0f, 0.95f);
+            mesh.SubsurfaceScatteringDepthScale = Math.Clamp(_materialSettings.SubsurfaceScatteringDepthScale, 1f, 128f);
         }
     }
 

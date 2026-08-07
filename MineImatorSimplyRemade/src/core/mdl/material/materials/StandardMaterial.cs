@@ -60,6 +60,41 @@ public class StandardMaterial : Material
     public byte AutoEmissionLevel = 0;
 
     /// <summary>
+    /// Enables per-material subsurface scattering contribution.
+    /// </summary>
+    public bool SubsurfaceScatteringEnabled = false;
+
+    /// <summary>
+    /// Scalar multiplier for subsurface scattering intensity.
+    /// </summary>
+    public float SubsurfaceScatteringStrength = 0.45f;
+
+    /// <summary>
+    /// Per-channel scattering radius.
+    /// </summary>
+    public vec3 SubsurfaceScatteringRadius = new vec3(0.65f, 0.35f, 0.2f);
+
+    /// <summary>
+    /// Tint for subsurface transmitted light.
+    /// </summary>
+    public vec3 SubsurfaceScatteringColor = new vec3(1f, 0.78f, 0.72f);
+
+    /// <summary>
+    /// Desaturates incoming light color before tinting.
+    /// </summary>
+    public float SubsurfaceScatteringDesaturation = 0.35f;
+
+    /// <summary>
+    /// Henyey-Greenstein-like absorption/phase control.
+    /// </summary>
+    public float SubsurfaceScatteringAbsorption = 0.35f;
+
+    /// <summary>
+    /// Scales depth-derived thickness used by SSS falloff.
+    /// </summary>
+    public float SubsurfaceScatteringDepthScale = 28f;
+
+    /// <summary>
     /// When true, both faces of every triangle are rendered (back-face culling
     /// disabled for this surface).
     /// </summary>

@@ -112,6 +112,19 @@ public class PropertiesPanel : UiPanel
     public bool GlowEnabled;
     public float GlowStrength = 0.6f;
     public float GlowSize = 6f;
+    public bool SubsurfaceScatteringEnabled;
+    public bool SubsurfaceScatteringHighQuality;
+    public int SubsurfaceScatteringBlurSample = 8;
+    public float SubsurfaceScatteringStrength = 1f;
+    public float SubsurfaceScatteringSharpness = 0.5f;
+    public float SubsurfaceScatteringDesaturation = 0.25f;
+    public float SubsurfaceScatteringColorThreshold = 0.35f;
+    public float SubsurfaceScatteringHighlightSize = 1.25f;
+    public float SubsurfaceScatteringHighlightStrength = 0.35f;
+    public float SubsurfaceScatteringHighlightSharpness = 0.6f;
+    public float SubsurfaceScatteringHighlightDesaturation = 0.45f;
+    public float SubsurfaceScatteringHighlightColorThreshold = 0.45f;
+    public float SubsurfaceScatteringAbsorption = 0.35f;
 
     private string _projectName = "Untitled Project";
     private string _selectedBackgroundKeyProperty = "SkyTime";
@@ -342,6 +355,19 @@ public class PropertiesPanel : UiPanel
         GlowEnabled = settings.GlowEnabled;
         GlowStrength = Math.Clamp(settings.GlowStrength, 0f, 2f);
         GlowSize = Math.Clamp(settings.GlowSize, 0f, 20f);
+        SubsurfaceScatteringEnabled = settings.SubsurfaceScatteringEnabled;
+        SubsurfaceScatteringHighQuality = settings.SubsurfaceScatteringHighQuality;
+        SubsurfaceScatteringBlurSample = Math.Clamp(settings.SubsurfaceScatteringBlurSample, 1, 64);
+        SubsurfaceScatteringStrength = Math.Clamp(settings.SubsurfaceScatteringStrength, 0f, 4f);
+        SubsurfaceScatteringSharpness = Math.Clamp(settings.SubsurfaceScatteringSharpness, 0f, 1f);
+        SubsurfaceScatteringDesaturation = Math.Clamp(settings.SubsurfaceScatteringDesaturation, 0f, 1f);
+        SubsurfaceScatteringColorThreshold = Math.Clamp(settings.SubsurfaceScatteringColorThreshold, 0f, 1f);
+        SubsurfaceScatteringHighlightSize = Math.Clamp(settings.SubsurfaceScatteringHighlightSize, 0.01f, 8f);
+        SubsurfaceScatteringHighlightStrength = Math.Clamp(settings.SubsurfaceScatteringHighlightStrength, 0f, 4f);
+        SubsurfaceScatteringHighlightSharpness = Math.Clamp(settings.SubsurfaceScatteringHighlightSharpness, 0f, 1f);
+        SubsurfaceScatteringHighlightDesaturation = Math.Clamp(settings.SubsurfaceScatteringHighlightDesaturation, 0f, 1f);
+        SubsurfaceScatteringHighlightColorThreshold = Math.Clamp(settings.SubsurfaceScatteringHighlightColorThreshold, 0f, 1f);
+        SubsurfaceScatteringAbsorption = Math.Clamp(settings.SubsurfaceScatteringAbsorption, 0f, 0.95f);
         _resolutionWidth = Math.Max(1, settings.ResolutionWidth);
         _resolutionHeight = Math.Max(1, settings.ResolutionHeight);
         _framerate = Math.Clamp(settings.Framerate, 1, 120);
@@ -470,6 +496,19 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.GlowEnabled = GlowEnabled;
         manifest.Settings.GlowStrength = Math.Clamp(GlowStrength, 0f, 2f);
         manifest.Settings.GlowSize = Math.Clamp(GlowSize, 0f, 20f);
+        manifest.Settings.SubsurfaceScatteringEnabled = SubsurfaceScatteringEnabled;
+        manifest.Settings.SubsurfaceScatteringHighQuality = SubsurfaceScatteringHighQuality;
+        manifest.Settings.SubsurfaceScatteringBlurSample = Math.Clamp(SubsurfaceScatteringBlurSample, 1, 64);
+        manifest.Settings.SubsurfaceScatteringStrength = Math.Clamp(SubsurfaceScatteringStrength, 0f, 4f);
+        manifest.Settings.SubsurfaceScatteringSharpness = Math.Clamp(SubsurfaceScatteringSharpness, 0f, 1f);
+        manifest.Settings.SubsurfaceScatteringDesaturation = Math.Clamp(SubsurfaceScatteringDesaturation, 0f, 1f);
+        manifest.Settings.SubsurfaceScatteringColorThreshold = Math.Clamp(SubsurfaceScatteringColorThreshold, 0f, 1f);
+        manifest.Settings.SubsurfaceScatteringHighlightSize = Math.Clamp(SubsurfaceScatteringHighlightSize, 0.01f, 8f);
+        manifest.Settings.SubsurfaceScatteringHighlightStrength = Math.Clamp(SubsurfaceScatteringHighlightStrength, 0f, 4f);
+        manifest.Settings.SubsurfaceScatteringHighlightSharpness = Math.Clamp(SubsurfaceScatteringHighlightSharpness, 0f, 1f);
+        manifest.Settings.SubsurfaceScatteringHighlightDesaturation = Math.Clamp(SubsurfaceScatteringHighlightDesaturation, 0f, 1f);
+        manifest.Settings.SubsurfaceScatteringHighlightColorThreshold = Math.Clamp(SubsurfaceScatteringHighlightColorThreshold, 0f, 1f);
+        manifest.Settings.SubsurfaceScatteringAbsorption = Math.Clamp(SubsurfaceScatteringAbsorption, 0f, 0.95f);
 
         manifest.Settings.ResolutionWidth = Math.Max(1, _resolutionWidth);
         manifest.Settings.ResolutionHeight = Math.Max(1, _resolutionHeight);
@@ -873,6 +912,23 @@ public class PropertiesPanel : UiPanel
             EmissionEnergy = source.EmissionEnergy,
             EmissionIndirectOnly = source.EmissionIndirectOnly,
             AutoEmission = source.AutoEmission,
+            SubsurfaceScatteringEnabled = source.SubsurfaceScatteringEnabled,
+            SubsurfaceScatteringStrength = source.SubsurfaceScatteringStrength,
+            SubsurfaceScatteringRadius = new ProjectVec3
+            {
+                X = source.SubsurfaceScatteringRadius.X,
+                Y = source.SubsurfaceScatteringRadius.Y,
+                Z = source.SubsurfaceScatteringRadius.Z
+            },
+            SubsurfaceScatteringColor = new ProjectVec3
+            {
+                X = source.SubsurfaceScatteringColor.X,
+                Y = source.SubsurfaceScatteringColor.Y,
+                Z = source.SubsurfaceScatteringColor.Z
+            },
+            SubsurfaceScatteringDesaturation = source.SubsurfaceScatteringDesaturation,
+            SubsurfaceScatteringAbsorption = source.SubsurfaceScatteringAbsorption,
+            SubsurfaceScatteringDepthScale = source.SubsurfaceScatteringDepthScale,
             ItemTileKey = source.ItemTileKey,
             ItemIs3D = source.ItemIs3D,
             ParticleLibraryEntryId = source.ParticleLibraryEntryId,
@@ -2131,6 +2187,27 @@ public class PropertiesPanel : UiPanel
             ImGui.Indent();
             changed |= PercentageSlider("Strength##glow", ref GlowStrength, 0f, 200f);
             changed |= InputFloatEditor("Size (px)##glow", ref GlowSize, 0.1f, 0f, 20f, "%.1f");
+            ImGui.Unindent();
+        }
+
+        ImGui.Separator();
+        ImGui.Text("Subsurface Scattering (Project)");
+        changed |= ImGui.Checkbox("Enabled##sssProject", ref SubsurfaceScatteringEnabled);
+        if (SubsurfaceScatteringEnabled)
+        {
+            ImGui.Indent();
+            changed |= ImGui.Checkbox("High Quality##sssProject", ref SubsurfaceScatteringHighQuality);
+            changed |= ImGui.SliderInt("Blur Sample##sssProject", ref SubsurfaceScatteringBlurSample, 1, 64);
+            changed |= PercentageSlider("Strength##sssProject", ref SubsurfaceScatteringStrength, 0f, 400f);
+            changed |= PercentageSlider("Sharpness##sssProject", ref SubsurfaceScatteringSharpness, 0f, 100f);
+            changed |= PercentageSlider("Desaturation##sssProject", ref SubsurfaceScatteringDesaturation, 0f, 100f);
+            changed |= PercentageSlider("Color Threshold##sssProject", ref SubsurfaceScatteringColorThreshold, 0f, 100f);
+            changed |= InputFloatEditor("Highlight Size##sssProject", ref SubsurfaceScatteringHighlightSize, 0.01f, 0.01f, 8f, "%.2f");
+            changed |= PercentageSlider("Highlight Strength##sssProject", ref SubsurfaceScatteringHighlightStrength, 0f, 400f);
+            changed |= PercentageSlider("Highlight Sharpness##sssProject", ref SubsurfaceScatteringHighlightSharpness, 0f, 100f);
+            changed |= PercentageSlider("Highlight Desaturation##sssProject", ref SubsurfaceScatteringHighlightDesaturation, 0f, 100f);
+            changed |= PercentageSlider("Hilight Color Threshold##sssProject", ref SubsurfaceScatteringHighlightColorThreshold, 0f, 100f);
+            changed |= PercentageSlider("Absorption##sssProject", ref SubsurfaceScatteringAbsorption, 0f, 95f);
             ImGui.Unindent();
         }
 
@@ -3581,6 +3658,83 @@ public class PropertiesPanel : UiPanel
                 }
             }
 
+            // Subsurface scattering (per-object material)
+            {
+                bool sssEnabled = mat?.SubsurfaceScatteringEnabled ?? false;
+                if (ImGui.Checkbox("Subsurface Scattering", ref sssEnabled))
+                {
+                    EnsureMaterialSettings();
+                    _currentObject.MaterialSettings.SubsurfaceScatteringEnabled = sssEnabled;
+                    _currentObject.SetExplicitMaterialSettings();
+                    _currentObject.PropagateMaterialSettingsToChildren();
+                }
+
+                if (sssEnabled)
+                {
+                    float sssStrength = mat?.SubsurfaceScatteringStrength ?? 0.45f;
+                    if (ImGui.SliderFloat("SSS Strength", ref sssStrength, 0f, 2f))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.SubsurfaceScatteringStrength = sssStrength;
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+
+                    vec3 sssRadius = mat?.SubsurfaceScatteringRadius ?? new vec3(0.65f, 0.35f, 0.2f);
+                    Vector3 sssRadiusV3 = new(sssRadius.x, sssRadius.y, sssRadius.z);
+                    if (ImGui.DragFloat3("SSS Radius RGB", ref sssRadiusV3, 0.01f, 0.01f, 8f))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.SubsurfaceScatteringRadius = new vec3(
+                            Math.Clamp(sssRadiusV3.X, 0.01f, 8f),
+                            Math.Clamp(sssRadiusV3.Y, 0.01f, 8f),
+                            Math.Clamp(sssRadiusV3.Z, 0.01f, 8f));
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+
+                    vec3 sssColor = mat?.SubsurfaceScatteringColor ?? new vec3(1f, 0.78f, 0.72f);
+                    Vector3 sssColorV3 = new(sssColor.x, sssColor.y, sssColor.z);
+                    if (ImGui.ColorEdit3("SSS Color", ref sssColorV3, ImGuiColorEditFlags.NoInputs))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.SubsurfaceScatteringColor = new vec3(
+                            Math.Clamp(sssColorV3.X, 0f, 1f),
+                            Math.Clamp(sssColorV3.Y, 0f, 1f),
+                            Math.Clamp(sssColorV3.Z, 0f, 1f));
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+
+                    float sssDesat = mat?.SubsurfaceScatteringDesaturation ?? 0.35f;
+                    if (ImGui.SliderFloat("SSS Desaturation", ref sssDesat, 0f, 1f))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.SubsurfaceScatteringDesaturation = sssDesat;
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+
+                    float sssAbsorption = mat?.SubsurfaceScatteringAbsorption ?? 0.35f;
+                    if (ImGui.SliderFloat("SSS Absorption", ref sssAbsorption, 0f, 0.95f))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.SubsurfaceScatteringAbsorption = sssAbsorption;
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+
+                    float sssDepthScale = mat?.SubsurfaceScatteringDepthScale ?? 28f;
+                    if (ImGui.SliderFloat("SSS Depth Scale", ref sssDepthScale, 1f, 128f))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.SubsurfaceScatteringDepthScale = sssDepthScale;
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+                }
+            }
+
             // Normal map (display only; file picking not yet implemented)
             {
                 string normalName = (mat?.NormalTexture != 0) ? "(texture)" : "None";
@@ -3671,6 +3825,13 @@ public class PropertiesPanel : UiPanel
                 m.EmissionEnergy  = 1f;
                 m.EmissionIndirectOnly = false;
                 m.AutoEmission = true;
+                m.SubsurfaceScatteringEnabled = false;
+                m.SubsurfaceScatteringStrength = 0.45f;
+                m.SubsurfaceScatteringRadius = new vec3(0.65f, 0.35f, 0.2f);
+                m.SubsurfaceScatteringColor = new vec3(1f, 0.78f, 0.72f);
+                m.SubsurfaceScatteringDesaturation = 0.35f;
+                m.SubsurfaceScatteringAbsorption = 0.35f;
+                m.SubsurfaceScatteringDepthScale = 28f;
                 m.NormalTexture   = 0;
                 m.NormalEnabled   = false;
                 m.DoubleSided     = false;

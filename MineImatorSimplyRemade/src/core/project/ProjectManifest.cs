@@ -113,6 +113,19 @@ public class ProjectRenderSettings
     public bool GlowEnabled { get; set; } = false;
     public float GlowStrength { get; set; } = 0.6f;
     public float GlowSize { get; set; } = 6f;
+    public bool SubsurfaceScatteringEnabled { get; set; } = false;
+    public bool SubsurfaceScatteringHighQuality { get; set; } = false;
+    public int SubsurfaceScatteringBlurSample { get; set; } = 8;
+    public float SubsurfaceScatteringStrength { get; set; } = 1f;
+    public float SubsurfaceScatteringSharpness { get; set; } = 0.5f;
+    public float SubsurfaceScatteringDesaturation { get; set; } = 0.25f;
+    public float SubsurfaceScatteringColorThreshold { get; set; } = 0.35f;
+    public float SubsurfaceScatteringHighlightSize { get; set; } = 1.25f;
+    public float SubsurfaceScatteringHighlightStrength { get; set; } = 0.35f;
+    public float SubsurfaceScatteringHighlightSharpness { get; set; } = 0.6f;
+    public float SubsurfaceScatteringHighlightDesaturation { get; set; } = 0.45f;
+    public float SubsurfaceScatteringHighlightColorThreshold { get; set; } = 0.45f;
+    public float SubsurfaceScatteringAbsorption { get; set; } = 0.35f;
     public Dictionary<string, List<ProjectBackgroundKeyframeEntry>> BackgroundKeyframes { get; set; } = new();
     public int ResolutionWidth { get; set; } = 1920;
     public int ResolutionHeight { get; set; } = 1080;
@@ -363,6 +376,13 @@ public class ProjectSceneObjectEntry
     public float EmissionEnergy { get; set; } = 1f;
     public bool EmissionIndirectOnly { get; set; } = false;
     public bool AutoEmission { get; set; } = true;
+    public bool SubsurfaceScatteringEnabled { get; set; } = false;
+    public float SubsurfaceScatteringStrength { get; set; } = 0.45f;
+    public ProjectVec3 SubsurfaceScatteringRadius { get; set; } = new() { X = 0.65f, Y = 0.35f, Z = 0.2f };
+    public ProjectVec3 SubsurfaceScatteringColor { get; set; } = new() { X = 1f, Y = 0.78f, Z = 0.72f };
+    public float SubsurfaceScatteringDesaturation { get; set; } = 0.35f;
+    public float SubsurfaceScatteringAbsorption { get; set; } = 0.35f;
+    public float SubsurfaceScatteringDepthScale { get; set; } = 28f;
 
     // Item-specific data
     public string ItemTileKey { get; set; } = "";
