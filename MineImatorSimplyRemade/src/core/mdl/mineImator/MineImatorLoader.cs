@@ -341,17 +341,26 @@ public class MineImatorLoader
                     // is used heavily by facial rigs (for example PikanModel's
                     // R_Eye plane is 0.01 alpha while the R_Eye part is opaque).
                     float? colorAlpha = shape.ColorAlpha ?? miBone?.ColorAlpha;
-                    vec3? colorBlend = ParseMiColor(shape.ColorBlend) ?? miBone?.ColorBlend;
+                    vec3? explicitShapeBlend = ParseMiColor(shape.ColorBlend ?? shape.ColorMix);
+                    // Mine-imator treats mix-percent without an explicit mix color as black.
+                    if (!explicitShapeBlend.HasValue && shape.ColorMixPercent.HasValue)
+                        explicitShapeBlend = vec3.Zero;
+                    vec3? colorBlend = explicitShapeBlend ?? miBone?.ColorBlend;
+                    float? colorBlendAmount = NormalizeMiBlendAmount(shape.ColorMixPercent) ?? miBone?.ColorBlendAmount;
                     float depth = miBone?.Depth ?? 0f;
 
                     var mesh = CreateShapeMesh(part.Name, shapeIndex, shape, model, shapeTexture,
                         accumulatedScale, effectiveBendParams, _currentCharacter.ModelBendStyle,
-                        colorBlend, colorAlpha, depth, textureSize: textureSize);
+                        colorBlend, colorBlendAmount, colorAlpha, depth, textureSize: textureSize);
 
                     if (mesh != null)
                     {
                         if (miBone != null) ApplyMaterialSettings(mesh, miBone, shapeTexture);
-                        if (colorBlend.HasValue) mesh.BlendColor = new vec4(colorBlend.Value, 1f);
+                        if (colorBlend.HasValue)
+                        {
+                            float mixAmount = Math.Clamp(colorBlendAmount ?? 1f, 0f, 1f);
+                            mesh.BlendColor = new vec4(colorBlend.Value, mixAmount);
+                        }
                         if (colorAlpha.HasValue) mesh.Alpha = colorAlpha.Value;
                         mesh.DoubleSided = part.Backfaces;
                         boneObject.AddMesh(mesh);
@@ -365,6 +374,7 @@ public class MineImatorLoader
                             AccumulatedScale = accumulatedScale,
                             ModelBendStyle = _currentCharacter.ModelBendStyle,
                             PartColorBlend = colorBlend,
+                            PartColorBlendAmount = colorBlendAmount,
                             PartColorAlpha = colorAlpha,
                             PartDepth = depth,
                             TextureSize = textureSize
@@ -385,10 +395,11 @@ public class MineImatorLoader
     public Mesh CreateShapeMeshPublic(string partName, int shapeIndex, MiShape shape, MiModel model,
         uint textureId, vec3 accumulatedParentScale, BendParams? bendParams = null,
         BendStyle bendStyle = BendStyle.ProjectDefault, vec3? partColorBlend = null,
+        float? partColorBlendAmount = null,
         float? partColorAlpha = null,
         float depth = 0f, int[]? textureSize = null)
         => CreateShapeMesh(partName, shapeIndex, shape, model, textureId, accumulatedParentScale,
-            bendParams, bendStyle, partColorBlend, partColorAlpha, depth, textureSize);
+            bendParams, bendStyle, partColorBlend, partColorBlendAmount, partColorAlpha, depth, textureSize);
 
     private static int[]? ResolveTextureSize(MiPart? part, MiModel model)
     {
@@ -1196,7 +1207,11 @@ public class MineImatorLoader
             if (boneObject is MiBoneSceneObject mibone)
             {
                 mibone.ColorAlpha = part.ColorAlpha;
-                mibone.ColorBlend = ParseMiColor(part.ColorBlend);
+                mibone.ColorBlend = ParseMiColor(part.ColorBlend ?? part.ColorMix);
+                // Mine-imator defaults missing mix color to black when mix percent is authored.
+                if (!mibone.ColorBlend.HasValue && part.ColorMixPercent.HasValue)
+                    mibone.ColorBlend = vec3.Zero;
+                mibone.ColorBlendAmount = NormalizeMiBlendAmount(part.ColorMixPercent);
                 mibone.Depth = part.Depth;
             }
 
@@ -1218,6 +1233,7 @@ public class MineImatorLoader
             {
                 mib.InheritColorAlphaFromParent();
                 mib.InheritColorBlendFromParent();
+                mib.InheritColorBlendAmountFromParent();
                 mib.CommitBasePose();
             }
         }
@@ -1443,7 +1459,10 @@ public class MineImatorLoader
         if (bone.ColorAlpha.HasValue)
             mesh.Alpha = bone.ColorAlpha.Value;
         if (bone.ColorBlend.HasValue)
-            mesh.BlendColor = new vec4(bone.ColorBlend.Value, 1f);
+        {
+            float mixAmount = Math.Clamp(bone.ColorBlendAmount ?? 1f, 0f, 1f);
+            mesh.BlendColor = new vec4(bone.ColorBlend.Value, mixAmount);
+        }
 
         mesh.SortDepth = bone.Depth;
     }
@@ -1455,6 +1474,7 @@ public class MineImatorLoader
     private Mesh CreateShapeMesh(string partName, int shapeIndex, MiShape shape, MiModel model,
         uint textureId, vec3 accumulatedParentScale, BendParams? bendParams = null,
         BendStyle bendStyle = BendStyle.ProjectDefault, vec3? partColorBlend = null,
+        float? partColorBlendAmount = null,
         float? partColorAlpha = null,
         float depth = 0f, int[]? textureSize = null)
     {
@@ -1544,7 +1564,11 @@ public class MineImatorLoader
             mesh.SortDepth = depth;
 
             if (textureId != 0) mesh.TextureId = textureId;
-            if (partColorBlend.HasValue) mesh.BlendColor = new vec4(partColorBlend.Value, 1f);
+            if (partColorBlend.HasValue)
+            {
+                float mixAmount = Math.Clamp(partColorBlendAmount ?? 1f, 0f, 1f);
+                mesh.BlendColor = new vec4(partColorBlend.Value, mixAmount);
+            }
             if (partColorAlpha.HasValue) mesh.Alpha = partColorAlpha.Value;
 
             // Bend matrix setup uses shapePosition to align the pivot region,
@@ -1559,6 +1583,14 @@ public class MineImatorLoader
         }
 
         return mesh;
+    }
+
+    private static float? NormalizeMiBlendAmount(float? value)
+    {
+        if (!value.HasValue)
+            return null;
+
+        return Math.Clamp(value.Value, 0f, 1f);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -3147,6 +3179,11 @@ public class MiPart
     public float? ColorAlpha { get; set; }
 
     [JsonPropertyName("color_blend")] public string? ColorBlend { get; set; }
+    [JsonPropertyName("color_mix")] public string? ColorMix { get; set; }
+
+    [JsonPropertyName("color_mix_percent")]
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float? ColorMixPercent { get; set; }
 
     [JsonPropertyName("shapes")] public List<MiShape> Shapes { get; set; }
     [JsonPropertyName("parts")] public List<MiPart> Parts { get; set; }
@@ -3166,6 +3203,11 @@ public class MiShape
     public float? ColorAlpha { get; set; }
 
     [JsonPropertyName("color_blend")] public string? ColorBlend { get; set; }
+    [JsonPropertyName("color_mix")] public string? ColorMix { get; set; }
+
+    [JsonPropertyName("color_mix_percent")]
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float? ColorMixPercent { get; set; }
     [JsonPropertyName("from")] public float[] From { get; set; }
     [JsonPropertyName("to")] public float[] To { get; set; }
     [JsonPropertyName("uv")] public float[] Uv { get; set; }

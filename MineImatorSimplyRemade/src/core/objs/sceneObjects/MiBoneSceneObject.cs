@@ -19,6 +19,7 @@ public class BoneShapeData
     public vec3      AccumulatedScale;
     public BendStyle ModelBendStyle;
     public vec3?     PartColorBlend;
+    public float?    PartColorBlendAmount;
     public float?    PartColorAlpha;
     public float     PartDepth;
     public int[]?    TextureSize;
@@ -130,6 +131,9 @@ public class MiBoneSceneObject : BoneSceneObject
 
     /// <summary>Multiplicative blend colour loaded from color_blend.</summary>
     public vec3? ColorBlend { get; set; }
+
+    /// <summary>Blend weight loaded from color_mix_percent (0-1, defaults to 1).</summary>
+    public float? ColorBlendAmount { get; set; }
 
     /// <summary>Render priority depth from model's depth property.</summary>
     public float Depth { get; set; }
@@ -305,7 +309,8 @@ public class MiBoneSceneObject : BoneSceneObject
             foreach (var mesh in _shapeDataList.Select(sd => loader.CreateShapeMeshPublic(
                          sd.PartName, sd.ShapeIndex, sd.Shape, sd.Model,
                          sd.TextureId, sd.AccumulatedScale, effectiveBendParams,
-                         sd.ModelBendStyle, sd.PartColorBlend, sd.PartColorAlpha, sd.PartDepth,
+                         sd.ModelBendStyle, sd.PartColorBlend, sd.PartColorBlendAmount,
+                         sd.PartColorAlpha, sd.PartDepth,
                          sd.TextureSize)).OfType<Mesh>())
             {
                 AddMesh(mesh);
@@ -402,6 +407,13 @@ public class MiBoneSceneObject : BoneSceneObject
         if (ColorBlend.HasValue) return;
         if (Parent is MiBoneSceneObject parentBone)
             ColorBlend = parentBone.ColorBlend;
+    }
+
+    public void InheritColorBlendAmountFromParent()
+    {
+        if (ColorBlendAmount.HasValue) return;
+        if (Parent is MiBoneSceneObject parentBone)
+            ColorBlendAmount = parentBone.ColorBlendAmount;
     }
 
     // ── Icon ──────────────────────────────────────────────────────────────────
