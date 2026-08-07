@@ -580,48 +580,6 @@ public class Mesh : IDisposable
         set => DefaultMaterial.AutoEmissionLevel = value;
     }
 
-    public bool SubsurfaceScatteringEnabled
-    {
-        get => DefaultMaterial.SubsurfaceScatteringEnabled;
-        set => DefaultMaterial.SubsurfaceScatteringEnabled = value;
-    }
-
-    public float SubsurfaceScatteringStrength
-    {
-        get => DefaultMaterial.SubsurfaceScatteringStrength;
-        set => DefaultMaterial.SubsurfaceScatteringStrength = value;
-    }
-
-    public vec3 SubsurfaceScatteringRadius
-    {
-        get => DefaultMaterial.SubsurfaceScatteringRadius;
-        set => DefaultMaterial.SubsurfaceScatteringRadius = value;
-    }
-
-    public vec3 SubsurfaceScatteringColor
-    {
-        get => DefaultMaterial.SubsurfaceScatteringColor;
-        set => DefaultMaterial.SubsurfaceScatteringColor = value;
-    }
-
-    public float SubsurfaceScatteringDesaturation
-    {
-        get => DefaultMaterial.SubsurfaceScatteringDesaturation;
-        set => DefaultMaterial.SubsurfaceScatteringDesaturation = value;
-    }
-
-    public float SubsurfaceScatteringAbsorption
-    {
-        get => DefaultMaterial.SubsurfaceScatteringAbsorption;
-        set => DefaultMaterial.SubsurfaceScatteringAbsorption = value;
-    }
-
-    public float SubsurfaceScatteringDepthScale
-    {
-        get => DefaultMaterial.SubsurfaceScatteringDepthScale;
-        set => DefaultMaterial.SubsurfaceScatteringDepthScale = value;
-    }
-
     // ── Construction ──────────────────────────────────────────────────────────
 
     /// <summary>
@@ -709,13 +667,6 @@ public class Mesh : IDisposable
         dstMat.EmissionEnergyMultiplier  = srcMat.EmissionEnergyMultiplier;
         dstMat.EmissionIndirectOnly      = srcMat.EmissionIndirectOnly;
         dstMat.AutoEmissionLevel         = srcMat.AutoEmissionLevel;
-        dstMat.SubsurfaceScatteringEnabled = srcMat.SubsurfaceScatteringEnabled;
-        dstMat.SubsurfaceScatteringStrength = srcMat.SubsurfaceScatteringStrength;
-        dstMat.SubsurfaceScatteringRadius = srcMat.SubsurfaceScatteringRadius;
-        dstMat.SubsurfaceScatteringColor = srcMat.SubsurfaceScatteringColor;
-        dstMat.SubsurfaceScatteringDesaturation = srcMat.SubsurfaceScatteringDesaturation;
-        dstMat.SubsurfaceScatteringAbsorption = srcMat.SubsurfaceScatteringAbsorption;
-        dstMat.SubsurfaceScatteringDepthScale = srcMat.SubsurfaceScatteringDepthScale;
         dstMat.DoubleSided               = srcMat.DoubleSided;
         dstMat.TextureOffset              = srcMat.TextureOffset;
         dstMat.TextureRepeat              = srcMat.TextureRepeat;
@@ -1062,19 +1013,6 @@ public class Mesh : IDisposable
     public static float HeightFogOffset = -3850f;
     public static bool IndirectWorldEnabled;
     public static float IndirectWorldStrength = 1f;
-    public static bool GlobalSubsurfaceEnabled = false;
-    public static bool GlobalSubsurfaceHighQuality = false;
-    public static int GlobalSubsurfaceBlurSample = 8;
-    public static float GlobalSubsurfaceStrength = 1f;
-    public static float GlobalSubsurfaceSharpness = 0.5f;
-    public static float GlobalSubsurfaceDesaturation = 0.25f;
-    public static float GlobalSubsurfaceColorThreshold = 0.35f;
-    public static float GlobalSubsurfaceHighlightSize = 1.25f;
-    public static float GlobalSubsurfaceHighlightStrength = 0.35f;
-    public static float GlobalSubsurfaceHighlightSharpness = 0.6f;
-    public static float GlobalSubsurfaceHighlightDesaturation = 0.45f;
-    public static float GlobalSubsurfaceHighlightColorThreshold = 0.45f;
-    public static float GlobalSubsurfaceAbsorption = 0.35f;
 
     /// <summary>
     /// Export-only shadow state configured by <see cref="CameraViewport"/> when
@@ -1184,31 +1122,6 @@ public class Mesh : IDisposable
         SetUniformFloat("uHeightFogOffset", HeightFogOffset);
         SetUniformBool("uIndirectWorldEnabled", IndirectWorldEnabled && !Unlit);
         SetUniformFloat("uIndirectWorldStrength", Math.Max(IndirectWorldStrength, 0f));
-        SetUniformBool("uSubsurfaceEnabled", SubsurfaceScatteringEnabled && GlobalSubsurfaceEnabled && !Unlit);
-        SetUniformFloat("uSubsurfaceStrength", Math.Max(SubsurfaceScatteringStrength, 0f));
-        SetUniformVec3("uSubsurfaceRadius", new vec3(
-            Math.Max(SubsurfaceScatteringRadius.x, 0.01f),
-            Math.Max(SubsurfaceScatteringRadius.y, 0.01f),
-            Math.Max(SubsurfaceScatteringRadius.z, 0.01f)));
-        SetUniformVec3("uSubsurfaceColor", new vec3(
-            Math.Clamp(SubsurfaceScatteringColor.x, 0f, 1f),
-            Math.Clamp(SubsurfaceScatteringColor.y, 0f, 1f),
-            Math.Clamp(SubsurfaceScatteringColor.z, 0f, 1f)));
-        SetUniformFloat("uSubsurfaceDesaturation", Math.Clamp(SubsurfaceScatteringDesaturation, 0f, 1f));
-        SetUniformFloat("uSubsurfaceAbsorption", Math.Clamp(SubsurfaceScatteringAbsorption, 0f, 0.95f));
-        SetUniformFloat("uSubsurfaceDepthScale", Math.Clamp(SubsurfaceScatteringDepthScale, 1f, 128f));
-        SetUniformBool("uSubsurfaceHighQuality", GlobalSubsurfaceHighQuality);
-        SetUniformInt("uSubsurfaceBlurSample", Math.Clamp(GlobalSubsurfaceBlurSample, 1, 64));
-        SetUniformFloat("uSubsurfaceGlobalStrength", Math.Max(GlobalSubsurfaceStrength, 0f));
-        SetUniformFloat("uSubsurfaceSharpness", Math.Clamp(GlobalSubsurfaceSharpness, 0f, 1f));
-        SetUniformFloat("uSubsurfaceGlobalDesaturation", Math.Clamp(GlobalSubsurfaceDesaturation, 0f, 1f));
-        SetUniformFloat("uSubsurfaceColorThreshold", Math.Clamp(GlobalSubsurfaceColorThreshold, 0f, 1f));
-        SetUniformFloat("uSubsurfaceHighlightSize", Math.Clamp(GlobalSubsurfaceHighlightSize, 0.01f, 8f));
-        SetUniformFloat("uSubsurfaceHighlightStrength", Math.Max(GlobalSubsurfaceHighlightStrength, 0f));
-        SetUniformFloat("uSubsurfaceHighlightSharpness", Math.Clamp(GlobalSubsurfaceHighlightSharpness, 0f, 1f));
-        SetUniformFloat("uSubsurfaceHighlightDesaturation", Math.Clamp(GlobalSubsurfaceHighlightDesaturation, 0f, 1f));
-        SetUniformFloat("uSubsurfaceHighlightColorThreshold", Math.Clamp(GlobalSubsurfaceHighlightColorThreshold, 0f, 1f));
-        SetUniformFloat("uSubsurfaceGlobalAbsorption", Math.Clamp(GlobalSubsurfaceAbsorption, 0f, 0.95f));
 
         // ── Point lights ──────────────────────────────────────────────────────
         // Must match MAX_POINT_LIGHTS in simple.frag.

@@ -219,13 +219,6 @@ public static class ProjectSceneSerializer
             entry.EmissionEnergy = obj.MaterialSettings.EmissionEnergy;
             entry.EmissionIndirectOnly = obj.MaterialSettings.EmissionIndirectOnly;
             entry.AutoEmission = obj.MaterialSettings.AutoEmission;
-            entry.SubsurfaceScatteringEnabled = obj.MaterialSettings.SubsurfaceScatteringEnabled;
-            entry.SubsurfaceScatteringStrength = obj.MaterialSettings.SubsurfaceScatteringStrength;
-            entry.SubsurfaceScatteringRadius = ToProjectVec3(obj.MaterialSettings.SubsurfaceScatteringRadius);
-            entry.SubsurfaceScatteringColor = ToProjectVec3(obj.MaterialSettings.SubsurfaceScatteringColor);
-            entry.SubsurfaceScatteringDesaturation = obj.MaterialSettings.SubsurfaceScatteringDesaturation;
-            entry.SubsurfaceScatteringAbsorption = obj.MaterialSettings.SubsurfaceScatteringAbsorption;
-            entry.SubsurfaceScatteringDepthScale = obj.MaterialSettings.SubsurfaceScatteringDepthScale;
         }
 
         if (obj.SpawnCategory == "Items")
@@ -633,13 +626,6 @@ public static class ProjectSceneSerializer
             material.EmissionEnergy = entry.EmissionEnergy;
             material.EmissionIndirectOnly = entry.EmissionIndirectOnly;
             material.AutoEmission = entry.AutoEmission;
-            material.SubsurfaceScatteringEnabled = entry.SubsurfaceScatteringEnabled;
-            material.SubsurfaceScatteringStrength = entry.SubsurfaceScatteringStrength;
-            material.SubsurfaceScatteringRadius = ToVec3(entry.SubsurfaceScatteringRadius);
-            material.SubsurfaceScatteringColor = ToVec3(entry.SubsurfaceScatteringColor);
-            material.SubsurfaceScatteringDesaturation = entry.SubsurfaceScatteringDesaturation;
-            material.SubsurfaceScatteringAbsorption = entry.SubsurfaceScatteringAbsorption;
-            material.SubsurfaceScatteringDepthScale = entry.SubsurfaceScatteringDepthScale;
             obj.MaterialSettings = material;
             obj.SetExplicitMaterialSettings();
             obj.PropagateMaterialSettingsToChildren();

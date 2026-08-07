@@ -62,25 +62,6 @@ uniform float uPointLightSpotCosInner[MAX_POINT_LIGHTS];
 uniform samplerCube uPointShadowMaps[MAX_POINT_SHADOWS];
 uniform bool  uIndirectWorldEnabled;
 uniform float uIndirectWorldStrength;
-uniform bool  uSubsurfaceEnabled;
-uniform float uSubsurfaceStrength;
-uniform vec3  uSubsurfaceRadius;
-uniform vec3  uSubsurfaceColor;
-uniform float uSubsurfaceDesaturation;
-uniform float uSubsurfaceAbsorption;
-uniform float uSubsurfaceDepthScale;
-uniform bool  uSubsurfaceHighQuality;
-uniform int   uSubsurfaceBlurSample;
-uniform float uSubsurfaceGlobalStrength;
-uniform float uSubsurfaceSharpness;
-uniform float uSubsurfaceGlobalDesaturation;
-uniform float uSubsurfaceColorThreshold;
-uniform float uSubsurfaceHighlightSize;
-uniform float uSubsurfaceHighlightStrength;
-uniform float uSubsurfaceHighlightSharpness;
-uniform float uSubsurfaceHighlightDesaturation;
-uniform float uSubsurfaceHighlightColorThreshold;
-uniform float uSubsurfaceGlobalAbsorption;
 
 out vec4 FragColor;
 
@@ -134,143 +115,6 @@ float calculatePointShadow(int shadowIndex, vec3 fragPos, vec3 lightPos, float f
     return currentDepth - bias > closestDepth ? 1.0 : 0.0;
 }
 
-float directionalThickness(vec3 norm, vec3 lightDir)
-{
-    if (!uUseShadowMap) return 0.0;
-
-    vec3 projCoords = vShadowCoord.xyz / max(vShadowCoord.w, 0.0001);
-    projCoords = projCoords * 0.5 + 0.5;
-    if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0)
-        return 0.0;
-
-    float bias = max(0.0025 * (1.0 - dot(norm, lightDir)), 0.0007);
-
-    float thickness = 0.0;
-    int samples = clamp(uSubsurfaceBlurSample, 1, 64);
-    vec2 texelSize = 1.0 / vec2(textureSize(uShadowMap, 0));
-
-    if (!uSubsurfaceHighQuality || samples <= 1)
-    {
-        float sampleDepth = texture(uShadowMap, projCoords.xy).r;
-        thickness = max((projCoords.z + bias) - sampleDepth, 0.0);
-    }
-    else
-    {
-        float sumThickness = 0.0;
-        const float GOLDEN_ANGLE = 2.39996323;
-        for (int i = 0; i < 64; i++)
-        {
-            if (i >= samples) break;
-
-            float fi = float(i);
-            float fs = float(samples);
-            float r = sqrt((fi + 0.5) / fs);
-            float theta = fi * GOLDEN_ANGLE;
-            vec2 offset = vec2(cos(theta), sin(theta)) * r * texelSize * 2.0;
-
-            float sampleDepth = texture(uShadowMap, projCoords.xy + offset).r;
-            sumThickness += max((projCoords.z + bias) - sampleDepth, 0.0);
-        }
-        thickness = sumThickness / float(samples);
-    }
-
-    return thickness * max(uSubsurfaceDepthScale, 1.0);
-}
-
-float pointThickness(int shadowIndex, vec3 fragPos, vec3 lightPos, float farPlane, vec3 norm, vec3 lightDir)
-{
-    if (shadowIndex < 0 || shadowIndex >= MAX_POINT_SHADOWS) return 0.0;
-
-    vec3 lightToFrag = fragPos - lightPos;
-    float currentDepth = length(lightToFrag);
-    if (currentDepth <= 0.0001 || currentDepth >= farPlane) return 0.0;
-
-    float bias = max(0.05 * (1.0 - dot(norm, lightDir)), 0.02);
-
-    float thickness = 0.0;
-    int samples = clamp(uSubsurfaceBlurSample, 1, 64);
-
-    if (!uSubsurfaceHighQuality || samples <= 1)
-    {
-        float closestDepth = samplePointShadowCube(shadowIndex, lightToFrag) * farPlane;
-        thickness = max((currentDepth + bias) - closestDepth, 0.0);
-    }
-    else
-    {
-        vec3 dir = normalize(lightToFrag);
-        vec3 helper = abs(dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-        vec3 tangent = normalize(cross(helper, dir));
-        vec3 bitangent = cross(dir, tangent);
-        float jitterRadius = 0.015 * (currentDepth / max(farPlane, 0.001));
-
-        float sumThickness = 0.0;
-        const float GOLDEN_ANGLE = 2.39996323;
-        for (int i = 0; i < 64; i++)
-        {
-            if (i >= samples) break;
-
-            float fi = float(i);
-            float fs = float(samples);
-            float r = sqrt((fi + 0.5) / fs) * jitterRadius;
-            float theta = fi * GOLDEN_ANGLE;
-            vec3 perturb = tangent * (cos(theta) * r) + bitangent * (sin(theta) * r);
-            vec3 sampleDir = normalize(dir + perturb);
-
-            float closestDepth = samplePointShadowCube(shadowIndex, sampleDir) * farPlane;
-            sumThickness += max((currentDepth + bias) - closestDepth, 0.0);
-        }
-        thickness = sumThickness / float(samples);
-    }
-
-    return thickness * max(uSubsurfaceDepthScale, 1.0);
-}
-
-float csPhase(float dotView, float scatter)
-{
-    float g = clamp(scatter, 0.0, 0.99);
-    float g2 = g * g;
-    float denom = 2.0 * (2.0 + g2) * pow(max(1.0 + g2 - 2.0 * g * dotView, 0.0001), 1.5);
-    return (3.0 * (1.0 - g2) * (1.0 + dotView)) / denom;
-}
-
-vec3 evaluateSubsurface(vec3 norm, vec3 lightDir, vec3 lightColor, float lightStrength, float thickness)
-{
-    if (!uSubsurfaceEnabled || uSubsurfaceStrength <= 0.0 || uSubsurfaceGlobalStrength <= 0.0)
-        return vec3(0.0);
-
-    float frontDiffuse = max(dot(norm, lightDir), 0.0);
-    float transDiffuse = max(dot(-norm, lightDir), 0.0) * (1.0 - frontDiffuse);
-    if (transDiffuse <= 0.0)
-        return vec3(0.0);
-
-    vec3 viewDir = normalize(vFragPos - uCameraPosition);
-    float absorption = csPhase(dot(viewDir, lightDir), clamp(0.5 * (uSubsurfaceAbsorption + uSubsurfaceGlobalAbsorption), 0.0, 0.95));
-
-    vec3 radius = max(uSubsurfaceRadius, vec3(0.001));
-    float desatBase = clamp(uSubsurfaceDesaturation + uSubsurfaceGlobalDesaturation, 0.0, 1.0);
-    float desatMix = max(desatBase, clamp(uSubsurfaceColorThreshold, 0.0, 1.0));
-    vec3 desaturatedLight = mix(lightColor, vec3(1.0), desatMix);
-    vec3 lightTerm = max(desaturatedLight * max(lightStrength, 0.001) * radius, vec3(0.001));
-    vec3 dis = vec3(thickness) / lightTerm;
-    float basePower = mix(2.0, 8.0, clamp(uSubsurfaceSharpness, 0.0, 1.0));
-    float edgePower = mix(1.0, 4.0, clamp(uSubsurfaceSharpness, 0.0, 1.0));
-    vec3 falloff = pow(max(vec3(1.0) - pow(dis / radius, vec3(basePower)), vec3(0.0)), vec3(edgePower)) / (pow(dis, vec3(2.0)) + vec3(1.0));
-
-    vec3 highlightRadius = radius * max(uSubsurfaceHighlightSize, 0.01);
-    vec3 highlightTerm = max(desaturatedLight * max(lightStrength, 0.001) * highlightRadius, vec3(0.001));
-    vec3 highlightDis = vec3(thickness) / highlightTerm;
-    float highlightBasePower = mix(2.0, 10.0, clamp(uSubsurfaceHighlightSharpness, 0.0, 1.0));
-    vec3 highlightFalloff = pow(max(vec3(1.0) - pow(highlightDis / highlightRadius, vec3(highlightBasePower)), vec3(0.0)), vec3(1.0)) / (pow(highlightDis, vec3(2.0)) + vec3(1.0));
-    float highlightDesat = max(clamp(uSubsurfaceHighlightDesaturation, 0.0, 1.0), clamp(uSubsurfaceHighlightColorThreshold, 0.0, 1.0));
-    vec3 highlightLight = mix(lightColor, vec3(1.0), highlightDesat);
-
-    float thicknessWeight = 1.0 - exp(-max(thickness, 0.0) * 6.0);
-    vec3 baseContribution = desaturatedLight * uSubsurfaceColor * transDiffuse * absorption * falloff;
-    vec3 highlightContribution = highlightLight * uSubsurfaceColor * transDiffuse * absorption * highlightFalloff * max(uSubsurfaceHighlightStrength, 0.0);
-
-    return (baseContribution + highlightContribution) * thicknessWeight * max(uSubsurfaceStrength, 0.0) * max(uSubsurfaceGlobalStrength, 0.0);
-}
-
 void main() {
     vec3  baseColor = uAlbedo;
     vec3  emissionMask = vec3(1.0);
@@ -300,7 +144,6 @@ void main() {
     vec3 diffuse = diff * uLightColor;
 
     vec3 pointLightSum = vec3(0.0);
-    vec3 pointSubsurfaceSum = vec3(0.0);
     vec3 pointIndirectSum = vec3(0.0);
     for (int i = 0; i < uPointLightCount; i++) {
         vec3  toLight   = uPointLightPos[i] - vFragPos;
@@ -329,15 +172,8 @@ void main() {
         vec3 lightDir  = normalize(toLight);
         float diffFact = max(dot(norm, lightDir), 0.0);
         float pointShadow = calculatePointShadow(uPointLightShadowIndex[i], vFragPos, uPointLightPos[i], range, norm, lightDir);
-        float sssThickness = pointThickness(uPointLightShadowIndex[i], vFragPos, uPointLightPos[i], range, norm, lightDir);
 
         pointLightSum += uPointLightColor[i] * diffFact * attenuation * spot * uPointLightEnergy[i] * (1.0 - pointShadow);
-        pointSubsurfaceSum += evaluateSubsurface(
-            norm,
-            lightDir,
-            uPointLightColor[i],
-            uPointLightEnergy[i],
-            sssThickness) * attenuation * spot;
 
         if (uIndirectWorldEnabled) {
             float indirectEnergy = max(uPointLightIndirectEnergy[i], 0.0);
@@ -364,17 +200,7 @@ void main() {
     float mainVisibility = uMainLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
     float sunVisibility = uSunFillLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
     float moonVisibility = uMoonFillLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
-
-    float mainThickness = directionalThickness(norm, sunDir);
-    float sunThickness = directionalThickness(norm, normalize(uSunFillLightDir));
-    float moonThickness = directionalThickness(norm, normalize(uMoonFillLightDir));
-
-    vec3 directionalSubsurface = evaluateSubsurface(norm, sunDir, uLightColor, 1.0, mainThickness) * mainVisibility;
-    directionalSubsurface += evaluateSubsurface(norm, normalize(uSunFillLightDir), uSunFillLightColor, 1.0, sunThickness) * sunVisibility;
-    directionalSubsurface += evaluateSubsurface(norm, normalize(uMoonFillLightDir), uMoonFillLightColor, 1.0, moonThickness) * moonVisibility;
-
     result = (uAmbient + diffuse * mainVisibility + uSunFillLightColor * sunFillDiffuse * sunVisibility + uMoonFillLightColor * moonFillDiffuse * moonVisibility + pointLightSum) * baseColor;
-    result += (directionalSubsurface + pointSubsurfaceSum) * baseColor;
     if (uIndirectWorldEnabled) {
         result += baseColor * pointIndirectSum * max(uIndirectWorldStrength, 0.0);
     }
