@@ -692,8 +692,8 @@ public class Viewport : UiPanel
         Gl.BindTexture(GLEnum.Texture2D, _depthTex);
         Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.DepthComponent24, width, height, 0,
             PixelFormat.DepthComponent, GLEnum.UnsignedInt, null);
-        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
-        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
         Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
         Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
         Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.DepthAttachment, GLEnum.Texture2D, _depthTex, 0);
@@ -2657,6 +2657,22 @@ public class Viewport : UiPanel
         if (renderMode == SceneRenderMode.Rendered)
         {
             Mesh.ShadowBlurStrength = Math.Clamp(PropertiesPanel?.ShadowBlurStrength ?? 1f, 0f, 4f);
+            Mesh.SssEnabled = PropertiesPanel?.SubsurfaceEnabled == true;
+            Mesh.SssBlurSamples = Math.Clamp(PropertiesPanel?.SubsurfaceBlurSamples ?? 8, 0, 32);
+            Mesh.SssStrength = Math.Clamp(PropertiesPanel?.SubsurfaceStrength ?? 1f, 0f, 4f);
+            Mesh.SssDesaturation = Math.Clamp(PropertiesPanel?.SubsurfaceDesaturation ?? 0f, 0f, 1f);
+            Mesh.SssColorThreshold = Math.Clamp(PropertiesPanel?.SubsurfaceColorThreshold ?? 0f, 0f, 1f);
+            float[] sssRadius = PropertiesPanel?.SubsurfaceRadiusRgb ?? [0.42f, 0.24f, 0.14f];
+            Mesh.SssRadius = new vec3(
+                Math.Clamp(sssRadius[0], 0.0001f, 8f),
+                Math.Clamp(sssRadius[1], 0.0001f, 8f),
+                Math.Clamp(sssRadius[2], 0.0001f, 8f));
+            Mesh.SssHighlightSize = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightSize ?? 1f, 0f, 8f);
+            Mesh.SssHighlightStrength = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightStrength ?? 1f, 0f, 8f);
+            Mesh.SssHighlightSharpness = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightSharpness ?? 2f, 0.01f, 16f);
+            Mesh.SssHighlightDesaturation = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightDesaturation ?? 0f, 0f, 1f);
+            Mesh.SssHighlightColorThreshold = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightColorThreshold ?? 0f, 0f, 1f);
+            Mesh.SssAbsorption = Math.Clamp(PropertiesPanel?.SubsurfaceAbsorption ?? 0.35f, -0.95f, 0.95f);
             Mesh.ShadowDebugMode = _renderedPassMode == RenderedPassMode.Shadow ? 1 : 0;
             if (Mesh.DirectionalShadowEnabled)
                 RenderShadowMap();
@@ -3031,8 +3047,8 @@ public class Viewport : UiPanel
                     null);
             }
 
-            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
-            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapR, (int)TextureWrapMode.ClampToEdge);
@@ -3064,8 +3080,8 @@ public class Viewport : UiPanel
             PixelFormat.DepthComponent,
             GLEnum.Float,
             null);
-        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
-        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
         Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToBorder);
         Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToBorder);
         float[] borderColor = [1f, 1f, 1f, 1f];
@@ -3111,8 +3127,8 @@ public class Viewport : UiPanel
                     null);
             }
 
-            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
-            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapR, (int)TextureWrapMode.ClampToEdge);
@@ -5563,6 +5579,22 @@ public class Viewport : UiPanel
         if (renderMode == SceneRenderMode.Rendered)
         {
             Mesh.ShadowBlurStrength = Math.Clamp(MainViewport.PropertiesPanel?.ShadowBlurStrength ?? 1f, 0f, 4f);
+            Mesh.SssEnabled = MainViewport.PropertiesPanel?.SubsurfaceEnabled == true;
+            Mesh.SssBlurSamples = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceBlurSamples ?? 8, 0, 32);
+            Mesh.SssStrength = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceStrength ?? 1f, 0f, 4f);
+            Mesh.SssDesaturation = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceDesaturation ?? 0f, 0f, 1f);
+            Mesh.SssColorThreshold = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceColorThreshold ?? 0f, 0f, 1f);
+            float[] sssRadius = MainViewport.PropertiesPanel?.SubsurfaceRadiusRgb ?? [0.42f, 0.24f, 0.14f];
+            Mesh.SssRadius = new vec3(
+                Math.Clamp(sssRadius[0], 0.0001f, 8f),
+                Math.Clamp(sssRadius[1], 0.0001f, 8f),
+                Math.Clamp(sssRadius[2], 0.0001f, 8f));
+            Mesh.SssHighlightSize = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceHighlightSize ?? 1f, 0f, 8f);
+            Mesh.SssHighlightStrength = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceHighlightStrength ?? 1f, 0f, 8f);
+            Mesh.SssHighlightSharpness = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceHighlightSharpness ?? 2f, 0.01f, 16f);
+            Mesh.SssHighlightDesaturation = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceHighlightDesaturation ?? 0f, 0f, 1f);
+            Mesh.SssHighlightColorThreshold = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceHighlightColorThreshold ?? 0f, 0f, 1f);
+            Mesh.SssAbsorption = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceAbsorption ?? 0.35f, -0.95f, 0.95f);
             Mesh.ShadowDebugMode = effectivePassMode == RenderedPassMode.Shadow ? 1 : 0;
             if (Mesh.DirectionalShadowEnabled)
                 RenderShadowMapPublic();

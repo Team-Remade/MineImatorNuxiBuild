@@ -49,6 +49,31 @@ public class StandardMaterial : Material
     public float EmissionEnergyMultiplier = 1f;
 
     /// <summary>
+    /// Base subsurface scattering amount (0 = disabled).
+    /// </summary>
+    public float Subsurface = 0f;
+
+    /// <summary>
+    /// Per-channel subsurface scattering radius.
+    /// </summary>
+    public vec3 SubsurfaceRadius = new vec3(0.42f, 0.24f, 0.14f);
+
+    /// <summary>
+    /// Subsurface tint colour.
+    /// </summary>
+    public vec4 SubsurfaceColor = new vec4(1f, 1f, 1f, 1f);
+
+    /// <summary>
+    /// Anisotropy-like phase value used by the highlight scatter term.
+    /// </summary>
+    public float SubsurfaceHighlight = 0.35f;
+
+    /// <summary>
+    /// Strength of the highlight scatter term.
+    /// </summary>
+    public float SubsurfaceHighlightStrength = 0.6f;
+
+    /// <summary>
     /// When true, emissive surfaces only contribute to indirect lighting and
     /// do not emit direct light into nearby geometry.
     /// </summary>

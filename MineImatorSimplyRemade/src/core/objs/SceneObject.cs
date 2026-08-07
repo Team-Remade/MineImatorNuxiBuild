@@ -31,6 +31,11 @@ public class MaterialSettings
     public bool EmissionEnabled = false;
     public vec4 EmissionColor = new vec4(0f, 0f, 0f, 1f);
     public float EmissionEnergy = 1f;
+    public float Subsurface = 0f;
+    public vec3 SubsurfaceRadius = new vec3(0.42f, 0.24f, 0.14f);
+    public vec4 SubsurfaceColor = new vec4(1f, 1f, 1f, 1f);
+    public float SubsurfaceHighlight = 0.35f;
+    public float SubsurfaceHighlightStrength = 0.6f;
     public bool EmissionIndirectOnly = false;
     public bool AutoEmission = true;
 
@@ -72,6 +77,11 @@ public class MaterialSettings
             EmissionEnabled = this.EmissionEnabled,
             EmissionColor = this.EmissionColor,
             EmissionEnergy = this.EmissionEnergy,
+            Subsurface = this.Subsurface,
+            SubsurfaceRadius = this.SubsurfaceRadius,
+            SubsurfaceColor = this.SubsurfaceColor,
+            SubsurfaceHighlight = this.SubsurfaceHighlight,
+            SubsurfaceHighlightStrength = this.SubsurfaceHighlightStrength,
             EmissionIndirectOnly = this.EmissionIndirectOnly,
             AutoEmission = this.AutoEmission,
             DoubleSided = this.DoubleSided,
@@ -564,6 +574,14 @@ public class SceneObject
                     _materialSettings.EmissionColor.z);
                 mesh.EmissionEnergy = _materialSettings.EmissionEnergy;
             }
+            mesh.Subsurface = _materialSettings.Subsurface;
+            mesh.SubsurfaceRadius = _materialSettings.SubsurfaceRadius;
+            mesh.SubsurfaceColor = new vec3(
+                _materialSettings.SubsurfaceColor.x,
+                _materialSettings.SubsurfaceColor.y,
+                _materialSettings.SubsurfaceColor.z);
+            mesh.SubsurfaceHighlight = _materialSettings.SubsurfaceHighlight;
+            mesh.SubsurfaceHighlightStrength = _materialSettings.SubsurfaceHighlightStrength;
             mesh.EmissionIndirectOnly = _materialSettings.EmissionIndirectOnly;
         }
     }

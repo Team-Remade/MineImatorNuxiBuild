@@ -217,6 +217,13 @@ public static class ProjectSceneSerializer
             entry.EmissionEnabled = obj.MaterialSettings.EmissionEnabled;
             entry.EmissionColor = ToProjectVec4(obj.MaterialSettings.EmissionColor);
             entry.EmissionEnergy = obj.MaterialSettings.EmissionEnergy;
+            entry.Subsurface = obj.MaterialSettings.Subsurface;
+            entry.SubsurfaceRadiusR = obj.MaterialSettings.SubsurfaceRadius.x;
+            entry.SubsurfaceRadiusG = obj.MaterialSettings.SubsurfaceRadius.y;
+            entry.SubsurfaceRadiusB = obj.MaterialSettings.SubsurfaceRadius.z;
+            entry.SubsurfaceColor = ToProjectVec4(obj.MaterialSettings.SubsurfaceColor);
+            entry.SubsurfaceHighlight = obj.MaterialSettings.SubsurfaceHighlight;
+            entry.SubsurfaceHighlightStrength = obj.MaterialSettings.SubsurfaceHighlightStrength;
             entry.EmissionIndirectOnly = obj.MaterialSettings.EmissionIndirectOnly;
             entry.AutoEmission = obj.MaterialSettings.AutoEmission;
         }
@@ -624,6 +631,14 @@ public static class ProjectSceneSerializer
             material.EmissionEnabled = entry.EmissionEnabled;
             material.EmissionColor = ToVec4(entry.EmissionColor);
             material.EmissionEnergy = entry.EmissionEnergy;
+            material.Subsurface = entry.Subsurface;
+            material.SubsurfaceRadius = new vec3(
+                Math.Max(0.0001f, entry.SubsurfaceRadiusR),
+                Math.Max(0.0001f, entry.SubsurfaceRadiusG),
+                Math.Max(0.0001f, entry.SubsurfaceRadiusB));
+            material.SubsurfaceColor = ToVec4(entry.SubsurfaceColor);
+            material.SubsurfaceHighlight = Math.Clamp(entry.SubsurfaceHighlight, -0.95f, 0.95f);
+            material.SubsurfaceHighlightStrength = Math.Max(0f, entry.SubsurfaceHighlightStrength);
             material.EmissionIndirectOnly = entry.EmissionIndirectOnly;
             material.AutoEmission = entry.AutoEmission;
             obj.MaterialSettings = material;

@@ -563,6 +563,58 @@ public class Mesh : IDisposable
     }
 
     /// <summary>
+    /// Base subsurface scattering amount (0 = disabled).
+    /// </summary>
+    public float Subsurface
+    {
+        get => DefaultMaterial.Subsurface;
+        set => DefaultMaterial.Subsurface = Math.Clamp(value, 0f, 1f);
+    }
+
+    /// <summary>
+    /// Per-channel subsurface scattering radius.
+    /// </summary>
+    public vec3 SubsurfaceRadius
+    {
+        get => DefaultMaterial.SubsurfaceRadius;
+        set => DefaultMaterial.SubsurfaceRadius = new vec3(
+            Math.Max(0.0001f, value.x),
+            Math.Max(0.0001f, value.y),
+            Math.Max(0.0001f, value.z));
+    }
+
+    /// <summary>
+    /// Subsurface tint colour.
+    /// </summary>
+    public vec3 SubsurfaceColor
+    {
+        get => DefaultMaterial.SubsurfaceColor.xyz;
+        set
+        {
+            var mat = DefaultMaterial;
+            mat.SubsurfaceColor = new vec4(value, mat.SubsurfaceColor.w);
+        }
+    }
+
+    /// <summary>
+    /// Anisotropy-like phase value used by the highlight scatter term.
+    /// </summary>
+    public float SubsurfaceHighlight
+    {
+        get => DefaultMaterial.SubsurfaceHighlight;
+        set => DefaultMaterial.SubsurfaceHighlight = Math.Clamp(value, -0.95f, 0.95f);
+    }
+
+    /// <summary>
+    /// Strength of the highlight scatter term.
+    /// </summary>
+    public float SubsurfaceHighlightStrength
+    {
+        get => DefaultMaterial.SubsurfaceHighlightStrength;
+        set => DefaultMaterial.SubsurfaceHighlightStrength = Math.Max(0f, value);
+    }
+
+    /// <summary>
     /// When true, emissive lighting from this mesh is treated as indirect-only.
     /// </summary>
     public bool EmissionIndirectOnly
@@ -665,6 +717,11 @@ public class Mesh : IDisposable
         dstMat.EmissionEnabled           = srcMat.EmissionEnabled;
         dstMat.Emission                  = srcMat.Emission;
         dstMat.EmissionEnergyMultiplier  = srcMat.EmissionEnergyMultiplier;
+        dstMat.Subsurface                = srcMat.Subsurface;
+        dstMat.SubsurfaceRadius          = srcMat.SubsurfaceRadius;
+        dstMat.SubsurfaceColor           = srcMat.SubsurfaceColor;
+        dstMat.SubsurfaceHighlight       = srcMat.SubsurfaceHighlight;
+        dstMat.SubsurfaceHighlightStrength = srcMat.SubsurfaceHighlightStrength;
         dstMat.EmissionIndirectOnly      = srcMat.EmissionIndirectOnly;
         dstMat.AutoEmissionLevel         = srcMat.AutoEmissionLevel;
         dstMat.DoubleSided               = srcMat.DoubleSided;
@@ -1024,6 +1081,18 @@ public class Mesh : IDisposable
     public static int ShadowDebugMode = 0;
     public static bool DirectionalShadowEnabled = true;
     public static float ShadowBlurStrength = 1f;
+    public static bool SssEnabled = false;
+    public static int SssBlurSamples = 8;
+    public static float SssStrength = 1f;
+    public static float SssDesaturation = 0f;
+    public static float SssColorThreshold = 0f;
+    public static vec3 SssRadius = new(0.42f, 0.24f, 0.14f);
+    public static float SssHighlightSize = 1f;
+    public static float SssHighlightStrength = 1f;
+    public static float SssHighlightSharpness = 2f;
+    public static float SssHighlightDesaturation = 0f;
+    public static float SssHighlightColorThreshold = 0f;
+    public static float SssAbsorption = 0.35f;
 
     /// <summary>
     /// Must match <c>MAX_POINT_SHADOWS</c> in simple.frag.
@@ -1103,6 +1172,26 @@ public class Mesh : IDisposable
         SetUniformBool("uEmissionEnabled", EmissionEnabled);
         SetUniformVec3("uEmissionColor", EmissionColor);
         SetUniformFloat("uEmissionEnergy", EmissionEnergy);
+        SetUniformFloat("uSSS", Subsurface);
+        SetUniformVec3("uSSSRadius", SubsurfaceRadius);
+        SetUniformVec3("uSSSColor", SubsurfaceColor);
+        SetUniformFloat("uSSSHighlight", SubsurfaceHighlight);
+        SetUniformFloat("uSSSHighlightStrength", SubsurfaceHighlightStrength);
+        SetUniformBool("uSSSEnabled", SssEnabled);
+        SetUniformInt("uSSSBlurSamples", Math.Clamp(SssBlurSamples, 0, 32));
+        SetUniformFloat("uSSSStrength", Math.Max(SssStrength, 0f));
+        SetUniformFloat("uSSSDesaturation", Math.Clamp(SssDesaturation, 0f, 1f));
+        SetUniformFloat("uSSSColorThreshold", Math.Clamp(SssColorThreshold, 0f, 1f));
+        SetUniformVec3("uSSSGlobalRadius", new vec3(
+            Math.Max(SssRadius.x, 0.0001f),
+            Math.Max(SssRadius.y, 0.0001f),
+            Math.Max(SssRadius.z, 0.0001f)));
+        SetUniformFloat("uSSSHighlightSize", Math.Max(SssHighlightSize, 0f));
+        SetUniformFloat("uSSSGlobalHighlightStrength", Math.Max(SssHighlightStrength, 0f));
+        SetUniformFloat("uSSSHighlightSharpness", Math.Max(SssHighlightSharpness, 0.01f));
+        SetUniformFloat("uSSSHighlightDesaturation", Math.Clamp(SssHighlightDesaturation, 0f, 1f));
+        SetUniformFloat("uSSSHighlightColorThreshold", Math.Clamp(SssHighlightColorThreshold, 0f, 1f));
+        SetUniformFloat("uSSSAbsorption", Math.Clamp(SssAbsorption, -0.95f, 0.95f));
         SetUniformBool("uUseShadowMap", DirectionalShadowEnabled && ShadowsEnabled && !Unlit && ShadowMapTexture != 0);
         SetUniformFloat("uShadowBlurStrength", ShadowBlurStrength);
 
