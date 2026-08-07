@@ -7,13 +7,14 @@ uniform vec4  uBlendColor;
 uniform float uAlpha;
 uniform sampler2D uTexture;
 uniform bool  uUseTexture;
+uniform bool  uForceOpaque;
 
 out vec4 FragColor;
 
 void main() {
-    float alpha = uAlpha * uBlendColor.a;
+    float alpha = uForceOpaque ? 1.0 : (uAlpha * uBlendColor.a);
 
-    if (uUseTexture) {
+    if (!uForceOpaque && uUseTexture) {
         vec4 texSample = texture(uTexture, vTexCoord);
         alpha *= texSample.a;
     }

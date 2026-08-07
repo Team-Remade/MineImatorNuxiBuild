@@ -1618,9 +1618,14 @@ public class Mesh : IDisposable
         }
 
         bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;
+        // Pick-only helper meshes (for example light/camera selection proxies)
+        // are often fully transparent in the normal render path.
+        // Force them opaque in helper passes so they remain selectable.
+        bool forceOpaque = PickOnly;
         SetUniformFloat(shader, "uAlpha", Alpha);
         SetUniformVec4(shader, "uBlendColor", BlendColor);
         SetUniformBool(shader, "uUseTexture", useTexture);
+        SetUniformBool(shader, "uForceOpaque", forceOpaque);
         SetUniformVec2(shader, "uTexOffset", new vec2(0f, texOffsetV));
         SetUniformFloat(shader, "uTexScaleV", texScaleV);
         SetUniformVec2(shader, "uTexUvOffset", TextureOffset);
