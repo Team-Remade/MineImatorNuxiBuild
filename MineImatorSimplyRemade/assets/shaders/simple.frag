@@ -114,10 +114,12 @@ float calculatePointShadow(int shadowIndex, vec3 fragPos, vec3 lightPos, float f
 
 void main() {
     vec3  baseColor = uAlbedo;
+    vec3  emissionMask = vec3(1.0);
     float alpha     = 1.0;
 
     if (uUseTexture) {
         vec4 texSample = texture(uTexture, vTexCoord);
+        emissionMask = texSample.rgb;
         baseColor = texSample.rgb * uAlbedo;
         alpha     = texSample.a;
     }
@@ -189,7 +191,7 @@ void main() {
     float moonVisibility = uMoonFillLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
     result = (uAmbient + diffuse * mainVisibility + uSunFillLightColor * sunFillDiffuse * sunVisibility + uMoonFillLightColor * moonFillDiffuse * moonVisibility + pointLightSum) * baseColor;
     if (uEmissionEnabled) {
-        result += uEmissionColor * max(uEmissionEnergy, 0.0);
+        result += (uEmissionColor * emissionMask) * max(uEmissionEnergy, 0.0);
     }
     }
     if (uFogEnabled) {
