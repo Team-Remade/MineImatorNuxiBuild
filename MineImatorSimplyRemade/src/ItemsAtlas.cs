@@ -5,13 +5,14 @@ using MineImatorSimplyRemade.core.project;
 namespace MineImatorSimplyRemade;
 
 /// <summary>
-/// Loads <c>gui/items.png</c> (Minecraft 1.3.2, expected 256×256) and slices it
-/// into 256 individual 16×16 OpenGL textures stored by their grid coordinate key
-/// <c>"x,y"</c> (e.g. <c>"0,0"</c> is column 0, row 0).
+/// Loads item textures from Minecraft data.
+///
+/// Legacy versions are read from <c>gui/items.png</c> (sliced into <c>"x,y"</c>
+/// keys). Modern versions are read from <c>textures/item/*.png</c> (flattened
+/// version roots) or <c>assets/minecraft/textures/item/*.png</c> (namespaced
+/// roots), using path-based keys (for example <c>"diamond_sword"</c>).
 ///
 /// Call <see cref="Initialize"/> once at startup after the OpenGL context is ready.
-/// The tiles are initialised and ready for use; item rendering will bind them
-/// per-object as that feature is implemented.
 /// </summary>
 public static class ItemsAtlas
 {
@@ -218,33 +219,116 @@ public static class ItemsAtlas
         string versionRoot = MinecraftDataLoader.GetVersionRoot();
         string atlasPath = Path.Combine(versionRoot, "gui", "items.png");
 
-        if (!File.Exists(atlasPath))
-        {
-            Console.WriteLine($"File not found: {atlasPath}");
-            return;
-        }
-
+        bool loadedAnyBase = false;
         StbImage.stbi_set_flip_vertically_on_load(0);
 
-        ImageResult atlas;
-        using (var stream = File.OpenRead(atlasPath))
-            atlas = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
-
-        const int atlasSize = AtlasTiles * TileSize;
-        if (atlas.Width != atlasSize || atlas.Height != atlasSize)
+        if (File.Exists(atlasPath))
         {
-            Console.WriteLine($"Size mismatch: expected {atlasSize}×{atlasSize}, got {atlas.Width}×{atlas.Height}");
-            return;
+            ImageResult atlas;
+            using (var stream = File.OpenRead(atlasPath))
+                atlas = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+
+            const int atlasSize = AtlasTiles * TileSize;
+            if (atlas.Width == atlasSize && atlas.Height == atlasSize)
+            {
+                SliceGridAtlas(atlas.Data, atlasSize);
+                loadedAnyBase = true;
+                progress?.Invoke(0.12f, "Loaded legacy item sheet");
+            }
+            else
+            {
+                Console.WriteLine($"Ignoring legacy item atlas with unexpected size {atlas.Width}x{atlas.Height}: {atlasPath}");
+            }
         }
 
-        SliceGridAtlas(atlas.Data, atlasSize);
-        progress?.Invoke(0.20f, "Loaded base item atlas");
+        int modernCount = LoadModernVersionItemTextures(versionRoot,
+            (value, detail) => progress?.Invoke(0.12f + value * 0.08f, detail));
+        if (modernCount > 0)
+            loadedAnyBase = true;
+
+        if (!loadedAnyBase)
+        {
+            Console.WriteLine($"No base item textures found in version root: {versionRoot}");
+        }
+
+        progress?.Invoke(0.20f, "Loaded base item textures");
 
         ApplyResourcePackItemsOverrides((value, detail) => progress?.Invoke(0.20f + value * 0.75f, detail));
         EnsureProjectCustomTexturesLoaded();
         progress?.Invoke(1f, $"Loaded {Textures.Count} item texture(s)");
 
         Console.WriteLine($"Loaded {Textures.Count} tiles");
+    }
+
+    private static int LoadModernVersionItemTextures(string versionRoot, Action<float, string>? progress = null)
+    {
+        if (_gl == null || string.IsNullOrWhiteSpace(versionRoot))
+            return 0;
+
+        string? itemRoot = ResolveVersionItemRoot(versionRoot);
+        if (string.IsNullOrWhiteSpace(itemRoot) || !Directory.Exists(itemRoot))
+            return 0;
+
+        string[] files;
+        try
+        {
+            files = Directory
+                .GetFiles(itemRoot, "*.png", SearchOption.AllDirectories)
+                .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to enumerate modern item textures: {ex.Message}");
+            return 0;
+        }
+
+        int loaded = 0;
+        for (int i = 0; i < files.Length; i++)
+        {
+            string filePath = files[i];
+            string relative = Path.GetRelativePath(itemRoot, filePath)
+                .Replace('\\', '/');
+            string key = Path.ChangeExtension(relative, null) ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(key))
+                continue;
+
+            ImageResult img;
+            try
+            {
+                using var stream = File.OpenRead(filePath);
+                img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to load item texture '{relative}': {ex.Message}");
+                continue;
+            }
+
+            if (img.Width <= 0 || img.Height <= 0)
+                continue;
+
+            UpsertTileTexture(key, img.Data, img.Width, img.Height);
+            loaded++;
+
+            float ratio = files.Length <= 0 ? 1f : (i + 1) / (float)files.Length;
+            progress?.Invoke(ratio, $"Base item texture: {key}");
+        }
+
+        return loaded;
+    }
+
+    private static string? ResolveVersionItemRoot(string versionRoot)
+    {
+        string flattened = Path.Combine(versionRoot, "textures", "item");
+        if (Directory.Exists(flattened))
+            return flattened;
+
+        string namespaced = Path.Combine(versionRoot, "assets", "minecraft", "textures", "item");
+        if (Directory.Exists(namespaced))
+            return namespaced;
+
+        return null;
     }
 
     private static void ApplyResourcePackItemsOverrides(Action<float, string>? progress = null)
@@ -300,12 +384,6 @@ public static class ItemsAtlas
                 continue;
             }
 
-            if (img.Width != img.Height)
-            {
-                Console.WriteLine($"Ignoring non-square item texture '{file.RelativePath}' from '{file.PackName}'.");
-                continue;
-            }
-
             string baseKey = file.RelativePath
                 .Replace("assets/minecraft/textures/item/", "", StringComparison.OrdinalIgnoreCase)
                 .Replace(".png", "", StringComparison.OrdinalIgnoreCase)
@@ -344,12 +422,6 @@ public static class ItemsAtlas
             catch (Exception ex)
             {
                 Console.WriteLine($"Failed to load namespaced item texture '{file.RelativePath}' from '{file.PackName}': {ex.Message}");
-                continue;
-            }
-
-            if (img.Width != img.Height)
-            {
-                Console.WriteLine($"Ignoring non-square namespaced item texture '{file.RelativePath}' from '{file.PackName}'.");
                 continue;
             }
 
