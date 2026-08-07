@@ -3060,7 +3060,6 @@ public class Timeline : UiPanel
     {
         var selectedObjects = SelectionManager.Instance?.SelectedObjects ?? new List<SceneObject>();
         _displayRows.Clear();
-        _groupExpanded.Clear();
 
         foreach (var obj in selectedObjects)
         {
@@ -3286,6 +3285,16 @@ public class Timeline : UiPanel
                 }
             }
         }
+
+        // Keep expanded/collapsed state for groups that still exist after the
+        // rebuild, while discarding stale entries from removed rows/objects.
+        var validGroupKeys = _displayRows
+            .Where(r => r.IsGroupHeader)
+            .Select(r => $"{r.Object.ObjectId}.{r.PropertyPath}")
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var staleKey in _groupExpanded.Keys.Where(k => !validGroupKeys.Contains(k)).ToList())
+            _groupExpanded.Remove(staleKey);
     }
 
     private void AddObjectRows(SceneObject obj)
