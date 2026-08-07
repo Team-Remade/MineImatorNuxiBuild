@@ -2191,7 +2191,7 @@ public class PropertiesPanel : UiPanel
         }
 
         ImGui.Separator();
-        ImGui.Text("Subsurface Scattering (Project)");
+        ImGui.Text("Subsurface Scattering");
         changed |= ImGui.Checkbox("Enabled##sssProject", ref SubsurfaceScatteringEnabled);
         if (SubsurfaceScatteringEnabled)
         {

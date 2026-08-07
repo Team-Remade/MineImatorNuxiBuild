@@ -32,9 +32,9 @@ void main()
     float weightSum = 0.0;
 
     int samples = clamp(uSampleCount, 4, 64);
-    float precision = clamp(uPrecision, 0.0, 1.0);
+    float quality = clamp(uPrecision, 0.0, 1.0);
     float rayStep = clamp(uRayStep, 1.0, 64.0);
-    float baseRadius = mix(1.5, 9.0, precision) * rayStep;
+    float baseRadius = mix(1.5, 9.0, quality) * rayStep;
     const float goldenAngle = 2.39996323;
 
     for (int i = 0; i < 64; ++i)
@@ -73,6 +73,6 @@ void main()
     if (weightSum > 0.0001)
         indirect /= weightSum;
 
-    indirect *= mix(0.35, 1.1, precision);
+    indirect *= mix(0.35, 1.1, quality);
     FragColor = vec4(clamp(indirect, 0.0, 2.0), 1.0);
 }
