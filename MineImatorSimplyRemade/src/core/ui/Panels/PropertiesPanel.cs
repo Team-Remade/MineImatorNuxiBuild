@@ -842,6 +842,81 @@ public class PropertiesPanel : UiPanel
             EmissionEnergy = source.EmissionEnergy,
             ItemTileKey = source.ItemTileKey,
             ItemIs3D = source.ItemIs3D,
+            ParticleLibraryEntryId = source.ParticleLibraryEntryId,
+            ParticleLibraryDisplayName = source.ParticleLibraryDisplayName,
+            ParticleEmitting = source.ParticleEmitting,
+            ParticleOneShot = source.ParticleOneShot,
+            ParticleAmount = source.ParticleAmount,
+            ParticleSpawnRate = source.ParticleSpawnRate,
+            ParticleLifetimeMin = source.ParticleLifetimeMin,
+            ParticleLifetimeMax = source.ParticleLifetimeMax,
+            ParticleSimulationSpeed = source.ParticleSimulationSpeed,
+            ParticleLinearDamping = source.ParticleLinearDamping,
+            ParticleAngularDamping = source.ParticleAngularDamping,
+            ParticleEmissionShape = source.ParticleEmissionShape,
+            ParticleUseDirectionalEmission = source.ParticleUseDirectionalEmission,
+            ParticleDirection = new ProjectVec3
+            {
+                X = source.ParticleDirection.X,
+                Y = source.ParticleDirection.Y,
+                Z = source.ParticleDirection.Z
+            },
+            ParticleSpreadDegrees = source.ParticleSpreadDegrees,
+            ParticleInitialSpeedMin = source.ParticleInitialSpeedMin,
+            ParticleInitialSpeedMax = source.ParticleInitialSpeedMax,
+            ParticleSpawnBoxExtents = new ProjectVec3
+            {
+                X = source.ParticleSpawnBoxExtents.X,
+                Y = source.ParticleSpawnBoxExtents.Y,
+                Z = source.ParticleSpawnBoxExtents.Z
+            },
+            ParticleInitialVelocityMin = new ProjectVec3
+            {
+                X = source.ParticleInitialVelocityMin.X,
+                Y = source.ParticleInitialVelocityMin.Y,
+                Z = source.ParticleInitialVelocityMin.Z
+            },
+            ParticleInitialVelocityMax = new ProjectVec3
+            {
+                X = source.ParticleInitialVelocityMax.X,
+                Y = source.ParticleInitialVelocityMax.Y,
+                Z = source.ParticleInitialVelocityMax.Z
+            },
+            ParticleGravity = new ProjectVec3
+            {
+                X = source.ParticleGravity.X,
+                Y = source.ParticleGravity.Y,
+                Z = source.ParticleGravity.Z
+            },
+            ParticleInitialRotationMinDegrees = new ProjectVec3
+            {
+                X = source.ParticleInitialRotationMinDegrees.X,
+                Y = source.ParticleInitialRotationMinDegrees.Y,
+                Z = source.ParticleInitialRotationMinDegrees.Z
+            },
+            ParticleInitialRotationMaxDegrees = new ProjectVec3
+            {
+                X = source.ParticleInitialRotationMaxDegrees.X,
+                Y = source.ParticleInitialRotationMaxDegrees.Y,
+                Z = source.ParticleInitialRotationMaxDegrees.Z
+            },
+            ParticleAngularVelocityMinDegrees = new ProjectVec3
+            {
+                X = source.ParticleAngularVelocityMinDegrees.X,
+                Y = source.ParticleAngularVelocityMinDegrees.Y,
+                Z = source.ParticleAngularVelocityMinDegrees.Z
+            },
+            ParticleAngularVelocityMaxDegrees = new ProjectVec3
+            {
+                X = source.ParticleAngularVelocityMaxDegrees.X,
+                Y = source.ParticleAngularVelocityMaxDegrees.Y,
+                Z = source.ParticleAngularVelocityMaxDegrees.Z
+            },
+            ParticleStartScaleMin = source.ParticleStartScaleMin,
+            ParticleStartScaleMax = source.ParticleStartScaleMax,
+            ParticleEndScaleMin = source.ParticleEndScaleMin,
+            ParticleEndScaleMax = source.ParticleEndScaleMax,
+            ParticleTopLevelParticles = source.ParticleTopLevelParticles,
             PrimitivePlaneOrientation = source.PrimitivePlaneOrientation,
             PrimitivePlaneFaceCamera = source.PrimitivePlaneFaceCamera,
             PrimitiveCubeMapped = source.PrimitiveCubeMapped,
@@ -1137,6 +1212,17 @@ public class PropertiesPanel : UiPanel
         }
 
         return null;
+    }
+
+    private static void CollectParticleSourceEntries(IEnumerable<ProjectSceneObjectEntry> nodes, List<ProjectSceneObjectEntry> output)
+    {
+        foreach (var node in nodes)
+        {
+            if (!string.Equals(node.SpawnCategory, "Particle Spawners", StringComparison.OrdinalIgnoreCase))
+                output.Add(node);
+
+            CollectParticleSourceEntries(node.Children, output);
+        }
     }
 
     private static void RemoveLibraryEntry(ProjectManifest manifest, string libraryEntryId)
@@ -2611,6 +2697,279 @@ public class PropertiesPanel : UiPanel
             else
             {
                 ImGui.TextDisabled("Plane mesh is unavailable.");
+            }
+        }
+
+        if (_currentObject is ParticleSpawnerSceneObject particleSpawner &&
+            ImGui.CollapsingHeader("Particles", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            EnsureObjectLibraryInitialized(ProjectManager.Instance.Manifest);
+
+            var sourceEntries = new List<ProjectSceneObjectEntry>();
+            CollectParticleSourceEntries(ProjectManager.Instance.Manifest.ObjectLibrary, sourceEntries);
+            sourceEntries.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+
+            var selectedSource = FindLibraryEntryById(sourceEntries, particleSpawner.ParticleLibraryEntryId);
+            string selectedLabel = selectedSource == null
+                ? "(none)"
+                : $"{selectedSource.Name} [{selectedSource.ObjectType}]";
+
+            if (ImGui.BeginCombo("Particle Source", selectedLabel))
+            {
+                bool noneSelected = string.IsNullOrWhiteSpace(particleSpawner.ParticleLibraryEntryId);
+                if (ImGui.Selectable("(none)", noneSelected))
+                {
+                    particleSpawner.SetParticleSource("", "");
+                    ProjectManager.Instance.SetDirty(true);
+                }
+
+                foreach (var entry in sourceEntries)
+                {
+                    bool isSelected = string.Equals(entry.LibraryEntryId, particleSpawner.ParticleLibraryEntryId, StringComparison.OrdinalIgnoreCase);
+                    string option = $"{entry.Name} [{entry.ObjectType}]##{entry.LibraryEntryId}";
+                    if (ImGui.Selectable(option, isSelected))
+                    {
+                        particleSpawner.SetParticleSource(entry.LibraryEntryId, entry.Name);
+                        ProjectManager.Instance.SetDirty(true);
+                    }
+
+                    if (isSelected)
+                        ImGui.SetItemDefaultFocus();
+                }
+
+                ImGui.EndCombo();
+            }
+
+            bool emitting = particleSpawner.Emitting;
+            if (ImGui.Checkbox("Emitting", ref emitting))
+            {
+                particleSpawner.Emitting = emitting;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.emitting");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            bool oneShot = particleSpawner.OneShot;
+            if (ImGui.Checkbox("One Shot", ref oneShot))
+            {
+                particleSpawner.OneShot = oneShot;
+                particleSpawner.ResetRuntime();
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.one_shot");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            bool topLevelParticles = particleSpawner.TopLevelParticles;
+            if (ImGui.Checkbox("Top Level Particles", ref topLevelParticles))
+            {
+                particleSpawner.TopLevelParticles = topLevelParticles;
+                particleSpawner.ResetRuntime();
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.top_level_particles");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            int amount = particleSpawner.Amount;
+            if (InputIntEditor("Amount", ref amount, 1, 10, 1, 10000))
+            {
+                particleSpawner.Amount = amount;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.amount");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            float spawnRate = particleSpawner.SpawnRate;
+            if (InputFloatEditor("Spawn Rate", ref spawnRate, 0.1f, 0f, 10000f, "%.2f"))
+            {
+                particleSpawner.SpawnRate = spawnRate;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.spawn_rate");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            float lifeMin = particleSpawner.LifetimeMin;
+            if (InputFloatEditor("Lifetime Min", ref lifeMin, 0.01f, 0.01f, 120f, "%.2f"))
+            {
+                particleSpawner.LifetimeMin = lifeMin;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.lifetime_min");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            float lifeMax = particleSpawner.LifetimeMax;
+            if (InputFloatEditor("Lifetime Max", ref lifeMax, 0.01f, 0.01f, 120f, "%.2f"))
+            {
+                particleSpawner.LifetimeMax = lifeMax;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.lifetime_max");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            float simSpeed = particleSpawner.SimulationSpeed;
+            if (InputFloatEditor("Simulation Speed", ref simSpeed, 0.01f, 0f, 32f, "%.2f"))
+            {
+                particleSpawner.SimulationSpeed = simSpeed;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.simulation_speed");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            float linearDamping = particleSpawner.LinearDamping;
+            if (InputFloatEditor("Linear Damping", ref linearDamping, 0.01f, 0f, 100f, "%.3f"))
+            {
+                particleSpawner.LinearDamping = linearDamping;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.linear_damping");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            float angularDamping = particleSpawner.AngularDamping;
+            if (InputFloatEditor("Angular Damping", ref angularDamping, 0.01f, 0f, 100f, "%.3f"))
+            {
+                particleSpawner.AngularDamping = angularDamping;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.angular_damping");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            string[] shapeOptions = { "Box", "Sphere" };
+            int emissionShape = particleSpawner.EmissionShape == ParticleEmissionShape.Sphere ? 1 : 0;
+            if (ImGui.Combo("Emission Shape", ref emissionShape, shapeOptions, shapeOptions.Length))
+            {
+                particleSpawner.EmissionShape = emissionShape == 1
+                    ? ParticleEmissionShape.Sphere
+                    : ParticleEmissionShape.Box;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.emission_shape");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            vec3 spawnExtents = particleSpawner.SpawnBoxExtents;
+            if (EditVec3Editor(_currentObject, "particleSpawnExtents", ref spawnExtents, 0.01f, 0f, 1000f, "%.3f", "Spawn Extents", "particle.spawn_extents"))
+            {
+                particleSpawner.SpawnBoxExtents = spawnExtents;
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            bool directionalEmission = particleSpawner.UseDirectionalEmission;
+            if (ImGui.Checkbox("Directional Emission", ref directionalEmission))
+            {
+                particleSpawner.UseDirectionalEmission = directionalEmission;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.directional_emission");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            if (particleSpawner.UseDirectionalEmission)
+            {
+                vec3 direction = particleSpawner.Direction;
+                if (EditVec3Editor(_currentObject, "particleDirection", ref direction, 0.01f, -1f, 1f, "%.3f", "Direction", "particle.direction"))
+                {
+                    particleSpawner.Direction = direction;
+                    ProjectManager.Instance.SetDirty(true);
+                }
+
+                float spread = particleSpawner.SpreadDegrees;
+                if (InputFloatEditor("Spread (degrees)", ref spread, 0.1f, 0f, 180f, "%.2f"))
+                {
+                    particleSpawner.SpreadDegrees = spread;
+                    Timeline?.RecordAutoKeyframe(_currentObject, "particle.spread");
+                    ProjectManager.Instance.SetDirty(true);
+                }
+
+                float speedMin = particleSpawner.InitialSpeedMin;
+                if (InputFloatEditor("Speed Min", ref speedMin, 0.01f, 0f, 10000f, "%.3f"))
+                {
+                    particleSpawner.InitialSpeedMin = speedMin;
+                    Timeline?.RecordAutoKeyframe(_currentObject, "particle.speed_min");
+                    ProjectManager.Instance.SetDirty(true);
+                }
+
+                float speedMax = particleSpawner.InitialSpeedMax;
+                if (InputFloatEditor("Speed Max", ref speedMax, 0.01f, 0f, 10000f, "%.3f"))
+                {
+                    particleSpawner.InitialSpeedMax = speedMax;
+                    Timeline?.RecordAutoKeyframe(_currentObject, "particle.speed_max");
+                    ProjectManager.Instance.SetDirty(true);
+                }
+            }
+            else
+            {
+                vec3 velocityMin = particleSpawner.InitialVelocityMin;
+                if (EditVec3Editor(_currentObject, "particleVelMin", ref velocityMin, 0.01f, -1000f, 1000f, "%.3f", "Velocity Min", "particle.velocity_min"))
+                {
+                    particleSpawner.InitialVelocityMin = velocityMin;
+                    ProjectManager.Instance.SetDirty(true);
+                }
+
+                vec3 velocityMax = particleSpawner.InitialVelocityMax;
+                if (EditVec3Editor(_currentObject, "particleVelMax", ref velocityMax, 0.01f, -1000f, 1000f, "%.3f", "Velocity Max", "particle.velocity_max"))
+                {
+                    particleSpawner.InitialVelocityMax = velocityMax;
+                    ProjectManager.Instance.SetDirty(true);
+                }
+            }
+
+            vec3 gravity = particleSpawner.Gravity;
+            if (EditVec3Editor(_currentObject, "particleGravity", ref gravity, 0.01f, -1000f, 1000f, "%.3f", "Gravity", "particle.gravity"))
+            {
+                particleSpawner.Gravity = gravity;
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            vec3 rotMin = particleSpawner.InitialRotationMinDegrees;
+            if (EditVec3Editor(_currentObject, "particleRotMin", ref rotMin, 0.5f, -3600f, 3600f, "%.2f", "Initial Rotation Min", "particle.rotation_min"))
+            {
+                particleSpawner.InitialRotationMinDegrees = rotMin;
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            vec3 rotMax = particleSpawner.InitialRotationMaxDegrees;
+            if (EditVec3Editor(_currentObject, "particleRotMax", ref rotMax, 0.5f, -3600f, 3600f, "%.2f", "Initial Rotation Max", "particle.rotation_max"))
+            {
+                particleSpawner.InitialRotationMaxDegrees = rotMax;
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            vec3 angVelMin = particleSpawner.AngularVelocityMinDegrees;
+            if (EditVec3Editor(_currentObject, "particleAngVelMin", ref angVelMin, 0.5f, -3600f, 3600f, "%.2f", "Angular Velocity Min", "particle.angular_velocity_min"))
+            {
+                particleSpawner.AngularVelocityMinDegrees = angVelMin;
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            vec3 angVelMax = particleSpawner.AngularVelocityMaxDegrees;
+            if (EditVec3Editor(_currentObject, "particleAngVelMax", ref angVelMax, 0.5f, -3600f, 3600f, "%.2f", "Angular Velocity Max", "particle.angular_velocity_max"))
+            {
+                particleSpawner.AngularVelocityMaxDegrees = angVelMax;
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            float startScaleMin = particleSpawner.StartScaleMin;
+            if (InputFloatEditor("Start Scale Min", ref startScaleMin, 0.01f, 0.001f, 1000f, "%.3f"))
+            {
+                particleSpawner.StartScaleMin = startScaleMin;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.start_scale_min");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            float startScaleMax = particleSpawner.StartScaleMax;
+            if (InputFloatEditor("Start Scale Max", ref startScaleMax, 0.01f, 0.001f, 1000f, "%.3f"))
+            {
+                particleSpawner.StartScaleMax = startScaleMax;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.start_scale_max");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            float endScaleMin = particleSpawner.EndScaleMin;
+            if (InputFloatEditor("End Scale Min", ref endScaleMin, 0.01f, 0.001f, 1000f, "%.3f"))
+            {
+                particleSpawner.EndScaleMin = endScaleMin;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.end_scale_min");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            float endScaleMax = particleSpawner.EndScaleMax;
+            if (InputFloatEditor("End Scale Max", ref endScaleMax, 0.01f, 0.001f, 1000f, "%.3f"))
+            {
+                particleSpawner.EndScaleMax = endScaleMax;
+                Timeline?.RecordAutoKeyframe(_currentObject, "particle.end_scale_max");
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            ImGui.TextDisabled($"Active particles: {particleSpawner.ActiveParticleCount}");
+
+            if (ImGui.Button("Restart Particles"))
+            {
+                particleSpawner.ResetRuntime();
             }
         }
 

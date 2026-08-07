@@ -566,7 +566,7 @@ public class SceneTree : UiPanel
     {
         foreach (var child in original.Children)
         {
-            if (child is CharacterSceneObject) continue;
+            if (child is CharacterSceneObject || child.IsRuntimeTransient) continue;
 
             var childDup = CreateSceneObjectDuplicate(child);
             if (childDup == null) continue;
@@ -585,6 +585,33 @@ public class SceneTree : UiPanel
 
         switch (original)
         {
+            case ParticleSpawnerSceneObject particleSpawner:
+                dup = new ParticleSpawnerSceneObject
+                {
+                    ParticleLibraryEntryId = particleSpawner.ParticleLibraryEntryId,
+                    ParticleLibraryDisplayName = particleSpawner.ParticleLibraryDisplayName,
+                    Emitting = particleSpawner.Emitting,
+                    OneShot = particleSpawner.OneShot,
+                    Amount = particleSpawner.Amount,
+                    SpawnRate = particleSpawner.SpawnRate,
+                    LifetimeMin = particleSpawner.LifetimeMin,
+                    LifetimeMax = particleSpawner.LifetimeMax,
+                    SpawnBoxExtents = particleSpawner.SpawnBoxExtents,
+                    InitialVelocityMin = particleSpawner.InitialVelocityMin,
+                    InitialVelocityMax = particleSpawner.InitialVelocityMax,
+                    Gravity = particleSpawner.Gravity,
+                    InitialRotationMinDegrees = particleSpawner.InitialRotationMinDegrees,
+                    InitialRotationMaxDegrees = particleSpawner.InitialRotationMaxDegrees,
+                    AngularVelocityMinDegrees = particleSpawner.AngularVelocityMinDegrees,
+                    AngularVelocityMaxDegrees = particleSpawner.AngularVelocityMaxDegrees,
+                    StartScaleMin = particleSpawner.StartScaleMin,
+                    StartScaleMax = particleSpawner.StartScaleMax,
+                    EndScaleMin = particleSpawner.EndScaleMin,
+                    EndScaleMax = particleSpawner.EndScaleMax,
+                    TopLevelParticles = particleSpawner.TopLevelParticles
+                };
+                break;
+
             case LightSceneObject light:
                 dup = new LightSceneObject
                 {
@@ -688,6 +715,9 @@ public class SceneTree : UiPanel
 
     private void DeleteObject(SceneObject obj)
     {
+        if (obj is ParticleSpawnerSceneObject particleSpawner)
+            particleSpawner.ResetRuntime();
+
         if (SelectionManager.Instance != null)
             SelectionManager.Instance.DeselectObject(obj);
         else if (_selectedObject == obj)

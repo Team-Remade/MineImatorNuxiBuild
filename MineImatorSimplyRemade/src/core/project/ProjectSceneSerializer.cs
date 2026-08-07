@@ -227,6 +227,40 @@ public static class ProjectSceneSerializer
             entry.ItemIs3D = obj.Visuals.OfType<ExtrudedItemMesh>().FirstOrDefault()?.Is3D ?? true;
         }
 
+        if (obj is ParticleSpawnerSceneObject particleSpawner)
+        {
+            entry.ParticleLibraryEntryId = particleSpawner.ParticleLibraryEntryId;
+            entry.ParticleLibraryDisplayName = particleSpawner.ParticleLibraryDisplayName;
+            entry.ParticleEmitting = particleSpawner.Emitting;
+            entry.ParticleOneShot = particleSpawner.OneShot;
+            entry.ParticleAmount = particleSpawner.Amount;
+            entry.ParticleSpawnRate = particleSpawner.SpawnRate;
+            entry.ParticleLifetimeMin = particleSpawner.LifetimeMin;
+            entry.ParticleLifetimeMax = particleSpawner.LifetimeMax;
+            entry.ParticleSimulationSpeed = particleSpawner.SimulationSpeed;
+            entry.ParticleLinearDamping = particleSpawner.LinearDamping;
+            entry.ParticleAngularDamping = particleSpawner.AngularDamping;
+            entry.ParticleEmissionShape = (int)particleSpawner.EmissionShape;
+            entry.ParticleUseDirectionalEmission = particleSpawner.UseDirectionalEmission;
+            entry.ParticleDirection = ToProjectVec3(particleSpawner.Direction);
+            entry.ParticleSpreadDegrees = particleSpawner.SpreadDegrees;
+            entry.ParticleInitialSpeedMin = particleSpawner.InitialSpeedMin;
+            entry.ParticleInitialSpeedMax = particleSpawner.InitialSpeedMax;
+            entry.ParticleSpawnBoxExtents = ToProjectVec3(particleSpawner.SpawnBoxExtents);
+            entry.ParticleInitialVelocityMin = ToProjectVec3(particleSpawner.InitialVelocityMin);
+            entry.ParticleInitialVelocityMax = ToProjectVec3(particleSpawner.InitialVelocityMax);
+            entry.ParticleGravity = ToProjectVec3(particleSpawner.Gravity);
+            entry.ParticleInitialRotationMinDegrees = ToProjectVec3(particleSpawner.InitialRotationMinDegrees);
+            entry.ParticleInitialRotationMaxDegrees = ToProjectVec3(particleSpawner.InitialRotationMaxDegrees);
+            entry.ParticleAngularVelocityMinDegrees = ToProjectVec3(particleSpawner.AngularVelocityMinDegrees);
+            entry.ParticleAngularVelocityMaxDegrees = ToProjectVec3(particleSpawner.AngularVelocityMaxDegrees);
+            entry.ParticleStartScaleMin = particleSpawner.StartScaleMin;
+            entry.ParticleStartScaleMax = particleSpawner.StartScaleMax;
+            entry.ParticleEndScaleMin = particleSpawner.EndScaleMin;
+            entry.ParticleEndScaleMax = particleSpawner.EndScaleMax;
+            entry.ParticleTopLevelParticles = particleSpawner.TopLevelParticles;
+        }
+
         if (obj is CameraSceneObject camera)
         {
             entry.CameraFov = camera.Fov;
@@ -251,7 +285,7 @@ public static class ProjectSceneSerializer
             entry.LightSpotBlend = light.LightSpotBlend;
         }
 
-        foreach (var child in obj.Children)
+        foreach (var child in obj.Children.Where(static child => !child.IsRuntimeTransient))
             entry.Children.Add(SerializeNode(child));
 
         return entry;
@@ -358,6 +392,9 @@ public static class ProjectSceneSerializer
 
         if (entry.SpawnCategory == "Primitives")
             return spawnMenu.SpawnPrimitiveObject(entry.ObjectType, entry.Name, 0, "", entry.PrimitivePlaneOrientation, entry.PrimitiveCubeMapped);
+
+        if (entry.SpawnCategory == "Particle Spawners")
+            return spawnMenu.SpawnParticleSpawnerObject(entry.Name, entry.ParticleLibraryEntryId, entry.ParticleLibraryDisplayName);
 
         if (entry.SpawnCategory == "Scenery")
         {
@@ -515,6 +552,43 @@ public static class ProjectSceneSerializer
         obj.TemporaryItemSheetRows = entry.TemporaryItemSheetRows;
         obj.TemporaryItemSheetColumnIndex = entry.TemporaryItemSheetColumnIndex;
         obj.TemporaryItemSheetRowIndex = entry.TemporaryItemSheetRowIndex;
+
+        if (obj is ParticleSpawnerSceneObject particleSpawner)
+        {
+            particleSpawner.ParticleLibraryEntryId = entry.ParticleLibraryEntryId ?? "";
+            particleSpawner.ParticleLibraryDisplayName = entry.ParticleLibraryDisplayName ?? "";
+            particleSpawner.Emitting = entry.ParticleEmitting;
+            particleSpawner.OneShot = entry.ParticleOneShot;
+            particleSpawner.Amount = entry.ParticleAmount;
+            particleSpawner.SpawnRate = entry.ParticleSpawnRate;
+            particleSpawner.LifetimeMin = entry.ParticleLifetimeMin;
+            particleSpawner.LifetimeMax = entry.ParticleLifetimeMax;
+            particleSpawner.SimulationSpeed = entry.ParticleSimulationSpeed;
+            particleSpawner.LinearDamping = entry.ParticleLinearDamping;
+            particleSpawner.AngularDamping = entry.ParticleAngularDamping;
+            particleSpawner.EmissionShape = Enum.IsDefined(typeof(ParticleEmissionShape), entry.ParticleEmissionShape)
+                ? (ParticleEmissionShape)entry.ParticleEmissionShape
+                : ParticleEmissionShape.Box;
+            particleSpawner.UseDirectionalEmission = entry.ParticleUseDirectionalEmission;
+            particleSpawner.Direction = ToVec3(entry.ParticleDirection);
+            particleSpawner.SpreadDegrees = entry.ParticleSpreadDegrees;
+            particleSpawner.InitialSpeedMin = entry.ParticleInitialSpeedMin;
+            particleSpawner.InitialSpeedMax = entry.ParticleInitialSpeedMax;
+            particleSpawner.SpawnBoxExtents = ToVec3(entry.ParticleSpawnBoxExtents);
+            particleSpawner.InitialVelocityMin = ToVec3(entry.ParticleInitialVelocityMin);
+            particleSpawner.InitialVelocityMax = ToVec3(entry.ParticleInitialVelocityMax);
+            particleSpawner.Gravity = ToVec3(entry.ParticleGravity);
+            particleSpawner.InitialRotationMinDegrees = ToVec3(entry.ParticleInitialRotationMinDegrees);
+            particleSpawner.InitialRotationMaxDegrees = ToVec3(entry.ParticleInitialRotationMaxDegrees);
+            particleSpawner.AngularVelocityMinDegrees = ToVec3(entry.ParticleAngularVelocityMinDegrees);
+            particleSpawner.AngularVelocityMaxDegrees = ToVec3(entry.ParticleAngularVelocityMaxDegrees);
+            particleSpawner.StartScaleMin = entry.ParticleStartScaleMin;
+            particleSpawner.StartScaleMax = entry.ParticleStartScaleMax;
+            particleSpawner.EndScaleMin = entry.ParticleEndScaleMin;
+            particleSpawner.EndScaleMax = entry.ParticleEndScaleMax;
+            particleSpawner.TopLevelParticles = entry.ParticleTopLevelParticles;
+            particleSpawner.ResetRuntime();
+        }
 
         if (obj.SpawnCategory == "Primitives" && obj.ObjectType == "Plane")
         {

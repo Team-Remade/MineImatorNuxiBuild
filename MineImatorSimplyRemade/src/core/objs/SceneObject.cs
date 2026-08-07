@@ -574,6 +574,13 @@ public class SceneObject
     public bool HideInSceneTree = false;
 
     /// <summary>
+    /// Marks this node as runtime-only transient state.
+    /// Transient nodes are rendered normally but should be excluded from
+    /// scene serialization and editor duplication workflows.
+    /// </summary>
+    public bool IsRuntimeTransient = false;
+
+    /// <summary>
     /// Sets the selection state and applies or removes the selection material overlay.
     /// </summary>
     public void SetSelected(bool selected)

@@ -358,6 +358,38 @@ public class ProjectSceneObjectEntry
     public string ItemTileKey { get; set; } = "";
     public bool ItemIs3D { get; set; } = true;
 
+    // Particle-spawner specific data
+    public string ParticleLibraryEntryId { get; set; } = "";
+    public string ParticleLibraryDisplayName { get; set; } = "";
+    public bool ParticleEmitting { get; set; } = true;
+    public bool ParticleOneShot { get; set; } = false;
+    public int ParticleAmount { get; set; } = 64;
+    public float ParticleSpawnRate { get; set; } = 20f;
+    public float ParticleLifetimeMin { get; set; } = 1f;
+    public float ParticleLifetimeMax { get; set; } = 2f;
+    public float ParticleSimulationSpeed { get; set; } = 1f;
+    public float ParticleLinearDamping { get; set; } = 0f;
+    public float ParticleAngularDamping { get; set; } = 0f;
+    public int ParticleEmissionShape { get; set; } = 0;
+    public bool ParticleUseDirectionalEmission { get; set; } = false;
+    public ProjectVec3 ParticleDirection { get; set; } = new() { X = 0f, Y = 1f, Z = 0f };
+    public float ParticleSpreadDegrees { get; set; } = 35f;
+    public float ParticleInitialSpeedMin { get; set; } = 1f;
+    public float ParticleInitialSpeedMax { get; set; } = 2f;
+    public ProjectVec3 ParticleSpawnBoxExtents { get; set; } = new() { X = 0.1f, Y = 0.1f, Z = 0.1f };
+    public ProjectVec3 ParticleInitialVelocityMin { get; set; } = new() { X = -0.25f, Y = 0.75f, Z = -0.25f };
+    public ProjectVec3 ParticleInitialVelocityMax { get; set; } = new() { X = 0.25f, Y = 1.25f, Z = 0.25f };
+    public ProjectVec3 ParticleGravity { get; set; } = new() { X = 0f, Y = -1.25f, Z = 0f };
+    public ProjectVec3 ParticleInitialRotationMinDegrees { get; set; } = new() { X = 0f, Y = 0f, Z = 0f };
+    public ProjectVec3 ParticleInitialRotationMaxDegrees { get; set; } = new() { X = 360f, Y = 360f, Z = 360f };
+    public ProjectVec3 ParticleAngularVelocityMinDegrees { get; set; } = new() { X = -45f, Y = -45f, Z = -45f };
+    public ProjectVec3 ParticleAngularVelocityMaxDegrees { get; set; } = new() { X = 45f, Y = 45f, Z = 45f };
+    public float ParticleStartScaleMin { get; set; } = 0.75f;
+    public float ParticleStartScaleMax { get; set; } = 1.25f;
+    public float ParticleEndScaleMin { get; set; } = 0.05f;
+    public float ParticleEndScaleMax { get; set; } = 0.25f;
+    public bool ParticleTopLevelParticles { get; set; } = false;
+
     // Camera-specific data
     public float CameraFov { get; set; } = 70f;
     public float CameraNear { get; set; } = 0.05f;

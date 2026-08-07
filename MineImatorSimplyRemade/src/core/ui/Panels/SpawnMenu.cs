@@ -92,6 +92,11 @@ public class SpawnMenu : UiPanel
     // Variant data per-object (populated for Blocks when that system is added)
     private List<string> _currentVariants = new();
 
+    // Particle spawner category state
+    private string _particleLibrarySearchBuffer = "";
+    private string _particleLibrarySearchQuery = "";
+    private string _selectedParticleLibraryEntryId = "";
+
     // Custom-model history (in-memory; load/save not yet implemented)
     private readonly List<string>             _customModelHistory = new();
     private readonly Dictionary<string, string> _customModelPaths = new(); // displayName → full path
@@ -228,6 +233,7 @@ public class SpawnMenu : UiPanel
             { "Blocks",       new List<string>() },
             // Characters: populated from CharacterRegistry at render time.
             { "Characters",   new List<string>() },
+            { "Particle Spawners", new List<string> { "Particle Spawner" } },
             { "Scenery",      new List<string> { SceneryLoadLabel } },
             { "Custom Models", new List<string> { "Load..." } }
         };
@@ -926,6 +932,14 @@ public class SpawnMenu : UiPanel
             RenderCharactersVariantsColumn(columnWidth);
             ImGui.SameLine();
             RenderStandardPreviewColumn();
+        }
+        else if (_selectedCategory == "Particle Spawners")
+        {
+            RenderParticleSpawnerObjectsColumn(columnWidth);
+            ImGui.SameLine();
+            RenderParticleSpawnerVariantsColumn(columnWidth);
+            ImGui.SameLine();
+            RenderParticleSpawnerPreviewColumn();
         }
         else
         {
@@ -1729,6 +1743,208 @@ public class SpawnMenu : UiPanel
         ImGui.EndChild();
     }
 
+    // ── Particle Spawners category UI ───────────────────────────────────────
+
+    private sealed class ParticleLibraryOption
+    {
+        public string Id = "";
+        public string Name = "";
+        public string ObjectType = "";
+    }
+
+    private void RenderParticleSpawnerObjectsColumn(float columnWidth)
+    {
+        ImGui.BeginChild("##particleSpawnerObjects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
+        ImGui.TextDisabled("Objects");
+        ImGui.Separator();
+
+        var filtered = GetFilteredObjects();
+        for (int i = 0; i < filtered.Count; i++)
+        {
+            bool selected = _selectedObjectIndex == i;
+            if (ImGui.Selectable(filtered[i] + "##particleSpawnerObj" + i, selected))
+            {
+                _selectedObjectIndex = i;
+                _selectedVariantIndex = -1;
+            }
+
+            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && CanSpawn())
+            {
+                _selectedObjectIndex = i;
+                TrySpawn();
+            }
+        }
+
+        ImGui.EndChild();
+    }
+
+    private void RenderParticleSpawnerVariantsColumn(float columnWidth)
+    {
+        ImGui.BeginChild("##particleSpawnerVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
+        ImGui.TextDisabled("Particle Source");
+        ImGui.Separator();
+
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.InputTextWithHint("##particleSourceSearch", "Search object library...", ref _particleLibrarySearchBuffer, 128))
+            _particleLibrarySearchQuery = _particleLibrarySearchBuffer;
+
+        ImGui.Separator();
+
+        var options = GetParticleLibraryOptions();
+        string query = _particleLibrarySearchQuery?.Trim() ?? "";
+        int shown = 0;
+
+        ImGui.BeginChild("##particleSourceList", new Vector2(0, 0));
+        foreach (var option in options)
+        {
+            if (!string.IsNullOrEmpty(query) &&
+                option.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0 &&
+                option.ObjectType.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0)
+                continue;
+
+            shown++;
+            bool selected = string.Equals(_selectedParticleLibraryEntryId, option.Id, StringComparison.OrdinalIgnoreCase);
+            string label = $"{option.Name} [{option.ObjectType}]##particleSource_{option.Id}";
+            if (ImGui.Selectable(label, selected))
+                _selectedParticleLibraryEntryId = option.Id;
+
+            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && CanSpawn())
+            {
+                _selectedParticleLibraryEntryId = option.Id;
+                TrySpawn();
+            }
+        }
+
+        if (shown == 0)
+            ImGui.TextDisabled(options.Count == 0 ? "No object library entries available." : "No matches.");
+
+        ImGui.EndChild();
+        ImGui.EndChild();
+    }
+
+    private void RenderParticleSpawnerPreviewColumn()
+    {
+        ImGui.BeginChild("##particleSpawnerPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
+        ImGui.TextDisabled("Preview");
+        ImGui.Separator();
+
+        ImGui.Spacing();
+        CentreText("Particle Spawner");
+        ImGui.Spacing();
+
+        var selected = GetParticleLibraryOptions().FirstOrDefault(o =>
+            string.Equals(o.Id, _selectedParticleLibraryEntryId, StringComparison.OrdinalIgnoreCase));
+
+        if (selected != null)
+            CentreText($"Source: {selected.Name}");
+        else
+            ImGui.TextDisabled("No source selected.\nYou can assign one later\nin Properties > Particles.");
+
+        ImGui.EndChild();
+    }
+
+    private List<ParticleLibraryOption> GetParticleLibraryOptions()
+    {
+        EnsureObjectLibraryInitializedForSpawn();
+
+        var result = new List<ParticleLibraryOption>();
+        if (ProjectManager?.Manifest?.ObjectLibrary == null)
+            return result;
+
+        CollectParticleLibraryOptions(ProjectManager.Manifest.ObjectLibrary, result);
+
+        result = result
+            .GroupBy(static x => x.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(static g => g.First())
+            .OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(_selectedParticleLibraryEntryId) &&
+            !result.Any(x => string.Equals(x.Id, _selectedParticleLibraryEntryId, StringComparison.OrdinalIgnoreCase)))
+        {
+            _selectedParticleLibraryEntryId = "";
+        }
+
+        return result;
+    }
+
+    private static void CollectParticleLibraryOptions(IEnumerable<ProjectSceneObjectEntry> nodes, List<ParticleLibraryOption> output)
+    {
+        foreach (var node in nodes)
+        {
+            if (!string.IsNullOrWhiteSpace(node.LibraryEntryId) &&
+                !string.Equals(node.SpawnCategory, "Particle Spawners", StringComparison.OrdinalIgnoreCase))
+            {
+                output.Add(new ParticleLibraryOption
+                {
+                    Id = node.LibraryEntryId,
+                    Name = string.IsNullOrWhiteSpace(node.Name)
+                        ? (string.IsNullOrWhiteSpace(node.ObjectType) ? "Object" : node.ObjectType)
+                        : node.Name,
+                    ObjectType = string.IsNullOrWhiteSpace(node.ObjectType) ? "Object" : node.ObjectType
+                });
+            }
+
+            CollectParticleLibraryOptions(node.Children, output);
+        }
+    }
+
+    private void EnsureObjectLibraryInitializedForSpawn()
+    {
+        if (ProjectManager?.Manifest == null || Viewport == null)
+            return;
+
+        ProjectManager.Manifest.ObjectLibrary ??= new List<ProjectSceneObjectEntry>();
+
+        foreach (var root in Viewport.SceneObjects)
+        {
+            if (root.IsRuntimeTransient)
+                continue;
+
+            EnsureSceneLibrarySourceIdsForSpawn(root);
+
+            if (ContainsLibraryEntryId(ProjectManager.Manifest.ObjectLibrary, root.LibrarySourceId))
+                continue;
+
+            var entry = ProjectSceneSerializer.SerializeObjectForLibrary(root);
+            entry.LibraryEntryId = root.LibrarySourceId;
+            entry.LibrarySourceId = root.LibrarySourceId;
+            if (string.IsNullOrWhiteSpace(entry.Name))
+                entry.Name = string.IsNullOrWhiteSpace(entry.ObjectType) ? "Object" : entry.ObjectType;
+
+            ProjectManager.Manifest.ObjectLibrary.Add(entry);
+        }
+    }
+
+    private static void EnsureSceneLibrarySourceIdsForSpawn(SceneObject obj)
+    {
+        if (obj.IsRuntimeTransient)
+            return;
+
+        if (string.IsNullOrWhiteSpace(obj.LibrarySourceId))
+            obj.LibrarySourceId = string.IsNullOrWhiteSpace(obj.ObjectId) ? Guid.NewGuid().ToString("N") : obj.ObjectId;
+
+        foreach (var child in obj.Children)
+            EnsureSceneLibrarySourceIdsForSpawn(child);
+    }
+
+    private static bool ContainsLibraryEntryId(IEnumerable<ProjectSceneObjectEntry> nodes, string libraryEntryId)
+    {
+        if (string.IsNullOrWhiteSpace(libraryEntryId))
+            return false;
+
+        foreach (var node in nodes)
+        {
+            if (string.Equals(node.LibraryEntryId, libraryEntryId, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (ContainsLibraryEntryId(node.Children, libraryEntryId))
+                return true;
+        }
+
+        return false;
+    }
+
     // ── Shared preview helpers ────────────────────────────────────────────────
 
     /// <summary>
@@ -1812,6 +2028,9 @@ public class SpawnMenu : UiPanel
     {
         if (_selectedCategory == "Items")
             return !string.IsNullOrEmpty(_selectedTileKey);
+
+        if (_selectedCategory == "Particle Spawners")
+            return _selectedObjectIndex >= 0;
 
         if (_selectedObjectIndex < 0) return false;
 
@@ -4560,6 +4779,12 @@ public class SpawnMenu : UiPanel
             return;
         }
 
+        if (_selectedCategory == "Particle Spawners")
+        {
+            TrySpawnParticleSpawner();
+            return;
+        }
+
         if (_selectedCategory == "Scenery")
         {
             var filteredScenery = GetFilteredObjects();
@@ -4584,6 +4809,19 @@ public class SpawnMenu : UiPanel
         if (_selectedObjectIndex < 0 || _selectedObjectIndex >= filtered.Count) return;
 
         SpawnObject(filtered[_selectedObjectIndex]);
+        _isOpen = false;
+    }
+
+    private void TrySpawnParticleSpawner()
+    {
+        if (_selectedObjectIndex < 0)
+            return;
+
+        string baseName = "Particle Spawner";
+        int nextNum = GetNextAvailableObjectNumber(baseName);
+        string fullName = nextNum > 1 ? $"{baseName}{nextNum}" : baseName;
+
+        SpawnParticleSpawnerObject(fullName, _selectedParticleLibraryEntryId);
         _isOpen = false;
     }
 
@@ -4825,6 +5063,49 @@ public class SpawnMenu : UiPanel
     }
 
     // ── Public spawn helpers ─────────────────────────────────────────────────
+
+    public ParticleSpawnerSceneObject? SpawnParticleSpawnerObject(
+        string objectName,
+        string libraryEntryId,
+        string? libraryDisplayName = null)
+    {
+        if (Viewport == null)
+            return null;
+
+        string displayName = libraryDisplayName ?? "";
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            var selected = GetParticleLibraryOptions().FirstOrDefault(x =>
+                string.Equals(x.Id, libraryEntryId, StringComparison.OrdinalIgnoreCase));
+            if (selected != null)
+                displayName = selected.Name;
+        }
+
+        var obj = new ParticleSpawnerSceneObject
+        {
+            Name = objectName,
+            ObjectType = "Particle Spawner",
+            SpawnCategory = "Particle Spawners",
+            Position = vec3.Zero,
+            PivotOffset = vec3.Zero
+        };
+        obj.SetParticleSource(libraryEntryId, displayName);
+        obj.AssignObjectId();
+
+        if (Gl != null)
+        {
+            var pickMesh = new CubeMesh(Gl)
+            {
+                Alpha = 0f,
+                Albedo = vec3.Zero,
+                PickOnly = true
+            };
+            obj.AddMesh(pickMesh);
+        }
+
+        Viewport.SceneObjects.Add(obj);
+        return obj;
+    }
 
     /// <summary>Creates and registers a <see cref="CameraSceneObject"/> in the viewport.</summary>
     public CameraSceneObject? SpawnCameraObject(string objectName)

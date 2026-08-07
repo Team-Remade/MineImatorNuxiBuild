@@ -2429,6 +2429,26 @@ public class Timeline : UiPanel
         {
             "camera.active",
         };
+        string[] particleScalarPaths =
+        {
+            "particle.emitting", "particle.one_shot", "particle.amount", "particle.spawn_rate",
+            "particle.lifetime_min", "particle.lifetime_max", "particle.simulation_speed",
+            "particle.linear_damping", "particle.angular_damping", "particle.emission_shape",
+            "particle.directional_emission", "particle.top_level_particles", "particle.spread", "particle.speed_min", "particle.speed_max",
+            "particle.start_scale_min", "particle.start_scale_max", "particle.end_scale_min", "particle.end_scale_max",
+        };
+        string[] particleVectorPaths =
+        {
+            "particle.spawn_extents.x", "particle.spawn_extents.y", "particle.spawn_extents.z",
+            "particle.velocity_min.x", "particle.velocity_min.y", "particle.velocity_min.z",
+            "particle.velocity_max.x", "particle.velocity_max.y", "particle.velocity_max.z",
+            "particle.gravity.x", "particle.gravity.y", "particle.gravity.z",
+            "particle.direction.x", "particle.direction.y", "particle.direction.z",
+            "particle.rotation_min.x", "particle.rotation_min.y", "particle.rotation_min.z",
+            "particle.rotation_max.x", "particle.rotation_max.y", "particle.rotation_max.z",
+            "particle.angular_velocity_min.x", "particle.angular_velocity_min.y", "particle.angular_velocity_min.z",
+            "particle.angular_velocity_max.x", "particle.angular_velocity_max.y", "particle.angular_velocity_max.z",
+        };
 
         foreach (var obj in objects)
         {
@@ -2440,6 +2460,8 @@ public class Timeline : UiPanel
                 paths = paths.Concat(new[] { "bend.x", "bend.y", "bend.z" });
             if (obj is CameraSceneObject cameraObj)
                 paths = paths.Concat(GetCameraEffectPropertyPaths(cameraObj));
+            if (obj is ParticleSpawnerSceneObject)
+                paths = paths.Concat(particleScalarPaths).Concat(particleVectorPaths);
             if (obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
                 paths = paths.Concat(itemPaths);
             foreach (var path in paths)
@@ -2559,6 +2581,8 @@ public class Timeline : UiPanel
         // Discrete state-like properties and "instant" interpolation use the
         // previous keyframe's value with no blending.
         if (path == "visible" || path == "camera.active" || path == "item.slot" || path == "item.custom_slot" ||
+            path == "particle.emitting" || path == "particle.one_shot" || path == "particle.amount" ||
+            path == "particle.emission_shape" || path == "particle.directional_emission" || path == "particle.top_level_particles" ||
             path.EndsWith(".mode", StringComparison.Ordinal) || prev.InterpolationType == "instant")
             return TryConvertKeyframeValue(prev.Value, out float prevInstant) ? prevInstant : null;
 
@@ -2720,11 +2744,63 @@ public class Timeline : UiPanel
                     if (comp == "active" && obj is CameraSceneObject camAct)
                         return camAct.Active ? 1f : 0f;
                     break;
+                case "particle":
+                    if (obj is ParticleSpawnerSceneObject particle)
+                    {
+                        return comp switch
+                        {
+                            "emitting" => particle.Emitting ? 1f : 0f,
+                            "one_shot" => particle.OneShot ? 1f : 0f,
+                            "amount" => particle.Amount,
+                            "spawn_rate" => particle.SpawnRate,
+                            "lifetime_min" => particle.LifetimeMin,
+                            "lifetime_max" => particle.LifetimeMax,
+                            "simulation_speed" => particle.SimulationSpeed,
+                            "linear_damping" => particle.LinearDamping,
+                            "angular_damping" => particle.AngularDamping,
+                            "emission_shape" => (int)particle.EmissionShape,
+                            "directional_emission" => particle.UseDirectionalEmission ? 1f : 0f,
+                            "top_level_particles" => particle.TopLevelParticles ? 1f : 0f,
+                            "spread" => particle.SpreadDegrees,
+                            "speed_min" => particle.InitialSpeedMin,
+                            "speed_max" => particle.InitialSpeedMax,
+                            "start_scale_min" => particle.StartScaleMin,
+                            "start_scale_max" => particle.StartScaleMax,
+                            "end_scale_min" => particle.EndScaleMin,
+                            "end_scale_max" => particle.EndScaleMax,
+                            _ => 0f,
+                        };
+                    }
+                    break;
             }
         }
         else if (parts.Length == 3 && parts[0] == "light" && parts[1] == "color" && obj is LightSceneObject lco)
         {
             return parts[2] switch { "r" => (object)lco.LightColor.x, "g" => lco.LightColor.y, "b" => lco.LightColor.z, _ => 0f };
+        }
+        else if (parts.Length == 3 && parts[0] == "particle" && obj is ParticleSpawnerSceneObject particle)
+        {
+            vec3 vec = parts[1] switch
+            {
+                "spawn_extents" => particle.SpawnBoxExtents,
+                "velocity_min" => particle.InitialVelocityMin,
+                "velocity_max" => particle.InitialVelocityMax,
+                "gravity" => particle.Gravity,
+                "direction" => particle.Direction,
+                "rotation_min" => particle.InitialRotationMinDegrees,
+                "rotation_max" => particle.InitialRotationMaxDegrees,
+                "angular_velocity_min" => particle.AngularVelocityMinDegrees,
+                "angular_velocity_max" => particle.AngularVelocityMaxDegrees,
+                _ => vec3.Zero,
+            };
+
+            return parts[2] switch
+            {
+                "x" => vec.x,
+                "y" => vec.y,
+                "z" => vec.z,
+                _ => 0f,
+            };
         }
         else if (parts.Length == 3 && parts[0] == "shapekey")
         {
@@ -2922,6 +2998,38 @@ public class Timeline : UiPanel
                                 camSet.Active = false;
                         }
                         break;
+
+                    case "particle":
+                        if (obj is ParticleSpawnerSceneObject particle)
+                        {
+                            switch (comp)
+                            {
+                                case "emitting": particle.Emitting = value >= 0.5f; break;
+                                case "one_shot": particle.OneShot = value >= 0.5f; break;
+                                case "amount": particle.Amount = Math.Clamp((int)MathF.Round(value), 1, 10000); break;
+                                case "spawn_rate": particle.SpawnRate = MathF.Max(0f, value); break;
+                                case "lifetime_min": particle.LifetimeMin = MathF.Max(0.01f, value); break;
+                                case "lifetime_max": particle.LifetimeMax = MathF.Max(0.01f, value); break;
+                                case "simulation_speed": particle.SimulationSpeed = MathF.Max(0f, value); break;
+                                case "linear_damping": particle.LinearDamping = MathF.Max(0f, value); break;
+                                case "angular_damping": particle.AngularDamping = MathF.Max(0f, value); break;
+                                case "emission_shape":
+                                    particle.EmissionShape = (int)MathF.Round(value) == 1
+                                        ? ParticleEmissionShape.Sphere
+                                        : ParticleEmissionShape.Box;
+                                    break;
+                                case "directional_emission": particle.UseDirectionalEmission = value >= 0.5f; break;
+                                case "top_level_particles": particle.TopLevelParticles = value >= 0.5f; break;
+                                case "spread": particle.SpreadDegrees = Math.Clamp(value, 0f, 180f); break;
+                                case "speed_min": particle.InitialSpeedMin = MathF.Max(0f, value); break;
+                                case "speed_max": particle.InitialSpeedMax = MathF.Max(0f, value); break;
+                                case "start_scale_min": particle.StartScaleMin = MathF.Max(0.001f, value); break;
+                                case "start_scale_max": particle.StartScaleMax = MathF.Max(0.001f, value); break;
+                                case "end_scale_min": particle.EndScaleMin = MathF.Max(0.001f, value); break;
+                                case "end_scale_max": particle.EndScaleMax = MathF.Max(0.001f, value); break;
+                            }
+                        }
+                        break;
                 }
 
                 break;
@@ -2931,6 +3039,40 @@ public class Timeline : UiPanel
                 var c = lco.LightColor;
                 switch (parts[2]) { case "r": c.x = value; break; case "g": c.y = value; break; case "b": c.z = value; break; }
                 lco.LightColor = c;
+                break;
+            }
+            case 3 when parts[0] == "particle" && obj is ParticleSpawnerSceneObject particle:
+            {
+                vec3 v = parts[1] switch
+                {
+                    "spawn_extents" => particle.SpawnBoxExtents,
+                    "velocity_min" => particle.InitialVelocityMin,
+                    "velocity_max" => particle.InitialVelocityMax,
+                    "gravity" => particle.Gravity,
+                    "direction" => particle.Direction,
+                    "rotation_min" => particle.InitialRotationMinDegrees,
+                    "rotation_max" => particle.InitialRotationMaxDegrees,
+                    "angular_velocity_min" => particle.AngularVelocityMinDegrees,
+                    "angular_velocity_max" => particle.AngularVelocityMaxDegrees,
+                    _ => vec3.Zero,
+                };
+
+                if (parts[2] == "x") v.x = value;
+                else if (parts[2] == "y") v.y = value;
+                else if (parts[2] == "z") v.z = value;
+
+                switch (parts[1])
+                {
+                    case "spawn_extents": particle.SpawnBoxExtents = new vec3(MathF.Max(0f, v.x), MathF.Max(0f, v.y), MathF.Max(0f, v.z)); break;
+                    case "velocity_min": particle.InitialVelocityMin = v; break;
+                    case "velocity_max": particle.InitialVelocityMax = v; break;
+                    case "gravity": particle.Gravity = v; break;
+                    case "direction": particle.Direction = v; break;
+                    case "rotation_min": particle.InitialRotationMinDegrees = v; break;
+                    case "rotation_max": particle.InitialRotationMaxDegrees = v; break;
+                    case "angular_velocity_min": particle.AngularVelocityMinDegrees = v; break;
+                    case "angular_velocity_max": particle.AngularVelocityMaxDegrees = v; break;
+                }
                 break;
             }
             case 3 when parts[0] == "shapekey":
@@ -3267,6 +3409,48 @@ public class Timeline : UiPanel
                 }
             }
 
+            if (obj is ParticleSpawnerSceneObject)
+            {
+                var particleProps = new[]
+                {
+                    (label: "Emitting", path: "particle.emitting", parent: "", indent: 0),
+                    (label: "One Shot", path: "particle.one_shot", parent: "", indent: 0),
+                    (label: "Amount", path: "particle.amount", parent: "", indent: 0),
+                    (label: "Spawn Rate", path: "particle.spawn_rate", parent: "", indent: 0),
+                    (label: "Lifetime Min", path: "particle.lifetime_min", parent: "", indent: 0),
+                    (label: "Lifetime Max", path: "particle.lifetime_max", parent: "", indent: 0),
+                    (label: "Simulation Speed", path: "particle.simulation_speed", parent: "", indent: 0),
+                    (label: "Linear Damping", path: "particle.linear_damping", parent: "", indent: 0),
+                    (label: "Angular Damping", path: "particle.angular_damping", parent: "", indent: 0),
+                    (label: "Emission Shape", path: "particle.emission_shape", parent: "", indent: 0),
+                    (label: "Directional Emission", path: "particle.directional_emission", parent: "", indent: 0),
+                    (label: "Top Level Particles", path: "particle.top_level_particles", parent: "", indent: 0),
+                    (label: "Spread", path: "particle.spread", parent: "", indent: 0),
+                    (label: "Speed Min", path: "particle.speed_min", parent: "", indent: 0),
+                    (label: "Speed Max", path: "particle.speed_max", parent: "", indent: 0),
+                    (label: "Start Scale Min", path: "particle.start_scale_min", parent: "", indent: 0),
+                    (label: "Start Scale Max", path: "particle.start_scale_max", parent: "", indent: 0),
+                    (label: "End Scale Min", path: "particle.end_scale_min", parent: "", indent: 0),
+                    (label: "End Scale Max", path: "particle.end_scale_max", parent: "", indent: 0),
+                };
+
+                foreach (var (label, path, _, indent) in particleProps)
+                {
+                    if (propsWithKeyframes.Contains(path))
+                        _displayRows.Add(MakeSingle(obj, label, path, indent));
+                }
+
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Spawn Extents", "particle.spawn_extents", _displayRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Velocity Min", "particle.velocity_min", _displayRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Velocity Max", "particle.velocity_max", _displayRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Gravity", "particle.gravity", _displayRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Direction", "particle.direction", _displayRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Initial Rotation Min", "particle.rotation_min", _displayRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Initial Rotation Max", "particle.rotation_max", _displayRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Angular Velocity Min", "particle.angular_velocity_min", _displayRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Angular Velocity Max", "particle.angular_velocity_max", _displayRows);
+            }
+
             // Shape key properties — dynamic per-mesh/per-key paths.
             {
                 var meshes = obj.GetMeshInstancesRecursively();
@@ -3381,6 +3565,39 @@ public class Timeline : UiPanel
             }
         }
 
+        if (obj is ParticleSpawnerSceneObject)
+        {
+            _displayRows.Add(MakeSingle(obj, "Emitting", "particle.emitting"));
+            _displayRows.Add(MakeSingle(obj, "One Shot", "particle.one_shot"));
+            _displayRows.Add(MakeSingle(obj, "Amount", "particle.amount"));
+            _displayRows.Add(MakeSingle(obj, "Spawn Rate", "particle.spawn_rate"));
+            _displayRows.Add(MakeSingle(obj, "Lifetime Min", "particle.lifetime_min"));
+            _displayRows.Add(MakeSingle(obj, "Lifetime Max", "particle.lifetime_max"));
+            _displayRows.Add(MakeSingle(obj, "Simulation Speed", "particle.simulation_speed"));
+            _displayRows.Add(MakeSingle(obj, "Linear Damping", "particle.linear_damping"));
+            _displayRows.Add(MakeSingle(obj, "Angular Damping", "particle.angular_damping"));
+            _displayRows.Add(MakeSingle(obj, "Emission Shape", "particle.emission_shape"));
+            _displayRows.Add(MakeSingle(obj, "Directional Emission", "particle.directional_emission"));
+            _displayRows.Add(MakeSingle(obj, "Top Level Particles", "particle.top_level_particles"));
+            _displayRows.Add(MakeSingle(obj, "Spread", "particle.spread"));
+            _displayRows.Add(MakeSingle(obj, "Speed Min", "particle.speed_min"));
+            _displayRows.Add(MakeSingle(obj, "Speed Max", "particle.speed_max"));
+            _displayRows.Add(MakeSingle(obj, "Start Scale Min", "particle.start_scale_min"));
+            _displayRows.Add(MakeSingle(obj, "Start Scale Max", "particle.start_scale_max"));
+            _displayRows.Add(MakeSingle(obj, "End Scale Min", "particle.end_scale_min"));
+            _displayRows.Add(MakeSingle(obj, "End Scale Max", "particle.end_scale_max"));
+
+            AddParticleVectorGroup(obj, "Spawn Extents", "particle.spawn_extents");
+            AddParticleVectorGroup(obj, "Velocity Min", "particle.velocity_min");
+            AddParticleVectorGroup(obj, "Velocity Max", "particle.velocity_max");
+            AddParticleVectorGroup(obj, "Gravity", "particle.gravity");
+            AddParticleVectorGroup(obj, "Direction", "particle.direction");
+            AddParticleVectorGroup(obj, "Initial Rotation Min", "particle.rotation_min");
+            AddParticleVectorGroup(obj, "Initial Rotation Max", "particle.rotation_max");
+            AddParticleVectorGroup(obj, "Angular Velocity Min", "particle.angular_velocity_min");
+            AddParticleVectorGroup(obj, "Angular Velocity Max", "particle.angular_velocity_max");
+        }
+
         foreach (var row in _displayRows.Where(r => r.Object == obj && !r.IsGroupHeader && r.PropertyPath != "__header__"))
             LoadKeyframesFromObject(obj, row.PropertyPath);
     }
@@ -3390,6 +3607,32 @@ public class Timeline : UiPanel
 
     private static TimelineProperty MakeGroup(SceneObject obj, string name, string[] paths, string? keyPath = null, int indent = 0) =>
         new() { Object = obj, Label = name, PropertyPath = keyPath ?? name.ToLower(), IsGroupHeader = true, GroupPaths = paths, Indent = indent };
+
+    private void AddParticleVectorGroup(SceneObject obj, string label, string basePath)
+    {
+        string[] paths = { $"{basePath}.x", $"{basePath}.y", $"{basePath}.z" };
+        _displayRows.Add(MakeGroup(obj, label, paths, basePath));
+        _displayRows.Add(MakeSingle(obj, "X", paths[0], 1));
+        _displayRows.Add(MakeSingle(obj, "Y", paths[1], 1));
+        _displayRows.Add(MakeSingle(obj, "Z", paths[2], 1));
+    }
+
+    private static void AddParticleVectorGroupIfKeyed(
+        SceneObject obj,
+        HashSet<string> propsWithKeyframes,
+        string label,
+        string basePath,
+        List<TimelineProperty> rows)
+    {
+        string[] paths = { $"{basePath}.x", $"{basePath}.y", $"{basePath}.z" };
+        if (!paths.Any(propsWithKeyframes.Contains))
+            return;
+
+        rows.Add(MakeGroup(obj, label, paths, basePath));
+        rows.Add(MakeSingle(obj, "X", paths[0], 1));
+        rows.Add(MakeSingle(obj, "Y", paths[1], 1));
+        rows.Add(MakeSingle(obj, "Z", paths[2], 1));
+    }
 
     // ── Object lookup ─────────────────────────────────────────────────────────
 

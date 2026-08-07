@@ -307,6 +307,13 @@ public class Viewport : UiPanel
     /// Set to false by the "Overlays" toggle button in the top bar.
     /// </summary>
     public bool OverlaysEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Enables manual particle preview while paused. When enabled, only
+    /// user-selected particle spawners are simulated.
+    /// </summary>
+    public bool ParticlePreviewEnabled { get; set; } = false;
+
     private ViewportRenderMode _viewportRenderMode = ViewportRenderMode.Shaded;
     private RenderedPassMode _renderedPassMode = RenderedPassMode.Combined;
     public bool HighQualityPreviewEnabled { get; private set; }
@@ -2345,6 +2352,33 @@ public class Viewport : UiPanel
                 ImGui.PopStyleColor(4);
             }
 
+            // Particle preview toggle — only affects paused manual simulation.
+            {
+                ImGui.SameLine();
+                ImGui.SetCursorPosY(itemY);
+
+                if (!ParticlePreviewEnabled)
+                {
+                    ImGui.PushStyleColor(ImGuiCol.Button,        new Vector4(0.20f, 0.20f, 0.20f, 1.0f));
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.30f, 0.30f, 0.30f, 1.0f));
+                    ImGui.PushStyleColor(ImGuiCol.ButtonActive,  new Vector4(0.40f, 0.40f, 0.40f, 1.0f));
+                    ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(0.60f, 0.60f, 0.60f, 1.0f));
+                }
+                else
+                {
+                    var accentColor = GetAccentColorFromPreferences();
+                    ImGui.PushStyleColor(ImGuiCol.Button,        accentColor with { W = 0.6f });
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, accentColor with { W = 0.8f });
+                    ImGui.PushStyleColor(ImGuiCol.ButtonActive,  accentColor);
+                    ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+                }
+
+                if (ImGui.Button("Particle Preview", new Vector2(0, iconSize)))
+                    ParticlePreviewEnabled = !ParticlePreviewEnabled;
+
+                ImGui.PopStyleColor(4);
+            }
+
             if (PreviewViewport != null)
             {
                 bool previewVisible = PreviewViewport.IsVisible;
@@ -2475,6 +2509,9 @@ public class Viewport : UiPanel
         // ── Per-frame mesh globals ─────────────────────────────────────────────
         Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
         bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
+        if (!IsPreviewViewport)
+            UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
+
         Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
         int textureAnimFps = Math.Clamp(PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240);
         Mesh.AnimatedTextureSpeedScale = textureAnimFps / 20.0;
@@ -4208,6 +4245,39 @@ public class Viewport : UiPanel
         return translation * rotation * scaling * pivot;
     }
 
+    private void UpdateParticleSpawners(IEnumerable<SceneObject> objects, float deltaTime, bool timelinePlaying)
+    {
+        if (SpawnMenu == null)
+            return;
+
+        float timelineSeconds = timelinePlaying ? GetTimelineEffectTimeSeconds() : 0f;
+        SelectionManager? selection = SelectionManager.Instance;
+
+        // Particle simulation may add/remove child nodes while traversing.
+        // Iterate over a snapshot to avoid invalidating the collection enumerator.
+        var snapshot = new List<SceneObject>(objects);
+
+        foreach (var obj in snapshot)
+        {
+            if (!obj.GetEffectiveVisibility())
+                continue;
+
+            if (obj is ParticleSpawnerSceneObject spawner && !spawner.IsRuntimeTransient)
+            {
+                bool previewSelected = ParticlePreviewEnabled &&
+                                       selection != null &&
+                                       selection.IsSelected(spawner);
+
+                if (timelinePlaying)
+                    spawner.SimulateToTime(timelineSeconds, this, SpawnMenu);
+                else if (previewSelected)
+                    spawner.Step(deltaTime, this, SpawnMenu);
+            }
+
+            UpdateParticleSpawners(obj.Children, deltaTime, timelinePlaying);
+        }
+    }
+
     /// <summary>
     /// Builds a name → BoneSceneObject lookup for the entire hierarchy rooted at
     /// <paramref name="root"/>.
@@ -5071,6 +5141,9 @@ public class Viewport : UiPanel
 
         Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
         bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
+        if (!IsPreviewViewport)
+            UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
+
         Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
         int textureAnimFps = Math.Clamp(MainViewport.PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240);
         Mesh.AnimatedTextureSpeedScale = textureAnimFps / 20.0;
