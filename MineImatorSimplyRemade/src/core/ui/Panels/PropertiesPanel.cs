@@ -2221,7 +2221,7 @@ public class PropertiesPanel : UiPanel
         {
             bool inheritPos = _currentObject.InheritPosition;
             if (ImGui.Checkbox("Inherit Position##pos", ref inheritPos))
-                _currentObject.InheritPosition = inheritPos;
+                ApplyToSelectedObjects(obj => obj.InheritPosition = inheritPos);
 
             // MiBoneSceneObjects expose an offset from their model base pose (always zero at load).
             // Plain BoneSceneObjects (GLB) use TargetPosition as an offset from rest pose.
@@ -2296,7 +2296,7 @@ public class PropertiesPanel : UiPanel
         {
             bool inheritRot = _currentObject.InheritRotation;
             if (ImGui.Checkbox("Inherit Rotation##rot", ref inheritRot))
-                _currentObject.InheritRotation = inheritRot;
+                ApplyToSelectedObjects(obj => obj.InheritRotation = inheritRot);
 
             vec3 rawRot = (_currentObject is MiBoneSceneObject miRot)
                 ? miRot.OffsetRotation
@@ -2361,7 +2361,7 @@ public class PropertiesPanel : UiPanel
         {
             bool inheritScale = _currentObject.InheritScale;
             if (ImGui.Checkbox("Inherit Scale##scale", ref inheritScale))
-                _currentObject.InheritScale = inheritScale;
+                ApplyToSelectedObjects(obj => obj.InheritScale = inheritScale);
 
             ImGui.Checkbox("Link Scale", ref _linkScale);
 
@@ -2599,7 +2599,7 @@ public class PropertiesPanel : UiPanel
         {
             bool inheritPivot = _currentObject.InheritPivotOffset;
             if (ImGui.Checkbox("Inherit Pivot##pivot", ref inheritPivot))
-                _currentObject.InheritPivotOffset = inheritPivot;
+                ApplyToSelectedObjects(obj => obj.InheritPivotOffset = inheritPivot);
 
             vec3 pivot = _currentObject.PivotOffset;
             float pivX = pivot.x * 16f;
@@ -2608,17 +2608,17 @@ public class PropertiesPanel : UiPanel
 
             ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
             if (InputFloatEditor("X##pivX", ref pivX, 0.1f, float.MinValue, float.MaxValue))
-                _currentObject.PivotOffset = new vec3(pivX / 16f, pivY / 16f, pivZ / 16f);
+                ApplyPivotOffset(new vec3(pivX / 16f, pivY / 16f, pivZ / 16f));
 
             if (InputFloatEditor("Y##pivY", ref pivY, 0.1f, float.MinValue, float.MaxValue))
-                _currentObject.PivotOffset = new vec3(pivX / 16f, pivY / 16f, pivZ / 16f);
+                ApplyPivotOffset(new vec3(pivX / 16f, pivY / 16f, pivZ / 16f));
 
             if (InputFloatEditor("Z##pivZ", ref pivZ, 0.1f, float.MinValue, float.MaxValue))
-                _currentObject.PivotOffset = new vec3(pivX / 16f, pivY / 16f, pivZ / 16f);
+                ApplyPivotOffset(new vec3(pivX / 16f, pivY / 16f, pivZ / 16f));
             ImGui.PopItemWidth();
 
             if (ImGui.Button("Reset##pivReset"))
-                _currentObject.PivotOffset = vec3.Zero;
+                ApplyToSelectedObjects(obj => obj.PivotOffset = vec3.Zero);
         }
 
         // ── Material ──────────────────────────────────────────────────────────
@@ -3481,16 +3481,22 @@ public class PropertiesPanel : UiPanel
             bool vis = _currentObject.ObjectVisible;
             if (ImGui.Checkbox("Visible", ref vis))
             {
-                _currentObject.SetObjectVisible(vis);
+                ApplyToSelectedObjects(obj =>
+                {
+                    obj.SetObjectVisible(vis);
+                    Timeline?.RecordAutoKeyframe(obj, "visible");
+                });
                 ProjectManager.Instance.SetDirty(true);
-                Timeline?.RecordAutoKeyframe(_currentObject, "visible");
             }
 
             bool inheritVis = _currentObject.InheritVisibility;
             if (ImGui.Checkbox("Inherit Visibility", ref inheritVis))
             {
-                _currentObject.InheritVisibility = inheritVis;
-                ApplyToDescendants(_currentObject, child => child.InheritVisibility = inheritVis);
+                ApplyToSelectedObjects(obj =>
+                {
+                    obj.InheritVisibility = inheritVis;
+                    ApplyToDescendants(obj, child => child.InheritVisibility = inheritVis);
+                });
                 ProjectManager.Instance.SetDirty(true);
             }
 
@@ -3500,7 +3506,7 @@ public class PropertiesPanel : UiPanel
                 bool castShadow = _currentObject.CastShadow;
                 if (ImGui.Checkbox("Cast Shadows", ref castShadow))
                 {
-                    ApplyToSubtree(_currentObject, obj => obj.CastShadow = castShadow);
+                    ApplyToSelectedSubtrees(obj => obj.CastShadow = castShadow);
                     ProjectManager.Instance.SetDirty(true);
                 }
             }
@@ -3508,56 +3514,56 @@ public class PropertiesPanel : UiPanel
             bool invertFaces = _currentObject.InvertFaces;
             if (ImGui.Checkbox("Invert (Render Backfaces)", ref invertFaces))
             {
-                ApplyToSubtree(_currentObject, obj => obj.InvertFaces = invertFaces);
+                ApplyToSelectedSubtrees(obj => obj.InvertFaces = invertFaces);
                 ProjectManager.Instance.SetDirty(true);
             }
 
             bool blurTexture = _currentObject.BlurTexture;
             if (ImGui.Checkbox("Blur Texture (Linear Filtering)", ref blurTexture))
             {
-                ApplyToSubtree(_currentObject, obj => obj.BlurTexture = blurTexture);
+                ApplyToSelectedSubtrees(obj => obj.BlurTexture = blurTexture);
                 ProjectManager.Instance.SetDirty(true);
             }
 
             bool textureMipmaps = _currentObject.TextureMipmaps;
             if (ImGui.Checkbox("Texture Filtering (Mip Maps)", ref textureMipmaps))
             {
-                ApplyToSubtree(_currentObject, obj => obj.TextureMipmaps = textureMipmaps);
+                ApplyToSelectedSubtrees(obj => obj.TextureMipmaps = textureMipmaps);
                 ProjectManager.Instance.SetDirty(true);
             }
 
             bool includeAo = _currentObject.IncludeInAmbientOcclusion;
             if (ImGui.Checkbox("Include In Ambient Occlusion", ref includeAo))
             {
-                ApplyToSubtree(_currentObject, obj => obj.IncludeInAmbientOcclusion = includeAo);
+                ApplyToSelectedSubtrees(obj => obj.IncludeInAmbientOcclusion = includeAo);
                 ProjectManager.Instance.SetDirty(true);
             }
 
             bool includeFog = _currentObject.IncludeInFog;
             if (ImGui.Checkbox("Include In Fog", ref includeFog))
             {
-                ApplyToSubtree(_currentObject, obj => obj.IncludeInFog = includeFog);
+                ApplyToSelectedSubtrees(obj => obj.IncludeInFog = includeFog);
                 ProjectManager.Instance.SetDirty(true);
             }
 
             bool renderHighQuality = _currentObject.RenderInHighQuality;
             if (ImGui.Checkbox("Render In High Quality", ref renderHighQuality))
             {
-                ApplyToSubtree(_currentObject, obj => obj.RenderInHighQuality = renderHighQuality);
+                ApplyToSelectedSubtrees(obj => obj.RenderInHighQuality = renderHighQuality);
                 ProjectManager.Instance.SetDirty(true);
             }
 
             bool renderLowQuality = _currentObject.RenderInLowQuality;
             if (ImGui.Checkbox("Render In Low Quality", ref renderLowQuality))
             {
-                ApplyToSubtree(_currentObject, obj => obj.RenderInLowQuality = renderLowQuality);
+                ApplyToSelectedSubtrees(obj => obj.RenderInLowQuality = renderLowQuality);
                 ProjectManager.Instance.SetDirty(true);
             }
 
             float renderDepth = _currentObject.RenderDepthOffset;
             if (InputFloatEditor("Render Depth", ref renderDepth, 0.01f, -1000f, 1000f, "%.2f"))
             {
-                ApplyToSubtree(_currentObject, obj => obj.RenderDepthOffset = renderDepth);
+                ApplyToSelectedSubtrees(obj => obj.RenderDepthOffset = renderDepth);
                 ProjectManager.Instance.SetDirty(true);
             }
 
@@ -3592,7 +3598,14 @@ public class PropertiesPanel : UiPanel
                 bool sharpBends = character.ModelBendStyle == BendStyle.Blocky;
                 if (ImGui.Checkbox("Sharp bends", ref sharpBends))
                 {
-                    character.ModelBendStyle = sharpBends ? BendStyle.Blocky : BendStyle.Realistic;
+                    ApplyToSelectedObjects(obj =>
+                    {
+                        if (obj is CharacterSceneObject selectedCharacter &&
+                            selectedCharacter.BoneObjects.Values.Any(bone => bone is MiBoneSceneObject))
+                        {
+                            selectedCharacter.ModelBendStyle = sharpBends ? BendStyle.Blocky : BendStyle.Realistic;
+                        }
+                    });
                     ProjectManager.Instance.SetDirty(true);
                 }
 
@@ -3608,51 +3621,174 @@ public class PropertiesPanel : UiPanel
     
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    private IReadOnlyList<SceneObject> GetSelectedObjectsForEdit()
+    {
+        var selected = SelectionManager.Instance?.SelectedObjects;
+        if (selected != null && selected.Count > 0)
+            return selected;
+
+        return _currentObject != null
+            ? new List<SceneObject> { _currentObject }
+            : Array.Empty<SceneObject>();
+    }
+
+    private void ApplyToSelectedObjects(Action<SceneObject> apply)
+    {
+        foreach (var obj in GetSelectedObjectsForEdit())
+            apply(obj);
+    }
+
+    private void ApplyToSelectedSubtrees(Action<SceneObject> apply)
+    {
+        foreach (var obj in GetSelectedObjectsForEdit())
+            ApplyToSubtree(obj, apply);
+    }
+
     private void ApplyPosition(vec3 pos)
     {
-        // MiBoneSceneObjects: pos is an offset from the base pose.
-        // Plain BoneSceneObjects (GLB): pos is an offset from the rest pose.
-        if (_currentObject is MiBoneSceneObject miPos)
-            miPos.OffsetPosition = pos;
-        else if (_currentObject is BoneSceneObject bone)
-            bone.TargetPosition = pos;
-        else
-            _currentObject.SetLocalPosition(pos);
-        Timeline?.RecordAutoKeyframe(_currentObject, "position.x");
-        Timeline?.RecordAutoKeyframe(_currentObject, "position.y");
-        Timeline?.RecordAutoKeyframe(_currentObject, "position.z");
+        vec3 origin = GetEditablePosition(_currentObject);
+        vec3 delta = pos - origin;
+
+        // MiBoneSceneObjects: position is an offset from the base pose.
+        // Plain BoneSceneObjects (GLB): position is an offset from the rest pose.
+        ApplyToSelectedObjects(obj =>
+        {
+            vec3 target = GetEditablePosition(obj) + delta;
+            SetEditablePosition(obj, target);
+
+            Timeline?.RecordAutoKeyframe(obj, "position.x");
+            Timeline?.RecordAutoKeyframe(obj, "position.y");
+            Timeline?.RecordAutoKeyframe(obj, "position.z");
+        });
+        ProjectManager.Instance.SetDirty(true);
     }
 
     private void ApplyRotation(vec3 rot)
     {
-        if (_currentObject is MiBoneSceneObject miRot)
-            miRot.OffsetRotation = rot;
-        else if (_currentObject is BoneSceneObject bone)
-            bone.TargetRotation = rot;
-        else
-            _currentObject.SetLocalRotation(rot);
-        Timeline?.RecordAutoKeyframe(_currentObject, "rotation.x");
-        Timeline?.RecordAutoKeyframe(_currentObject, "rotation.y");
-        Timeline?.RecordAutoKeyframe(_currentObject, "rotation.z");
+        vec3 origin = GetEditableRotation(_currentObject);
+        vec3 delta = rot - origin;
+
+        ApplyToSelectedObjects(obj =>
+        {
+            vec3 target = GetEditableRotation(obj) + delta;
+            SetEditableRotation(obj, target);
+
+            Timeline?.RecordAutoKeyframe(obj, "rotation.x");
+            Timeline?.RecordAutoKeyframe(obj, "rotation.y");
+            Timeline?.RecordAutoKeyframe(obj, "rotation.z");
+        });
+        ProjectManager.Instance.SetDirty(true);
     }
 
     private void ApplyScale(vec3 scale)
     {
-        if (_currentObject is MiBoneSceneObject miScale)
-            miScale.OffsetScale = scale;
-        else
-            _currentObject.SetLocalScale(scale);
-        Timeline?.RecordAutoKeyframe(_currentObject, "scale.x");
-        Timeline?.RecordAutoKeyframe(_currentObject, "scale.y");
-        Timeline?.RecordAutoKeyframe(_currentObject, "scale.z");
+        vec3 origin = GetEditableScale(_currentObject);
+        vec3 delta = scale - origin;
+
+        ApplyToSelectedObjects(obj =>
+        {
+            vec3 cur = GetEditableScale(obj);
+            vec3 target = new vec3(
+                MathF.Max(cur.x + delta.x, 0.001f),
+                MathF.Max(cur.y + delta.y, 0.001f),
+                MathF.Max(cur.z + delta.z, 0.001f));
+            SetEditableScale(obj, target);
+
+            Timeline?.RecordAutoKeyframe(obj, "scale.x");
+            Timeline?.RecordAutoKeyframe(obj, "scale.y");
+            Timeline?.RecordAutoKeyframe(obj, "scale.z");
+        });
+        ProjectManager.Instance.SetDirty(true);
     }
 
     private void ApplyBend(MiBoneSceneObject bone, vec3 angle, params string[] propertyPaths)
     {
-        bone.SetEditableBendAngle(angle);
+        vec3 origin = bone.GetEditableBendAngle();
+        vec3 delta = angle - origin;
+        bool changedAny = false;
+        ApplyToSelectedObjects(obj =>
+        {
+            if (obj is not MiBoneSceneObject selectedBone)
+                return;
+
+            selectedBone.SetEditableBendAngle(selectedBone.GetEditableBendAngle() + delta);
+            foreach (var propertyPath in propertyPaths)
+                Timeline?.RecordAutoKeyframe(selectedBone, propertyPath);
+            changedAny = true;
+        });
+
+        if (!changedAny)
+        {
+            bone.SetEditableBendAngle(angle);
+            foreach (var propertyPath in propertyPaths)
+                Timeline?.RecordAutoKeyframe(bone, propertyPath);
+            changedAny = true;
+        }
+
+        if (changedAny)
+            ProjectManager.Instance.SetDirty(true);
+    }
+
+    private void ApplyPivotOffset(vec3 pivot)
+    {
+        vec3 origin = _currentObject?.PivotOffset ?? vec3.Zero;
+        vec3 delta = pivot - origin;
+
+        ApplyToSelectedObjects(obj => obj.PivotOffset = obj.PivotOffset + delta);
         ProjectManager.Instance.SetDirty(true);
-        foreach (var propertyPath in propertyPaths)
-            Timeline?.RecordAutoKeyframe(bone, propertyPath);
+    }
+
+    private static vec3 GetEditablePosition(SceneObject obj)
+    {
+        if (obj is MiBoneSceneObject miPos)
+            return miPos.OffsetPosition;
+        if (obj is BoneSceneObject bonePos)
+            return bonePos.TargetPosition;
+        return obj.LocalPosition;
+    }
+
+    private static void SetEditablePosition(SceneObject obj, vec3 value)
+    {
+        if (obj is MiBoneSceneObject miPos)
+            miPos.OffsetPosition = value;
+        else if (obj is BoneSceneObject bonePos)
+            bonePos.TargetPosition = value;
+        else
+            obj.SetLocalPosition(value);
+    }
+
+    private static vec3 GetEditableRotation(SceneObject obj)
+    {
+        if (obj is MiBoneSceneObject miRot)
+            return miRot.OffsetRotation;
+        if (obj is BoneSceneObject boneRot)
+            return boneRot.TargetRotation;
+        return obj.LocalRotation;
+    }
+
+    private static void SetEditableRotation(SceneObject obj, vec3 value)
+    {
+        if (obj is MiBoneSceneObject miRot)
+            miRot.OffsetRotation = value;
+        else if (obj is BoneSceneObject boneRot)
+            boneRot.TargetRotation = value;
+        else
+            obj.SetLocalRotation(value);
+    }
+
+    private static vec3 GetEditableScale(SceneObject obj)
+    {
+        if (obj is MiBoneSceneObject miScale)
+            return miScale.OffsetScale;
+        return obj.LocalScale;
+    }
+
+    private static void SetEditableScale(SceneObject obj, vec3 value)
+    {
+        if (obj is MiBoneSceneObject miScale)
+            miScale.OffsetScale = value;
+        else
+            obj.SetLocalScale(value);
     }
 
     private bool EditVec3Editor(SceneObject keyframeObject, string idPrefix, ref vec3 value, float speed, float min, float max, string format, string label, string keyframePathPrefix)
@@ -3732,19 +3868,26 @@ public class PropertiesPanel : UiPanel
         tileY = Math.Clamp(tileY, 1, SceneObject.MaxTilesPerAxis);
         tileZ = Math.Clamp(tileZ, 1, SceneObject.MaxTilesPerAxis);
 
-        _currentObject.TileX = tileX;
-        _currentObject.TileY = tileY;
-        _currentObject.TileZ = tileZ;
-
-        Timeline?.RecordAutoKeyframe(_currentObject, "tile.x");
-        Timeline?.RecordAutoKeyframe(_currentObject, "tile.y");
-        Timeline?.RecordAutoKeyframe(_currentObject, "tile.z");
-
-        if (SpawnMenu != null && string.Equals(_currentObject.SpawnCategory, "Blocks", StringComparison.Ordinal))
+        bool dirty = false;
+        ApplyToSelectedObjects(obj =>
         {
-            if (SpawnMenu.RebuildBlockMeshes(_currentObject))
-                ProjectManager.Instance.SetDirty(true);
-        }
+            if (!string.Equals(obj.SpawnCategory, "Blocks", StringComparison.Ordinal))
+                return;
+
+            obj.TileX = tileX;
+            obj.TileY = tileY;
+            obj.TileZ = tileZ;
+
+            Timeline?.RecordAutoKeyframe(obj, "tile.x");
+            Timeline?.RecordAutoKeyframe(obj, "tile.y");
+            Timeline?.RecordAutoKeyframe(obj, "tile.z");
+
+            if (SpawnMenu != null && SpawnMenu.RebuildBlockMeshes(obj))
+                dirty = true;
+        });
+
+        if (dirty)
+            ProjectManager.Instance.SetDirty(true);
     }
 
     private void ApplyTemporaryItemSheetSlot(int columnIndex, int rowIndex)
@@ -3752,41 +3895,60 @@ public class PropertiesPanel : UiPanel
         if (_currentObject == null || SpawnMenu == null)
             return;
 
-        if (!SpawnMenu.ApplyTemporaryItemSheetSlotToSpawnedObject(_currentObject, columnIndex, rowIndex))
-            return;
+        bool changedAny = false;
+        ApplyToSelectedObjects(obj =>
+        {
+            if (!SpawnMenu.ApplyTemporaryItemSheetSlotToSpawnedObject(obj, columnIndex, rowIndex))
+                return;
 
-        Timeline?.RecordAutoKeyframe(_currentObject, "item.slot");
-        Timeline?.RecordAutoKeyframe(_currentObject, "item.custom_slot");
-        ProjectManager.Instance.SetDirty(true);
+            Timeline?.RecordAutoKeyframe(obj, "item.slot");
+            Timeline?.RecordAutoKeyframe(obj, "item.custom_slot");
+            changedAny = true;
+        });
+
+        if (changedAny)
+            ProjectManager.Instance.SetDirty(true);
     }
 
     private void ApplyCubeUvMapping(bool mapped)
     {
         if (_currentObject == null) return;
 
-        var cubeMesh = _currentObject.Visuals.OfType<CubeMesh>().FirstOrDefault();
-        if (cubeMesh != null)
+        bool changedAny = false;
+        ApplyToSelectedObjects(obj =>
         {
-            cubeMesh.SetMapped(mapped);
-            _currentObject.PrimitiveCubeMapped = mapped;
+            if (!string.Equals(obj.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(obj.ObjectType, "Cube", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var cubeMesh = obj.Visuals.OfType<CubeMesh>().FirstOrDefault();
+            if (cubeMesh != null)
+            {
+                cubeMesh.SetMapped(mapped);
+                obj.PrimitiveCubeMapped = mapped;
+                changedAny = true;
+                return;
+            }
+
+            if (Gl == null)
+                return;
+
+            uint existingTextureId = obj.Visuals.FirstOrDefault()?.TextureId ?? 0;
+            foreach (var mesh in obj.Visuals.ToList())
+                mesh.Dispose();
+            obj.Visuals.Clear();
+
+            var rebuilt = new CubeMesh(Gl, mapped)
+            {
+                TextureId = existingTextureId
+            };
+            obj.AddMesh(rebuilt);
+            obj.PrimitiveCubeMapped = mapped;
+            changedAny = true;
+        });
+
+        if (changedAny)
             ProjectManager.Instance.SetDirty(true);
-            return;
-        }
-
-        if (Gl == null) return;
-
-        uint existingTextureId = _currentObject.Visuals.FirstOrDefault()?.TextureId ?? 0;
-        foreach (var mesh in _currentObject.Visuals.ToList())
-            mesh.Dispose();
-        _currentObject.Visuals.Clear();
-
-        var rebuilt = new CubeMesh(Gl, mapped)
-        {
-            TextureId = existingTextureId
-        };
-        _currentObject.AddMesh(rebuilt);
-        _currentObject.PrimitiveCubeMapped = mapped;
-        ProjectManager.Instance.SetDirty(true);
     }
 
     /// <summary>
