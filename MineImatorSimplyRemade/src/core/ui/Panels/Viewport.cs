@@ -2260,8 +2260,12 @@ public class Viewport : UiPanel
         var imageMin  = ImGui.GetCursorScreenPos();
         var imageSize = size;
 
+        // Use the active camera (work camera or a spawned camera) for both
+        // input and rendering so controls always affect what is being viewed.
+        var (activeCamera, activeCamObj) = GetActiveRenderCamera();
+
         // ── Camera orbit/pan input ─────────────────────────────────────────────
-        HandleCameraInput(imageMin, imageSize);
+        HandleCameraInput(imageMin, imageSize, activeCamera, activeCamObj);
 
         // ── 3D render into FBO ────────────────────────────────────────────────
         Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
@@ -2282,8 +2286,6 @@ public class Viewport : UiPanel
 
         float aspect = (h > 0) ? (float)w / h : 1f;
 
-        // Use the active camera (work camera or a spawned camera).
-        var (activeCamera, activeCamObj) = GetActiveRenderCamera();
         var renderCamera = BuildPreparedCamera(activeCamera, activeCamObj);
 
         mat4 view = renderCamera.GetViewMatrix();
@@ -5219,7 +5221,7 @@ public class Viewport : UiPanel
 
     // ── Camera / gizmo input ───────────────────────────────────────────────────
 
-    private unsafe void HandleCameraInput(Vector2 imageMin, Vector2 imageSize)
+    private unsafe void HandleCameraInput(Vector2 imageMin, Vector2 imageSize, Camera camera, CameraSceneObject? sceneObj)
     {
         // Allow input to continue while free-fly is active even if the ImGui
         // mouse position has drifted outside the panel (the OS cursor is locked
@@ -5264,7 +5266,7 @@ public class Viewport : UiPanel
 
         // Process input through the centralized input handler
         _input.ProcessInput(
-            Camera,
+            camera,
             Gizmo,
             imageMin,
             imageSize,
@@ -5287,6 +5289,10 @@ public class Viewport : UiPanel
             io.KeyCtrl,
             OverlaysEnabled
         );
+
+        // Keep spawned camera scene-object transform in sync when the active
+        // viewport camera is a scene camera (distance ~= first-person mode).
+        sceneObj?.SyncTransformFromCamera();
 
         // Sync old fields for backward compatibility
         _freeFly = _input.IsFreeFlyActive;

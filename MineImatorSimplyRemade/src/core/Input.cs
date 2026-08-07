@@ -483,8 +483,11 @@ public class Input
             _lastMouseX = globalCenterX;
             _lastMouseY = globalCenterY;
 
-            // Calculate movement
-            float speed = _freeFlySpeed * camera.Distance * 0.2f;
+            // Calculate movement. First-person scene cameras use near-zero
+            // Distance to keep eye ~= scene-object position, so use a stable
+            // distance baseline for movement speed in that mode.
+            float distanceForSpeed = camera.Distance < 0.01f ? Camera.DefaultDistance : camera.Distance;
+            float speed = _freeFlySpeed * distanceForSpeed * 0.2f;
             if (keyDown_Space) speed *= 2.5f;
             else if (keyDown_Shift) speed *= 0.4f;
 
