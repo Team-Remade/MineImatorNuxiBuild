@@ -2347,10 +2347,21 @@ public class MainWindow : Window
         if (snapshotManifest == null)
             return false;
 
+        // Undo/redo should restore scene state without moving the user's current work camera.
+        var preservedCameraTarget = _mainViewport.Camera.Target;
+        float preservedCameraYaw = _mainViewport.Camera.Yaw;
+        float preservedCameraPitch = _mainViewport.Camera.Pitch;
+        float preservedCameraDistance = _mainViewport.Camera.Distance;
+
         _suppressHistoryTracking = true;
         try
         {
             ProjectSceneSerializer.LoadSceneFromManifest(snapshotManifest, _mainViewport, _spawnMenu, _timeline, _propertiesPanel);
+
+            _mainViewport.Camera.Target = preservedCameraTarget;
+            _mainViewport.Camera.Yaw = preservedCameraYaw;
+            _mainViewport.Camera.Pitch = preservedCameraPitch;
+            _mainViewport.Camera.Distance = preservedCameraDistance;
         }
         finally
         {
