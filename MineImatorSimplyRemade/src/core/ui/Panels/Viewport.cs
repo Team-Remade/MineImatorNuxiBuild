@@ -2649,7 +2649,10 @@ public class Viewport : UiPanel
         bool useWorldGi = renderMode == SceneRenderMode.Rendered &&
                   PropertiesPanel?.IndirectLightingEnabled == true &&
                   string.Equals(PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
-        Mesh.IndirectWorldEnabled = useWorldGi;
+        bool useScreenSpaceGi = renderMode == SceneRenderMode.Rendered &&
+                    PropertiesPanel?.IndirectLightingEnabled == true &&
+                    !string.Equals(PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
+        Mesh.IndirectWorldEnabled = useWorldGi || useScreenSpaceGi;
         Mesh.IndirectWorldStrength = Math.Clamp(PropertiesPanel?.IndirectLightingStrength ?? 1f, 0f, 4f);
         if (renderMode == SceneRenderMode.Rendered)
         {
@@ -2661,7 +2664,7 @@ public class Viewport : UiPanel
                 pointShadowIndices = RenderPointShadowMaps(camPos);
         }
 
-        CollectPointLights(SceneObjects, renderMode, pointShadowIndices, _cachedAllPointLights);
+        CollectPointLights(SceneObjects, renderMode, pointShadowIndices, useScreenSpaceGi, _cachedAllPointLights);
 
         // ── Upload scene UBO ──────────────────────────────────────────────────
         if (_sceneUBO != null)
@@ -3974,6 +3977,7 @@ public class Viewport : UiPanel
         IEnumerable<SceneObject> objects,
         SceneRenderMode renderMode,
         Dictionary<LightSceneObject, int> shadowIndices,
+        bool screenSpaceIndirectFallback,
         List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle)> result)
     {
         foreach (var obj in objects)
@@ -4015,13 +4019,13 @@ public class Viewport : UiPanel
 
                 result.Add((
                     pos, col, light.LightRange, light.LightEnergy, shadowIndex,
-                    dir, light.LightIndirectEnergy,
+                    dir, screenSpaceIndirectFallback ? 0f : light.LightIndirectEnergy,
                     spotOuterCos, spotInnerCos));
             }
 
-            AddEmissivePointLightsForObject(obj, result);
+            AddEmissivePointLightsForObject(obj, screenSpaceIndirectFallback, result);
 
-            CollectPointLights(obj.Children, renderMode, shadowIndices, result);
+            CollectPointLights(obj.Children, renderMode, shadowIndices, screenSpaceIndirectFallback, result);
         }
     }
 
@@ -4033,6 +4037,7 @@ public class Viewport : UiPanel
     /// </summary>
     private static void AddEmissivePointLightsForObject(
         SceneObject obj,
+        bool screenSpaceIndirectFallback,
         List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle)> result)
     {
         if (obj.Visuals.Count == 0)
@@ -4072,7 +4077,9 @@ public class Viewport : UiPanel
             float lightEnergy = mesh.EmissionIndirectOnly
                 ? 0f
                 : Math.Clamp(emissionEnergy * 0.6f, 0f, 10f);
-            float indirectEnergy = Math.Clamp(emissionEnergy, 0f, 16f);
+            float indirectEnergy = screenSpaceIndirectFallback
+                ? (mesh.EmissionIndirectOnly ? Math.Clamp(emissionEnergy, 0f, 16f) : 0f)
+                : Math.Clamp(emissionEnergy, 0f, 16f);
 
             result.Add((
                 worldCenter,
@@ -5498,7 +5505,10 @@ public class Viewport : UiPanel
         bool previewWorldGi = renderMode == SceneRenderMode.Rendered &&
                       MainViewport.PropertiesPanel?.IndirectLightingEnabled == true &&
                       string.Equals(MainViewport.PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
-        Mesh.IndirectWorldEnabled = previewWorldGi;
+        bool previewScreenSpaceGi = renderMode == SceneRenderMode.Rendered &&
+                        MainViewport.PropertiesPanel?.IndirectLightingEnabled == true &&
+                        !string.Equals(MainViewport.PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
+        Mesh.IndirectWorldEnabled = previewWorldGi || previewScreenSpaceGi;
         Mesh.IndirectWorldStrength = Math.Clamp(MainViewport.PropertiesPanel?.IndirectLightingStrength ?? 1f, 0f, 4f);
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
@@ -5595,7 +5605,7 @@ public class Viewport : UiPanel
                 moonShadows);
         }
 
-        CollectPointLights(MainViewport.SceneObjects, renderMode, pointShadowIndices, allPointLights);
+        CollectPointLights(MainViewport.SceneObjects, renderMode, pointShadowIndices, previewScreenSpaceGi, allPointLights);
 
         if (wireframeMode)
             Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
