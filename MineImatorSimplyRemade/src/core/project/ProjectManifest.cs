@@ -102,6 +102,9 @@ public class ProjectRenderSettings
     public int SpotShadowBufferSize { get; set; } = 1024;
     public int PointShadowBufferSize { get; set; } = 1024;
     public float ShadowBlurStrength { get; set; } = 1f;
+    public bool GlowEnabled { get; set; } = false;
+    public float GlowStrength { get; set; } = 0.6f;
+    public float GlowSize { get; set; } = 6f;
     public Dictionary<string, List<ProjectBackgroundKeyframeEntry>> BackgroundKeyframes { get; set; } = new();
     public int ResolutionWidth { get; set; } = 1920;
     public int ResolutionHeight { get; set; } = 1080;

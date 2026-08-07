@@ -101,6 +101,9 @@ public class PropertiesPanel : UiPanel
     public int SpotShadowBufferSize = 1024;
     public int PointShadowBufferSize = 1024;
     public float ShadowBlurStrength = 1f;
+    public bool GlowEnabled;
+    public float GlowStrength = 0.6f;
+    public float GlowSize = 6f;
 
     private string _projectName = "Untitled Project";
     private string _selectedBackgroundKeyProperty = "SkyTime";
@@ -320,6 +323,9 @@ public class PropertiesPanel : UiPanel
         SpotShadowBufferSize = NormalizeShadowBufferSize(settings.SpotShadowBufferSize, 1024);
         PointShadowBufferSize = NormalizeShadowBufferSize(settings.PointShadowBufferSize, 1024);
         ShadowBlurStrength = Math.Clamp(settings.ShadowBlurStrength, 0f, 4f);
+        GlowEnabled = settings.GlowEnabled;
+        GlowStrength = Math.Clamp(settings.GlowStrength, 0f, 2f);
+        GlowSize = Math.Clamp(settings.GlowSize, 0f, 20f);
         _resolutionWidth = Math.Max(1, settings.ResolutionWidth);
         _resolutionHeight = Math.Max(1, settings.ResolutionHeight);
         _framerate = Math.Clamp(settings.Framerate, 1, 120);
@@ -437,6 +443,9 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.SpotShadowBufferSize = NormalizeShadowBufferSize(SpotShadowBufferSize, 1024);
         manifest.Settings.PointShadowBufferSize = NormalizeShadowBufferSize(PointShadowBufferSize, 1024);
         manifest.Settings.ShadowBlurStrength = Math.Clamp(ShadowBlurStrength, 0f, 4f);
+        manifest.Settings.GlowEnabled = GlowEnabled;
+        manifest.Settings.GlowStrength = Math.Clamp(GlowStrength, 0f, 2f);
+        manifest.Settings.GlowSize = Math.Clamp(GlowSize, 0f, 20f);
 
         manifest.Settings.ResolutionWidth = Math.Max(1, _resolutionWidth);
         manifest.Settings.ResolutionHeight = Math.Max(1, _resolutionHeight);
@@ -1952,6 +1961,17 @@ public class PropertiesPanel : UiPanel
             changed |= ShadowBufferCombo("Spot lights", ref SpotShadowBufferSize);
             changed |= ShadowBufferCombo("Point lights", ref PointShadowBufferSize);
             changed |= PercentageSlider("Blur Strength", ref ShadowBlurStrength, 0f, 400f);
+            ImGui.Unindent();
+        }
+
+        ImGui.Separator();
+        ImGui.Text("Glow");
+        changed |= ImGui.Checkbox("Enabled##glow", ref GlowEnabled);
+        if (GlowEnabled)
+        {
+            ImGui.Indent();
+            changed |= PercentageSlider("Strength##glow", ref GlowStrength, 0f, 200f);
+            changed |= InputFloatEditor("Size (px)##glow", ref GlowSize, 0.1f, 0f, 20f, "%.1f");
             ImGui.Unindent();
         }
 

@@ -200,6 +200,11 @@ public class Viewport : UiPanel
     private uint _colorTex;
     private uint _depthTex;
     private Shader? _ambientOcclusionShader;
+    private Shader? _glowShader;
+    private uint _glowFbo;
+    private uint _glowTex;
+    private uint _glowPingFbo;
+    private uint _glowPingTex;
     private uint _shadowFbo;
     private uint _shadowTex;
     private uint _shadowMapSize = 2048;
@@ -343,6 +348,10 @@ public class Viewport : UiPanel
     private uint _previewFbo;
     private uint _previewColorTex;
     private uint _previewDepthTex;
+    private uint _previewGlowFbo;
+    private uint _previewGlowTex;
+    private uint _previewGlowPingFbo;
+    private uint _previewGlowPingTex;
     private uint _previewWidth = 1;
     private uint _previewHeight = 1;
     private uint _previewShadowFbo;
@@ -698,10 +707,16 @@ public class Viewport : UiPanel
         _edgeShader.CompileShader("edge.vert", "edge.frag");
         _ambientOcclusionShader = new Shader(Gl);
         _ambientOcclusionShader.CompileShader("edge.vert", "ambient_occlusion.frag");
+        _glowShader = new Shader(Gl);
+        _glowShader.CompileShader("edge.vert", "glow.frag");
 
         // ── Background quad shader + geometry ───────────────────────────────
         InitBackgroundRenderer();
         InitSkyRenderer();
+
+        // ── Glow ping texture/FBO ───────────────────────────────────────────
+        InitGlowResources(ref _glowFbo, ref _glowTex, width, height, "Main glow");
+        InitGlowResources(ref _glowPingFbo, ref _glowPingTex, width, height, "Main glow ping");
 
         // ── Empty VAO for the full-screen triangle draw (Core Profile req.) ───
         Gl.GenVertexArrays(1, out _edgeVao);
@@ -1910,6 +1925,160 @@ public class Viewport : UiPanel
 
         Gl.BindTexture(GLEnum.Texture2D, 0);
         Gl.BindRenderbuffer(GLEnum.Renderbuffer, 0);
+
+        ResizeGlowResources(_glowTex, width, height);
+        ResizeGlowResources(_glowPingTex, width, height);
+    }
+
+    private unsafe void InitGlowResources(ref uint fbo, ref uint texture, uint width, uint height, string label)
+    {
+        if (Gl == null || width == 0 || height == 0)
+            return;
+
+        if (fbo == 0)
+            Gl.GenFramebuffers(1, out fbo);
+        if (texture == 0)
+            Gl.GenTextures(1, out texture);
+
+        Gl.BindTexture(GLEnum.Texture2D, texture);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb, width, height, 0,
+            PixelFormat.Rgb, GLEnum.UnsignedByte, (void*)0);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, fbo);
+        Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.ColorAttachment0, GLEnum.Texture2D, texture, 0);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
+
+        var status = Gl.CheckFramebufferStatus(GLEnum.Framebuffer);
+        if (status != GLEnum.FramebufferComplete)
+            Console.Error.WriteLine($"{label} framebuffer incomplete: {status}");
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+    }
+
+    private unsafe void ResizeGlowResources(uint texture, uint width, uint height)
+    {
+        if (Gl == null || texture == 0 || width == 0 || height == 0)
+            return;
+
+        Gl.BindTexture(GLEnum.Texture2D, texture);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb, width, height, 0,
+            PixelFormat.Rgb, GLEnum.UnsignedByte, (void*)0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+    }
+
+    private void ApplyGlowPassGeneric(
+        uint sceneFbo,
+        uint sourceColorTex,
+        uint glowFbo,
+        uint glowTex,
+        uint glowPingFbo,
+        uint glowPingTex,
+        uint width,
+        uint height,
+        PropertiesPanel? settings,
+        RenderedPassMode passMode)
+    {
+        if (Gl == null || _glowShader == null || sceneFbo == 0 || sourceColorTex == 0 || glowFbo == 0 || glowTex == 0 || glowPingFbo == 0 || glowPingTex == 0)
+            return;
+        if (width == 0 || height == 0 || settings == null || passMode != RenderedPassMode.Combined || !settings.GlowEnabled)
+            return;
+
+        float glowStrength = Math.Clamp(settings.GlowStrength, 0f, 2f);
+        float glowSize = Math.Clamp(settings.GlowSize, 0f, 20f);
+        if (glowStrength <= 0f || glowSize <= 0f)
+            return;
+
+        uint program = _glowShader.ShaderProgram;
+        int sceneLoc = Gl.GetUniformLocation(program, "uScene");
+        int texelLoc = Gl.GetUniformLocation(program, "uTexelSize");
+        int strengthLoc = Gl.GetUniformLocation(program, "uStrength");
+        int sizeLoc = Gl.GetUniformLocation(program, "uSize");
+        int directionLoc = Gl.GetUniformLocation(program, "uDirection");
+        int modeLoc = Gl.GetUniformLocation(program, "uMode");
+
+        Gl.Disable(GLEnum.DepthTest);
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Disable(GLEnum.Blend);
+
+        // Pass 1: threshold extraction from the scene.
+        Gl.BindFramebuffer(GLEnum.Framebuffer, glowFbo);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
+        Gl.Viewport(0, 0, width, height);
+        Gl.ClearColor(0f, 0f, 0f, 1f);
+        Gl.Clear(ClearBufferMask.ColorBufferBit);
+        Gl.UseProgram(program);
+        Gl.ActiveTexture(GLEnum.Texture0);
+        Gl.BindTexture(GLEnum.Texture2D, sourceColorTex);
+        if (sceneLoc >= 0) Gl.Uniform1(sceneLoc, 0);
+        if (texelLoc >= 0) Gl.Uniform2(texelLoc, 1f / width, 1f / height);
+        if (strengthLoc >= 0) Gl.Uniform1(strengthLoc, 1f);
+        if (sizeLoc >= 0) Gl.Uniform1(sizeLoc, glowSize);
+        if (directionLoc >= 0) Gl.Uniform2(directionLoc, 1f, 0f);
+        if (modeLoc >= 0) Gl.Uniform1(modeLoc, 0);
+        Gl.BindVertexArray(_edgeVao);
+        Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+
+        // Pass 2: separable Gaussian blur, 3 stages, mirrored from the upscaled build.
+        const int blurPassCount = 3;
+        for (int i = 0; i < blurPassCount; i++)
+        {
+            float radius = glowSize / (1f + (1.333f * i));
+
+            // Horizontal
+            Gl.BindFramebuffer(GLEnum.Framebuffer, glowPingFbo);
+            Gl.DrawBuffer(GLEnum.ColorAttachment0);
+            Gl.ReadBuffer(GLEnum.ColorAttachment0);
+            Gl.Viewport(0, 0, width, height);
+            Gl.BindTexture(GLEnum.Texture2D, glowTex);
+            if (sceneLoc >= 0) Gl.Uniform1(sceneLoc, 0);
+            if (texelLoc >= 0) Gl.Uniform2(texelLoc, 1f / width, 1f / height);
+            if (strengthLoc >= 0) Gl.Uniform1(strengthLoc, 1f);
+            if (sizeLoc >= 0) Gl.Uniform1(sizeLoc, radius);
+            if (directionLoc >= 0) Gl.Uniform2(directionLoc, 1f, 0f);
+            if (modeLoc >= 0) Gl.Uniform1(modeLoc, 1);
+            Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+
+            // Vertical
+            Gl.BindFramebuffer(GLEnum.Framebuffer, glowFbo);
+            Gl.DrawBuffer(GLEnum.ColorAttachment0);
+            Gl.ReadBuffer(GLEnum.ColorAttachment0);
+            Gl.Viewport(0, 0, width, height);
+            Gl.BindTexture(GLEnum.Texture2D, glowPingTex);
+            if (sizeLoc >= 0) Gl.Uniform1(sizeLoc, radius);
+            if (directionLoc >= 0) Gl.Uniform2(directionLoc, 0f, 1f);
+            if (modeLoc >= 0) Gl.Uniform1(modeLoc, 1);
+            Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+        }
+
+        // Pass 3: additive composite into the scene color texture.
+        Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
+        Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.ColorAttachment0, GLEnum.Texture2D, sourceColorTex, 0);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
+        Gl.Viewport(0, 0, width, height);
+        Gl.Enable(GLEnum.Blend);
+        Gl.BlendFunc(GLEnum.One, GLEnum.One);
+        Gl.BindTexture(GLEnum.Texture2D, glowTex);
+        if (strengthLoc >= 0) Gl.Uniform1(strengthLoc, glowStrength);
+        if (sizeLoc >= 0) Gl.Uniform1(sizeLoc, glowSize);
+        if (directionLoc >= 0) Gl.Uniform2(directionLoc, 1f, 0f);
+        if (modeLoc >= 0) Gl.Uniform1(modeLoc, 2);
+        Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+        Gl.BindVertexArray(0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        Gl.Disable(GLEnum.Blend);
+
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.DepthFunc(GLEnum.Less);
+        Gl.Enable(GLEnum.CullFace);
+        Gl.CullFace(GLEnum.Back);
     }
 
     public unsafe bool SaveThumbnail(string filePath, int outputWidth = 320, int outputHeight = 180)
@@ -2422,6 +2591,9 @@ public class Viewport : UiPanel
 
         if (splitAoObjects && _renderedPassMode != RenderedPassMode.AmbientOcclusion)
             RenderDepthOrdered(view, proj, _cachedRenderItemsNoAo, _cachedAllPointLights, forceUnshaded);
+
+        if (renderMode == SceneRenderMode.Rendered)
+            ApplyGlowPassGeneric(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, PropertiesPanel, _renderedPassMode);
 
         if (OverlaysEnabled)
         {
@@ -4255,6 +4427,14 @@ public class Viewport : UiPanel
             _ambientOcclusionShader = new Shader(Gl);
             _ambientOcclusionShader.CompileShader("edge.vert", "ambient_occlusion.frag");
         }
+        if (_glowShader == null)
+        {
+            _glowShader = new Shader(Gl);
+            _glowShader.CompileShader("edge.vert", "glow.frag");
+        }
+
+        InitGlowResources(ref _previewGlowFbo, ref _previewGlowTex, width, height, "Preview glow");
+        InitGlowResources(ref _previewGlowPingFbo, ref _previewGlowPingTex, width, height, "Preview glow ping");
 
         // Share the transform gizmo with the main viewport so it renders and
         // can be interacted with from the preview as well. Selection is
@@ -4358,6 +4538,9 @@ public class Viewport : UiPanel
                           PixelFormat.Red, GLEnum.UnsignedByte, (void*)0);
             Gl.BindTexture(GLEnum.Texture2D, 0);
         }
+
+        ResizeGlowResources(_previewGlowTex, w, h);
+        ResizeGlowResources(_previewGlowPingTex, w, h);
     }
 
     public List<CameraSceneObject> GetSpawnedCamerasPublic()
@@ -4988,6 +5171,9 @@ public class Viewport : UiPanel
 
         if (splitAoObjects && effectivePassMode != RenderedPassMode.AmbientOcclusion)
             RenderDepthOrdered(view, proj, renderItemsNoAo, allPointLights, forceUnshaded);
+
+        if (renderMode == SceneRenderMode.Rendered)
+            ApplyGlowPassGeneric(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, _previewGlowPingFbo, _previewGlowPingTex, w, h, MainViewport.PropertiesPanel, effectivePassMode);
 
         if (OverlaysEnabled)
         {
