@@ -227,7 +227,7 @@ public class SpawnMenu : UiPanel
             {
                 "Primitives", new List<string>
                 {
-                    "Empty", "Cube", "Sphere", "Cylinder", "Cone", "Torus", "Plane", "Capsule"
+                    "Empty", "Cube", "Sphere", "Cylinder", "Cone", "Torus", "Plane", "Capsule", "Text Mesh"
                 }
             },
             // Items renders its own custom UI in the objects/variants columns.
@@ -5567,6 +5567,9 @@ public class SpawnMenu : UiPanel
 
             obj.AddMesh(mesh);
         }
+
+        if (primitiveType == "Text Mesh" && Gl != null)
+            TextMeshFactory.Rebuild(obj, Gl);
 
         Viewport.SceneObjects.Add(obj);
         return obj;

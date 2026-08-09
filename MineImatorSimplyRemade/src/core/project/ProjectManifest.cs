@@ -259,7 +259,7 @@ public class ProjectTimelineMarker
 public class ProjectKeyframeEntry
 {
     public int Frame { get; set; }
-    public float Value { get; set; }
+    public object Value { get; set; } = 0f;
     public string InterpolationType { get; set; } = "linear";
 }
 
@@ -338,6 +338,19 @@ public class ProjectSceneObjectEntry
     public bool PrimitiveSphereSmooth { get; set; } = true;
     public int PrimitiveSphereSegments { get; set; } = 32;
     public int PrimitiveSphereRings { get; set; } = 16;
+    public string TextMeshFontPath { get; set; } = "minecraftia";
+    public string TextMeshBaseString { get; set; } = "Text";
+    public string TextMeshStringOverride { get; set; } = "";
+    public bool TextMeshExtruded { get; set; } = false;
+    public float TextMeshExtrusionDepth { get; set; } = 0.08f;
+    public bool TextMeshFaceCamera { get; set; } = false;
+    public int TextMeshHorizontalAlignment { get; set; } = 1;
+    public int TextMeshVerticalAlignment { get; set; } = 1;
+    public bool TextMeshAntialiasing { get; set; } = true;
+    public float TextMeshFontSize { get; set; } = 64f;
+    public bool TextMeshOutlineEnabled { get; set; } = false;
+    public ProjectVec4 TextMeshOutlineColor { get; set; } = new() { W = 1f };
+    public float TextMeshOutlineThickness { get; set; } = 2f;
 
     public ProjectVec3 Position { get; set; } = new();
     public ProjectVec3 Rotation { get; set; } = new();

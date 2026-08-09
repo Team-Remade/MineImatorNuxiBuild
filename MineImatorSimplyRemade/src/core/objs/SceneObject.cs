@@ -193,6 +193,23 @@ public class SceneObject
     /// </summary>
     public bool PrimitivePlaneFaceCamera = false;
 
+    public string TextMeshFontPath = "minecraftia";
+    public string TextMeshBaseString = "Text";
+    public string TextMeshStringOverride = "";
+    public bool TextMeshExtruded = false;
+    public float TextMeshExtrusionDepth = 0.08f;
+    public bool TextMeshFaceCamera = false;
+    public int TextMeshHorizontalAlignment = 1;
+    public int TextMeshVerticalAlignment = 1;
+    public bool TextMeshAntialiasing = true;
+    public float TextMeshFontSize = 64f;
+    public bool TextMeshOutlineEnabled = false;
+    public vec4 TextMeshOutlineColor = new vec4(0f, 0f, 0f, 1f);
+    public float TextMeshOutlineThickness = 2f;
+
+    public string GetEffectiveTextMeshString() =>
+        string.IsNullOrEmpty(TextMeshStringOverride) ? TextMeshBaseString : TextMeshStringOverride;
+
     /// <summary>
     /// Path to the character texture-variant image selected in the spawn menu
     /// at import time (e.g. a "skin" PNG chosen from a character's

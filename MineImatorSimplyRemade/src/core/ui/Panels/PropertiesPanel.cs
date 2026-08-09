@@ -1004,6 +1004,19 @@ public class PropertiesPanel : UiPanel
             PrimitiveSphereSmooth = source.PrimitiveSphereSmooth,
             PrimitiveSphereSegments = source.PrimitiveSphereSegments,
             PrimitiveSphereRings = source.PrimitiveSphereRings,
+            TextMeshFontPath = source.TextMeshFontPath,
+            TextMeshBaseString = source.TextMeshBaseString,
+            TextMeshStringOverride = source.TextMeshStringOverride,
+            TextMeshExtruded = source.TextMeshExtruded,
+            TextMeshExtrusionDepth = source.TextMeshExtrusionDepth,
+            TextMeshFaceCamera = source.TextMeshFaceCamera,
+            TextMeshHorizontalAlignment = source.TextMeshHorizontalAlignment,
+            TextMeshVerticalAlignment = source.TextMeshVerticalAlignment,
+            TextMeshAntialiasing = source.TextMeshAntialiasing,
+            TextMeshFontSize = source.TextMeshFontSize,
+            TextMeshOutlineEnabled = source.TextMeshOutlineEnabled,
+            TextMeshOutlineColor = source.TextMeshOutlineColor,
+            TextMeshOutlineThickness = source.TextMeshOutlineThickness,
             CameraFov = source.CameraFov,
             CameraNear = source.CameraNear,
             CameraFar = source.CameraFar,
@@ -2871,6 +2884,115 @@ public class PropertiesPanel : UiPanel
                 _currentObject.PrimitiveSphereSegments = segments;
                 _currentObject.PrimitiveSphereRings = rings;
                 _currentObject.Visuals.OfType<SphereMesh>().FirstOrDefault()?.SetGeometry(segments, rings, smooth);
+                ProjectManager.Instance.SetDirty(true);
+            }
+        }
+
+        if (string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_currentObject.ObjectType, "Text Mesh", StringComparison.OrdinalIgnoreCase) &&
+            ImGui.CollapsingHeader("Text Mesh", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            string baseText = _currentObject.TextMeshBaseString;
+            string textOverride = _currentObject.TextMeshStringOverride;
+            bool extruded = _currentObject.TextMeshExtruded;
+            float extrusionDepth = _currentObject.TextMeshExtrusionDepth;
+            bool faceCamera = _currentObject.TextMeshFaceCamera;
+            int horizontalAlignment = _currentObject.TextMeshHorizontalAlignment;
+            int verticalAlignment = _currentObject.TextMeshVerticalAlignment;
+            bool antialiasing = _currentObject.TextMeshAntialiasing;
+            float fontSize = _currentObject.TextMeshFontSize;
+            bool outlineEnabled = _currentObject.TextMeshOutlineEnabled;
+            float outlineThickness = _currentObject.TextMeshOutlineThickness;
+            Vector4 outlineColor = new(_currentObject.TextMeshOutlineColor.x, _currentObject.TextMeshOutlineColor.y,
+                _currentObject.TextMeshOutlineColor.z, _currentObject.TextMeshOutlineColor.w);
+            bool rebuild = ImGui.InputText("Base String", ref baseText, 4096);
+            rebuild |= ImGui.InputText("String Override", ref textOverride, 4096);
+            ImGui.TextDisabled("Leave override empty to use the base string; animate this value for text changes.");
+
+            string fontLabel = string.Equals(_currentObject.TextMeshFontPath, "minecraftia", StringComparison.OrdinalIgnoreCase)
+                ? "Minecraftia" : string.IsNullOrWhiteSpace(_currentObject.TextMeshFontPath)
+                    ? "System Sans Serif" : Path.GetFileName(_currentObject.TextMeshFontPath);
+            ImGui.Text($"Font: {fontLabel}");
+            ImGui.SameLine();
+            if (ImGui.Button("Choose Font...##textMeshFont"))
+            {
+                var result = Dialog.FileOpen("ttf,otf");
+                if (result.IsOk)
+                {
+                    _currentObject.TextMeshFontPath = result.Path;
+                    Timeline?.RecordAutoKeyframe(_currentObject, "text.font");
+                    rebuild = true;
+                }
+            }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right)) { _ctxPropertyPath = "text.font"; _openPropContextMenu = true; }
+            ImGui.SameLine();
+            if (ImGui.Button("Minecraftia##textMeshFontMinecraftia"))
+            {
+                _currentObject.TextMeshFontPath = "minecraftia";
+                Timeline?.RecordAutoKeyframe(_currentObject, "text.font");
+                rebuild = true;
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("System Default##textMeshFontDefault"))
+            {
+                _currentObject.TextMeshFontPath = "";
+                Timeline?.RecordAutoKeyframe(_currentObject, "text.font");
+                rebuild = true;
+            }
+
+            string[] horizontalOptions = ["Left", "Center", "Right"];
+            if (ImGui.Combo("Horizontal Alignment", ref horizontalAlignment, horizontalOptions, horizontalOptions.Length))
+            { _currentObject.TextMeshHorizontalAlignment = horizontalAlignment; Timeline?.RecordAutoKeyframe(_currentObject, "text.horizontal_alignment"); rebuild = true; }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right)) { _ctxPropertyPath = "text.horizontal_alignment"; _openPropContextMenu = true; }
+            string[] verticalOptions = ["Top", "Center", "Bottom"];
+            if (ImGui.Combo("Vertical Alignment", ref verticalAlignment, verticalOptions, verticalOptions.Length))
+            { _currentObject.TextMeshVerticalAlignment = verticalAlignment; Timeline?.RecordAutoKeyframe(_currentObject, "text.vertical_alignment"); rebuild = true; }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right)) { _ctxPropertyPath = "text.vertical_alignment"; _openPropContextMenu = true; }
+            if (ImGui.Checkbox("Font Antialiasing", ref antialiasing))
+            { _currentObject.TextMeshAntialiasing = antialiasing; Timeline?.RecordAutoKeyframe(_currentObject, "text.antialiasing"); rebuild = true; }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right)) { _ctxPropertyPath = "text.antialiasing"; _openPropContextMenu = true; }
+            if (ImGui.DragFloat("Font Size", ref fontSize, 1f, 1f, 512f, "%.1f"))
+            { _currentObject.TextMeshFontSize = Math.Clamp(fontSize, 1f, 512f); Timeline?.RecordAutoKeyframe(_currentObject, "text.font_size"); rebuild = true; }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right)) { _ctxPropertyPath = "text.font_size"; _openPropContextMenu = true; }
+            if (ImGui.Checkbox("Outline", ref outlineEnabled))
+            { _currentObject.TextMeshOutlineEnabled = outlineEnabled; Timeline?.RecordAutoKeyframe(_currentObject, "text.outline_enabled"); rebuild = true; }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right)) { _ctxPropertyPath = "text.outline_enabled"; _openPropContextMenu = true; }
+            if (outlineEnabled)
+            {
+                if (ImGui.ColorEdit4("Outline Color", ref outlineColor))
+                {
+                    _currentObject.TextMeshOutlineColor = new vec4(outlineColor.X, outlineColor.Y, outlineColor.Z, outlineColor.W);
+                    Timeline?.RecordAutoKeyframe(_currentObject, "text.outline.r"); Timeline?.RecordAutoKeyframe(_currentObject, "text.outline.g");
+                    Timeline?.RecordAutoKeyframe(_currentObject, "text.outline.b"); Timeline?.RecordAutoKeyframe(_currentObject, "text.outline.a"); rebuild = true;
+                }
+                if (ImGui.Button("Keyframe Outline Color##textOutlineColorKeyframe"))
+                {
+                    int frame = Timeline?.CurrentFrame ?? 0;
+                    Timeline?.AddKeyframeForProperty(_currentObject, "text.outline.r", frame);
+                    Timeline?.AddKeyframeForProperty(_currentObject, "text.outline.g", frame);
+                    Timeline?.AddKeyframeForProperty(_currentObject, "text.outline.b", frame);
+                    Timeline?.AddKeyframeForProperty(_currentObject, "text.outline.a", frame);
+                }
+                if (ImGui.DragFloat("Outline Thickness", ref outlineThickness, 0.1f, 0f, 64f, "%.1f"))
+                { _currentObject.TextMeshOutlineThickness = Math.Clamp(outlineThickness, 0f, 64f); Timeline?.RecordAutoKeyframe(_currentObject, "text.outline_thickness"); rebuild = true; }
+                if (ImGui.IsItemClicked(ImGuiMouseButton.Right)) { _ctxPropertyPath = "text.outline_thickness"; _openPropContextMenu = true; }
+            }
+
+            rebuild |= ImGui.Checkbox("3D (Extruded)", ref extruded);
+            if (extruded)
+                rebuild |= ImGui.DragFloat("Extrusion Depth", ref extrusionDepth, 0.005f, 0.001f, 10f, "%.3f");
+            if (ImGui.Checkbox("Face Camera", ref faceCamera))
+            {
+                _currentObject.TextMeshFaceCamera = faceCamera;
+                ProjectManager.Instance.SetDirty(true);
+            }
+            if (rebuild)
+            {
+                _currentObject.TextMeshBaseString = baseText;
+                _currentObject.TextMeshStringOverride = textOverride;
+                _currentObject.TextMeshExtruded = extruded;
+                _currentObject.TextMeshExtrusionDepth = Math.Clamp(extrusionDepth, 0.001f, 10f);
+                TextMeshFactory.Rebuild(_currentObject, Gl);
                 ProjectManager.Instance.SetDirty(true);
             }
         }

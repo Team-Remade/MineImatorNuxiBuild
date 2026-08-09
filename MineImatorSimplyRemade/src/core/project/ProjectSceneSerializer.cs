@@ -73,8 +73,6 @@ public static class ProjectSceneSerializer
         foreach (var root in manifest.SceneObjects)
             RestoreNode(root, viewport, spawnMenu, parent: null);
 
-        ResolveLegacyCameraTextureBindings(viewport.SceneObjects);
-
         // Restore albedo textures that were saved with a path but not yet loaded onto the GPU
         propertiesPanel?.LoadPendingAlbedoTextures(viewport.SceneObjects);
 
@@ -204,6 +202,19 @@ public static class ProjectSceneSerializer
             PrimitiveSphereSmooth = obj.PrimitiveSphereSmooth,
             PrimitiveSphereSegments = obj.PrimitiveSphereSegments,
             PrimitiveSphereRings = obj.PrimitiveSphereRings,
+            TextMeshFontPath = obj.TextMeshFontPath,
+            TextMeshBaseString = obj.TextMeshBaseString,
+            TextMeshStringOverride = obj.TextMeshStringOverride,
+            TextMeshExtruded = obj.TextMeshExtruded,
+            TextMeshExtrusionDepth = obj.TextMeshExtrusionDepth,
+            TextMeshFaceCamera = obj.TextMeshFaceCamera,
+            TextMeshHorizontalAlignment = obj.TextMeshHorizontalAlignment,
+            TextMeshVerticalAlignment = obj.TextMeshVerticalAlignment,
+            TextMeshAntialiasing = obj.TextMeshAntialiasing,
+            TextMeshFontSize = obj.TextMeshFontSize,
+            TextMeshOutlineEnabled = obj.TextMeshOutlineEnabled,
+            TextMeshOutlineColor = ToProjectVec4(obj.TextMeshOutlineColor),
+            TextMeshOutlineThickness = obj.TextMeshOutlineThickness,
             Keyframes = SerializeKeyframes(obj),
             ShapeKeyWeights = SerializeShapeKeyWeights(obj)
         };
@@ -640,6 +651,24 @@ public static class ProjectSceneSerializer
                 obj.PrimitiveSphereSegments, obj.PrimitiveSphereRings, obj.PrimitiveSphereSmooth);
         }
 
+        if (obj.SpawnCategory == "Primitives" && obj.ObjectType == "Text Mesh")
+        {
+            obj.TextMeshFontPath = entry.TextMeshFontPath;
+            obj.TextMeshBaseString = entry.TextMeshBaseString;
+            obj.TextMeshStringOverride = entry.TextMeshStringOverride;
+            obj.TextMeshExtruded = entry.TextMeshExtruded;
+            obj.TextMeshExtrusionDepth = Math.Clamp(entry.TextMeshExtrusionDepth, 0.001f, 10f);
+            obj.TextMeshFaceCamera = entry.TextMeshFaceCamera;
+            obj.TextMeshHorizontalAlignment = Math.Clamp(entry.TextMeshHorizontalAlignment, 0, 2);
+            obj.TextMeshVerticalAlignment = Math.Clamp(entry.TextMeshVerticalAlignment, 0, 2);
+            obj.TextMeshAntialiasing = entry.TextMeshAntialiasing;
+            obj.TextMeshFontSize = Math.Clamp(entry.TextMeshFontSize, 1f, 512f);
+            obj.TextMeshOutlineEnabled = entry.TextMeshOutlineEnabled;
+            obj.TextMeshOutlineColor = ToVec4(entry.TextMeshOutlineColor);
+            obj.TextMeshOutlineThickness = Math.Clamp(entry.TextMeshOutlineThickness, 0f, 64f);
+            TextMeshFactory.Rebuild(obj);
+        }
+
         if (entry.HasMaterialOverrides)
         {
             var material = obj.MaterialSettings ?? new MaterialSettings();
@@ -806,7 +835,7 @@ public static class ProjectSceneSerializer
                 .Select(kf => new ProjectKeyframeEntry
                 {
                     Frame = kf.Frame,
-                    Value = Convert.ToSingle(kf.Value),
+                    Value = kf.Value,
                     InterpolationType = kf.InterpolationType
                 })
                 .OrderBy(kf => kf.Frame)
@@ -991,34 +1020,6 @@ public static class ProjectSceneSerializer
         entry.ObjectId = "";
         foreach (var child in entry.Children)
             ClearObjectIds(child);
-    }
-
-    /// <summary>
-    /// Projects saved before scene UUID persistence contain a camera binding
-    /// whose old runtime id cannot be reconstructed. The unambiguous one-camera
-    /// case can still be repaired automatically after the full scene is loaded.
-    /// </summary>
-    private static void ResolveLegacyCameraTextureBindings(IReadOnlyList<SceneObject> roots)
-    {
-        var all = new List<SceneObject>();
-        foreach (var root in roots)
-        {
-            all.Add(root);
-            all.AddRange(root.GetAllDescendants());
-        }
-
-        var cameras = all.OfType<CameraSceneObject>().ToList();
-        if (cameras.Count != 1) return;
-
-        var validIds = cameras.Select(camera => camera.ObjectId).ToHashSet(StringComparer.Ordinal);
-        foreach (var obj in all)
-        {
-            if (!string.IsNullOrWhiteSpace(obj.CameraTextureObjectId) &&
-                !validIds.Contains(obj.CameraTextureObjectId))
-            {
-                obj.CameraTextureObjectId = cameras[0].ObjectId;
-            }
-        }
     }
 
     private static bool ContainsLibraryEntryId(IEnumerable<ProjectSceneObjectEntry> nodes, string libraryEntryId)

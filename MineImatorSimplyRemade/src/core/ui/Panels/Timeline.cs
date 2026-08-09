@@ -10,6 +10,7 @@ using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.audio;
+using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -2550,9 +2551,9 @@ public class Timeline : UiPanel
             var target = FindObjectById(objectId);
             if (target == null) continue;
 
-            float? value = InterpolateKeyframes(keyframes, propertyPath, _currentFrame, holdFirstKeyframeBeforeStart);
-            if (value.HasValue)
-                SetPropertyValue(target, propertyPath, value.Value);
+            object? value = InterpolateKeyframes(keyframes, propertyPath, _currentFrame, holdFirstKeyframeBeforeStart);
+            if (value != null)
+                SetPropertyValue(target, propertyPath, value);
             // null means "before first keyframe" — leave the object at its default state.
         }
     }
@@ -2562,7 +2563,7 @@ public class Timeline : UiPanel
     /// or <c>null</c> if the frame is before the first keyframe (meaning the object
     /// should keep its default/current value rather than being driven by animation).
     /// </summary>
-    private float? InterpolateKeyframes(List<TimelineKeyframe> keyframes, string path, int frame, bool holdFirstKeyframeBeforeStart)
+    private object? InterpolateKeyframes(List<TimelineKeyframe> keyframes, string path, int frame, bool holdFirstKeyframeBeforeStart)
     {
         TimelineKeyframe? prev = null, next = null;
         foreach (var kf in keyframes)
@@ -2577,11 +2578,12 @@ public class Timeline : UiPanel
         if (prev == null)
         {
             if (holdFirstKeyframeBeforeStart && next != null)
-                return TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
+                return path == "text.font" ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
             return null;
         }
 
         // At or after the last keyframe, or exactly on a keyframe.
+        if (path == "text.font") return prev.Value;
         if (next == null || prev.Frame == frame)
             return TryConvertKeyframeValue(prev.Value, out float prevDirect) ? prevDirect : null;
 
@@ -2589,6 +2591,8 @@ public class Timeline : UiPanel
         // Discrete state-like properties and "instant" interpolation use the
         // previous keyframe's value with no blending.
         if (path == "visible" || path == "camera.active" || path == "item.slot" || path == "item.custom_slot" ||
+            path == "text.horizontal_alignment" || path == "text.vertical_alignment" ||
+            path == "text.antialiasing" || path == "text.outline_enabled" ||
             path == "particle.emitting" || path == "particle.one_shot" || path == "particle.amount" ||
             path == "particle.emission_shape" || path == "particle.directional_emission" || path == "particle.top_level_particles" ||
             path.EndsWith(".mode", StringComparison.Ordinal) || prev.InterpolationType == "instant")
@@ -2688,6 +2692,7 @@ public class Timeline : UiPanel
     private object GetPropertyValue(SceneObject obj, string path)
     {
         if (path == "visible") return obj.ObjectVisible ? 1f : 0f;
+        if (path == "text.font") return obj.TextMeshFontPath;
 
         var parts = path.Split('.');
         if (parts.Length == 2)
@@ -2728,6 +2733,17 @@ public class Timeline : UiPanel
                 case "material":
                     if (comp == "alpha") return obj.MaterialSettings?.AlbedoColor.w ?? 1f;
                     break;
+                case "text":
+                    return comp switch
+                    {
+                        "horizontal_alignment" => obj.TextMeshHorizontalAlignment,
+                        "vertical_alignment" => obj.TextMeshVerticalAlignment,
+                        "antialiasing" => obj.TextMeshAntialiasing ? 1f : 0f,
+                        "font_size" => obj.TextMeshFontSize,
+                        "outline_enabled" => obj.TextMeshOutlineEnabled ? 1f : 0f,
+                        "outline_thickness" => obj.TextMeshOutlineThickness,
+                        _ => 0f
+                    };
                 case "item":
                     return comp switch
                     {
@@ -2781,6 +2797,11 @@ public class Timeline : UiPanel
                     }
                     break;
             }
+        }
+        else if (parts.Length == 3 && parts[0] == "text" && parts[1] == "outline")
+        {
+            return parts[2] switch { "r" => obj.TextMeshOutlineColor.x, "g" => obj.TextMeshOutlineColor.y,
+                "b" => obj.TextMeshOutlineColor.z, "a" => obj.TextMeshOutlineColor.w, _ => 0f };
         }
         else if (parts.Length == 3 && parts[0] == "light" && parts[1] == "color" && obj is LightSceneObject lco)
         {
@@ -2882,8 +2903,16 @@ public class Timeline : UiPanel
         return shapeKeys[keyIndex].Weight;
     }
 
-    private void SetPropertyValue(SceneObject obj, string path, float value)
+    private void SetPropertyValue(SceneObject obj, string path, object rawValue)
     {
+        if (path == "text.font")
+        {
+            string font = rawValue is JsonElement json && json.ValueKind == JsonValueKind.String
+                ? json.GetString() ?? "" : Convert.ToString(rawValue, CultureInfo.InvariantCulture) ?? "";
+            if (obj.TextMeshFontPath != font) { obj.TextMeshFontPath = font; TextMeshFactory.Rebuild(obj); }
+            return;
+        }
+        if (!TryConvertKeyframeValue(rawValue, out float value)) return;
         if (path == "visible") { obj.ObjectVisible = value >= 0.5f; return; }
 
         var parts = path.Split('.');
@@ -2894,6 +2923,21 @@ public class Timeline : UiPanel
                 string prop = parts[0], comp = parts[1];
                 switch (prop)
                 {
+                    case "text":
+                    {
+                        bool changed = false;
+                        switch (comp)
+                        {
+                            case "horizontal_alignment": changed = obj.TextMeshHorizontalAlignment != (int)value; obj.TextMeshHorizontalAlignment = Math.Clamp((int)value, 0, 2); break;
+                            case "vertical_alignment": changed = obj.TextMeshVerticalAlignment != (int)value; obj.TextMeshVerticalAlignment = Math.Clamp((int)value, 0, 2); break;
+                            case "antialiasing": changed = obj.TextMeshAntialiasing != (value >= .5f); obj.TextMeshAntialiasing = value >= .5f; break;
+                            case "font_size": changed = MathF.Abs(obj.TextMeshFontSize - value) > .001f; obj.TextMeshFontSize = Math.Clamp(value, 1f, 512f); break;
+                            case "outline_enabled": changed = obj.TextMeshOutlineEnabled != (value >= .5f); obj.TextMeshOutlineEnabled = value >= .5f; break;
+                            case "outline_thickness": changed = MathF.Abs(obj.TextMeshOutlineThickness - value) > .001f; obj.TextMeshOutlineThickness = Math.Clamp(value, 0f, 64f); break;
+                        }
+                        if (changed) TextMeshFactory.Rebuild(obj);
+                        break;
+                    }
                     case "position":
                         if (obj is MiBoneSceneObject mbP)
                         {
@@ -3170,6 +3214,14 @@ public class Timeline : UiPanel
                         effect.Shake.Offset = targetVec;
                         break;
                 }
+                break;
+            }
+            case 3 when parts[0] == "text" && parts[1] == "outline":
+            {
+                vec4 c = obj.TextMeshOutlineColor;
+                switch (parts[2]) { case "r": c.x = value; break; case "g": c.y = value; break;
+                    case "b": c.z = value; break; case "a": c.w = value; break; }
+                if (c != obj.TextMeshOutlineColor) { obj.TextMeshOutlineColor = c; TextMeshFactory.Rebuild(obj); }
                 break;
             }
             case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "film_grain" && obj is CameraSceneObject camGrain:

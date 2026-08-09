@@ -4617,10 +4617,11 @@ public class Viewport : UiPanel
     {
         mat4 world = obj.GetWorldMatrix();
 
-        if (!obj.PrimitivePlaneFaceCamera ||
+        bool faceCamera = obj.PrimitivePlaneFaceCamera && string.Equals(obj.ObjectType, "Plane", StringComparison.OrdinalIgnoreCase)
+                          || obj.TextMeshFaceCamera && string.Equals(obj.ObjectType, "Text Mesh", StringComparison.OrdinalIgnoreCase);
+        if (!faceCamera ||
             !string.Equals(obj.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(obj.ObjectType, "Plane", StringComparison.OrdinalIgnoreCase) ||
-            obj.Visuals.OfType<PlaneMesh>().FirstOrDefault() == null)
+            obj.Visuals.Count == 0)
             return world;
 
         vec3 worldPos = new vec3(world.m30, world.m31, world.m32);
