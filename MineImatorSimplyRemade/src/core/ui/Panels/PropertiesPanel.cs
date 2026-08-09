@@ -288,7 +288,7 @@ public class PropertiesPanel : UiPanel
     // Scale link toggle
     private bool _linkScale = true;
     private int _cameraEffectToAddIndex;
-    private static readonly string[] CameraEffectAddOptions = { "Camera Shake" };
+    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain" };
     private static readonly string[] CameraShakeModeOptions = { "Rotational", "Positional", "Both" };
 
     // ── Right-click keyframe context menu ──────────────────────────────────
@@ -1030,6 +1030,12 @@ public class PropertiesPanel : UiPanel
                             Y = effect.Shake.Offset.Y,
                             Z = effect.Shake.Offset.Z
                         }
+                    },
+                    FilmGrain = new ProjectFilmGrainSettings
+                    {
+                        Strength = effect.FilmGrain.Strength,
+                        Saturation = effect.FilmGrain.Saturation,
+                        Size = effect.FilmGrain.Size
                     }
                 })
                 .ToList(),
@@ -3996,6 +4002,7 @@ public class PropertiesPanel : UiPanel
                         string title = effect.Type switch
                         {
                             CameraEffectType.CameraShake => $"Camera Shake##cameraEffect{i}",
+                            CameraEffectType.FilmGrain => $"Film Grain##cameraEffect{i}",
                             _ => $"Effect {i + 1}##cameraEffect{i}"
                         };
 
@@ -4081,6 +4088,59 @@ public class PropertiesPanel : UiPanel
 
                                 if (changed)
                                     ProjectManager.Instance.SetDirty(true);
+                            }
+                            else if (effect.Type == CameraEffectType.FilmGrain)
+                            {
+                                bool changed = false;
+                                string basePath = $"camera.effect.{i}.film_grain";
+                                float strength = effect.FilmGrain.Strength;
+                                if (ImGui.SliderFloat($"Strength##filmGrainStrength{i}", ref strength, 0f, 1f, "%.3f"))
+                                {
+                                    effect.FilmGrain.Strength = strength;
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.strength");
+                                    changed = true;
+                                }
+                                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                                {
+                                    _ctxPropertyPath = $"{basePath}.strength";
+                                    _ctxMenuPos = ImGui.GetMousePos();
+                                    _openPropContextMenu = true;
+                                }
+                                float saturation = effect.FilmGrain.Saturation;
+                                if (ImGui.SliderFloat($"Saturation##filmGrainSaturation{i}", ref saturation, 0f, 1f, "%.3f"))
+                                {
+                                    effect.FilmGrain.Saturation = saturation;
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.saturation");
+                                    changed = true;
+                                }
+                                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                                {
+                                    _ctxPropertyPath = $"{basePath}.saturation";
+                                    _ctxMenuPos = ImGui.GetMousePos();
+                                    _openPropContextMenu = true;
+                                }
+                                float size = effect.FilmGrain.Size;
+                                if (ImGui.SliderFloat($"Size##filmGrainSize{i}", ref size, 0.25f, 8f, "%.2f"))
+                                {
+                                    effect.FilmGrain.Size = size;
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.size");
+                                    changed = true;
+                                }
+                                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                                {
+                                    _ctxPropertyPath = $"{basePath}.size";
+                                    _ctxMenuPos = ImGui.GetMousePos();
+                                    _openPropContextMenu = true;
+                                }
+                                if (ImGui.Button($"Reset##filmGrainReset{i}"))
+                                {
+                                    effect.FilmGrain = new FilmGrainSettings();
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.strength");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.saturation");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.size");
+                                    changed = true;
+                                }
+                                if (changed) ProjectManager.Instance.SetDirty(true);
                             }
 
                             ImGui.TreePop();

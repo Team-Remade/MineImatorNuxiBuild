@@ -454,6 +454,14 @@ public class ProjectCameraEffectEntry
 {
     public CameraEffectType Type { get; set; } = CameraEffectType.CameraShake;
     public ProjectCameraShakeSettings Shake { get; set; } = new();
+    public ProjectFilmGrainSettings FilmGrain { get; set; } = new();
+}
+
+public class ProjectFilmGrainSettings
+{
+    public float Strength { get; set; } = 0.15f;
+    public float Saturation { get; set; } = 0.5f;
+    public float Size { get; set; } = 1f;
 }
 
 public class ProjectCameraShakeSettings

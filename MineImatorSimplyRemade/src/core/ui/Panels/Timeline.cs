@@ -2501,6 +2501,14 @@ public class Timeline : UiPanel
     {
         for (int i = 0; i < cam.Effects.Count; i++)
         {
+            if (cam.Effects[i].Type == CameraEffectType.FilmGrain)
+            {
+                string grainPath = $"camera.effect.{i}.film_grain";
+                yield return $"{grainPath}.strength";
+                yield return $"{grainPath}.saturation";
+                yield return $"{grainPath}.size";
+                continue;
+            }
             string basePath = $"camera.effect.{i}.shake";
             yield return $"{basePath}.mode";
             yield return $"{basePath}.trauma";
@@ -2840,6 +2848,16 @@ public class Timeline : UiPanel
                     };
                 }
             }
+            else if (effect.Type == CameraEffectType.FilmGrain && parts.Length == 5 && parts[3] == "film_grain")
+            {
+                return parts[4] switch
+                {
+                    "strength" => effect.FilmGrain.Strength,
+                    "saturation" => effect.FilmGrain.Saturation,
+                    "size" => effect.FilmGrain.Size,
+                    _ => 0f
+                };
+            }
         }
 
         return 0f;
@@ -3154,6 +3172,20 @@ public class Timeline : UiPanel
                 }
                 break;
             }
+            case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "film_grain" && obj is CameraSceneObject camGrain:
+            {
+                if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camGrain.Effects.Count)
+                    break;
+                var effect = camGrain.Effects[effectIndex];
+                if (effect.Type != CameraEffectType.FilmGrain) break;
+                switch (parts[4])
+                {
+                    case "strength": effect.FilmGrain.Strength = value; break;
+                    case "saturation": effect.FilmGrain.Saturation = value; break;
+                    case "size": effect.FilmGrain.Size = value; break;
+                }
+                break;
+            }
         }
     }
 
@@ -3354,6 +3386,17 @@ public class Timeline : UiPanel
                     for (int i = 0; i < cameraObj.Effects.Count; i++)
                     {
                         var effect = cameraObj.Effects[i];
+                        if (effect.Type == CameraEffectType.FilmGrain)
+                        {
+                            string grainPath = $"camera.effect.{i}.film_grain";
+                            string[] paths = { $"{grainPath}.strength", $"{grainPath}.saturation", $"{grainPath}.size" };
+                            if (!paths.Any(propsWithKeyframes.Contains)) continue;
+                            _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Film Grain", paths, $"camera.effect.{i}"));
+                            if (propsWithKeyframes.Contains(paths[0])) _displayRows.Add(MakeSingle(obj, "Strength", paths[0], 1));
+                            if (propsWithKeyframes.Contains(paths[1])) _displayRows.Add(MakeSingle(obj, "Saturation", paths[1], 1));
+                            if (propsWithKeyframes.Contains(paths[2])) _displayRows.Add(MakeSingle(obj, "Size", paths[2], 1));
+                            continue;
+                        }
                         if (effect.Type != CameraEffectType.CameraShake)
                             continue;
 
@@ -3534,6 +3577,16 @@ public class Timeline : UiPanel
             for (int i = 0; i < cameraObj.Effects.Count; i++)
             {
                 var effect = cameraObj.Effects[i];
+                if (effect.Type == CameraEffectType.FilmGrain)
+                {
+                    string grainPath = $"camera.effect.{i}.film_grain";
+                    string[] paths = { $"{grainPath}.strength", $"{grainPath}.saturation", $"{grainPath}.size" };
+                    _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Film Grain", paths, $"camera.effect.{i}"));
+                    _displayRows.Add(MakeSingle(obj, "Strength", paths[0], 1));
+                    _displayRows.Add(MakeSingle(obj, "Saturation", paths[1], 1));
+                    _displayRows.Add(MakeSingle(obj, "Size", paths[2], 1));
+                    continue;
+                }
                 if (effect.Type != CameraEffectType.CameraShake)
                     continue;
 

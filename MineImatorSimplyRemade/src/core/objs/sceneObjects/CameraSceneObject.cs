@@ -100,6 +100,13 @@ public class CameraSceneObject : SceneObject
                     Shake = new CameraShakeSettings()
                 });
                 break;
+            case CameraEffectType.FilmGrain:
+                Effects.Add(new CameraEffect
+                {
+                    Type = CameraEffectType.FilmGrain,
+                    FilmGrain = new FilmGrainSettings()
+                });
+                break;
         }
     }
 
@@ -115,6 +122,12 @@ public class CameraSceneObject : SceneObject
                 Strength = source.Shake.Strength,
                 Speed = source.Shake.Speed,
                 Offset = source.Shake.Offset
+            },
+            FilmGrain = new FilmGrainSettings
+            {
+                Strength = source.FilmGrain.Strength,
+                Saturation = source.FilmGrain.Saturation,
+                Size = source.FilmGrain.Size
             }
         };
     }

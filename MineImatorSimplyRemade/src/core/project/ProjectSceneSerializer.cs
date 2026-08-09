@@ -731,6 +731,12 @@ public static class ProjectSceneSerializer
                 Strength = ToProjectVec3(effect.Shake.Strength),
                 Speed = ToProjectVec3(effect.Shake.Speed),
                 Offset = ToProjectVec3(effect.Shake.Offset)
+            },
+            FilmGrain = new ProjectFilmGrainSettings
+            {
+                Strength = effect.FilmGrain.Strength,
+                Saturation = effect.FilmGrain.Saturation,
+                Size = effect.FilmGrain.Size
             }
         };
     }
@@ -747,6 +753,12 @@ public static class ProjectSceneSerializer
                 Strength = effect.Shake != null ? ToVec3(effect.Shake.Strength) : new vec3(0.03f, 0.03f, 0.03f),
                 Speed = effect.Shake != null ? ToVec3(effect.Shake.Speed) : new vec3(3f, 3.5f, 2.5f),
                 Offset = effect.Shake != null ? ToVec3(effect.Shake.Offset) : vec3.Zero
+            },
+            FilmGrain = new FilmGrainSettings
+            {
+                Strength = effect.FilmGrain?.Strength ?? 0.15f,
+                Saturation = effect.FilmGrain?.Saturation ?? 0.5f,
+                Size = effect.FilmGrain?.Size ?? 1f
             }
         };
     }

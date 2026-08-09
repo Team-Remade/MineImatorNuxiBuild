@@ -205,6 +205,7 @@ public class Viewport : UiPanel
     private Shader? _indirectLightingShader;
     private Shader? _indirectDenoiseShader;
     private Shader? _glowShader;
+    private Shader? _filmGrainShader;
     private uint _indirectFbo;
     private uint _indirectTex;
     private uint _indirectPingFbo;
@@ -732,6 +733,8 @@ public class Viewport : UiPanel
         _indirectDenoiseShader.CompileShader("edge.vert", "indirect_denoise.frag");
         _glowShader = new Shader(Gl);
         _glowShader.CompileShader("edge.vert", "glow.frag");
+        _filmGrainShader = new Shader(Gl);
+        _filmGrainShader.CompileShader("edge.vert", "film_grain.frag");
 
         // ── Background quad shader + geometry ───────────────────────────────
         InitBackgroundRenderer();
@@ -2766,6 +2769,9 @@ public class Viewport : UiPanel
 
         if (renderMode == SceneRenderMode.Rendered)
             ApplyGlowPassGeneric(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, PropertiesPanel, _renderedPassMode);
+
+        if (renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
+            ApplyFilmGrainPass(_fbo, _colorTex, _glowFbo, _glowTex, w, h, activeCamObj);
 
         if (OverlaysEnabled)
         {
@@ -4905,6 +4911,11 @@ public class Viewport : UiPanel
             _glowShader = new Shader(Gl);
             _glowShader.CompileShader("edge.vert", "glow.frag");
         }
+        if (_filmGrainShader == null)
+        {
+            _filmGrainShader = new Shader(Gl);
+            _filmGrainShader.CompileShader("edge.vert", "film_grain.frag");
+        }
 
         InitGlowResources(ref _previewIndirectFbo, ref _previewIndirectTex, width, height, "Preview indirect");
         InitGlowResources(ref _previewIndirectPingFbo, ref _previewIndirectPingTex, width, height, "Preview indirect ping");
@@ -5177,6 +5188,58 @@ public class Viewport : UiPanel
         float harmonic2 = 0.5f * MathF.Sin(phase * 2.13f + 1.37f + seed * 0.7f);
         float harmonic3 = 0.25f * MathF.Sin(phase * 4.37f + 2.51f + seed * 1.3f);
         return (harmonic1 + harmonic2 + harmonic3) / 1.75f;
+    }
+
+    private void ApplyFilmGrainPass(uint sceneFbo, uint sceneTexture, uint scratchFbo, uint scratchTexture,
+        uint width, uint height, CameraSceneObject? cameraObject)
+    {
+        if (Gl == null || _filmGrainShader == null || cameraObject == null || width == 0 || height == 0)
+            return;
+
+        var grains = cameraObject.Effects.Where(effect => effect.Type == CameraEffectType.FilmGrain).ToList();
+        if (grains.Count == 0) return;
+
+        Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
+        Gl.BindFramebuffer(GLEnum.DrawFramebuffer, scratchFbo);
+        Gl.BlitFramebuffer(0, 0, (int)width, (int)height, 0, 0, (int)width, (int)height,
+            ClearBufferMask.ColorBufferBit, GLEnum.Nearest);
+
+        Gl.Disable(GLEnum.DepthTest);
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Disable(GLEnum.Blend);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
+        Gl.Viewport(0, 0, width, height);
+
+        uint program = _filmGrainShader.ShaderProgram;
+        Gl.UseProgram(program);
+        Gl.ActiveTexture(GLEnum.Texture0);
+        Gl.BindTexture(GLEnum.Texture2D, scratchTexture);
+        int sceneLoc = Gl.GetUniformLocation(program, "uScene");
+        if (sceneLoc >= 0) Gl.Uniform1(sceneLoc, 0);
+
+        float strength = Math.Clamp(grains.Sum(effect => effect.FilmGrain.Strength), 0f, 1f);
+        float weight = MathF.Max(0.0001f, grains.Sum(effect => MathF.Max(0f, effect.FilmGrain.Strength)));
+        float saturation = grains.Sum(effect => effect.FilmGrain.Saturation * MathF.Max(0f, effect.FilmGrain.Strength)) / weight;
+        float size = grains.Sum(effect => effect.FilmGrain.Size * MathF.Max(0f, effect.FilmGrain.Strength)) / weight;
+        int frame = Timeline.Instance?.CurrentFrame ?? 0;
+
+        int strengthLoc = Gl.GetUniformLocation(program, "uStrength");
+        int saturationLoc = Gl.GetUniformLocation(program, "uSaturation");
+        int sizeLoc = Gl.GetUniformLocation(program, "uSize");
+        int frameLoc = Gl.GetUniformLocation(program, "uFrame");
+        int resolutionLoc = Gl.GetUniformLocation(program, "uResolution");
+        if (strengthLoc >= 0) Gl.Uniform1(strengthLoc, strength);
+        if (saturationLoc >= 0) Gl.Uniform1(saturationLoc, Math.Clamp(saturation, 0f, 1f));
+        if (sizeLoc >= 0) Gl.Uniform1(sizeLoc, Math.Clamp(size, 0.25f, 8f));
+        if (frameLoc >= 0) Gl.Uniform1(frameLoc, (float)frame);
+        if (resolutionLoc >= 0) Gl.Uniform2(resolutionLoc, (float)width, (float)height);
+
+        Gl.BindVertexArray(_edgeVao);
+        Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+        Gl.BindVertexArray(0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        Gl.Enable(GLEnum.DepthTest);
+        Gl.Enable(GLEnum.CullFace);
     }
 
     public unsafe void RenderInline(Vector2 imageMin, Vector2 imageSize, List<CameraSceneObject> spawned)
@@ -5683,6 +5746,9 @@ public class Viewport : UiPanel
 
         if (renderMode == SceneRenderMode.Rendered)
             ApplyGlowPassGeneric(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, _previewGlowPingFbo, _previewGlowPingTex, w, h, MainViewport.PropertiesPanel, effectivePassMode);
+
+        if (renderMode == SceneRenderMode.Rendered && effectivePassMode == RenderedPassMode.Combined)
+            ApplyFilmGrainPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
 
         if (OverlaysEnabled)
         {
