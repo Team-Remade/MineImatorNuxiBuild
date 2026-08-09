@@ -175,6 +175,9 @@ public class SceneObject
     /// </summary>
     public string AlbedoTexturePath = "";
 
+    /// <summary>Object id of the scene camera used as this object's live albedo texture.</summary>
+    public string CameraTextureObjectId = "";
+
     /// <summary>
     /// Primitive-cube UV mode. False = each face fills the whole texture;
     /// true = use a 3x2 cubemap unwrap layout.

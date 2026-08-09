@@ -13,7 +13,9 @@ public static class ProjectSceneSerializer
 {
     public static ProjectSceneObjectEntry SerializeObjectForLibrary(SceneObject obj)
     {
-        return SerializeNode(obj);
+        var entry = SerializeNode(obj);
+        ClearObjectIds(entry);
+        return entry;
     }
 
     public static SceneObject? SpawnObjectFromEntry(ProjectSceneObjectEntry entry, Viewport viewport, SpawnMenu spawnMenu, SceneObject? parent = null)
@@ -70,6 +72,8 @@ public static class ProjectSceneSerializer
 
         foreach (var root in manifest.SceneObjects)
             RestoreNode(root, viewport, spawnMenu, parent: null);
+
+        ResolveLegacyCameraTextureBindings(viewport.SceneObjects);
 
         // Restore albedo textures that were saved with a path but not yet loaded onto the GPU
         propertiesPanel?.LoadPendingAlbedoTextures(viewport.SceneObjects);
@@ -143,6 +147,7 @@ public static class ProjectSceneSerializer
         var pm = ProjectManager.Instance;
         var entry = new ProjectSceneObjectEntry
         {
+            ObjectId = obj.ObjectId,
             LibrarySourceId = obj.LibrarySourceId,
             Name = obj.Name,
             ObjectType = obj.ObjectType,
@@ -152,6 +157,7 @@ public static class ProjectSceneSerializer
             ResourcePackId = obj.ResourcePackId,
             SourceAssetPath = pm.ToProjectRelativePath(obj.SourceAssetPath),
             AlbedoTexturePath = pm.ToProjectRelativePath(obj.AlbedoTexturePath),
+            CameraTextureObjectId = obj.CameraTextureObjectId,
             TemporaryItemSheetPath = pm.ToProjectRelativePath(obj.TemporaryItemSheetPath),
             TemporaryItemSheetCacheKey = obj.TemporaryItemSheetCacheKey,
             TemporaryItemSheetColumns = obj.TemporaryItemSheetColumns,
@@ -507,6 +513,11 @@ public static class ProjectSceneSerializer
 
     private static void ApplyEntryToObject(SceneObject obj, ProjectSceneObjectEntry entry)
     {
+        // Keep scene UUIDs stable across project reloads. Pick-colour IDs remain
+        // the fresh values assigned by the spawn pipeline and are independent.
+        if (!string.IsNullOrWhiteSpace(entry.ObjectId))
+            obj.ObjectId = entry.ObjectId;
+
         obj.LibrarySourceId = string.IsNullOrWhiteSpace(entry.LibrarySourceId)
             ? entry.LibraryEntryId
             : entry.LibrarySourceId;
@@ -518,6 +529,7 @@ public static class ProjectSceneSerializer
         obj.ResourcePackId = entry.ResourcePackId;
         obj.SourceAssetPath = ResolveSourcePath(entry);
         obj.TextureOverridePath = ResolveTextureOverridePath(entry.TextureOverridePath);
+        obj.CameraTextureObjectId = entry.CameraTextureObjectId ?? "";
 
         // Restore albedo texture path (actual texture loading happens after scene is loaded).
         // AlbedoTexturePath is intentionally kept project-relative because the loading code
@@ -950,12 +962,48 @@ public static class ProjectSceneSerializer
                 continue;
 
             var libraryEntry = SerializeNode(root);
+            ClearObjectIds(libraryEntry);
             libraryEntry.LibraryEntryId = sourceId;
             libraryEntry.LibrarySourceId = sourceId;
             if (string.IsNullOrWhiteSpace(libraryEntry.Name))
                 libraryEntry.Name = string.IsNullOrWhiteSpace(libraryEntry.ObjectType) ? "Object" : libraryEntry.ObjectType;
 
             manifest.ObjectLibrary.Add(libraryEntry);
+        }
+    }
+
+    private static void ClearObjectIds(ProjectSceneObjectEntry entry)
+    {
+        entry.ObjectId = "";
+        foreach (var child in entry.Children)
+            ClearObjectIds(child);
+    }
+
+    /// <summary>
+    /// Projects saved before scene UUID persistence contain a camera binding
+    /// whose old runtime id cannot be reconstructed. The unambiguous one-camera
+    /// case can still be repaired automatically after the full scene is loaded.
+    /// </summary>
+    private static void ResolveLegacyCameraTextureBindings(IReadOnlyList<SceneObject> roots)
+    {
+        var all = new List<SceneObject>();
+        foreach (var root in roots)
+        {
+            all.Add(root);
+            all.AddRange(root.GetAllDescendants());
+        }
+
+        var cameras = all.OfType<CameraSceneObject>().ToList();
+        if (cameras.Count != 1) return;
+
+        var validIds = cameras.Select(camera => camera.ObjectId).ToHashSet(StringComparer.Ordinal);
+        foreach (var obj in all)
+        {
+            if (!string.IsNullOrWhiteSpace(obj.CameraTextureObjectId) &&
+                !validIds.Contains(obj.CameraTextureObjectId))
+            {
+                obj.CameraTextureObjectId = cameras[0].ObjectId;
+            }
         }
     }
 

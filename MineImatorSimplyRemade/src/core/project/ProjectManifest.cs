@@ -294,6 +294,7 @@ public class ProjectVec4
 
 public class ProjectSceneObjectEntry
 {
+    public string ObjectId { get; set; } = "";
     public string LibraryEntryId { get; set; } = "";
     public string LibrarySourceId { get; set; } = "";
     public string Name { get; set; } = "";
@@ -304,6 +305,7 @@ public class ProjectSceneObjectEntry
     public string ResourcePackId { get; set; } = "";
     public string SourceAssetPath { get; set; } = "";
     public string AlbedoTexturePath { get; set; } = "";
+    public string CameraTextureObjectId { get; set; } = "";
     public string TemporaryItemSheetPath { get; set; } = "";
     public string TemporaryItemSheetCacheKey { get; set; } = "";
     public int TemporaryItemSheetColumns { get; set; } = 0;

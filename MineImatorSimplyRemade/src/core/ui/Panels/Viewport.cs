@@ -390,6 +390,13 @@ public class Viewport : UiPanel
     private uint _previewSilhouetteFbo;
     private uint _previewSilhouetteTex;
 
+    // Stable targets for scene-camera albedo textures. The normal preview
+    // texture is shared/resized by the UI and therefore cannot be bound
+    // directly to scene objects.
+    private readonly Dictionary<string, uint> _cameraFeedTextures = new(StringComparer.Ordinal);
+    private uint _cameraFeedCopyFbo;
+    private const uint CameraFeedSize = 512;
+
     // Screen-space mouse position captured on left-button release inside the
     // preview viewport so the colour-pick read-back can happen inside the
     // preview render (GL context active). NaN means no pick is pending.
@@ -2572,6 +2579,11 @@ public class Viewport : UiPanel
         // pick pass both have the correct sub-window coordinates.
         var imageMin  = ImGui.GetCursorScreenPos();
         var imageSize = size;
+
+        // Camera-backed materials must be refreshed before the main scene is
+        // drawn. Each camera owns a stable texture, so several feeds can be
+        // visible at the same time.
+        PreviewViewport?.UpdateCameraTextureFeeds();
 
         // Use the active camera (work camera or a spawned camera) for both
         // input and rendering so controls always affect what is being viewed.
@@ -5569,7 +5581,107 @@ public class Viewport : UiPanel
         return new Vector2(drawW, drawH);
     }
 
-    public void RenderScenePublic(Camera cam, CameraSceneObject? sceneObj, uint w, uint h, bool highQuality = false)
+    /// <summary>
+    /// Updates every camera view currently referenced by a scene object's
+    /// <see cref="SceneObject.CameraTextureObjectId"/> and assigns its stable GL
+    /// texture to that object's meshes.
+    /// </summary>
+    public unsafe void UpdateCameraTextureFeeds()
+    {
+        if (!IsPreviewViewport || Gl == null || MainViewport == null || _previewFbo == 0)
+            return;
+
+        var objects = new List<SceneObject>();
+        foreach (var root in MainViewport.SceneObjects)
+            CollectCameraTextureObjects(root, objects);
+        if (objects.Count == 0) return;
+
+        var cameras = new Dictionary<string, CameraSceneObject>(StringComparer.Ordinal);
+        foreach (var camera in GetSpawnedCamerasPublic())
+        {
+            if (!string.IsNullOrEmpty(camera.ObjectId))
+                cameras[camera.ObjectId] = camera;
+        }
+
+        // Allocate and assign all destinations first. This means feeds sample
+        // the previous completed frame rather than the shared preview target,
+        // avoiding recursive read/write feedback when cameras see screens.
+        foreach (var obj in objects)
+        {
+            if (!cameras.ContainsKey(obj.CameraTextureObjectId)) continue;
+            uint texture = GetOrCreateCameraFeedTexture(obj.CameraTextureObjectId);
+            foreach (var mesh in obj.Visuals)
+                mesh.TextureId = texture;
+        }
+
+        bool overlays = OverlaysEnabled;
+        bool renderFeedsHighQuality =
+            _viewportRenderMode == ViewportRenderMode.Rendered ||
+            MainViewport._viewportRenderMode == ViewportRenderMode.Rendered;
+        OverlaysEnabled = false;
+        try
+        {
+            // RenderScenePublic sets the GL viewport, but it does not allocate
+            // its attachments. Ensure the shared preview FBO really is the
+            // feed resolution before rendering/copying; otherwise a small UI
+            // preview leaves the remainder of the 512x512 copy stale.
+            ResizeFboPublic(CameraFeedSize, CameraFeedSize);
+
+            foreach (var cameraId in objects.Select(o => o.CameraTextureObjectId).Distinct(StringComparer.Ordinal))
+            {
+                if (!cameras.TryGetValue(cameraId, out var camera)) continue;
+                uint destination = _cameraFeedTextures[cameraId];
+
+                camera.SyncCameraToTransform();
+                RenderScenePublic(camera.ViewCamera, camera, CameraFeedSize, CameraFeedSize,
+                    highQuality: renderFeedsHighQuality, applyCameraEffects: true);
+
+                if (_cameraFeedCopyFbo == 0)
+                    Gl.GenFramebuffers(1, out _cameraFeedCopyFbo);
+                Gl.BindFramebuffer(GLEnum.ReadFramebuffer, _previewFbo);
+                Gl.ReadBuffer(GLEnum.ColorAttachment0);
+                Gl.BindFramebuffer(GLEnum.DrawFramebuffer, _cameraFeedCopyFbo);
+                Gl.FramebufferTexture2D(GLEnum.DrawFramebuffer, GLEnum.ColorAttachment0,
+                    GLEnum.Texture2D, destination, 0);
+                Gl.DrawBuffer(GLEnum.ColorAttachment0);
+                Gl.BlitFramebuffer(0, 0, (int)CameraFeedSize, (int)CameraFeedSize,
+                    0, 0, (int)CameraFeedSize, (int)CameraFeedSize,
+                    ClearBufferMask.ColorBufferBit, GLEnum.Linear);
+            }
+        }
+        finally
+        {
+            OverlaysEnabled = overlays;
+            Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        }
+    }
+
+    private static void CollectCameraTextureObjects(SceneObject obj, List<SceneObject> result)
+    {
+        if (!string.IsNullOrEmpty(obj.CameraTextureObjectId)) result.Add(obj);
+        foreach (var child in obj.Children)
+            CollectCameraTextureObjects(child, result);
+    }
+
+    private unsafe uint GetOrCreateCameraFeedTexture(string cameraId)
+    {
+        if (_cameraFeedTextures.TryGetValue(cameraId, out uint existing)) return existing;
+
+        Gl!.GenTextures(1, out uint texture);
+        Gl.BindTexture(GLEnum.Texture2D, texture);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb, CameraFeedSize, CameraFeedSize,
+            0, GLEnum.Rgb, GLEnum.UnsignedByte, null);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)GLEnum.Linear);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)GLEnum.Linear);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)GLEnum.ClampToEdge);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.ClampToEdge);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        _cameraFeedTextures[cameraId] = texture;
+        return texture;
+    }
+
+    public void RenderScenePublic(Camera cam, CameraSceneObject? sceneObj, uint w, uint h,
+        bool highQuality = false, bool applyCameraEffects = false)
     {
         if (Gl == null || MainViewport == null) return;
 
@@ -5747,7 +5859,10 @@ public class Viewport : UiPanel
         if (renderMode == SceneRenderMode.Rendered)
             ApplyGlowPassGeneric(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, _previewGlowPingFbo, _previewGlowPingTex, w, h, MainViewport.PropertiesPanel, effectivePassMode);
 
-        if (renderMode == SceneRenderMode.Rendered && effectivePassMode == RenderedPassMode.Combined)
+        // Live camera textures must include their camera's post effects even
+        // when the preview viewport itself is in a shaded/unrendered mode.
+        if ((renderMode == SceneRenderMode.Rendered || applyCameraEffects) &&
+            effectivePassMode == RenderedPassMode.Combined)
             ApplyFilmGrainPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
 
         if (OverlaysEnabled)

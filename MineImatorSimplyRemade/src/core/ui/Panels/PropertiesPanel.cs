@@ -867,6 +867,7 @@ public class PropertiesPanel : UiPanel
             ResourcePackId = source.ResourcePackId,
             SourceAssetPath = source.SourceAssetPath,
             AlbedoTexturePath = source.AlbedoTexturePath,
+            CameraTextureObjectId = source.CameraTextureObjectId,
             TextureOverridePath = source.TextureOverridePath,
             TileX = source.TileX,
             TileY = source.TileY,
@@ -3376,7 +3377,14 @@ public class PropertiesPanel : UiPanel
 
                 // Build list of available textures for dropdown
                 string currentLabel = "(none)";
-                if (currentTextureId != 0 && _loadedTexturePathCache.ContainsKey(currentTextureId))
+                var cameraTextures = Viewport?.GetSpawnedCamerasPublic() ?? [];
+                var selectedCameraTexture = cameraTextures.FirstOrDefault(camera =>
+                    string.Equals(camera.ObjectId, _currentObject.CameraTextureObjectId, StringComparison.Ordinal));
+                if (selectedCameraTexture != null)
+                {
+                    currentLabel = selectedCameraTexture.Name;
+                }
+                else if (currentTextureId != 0 && _loadedTexturePathCache.ContainsKey(currentTextureId))
                 {
                     currentLabel = Path.GetFileName(_loadedTexturePathCache[currentTextureId]);
                 }
@@ -3402,13 +3410,29 @@ public class PropertiesPanel : UiPanel
                         {
                             if (mesh.TextureId != 0)
                             {
-                                Gl?.DeleteTexture(mesh.TextureId);
                                 mesh.TextureId = 0;
                             }
                         }
                         _currentObject.AlbedoTexturePath = "";
+                        _currentObject.CameraTextureObjectId = "";
                         ProjectManager.Instance.SetDirty(true);
                     }
+
+                    // Camera views are named exactly like their scene-tree objects.
+                    foreach (var camera in cameraTextures)
+                    {
+                        bool selected = ReferenceEquals(camera, selectedCameraTexture);
+                        if (ImGui.Selectable(camera.Name, selected))
+                        {
+                            _currentObject.CameraTextureObjectId = camera.ObjectId;
+                            _currentObject.AlbedoTexturePath = "";
+                            ProjectManager.Instance.SetDirty(true);
+                        }
+                        if (selected) ImGui.SetItemDefaultFocus();
+                    }
+
+                    if (cameraTextures.Count > 0)
+                        ImGui.Separator();
 
                     // Show all loaded/imported textures as options
                     foreach (var (texId, path) in _loadedTexturePathCache)
@@ -3418,6 +3442,7 @@ public class PropertiesPanel : UiPanel
                         bool selected = (currentTextureId == texId);
                         if (ImGui.Selectable(label, selected))
                         {
+                            _currentObject.CameraTextureObjectId = "";
                             // Check if this is an actual loaded texture or just an imported file
                             bool isLoadedTexture = false;
                             foreach (var mesh in _currentObject.Visuals)
@@ -3465,6 +3490,7 @@ public class PropertiesPanel : UiPanel
                     {
                         string resolvedPath = ResolveAlbedoTexturePathForProject(result.Path);
                         OnLoadAlbedoTextureForObject(_currentObject, resolvedPath);
+                        _currentObject.CameraTextureObjectId = "";
                         ProjectManager.Instance.SetDirty(true);
                     }
                 }
@@ -3473,10 +3499,10 @@ public class PropertiesPanel : UiPanel
                 {
                     foreach (var mesh in _currentObject.Visuals.Where(mesh => mesh.TextureId != 0))
                     {
-                        Gl?.DeleteTexture(mesh.TextureId);
                         mesh.TextureId = 0;
                     }
                     _currentObject.AlbedoTexturePath = "";
+                    _currentObject.CameraTextureObjectId = "";
                     ProjectManager.Instance.SetDirty(true);
                 }
 
