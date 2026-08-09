@@ -28,6 +28,13 @@ void main()
     }
 
     float centerDepth = linearDepth(rawCenterDepth);
+    // Perspective makes a flat surface's depth change across the screen.  The
+    // old test interpreted that ordinary slope as geometry behind the current
+    // pixel, causing large planes (especially the ground) to bounce their own
+    // already-lit colour back onto themselves like a full-screen bloom pass.
+    // Hardware depth is planar in screen space for a planar primitive, so use
+    // its local gradient to predict and reject samples on that same plane.
+    vec2 rawDepthGradient = vec2(dFdx(rawCenterDepth), dFdy(rawCenterDepth));
     vec3 indirect = vec3(0.0);
     float weightSum = 0.0;
 
@@ -54,10 +61,18 @@ void main()
         if (rawSampleDepth >= 0.999999)
             continue;
 
+        vec2 sampleOffsetPixels = dir * radius;
+        float predictedPlaneDepth = rawCenterDepth + dot(rawDepthGradient, sampleOffsetPixels);
+        float planeResidual = rawSampleDepth - predictedPlaneDepth;
+        float planeTolerance = max(0.00002, fwidth(rawCenterDepth) * 0.1);
+        float separateSurfaceWeight = smoothstep(planeTolerance, planeTolerance * 4.0, planeResidual);
+        if (separateSurfaceWeight <= 0.0001)
+            continue;
+
         float sampleDepth = linearDepth(rawSampleDepth);
         float depthDelta = sampleDepth - centerDepth;
 
-        float behindWeight = smoothstep(0.0, max(0.35, centerDepth * 0.04), depthDelta);
+        float behindWeight = smoothstep(0.0, max(0.35, centerDepth * 0.04), depthDelta) * separateSurfaceWeight;
         float depthSimilarity = 1.0 - smoothstep(0.0, max(1.2, centerDepth * 0.12), abs(depthDelta));
         float radialWeight = 1.0 - t;
         float weight = behindWeight * depthSimilarity * radialWeight;
