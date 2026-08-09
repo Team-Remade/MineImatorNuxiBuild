@@ -62,6 +62,8 @@ layout(std140) uniform SceneData {
 
 uniform sampler2D uTexture;
 uniform bool      uUseTexture;
+uniform sampler2D uAlphaMask;
+uniform bool      uUseAlphaMask;
 
 #define MAX_POINT_LIGHTS 32
 #define MAX_POINT_SHADOWS 8
@@ -235,6 +237,8 @@ void main() {
         baseColor = texSample.rgb * uAlbedo;
         alpha     = texSample.a;
     }
+    if (uUseAlphaMask)
+        alpha *= texture(uAlphaMask, vTexCoord).a;
 
     baseColor *= uBlendColor.rgb;
     baseColor = mix(baseColor, uMixColor.rgb, clamp(uMixColor.a, 0.0, 1.0));

@@ -451,6 +451,9 @@ public class Mesh : IDisposable
         set => DefaultMaterial.AlbedoTexture = value;
     }
 
+    /// <summary>Optional independent alpha mask (used by textured flat text).</summary>
+    public uint AlphaMaskTextureId { get; set; }
+
     /// <summary>
     /// When true, back-face culling is disabled for this mesh so both sides are
     /// visible.  When false (default), only front faces (CCW winding) are drawn.
@@ -1261,7 +1264,10 @@ public class Mesh : IDisposable
 
         // Texture binding
         bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;
+        bool useAlphaMask = AlphaMaskTextureId != 0 && AlphaMaskTextureId != TextureId &&
+                            TexCoords.Count == Vertices.Count;
         SetUniformBool("uUseTexture", useTexture);
+        SetUniformBool("uUseAlphaMask", useAlphaMask);
         if (useTexture)
         {
             _gl.ActiveTexture(GLEnum.Texture0);
@@ -1287,6 +1293,13 @@ public class Mesh : IDisposable
                 GLEnum.TextureMagFilter,
                 (int)(BlurTexture ? TextureMagFilter.Linear : TextureMagFilter.Nearest));
             SetUniformInt("uTexture", 0);
+        }
+        if (useAlphaMask)
+        {
+            _gl.ActiveTexture(GLEnum.Texture15);
+            _gl.BindTexture(GLEnum.Texture2D, AlphaMaskTextureId);
+            SetUniformInt("uAlphaMask", 15);
+            _gl.ActiveTexture(GLEnum.Texture0);
         }
 
         if (ShadowsEnabled && !Unlit && ShadowMapTexture != 0)
@@ -1420,8 +1433,11 @@ public class Mesh : IDisposable
         }
 
         bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;
+        bool useAlphaMask = AlphaMaskTextureId != 0 && AlphaMaskTextureId != TextureId &&
+                            TexCoords.Count == Vertices.Count;
         SetUniformFloat(shader, "uAlpha", Alpha);
         SetUniformBool(shader, "uUseTexture", useTexture);
+        SetUniformBool(shader, "uUseAlphaMask", useAlphaMask);
         SetUniformVec2(shader, "uTexOffset", new vec2(0f, texOffsetV));
         SetUniformFloat(shader, "uTexScaleV", texScaleV);
         SetUniformVec2(shader, "uTexUvOffset", TextureOffset);
@@ -1433,6 +1449,13 @@ public class Mesh : IDisposable
             _gl.ActiveTexture(GLEnum.Texture0);
             _gl.BindTexture(GLEnum.Texture2D, TextureId);
             SetUniformInt(shader, "uTexture", 0);
+        }
+        if (useAlphaMask)
+        {
+            _gl.ActiveTexture(GLEnum.Texture1);
+            _gl.BindTexture(GLEnum.Texture2D, AlphaMaskTextureId);
+            SetUniformInt(shader, "uAlphaMask", 1);
+            _gl.ActiveTexture(GLEnum.Texture0);
         }
 
         ApplyFaceCulling();
@@ -1704,6 +1727,9 @@ public class Mesh : IDisposable
         SetUniformFloat(shader, "uAlpha", Alpha);
         SetUniformVec4(shader, "uBlendColor", BlendColor);
         SetUniformBool(shader, "uUseTexture", useTexture);
+        bool useAlphaMask = AlphaMaskTextureId != 0 && AlphaMaskTextureId != TextureId &&
+                            TexCoords.Count == Vertices.Count;
+        SetUniformBool(shader, "uUseAlphaMask", useAlphaMask);
         SetUniformBool(shader, "uForceOpaque", forceOpaque);
         SetUniformVec2(shader, "uTexOffset", new vec2(0f, texOffsetV));
         SetUniformFloat(shader, "uTexScaleV", texScaleV);
@@ -1716,6 +1742,13 @@ public class Mesh : IDisposable
             _gl.ActiveTexture(GLEnum.Texture0);
             _gl.BindTexture(GLEnum.Texture2D, TextureId);
             SetUniformInt(shader, "uTexture", 0);
+        }
+        if (useAlphaMask)
+        {
+            _gl.ActiveTexture(GLEnum.Texture1);
+            _gl.BindTexture(GLEnum.Texture2D, AlphaMaskTextureId);
+            SetUniformInt(shader, "uAlphaMask", 1);
+            _gl.ActiveTexture(GLEnum.Texture0);
         }
 
         _gl.BindVertexArray(_vao);

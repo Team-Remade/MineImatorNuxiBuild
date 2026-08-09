@@ -22,7 +22,11 @@ public static class TextMeshFactory
         uint texture = UploadTexture(_gl, pixels, width, height);
         float extrusionDepth = Math.Clamp(obj.TextMeshExtrusionDepth, 0.001f, 10f);
         var replacement = new ExtrudedItemMesh(_gl, texture, pixels, obj.TextMeshExtruded,
-            (int)RasterHeight, width, height, extrusionDepth, 128) { BlurTexture = obj.TextMeshAntialiasing };
+            (int)RasterHeight, width, height, extrusionDepth, 128)
+        {
+            BlurTexture = obj.TextMeshAntialiasing,
+            AlphaMaskTextureId = obj.TextMeshExtruded ? 0 : texture
+        };
         float sizeScale = Math.Clamp(obj.TextMeshFontSize, 1f, 512f) / 64f;
         float shiftX = obj.TextMeshHorizontalAlignment switch
         {
@@ -43,15 +47,21 @@ public static class TextMeshFactory
             }
             replacement.Upload();
         }
-        obj.BlurTexture = true;
-        obj.TextureMipmaps = true;
+        obj.BlurTexture = obj.TextMeshAntialiasing;
+        // A text mask must be sampled from its base level.  At small on-screen
+        // sizes the lowest mip levels average glyph coverage across the entire
+        // rectangular texture, turning every texel slightly non-transparent;
+        // the material shader then renders what looks like a solid plane.
+        obj.TextureMipmaps = false;
 
         foreach (Mesh old in obj.Visuals.ToArray())
         {
             uint oldTexture = old.TextureId;
+            uint oldMaskTexture = old.AlphaMaskTextureId;
             obj.RemoveMesh(old);
             old.Dispose();
             if (oldTexture != 0) _gl.DeleteTexture(oldTexture);
+            if (oldMaskTexture != 0 && oldMaskTexture != oldTexture) _gl.DeleteTexture(oldMaskTexture);
         }
         obj.AddMesh(replacement);
     }
@@ -86,7 +96,8 @@ public static class TextMeshFactory
         }
 
         int outlineRadius = obj.TextMeshOutlineEnabled
-            ? Math.Clamp((int)MathF.Round(obj.TextMeshOutlineThickness * RasterHeight / 64f), 1, 64) : 0;
+            ? Math.Clamp((int)MathF.Round(obj.TextMeshOutlineThickness * RasterHeight / 64f), 1,
+                (int)RasterHeight) : 0;
         int padding = 8 + outlineRadius;
         int baseline = (int)MathF.Ceiling(ascent * scale) + padding;
         int width = padding * 2;
@@ -125,15 +136,26 @@ public static class TextMeshFactory
         for (int i = 0; i < alpha.Length; i++)
         {
             int d = i * 4;
-            byte fill = alpha[i];
-            byte border = (byte)Math.Max(0, outline[i] - fill);
-            rgba[d] = (byte)Math.Clamp(255 * fill / 255 + obj.TextMeshOutlineColor.x * border, 0, 255);
-            rgba[d + 1] = (byte)Math.Clamp(255 * fill / 255 + obj.TextMeshOutlineColor.y * border, 0, 255);
-            rgba[d + 2] = (byte)Math.Clamp(255 * fill / 255 + obj.TextMeshOutlineColor.z * border, 0, 255);
-            rgba[d + 3] = (byte)Math.Max(fill, border * Math.Clamp(obj.TextMeshOutlineColor.w, 0f, 1f));
+            float fill = alpha[i] / 255f;
+            float border = Math.Max(0f, (outline[i] - alpha[i]) / 255f) *
+                           Math.Clamp(obj.TextMeshOutlineColor.w, 0f, 1f);
+            float remainingBorder = border * (1f - fill);
+            float outputAlpha = fill + remainingBorder;
+
+            // Store straight-alpha colour: the renderer applies texture alpha
+            // separately.  Premultiplying here made antialiased fills dark and
+            // caused the fill to wash over the chosen outline colour.
+            float inverseAlpha = outputAlpha > 0f ? 1f / outputAlpha : 0f;
+            rgba[d] = ToByte((fill + obj.TextMeshOutlineColor.x * remainingBorder) * inverseAlpha);
+            rgba[d + 1] = ToByte((fill + obj.TextMeshOutlineColor.y * remainingBorder) * inverseAlpha);
+            rgba[d + 2] = ToByte((fill + obj.TextMeshOutlineColor.z * remainingBorder) * inverseAlpha);
+            rgba[d + 3] = ToByte(outputAlpha);
         }
         return (rgba, width, height);
     }
+
+    private static byte ToByte(float value) =>
+        (byte)Math.Clamp((int)MathF.Round(value * 255f), 0, 255);
 
     private static byte[] Dilate(byte[] source, int width, int height, int radius)
     {

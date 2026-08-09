@@ -4968,7 +4968,7 @@ public class PropertiesPanel : UiPanel
             foreach (var mesh in obj.Visuals)
             {
                 // Delete old texture if exists
-                if (mesh.TextureId != 0)
+                if (mesh.TextureId != 0 && mesh.TextureId != mesh.AlphaMaskTextureId)
                     Gl.DeleteTexture(mesh.TextureId);
                 
                 mesh.TextureId = tex;

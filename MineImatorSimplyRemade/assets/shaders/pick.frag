@@ -7,6 +7,8 @@ uniform vec4  uBlendColor;
 uniform float uAlpha;
 uniform sampler2D uTexture;
 uniform bool  uUseTexture;
+uniform sampler2D uAlphaMask;
+uniform bool  uUseAlphaMask;
 uniform bool  uForceOpaque;
 
 out vec4 FragColor;
@@ -18,6 +20,8 @@ void main() {
         vec4 texSample = texture(uTexture, vTexCoord);
         alpha *= texSample.a;
     }
+    if (!uForceOpaque && uUseAlphaMask)
+        alpha *= texture(uAlphaMask, vTexCoord).a;
 
     if (alpha <= 0.0)
         discard;
