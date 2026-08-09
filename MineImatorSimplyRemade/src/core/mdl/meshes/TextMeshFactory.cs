@@ -8,7 +8,7 @@ namespace MineImatorSimplyRemade.core.mdl.meshes;
 /// <summary>Rasterizes TrueType/OpenType text and turns its alpha mask into a flat or extruded mesh.</summary>
 public static class TextMeshFactory
 {
-    private const float RasterHeight = 1024f;
+    private const float RasterHeight = 256f;
     private static GL? _gl;
 
     public static void Rebuild(SceneObject obj, GL? gl = null)
