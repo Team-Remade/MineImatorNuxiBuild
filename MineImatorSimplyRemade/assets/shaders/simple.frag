@@ -247,7 +247,7 @@ void main() {
     vec3 result = baseColor;
 
     if (!uIsUnlit) {
-    vec3 norm    = normalize(vNormal);
+    vec3 norm    = gl_FrontFacing ? normalize(vNormal) : -normalize(vNormal);
     vec3 sunDir  = normalize(uLightDir);
     float diff   = max(dot(norm, sunDir), 0.0);
     vec3 diffuse = diff * uLightColor;

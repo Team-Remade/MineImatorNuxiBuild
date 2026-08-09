@@ -1001,6 +1001,9 @@ public class PropertiesPanel : UiPanel
             PrimitivePlaneOrientation = source.PrimitivePlaneOrientation,
             PrimitivePlaneFaceCamera = source.PrimitivePlaneFaceCamera,
             PrimitiveCubeMapped = source.PrimitiveCubeMapped,
+            PrimitiveSphereSmooth = source.PrimitiveSphereSmooth,
+            PrimitiveSphereSegments = source.PrimitiveSphereSegments,
+            PrimitiveSphereRings = source.PrimitiveSphereRings,
             CameraFov = source.CameraFov,
             CameraNear = source.CameraNear,
             CameraFar = source.CameraFar,
@@ -2846,6 +2849,29 @@ public class PropertiesPanel : UiPanel
             else
             {
                 ImGui.TextDisabled("Plane mesh is unavailable.");
+            }
+        }
+
+        if (string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_currentObject.ObjectType, "Sphere", StringComparison.OrdinalIgnoreCase) &&
+            ImGui.CollapsingHeader("Sphere"))
+        {
+            bool smooth = _currentObject.PrimitiveSphereSmooth;
+            int segments = _currentObject.PrimitiveSphereSegments;
+            int rings = _currentObject.PrimitiveSphereRings;
+            bool changed = ImGui.Checkbox("Smooth Shading##sphereSmooth", ref smooth);
+            changed |= ImGui.DragInt("Segments##sphereSegments", ref segments, 1f, 3, 256);
+            changed |= ImGui.DragInt("Rings##sphereRings", ref rings, 1f, 2, 128);
+
+            if (changed)
+            {
+                segments = Math.Clamp(segments, 3, 256);
+                rings = Math.Clamp(rings, 2, 128);
+                _currentObject.PrimitiveSphereSmooth = smooth;
+                _currentObject.PrimitiveSphereSegments = segments;
+                _currentObject.PrimitiveSphereRings = rings;
+                _currentObject.Visuals.OfType<SphereMesh>().FirstOrDefault()?.SetGeometry(segments, rings, smooth);
+                ProjectManager.Instance.SetDirty(true);
             }
         }
 

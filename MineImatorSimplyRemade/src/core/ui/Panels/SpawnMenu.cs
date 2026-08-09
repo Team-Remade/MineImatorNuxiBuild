@@ -183,6 +183,9 @@ public class SpawnMenu : UiPanel
     /// full texture; true uses a 3x2 cubemap unwrap.
     /// </summary>
     private bool _selectedPrimitiveCubeMapped = false;
+    private bool _selectedPrimitiveSphereSmooth = true;
+    private int _selectedPrimitiveSphereSegments = 32;
+    private int _selectedPrimitiveSphereRings = 16;
 
     /// <summary>
     /// OpenGL texture ID for the currently selected primitive texture.
@@ -655,6 +658,8 @@ public class SpawnMenu : UiPanel
                 if (name == "Empty") return new List<Mesh>();
 
                 if (name == "Cube")   return new List<Mesh> { new CubeMesh(Gl, _selectedPrimitiveCubeMapped) };
+                if (name == "Sphere") return new List<Mesh> { new SphereMesh(Gl, 0.5f,
+                    _selectedPrimitiveSphereSegments, _selectedPrimitiveSphereRings, _selectedPrimitiveSphereSmooth) };
                 if (name == "Plane")  return new List<Mesh> { new PlaneMesh(Gl, 1f, 1f, _selectedPrimitivePlaneOrientation) };
 
                 // For shapes not yet implemented, show a cube placeholder
@@ -997,6 +1002,21 @@ public class SpawnMenu : UiPanel
 
             // ── Primitive texture selection ──────────────────────────────────
             var filteredObjects = GetFilteredObjects();
+            bool isSpherePrimitive = _selectedCategory == "Primitives" &&
+                _selectedObjectIndex >= 0 && _selectedObjectIndex < filteredObjects.Count &&
+                filteredObjects[_selectedObjectIndex] == "Sphere";
+            if (isSpherePrimitive)
+            {
+                ImGui.TextDisabled("Sphere Geometry");
+                bool changed = ImGui.Checkbox("Smooth Shading##sphereSmoothSpawn", ref _selectedPrimitiveSphereSmooth);
+                changed |= ImGui.DragInt("Segments##sphereSegmentsSpawn", ref _selectedPrimitiveSphereSegments, 1f, 3, 256);
+                changed |= ImGui.DragInt("Rings##sphereRingsSpawn", ref _selectedPrimitiveSphereRings, 1f, 2, 128);
+                _selectedPrimitiveSphereSegments = Math.Clamp(_selectedPrimitiveSphereSegments, 3, 256);
+                _selectedPrimitiveSphereRings = Math.Clamp(_selectedPrimitiveSphereRings, 2, 128);
+                if (changed) _previewKey = "";
+                ImGui.Spacing();
+            }
+
             bool isPrimitiveWithTexture = _selectedCategory == "Primitives" &&
                 _selectedObjectIndex >= 0 && _selectedObjectIndex < filteredObjects.Count &&
                 (filteredObjects[_selectedObjectIndex] == "Plane" || filteredObjects[_selectedObjectIndex] == "Cube");
@@ -5078,7 +5098,8 @@ public class SpawnMenu : UiPanel
                 }
                 else
                 {
-                    SpawnPrimitiveObject(objectName, fullName);
+                    SpawnPrimitiveObject(objectName, fullName, 0, "", PlaneOrientation.XY, false,
+                        _selectedPrimitiveSphereSmooth, _selectedPrimitiveSphereSegments, _selectedPrimitiveSphereRings);
                 }
                 break;
         }
@@ -5466,7 +5487,8 @@ public class SpawnMenu : UiPanel
     /// <summary>Creates and registers a primitive <see cref="SceneObject"/> in the viewport.</summary>
     public SceneObject? SpawnPrimitiveObject(string primitiveType, string objectName, uint textureId = 0,
                                              string texturePath = "", PlaneOrientation planeOrientation = PlaneOrientation.XY,
-                                             bool cubeMapped = false)
+                                             bool cubeMapped = false, bool sphereSmooth = true,
+                                             int sphereSegments = 32, int sphereRings = 16)
     {
         if (Viewport == null) return null;
 
@@ -5478,7 +5500,10 @@ public class SpawnMenu : UiPanel
             Position      = vec3.Zero,
             PivotOffset   = new vec3(0f, 0.5f, 0f),
             AlbedoTexturePath = texturePath,
-            PrimitiveCubeMapped = cubeMapped
+            PrimitiveCubeMapped = cubeMapped,
+            PrimitiveSphereSmooth = sphereSmooth,
+            PrimitiveSphereSegments = Math.Clamp(sphereSegments, 3, 256),
+            PrimitiveSphereRings = Math.Clamp(sphereRings, 2, 128)
         };
         obj.AssignObjectId();
 
@@ -5523,6 +5548,21 @@ public class SpawnMenu : UiPanel
                     if (material is StandardMaterial stdMat)
                         stdMat.AlbedoColor = new vec4(1f, 1f, 1f, 1f);
                 }
+            }
+
+            obj.AddMesh(mesh);
+        }
+
+        if (primitiveType == "Sphere" && Gl != null)
+        {
+            var mesh = new SphereMesh(Gl, 0.5f, obj.PrimitiveSphereSegments,
+                obj.PrimitiveSphereRings, obj.PrimitiveSphereSmooth);
+
+            if (textureId != 0)
+            {
+                mesh.TextureId = textureId;
+                if (mesh.GetSurfaceCount() > 0 && mesh.SurfaceGetMaterial(0) is StandardMaterial stdMat)
+                    stdMat.AlbedoColor = new vec4(1f, 1f, 1f, 1f);
             }
 
             obj.AddMesh(mesh);

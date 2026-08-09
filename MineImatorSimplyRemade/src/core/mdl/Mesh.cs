@@ -1312,16 +1312,7 @@ public class Mesh : IDisposable
             _gl.ActiveTexture(GLEnum.Texture0);
         }
 
-        bool renderBackfacesOnly = CullFrontFaces;
-        if (renderBackfacesOnly)
-        {
-            _gl.Enable(GLEnum.CullFace);
-            _gl.CullFace(GLEnum.Front);
-        }
-        else if (DoubleSided)
-        {
-            _gl.Disable(GLEnum.CullFace);
-        }
+        ApplyFaceCulling();
 
         // Overlay meshes render on top of all geometry: depth test off, depth writes off.
         if (DepthTestDisabled)
@@ -1347,17 +1338,7 @@ public class Mesh : IDisposable
             _gl.DepthMask(true);
         }
 
-        if (renderBackfacesOnly)
-        {
-            if (DoubleSided)
-                _gl.Disable(GLEnum.CullFace);
-            else
-                _gl.CullFace(GLEnum.Back);
-        }
-        else if (DoubleSided)
-        {
-            _gl.Enable(GLEnum.CullFace);
-        }
+        RestoreFaceCulling();
 
         if (useTexture)
         {
@@ -1384,6 +1365,26 @@ public class Mesh : IDisposable
             }
             _gl.ActiveTexture(GLEnum.Texture0);
         }
+    }
+
+    private void ApplyFaceCulling()
+    {
+        // Double-sided is a material property and therefore takes precedence:
+        // inversion only selects which single side is visible when culling is on.
+        if (DoubleSided)
+        {
+            _gl.Disable(GLEnum.CullFace);
+            return;
+        }
+
+        _gl.Enable(GLEnum.CullFace);
+        _gl.CullFace(CullFrontFaces ? GLEnum.Front : GLEnum.Back);
+    }
+
+    private void RestoreFaceCulling()
+    {
+        _gl.Enable(GLEnum.CullFace);
+        _gl.CullFace(GLEnum.Back);
     }
 
     public unsafe void RenderShadow(Shader shader, mat4 lightViewProj, mat4 model)
@@ -1434,16 +1435,7 @@ public class Mesh : IDisposable
             SetUniformInt(shader, "uTexture", 0);
         }
 
-        bool renderBackfacesOnly = CullFrontFaces;
-        if (renderBackfacesOnly)
-        {
-            _gl.Enable(GLEnum.CullFace);
-            _gl.CullFace(GLEnum.Front);
-        }
-        else if (DoubleSided)
-        {
-            _gl.Disable(GLEnum.CullFace);
-        }
+        ApplyFaceCulling();
 
         _gl.BindVertexArray(_vao);
 
@@ -1460,17 +1452,7 @@ public class Mesh : IDisposable
             _gl.BindTexture(GLEnum.Texture2D, 0);
         }
 
-        if (renderBackfacesOnly)
-        {
-            if (DoubleSided)
-                _gl.Disable(GLEnum.CullFace);
-            else
-                _gl.CullFace(GLEnum.Back);
-        }
-        else if (DoubleSided)
-        {
-            _gl.Enable(GLEnum.CullFace);
-        }
+        RestoreFaceCulling();
     }
 
     public unsafe void RenderPointShadow(Shader shader, mat4 lightViewProj, mat4 model, vec3 lightPos, float farPlane)
@@ -1524,16 +1506,7 @@ public class Mesh : IDisposable
             SetUniformInt(shader, "uTexture", 0);
         }
 
-        bool renderBackfacesOnly = CullFrontFaces;
-        if (renderBackfacesOnly)
-        {
-            _gl.Enable(GLEnum.CullFace);
-            _gl.CullFace(GLEnum.Front);
-        }
-        else if (DoubleSided)
-        {
-            _gl.Disable(GLEnum.CullFace);
-        }
+        ApplyFaceCulling();
 
         _gl.BindVertexArray(_vao);
 
@@ -1550,17 +1523,7 @@ public class Mesh : IDisposable
             _gl.BindTexture(GLEnum.Texture2D, 0);
         }
 
-        if (renderBackfacesOnly)
-        {
-            if (DoubleSided)
-                _gl.Disable(GLEnum.CullFace);
-            else
-                _gl.CullFace(GLEnum.Back);
-        }
-        else if (DoubleSided)
-        {
-            _gl.Enable(GLEnum.CullFace);
-        }
+        RestoreFaceCulling();
     }
 
     // ── Uniform helpers (cached locations via Shader) ─────────────────────────

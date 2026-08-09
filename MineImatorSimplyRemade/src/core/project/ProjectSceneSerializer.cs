@@ -201,6 +201,9 @@ public static class ProjectSceneSerializer
             PrimitiveCubeMapped = obj.SpawnCategory == "Primitives" && obj.ObjectType == "Cube"
                 ? obj.PrimitiveCubeMapped
                 : false,
+            PrimitiveSphereSmooth = obj.PrimitiveSphereSmooth,
+            PrimitiveSphereSegments = obj.PrimitiveSphereSegments,
+            PrimitiveSphereRings = obj.PrimitiveSphereRings,
             Keyframes = SerializeKeyframes(obj),
             ShapeKeyWeights = SerializeShapeKeyWeights(obj)
         };
@@ -406,7 +409,8 @@ public static class ProjectSceneSerializer
             return spawnMenu.SpawnLightObject(entry.Name);
 
         if (entry.SpawnCategory == "Primitives")
-            return spawnMenu.SpawnPrimitiveObject(entry.ObjectType, entry.Name, 0, "", entry.PrimitivePlaneOrientation, entry.PrimitiveCubeMapped);
+            return spawnMenu.SpawnPrimitiveObject(entry.ObjectType, entry.Name, 0, "", entry.PrimitivePlaneOrientation,
+                entry.PrimitiveCubeMapped, entry.PrimitiveSphereSmooth, entry.PrimitiveSphereSegments, entry.PrimitiveSphereRings);
 
         if (entry.SpawnCategory == "Particle Spawners")
             return spawnMenu.SpawnParticleSpawnerObject(entry.Name, entry.ParticleLibraryEntryId, entry.ParticleLibraryDisplayName);
@@ -625,6 +629,15 @@ public static class ProjectSceneSerializer
             var cubeMesh = obj.Visuals.OfType<CubeMesh>().FirstOrDefault();
             if (cubeMesh != null)
                 cubeMesh.SetMapped(entry.PrimitiveCubeMapped);
+        }
+
+        if (obj.SpawnCategory == "Primitives" && obj.ObjectType == "Sphere")
+        {
+            obj.PrimitiveSphereSmooth = entry.PrimitiveSphereSmooth;
+            obj.PrimitiveSphereSegments = Math.Clamp(entry.PrimitiveSphereSegments, 3, 256);
+            obj.PrimitiveSphereRings = Math.Clamp(entry.PrimitiveSphereRings, 2, 128);
+            obj.Visuals.OfType<SphereMesh>().FirstOrDefault()?.SetGeometry(
+                obj.PrimitiveSphereSegments, obj.PrimitiveSphereRings, obj.PrimitiveSphereSmooth);
         }
 
         if (entry.HasMaterialOverrides)
@@ -970,6 +983,7 @@ public static class ProjectSceneSerializer
 
             manifest.ObjectLibrary.Add(libraryEntry);
         }
+
     }
 
     private static void ClearObjectIds(ProjectSceneObjectEntry entry)

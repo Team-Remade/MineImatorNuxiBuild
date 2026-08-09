@@ -184,6 +184,10 @@ public class SceneObject
     /// </summary>
     public bool PrimitiveCubeMapped = false;
 
+    public bool PrimitiveSphereSmooth = true;
+    public int PrimitiveSphereSegments = 32;
+    public int PrimitiveSphereRings = 16;
+
     /// <summary>
     /// Primitive-plane option. When true, the plane rotates at render-time so it faces the active camera.
     /// </summary>

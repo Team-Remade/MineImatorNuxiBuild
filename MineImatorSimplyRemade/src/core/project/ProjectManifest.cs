@@ -335,6 +335,9 @@ public class ProjectSceneObjectEntry
     // Primitive cube UV mode. Only used for Primitives/Cube objects.
     // False = each face maps to the full texture; true = 3x2 cubemap unwrap.
     public bool PrimitiveCubeMapped { get; set; } = false;
+    public bool PrimitiveSphereSmooth { get; set; } = true;
+    public int PrimitiveSphereSegments { get; set; } = 32;
+    public int PrimitiveSphereRings { get; set; } = 16;
 
     public ProjectVec3 Position { get; set; } = new();
     public ProjectVec3 Rotation { get; set; } = new();
