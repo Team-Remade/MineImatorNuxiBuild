@@ -20,6 +20,7 @@
         <NoWarn>$(NoWarn);IL2104;IL3000;IL3002;IL3053;NU1701;CS8600;CS8601;CS8603;CS8604;CS8618;CS8619;CS8625;CS8629;CS8981;CS9192;CS9193</NoWarn>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <PublishAot>true</PublishAot>
+        <PackageOutputDir>$(MSBuildProjectDirectory)/artifacts</PackageOutputDir>
     </PropertyGroup>
 
     <ItemGroup>
@@ -114,6 +115,47 @@
             <PublishedNativeLibraries Include="$(PublishDir)OpenAL32.dll" />
         </ItemGroup>
         <Delete Files="@(PublishedNativeLibraries)" />
+    </Target>
+
+    <PropertyGroup>
+        <PublishPackageBaseName>Mine Imator Nuxi Build ($(Version))</PublishPackageBaseName>
+        <PublishPlatformName Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">win64</PublishPlatformName>
+        <PublishPlatformName Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux'))">linux64</PublishPlatformName>
+        <PublishPlatformName Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx'))">macos</PublishPlatformName>
+        <PublishPackagePath>$(PackageOutputDir)/$(PublishPackageBaseName) $(PublishPlatformName)</PublishPackagePath>
+    </PropertyGroup>
+
+    <!--
+      Package runtime-specific publishes into release-ready artifacts. Example:
+        dotnet publish -c Release -r win-x64 (with self-contained enabled if desired)
+      ZIP creation is supported by the .NET SDK on every host. DMG creation uses
+      macOS' hdiutil and therefore runs only when an osx-* publish is made on macOS.
+    -->
+    <Target Name="PackagePublishedBuild"
+            AfterTargets="Publish"
+            Condition="'$(PublishPlatformName)' != ''">
+        <MakeDir Directories="$(PackageOutputDir)" />
+
+        <Delete Files="$(PublishPackagePath).zip"
+                Condition="'$(PublishPlatformName)' == 'win64' Or '$(PublishPlatformName)' == 'linux64'" />
+        <ZipDirectory SourceDirectory="$(PublishDir)"
+                      DestinationFile="$(PublishPackagePath).zip"
+                      Overwrite="true"
+                      Condition="'$(PublishPlatformName)' == 'win64' Or '$(PublishPlatformName)' == 'linux64'" />
+
+        <Delete Files="$(PublishPackagePath).dmg"
+                Condition="'$(PublishPlatformName)' == 'macos' And $([MSBuild]::IsOSPlatform('OSX'))" />
+        <Exec Command="hdiutil create -format UDZO -srcfolder &quot;$(PublishDir)&quot; &quot;$(PublishPackagePath).dmg&quot;"
+              Condition="'$(PublishPlatformName)' == 'macos' And $([MSBuild]::IsOSPlatform('OSX'))" />
+        <Warning Text="A macOS publish was created, but DMG packaging requires publishing on macOS with hdiutil."
+                 Condition="'$(PublishPlatformName)' == 'macos' And !$([MSBuild]::IsOSPlatform('OSX'))" />
+
+        <Message Importance="high"
+                 Text="Created package: $(PublishPackagePath).zip"
+                 Condition="'$(PublishPlatformName)' == 'win64' Or '$(PublishPlatformName)' == 'linux64'" />
+        <Message Importance="high"
+                 Text="Created package: $(PublishPackagePath).dmg"
+                 Condition="'$(PublishPlatformName)' == 'macos' And $([MSBuild]::IsOSPlatform('OSX'))" />
     </Target>
 
 </Project>
