@@ -368,33 +368,20 @@ public class UpdateChecker
 
     private static GitHubAsset? FindSuitableAsset(List<GitHubAsset> assets)
     {
-        // Look for Windows executable or installer
+        // Release archives are platform-specific. Match the platform marker as
+        // well as the extension so a release containing both archives cannot
+        // accidentally install the other operating system's build.
         if (OperatingSystem.IsWindows())
         {
-            // First try for .exe files
-            var exe = assets.FirstOrDefault(a => a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
-            if (exe != null) return exe;
-
-            // Then try for .msi or .zip
-            var msi = assets.FirstOrDefault(a => a.Name.EndsWith(".msi", StringComparison.OrdinalIgnoreCase));
-            if (msi != null) return msi;
-
-            var zip = assets.FirstOrDefault(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
-            if (zip != null) return zip;
+            return FindPlatformZip(assets, "win64");
         }
-        else if (OperatingSystem.IsLinux())
+
+        if (OperatingSystem.IsLinux())
         {
-            // Look for Linux packages
-            var deb = assets.FirstOrDefault(a => a.Name.EndsWith(".deb", StringComparison.OrdinalIgnoreCase));
-            if (deb != null) return deb;
-
-            var rpm = assets.FirstOrDefault(a => a.Name.EndsWith(".rpm", StringComparison.OrdinalIgnoreCase));
-            if (rpm != null) return rpm;
-
-            var tar = assets.FirstOrDefault(a => a.Name.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase));
-            if (tar != null) return tar;
+            return FindPlatformZip(assets, "linux64");
         }
-        else if (OperatingSystem.IsMacOS())
+
+        if (OperatingSystem.IsMacOS())
         {
             // Look for macOS packages
             var dmg = assets.FirstOrDefault(a => a.Name.EndsWith(".dmg", StringComparison.OrdinalIgnoreCase));
@@ -406,6 +393,13 @@ public class UpdateChecker
 
         // Fallback: return first asset
         return assets.FirstOrDefault();
+    }
+
+    private static GitHubAsset? FindPlatformZip(IEnumerable<GitHubAsset> assets, string platformMarker)
+    {
+        return assets.FirstOrDefault(asset =>
+            asset.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) &&
+            asset.Name.Contains(platformMarker, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
