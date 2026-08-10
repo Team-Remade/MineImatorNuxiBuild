@@ -207,6 +207,7 @@ public class CameraSceneObject : SceneObject
 
         ViewCamera.Yaw      = yaw;
         ViewCamera.Pitch    = pitch;
+        ViewCamera.Roll     = Rotation.z;
         ViewCamera.Distance = 0.001f; // near-zero so eye ≈ Position
 
         // eye = Target + OffsetFromTarget()  →  Target = eye − OffsetFromTarget()
@@ -260,6 +261,6 @@ public class CameraSceneObject : SceneObject
         // Inverse of SyncCameraToTransform:
         //   Rotation.y =  ViewCamera.Yaw
         //   Rotation.x = -ViewCamera.Pitch  (pitch sign flipped back)
-        SetLocalRotation(new GlmSharp.vec3(-ViewCamera.Pitch, ViewCamera.Yaw, 0f));
+        SetLocalRotation(new GlmSharp.vec3(-ViewCamera.Pitch, ViewCamera.Yaw, ViewCamera.Roll));
     }
 }

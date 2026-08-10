@@ -1720,12 +1720,6 @@ public class Gizmo3D : IDisposable
 
                     break;
                 }
-                case TransformMode.Rotate when obj is CameraSceneObject cameraObject:
-                {
-                    vec3 forward = GizmoMath.BasisTransform(newTransform.Basis, vec3.UnitZ);
-                    cameraObject.ApplyLookDirection(forward);
-                    break;
-                }
                 case TransformMode.Rotate:
                 {
                     mat4 rotBasis = newTransform.Basis;
@@ -1755,6 +1749,8 @@ public class Gizmo3D : IDisposable
                     // so the basis includes scale. MatrixToEulerYXZ assumes a pure-rotation matrix
                     // (m.m21 == -sin(x) only holds without scale), so we must normalise first.
                     obj.SetLocalRotation(GizmoMath.MatrixToEulerYXZ(NormalizeRotation(rotBasis)));
+                    if (obj is CameraSceneObject cameraObject)
+                        cameraObject.SyncCameraToTransform();
                     break;
                 }
                 case TransformMode.Scale:

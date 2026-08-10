@@ -32,6 +32,9 @@ public class Camera
     /// <summary>Vertical tilt angle in radians (clamped to ±89°).</summary>
     public float Pitch = DefaultPitch;
 
+    /// <summary>Rotation around the camera's viewing axis, in radians.</summary>
+    public float Roll;
+
     /// <summary>Distance from <see cref="Target"/> to the camera eye.</summary>
     public float Distance = DefaultDistance;
 
@@ -152,6 +155,7 @@ public class Camera
         Target = DefaultTarget;
         Yaw = DefaultYaw;
         Pitch = DefaultPitch;
+        Roll = 0f;
         Distance = DefaultDistance;
     }
 
@@ -160,7 +164,18 @@ public class Camera
     /// <summary>Returns a right-handed look-at view matrix.</summary>
     public mat4 GetViewMatrix()
     {
-        return mat4.LookAt(Position, Target, vec3.UnitY);
+        vec3 forward = (Target - Position).Normalized;
+        vec3 right = vec3.Cross(forward, vec3.UnitY);
+        if (right.LengthSqr < 1e-8f)
+            right = vec3.UnitX;
+        else
+            right = right.Normalized;
+
+        vec3 up = vec3.Cross(right, forward).Normalized;
+        if (MathF.Abs(Roll) > 1e-8f)
+            up = (up * MathF.Cos(Roll) + right * MathF.Sin(Roll)).Normalized;
+
+        return mat4.LookAt(Position, Target, up);
     }
 
     /// <summary>

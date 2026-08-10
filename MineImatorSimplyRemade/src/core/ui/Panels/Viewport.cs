@@ -5143,6 +5143,7 @@ public class Viewport : UiPanel
             Target = source.Target,
             Yaw = source.Yaw,
             Pitch = source.Pitch,
+            Roll = source.Roll,
             Distance = source.Distance,
             FovY = source.FovY,
             Near = source.Near,
