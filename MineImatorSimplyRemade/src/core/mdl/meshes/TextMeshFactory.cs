@@ -16,6 +16,12 @@ public static class TextMeshFactory
         _gl = gl ?? _gl;
         if (_gl == null) return;
 
+        // A user/camera albedo is distinct from the generated text mask and
+        // must survive rebuilds caused by outline/font/property changes.
+        uint externalTexture = obj.Visuals
+            .FirstOrDefault(mesh => mesh.TextureId != 0 && mesh.TextureId != mesh.AlphaMaskTextureId)
+            ?.TextureId ?? 0;
+
         (byte[] pixels, int width, int height) = Rasterize(obj);
         if (obj.TextMeshExtruded)
             MakeAlphaOpaque(pixels);
@@ -25,8 +31,13 @@ public static class TextMeshFactory
             (int)RasterHeight, width, height, extrusionDepth, 128)
         {
             BlurTexture = obj.TextMeshAntialiasing,
-            AlphaMaskTextureId = obj.TextMeshExtruded ? 0 : texture
+            AlphaMaskTextureId = texture,
+            IsTextAlphaMask = true,
+            TextMaskOutlineColor = obj.TextMeshOutlineEnabled
+                ? obj.TextMeshOutlineColor
+                : new GlmSharp.vec4(1f, 1f, 1f, 1f)
         };
+        replacement.TextureId = externalTexture;
         float sizeScale = Math.Clamp(obj.TextMeshFontSize, 1f, 512f) / 64f;
         float shiftX = obj.TextMeshHorizontalAlignment switch
         {
@@ -56,14 +67,18 @@ public static class TextMeshFactory
 
         foreach (Mesh old in obj.Visuals.ToArray())
         {
-            uint oldTexture = old.TextureId;
             uint oldMaskTexture = old.AlphaMaskTextureId;
             obj.RemoveMesh(old);
             old.Dispose();
-            if (oldTexture != 0) _gl.DeleteTexture(oldTexture);
-            if (oldMaskTexture != 0 && oldMaskTexture != oldTexture) _gl.DeleteTexture(oldMaskTexture);
+            // Only the generated mask is owned here. External and camera-feed
+            // textures may be shared and are managed by their respective caches.
+            if (oldMaskTexture != 0) _gl.DeleteTexture(oldMaskTexture);
         }
         obj.AddMesh(replacement);
+        // Rebuilding text replaces its Mesh instance. Reapply the object's
+        // persistent material state so emission and the other material channels
+        // do not temporarily reset to StandardMaterial defaults.
+        obj.ApplyMaterialSettingsToMeshes();
     }
 
     /// <summary>
@@ -145,10 +160,11 @@ public static class TextMeshFactory
             // Store straight-alpha colour: the renderer applies texture alpha
             // separately.  Premultiplying here made antialiased fills dark and
             // caused the fill to wash over the chosen outline colour.
-            float inverseAlpha = outputAlpha > 0f ? 1f / outputAlpha : 0f;
-            rgba[d] = ToByte((fill + obj.TextMeshOutlineColor.x * remainingBorder) * inverseAlpha);
-            rgba[d + 1] = ToByte((fill + obj.TextMeshOutlineColor.y * remainingBorder) * inverseAlpha);
-            rgba[d + 2] = ToByte((fill + obj.TextMeshOutlineColor.z * remainingBorder) * inverseAlpha);
+            // Red carries the original glyph-fill coverage. The material shader
+            // uses it to keep an assigned texture out of the outline pixels.
+            rgba[d] = ToByte(fill);
+            rgba[d + 1] = 0;
+            rgba[d + 2] = 0;
             rgba[d + 3] = ToByte(outputAlpha);
         }
         return (rgba, width, height);

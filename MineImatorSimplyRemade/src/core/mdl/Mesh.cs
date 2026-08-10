@@ -453,6 +453,8 @@ public class Mesh : IDisposable
 
     /// <summary>Optional independent alpha mask (used by textured flat text).</summary>
     public uint AlphaMaskTextureId { get; set; }
+    public bool IsTextAlphaMask { get; set; }
+    public vec4 TextMaskOutlineColor { get; set; } = new vec4(0f, 0f, 0f, 1f);
 
     /// <summary>
     /// When true, back-face culling is disabled for this mesh so both sides are
@@ -1264,10 +1266,11 @@ public class Mesh : IDisposable
 
         // Texture binding
         bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;
-        bool useAlphaMask = AlphaMaskTextureId != 0 && AlphaMaskTextureId != TextureId &&
-                            TexCoords.Count == Vertices.Count;
+        bool useAlphaMask = AlphaMaskTextureId != 0 && TexCoords.Count == Vertices.Count;
         SetUniformBool("uUseTexture", useTexture);
         SetUniformBool("uUseAlphaMask", useAlphaMask);
+        SetUniformBool("uIsTextAlphaMask", IsTextAlphaMask);
+        SetUniformVec4("uTextOutlineColor", TextMaskOutlineColor);
         if (useTexture)
         {
             _gl.ActiveTexture(GLEnum.Texture0);

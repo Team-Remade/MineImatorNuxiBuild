@@ -64,6 +64,8 @@ uniform sampler2D uTexture;
 uniform bool      uUseTexture;
 uniform sampler2D uAlphaMask;
 uniform bool      uUseAlphaMask;
+uniform bool      uIsTextAlphaMask;
+uniform vec4      uTextOutlineColor;
 
 #define MAX_POINT_LIGHTS 32
 #define MAX_POINT_SHADOWS 8
@@ -230,6 +232,7 @@ void main() {
     vec3  baseColor = uAlbedo;
     vec3  emissionMask = vec3(1.0);
     float alpha     = 1.0;
+    float textFillWeight = 1.0;
 
     if (uUseTexture) {
         vec4 texSample = texture(uTexture, vTexCoord);
@@ -237,8 +240,16 @@ void main() {
         baseColor = texSample.rgb * uAlbedo;
         alpha     = texSample.a;
     }
-    if (uUseAlphaMask)
-        alpha *= texture(uAlphaMask, vTexCoord).a;
+    if (uUseAlphaMask) {
+        vec4 textMask = texture(uAlphaMask, vTexCoord);
+        if (uIsTextAlphaMask && textMask.a > 0.0) {
+            // R stores glyph-fill coverage while A stores fill + outline.
+            // Composite the material texture over the independently coloured
+            // outline instead of tinting the outline with the material.
+            textFillWeight = clamp(textMask.r / textMask.a, 0.0, 1.0);
+        }
+        alpha *= textMask.a;
+    }
 
     baseColor *= uBlendColor.rgb;
     baseColor = mix(baseColor, uMixColor.rgb, clamp(uMixColor.a, 0.0, 1.0));
@@ -394,5 +405,9 @@ void main() {
             result = mix(result, uHeightFogColor, heightFog);
         }
     }
+    // Apply the outline last so material textures, tint/mix, lighting and
+    // emission affect only the glyph fill and cannot overwrite its colour.
+    if (uIsTextAlphaMask)
+        result = mix(uTextOutlineColor.rgb, result, textFillWeight);
     FragColor   = vec4(result, alpha);
 }

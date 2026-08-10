@@ -2959,19 +2959,11 @@ public class PropertiesPanel : UiPanel
             if (ImGui.IsItemClicked(ImGuiMouseButton.Right)) { _ctxPropertyPath = "text.outline_enabled"; _openPropContextMenu = true; }
             if (outlineEnabled)
             {
-                if (ImGui.ColorEdit4("Outline Color", ref outlineColor))
+                if (ImGui.ColorEdit4("Outline Color", ref outlineColor, ImGuiColorEditFlags.NoInputs))
                 {
                     _currentObject.TextMeshOutlineColor = new vec4(outlineColor.X, outlineColor.Y, outlineColor.Z, outlineColor.W);
                     Timeline?.RecordAutoKeyframe(_currentObject, "text.outline.r"); Timeline?.RecordAutoKeyframe(_currentObject, "text.outline.g");
                     Timeline?.RecordAutoKeyframe(_currentObject, "text.outline.b"); Timeline?.RecordAutoKeyframe(_currentObject, "text.outline.a"); rebuild = true;
-                }
-                if (ImGui.Button("Keyframe Outline Color##textOutlineColorKeyframe"))
-                {
-                    int frame = Timeline?.CurrentFrame ?? 0;
-                    Timeline?.AddKeyframeForProperty(_currentObject, "text.outline.r", frame);
-                    Timeline?.AddKeyframeForProperty(_currentObject, "text.outline.g", frame);
-                    Timeline?.AddKeyframeForProperty(_currentObject, "text.outline.b", frame);
-                    Timeline?.AddKeyframeForProperty(_currentObject, "text.outline.a", frame);
                 }
                 if (ImGui.DragFloat("Outline Thickness", ref outlineThickness, 0.1f, 0f, 64f, "%.1f"))
                 { _currentObject.TextMeshOutlineThickness = Math.Clamp(outlineThickness, 0f, 64f); Timeline?.RecordAutoKeyframe(_currentObject, "text.outline_thickness"); rebuild = true; }
