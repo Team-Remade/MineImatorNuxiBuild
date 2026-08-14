@@ -24,6 +24,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\third_party\RmlUi.Net\RmlUi.Net\RmlUi.Net.csproj" />
       <PackageReference Include="Cyotek.Data.Nbt" Version="4.0.0" />
       <PackageReference Include="FFMPEGCore-Fork" Version="1.0.0" />
       <PackageReference Include="FFMpegCore.Extensions.Downloader" Version="5.0.0" />
@@ -43,9 +44,25 @@
       <PackageReference Include="StbImageSharp" Version="2.30.15" />
       <PackageReference Include="StbTrueTypeSharp" Version="1.26.13" />
     </ItemGroup>
+
+    <PropertyGroup>
+        <RmlUiNativeRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</RmlUiNativeRid>
+        <RmlUiNativeRid Condition="'$(RmlUiNativeRid)' == '' And $([MSBuild]::IsOSPlatform('Windows'))">win-x64</RmlUiNativeRid>
+        <RmlUiNativeRid Condition="'$(RmlUiNativeRid)' == '' And $([MSBuild]::IsOSPlatform('Linux'))">linux-x64</RmlUiNativeRid>
+        <RmlUiNativeRid Condition="'$(RmlUiNativeRid)' == '' And $([MSBuild]::IsOSPlatform('OSX'))">osx-x64</RmlUiNativeRid>
+        <RmlUiNativeName Condition="$([MSBuild]::IsOSPlatform('Windows'))">RmlUiNative.dll</RmlUiNativeName>
+        <RmlUiNativeName Condition="$([MSBuild]::IsOSPlatform('Linux'))">libRmlUiNative.so</RmlUiNativeName>
+        <RmlUiNativeName Condition="$([MSBuild]::IsOSPlatform('OSX'))">libRmlUiNative.dylib</RmlUiNativeName>
+        <RmlUiNativePath>$(MSBuildProjectDirectory)\..\third_party\RmlUi.Net\RmlUi.Native\out\install\$(RmlUiNativeRid)\$(RmlUiNativeName)</RmlUiNativePath>
+    </PropertyGroup>
+
+    <ItemGroup Condition="Exists('$(RmlUiNativePath)')">
+        <Content Include="$(RmlUiNativePath)" Link="$(RmlUiNativeName)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
     
     <ItemGroup>
         <EmbeddedResource Include="assets\**" />
+        <Content Include="assets\NotoSans.ttf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
 
     <ItemGroup Condition="'$(OS)' == 'Windows_NT' Or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">

@@ -4756,7 +4756,7 @@ public class PropertiesPanel : UiPanel
             ProjectManager.Instance.SetDirty(true);
     }
 
-    private void ApplyCubeUvMapping(bool mapped)
+    public void ApplyCubeUvMapping(bool mapped)
     {
         if (_currentObject == null) return;
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Hexa.NET.ImGui;
+using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -268,6 +269,39 @@ public class SceneTree : UiPanel
         {
             DeleteObject(obj);
         }
+    }
+
+    /// <summary>Renames an object without depending on the immediate-mode editor.</summary>
+    public bool RenameObject(SceneObject obj, string name)
+    {
+        if (obj == null) return false;
+        string trimmed = name?.Trim() ?? string.Empty;
+        if (trimmed.Length == 0 || trimmed == obj.GetDisplayName()) return false;
+        obj.Name = trimmed;
+        ProjectManager.Instance.SetDirty(true);
+        return true;
+    }
+
+    /// <summary>Moves an object in the hierarchy; a null parent moves it to the scene root.</summary>
+    public bool ReparentObject(SceneObject obj, SceneObject? newParent)
+    {
+        if (obj == null || ReferenceEquals(obj, newParent) ||
+            (newParent != null && newParent.IsDescendantOf(obj)))
+            return false;
+
+        if (ReferenceEquals(obj.Parent, newParent)) return false;
+        if (obj.Parent != null)
+            obj.Parent.RemoveChild(obj);
+        else
+            Viewport?.SceneObjects.Remove(obj);
+
+        if (newParent != null)
+            newParent.AddChild(obj);
+        else if (Viewport != null && !Viewport.SceneObjects.Contains(obj))
+            Viewport.SceneObjects.Add(obj);
+
+        ProjectManager.Instance.SetDirty(true);
+        return true;
     }
 
     // ── Rendering helpers ───────────────────────────────────────────────────
@@ -758,19 +792,6 @@ public class SceneTree : UiPanel
     }
 
     // ── Reparent ────────────────────────────────────────────────────────────
-
-    private void ReparentObject(SceneObject obj, SceneObject newParent)
-    {
-        if (obj.Parent != null)
-            obj.Parent.RemoveChild(obj);
-        else
-            Viewport?.SceneObjects.Remove(obj);
-
-        if (newParent != null)
-            newParent.AddChild(obj);
-        else
-            Viewport?.SceneObjects.Add(obj);
-    }
 
     // ── Naming helpers ──────────────────────────────────────────────────────
 

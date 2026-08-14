@@ -6003,6 +6003,34 @@ public class Viewport : UiPanel
         }
     }
 
+    /// <summary>Processes retained-mode viewport input using the same camera, gizmo and pick path as ImGui.</summary>
+    public unsafe void ProcessExternalPreviewInput(
+        Camera camera, CameraSceneObject? sceneObject, Vector2 imageMin, Vector2 imageSize,
+        Vector2 mousePosition, bool leftDown, bool rightDown, bool middleDown,
+        bool leftPressed, bool rightPressed, bool leftReleased, bool rightReleased,
+        float wheel, bool control, bool shift, float deltaTime, bool hovered,
+        bool keyW = false, bool keyS = false, bool keyA = false, bool keyD = false,
+        bool keyE = false, bool keyQ = false, bool keySpace = false,
+        bool keyGPressed = false, bool keyRPressed = false)
+    {
+        if (!IsPreviewViewport) return;
+        _previewInput.ProcessInput(camera, MainViewport?.Gizmo, imageMin, imageSize,
+            GlfwApiPreview, GlfwWindowPreview, mousePosition,
+            leftDown, rightDown, middleDown, leftPressed, rightPressed, leftReleased, rightReleased, wheel,
+            keyW, keyS, keyA, keyD, keyE, keyQ, keySpace, shift, keyGPressed, keyRPressed,
+            Math.Max(0.0001f, deltaTime), hovered, control, OverlaysEnabled);
+        sceneObject?.SyncTransformFromCamera();
+
+        if (!_previewInput.HasPendingPick) return;
+        var (pickX, pickY) = _previewInput.PendingPickPosition;
+        float relX = Math.Clamp((pickX - imageMin.X) / Math.Max(1f, imageSize.X), 0f, 1f);
+        float relY = Math.Clamp((pickY - imageMin.Y) / Math.Max(1f, imageSize.Y), 0f, 1f);
+        _pendingPreviewPickX = relX * _previewWidth;
+        _pendingPreviewPickY = relY * _previewHeight;
+        _pendingPreviewPickCtrl = _previewInput.PendingPickCtrl;
+        _previewInput.ClearPendingPick();
+    }
+
     public unsafe bool CaptureCurrentViewRgb(uint w, uint h, bool highQuality, out byte[] rgbPixels)
     {
         rgbPixels = Array.Empty<byte>();

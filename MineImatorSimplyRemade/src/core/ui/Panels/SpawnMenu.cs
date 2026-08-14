@@ -42,6 +42,8 @@ public enum ItemAtlasSource
 /// </summary>
 public class SpawnMenu : UiPanel
 {
+    public readonly record struct ParticleSourceOption(string Id, string Name, string ObjectType);
+
     private const string SceneryLoadLabel = "Load schematic...";
 
     private static readonly string[] WoolColors =
@@ -269,6 +271,115 @@ public class SpawnMenu : UiPanel
     {
         RefreshBlocksCategory();
         RefreshResourcePackOptions();
+    }
+
+    /// <summary>Returns the spawn categories in their presentation order.</summary>
+    public IReadOnlyList<string> GetSpawnCategories() => _categories.Keys.ToArray();
+
+    /// <summary>Returns objects available to a UI, filtered without mutating ImGui state.</summary>
+    public IReadOnlyList<string> GetSpawnObjects(string category, string? search = null)
+    {
+        if (!_categories.TryGetValue(category, out List<string>? objects))
+            return Array.Empty<string>();
+
+        return string.IsNullOrWhiteSpace(search)
+            ? objects.ToArray()
+            : objects.Where(name => name.Contains(search, StringComparison.OrdinalIgnoreCase)).ToArray();
+    }
+
+    /// <summary>Returns the variants for an object from <see cref="GetSpawnObjects"/>.</summary>
+    public IReadOnlyList<string> GetSpawnVariants(string category, string objectName)
+    {
+        if (category == "Blocks")
+            return BlockRegistry.GetVariants(objectName).Select(variant => variant.VariantKey).ToArray();
+
+        if (category == "Characters")
+        {
+            var character = CharacterRegistry.Characters.FirstOrDefault(entry => entry.Name == objectName);
+            return character?.TextureVariants.Select(variant => variant.Name).ToArray() ?? Array.Empty<string>();
+        }
+
+        if (category == "Primitives" && objectName is "Plane" or "Cube")
+            return new[] { "None", "Load texture..." };
+
+        return Array.Empty<string>();
+    }
+
+    public IReadOnlyList<string> GetResourcePackIds(bool sceneryOnly = false)
+    {
+        RefreshResourcePackOptions();
+        return (sceneryOnly ? _availableSceneryResourcePackIds : _availableResourcePackIds).ToArray();
+    }
+
+    public IReadOnlyList<string> GetItemSourceIds()
+    {
+        RefreshResourcePackOptions();
+        return _availableItemSourceIds.ToArray();
+    }
+
+    public IReadOnlyList<string> GetBlockSourceIds()
+    {
+        RefreshResourcePackOptions();
+        return _availableSourceModIds.ToArray();
+    }
+
+    public IReadOnlyList<string> GetItemTiles(ItemAtlasSource atlas, string sourceId = "", string? search = null)
+    {
+        if (atlas == ItemAtlasSource.ItemAtlas)
+            ItemsAtlas.EnsureProjectCustomTexturesLoaded();
+
+        var textures = atlas == ItemAtlasSource.BlockAtlas ? TerrainAtlas.Textures : ItemsAtlas.Textures;
+        return textures.Where(static pair => pair.Value != 0)
+            .Where(pair => IsTextureKeyFromSelectedSource(pair.Key, sourceId))
+            .Select(static pair => pair.Key)
+            .Where(key => string.IsNullOrWhiteSpace(search) || key.Contains(search, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(static key => key, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public IReadOnlyList<ParticleSourceOption> GetParticleSources(string? search = null) =>
+        GetParticleLibraryOptions()
+            .Where(option => string.IsNullOrWhiteSpace(search) || option.Name.Contains(search, StringComparison.OrdinalIgnoreCase))
+            .Select(static option => new ParticleSourceOption(option.Id, option.Name, option.ObjectType))
+            .ToArray();
+
+    public bool TrySpawnItemSelection(string tileKey, ItemAtlasSource atlas, bool extruded) =>
+        SpawnItemObject(tileKey, atlas, extruded) != null;
+
+    public bool TrySpawnParticleSelection(string sourceId)
+    {
+        string baseName = "Particle Spawner";
+        int nextNum = GetNextAvailableObjectNumber(baseName);
+        return SpawnParticleSpawnerObject(nextNum > 1 ? $"{baseName}{nextNum}" : baseName, sourceId) != null;
+    }
+
+    public bool TrySpawnCustomModel(string path) => SpawnCustomModelFromPath(path) != null;
+
+    public bool TrySpawnSchematic(string path, string resourcePackId, out string error)
+    {
+        SceneObject? result = SpawnSchematicFromPath(path, resourcePackId);
+        error = result == null ? _lastSchematicLoadError ?? "The schematic could not be loaded." : string.Empty;
+        return result != null;
+    }
+
+    /// <summary>Selects and spawns an entry exposed by the UI-neutral catalog.</summary>
+    public bool TrySpawnSelection(string category, string objectName, int variantIndex = -1)
+    {
+        if (!_categories.TryGetValue(category, out List<string>? objects) || !objects.Contains(objectName))
+            return false;
+
+        _selectedCategory = category;
+        _selectedObjectIndex = category switch
+        {
+            "Blocks" => BlockRegistry.Blocks.ToList().FindIndex(name => name == objectName),
+            "Characters" => CharacterRegistry.Characters.ToList().FindIndex(entry => entry.Name == objectName),
+            _ => objects.FindIndex(name => name == objectName)
+        };
+        _selectedVariantIndex = variantIndex;
+        _selectedCharTextureIndex = category == "Characters" ? variantIndex : -1;
+        if (_selectedObjectIndex < 0 || !CanSpawn()) return false;
+        TrySpawn();
+        return true;
     }
 
     private void RefreshResourcePackOptions()

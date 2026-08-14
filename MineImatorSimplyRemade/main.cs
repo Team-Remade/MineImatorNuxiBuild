@@ -316,9 +316,7 @@ public static class main
         Glfw.MakeContextCurrent(startupWindow.WindowHandle);
         _startupGl = GL.GetApi(Glfw.GetProcAddress);
         startupWindow.SetGL(_startupGl);
-        // No dockable panels in the startup splash - disable ini load/save entirely so
-        // this context can never race the main window's context over imgui.ini.
-        startupWindow.SetupImgui(null);
+        startupWindow.SetupRml();
 
         return startupWindow;
     }

@@ -1,189 +1,114 @@
-using System.Reflection;
-using System.Numerics;
-using System.Collections.Generic;
-using Hexa.NET.ImGui;
+using System.Net;
 using MineImatorSimplyRemade.core.startup;
+using MineImatorSimplyRemade.core.ui.rml;
+using RmlUiNet;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
-using StbImageSharp;
 
 namespace MineImatorSimplyRemade.core.window.windows;
 
-public class StartupProgressWindow : Window
+public sealed class StartupProgressWindow : Window
 {
-    private readonly record struct GifFrame(uint TextureId, int Width, int Height, int DelayMs);
-
     public StartupProgressState ProgressState { get; } = new();
 
-    private double _startTime = DateTime.UtcNow.TimeOfDay.TotalSeconds;
-    private bool _loadingGifAttempted;
-    private readonly List<GifFrame> _loadingGifFrames = new();
-    private int _loadingGifFrameIndex;
-    private double _loadingGifNextFrameAtSeconds;
+    private readonly DateTime _startedAt = DateTime.UtcNow;
+    private RmlWindowHost? _rml;
+    private ElementDocument? _document;
+    private Element? _title;
+    private Element? _step;
+    private Element? _phase;
+    private Element? _progress;
+    private Element? _percent;
+    private Element? _working;
+    private Element? _status;
+    private Element? _detail;
 
     public StartupProgressWindow(int width, int height, string title, Glfw glfw, GL gl = null)
-        : base(width, height, title, glfw, gl)
+        : base(width, height, title, glfw, gl) { }
+
+    public unsafe void SetupRml()
     {
+        _rml = new RmlWindowHost(Glfw, windowHandle, GL, WindowWidth, WindowHeight, "startup");
+        _document = _rml.LoadDocument(DocumentRml);
+        _title = _document.GetElementById("title");
+        _step = _document.GetElementById("step");
+        _phase = _document.GetElementById("phase");
+        _progress = _document.GetElementById("progress");
+        _percent = _document.GetElementById("percent");
+        _working = _document.GetElementById("working");
+        _status = _document.GetElementById("status");
+        _detail = _document.GetElementById("detail");
     }
 
-    protected override void RenderUi()
+    public override unsafe void Render()
     {
-        EnsureLoadingGifTexture();
+        if (_rml == null) throw new InvalidOperationException("SetupRml must be called before rendering.");
+        Glfw.MakeContextCurrent(windowHandle);
+        GL.Viewport(0, 0, (uint)Math.Max(1, WindowWidth), (uint)Math.Max(1, WindowHeight));
+        GL.ClearColor(ClearR, ClearG, ClearB, ClearA);
+        GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-        var viewport = ImGui.GetMainViewport();
-        ImGui.SetNextWindowPos(viewport.Pos);
-        ImGui.SetNextWindowSize(viewport.Size);
+        UpdateDocument();
+        _rml.Render(WindowWidth, WindowHeight);
+        Glfw.SwapBuffers(windowHandle);
+    }
 
-        ImGuiWindowFlags flags = ImGuiWindowFlags.NoTitleBar |
-                                 ImGuiWindowFlags.NoResize |
-                                 ImGuiWindowFlags.NoMove |
-                                 ImGuiWindowFlags.NoScrollbar |
-                                 ImGuiWindowFlags.NoSavedSettings;
-
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(22f, 20f));
-        ImGui.Begin("##StartupProgress", flags);
-        ImGui.PopStyleVar();
-
-        float clampedProgress = Math.Clamp(ProgressState.Progress, 0f, 1f);
-        string stepLabel = ProgressState.TotalSteps > 0
+    private void UpdateDocument()
+    {
+        float value = Math.Clamp(ProgressState.Progress, 0f, 1f);
+        string step = ProgressState.TotalSteps > 0
             ? $"Step {Math.Clamp(ProgressState.CurrentStep, 1, ProgressState.TotalSteps)}/{ProgressState.TotalSteps}"
             : "Startup";
+        int dots = (int)((DateTime.UtcNow - _startedAt).TotalSeconds * 2) % 4;
 
-        ImGui.TextColored(new Vector4(0.92f, 0.74f, 0.31f, 1f), ProgressState.Title);
-        ImGui.TextDisabled(stepLabel);
-        ImGui.Separator();
-
-        double elapsed = DateTime.UtcNow.TimeOfDay.TotalSeconds - _startTime;
-        int dots = ((int)(elapsed * 2.0) % 4);
-        string animated = "Working" + new string('.', dots);
-
-        ImGui.Dummy(new Vector2(0, 6));
-        ImGui.TextWrapped(ProgressState.Phase);
-        ImGui.Dummy(new Vector2(0, 10));
-        ImGui.ProgressBar(clampedProgress, new Vector2(-1, 16f), $"{MathF.Round(clampedProgress * 100f)}%");
-        ImGui.Dummy(new Vector2(0, 10));
-        ImGui.Text(animated);
-        ImGui.TextWrapped(ProgressState.Status);
-
-        if (!string.IsNullOrWhiteSpace(ProgressState.Detail))
-        {
-            ImGui.Dummy(new Vector2(0, 6));
-            ImGui.TextColored(new Vector4(0.70f, 0.74f, 0.80f, 1f), ProgressState.Detail);
-        }
-
-        DrawLoadingGifBottomRight();
-
-        ImGui.End();
+        SetText(_title, ProgressState.Title);
+        SetText(_step, step);
+        SetText(_phase, ProgressState.Phase);
+        _progress?.SetAttribute("value", value.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture));
+        SetText(_percent, $"{MathF.Round(value * 100f)}%");
+        SetText(_working, "Working" + new string('.', dots));
+        SetText(_status, ProgressState.Status);
+        SetText(_detail, ProgressState.Detail);
+        _detail?.SetProperty("display", string.IsNullOrWhiteSpace(ProgressState.Detail) ? "none" : "block");
     }
 
-    private unsafe void EnsureLoadingGifTexture()
+    private static void SetText(Element? element, string? value) =>
+        element?.SetInnerRml(WebUtility.HtmlEncode(value ?? string.Empty));
+
+    public override void Dispose()
     {
-        if (_loadingGifAttempted)
-            return;
-
-        _loadingGifAttempted = true;
-
-        Assembly assembly = Assembly.GetExecutingAssembly();
-        using Stream? stream = assembly.GetManifestResourceStream("MineImatorSimplyRemade.assets.img.loading.gif");
-        if (stream == null)
-        {
-            Console.WriteLine("Embedded loading.gif not found.");
-            return;
-        }
-
-        List<AnimatedFrameResult> frames = new();
-        try
-        {
-            foreach (AnimatedFrameResult frame in ImageResult.AnimatedGifFramesFromStream(stream, ColorComponents.RedGreenBlueAlpha))
-                frames.Add(frame);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to decode loading.gif with stb_image: {ex.Message}");
-            return;
-        }
-
-        if (frames.Count == 0)
-            return;
-
-        foreach (AnimatedFrameResult frame in frames)
-        {
-            if (frame.Width <= 0 || frame.Height <= 0 || frame.Data.Length == 0)
-                continue;
-
-            uint texture = GL.GenTexture();
-            GL.BindTexture(GLEnum.Texture2D, texture);
-
-            fixed (byte* pixels = frame.Data)
-            {
-                GL.TexImage2D(
-                    GLEnum.Texture2D,
-                    0,
-                    InternalFormat.Rgba8,
-                    (uint)frame.Width,
-                    (uint)frame.Height,
-                    0,
-                    PixelFormat.Rgba,
-                    GLEnum.UnsignedByte,
-                    pixels);
-            }
-
-            GL.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
-            GL.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
-            GL.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
-            GL.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
-
-            int delayMs = frame.DelayInMs > 0 ? frame.DelayInMs : 80;
-            _loadingGifFrames.Add(new GifFrame(texture, frame.Width, frame.Height, delayMs));
-        }
-
-        GL.BindTexture(GLEnum.Texture2D, 0);
-
-        _loadingGifFrameIndex = 0;
-        _loadingGifNextFrameAtSeconds = -1;
+        _rml?.Dispose();
+        _rml = null;
+        base.Dispose();
     }
 
-    private unsafe void DrawLoadingGifBottomRight()
-    {
-        if (_loadingGifFrames.Count == 0)
-            return;
-
-        AdvanceLoadingGifFrame();
-        GifFrame frame = _loadingGifFrames[_loadingGifFrameIndex];
-
-        ImGuiStylePtr style = ImGui.GetStyle();
-        Vector2 windowSize = ImGui.GetWindowSize();
-
-        const float maxSize = 84f;
-        float scale = MathF.Min(maxSize / frame.Width, maxSize / frame.Height);
-        scale = MathF.Max(0.1f, scale);
-
-        Vector2 drawSize = new(frame.Width * scale, frame.Height * scale);
-        Vector2 drawPos = new(
-            windowSize.X - style.WindowPadding.X - drawSize.X,
-            windowSize.Y - style.WindowPadding.Y - drawSize.Y);
-
-        ImGui.SetCursorPos(drawPos);
-        ImGui.Image(new ImTextureRef(texId: (ulong)frame.TextureId), drawSize);
-    }
-
-    private void AdvanceLoadingGifFrame()
-    {
-        if (_loadingGifFrames.Count <= 1)
-            return;
-
-        double now = ImGui.GetTime();
-
-        if (_loadingGifNextFrameAtSeconds < 0)
-        {
-            _loadingGifNextFrameAtSeconds = now + (_loadingGifFrames[_loadingGifFrameIndex].DelayMs / 1000.0);
-            return;
-        }
-
-        while (now >= _loadingGifNextFrameAtSeconds)
-        {
-            _loadingGifFrameIndex = (_loadingGifFrameIndex + 1) % _loadingGifFrames.Count;
-            _loadingGifNextFrameAtSeconds += _loadingGifFrames[_loadingGifFrameIndex].DelayMs / 1000.0;
-        }
-    }
+    private const string DocumentRml = """
+        <rml>
+        <head>
+          <style>
+            body { width: 100%; height: 100%; margin: 0; padding: 20px 22px; box-sizing: border-box;
+                   background: #1c1c21; color: #e8e8ec; font-family: "Noto Sans"; font-size: 14px; }
+            #header { display: flex; flex-direction: row; align-items: center; padding-bottom: 10px;
+                      border-bottom: 1px #45454d; }
+            #title { flex: 1; color: #ebbd4f; font-size: 20px; font-weight: bold; }
+            #step { color: #a8a8b0; }
+            #phase { margin-top: 15px; margin-bottom: 10px; font-size: 16px; }
+            #bar-row { display: flex; flex-direction: row; align-items: center; }
+            progress { flex: 1; height: 16px; color: #d8a83e; background-color: #35353c; }
+            #percent { width: 52px; margin-left: 10px; text-align: right; color: #c6c6cc; }
+            #working { margin-top: 11px; color: #d5d5da; }
+            #status { margin-top: 3px; white-space: normal; }
+            #detail { margin-top: 7px; color: #b2bdcc; white-space: normal; }
+          </style>
+        </head>
+        <body>
+          <div id="header"><div id="title"></div><div id="step"></div></div>
+          <div id="phase"></div>
+          <div id="bar-row"><progress id="progress" value="0" max="1"/><div id="percent">0%</div></div>
+          <div id="working">Working</div>
+          <div id="status"></div>
+          <div id="detail"></div>
+        </body>
+        </rml>
+        """;
 }

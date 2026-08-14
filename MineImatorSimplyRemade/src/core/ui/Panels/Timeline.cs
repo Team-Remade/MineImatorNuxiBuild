@@ -203,6 +203,12 @@ public class Timeline : UiPanel
     public int   MaxFrames    => _maxFrames;
     public float Framerate    => _frameRate;
     public bool  IsPlaying    => _isPlaying;
+    public bool  AutoKeyframe => _autoKeyframe;
+    public bool  LoopPlayback => _loopPlayback;
+    public float PixelsPerFrame => _pixelsPerFrame;
+    public IReadOnlyList<TimelineMarker> Markers => _markers;
+    public int? PlaybackRegionStart => _playbackRegionStart;
+    public int? PlaybackRegionEnd => _playbackRegionEnd;
     public bool  IsWindowHovered { get; private set; }
     public Vector2 WindowPos { get; private set; }
     public Vector2 WindowSize { get; private set; }
@@ -214,6 +220,59 @@ public class Timeline : UiPanel
             return;
 
         _frameRate = clamped;
+    }
+
+    public void SetMaxFrames(int frames) => _maxFrames = Math.Max(10, frames);
+    public void SetAutoKeyframe(bool enabled) => _autoKeyframe = enabled;
+    public void SetLoopPlayback(bool enabled) => _loopPlayback = enabled;
+    public void SetTimelineZoom(float pixelsPerFrame) =>
+        _pixelsPerFrame = Math.Clamp(pixelsPerFrame, MinPixelsPerFrame, MaxPixelsPerFrame);
+
+    public TimelineMarker AddMarker(int frame, string label)
+    {
+        var marker = new TimelineMarker
+        {
+            Frame = Math.Clamp(frame, 0, _maxFrames),
+            Label = string.IsNullOrWhiteSpace(label) ? "Marker" : label.Trim()
+        };
+        _markers.Add(marker);
+        return marker;
+    }
+
+    public void UpdateMarker(TimelineMarker marker, int frame, string label)
+    {
+        if (!_markers.Contains(marker)) return;
+        marker.Frame = Math.Clamp(frame, 0, _maxFrames);
+        marker.Label = string.IsNullOrWhiteSpace(label) ? "Marker" : label.Trim();
+    }
+
+    public void RemoveMarker(TimelineMarker marker) => _markers.Remove(marker);
+
+    public void SetPlaybackRegion(int? start, int? end)
+    {
+        if (!start.HasValue || !end.HasValue)
+        {
+            _playbackRegionStart = null;
+            _playbackRegionEnd = null;
+            return;
+        }
+        _playbackRegionStart = Math.Clamp(Math.Min(start.Value, end.Value), 0, _maxFrames);
+        _playbackRegionEnd = Math.Clamp(Math.Max(start.Value, end.Value), 0, _maxFrames);
+    }
+
+    public void UpdateAudioTrack(TimelineAudioTrack track, int startFrame, float volume, bool muted, bool loop)
+    {
+        if (!_audioTracks.Contains(track)) return;
+        track.ManifestEntry.StartFrame = Math.Clamp(startFrame, 0, _maxFrames);
+        track.ManifestEntry.Volume = Math.Clamp(volume, 0f, 1f);
+        track.ManifestEntry.Muted = muted;
+        track.ManifestEntry.Loop = loop;
+        if (track.IsLoaded)
+        {
+            Services.AudioEngine.SetSourceVolume(track.Source, muted ? 0f : track.ManifestEntry.Volume);
+            Services.AudioEngine.SetSourceLooping(track.Source, loop);
+        }
+        SyncAudioWithPlayback();
     }
 
     public void SetCurrentFrame(int frame)
@@ -2371,7 +2430,7 @@ public class Timeline : UiPanel
         }
     }
 
-    private void MoveKeyframe(SceneObject obj, string propertyPath, int fromFrame, int toFrame)
+    public void MoveKeyframe(SceneObject obj, string propertyPath, int fromFrame, int toFrame)
     {
         string key = $"{obj.ObjectId}.{propertyPath}";
         if (!_propertyKeyframes.TryGetValue(key, out var list)) return;
@@ -2382,6 +2441,19 @@ public class Timeline : UiPanel
         list.Sort((a, b) => a.Frame.CompareTo(b.Frame));
         SaveKeyframesToObject(obj, propertyPath);
         RecalculateTimelineLength();
+        RebuildDisplayRows();
+    }
+
+    public void SetKeyframeInterpolation(SceneObject obj, string propertyPath, int frame, string interpolation)
+    {
+        string key = $"{obj.ObjectId}.{propertyPath}";
+        if (!_propertyKeyframes.TryGetValue(key, out var list))
+            LoadKeyframesFromObject(obj, propertyPath);
+        if (!_propertyKeyframes.TryGetValue(key, out list)) return;
+        TimelineKeyframe? keyframe = list.Find(item => item.Frame == frame);
+        if (keyframe == null) return;
+        keyframe.InterpolationType = interpolation is "step" or "cubic" ? interpolation : "linear";
+        SaveKeyframesToObject(obj, propertyPath);
     }
 
     // ── Load / save ───────────────────────────────────────────────────────────
