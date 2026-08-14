@@ -4797,6 +4797,17 @@ public class PropertiesPanel : UiPanel
             ProjectManager.Instance.SetDirty(true);
     }
 
+    /// <summary>Rebuilds a text object's GPU geometry using this panel's render context.</summary>
+    public bool RebuildTextMesh(SceneObject obj)
+    {
+        if (Gl == null || !string.Equals(obj.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(obj.ObjectType, "Text Mesh", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        TextMeshFactory.Rebuild(obj, Gl);
+        return true;
+    }
+
     /// <summary>
     /// Applies an appearance-setting mutation to this object and all current descendants.
     /// </summary>

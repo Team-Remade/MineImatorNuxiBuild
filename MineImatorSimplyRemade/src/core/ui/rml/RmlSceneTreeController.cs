@@ -34,6 +34,7 @@ public sealed class RmlSceneTreeController : IDisposable
         _root = root;
         _viewport = viewport;
         _operations = operations;
+        _root.AddEventListener("keydown", HandleKeyDown);
         SelectionManager.Instance.SelectionChanged += OnSelectionChanged;
         Refresh(force: true);
     }
@@ -192,6 +193,20 @@ public sealed class RmlSceneTreeController : IDisposable
         return result;
     }
 
+    private List<SceneObject> FlattenDisplayed()
+    {
+        var result = new List<SceneObject>();
+        void Add(SceneObject obj)
+        {
+            if (obj.HideInSceneTree || !MatchesFilterBranch(obj)) return;
+            result.Add(obj);
+            if (_collapsed.Contains(obj) && string.IsNullOrWhiteSpace(_search)) return;
+            foreach (SceneObject child in obj.Children) Add(child);
+        }
+        foreach (SceneObject root in _viewport.SceneObjects) Add(root);
+        return result;
+    }
+
     private void Select(SceneObject obj, Event e)
     {
         bool control = Parameter(e, "ctrl_key") || Parameter(e, "meta_key");
@@ -212,6 +227,66 @@ public sealed class RmlSceneTreeController : IDisposable
             SelectionManager.Instance.SelectObject(obj);
         }
         _lastClicked = obj;
+    }
+
+    private void HandleKeyDown(Event e)
+    {
+        KeyIdentifier key = Key(e);
+        if (key == KeyIdentifier.KI_ESCAPE && _contextTarget != null)
+        {
+            e.StopPropagation();
+            CloseContext();
+            return;
+        }
+        if (e.TargetElement is ElementFormControlInput) return;
+
+        SceneObject? selected = SelectionManager.Instance.SelectedObjects.LastOrDefault();
+        List<SceneObject> displayed = FlattenDisplayed();
+        if (displayed.Count == 0) return;
+        int index = selected == null ? -1 : displayed.IndexOf(selected);
+        SceneObject? next = null;
+        switch (key)
+        {
+            case KeyIdentifier.KI_UP:
+                next = displayed[Math.Max(0, index <= 0 ? 0 : index - 1)];
+                break;
+            case KeyIdentifier.KI_DOWN:
+                next = displayed[Math.Min(displayed.Count - 1, index + 1)];
+                break;
+            case KeyIdentifier.KI_HOME:
+                next = displayed[0];
+                break;
+            case KeyIdentifier.KI_END:
+                next = displayed[^1];
+                break;
+            case KeyIdentifier.KI_LEFT when selected != null:
+                if (selected.Children.Count > 0 && !_collapsed.Contains(selected)) Toggle(selected);
+                else next = selected.Parent;
+                break;
+            case KeyIdentifier.KI_RIGHT when selected != null:
+                if (selected.Children.Count > 0 && _collapsed.Contains(selected)) Toggle(selected);
+                else next = selected.Children.FirstOrDefault(child => !child.HideInSceneTree && MatchesFilterBranch(child));
+                break;
+            case KeyIdentifier.KI_F2 when selected != null:
+                BeginRename(selected);
+                break;
+            case KeyIdentifier.KI_DELETE when selected != null:
+                _operations.DeleteSelectedObjects();
+                break;
+            default:
+                return;
+        }
+        e.StopPropagation();
+        if (next != null) SelectSingleAndFocus(next);
+    }
+
+    private void SelectSingleAndFocus(SceneObject obj)
+    {
+        SelectionManager.Instance.ClearSelection();
+        SelectionManager.Instance.SelectObject(obj);
+        _lastClicked = obj;
+        string? id = _rows.FirstOrDefault(pair => ReferenceEquals(pair.Value, obj)).Key;
+        if (!string.IsNullOrEmpty(id)) _root.GetElementById(id)?.Focus();
     }
 
     private void RenameSelected()

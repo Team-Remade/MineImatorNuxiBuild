@@ -153,6 +153,28 @@ public sealed class RmlPropertiesController : IDisposable
             if (obj.ObjectType == "Sphere") { ButtonRow(html, "Smooth", "prop-sphere-smooth", obj.PrimitiveSphereSmooth ? "On" : "Off"); NumberRow(html, "Segments", "prop-sphere-segments", obj.PrimitiveSphereSegments); NumberRow(html, "Rings", "prop-sphere-rings", obj.PrimitiveSphereRings); }
             html.Append("</div>");
         }
+        if (obj.SpawnCategory.Equals("Primitives", StringComparison.OrdinalIgnoreCase) &&
+            obj.ObjectType.Equals("Text Mesh", StringComparison.OrdinalIgnoreCase))
+        {
+            html.Append("<div class='prop-section'><div class='prop-heading'>Text Mesh</div>");
+            TextRow(html, "Base text", "prop-text-base", obj.TextMeshBaseString);
+            TextRow(html, "Override", "prop-text-override", obj.TextMeshStringOverride);
+            TextRow(html, "Font", "prop-text-font", obj.TextMeshFontPath);
+            ButtonRow(html, "Horizontal", "prop-text-horizontal", HorizontalAlignmentName(obj.TextMeshHorizontalAlignment));
+            ButtonRow(html, "Vertical", "prop-text-vertical", VerticalAlignmentName(obj.TextMeshVerticalAlignment));
+            ButtonRow(html, "Antialiasing", "prop-text-antialias", obj.TextMeshAntialiasing ? "On" : "Off");
+            NumberRow(html, "Font size", "prop-text-size", obj.TextMeshFontSize);
+            ButtonRow(html, "Outline", "prop-text-outline", obj.TextMeshOutlineEnabled ? "On" : "Off");
+            if (obj.TextMeshOutlineEnabled)
+            {
+                Vector4Row(html, "Outline RGBA", "text-outline-color", obj.TextMeshOutlineColor);
+                NumberRow(html, "Thickness", "prop-text-outline-thickness", obj.TextMeshOutlineThickness);
+            }
+            ButtonRow(html, "Extruded", "prop-text-extruded", obj.TextMeshExtruded ? "On" : "Off");
+            if (obj.TextMeshExtruded) NumberRow(html, "Depth", "prop-text-depth", obj.TextMeshExtrusionDepth);
+            ButtonRow(html, "Face camera", "prop-text-face", obj.TextMeshFaceCamera ? "On" : "Off");
+            html.Append("</div>");
+        }
     }
 
     private void BindVector(string prefix, vec3 initial, Action<vec3> setter)
@@ -215,6 +237,28 @@ public sealed class RmlPropertiesController : IDisposable
             BindVector("particle-gravity", particle.Gravity, value => { particle.Gravity = value; particle.ResetRuntime(); });
             Bind("prop-particle-restart", particle.ResetRuntime);
         }
+        if (obj.SpawnCategory.Equals("Primitives", StringComparison.OrdinalIgnoreCase) &&
+            obj.ObjectType.Equals("Text Mesh", StringComparison.OrdinalIgnoreCase))
+        {
+            BindTextMeshText("prop-text-base", obj, null, value => obj.TextMeshBaseString = value);
+            BindTextMeshText("prop-text-override", obj, null, value => obj.TextMeshStringOverride = value);
+            BindTextMeshText("prop-text-font", obj, "text.font", value => obj.TextMeshFontPath = value.Trim());
+            BindTextMesh("prop-text-horizontal", obj, "text.horizontal_alignment", () => obj.TextMeshHorizontalAlignment = (obj.TextMeshHorizontalAlignment + 1) % 3);
+            BindTextMesh("prop-text-vertical", obj, "text.vertical_alignment", () => obj.TextMeshVerticalAlignment = (obj.TextMeshVerticalAlignment + 1) % 3);
+            BindTextMesh("prop-text-antialias", obj, "text.antialiasing", () => obj.TextMeshAntialiasing = !obj.TextMeshAntialiasing);
+            BindTextMeshNumber("prop-text-size", obj, "text.font_size", value => obj.TextMeshFontSize = Math.Clamp(value, 1f, 512f));
+            BindTextMesh("prop-text-outline", obj, "text.outline_enabled", () => obj.TextMeshOutlineEnabled = !obj.TextMeshOutlineEnabled);
+            BindVector4("text-outline-color", obj.TextMeshOutlineColor, value =>
+            {
+                obj.TextMeshOutlineColor = value;
+                Record(obj, "text.outline.r", "text.outline.g", "text.outline.b", "text.outline.a");
+                RebuildTextMesh(obj);
+            });
+            BindTextMeshNumber("prop-text-outline-thickness", obj, "text.outline_thickness", value => obj.TextMeshOutlineThickness = Math.Clamp(value, 0f, 64f));
+            BindTextMesh("prop-text-extruded", obj, null, () => obj.TextMeshExtruded = !obj.TextMeshExtruded);
+            BindTextMeshNumber("prop-text-depth", obj, null, value => obj.TextMeshExtrusionDepth = Math.Clamp(value, 0.001f, 10f));
+            Bind("prop-text-face", () => obj.TextMeshFaceCamera = !obj.TextMeshFaceCamera);
+        }
         Bind("prop-plane-face", () => obj.PrimitivePlaneFaceCamera = !obj.PrimitivePlaneFaceCamera);
         Bind("prop-cube-map", () => _operations?.ApplyCubeUvMapping(!obj.PrimitiveCubeMapped));
         Bind("prop-sphere-smooth", () => { obj.PrimitiveSphereSmooth = !obj.PrimitiveSphereSmooth; RebuildSphere(obj); });
@@ -234,6 +278,21 @@ public sealed class RmlPropertiesController : IDisposable
         MaterialSettings material = _object.MaterialSettings ?? new MaterialSettings();
         edit(material);
         _object.MaterialSettings = material;
+    }
+
+    private void BindTextMesh(string id, SceneObject obj, string? path, Action setter) =>
+        Bind(id, () => { setter(); if (path != null) _timeline?.RecordAutoKeyframe(obj, path); RebuildTextMesh(obj); });
+
+    private void BindTextMeshText(string id, SceneObject obj, string? path, Action<string> setter) =>
+        BindText(id, value => { setter(value); if (path != null) _timeline?.RecordAutoKeyframe(obj, path); RebuildTextMesh(obj); });
+
+    private void BindTextMeshNumber(string id, SceneObject obj, string? path, Action<float> setter) =>
+        BindNumber(id, value => { setter(value); if (path != null) _timeline?.RecordAutoKeyframe(obj, path); RebuildTextMesh(obj); });
+
+    private void RebuildTextMesh(SceneObject obj) => _operations?.RebuildTextMesh(obj);
+    private void Record(SceneObject obj, params string[] paths)
+    {
+        foreach (string path in paths) _timeline?.RecordAutoKeyframe(obj, path);
     }
 
     private void Bind(string id, Action action) => _root.GetElementById(id)?.AddEventListener("click", _ => { action(); Changed(); Build(); });
@@ -257,6 +316,28 @@ public sealed class RmlPropertiesController : IDisposable
         for (int i = 0; i < 3; i++) h.Append("<span class='axis'>").Append(i == 0 ? "X" : i == 1 ? "Y" : "Z").Append("</span><input id='prop-").Append(prefix).Append('-').Append(i).Append("' value='").Append(v[i].ToString("0.###", CultureInfo.InvariantCulture)).Append("'/>");
         h.Append("</div>");
     }
+    private void BindVector4(string prefix, vec4 initial, Action<vec4> setter)
+    {
+        float[] values = [initial.x, initial.y, initial.z, initial.w];
+        for (int axis = 0; axis < 4; axis++)
+        {
+            int index = axis;
+            BindNumber($"prop-{prefix}-{axis}", value =>
+            {
+                values[index] = Math.Clamp(value, 0f, 1f);
+                setter(new vec4(values[0], values[1], values[2], values[3]));
+            });
+        }
+    }
+    private static void Vector4Row(StringBuilder h, string label, string prefix, vec4 value)
+    {
+        h.Append("<div class='prop-row'><span class='prop-label'>").Append(E(label)).Append("</span>");
+        float[] values = [value.x, value.y, value.z, value.w];
+        for (int i = 0; i < 4; i++) h.Append("<span class='axis'>").Append("RGBA"[i]).Append("</span><input id='prop-").Append(prefix).Append('-').Append(i).Append("' value='").Append(values[i].ToString("0.###", CultureInfo.InvariantCulture)).Append("'/>");
+        h.Append("</div>");
+    }
+    private static string HorizontalAlignmentName(int value) => value switch { 0 => "Left", 2 => "Right", _ => "Center" };
+    private static string VerticalAlignmentName(int value) => value switch { 0 => "Top", 2 => "Bottom", _ => "Center" };
     private static string E(string value) => WebUtility.HtmlEncode(value ?? string.Empty);
     public void Dispose() => SelectionManager.Instance.SelectionChanged -= OnSelectionChanged;
 }
