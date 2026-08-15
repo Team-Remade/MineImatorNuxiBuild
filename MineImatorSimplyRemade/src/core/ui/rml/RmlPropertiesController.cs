@@ -201,10 +201,18 @@ public sealed class RmlPropertiesController : IDisposable
         ButtonRow(html, "Rotation", "prop-inherit-rotation", obj.InheritRotation ? "Inherited" : "Local");
         ButtonRow(html, "Scale", "prop-inherit-scale", obj.InheritScale ? "Inherited" : "Local");
         ButtonRow(html, "Pivot", "prop-inherit-pivot", obj.InheritPivotOffset ? "Inherited" : "Local");
+        ButtonRow(html, "Visibility", "prop-inherit-visibility", obj.InheritVisibility ? "Inherited" : "Local");
+        ButtonRow(html, "Visible", "prop-visible", obj.ObjectVisible ? "On" : "Off");
+        if (obj is not CameraSceneObject and not LightSceneObject)
+            ButtonRow(html, "Cast shadows", "prop-cast-shadow", obj.CastShadow ? "On" : "Off");
         VectorRow(html, "Pivot offset", "pivot", obj.PivotOffset);
         ButtonRow(html, "Invert faces", "prop-invert", obj.InvertFaces ? "On" : "Off");
         ButtonRow(html, "Blur texture", "prop-blur", obj.BlurTexture ? "On" : "Off");
         ButtonRow(html, "Mipmaps", "prop-mipmaps", obj.TextureMipmaps ? "On" : "Off");
+        ButtonRow(html, "Ambient occlusion", "prop-include-ao", obj.IncludeInAmbientOcclusion ? "On" : "Off");
+        ButtonRow(html, "Fog", "prop-include-fog", obj.IncludeInFog ? "On" : "Off");
+        ButtonRow(html, "High quality", "prop-render-hq", obj.RenderInHighQuality ? "On" : "Off");
+        ButtonRow(html, "Low quality", "prop-render-lq", obj.RenderInLowQuality ? "On" : "Off");
         NumberRow(html, "Depth offset", "prop-depth", obj.RenderDepthOffset);
         html.Append("</div>");
     }
@@ -361,11 +369,39 @@ public sealed class RmlPropertiesController : IDisposable
 
     private void BindInheritance(SceneObject obj)
     {
+        void ApplyToSubtree(Action<SceneObject> apply)
+        {
+            apply(obj);
+            foreach (SceneObject child in obj.GetAllDescendants())
+                apply(child);
+        }
+
         Bind("prop-inherit-position", () => obj.InheritPosition = !obj.InheritPosition);
         Bind("prop-inherit-rotation", () => obj.InheritRotation = !obj.InheritRotation);
         Bind("prop-inherit-scale", () => obj.InheritScale = !obj.InheritScale);
         Bind("prop-inherit-pivot", () => obj.InheritPivotOffset = !obj.InheritPivotOffset);
-        Bind("prop-invert", () => obj.InvertFaces = !obj.InvertFaces);
+        Bind("prop-inherit-visibility", () =>
+        {
+            bool inherited = !obj.InheritVisibility;
+            obj.InheritVisibility = inherited;
+            foreach (SceneObject child in obj.GetAllDescendants())
+                child.InheritVisibility = inherited;
+        });
+        Bind("prop-visible", () =>
+        {
+            obj.SetObjectVisible(!obj.ObjectVisible);
+            Record(obj, "visible");
+        });
+        Bind("prop-cast-shadow", () =>
+        {
+            bool enabled = !obj.CastShadow;
+            ApplyToSubtree(node => node.CastShadow = enabled);
+        });
+        Bind("prop-invert", () =>
+        {
+            bool enabled = !obj.InvertFaces;
+            ApplyToSubtree(node => node.InvertFaces = enabled);
+        });
         Bind("prop-blur", () =>
         {
             bool enabled = !obj.BlurTexture;
@@ -377,6 +413,26 @@ public sealed class RmlPropertiesController : IDisposable
             bool enabled = !obj.TextureMipmaps;
             if (_operations != null) _operations.ApplyTextureFiltering(obj, obj.BlurTexture, enabled);
             else obj.TextureMipmaps = enabled;
+        });
+        Bind("prop-include-ao", () =>
+        {
+            bool enabled = !obj.IncludeInAmbientOcclusion;
+            ApplyToSubtree(node => node.IncludeInAmbientOcclusion = enabled);
+        });
+        Bind("prop-include-fog", () =>
+        {
+            bool enabled = !obj.IncludeInFog;
+            ApplyToSubtree(node => node.IncludeInFog = enabled);
+        });
+        Bind("prop-render-hq", () =>
+        {
+            bool enabled = !obj.RenderInHighQuality;
+            ApplyToSubtree(node => node.RenderInHighQuality = enabled);
+        });
+        Bind("prop-render-lq", () =>
+        {
+            bool enabled = !obj.RenderInLowQuality;
+            ApplyToSubtree(node => node.RenderInLowQuality = enabled);
         });
         BindNumber("prop-depth", value => obj.RenderDepthOffset = value);
         BindVector("pivot", obj.PivotOffset, value => obj.PivotOffset = value);
@@ -433,16 +489,25 @@ public sealed class RmlPropertiesController : IDisposable
         }
         if (obj is LightSceneObject light)
         {
-            Bind("prop-light-type", () => light.Type = light.Type == LightType.Point ? LightType.Spot : LightType.Point);
+            Bind("prop-light-type", () =>
+            {
+                light.Type = light.Type == LightType.Point ? LightType.Spot : LightType.Point;
+                _timeline?.RecordAutoKeyframe(obj, "light.type");
+            });
             BindAnimatedVector("light-color", obj, "light.color", new vec3(light.LightColor.r, light.LightColor.g, light.LightColor.b),
                 value => light.LightColor = new vec4(Math.Clamp(value.x, 0f, 1f), Math.Clamp(value.y, 0f, 1f), Math.Clamp(value.z, 0f, 1f), 1f), 0f, 1f);
-            BindAnimatedNumber("prop-light-energy", obj, "light.energy", value => light.LightEnergy = Math.Max(0, value));
-            BindAnimatedNumber("prop-light-range", obj, "light.range", value => light.LightRange = Math.Max(0.01f, value));
-            BindAnimatedNumber("prop-light-indirect", obj, "light.indirect_energy", value => light.LightIndirectEnergy = Math.Max(0, value));
-            BindAnimatedNumber("prop-light-specular", obj, "light.specular", value => light.LightSpecular = Math.Max(0, value));
+            BindAnimatedNumber("prop-light-energy", obj, "light.energy", value => light.LightEnergy = Math.Clamp(value, 0f, 100f));
+            BindAnimatedNumber("prop-light-range", obj, "light.range", value => light.LightRange = Math.Clamp(value, 0.01f, 500f));
+            BindAnimatedNumber("prop-light-indirect", obj, "light.indirect_energy", value => light.LightIndirectEnergy = Math.Clamp(value, 0f, 16f));
+            BindAnimatedNumber("prop-light-specular", obj, "light.specular", value => light.LightSpecular = Math.Clamp(value, 0f, 1f));
             Bind("prop-light-shadow", () => light.LightShadowEnabled = !light.LightShadowEnabled);
-            BindAnimatedNumber("prop-light-angle", obj, "light.spot_angle", value => light.LightSpotAngle = Math.Clamp(value, 0.1f, 180f));
-            BindAnimatedNumber("prop-light-blend", obj, "light.spot_blend", value => light.LightSpotBlend = Math.Clamp(value, 0, light.LightSpotAngle));
+            BindAnimatedNumber("prop-light-angle", obj, "light.spot_angle", value =>
+            {
+                light.LightSpotAngle = Math.Clamp(value, 1f, 170f);
+                light.LightSpotBlend = Math.Min(light.LightSpotBlend, light.LightSpotAngle * 0.5f);
+            });
+            BindAnimatedNumber("prop-light-blend", obj, "light.spot_blend", value =>
+                light.LightSpotBlend = Math.Clamp(value, 0, Math.Max(0, light.LightSpotAngle * 0.5f)));
             Bind("prop-light-reset", () =>
             {
                 light.Type = LightType.Point;
@@ -461,16 +526,16 @@ public sealed class RmlPropertiesController : IDisposable
         {
             Bind("prop-particle-source", () => CycleParticleSource(particle));
             Bind("prop-particle-source-clear", () => particle.SetParticleSource("", ""));
-            Bind("prop-particle-emitting", () => { particle.Emitting = !particle.Emitting; particle.ResetRuntime(); _timeline?.RecordAutoKeyframe(obj, "particle.emitting"); });
+            Bind("prop-particle-emitting", () => { particle.Emitting = !particle.Emitting; _timeline?.RecordAutoKeyframe(obj, "particle.emitting"); });
             Bind("prop-particle-oneshot", () => { particle.OneShot = !particle.OneShot; particle.ResetRuntime(); _timeline?.RecordAutoKeyframe(obj, "particle.one_shot"); });
             Bind("prop-particle-top-level", () => { particle.TopLevelParticles = !particle.TopLevelParticles; particle.ResetRuntime(); _timeline?.RecordAutoKeyframe(obj, "particle.top_level_particles"); });
             BindParticleNumber("prop-particle-amount", obj, particle, "particle.amount", value => particle.Amount = Math.Clamp((int)value, 1, 10000));
-            BindParticleNumber("prop-particle-rate", obj, particle, "particle.spawn_rate", value => particle.SpawnRate = Math.Max(0, value));
-            BindParticleNumber("prop-particle-life-min", obj, particle, "particle.lifetime_min", value => particle.LifetimeMin = Math.Max(0.01f, value));
-            BindParticleNumber("prop-particle-life-max", obj, particle, "particle.lifetime_max", value => particle.LifetimeMax = Math.Max(0.01f, value));
-            BindParticleNumber("prop-particle-speed", obj, particle, "particle.simulation_speed", value => particle.SimulationSpeed = Math.Max(0, value));
-            BindParticleNumber("prop-particle-linear-damping", obj, particle, "particle.linear_damping", value => particle.LinearDamping = Math.Max(0, value));
-            BindParticleNumber("prop-particle-angular-damping", obj, particle, "particle.angular_damping", value => particle.AngularDamping = Math.Max(0, value));
+            BindParticleNumber("prop-particle-rate", obj, particle, "particle.spawn_rate", value => particle.SpawnRate = Math.Clamp(value, 0f, 10000f));
+            BindParticleNumber("prop-particle-life-min", obj, particle, "particle.lifetime_min", value => particle.LifetimeMin = Math.Clamp(value, 0.01f, 120f));
+            BindParticleNumber("prop-particle-life-max", obj, particle, "particle.lifetime_max", value => particle.LifetimeMax = Math.Clamp(value, 0.01f, 120f));
+            BindParticleNumber("prop-particle-speed", obj, particle, "particle.simulation_speed", value => particle.SimulationSpeed = Math.Clamp(value, 0f, 32f));
+            BindParticleNumber("prop-particle-linear-damping", obj, particle, "particle.linear_damping", value => particle.LinearDamping = Math.Clamp(value, 0f, 100f));
+            BindParticleNumber("prop-particle-angular-damping", obj, particle, "particle.angular_damping", value => particle.AngularDamping = Math.Clamp(value, 0f, 100f));
             Bind("prop-particle-shape", () => { particle.EmissionShape = particle.EmissionShape == ParticleEmissionShape.Box ? ParticleEmissionShape.Sphere : ParticleEmissionShape.Box; particle.ResetRuntime(); _timeline?.RecordAutoKeyframe(obj, "particle.emission_shape"); });
             BindParticleVector("particle-spawn-extents", obj, particle, "particle.spawn_extents", particle.SpawnBoxExtents, value => particle.SpawnBoxExtents = new vec3(Math.Max(0, value.x), Math.Max(0, value.y), Math.Max(0, value.z)), 0, 1000);
             Bind("prop-particle-directional", () => { particle.UseDirectionalEmission = !particle.UseDirectionalEmission; particle.ResetRuntime(); _timeline?.RecordAutoKeyframe(obj, "particle.directional_emission"); });
