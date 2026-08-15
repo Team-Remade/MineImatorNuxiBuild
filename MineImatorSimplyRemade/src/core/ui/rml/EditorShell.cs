@@ -17,9 +17,7 @@ public sealed class EditorShell
     {
         _document = host.LoadDocument(DocumentRml);
         Bind("new-project", menu.NewProjectRequested);
-        Bind("home-new", menu.NewProjectRequested);
         Bind("open-project", menu.OpenProjectRequested);
-        Bind("home-open", menu.OpenProjectRequested);
         Bind("open-recent", menu.OpenRecentRequested);
         Bind("save-project", menu.SaveProjectRequested);
         Bind("save-as", menu.SaveProjectAsRequested);
@@ -53,11 +51,6 @@ public sealed class EditorShell
             ? default
             : new Region(element.GetAbsoluteLeft(), element.GetAbsoluteTop(),
                 element.GetClientWidth(), element.GetClientHeight());
-    }
-
-    public void SetHomeVisible(bool visible)
-    {
-        _document.GetElementById("home-overlay")?.SetProperty("display", visible ? "flex" : "none");
     }
 
     public void SetStatus(string text) => _document.GetElementById("status-text")?.SetInnerRml(Escape(text));
@@ -104,11 +97,7 @@ public sealed class EditorShell
           #statusbar { position: absolute; height: 23px; bottom: 0; left: 0; right: 0; padding: 3px 8px;
                        background: #25262c; border-top: 1px #111216; color: #9295a0; }
           #home-overlay { position: absolute; top: 0; bottom: 0; left: 0; right: 0; display: none;
-                          flex-direction: column; align-items: center; justify-content: center;
-                          background: #191a1f; z-index: 10; }
-          #home-overlay h1 { color: #e5b94c; font-size: 27px; margin-bottom: 6px; }
-          #home-actions { display: flex; flex-direction: row; margin-top: 16px; }
-          #home-actions button { margin: 4px; padding: 9px 16px; background: #30323a; border: 1px #50525e; }
+                          flex-direction: column; padding: 24px; background: #191a1f; z-index: 10; }
           #preferences-overlay { position:absolute; top:45px; bottom:45px; left:20%; right:20%; display:none;
                                  background:#202127; border:1px #555864; z-index:30; }
           #spawn-object { position:absolute;top:7px;left:8px;background:#343640;border:1px #555865;z-index:3; }
@@ -163,8 +152,7 @@ public sealed class EditorShell
             <div id="timeline" class="panel"><div class="panel-title">Timeline</div><div id="timeline-body" class="panel-body"/></div>
           </div>
           <div id="statusbar"><span id="status-text">Ready</span></div>
-          <div id="home-overlay"><h1>Mine Imator Nuxi</h1><div>Create and animate Minecraft worlds.</div>
-            <div id="home-actions"><button id="home-new">New Project</button><button id="home-open">Open Project</button></div></div>
+          <div id="home-overlay"><div id="home-body"/></div>
           <div id="preferences-overlay"><div class="panel-title">Preferences</div><div id="preferences-body" class="panel-body"/></div>
           <div id="spawn-overlay"><div class="panel-title">Add object</div><div id="spawn-body" class="panel-body"/></div>
           <div id="toast"><span id="toast-text"/></div>

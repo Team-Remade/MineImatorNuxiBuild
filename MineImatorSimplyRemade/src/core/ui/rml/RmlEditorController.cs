@@ -1,4 +1,5 @@
 using System.Reflection;
+using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui.Panels;
 using RmlUiNet;
 
@@ -8,6 +9,7 @@ namespace MineImatorSimplyRemade.core.ui.rml;
 public sealed class RmlEditorController : IDisposable
 {
     private readonly EditorShell _shell;
+    private readonly RmlHomeController _home;
     private readonly RmlContentBrowserController _content;
     private readonly RmlSceneTreeController _sceneTree;
     private readonly RmlPreferencesController _preferences;
@@ -31,6 +33,12 @@ public sealed class RmlEditorController : IDisposable
         SpawnMenu? spawnMenu)
     {
         _shell = new EditorShell(host, menu);
+        _home = new RmlHomeController(Required("home-overlay"), Required("home-body"), ProjectManager.Instance)
+        {
+            NewProjectRequested = menu.NewProjectRequested,
+            LoadProjectRequested = menu.OpenProjectRequested,
+            OpenRecentRequested = path => menu.OpenRecentRequested?.Invoke()
+        };
         _sceneTree = new RmlSceneTreeController(Required("scene-tree-body"), mainViewport, sceneTree);
         _properties = new RmlPropertiesController(Required("properties-body"), timeline, properties);
         _timeline = new RmlTimelineController(Required("timeline-body"), timeline);
@@ -59,7 +67,8 @@ public sealed class RmlEditorController : IDisposable
 
     public void Update(bool showHome, string status)
     {
-        _shell.SetHomeVisible(showHome);
+        _home.SetVisible(showHome);
+        _home.Update();
         _shell.SetStatus(status);
         _sceneTree.Update();
         _properties.Update();
