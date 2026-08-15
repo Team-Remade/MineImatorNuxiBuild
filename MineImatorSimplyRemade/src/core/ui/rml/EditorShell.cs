@@ -183,7 +183,20 @@ public sealed class EditorShell
           #import-pack-overlay { position:absolute; top:20%; bottom:20%; left:20%; right:20%; display:none;
                                   background:#202127; border:1px #555864; z-index:32; }
           #project-dialog-overlay { position:absolute; top:0; bottom:0; left:0; right:0; display:none;
-                                     flex-direction:column; z-index:33; }
+                                     flex-direction:column; align-items:center; justify-content:center;
+                                     background:#000000b0; z-index:33; }
+          #project-dialog-body{flex-shrink:0;flex-grow:0;}
+          #project-dialog-panel{width:300px;flex-shrink:0;flex-grow:0;padding:20px;background:#25262c;border:1px #454854;
+                                 border-radius:8px;}
+          #project-dialog-panel h3{margin:0 0 14px 0;padding-bottom:10px;color:#eaf0f8;font-size:15px;
+                                    border-bottom:1px #393b44;}
+          #project-dialog-panel input{width:100%;padding:7px;margin-bottom:8px;background:#191a1f;
+                                       border:1px #50525e;border-radius:4px;color:#dedfe4;}
+          #project-dialog-error{color:#eb9271;margin-bottom:8px;}
+          #project-dialog-actions{display:flex;flex-direction:row;justify-content:flex-end;margin-top:6px;}
+          #project-dialog-actions button{margin-left:6px;padding:7px 14px;background:#30323a;
+                                          border:1px #50525e;border-radius:4px;}
+          #project-dialog-actions button:hover{background:#3b3d46;}
           #unsaved-changes-overlay { position:absolute; top:0; bottom:0; left:0; right:0; display:none;
                                       flex-direction:column; z-index:34; }
         </style></head>

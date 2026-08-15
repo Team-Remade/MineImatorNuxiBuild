@@ -2510,24 +2510,12 @@ public class MainWindow : Window
 
     private void OpenNewProjectPopup()
     {
-        _projectDialogMode = ProjectDialogMode.NewProject;
-        _newProjectNameBuffer = "Untitled Project";
-        _openProjectDialogPopup = true;
+        _rmlEditor?.ShowNewProjectDialog();
     }
 
     private void OpenSaveAsPopup()
     {
-        if (!_projectManager.HasProject)
-        {
-            OpenNewProjectPopup();
-            return;
-        }
-
-        _projectDialogMode = ProjectDialogMode.SaveAs;
-        _newProjectNameBuffer = string.IsNullOrWhiteSpace(_projectManager.Manifest.ProjectName)
-            ? "Untitled Project"
-            : _projectManager.Manifest.ProjectName;
-        _openProjectDialogPopup = true;
+        _rmlEditor?.ShowSaveAsDialog();
     }
 
     private string GetProjectDialogTitle()
