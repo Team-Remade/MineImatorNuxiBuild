@@ -405,14 +405,28 @@ public sealed class RmlPropertiesController : IDisposable
         Bind("prop-blur", () =>
         {
             bool enabled = !obj.BlurTexture;
-            if (_operations != null) _operations.ApplyTextureFiltering(obj, enabled, obj.TextureMipmaps);
-            else obj.BlurTexture = enabled;
+            if (_operations != null)
+            {
+                ApplyToSubtree(node =>
+                    _operations.ApplyTextureFiltering(node, enabled, node.TextureMipmaps));
+            }
+            else
+            {
+                ApplyToSubtree(node => node.BlurTexture = enabled);
+            }
         });
         Bind("prop-mipmaps", () =>
         {
             bool enabled = !obj.TextureMipmaps;
-            if (_operations != null) _operations.ApplyTextureFiltering(obj, obj.BlurTexture, enabled);
-            else obj.TextureMipmaps = enabled;
+            if (_operations != null)
+            {
+                ApplyToSubtree(node =>
+                    _operations.ApplyTextureFiltering(node, node.BlurTexture, enabled));
+            }
+            else
+            {
+                ApplyToSubtree(node => node.TextureMipmaps = enabled);
+            }
         });
         Bind("prop-include-ao", () =>
         {
@@ -434,7 +448,10 @@ public sealed class RmlPropertiesController : IDisposable
             bool enabled = !obj.RenderInLowQuality;
             ApplyToSubtree(node => node.RenderInLowQuality = enabled);
         });
-        BindNumber("prop-depth", value => obj.RenderDepthOffset = value);
+        BindNumber("prop-depth", value =>
+        {
+            ApplyToSubtree(node => node.RenderDepthOffset = value);
+        });
         BindVector("pivot", obj.PivotOffset, value => obj.PivotOffset = value);
     }
 

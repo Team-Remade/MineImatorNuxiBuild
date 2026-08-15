@@ -14,6 +14,7 @@ public sealed class RmlEditorController : IDisposable
     private readonly RmlPropertiesController _properties;
     private readonly RmlViewportController _viewport;
     private readonly RmlSpawnMenuController? _spawnMenu;
+    private readonly RmlToastController _toast;
 
     public RmlEditorController(
         RmlWindowHost host,
@@ -40,6 +41,7 @@ public sealed class RmlEditorController : IDisposable
         };
         _preferences = new RmlPreferencesController(Required("preferences-overlay"), Required("preferences-body"), preferences);
         _viewport = new RmlViewportController(Required("viewport-surface"), mainViewport, renderSurface);
+        _toast = new RmlToastController(Required("toast"), Required("toast-text"));
         _shell.BindCommand("preferences", _preferences.Toggle);
         if (spawnMenu != null)
         {
@@ -59,7 +61,12 @@ public sealed class RmlEditorController : IDisposable
         _properties.Update();
         _timeline.Update();
         _content.Update();
+        _toast.Update();
     }
+
+    public void ShowSuccessToast(string message) => _toast.ShowSuccess(message);
+
+    public void ShowErrorToast(string message) => _toast.ShowError(message);
 
     /// <summary>Runs scene rendering before RmlUi composites the shell.</summary>
     public void RenderSceneSurface() => _viewport.Render();

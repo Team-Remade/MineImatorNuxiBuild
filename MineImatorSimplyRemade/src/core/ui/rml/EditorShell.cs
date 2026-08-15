@@ -115,6 +115,9 @@ public sealed class EditorShell
           #spawn-object { position:absolute;top:7px;left:8px;background:#343640;border:1px #555865;z-index:3; }
           #spawn-overlay { position:absolute;top:9%;bottom:9%;left:9%;right:9%;display:none;flex-direction:column;
                            background:#202127;border:1px #555864;z-index:35; }
+          #toast { position:absolute; top:20px; right:20px; width:280px; padding:12px 14px; display:none; z-index:40; }
+          #toast.success { background:#1a291f; border:1px #478757; color:#b8f4c8; }
+          #toast.error { background:#3d1a1a; border:1px #c24747; color:#ffd1d1; }
         </style></head>
         <body>
           <div id="menubar">
@@ -163,6 +166,7 @@ public sealed class EditorShell
             <div id="home-actions"><button id="home-new">New Project</button><button id="home-open">Open Project</button></div></div>
           <div id="preferences-overlay"><div class="panel-title">Preferences</div><div id="preferences-body" class="panel-body"/></div>
           <div id="spawn-overlay"><div class="panel-title">Add object</div><div id="spawn-body" class="panel-body"/></div>
+          <div id="toast"><span id="toast-text"/></div>
         </body></rml>
         """;
 }
