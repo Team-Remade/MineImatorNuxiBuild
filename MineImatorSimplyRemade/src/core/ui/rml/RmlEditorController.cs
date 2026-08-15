@@ -1,6 +1,7 @@
 using System.Reflection;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui.Panels;
+using NativeFileDialogSharp;
 using RmlUiNet;
 
 namespace MineImatorSimplyRemade.core.ui.rml;
@@ -21,6 +22,7 @@ public sealed class RmlEditorController : IDisposable
     private readonly RmlAboutController _about;
     private readonly RmlUpdateController _update;
     private readonly RmlRenderController _render;
+    private readonly RmlResourcePackImportController _resourcePackImport;
     private readonly RmlProjectDialogController _projectDialog;
 
     public RmlEditorController(
@@ -62,6 +64,7 @@ public sealed class RmlEditorController : IDisposable
         _about = new RmlAboutController(Required("about-overlay"), Required("about-body"), ResolveAppVersion());
         _update = new RmlUpdateController(Required("update-overlay"), Required("update-body"));
         _render = new RmlRenderController(Required("render-overlay"), Required("render-body"));
+        _resourcePackImport = new RmlResourcePackImportController(Required("import-pack-overlay"), Required("import-pack-body"));
         _projectDialog.SuccessToastRequested = _toast.ShowSuccess;
         _projectDialog.ErrorToastRequested = _toast.ShowError;
         _shell.BindCommand("preferences", _preferences.Toggle);
@@ -69,6 +72,18 @@ public sealed class RmlEditorController : IDisposable
         _shell.BindCommand("updates", _update.Toggle);
         _shell.BindCommand("render-image", () => _render.Show(RmlRenderController.RenderMode.Image));
         _shell.BindCommand("render-video", () => _render.Show(RmlRenderController.RenderMode.Video));
+        _shell.BindCommand("import-pack", () =>
+        {
+            var result = Dialog.FileOpen("zip");
+            if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path))
+                _resourcePackImport.Show(result.Path);
+        });
+        _shell.BindCommand("import-pack-folder", () =>
+        {
+            var result = Dialog.FolderPicker();
+            if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path))
+                _resourcePackImport.Show(result.Path);
+        });
         if (spawnMenu != null)
         {
             _spawnMenu = new RmlSpawnMenuController(Required("spawn-overlay"), Required("spawn-body"), spawnMenu);
@@ -91,6 +106,7 @@ public sealed class RmlEditorController : IDisposable
         _toast.Update();
         _update.Update();
         _render.Update();
+        _resourcePackImport.Update();
     }
 
     public void ShowSuccessToast(string message) => _toast.ShowSuccess(message);

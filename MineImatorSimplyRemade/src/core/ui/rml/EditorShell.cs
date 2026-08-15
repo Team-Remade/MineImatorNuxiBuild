@@ -20,8 +20,7 @@ public sealed class EditorShell
         Bind("open-recent", menu.OpenRecentRequested);
         Bind("save-project", menu.SaveProjectRequested);
         Bind("import-asset", menu.ImportAssetRequested);
-        Bind("import-pack", menu.ImportResourcePackRequested);
-        Bind("import-pack-folder", menu.ImportResourcePackFolderRequested);
+        // "import-pack" / "import-pack-folder" are bound to RmlResourcePackImportController in RmlEditorController.
         Bind("exit", menu.ExitRequested);
         Bind("undo", menu.UndoRequested);
         Bind("redo", menu.RedoRequested);
@@ -108,6 +107,8 @@ public sealed class EditorShell
                              background:#202127; border:1px #555864; z-index:32; }
           #render-overlay { position:absolute; top:8%; bottom:8%; left:12%; right:12%; display:none;
                              background:#202127; border:1px #555864; z-index:32; }
+          #import-pack-overlay { position:absolute; top:20%; bottom:20%; left:20%; right:20%; display:none;
+                                  background:#202127; border:1px #555864; z-index:32; }
           #project-dialog-overlay { position:absolute; top:0; bottom:0; left:0; right:0; display:none;
                                      flex-direction:column; z-index:33; }
         </style></head>
@@ -161,6 +162,7 @@ public sealed class EditorShell
           <div id="about-overlay"><div class="panel-title">About</div><div id="about-body" class="panel-body"/></div>
           <div id="update-overlay"><div class="panel-title">Check for Updates</div><div id="update-body" class="panel-body"/></div>
           <div id="render-overlay"><div class="panel-title">Render Output</div><div id="render-body" class="panel-body"/></div>
+          <div id="import-pack-overlay"><div class="panel-title">Import Resource Pack</div><div id="import-pack-body" class="panel-body"/></div>
           <div id="project-dialog-overlay"><div id="project-dialog-body"/></div>
         </body></rml>
         """;
