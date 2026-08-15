@@ -111,6 +111,8 @@ public sealed class EditorShell
                                   background:#202127; border:1px #555864; z-index:32; }
           #project-dialog-overlay { position:absolute; top:0; bottom:0; left:0; right:0; display:none;
                                      flex-direction:column; z-index:33; }
+          #unsaved-changes-overlay { position:absolute; top:0; bottom:0; left:0; right:0; display:none;
+                                      flex-direction:column; z-index:34; }
         </style></head>
         <body>
           <div id="menubar">
@@ -164,6 +166,7 @@ public sealed class EditorShell
           <div id="render-overlay"><div class="panel-title">Render Output</div><div id="render-body" class="panel-body"/></div>
           <div id="import-pack-overlay"><div class="panel-title">Import Resource Pack</div><div id="import-pack-body" class="panel-body"/></div>
           <div id="project-dialog-overlay"><div id="project-dialog-body"/></div>
+          <div id="unsaved-changes-overlay"><div id="unsaved-changes-body"/></div>
         </body></rml>
         """;
 }

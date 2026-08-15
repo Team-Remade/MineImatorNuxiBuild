@@ -24,6 +24,7 @@ public sealed class RmlEditorController : IDisposable
     private readonly RmlRenderController _render;
     private readonly RmlResourcePackImportController _resourcePackImport;
     private readonly RmlProjectDialogController _projectDialog;
+    private readonly RmlUnsavedChangesDialogController _unsavedChangesDialog;
 
     public RmlEditorController(
         RmlWindowHost host,
@@ -65,6 +66,7 @@ public sealed class RmlEditorController : IDisposable
         _update = new RmlUpdateController(Required("update-overlay"), Required("update-body"));
         _render = new RmlRenderController(Required("render-overlay"), Required("render-body"));
         _resourcePackImport = new RmlResourcePackImportController(Required("import-pack-overlay"), Required("import-pack-body"));
+        _unsavedChangesDialog = new RmlUnsavedChangesDialogController(Required("unsaved-changes-overlay"), Required("unsaved-changes-body"), ProjectManager.Instance);
         _projectDialog.SuccessToastRequested = _toast.ShowSuccess;
         _projectDialog.ErrorToastRequested = _toast.ShowError;
         _shell.BindCommand("preferences", _preferences.Toggle);
@@ -107,6 +109,15 @@ public sealed class RmlEditorController : IDisposable
         _update.Update();
         _render.Update();
         _resourcePackImport.Update();
+    }
+
+    /// <summary>Shows the retained-mode replacement for MainWindow's Unsaved Changes ImGui popup.</summary>
+    public void ShowUnsavedChangesDialog(Action onSave, Action onExitWithoutSaving, Action onCancel)
+    {
+        _unsavedChangesDialog.SaveRequested = onSave;
+        _unsavedChangesDialog.ExitWithoutSavingRequested = onExitWithoutSaving;
+        _unsavedChangesDialog.CancelRequested = onCancel;
+        _unsavedChangesDialog.Show();
     }
 
     public void ShowSuccessToast(string message) => _toast.ShowSuccess(message);
