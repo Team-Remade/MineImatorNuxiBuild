@@ -16,11 +16,9 @@ public sealed class EditorShell
     public EditorShell(RmlWindowHost host, Menubar menu)
     {
         _document = host.LoadDocument(DocumentRml);
-        Bind("new-project", menu.NewProjectRequested);
         Bind("open-project", menu.OpenProjectRequested);
         Bind("open-recent", menu.OpenRecentRequested);
         Bind("save-project", menu.SaveProjectRequested);
-        Bind("save-as", menu.SaveProjectAsRequested);
         Bind("import-asset", menu.ImportAssetRequested);
         Bind("import-pack", menu.ImportResourcePackRequested);
         Bind("import-pack-folder", menu.ImportResourcePackFolderRequested);
@@ -108,6 +106,8 @@ public sealed class EditorShell
           #toast.error { background:#3d1a1a; border:1px #c24747; color:#ffd1d1; }
           #about-overlay { position:absolute; top:12%; bottom:12%; left:15%; right:15%; display:none;
                             background:#202127; border:1px #555864; z-index:32; }
+          #project-dialog-overlay { position:absolute; top:0; bottom:0; left:0; right:0; display:none;
+                                     flex-direction:column; z-index:33; }
         </style></head>
         <body>
           <div id="menubar">
@@ -157,6 +157,7 @@ public sealed class EditorShell
           <div id="spawn-overlay"><div class="panel-title">Add object</div><div id="spawn-body" class="panel-body"/></div>
           <div id="toast"><span id="toast-text"/></div>
           <div id="about-overlay"><div class="panel-title">About</div><div id="about-body" class="panel-body"/></div>
+          <div id="project-dialog-overlay"><div id="project-dialog-body"/></div>
         </body></rml>
         """;
 }

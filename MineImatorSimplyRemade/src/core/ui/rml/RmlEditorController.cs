@@ -19,6 +19,7 @@ public sealed class RmlEditorController : IDisposable
     private readonly RmlSpawnMenuController? _spawnMenu;
     private readonly RmlToastController _toast;
     private readonly RmlAboutController _about;
+    private readonly RmlProjectDialogController _projectDialog;
 
     public RmlEditorController(
         RmlWindowHost host,
@@ -33,12 +34,16 @@ public sealed class RmlEditorController : IDisposable
         SpawnMenu? spawnMenu)
     {
         _shell = new EditorShell(host, menu);
+        _projectDialog = new RmlProjectDialogController(Required("project-dialog-overlay"), Required("project-dialog-body"),
+            ProjectManager.Instance, mainViewport, spawnMenu, timeline, properties);
         _home = new RmlHomeController(Required("home-overlay"), Required("home-body"), ProjectManager.Instance)
         {
-            NewProjectRequested = menu.NewProjectRequested,
+            NewProjectRequested = _projectDialog.OpenNewProject,
             LoadProjectRequested = menu.OpenProjectRequested,
             OpenRecentRequested = path => menu.OpenRecentRequested?.Invoke()
         };
+        _shell.BindCommand("new-project", _projectDialog.OpenNewProject);
+        _shell.BindCommand("save-as", _projectDialog.OpenSaveAs);
         _sceneTree = new RmlSceneTreeController(Required("scene-tree-body"), mainViewport, sceneTree);
         _properties = new RmlPropertiesController(Required("properties-body"), timeline, properties);
         _timeline = new RmlTimelineController(Required("timeline-body"), timeline);
@@ -53,6 +58,8 @@ public sealed class RmlEditorController : IDisposable
         _viewport = new RmlViewportController(Required("viewport-surface"), mainViewport, renderSurface);
         _toast = new RmlToastController(Required("toast"), Required("toast-text"));
         _about = new RmlAboutController(Required("about-overlay"), Required("about-body"), ResolveAppVersion());
+        _projectDialog.SuccessToastRequested = _toast.ShowSuccess;
+        _projectDialog.ErrorToastRequested = _toast.ShowError;
         _shell.BindCommand("preferences", _preferences.Toggle);
         _shell.BindCommand("about", _about.Toggle);
         if (spawnMenu != null)
