@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 using GlmSharp;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.ui.Panels;
@@ -61,9 +62,9 @@ public sealed class RmlPropertiesController : IDisposable
         TextRow(html, "Name", "prop-name", obj.GetDisplayName());
         ButtonRow(html, "Visible", "prop-visible", obj.ObjectVisible ? "On" : "Off");
         html.Append("</div><div class='prop-section'><div class='prop-heading'>Transform</div>");
-        VectorRow(html, "Position", "position", obj.Position);
-        VectorRow(html, "Rotation", "rotation", obj.Rotation);
-        VectorRow(html, "Scale", "scale", obj.Scale);
+        VectorRow(html, "Position", "position", PropertiesPanel.GetEditablePosition(obj));
+        VectorRow(html, "Rotation", "rotation", PropertiesPanel.GetEditableRotation(obj));
+        VectorRow(html, "Scale", "scale", PropertiesPanel.GetEditableScale(obj));
         html.Append("</div><div class='prop-section'><div class='prop-heading'>Rendering</div>");
         ButtonRow(html, "Cast shadow", "prop-shadow", obj.CastShadow ? "On" : "Off");
         ButtonRow(html, "In fog", "prop-fog", obj.IncludeInFog ? "On" : "Off");
@@ -72,7 +73,19 @@ public sealed class RmlPropertiesController : IDisposable
         NumberRow(html, "Metallic", "prop-metallic", material.Metallic);
         NumberRow(html, "Roughness", "prop-roughness", material.Roughness);
         NumberRow(html, "Transparency", "prop-transparency", material.Transparency);
-        html.Append("</div>");
+        ButtonRow(html, "Emission", "prop-emission", material.EmissionEnabled ? "On" : "Off");
+        ButtonRow(html, "Auto emission", "prop-auto-emission", material.AutoEmission ? "On" : "Off");
+        NumberRow(html, "Emission power", "prop-emission-energy", material.EmissionEnergy);
+        Vector4Row(html, "Albedo RGBA", "material-albedo", material.AlbedoColor);
+        Vector4Row(html, "Blend RGBA", "material-blend", material.BlendColor);
+        Vector4Row(html, "Mix RGBA", "material-mix", material.MixColor);
+        Vector4Row(html, "Emission RGBA", "material-emission", material.EmissionColor);
+        ButtonRow(html, "Double sided", "prop-double-sided", material.DoubleSided ? "On" : "Off");
+        Vector2Row(html, "UV offset", "material-offset", material.TextureOffset);
+        Vector2Row(html, "UV repeat", "material-repeat", material.TextureRepeat);
+        ButtonRow(html, "Mirror H", "prop-mirror-h", material.TextureMirror.x ? "On" : "Off");
+        ButtonRow(html, "Mirror V", "prop-mirror-v", material.TextureMirror.y ? "On" : "Off");
+        html.Append("<div class='prop-row'><button id='prop-material-reset'>Reset material</button></div></div>");
         AppendInheritance(html, obj);
         AppendSpecialized(html, obj);
         html.Append("</div>");
@@ -83,12 +96,35 @@ public sealed class RmlPropertiesController : IDisposable
         Bind("prop-shadow", () => obj.CastShadow = !obj.CastShadow);
         Bind("prop-fog", () => obj.IncludeInFog = !obj.IncludeInFog);
         Bind("prop-ao", () => obj.IncludeInAmbientOcclusion = !obj.IncludeInAmbientOcclusion);
-        BindVector("position", obj.Position, value => obj.SetLocalPosition(value));
-        BindVector("rotation", obj.Rotation, value => obj.SetLocalRotation(value));
-        BindVector("scale", obj.Scale, value => obj.SetLocalScale(value));
+        BindVector("position", PropertiesPanel.GetEditablePosition(obj), value => PropertiesPanel.SetEditablePosition(obj, value));
+        BindVector("rotation", PropertiesPanel.GetEditableRotation(obj), value => PropertiesPanel.SetEditableRotation(obj, value));
+        BindVector("scale", PropertiesPanel.GetEditableScale(obj), value => PropertiesPanel.SetEditableScale(obj, value));
         BindNumber("prop-metallic", value => EditMaterial(m => m.Metallic = Math.Clamp(value, 0, 1)));
         BindNumber("prop-roughness", value => EditMaterial(m => m.Roughness = Math.Clamp(value, 0, 1)));
         BindNumber("prop-transparency", value => EditMaterial(m => m.Transparency = Math.Clamp(value, 0, 1)));
+        Bind("prop-emission", () => EditMaterial(m => m.EmissionEnabled = !m.EmissionEnabled));
+        Bind("prop-auto-emission", () =>
+        {
+            EditMaterial(m => m.AutoEmission = !m.AutoEmission);
+            _operations?.RefreshAutoEmissionMeshes(obj);
+        });
+        BindNumber("prop-emission-energy", value => EditMaterial(m => m.EmissionEnergy = Math.Clamp(value, 0, 10)));
+        BindVector4("material-albedo", material.AlbedoColor, value => EditMaterial(m => m.AlbedoColor = value));
+        BindVector4("material-blend", material.BlendColor, value => EditMaterial(m => m.BlendColor = value));
+        BindVector4("material-mix", material.MixColor, value => EditMaterial(m => m.MixColor = value));
+        BindVector4("material-emission", material.EmissionColor, value => EditMaterial(m => m.EmissionColor = value));
+        Bind("prop-double-sided", () => EditMaterial(m => m.DoubleSided = !m.DoubleSided));
+        BindVector2("material-offset", material.TextureOffset, value => EditMaterial(m => m.TextureOffset = value));
+        BindVector2("material-repeat", material.TextureRepeat, value => EditMaterial(m => m.TextureRepeat = new vec2(Math.Max(0.0001f, value.x), Math.Max(0.0001f, value.y))));
+        Bind("prop-mirror-h", () => EditMaterial(m => m.TextureMirror = new bvec2(!m.TextureMirror.x, m.TextureMirror.y)));
+        Bind("prop-mirror-v", () => EditMaterial(m => m.TextureMirror = new bvec2(m.TextureMirror.x, !m.TextureMirror.y)));
+        Bind("prop-material-reset", () =>
+        {
+            obj.MaterialSettings = new MaterialSettings();
+            obj.SetExplicitMaterialSettings();
+            obj.PropagateMaterialSettingsToChildren();
+            _operations?.RefreshAutoEmissionMeshes(obj);
+        });
         BindInheritance(obj);
         BindSpecialized(obj);
     }
@@ -110,6 +146,30 @@ public sealed class RmlPropertiesController : IDisposable
 
     private static void AppendSpecialized(StringBuilder html, SceneObject obj)
     {
+        if (string.Equals(obj.SpawnCategory, "Blocks", StringComparison.Ordinal))
+        {
+            html.Append("<div class='prop-section'><div class='prop-heading'>Block Tiling</div>");
+            NumberRow(html, "X", "prop-tile-x", obj.GetEffectiveTileX());
+            NumberRow(html, "Y", "prop-tile-y", obj.GetEffectiveTileY());
+            NumberRow(html, "Z", "prop-tile-z", obj.GetEffectiveTileZ());
+            html.Append("<div class='prop-row'><button id='prop-tile-reset'>Reset tiling</button></div></div>");
+        }
+        if (obj is MiBoneSceneObject bone && bone.BendParameters is { } bend &&
+            (bend.AxisX || bend.AxisY || bend.AxisZ))
+        {
+            vec3 angle = bone.GetEditableBendAngle();
+            html.Append("<div class='prop-section'><div class='prop-heading'>Bone Bend</div>");
+            if (bend.AxisX) NumberRow(html, "X degrees", "prop-bend-x", angle.x);
+            if (bend.AxisY) NumberRow(html, "Y degrees", "prop-bend-y", angle.y);
+            if (bend.AxisZ) NumberRow(html, "Z degrees", "prop-bend-z", angle.z);
+            html.Append("<div class='prop-row'><button id='prop-bend-reset'>Reset bend</button></div></div>");
+        }
+        if (obj is CharacterSceneObject character && character.BoneObjects.Values.Any(bone => bone is MiBoneSceneObject))
+        {
+            html.Append("<div class='prop-section'><div class='prop-heading'>Character</div>");
+            ButtonRow(html, "Bend style", "prop-character-bends", character.ModelBendStyle == BendStyle.Blocky ? "Sharp" : "Smooth");
+            html.Append("</div>");
+        }
         if (obj is CameraSceneObject camera)
         {
             html.Append("<div class='prop-section'><div class='prop-heading'>Camera</div>");
@@ -117,6 +177,13 @@ public sealed class RmlPropertiesController : IDisposable
             NumberRow(html, "Field of view", "prop-camera-fov", camera.Fov);
             NumberRow(html, "Near clip", "prop-camera-near", camera.Near);
             NumberRow(html, "Far clip", "prop-camera-far", camera.Far);
+            html.Append("</div>");
+            html.Append("<div class='prop-section'><div class='prop-heading'>Camera Effects</div>");
+            html.Append("<div class='prop-row'><button id='prop-effect-add-shake'>Add camera shake</button><button id='prop-effect-add-grain'>Add film grain</button></div>");
+            if (camera.Effects.Count == 0)
+                html.Append("<div class='prop-row'><span style='color:#90939e'>No effects added.</span></div>");
+            for (int i = 0; i < camera.Effects.Count; i++)
+                AppendCameraEffect(html, camera.Effects[i], i);
             html.Append("</div>");
         }
         if (obj is LightSceneObject light)
@@ -134,21 +201,53 @@ public sealed class RmlPropertiesController : IDisposable
         if (obj is ParticleSpawnerSceneObject particle)
         {
             html.Append("<div class='prop-section'><div class='prop-heading'>Particles</div>");
-            TextRow(html, "Source", "prop-particle-source", particle.ParticleLibraryDisplayName);
+            ButtonRow(html, "Source", "prop-particle-source", string.IsNullOrWhiteSpace(particle.ParticleLibraryEntryId) ? "(none)" : particle.ParticleLibraryDisplayName);
+            html.Append("<div class='prop-row'><button id='prop-particle-source-clear'>Clear source</button></div>");
             ButtonRow(html, "Emitting", "prop-particle-emitting", particle.Emitting ? "On" : "Off");
             ButtonRow(html, "One shot", "prop-particle-oneshot", particle.OneShot ? "On" : "Off");
+            ButtonRow(html, "Top level", "prop-particle-top-level", particle.TopLevelParticles ? "On" : "Off");
             NumberRow(html, "Amount", "prop-particle-amount", particle.Amount);
             NumberRow(html, "Spawn rate", "prop-particle-rate", particle.SpawnRate);
             NumberRow(html, "Lifetime min", "prop-particle-life-min", particle.LifetimeMin);
             NumberRow(html, "Lifetime max", "prop-particle-life-max", particle.LifetimeMax);
             NumberRow(html, "Sim speed", "prop-particle-speed", particle.SimulationSpeed);
+            NumberRow(html, "Linear damping", "prop-particle-linear-damping", particle.LinearDamping);
+            NumberRow(html, "Angular damping", "prop-particle-angular-damping", particle.AngularDamping);
+            ButtonRow(html, "Shape", "prop-particle-shape", particle.EmissionShape == ParticleEmissionShape.Box ? "Box" : "Sphere");
+            VectorRow(html, "Spawn extents", "particle-spawn-extents", particle.SpawnBoxExtents);
+            ButtonRow(html, "Directional", "prop-particle-directional", particle.UseDirectionalEmission ? "On" : "Off");
+            if (particle.UseDirectionalEmission)
+            {
+                VectorRow(html, "Direction", "particle-direction", particle.Direction);
+                NumberRow(html, "Spread", "prop-particle-spread", particle.SpreadDegrees);
+                NumberRow(html, "Speed min", "prop-particle-speed-min", particle.InitialSpeedMin);
+                NumberRow(html, "Speed max", "prop-particle-speed-max", particle.InitialSpeedMax);
+            }
+            else
+            {
+                VectorRow(html, "Velocity min", "particle-velocity-min", particle.InitialVelocityMin);
+                VectorRow(html, "Velocity max", "particle-velocity-max", particle.InitialVelocityMax);
+            }
             VectorRow(html, "Gravity", "particle-gravity", particle.Gravity);
+            VectorRow(html, "Rotation min", "particle-rotation-min", particle.InitialRotationMinDegrees);
+            VectorRow(html, "Rotation max", "particle-rotation-max", particle.InitialRotationMaxDegrees);
+            VectorRow(html, "Angular vel. min", "particle-angular-velocity-min", particle.AngularVelocityMinDegrees);
+            VectorRow(html, "Angular vel. max", "particle-angular-velocity-max", particle.AngularVelocityMaxDegrees);
+            NumberRow(html, "Start scale min", "prop-particle-start-scale-min", particle.StartScaleMin);
+            NumberRow(html, "Start scale max", "prop-particle-start-scale-max", particle.StartScaleMax);
+            NumberRow(html, "End scale min", "prop-particle-end-scale-min", particle.EndScaleMin);
+            NumberRow(html, "End scale max", "prop-particle-end-scale-max", particle.EndScaleMax);
             html.Append("<div class='prop-row'><button id='prop-particle-restart'>Restart particles</button></div></div>");
         }
         if (obj.ObjectType is "Plane" or "Cube" or "Sphere")
         {
             html.Append("<div class='prop-section'><div class='prop-heading'>Primitive</div>");
-            if (obj.ObjectType == "Plane") ButtonRow(html, "Face camera", "prop-plane-face", obj.PrimitivePlaneFaceCamera ? "On" : "Off");
+            if (obj.ObjectType == "Plane")
+            {
+                PlaneOrientation orientation = obj.Visuals.OfType<PlaneMesh>().FirstOrDefault()?.Orientation ?? PlaneOrientation.XY;
+                ButtonRow(html, "Orientation", "prop-plane-orientation", orientation == PlaneOrientation.XY ? "XY" : "XZ");
+                ButtonRow(html, "Face camera", "prop-plane-face", obj.PrimitivePlaneFaceCamera ? "On" : "Off");
+            }
             if (obj.ObjectType == "Cube") ButtonRow(html, "Cube mapped", "prop-cube-map", obj.PrimitiveCubeMapped ? "On" : "Off");
             if (obj.ObjectType == "Sphere") { ButtonRow(html, "Smooth", "prop-sphere-smooth", obj.PrimitiveSphereSmooth ? "On" : "Off"); NumberRow(html, "Segments", "prop-sphere-segments", obj.PrimitiveSphereSegments); NumberRow(html, "Rings", "prop-sphere-rings", obj.PrimitiveSphereRings); }
             html.Append("</div>");
@@ -199,20 +298,66 @@ public sealed class RmlPropertiesController : IDisposable
         Bind("prop-inherit-scale", () => obj.InheritScale = !obj.InheritScale);
         Bind("prop-inherit-pivot", () => obj.InheritPivotOffset = !obj.InheritPivotOffset);
         Bind("prop-invert", () => obj.InvertFaces = !obj.InvertFaces);
-        Bind("prop-blur", () => obj.BlurTexture = !obj.BlurTexture);
-        Bind("prop-mipmaps", () => obj.TextureMipmaps = !obj.TextureMipmaps);
+        Bind("prop-blur", () =>
+        {
+            bool enabled = !obj.BlurTexture;
+            if (_operations != null) _operations.ApplyTextureFiltering(obj, enabled, obj.TextureMipmaps);
+            else obj.BlurTexture = enabled;
+        });
+        Bind("prop-mipmaps", () =>
+        {
+            bool enabled = !obj.TextureMipmaps;
+            if (_operations != null) _operations.ApplyTextureFiltering(obj, obj.BlurTexture, enabled);
+            else obj.TextureMipmaps = enabled;
+        });
         BindNumber("prop-depth", value => obj.RenderDepthOffset = value);
         BindVector("pivot", obj.PivotOffset, value => obj.PivotOffset = value);
     }
 
     private void BindSpecialized(SceneObject obj)
     {
+        if (string.Equals(obj.SpawnCategory, "Blocks", StringComparison.Ordinal))
+        {
+            int[] tiles = [obj.GetEffectiveTileX(), obj.GetEffectiveTileY(), obj.GetEffectiveTileZ()];
+            for (int axis = 0; axis < 3; axis++)
+            {
+                int index = axis;
+                BindNumber($"prop-tile-{(axis == 0 ? "x" : axis == 1 ? "y" : "z")}", value =>
+                {
+                    tiles[index] = Math.Clamp((int)value, 1, SceneObject.MaxTilesPerAxis);
+                    ApplyBlockTiling(obj, tiles[0], tiles[1], tiles[2]);
+                });
+            }
+            Bind("prop-tile-reset", () => ApplyBlockTiling(obj, 1, 1, 1));
+        }
+        if (obj is MiBoneSceneObject bone && bone.BendParameters is { } bend)
+        {
+            BindBendAxis("prop-bend-x", bone, bend.AxisX, 0, bend.DirectionMin.x, bend.DirectionMax.x);
+            BindBendAxis("prop-bend-y", bone, bend.AxisY, 1, bend.DirectionMin.y, bend.DirectionMax.y);
+            BindBendAxis("prop-bend-z", bone, bend.AxisZ, 2, bend.DirectionMin.z, bend.DirectionMax.z);
+            Bind("prop-bend-reset", () =>
+            {
+                bone.SetEditableBendAngle(vec3.Zero);
+                Record(bone, "bend.x", "bend.y", "bend.z");
+            });
+        }
+        if (obj is CharacterSceneObject character && character.BoneObjects.Values.Any(bone => bone is MiBoneSceneObject))
+        {
+            Bind("prop-character-bends", () =>
+                character.ModelBendStyle = character.ModelBendStyle == BendStyle.Blocky
+                    ? BendStyle.Realistic
+                    : BendStyle.Blocky);
+        }
         if (obj is CameraSceneObject camera)
         {
             Bind("prop-camera-active", () => camera.ToggleActive());
             BindNumber("prop-camera-fov", value => camera.Fov = Math.Clamp(value, 1f, 179f));
             BindNumber("prop-camera-near", value => camera.Near = Math.Clamp(value, 0.001f, Math.Max(0.001f, camera.Far - 0.001f)));
             BindNumber("prop-camera-far", value => camera.Far = Math.Max(camera.Near + 0.001f, value));
+            Bind("prop-effect-add-shake", () => camera.AddEffect(CameraEffectType.CameraShake));
+            Bind("prop-effect-add-grain", () => camera.AddEffect(CameraEffectType.FilmGrain));
+            for (int i = 0; i < camera.Effects.Count; i++)
+                BindCameraEffect(camera, camera.Effects[i], i);
         }
         if (obj is LightSceneObject light)
         {
@@ -227,14 +372,36 @@ public sealed class RmlPropertiesController : IDisposable
         }
         if (obj is ParticleSpawnerSceneObject particle)
         {
+            Bind("prop-particle-source", () => CycleParticleSource(particle));
+            Bind("prop-particle-source-clear", () => particle.SetParticleSource("", ""));
             Bind("prop-particle-emitting", () => { particle.Emitting = !particle.Emitting; particle.ResetRuntime(); _timeline?.RecordAutoKeyframe(obj, "particle.emitting"); });
             Bind("prop-particle-oneshot", () => { particle.OneShot = !particle.OneShot; particle.ResetRuntime(); _timeline?.RecordAutoKeyframe(obj, "particle.one_shot"); });
+            Bind("prop-particle-top-level", () => { particle.TopLevelParticles = !particle.TopLevelParticles; particle.ResetRuntime(); _timeline?.RecordAutoKeyframe(obj, "particle.top_level_particles"); });
             BindParticleNumber("prop-particle-amount", obj, particle, "particle.amount", value => particle.Amount = Math.Clamp((int)value, 1, 10000));
             BindParticleNumber("prop-particle-rate", obj, particle, "particle.spawn_rate", value => particle.SpawnRate = Math.Max(0, value));
             BindParticleNumber("prop-particle-life-min", obj, particle, "particle.lifetime_min", value => particle.LifetimeMin = Math.Max(0.01f, value));
             BindParticleNumber("prop-particle-life-max", obj, particle, "particle.lifetime_max", value => particle.LifetimeMax = Math.Max(0.01f, value));
             BindParticleNumber("prop-particle-speed", obj, particle, "particle.simulation_speed", value => particle.SimulationSpeed = Math.Max(0, value));
-            BindVector("particle-gravity", particle.Gravity, value => { particle.Gravity = value; particle.ResetRuntime(); });
+            BindParticleNumber("prop-particle-linear-damping", obj, particle, "particle.linear_damping", value => particle.LinearDamping = Math.Max(0, value));
+            BindParticleNumber("prop-particle-angular-damping", obj, particle, "particle.angular_damping", value => particle.AngularDamping = Math.Max(0, value));
+            Bind("prop-particle-shape", () => { particle.EmissionShape = particle.EmissionShape == ParticleEmissionShape.Box ? ParticleEmissionShape.Sphere : ParticleEmissionShape.Box; particle.ResetRuntime(); _timeline?.RecordAutoKeyframe(obj, "particle.emission_shape"); });
+            BindParticleVector("particle-spawn-extents", obj, particle, "particle.spawn_extents", particle.SpawnBoxExtents, value => particle.SpawnBoxExtents = new vec3(Math.Max(0, value.x), Math.Max(0, value.y), Math.Max(0, value.z)), 0, 1000);
+            Bind("prop-particle-directional", () => { particle.UseDirectionalEmission = !particle.UseDirectionalEmission; particle.ResetRuntime(); _timeline?.RecordAutoKeyframe(obj, "particle.directional_emission"); });
+            BindParticleVector("particle-direction", obj, particle, "particle.direction", particle.Direction, value => particle.Direction = value, -1, 1);
+            BindParticleNumber("prop-particle-spread", obj, particle, "particle.spread", value => particle.SpreadDegrees = Math.Clamp(value, 0, 180));
+            BindParticleNumber("prop-particle-speed-min", obj, particle, "particle.speed_min", value => particle.InitialSpeedMin = Math.Max(0, value));
+            BindParticleNumber("prop-particle-speed-max", obj, particle, "particle.speed_max", value => particle.InitialSpeedMax = Math.Max(0, value));
+            BindParticleVector("particle-velocity-min", obj, particle, "particle.velocity_min", particle.InitialVelocityMin, value => particle.InitialVelocityMin = value, -1000, 1000);
+            BindParticleVector("particle-velocity-max", obj, particle, "particle.velocity_max", particle.InitialVelocityMax, value => particle.InitialVelocityMax = value, -1000, 1000);
+            BindParticleVector("particle-gravity", obj, particle, "particle.gravity", particle.Gravity, value => particle.Gravity = value, -1000, 1000);
+            BindParticleVector("particle-rotation-min", obj, particle, "particle.rotation_min", particle.InitialRotationMinDegrees, value => particle.InitialRotationMinDegrees = value, -3600, 3600);
+            BindParticleVector("particle-rotation-max", obj, particle, "particle.rotation_max", particle.InitialRotationMaxDegrees, value => particle.InitialRotationMaxDegrees = value, -3600, 3600);
+            BindParticleVector("particle-angular-velocity-min", obj, particle, "particle.angular_velocity_min", particle.AngularVelocityMinDegrees, value => particle.AngularVelocityMinDegrees = value, -3600, 3600);
+            BindParticleVector("particle-angular-velocity-max", obj, particle, "particle.angular_velocity_max", particle.AngularVelocityMaxDegrees, value => particle.AngularVelocityMaxDegrees = value, -3600, 3600);
+            BindParticleNumber("prop-particle-start-scale-min", obj, particle, "particle.start_scale_min", value => particle.StartScaleMin = Math.Max(0.001f, value));
+            BindParticleNumber("prop-particle-start-scale-max", obj, particle, "particle.start_scale_max", value => particle.StartScaleMax = Math.Max(0.001f, value));
+            BindParticleNumber("prop-particle-end-scale-min", obj, particle, "particle.end_scale_min", value => particle.EndScaleMin = Math.Max(0.001f, value));
+            BindParticleNumber("prop-particle-end-scale-max", obj, particle, "particle.end_scale_max", value => particle.EndScaleMax = Math.Max(0.001f, value));
             Bind("prop-particle-restart", particle.ResetRuntime);
         }
         if (obj.SpawnCategory.Equals("Primitives", StringComparison.OrdinalIgnoreCase) &&
@@ -260,6 +427,11 @@ public sealed class RmlPropertiesController : IDisposable
             Bind("prop-text-face", () => obj.TextMeshFaceCamera = !obj.TextMeshFaceCamera);
         }
         Bind("prop-plane-face", () => obj.PrimitivePlaneFaceCamera = !obj.PrimitivePlaneFaceCamera);
+        Bind("prop-plane-orientation", () =>
+        {
+            PlaneMesh? plane = obj.Visuals.OfType<PlaneMesh>().FirstOrDefault();
+            if (plane != null) plane.SetOrientation(plane.Orientation == PlaneOrientation.XY ? PlaneOrientation.XZ : PlaneOrientation.XY);
+        });
         Bind("prop-cube-map", () => _operations?.ApplyCubeUvMapping(!obj.PrimitiveCubeMapped));
         Bind("prop-sphere-smooth", () => { obj.PrimitiveSphereSmooth = !obj.PrimitiveSphereSmooth; RebuildSphere(obj); });
         BindNumber("prop-sphere-segments", value => { obj.PrimitiveSphereSegments = Math.Clamp((int)value, 3, 256); RebuildSphere(obj); });
@@ -268,8 +440,138 @@ public sealed class RmlPropertiesController : IDisposable
 
     private static void RebuildSphere(SceneObject obj) => obj.Visuals.OfType<SphereMesh>().FirstOrDefault()?.SetGeometry(obj.PrimitiveSphereSegments, obj.PrimitiveSphereRings, obj.PrimitiveSphereSmooth);
 
+    private void ApplyBlockTiling(SceneObject obj, int x, int y, int z)
+    {
+        if (_operations != null)
+        {
+            _operations.ApplyBlockTiling(obj, x, y, z);
+            return;
+        }
+        obj.TileX = Math.Clamp(x, 1, SceneObject.MaxTilesPerAxis);
+        obj.TileY = Math.Clamp(y, 1, SceneObject.MaxTilesPerAxis);
+        obj.TileZ = Math.Clamp(z, 1, SceneObject.MaxTilesPerAxis);
+        Record(obj, "tile.x", "tile.y", "tile.z");
+    }
+
+    private static void AppendCameraEffect(StringBuilder html, CameraEffect effect, int index)
+    {
+        string prefix = $"prop-effect-{index}";
+        html.Append("<div style='margin:5px;border-top:1px #484a54;padding-top:5px'>");
+        html.Append("<div class='prop-row'><span class='prop-label'>")
+            .Append(effect.Type == CameraEffectType.CameraShake ? "Camera Shake" : "Film Grain")
+            .Append("</span><button id='").Append(prefix).Append("-remove'>Remove</button></div>");
+        if (effect.Type == CameraEffectType.CameraShake)
+        {
+            ButtonRow(html, "Mode", $"{prefix}-mode", effect.Shake.Mode.ToString());
+            NumberRow(html, "Trauma", $"{prefix}-trauma", effect.Shake.Trauma);
+            VectorRow(html, "Strength", $"effect-{index}-strength", effect.Shake.Strength);
+            VectorRow(html, "Speed", $"effect-{index}-speed", effect.Shake.Speed);
+            VectorRow(html, "Offset", $"effect-{index}-offset", effect.Shake.Offset);
+        }
+        else
+        {
+            NumberRow(html, "Strength", $"{prefix}-strength", effect.FilmGrain.Strength);
+            NumberRow(html, "Saturation", $"{prefix}-saturation", effect.FilmGrain.Saturation);
+            NumberRow(html, "Size", $"{prefix}-size", effect.FilmGrain.Size);
+        }
+        html.Append("<div class='prop-row'><button id='").Append(prefix).Append("-reset'>Reset effect</button></div></div>");
+    }
+
+    private void BindCameraEffect(CameraSceneObject camera, CameraEffect effect, int index)
+    {
+        string id = $"prop-effect-{index}";
+        Bind($"{id}-remove", () => camera.Effects.RemoveAt(index));
+        if (effect.Type == CameraEffectType.CameraShake)
+        {
+            string path = $"camera.effect.{index}.shake";
+            Bind($"{id}-mode", () =>
+            {
+                effect.Shake.Mode = (CameraShakeMode)(((int)effect.Shake.Mode + 1) % 3);
+                _timeline?.RecordAutoKeyframe(camera, $"{path}.mode");
+            });
+            BindAnimatedNumber($"{id}-trauma", camera, $"{path}.trauma", value => effect.Shake.Trauma = Math.Clamp(value, 0f, 5f));
+            BindAnimatedVector($"effect-{index}-strength", camera, $"{path}.strength", effect.Shake.Strength, value => effect.Shake.Strength = value, -100f, 100f);
+            BindAnimatedVector($"effect-{index}-speed", camera, $"{path}.speed", effect.Shake.Speed, value => effect.Shake.Speed = value, -200f, 200f);
+            BindAnimatedVector($"effect-{index}-offset", camera, $"{path}.offset", effect.Shake.Offset, value => effect.Shake.Offset = value, -1000f, 1000f);
+            Bind($"{id}-reset", () =>
+            {
+                effect.Shake = new CameraShakeSettings();
+                Record(camera, $"{path}.mode", $"{path}.trauma",
+                    $"{path}.strength.x", $"{path}.strength.y", $"{path}.strength.z",
+                    $"{path}.speed.x", $"{path}.speed.y", $"{path}.speed.z",
+                    $"{path}.offset.x", $"{path}.offset.y", $"{path}.offset.z");
+            });
+        }
+        else
+        {
+            string path = $"camera.effect.{index}.film_grain";
+            BindAnimatedNumber($"{id}-strength", camera, $"{path}.strength", value => effect.FilmGrain.Strength = Math.Clamp(value, 0f, 1f));
+            BindAnimatedNumber($"{id}-saturation", camera, $"{path}.saturation", value => effect.FilmGrain.Saturation = Math.Clamp(value, 0f, 1f));
+            BindAnimatedNumber($"{id}-size", camera, $"{path}.size", value => effect.FilmGrain.Size = Math.Clamp(value, 0.25f, 8f));
+            Bind($"{id}-reset", () =>
+            {
+                effect.FilmGrain = new FilmGrainSettings();
+                Record(camera, $"{path}.strength", $"{path}.saturation", $"{path}.size");
+            });
+        }
+    }
+
+    private void BindAnimatedVector(string prefix, SceneObject obj, string path, vec3 initial, Action<vec3> setter, float minimum, float maximum)
+    {
+        float[] values = [initial.x, initial.y, initial.z];
+        for (int axis = 0; axis < 3; axis++)
+        {
+            int index = axis;
+            BindNumber($"prop-{prefix}-{axis}", value =>
+            {
+                values[index] = Math.Clamp(value, minimum, maximum);
+                setter(new vec3(values[0], values[1], values[2]));
+                _timeline?.RecordAutoKeyframe(obj, $"{path}.{(index == 0 ? "x" : index == 1 ? "y" : "z")}");
+            });
+        }
+    }
+
+    private void BindBendAxis(string id, MiBoneSceneObject bone, bool enabled, int axis, float minimum, float maximum)
+    {
+        if (!enabled) return;
+        BindNumber(id, value =>
+        {
+            vec3 angle = bone.GetEditableBendAngle();
+            value = Math.Clamp(value, minimum, maximum);
+            if (axis == 0) angle.x = value;
+            else if (axis == 1) angle.y = value;
+            else angle.z = value;
+            bone.SetEditableBendAngle(angle);
+            _timeline?.RecordAutoKeyframe(bone, $"bend.{(axis == 0 ? "x" : axis == 1 ? "y" : "z")}");
+        });
+    }
+
     private void BindAnimatedNumber(string id, SceneObject obj, string path, Action<float> setter) => BindNumber(id, value => { setter(value); _timeline?.RecordAutoKeyframe(obj, path); });
     private void BindParticleNumber(string id, SceneObject obj, ParticleSpawnerSceneObject particle, string path, Action<float> setter) => BindNumber(id, value => { setter(value); particle.ResetRuntime(); _timeline?.RecordAutoKeyframe(obj, path); });
+
+    private void BindParticleVector(string prefix, SceneObject obj, ParticleSpawnerSceneObject particle, string path, vec3 initial, Action<vec3> setter, float minimum, float maximum) =>
+        BindAnimatedVector(prefix, obj, path, initial, value => { setter(value); particle.ResetRuntime(); }, minimum, maximum);
+
+    private void CycleParticleSource(ParticleSpawnerSceneObject particle)
+    {
+        IReadOnlyList<(string Id, string Name, string Type)> sources = _operations?.GetParticleSourceOptions()
+            ?? Array.Empty<(string, string, string)>();
+        if (sources.Count == 0)
+        {
+            particle.SetParticleSource("", "");
+            return;
+        }
+
+        int current = -1;
+        for (int i = 0; i < sources.Count; i++)
+            if (string.Equals(sources[i].Id, particle.ParticleLibraryEntryId, StringComparison.OrdinalIgnoreCase))
+                current = i;
+        int next = current + 1;
+        if (next >= sources.Count)
+            particle.SetParticleSource("", "");
+        else
+            particle.SetParticleSource(sources[next].Id, sources[next].Name);
+    }
 
     private void EditMaterial(Action<MaterialSettings> edit)
     {
@@ -278,6 +580,7 @@ public sealed class RmlPropertiesController : IDisposable
         MaterialSettings material = _object.MaterialSettings ?? new MaterialSettings();
         edit(material);
         _object.MaterialSettings = material;
+        _object.PropagateMaterialSettingsToChildren();
     }
 
     private void BindTextMesh(string id, SceneObject obj, string? path, Action setter) =>
@@ -328,6 +631,26 @@ public sealed class RmlPropertiesController : IDisposable
                 setter(new vec4(values[0], values[1], values[2], values[3]));
             });
         }
+    }
+    private void BindVector2(string prefix, vec2 initial, Action<vec2> setter)
+    {
+        float[] values = [initial.x, initial.y];
+        for (int axis = 0; axis < 2; axis++)
+        {
+            int index = axis;
+            BindNumber($"prop-{prefix}-{axis}", value =>
+            {
+                values[index] = value;
+                setter(new vec2(values[0], values[1]));
+            });
+        }
+    }
+    private static void Vector2Row(StringBuilder h, string label, string prefix, vec2 value)
+    {
+        h.Append("<div class='prop-row'><span class='prop-label'>").Append(E(label)).Append("</span>");
+        float[] values = [value.x, value.y];
+        for (int i = 0; i < 2; i++) h.Append("<span class='axis'>").Append(i == 0 ? "H" : "V").Append("</span><input id='prop-").Append(prefix).Append('-').Append(i).Append("' value='").Append(values[i].ToString("0.###", CultureInfo.InvariantCulture)).Append("'/>");
+        h.Append("</div>");
     }
     private static void Vector4Row(StringBuilder h, string label, string prefix, vec4 value)
     {

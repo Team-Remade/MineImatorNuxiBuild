@@ -4584,7 +4584,7 @@ public class PropertiesPanel : UiPanel
         ProjectManager.Instance.SetDirty(true);
     }
 
-    private static vec3 GetEditablePosition(SceneObject obj)
+    public static vec3 GetEditablePosition(SceneObject obj)
     {
         if (obj is MiBoneSceneObject miPos)
             return miPos.OffsetPosition;
@@ -4593,7 +4593,7 @@ public class PropertiesPanel : UiPanel
         return obj.LocalPosition;
     }
 
-    private static void SetEditablePosition(SceneObject obj, vec3 value)
+    public static void SetEditablePosition(SceneObject obj, vec3 value)
     {
         if (obj is MiBoneSceneObject miPos)
             miPos.OffsetPosition = value;
@@ -4603,7 +4603,7 @@ public class PropertiesPanel : UiPanel
             obj.SetLocalPosition(value);
     }
 
-    private static vec3 GetEditableRotation(SceneObject obj)
+    public static vec3 GetEditableRotation(SceneObject obj)
     {
         if (obj is MiBoneSceneObject miRot)
             return miRot.OffsetRotation;
@@ -4612,7 +4612,7 @@ public class PropertiesPanel : UiPanel
         return obj.LocalRotation;
     }
 
-    private static void SetEditableRotation(SceneObject obj, vec3 value)
+    public static void SetEditableRotation(SceneObject obj, vec3 value)
     {
         if (obj is MiBoneSceneObject miRot)
             miRot.OffsetRotation = value;
@@ -4622,14 +4622,14 @@ public class PropertiesPanel : UiPanel
             obj.SetLocalRotation(value);
     }
 
-    private static vec3 GetEditableScale(SceneObject obj)
+    public static vec3 GetEditableScale(SceneObject obj)
     {
         if (obj is MiBoneSceneObject miScale)
             return miScale.OffsetScale;
         return obj.LocalScale;
     }
 
-    private static void SetEditableScale(SceneObject obj, vec3 value)
+    public static void SetEditableScale(SceneObject obj, vec3 value)
     {
         if (obj is MiBoneSceneObject miScale)
             miScale.OffsetScale = value;
@@ -4797,6 +4797,32 @@ public class PropertiesPanel : UiPanel
             ProjectManager.Instance.SetDirty(true);
     }
 
+    /// <summary>Applies block tiling to one object and rebuilds its live GPU geometry.</summary>
+    public void ApplyBlockTiling(SceneObject obj, int tileX, int tileY, int tileZ)
+    {
+        if (!string.Equals(obj.SpawnCategory, "Blocks", StringComparison.Ordinal)) return;
+
+        obj.TileX = Math.Clamp(tileX, 1, SceneObject.MaxTilesPerAxis);
+        obj.TileY = Math.Clamp(tileY, 1, SceneObject.MaxTilesPerAxis);
+        obj.TileZ = Math.Clamp(tileZ, 1, SceneObject.MaxTilesPerAxis);
+        Timeline?.RecordAutoKeyframe(obj, "tile.x");
+        Timeline?.RecordAutoKeyframe(obj, "tile.y");
+        Timeline?.RecordAutoKeyframe(obj, "tile.z");
+        SpawnMenu?.RebuildBlockMeshes(obj);
+    }
+
+    /// <summary>Returns sorted non-particle object-library entries usable as particle instances.</summary>
+    public IReadOnlyList<(string Id, string Name, string Type)> GetParticleSourceOptions()
+    {
+        EnsureObjectLibraryInitialized(ProjectManager.Instance.Manifest);
+        var entries = new List<ProjectSceneObjectEntry>();
+        CollectParticleSourceEntries(ProjectManager.Instance.Manifest.ObjectLibrary, entries);
+        return entries
+            .OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(entry => (entry.LibraryEntryId, entry.Name, entry.ObjectType))
+            .ToArray();
+    }
+
     /// <summary>Rebuilds a text object's GPU geometry using this panel's render context.</summary>
     public bool RebuildTextMesh(SceneObject obj)
     {
@@ -4839,6 +4865,28 @@ public class PropertiesPanel : UiPanel
         if (_currentObject == null) return;
         if (_currentObject.MaterialSettings == null)
             _currentObject.MaterialSettings = new MaterialSettings();
+    }
+
+    /// <summary>Rebuilds Minecraft-derived geometry whose emission metadata depends on material settings.</summary>
+    public void RefreshAutoEmissionMeshes(SceneObject obj)
+    {
+        if (SpawnMenu == null) return;
+
+        if (string.Equals(obj.SpawnCategory, "Blocks", StringComparison.Ordinal))
+            SpawnMenu.RebuildBlockMeshes(obj);
+        else if (string.Equals(obj.SpawnCategory, "Scenery", StringComparison.Ordinal) &&
+                 !string.IsNullOrWhiteSpace(obj.SourceAssetPath))
+            SpawnMenu.ApplyResourcePackToSpawnedObject(obj, obj.ResourcePackId);
+    }
+
+    /// <summary>Applies texture filtering flags to an object hierarchy used by one imported asset.</summary>
+    public void ApplyTextureFiltering(SceneObject root, bool blurTexture, bool textureMipmaps)
+    {
+        ApplyToSubtree(root, obj =>
+        {
+            obj.BlurTexture = blurTexture;
+            obj.TextureMipmaps = textureMipmaps;
+        });
     }
 
     /// <summary>
