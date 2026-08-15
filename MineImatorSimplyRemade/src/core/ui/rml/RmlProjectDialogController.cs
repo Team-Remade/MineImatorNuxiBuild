@@ -30,6 +30,11 @@ public sealed class RmlProjectDialogController
 
     public Action<string>? SuccessToastRequested { get; set; }
     public Action<string>? ErrorToastRequested { get; set; }
+
+    /// <summary>Invoked with true for Save-As, false for New Project after the project was
+    /// successfully created/saved, so MainWindow can leave the home screen (it owns
+    /// _showProjectHome; this controller has no way to flip that flag itself).</summary>
+    public Action<bool>? ProjectReady { get; set; }
     public bool Visible { get; private set; }
 
     public RmlProjectDialogController(Element overlay, Element root, ProjectManager projects,
@@ -122,16 +127,33 @@ public sealed class RmlProjectDialogController
         // IMPORTANT: Put the dialog inside the overlay, not the main root.
         _overlay.SetInnerRml(html.ToString());
 
+        // Elements returned by GetElementById are cached by the RmlUi wrapper keyed on their
+        // native pointer. Since SetInnerRml() above tears down and recreates the whole overlay
+        // subtree every rebuild, a freed native element's pointer address can get reused for a
+        // new element - and when that happens, GetElementById hands back the *stale* cached
+        // wrapper, whose click handler dictionary already thinks a listener is registered, so
+        // the real native listener never gets attached to the new element (see
+        // RmlHomeController.Bind for the same issue). Using a fresh EventListener per bind
+        // (instead of the Action<Event> overload, which relies on that cached per-wrapper
+        // dictionary) sidesteps this entirely: it always performs the actual native registration.
         _overlay.GetElementById("project-dialog-cancel")?
-            .AddEventListener("click", _ => Close());
+            .AddEventListener("click", new ClickListener(Close));
 
         _overlay.GetElementById("project-dialog-confirm")?
-            .AddEventListener("click", _ => Confirm());
+            .AddEventListener("click", new ClickListener(Confirm));
+    }
+
+    private sealed class ClickListener(Action action) : EventListener
+    {
+        public override void ProcessEvent(Event ev) => action();
     }
 
     private void Confirm()
     {
-        string name = _root.GetElementById("project-dialog-name") is ElementFormControlInput input
+        // The name input was created inside _overlay (see Build()), not _root - _root
+        // ("project-dialog-body") is actually replaced/removed by _overlay.SetInnerRml, so
+        // looking it up through _root would always fail.
+        string name = _overlay.GetElementById("project-dialog-name") is ElementFormControlInput input
             ? input.GetValue()
             : _name;
         name = string.IsNullOrWhiteSpace(name) ? "Untitled Project" : name.Trim();
@@ -153,6 +175,7 @@ public sealed class RmlProjectDialogController
                 ProjectSceneSerializer.WriteSceneToManifest(_projects.Manifest, _mainViewport, _timeline, _properties);
                 _projects.SaveProjectAs(name);
                 SuccessToastRequested?.Invoke($"Saved copy as {name}");
+                ProjectReady?.Invoke(true);
                 return true;
             }
 
@@ -161,6 +184,7 @@ public sealed class RmlProjectDialogController
                 ProjectSceneSerializer.LoadSceneFromManifest(_projects.Manifest, _mainViewport, _spawnMenu, _timeline,
                     _properties);
 
+            ProjectReady?.Invoke(false);
             return true;
         }
         catch (Exception ex)

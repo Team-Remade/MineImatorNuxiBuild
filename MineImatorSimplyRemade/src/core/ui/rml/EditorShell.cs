@@ -138,12 +138,20 @@ public sealed class EditorShell
           .panel-title { height: 27px; padding: 5px 8px; color: #b9bbc4; background: #292a31;
                          border-bottom: 1px #111216; font-weight: bold; }
           .panel-body { position: absolute; top: 27px; bottom: 0; left: 0; right: 0; overflow: auto; }
-          #scene-tree { width: 235px; min-width: 150px; position: relative; }
           #center { flex: 1; min-width: 260px; display: flex; flex-direction: column; }
           #viewport { flex: 1; position: relative; background: #101115; overflow: hidden; }
-          #content-browser { height: 180px; min-height: 80px; position: relative; }
-          #properties { width: 285px; min-width: 190px; position: relative; }
-          #timeline { height: 225px; min-height: 100px; position: relative; }
+          #viewport-surface { position: absolute; top: 0; bottom: 0; left: 0; right: 0; overflow: hidden; }
+          #viewport-tools { height: 31px; display: flex; align-items: center; padding: 3px; background: #292a31; }
+          #viewport-tools button { background: #33353d; border: 1px #4c4f5a; margin-right: 4px; }
+          #spawn-object { margin-left: auto; margin-right: 0; display: flex; align-items: center; }
+          #spawn-object img { width: 16px; height: 16px; margin-right: 5px; }
+          #viewport-image { position: absolute; top: 31px; bottom: 0; left: 0; right: 0; width: 100%; height: 100%; }
+          #right-column { width: 285px; min-width: 190px; display: flex; flex-direction: column; }
+          #scene-tree { flex: 1; min-height: 120px; position: relative; border-bottom: 1px #111216; }
+          #properties { flex: 1; min-height: 120px; position: relative; }
+          #bottom-row { height: 225px; min-height: 100px; display: flex; flex-direction: row; }
+          #content-browser { width: 300px; min-width: 150px; position: relative; border-right: 1px #111216; }
+          #timeline { flex: 1; min-width: 200px; position: relative; }
           #statusbar { position: absolute; height: 23px; bottom: 0; left: 0; right: 0; padding: 3px 8px;
                        background: #25262c; border-top: 1px #111216; color: #9295a0; }
           #home-overlay { position: absolute; top: 0; bottom: 0; left: 0; right: 0; display: none;
@@ -168,7 +176,6 @@ public sealed class EditorShell
           .recent-missing{color:#eb9271;}
           #preferences-overlay { position:absolute; top:45px; bottom:45px; left:20%; right:20%; display:none;
                                  background:#202127; border:1px #555864; z-index:30; }
-          #spawn-object { position:absolute;top:7px;left:8px;background:#343640;border:1px #555865;z-index:3; }
           #spawn-overlay { position:absolute;top:9%;bottom:9%;left:9%;right:9%;display:none;flex-direction:column;
                            background:#202127;border:1px #555864;z-index:35; }
           #toast { position:absolute; top:20px; right:20px; width:280px; padding:12px 14px; display:none; z-index:40; }
@@ -235,12 +242,16 @@ public sealed class EditorShell
           </div>
           <div id="workspace">
             <div id="upper">
-              <div id="scene-tree" class="panel"><div class="panel-title">Scene Tree</div><div id="scene-tree-body" class="panel-body"/></div>
-              <div id="center"><div id="viewport" class="panel"><div id="viewport-surface" class="panel-body"/><button id="spawn-object">+ Add object</button></div>
-                <div id="content-browser" class="panel"><div class="panel-title">Content Browser</div><div id="content-browser-body" class="panel-body"/></div></div>
-              <div id="properties" class="panel"><div class="panel-title">Properties</div><div id="properties-body" class="panel-body"/></div>
+              <div id="center"><div id="viewport" class="panel"><div id="viewport-surface"/></div></div>
+              <div id="right-column">
+                <div id="scene-tree" class="panel"><div class="panel-title">Scene Tree</div><div id="scene-tree-body" class="panel-body"/></div>
+                <div id="properties" class="panel"><div class="panel-title">Properties</div><div id="properties-body" class="panel-body"/></div>
+              </div>
             </div>
-            <div id="timeline" class="panel"><div class="panel-title">Timeline</div><div id="timeline-body" class="panel-body"/></div>
+            <div id="bottom-row">
+              <div id="content-browser" class="panel"><div class="panel-title">Content Browser</div><div id="content-browser-body" class="panel-body"/></div>
+              <div id="timeline" class="panel"><div class="panel-title">Timeline</div><div id="timeline-body" class="panel-body"/></div>
+            </div>
           </div>
           <div id="statusbar"><span id="status-text">Ready</span></div>
           <div id="home-overlay"><div id="home-body"/></div>

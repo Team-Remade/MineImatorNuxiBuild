@@ -19,6 +19,9 @@ public sealed class RmlViewportController
     private bool _control;
     private bool _shift;
 
+    /// <summary>Invoked when the "Add object" button in the viewport header is clicked.</summary>
+    public Action? SpawnObjectRequested { get; set; }
+
     public RmlViewportController(Element root, Viewport main, Viewport surface)
     {
         _root = root;
@@ -51,13 +54,15 @@ public sealed class RmlViewportController
         string cameraName = cameraIndex == Viewport.RenderOutputIndex ? "Render Output" : cameraIndex == 0 ? "Work Camera" :
             cameraIndex - 1 < cameras.Count ? cameras[cameraIndex - 1].GetDisplayName() : "Work Camera";
         string source = $"gl-texture://{_surface.ColorTexture}/{_width}/{_height}";
+        // Note: SetInnerRml() only parses element markup for the fragment being inserted -
+        // unlike a document's <head>, a <style> tag embedded here isn't picked up as a
+        // stylesheet by RmlUi, so it would just render as raw literal text. All of the
+        // viewport's CSS lives in EditorShell's document-level <style> block instead.
         _root.SetInnerRml($$"""
-          <style>#viewport-tools{height:31px;display:flex;align-items:center;padding:3px;background:#292a31;}
-            #viewport-tools button{background:#33353d;border:1px #4c4f5a;margin-right:4px;}
-            #viewport-image{position:absolute;top:31px;bottom:0;left:0;right:0;width:100%;height:{{_height}}px;object-fit:fill;}</style>
           <div id="viewport-tools"><button id="viewport-camera">Camera: {{System.Net.WebUtility.HtmlEncode(cameraName)}}</button><button id="viewport-overlays">Overlays</button><button id="viewport-particles">Particles</button>
             <button id="viewport-quality">{{(_surface.HighQualityPreviewEnabled ? "Rendered" : "Solid")}}</button><button id="viewport-shadow">Shadow debug</button>
-            <button id="viewport-preview">Preview</button></div>
+            <button id="viewport-preview">Preview</button>
+            <button id="spawn-object"><img src="embedded://bench"/>Add object</button></div>
           <img id="viewport-image" tabindex="0" src="{{source}}"/>
           """);
         Bind("viewport-overlays", () => _main.OverlaysEnabled = !_main.OverlaysEnabled);
@@ -66,6 +71,7 @@ public sealed class RmlViewportController
         Bind("viewport-quality", () => { _surface.ToggleHighQualityPreview(); Build(); });
         Bind("viewport-shadow", () => { _surface.ToggleShadowDebugMode(); Build(); });
         Bind("viewport-preview", () => _main.PreviewViewport?.ToggleInlineVisibility());
+        Bind("spawn-object", () => SpawnObjectRequested?.Invoke());
         Element? image = _root.GetElementById("viewport-image");
         image?.AddEventListener("mousemove", e => { ReadMouse(e); PushInput(); });
         image?.AddEventListener("mousedown", e => { ReadMouse(e); int button = Number(e, "button"); SetButton(button, true); PushInput(leftPressed: button == 0, rightPressed: button == 1); });

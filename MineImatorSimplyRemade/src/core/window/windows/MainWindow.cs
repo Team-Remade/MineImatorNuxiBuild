@@ -472,6 +472,7 @@ public class MainWindow : Window
                 _contentBrowser,
                 _spawnMenu);
             _rmlEditor.OpenRecentProjectRequested = OpenRecentProject;
+            _rmlEditor.ProjectReady = OnProjectDialogReady;
         }
 
         ReportStep(7, "Constructing editor UI", "Editor ready.", 1f, "Main window will appear shortly");
@@ -2511,6 +2512,22 @@ public class MainWindow : Window
     private void OpenNewProjectPopup()
     {
         _rmlEditor?.ShowNewProjectDialog();
+    }
+
+    /// <summary>Called by RmlProjectDialogController (via RmlEditorController.ProjectReady) once
+    /// the retained-mode New Project / Save Project As dialog actually created/saved the project
+    /// itself. That controller owns the project creation now (see ExecuteProjectDialogAction,
+    /// which is dead code left over from before the RmlUi port), but it has no way to flip
+    /// _showProjectHome, so without this the home screen kept showing after hitting Create.</summary>
+    private void OnProjectDialogReady(bool isSaveAs)
+    {
+        _showProjectHome = false;
+        RefreshWindowTitle();
+        CaptureCurrentSceneAsSavedState();
+        if (isSaveAs)
+            RefreshProjectThumbnail();
+        else
+            SaveProjectWithSceneInternal();
     }
 
     private void OpenSaveAsPopup()

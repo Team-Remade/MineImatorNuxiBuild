@@ -4848,6 +4848,27 @@ public class Viewport : UiPanel
         _previewWidth = width;
         _previewHeight = height;
 
+        // Resizing re-creates the FBO and its textures below - free the previous
+        // ones first, otherwise every resize leaks a framebuffer + two textures
+        // and the RmlUi renderer keeps flip-marking stale texture ids as
+        // "external" (see RmlOpenGlRenderer), which is what caused the preview
+        // <img> to occasionally flash garbage/leftover GPU memory contents.
+        if (_previewFbo != 0)
+        {
+            Gl.DeleteFramebuffer(_previewFbo);
+            _previewFbo = 0;
+        }
+        if (_previewColorTex != 0)
+        {
+            Gl.DeleteTexture(_previewColorTex);
+            _previewColorTex = 0;
+        }
+        if (_previewDepthTex != 0)
+        {
+            Gl.DeleteTexture(_previewDepthTex);
+            _previewDepthTex = 0;
+        }
+
         Gl.GenFramebuffers(1, out _previewFbo);
         Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
 

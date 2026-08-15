@@ -30,6 +30,15 @@ public sealed class RmlEditorController : IDisposable
     /// Open button is clicked, so MainWindow can actually load that specific project.</summary>
     public Action<string>? OpenRecentProjectRequested { get; set; }
 
+    /// <summary>Invoked with true for Save-As, false for New Project once the project dialog's
+    /// action actually succeeds, so MainWindow can leave the home screen (see
+    /// RmlProjectDialogController.ProjectReady for why this can't be done internally here).</summary>
+    public Action<bool>? ProjectReady
+    {
+        get => _projectDialog.ProjectReady;
+        set => _projectDialog.ProjectReady = value;
+    }
+
     public RmlEditorController(
         RmlWindowHost host,
         Menubar menu,
@@ -93,7 +102,7 @@ public sealed class RmlEditorController : IDisposable
         if (spawnMenu != null)
         {
             _spawnMenu = new RmlSpawnMenuController(Required("spawn-overlay"), Required("spawn-body"), spawnMenu);
-            _shell.BindCommand("spawn-object", _spawnMenu.Toggle);
+            _viewport.SpawnObjectRequested = _spawnMenu.Toggle;
         }
 
         Element Required(string id) => _shell.GetRegionElement(id)

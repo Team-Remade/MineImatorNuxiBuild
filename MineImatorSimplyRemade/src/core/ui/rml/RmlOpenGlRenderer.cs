@@ -118,6 +118,17 @@ public sealed unsafe class RmlOpenGlRenderer : RenderInterface, IDisposable
                 _externalTextures.Add(external);
                 return (nint)external;
             }
+            if (source.StartsWith("embedded://", StringComparison.OrdinalIgnoreCase))
+            {
+                string resourceName = source[11..];
+                using Stream? embeddedStream = System.Reflection.Assembly.GetExecutingAssembly()
+                    .GetManifestResourceStream($"MineImatorSimplyRemade.assets.img.{resourceName}.png");
+                if (embeddedStream == null) return 0;
+                ImageResult embeddedImage = ImageResult.FromStream(embeddedStream, ColorComponents.RedGreenBlueAlpha);
+                textureDimensions = new Vector2i(embeddedImage.Width, embeddedImage.Height);
+                fixed (byte* pixels = embeddedImage.Data)
+                    return CreateTexture(pixels, embeddedImage.Width, embeddedImage.Height);
+            }
             using FileStream stream = File.OpenRead(source);
             ImageResult image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
             textureDimensions = new Vector2i(image.Width, image.Height);
