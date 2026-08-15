@@ -216,7 +216,19 @@ public class Window : IDisposable
             ImGui.RenderPlatformWindowsDefault();
         }
 
+        RenderOverlay();
+
         Glfw.SwapBuffers(windowHandle);
+    }
+
+    /// <summary>
+    /// Extension point invoked every frame after ImGui has finished rendering but before
+    /// the backbuffer is swapped. Subclasses that composite non-ImGui content on top of
+    /// (or instead of) ImGui-drawn UI - e.g. a RmlUi document - override this instead of
+    /// duplicating the whole <see cref="Render"/> loop.
+    /// </summary>
+    protected virtual void RenderOverlay()
+    {
     }
 
     /// <summary>

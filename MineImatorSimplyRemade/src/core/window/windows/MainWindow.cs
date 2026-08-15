@@ -16,6 +16,7 @@ using MineImatorSimplyRemade.core.render;
 using MineImatorSimplyRemade.core.startup;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
+using MineImatorSimplyRemade.core.ui.rml;
 using MineImatorSimplyRemade.core.update;
 using MineImatorSimplyRemadeNuxi.core;
 using NativeFileDialogSharp;
@@ -95,6 +96,7 @@ public class MainWindow : Window
     private PropertiesPanel? _propertiesPanel;
 
     private readonly Menubar _menubar;
+    private RmlMenubarView? _rmlMenubar;
     private readonly ProjectManager _projectManager = ProjectManager.Instance;
     private readonly Dictionary<string, uint> _thumbnailTextures = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _homeSplashPool = new();
@@ -292,7 +294,7 @@ public class MainWindow : Window
 
     public PreferencesPanel? GetPreferencesPanel() => _preferencesPanel;
 
-    public void InitializeRuntime(Action<StartupProgressState>? progress = null)
+    public unsafe void InitializeRuntime(Action<StartupProgressState>? progress = null)
     {
         EnsureHomeSplashItalicFont();
 
@@ -452,6 +454,9 @@ public class MainWindow : Window
             viewport.PreviewViewport = _cameraViewport;
         }
 
+        RmlWindowHost rmlHost = new RmlWindowHost(Glfw, windowHandle, gl, WindowWidth, WindowHeight, "main-menubar");
+        _rmlMenubar = new RmlMenubarView(rmlHost, _menubar);
+
         ReportStep(7, "Constructing editor UI", "Editor ready.", 1f, "Main window will appear shortly");
 
         // Load preferences after all UI is ready
@@ -482,14 +487,15 @@ public class MainWindow : Window
         AdvanceRenderJob();
         AdvanceResourcePackImportJob();
 
-        _menubar.Render();
         RenderProjectDialogs();
         RenderResourcePackImportPopup();
         RenderUnsavedChangesDialog();
 
         ImGuiViewportPtr mainViewport = ImGui.GetMainViewport();
-        ImGui.SetNextWindowPos(mainViewport.WorkPos);
-        ImGui.SetNextWindowSize(mainViewport.WorkSize);
+        // The menubar itself is now drawn by RmlUi (see RenderOverlay), so the ImGui
+        // dockspace's work area is shifted down by its height to avoid overlapping it.
+        ImGui.SetNextWindowPos(mainViewport.WorkPos with { Y = mainViewport.WorkPos.Y + RmlMenubarView.Height });
+        ImGui.SetNextWindowSize(mainViewport.WorkSize with { Y = mainViewport.WorkSize.Y - RmlMenubarView.Height });
         ImGui.SetNextWindowViewport(mainViewport.ID);
 
         ImGuiWindowFlags dockWindowFlags =
@@ -527,6 +533,19 @@ public class MainWindow : Window
         UpdateUndoRedoTracking();
         RenderProjectHomeScreen();
         RenderToast();
+    }
+
+    /// <summary>Draws the RmlUi-based menubar strip on top of the ImGui-rendered UI each frame.</summary>
+    protected override void RenderOverlay()
+    {
+        _rmlMenubar?.Render(WindowWidth, WindowHeight);
+    }
+
+    public override void Dispose()
+    {
+        _rmlMenubar?.Dispose();
+        _rmlMenubar = null;
+        base.Dispose();
     }
 
     private void RequestDockSpaceRebuild()
