@@ -20,6 +20,7 @@ public sealed class RmlEditorController : IDisposable
     private readonly RmlToastController _toast;
     private readonly RmlAboutController _about;
     private readonly RmlUpdateController _update;
+    private readonly RmlRenderController _render;
     private readonly RmlProjectDialogController _projectDialog;
 
     public RmlEditorController(
@@ -60,11 +61,14 @@ public sealed class RmlEditorController : IDisposable
         _toast = new RmlToastController(Required("toast"), Required("toast-text"));
         _about = new RmlAboutController(Required("about-overlay"), Required("about-body"), ResolveAppVersion());
         _update = new RmlUpdateController(Required("update-overlay"), Required("update-body"));
+        _render = new RmlRenderController(Required("render-overlay"), Required("render-body"));
         _projectDialog.SuccessToastRequested = _toast.ShowSuccess;
         _projectDialog.ErrorToastRequested = _toast.ShowError;
         _shell.BindCommand("preferences", _preferences.Toggle);
         _shell.BindCommand("about", _about.Toggle);
         _shell.BindCommand("updates", _update.Toggle);
+        _shell.BindCommand("render-image", () => _render.Show(RmlRenderController.RenderMode.Image));
+        _shell.BindCommand("render-video", () => _render.Show(RmlRenderController.RenderMode.Video));
         if (spawnMenu != null)
         {
             _spawnMenu = new RmlSpawnMenuController(Required("spawn-overlay"), Required("spawn-body"), spawnMenu);
@@ -86,6 +90,7 @@ public sealed class RmlEditorController : IDisposable
         _content.Update();
         _toast.Update();
         _update.Update();
+        _render.Update();
     }
 
     public void ShowSuccessToast(string message) => _toast.ShowSuccess(message);
