@@ -87,60 +87,11 @@ public sealed class RmlProjectDialogController
         string label = _mode == Mode.SaveAs ? "Project name (copy)" : "Project name";
         string actionLabel = _mode == Mode.SaveAs ? "Save Copy" : "Create";
 
-        var html = new StringBuilder("""
-                                     <style>
-                                     #project-dialog-panel {
-                                         width: 420px;
-                                         padding: 16px;
-                                         margin: auto;
-                                         box-sizing: border-box;
-
-                                         background-color: #202127;
-                                         border: 1px solid #393b44;
-                                     }
-
-                                     #project-dialog-panel h3 {
-                                         margin: 0 0 10px 0;
-                                         color: #dedfe4;
-                                     }
-
-                                     #project-dialog-panel > div {
-                                         color: #dedfe4;
-                                         margin-bottom: 6px;
-                                     }
-
-                                     #project-dialog-panel input {
-                                         width: 100%;
-                                         padding: 6px;
-                                         margin: 0 0 10px 0;
-                                         box-sizing: border-box;
-
-                                         background-color: #191a1f;
-                                         border: 1px solid #50525e;
-                                         color: #dedfe4;
-                                     }
-
-                                     #project-dialog-error {
-                                         color: #eb9271;
-                                         margin-bottom: 8px;
-                                     }
-
-                                     #project-dialog-actions {
-                                         display: flex;
-                                         flex-direction: row;
-                                         justify-content: flex-end;
-                                     }
-
-                                     #project-dialog-actions button {
-                                         margin-left: 6px;
-                                         padding: 7px 14px;
-
-                                         background-color: #30323a;
-                                         border: 1px solid #50525e;
-                                         color: #dedfe4;
-                                     }
-                                     </style>
-                                     """);
+        // Note: SetInnerRml() only parses element markup for the fragment being inserted -
+        // unlike a document's <head>, a <style> tag embedded here isn't picked up as a
+        // stylesheet by RmlUi, so it would just render as raw literal text. All of the
+        // project-dialog's CSS lives in EditorShell's document-level <style> block instead.
+        var html = new StringBuilder();
 
         html.Append("<div id='project-dialog-panel'>")
             .Append("<h3>")
