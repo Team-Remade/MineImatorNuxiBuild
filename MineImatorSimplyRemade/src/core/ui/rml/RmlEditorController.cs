@@ -1,3 +1,4 @@
+using System.Reflection;
 using MineImatorSimplyRemade.core.ui.Panels;
 using RmlUiNet;
 
@@ -15,6 +16,7 @@ public sealed class RmlEditorController : IDisposable
     private readonly RmlViewportController _viewport;
     private readonly RmlSpawnMenuController? _spawnMenu;
     private readonly RmlToastController _toast;
+    private readonly RmlAboutController _about;
 
     public RmlEditorController(
         RmlWindowHost host,
@@ -42,7 +44,9 @@ public sealed class RmlEditorController : IDisposable
         _preferences = new RmlPreferencesController(Required("preferences-overlay"), Required("preferences-body"), preferences);
         _viewport = new RmlViewportController(Required("viewport-surface"), mainViewport, renderSurface);
         _toast = new RmlToastController(Required("toast"), Required("toast-text"));
+        _about = new RmlAboutController(Required("about-overlay"), Required("about-body"), ResolveAppVersion());
         _shell.BindCommand("preferences", _preferences.Toggle);
+        _shell.BindCommand("about", _about.Toggle);
         if (spawnMenu != null)
         {
             _spawnMenu = new RmlSpawnMenuController(Required("spawn-overlay"), Required("spawn-body"), spawnMenu);
@@ -67,6 +71,20 @@ public sealed class RmlEditorController : IDisposable
     public void ShowSuccessToast(string message) => _toast.ShowSuccess(message);
 
     public void ShowErrorToast(string message) => _toast.ShowError(message);
+
+    private static string ResolveAppVersion()
+    {
+        Assembly assembly = Assembly.GetExecutingAssembly();
+        string? informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational))
+            return informational!;
+
+        string? fileVersion = assembly.GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
+        if (!string.IsNullOrWhiteSpace(fileVersion))
+            return fileVersion!;
+
+        return assembly.GetName().Version?.ToString() ?? "Unknown";
+    }
 
     /// <summary>Runs scene rendering before RmlUi composites the shell.</summary>
     public void RenderSceneSurface() => _viewport.Render();
