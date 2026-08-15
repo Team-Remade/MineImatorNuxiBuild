@@ -4811,6 +4811,75 @@ public class PropertiesPanel : UiPanel
         SpawnMenu?.RebuildBlockMeshes(obj);
     }
 
+    /// <summary>Returns available resource-pack IDs sorted for UI selection.</summary>
+    public IReadOnlyList<string> GetResourcePackOptions() =>
+        MinecraftDataLoader.GetAvailableResourcePackIds()
+            .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    public ItemAtlasSource GetItemAtlasSource(SceneObject obj) => GetObjectItemAtlasSource(obj);
+
+    public IReadOnlyList<string> GetItemAtlasOptions(ItemAtlasSource atlasSource) =>
+        GetItemAtlasKeys(atlasSource).ToArray();
+
+    public IReadOnlyList<(string Key, int Column, int Row)> GetLocalItemSheetOptions(SceneObject obj) =>
+        GetLocalItemSheetKeys(obj).ToList();
+
+    public bool ApplyItemTexture(SceneObject obj, ItemAtlasSource atlasSource, string key)
+    {
+        if (SpawnMenu == null || obj == null || string.IsNullOrWhiteSpace(key))
+            return false;
+
+        if (!SpawnMenu.ApplyItemTextureToSpawnedObject(obj, atlasSource, key))
+            return false;
+
+        ProjectManager.Instance.SetDirty(true);
+        return true;
+    }
+
+    public bool ApplyTemporaryItemSheetSlot(SceneObject obj, int columnIndex, int rowIndex)
+    {
+        if (SpawnMenu == null || obj == null)
+            return false;
+
+        if (!SpawnMenu.ApplyTemporaryItemSheetSlotToSpawnedObject(obj, columnIndex, rowIndex))
+            return false;
+
+        ProjectManager.Instance.SetDirty(true);
+        return true;
+    }
+
+    public string? ImportCustomItemImageAndApply(SceneObject obj)
+    {
+        if (SpawnMenu == null || obj == null)
+            return null;
+
+        string? customKey = SpawnMenu.ImportCustomItemImageFromDialogForProperties();
+        if (string.IsNullOrWhiteSpace(customKey))
+            return null;
+
+        if (!SpawnMenu.ApplyItemTextureToSpawnedObject(obj, ItemAtlasSource.ItemAtlas, customKey))
+            return null;
+
+        ProjectManager.Instance.SetDirty(true);
+        return customKey;
+    }
+
+    /// <summary>Applies a resource pack to one object and updates persisted pack ID.</summary>
+    public bool ApplyResourcePack(SceneObject obj, string resourcePackId)
+    {
+        if (SpawnMenu == null || obj == null)
+            return false;
+
+        string normalized = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
+        if (!SpawnMenu.ApplyResourcePackToSpawnedObject(obj, normalized))
+            return false;
+
+        obj.ResourcePackId = normalized;
+        ProjectManager.Instance.SetDirty(true);
+        return true;
+    }
+
     /// <summary>Returns sorted non-particle object-library entries usable as particle instances.</summary>
     public IReadOnlyList<(string Id, string Name, string Type)> GetParticleSourceOptions()
     {

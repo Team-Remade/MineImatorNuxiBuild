@@ -85,6 +85,36 @@ public sealed class RmlPropertiesController : IDisposable
         Vector2Row(html, "UV repeat", "material-repeat", material.TextureRepeat);
         ButtonRow(html, "Mirror H", "prop-mirror-h", material.TextureMirror.x ? "On" : "Off");
         ButtonRow(html, "Mirror V", "prop-mirror-v", material.TextureMirror.y ? "On" : "Off");
+        bool supportsItemImage = string.Equals(obj.SpawnCategory, "Items", StringComparison.Ordinal);
+        if (supportsItemImage)
+        {
+            ItemAtlasSource atlasSource = GetItemAtlasSource(obj);
+            ButtonRow(html, "Item atlas", "prop-item-atlas-cycle", atlasSource switch
+            {
+                ItemAtlasSource.BlockAtlas => "Block Atlas",
+                ItemAtlasSource.LocalAtlas => "Local Atlas",
+                _ => "Item Atlas"
+            });
+
+            string currentItemKey = GetCurrentItemKey(obj, atlasSource);
+            ButtonRow(html, "Item image", "prop-item-image-cycle", string.IsNullOrWhiteSpace(currentItemKey) ? "(none)" : currentItemKey);
+            html.Append("<div class='prop-row'><button id='prop-item-custom-load'>Load custom image...</button></div>");
+
+            if (atlasSource == ItemAtlasSource.LocalAtlas && obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
+            {
+                NumberRow(html, "Slot column", "prop-item-slot-column", obj.TemporaryItemSheetColumnIndex);
+                NumberRow(html, "Slot row", "prop-item-slot-row", obj.TemporaryItemSheetRowIndex);
+            }
+        }
+        bool supportsResourcePack = string.Equals(obj.SpawnCategory, "Blocks", StringComparison.Ordinal) ||
+                                    string.Equals(obj.SpawnCategory, "Scenery", StringComparison.Ordinal);
+        if (supportsResourcePack)
+        {
+            string currentPackId = MinecraftDataLoader.NormalizeResourcePackId(obj.ResourcePackId);
+            string packLabel = string.IsNullOrWhiteSpace(currentPackId) ? "Default" : currentPackId;
+            ButtonRow(html, "Resource pack", "prop-resource-pack-cycle", packLabel);
+            html.Append("<div class='prop-row'><button id='prop-resource-pack-default'>Use default pack</button></div>");
+        }
         html.Append("<div class='prop-row'><button id='prop-material-reset'>Reset material</button></div></div>");
         AppendInheritance(html, obj);
         AppendSpecialized(html, obj);
@@ -118,6 +148,41 @@ public sealed class RmlPropertiesController : IDisposable
         BindVector2("material-repeat", material.TextureRepeat, value => EditMaterial(m => m.TextureRepeat = new vec2(Math.Max(0.0001f, value.x), Math.Max(0.0001f, value.y))));
         Bind("prop-mirror-h", () => EditMaterial(m => m.TextureMirror = new bvec2(!m.TextureMirror.x, m.TextureMirror.y)));
         Bind("prop-mirror-v", () => EditMaterial(m => m.TextureMirror = new bvec2(m.TextureMirror.x, !m.TextureMirror.y)));
+        if (supportsItemImage)
+        {
+            Bind("prop-item-atlas-cycle", () => CycleItemAtlas(obj));
+            Bind("prop-item-image-cycle", () => CycleItemImage(obj));
+            Bind("prop-item-custom-load", () => _operations?.ImportCustomItemImageAndApply(obj));
+
+            if (GetItemAtlasSource(obj) == ItemAtlasSource.LocalAtlas && obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
+            {
+                BindNumber("prop-item-slot-column", value =>
+                {
+                    int column = Math.Clamp((int)value, 0, obj.TemporaryItemSheetColumns - 1);
+                    int row = Math.Clamp(obj.TemporaryItemSheetRowIndex, 0, obj.TemporaryItemSheetRows - 1);
+                    if (_operations?.ApplyTemporaryItemSheetSlot(obj, column, row) == true)
+                    {
+                        _timeline?.RecordAutoKeyframe(obj, "item.slot");
+                        _timeline?.RecordAutoKeyframe(obj, "item.custom_slot");
+                    }
+                });
+                BindNumber("prop-item-slot-row", value =>
+                {
+                    int column = Math.Clamp(obj.TemporaryItemSheetColumnIndex, 0, obj.TemporaryItemSheetColumns - 1);
+                    int row = Math.Clamp((int)value, 0, obj.TemporaryItemSheetRows - 1);
+                    if (_operations?.ApplyTemporaryItemSheetSlot(obj, column, row) == true)
+                    {
+                        _timeline?.RecordAutoKeyframe(obj, "item.slot");
+                        _timeline?.RecordAutoKeyframe(obj, "item.custom_slot");
+                    }
+                });
+            }
+        }
+        if (supportsResourcePack)
+        {
+            Bind("prop-resource-pack-cycle", () => CycleResourcePack(obj));
+            Bind("prop-resource-pack-default", () => _operations?.ApplyResourcePack(obj, ""));
+        }
         Bind("prop-material-reset", () =>
         {
             obj.MaterialSettings = new MaterialSettings();
@@ -190,12 +255,14 @@ public sealed class RmlPropertiesController : IDisposable
         {
             html.Append("<div class='prop-section'><div class='prop-heading'>Light</div>");
             ButtonRow(html, "Type", "prop-light-type", light.Type == LightType.Point ? "Point" : "Spot");
+            VectorRow(html, "Color", "light-color", new vec3(light.LightColor.r, light.LightColor.g, light.LightColor.b));
             NumberRow(html, "Energy", "prop-light-energy", light.LightEnergy);
             NumberRow(html, "Range", "prop-light-range", light.LightRange);
             NumberRow(html, "Indirect", "prop-light-indirect", light.LightIndirectEnergy);
             NumberRow(html, "Specular", "prop-light-specular", light.LightSpecular);
             ButtonRow(html, "Shadows", "prop-light-shadow", light.LightShadowEnabled ? "On" : "Off");
             if (light.Type == LightType.Spot) { NumberRow(html, "Spot angle", "prop-light-angle", light.LightSpotAngle); NumberRow(html, "Spot blend", "prop-light-blend", light.LightSpotBlend); }
+            html.Append("<div class='prop-row'><button id='prop-light-reset'>Reset light</button></div>");
             html.Append("</div>");
         }
         if (obj is ParticleSpawnerSceneObject particle)
@@ -252,6 +319,7 @@ public sealed class RmlPropertiesController : IDisposable
             if (obj.ObjectType == "Sphere") { ButtonRow(html, "Smooth", "prop-sphere-smooth", obj.PrimitiveSphereSmooth ? "On" : "Off"); NumberRow(html, "Segments", "prop-sphere-segments", obj.PrimitiveSphereSegments); NumberRow(html, "Rings", "prop-sphere-rings", obj.PrimitiveSphereRings); }
             html.Append("</div>");
         }
+        AppendShapeKeys(html, obj);
         if (obj.SpawnCategory.Equals("Primitives", StringComparison.OrdinalIgnoreCase) &&
             obj.ObjectType.Equals("Text Mesh", StringComparison.OrdinalIgnoreCase))
         {
@@ -350,10 +418,14 @@ public sealed class RmlPropertiesController : IDisposable
         }
         if (obj is CameraSceneObject camera)
         {
-            Bind("prop-camera-active", () => camera.ToggleActive());
-            BindNumber("prop-camera-fov", value => camera.Fov = Math.Clamp(value, 1f, 179f));
-            BindNumber("prop-camera-near", value => camera.Near = Math.Clamp(value, 0.001f, Math.Max(0.001f, camera.Far - 0.001f)));
-            BindNumber("prop-camera-far", value => camera.Far = Math.Max(camera.Near + 0.001f, value));
+            Bind("prop-camera-active", () =>
+            {
+                camera.ToggleActive();
+                _timeline?.RecordAutoKeyframe(obj, "camera.active");
+            });
+            BindAnimatedNumber("prop-camera-fov", obj, "camera.fov", value => camera.Fov = Math.Clamp(value, 1f, 179f));
+            BindAnimatedNumber("prop-camera-near", obj, "camera.near", value => camera.Near = Math.Clamp(value, 0.001f, Math.Max(0.001f, camera.Far - 0.001f)));
+            BindAnimatedNumber("prop-camera-far", obj, "camera.far", value => camera.Far = Math.Max(camera.Near + 0.001f, value));
             Bind("prop-effect-add-shake", () => camera.AddEffect(CameraEffectType.CameraShake));
             Bind("prop-effect-add-grain", () => camera.AddEffect(CameraEffectType.FilmGrain));
             for (int i = 0; i < camera.Effects.Count; i++)
@@ -362,6 +434,8 @@ public sealed class RmlPropertiesController : IDisposable
         if (obj is LightSceneObject light)
         {
             Bind("prop-light-type", () => light.Type = light.Type == LightType.Point ? LightType.Spot : LightType.Point);
+            BindAnimatedVector("light-color", obj, "light.color", new vec3(light.LightColor.r, light.LightColor.g, light.LightColor.b),
+                value => light.LightColor = new vec4(Math.Clamp(value.x, 0f, 1f), Math.Clamp(value.y, 0f, 1f), Math.Clamp(value.z, 0f, 1f), 1f), 0f, 1f);
             BindAnimatedNumber("prop-light-energy", obj, "light.energy", value => light.LightEnergy = Math.Max(0, value));
             BindAnimatedNumber("prop-light-range", obj, "light.range", value => light.LightRange = Math.Max(0.01f, value));
             BindAnimatedNumber("prop-light-indirect", obj, "light.indirect_energy", value => light.LightIndirectEnergy = Math.Max(0, value));
@@ -369,6 +443,19 @@ public sealed class RmlPropertiesController : IDisposable
             Bind("prop-light-shadow", () => light.LightShadowEnabled = !light.LightShadowEnabled);
             BindAnimatedNumber("prop-light-angle", obj, "light.spot_angle", value => light.LightSpotAngle = Math.Clamp(value, 0.1f, 180f));
             BindAnimatedNumber("prop-light-blend", obj, "light.spot_blend", value => light.LightSpotBlend = Math.Clamp(value, 0, light.LightSpotAngle));
+            Bind("prop-light-reset", () =>
+            {
+                light.Type = LightType.Point;
+                light.LightEnergy = 1f;
+                light.LightRange = 5f;
+                light.LightIndirectEnergy = 1f;
+                light.LightSpecular = 0.5f;
+                light.LightShadowEnabled = true;
+                light.LightColor = new vec4(1f, 1f, 1f, 1f);
+                light.LightSpotAngle = 45f;
+                light.LightSpotBlend = 5f;
+                Record(obj, "light.type", "light.energy", "light.range", "light.indirect_energy", "light.specular", "light.color.r", "light.color.g", "light.color.b", "light.spot_angle", "light.spot_blend");
+            });
         }
         if (obj is ParticleSpawnerSceneObject particle)
         {
@@ -436,9 +523,100 @@ public sealed class RmlPropertiesController : IDisposable
         Bind("prop-sphere-smooth", () => { obj.PrimitiveSphereSmooth = !obj.PrimitiveSphereSmooth; RebuildSphere(obj); });
         BindNumber("prop-sphere-segments", value => { obj.PrimitiveSphereSegments = Math.Clamp((int)value, 3, 256); RebuildSphere(obj); });
         BindNumber("prop-sphere-rings", value => { obj.PrimitiveSphereRings = Math.Clamp((int)value, 2, 128); RebuildSphere(obj); });
+        BindShapeKeys(obj);
     }
 
     private static void RebuildSphere(SceneObject obj) => obj.Visuals.OfType<SphereMesh>().FirstOrDefault()?.SetGeometry(obj.PrimitiveSphereSegments, obj.PrimitiveSphereRings, obj.PrimitiveSphereSmooth);
+
+    private static bool HasAnyShapeKeys(SceneObject obj)
+    {
+        foreach (var mesh in obj.GetMeshInstancesRecursively())
+            if (mesh.HasShapeKeys) return true;
+        return false;
+    }
+
+    private static void AppendShapeKeys(StringBuilder html, SceneObject obj)
+    {
+        if (!HasAnyShapeKeys(obj)) return;
+
+        html.Append("<div class='prop-section'><div class='prop-heading'>Shape Keys</div>");
+        html.Append("<div class='prop-row'><button id='prop-shapekey-reset-all'>Reset all shape keys</button></div>");
+
+        var meshes = obj.GetMeshInstancesRecursively();
+        int meshCount = meshes.Count;
+        int meshIndex = 0;
+        foreach (var mesh in meshes)
+        {
+            if (!mesh.HasShapeKeys)
+            {
+                meshIndex++;
+                continue;
+            }
+
+            if (meshCount > 1)
+                html.Append("<div class='prop-row'><span style='color:#90939e'>Mesh ").Append(meshIndex).Append("</span></div>");
+
+            for (int i = 0; i < mesh.ShapeKeys.Count; i++)
+            {
+                var shapeKey = mesh.ShapeKeys[i];
+                string keyId = $"prop-shapekey-{meshIndex}-{i}";
+                string resetId = $"prop-shapekey-reset-{meshIndex}-{i}";
+                html.Append("<div class='prop-row'><span class='prop-label'>")
+                    .Append(E(shapeKey.Name))
+                    .Append("</span><input id='")
+                    .Append(keyId)
+                    .Append("' value='")
+                    .Append(shapeKey.Weight.ToString("0.###", CultureInfo.InvariantCulture))
+                    .Append("'/><button id='")
+                    .Append(resetId)
+                    .Append("'>Reset</button></div>");
+            }
+
+            meshIndex++;
+        }
+
+        html.Append("</div>");
+    }
+
+    private void BindShapeKeys(SceneObject obj)
+    {
+        if (!HasAnyShapeKeys(obj)) return;
+
+        Bind("prop-shapekey-reset-all", () =>
+        {
+            foreach (var mesh in obj.GetMeshInstancesRecursively())
+                mesh.ResetShapeKeys();
+        });
+
+        int meshIndex = 0;
+        foreach (var mesh in obj.GetMeshInstancesRecursively())
+        {
+            if (!mesh.HasShapeKeys)
+            {
+                meshIndex++;
+                continue;
+            }
+
+            for (int i = 0; i < mesh.ShapeKeys.Count; i++)
+            {
+                int shapeKeyIndex = i;
+                int capturedMeshIndex = meshIndex;
+                string path = $"shapekey.{capturedMeshIndex}.{shapeKeyIndex}";
+                BindNumber($"prop-shapekey-{capturedMeshIndex}-{shapeKeyIndex}", value =>
+                {
+                    mesh.SetShapeKeyWeight(shapeKeyIndex, Math.Clamp(value, -1f, 1f));
+                    _timeline?.RecordAutoKeyframe(obj, path);
+                });
+                Bind($"prop-shapekey-reset-{capturedMeshIndex}-{shapeKeyIndex}", () =>
+                {
+                    mesh.SetShapeKeyWeight(shapeKeyIndex, 0f);
+                    _timeline?.RecordAutoKeyframe(obj, path);
+                });
+            }
+
+            meshIndex++;
+        }
+    }
 
     private void ApplyBlockTiling(SceneObject obj, int x, int y, int z)
     {
@@ -571,6 +749,143 @@ public sealed class RmlPropertiesController : IDisposable
             particle.SetParticleSource("", "");
         else
             particle.SetParticleSource(sources[next].Id, sources[next].Name);
+    }
+
+    private void CycleResourcePack(SceneObject obj)
+    {
+        IReadOnlyList<string> packs = _operations?.GetResourcePackOptions() ?? Array.Empty<string>();
+        string currentPackId = MinecraftDataLoader.NormalizeResourcePackId(obj.ResourcePackId);
+        int current = -1;
+        for (int i = 0; i < packs.Count; i++)
+        {
+            if (string.Equals(packs[i], currentPackId, StringComparison.OrdinalIgnoreCase))
+            {
+                current = i;
+                break;
+            }
+        }
+
+        int next = current + 1;
+        if (next >= packs.Count) _operations?.ApplyResourcePack(obj, "");
+        else _operations?.ApplyResourcePack(obj, packs[next]);
+    }
+
+    private static string? ExtractItemTileKeyFromObjectType(string objectType)
+    {
+        if (string.IsNullOrWhiteSpace(objectType))
+            return null;
+
+        int open = objectType.IndexOf('[');
+        int close = objectType.LastIndexOf(']');
+        if (open < 0 || close <= open)
+            return null;
+
+        return objectType[(open + 1)..close];
+    }
+
+    private ItemAtlasSource GetItemAtlasSource(SceneObject obj)
+    {
+        if (_operations != null)
+            return _operations.GetItemAtlasSource(obj);
+
+        if (string.Equals(obj.TextureType, "block", StringComparison.OrdinalIgnoreCase))
+            return ItemAtlasSource.BlockAtlas;
+        if (string.Equals(obj.TextureType, "local", StringComparison.OrdinalIgnoreCase) &&
+            obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
+            return ItemAtlasSource.LocalAtlas;
+        return ItemAtlasSource.ItemAtlas;
+    }
+
+    private string GetCurrentItemKey(SceneObject obj, ItemAtlasSource atlasSource)
+    {
+        if (!string.IsNullOrWhiteSpace(obj.ItemTileKey))
+            return obj.ItemTileKey;
+
+        string? fromType = ExtractItemTileKeyFromObjectType(obj.ObjectType);
+        if (!string.IsNullOrWhiteSpace(fromType))
+            return fromType;
+
+        if (atlasSource == ItemAtlasSource.LocalAtlas)
+            return _operations?.GetLocalItemSheetOptions(obj).FirstOrDefault().Key ?? "";
+
+        return _operations?.GetItemAtlasOptions(atlasSource).FirstOrDefault() ?? "";
+    }
+
+    private void CycleItemAtlas(SceneObject obj)
+    {
+        ItemAtlasSource current = GetItemAtlasSource(obj);
+        bool hasLocal = obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0;
+        ItemAtlasSource[] order = hasLocal
+            ? [ItemAtlasSource.LocalAtlas, ItemAtlasSource.ItemAtlas, ItemAtlasSource.BlockAtlas]
+            : [ItemAtlasSource.ItemAtlas, ItemAtlasSource.BlockAtlas];
+
+        int currentIndex = Array.IndexOf(order, current);
+        int nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % order.Length;
+        ItemAtlasSource next = order[nextIndex];
+
+        if (next == ItemAtlasSource.LocalAtlas)
+        {
+            var local = _operations?.GetLocalItemSheetOptions(obj);
+            var first = local?.FirstOrDefault();
+            if (first != null && _operations?.ApplyTemporaryItemSheetSlot(obj, first.Value.Column, first.Value.Row) == true)
+            {
+                _timeline?.RecordAutoKeyframe(obj, "item.slot");
+                _timeline?.RecordAutoKeyframe(obj, "item.custom_slot");
+            }
+            return;
+        }
+
+        string? nextKey = _operations?.GetItemAtlasOptions(next).FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(nextKey))
+            _operations?.ApplyItemTexture(obj, next, nextKey);
+    }
+
+    private void CycleItemImage(SceneObject obj)
+    {
+        ItemAtlasSource atlasSource = GetItemAtlasSource(obj);
+        string currentKey = GetCurrentItemKey(obj, atlasSource);
+
+        if (atlasSource == ItemAtlasSource.LocalAtlas)
+        {
+            var local = _operations?.GetLocalItemSheetOptions(obj);
+            if (local == null || local.Count == 0)
+                return;
+
+            int current = -1;
+            for (int i = 0; i < local.Count; i++)
+            {
+                if (string.Equals(local[i].Key, currentKey, StringComparison.Ordinal))
+                {
+                    current = i;
+                    break;
+                }
+            }
+
+            int next = (current + 1 + local.Count) % local.Count;
+            if (_operations?.ApplyTemporaryItemSheetSlot(obj, local[next].Column, local[next].Row) == true)
+            {
+                _timeline?.RecordAutoKeyframe(obj, "item.slot");
+                _timeline?.RecordAutoKeyframe(obj, "item.custom_slot");
+            }
+            return;
+        }
+
+        IReadOnlyList<string> keys = _operations?.GetItemAtlasOptions(atlasSource) ?? Array.Empty<string>();
+        if (keys.Count == 0)
+            return;
+
+        int currentIndex = -1;
+        for (int i = 0; i < keys.Count; i++)
+        {
+            if (string.Equals(keys[i], currentKey, StringComparison.Ordinal))
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        int nextIndex = (currentIndex + 1 + keys.Count) % keys.Count;
+        _operations?.ApplyItemTexture(obj, atlasSource, keys[nextIndex]);
     }
 
     private void EditMaterial(Action<MaterialSettings> edit)
