@@ -60,22 +60,6 @@ public sealed class RmlSceneTreeController : IDisposable
         _rows.Clear();
 
         var html = new StringBuilder("""
-            <style>
-              #tree-tools{height:36px;padding:5px;border-bottom:1px #111216;display:flex;flex-direction:row;}
-              #tree-search{flex:1;height:25px;background:#17181d;color:#e1e2e6;border:1px #464852;padding:3px 6px;}
-              #tree-actions{height:35px;position:absolute;bottom:0;left:0;right:0;padding:4px;border-top:1px #111216;}
-              #tree-list{position:absolute;top:36px;bottom:35px;left:0;right:0;overflow:auto;padding:3px;}
-              .tree-row{display:flex;flex-direction:row;width:100%;height:25px;align-items:center;drag:drag-drop;}
-              .tree-row.selected{background:#46516b;}.tree-row:hover{background:#343741;}
-              .tree-row.drag-target{outline:1px #d9b24e;}
-              .twisty{width:22px;padding:2px;text-align:center;}.tree-name{flex:1;text-align:left;padding:3px;}
-              .tree-type{width:55px;color:#888d9a;font-size:11px;text-align:right;padding-right:5px;}
-              #tree-actions button{background:#30323a;border:1px #4b4d58;margin-right:4px;}
-              #tree-context{position:absolute;width:180px;padding:4px;background:#292a31;border:1px #555864;z-index:10;}
-              #tree-context button{display:block;width:100%;text-align:left;padding:6px 8px;}
-              #tree-context-title{padding:5px 8px;color:#9296a2;border-bottom:1px #454750;}
-              .empty{padding:10px;color:#90939e;}
-            </style>
             <div id="tree-tools"><input id="tree-search" type="text" value="" placeholder="Search scene objects..."/></div>
             <div id="tree-list">
             """);

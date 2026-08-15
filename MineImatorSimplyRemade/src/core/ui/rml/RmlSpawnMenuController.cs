@@ -49,16 +49,7 @@ public sealed class RmlSpawnMenuController
             : _menu.GetSpawnVariants(_category, _object);
         if (_variant >= variants.Count) _variant = -1;
 
-        var html = new StringBuilder("""
-            <style>
-            #spawn-search{display:block;width:100%;height:30px;margin-bottom:6px;background:#17181d;color:#eee;border:1px #50535f;}
-            .spawn-columns{display:flex;flex-direction:row;position:absolute;top:42px;bottom:48px;left:8px;right:8px;}
-            .spawn-column{flex:1;overflow:auto;margin-right:6px;background:#191a1f;border:1px #393b44;padding:4px;}
-            .spawn-entry{display:block;width:100%;text-align:left;margin-bottom:2px;padding:6px;}
-            .spawn-entry.selected{background:#46516b}.spawn-footer{position:absolute;bottom:0;left:0;right:0;height:44px;padding:7px;text-align:right;border-top:1px #111216;}
-            .spawn-footer button{background:#343640;border:1px #555865;margin-left:5px;}
-            </style>
-            """);
+        var html = new StringBuilder();
         html.Append("<input id='spawn-search' value='").Append(Escape(_search)).Append("' placeholder='Search objects...'/><div class='spawn-columns'><div class='spawn-column'>");
         AppendButtons(html, "category", _menu.GetSpawnCategories(), _category);
         html.Append("</div><div class='spawn-column'>");
@@ -129,7 +120,7 @@ public sealed class RmlSpawnMenuController
     }
 
     private StringBuilder BeginSpecial(string placeholder) => new($$"""
-      <style>#spawn-search{display:block;width:100%;height:30px;margin-bottom:6px;background:#17181d;color:#eee;border:1px #50535f;}.spawn-columns{display:flex;flex-direction:row;position:absolute;top:42px;bottom:48px;left:8px;right:8px;}.spawn-column{flex:1;overflow:auto;margin-right:6px;background:#191a1f;border:1px #393b44;padding:4px;}.spawn-entry{display:block;width:100%;text-align:left;margin-bottom:2px;padding:6px;}.spawn-entry.selected{background:#46516b}.spawn-footer{position:absolute;bottom:0;left:0;right:0;height:44px;padding:7px;text-align:right;border-top:1px #111216;}.spawn-footer button{background:#343640;border:1px #555865;margin-left:5px;}</style><input id='spawn-search' value='{{Escape(_search)}}' placeholder='{{placeholder}}...'/>
+      <input id='spawn-search' value='{{Escape(_search)}}' placeholder='{{placeholder}}...'/>
       """);
     private static void AppendFooter(StringBuilder html, bool canSpawn) => html.Append("<div class='spawn-footer'><button id='spawn-back'>Categories</button><button id='spawn-cancel'>Cancel</button>").Append(canSpawn ? "<button id='spawn-confirm'>Spawn</button>" : "").Append("</div>");
     private void BindSearch() { if (_root.GetElementById("spawn-search") is ElementFormControlInput search) search.AddEventListener("change", _ => { _search = search.GetValue(); Build(); }); }

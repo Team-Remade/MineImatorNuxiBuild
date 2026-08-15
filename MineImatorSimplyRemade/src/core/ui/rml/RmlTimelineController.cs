@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -13,7 +13,7 @@ public sealed class RmlTimelineController
     private readonly Timeline _timeline;
     private int _displayedFrame = -1;
     private bool _displayedPlaying;
-    private string _trackSignature = string.Empty;
+    private string _signature = string.Empty;
     private SceneObject? _selectedKeyObject;
     private string _selectedKeyPath = string.Empty;
     private int _selectedKeyFrame = -1;
@@ -22,13 +22,12 @@ public sealed class RmlTimelineController
     {
         _root = root;
         _timeline = timeline;
-        Build();
-        Update(force: true);
+        Rebuild(force: true);
     }
 
     public void Update(bool force = false)
     {
-        RefreshTracks();
+        Rebuild(force);
         if (!force && _displayedFrame == _timeline.CurrentFrame && _displayedPlaying == _timeline.IsPlaying) return;
         _displayedFrame = _timeline.CurrentFrame;
         _displayedPlaying = _timeline.IsPlaying;
@@ -39,58 +38,13 @@ public sealed class RmlTimelineController
             scrub.SetValue(_timeline.CurrentFrame.ToString(CultureInfo.InvariantCulture));
     }
 
-    private void Build()
-    {
-        _root.SetInnerRml($$"""
-          <style>
-            #transport{height:38px;display:flex;flex-direction:row;align-items:center;padding:4px;border-bottom:1px #111216;}
-            #transport button{background:#30323a;border:1px #4b4d58;margin-right:4px;min-width:48px;}
-            #timeline-frame{margin-left:8px;color:#d9b24e;}#timeline-time{margin-left:10px;color:#9296a2;}
-            #scrub-row{height:42px;padding:8px;}#timeline-scrub{width:100%;}
-            #timeline-settings{height:34px;display:flex;flex-direction:row;align-items:center;padding:3px 7px;border-bottom:1px #111216;}
-            #timeline-settings input{width:54px;margin-right:6px;background:#17181d;color:#eee;border:1px #4b4d58;}
-            #track-area{position:absolute;top:114px;bottom:0;left:0;right:0;overflow:auto;background:#1b1c21;}
-            .track-placeholder{padding:12px;color:#888c97;}
-          </style>
-          <div id="transport"><button id="timeline-start">Start</button><button id="timeline-back">-1</button>
-            <button id="timeline-play">Play</button><button id="timeline-forward">+1</button><button id="timeline-end">End</button>
-            <span id="timeline-frame"></span><span id="timeline-time"></span></div>
-          <div id="scrub-row"><input id="timeline-scrub" type="range" min="0" max="{{_timeline.MaxFrames}}" value="{{_timeline.CurrentFrame}}"/></div>
-          <div id="timeline-settings">FPS <input id="timeline-fps" value="{{_timeline.Framerate.ToString(CultureInfo.InvariantCulture)}}"/>
-            End <input id="timeline-length" value="{{_timeline.MaxFrames}}"/><button id="timeline-auto">Auto: {{(_timeline.AutoKeyframe ? "On" : "Off")}}</button>
-            <button id="timeline-loop">Loop: {{(_timeline.LoopPlayback ? "On" : "Off")}}</button><button id="timeline-zoom-out">Zoom -</button>
-            <button id="timeline-zoom-in">Zoom +</button><button id="timeline-region">Region 0-now</button><button id="timeline-region-clear">Clear region</button>
-            <button id="timeline-marker-add">+ Marker</button></div>
-          <div id="track-area"></div>
-          """);
-        Bind("timeline-start", () => _timeline.SetCurrentFrame(0));
-        Bind("timeline-back", () => _timeline.SetCurrentFrame(_timeline.CurrentFrame - 1));
-        Bind("timeline-play", _timeline.TogglePlayPause);
-        Bind("timeline-forward", () => _timeline.SetCurrentFrame(Math.Min(_timeline.MaxFrames, _timeline.CurrentFrame + 1)));
-        Bind("timeline-end", () => _timeline.SetCurrentFrame(_timeline.MaxFrames));
-        Bind("timeline-auto", () => { _timeline.SetAutoKeyframe(!_timeline.AutoKeyframe); Build(); });
-        Bind("timeline-loop", () => { _timeline.SetLoopPlayback(!_timeline.LoopPlayback); Build(); });
-        Bind("timeline-zoom-out", () => _timeline.SetTimelineZoom(_timeline.PixelsPerFrame / 1.25f));
-        Bind("timeline-zoom-in", () => _timeline.SetTimelineZoom(_timeline.PixelsPerFrame * 1.25f));
-        Bind("timeline-region", () => _timeline.SetPlaybackRegion(0, _timeline.CurrentFrame));
-        Bind("timeline-region-clear", () => _timeline.SetPlaybackRegion(null, null));
-        Bind("timeline-marker-add", () => { _timeline.AddMarker(_timeline.CurrentFrame, "Marker"); _trackSignature = string.Empty; });
-        BindNumber("timeline-fps", _timeline.SetFrameRate);
-        BindInteger("timeline-length", value => { _timeline.SetMaxFrames(value); Build(); });
-        if (_root.GetElementById("timeline-scrub") is ElementFormControlInput scrub)
-        {
-            void Scrub()
-            {
-                if (int.TryParse(scrub.GetValue(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int frame))
-                    _timeline.SetCurrentFrame(frame);
-                Update(force: true);
-            }
-            scrub.AddEventListener("change", _ => Scrub());
-            scrub.AddEventListener("input", _ => Scrub());
-        }
-    }
-
-    private void RefreshTracks()
+    /// <summary>Rebuilds the entire panel body (transport bar, scrub bar, settings row and keyframe
+    /// track rows) in a single SetInnerRml call. Note: RmlUi's SetInnerRml on a *nested* element
+    /// (e.g. previously a separate "track-area" child re-rendered on its own) after the parent
+    /// element already had its own children replaced corrupts rendering of the whole ancestor
+    /// subtree - the panel would draw nothing at all afterwards. Building the full body content in
+    /// one shot on the root element avoids ever calling SetInnerRml on a non-root element here.</summary>
+    private void Rebuild(bool force)
     {
         SceneObject? obj = SelectionManager.Instance.SelectedObjects.FirstOrDefault();
         string signature = obj == null ? "none" : string.Join('|', obj.Keyframes.OrderBy(pair => pair.Key).Select(pair =>
@@ -100,14 +54,23 @@ public sealed class RmlTimelineController
         signature += "|markers=" + string.Join(',', _timeline.Markers.Select(marker => $"{marker.Frame}:{marker.Label}"));
         signature += $"|region={_timeline.PlaybackRegionStart}:{_timeline.PlaybackRegionEnd}";
         signature += $"|selected={_selectedKeyPath}:{_selectedKeyFrame}";
-        if (signature == _trackSignature) return;
-        _trackSignature = signature;
+        signature += $"|fps={_timeline.Framerate}|len={_timeline.MaxFrames}|auto={_timeline.AutoKeyframe}|loop={_timeline.LoopPlayback}";
+        if (!force && signature == _signature) return;
+        _signature = signature;
 
-        Element? area = _root.GetElementById("track-area");
-        if (area == null) return;
-        var html = new System.Text.StringBuilder("""
-          <style>.rml-track{height:31px;position:relative;border-bottom:1px #30323a;padding-left:145px;}.track-label{position:absolute;left:6px;top:6px;width:132px;overflow:hidden;color:#b8bbc5;}.key{position:absolute;top:5px;width:21px;height:21px;padding:0;background:#c39232;border:1px #f0c65c;}.key.selected{background:#f0e06a}.track-add{position:absolute;right:4px;top:4px;padding:2px 6px;background:#343640;border:1px #555865;}.key-editor{height:34px;padding:4px 7px;background:#24262c;border-bottom:1px #111216;}.key-editor input{width:60px;background:#17181d;color:#eee;border:1px #4b4d58;}.audio-row{height:28px;padding:5px 7px;color:#85b5da;border-bottom:1px #30323a;}</style>
+        var html = new System.Text.StringBuilder($$"""
+          <div id="transport"><button id="timeline-start">Start</button><button id="timeline-back">-1</button>
+            <button id="timeline-play">Play</button><button id="timeline-forward">+1</button><button id="timeline-end">End</button>
+            <span id="timeline-frame"></span><span id="timeline-time"></span></div>
+          <div id="scrub-row"><input id="timeline-scrub" type="range" min="0" max="{{_timeline.MaxFrames}}" value="{{_timeline.CurrentFrame}}"/></div>
+          <div id="timeline-settings">FPS <input id="timeline-fps" value="{{_timeline.Framerate.ToString(CultureInfo.InvariantCulture)}}"/>
+            End <input id="timeline-length" value="{{_timeline.MaxFrames}}"/><button id="timeline-auto">Auto: {{(_timeline.AutoKeyframe ? "On" : "Off")}}</button>
+            <button id="timeline-loop">Loop: {{(_timeline.LoopPlayback ? "On" : "Off")}}</button><button id="timeline-zoom-out">Zoom -</button>
+            <button id="timeline-zoom-in">Zoom +</button><button id="timeline-region">Region 0-now</button><button id="timeline-region-clear">Clear region</button>
+            <button id="timeline-marker-add">+ Marker</button></div>
+          <div id="track-area">
           """);
+
         if (obj == null) html.Append("<div class='track-placeholder'>Select an object to edit its keyframes.</div>");
         else
         {
@@ -135,7 +98,36 @@ public sealed class RmlTimelineController
         }
         foreach (TimelineAudioTrack track in _timeline.AudioTracks)
             html.Append("<div class='audio-row'>Audio · ").Append(Escape(string.IsNullOrWhiteSpace(track.ManifestEntry.DisplayName) ? track.ManifestEntry.AssetDisplayName : track.ManifestEntry.DisplayName)).Append(" · frame ").Append(track.ManifestEntry.StartFrame).Append("</div>");
-        area.SetInnerRml(html.ToString());
+        html.Append("</div>");
+
+        _root.SetInnerRml(html.ToString());
+        Console.WriteLine($"[DEBUG_LOG] Rebuild: len={_root.GetInnerRml().Length} transport={_root.GetElementById("transport") != null} rootW={_root.GetClientWidth()} rootH={_root.GetClientHeight()}");
+
+        Bind("timeline-start", () => _timeline.SetCurrentFrame(0));
+        Bind("timeline-back", () => _timeline.SetCurrentFrame(_timeline.CurrentFrame - 1));
+        Bind("timeline-play", _timeline.TogglePlayPause);
+        Bind("timeline-forward", () => _timeline.SetCurrentFrame(Math.Min(_timeline.MaxFrames, _timeline.CurrentFrame + 1)));
+        Bind("timeline-end", () => _timeline.SetCurrentFrame(_timeline.MaxFrames));
+        Bind("timeline-auto", () => { _timeline.SetAutoKeyframe(!_timeline.AutoKeyframe); Rebuild(force: true); });
+        Bind("timeline-loop", () => { _timeline.SetLoopPlayback(!_timeline.LoopPlayback); Rebuild(force: true); });
+        Bind("timeline-zoom-out", () => _timeline.SetTimelineZoom(_timeline.PixelsPerFrame / 1.25f));
+        Bind("timeline-zoom-in", () => _timeline.SetTimelineZoom(_timeline.PixelsPerFrame * 1.25f));
+        Bind("timeline-region", () => _timeline.SetPlaybackRegion(0, _timeline.CurrentFrame));
+        Bind("timeline-region-clear", () => _timeline.SetPlaybackRegion(null, null));
+        Bind("timeline-marker-add", () => { _timeline.AddMarker(_timeline.CurrentFrame, "Marker"); Rebuild(force: true); });
+        BindNumber("timeline-fps", _timeline.SetFrameRate);
+        BindInteger("timeline-length", value => { _timeline.SetMaxFrames(value); Rebuild(force: true); });
+        if (_root.GetElementById("timeline-scrub") is ElementFormControlInput scrub)
+        {
+            void Scrub()
+            {
+                if (int.TryParse(scrub.GetValue(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int frame))
+                    _timeline.SetCurrentFrame(frame);
+                Update(force: true);
+            }
+            scrub.AddEventListener("change", _ => Scrub());
+            scrub.AddEventListener("input", _ => Scrub());
+        }
 
         if (obj != null)
         {
@@ -147,10 +139,10 @@ public sealed class RmlTimelineController
                 foreach (ObjectKeyframe key in keys.OrderBy(item => item.Frame))
                 {
                     int capturedFrame = key.Frame;
-                    Bind($"key-{row}-{keyIndex}", () => { _selectedKeyObject = obj; _selectedKeyPath = capturedPath; _selectedKeyFrame = capturedFrame; _timeline.SetCurrentFrame(capturedFrame); _trackSignature = string.Empty; RefreshTracks(); });
+                    Bind($"key-{row}-{keyIndex}", () => { _selectedKeyObject = obj; _selectedKeyPath = capturedPath; _selectedKeyFrame = capturedFrame; _timeline.SetCurrentFrame(capturedFrame); Rebuild(force: true); });
                     keyIndex++;
                 }
-                Bind($"track-add-{row}", () => { _timeline.AddKeyframeForProperty(obj, capturedPath, _timeline.CurrentFrame); _trackSignature = string.Empty; RefreshTracks(); });
+                Bind($"track-add-{row}", () => { _timeline.AddKeyframeForProperty(obj, capturedPath, _timeline.CurrentFrame); Rebuild(force: true); });
                 row++;
             }
         }
@@ -159,9 +151,9 @@ public sealed class RmlTimelineController
         Bind("key-interp", CycleInterpolation);
     }
 
-    private void DeleteSelectedKey() { if (_selectedKeyObject == null || _selectedKeyFrame < 0) return; _timeline.RemoveKeyframeForProperty(_selectedKeyObject, _selectedKeyPath, _selectedKeyFrame); _selectedKeyFrame = -1; _trackSignature = string.Empty; RefreshTracks(); }
-    private void MoveSelectedKey() { if (_selectedKeyObject == null || _root.GetElementById("key-frame-edit") is not ElementFormControlInput input || !int.TryParse(input.GetValue(), out int frame)) return; frame = Math.Clamp(frame, 0, _timeline.MaxFrames); _timeline.MoveKeyframe(_selectedKeyObject, _selectedKeyPath, _selectedKeyFrame, frame); _selectedKeyFrame = frame; _timeline.SetCurrentFrame(frame); _trackSignature = string.Empty; RefreshTracks(); }
-    private void CycleInterpolation() { if (_selectedKeyObject == null) return; ObjectKeyframe? key = _selectedKeyObject.Keyframes.GetValueOrDefault(_selectedKeyPath)?.FirstOrDefault(item => item.Frame == _selectedKeyFrame); string next = key?.InterpolationType == "linear" ? "cubic" : key?.InterpolationType == "cubic" ? "step" : "linear"; _timeline.SetKeyframeInterpolation(_selectedKeyObject, _selectedKeyPath, _selectedKeyFrame, next); _trackSignature = string.Empty; RefreshTracks(); }
+    private void DeleteSelectedKey() { if (_selectedKeyObject == null || _selectedKeyFrame < 0) return; _timeline.RemoveKeyframeForProperty(_selectedKeyObject, _selectedKeyPath, _selectedKeyFrame); _selectedKeyFrame = -1; Rebuild(force: true); }
+    private void MoveSelectedKey() { if (_selectedKeyObject == null || _root.GetElementById("key-frame-edit") is not ElementFormControlInput input || !int.TryParse(input.GetValue(), out int frame)) return; frame = Math.Clamp(frame, 0, _timeline.MaxFrames); _timeline.MoveKeyframe(_selectedKeyObject, _selectedKeyPath, _selectedKeyFrame, frame); _selectedKeyFrame = frame; _timeline.SetCurrentFrame(frame); Rebuild(force: true); }
+    private void CycleInterpolation() { if (_selectedKeyObject == null) return; ObjectKeyframe? key = _selectedKeyObject.Keyframes.GetValueOrDefault(_selectedKeyPath)?.FirstOrDefault(item => item.Frame == _selectedKeyFrame); string next = key?.InterpolationType == "linear" ? "cubic" : key?.InterpolationType == "cubic" ? "step" : "linear"; _timeline.SetKeyframeInterpolation(_selectedKeyObject, _selectedKeyPath, _selectedKeyFrame, next); Rebuild(force: true); }
     private static string Escape(string value) => System.Net.WebUtility.HtmlEncode(value ?? string.Empty);
 
     private void BindInteger(string id, Action<int> setter) => BindInput(id, value =>
@@ -175,7 +167,7 @@ public sealed class RmlTimelineController
     private void BindInput(string id, Action<string> setter)
     {
         if (_root.GetElementById(id) is ElementFormControlInput input)
-            input.AddEventListener("change", _ => { setter(input.GetValue()); _trackSignature = string.Empty; Update(force: true); });
+            input.AddEventListener("change", _ => { setter(input.GetValue()); Update(force: true); });
     }
 
     private void Bind(string id, Action action) => _root.GetElementById(id)?.AddEventListener("click", _ =>

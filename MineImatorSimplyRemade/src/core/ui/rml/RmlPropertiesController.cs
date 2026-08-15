@@ -51,12 +51,7 @@ public sealed class RmlPropertiesController : IDisposable
         }
         SceneObject obj = _object;
         var html = new StringBuilder("""
-          <style>
-            #prop-scroll{position:absolute;inset:0;overflow:auto;padding:7px;}.prop-section{margin-bottom:8px;border:1px #3e4049;background:#26272d;}
-            .prop-heading{padding:6px 8px;background:#30313a;color:#d9b24e;font-weight:bold;}.prop-row{display:flex;flex-direction:row;align-items:center;min-height:30px;padding:3px 7px;}
-            .prop-label{width:82px;color:#aeb0b9;}.prop-row input{flex:1;min-width:45px;height:24px;margin-left:3px;background:#18191e;color:#e1e2e6;border:1px #484a54;padding:3px;}
-            .prop-row button{flex:1;background:#31333b;border:1px #4a4d58;}.axis{width:13px;margin-left:4px;color:#8f94a2;}
-          </style><div id="prop-scroll">
+          <div id="prop-scroll">
           """);
         html.Append("<div class='prop-section'><div class='prop-heading'>Object</div>");
         TextRow(html, "Name", "prop-name", obj.GetDisplayName());

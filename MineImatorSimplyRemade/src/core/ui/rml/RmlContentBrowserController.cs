@@ -46,14 +46,6 @@ public sealed class RmlContentBrowserController
         }
 
         var html = new System.Text.StringBuilder();
-        html.Append("<style>")
-            .Append("#asset-tools{display:flex;flex-direction:row;padding:6px;border-bottom:1px #111216;}")
-            .Append("#asset-tools button{margin-right:5px;background:#30323a;border:1px #4b4d58;}")
-            .Append("#asset-list{position:absolute;top:40px;bottom:38px;left:0;right:0;overflow:auto;padding:4px;}")
-            .Append(".asset{display:block;width:100%;text-align:left;padding:5px 7px;margin-bottom:2px;}")
-            .Append(".asset.selected{background:#46516b;}.asset-kind{display:inline-block;width:72px;color:#9ea8bf;}")
-            .Append("#asset-actions{position:absolute;height:38px;bottom:0;left:0;right:0;padding:5px;border-top:1px #111216;}")
-            .Append(".empty{padding:10px;color:#90939e;}</style>");
         html.Append("<div id='asset-tools'><button id='asset-import-model'>Import Model</button>")
             .Append("<button id='asset-import-image'>Import Image</button><button id='asset-import-sound'>Import Sound</button>")
             .Append("<button id='asset-import-pack'>Resource Pack</button></div><div id='asset-list'>");

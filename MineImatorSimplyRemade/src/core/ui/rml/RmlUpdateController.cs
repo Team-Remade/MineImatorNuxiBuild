@@ -204,19 +204,7 @@ public sealed class RmlUpdateController
             body = """<p id="update-status">Checking for updates...</p>""";
         }
 
-        string html = """
-            <style>
-              #update-scroll{position:absolute;top:0;bottom:42px;left:0;right:0;overflow:auto;padding:12px;}
-              #update-scroll p{color:#aeb4c2;margin:0 0 6px 0;}
-              #update-scroll .update-error{color:#ff8080;}
-              #update-scroll .update-available{color:#80ff80;}
-              #update-scroll .update-label{color:#898c98;}
-              #update-changelog{max-height:200px;overflow:auto;padding:8px;border:1px #454750;margin-bottom:6px;}
-              #update-footer{position:absolute;height:42px;bottom:0;left:0;right:0;padding:6px;border-top:1px #111216;text-align:right;}
-              #update-footer button{background:#343640;border:1px #555865;margin-left:5px;}
-              #update-scroll button{background:#343640;border:1px #555865;margin-right:5px;}
-            </style>
-            """ + $"""<div id="update-scroll">{body}</div>""" + """
+        string html = $"""<div id="update-scroll">{body}</div>""" + """
             <div id="update-footer">
               <button id="update-close">Close</button>
             </div>

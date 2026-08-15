@@ -173,20 +173,8 @@ public sealed class RmlResourcePackImportController
                 <button id="import-close">Close</button>
                 """;
 
-        string style = """
-            <style>
-              #import-scroll{position:absolute;top:0;bottom:42px;left:0;right:0;overflow:auto;padding:12px;}
-              #import-scroll p{color:#aeb4c2;margin:0 0 6px 0;}
-              #import-error{color:#ff8080;}
-              #import-waiting{color:#898c98;}
-              #import-progress-bar{height:18px;background:#292a32;border:1px #454750;margin-bottom:6px;}
-              #import-progress-fill{height:100%;background:#4a90d9;}
-              #import-footer{position:absolute;height:42px;bottom:0;left:0;right:0;padding:6px;border-top:1px #111216;text-align:right;}
-              #import-footer button{background:#343640;border:1px #555865;margin-left:5px;}
-            </style>
-            """;
         string progressText = (clampedProgress * 100f).ToString("F1", CultureInfo.InvariantCulture);
-        string html = style + $"""
+        string html = $"""
             <div id="import-scroll">
               <p id="import-status">{Escape(_status)}</p>
               <div id="import-progress-bar"><div id="import-progress-fill" style="width:{progressText}%;"/></div>

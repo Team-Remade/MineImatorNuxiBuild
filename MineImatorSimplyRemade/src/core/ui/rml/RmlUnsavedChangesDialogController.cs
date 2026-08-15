@@ -42,15 +42,7 @@ public sealed class RmlUnsavedChangesDialogController
     {
         string projectName = _projects.HasProject ? _projects.Manifest.ProjectName : string.Empty;
 
-        var html = new StringBuilder("""
-            <style>
-            #unsaved-changes-panel{margin:auto;width:420px;padding:16px;background:#202127;border:1px #393b44;}
-            #unsaved-changes-panel h3{margin:0 0 10px 0;color:#dedfe4;}
-            #unsaved-changes-panel p{margin:0 0 8px 0;color:#dedfe4;}
-            #unsaved-changes-actions{display:flex;flex-direction:row;justify-content:flex-end;}
-            #unsaved-changes-actions button{margin-left:6px;padding:7px 14px;background:#30323a;border:1px #50525e;}
-            </style>
-            """);
+        var html = new StringBuilder();
         html.Append("<div id='unsaved-changes-panel'><h3>Unsaved Changes</h3>")
             .Append("<p>The project \"").Append(Escape(projectName)).Append("\" has unsaved changes.</p>")
             .Append("<p>What would you like to do?</p>")

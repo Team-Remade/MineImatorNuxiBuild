@@ -165,19 +165,6 @@ public sealed class RmlRenderController
         bool controlsDisabled = _jobActive;
 
         var html = new StringBuilder("""
-            <style>
-              #render-scroll{position:absolute;top:0;bottom:42px;left:0;right:0;overflow:auto;padding:12px;}
-              #render-scroll p{color:#aeb4c2;margin:0 0 6px 0;}
-              #render-scroll .render-label{color:#898c98;margin-top:8px;}
-              #render-scroll input.render-dim{background:#292a32;border:1px #454750;color:#dfe1e8;margin-right:8px;width:90px;}
-              .render-choices{display:flex;flex-wrap:wrap;margin-bottom:4px;}
-              .render-choices button{background:#292a32;border:1px #454750;margin:0 4px 4px 0;padding:4px 8px;}
-              .render-choices button.selected{background:#46516b;}
-              #render-progress-bar{height:18px;background:#292a32;border:1px #454750;margin-bottom:6px;}
-              #render-progress-fill{height:100%;background:#4a90d9;}
-              #render-footer{position:absolute;height:42px;bottom:0;left:0;right:0;padding:6px;border-top:1px #111216;text-align:right;}
-              #render-footer button{background:#343640;border:1px #555865;margin-left:5px;}
-            </style>
             <div id="render-scroll">
             """);
 

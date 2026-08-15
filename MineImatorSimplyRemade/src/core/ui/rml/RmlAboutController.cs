@@ -45,12 +45,6 @@ public sealed class RmlAboutController
     private void Refresh()
     {
         string html = """
-            <style>
-              #about-scroll{position:absolute;top:0;bottom:42px;left:0;right:0;overflow:auto;padding:12px;}
-              #about-scroll p{color:#aeb4c2;margin:0 0 6px 0;}
-              #about-footer{position:absolute;height:42px;bottom:0;left:0;right:0;padding:6px;border-top:1px #111216;text-align:right;}
-              #about-footer button{background:#343640;border:1px #555865;margin-left:5px;}
-            </style>
             <div id="about-scroll">
               <h2>Mine Imator Nuxi Build</h2>
             """ + $"""<p style="color:#898c98;">Version {Escape(_version)}</p>""" + """

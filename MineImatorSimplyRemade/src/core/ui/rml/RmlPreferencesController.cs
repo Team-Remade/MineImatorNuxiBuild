@@ -30,14 +30,7 @@ public sealed class RmlPreferencesController
     private void Refresh()
     {
         var html = new StringBuilder("""
-            <style>
-              #pref-scroll{position:absolute;top:0;bottom:42px;left:0;right:0;overflow:auto;padding:12px;}
-              .pref-section{margin-bottom:13px;padding:8px;background:#27282f;border:1px #3d3f49;}
-              .pref-section h3{margin:0 0 7px 0;color:#d9b24e;}.pref-row{display:flex;flex-direction:row;align-items:center;min-height:30px;}
-              .pref-label{flex:1;}.pref-value{color:#aeb4c2;margin-right:8px;}.pref-row button{background:#31333b;border:1px #4a4d58;margin-left:3px;}
-              #pref-footer{position:absolute;height:42px;bottom:0;left:0;right:0;padding:6px;border-top:1px #111216;text-align:right;}
-              #pref-footer button{background:#343640;border:1px #555865;margin-left:5px;}
-            </style><div id="pref-scroll">
+            <div id="pref-scroll">
             """);
         Section(html, "Program");
         Row(html, "Minecraft version", _preferences.MinecraftVersion, "pref-version");
