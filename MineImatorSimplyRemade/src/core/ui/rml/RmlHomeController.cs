@@ -33,43 +33,57 @@ public sealed class RmlHomeController
         PickRandomSplash();
     }
 
+    private bool _visible;
+    private string _lastSignature = "";
+
     public void SetVisible(bool visible)
     {
         _overlay.SetProperty("display", visible ? "flex" : "none");
-        if (visible) Build();
+        if (visible && !_visible)
+        {
+            // Only (re)build when actually transitioning into view - rebuilding every frame
+            // (as Update() used to do unconditionally) tore down and recreated the button
+            // elements 60+ times a second, which meant a mousedown's target element was
+            // routinely gone by the time the matching mouseup arrived, so RmlUi's click
+            // detection never fired and none of the home-screen buttons appeared clickable.
+            Build();
+        }
+        _visible = visible;
     }
 
     /// <summary>Rebuilds the recent-projects list while the overlay is on screen, so removing a
-    /// recent entry or opening a project elsewhere is reflected without needing to hide/show.</summary>
+    /// recent entry or opening a project elsewhere is reflected without needing to hide/show.
+    /// Only rebuilds when the underlying project state actually changed, to avoid recreating
+    /// (and thus un-clicking) the home screen's buttons on every frame.</summary>
     public void Update()
     {
-        if (_overlay.GetProperty("display") == "flex") Build();
+        if (!_visible) return;
+        string signature = BuildSignature();
+        if (signature == _lastSignature) return;
+        Build();
+    }
+
+    private string BuildSignature()
+    {
+        var sb = new StringBuilder();
+        sb.Append(_projects.HasProject ? _projects.ProjectFilePath : "none");
+        foreach (RecentProjectEntry recent in _projects.GetRecentProjects())
+            sb.Append('|').Append(recent.ProjectFilePath).Append(':').Append(recent.LastOpenedUtc);
+        return sb.ToString();
     }
 
     private void Build()
     {
-        var html = new StringBuilder("""
-            <style>
-            #home-splash{position:relative;height:180px;margin-bottom:12px;background:#293038 no-repeat center/cover;border:1px #566072;border-radius:18px;overflow:hidden;}
-            #home-splash-title{position:absolute;top:24px;left:24px;padding:6px 10px;background:#0d0f14aa;color:#eaf0f8;font-weight:bold;font-size:18px;border-radius:8px;}
-            #home-splash-text{position:absolute;top:56px;left:24px;padding:5px 10px;background:#0d0f14aa;color:#b3c0d1;border-radius:8px;}
-            #home-splash-credit{color:#7d818c;margin-bottom:8px;}
-            .home-columns{display:flex;flex-direction:row;}
-            #home-actions{width:34%;margin-right:10px;background:#191a1f;border:1px #393b44;padding:12px;}
-            #home-actions button{display:block;width:100%;padding:9px;margin-bottom:6px;background:#30323a;border:1px #50525e;}
-            #home-current{color:#8b8f9b;margin-top:10px;}
-            #home-recent{flex:1;background:#191a1f;border:1px #393b44;padding:8px;overflow:auto;}
-            .recent-grid{display:flex;flex-direction:row;flex-wrap:wrap;}
-            .recent-card{width:200px;margin:4px;padding:8px;background:#202127;border:1px #393b44;}
-            .recent-thumb{display:block;width:100%;height:96px;background:#2c2e36 no-repeat center/cover;border:1px #454854;margin-bottom:6px;}
-            .recent-card .name{color:#dedfe4;}
-            .recent-card .path,.recent-card .date{color:#83879169;color:#83879a;}
-            .recent-card button{width:100%;margin-top:4px;background:#343640;border:1px #555865;}
-            .recent-missing{color:#eb9271;}
-            </style>
-            """);
+        // Note: SetInnerRml() only parses element markup for the fragment being inserted -
+        // unlike a document's <head>, a <style> tag embedded here isn't picked up as a
+        // stylesheet by RmlUi, so it would just render as raw literal text. All of the
+        // home-overlay's CSS lives in EditorShell's document-level <style> block instead.
+        var html = new StringBuilder();
 
-        html.Append("<div id='home-splash' style='background-image:url(").Append(Escape(SplashImagePath)).Append(");'>")
+        string splashStyle = File.Exists(SplashImagePath)
+            ? "decorator: image(&quot;" + Escape(ToCssUrl(SplashImagePath)) + "&quot;);"
+            : "";
+        html.Append("<div id='home-splash' style='").Append(splashStyle).Append("'>")
             .Append("<div id='home-splash-title'>Mine Imator Simply Remade</div>")
             .Append("<div id='home-splash-text'>").Append(Escape(_splashText)).Append("</div></div>")
             .Append("<div id='home-splash-credit'>Splash art credits: ").Append(Escape(_splashCredit)).Append("</div>")
@@ -102,7 +116,7 @@ public sealed class RmlHomeController
                 bool exists = File.Exists(recent.ProjectFilePath);
                 html.Append("<div class='recent-card'>");
                 if (!string.IsNullOrWhiteSpace(recent.ThumbnailPath) && File.Exists(recent.ThumbnailPath))
-                    html.Append("<div class='recent-thumb' style='background-image:url(").Append(Escape(recent.ThumbnailPath)).Append(");'/>");
+                    html.Append("<div class='recent-thumb' style='decorator: image(&quot;").Append(Escape(ToCssUrl(recent.ThumbnailPath))).Append("&quot;);'/>");
                 else
                     html.Append("<div class='recent-thumb'/>");
                 html.Append("<div class='name'>").Append(Escape(recent.ProjectName)).Append("</div>")
@@ -126,8 +140,15 @@ public sealed class RmlHomeController
         {
             string path = recents[i].ProjectFilePath;
             Bind($"recent-open-{i}", () => OpenRecentRequested?.Invoke(path));
-            Bind($"recent-remove-{i}", () => { _projects.RemoveRecentProject(path); Build(); });
+            // Don't call Build() synchronously from within this click handler: RmlUi is still
+            // walking the event-bubble chain on the very elements SetInnerRml() would destroy,
+            // which corrupted the native element tree and made the home screen unresponsive
+            // after a few removals. Just mutate the recent list here and let Update() pick up
+            // the change (via the signature check) on the next frame instead.
+            Bind($"recent-remove-{i}", () => _projects.RemoveRecentProject(path));
         }
+
+        _lastSignature = BuildSignature();
     }
 
     private void LoadSplashes()
@@ -165,6 +186,24 @@ public sealed class RmlHomeController
     /// splash line doesn't need the rich segments the old drawlist-based renderer used.</summary>
     private static string StripDecorations(string source) => source.Replace("~", "").Replace("*", "");
 
-    private void Bind(string id, Action action) => _root.GetElementById(id)?.AddEventListener("click", _ => action());
+    // Elements returned by GetElementById are cached by the RmlUi wrapper keyed on their native
+    // pointer. Since Build() tears down and recreates the whole overlay via SetInnerRml every
+    // rebuild, a freed native element's pointer address can get reused for a new element - and
+    // when that happens, GetElementById hands back the *stale* cached wrapper, whose click
+    // handler dictionary already thinks a listener is registered, so the real native listener
+    // never gets attached to the new element. Using a fresh EventListener per bind (instead of
+    // the Action<Event> overload, which relies on that cached per-wrapper dictionary) sidesteps
+    // this entirely: it always performs the actual native registration.
+    private void Bind(string id, Action action) => _root.GetElementById(id)?.AddEventListener("click", new ClickListener(action));
+
+    private sealed class ClickListener(Action action) : EventListener
+    {
+        public override void ProcessEvent(Event ev) => action();
+    }
+
     private static string Escape(string value) => WebUtility.HtmlEncode(value ?? string.Empty);
+
+    /// <summary>Converts a filesystem path to a CSS url()-safe form: forward slashes so RmlUi's
+    /// CSS parser doesn't choke on backslash escape sequences or the drive-letter colon.</summary>
+    private static string ToCssUrl(string path) => (path ?? string.Empty).Replace('\\', '/');
 }

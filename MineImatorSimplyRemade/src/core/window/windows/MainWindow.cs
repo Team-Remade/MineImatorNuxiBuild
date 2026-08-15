@@ -96,7 +96,8 @@ public class MainWindow : Window
     private PropertiesPanel? _propertiesPanel;
 
     private readonly Menubar _menubar;
-    private RmlMenubarView? _rmlMenubar;
+    private RmlWindowHost? _rmlHost;
+    private RmlEditorController? _rmlEditor;
     private readonly ProjectManager _projectManager = ProjectManager.Instance;
     private readonly Dictionary<string, uint> _thumbnailTextures = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _homeSplashPool = new();
@@ -296,7 +297,8 @@ public class MainWindow : Window
 
     public unsafe void InitializeRuntime(Action<StartupProgressState>? progress = null)
     {
-        EnsureHomeSplashItalicFont();
+        // Home screen is now rendered by RmlHomeController; the italic splash font
+        // (EnsureHomeSplashItalicFont) was only used by the old ImGui-drawn splash text.
 
         GL gl = GL;
 
@@ -454,8 +456,23 @@ public class MainWindow : Window
             viewport.PreviewViewport = _cameraViewport;
         }
 
-        RmlWindowHost rmlHost = new RmlWindowHost(Glfw, windowHandle, gl, WindowWidth, WindowHeight, "main-menubar");
-        _rmlMenubar = new RmlMenubarView(rmlHost, _menubar);
+        _rmlHost = new RmlWindowHost(Glfw, windowHandle, gl, WindowWidth, WindowHeight, "main-editor");
+        if (viewport != null && sceneTree != null && propertiesPanel != null && preferencesPanel != null &&
+            timeline != null && _contentBrowser != null)
+        {
+            _rmlEditor = new RmlEditorController(
+                _rmlHost,
+                _menubar,
+                viewport,
+                _cameraViewport ?? viewport,
+                sceneTree,
+                propertiesPanel,
+                preferencesPanel,
+                timeline,
+                _contentBrowser,
+                _spawnMenu);
+            _rmlEditor.OpenRecentProjectRequested = OpenRecentProject;
+        }
 
         ReportStep(7, "Constructing editor UI", "Editor ready.", 1f, "Main window will appear shortly");
 
@@ -473,7 +490,12 @@ public class MainWindow : Window
         }
     }
 
-    protected override void RenderUi()
+    /// <summary>
+    /// Runs every non-rendering per-frame editor logic (shortcuts, dirty-state tracking, save/render
+    /// job pumps, etc.) and then composites the whole retained-mode RmlUi shell that has replaced
+    /// ImGui as the editor's UI: menubar, docked panels, popups/dialogs, toasts and the home screen.
+    /// </summary>
+    private void RenderUi()
     {
         SyncPreviewViewportPreferenceState();
 
@@ -486,65 +508,50 @@ public class MainWindow : Window
         RefreshWindowTitle();
         AdvanceRenderJob();
         AdvanceResourcePackImportJob();
-
-        RenderProjectDialogs();
-        RenderResourcePackImportPopup();
-        RenderUnsavedChangesDialog();
-
-        ImGuiViewportPtr mainViewport = ImGui.GetMainViewport();
-        // The menubar itself is now drawn by RmlUi (see RenderOverlay), so the ImGui
-        // dockspace's work area is shifted down by its height to avoid overlapping it.
-        ImGui.SetNextWindowPos(mainViewport.WorkPos with { Y = mainViewport.WorkPos.Y + RmlMenubarView.Height });
-        ImGui.SetNextWindowSize(mainViewport.WorkSize with { Y = mainViewport.WorkSize.Y - RmlMenubarView.Height });
-        ImGui.SetNextWindowViewport(mainViewport.ID);
-
-        ImGuiWindowFlags dockWindowFlags =
-            ImGuiWindowFlags.NoDocking |
-            ImGuiWindowFlags.NoTitleBar |
-            ImGuiWindowFlags.NoCollapse |
-            ImGuiWindowFlags.NoResize |
-            ImGuiWindowFlags.NoMove |
-            ImGuiWindowFlags.NoBringToFrontOnFocus |
-            ImGuiWindowFlags.NoBackground;
-
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 0.0f);
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0.0f);
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
-        ImGui.Begin("##DockSpaceWindow", dockWindowFlags);
-        ImGui.PopStyleVar(3);
-
-        uint dockspaceId = ImGui.GetID("##MainDockSpace");
-        ImGui.DockSpace(dockspaceId, Vector2.Zero, ImGuiDockNodeFlags.PassthruCentralNode);
-
-        bool shouldSetupDefaultDockspace = _dockSpaceRebuildRequested || (!_dockSpaceInitialized && !File.Exists(ImGuiIniPath));
-        if (shouldSetupDefaultDockspace)
-        {
-            SetupDefaultDockSpace(dockspaceId, mainViewport.WorkSize);
-            _dockSpaceInitialized = true;
-            _dockSpaceRebuildRequested = false;
-        }
-
-        ImGui.End();
-
-        foreach (UiPanel panel in _panels)
-            panel.Render();
-
-        _spawnMenu?.Render();
         UpdateUndoRedoTracking();
-        RenderProjectHomeScreen();
-        RenderToast();
+
+        _rmlEditor?.Update(_showProjectHome, BuildStatusBarText());
     }
 
-    /// <summary>Draws the RmlUi-based menubar strip on top of the ImGui-rendered UI each frame.</summary>
-    protected override void RenderOverlay()
+    private string BuildStatusBarText()
     {
-        _rmlMenubar?.Render(WindowWidth, WindowHeight);
+        if (!_projectManager.HasProject)
+            return "No project loaded";
+
+        string state = _projectManager.IsDirty ? "Unsaved changes" : "Ready";
+        return $"{_projectManager.Manifest.ProjectName} - {state}";
+    }
+
+    public override unsafe void Render()
+    {
+        Glfw.MakeContextCurrent(windowHandle);
+        GL.Viewport(0, 0, (uint)Math.Max(1, WindowWidth), (uint)Math.Max(1, WindowHeight));
+        GL.ClearColor(ClearR, ClearG, ClearB, ClearA);
+        GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+
+        RenderUi();
+
+        _rmlEditor?.RenderSceneSurface();
+
+        // RenderSceneSurface() renders the preview viewport into its own FBO and leaves the GL
+        // viewport set to that (much smaller) surface size without restoring it - see
+        // Viewport.RenderScenePublic. Rebind the default framebuffer and the full window
+        // viewport before compositing the RmlUi shell, or the whole UI ends up squeezed into
+        // that leftover small viewport rect and the rest of the window just shows the clear color.
+        GL.BindFramebuffer(GLEnum.Framebuffer, 0);
+        GL.Viewport(0, 0, (uint)Math.Max(1, WindowWidth), (uint)Math.Max(1, WindowHeight));
+
+        _rmlHost?.Render(WindowWidth, WindowHeight);
+
+        Glfw.SwapBuffers(windowHandle);
     }
 
     public override void Dispose()
     {
-        _rmlMenubar?.Dispose();
-        _rmlMenubar = null;
+        _rmlEditor?.Dispose();
+        _rmlEditor = null;
+        _rmlHost?.Dispose();
+        _rmlHost = null;
         base.Dispose();
     }
 
@@ -638,23 +645,51 @@ public class MainWindow : Window
     }
 
     private bool _keyboardShortcutsArmed;
+    private readonly HashSet<Keys> _downKeys = new();
+
+    /// <summary>Polls raw GLFW key state (replaces the old ImGui.IsKeyDown/IsKeyPressed calls).</summary>
+    private unsafe bool IsKeyDown(Keys key) => Glfw.GetKey(windowHandle, key) == (int)InputAction.Press;
+
+    /// <summary>True only on the frame a key transitions from up to down (edge-triggered, like ImGui.IsKeyPressed).</summary>
+    private bool IsKeyPressed(Keys key)
+    {
+        bool down = IsKeyDown(key);
+        bool wasDown = _downKeys.Contains(key);
+        if (down) _downKeys.Add(key); else _downKeys.Remove(key);
+        return down && !wasDown;
+    }
+
+    private bool IsCtrlDown() => IsKeyDown(Keys.ControlLeft) || IsKeyDown(Keys.ControlRight);
+    private bool IsShiftDown() => IsKeyDown(Keys.ShiftLeft) || IsKeyDown(Keys.ShiftRight);
+
+    /// <summary>True while a text input/textarea in the RmlUi editor shell has keyboard focus
+    /// (replaces the old ImGuiIOPtr.WantTextInput check).</summary>
+    private bool WantsTextInput() => _rmlEditor?.WantsTextInput ?? false;
+
+    /// <summary>True while the mouse cursor is over the given RmlUi shell region
+    /// (replaces the old ImGui window-rect hover checks against Timeline.WindowPos/WindowSize).</summary>
+    private unsafe bool IsMouseOverRegion(EditorShell.Region region)
+    {
+        if (!region.IsValid) return false;
+        Glfw.GetCursorPos(windowHandle, out double x, out double y);
+        return x >= region.X && x < region.X + region.Width && y >= region.Y && y < region.Y + region.Height;
+    }
 
     private void HandleKeyboardShortcuts()
     {
-        ImGuiIOPtr io = ImGui.GetIO();
-
         // Ignore function keys inherited from the IDE/launcher while the app
         // window is opening. Shortcuts become active after all of them have
         // been observed released for at least one frame.
         if (!_keyboardShortcutsArmed)
         {
-            if (!ImGui.IsKeyDown(ImGuiKey.F5) && !ImGui.IsKeyDown(ImGuiKey.F6) &&
-                !ImGui.IsKeyDown(ImGuiKey.F7) && !ImGui.IsKeyDown(ImGuiKey.F8))
+            if (!IsKeyDown(Keys.F5) && !IsKeyDown(Keys.F6) && !IsKeyDown(Keys.F7) && !IsKeyDown(Keys.F8))
                 _keyboardShortcutsArmed = true;
             return;
         }
 
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F5, false))
+        bool wantTextInput = WantsTextInput();
+
+        if (!wantTextInput && IsKeyPressed(Keys.F5))
         {
             if (_cameraViewport?.IsVisible == true)
                 _cameraViewport.ToggleHighQualityPreview();
@@ -663,36 +698,28 @@ public class MainWindow : Window
             return;
         }
 
-        if (!io.WantTextInput && io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.F6, false))
+        if (!wantTextInput && IsCtrlDown() && IsKeyPressed(Keys.F6))
         {
             _mainViewport?.ToggleShadowDebugMode();
             return;
         }
 
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F7, false))
+        if (!wantTextInput && IsKeyPressed(Keys.F7))
         {
-            OpenRenderPopup(Menubar.RenderRequestKind.Image);
+            _rmlEditor?.ShowRenderPopup(RmlRenderController.RenderMode.Image);
             return;
         }
 
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F8, false))
+        if (!wantTextInput && IsKeyPressed(Keys.F8))
         {
-            OpenRenderPopup(Menubar.RenderRequestKind.Video);
+            _rmlEditor?.ShowRenderPopup(RmlRenderController.RenderMode.Video);
             return;
         }
 
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.Delete, false))
+        if (!wantTextInput && IsKeyPressed(Keys.Delete))
         {
-            // Check if Timeline window is hovered to decide whether to delete keyframes or objects
-            bool timelineHovered = false;
-            if (_timeline != null && _timeline.WindowSize.X > 0 && _timeline.WindowSize.Y > 0)
-            {
-                var mousePos = ImGui.GetMousePos();
-                var winPos = _timeline.WindowPos;
-                var winSize = _timeline.WindowSize;
-                timelineHovered = mousePos.X >= winPos.X && mousePos.X < winPos.X + winSize.X &&
-                                 mousePos.Y >= winPos.Y && mousePos.Y < winPos.Y + winSize.Y;
-            }
+            // Check if the Timeline panel is hovered to decide whether to delete keyframes or objects.
+            bool timelineHovered = _rmlEditor != null && IsMouseOverRegion(_rmlEditor.GetRegion("timeline-body"));
 
             if (timelineHovered)
             {
@@ -705,66 +732,59 @@ public class MainWindow : Window
             return;
         }
 
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.Space, false))
+        if (!wantTextInput && IsKeyPressed(Keys.Space))
         {
-            if (_timeline != null && _timeline.WindowSize.X > 0 && _timeline.WindowSize.Y > 0)
+            bool timelineHovered = _rmlEditor != null && IsMouseOverRegion(_rmlEditor.GetRegion("timeline-body"));
+            if (timelineHovered)
             {
-                var mousePos = ImGui.GetMousePos();
-                var winPos = _timeline.WindowPos;
-                var winSize = _timeline.WindowSize;
-                bool timelineHovered = mousePos.X >= winPos.X && mousePos.X < winPos.X + winSize.X &&
-                                       mousePos.Y >= winPos.Y && mousePos.Y < winPos.Y + winSize.Y;
-                if (timelineHovered)
-                {
-                    _timeline.TogglePlayPause();
-                    return;
-                }
+                _timeline?.TogglePlayPause();
+                return;
             }
         }
 
-        if (!io.KeyCtrl || io.WantTextInput)
+        if (!IsCtrlDown() || wantTextInput)
             return;
 
-        if (ImGui.IsKeyPressed(ImGuiKey.N))
+        if (IsKeyPressed(Keys.N))
         {
-            OpenNewProjectPopup();
+            _rmlEditor?.ShowNewProjectDialog();
             return;
         }
 
-        if (ImGui.IsKeyPressed(ImGuiKey.O))
+        if (IsKeyPressed(Keys.O))
         {
             OpenProjectFromDialog();
             return;
         }
 
-        if (ImGui.IsKeyPressed(ImGuiKey.D))
+        if (IsKeyPressed(Keys.D))
         {
             _sceneTree?.DuplicateSelectedObjects();
             return;
         }
 
-        if (ImGui.IsKeyPressed(ImGuiKey.Z))
+        if (IsKeyPressed(Keys.Z))
         {
-            if (io.KeyShift)
+            if (IsShiftDown())
                 PerformRedo();
             else
                 PerformUndo();
             return;
         }
 
-        if (ImGui.IsKeyPressed(ImGuiKey.Y))
+        if (IsKeyPressed(Keys.Y))
         {
             PerformRedo();
             return;
         }
 
-        if (io.KeyShift && ImGui.IsKeyPressed(ImGuiKey.S))
+        if (IsShiftDown() && IsKeyPressed(Keys.S))
         {
-            OpenSaveAsPopup();
+            _rmlEditor?.ShowSaveAsDialog();
             return;
         }
 
-        if (ImGui.IsKeyPressed(ImGuiKey.S))
+        if (IsKeyPressed(Keys.S))
             RequestSaveProject();
     }
 
@@ -777,6 +797,7 @@ public class MainWindow : Window
         {
             _pendingSavePrimed = true;
             _showSavingToast = true;
+            _rmlEditor?.ShowSuccessToast("Saving...");
             return;
         }
 
@@ -2550,48 +2571,15 @@ public class MainWindow : Window
         }
     }
 
+    /// <summary>Retained-mode replacement for the old ImGui-drawn toast notifications (see RmlToastController).</summary>
     private void ShowSuccessToast(string message)
     {
-        ShowToast(message, ToastKind.Success, 2.4);
+        _rmlEditor?.ShowSuccessToast(message);
     }
 
     private void ShowErrorToast(string message)
     {
-        ShowToast(message, ToastKind.Error, 4.0);
-    }
-
-    private void ShowToast(string message, ToastKind kind, double durationSeconds)
-    {
-        _toastMessage = message;
-        _toastKind = kind;
-        _toastExpiresAtSeconds = GetNowSeconds() + durationSeconds;
-    }
-
-    private void RenderToast()
-    {
-        if (_showSavingToast)
-        {
-            RenderToastWindow("Saving...", ToastKind.Success, 1f);
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(_toastMessage))
-            return;
-
-        double now = GetNowSeconds();
-        if (now >= _toastExpiresAtSeconds)
-        {
-            _toastMessage = "";
-            return;
-        }
-
-        double remaining = _toastExpiresAtSeconds - now;
-        float alpha = 1f;
-        const float fadeWindowSeconds = 0.45f;
-        if (remaining < fadeWindowSeconds)
-            alpha = Math.Clamp((float)(remaining / fadeWindowSeconds), 0f, 1f);
-
-        RenderToastWindow(_toastMessage, _toastKind, alpha);
+        _rmlEditor?.ShowErrorToast(message);
     }
 
     private static double GetNowSeconds()
@@ -2948,7 +2936,7 @@ public class MainWindow : Window
         if (!_handleCloseWithUnsavedChanges)
         {
             _handleCloseWithUnsavedChanges = true;
-            _showUnsavedChangesDialog = true;
+            ShowUnsavedChangesDialog();
         }
 
         // Don't close the window yet - we're showing the dialog
@@ -2966,86 +2954,33 @@ public class MainWindow : Window
         }
 
         _handleCloseWithUnsavedChanges = true;
-        _showUnsavedChangesDialog = true;
+        ShowUnsavedChangesDialog();
     }
 
-    private unsafe void RenderUnsavedChangesDialog()
+    /// <summary>Retained-mode replacement for the old ImGui "Unsaved Changes" modal popup.</summary>
+    private unsafe void ShowUnsavedChangesDialog()
     {
-        if (!_showUnsavedChangesDialog)
-            return;
-
-        if (!ImGui.IsPopupOpen("Unsaved Changes"))
-            ImGui.OpenPopup("Unsaved Changes");
-
-        ImGuiViewportPtr viewport = ImGui.GetMainViewport();
-        Vector2 center = new Vector2(viewport.Pos.X + viewport.Size.X * 0.5f, viewport.Pos.Y + viewport.Size.Y * 0.5f);
-        ImGui.SetNextWindowPos(center, ImGuiCond.Appearing, new Vector2(0.5f, 0.5f));
-        ImGui.SetNextWindowViewport(viewport.ID);
-
-        if (ImGui.BeginPopupModal("Unsaved Changes", ref _showUnsavedChangesDialog, ImGuiWindowFlags.AlwaysAutoResize))
-        {
-            ImGui.TextWrapped($"The project \"{_projectManager.Manifest.ProjectName}\" has unsaved changes.");
-            ImGui.TextWrapped("What would you like to do?");
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-
-            bool shouldSave = false;
-            bool shouldExit = false;
-
-            float buttonWidth = 150f;
-            float totalButtonWidth = (buttonWidth * 3) + (ImGui.GetStyle().ItemSpacing.X * 2);
-            float availableWidth = ImGui.GetContentRegionAvail().X;
-            float offset = (availableWidth - totalButtonWidth) / 2;
-
-            if (offset > 0)
-                ImGui.Indent(offset);
-
-            if (ImGui.Button("Save", new Vector2(buttonWidth, 0)))
-            {
-                shouldSave = true;
-            }
-
-            ImGui.SameLine();
-            if (ImGui.Button("Exit without Saving", new Vector2(buttonWidth, 0)))
-            {
-                shouldExit = true;
-            }
-
-            ImGui.SameLine();
-            if (ImGui.Button("Cancel", new Vector2(buttonWidth, 0)))
-            {
-                ImGui.CloseCurrentPopup();
-                _showUnsavedChangesDialog = false;
-                _handleCloseWithUnsavedChanges = false;
-                _allowWindowClose = false;
-                Glfw.SetWindowShouldClose(WindowHandle, false);
-            }
-
-            if (offset > 0)
-                ImGui.Unindent(offset);
-
-            if (shouldSave)
+        _rmlEditor?.ShowUnsavedChangesDialog(
+            onSave: () =>
             {
                 SaveProjectWithSceneInternal();
-                ImGui.CloseCurrentPopup();
-                _showUnsavedChangesDialog = false;
                 _handleCloseWithUnsavedChanges = false;
                 _preferencesPanel?.SavePreferences();
                 Glfw.SetWindowShouldClose(WindowHandle, true);
-            }
-            else if (shouldExit)
+            },
+            onExitWithoutSaving: () =>
             {
-                ImGui.CloseCurrentPopup();
-                _showUnsavedChangesDialog = false;
                 _handleCloseWithUnsavedChanges = false;
                 _allowWindowClose = true;
                 _preferencesPanel?.SavePreferences();
                 Glfw.SetWindowShouldClose(WindowHandle, true);
-            }
-
-            ImGui.EndPopup();
-        }
+            },
+            onCancel: () =>
+            {
+                _handleCloseWithUnsavedChanges = false;
+                _allowWindowClose = false;
+                Glfw.SetWindowShouldClose(WindowHandle, false);
+            });
     }
 
     private static void SetNextModalToMainViewport()

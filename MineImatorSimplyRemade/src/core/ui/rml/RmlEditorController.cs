@@ -26,6 +26,10 @@ public sealed class RmlEditorController : IDisposable
     private readonly RmlProjectDialogController _projectDialog;
     private readonly RmlUnsavedChangesDialogController _unsavedChangesDialog;
 
+    /// <summary>Invoked with the project file path when a home-screen "recent project" card's
+    /// Open button is clicked, so MainWindow can actually load that specific project.</summary>
+    public Action<string>? OpenRecentProjectRequested { get; set; }
+
     public RmlEditorController(
         RmlWindowHost host,
         Menubar menu,
@@ -45,7 +49,7 @@ public sealed class RmlEditorController : IDisposable
         {
             NewProjectRequested = _projectDialog.OpenNewProject,
             LoadProjectRequested = menu.OpenProjectRequested,
-            OpenRecentRequested = path => menu.OpenRecentRequested?.Invoke()
+            OpenRecentRequested = path => OpenRecentProjectRequested?.Invoke(path)
         };
         _shell.BindCommand("new-project", _projectDialog.OpenNewProject);
         _shell.BindCommand("save-as", _projectDialog.OpenSaveAs);
@@ -142,6 +146,21 @@ public sealed class RmlEditorController : IDisposable
     public void RenderSceneSurface() => _viewport.Render();
 
     public EditorShell.Region ViewportRegion => _shell.GetRegion("viewport-surface");
+
+    /// <summary>Returns the on-screen rectangle of any named shell region (e.g. "timeline-body").</summary>
+    public EditorShell.Region GetRegion(string id) => _shell.GetRegion(id);
+
+    /// <summary>Used by MainWindow's keyboard shortcuts (F7/F8) to open the render dialog.</summary>
+    public void ShowRenderPopup(RmlRenderController.RenderMode mode) => _render.Show(mode);
+
+    /// <summary>Used by MainWindow's keyboard shortcuts (Ctrl+N) to open the new project dialog.</summary>
+    public void ShowNewProjectDialog() => _projectDialog.OpenNewProject();
+
+    /// <summary>Used by MainWindow's keyboard shortcuts (Ctrl+Shift+S) to open the save-as dialog.</summary>
+    public void ShowSaveAsDialog() => _projectDialog.OpenSaveAs();
+
+    /// <summary>True while a text input/textarea element in the shell document has keyboard focus.</summary>
+    public bool WantsTextInput => _shell.HasFocusedTextInput;
 
     public void Dispose()
     {

@@ -105,8 +105,8 @@ public static class main
             _gl = GL.GetApi(Glfw.GetProcAddress);
             MainWindow.SetGL(_gl);
             Directory.CreateDirectory(ApplicationLocalDirectoryPath);
-            string mainWindowIniPath = Path.Combine(ApplicationLocalDirectoryPath, "imgui.ini");
-            MainWindow.SetupImgui(mainWindowIniPath);
+            // MainWindow's UI is entirely RmlUi-driven now (see MainWindow.InitializeRuntime/RmlEditorController);
+            // it no longer creates or uses an ImGui context.
             Services.Initialize();
             MainWindow.InitializeRuntime(progress => UpdateStartupWindow(startupWindow, RemapStartupState(progress)));
             startupWindow?.Dispose();
@@ -229,12 +229,12 @@ public static class main
 
             Services.Shutdown();
 
-            MainWindow.ShutdownImgui();
             CameraWindow.ShutdownImgui();
+
+            MainWindow.Dispose();
 
             _gl.Dispose();
             Glfw.DestroyWindow(CameraWindow.WindowHandle);
-            Glfw.DestroyWindow(MainWindow.WindowHandle);
             Glfw.Terminate();
 
             return 0;

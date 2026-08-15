@@ -12,10 +12,12 @@ public sealed class EditorShell
     }
 
     private readonly ElementDocument _document;
+    private readonly Context _context;
 
     public EditorShell(RmlWindowHost host, Menubar menu)
     {
         _document = host.LoadDocument(DocumentRml);
+        _context = host.Context;
         Bind("open-project", menu.OpenProjectRequested);
         Bind("open-recent", menu.OpenRecentRequested);
         Bind("save-project", menu.SaveProjectRequested);
@@ -33,9 +35,13 @@ public sealed class EditorShell
         Bind("bugs", menu.ReportBugsRequested);
         Bind("forums", menu.VisitForumsRequested);
         Bind("support", menu.SupportUsRequested);
+        WireMenuToggles();
     }
 
     public Element? GetRegionElement(string id) => _document.GetElementById(id);
+
+    /// <summary>True while a text input/textarea in this document currently has keyboard focus.</summary>
+    public bool HasFocusedTextInput => _context.GetFocusElement() is ElementFormControlInput or ElementFormControlTextArea;
 
     public void BindCommand(string id, Action action) => Bind(id, action);
 
@@ -56,6 +62,55 @@ public sealed class EditorShell
         _document.GetElementById(id)?.AddEventListener("click", _ => action());
     }
 
+    /// <summary>Menu dropdowns used to open on plain CSS `:hover`, which also meant the mouse
+    /// leaving the 1px gap between the menubar and its dropdown while moving down would close
+    /// the menu before a click could land on an item. Wires up click-to-open/click-away-to-close
+    /// instead: each top-level menu button toggles its own ".menu" wrapper's "open" class (see
+    /// ".menu.open .menu-items" in DocumentRml) and stops the click from bubbling further, while
+    /// any other click anywhere in the document (menu items included, so choosing a command
+    /// closes the menu too) closes every open menu.</summary>
+    private void WireMenuToggles()
+    {
+        string[] menuButtonIds = ["menu-file", "menu-edit", "menu-render", "menu-view", "menu-help"];
+        List<Element> menus = new();
+        // Tracked separately from the "open" CSS class (rather than re-reading it back off the
+        // element) since AddClass/RemoveClass don't necessarily keep the "class" attribute string
+        // in sync, so it can't be relied on as a source of truth for the current open/closed state.
+        List<bool> openState = new();
+        foreach (string id in menuButtonIds)
+        {
+            Element? button = _document.GetElementById(id);
+            Element? menu = button?.GetParentNode();
+            if (button == null || menu == null) continue;
+            int index = menus.Count;
+            menus.Add(menu);
+            openState.Add(false);
+            button.AddEventListener("click", e =>
+            {
+                bool wasOpen = openState[index];
+                for (int i = 0; i < menus.Count; i++)
+                {
+                    menus[i].RemoveClass("open");
+                    openState[i] = false;
+                }
+                if (!wasOpen)
+                {
+                    menu.AddClass("open");
+                    openState[index] = true;
+                }
+                e.StopPropagation();
+            });
+        }
+        _document.AddEventListener("click", _ =>
+        {
+            for (int i = 0; i < menus.Count; i++)
+            {
+                menus[i].RemoveClass("open");
+                openState[i] = false;
+            }
+        });
+    }
+
     private static string Escape(string value) => System.Net.WebUtility.HtmlEncode(value ?? string.Empty);
 
     private const string DocumentRml = """
@@ -72,7 +127,7 @@ public sealed class EditorShell
           .menu { position: relative; }
           .menu-items { display: none; position: absolute; top: 29px; left: 0; width: 220px;
                         padding: 5px; background: #292a31; border: 1px #4b4d58; }
-          .menu:hover .menu-items { display: block; }
+          .menu.open .menu-items { display: block; }
           .menu-items button { display: block; width: 100%; text-align: left; padding: 6px 9px; }
           .shortcut { float: right; color: #898c98; }
           .separator { height: 1px; margin: 4px 3px; background: #454750; }
@@ -93,6 +148,24 @@ public sealed class EditorShell
                        background: #25262c; border-top: 1px #111216; color: #9295a0; }
           #home-overlay { position: absolute; top: 0; bottom: 0; left: 0; right: 0; display: none;
                           flex-direction: column; padding: 24px; background: #191a1f; z-index: 10; }
+          #home-splash{position:relative;height:180px;margin-bottom:12px;background:#293038;border:1px #566072;border-radius:18px;overflow:hidden;}
+          #home-splash-title{position:absolute;top:24px;left:24px;padding:6px 10px;background:#0d0f14aa;color:#eaf0f8;font-weight:bold;font-size:18px;border-radius:8px;}
+          #home-splash-text{position:absolute;top:56px;left:24px;padding:5px 10px;background:#0d0f14aa;color:#b3c0d1;border-radius:8px;}
+          #home-splash-credit{color:#7d818c;margin-bottom:8px;}
+          .home-columns{display:flex;flex-direction:row;}
+          #home-actions{width:34%;margin-right:10px;background:#191a1f;border:1px #393b44;padding:12px;}
+          #home-actions button{display:block;width:100%;padding:9px;margin-bottom:6px;background:#30323a;border:1px #50525e;}
+          #home-actions button:hover{background:#3b3d46;}
+          #home-current{color:#8b8f9b;margin-top:10px;}
+          #home-recent{flex:1;background:#191a1f;border:1px #393b44;padding:8px;overflow:auto;}
+          .recent-grid{display:flex;flex-direction:row;flex-wrap:wrap;}
+          .recent-card{width:260px;margin:4px;padding:8px;background:#202127;border:1px #393b44;overflow:hidden;}
+          .recent-thumb{display:block;width:100%;height:120px;background:#2c2e36;border:1px #454854;margin-bottom:6px;}
+          .recent-card .name{color:#dedfe4;white-space:nowrap;overflow:hidden;}
+          .recent-card .path,.recent-card .date{color:#83879a;white-space:nowrap;overflow:hidden;}
+          .recent-card button{width:100%;margin-top:4px;padding:6px 4px;background:#343640;border:1px #555865;white-space:nowrap;}
+          .recent-card button:hover{background:#3b3d46;}
+          .recent-missing{color:#eb9271;}
           #preferences-overlay { position:absolute; top:45px; bottom:45px; left:20%; right:20%; display:none;
                                  background:#202127; border:1px #555864; z-index:30; }
           #spawn-object { position:absolute;top:7px;left:8px;background:#343640;border:1px #555865;z-index:3; }
@@ -116,7 +189,7 @@ public sealed class EditorShell
         </style></head>
         <body>
           <div id="menubar">
-            <div class="menu"><button>File</button><div class="menu-items">
+            <div class="menu"><button id="menu-file">File</button><div class="menu-items">
               <button id="new-project">New Project <span class="shortcut">Ctrl+N</span></button>
               <button id="open-project">Open Project <span class="shortcut">Ctrl+O</span></button>
               <button id="open-recent">Open Recent...</button><div class="separator"/>
@@ -126,22 +199,22 @@ public sealed class EditorShell
               <button id="import-pack-folder">Import Resource Pack Folder</button><div class="separator"/>
               <button id="exit">Exit</button>
             </div></div>
-            <div class="menu"><button>Edit</button><div class="menu-items">
+            <div class="menu"><button id="menu-edit">Edit</button><div class="menu-items">
               <button id="undo">Undo <span class="shortcut">Ctrl+Z</span></button>
               <button id="redo">Redo <span class="shortcut">Ctrl+Y</span></button><div class="separator"/>
               <button id="duplicate">Duplicate <span class="shortcut">Ctrl+D</span></button>
               <button id="delete">Delete <span class="shortcut">Del</span></button><div class="separator"/>
               <button id="preferences">Preferences</button>
             </div></div>
-            <div class="menu"><button>Render</button><div class="menu-items">
+            <div class="menu"><button id="menu-render">Render</button><div class="menu-items">
               <button id="render-image">Render Image <span class="shortcut">F7</span></button>
               <button id="render-video">Render Animation <span class="shortcut">F8</span></button>
             </div></div>
-            <div class="menu"><button>View</button><div class="menu-items">
+            <div class="menu"><button id="menu-view">View</button><div class="menu-items">
               <button id="reset-layout">Reset Layout</button><button id="reset-camera">Reset Work Camera</button>
               <button id="home">Home Screen</button>
             </div></div>
-            <div class="menu"><button>Help</button><div class="menu-items">
+            <div class="menu"><button id="menu-help">Help</button><div class="menu-items">
               <button id="updates">Check for Updates</button><button id="about">About</button><div class="separator"/>
               <button id="bugs">Report Bugs</button><button id="forums">Visit the Forums</button>
               <button id="support">Support Us</button>
