@@ -34,8 +34,18 @@ public sealed class RmlTimelineController
         _root.GetElementById("timeline-frame")?.SetInnerRml($"Frame {_timeline.CurrentFrame} / {_timeline.MaxFrames}");
         _root.GetElementById("timeline-time")?.SetInnerRml($"{_timeline.CurrentFrame / _timeline.Framerate:0.00}s");
         _root.GetElementById("timeline-play")?.SetInnerRml(_timeline.IsPlaying ? "Pause" : "Play");
-        if (_root.GetElementById("timeline-scrub") is ElementFormControlInput scrub)
-            scrub.SetValue(_timeline.CurrentFrame.ToString(CultureInfo.InvariantCulture));
+        UpdateScrubThumb();
+    }
+
+    private void UpdateScrubThumb()
+    {
+        Element? thumb = _root.GetElementById("scrub-thumb");
+        Element? fill = _root.GetElementById("scrub-fill");
+        if (thumb == null || fill == null) return;
+        float ratio = _timeline.MaxFrames <= 0 ? 0f : Math.Clamp(_timeline.CurrentFrame / (float)_timeline.MaxFrames, 0f, 1f);
+        string percent = (ratio * 100f).ToString("0.##", CultureInfo.InvariantCulture);
+        thumb.SetProperty("left", $"{percent}%");
+        fill.SetProperty("width", $"{percent}%");
     }
 
     /// <summary>Rebuilds the entire panel body (transport bar, scrub bar, settings row and keyframe
@@ -43,7 +53,10 @@ public sealed class RmlTimelineController
     /// (e.g. previously a separate "track-area" child re-rendered on its own) after the parent
     /// element already had its own children replaced corrupts rendering of the whole ancestor
     /// subtree - the panel would draw nothing at all afterwards. Building the full body content in
-    /// one shot on the root element avoids ever calling SetInnerRml on a non-root element here.</summary>
+    /// one shot on the root element avoids ever calling SetInnerRml on a non-root element here.
+    /// Also note: a native `&lt;input type="range"&gt;` element injected via SetInnerRml corrupts
+    /// rendering of the whole panel the same way, so the scrub bar is a custom clickable/draggable
+    /// div-based slider instead of a real range input.</summary>
     private void Rebuild(bool force)
     {
         SceneObject? obj = SelectionManager.Instance.SelectedObjects.FirstOrDefault();
@@ -62,7 +75,7 @@ public sealed class RmlTimelineController
           <div id="transport"><button id="timeline-start">Start</button><button id="timeline-back">-1</button>
             <button id="timeline-play">Play</button><button id="timeline-forward">+1</button><button id="timeline-end">End</button>
             <span id="timeline-frame"></span><span id="timeline-time"></span></div>
-          <div id="scrub-row"><input id="timeline-scrub" type="range" min="0" max="{{_timeline.MaxFrames}}" value="{{_timeline.CurrentFrame}}"/></div>
+          <div id="scrub-row"><div id="scrub-track"><div id="scrub-fill"></div><div id="scrub-thumb"></div></div></div>
           <div id="timeline-settings">FPS <input id="timeline-fps" value="{{_timeline.Framerate.ToString(CultureInfo.InvariantCulture)}}"/>
             End <input id="timeline-length" value="{{_timeline.MaxFrames}}"/><button id="timeline-auto">Auto: {{(_timeline.AutoKeyframe ? "On" : "Off")}}</button>
             <button id="timeline-loop">Loop: {{(_timeline.LoopPlayback ? "On" : "Off")}}</button><button id="timeline-zoom-out">Zoom -</button>
@@ -101,7 +114,6 @@ public sealed class RmlTimelineController
         html.Append("</div>");
 
         _root.SetInnerRml(html.ToString());
-        Console.WriteLine($"[DEBUG_LOG] Rebuild: len={_root.GetInnerRml().Length} transport={_root.GetElementById("transport") != null} rootW={_root.GetClientWidth()} rootH={_root.GetClientHeight()}");
 
         Bind("timeline-start", () => _timeline.SetCurrentFrame(0));
         Bind("timeline-back", () => _timeline.SetCurrentFrame(_timeline.CurrentFrame - 1));
@@ -117,17 +129,24 @@ public sealed class RmlTimelineController
         Bind("timeline-marker-add", () => { _timeline.AddMarker(_timeline.CurrentFrame, "Marker"); Rebuild(force: true); });
         BindNumber("timeline-fps", _timeline.SetFrameRate);
         BindInteger("timeline-length", value => { _timeline.SetMaxFrames(value); Rebuild(force: true); });
-        if (_root.GetElementById("timeline-scrub") is ElementFormControlInput scrub)
+        if (_root.GetElementById("scrub-track") is Element scrubTrack)
         {
-            void Scrub()
+            scrubTrack.SetProperty("drag", "drag");
+            void Scrub(Event e)
             {
-                if (int.TryParse(scrub.GetValue(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int frame))
-                    _timeline.SetCurrentFrame(frame);
+                if (!e.Parameters.TryGetValue("mouse_x", out object? mouseXValue)) return;
+                double mouseX = Convert.ToDouble(mouseXValue, CultureInfo.InvariantCulture);
+                float trackLeft = scrubTrack.GetAbsoluteLeft();
+                float trackWidth = scrubTrack.GetClientWidth();
+                if (trackWidth <= 0) return;
+                float ratio = (float)Math.Clamp((mouseX - trackLeft) / trackWidth, 0.0, 1.0);
+                _timeline.SetCurrentFrame((int)Math.Round(ratio * _timeline.MaxFrames));
                 Update(force: true);
             }
-            scrub.AddEventListener("change", _ => Scrub());
-            scrub.AddEventListener("input", _ => Scrub());
+            scrubTrack.AddEventListener("mousedown", Scrub);
+            scrubTrack.AddEventListener("dragmove", Scrub);
         }
+        UpdateScrubThumb();
 
         if (obj != null)
         {

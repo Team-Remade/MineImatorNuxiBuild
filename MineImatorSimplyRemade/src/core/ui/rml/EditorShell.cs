@@ -179,7 +179,10 @@ public sealed class EditorShell
           #transport{height:38px;display:flex;flex-direction:row;align-items:center;padding:4px;border-bottom:1px #111216;}
           #transport button{background:#30323a;border:1px #4b4d58;margin-right:4px;min-width:48px;}
           #timeline-frame{margin-left:8px;color:#d9b24e;}#timeline-time{margin-left:10px;color:#9296a2;}
-          #scrub-row{height:42px;padding:8px;}#timeline-scrub{width:100%;}
+          #scrub-row{height:42px;padding:8px;}
+          #scrub-track{position:relative;width:100%;height:8px;margin-top:13px;background:#101115;border:1px #454750;}
+          #scrub-fill{position:absolute;top:0;bottom:0;left:0;width:0%;background:#4a90d9;}
+          #scrub-thumb{position:absolute;top:-5px;width:14px;height:18px;margin-left:-7px;left:0%;background:#d9b24e;border:1px #f0c65c;}
           #timeline-settings{height:34px;display:flex;flex-direction:row;align-items:center;padding:3px 7px;border-bottom:1px #111216;}
           #timeline-settings input{width:54px;margin-right:6px;background:#17181d;color:#eee;border:1px #4b4d58;}
           #track-area{position:absolute;top:114px;bottom:0;left:0;right:0;overflow:auto;background:#1b1c21;}
