@@ -6,17 +6,17 @@ For all your Minecraft animation needs!
 
 Requirements
 
-- Dotnet 10.0
 - A C++ compiler (MSVC, GCC, or Clang)
+- Cmake Build System
+- Xmake Build System
 - OpenGL 3.3+ compatible graphics driver
 
 ## Setup
 
 1. Clone the repo
 2. Run `cd ./MineImatorNuxiBuild`
-3. Run `dotnet restore`
-4. Run `dotnet build MineImatorSimplyRemade.sln`
-5. Run `dotnet run --project MineImatorSimplyRemade`
+3. Run `xmake f -y -m release` to generate a Cmake file
+4. Run `xmake -y` to build
 
 ## Contributing
 

@@ -1,0 +1,73 @@
+<rml>
+<head>
+    <link type="text/rcss" href="../styles/menubar.rcss"/>
+</head>
+<body>
+    <div id="menubar">
+        <div id="menu-items">
+            <div id="file-menu" class="menu-item menu-item-group">
+                <span id="file-menu-trigger">File</span>
+                <div id="file-dropdown" class="dropdown-menu">
+                    <span class="dropdown-item">New Project</span>
+                    <span class="dropdown-item">Open Project</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Open Recent</span>
+                    <span class="dropdown-item">Save Project</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Save As</span>
+                    <span class="dropdown-item">Import Asset</span>
+                    <span class="dropdown-item">Import Resource Pack</span>
+                    <span class="dropdown-item">Import Resource Pack Folder</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Import from world</span>
+                    <span class="dropdown-item">Exit</span>
+                </div>
+            </div>
+            <div id="edit-menu" class="menu-item menu-item-group">
+                <span id="edit-menu-trigger">Edit</span>
+                <div id="edit-dropdown" class="dropdown-menu">
+                    <span class="dropdown-item">Undo</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Redo</span>
+                    <span class="dropdown-item">Cut</span>
+                    <span class="dropdown-item">Copy</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Paste</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Select All</span>
+                    <span class="dropdown-item">Duplicate</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Delete</span>
+                    <span class="dropdown-item">Hide</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Show</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Rename</span>
+                    <span class="dropdown-item">Preferences</span>
+                </div>
+            </div>
+            <div id="render-menu" class="menu-item menu-item-group">
+                <span id="render-menu-trigger">Render</span>
+                <div id="render-dropdown" class="dropdown-menu">
+                    <span class="dropdown-item">Render Image</span>
+                    <span class="dropdown-item">Render Animation</span>
+                </div>
+            </div>
+            <div id="view-menu" class="menu-item menu-item-group">
+                <span id="view-menu-trigger">View</span>
+                <div id="view-dropdown" class="dropdown-menu">
+                    <span class="dropdown-item">Reset Layout</span>
+                    <span class="dropdown-item">Reset Work Camera</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Show Secondary View</span>
+                    <span class="dropdown-item">Show Timeline Markers</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Playback Time</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Show Shortcuts Bar</span>
+                    <span class="dropdown-item">Home Screen</span>
+                </div>
+            </div>
+            <div id="help-menu" class="menu-item menu-item-group">
+                <span id="help-menu-trigger">Help</span>
+                <div id="help-dropdown" class="dropdown-menu">
+                    <span class="dropdown-item dropdown-item-with-separator">Check for Updates</span>
+                    <span class="dropdown-item">About</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Tutorials</span>
+                    <span class="dropdown-item">Report a Bug</span>
+                    <span class="dropdown-item dropdown-item-with-separator">Visit the Forums</span>
+                    <span class="dropdown-item">Support Us</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</rml>

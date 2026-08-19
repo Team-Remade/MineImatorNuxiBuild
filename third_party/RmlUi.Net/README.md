@@ -1,3 +1,0 @@
-# RmlUI C# Bindings
-
-
