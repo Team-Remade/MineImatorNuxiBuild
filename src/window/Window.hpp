@@ -16,6 +16,7 @@ public:
 
     int GetWidth() const;
     int GetHeight() const;
+    void GetDrawableSize(int& drawableWidth, int& drawableHeight) const;
 
     SDL_Window* GetHandle() const;
     void SwapBuffers();

@@ -1,0 +1,18 @@
+<rml>
+<head>
+    <link type="text/rcss" href="/assets/ui/styles/viewport.rcss"/>
+</head>
+<body class="panel-document">
+    <div class="workspace-layer">
+        <div class="left-column panel-column">
+            <div id="viewport-panel" class="editor-panel">
+                <div class="panel-header">
+                    <span>3D Viewport</span>
+                    <span class="panel-meta">Perspective</span>
+                </div>
+                <div id="viewport-surface"></div>
+            </div>
+        </div>
+    </div>
+</body>
+</rml>

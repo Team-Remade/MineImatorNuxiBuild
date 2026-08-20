@@ -1,0 +1,17 @@
+body { width: 100%; height: 100%; margin: 0; font-family: "Noto Sans"; color: #f2f5ff; background-color: transparent; overflow: hidden; }
+.workspace-layer { position: absolute; top: 30dp; right: 0; bottom: 0; left: 0; pointer-events: none; }
+.left-column { position: absolute; top: 0; bottom: 0; left: 0; width: 75%; }
+.viewport-spacer { display: none; }
+#timeline-panel { position: absolute; right: 0; bottom: 0; left: 0; height: 30%; background-color: #171d2a; border: 1dp #35405a; pointer-events: auto; }
+.panel-header { box-sizing: border-box; height: 28dp; padding: 5dp 9dp; display: flex; flex-direction: row; justify-content: space-between; align-items: center; background-color: #20283a; border-bottom: 1dp #35405a; color: #f0f3fb; font-size: 12dp; }
+.panel-meta { color: #8792aa; font-size: 10dp; }
+.timeline-toolbar { height: 29dp; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4dp; background-color: #151b27; border-bottom: 1dp #303a50; }
+.transport-button { min-width: 22dp; padding: 3dp 6dp; text-align: center; background-color: #293348; border: 1dp #3a4762; border-radius: 3dp; color: #cbd3e3; font-size: 10dp; }
+.transport-play { min-width: 38dp; color: #ffffff; background-color: #365891; }
+.timeline-content { position: absolute; top: 58dp; right: 0; bottom: 0; left: 0; display: flex; flex-direction: row; }
+.track-list { width: 150dp; background-color: #171e2b; border-right: 1dp #35405a; }
+.track-row { height: 25dp; padding: 5dp 9dp; border-bottom: 1dp #273044; color: #aeb8ca; font-size: 11dp; }
+.track-title { color: #eef2fb; background-color: #20283a; }
+.keyframe-area { position: relative; flex-grow: 1; background-color: #121722; }
+.time-ruler { height: 25dp; display: flex; flex-direction: row; justify-content: space-between; padding: 5dp 8dp; background-color: #1c2432; border-bottom: 1dp #303a50; color: #7f8ba1; font-size: 9dp; }
+.playhead { position: absolute; top: 0; bottom: 0; left: 12%; width: 1dp; background-color: #ff6f61; }

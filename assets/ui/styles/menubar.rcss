@@ -1,7 +1,11 @@
 body {
+    width: 100%;
+    height: 100%;
     margin: 0;
     font-family: "Noto Sans";
     color: #f2f5ff;
+    background-color: #0b0e15;
+    overflow: hidden;
 }
 
 #menubar {
@@ -9,6 +13,8 @@ body {
     height: 30dp;
     background-color: #121826;
     border-bottom: 1dp #2f3a56;
+    position: relative;
+    z-index: 10;
 }
 
 #menu-items {
@@ -45,6 +51,7 @@ body {
     padding: 4dp 0;
     background-color: #232b3d;
     border: 1dp #384563;
+    z-index: 20;
 }
 
 .menu-item-group.open .dropdown-menu {

@@ -1,0 +1,23 @@
+<rml>
+<head>
+    <link type="text/rcss" href="/assets/ui/styles/properties.rcss"/>
+</head>
+<body class="panel-document">
+    <div class="workspace-layer">
+        <div class="right-column panel-column">
+            <div class="scene-tree-spacer"></div>
+            <div id="properties-panel" class="editor-panel">
+                <div class="panel-header"><span>Properties</span></div>
+                <div class="properties-content">
+                    <div class="property-section">Transform</div>
+                    <div class="property-row"><span>Position</span><span class="property-value">0, 0, -3</span></div>
+                    <div class="property-row"><span>Rotation</span><span class="property-value">0, 0, 0</span></div>
+                    <div class="property-row"><span>Scale</span><span class="property-value">1, 1, 1</span></div>
+                    <div class="property-section">Appearance</div>
+                    <div class="property-row"><span>Visible</span><span class="property-value">Yes</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</rml>

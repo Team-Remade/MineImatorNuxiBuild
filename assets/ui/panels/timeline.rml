@@ -1,0 +1,36 @@
+<rml>
+<head>
+    <link type="text/rcss" href="/assets/ui/styles/timeline.rcss"/>
+</head>
+<body class="panel-document">
+    <div class="workspace-layer">
+        <div class="left-column panel-column">
+            <div class="viewport-spacer"></div>
+            <div id="timeline-panel" class="editor-panel">
+                <div class="panel-header">
+                    <span>Timeline</span>
+                    <span class="panel-meta">00:00 / 00:10</span>
+                </div>
+                <div class="timeline-toolbar">
+                    <span class="transport-button">|&lt;</span>
+                    <span class="transport-button">&lt;</span>
+                    <span class="transport-button transport-play">Play</span>
+                    <span class="transport-button">&gt;</span>
+                    <span class="transport-button">&gt;|</span>
+                </div>
+                <div class="timeline-content">
+                    <div class="track-list">
+                        <div class="track-row track-title">Objects</div>
+                        <div class="track-row">Cube</div>
+                        <div class="track-row">Camera</div>
+                    </div>
+                    <div class="keyframe-area">
+                        <div class="time-ruler"><span>0s</span><span>2s</span><span>4s</span><span>6s</span><span>8s</span><span>10s</span></div>
+                        <div class="playhead"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</rml>

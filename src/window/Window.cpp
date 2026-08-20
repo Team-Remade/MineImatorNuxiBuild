@@ -24,9 +24,6 @@ bool Window::Init(const char* title) {
         return false;
     }
 
-    SDL_MaximizeWindow(handle);
-    SDL_GetWindowSize(handle, &width, &height);
-
     glContext = SDL_GL_CreateContext(handle);
     if (glContext == nullptr) {
         SDL_DestroyWindow(handle);
@@ -34,6 +31,10 @@ bool Window::Init(const char* title) {
         SDL_Quit();
         return false;
     }
+
+    SDL_MaximizeWindow(handle);
+    SDL_PumpEvents();
+    SDL_GetWindowSize(handle, &width, &height);
 
     return true;
 }
@@ -76,6 +77,15 @@ int Window::GetWidth() const {
 
 int Window::GetHeight() const {
     return height;
+}
+
+void Window::GetDrawableSize(int& drawableWidth, int& drawableHeight) const {
+    if (handle != nullptr) {
+        SDL_GL_GetDrawableSize(handle, &drawableWidth, &drawableHeight);
+    } else {
+        drawableWidth = 0;
+        drawableHeight = 0;
+    }
 }
 
 SDL_Window* Window::GetHandle() const {

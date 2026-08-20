@@ -34,10 +34,10 @@ target("MineImatorNuxiBuild")
     set_languages("c++17")
     add_rules("utils.bin2c_with_paths")
     add_files("src/**.cpp")
+    add_files("assets/**.ttf", "assets/**.rml", "assets/**.rcss")
     if is_plat("windows") then
         add_files("src/appicon.rc")
     end
-    add_files("assets/**")
 
     add_packages("libsdl2", "glad", "rmlui", "openscenegraph")
     if is_plat("windows") then
