@@ -3,6 +3,7 @@
 #include <SDL.h>
 #include <glad/glad.h>
 #include <RmlUi/Core.h>
+#include <array>
 #include "assets/EmbeddedFileInterface.hpp"
 #include "ui/MenuBar.hpp"
 #include "ui/RmlGlRenderer.hpp"
@@ -13,6 +14,7 @@ bool quit = false;
 SDL_Event event;
 Rml::Context* uiContext = nullptr;
 Rml::ElementDocument* uiDocument = nullptr;
+std::array<Rml::ElementDocument*, 4> panelDocuments{};
 
 constexpr int initialWidth = 640;
 constexpr int initialHeight = 480;
@@ -27,10 +29,10 @@ MenuBar menuBar;
 Viewport3D viewport3D(menuBarHeight);
 
 void GetOpenGLVersion() {
-    const char* glVersion = (const char*)glGetString(GL_VERSION);
-    const char* glVendor = (const char*)glGetString(GL_VENDOR);
-    const char* glRenderer = (const char*)glGetString(GL_RENDERER);
-    const char* glslVersion = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+    const char* glVersion = reinterpret_cast<const char *>(glGetString(GL_VERSION));
+    const char* glVendor = reinterpret_cast<const char *>(glGetString(GL_VENDOR));
+    const char* glRenderer = reinterpret_cast<const char *>(glGetString(GL_RENDERER));
+    const char* glslVersion = reinterpret_cast<const char *>(glGetString(GL_SHADING_LANGUAGE_VERSION));
     printf("OpenGL version: %s\n", glVersion);
     printf("OpenGL vendor: %s\n", glVendor);
     printf("OpenGL renderer: %s\n", glRenderer);
@@ -92,6 +94,21 @@ void Init() {
 
     menuBar.Init(uiDocument);
 
+    constexpr std::array<const char*, 4> panelPaths = {
+        "assets/ui/panels/viewport.rml",
+        "assets/ui/panels/timeline.rml",
+        "assets/ui/panels/scene_tree.rml",
+        "assets/ui/panels/properties.rml"
+    };
+    for (size_t i = 0; i < panelPaths.size(); ++i) {
+        panelDocuments[i] = uiContext->LoadDocument(panelPaths[i]);
+        if (panelDocuments[i] == nullptr) {
+            printf("Failed to load %s\n", panelPaths[i]);
+            exit(1);
+        }
+        panelDocuments[i]->Show();
+    }
+
     uiDocument->Show();
 
     viewport3D.Init(width, height);
@@ -141,9 +158,12 @@ void MainLoop() {
     while (!quit) {
         Input();
 
+        const int sceneX = viewport3D.GetSceneX(width);
+        const int sceneY = viewport3D.GetSceneY(height);
+        const int sceneWidth = viewport3D.GetSceneWidth(width);
         const int sceneHeight = viewport3D.GetSceneHeight(height);
 
-        glViewport(0, 0, width, sceneHeight);
+        glViewport(0, 0, width, height);
         glClearColor(0.09f, 0.10f, 0.14f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -156,7 +176,8 @@ void MainLoop() {
 
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_SCISSOR_TEST);
-        glScissor(0, 0, width, sceneHeight);
+        glViewport(sceneX, sceneY, sceneWidth, sceneHeight);
+        glScissor(sceneX, sceneY, sceneWidth, sceneHeight);
         viewport3D.RenderFrame();
         glDisable(GL_SCISSOR_TEST);
         glDisable(GL_DEPTH_TEST);
@@ -181,6 +202,13 @@ void MainLoop() {
 
 void Cleanup() {
     menuBar.Shutdown();
+
+    for (Rml::ElementDocument*& panelDocument : panelDocuments) {
+        if (panelDocument != nullptr) {
+            panelDocument->Close();
+            panelDocument = nullptr;
+        }
+    }
 
     if (uiDocument != nullptr) {
         uiDocument->Close();

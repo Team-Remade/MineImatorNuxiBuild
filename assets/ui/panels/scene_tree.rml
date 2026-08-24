@@ -1,0 +1,22 @@
+<rml>
+<head>
+    <link type="text/rcss" href="../styles/menubar.rcss"/>
+</head>
+<body class="panel-document">
+    <div class="workspace-layer">
+        <div class="right-column panel-column">
+            <div id="scene-tree-panel" class="editor-panel">
+                <div class="panel-header">
+                    <span>Scene Tree</span>
+                    <span class="panel-action">+</span>
+                </div>
+                <div class="scene-tree">
+                    <div class="tree-row tree-root">v Scene</div>
+                    <div class="tree-row tree-child selected">Cube</div>
+                    <div class="tree-row tree-child">Camera</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</rml>

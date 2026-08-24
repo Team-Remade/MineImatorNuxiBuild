@@ -20,6 +20,9 @@ public:
     void Resize(int width, int windowHeight);
     void RenderFrame();
 
+    int GetSceneX(int windowWidth) const;
+    int GetSceneY(int windowHeight) const;
+    int GetSceneWidth(int windowWidth) const;
     int GetSceneHeight(int windowHeight) const;
 
 private:

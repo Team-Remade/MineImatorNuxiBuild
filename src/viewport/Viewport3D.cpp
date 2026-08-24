@@ -8,13 +8,33 @@
 #include <osgViewer/GraphicsWindow>
 #include <osgViewer/Viewer>
 
+namespace {
+constexpr float viewportWidthRatio = 0.75f;
+constexpr float viewportHeightRatio = 0.70f;
+}
+
 Viewport3D::Viewport3D(int menuBarHeight) : menuBarHeight(menuBarHeight) {
 }
 
 Viewport3D::~Viewport3D() = default;
 
+int Viewport3D::GetSceneX(int windowWidth) const {
+    return 0;
+}
+
+int Viewport3D::GetSceneY(int windowHeight) const {
+    const int workspaceHeight = windowHeight - menuBarHeight;
+    return workspaceHeight > 0 ? workspaceHeight - GetSceneHeight(windowHeight) : 0;
+}
+
+int Viewport3D::GetSceneWidth(int windowWidth) const {
+    const int sceneWidth = static_cast<int>(static_cast<float>(windowWidth) * viewportWidthRatio);
+    return sceneWidth > 0 ? sceneWidth : 1;
+}
+
 int Viewport3D::GetSceneHeight(int windowHeight) const {
-    const int sceneHeight = windowHeight - menuBarHeight;
+    const int workspaceHeight = windowHeight - menuBarHeight;
+    const int sceneHeight = static_cast<int>(static_cast<float>(workspaceHeight) * viewportHeightRatio);
     return sceneHeight > 0 ? sceneHeight : 1;
 }
 
@@ -29,8 +49,11 @@ void Viewport3D::Init(int width, int windowHeight) {
     osg::ref_ptr<osg::MatrixTransform> root = new osg::MatrixTransform();
     root->addChild(geode);
 
+    const int sceneX = GetSceneX(width);
+    const int sceneY = GetSceneY(windowHeight);
+    const int sceneWidth = GetSceneWidth(width);
     const int sceneHeight = GetSceneHeight(windowHeight);
-    graphicsWindow = new osgViewer::GraphicsWindowEmbedded(0, 0, width, sceneHeight);
+    graphicsWindow = new osgViewer::GraphicsWindowEmbedded(sceneX, sceneY, sceneWidth, sceneHeight);
 
     viewer = new osgViewer::Viewer();
     viewer->setThreadingModel(osgViewer::Viewer::SingleThreaded);
@@ -40,26 +63,29 @@ void Viewport3D::Init(int width, int windowHeight) {
 
     osg::Camera* camera = viewer->getCamera();
     camera->setGraphicsContext(graphicsWindow);
-    camera->setViewport(new osg::Viewport(0, 0, width, sceneHeight));
+    camera->setViewport(new osg::Viewport(sceneX, sceneY, sceneWidth, sceneHeight));
     camera->setDrawBuffer(GL_BACK);
     camera->setReadBuffer(GL_BACK);
-    camera->setProjectionMatrixAsPerspective(45.0, static_cast<double>(width) / static_cast<double>(sceneHeight), 0.1, 1000.0);
+    camera->setProjectionMatrixAsPerspective(45.0, static_cast<double>(sceneWidth) / static_cast<double>(sceneHeight), 0.1, 1000.0);
     camera->setViewMatrixAsLookAt(osg::Vec3(0.0, -6.0, 1.5), osg::Vec3(0.0, 0.0, -3.0), osg::Vec3(0.0, 0.0, 1.0));
 }
 
 void Viewport3D::Resize(int width, int windowHeight) {
+    const int sceneX = GetSceneX(width);
+    const int sceneY = GetSceneY(windowHeight);
+    const int sceneWidth = GetSceneWidth(width);
     const int sceneHeight = GetSceneHeight(windowHeight);
 
     if (graphicsWindow != nullptr) {
-        graphicsWindow->resized(0, 0, width, sceneHeight);
-        graphicsWindow->getEventQueue()->windowResize(0, 0, width, sceneHeight);
+        graphicsWindow->resized(sceneX, sceneY, sceneWidth, sceneHeight);
+        graphicsWindow->getEventQueue()->windowResize(sceneX, sceneY, sceneWidth, sceneHeight);
     }
 
     if (viewer != nullptr) {
         osg::Camera* camera = viewer->getCamera();
         if (camera != nullptr) {
-            camera->setViewport(0, 0, width, sceneHeight);
-            camera->setProjectionMatrixAsPerspective(45.0, static_cast<double>(width) / static_cast<double>(sceneHeight), 0.1, 1000.0);
+            camera->setViewport(sceneX, sceneY, sceneWidth, sceneHeight);
+            camera->setProjectionMatrixAsPerspective(45.0, static_cast<double>(sceneWidth) / static_cast<double>(sceneHeight), 0.1, 1000.0);
         }
     }
 }

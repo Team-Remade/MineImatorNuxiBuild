@@ -12,6 +12,22 @@ static const unsigned char embeddedMainMenuRml[] = {
 #include "assets/ui/menubar/main_menu.rml.h"
 };
 
+static const unsigned char embeddedViewportRml[] = {
+#include "assets/ui/panels/viewport.rml.h"
+};
+
+static const unsigned char embeddedTimelineRml[] = {
+#include "assets/ui/panels/timeline.rml.h"
+};
+
+static const unsigned char embeddedSceneTreeRml[] = {
+#include "assets/ui/panels/scene_tree.rml.h"
+};
+
+static const unsigned char embeddedPropertiesRml[] = {
+#include "assets/ui/panels/properties.rml.h"
+};
+
 static const unsigned char embeddedMenubarRcss[] = {
 #include "assets/ui/styles/menubar.rcss.h"
 };
@@ -20,6 +36,10 @@ EmbeddedFileInterface::EmbeddedFileInterface()
     : assets{
         {"assets/NotoSans.ttf", {embeddedNotoSans, sizeof(embeddedNotoSans)}},
         {"assets/ui/menubar/main_menu.rml", {embeddedMainMenuRml, sizeof(embeddedMainMenuRml)}},
+        {"assets/ui/panels/viewport.rml", {embeddedViewportRml, sizeof(embeddedViewportRml)}},
+        {"assets/ui/panels/timeline.rml", {embeddedTimelineRml, sizeof(embeddedTimelineRml)}},
+        {"assets/ui/panels/scene_tree.rml", {embeddedSceneTreeRml, sizeof(embeddedSceneTreeRml)}},
+        {"assets/ui/panels/properties.rml", {embeddedPropertiesRml, sizeof(embeddedPropertiesRml)}},
         {"assets/ui/styles/menubar.rcss", {embeddedMenubarRcss, sizeof(embeddedMenubarRcss)}}
     } {
 }

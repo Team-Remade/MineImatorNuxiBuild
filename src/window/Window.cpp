@@ -61,7 +61,8 @@ bool Window::PollEvent(SDL_Event& event) {
 }
 
 bool Window::HandleResizeEvent(const SDL_Event& event) {
-    if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+    if (event.type == SDL_WINDOWEVENT &&
+        (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED || event.window.event == SDL_WINDOWEVENT_RESIZED)) {
         width = event.window.data1;
         height = event.window.data2;
         return true;
