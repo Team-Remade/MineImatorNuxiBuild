@@ -184,6 +184,34 @@ body {
     font-size: 12dp;
 }
 
+.panel-header-left {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6dp;
+    height: 100%;
+}
+
+.spawn-menu-btn,
+.spawn-menu-button,
+#spawn-menu-btn,
+#spawn-menu-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+}
+
+.spawn-menu-icon {
+    width: 16dp;
+    height: 16dp;
+    display: inline-block;
+}
+
 .panel-meta {
     color: #8792aa;
     font-size: 10dp;

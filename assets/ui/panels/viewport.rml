@@ -7,7 +7,12 @@
         <div class="left-column panel-column">
             <div id="viewport-panel" class="editor-panel">
                 <div class="panel-header">
-                    <span>3D Viewport</span>
+                    <div class="panel-header-left">
+                        <button id="spawn-menu-btn" class="spawn-menu-btn" title="Spawn Menu">
+                            <img src="../../img/bench.png" class="spawn-menu-icon" alt="Spawn Menu"/>
+                        </button>
+                        <span>3D Viewport</span>
+                    </div>
                     <span class="panel-meta">Perspective</span>
                 </div>
                 <div id="viewport-surface"></div>

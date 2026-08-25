@@ -2,6 +2,10 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <vector>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
 
 RmlGlRenderer::RmlGlRenderer(int* width, int* height)
     : width(width), height(height) {
@@ -140,8 +144,47 @@ void RmlGlRenderer::ReleaseGeometry(Rml::CompiledGeometryHandle geometry) {
 
 Rml::TextureHandle RmlGlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source) {
     texture_dimensions = Rml::Vector2i(0, 0);
-    printf("Texture loading not implemented for source: %s\n", source.c_str());
-    return 0;
+    Rml::FileInterface* fileInterface = Rml::GetFileInterface();
+    if (!fileInterface) {
+        return 0;
+    }
+
+    Rml::FileHandle file = fileInterface->Open(source);
+    if (!file) {
+        printf("Failed to open texture file: %s\n", source.c_str());
+        return 0;
+    }
+
+    const size_t length = fileInterface->Length(file);
+    if (length == 0) {
+        fileInterface->Close(file);
+        return 0;
+    }
+
+    std::vector<unsigned char> buffer(length);
+    const size_t bytesRead = fileInterface->Read(buffer.data(), length, file);
+    fileInterface->Close(file);
+
+    if (bytesRead == 0) {
+        return 0;
+    }
+
+    int x = 0;
+    int y = 0;
+    int channels = 0;
+    stbi_uc* data = stbi_load_from_memory(buffer.data(), static_cast<int>(bytesRead), &x, &y, &channels, 4);
+    if (!data) {
+        printf("Failed to decode image: %s\n", source.c_str());
+        return 0;
+    }
+
+    texture_dimensions.x = x;
+    texture_dimensions.y = y;
+
+    const Rml::TextureHandle handle = GenerateTexture(Rml::Span<const Rml::byte>(reinterpret_cast<const Rml::byte*>(data), static_cast<size_t>(x * y * 4)), texture_dimensions);
+    stbi_image_free(data);
+
+    return handle;
 }
 
 Rml::TextureHandle RmlGlRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions) {

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstring>
 #include <memory>
+#include <sstream>
+#include <vector>
 
 static const unsigned char embeddedNotoSans[] = {
 #include "assets/NotoSans.ttf.h"
@@ -32,6 +34,10 @@ static const unsigned char embeddedMenubarRcss[] = {
 #include "assets/ui/styles/menubar.rcss.h"
 };
 
+static const unsigned char embeddedBenchPng[] = {
+#include "assets/img/bench.png.h"
+};
+
 EmbeddedFileInterface::EmbeddedFileInterface()
     : assets{
         {"assets/NotoSans.ttf", {embeddedNotoSans, sizeof(embeddedNotoSans)}},
@@ -40,7 +46,8 @@ EmbeddedFileInterface::EmbeddedFileInterface()
         {"assets/ui/panels/timeline.rml", {embeddedTimelineRml, sizeof(embeddedTimelineRml)}},
         {"assets/ui/panels/scene_tree.rml", {embeddedSceneTreeRml, sizeof(embeddedSceneTreeRml)}},
         {"assets/ui/panels/properties.rml", {embeddedPropertiesRml, sizeof(embeddedPropertiesRml)}},
-        {"assets/ui/styles/menubar.rcss", {embeddedMenubarRcss, sizeof(embeddedMenubarRcss)}}
+        {"assets/ui/styles/menubar.rcss", {embeddedMenubarRcss, sizeof(embeddedMenubarRcss)}},
+        {"assets/img/bench.png", {embeddedBenchPng, sizeof(embeddedBenchPng)}}
     } {
 }
 
@@ -106,12 +113,37 @@ size_t EmbeddedFileInterface::Tell(Rml::FileHandle file) {
     return openFile ? openFile->position : 0;
 }
 
-std::string EmbeddedFileInterface::NormalizePath(const std::string& path) const {
-    std::string normalized = path;
-    std::replace(normalized.begin(), normalized.end(), '\\', '/');
+size_t EmbeddedFileInterface::Length(Rml::FileHandle file) {
+    OpenFile* openFile = reinterpret_cast<OpenFile*>(file);
+    return openFile ? openFile->asset->size : 0;
+}
 
-    if (normalized.rfind("./", 0) == 0) {
-        normalized.erase(0, 2);
+std::string EmbeddedFileInterface::NormalizePath(const std::string& path) const {
+    std::string temp = path;
+    std::replace(temp.begin(), temp.end(), '\\', '/');
+
+    std::vector<std::string> parts;
+    std::stringstream ss(temp);
+    std::string segment;
+    while (std::getline(ss, segment, '/')) {
+        if (segment.empty() || segment == ".") {
+            continue;
+        }
+        if (segment == "..") {
+            if (!parts.empty()) {
+                parts.pop_back();
+            }
+        } else {
+            parts.push_back(segment);
+        }
+    }
+
+    std::string normalized;
+    for (size_t i = 0; i < parts.size(); ++i) {
+        if (i > 0) {
+            normalized += "/";
+        }
+        normalized += parts[i];
     }
 
     if (normalized.rfind("assets/", 0) != 0) {
