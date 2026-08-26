@@ -2,6 +2,7 @@
 
 #include <osg/Vec3d>
 #include <osg/Matrixd>
+#include <glm/glm.hpp>
 
 // Perspective camera with orbit (turntable) controls.
 //
@@ -27,7 +28,7 @@ public:
     double Distance = DefaultDistance;
 
     // Projection state.
-    double FovY = 60.0 * 3.14159265358979323846 / 180.0; // radians
+    double FovY = glm::radians(60.0); // radians
     double Near = 0.1;
     double Far = 1000.0;
 

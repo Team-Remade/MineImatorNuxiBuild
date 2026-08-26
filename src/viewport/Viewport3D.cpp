@@ -26,8 +26,12 @@ int Viewport3D::GetSceneX(int windowWidth) const {
 }
 
 int Viewport3D::GetSceneY(int windowHeight) const {
-    const int workspaceHeight = windowHeight - menuBarHeight;
-    return workspaceHeight > 0 ? workspaceHeight - GetSceneHeight(windowHeight) : 0;
+    // GL viewport Y is bottom-origin; the visible 3-D canvas occupies the
+    // viewport panel below its header, i.e. from (menuBarHeight +
+    // panelHeaderHeight) to that plus GetSceneHeight(), measured from the top.
+    const int topY = menuBarHeight + panelHeaderHeight;
+    const int glY = windowHeight - topY - GetSceneHeight(windowHeight);
+    return glY > 0 ? glY : 0;
 }
 
 int Viewport3D::GetSceneWidth(int windowWidth) const {
@@ -37,7 +41,8 @@ int Viewport3D::GetSceneWidth(int windowWidth) const {
 
 int Viewport3D::GetSceneHeight(int windowHeight) const {
     const int workspaceHeight = windowHeight - menuBarHeight;
-    const int sceneHeight = static_cast<int>(static_cast<float>(workspaceHeight) * viewportHeightRatio);
+    const int panelHeight = static_cast<int>(static_cast<float>(workspaceHeight) * viewportHeightRatio);
+    const int sceneHeight = panelHeight - panelHeaderHeight;
     return sceneHeight > 0 ? sceneHeight : 1;
 }
 
@@ -121,8 +126,9 @@ void Viewport3D::ApplyCamera() {
 bool Viewport3D::IsInsideScene(int mouseX, int mouseY) const {
     const int sceneWidth = GetSceneWidth(currentWidth);
     const int sceneHeight = GetSceneHeight(currentHeight);
+    const int topY = menuBarHeight + panelHeaderHeight;
     return mouseX >= 0 && mouseX < sceneWidth &&
-           mouseY >= menuBarHeight && mouseY < menuBarHeight + sceneHeight;
+           mouseY >= topY && mouseY < topY + sceneHeight;
 }
 
 bool Viewport3D::HandleMouseButton(unsigned char button, bool down, int mouseX, int mouseY) {

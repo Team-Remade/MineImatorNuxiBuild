@@ -9,6 +9,7 @@
 #include "ui/MenuBar.hpp"
 #include "ui/RmlGlRenderer.hpp"
 #include "ui/SceneTree.hpp"
+#include "ui/SpawnMenu.hpp"
 #include "scene/SelectionManager.hpp"
 #include "viewport/Viewport3D.hpp"
 #include "window/Window.hpp"
@@ -18,6 +19,7 @@ SDL_Event event;
 Rml::Context* uiContext = nullptr;
 Rml::ElementDocument* uiDocument = nullptr;
 std::array<Rml::ElementDocument*, 4> panelDocuments{};
+Rml::ElementDocument* spawnMenuDocument = nullptr;
 
 constexpr int initialWidth = 640;
 constexpr int initialHeight = 480;
@@ -30,6 +32,7 @@ RmlGlRenderer renderInterface(&width, &height);
 EmbeddedFileInterface embeddedFileInterface;
 MenuBar menuBar;
 SceneTree sceneTree;
+SpawnMenu spawnMenu;
 Viewport3D viewport3D(menuBarHeight);
 
 void GetOpenGLVersion() {
@@ -116,6 +119,17 @@ void Init() {
     // Scene tree panel is the third loaded document (scene_tree.rml).
     SelectionManager::Initialize();
     sceneTree.Init(panelDocuments[2]);
+
+    spawnMenuDocument = uiContext->LoadDocument("assets/ui/panels/spawn_menu.rml");
+    if (spawnMenuDocument == nullptr) {
+        printf("Failed to load assets/ui/panels/spawn_menu.rml\n");
+        exit(1);
+    }
+    // Hidden until SpawnMenu::Toggle() shows it (as a modal document, so it
+    // always renders above the other panels and grabs focus while open).
+    spawnMenuDocument->Hide();
+    // Viewport panel (first loaded document) owns the "spawn-menu-btn" button.
+    spawnMenu.Init(spawnMenuDocument, panelDocuments[0], &sceneTree);
 
     uiDocument->Show();
 
@@ -316,9 +330,15 @@ void MainLoop() {
 }
 
 void Cleanup() {
+    spawnMenu.Shutdown();
     sceneTree.Shutdown();
     SelectionManager::Shutdown();
     menuBar.Shutdown();
+
+    if (spawnMenuDocument != nullptr) {
+        spawnMenuDocument->Close();
+        spawnMenuDocument = nullptr;
+    }
 
     for (Rml::ElementDocument*& panelDocument : panelDocuments) {
         if (panelDocument != nullptr) {

@@ -30,6 +30,10 @@ static const unsigned char embeddedPropertiesRml[] = {
 #include "assets/ui/panels/properties.rml.h"
 };
 
+static const unsigned char embeddedSpawnMenuRml[] = {
+#include "assets/ui/panels/spawn_menu.rml.h"
+};
+
 static const unsigned char embeddedMenubarRcss[] = {
 #include "assets/ui/styles/menubar.rcss.h"
 };
@@ -46,6 +50,7 @@ EmbeddedFileInterface::EmbeddedFileInterface()
         {"assets/ui/panels/timeline.rml", {embeddedTimelineRml, sizeof(embeddedTimelineRml)}},
         {"assets/ui/panels/scene_tree.rml", {embeddedSceneTreeRml, sizeof(embeddedSceneTreeRml)}},
         {"assets/ui/panels/properties.rml", {embeddedPropertiesRml, sizeof(embeddedPropertiesRml)}},
+        {"assets/ui/panels/spawn_menu.rml", {embeddedSpawnMenuRml, sizeof(embeddedSpawnMenuRml)}},
         {"assets/ui/styles/menubar.rcss", {embeddedMenubarRcss, sizeof(embeddedMenubarRcss)}},
         {"assets/img/bench.png", {embeddedBenchPng, sizeof(embeddedBenchPng)}}
     } {

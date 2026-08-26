@@ -48,6 +48,12 @@ private:
     void ApplyCamera();
 
     int menuBarHeight;
+    // Height of the viewport panel's own RmlUi header strip (panel-header in
+    // menubar.rcss), which sits above the actual 3-D canvas but below the top
+    // menu bar. The 3-D hit-test region and GL viewport must start below this
+    // strip, or clicks on header controls (e.g. the spawn-menu button) get
+    // swallowed as viewport navigation input instead of reaching RmlUi.
+    static constexpr int panelHeaderHeight = 28;
     int currentWidth = 1;
     int currentHeight = 1;
 

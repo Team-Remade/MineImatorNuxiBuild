@@ -1,0 +1,41 @@
+<rml>
+<head>
+    <link type="text/rcss" href="../styles/menubar.rcss"/>
+</head>
+<body class="panel-document">
+    <div id="spawn-menu-overlay" class="spawn-menu-overlay">
+        <div id="spawn-menu-window" class="spawn-menu-window">
+            <div class="spawn-menu-titlebar">
+                <span>Spawn Menu</span>
+                <span id="spawn-menu-close" class="spawn-menu-close">X</span>
+            </div>
+            <div class="spawn-menu-searchbar">
+                <span>Search:</span>
+                <input type="text" id="spawn-menu-search" class="spawn-menu-search"/>
+                <span id="spawn-menu-clear" class="spawn-menu-clear-btn">Clear</span>
+            </div>
+            <div class="spawn-menu-columns">
+                <div class="spawn-menu-col">
+                    <div class="spawn-menu-col-title">Categories</div>
+                    <div id="spawn-menu-categories" class="spawn-menu-list"></div>
+                </div>
+                <div class="spawn-menu-col">
+                    <div class="spawn-menu-col-title">Objects</div>
+                    <div id="spawn-menu-objects" class="spawn-menu-list"></div>
+                </div>
+                <div class="spawn-menu-col">
+                    <div class="spawn-menu-col-title">Variants</div>
+                    <div id="spawn-menu-variants" class="spawn-menu-list"></div>
+                </div>
+                <div class="spawn-menu-col spawn-menu-preview-col">
+                    <div class="spawn-menu-col-title">Preview</div>
+                    <div id="spawn-menu-preview" class="spawn-menu-preview"></div>
+                </div>
+            </div>
+            <div class="spawn-menu-bottombar">
+                <span id="spawn-menu-spawn-btn" class="spawn-menu-spawn-btn">Spawn</span>
+            </div>
+        </div>
+    </div>
+</body>
+</rml>

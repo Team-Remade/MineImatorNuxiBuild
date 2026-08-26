@@ -118,6 +118,26 @@ std::shared_ptr<SceneObject> SceneTree::AddRootObject(const std::string& objectT
     return obj;
 }
 
+std::shared_ptr<SceneObject> SceneTree::AddSpawnedObject(const std::string& objectType, const std::string& baseNameIn) {
+    auto obj = std::make_shared<SceneObject>(objectType);
+    obj->AssignObjectId();
+
+    const std::string baseName = GetBaseName(baseNameIn);
+    const int nextNum = GetNextAvailableNameNumber(baseName);
+    obj->name = nextNum > 1 ? baseName + std::to_string(nextNum) : baseName;
+
+    rootObjects.push_back(obj);
+
+    if (SelectionManager::Instance() != nullptr) {
+        SelectionManager::Instance()->ClearSelection();
+        SelectionManager::Instance()->SelectObject(obj);
+    } else {
+        Rebuild();
+    }
+
+    return obj;
+}
+
 // ── DOM construction ────────────────────────────────────────────────────────
 
 void SceneTree::RegisterNode(const std::shared_ptr<SceneObject>& obj) {

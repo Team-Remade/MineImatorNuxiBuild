@@ -32,6 +32,11 @@ public:
     const std::vector<std::shared_ptr<SceneObject>>& RootObjects() const { return rootObjects; }
     std::shared_ptr<SceneObject> AddRootObject(const std::string& objectType);
 
+    // Adds a new root-level object of the given engine type, auto-numbering its
+    // display name from baseName (e.g. "Cube", "Cube1", "Cube2", ...) using the
+    // same naming rules as DuplicateObject, then selects it. Used by SpawnMenu.
+    std::shared_ptr<SceneObject> AddSpawnedObject(const std::string& objectType, const std::string& baseName);
+
 private:
     class TreeEventListener final : public Rml::EventListener {
     public:
