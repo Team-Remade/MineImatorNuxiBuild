@@ -3,10 +3,13 @@
 #include <SDL.h>
 #include <glad/glad.h>
 #include <RmlUi/Core.h>
+#include <RmlUi/Core/Input.h>
 #include <array>
 #include "assets/EmbeddedFileInterface.hpp"
 #include "ui/MenuBar.hpp"
 #include "ui/RmlGlRenderer.hpp"
+#include "ui/SceneTree.hpp"
+#include "scene/SelectionManager.hpp"
 #include "viewport/Viewport3D.hpp"
 #include "window/Window.hpp"
 
@@ -26,6 +29,7 @@ int height = initialHeight;
 RmlGlRenderer renderInterface(&width, &height);
 EmbeddedFileInterface embeddedFileInterface;
 MenuBar menuBar;
+SceneTree sceneTree;
 Viewport3D viewport3D(menuBarHeight);
 
 void GetOpenGLVersion() {
@@ -109,11 +113,54 @@ void Init() {
         panelDocuments[i]->Show();
     }
 
+    // Scene tree panel is the third loaded document (scene_tree.rml).
+    SelectionManager::Initialize();
+    sceneTree.Init(panelDocuments[2]);
+
     uiDocument->Show();
 
     viewport3D.Init(width, height);
 
+    // Ensure SDL delivers SDL_TEXTINPUT events so UI text fields can be typed into.
+    SDL_StartTextInput();
+
     GetOpenGLVersion();
+}
+
+Rml::Input::KeyIdentifier ConvertKey(SDL_Keycode key) {
+    using namespace Rml::Input;
+    switch (key) {
+        case SDLK_BACKSPACE:    return KI_BACK;
+        case SDLK_TAB:          return KI_TAB;
+        case SDLK_RETURN:       return KI_RETURN;
+        case SDLK_KP_ENTER:     return KI_NUMPADENTER;
+        case SDLK_ESCAPE:       return KI_ESCAPE;
+        case SDLK_SPACE:        return KI_SPACE;
+        case SDLK_DELETE:       return KI_DELETE;
+        case SDLK_LEFT:         return KI_LEFT;
+        case SDLK_RIGHT:        return KI_RIGHT;
+        case SDLK_UP:           return KI_UP;
+        case SDLK_DOWN:         return KI_DOWN;
+        case SDLK_HOME:         return KI_HOME;
+        case SDLK_END:          return KI_END;
+        case SDLK_PAGEUP:       return KI_PRIOR;
+        case SDLK_PAGEDOWN:     return KI_NEXT;
+        case SDLK_a:            return KI_A;
+        case SDLK_c:            return KI_C;
+        case SDLK_v:            return KI_V;
+        case SDLK_x:            return KI_X;
+        case SDLK_z:            return KI_Z;
+        default:                return KI_UNKNOWN;
+    }
+}
+
+int GetKeyModifiers() {
+    const SDL_Keymod mod = SDL_GetModState();
+    int state = 0;
+    if (mod & KMOD_CTRL)  state |= Rml::Input::KM_CTRL;
+    if (mod & KMOD_SHIFT) state |= Rml::Input::KM_SHIFT;
+    if (mod & KMOD_ALT)   state |= Rml::Input::KM_ALT;
+    return state;
 }
 
 void Input() {
@@ -156,6 +203,25 @@ void Input() {
             case SDL_KEYDOWN:
                 if (event.key.keysym.scancode == SDL_SCANCODE_R && viewport3D.IsFreeFlyActive()) {
                     viewport3D.ResetCamera();
+                }
+                if (uiContext != nullptr) {
+                    const Rml::Input::KeyIdentifier key = ConvertKey(event.key.keysym.sym);
+                    if (key != Rml::Input::KI_UNKNOWN) {
+                        uiContext->ProcessKeyDown(key, GetKeyModifiers());
+                    }
+                }
+                break;
+            case SDL_KEYUP:
+                if (uiContext != nullptr) {
+                    const Rml::Input::KeyIdentifier key = ConvertKey(event.key.keysym.sym);
+                    if (key != Rml::Input::KI_UNKNOWN) {
+                        uiContext->ProcessKeyUp(key, GetKeyModifiers());
+                    }
+                }
+                break;
+            case SDL_TEXTINPUT:
+                if (uiContext != nullptr) {
+                    uiContext->ProcessTextInput(Rml::String(event.text.text));
                 }
                 break;
             case SDL_MOUSEBUTTONDOWN:
@@ -250,6 +316,8 @@ void MainLoop() {
 }
 
 void Cleanup() {
+    sceneTree.Shutdown();
+    SelectionManager::Shutdown();
     menuBar.Shutdown();
 
     for (Rml::ElementDocument*& panelDocument : panelDocuments) {

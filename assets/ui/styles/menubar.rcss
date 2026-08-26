@@ -235,14 +235,66 @@ body {
     padding: 6dp;
 }
 
+.scene-tree-search-box {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 6dp;
+    padding: 3dp 6dp;
+    background-color: #121826;
+    border: 1dp #35405a;
+    border-radius: 3dp;
+}
+
+.scene-tree-search-box:focus-within {
+    border: 1dp #4a5a80;
+}
+
+.scene-tree-search-icon {
+    display: inline-block;
+    margin-right: 6dp;
+    color: #8792aa;
+    font-size: 11dp;
+}
+
+.scene-tree-search {
+    display: block;
+    flex-grow: 1;
+    box-sizing: border-box;
+    padding: 2dp 0;
+    background-color: transparent;
+    border: 0;
+    color: #dce3f2;
+    font-size: 11dp;
+}
+
+.scene-tree-search::placeholder {
+    color: #6f7a92;
+}
+
+.scene-tree-items {
+    display: block;
+}
+
+.tree-children {
+    display: block;
+}
+
 .tree-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
     padding: 5dp 7dp;
     color: #c7cede;
     font-size: 12dp;
+    cursor: pointer;
 }
 
-.tree-child {
-    padding-left: 25dp;
+.tree-row:hover {
+    background-color: #232d45;
+    border-radius: 3dp;
 }
 
 .tree-root {
@@ -253,6 +305,55 @@ body {
     background-color: #31466f;
     color: #ffffff;
     border-radius: 3dp;
+}
+
+.tree-arrow {
+    display: inline-block;
+    width: 14dp;
+    color: #8792aa;
+    font-size: 10dp;
+}
+
+.tree-label {
+    display: inline-block;
+}
+
+.tree-rename-input {
+    flex-grow: 1;
+    padding: 1dp 3dp;
+    background-color: #121826;
+    border: 1dp #4a5a80;
+    color: #ffffff;
+    font-size: 12dp;
+}
+
+.tree-empty {
+    padding: 6dp 7dp;
+    color: #7f8ba1;
+    font-size: 11dp;
+}
+
+.scene-tree-context-menu {
+    position: absolute;
+    z-index: 200;
+    min-width: 130dp;
+    padding: 4dp 0;
+    background-color: #232b3d;
+    border: 1dp #384563;
+    pointer-events: auto;
+}
+
+.context-menu-item {
+    display: block;
+    padding: 6dp 12dp;
+    color: #dce3f2;
+    font-size: 12dp;
+    cursor: pointer;
+}
+
+.context-menu-item:hover {
+    background-color: #3a4a78;
+    color: #ffffff;
 }
 
 .properties-content {

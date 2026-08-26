@@ -8,12 +8,13 @@
             <div id="scene-tree-panel" class="editor-panel">
                 <div class="panel-header">
                     <span>Scene Tree</span>
-                    <span class="panel-action">+</span>
                 </div>
                 <div class="scene-tree">
-                    <div class="tree-row tree-root">v Scene</div>
-                    <div class="tree-row tree-child selected">Cube</div>
-                    <div class="tree-row tree-child">Camera</div>
+                    <div class="scene-tree-search-box">
+                        <span class="scene-tree-search-icon">&#128269;</span>
+                        <input type="text" id="scene-tree-search" class="scene-tree-search" placeholder="Search scene objects..."/>
+                    </div>
+                    <div id="scene-tree-items" class="scene-tree-items"></div>
                 </div>
             </div>
         </div>
