@@ -1,0 +1,21 @@
+{
+    "default": "steve.png",
+    "variants": [
+        {
+            "name": "Steve",
+            "file": "steve.png"
+        },
+        {
+            "name": "Herobrine",
+            "file": "herobrine.png"
+        },
+        {
+            "name": "Jack Black Steve",
+            "file": "jackblacksteve.png"
+        },
+        {
+            "name": "Custom",
+            "custom": true
+        }
+    ]
+}

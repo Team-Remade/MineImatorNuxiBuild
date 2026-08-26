@@ -1,0 +1,77 @@
+{
+    "default": "bludemoman.png",
+    "variants": [
+        {
+            "name": "Blue Demo Man",
+            "file": "bludemoman.png"
+        },
+        {
+            "name": "Blue Engineer",
+            "file": "bluengineer.png"
+        },
+        {
+            "name": "Blue Heavy",
+            "file": "bluheavy.png"
+        },
+        {
+            "name": "Blue Medic",
+            "file": "blumedic.png"
+        },
+		{
+            "name": "Blue Pyro",
+            "file": "blupyro.png"
+        },
+		{
+            "name": "Blue Scout",
+            "file": "bluscout.png"
+        },
+		{
+            "name": "Blue Sniper",
+            "file": "blusniper.png"
+        },
+		{
+            "name": "Blue Soldier",
+            "file": "blusoldier.png"
+        },
+		{
+            "name": "Blue Spy",
+            "file": "bluspy.png"
+        },
+		{
+            "name": "Red Demo Man",
+            "file": "reddemoman.png"
+        },
+        {
+            "name": "Red Engineer",
+            "file": "redengineer.png"
+        },
+        {
+            "name": "Red Heavy",
+            "file": "redheavy.png"
+        },
+        {
+            "name": "Red Medic",
+            "file": "redmedic.png"
+        },
+		{
+            "name": "Red Pyro",
+            "file": "redpyro.png"
+        },
+		{
+            "name": "Red Scout",
+            "file": "redscout.png"
+        },
+		{
+            "name": "Red Sniper",
+            "file": "redsniper.png"
+        },
+		{
+            "name": "Red Soldier",
+            "file": "redsoldier.png"
+        },
+		{
+            "name": "Red Spy",
+            "file": "redspy.png"
+        }
+    ]
+}

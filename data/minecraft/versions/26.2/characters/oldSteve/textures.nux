@@ -1,0 +1,13 @@
+{
+    "default": "steve.png",
+    "variants": [
+        {
+            "name": "Steve",
+            "file": "steve.png"
+        },
+        {
+            "name": "Custom",
+            "custom": true
+        }
+    ]
+}

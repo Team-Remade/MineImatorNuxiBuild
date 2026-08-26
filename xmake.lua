@@ -39,6 +39,18 @@ target("MineImatorNuxiBuild")
     end
     add_files("assets/**")
 
+    after_build(function (target)
+        if os.isdir("data") then
+            os.cp("data", target:targetdir())
+        end
+    end)
+
+    after_install(function (target)
+        if os.isdir("data") then
+            os.cp("data", target:installdir())
+        end
+    end)
+
     add_packages("libsdl2", "glad", "rmlui", "openscenegraph", "stb", "glm")
     if is_plat("windows") then
         add_syslinks("opengl32")
