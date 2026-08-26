@@ -1,6 +1,6 @@
 add_rules("mode.debug", "mode.release")
 
-add_requires("libsdl2", "glad", "rmlui", "openscenegraph", "stb")
+add_requires("libsdl2", "glad", "rmlui", "openscenegraph", "stb", "glm")
 
 rule("utils.bin2c_with_paths")
     set_extensions(".ttf", ".rml", ".rcss", ".png")
@@ -39,7 +39,7 @@ target("MineImatorNuxiBuild")
     end
     add_files("assets/**")
 
-    add_packages("libsdl2", "glad", "rmlui", "openscenegraph", "stb")
+    add_packages("libsdl2", "glad", "rmlui", "openscenegraph", "stb", "glm")
     if is_plat("windows") then
         add_syslinks("opengl32")
     elseif is_plat("linux") then
