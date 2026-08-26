@@ -3,7 +3,7 @@ add_rules("mode.debug", "mode.release")
 add_requires("libsdl2", "glad", "rmlui", "openscenegraph", "stb", "glm")
 
 rule("utils.bin2c_with_paths")
-    set_extensions(".ttf", ".rml", ".rcss", ".png")
+    set_extensions(".ttf", ".rml", ".rcss", ".png", ".svg")
     add_orders("utils.bin2c_with_paths", "c++.build.modules.builder")
     on_load(function(target)
         local headerroot = path.join(target:autogendir(), "rules", "utils", "bin2c")
