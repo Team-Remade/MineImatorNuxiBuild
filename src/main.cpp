@@ -134,15 +134,44 @@ void Input() {
                 }
                 break;
             case SDL_MOUSEMOTION:
+                if (viewport3D.HandleMouseMotion(event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel)) {
+                    break;
+                }
                 if (uiContext != nullptr) {
                     uiContext->ProcessMouseMove(event.motion.x, event.motion.y, 0);
                 }
                 break;
+            case SDL_MOUSEWHEEL: {
+                int mouseX = 0;
+                int mouseY = 0;
+                SDL_GetMouseState(&mouseX, &mouseY);
+                if (viewport3D.HandleMouseWheel(mouseX, mouseY, event.wheel.y)) {
+                    break;
+                }
+                if (uiContext != nullptr) {
+                    uiContext->ProcessMouseWheel(static_cast<float>(-event.wheel.y), 0);
+                }
+                break;
+            }
+            case SDL_KEYDOWN:
+                if (event.key.keysym.scancode == SDL_SCANCODE_R && viewport3D.IsFreeFlyActive()) {
+                    viewport3D.ResetCamera();
+                }
+                break;
             case SDL_MOUSEBUTTONDOWN:
-            case SDL_MOUSEBUTTONUP:
+            case SDL_MOUSEBUTTONUP: {
+                const bool down = event.type == SDL_MOUSEBUTTONDOWN;
+                const bool consumed = viewport3D.HandleMouseButton(event.button.button, down, event.button.x, event.button.y);
+                if (event.button.button == SDL_BUTTON_RIGHT) {
+                    // Capture the mouse for continuous look while free-flying, and
+                    // always release it once free-fly ends (e.g. on button release).
+                    SDL_SetRelativeMouseMode(viewport3D.IsFreeFlyActive() ? SDL_TRUE : SDL_FALSE);
+                }
+                if (consumed) {
+                    break;
+                }
                 if (uiContext != nullptr) {
                     const int buttonIndex = (event.button.button > 0) ? (event.button.button - 1) : 0;
-                    const bool down = event.type == SDL_MOUSEBUTTONDOWN;
                     if (down) {
                         uiContext->ProcessMouseButtonDown(buttonIndex, 0);
                     } else {
@@ -150,13 +179,33 @@ void Input() {
                     }
                 }
                 break;
+            }
         }
     }
 }
 
 void MainLoop() {
+    Uint32 lastTicks = SDL_GetTicks();
     while (!quit) {
         Input();
+
+        const Uint32 nowTicks = SDL_GetTicks();
+        const double deltaTime = static_cast<double>(nowTicks - lastTicks) / 1000.0;
+        lastTicks = nowTicks;
+
+        if (viewport3D.IsFreeFlyActive()) {
+            const Uint8* keys = SDL_GetKeyboardState(nullptr);
+            viewport3D.UpdateFreeFly(
+                deltaTime,
+                keys[SDL_SCANCODE_W] != 0,
+                keys[SDL_SCANCODE_S] != 0,
+                keys[SDL_SCANCODE_A] != 0,
+                keys[SDL_SCANCODE_D] != 0,
+                keys[SDL_SCANCODE_E] != 0,
+                keys[SDL_SCANCODE_Q] != 0,
+                keys[SDL_SCANCODE_SPACE] != 0,
+                (keys[SDL_SCANCODE_LSHIFT] != 0) || (keys[SDL_SCANCODE_RSHIFT] != 0));
+        }
 
         const int sceneX = viewport3D.GetSceneX(width);
         const int sceneY = viewport3D.GetSceneY(height);
