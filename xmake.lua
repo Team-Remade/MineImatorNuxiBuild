@@ -2,6 +2,25 @@ add_rules("mode.debug", "mode.release")
 
 add_requires("libsdl2", "glad", "rmlui", "openscenegraph", "stb", "glm")
 
+local function copy_missing_tree(srcdir, dstdir)
+    if not os.isdir(srcdir) then
+        return
+    end
+
+    local file_pattern = path.join(srcdir, "**")
+    for _, srcfile in ipairs(os.files(file_pattern)) do
+        local relpath = path.relative(srcfile, srcdir)
+        local dstfile = path.join(dstdir, relpath)
+        if not os.isfile(dstfile) then
+            local dstparent = path.directory(dstfile)
+            if dstparent and not os.isdir(dstparent) then
+                os.mkdir(dstparent)
+            end
+            os.cp(srcfile, dstfile)
+        end
+    end
+end
+
 rule("utils.bin2c_with_paths")
     set_extensions(".ttf", ".rml", ".rcss", ".png", ".svg")
     add_orders("utils.bin2c_with_paths", "c++.build.modules.builder")
@@ -40,15 +59,11 @@ target("MineImatorNuxiBuild")
     add_files("assets/**")
 
     after_build(function (target)
-        if os.isdir("data") then
-            os.cp("data", target:targetdir())
-        end
+        copy_missing_tree("data", path.join(target:targetdir(), "data"))
     end)
 
     after_install(function (target)
-        if os.isdir("data") then
-            os.cp("data", target:installdir())
-        end
+        copy_missing_tree("data", path.join(target:installdir(), "data"))
     end)
 
     add_packages("libsdl2", "glad", "rmlui", "openscenegraph", "stb", "glm")

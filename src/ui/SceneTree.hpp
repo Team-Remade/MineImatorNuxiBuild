@@ -58,6 +58,7 @@ private:
     void BeginRename(Rml::Element* row);
     void CommitRename(Rml::Element* input);
     void HandleDrop(Rml::Element* dragElement, Rml::Element* targetRow);
+    void ClearDropHighlight();
 
     // ── Context menu ────────────────────────────────────────────────────────
     void ShowContextMenu(const std::shared_ptr<SceneObject>& target, float mouseX, float mouseY);
@@ -89,6 +90,7 @@ private:
     Rml::Element* container = nullptr;
     Rml::Element* searchInput = nullptr;
     Rml::Element* contextMenu = nullptr;
+    Rml::Element* dragOverRow = nullptr;
 
     std::vector<std::shared_ptr<SceneObject>> rootObjects;
     std::map<int, std::shared_ptr<SceneObject>> nodesById;
@@ -99,6 +101,11 @@ private:
     std::shared_ptr<SceneObject> contextMenuTarget;
     std::shared_ptr<SceneObject> draggingObject;
     int renamingNodeId = 0;
+
+    // Set true right after ShowContextMenu() opens a menu so the document-level
+    // "click outside closes the menu" handler ignores the very mousedown that
+    // opened it (it bubbles through the same event dispatch).
+    bool suppressNextMenuClose = false;
 
     int selectionChangedToken = 0;
 

@@ -76,6 +76,10 @@ void SceneTree::Init(Rml::ElementDocument* document) {
         container->AddEventListener("click", &eventListener);
         container->AddEventListener("dblclick", &eventListener);
         container->AddEventListener("mousedown", &eventListener);
+        container->AddEventListener("dragstart", &eventListener);
+        container->AddEventListener("dragover", &eventListener);
+        container->AddEventListener("dragout", &eventListener);
+        container->AddEventListener("dragend", &eventListener);
         container->AddEventListener("dragdrop", &eventListener);
     }
     this->document->AddEventListener("mousedown", &eventListener);
@@ -99,6 +103,10 @@ void SceneTree::Shutdown() {
         container->RemoveEventListener("click", &eventListener);
         container->RemoveEventListener("dblclick", &eventListener);
         container->RemoveEventListener("mousedown", &eventListener);
+        container->RemoveEventListener("dragstart", &eventListener);
+        container->RemoveEventListener("dragover", &eventListener);
+        container->RemoveEventListener("dragout", &eventListener);
+        container->RemoveEventListener("dragend", &eventListener);
         container->RemoveEventListener("dragdrop", &eventListener);
     }
     if (document != nullptr) {
@@ -150,6 +158,7 @@ void SceneTree::Rebuild() {
     }
 
     CloseContextMenu();
+    dragOverRow = nullptr;
     nodesById.clear();
 
     while (Rml::Element* child = container->GetChild(0)) {
@@ -222,7 +231,9 @@ void SceneTree::BuildNode(Rml::Element* parent, const std::shared_ptr<SceneObjec
     }
     row->SetAttribute("data-node-id", obj->objectId);
     row->SetProperty("padding-left", Rml::CreateString("%fdp", 7.0f + depth * 16.0f));
-    row->SetProperty("drag", "drag");
+    // "drag-drop" (not plain "drag") is required so that dropping this row on
+    // another element generates a "dragdrop" event on the element underneath.
+    row->SetProperty("drag", "drag-drop");
 
     // Expand / collapse arrow.
     Rml::ElementPtr arrow = document->CreateElement("span");
@@ -316,6 +327,10 @@ void SceneTree::TreeEventListener::ProcessEvent(Rml::Event& event) {
 
     // Close the context menu when clicking elsewhere.
     if (type == "mousedown" && current == owner->document) {
+        if (owner->suppressNextMenuClose) {
+            owner->suppressNextMenuClose = false;
+            return;
+        }
         if (owner->contextMenu != nullptr) {
             Rml::Element* walker = target;
             bool insideMenu = false;
@@ -354,8 +369,46 @@ void SceneTree::TreeEventListener::ProcessEvent(Rml::Event& event) {
         return;
     }
 
+    // Drag-and-drop reparenting — visual feedback.
+    // These fire on the dragged element (dragstart/dragend) and on whatever
+    // element the cursor passes over while dragging (dragover/dragout), so
+    // the user can actually see that a drag is happening and where it will land.
+    if (type == "dragstart") {
+        target->SetClass("dragging", true);
+        return;
+    }
+    if (type == "dragend") {
+        target->SetClass("dragging", false);
+        owner->ClearDropHighlight();
+        return;
+    }
+    if (type == "dragover") {
+        Rml::Element* row = target;
+        while (row != nullptr && !row->HasAttribute("data-node-id")) {
+            row = row->GetParentNode();
+        }
+        if (row != nullptr) {
+            owner->ClearDropHighlight();
+            row->SetClass("drag-over", true);
+            owner->dragOverRow = row;
+        }
+        return;
+    }
+    if (type == "dragout") {
+        Rml::Element* row = target;
+        while (row != nullptr && !row->HasAttribute("data-node-id")) {
+            row = row->GetParentNode();
+        }
+        if (row != nullptr && row == owner->dragOverRow) {
+            row->SetClass("drag-over", false);
+            owner->dragOverRow = nullptr;
+        }
+        return;
+    }
+
     // Drag-and-drop reparenting.
     if (type == "dragdrop") {
+        owner->ClearDropHighlight();
         Rml::Element* dragElement = static_cast<Rml::Element*>(event.GetParameter<void*>("drag_element", nullptr));
         owner->HandleDrop(dragElement, target);
         return;
@@ -552,6 +605,7 @@ void SceneTree::ShowContextMenu(const std::shared_ptr<SceneObject>& target, floa
     }
 
     contextMenu = document->AppendChild(std::move(menuPtr));
+    suppressNextMenuClose = true;
 }
 
 void SceneTree::CloseContextMenu() {
@@ -563,6 +617,13 @@ void SceneTree::CloseContextMenu() {
 }
 
 // ── Drag-and-drop ─────────────────────────────────────────────────────────────
+
+void SceneTree::ClearDropHighlight() {
+    if (dragOverRow != nullptr) {
+        dragOverRow->SetClass("drag-over", false);
+        dragOverRow = nullptr;
+    }
+}
 
 void SceneTree::HandleDrop(Rml::Element* dragElement, Rml::Element* targetRow) {
     if (dragElement == nullptr) {

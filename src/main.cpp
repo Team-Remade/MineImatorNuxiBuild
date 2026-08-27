@@ -251,7 +251,14 @@ void Input() {
                     break;
                 }
                 if (uiContext != nullptr) {
-                    const int buttonIndex = (event.button.button > 0) ? (event.button.button - 1) : 0;
+                    // SDL: Left=1, Middle=2, Right=3. RmlUi: Left=0, Right=1, Middle=2.
+                    int buttonIndex = 0;
+                    switch (event.button.button) {
+                        case SDL_BUTTON_LEFT: buttonIndex = 0; break;
+                        case SDL_BUTTON_RIGHT: buttonIndex = 1; break;
+                        case SDL_BUTTON_MIDDLE: buttonIndex = 2; break;
+                        default: buttonIndex = event.button.button - 1; break;
+                    }
                     if (down) {
                         uiContext->ProcessMouseButtonDown(buttonIndex, 0);
                     } else {

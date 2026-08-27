@@ -307,6 +307,16 @@ body {
     border-radius: 3dp;
 }
 
+.tree-row.dragging {
+    opacity: 0.4;
+}
+
+.tree-row.drag-over {
+    background-color: #3a4a78;
+    border: 1dp #7ea2ff;
+    border-radius: 3dp;
+}
+
 .tree-arrow {
     display: inline-block;
     width: 14dp;
