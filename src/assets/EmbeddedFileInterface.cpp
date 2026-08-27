@@ -10,6 +10,10 @@ static const unsigned char embeddedNotoSans[] = {
 #include "assets/NotoSans.ttf.h"
 };
 
+static const unsigned char embeddedNotoEmoji[] = {
+#include "assets/NotoEmoji-Regular.ttf.h"
+};
+
 static const unsigned char embeddedMainMenuRml[] = {
 #include "assets/ui/menubar/main_menu.rml.h"
 };
@@ -45,6 +49,7 @@ static const unsigned char embeddedBenchPng[] = {
 EmbeddedFileInterface::EmbeddedFileInterface()
     : assets{
         {"assets/NotoSans.ttf", {embeddedNotoSans, sizeof(embeddedNotoSans)}},
+        {"assets/NotoEmoji-Regular.ttf", {embeddedNotoEmoji, sizeof(embeddedNotoEmoji)}},
         {"assets/ui/menubar/main_menu.rml", {embeddedMainMenuRml, sizeof(embeddedMainMenuRml)}},
         {"assets/ui/panels/viewport.rml", {embeddedViewportRml, sizeof(embeddedViewportRml)}},
         {"assets/ui/panels/timeline.rml", {embeddedTimelineRml, sizeof(embeddedTimelineRml)}},
@@ -164,4 +169,12 @@ const unsigned char* GetEmbeddedNotoSansData() {
 
 size_t GetEmbeddedNotoSansSize() {
     return sizeof(embeddedNotoSans);
+}
+
+const unsigned char* GetEmbeddedNotoEmojiData() {
+    return embeddedNotoEmoji;
+}
+
+size_t GetEmbeddedNotoEmojiSize() {
+    return sizeof(embeddedNotoEmoji);
 }

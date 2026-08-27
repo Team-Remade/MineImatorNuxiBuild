@@ -257,6 +257,7 @@ body {
     margin-right: 6dp;
     color: #8792aa;
     font-size: 11dp;
+    font-family: "Noto Emoji";
 }
 
 .scene-tree-search {

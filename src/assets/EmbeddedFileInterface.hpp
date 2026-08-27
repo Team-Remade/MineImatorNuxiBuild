@@ -35,3 +35,5 @@ private:
 
 const unsigned char* GetEmbeddedNotoSansData();
 size_t GetEmbeddedNotoSansSize();
+const unsigned char* GetEmbeddedNotoEmojiData();
+size_t GetEmbeddedNotoEmojiSize();

@@ -93,6 +93,15 @@ void Init() {
         exit(1);
     }
 
+    const Rml::Span emojiFontData(
+        (GetEmbeddedNotoEmojiData()),
+        GetEmbeddedNotoEmojiSize()
+    );
+    if (!Rml::LoadFontFace(emojiFontData, "Noto Emoji", Rml::Style::FontStyle::Normal)) {
+        printf("Rml::LoadFontFace failed for embedded Noto Emoji\n");
+        exit(1);
+    }
+
     uiDocument = uiContext->LoadDocument("assets/ui/menubar/main_menu.rml");
     if (!uiDocument) {
         printf("Failed to load assets/ui/menubar/main_menu.rml\n");
