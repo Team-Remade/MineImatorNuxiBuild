@@ -59,6 +59,9 @@ private:
     void CommitRename(Rml::Element* input);
     void HandleDrop(Rml::Element* dragElement, Rml::Element* targetRow);
     void ClearDropHighlight();
+    void ShowDragIndicator(const std::shared_ptr<SceneObject>& obj, float mouseX, float mouseY);
+    void UpdateDragIndicatorPosition(float mouseX, float mouseY) const;
+    void HideDragIndicator();
 
     // ── Context menu ────────────────────────────────────────────────────────
     void ShowContextMenu(const std::shared_ptr<SceneObject>& target, float mouseX, float mouseY);
@@ -91,6 +94,7 @@ private:
     Rml::Element* searchInput = nullptr;
     Rml::Element* contextMenu = nullptr;
     Rml::Element* dragOverRow = nullptr;
+    Rml::Element* dragIndicator = nullptr;
 
     std::vector<std::shared_ptr<SceneObject>> rootObjects;
     std::map<int, std::shared_ptr<SceneObject>> nodesById;

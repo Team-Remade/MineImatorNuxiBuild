@@ -317,6 +317,19 @@ body {
     border-radius: 3dp;
 }
 
+.scene-tree-drag-indicator {
+    position: absolute;
+    z-index: 250;
+    padding: 4dp 8dp;
+    background-color: #1f2738;
+    border: 1dp #7ea2ff;
+    border-radius: 3dp;
+    color: #eef2fb;
+    font-size: 12dp;
+    pointer-events: none;
+    opacity: 0.95;
+}
+
 .tree-arrow {
     display: inline-block;
     width: 14dp;

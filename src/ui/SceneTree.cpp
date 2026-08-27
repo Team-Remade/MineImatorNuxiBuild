@@ -83,6 +83,11 @@ void SceneTree::Init(Rml::ElementDocument* document) {
         container->AddEventListener("dragdrop", &eventListener);
     }
     this->document->AddEventListener("mousedown", &eventListener);
+    this->document->AddEventListener("mousemove", &eventListener);
+    this->document->AddEventListener("mouseup", &eventListener);
+    this->document->AddEventListener("dragover", &eventListener);
+    this->document->AddEventListener("dragend", &eventListener);
+    this->document->AddEventListener("dragdrop", &eventListener);
 
     Rebuild();
 }
@@ -94,6 +99,8 @@ void SceneTree::Shutdown() {
     selectionChangedToken = 0;
 
     CloseContextMenu();
+    HideDragIndicator();
+    ClearDropHighlight();
 
     if (searchInput != nullptr) {
         searchInput->RemoveEventListener("change", &eventListener);
@@ -111,12 +118,20 @@ void SceneTree::Shutdown() {
     }
     if (document != nullptr) {
         document->RemoveEventListener("mousedown", &eventListener);
+        document->RemoveEventListener("mousemove", &eventListener);
+        document->RemoveEventListener("mouseup", &eventListener);
+        document->RemoveEventListener("dragover", &eventListener);
+        document->RemoveEventListener("dragend", &eventListener);
+        document->RemoveEventListener("dragdrop", &eventListener);
     }
 
     document = nullptr;
     container = nullptr;
     searchInput = nullptr;
     contextMenu = nullptr;
+    dragOverRow = nullptr;
+    dragIndicator = nullptr;
+    draggingObject = nullptr;
 }
 
 std::shared_ptr<SceneObject> SceneTree::AddRootObject(const std::string& objectType) {
@@ -325,6 +340,13 @@ void SceneTree::TreeEventListener::ProcessEvent(Rml::Event& event) {
         }
     }
 
+    // Keep drag indicator in sync even when no new drag target is entered.
+    if ((type == "mousemove" || type == "dragover") && current == owner->document && owner->draggingObject != nullptr) {
+        const float mouseX = event.GetParameter<float>("mouse_x", 0.0f);
+        const float mouseY = event.GetParameter<float>("mouse_y", 0.0f);
+        owner->UpdateDragIndicatorPosition(mouseX, mouseY);
+    }
+
     // Close the context menu when clicking elsewhere.
     if (type == "mousedown" && current == owner->document) {
         if (owner->suppressNextMenuClose) {
@@ -345,6 +367,15 @@ void SceneTree::TreeEventListener::ProcessEvent(Rml::Event& event) {
                 owner->CloseContextMenu();
             }
         }
+        return;
+    }
+
+    // Safety net: if drag-release is not delivered as row-level dragend/dragdrop,
+    // still clean up visuals on document mouse-up.
+    if (type == "mouseup" && current == owner->document && owner->draggingObject != nullptr) {
+        owner->draggingObject = nullptr;
+        owner->HideDragIndicator();
+        owner->ClearDropHighlight();
         return;
     }
 
@@ -374,15 +405,32 @@ void SceneTree::TreeEventListener::ProcessEvent(Rml::Event& event) {
     // element the cursor passes over while dragging (dragover/dragout), so
     // the user can actually see that a drag is happening and where it will land.
     if (type == "dragstart") {
-        target->SetClass("dragging", true);
+        if (target != nullptr) {
+            target->SetClass("dragging", true);
+        }
+        auto dragged = owner->FindById(RowNodeId(target));
+        if (dragged != nullptr) {
+            owner->draggingObject = dragged;
+            const float mouseX = event.GetParameter<float>("mouse_x", 0.0f);
+            const float mouseY = event.GetParameter<float>("mouse_y", 0.0f);
+            owner->ShowDragIndicator(dragged, mouseX, mouseY);
+        }
         return;
     }
     if (type == "dragend") {
-        target->SetClass("dragging", false);
+        if (target != nullptr) {
+            target->SetClass("dragging", false);
+        }
+        owner->draggingObject = nullptr;
+        owner->HideDragIndicator();
         owner->ClearDropHighlight();
         return;
     }
     if (type == "dragover") {
+        const float mouseX = event.GetParameter<float>("mouse_x", 0.0f);
+        const float mouseY = event.GetParameter<float>("mouse_y", 0.0f);
+        owner->UpdateDragIndicatorPosition(mouseX, mouseY);
+
         Rml::Element* row = target;
         while (row != nullptr && !row->HasAttribute("data-node-id")) {
             row = row->GetParentNode();
@@ -408,6 +456,8 @@ void SceneTree::TreeEventListener::ProcessEvent(Rml::Event& event) {
 
     // Drag-and-drop reparenting.
     if (type == "dragdrop") {
+        owner->draggingObject = nullptr;
+        owner->HideDragIndicator();
         owner->ClearDropHighlight();
         Rml::Element* dragElement = static_cast<Rml::Element*>(event.GetParameter<void*>("drag_element", nullptr));
         owner->HandleDrop(dragElement, target);
@@ -623,6 +673,41 @@ void SceneTree::ClearDropHighlight() {
         dragOverRow->SetClass("drag-over", false);
         dragOverRow = nullptr;
     }
+}
+
+void SceneTree::ShowDragIndicator(const std::shared_ptr<SceneObject>& obj, float mouseX, float mouseY) {
+    if (document == nullptr || obj == nullptr) {
+        return;
+    }
+
+    if (dragIndicator == nullptr) {
+        Rml::ElementPtr indicator = document->CreateElement("div");
+        indicator->SetClass("scene-tree-drag-indicator", true);
+        dragIndicator = indicator.get();
+        document->AppendChild(std::move(indicator));
+    }
+
+    dragIndicator->SetInnerRML(obj->GetDisplayName());
+    dragIndicator->SetProperty("display", "block");
+    UpdateDragIndicatorPosition(mouseX, mouseY);
+}
+
+void SceneTree::UpdateDragIndicatorPosition(float mouseX, float mouseY) const {
+    if (dragIndicator == nullptr) {
+        return;
+    }
+
+    dragIndicator->SetProperty("left", Rml::CreateString("%fpx", mouseX + 14.0f));
+    dragIndicator->SetProperty("top", Rml::CreateString("%fpx", mouseY + 14.0f));
+}
+
+void SceneTree::HideDragIndicator() {
+    if (dragIndicator == nullptr || document == nullptr) {
+        return;
+    }
+
+    document->RemoveChild(dragIndicator);
+    dragIndicator = nullptr;
 }
 
 void SceneTree::HandleDrop(Rml::Element* dragElement, Rml::Element* targetRow) {
