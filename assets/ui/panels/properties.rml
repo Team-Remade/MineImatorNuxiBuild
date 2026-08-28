@@ -9,12 +9,43 @@
             <div id="properties-panel" class="editor-panel">
                 <div class="panel-header"><span>Properties</span></div>
                 <div class="properties-content">
-                    <div class="property-section">Transform</div>
-                    <div class="property-row"><span>Position</span><span class="property-value">0, 0, -3</span></div>
-                    <div class="property-row"><span>Rotation</span><span class="property-value">0, 0, 0</span></div>
-                    <div class="property-row"><span>Scale</span><span class="property-value">1, 1, 1</span></div>
-                    <div class="property-section">Appearance</div>
-                    <div class="property-row"><span>Visible</span><span class="property-value">Yes</span></div>
+                    <div id="properties-empty" class="properties-empty-state"><span>No object selected</span></div>
+
+                    <div id="properties-object" style="display: none;">
+                        <div class="property-section"><span id="properties-object-name" class="property-section-label">Object</span></div>
+
+                        <div id="prop-group-transform" class="property-group property-group-open">
+                            <button id="prop-dropdown-transform" class="property-dropdown" type="button">Transform</button>
+                            <div id="prop-dropdown-transform-content" class="property-group-content">
+                                <div id="prop-group-position" class="property-group property-subgroup property-subgroup-open">
+                                    <button id="prop-dropdown-position" class="property-subdropdown" type="button">Position</button>
+                                    <div id="prop-dropdown-position-content" class="property-subgroup-content">
+                                        <div class="property-row"><span class="property-axis-label property-axis-x">X</span><input id="prop-pos-x" type="text" class="property-input property-input-x" value="0.000"/></div>
+                                        <div class="property-row"><span class="property-axis-label property-axis-y">Y</span><input id="prop-pos-y" type="text" class="property-input property-input-y" value="0.000"/></div>
+                                        <div class="property-row"><span class="property-axis-label property-axis-z">Z</span><input id="prop-pos-z" type="text" class="property-input property-input-z" value="0.000"/></div>
+                                    </div>
+                                </div>
+
+                                <div id="prop-group-rotation" class="property-group property-subgroup property-subgroup-closed">
+                                    <button id="prop-dropdown-rotation" class="property-subdropdown" type="button">Rotation</button>
+                                    <div id="prop-dropdown-rotation-content" class="property-subgroup-content">
+                                        <div class="property-row"><span class="property-axis-label property-axis-x">X</span><input id="prop-rot-x" type="text" class="property-input property-input-x" value="0.000"/></div>
+                                        <div class="property-row"><span class="property-axis-label property-axis-y">Y</span><input id="prop-rot-y" type="text" class="property-input property-input-y" value="0.000"/></div>
+                                        <div class="property-row"><span class="property-axis-label property-axis-z">Z</span><input id="prop-rot-z" type="text" class="property-input property-input-z" value="0.000"/></div>
+                                    </div>
+                                </div>
+
+                                <div id="prop-group-scale" class="property-group property-subgroup property-subgroup-closed">
+                                    <button id="prop-dropdown-scale" class="property-subdropdown" type="button">Scale</button>
+                                    <div id="prop-dropdown-scale-content" class="property-subgroup-content">
+                                        <div class="property-row"><span class="property-axis-label property-axis-x">X</span><input id="prop-scale-x" type="text" class="property-input property-input-x" value="1.000"/></div>
+                                        <div class="property-row"><span class="property-axis-label property-axis-y">Y</span><input id="prop-scale-y" type="text" class="property-input property-input-y" value="1.000"/></div>
+                                        <div class="property-row"><span class="property-axis-label property-axis-z">Z</span><input id="prop-scale-z" type="text" class="property-input property-input-z" value="1.000"/></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

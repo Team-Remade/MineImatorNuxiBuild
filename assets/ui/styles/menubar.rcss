@@ -381,30 +381,227 @@ body {
 }
 
 .properties-content {
-    padding: 7dp;
+    padding: 8dp;
+}
+
+.properties-empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 22dp 10dp;
+    color: #6f7a92;
+    font-size: 11dp;
+    text-align: center;
 }
 
 .property-section {
-    margin-top: 6dp;
-    padding: 6dp 5dp;
-    background-color: #1d2535;
-    border-bottom: 1dp #3c4964;
+    display: flex;
+    align-items: center;
+    margin-top: 0;
+    margin-bottom: 8dp;
+    padding: 7dp 9dp;
+    background-color: #202940;
+    border: 1dp #334059;
+    border-radius: 3dp;
     color: #dce3f2;
     font-size: 11dp;
+}
+
+.property-section-label {
+    font-weight: bold;
+    color: #f0f3fb;
+    font-size: 12dp;
+}
+
+.property-group {
+    margin-top: 6dp;
+    border: 1dp #2f3a52;
+    border-radius: 3dp;
+    background-color: #181f2d;
+    overflow: hidden;
+}
+
+.property-dropdown {
+    display: block;
+    width: 100%;
+    padding: 7dp 8dp;
+    background-color: #212a3d;
+    border: 1dp #334059;
+    border-bottom: 1dp #334059;
+    color: #eef2fb;
+    font-size: 11dp;
+    font-weight: bold;
+    letter-spacing: 0.3dp;
+    text-transform: uppercase;
+    text-align: left;
+    cursor: pointer;
+}
+
+.property-dropdown:hover {
+    background-color: #283354;
+    color: #ffffff;
+}
+
+.property-dropdown::before {
+    content: "🔽";
+    display: inline-block;
+    width: 12dp;
+    margin-right: 6dp;
+    color: #7ea2ff;
+    font-family: "Noto Emoji";
+}
+
+.property-group-content {
+    display: none;
+    padding: 2dp 0 4dp 0;
+}
+
+.property-group-open .property-group-content {
+    display: block;
+}
+
+.property-group-open .property-dropdown::before {
+    content: "🔽";
+}
+
+.property-group-closed .property-dropdown::before {
+    content: "▶";
+}
+
+.property-group-closed .property-dropdown {
+    border-bottom: none;
+}
+
+.property-subgroup {
+    margin: 4dp 6dp;
+    border: 1dp #24304a;
+    border-radius: 3dp;
+    background-color: #141b28;
+    overflow: hidden;
+}
+
+.property-subdropdown {
+    display: block;
+    width: 100%;
+    padding: 5dp 9dp 4dp 9dp;
+    background-color: #192235;
+    border: 1dp #2d3954;
+    color: #b8c4dc;
+    font-size: 9dp;
+    font-weight: bold;
+    letter-spacing: 0.5dp;
+    text-transform: uppercase;
+    text-align: left;
+    cursor: pointer;
+}
+
+.property-subdropdown:hover {
+    background-color: #222d45;
+    color: #d7deec;
+}
+
+.property-subdropdown::before {
+    content: "🔽";
+    display: inline-block;
+    width: 10dp;
+    margin-right: 4dp;
+    color: #7ea2ff;
+    font-size: 9dp;
+    font-family: "Noto Emoji";
+}
+
+.property-subgroup-content {
+    display: none;
+    padding: 0 2dp 4dp 2dp;
+}
+
+.property-subgroup-open .property-subgroup-content {
+    display: block;
+}
+
+.property-subgroup-open .property-subdropdown::before {
+    content: "🔽";
+}
+
+.property-subgroup-closed .property-subdropdown::before {
+    content: "▶";
+}
+
+.property-subsection {
+    margin-top: 2dp;
+    padding: 5dp 9dp 4dp 9dp;
+    color: #7f8ba1;
+    font-size: 9dp;
+    font-weight: bold;
+    letter-spacing: 0.5dp;
+    text-transform: uppercase;
 }
 
 .property-row {
     display: flex;
     flex-direction: row;
+    align-items: center;
     justify-content: space-between;
-    padding: 7dp 5dp;
-    border-bottom: 1dp #242d3f;
+    margin: 0 5dp 2dp 5dp;
+    padding: 4dp 4dp 4dp 9dp;
+    border-radius: 3dp;
     color: #9da8bc;
     font-size: 11dp;
 }
 
+.property-row:hover {
+    background-color: #1e2740;
+}
+
 .property-value {
     color: #d7deec;
+}
+
+.property-axis-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14dp;
+    font-weight: bold;
+    font-size: 10dp;
+}
+
+.property-axis-x {
+    color: #ff8a80;
+}
+
+.property-axis-y {
+    color: #7ee787;
+}
+
+.property-axis-z {
+    color: #82b6ff;
+}
+
+.property-input {
+    width: 76dp;
+    padding: 3dp 6dp;
+    text-align: right;
+    background-color: #141b28;
+    border: 1dp #334059;
+    border-radius: 3dp;
+    color: #eef2fb;
+    font-size: 11dp;
+}
+
+.property-input:hover {
+    border-color: #45557a;
+}
+
+.property-input-dragging {
+    border-color: #6b95f0;
+    background-color: #1d2940;
+    cursor: ew-resize;
+}
+
+.property-input:focus {
+    border-color: #5075bb;
+    background-color: #1a2130;
 }
 
 .timeline-toolbar {

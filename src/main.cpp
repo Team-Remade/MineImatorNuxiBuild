@@ -1,4 +1,3 @@
-#include <cstdio>
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
 #include <glad/glad.h>
@@ -7,6 +6,7 @@
 #include <array>
 #include "assets/EmbeddedFileInterface.hpp"
 #include "ui/MenuBar.hpp"
+#include "ui/PropertiesPanel.hpp"
 #include "ui/RmlGlRenderer.hpp"
 #include "ui/SceneTree.hpp"
 #include "ui/SpawnMenu.hpp"
@@ -33,6 +33,7 @@ EmbeddedFileInterface embeddedFileInterface;
 MenuBar menuBar;
 SceneTree sceneTree;
 SpawnMenu spawnMenu;
+PropertiesPanel propertiesPanel;
 Viewport3D viewport3D(menuBarHeight);
 
 void GetOpenGLVersion() {
@@ -139,6 +140,8 @@ void Init() {
     spawnMenuDocument->Hide();
     // Viewport panel (first loaded document) owns the "spawn-menu-btn" button.
     spawnMenu.Init(spawnMenuDocument, panelDocuments[0], &sceneTree);
+    // Properties panel is the fourth loaded document (properties.rml).
+    propertiesPanel.Init(panelDocuments[3]);
 
     uiDocument->Show();
 
@@ -250,16 +253,9 @@ void Input() {
             case SDL_MOUSEBUTTONDOWN:
             case SDL_MOUSEBUTTONUP: {
                 const bool down = event.type == SDL_MOUSEBUTTONDOWN;
-                const bool consumed = viewport3D.HandleMouseButton(event.button.button, down, event.button.x, event.button.y);
-                if (event.button.button == SDL_BUTTON_RIGHT) {
-                    // Capture the mouse for continuous look while free-flying, and
-                    // always release it once free-fly ends (e.g. on button release).
-                    SDL_SetRelativeMouseMode(viewport3D.IsFreeFlyActive() ? SDL_TRUE : SDL_FALSE);
-                }
-                if (consumed) {
-                    break;
-                }
+                bool uiConsumed = false;
                 if (uiContext != nullptr) {
+                    uiContext->ProcessMouseMove(event.button.x, event.button.y, 0);
                     // SDL: Left=1, Middle=2, Right=3. RmlUi: Left=0, Right=1, Middle=2.
                     int buttonIndex = 0;
                     switch (event.button.button) {
@@ -269,10 +265,24 @@ void Input() {
                         default: buttonIndex = event.button.button - 1; break;
                     }
                     if (down) {
-                        uiContext->ProcessMouseButtonDown(buttonIndex, 0);
+                        uiConsumed = uiContext->ProcessMouseButtonDown(buttonIndex, 0);
                     } else {
-                        uiContext->ProcessMouseButtonUp(buttonIndex, 0);
+                        uiConsumed = uiContext->ProcessMouseButtonUp(buttonIndex, 0);
                     }
+                }
+
+                if (uiConsumed) {
+                    break;
+                }
+
+                const bool consumed = viewport3D.HandleMouseButton(event.button.button, down, event.button.x, event.button.y);
+                if (event.button.button == SDL_BUTTON_RIGHT) {
+                    // Capture the mouse for continuous look while free-flying, and
+                    // always release it once free-fly ends (e.g. on button release).
+                    SDL_SetRelativeMouseMode(viewport3D.IsFreeFlyActive() ? SDL_TRUE : SDL_FALSE);
+                }
+                if (consumed) {
+                    break;
                 }
                 break;
             }
@@ -346,6 +356,7 @@ void MainLoop() {
 }
 
 void Cleanup() {
+    propertiesPanel.Shutdown();
     spawnMenu.Shutdown();
     sceneTree.Shutdown();
     SelectionManager::Shutdown();

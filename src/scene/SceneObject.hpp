@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <array>
 #include <vector>
 
 // Minimal scene-graph node ported from the reference project's SceneObject.
@@ -20,6 +21,11 @@ public:
     bool isSelectable = true;
     bool isSelected = false;
     bool objectVisible = true;
+
+    // ── Basic editable transform (properties-panel port) ───────────────────
+    std::array<float, 3> localPosition{0.0f, 0.0f, 0.0f};
+    std::array<float, 3> localRotation{0.0f, 0.0f, 0.0f};
+    std::array<float, 3> localScale{1.0f, 1.0f, 1.0f};
 
     SceneObject() = default;
     explicit SceneObject(std::string objectType);
