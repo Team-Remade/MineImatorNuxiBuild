@@ -48,6 +48,15 @@ public sealed class VeldridMesh : IDisposable
     private TextureView? _placeholderShadowView;
     private Sampler? _placeholderShadowSampler;
 
+    private ResourceLayout? _pointShadowResourceLayout;
+    private ResourceSet? _pointShadowResourceSet;
+    private VeldridPointShadowMap?[] _boundPointShadowMaps = new VeldridPointShadowMap?[MaxPointShadows];
+    private Texture? _placeholderCubeTexture;
+    private TextureView? _placeholderCubeView;
+    private Sampler? _placeholderCubeSampler;
+
+    private const int MaxPointShadows = 8;
+
     private Pipeline? _pipeline;
     private OutputDescription _outputDescription;
 
@@ -175,6 +184,20 @@ public sealed class VeldridMesh : IDisposable
             new ResourceLayoutElementDescription("uShadowMapTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
             new ResourceLayoutElementDescription("uShadowMapSampler", ResourceKind.Sampler, ShaderStages.Fragment)));
 
+        // Matches simple.frag's `set = 2` bindings: 8 explicit (textureCube,
+        // sampler) pairs for point-light shadow cubemaps - see the migration
+        // note above uPointShadowCubeTexture0 in simple.frag for why these are
+        // explicit named bindings instead of a real GLSL sampler array.
+        var pointShadowElements = new ResourceLayoutElementDescription[MaxPointShadows * 2];
+        for (int i = 0; i < MaxPointShadows; i++)
+        {
+            pointShadowElements[i * 2] = new ResourceLayoutElementDescription(
+                $"uPointShadowCubeTexture{i}", ResourceKind.TextureReadOnly, ShaderStages.Fragment);
+            pointShadowElements[i * 2 + 1] = new ResourceLayoutElementDescription(
+                $"uPointShadowCubeSampler{i}", ResourceKind.Sampler, ShaderStages.Fragment);
+        }
+        _pointShadowResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(pointShadowElements));
+
         var vertexLayout = new VertexLayoutDescription(
             new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
             new VertexElementDescription("Normal", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
@@ -187,7 +210,7 @@ public sealed class VeldridMesh : IDisposable
             RasterizerState = new RasterizerStateDescription(
                 FaceCullMode.Back, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
             PrimitiveTopology = PrimitiveTopology.TriangleList,
-            ResourceLayouts = new[] { _meshResourceLayout, _sceneResourceLayout },
+            ResourceLayouts = new[] { _meshResourceLayout, _sceneResourceLayout, _pointShadowResourceLayout },
             ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, new[] { vertexShader, fragmentShader }),
             Outputs = _outputDescription,
         });
@@ -235,6 +258,58 @@ public sealed class VeldridMesh : IDisposable
         _boundShadowMapSampler = shadowSampler;
     }
 
+    /// <summary>
+    /// Builds (or rebuilds, if which point-shadow maps are bound changed) the
+    /// set = 2 resource set from up to <see cref="MaxPointShadows"/> maps.
+    /// Missing/null slots get a shared 1x1 "always fully lit" placeholder cube.
+    /// </summary>
+    private void EnsurePointShadowResourceSet(IReadOnlyList<VeldridPointShadowMap?>? pointShadowMaps)
+    {
+        if (_pointShadowResourceLayout == null)
+            return;
+
+        bool unchanged = _pointShadowResourceSet != null;
+        for (int i = 0; i < MaxPointShadows && unchanged; i++)
+        {
+            VeldridPointShadowMap? current = pointShadowMaps != null && i < pointShadowMaps.Count ? pointShadowMaps[i] : null;
+            if (_boundPointShadowMaps[i] != current)
+                unchanged = false;
+        }
+        if (unchanged)
+            return;
+
+        TextureView placeholderView = GetOrCreatePlaceholderCubeView();
+        Sampler placeholderSampler = GetOrCreatePlaceholderCubeSampler();
+
+        var resources = new BindableResource[MaxPointShadows * 2];
+        for (int i = 0; i < MaxPointShadows; i++)
+        {
+            VeldridPointShadowMap? map = pointShadowMaps != null && i < pointShadowMaps.Count ? pointShadowMaps[i] : null;
+            resources[i * 2] = map?.CubeTextureView ?? placeholderView;
+            resources[i * 2 + 1] = map?.CubeSampler ?? placeholderSampler;
+            _boundPointShadowMaps[i] = map;
+        }
+
+        _pointShadowResourceSet?.Dispose();
+        _pointShadowResourceSet = _device.ResourceFactory.CreateResourceSet(new ResourceSetDescription(_pointShadowResourceLayout, resources));
+    }
+
+    private TextureView GetOrCreatePlaceholderCubeView()
+    {
+        if (_placeholderCubeView != null)
+            return _placeholderCubeView;
+
+        _placeholderCubeTexture = _device.ResourceFactory.CreateTexture(TextureDescription.Texture2D(
+            1, 1, 1, 6, PixelFormat.R32_Float, TextureUsage.Sampled | TextureUsage.Cubemap));
+        for (uint face = 0; face < 6; face++)
+            _device.UpdateTexture(_placeholderCubeTexture, new float[] { 1f }, 0, 0, 0, 1, 1, 1, 0, face);
+        _placeholderCubeView = _device.ResourceFactory.CreateTextureView(_placeholderCubeTexture);
+        return _placeholderCubeView;
+    }
+
+    private Sampler GetOrCreatePlaceholderCubeSampler() =>
+        _placeholderCubeSampler ??= _device.ResourceFactory.CreateSampler(SamplerDescription.Point);
+
     private TextureView GetOrCreatePlaceholderShadowView()
     {
         if (_placeholderShadowView != null)
@@ -280,7 +355,8 @@ public sealed class VeldridMesh : IDisposable
     /// is bound automatically when this is null).
     /// </param>
     public void Render(CommandList commandList, Matrix4x4 model, Matrix4x4 view, Matrix4x4 proj,
-        DeviceBuffer sceneDataBuffer, DeviceBuffer pointLightBuffer, VeldridShadowMap? shadowMap = null)
+        DeviceBuffer sceneDataBuffer, DeviceBuffer pointLightBuffer, VeldridShadowMap? shadowMap = null,
+        IReadOnlyList<VeldridPointShadowMap?>? pointShadowMaps = null)
     {
         if (_pipeline == null || _vertexBuffer == null || _meshUniformBuffer == null || _materialUniformBuffer == null)
             return;
@@ -288,6 +364,7 @@ public sealed class VeldridMesh : IDisposable
         TextureView shadowView = shadowMap?.DepthTextureView ?? GetOrCreatePlaceholderShadowView();
         Sampler shadowSampler = shadowMap?.DepthSampler ?? GetOrCreatePlaceholderShadowSampler();
         EnsureSceneResourceSet(sceneDataBuffer, pointLightBuffer, shadowView, shadowSampler);
+        EnsurePointShadowResourceSet(pointShadowMaps);
 
         var meshUniforms = MeshUniforms.Default;
         meshUniforms.Model = model;
@@ -307,6 +384,7 @@ public sealed class VeldridMesh : IDisposable
         commandList.SetPipeline(_pipeline);
         commandList.SetGraphicsResourceSet(0, _meshResourceSet);
         commandList.SetGraphicsResourceSet(1, _sceneResourceSet);
+        commandList.SetGraphicsResourceSet(2, _pointShadowResourceSet);
         commandList.SetVertexBuffer(0, _vertexBuffer);
 
         if (_indexBuffer != null)
@@ -353,6 +431,115 @@ public sealed class VeldridMesh : IDisposable
         {
             commandList.Draw(_vertexCount);
         }
+    }
+
+    // Point-light shadow-caster pipeline (separate again - different shader
+    // pair/uniforms since it needs uLightPos/uFarPlane instead of a light-space MVP).
+    private DeviceBuffer? _pointShadowUniformBuffer;
+    private ResourceLayout? _pointShadowCasterResourceLayout;
+    private ResourceSet? _pointShadowCasterResourceSet;
+    private Pipeline? _pointShadowCasterPipeline;
+    private OutputDescription? _pointShadowCasterOutputDescription;
+    private Sampler? _pointShadowCasterSampler;
+    private Texture? _pointShadowResourceSetAlbedoTexture;
+
+    /// <summary>
+    /// Renders this mesh depth-only into one face of a <see cref="VeldridPointShadowMap"/>.
+    /// Call once per shadow-casting mesh, per face (6x), inside
+    /// <see cref="VeldridPointShadowMap.RenderFace"/>'s callback.
+    /// </summary>
+    public void RenderPointShadowDepthOnly(CommandList commandList, Matrix4x4 model, Matrix4x4 faceViewProj,
+        Vector3 lightPos, float farPlane, OutputDescription faceOutputDescription)
+    {
+        if (_vertexBuffer == null)
+            return;
+
+        EnsurePointShadowCasterPipeline(faceOutputDescription);
+        if (_pointShadowCasterPipeline == null || _pointShadowUniformBuffer == null || _pointShadowCasterResourceSet == null)
+            return;
+
+        var uniforms = PointShadowDepthUniforms.Default;
+        uniforms.LightViewProj = faceViewProj;
+        uniforms.Model = model;
+        uniforms.Alpha = Alpha;
+        uniforms.UseTexture = AlbedoTexture != null ? 1 : 0;
+        uniforms.LightPos = lightPos;
+        uniforms.FarPlane = farPlane;
+        commandList.UpdateBuffer(_pointShadowUniformBuffer, 0, ref uniforms);
+
+        commandList.SetPipeline(_pointShadowCasterPipeline);
+        commandList.SetGraphicsResourceSet(0, _pointShadowCasterResourceSet);
+        commandList.SetVertexBuffer(0, _vertexBuffer);
+
+        if (_indexBuffer != null)
+        {
+            commandList.SetIndexBuffer(_indexBuffer, IndexFormat.UInt32);
+            commandList.DrawIndexed(_indexCount);
+        }
+        else
+        {
+            commandList.Draw(_vertexCount);
+        }
+    }
+
+    private void EnsurePointShadowCasterPipeline(OutputDescription faceOutputDescription)
+    {
+        if (_pointShadowCasterPipeline != null && _pointShadowCasterOutputDescription != null
+            && _pointShadowCasterOutputDescription.Value.Equals(faceOutputDescription))
+        {
+            RebuildPointShadowCasterResourceSetIfNeeded();
+            return;
+        }
+
+        ResourceFactory factory = _device.ResourceFactory;
+        var (vertexShader, fragmentShader) = VeldridShaderCache.GetOrCompile(_device, "point_shadow_depth.vert", "point_shadow_depth.frag");
+
+        _pointShadowCasterResourceLayout ??= factory.CreateResourceLayout(new ResourceLayoutDescription(
+            new ResourceLayoutElementDescription("PointShadowDepthUniforms", ResourceKind.UniformBuffer, ShaderStages.Vertex | ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("uTextureSampler", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("uTextureSamplerState", ResourceKind.Sampler, ShaderStages.Fragment)));
+
+        _pointShadowUniformBuffer ??= factory.CreateBuffer(new BufferDescription(
+            AlignTo16((uint)System.Runtime.InteropServices.Marshal.SizeOf<PointShadowDepthUniforms>()),
+            BufferUsage.UniformBuffer));
+
+        _pointShadowCasterSampler ??= factory.CreateSampler(SamplerDescription.Linear);
+
+        var vertexLayout = new VertexLayoutDescription(
+            new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
+            new VertexElementDescription("Normal", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
+            new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2));
+
+        _pointShadowCasterPipeline?.Dispose();
+        _pointShadowCasterPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+        {
+            BlendState = BlendStateDescription.SingleDisabled,
+            DepthStencilState = DepthStencilStateDescription.DepthOnlyLessEqual,
+            RasterizerState = new RasterizerStateDescription(
+                FaceCullMode.Back, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
+            PrimitiveTopology = PrimitiveTopology.TriangleList,
+            ResourceLayouts = new[] { _pointShadowCasterResourceLayout },
+            ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, new[] { vertexShader, fragmentShader }),
+            Outputs = faceOutputDescription,
+        });
+        _pointShadowCasterOutputDescription = faceOutputDescription;
+
+        RebuildPointShadowCasterResourceSetIfNeeded(force: true);
+    }
+
+    private void RebuildPointShadowCasterResourceSetIfNeeded(bool force = false)
+    {
+        if (_pointShadowCasterResourceLayout == null || _pointShadowUniformBuffer == null || _pointShadowCasterSampler == null)
+            return;
+
+        if (!force && _pointShadowCasterResourceSet != null && _pointShadowResourceSetAlbedoTexture == AlbedoTexture)
+            return;
+
+        _pointShadowCasterResourceSet?.Dispose();
+        TextureView view = GetOrCreateAlbedoView();
+        _pointShadowCasterResourceSet = _device.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
+            _pointShadowCasterResourceLayout, _pointShadowUniformBuffer, view, _pointShadowCasterSampler));
+        _pointShadowResourceSetAlbedoTexture = AlbedoTexture;
     }
 
     private void EnsureShadowPipeline(OutputDescription shadowOutputDescription)
@@ -440,6 +627,16 @@ public sealed class VeldridMesh : IDisposable
         _shadowResourceLayout?.Dispose();
         _shadowUniformBuffer?.Dispose();
         _shadowCasterSampler?.Dispose();
+        _pointShadowResourceSet?.Dispose();
+        _pointShadowResourceLayout?.Dispose();
+        _placeholderCubeView?.Dispose();
+        _placeholderCubeTexture?.Dispose();
+        _placeholderCubeSampler?.Dispose();
+        _pointShadowCasterPipeline?.Dispose();
+        _pointShadowCasterResourceSet?.Dispose();
+        _pointShadowCasterResourceLayout?.Dispose();
+        _pointShadowUniformBuffer?.Dispose();
+        _pointShadowCasterSampler?.Dispose();
 
         _pipeline = null;
         _meshResourceSet = null;
@@ -466,6 +663,19 @@ public sealed class VeldridMesh : IDisposable
         _shadowCasterSampler = null;
         _shadowOutputDescription = null;
         _shadowResourceSetAlbedoTexture = null;
+        _pointShadowResourceSet = null;
+        _pointShadowResourceLayout = null;
+        _placeholderCubeView = null;
+        _placeholderCubeTexture = null;
+        _placeholderCubeSampler = null;
+        Array.Clear(_boundPointShadowMaps);
+        _pointShadowCasterPipeline = null;
+        _pointShadowCasterResourceSet = null;
+        _pointShadowCasterResourceLayout = null;
+        _pointShadowUniformBuffer = null;
+        _pointShadowCasterSampler = null;
+        _pointShadowCasterOutputDescription = null;
+        _pointShadowResourceSetAlbedoTexture = null;
     }
 
     public void Dispose() => DisposeGpuResources();

@@ -152,12 +152,63 @@ public struct ShadowDepthUniforms
 }
 
 /// <summary>
+/// C# mirror of the <c>PointShadowDepthUniforms</c> std140 block declared in
+/// <c>assets/shaders/point_shadow_depth.vert</c>/<c>point_shadow_depth.frag</c>,
+/// used when rendering a mesh into one face of a <see cref="VeldridPointShadowMap"/>.
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct PointShadowDepthUniforms
+{
+    public Matrix4x4 LightViewProj;
+    public Matrix4x4 Model;
+    public Vector2 TexOffset;
+    public float TexScaleV;
+    public float Alpha;
+    public Vector2 TexUvOffset;
+    public Vector2 TexUvRepeat;
+    public Vector2 TexUvMirror;
+    public int UseTexture;
+    public int _pad0;
+    public Vector3 LightPos;
+    public float FarPlane;
+
+    public static PointShadowDepthUniforms Default => new()
+    {
+        LightViewProj = Matrix4x4.Identity,
+        Model = Matrix4x4.Identity,
+        TexOffset = Vector2.Zero,
+        TexScaleV = 1f,
+        Alpha = 1f,
+        TexUvOffset = Vector2.Zero,
+        TexUvRepeat = Vector2.One,
+        TexUvMirror = Vector2.Zero,
+        UseTexture = 0,
+        LightPos = Vector3.Zero,
+        FarPlane = 25f,
+    };
+}
+
+/// <summary>
+/// One point light's data for <see cref="PointLightUniforms.Set"/>. ShadowIndex
+/// selects which of up to 8 <see cref="VeldridPointShadowMap"/> cubemaps this
+/// light samples (-1 = unshadowed). SpotCosOuter/SpotCosInner of 0 disable the
+/// spot cone entirely (full sphere, i.e. an ordinary omni point light) -
+/// matches the old renderer's convention.
+/// </summary>
+public readonly record struct PointLightEntry(
+    Vector3 Position,
+    float Range,
+    Vector3 Color,
+    float Energy,
+    Vector3 Direction = default,
+    float FarPlane = 25f,
+    float SpotCosOuter = 0f,
+    float SpotCosInner = 0f,
+    int ShadowIndex = -1);
+
+/// <summary>
 /// C# counterpart of the <c>PointLightData</c> std140 block (set = 1, binding = 1)
-/// declared in <c>simple.frag</c>. This is a deliberately simplified version of
-/// the old <c>Mesh.PointLights</c> tuple list: only position, range, color, and
-/// energy are carried - spot-cone direction/angles and per-light shadow-cubemap
-/// index are added in the "shadow passes" follow-up pass, which is also where
-/// they're actually consumed.
+/// declared in <c>simple.frag</c>.
 ///
 /// Deliberately NOT a single <c>[StructLayout]</c> struct blitted in one
 /// <c>UpdateBuffer&lt;T&gt;</c> call: C# has no ergonomic way to embed a true
@@ -165,49 +216,70 @@ public struct ShadowDepthUniforms
 /// correctly through Veldrid's generic (<c>Unsafe.SizeOf&lt;T&gt;</c>-based) buffer
 /// update path. Instead, <see cref="WriteTo"/> writes the header and each array
 /// directly into the target buffer at the byte offsets matching the GLSL block's
-/// std140 layout (count+padding: 16 bytes, then two 32×16-byte vec4 arrays).
+/// std140 layout (count+padding: 16 bytes, then four 32×16-byte vec4 arrays).
 /// </summary>
 public sealed class PointLightUniforms
 {
     public const int MaxPointLights = 32;
 
-    /// <summary>Total buffer size in bytes required to hold this block: 16 (count+padding) + 32*16 (PosRange) + 32*16 (ColorEnergy).</summary>
-    public const uint SizeInBytes = 16 + MaxPointLights * 16 + MaxPointLights * 16;
+    /// <summary>Total buffer size in bytes: 16 (count+padding) + 4 * 32*16 (PosRange/ColorEnergy/DirFarPlane/SpotShadow).</summary>
+    public const uint SizeInBytes = 16 + 4 * MaxPointLights * 16u;
 
     public int Count { get; private set; }
     private readonly Vector4[] _posRange = new Vector4[MaxPointLights];
     private readonly Vector4[] _colorEnergy = new Vector4[MaxPointLights];
+    private readonly Vector4[] _dirFarPlane = new Vector4[MaxPointLights];
+    private readonly Vector4[] _spotShadow = new Vector4[MaxPointLights];
 
     public static readonly PointLightUniforms Empty = new();
 
     /// <summary>
-    /// Repopulates this instance from up to <see cref="MaxPointLights"/> lights,
-    /// each as (position, range, color, energy). Extra lights beyond the cap are
-    /// silently dropped (matches the old renderer's fixed-size array behavior).
-    /// Reuses the same backing arrays every call to avoid per-frame allocations.
+    /// Repopulates this instance from up to <see cref="MaxPointLights"/> lights.
+    /// Extra lights beyond the cap are silently dropped (matches the old
+    /// renderer's fixed-size array behavior). Reuses the same backing arrays
+    /// every call to avoid per-frame allocations.
     /// </summary>
-    public void Set(IReadOnlyList<(Vector3 Position, float Range, Vector3 Color, float Energy)> lights)
+    public void Set(IReadOnlyList<PointLightEntry> lights)
     {
         Count = Math.Min(lights.Count, MaxPointLights);
         for (int i = 0; i < Count; i++)
         {
-            var (position, range, color, energy) = lights[i];
-            _posRange[i] = new Vector4(position, range);
-            _colorEnergy[i] = new Vector4(color, energy);
+            PointLightEntry light = lights[i];
+            _posRange[i] = new Vector4(light.Position, light.Range);
+            _colorEnergy[i] = new Vector4(light.Color, light.Energy);
+            _dirFarPlane[i] = new Vector4(light.Direction, light.FarPlane);
+            _spotShadow[i] = new Vector4(light.SpotCosOuter, light.SpotCosInner, light.ShadowIndex, 0f);
         }
         for (int i = Count; i < MaxPointLights; i++)
         {
             _posRange[i] = Vector4.Zero;
             _colorEnergy[i] = Vector4.Zero;
+            _dirFarPlane[i] = Vector4.Zero;
+            _spotShadow[i] = new Vector4(0, 0, -1, 0);
         }
+    }
+
+    /// <summary>Convenience overload for simple omni (non-spot, unshadowed) lights.</summary>
+    public void Set(IReadOnlyList<(Vector3 Position, float Range, Vector3 Color, float Energy)> lights)
+    {
+        var entries = new PointLightEntry[lights.Count];
+        for (int i = 0; i < lights.Count; i++)
+        {
+            var (position, range, color, energy) = lights[i];
+            entries[i] = new PointLightEntry(position, range, color, energy);
+        }
+        Set(entries);
     }
 
     /// <summary>Writes this light set into <paramref name="buffer"/>, which must be
     /// at least <see cref="SizeInBytes"/> bytes (see <see cref="VeldridBitmapRenderSurface.PointLightBuffer"/>).</summary>
     public void WriteTo(Veldrid.GraphicsDevice device, Veldrid.DeviceBuffer buffer)
     {
+        const uint arrayBytes = MaxPointLights * 16u;
         device.UpdateBuffer(buffer, 0, new[] { Count, 0, 0, 0 });
         device.UpdateBuffer(buffer, 16, _posRange);
-        device.UpdateBuffer(buffer, 16 + MaxPointLights * 16u, _colorEnergy);
+        device.UpdateBuffer(buffer, 16 + arrayBytes, _colorEnergy);
+        device.UpdateBuffer(buffer, 16 + arrayBytes * 2, _dirFarPlane);
+        device.UpdateBuffer(buffer, 16 + arrayBytes * 3, _spotShadow);
     }
 }

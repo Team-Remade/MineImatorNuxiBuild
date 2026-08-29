@@ -1,22 +1,28 @@
-#version 330 core
+#version 450
 
+// MIGRATION NOTE (subsystem pass 3b/N - "point-light shadow cubemaps"):
+// skinning intentionally dropped, same as shadow_depth.vert/simple.vert.
 layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aNormal;
 layout (location = 2) in vec2 aTexCoord;
-layout (location = 3) in ivec4 aBoneIndices;
-layout (location = 4) in vec4 aBoneWeights;
 
-uniform mat4  uLightViewProj;
-uniform mat4  uModel;
-uniform vec2  uTexOffset;
-uniform float uTexScaleV;
-uniform vec2  uTexUvOffset;
-uniform vec2  uTexUvRepeat;
-uniform vec2  uTexUvMirror;
-uniform bool  uIsSkinned;
-uniform mat4  uBoneMatrices[64];
+layout(set = 0, binding = 0, std140) uniform PointShadowDepthUniforms {
+    mat4  uLightViewProj;
+    mat4  uModel;
+    vec2  uTexOffset;
+    float uTexScaleV;
+    float uAlpha;
+    vec2  uTexUvOffset;
+    vec2  uTexUvRepeat;
+    vec2  uTexUvMirror;
+    int   uUseTexture;
+    int   _pad0;
+    vec3  uLightPos;
+    float uFarPlane;
+};
 
-out vec3 vWorldPos;
-out vec2 vTexCoord;
+layout(location = 0) out vec3 vWorldPos;
+layout(location = 1) out vec2 vTexCoord;
 
 vec2 applyUvTransform(vec2 uv)
 {
@@ -32,20 +38,7 @@ vec2 applyUvTransform(vec2 uv)
 }
 
 void main() {
-    vec4 pos;
-    if (uIsSkinned) {
-        mat4 skinMatrix = mat4(0.0);
-        for (int i = 0; i < 4; i++) {
-            if (aBoneIndices[i] >= 0 && aBoneIndices[i] < 64 && aBoneWeights[i] > 0.0) {
-                skinMatrix += aBoneWeights[i] * uBoneMatrices[aBoneIndices[i]];
-            }
-        }
-        pos = skinMatrix * vec4(aPos, 1.0);
-    } else {
-        pos = vec4(aPos, 1.0);
-    }
-
-    vec4 worldPos = uModel * pos;
+    vec4 worldPos = uModel * vec4(aPos, 1.0);
     vWorldPos = worldPos.xyz;
     vec2 baseUv = vec2(aTexCoord.x, aTexCoord.y * uTexScaleV + uTexOffset.y);
     vTexCoord = applyUvTransform(baseUv);
