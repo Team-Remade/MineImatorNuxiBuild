@@ -5,7 +5,10 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Dock.Model.Controls;
+using Dock.Model.Core;
 using MineImatorSimplyRemade.core.project;
+using MineImatorSimplyRemade.core.ui.Dock;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemade.core.window;
 
@@ -31,6 +34,11 @@ public partial class MainWindow : WindowBase
     private readonly string _aboutVersion;
     private string _lastAppliedWindowTitle = "";
 
+    /// <summary>The dockspace layout's factory - exposes each panel's dock tool
+    /// (e.g. <see cref="AppDockFactory.ViewportTool"/>) so a panel's porting pass can swap
+    /// in its real content without rebuilding the layout.</summary>
+    public AppDockFactory DockFactory { get; private set; } = null!;
+
     private bool _allowWindowClose;
     private bool _closeRequestedWhileDirty;
 
@@ -45,6 +53,7 @@ public partial class MainWindow : WindowBase
         Title = _appTitle;
 
         WireMenubar();
+        WireDockLayout();
         SetWindowIconFromEmbedded("icons.Icon");
 
         KeyDown += OnMainWindowKeyDown;
@@ -73,7 +82,7 @@ public partial class MainWindow : WindowBase
         MenubarControl.ImportAssetRequested = () => { /* TODO(migration): asset import dialog */ };
         MenubarControl.ImportResourcePackRequested = () => { /* TODO(migration): resource pack import */ };
         MenubarControl.ImportResourcePackFolderRequested = () => { /* TODO(migration): resource pack import */ };
-        MenubarControl.ResetLayoutRequested = () => { /* TODO(migration): Dock.Avalonia layout reset */ };
+        MenubarControl.ResetLayoutRequested = ResetDockLayout;
         MenubarControl.ResetWorkCameraRequested = () => { /* TODO(migration): Viewport */ };
         MenubarControl.HomeScreenRequested = () => { /* TODO(migration): project home screen */ };
         MenubarControl.AboutRequested = OpenAboutDialog;
@@ -85,6 +94,27 @@ public partial class MainWindow : WindowBase
         MenubarControl.PreferencesRequested = () => { /* TODO(migration): PreferencesPanel */ };
         MenubarControl.ExitRequested = () => Close();
     }
+
+    // ── Dockspace layout ─────────────────────────────────────────────────────
+    // Ported from SetupDefaultDockSpace()/RequestDockSpaceRebuild() (see
+    // AppDockFactory's doc comment for the exact old ImGuiP.DockBuilder* split
+    // this reproduces). Unlike the old version, there's no "only rebuild if no
+    // imgui.ini exists yet" check - Dock.Avalonia's own layout persistence
+    // (if/when wired up) would be a separate, explicit save/load pair rather
+    // than an implicit ini file, so every launch currently starts from this
+    // default layout.
+
+    private void WireDockLayout()
+    {
+        DockFactory = new AppDockFactory();
+        IRootDock layout = DockFactory.CreateLayout();
+        DockFactory.InitLayout(layout);
+
+        MainDockControl.Factory = DockFactory;
+        MainDockControl.Layout = layout;
+    }
+
+    private void ResetDockLayout() => WireDockLayout();
 
     private static string ResolveAppVersion()
     {

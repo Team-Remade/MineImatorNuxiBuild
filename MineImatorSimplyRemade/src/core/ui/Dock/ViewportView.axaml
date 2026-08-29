@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="MineImatorSimplyRemade.core.ui.Dock.ViewportView"
+             Focusable="True">
+    <Grid RowDefinitions="Auto,*" Background="#1A1A1A">
+        <StackPanel x:Name="ToolbarPanel" Orientation="Horizontal" Spacing="6" Margin="4" Grid.Row="0">
+            <ComboBox x:Name="CameraDropdown" MinWidth="140" SelectedIndex="0">
+                <ComboBoxItem>Work Camera</ComboBoxItem>
+            </ComboBox>
+            <ComboBox x:Name="RenderModeDropdown" MinWidth="110" SelectedIndex="2">
+                <ComboBoxItem>Wireframe</ComboBoxItem>
+                <ComboBoxItem>Flat</ComboBoxItem>
+                <ComboBoxItem>Shaded</ComboBoxItem>
+                <ComboBoxItem>Rendered</ComboBoxItem>
+            </ComboBox>
+            <ToggleButton x:Name="OverlaysToggle" Content="Overlays" IsChecked="True" />
+            <TextBlock x:Name="FpsText" VerticalAlignment="Center" Foreground="#888" Margin="12,0,0,0" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Background="Black" ClipToBounds="True">
+            <Image x:Name="SceneImage" Stretch="Fill" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+        </Border>
+    </Grid>
+</UserControl>

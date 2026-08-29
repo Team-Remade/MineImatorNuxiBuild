@@ -1,0 +1,13 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="MineImatorSimplyRemade.core.ui.Dock.PlaceholderPanelView">
+    <Border Background="#202020">
+        <TextBlock x:Name="MessageText"
+                   Foreground="#777"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   TextWrapping="Wrap"
+                   TextAlignment="Center"
+                   MaxWidth="280" />
+    </Border>
+</UserControl>
