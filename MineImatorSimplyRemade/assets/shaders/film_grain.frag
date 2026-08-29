@@ -1,13 +1,18 @@
-#version 330 core
+#version 450
 
-out vec4 FragColor;
+layout(set = 0, binding = 0, std140) uniform FilmGrainUniforms {
+    vec2  uResolution;
+    float uFrame;
+    float uStrength;
+    float uSaturation;
+    float uSize;
+    vec2  _pad0;
+};
 
-uniform sampler2D uScene;
-uniform vec2 uResolution;
-uniform float uFrame;
-uniform float uStrength;
-uniform float uSaturation;
-uniform float uSize;
+layout(set = 0, binding = 1) uniform texture2D uSceneTexture;
+layout(set = 0, binding = 2) uniform sampler uSceneSampler;
+
+layout(location = 0) out vec4 FragColor;
 
 float hash(vec3 p)
 {
@@ -19,7 +24,7 @@ float hash(vec3 p)
 void main()
 {
     vec2 uv = gl_FragCoord.xy / uResolution;
-    vec4 scene = texture(uScene, uv);
+    vec4 scene = texture(sampler2D(uSceneTexture, uSceneSampler), uv);
     vec2 grainCell = floor(gl_FragCoord.xy / max(uSize, 0.25));
     float mono = hash(vec3(grainCell, uFrame + 17.0)) * 2.0 - 1.0;
     vec3 colorNoise = vec3(

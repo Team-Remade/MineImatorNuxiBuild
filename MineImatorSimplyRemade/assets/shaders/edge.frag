@@ -1,41 +1,32 @@
-#version 330 core
+#version 450
 
-// The single-channel silhouette mask (white = selected object).
-uniform sampler2D uMask;
-// Viewport size in pixels, used to compute per-texel offsets.
-uniform vec2 uTexelSize;
-// Colour to paint the detected edges.
-uniform vec4 uEdgeColor;
-// Minimum Sobel gradient magnitude to treat as an edge (0–1 range).
-uniform float uThreshold;
+layout(set = 0, binding = 0, std140) uniform EdgeUniforms {
+    vec2  uTexelSize;
+    vec4  uEdgeColor;
+    float uThreshold;
+    vec3  _pad0;
+};
 
-out vec4 FragColor;
+layout(set = 0, binding = 1) uniform texture2D uMaskTexture;
+layout(set = 0, binding = 2) uniform sampler uMaskSampler;
 
-// Sample the mask at a texel offset from the current fragment.
-float sample(vec2 uv, float dx, float dy) {
-    return texture(uMask, uv + vec2(dx, dy) * uTexelSize).r;
+layout(location = 0) out vec4 FragColor;
+
+float sampleMask(vec2 uv, float dx, float dy) {
+    return texture(sampler2D(uMaskTexture, uMaskSampler), uv + vec2(dx, dy) * uTexelSize).r;
 }
 
 void main() {
-    // Reconstruct UV from gl_FragCoord (no varyings in the full-screen triangle).
-    // gl_FragCoord is in window space (pixels); divide by viewport size = [0,1].
-    // uTexelSize = 1.0 / viewport so we can derive size from it.
     vec2 uv = gl_FragCoord.xy * uTexelSize;
 
-    // 3×3 Sobel kernels
-    //  Gx            Gy
-    // -1  0 +1      -1 -2 -1
-    // -2  0 +2       0  0  0
-    // -1  0 +1      +1 +2 +1
-
-    float tl = sample(uv, -1.0,  1.0);
-    float tm = sample(uv,  0.0,  1.0);
-    float tr = sample(uv,  1.0,  1.0);
-    float ml = sample(uv, -1.0,  0.0);
-    float mr = sample(uv,  1.0,  0.0);
-    float bl = sample(uv, -1.0, -1.0);
-    float bm = sample(uv,  0.0, -1.0);
-    float br = sample(uv,  1.0, -1.0);
+    float tl = sampleMask(uv, -1.0,  1.0);
+    float tm = sampleMask(uv,  0.0,  1.0);
+    float tr = sampleMask(uv,  1.0,  1.0);
+    float ml = sampleMask(uv, -1.0,  0.0);
+    float mr = sampleMask(uv,  1.0,  0.0);
+    float bl = sampleMask(uv, -1.0, -1.0);
+    float bm = sampleMask(uv,  0.0, -1.0);
+    float br = sampleMask(uv,  1.0, -1.0);
 
     float gx = -tl + tr - 2.0*ml + 2.0*mr - bl + br;
     float gy = -tl - 2.0*tm - tr + bl + 2.0*bm + br;
@@ -44,7 +35,6 @@ void main() {
 
     if (magnitude < uThreshold) discard;
 
-    // Scale alpha by magnitude so stronger gradients are more opaque.
     float alpha = clamp(magnitude, 0.0, 1.0) * uEdgeColor.a;
     FragColor = vec4(uEdgeColor.rgb, alpha);
 }

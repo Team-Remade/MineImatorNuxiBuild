@@ -1,8 +1,11 @@
-#version 330 core
+#version 450
 
-uniform vec4 uColor;
+layout(set = 0, binding = 0, std140) uniform GizmoUniforms {
+    mat4 uMVP;
+    vec4 uColor;
+};
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
 
 void main() {
     FragColor = uColor;

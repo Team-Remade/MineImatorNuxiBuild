@@ -1,27 +1,33 @@
-#version 330 core
+#version 450
 
-in vec2 vTexCoord;
+layout(location = 0) in vec2 vTexCoord;
 
-uniform vec3  uPickColor;
-uniform vec4  uBlendColor;
-uniform float uAlpha;
-uniform sampler2D uTexture;
-uniform bool  uUseTexture;
-uniform sampler2D uAlphaMask;
-uniform bool  uUseAlphaMask;
-uniform bool  uForceOpaque;
+layout(set = 0, binding = 1, std140) uniform PickMaterial {
+    vec3  uPickColor;
+    float uAlpha;
+    vec4  uBlendColor;
+    int   uUseTexture;
+    int   uUseAlphaMask;
+    int   uForceOpaque;
+    int   _pad0;
+};
 
-out vec4 FragColor;
+layout(set = 0, binding = 2) uniform texture2D uTextureTexture;
+layout(set = 0, binding = 3) uniform sampler uTextureSampler;
+layout(set = 0, binding = 4) uniform texture2D uAlphaMaskTexture;
+layout(set = 0, binding = 5) uniform sampler uAlphaMaskSampler;
+
+layout(location = 0) out vec4 FragColor;
 
 void main() {
-    float alpha = uForceOpaque ? 1.0 : (uAlpha * uBlendColor.a);
+    float alpha = uForceOpaque != 0 ? 1.0 : (uAlpha * uBlendColor.a);
 
-    if (!uForceOpaque && uUseTexture) {
-        vec4 texSample = texture(uTexture, vTexCoord);
+    if (uForceOpaque == 0 && uUseTexture != 0) {
+        vec4 texSample = texture(sampler2D(uTextureTexture, uTextureSampler), vTexCoord);
         alpha *= texSample.a;
     }
-    if (!uForceOpaque && uUseAlphaMask)
-        alpha *= texture(uAlphaMask, vTexCoord).a;
+    if (uForceOpaque == 0 && uUseAlphaMask != 0)
+        alpha *= texture(sampler2D(uAlphaMaskTexture, uAlphaMaskSampler), vTexCoord).a;
 
     if (alpha <= 0.0)
         discard;

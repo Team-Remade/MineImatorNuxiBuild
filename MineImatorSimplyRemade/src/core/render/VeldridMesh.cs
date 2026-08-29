@@ -565,6 +565,154 @@ public sealed class VeldridMesh : IDisposable
         _pointShadowResourceSetAlbedoTexture = AlbedoTexture;
     }
 
+    // Pick/silhouette pipelines (subsystem pass 5/N) - share pick.vert's vertex
+    // uniforms/layout, differ only in fragment shader/output.
+    private DeviceBuffer? _pickVertexUniformBuffer;
+    private DeviceBuffer? _pickMaterialUniformBuffer;
+    private ResourceLayout? _pickResourceLayout;
+    private ResourceSet? _pickResourceSet;
+    private Pipeline? _pickColorPipeline;
+    private Pipeline? _silhouettePipeline;
+    private OutputDescription? _pickColorOutputDescription;
+    private OutputDescription? _silhouetteOutputDescription;
+    private Sampler? _pickSampler;
+    private Texture? _pickResourceSetAlbedoTexture;
+
+    /// <summary>Renders this mesh with a flat "pick color" for CPU-readback object
+    /// picking - see <c>pick.frag</c>. Draw each pickable mesh with a distinct
+    /// color into an offscreen buffer, then read back the pixel under the cursor.</summary>
+    public void RenderPick(CommandList commandList, Matrix4x4 mvp, Vector3 pickColor, OutputDescription outputDescription)
+    {
+        if (_vertexBuffer == null)
+            return;
+
+        EnsurePickPipelines(outputDescription, null);
+        if (_pickColorPipeline == null)
+            return;
+
+        UpdatePickUniforms(commandList, mvp, pickColor, forceOpaque: true);
+        DrawWithPipeline(commandList, _pickColorPipeline, _pickResourceSet!);
+    }
+
+    /// <summary>Renders this mesh's alpha-tested silhouette mask (1.0 = covered)
+    /// - see <c>silhouette.frag</c>. Used as the input to <see cref="VeldridEdgeOutlinePass"/>.</summary>
+    public void RenderSilhouette(CommandList commandList, Matrix4x4 mvp, OutputDescription outputDescription)
+    {
+        if (_vertexBuffer == null)
+            return;
+
+        EnsurePickPipelines(null, outputDescription);
+        if (_silhouettePipeline == null)
+            return;
+
+        UpdatePickUniforms(commandList, mvp, Vector3.Zero, forceOpaque: false);
+        DrawWithPipeline(commandList, _silhouettePipeline, _pickResourceSet!);
+    }
+
+    private void UpdatePickUniforms(CommandList commandList, Matrix4x4 mvp, Vector3 pickColor, bool forceOpaque)
+    {
+        var vertexUniforms = PickVertexUniforms.Default;
+        vertexUniforms.MVP = mvp;
+        commandList.UpdateBuffer(_pickVertexUniformBuffer, 0, ref vertexUniforms);
+
+        var materialUniforms = PickMaterialUniforms.Default;
+        materialUniforms.PickColor = pickColor;
+        materialUniforms.Alpha = Alpha;
+        materialUniforms.UseTexture = AlbedoTexture != null ? 1 : 0;
+        materialUniforms.ForceOpaque = forceOpaque ? 1 : 0;
+        commandList.UpdateBuffer(_pickMaterialUniformBuffer, 0, ref materialUniforms);
+    }
+
+    private void DrawWithPipeline(CommandList commandList, Pipeline pipeline, ResourceSet resourceSet)
+    {
+        commandList.SetPipeline(pipeline);
+        commandList.SetGraphicsResourceSet(0, resourceSet);
+        commandList.SetVertexBuffer(0, _vertexBuffer);
+
+        if (_indexBuffer != null)
+        {
+            commandList.SetIndexBuffer(_indexBuffer, IndexFormat.UInt32);
+            commandList.DrawIndexed(_indexCount);
+        }
+        else
+        {
+            commandList.Draw(_vertexCount);
+        }
+    }
+
+    private void EnsurePickPipelines(OutputDescription? pickColorOutput, OutputDescription? silhouetteOutput)
+    {
+        ResourceFactory factory = _device.ResourceFactory;
+
+        _pickResourceLayout ??= factory.CreateResourceLayout(new ResourceLayoutDescription(
+            new ResourceLayoutElementDescription("PickUniforms", ResourceKind.UniformBuffer, ShaderStages.Vertex),
+            new ResourceLayoutElementDescription("PickMaterial", ResourceKind.UniformBuffer, ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("uTextureTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("uTextureSampler", ResourceKind.Sampler, ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("uAlphaMaskTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("uAlphaMaskSampler", ResourceKind.Sampler, ShaderStages.Fragment)));
+
+        _pickVertexUniformBuffer ??= factory.CreateBuffer(new BufferDescription(
+            AlignTo16((uint)System.Runtime.InteropServices.Marshal.SizeOf<PickVertexUniforms>()), BufferUsage.UniformBuffer));
+        _pickMaterialUniformBuffer ??= factory.CreateBuffer(new BufferDescription(
+            AlignTo16((uint)System.Runtime.InteropServices.Marshal.SizeOf<PickMaterialUniforms>()), BufferUsage.UniformBuffer));
+        _pickSampler ??= factory.CreateSampler(SamplerDescription.Linear);
+
+        var vertexLayout = new VertexLayoutDescription(
+            new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
+            new VertexElementDescription("Normal", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
+            new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2));
+
+        bool rebuildResourceSet = _pickResourceSet == null || _pickResourceSetAlbedoTexture != AlbedoTexture;
+
+        if (pickColorOutput != null && (_pickColorPipeline == null || _pickColorOutputDescription == null || !_pickColorOutputDescription.Value.Equals(pickColorOutput.Value)))
+        {
+            var (vs, fs) = VeldridShaderCache.GetOrCompile(_device, "pick.vert", "pick.frag");
+            _pickColorPipeline?.Dispose();
+            _pickColorPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = BlendStateDescription.SingleDisabled,
+                DepthStencilState = DepthStencilStateDescription.DepthOnlyLessEqual,
+                RasterizerState = new RasterizerStateDescription(FaceCullMode.Back, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _pickResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, new[] { vs, fs }),
+                Outputs = pickColorOutput.Value,
+            });
+            _pickColorOutputDescription = pickColorOutput;
+        }
+
+        if (silhouetteOutput != null && (_silhouettePipeline == null || _silhouetteOutputDescription == null || !_silhouetteOutputDescription.Value.Equals(silhouetteOutput.Value)))
+        {
+            var (vs, fs) = VeldridShaderCache.GetOrCompile(_device, "pick.vert", "silhouette.frag");
+            _silhouettePipeline?.Dispose();
+            _silhouettePipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = BlendStateDescription.SingleDisabled,
+                DepthStencilState = DepthStencilStateDescription.DepthOnlyLessEqual,
+                RasterizerState = new RasterizerStateDescription(FaceCullMode.Back, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _pickResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, new[] { vs, fs }),
+                Outputs = silhouetteOutput.Value,
+            });
+            _silhouetteOutputDescription = silhouetteOutput;
+        }
+
+        if (rebuildResourceSet)
+        {
+            _pickResourceSet?.Dispose();
+            TextureView view = GetOrCreateAlbedoView();
+            // Both pick.frag and silhouette.frag declare the same alpha-mask
+            // binding slot even though nothing in this migration pass sets a
+            // real alpha mask texture yet - reuse the placeholder (fully opaque)
+            // path via the same albedo view/sampler so the resource set is valid.
+            _pickResourceSet = factory.CreateResourceSet(new ResourceSetDescription(
+                _pickResourceLayout, _pickVertexUniformBuffer, _pickMaterialUniformBuffer, view, _pickSampler, view, _pickSampler));
+            _pickResourceSetAlbedoTexture = AlbedoTexture;
+        }
+    }
+
     private void EnsureShadowPipeline(OutputDescription shadowOutputDescription)
     {
         if (_shadowPipeline != null && _shadowOutputDescription != null && _shadowOutputDescription.Value.Equals(shadowOutputDescription))
@@ -660,6 +808,13 @@ public sealed class VeldridMesh : IDisposable
         _pointShadowCasterResourceLayout?.Dispose();
         _pointShadowUniformBuffer?.Dispose();
         _pointShadowCasterSampler?.Dispose();
+        _pickColorPipeline?.Dispose();
+        _silhouettePipeline?.Dispose();
+        _pickResourceSet?.Dispose();
+        _pickResourceLayout?.Dispose();
+        _pickVertexUniformBuffer?.Dispose();
+        _pickMaterialUniformBuffer?.Dispose();
+        _pickSampler?.Dispose();
 
         _pipeline = null;
         _meshResourceSet = null;
@@ -699,6 +854,16 @@ public sealed class VeldridMesh : IDisposable
         _pointShadowCasterSampler = null;
         _pointShadowCasterOutputDescription = null;
         _pointShadowResourceSetAlbedoTexture = null;
+        _pickColorPipeline = null;
+        _silhouettePipeline = null;
+        _pickResourceSet = null;
+        _pickResourceLayout = null;
+        _pickVertexUniformBuffer = null;
+        _pickMaterialUniformBuffer = null;
+        _pickSampler = null;
+        _pickColorOutputDescription = null;
+        _silhouetteOutputDescription = null;
+        _pickResourceSetAlbedoTexture = null;
     }
 
     public void Dispose() => DisposeGpuResources();
