@@ -27,6 +27,17 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
 
     public Texture ColorTarget { get; private set; } = null!;
     public Texture DepthTarget { get; private set; } = null!;
+
+    /// <summary>Read-only view of <see cref="DepthTarget"/> for screen-space
+    /// passes (ambient occlusion, indirect lighting) that sample depth back
+    /// as a normal texture after the opaque scene pass has written it.</summary>
+    public TextureView DepthTargetView { get; private set; } = null!;
+
+    /// <summary>Read-only view of <see cref="ColorTarget"/>, for
+    /// <see cref="VeldridIndirectLightingPass"/> to sample the already-shaded
+    /// scene color at other screen positions.</summary>
+    public TextureView ColorTargetView { get; private set; } = null!;
+
     public Framebuffer Framebuffer { get; private set; } = null!;
 
     private Texture _stagingTexture = null!;
@@ -49,6 +60,13 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
     /// frame via <see cref="UpdatePointLights"/> before any mesh draw calls.
     /// </summary>
     public DeviceBuffer PointLightBuffer { get; }
+
+    /// <summary>
+    /// Shared per-frame environment settings (SSS quality/multipliers, fog -
+    /// see <see cref="SceneEnvironmentUniforms"/>). One instance per render
+    /// surface, updated once per frame via <see cref="UpdateEnvironment"/>.
+    /// </summary>
+    public DeviceBuffer EnvironmentBuffer { get; }
 
     /// <summary>Formats/sample-count description of <see cref="Framebuffer"/>, stable
     /// across <see cref="Resize"/> calls - pass this to <c>VeldridMesh.Upload</c>.</summary>
@@ -85,6 +103,11 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
             PointLightUniforms.SizeInBytes, BufferUsage.UniformBuffer));
         UpdatePointLights(PointLightUniforms.Empty);
 
+        EnvironmentBuffer = ResourceFactory.CreateBuffer(new BufferDescription(
+            AlignTo16((uint)System.Runtime.InteropServices.Marshal.SizeOf<SceneEnvironmentUniforms>()),
+            BufferUsage.UniformBuffer));
+        UpdateEnvironment(SceneEnvironmentUniforms.Default);
+
         Resize(Math.Max(1, width), Math.Max(1, height));
     }
 
@@ -98,6 +121,10 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
     /// frame before any mesh draws that reference <see cref="PointLightBuffer"/>.</summary>
     public void UpdatePointLights(PointLightUniforms lights) => lights.WriteTo(GraphicsDevice, PointLightBuffer);
 
+    /// <summary>Uploads new SSS/fog environment settings. Call once per frame
+    /// before any mesh draws that reference <see cref="EnvironmentBuffer"/>.</summary>
+    public void UpdateEnvironment(SceneEnvironmentUniforms data) => GraphicsDevice.UpdateBuffer(EnvironmentBuffer, 0, ref data);
+
     /// <summary>Recreates the color/depth targets and framebuffer at a new size.
     /// Cheap to call every frame with an unchanged size (it's a no-op then).</summary>
     public void Resize(uint width, uint height)
@@ -110,7 +137,9 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
         Width = width;
         Height = height;
 
+        ColorTargetView?.Dispose();
         ColorTarget?.Dispose();
+        DepthTargetView?.Dispose();
         DepthTarget?.Dispose();
         Framebuffer?.Dispose();
         _stagingTexture?.Dispose();
@@ -119,11 +148,17 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
             width, height, 1, 1,
             PixelFormat.R8_G8_B8_A8_UNorm,
             TextureUsage.RenderTarget | TextureUsage.Sampled));
+        ColorTargetView = ResourceFactory.CreateTextureView(ColorTarget);
 
         DepthTarget = ResourceFactory.CreateTexture(TextureDescription.Texture2D(
             width, height, 1, 1,
             PixelFormat.D24_UNorm_S8_UInt,
-            TextureUsage.DepthStencil));
+            // Sampled (in addition to DepthStencil) so screen-space passes
+            // (VeldridAmbientOcclusionPass, VeldridIndirectLightingPass) can
+            // read it back as a normal texture after the opaque scene pass.
+            TextureUsage.DepthStencil | TextureUsage.Sampled));
+
+        DepthTargetView = ResourceFactory.CreateTextureView(DepthTarget);
 
         Framebuffer = ResourceFactory.CreateFramebuffer(new FramebufferDescription(DepthTarget, ColorTarget));
 
@@ -222,10 +257,13 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
         _bitmap?.Dispose();
         _stagingTexture?.Dispose();
         Framebuffer?.Dispose();
+        DepthTargetView?.Dispose();
         DepthTarget?.Dispose();
+        ColorTargetView?.Dispose();
         ColorTarget?.Dispose();
         SceneDataBuffer?.Dispose();
         PointLightBuffer?.Dispose();
+        EnvironmentBuffer?.Dispose();
         GraphicsDevice.Dispose();
     }
 }

@@ -42,6 +42,7 @@ public sealed class VeldridMesh : IDisposable
     private ResourceSet? _sceneResourceSet;
     private DeviceBuffer? _boundSceneDataBuffer;
     private DeviceBuffer? _boundPointLightBuffer;
+    private DeviceBuffer? _boundEnvironmentBuffer;
     private TextureView? _boundShadowMapView;
     private Sampler? _boundShadowMapSampler;
     private Texture? _placeholderShadowTexture;
@@ -80,6 +81,16 @@ public sealed class VeldridMesh : IDisposable
     public bool EmissionEnabled { get; set; }
     public Vector3 EmissionColor { get; set; }
     public float EmissionEnergy { get; set; }
+
+    /// <summary>Per-mesh subsurface-scattering amount [0..1], 0 disables it.</summary>
+    public float Subsurface { get; set; }
+    public Vector3 SubsurfaceRadius { get; set; } = new(0.42f, 0.24f, 0.14f);
+    public Vector3 SubsurfaceColor { get; set; } = Vector3.One;
+    public float SubsurfaceHighlight { get; set; }
+    public float SubsurfaceHighlightStrength { get; set; }
+
+    /// <summary>When false, this mesh is excluded from fog even when global fog is enabled.</summary>
+    public bool IncludeInFog { get; set; } = true;
 
     /// <summary>Bound texture, or null to render with the flat <see cref="Albedo"/> color.</summary>
     public Texture? AlbedoTexture { get; set; }
@@ -177,12 +188,14 @@ public sealed class VeldridMesh : IDisposable
         // Matches simple.vert/simple.frag's `set = 1` bindings: binding 0 =
         // SceneData (read by both stages - simple.vert samples uLightSpaceMatrix),
         // binding 1 = PointLightData (fragment only), binding 2/3 = the
-        // directional shadow map's depth texture/sampler (fragment only).
+        // directional shadow map's depth texture/sampler (fragment only),
+        // binding 4 = SceneEnvironment (SSS/fog globals, fragment only).
         _sceneResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
             new ResourceLayoutElementDescription("SceneData", ResourceKind.UniformBuffer, ShaderStages.Vertex | ShaderStages.Fragment),
             new ResourceLayoutElementDescription("PointLightData", ResourceKind.UniformBuffer, ShaderStages.Fragment),
             new ResourceLayoutElementDescription("uShadowMapTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
-            new ResourceLayoutElementDescription("uShadowMapSampler", ResourceKind.Sampler, ShaderStages.Fragment)));
+            new ResourceLayoutElementDescription("uShadowMapSampler", ResourceKind.Sampler, ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("SceneEnvironment", ResourceKind.UniformBuffer, ShaderStages.Fragment)));
 
         // Matches simple.frag's `set = 2` bindings: 8 explicit (textureCube,
         // sampler) pairs for point-light shadow cubemaps - see the migration
@@ -237,7 +250,8 @@ public sealed class VeldridMesh : IDisposable
     /// (<c>UpdateBuffer</c>) don't require recreating the <see cref="ResourceSet"/>,
     /// only a change of which buffer objects are bound does.
     /// </summary>
-    private void EnsureSceneResourceSet(DeviceBuffer sceneDataBuffer, DeviceBuffer pointLightBuffer, TextureView shadowView, Sampler shadowSampler)
+    private void EnsureSceneResourceSet(DeviceBuffer sceneDataBuffer, DeviceBuffer pointLightBuffer,
+        TextureView shadowView, Sampler shadowSampler, DeviceBuffer environmentBuffer)
     {
         if (_sceneResourceLayout == null)
             return;
@@ -246,16 +260,18 @@ public sealed class VeldridMesh : IDisposable
             && _boundSceneDataBuffer == sceneDataBuffer
             && _boundPointLightBuffer == pointLightBuffer
             && _boundShadowMapView == shadowView
-            && _boundShadowMapSampler == shadowSampler)
+            && _boundShadowMapSampler == shadowSampler
+            && _boundEnvironmentBuffer == environmentBuffer)
             return;
 
         _sceneResourceSet?.Dispose();
         _sceneResourceSet = _device.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
-            _sceneResourceLayout, sceneDataBuffer, pointLightBuffer, shadowView, shadowSampler));
+            _sceneResourceLayout, sceneDataBuffer, pointLightBuffer, shadowView, shadowSampler, environmentBuffer));
         _boundSceneDataBuffer = sceneDataBuffer;
         _boundPointLightBuffer = pointLightBuffer;
         _boundShadowMapView = shadowView;
         _boundShadowMapSampler = shadowSampler;
+        _boundEnvironmentBuffer = environmentBuffer;
     }
 
     /// <summary>
@@ -354,16 +370,17 @@ public sealed class VeldridMesh : IDisposable
     /// needs *some* bound texture/sampler even when unused, so a 1x1 placeholder
     /// is bound automatically when this is null).
     /// </param>
+    /// <param name="environmentBuffer">Typically <c>VeldridBitmapRenderSurface.EnvironmentBuffer</c>.</param>
     public void Render(CommandList commandList, Matrix4x4 model, Matrix4x4 view, Matrix4x4 proj,
-        DeviceBuffer sceneDataBuffer, DeviceBuffer pointLightBuffer, VeldridShadowMap? shadowMap = null,
-        IReadOnlyList<VeldridPointShadowMap?>? pointShadowMaps = null)
+        DeviceBuffer sceneDataBuffer, DeviceBuffer pointLightBuffer, DeviceBuffer environmentBuffer,
+        VeldridShadowMap? shadowMap = null, IReadOnlyList<VeldridPointShadowMap?>? pointShadowMaps = null)
     {
         if (_pipeline == null || _vertexBuffer == null || _meshUniformBuffer == null || _materialUniformBuffer == null)
             return;
 
         TextureView shadowView = shadowMap?.DepthTextureView ?? GetOrCreatePlaceholderShadowView();
         Sampler shadowSampler = shadowMap?.DepthSampler ?? GetOrCreatePlaceholderShadowSampler();
-        EnsureSceneResourceSet(sceneDataBuffer, pointLightBuffer, shadowView, shadowSampler);
+        EnsureSceneResourceSet(sceneDataBuffer, pointLightBuffer, shadowView, shadowSampler, environmentBuffer);
         EnsurePointShadowResourceSet(pointShadowMaps);
 
         var meshUniforms = MeshUniforms.Default;
@@ -379,6 +396,12 @@ public sealed class VeldridMesh : IDisposable
         materialUniforms.EmissionEnabled = EmissionEnabled ? 1 : 0;
         materialUniforms.EmissionColor = EmissionColor;
         materialUniforms.EmissionEnergy = EmissionEnergy;
+        materialUniforms.Subsurface = Subsurface;
+        materialUniforms.SubsurfaceRadius = SubsurfaceRadius;
+        materialUniforms.SubsurfaceColor = SubsurfaceColor;
+        materialUniforms.SubsurfaceHighlight = SubsurfaceHighlight;
+        materialUniforms.SubsurfaceHighlightStrength = SubsurfaceHighlightStrength;
+        materialUniforms.IncludeInFog = IncludeInFog ? 1 : 0;
         commandList.UpdateBuffer(_materialUniformBuffer, 0, ref materialUniforms);
 
         commandList.SetPipeline(_pipeline);

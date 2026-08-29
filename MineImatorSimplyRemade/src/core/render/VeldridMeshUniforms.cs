@@ -57,6 +57,14 @@ public struct MeshMaterialUniforms
     public float EmissionEnergy;
     public Vector3 EmissionColor;
     public float _pad0;
+    public Vector3 SubsurfaceRadius;
+    public float Subsurface;
+    public Vector3 SubsurfaceColor;
+    public float SubsurfaceHighlight;
+    public float SubsurfaceHighlightStrength;
+    public int IncludeInFog;
+    public int _pad1;
+    public int _pad2;
 
     public static MeshMaterialUniforms Default => new()
     {
@@ -69,6 +77,74 @@ public struct MeshMaterialUniforms
         EmissionEnabled = 0,
         EmissionEnergy = 0f,
         EmissionColor = Vector3.Zero,
+        SubsurfaceRadius = new Vector3(0.42f, 0.24f, 0.14f),
+        Subsurface = 0f,
+        SubsurfaceColor = Vector3.One,
+        SubsurfaceHighlight = 0f,
+        SubsurfaceHighlightStrength = 0f,
+        IncludeInFog = 1,
+    };
+}
+
+/// <summary>
+/// C# mirror of the <c>SceneEnvironment</c> std140 block (set = 1, binding = 4)
+/// declared in <c>simple.frag</c>: subsurface-scattering quality/multiplier
+/// globals and distance/height fog. These used to be static fields on the old
+/// GL <c>Mesh</c> class (<c>Mesh.FogEnabled</c>, <c>Mesh.SssRadius</c>, etc.);
+/// now they're uploaded once per frame like <see cref="SceneDataUniforms"/>.
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct SceneEnvironmentUniforms
+{
+    public Vector3 CameraPosition;
+    public float _pad0;
+    public int FogEnabled;
+    public int HeightFogEnabled;
+    public int SSSEnabled;
+    public int SSSBlurSamples;
+    public Vector3 FogColor;
+    public float FogDistance;
+    public Vector3 HeightFogColor;
+    public float FogFadeSize;
+    public float FogHeight;
+    public float HeightFogSize;
+    public float HeightFogOffset;
+    public float SSSStrength;
+    public float SSSDesaturation;
+    public float SSSColorThreshold;
+    public float SSSHighlightSize;
+    public float SSSGlobalHighlightStrength;
+    public float SSSHighlightSharpness;
+    public float SSSHighlightDesaturation;
+    public float SSSHighlightColorThreshold;
+    public float SSSAbsorption;
+    public Vector3 SSSGlobalRadius;
+    public float _pad1;
+
+    public static SceneEnvironmentUniforms Default => new()
+    {
+        CameraPosition = Vector3.Zero,
+        FogEnabled = 0,
+        HeightFogEnabled = 0,
+        SSSEnabled = 0,
+        SSSBlurSamples = 8,
+        FogColor = new Vector3(0.5764706f, 0.5764706f, 1f),
+        FogDistance = 10000f,
+        HeightFogColor = new Vector3(0.5764706f, 0.5764706f, 1f),
+        FogFadeSize = 2000f,
+        FogHeight = 1250f,
+        HeightFogSize = 4000f,
+        HeightFogOffset = -3850f,
+        SSSStrength = 1f,
+        SSSDesaturation = 0f,
+        SSSColorThreshold = 0f,
+        SSSHighlightSize = 1f,
+        SSSGlobalHighlightStrength = 1f,
+        SSSHighlightSharpness = 2f,
+        SSSHighlightDesaturation = 0f,
+        SSSHighlightColorThreshold = 0f,
+        SSSAbsorption = 0.35f,
+        SSSGlobalRadius = new Vector3(0.42f, 0.24f, 0.14f),
     };
 }
 

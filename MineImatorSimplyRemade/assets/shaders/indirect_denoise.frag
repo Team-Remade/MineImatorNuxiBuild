@@ -1,13 +1,26 @@
-#version 330 core
+#version 450
 
-out vec4 FragColor;
+// MIGRATION NOTE (subsystem pass 4b/N): blurs indirect_lighting.frag's raw
+// scratch texture and additively composites the result straight onto the
+// main scene framebuffer (BlendState = additive when this pipeline is drawn)
+// - unlike the raw pass, there's no read/write hazard here since the input
+// (uIndirectTex) is a different texture than the output framebuffer.
+layout(set = 0, binding = 0, std140) uniform DenoiseUniforms {
+    vec2  uTexelSize;
+    float uDenoiseStrength;
+    float uNear;
+    float uFar;
+    float _pad0;
+    float _pad1;
+    float _pad2;
+};
 
-uniform sampler2D uIndirectTex;
-uniform sampler2D uDepth;
-uniform vec2 uTexelSize;
-uniform float uDenoiseStrength;
-uniform float uNear;
-uniform float uFar;
+layout(set = 0, binding = 1) uniform texture2D uIndirectTexture;
+layout(set = 0, binding = 2) uniform sampler uIndirectSampler;
+layout(set = 0, binding = 3) uniform texture2D uDepthTexture;
+layout(set = 0, binding = 4) uniform sampler uDepthSampler;
+
+layout(location = 0) out vec4 FragColor;
 
 float linearDepth(float depth)
 {
@@ -18,7 +31,7 @@ float linearDepth(float depth)
 void main()
 {
     vec2 uv = gl_FragCoord.xy * uTexelSize;
-    float centerRawDepth = texture(uDepth, uv).r;
+    float centerRawDepth = texture(sampler2D(uDepthTexture, uDepthSampler), uv).r;
     float centerDepth = centerRawDepth >= 0.999999 ? uFar : linearDepth(centerRawDepth);
 
     float strength = clamp(uDenoiseStrength, 0.0, 200.0) / 200.0;
@@ -34,7 +47,7 @@ void main()
             vec2 offset = vec2(float(x), float(y));
             vec2 sampleUv = uv + offset * uTexelSize;
 
-            float rawDepth = texture(uDepth, sampleUv).r;
+            float rawDepth = texture(sampler2D(uDepthTexture, uDepthSampler), sampleUv).r;
             float sampleDepth = rawDepth >= 0.999999 ? uFar : linearDepth(rawDepth);
             float depthDelta = abs(sampleDepth - centerDepth);
 
@@ -42,11 +55,11 @@ void main()
             float depthWeight = exp(-depthDelta / max(depthSigma, 0.0001));
             float weight = spatial * depthWeight;
 
-            accum += texture(uIndirectTex, sampleUv).rgb * weight;
+            accum += texture(sampler2D(uIndirectTexture, uIndirectSampler), sampleUv).rgb * weight;
             weightSum += weight;
         }
     }
 
-    vec3 denoised = weightSum > 0.0001 ? accum / weightSum : texture(uIndirectTex, uv).rgb;
+    vec3 denoised = weightSum > 0.0001 ? accum / weightSum : texture(sampler2D(uIndirectTexture, uIndirectSampler), uv).rgb;
     FragColor = vec4(denoised, 1.0);
 }

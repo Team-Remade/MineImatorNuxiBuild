@@ -38,6 +38,17 @@ layout(set = 0, binding = 2, std140) uniform MeshMaterial {
     float uEmissionEnergy;
     vec3  uEmissionColor;
     float _matPad0;
+    // Subsystem pass 4/N ("SSS + fog"): per-mesh subsurface scattering amount/
+    // radius/tint/highlight, and whether this mesh participates in fog at all
+    // (matches the old Mesh.IncludeInFog flag - e.g. UI/gizmo overlays opt out).
+    vec3  uSSSRadius;
+    float uSSS;
+    vec3  uSSSColor;
+    float uSSSHighlight;
+    float uSSSHighlightStrength;
+    int   uIncludeInFog;
+    int   _matPad1;
+    int   _matPad2;
 };
 
 layout(set = 1, binding = 0, std140) uniform SceneData {
@@ -91,6 +102,38 @@ layout(set = 1, binding = 1, std140) uniform PointLightData {
 // Directional shadow map (subsystem pass 3/N).
 layout(set = 1, binding = 2) uniform texture2D uShadowMapTexture;
 layout(set = 1, binding = 3) uniform sampler uShadowMapSampler;
+
+// Global environment - subsurface-scattering multipliers/quality knobs and
+// distance/height fog (subsystem pass 4/N). Per-mesh SSS amount/radius/tint
+// live in MeshMaterial above; these are the scene-wide settings that used to
+// be static fields on the old GL Mesh class (Mesh.FogEnabled, Mesh.SssRadius,
+// etc.), now uploaded once per frame like everything else in SceneData.
+layout(set = 1, binding = 4, std140) uniform SceneEnvironment {
+    vec3  uCameraPosition;
+    float _envPad0;
+    int   uFogEnabled;
+    int   uHeightFogEnabled;
+    int   uSSSEnabled;
+    int   uSSSBlurSamples;
+    vec3  uFogColor;
+    float uFogDistance;
+    vec3  uHeightFogColor;
+    float uFogFadeSize;
+    float uFogHeight;
+    float uHeightFogSize;
+    float uHeightFogOffset;
+    float uSSSStrength;
+    float uSSSDesaturation;
+    float uSSSColorThreshold;
+    float uSSSHighlightSize;
+    float uSSSGlobalHighlightStrength;
+    float uSSSHighlightSharpness;
+    float uSSSHighlightDesaturation;
+    float uSSSHighlightColorThreshold;
+    float uSSSAbsorption;
+    vec3  uSSSGlobalRadius;
+    float _envPad1;
+};
 
 // Point-light shadow cubemaps (subsystem pass 3b/N). Declared as 8 explicit
 // named bindings rather than a real GLSL array of samplerCube, since an
@@ -167,6 +210,85 @@ float calculatePointShadow(int shadowIndex, vec3 fragPos, vec3 lightPos, float f
     return currentDepth - bias > closestDepth ? 1.0 : 0.0;
 }
 
+float CSPhase(float dotView, float scatter) {
+    float g = scatter;
+    float g2 = g * g;
+    float denom = 2.0 * (2.0 + g2) * pow(max(1.0 + g2 - 2.0 * g * dotView, 0.0001), 1.5);
+    return (3.0 * (1.0 - g2) * (1.0 + dotView)) / max(denom, 0.0001);
+}
+
+float computeSssRim(float ndotView, float backLighting) {
+    float edge = clamp(1.0 - ndotView, 0.0, 1.0);
+    float sizeFactor = max(uSSSHighlightSize, 0.001);
+    float rimBase = pow(edge, 1.0 / sizeFactor);
+    float rimSharp = pow(rimBase, max(uSSSHighlightSharpness, 0.01));
+    return rimSharp * clamp(backLighting, 0.0, 1.0);
+}
+
+vec3 estimateDirectionalSubsurface(vec3 norm, vec3 lightDir, vec3 lightColor, float sss) {
+    if (uUseShadowMap == 0 || sss <= 0.0)
+        return vec3(0.0);
+
+    vec3 projCoords = vShadowCoord.xyz / max(vShadowCoord.w, 0.0001);
+    projCoords = projCoords * 0.5 + 0.5;
+
+    if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0)
+        return vec3(0.0);
+
+    float currentDepth = projCoords.z;
+    ivec2 texSize = textureSize(sampler2D(uShadowMapTexture, uShadowMapSampler), 0);
+    vec2 texelSize = 1.0 / vec2(texSize);
+    int sampleCount = clamp(uSSSBlurSamples, 0, 32);
+    if (sampleCount <= 0) sampleCount = 1;
+
+    float sampleDepth = 0.0;
+    float weightSum = 0.0;
+    for (int i = 0; i < 32; i++) {
+        if (i >= sampleCount) break;
+
+        float fi = float(i);
+        float radius = sqrt(fi + 0.5) / sqrt(float(sampleCount));
+        float theta = fi * 2.399963;
+        vec2 disk = vec2(cos(theta), sin(theta));
+        vec2 offset = disk * radius * texelSize;
+        float w = 1.0 - radius;
+        sampleDepth += texture(sampler2D(uShadowMapTexture, uShadowMapSampler), projCoords.xy + offset).r * w;
+        weightSum += w;
+    }
+    sampleDepth /= max(weightSum, 0.0001);
+    float bias = max(0.0025 * (1.0 - dot(norm, lightDir)), 0.0007);
+
+    vec3 rad = max((uSSSRadius * uSSSGlobalRadius) * sss, vec3(0.0001));
+    vec3 invLight = 1.0 / (max(lightColor, vec3(0.0001)) * rad + 0.001);
+    vec3 dis = max((currentDepth + bias) - sampleDepth, 0.0) * invLight;
+    vec3 base = pow(max(1.0 - pow(dis / rad, vec3(4.0)), 0.0), vec3(2.0))
+              / (pow(dis, vec3(2.0)) + 1.0);
+
+    return base;
+}
+
+vec3 estimatePointSubsurface(vec3 norm, vec3 lightDir, vec3 fragPos, vec3 lightPos, vec3 lightColor,
+    float lightEnergy, float farPlane, int shadowIndex, float sss) {
+    if (shadowIndex < 0 || shadowIndex >= MAX_POINT_SHADOWS || sss <= 0.0)
+        return vec3(0.0);
+
+    vec3 lightToFrag = fragPos - lightPos;
+    float currentDepth = length(lightToFrag);
+    if (currentDepth <= 0.0001 || currentDepth >= farPlane)
+        return vec3(0.0);
+
+    float closestDepth = samplePointShadowCube(shadowIndex, lightToFrag) * farPlane;
+    float bias = max(0.05 * (1.0 - dot(norm, lightDir)), 0.02);
+
+    vec3 rad = max((uSSSRadius * uSSSGlobalRadius) * sss, vec3(0.0001));
+    vec3 invLight = 1.0 / (max(lightColor * max(lightEnergy, 0.0001), vec3(0.0001)) * rad + 0.001);
+    vec3 dis = max((currentDepth + bias) - closestDepth, 0.0) * invLight;
+    vec3 base = pow(max(1.0 - pow(dis / rad, vec3(4.0)), 0.0), vec3(2.0))
+              / (pow(dis, vec3(2.0)) + 1.0);
+
+    return base;
+}
+
 void main() {
     vec3 baseColor = uAlbedo;
     vec3 emissionMask = vec3(1.0);
@@ -188,8 +310,8 @@ void main() {
     vec3 result = baseColor;
 
     if (uIsUnlit == 0) {
-        // TODO(migration - SSS+fog subsystem pass): subsurface scattering,
-        // distance/height fog still missing.
+        // TODO(migration - indirect lighting/AO subsystem pass): screen-space
+        // ambient occlusion and point-light indirect bounce are still missing.
         vec3 norm = gl_FrontFacing ? normalize(vNormal) : -normalize(vNormal);
 
         float sunDiff  = max(dot(norm, normalize(uLightDir)), 0.0);
@@ -219,6 +341,11 @@ void main() {
                  + sunDiff  * uLightColor        * mainVisibility
                  + sunFill  * uSunFillLightColor * sunVisibility
                  + moonFill * uMoonFillLightColor * moonVisibility;
+
+        float sssAmount = uSSSEnabled != 0 ? clamp(uSSS, 0.0, 1.0) : 0.0;
+        vec3 viewDir = normalize(vFragPos - uCameraPosition);
+        vec3 cameraDir = normalize(uCameraPosition - vFragPos);
+        float ndotView = max(dot(norm, cameraDir), 0.0);
 
         for (int i = 0; i < uPointLightCount; i++) {
             vec3  lightPos = uPointLightPosRange[i].xyz;
@@ -255,13 +382,73 @@ void main() {
             vec3 color  = uPointLightColorEnergy[i].rgb;
             float energy = uPointLightColorEnergy[i].a;
             lit += color * diff * attenuation * spot * energy * (1.0 - pointShadow);
+
+            if (sssAmount > 0.0) {
+                vec3 pointSubsurf = estimatePointSubsurface(norm, lightDir, vFragPos, lightPos, color, energy, farPlane, shadowIndex, sssAmount);
+                pointSubsurf *= attenuation * spot;
+                float transDif = max(0.0, dot(normalize(-norm), lightDir));
+                vec3 pointSssTint = mix(color, vec3(1.0), clamp(uSSSColorThreshold, 0.0, 1.0));
+                float pointSssLuma = dot(pointSssTint, vec3(0.299, 0.587, 0.114));
+                pointSssTint = mix(pointSssTint, vec3(pointSssLuma), clamp(uSSSDesaturation, 0.0, 1.0));
+                pointSubsurf *= max(uSSSStrength, 0.0);
+
+                float phase = CSPhase(dot(viewDir, lightDir), uSSSAbsorption);
+                float sizeFactor = max(uSSSHighlightSize, 0.001);
+                float highlightMask = pow(transDif, 1.0 / sizeFactor);
+                float highlightShape = pow(max(highlightMask, 0.0), max(uSSSHighlightSharpness, 0.01));
+                float rim = computeSssRim(ndotView, transDif);
+                vec3 pointHighlightTint = mix(color, vec3(1.0), clamp(uSSSHighlightColorThreshold, 0.0, 1.0));
+                float pointHighlightLuma = dot(pointHighlightTint, vec3(0.299, 0.587, 0.114));
+                pointHighlightTint = mix(pointHighlightTint, vec3(pointHighlightLuma), clamp(uSSSHighlightDesaturation, 0.0, 1.0));
+
+                pointSubsurf += pointSubsurf * (uSSSHighlightStrength * max(uSSSGlobalHighlightStrength, 0.0)) * phase * highlightShape;
+                lit += pointSssTint * max(energy, 0.0) * uSSSColor * transDif * pointSubsurf;
+                lit += pointHighlightTint * (uSSSHighlightStrength * max(uSSSGlobalHighlightStrength, 0.0)) * phase * highlightShape * 0.25;
+                lit += pointHighlightTint * (uSSSHighlightStrength * max(uSSSGlobalHighlightStrength, 0.0)) * rim * 0.35;
+            }
         }
 
         result = lit * baseColor;
+
+        if (sssAmount > 0.0) {
+            vec3 subsurf = estimateDirectionalSubsurface(norm, shadowLightDir, uLightColor, sssAmount);
+            float transDif = max(0.0, dot(normalize(-norm), normalize(uLightDir)));
+            vec3 sssTint = mix(uLightColor, vec3(1.0), clamp(uSSSColorThreshold, 0.0, 1.0));
+            float sssLuma = dot(sssTint, vec3(0.299, 0.587, 0.114));
+            sssTint = mix(sssTint, vec3(sssLuma), clamp(uSSSDesaturation, 0.0, 1.0));
+            subsurf *= max(uSSSStrength, 0.0);
+
+            float phase = CSPhase(dot(viewDir, normalize(uLightDir)), uSSSAbsorption);
+            float sizeFactor = max(uSSSHighlightSize, 0.001);
+            float highlightMask = pow(transDif, 1.0 / sizeFactor);
+            float highlightShape = pow(max(highlightMask, 0.0), max(uSSSHighlightSharpness, 0.01));
+            float rim = computeSssRim(ndotView, transDif);
+            vec3 highlightTint = mix(uLightColor, vec3(1.0), clamp(uSSSHighlightColorThreshold, 0.0, 1.0));
+            float highlightLuma = dot(highlightTint, vec3(0.299, 0.587, 0.114));
+            highlightTint = mix(highlightTint, vec3(highlightLuma), clamp(uSSSHighlightDesaturation, 0.0, 1.0));
+
+            subsurf += subsurf * (uSSSHighlightStrength * max(uSSSGlobalHighlightStrength, 0.0)) * phase * highlightShape;
+            result += (sssTint * uSSSColor) * transDif * subsurf;
+            result += highlightTint * (uSSSHighlightStrength * max(uSSSGlobalHighlightStrength, 0.0)) * phase * highlightShape * 0.25;
+            result += highlightTint * (uSSSHighlightStrength * max(uSSSGlobalHighlightStrength, 0.0)) * rim * 0.35;
+            result *= mix(vec3(1.0), uSSSColor, sssAmount);
+        }
     }
 
     if (uEmissionEnabled != 0) {
         result += (uEmissionColor * emissionMask) * max(uEmissionEnergy, 0.0);
+    }
+
+    if (uFogEnabled != 0 && uIncludeInFog != 0) {
+        float distancePixels = length(vFragPos - uCameraPosition) * 64.0;
+        float distanceFog = smoothstep(max(uFogDistance - uFogFadeSize, 0.0), max(uFogDistance, 1.0), distancePixels);
+        result = mix(result, uFogColor, distanceFog);
+        if (uHeightFogEnabled != 0) {
+            float worldHeightPixels = vFragPos.y * 64.0;
+            float heightStart = uFogHeight + uHeightFogOffset;
+            float heightFog = 1.0 - smoothstep(heightStart, heightStart + max(uHeightFogSize, 1.0), worldHeightPixels);
+            result = mix(result, uHeightFogColor, heightFog);
+        }
     }
 
     FragColor = vec4(result, alpha);

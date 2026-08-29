@@ -1,18 +1,31 @@
-#version 330 core
+#version 450
 
-out vec4 FragColor;
+// MIGRATION NOTE (subsystem pass 4b/N - "indirect lighting/AO"): loose
+// uniforms moved into an explicit std140 block, same reasoning as every other
+// shader in this migration. Drawn as a full-screen pass (see fullscreen.vert)
+// directly onto the main scene's color framebuffer with alpha blending, so
+// FragColor.a is the darkening amount and FragColor.rgb is what gets blended
+// in (typically black) - this must be drawn *after* all opaque scene meshes
+// and *into the same framebuffer*, matching the old renderer's ordering.
+layout(set = 0, binding = 0, std140) uniform AOUniforms {
+    vec2  uTexelSize;
+    float uNear;
+    float uFar;
+    float uRadius;
+    float uStrength;
+    vec2  _pad0;
+    vec3  uColor;
+    float uRatio;
+    float uRatioBalance;
+    int   uSampleCount;
+    int   uOutputMode;
+    int   _pad1;
+};
 
-uniform sampler2D uDepth;
-uniform vec2 uTexelSize;
-uniform float uNear;
-uniform float uFar;
-uniform float uRadius;
-uniform float uStrength;
-uniform vec3 uColor;
-uniform float uRatio;
-uniform float uRatioBalance;
-uniform int uSampleCount;
-uniform int uOutputMode;
+layout(set = 0, binding = 1) uniform texture2D uDepthTexture;
+layout(set = 0, binding = 2) uniform sampler uDepthSampler;
+
+layout(location = 0) out vec4 FragColor;
 
 float linearDepth(float depth)
 {
@@ -23,12 +36,11 @@ float linearDepth(float depth)
 void main()
 {
     vec2 uv = gl_FragCoord.xy * uTexelSize;
-    float rawCenter = texture(uDepth, uv).r;
+    float rawCenter = texture(sampler2D(uDepthTexture, uDepthSampler), uv).r;
     if (rawCenter >= 0.999999 || uRadius <= 0.0 || uStrength <= 0.0)
         discard;
 
     float center = linearDepth(rawCenter);
-    // Estimate local depth slope so flat/sloped surfaces do not self-occlude.
     float dzdx = dFdx(center);
     float dzdy = dFdy(center);
     float occlusion = 0.0;
@@ -46,7 +58,7 @@ void main()
         float sampleRadius = uRadius * mix(sqrt(t), t, uRatioBalance);
         vec2 direction = vec2(cos(float(i) * goldenAngle), sin(float(i) * goldenAngle));
         vec2 pixelOffset = direction * sampleRadius;
-        float rawSample = texture(uDepth, uv + pixelOffset * uTexelSize).r;
+        float rawSample = texture(sampler2D(uDepthTexture, uDepthSampler), uv + pixelOffset * uTexelSize).r;
         if (rawSample >= 0.999999)
             continue;
 
@@ -67,7 +79,6 @@ void main()
 
     float aoMask = clamp(occlusion * uStrength * 0.85, 0.0, 1.0);
 
-    // Remove low-level baseline darkening so open/flat areas stay neutral.
     float floorAmount = mix(0.04, 0.01, uRatioBalance);
     aoMask = clamp((aoMask - floorAmount) / max(1.0 - floorAmount, 0.0001), 0.0, 1.0);
     if (uOutputMode == 1)
