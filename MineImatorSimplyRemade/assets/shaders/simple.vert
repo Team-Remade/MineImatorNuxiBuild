@@ -51,6 +51,10 @@ layout(set = 1, binding = 0, std140) uniform SceneData {
     int   uMainLightCastsShadows;
     int   uSunFillLightCastsShadows;
     int   uMoonFillLightCastsShadows;
+    int   uUseShadowMap;
+    int   _scenePad0;
+    int   _scenePad1;
+    int   _scenePad2;
 };
 
 layout(location = 0) out vec3 vNormal;

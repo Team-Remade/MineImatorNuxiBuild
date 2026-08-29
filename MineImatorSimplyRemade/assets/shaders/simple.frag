@@ -60,6 +60,10 @@ layout(set = 1, binding = 0, std140) uniform SceneData {
     int   uMainLightCastsShadows;
     int   uSunFillLightCastsShadows;
     int   uMoonFillLightCastsShadows;
+    int   uUseShadowMap;
+    int   _scenePad0;
+    int   _scenePad1;
+    int   _scenePad2;
 };
 
 layout(set = 0, binding = 1) uniform sampler2D uTextureSampler;
@@ -80,7 +84,39 @@ layout(set = 1, binding = 1, std140) uniform PointLightData {
     vec4 uPointLightColorEnergy[MAX_POINT_LIGHTS];
 };
 
+// Directional shadow map (subsystem pass 3/N). Point-light shadow cubemaps,
+// spot cones, and per-light shadow indices are NOT ported yet - that's its
+// own follow-up pass (point lights above always render fully unshadowed).
+layout(set = 1, binding = 2) uniform texture2D uShadowMapTexture;
+layout(set = 1, binding = 3) uniform sampler uShadowMapSampler;
+
 layout(location = 0) out vec4 FragColor;
+
+float calculateShadow(vec3 norm, vec3 lightDir) {
+    if (uUseShadowMap == 0) return 0.0;
+
+    vec3 projCoords = vShadowCoord.xyz / max(vShadowCoord.w, 0.0001);
+    projCoords = projCoords * 0.5 + 0.5;
+
+    if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0)
+        return 0.0;
+
+    float currentDepth = projCoords.z;
+    float bias = max(0.0025 * (1.0 - dot(norm, lightDir)), 0.0007);
+
+    ivec2 texSize = textureSize(sampler2D(uShadowMapTexture, uShadowMapSampler), 0);
+    vec2 texelSize = 1.0 / vec2(texSize);
+
+    float shadow = 0.0;
+    for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+            float pcfDepth = texture(sampler2D(uShadowMapTexture, uShadowMapSampler), projCoords.xy + vec2(x, y) * texelSize).r;
+            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+
+    return shadow / 9.0;
+}
 
 void main() {
     vec3 baseColor = uAlbedo;
@@ -103,19 +139,38 @@ void main() {
     vec3 result = baseColor;
 
     if (uIsUnlit == 0) {
-        // TODO(migration - shadow passes / SSS+fog subsystem passes): PCF
-        // directional shadows, spot-cone point lights, per-light shadow
-        // cubemaps, subsurface scattering, distance/height fog still missing.
+        // TODO(migration - point-shadow-cubemaps / SSS+fog subsystem passes):
+        // spot-cone point lights, per-light shadow cubemaps, subsurface
+        // scattering, distance/height fog still missing.
         vec3 norm = gl_FrontFacing ? normalize(vNormal) : -normalize(vNormal);
 
         float sunDiff  = max(dot(norm, normalize(uLightDir)), 0.0);
         float sunFill  = max(dot(norm, normalize(uSunFillLightDir)), 0.0);
         float moonFill = max(dot(norm, normalize(uMoonFillLightDir)), 0.0);
 
+        // Matches the old renderer: whichever fill light is currently the
+        // shadow caster (moon takes priority over sun, main light as a
+        // fallback) determines which direction the PCF sample is offset
+        // toward, but the resulting shadow factor gates all three lights'
+        // visibility independently based on their own *CastsShadows flag.
+        vec3 shadowLightDir = uMoonFillLightCastsShadows != 0 ? normalize(uMoonFillLightDir)
+                             : uSunFillLightCastsShadows  != 0 ? normalize(uSunFillLightDir)
+                             : normalize(uLightDir);
+        float shadow = calculateShadow(norm, shadowLightDir);
+
+        if (uShadowDebugMode == 1) {
+            FragColor = uUseShadowMap != 0 ? vec4(vec3(shadow), 1.0) : vec4(1.0, 0.0, 1.0, 1.0);
+            return;
+        }
+
+        float mainVisibility  = uMainLightCastsShadows      != 0 ? (1.0 - shadow) : 1.0;
+        float sunVisibility   = uSunFillLightCastsShadows   != 0 ? (1.0 - shadow) : 1.0;
+        float moonVisibility  = uMoonFillLightCastsShadows  != 0 ? (1.0 - shadow) : 1.0;
+
         vec3 lit = uAmbient
-                 + sunDiff  * uLightColor
-                 + sunFill  * uSunFillLightColor
-                 + moonFill * uMoonFillLightColor;
+                 + sunDiff  * uLightColor        * mainVisibility
+                 + sunFill  * uSunFillLightColor * sunVisibility
+                 + moonFill * uMoonFillLightColor * moonVisibility;
 
         for (int i = 0; i < uPointLightCount; i++) {
             vec3  lightPos = uPointLightPosRange[i].xyz;

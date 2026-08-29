@@ -101,6 +101,10 @@ public struct SceneDataUniforms
     public int MainLightCastsShadows;
     public int SunFillLightCastsShadows;
     public int MoonFillLightCastsShadows;
+    public int UseShadowMap;
+    public int _pad7;
+    public int _pad8;
+    public int _pad9;
 
     public static SceneDataUniforms Default => new()
     {
@@ -112,6 +116,38 @@ public struct SceneDataUniforms
         SunFillLightColor = new Vector3(1f, 0.9686f, 0.8941f),
         MoonFillLightDir = Vector3.UnitY,
         MoonFillLightColor = new Vector3(0.6f, 0.65f, 1f),
+    };
+}
+
+/// <summary>
+/// C# mirror of the <c>ShadowDepthUniforms</c> std140 block declared in
+/// <c>assets/shaders/shadow_depth.vert</c>/<c>shadow_depth.frag</c>, used when
+/// rendering a mesh into a <see cref="VeldridShadowMap"/> from a light's
+/// point of view (depth-only, alpha-cutout tested against the mesh's texture).
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct ShadowDepthUniforms
+{
+    public Matrix4x4 MVP;
+    public Vector2 TexOffset;
+    public float TexScaleV;
+    public float Alpha;
+    public Vector2 TexUvOffset;
+    public Vector2 TexUvRepeat;
+    public Vector2 TexUvMirror;
+    public int UseTexture;
+    public int _pad0;
+
+    public static ShadowDepthUniforms Default => new()
+    {
+        MVP = Matrix4x4.Identity,
+        TexOffset = Vector2.Zero,
+        TexScaleV = 1f,
+        Alpha = 1f,
+        TexUvOffset = Vector2.Zero,
+        TexUvRepeat = Vector2.One,
+        TexUvMirror = Vector2.Zero,
+        UseTexture = 0,
     };
 }
 

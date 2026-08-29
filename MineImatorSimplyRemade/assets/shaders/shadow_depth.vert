@@ -1,20 +1,29 @@
-#version 330 core
+#version 450
 
+// MIGRATION NOTE (subsystem pass 3/N - "shadow passes: directional map"):
+// skinning intentionally dropped from this pass too (same reason as
+// simple.vert - see its migration note); reintroduced in the "skinning +
+// instancing" follow-up pass alongside simple.vert/frag. aNormal (location 1)
+// is unused here but kept in the input layout so this shader can bind
+// VeldridMesh's existing interleaved position/normal/uv vertex buffer without
+// needing a second, depth-pass-only vertex layout/buffer.
 layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aNormal;
 layout (location = 2) in vec2 aTexCoord;
-layout (location = 3) in ivec4 aBoneIndices;
-layout (location = 4) in vec4 aBoneWeights;
 
-uniform mat4  uMVP;
-uniform vec2  uTexOffset;
-uniform float uTexScaleV;
-uniform vec2  uTexUvOffset;
-uniform vec2  uTexUvRepeat;
-uniform vec2  uTexUvMirror;
-uniform bool  uIsSkinned;
-uniform mat4  uBoneMatrices[64];
+layout(set = 0, binding = 0, std140) uniform ShadowDepthUniforms {
+    mat4  uMVP;
+    vec2  uTexOffset;
+    float uTexScaleV;
+    float uAlpha;
+    vec2  uTexUvOffset;
+    vec2  uTexUvRepeat;
+    vec2  uTexUvMirror;
+    int   uUseTexture;
+    int   _pad0;
+};
 
-out vec2 vTexCoord;
+layout(location = 0) out vec2 vTexCoord;
 
 vec2 applyUvTransform(vec2 uv)
 {
@@ -30,20 +39,7 @@ vec2 applyUvTransform(vec2 uv)
 }
 
 void main() {
-    vec4 pos;
-    if (uIsSkinned) {
-        mat4 skinMatrix = mat4(0.0);
-        for (int i = 0; i < 4; i++) {
-            if (aBoneIndices[i] >= 0 && aBoneIndices[i] < 64 && aBoneWeights[i] > 0.0) {
-                skinMatrix += aBoneWeights[i] * uBoneMatrices[aBoneIndices[i]];
-            }
-        }
-        pos = skinMatrix * vec4(aPos, 1.0);
-    } else {
-        pos = vec4(aPos, 1.0);
-    }
-
     vec2 baseUv = vec2(aTexCoord.x, aTexCoord.y * uTexScaleV + uTexOffset.y);
     vTexCoord = applyUvTransform(baseUv);
-    gl_Position = uMVP * pos;
+    gl_Position = uMVP * vec4(aPos, 1.0);
 }
