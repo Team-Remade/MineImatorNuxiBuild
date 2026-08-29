@@ -7,14 +7,17 @@ namespace MineImatorSimplyRemade.core.render;
 /// Replacement for <c>core.mdl.Mesh</c>'s GPU-resident triangle mesh, targeting
 /// Veldrid instead of Silk.NET.OpenGL.
 ///
-/// MIGRATION STATUS - subsystem pass 1/N ("basic mesh upload/draw"): this ports
+/// MIGRATION STATUS - subsystem pass 2/N ("lighting uniforms"): pass 1 ported
 /// geometry upload (position/normal/UV, optional index buffer) and a minimal
-/// unlit/flat-shaded draw call using <c>simple.vert</c>/<c>simple.frag</c>'s
-/// reduced pass-1 uniform blocks. Deliberately NOT ported yet (each is its own
-/// follow-up subsystem pass, per the phased migration plan):
+/// unlit/flat-shaded draw call; this pass adds the shared per-frame SceneData
+/// (sun/moon fill lights, ambient) and a simplified point-light array (see
+/// <see cref="PointLightUniforms"/>) as a second bound resource set (set = 1),
+/// sourced from <c>VeldridBitmapRenderSurface.SceneDataBuffer</c>/<c>PointLightBuffer</c>
+/// so every mesh drawn into the same surface shares one lighting state. Still
+/// NOT ported (each is its own follow-up subsystem pass):
 ///   - skinning (bone indices/weights) and per-instance matrices
-///   - the full lighting model (32 point lights, spot cones, subsurface
-///     scattering, directional+point shadows, fog/height-fog)
+///   - spot-light cones, per-light shadow-cubemap indices, directional+point
+///     shadow sampling, subsurface scattering, fog/height-fog
 ///   - shape keys / morph targets
 ///   - animated texture atlas sampling
 /// See <c>core.mdl.Mesh</c> (the old GL version, still present elsewhere in the
@@ -34,6 +37,12 @@ public sealed class VeldridMesh : IDisposable
     private DeviceBuffer? _materialUniformBuffer;
     private ResourceSet? _meshResourceSet;
     private ResourceLayout? _meshResourceLayout;
+
+    private ResourceLayout? _sceneResourceLayout;
+    private ResourceSet? _sceneResourceSet;
+    private DeviceBuffer? _boundSceneDataBuffer;
+    private DeviceBuffer? _boundPointLightBuffer;
+
     private Pipeline? _pipeline;
     private OutputDescription _outputDescription;
 
@@ -142,6 +151,13 @@ public sealed class VeldridMesh : IDisposable
             new ResourceLayoutElementDescription("uTextureSamplerState", ResourceKind.Sampler, ShaderStages.Fragment),
             new ResourceLayoutElementDescription("MeshMaterial", ResourceKind.UniformBuffer, ShaderStages.Fragment)));
 
+        // Matches simple.vert/simple.frag's `set = 1` bindings: binding 0 =
+        // SceneData (read by both stages - simple.vert samples uLightSpaceMatrix),
+        // binding 1 = PointLightData (fragment only).
+        _sceneResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
+            new ResourceLayoutElementDescription("SceneData", ResourceKind.UniformBuffer, ShaderStages.Vertex | ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("PointLightData", ResourceKind.UniformBuffer, ShaderStages.Fragment)));
+
         var vertexLayout = new VertexLayoutDescription(
             new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
             new VertexElementDescription("Normal", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
@@ -154,7 +170,7 @@ public sealed class VeldridMesh : IDisposable
             RasterizerState = new RasterizerStateDescription(
                 FaceCullMode.Back, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
             PrimitiveTopology = PrimitiveTopology.TriangleList,
-            ResourceLayouts = new[] { _meshResourceLayout },
+            ResourceLayouts = new[] { _meshResourceLayout, _sceneResourceLayout },
             ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, new[] { vertexShader, fragmentShader }),
             Outputs = _outputDescription,
         });
@@ -172,6 +188,28 @@ public sealed class VeldridMesh : IDisposable
         TextureView view = GetOrCreateAlbedoView();
         _meshResourceSet = _device.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
             _meshResourceLayout, _meshUniformBuffer, view, _albedoSampler, _materialUniformBuffer));
+    }
+
+    /// <summary>
+    /// Builds (or rebuilds, if the caller passed different buffer instances than
+    /// last time - e.g. a different render surface) the set = 1 resource set.
+    /// Cheap to call every frame: content updates to the buffers themselves
+    /// (<c>UpdateBuffer</c>) don't require recreating the <see cref="ResourceSet"/>,
+    /// only a change of which buffer objects are bound does.
+    /// </summary>
+    private void EnsureSceneResourceSet(DeviceBuffer sceneDataBuffer, DeviceBuffer pointLightBuffer)
+    {
+        if (_sceneResourceLayout == null)
+            return;
+
+        if (_sceneResourceSet != null && _boundSceneDataBuffer == sceneDataBuffer && _boundPointLightBuffer == pointLightBuffer)
+            return;
+
+        _sceneResourceSet?.Dispose();
+        _sceneResourceSet = _device.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
+            _sceneResourceLayout, sceneDataBuffer, pointLightBuffer));
+        _boundSceneDataBuffer = sceneDataBuffer;
+        _boundPointLightBuffer = pointLightBuffer;
     }
 
     private TextureView GetOrCreateAlbedoView()
@@ -195,10 +233,15 @@ public sealed class VeldridMesh : IDisposable
     }
 
     /// <summary>Draws the mesh into whatever framebuffer <paramref name="commandList"/> currently has bound.</summary>
-    public void Render(CommandList commandList, Matrix4x4 model, Matrix4x4 view, Matrix4x4 proj, DeviceBuffer sceneDataBuffer)
+    /// <param name="sceneDataBuffer">Typically <c>VeldridBitmapRenderSurface.SceneDataBuffer</c>.</param>
+    /// <param name="pointLightBuffer">Typically <c>VeldridBitmapRenderSurface.PointLightBuffer</c>.</param>
+    public void Render(CommandList commandList, Matrix4x4 model, Matrix4x4 view, Matrix4x4 proj,
+        DeviceBuffer sceneDataBuffer, DeviceBuffer pointLightBuffer)
     {
         if (_pipeline == null || _vertexBuffer == null || _meshUniformBuffer == null || _materialUniformBuffer == null)
             return;
+
+        EnsureSceneResourceSet(sceneDataBuffer, pointLightBuffer);
 
         var meshUniforms = MeshUniforms.Default;
         meshUniforms.Model = model;
@@ -217,10 +260,7 @@ public sealed class VeldridMesh : IDisposable
 
         commandList.SetPipeline(_pipeline);
         commandList.SetGraphicsResourceSet(0, _meshResourceSet);
-        // TODO(migration - lighting uniforms pass): bind sceneDataBuffer as
-        // set 1 once SceneData has its own ResourceLayout/ResourceSet wired up
-        // here; the parameter is threaded through now so callers don't need to
-        // change again when that lands.
+        commandList.SetGraphicsResourceSet(1, _sceneResourceSet);
         commandList.SetVertexBuffer(0, _vertexBuffer);
 
         if (_indexBuffer != null)
@@ -239,6 +279,8 @@ public sealed class VeldridMesh : IDisposable
         _pipeline?.Dispose();
         _meshResourceSet?.Dispose();
         _meshResourceLayout?.Dispose();
+        _sceneResourceSet?.Dispose();
+        _sceneResourceLayout?.Dispose();
         _albedoTextureView?.Dispose();
         _albedoSampler?.Dispose();
         _vertexBuffer?.Dispose();
@@ -249,6 +291,10 @@ public sealed class VeldridMesh : IDisposable
         _pipeline = null;
         _meshResourceSet = null;
         _meshResourceLayout = null;
+        _sceneResourceSet = null;
+        _sceneResourceLayout = null;
+        _boundSceneDataBuffer = null;
+        _boundPointLightBuffer = null;
         _albedoTextureView = null;
         _albedoSampler = null;
         _vertexBuffer = null;

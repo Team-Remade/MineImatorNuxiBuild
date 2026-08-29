@@ -23,12 +23,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Avalonia" Version="11.2.1" />
-      <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />
-      <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.1" />
-      <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.1" />
-      <PackageReference Include="Dock.Avalonia" Version="11.2.1" />
-      <PackageReference Include="Dock.Model.Avalonia" Version="11.2.1" />
+      <PackageReference Include="Avalonia" Version="11.2.6" />
+      <PackageReference Include="Avalonia.Desktop" Version="11.2.6" />
+      <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.6" />
+      <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.6" />
+      <PackageReference Include="Dock.Avalonia" Version="11.2.6" />
+      <PackageReference Include="Dock.Model.Avalonia" Version="11.2.6" />
       <PackageReference Include="Veldrid" Version="4.9.0" />
       <PackageReference Include="Veldrid.SPIRV" Version="1.0.15" />
       <PackageReference Include="Cyotek.Data.Nbt" Version="4.0.0" />

@@ -73,11 +73,11 @@ public struct MeshMaterialUniforms
 }
 
 /// <summary>
-/// C# mirror of the shared per-frame <c>SceneData</c> std140 block. Only the
-/// fields actually read by the reduced simple.frag (this migration pass) are
-/// meaningful right now (uAmbient, uLightDir, uLightColor); the rest exist so
-/// the struct's total size/layout matches the GLSL block exactly, ready for the
-/// "lighting uniforms" follow-up pass to start using them without a layout change.
+/// C# mirror of the shared per-frame <c>SceneData</c> std140 block (set = 1,
+/// binding = 0). Sun/moon fill light fields are read by the "lighting uniforms"
+/// pass (simple.frag); shadow-related fields (LightSpaceMatrix, *CastsShadows)
+/// exist so the struct's size/layout matches the GLSL block exactly, ready for
+/// the "shadow passes" follow-up pass to start using them without a layout change.
 /// </summary>
 [StructLayout(LayoutKind.Sequential)]
 public struct SceneDataUniforms
@@ -113,4 +113,65 @@ public struct SceneDataUniforms
         MoonFillLightDir = Vector3.UnitY,
         MoonFillLightColor = new Vector3(0.6f, 0.65f, 1f),
     };
+}
+
+/// <summary>
+/// C# counterpart of the <c>PointLightData</c> std140 block (set = 1, binding = 1)
+/// declared in <c>simple.frag</c>. This is a deliberately simplified version of
+/// the old <c>Mesh.PointLights</c> tuple list: only position, range, color, and
+/// energy are carried - spot-cone direction/angles and per-light shadow-cubemap
+/// index are added in the "shadow passes" follow-up pass, which is also where
+/// they're actually consumed.
+///
+/// Deliberately NOT a single <c>[StructLayout]</c> struct blitted in one
+/// <c>UpdateBuffer&lt;T&gt;</c> call: C# has no ergonomic way to embed a true
+/// fixed-size <c>Vector4[32]</c> array inline in a struct that also round-trips
+/// correctly through Veldrid's generic (<c>Unsafe.SizeOf&lt;T&gt;</c>-based) buffer
+/// update path. Instead, <see cref="WriteTo"/> writes the header and each array
+/// directly into the target buffer at the byte offsets matching the GLSL block's
+/// std140 layout (count+padding: 16 bytes, then two 32×16-byte vec4 arrays).
+/// </summary>
+public sealed class PointLightUniforms
+{
+    public const int MaxPointLights = 32;
+
+    /// <summary>Total buffer size in bytes required to hold this block: 16 (count+padding) + 32*16 (PosRange) + 32*16 (ColorEnergy).</summary>
+    public const uint SizeInBytes = 16 + MaxPointLights * 16 + MaxPointLights * 16;
+
+    public int Count { get; private set; }
+    private readonly Vector4[] _posRange = new Vector4[MaxPointLights];
+    private readonly Vector4[] _colorEnergy = new Vector4[MaxPointLights];
+
+    public static readonly PointLightUniforms Empty = new();
+
+    /// <summary>
+    /// Repopulates this instance from up to <see cref="MaxPointLights"/> lights,
+    /// each as (position, range, color, energy). Extra lights beyond the cap are
+    /// silently dropped (matches the old renderer's fixed-size array behavior).
+    /// Reuses the same backing arrays every call to avoid per-frame allocations.
+    /// </summary>
+    public void Set(IReadOnlyList<(Vector3 Position, float Range, Vector3 Color, float Energy)> lights)
+    {
+        Count = Math.Min(lights.Count, MaxPointLights);
+        for (int i = 0; i < Count; i++)
+        {
+            var (position, range, color, energy) = lights[i];
+            _posRange[i] = new Vector4(position, range);
+            _colorEnergy[i] = new Vector4(color, energy);
+        }
+        for (int i = Count; i < MaxPointLights; i++)
+        {
+            _posRange[i] = Vector4.Zero;
+            _colorEnergy[i] = Vector4.Zero;
+        }
+    }
+
+    /// <summary>Writes this light set into <paramref name="buffer"/>, which must be
+    /// at least <see cref="SizeInBytes"/> bytes (see <see cref="VeldridBitmapRenderSurface.PointLightBuffer"/>).</summary>
+    public void WriteTo(Veldrid.GraphicsDevice device, Veldrid.DeviceBuffer buffer)
+    {
+        device.UpdateBuffer(buffer, 0, new[] { Count, 0, 0, 0 });
+        device.UpdateBuffer(buffer, 16, _posRange);
+        device.UpdateBuffer(buffer, 16 + MaxPointLights * 16u, _colorEnergy);
+    }
 }

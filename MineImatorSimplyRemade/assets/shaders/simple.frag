@@ -5,17 +5,14 @@ layout(location = 1) in vec3 vFragPos;
 layout(location = 2) in vec2 vTexCoord;
 layout(location = 3) in vec4 vShadowCoord;
 
-// MIGRATION NOTE (subsystem pass 1/N - "basic mesh upload/draw"): this is a
-// deliberately reduced port of the old simple.frag. The full fixed-function
-// pipeline it replaces also computed: 32 point lights with spot cones and
-// per-light shadow cubemaps, directional+point subsurface scattering,
-// distance/height fog, and PCF-filtered directional shadows - none of that
-// is wired up yet. This pass only ports the base albedo/texture/alpha/
-// emission/unlit path so a mesh can be uploaded and drawn at all. The point
-// light array, shadow sampling, SSS, and fog blocks/uniforms will be added
-// back in the "lighting uniforms" and "shadow passes" follow-up subsystem
-// passes, at which point the lit branch below gets its full contribution
-// terms back (see the old simple.frag in git history for the exact math).
+// MIGRATION NOTE (subsystem pass 2/N - "lighting uniforms"): adds the sun/moon
+// fill directional lights and a simplified point-light array (position, range,
+// color, energy only - no spot cones or per-light shadow-cubemap indices yet)
+// on top of pass 1's base albedo/texture/emission/unlit path. Still NOT ported:
+// spot-light cones, per-light shadow sampling, subsurface scattering, and
+// distance/height fog - those remain "shadow passes" / SSS+fog follow-up
+// subsystem passes (see the old simple.frag in git history for the exact math
+// each of those restores).
 layout(set = 0, binding = 0, std140) uniform MeshUniforms {
     mat4  uMVP;
     mat4  uModel;
@@ -67,6 +64,22 @@ layout(set = 1, binding = 0, std140) uniform SceneData {
 
 layout(set = 0, binding = 1) uniform sampler2D uTextureSampler;
 
+#define MAX_POINT_LIGHTS 32
+
+// Simplified point-light array for this pass: PosRange.xyz = world position,
+// PosRange.w = range; ColorEnergy.rgb = color, ColorEnergy.a = energy
+// multiplier. Spot-cone direction/angles and per-light shadow-cubemap index
+// (present in the old Mesh.PointLights tuple) are deferred to the shadow
+// passes subsystem pass, where they're actually needed.
+layout(set = 1, binding = 1, std140) uniform PointLightData {
+    int  uPointLightCount;
+    int  _plPad0;
+    int  _plPad1;
+    int  _plPad2;
+    vec4 uPointLightPosRange[MAX_POINT_LIGHTS];
+    vec4 uPointLightColorEnergy[MAX_POINT_LIGHTS];
+};
+
 layout(location = 0) out vec4 FragColor;
 
 void main() {
@@ -90,13 +103,39 @@ void main() {
     vec3 result = baseColor;
 
     if (uIsUnlit == 0) {
-        // TODO(migration - lighting uniforms pass): directional sun/moon fill
-        // lights, point lights, subsurface scattering. Using scene ambient +
-        // a flat head-on directional term as a placeholder so lit meshes are
-        // visible (if dim/flat) rather than pure black until that pass lands.
+        // TODO(migration - shadow passes / SSS+fog subsystem passes): PCF
+        // directional shadows, spot-cone point lights, per-light shadow
+        // cubemaps, subsurface scattering, distance/height fog still missing.
         vec3 norm = gl_FrontFacing ? normalize(vNormal) : -normalize(vNormal);
-        float diff = max(dot(norm, normalize(uLightDir)), 0.0);
-        result = (uAmbient + diff * uLightColor) * baseColor;
+
+        float sunDiff  = max(dot(norm, normalize(uLightDir)), 0.0);
+        float sunFill  = max(dot(norm, normalize(uSunFillLightDir)), 0.0);
+        float moonFill = max(dot(norm, normalize(uMoonFillLightDir)), 0.0);
+
+        vec3 lit = uAmbient
+                 + sunDiff  * uLightColor
+                 + sunFill  * uSunFillLightColor
+                 + moonFill * uMoonFillLightColor;
+
+        for (int i = 0; i < uPointLightCount; i++) {
+            vec3  lightPos = uPointLightPosRange[i].xyz;
+            float range    = uPointLightPosRange[i].w;
+            vec3  toLight  = lightPos - vFragPos;
+            float dist     = length(toLight);
+            if (dist >= range) continue;
+
+            float attenuation = clamp(1.0 - (dist / range), 0.0, 1.0);
+            attenuation *= attenuation;
+
+            vec3 lightDir = normalize(toLight);
+            float diff = max(dot(norm, lightDir), 0.0);
+
+            vec3 color  = uPointLightColorEnergy[i].rgb;
+            float energy = uPointLightColorEnergy[i].a;
+            lit += color * diff * attenuation * energy;
+        }
+
+        result = lit * baseColor;
     }
 
     if (uEmissionEnabled != 0) {

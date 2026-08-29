@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using MineImatorSimplyRemade.core.render;
 using Veldrid;
 
 namespace MineImatorSimplyRemade.core.window;
@@ -34,6 +35,25 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
     public uint Width { get; private set; }
     public uint Height { get; private set; }
 
+    /// <summary>
+    /// The shared per-frame scene uniform buffer (sun/moon fill lights, ambient,
+    /// shadow flags - see <see cref="SceneDataUniforms"/>). One instance per
+    /// render surface, independent of size, updated once per frame via
+    /// <see cref="UpdateSceneData"/> before any mesh draw calls.
+    /// </summary>
+    public DeviceBuffer SceneDataBuffer { get; }
+
+    /// <summary>
+    /// Shared per-frame point-light array (see <see cref="PointLightUniforms"/>).
+    /// One instance per render surface, independent of size, updated once per
+    /// frame via <see cref="UpdatePointLights"/> before any mesh draw calls.
+    /// </summary>
+    public DeviceBuffer PointLightBuffer { get; }
+
+    /// <summary>Formats/sample-count description of <see cref="Framebuffer"/>, stable
+    /// across <see cref="Resize"/> calls - pass this to <c>VeldridMesh.Upload</c>.</summary>
+    public OutputDescription OutputDescription => Framebuffer.OutputDescription;
+
     /// <param name="backend">
     /// Defaults to Direct3D11 on Windows: unlike Veldrid's OpenGL backend, D3D11
     /// (and Vulkan) can create a fully headless <see cref="GraphicsDevice"/> with
@@ -56,8 +76,27 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
                 $"{backend} requires a native window/context and cannot be created headless; use Direct3D11 or Vulkan for offscreen rendering.")
         };
 
+        SceneDataBuffer = ResourceFactory.CreateBuffer(new BufferDescription(
+            AlignTo16((uint)System.Runtime.InteropServices.Marshal.SizeOf<SceneDataUniforms>()),
+            BufferUsage.UniformBuffer));
+        UpdateSceneData(SceneDataUniforms.Default);
+
+        PointLightBuffer = ResourceFactory.CreateBuffer(new BufferDescription(
+            PointLightUniforms.SizeInBytes, BufferUsage.UniformBuffer));
+        UpdatePointLights(PointLightUniforms.Empty);
+
         Resize(Math.Max(1, width), Math.Max(1, height));
     }
+
+    private static uint AlignTo16(uint size) => (size + 15) / 16 * 16;
+
+    /// <summary>Uploads new scene-wide lighting data. Call once per frame before
+    /// any mesh draws that reference <see cref="SceneDataBuffer"/>.</summary>
+    public void UpdateSceneData(SceneDataUniforms data) => GraphicsDevice.UpdateBuffer(SceneDataBuffer, 0, ref data);
+
+    /// <summary>Uploads the current frame's point-light array. Call once per
+    /// frame before any mesh draws that reference <see cref="PointLightBuffer"/>.</summary>
+    public void UpdatePointLights(PointLightUniforms lights) => lights.WriteTo(GraphicsDevice, PointLightBuffer);
 
     /// <summary>Recreates the color/depth targets and framebuffer at a new size.
     /// Cheap to call every frame with an unchanged size (it's a no-op then).</summary>
@@ -99,6 +138,33 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
             new Vector(96, 96),
             PixelFormat.Rgba8888,
             AlphaFormat.Unpremul);
+    }
+
+    /// <summary>
+    /// Convenience wrapper for the full per-frame sequence: begin a command list,
+    /// bind+clear <see cref="Framebuffer"/>, let <paramref name="recordDrawCalls"/>
+    /// record whatever mesh/pass draw calls it needs (typically one or more
+    /// <c>VeldridMesh.Render(...)</c> calls), submit, and read the result back to
+    /// a bitmap. This is the single entry point callers (Viewport, CameraWindow
+    /// preview, thumbnail renderers) should use once they have real geometry to
+    /// draw - <see cref="ReadBack"/> alone is still available for callers that
+    /// need to manage their own command list lifetime instead.
+    /// </summary>
+    public WriteableBitmap RenderFrame(RgbaFloat clearColor, Action<CommandList> recordDrawCalls)
+    {
+        using CommandList commandList = ResourceFactory.CreateCommandList();
+        commandList.Begin();
+        commandList.SetFramebuffer(Framebuffer);
+        commandList.ClearColorTarget(0, clearColor);
+        commandList.ClearDepthStencil(1f);
+
+        recordDrawCalls(commandList);
+
+        commandList.End();
+        GraphicsDevice.SubmitCommands(commandList);
+        GraphicsDevice.WaitForIdle();
+
+        return ReadBack();
     }
 
     /// <summary>
@@ -158,6 +224,8 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
         Framebuffer?.Dispose();
         DepthTarget?.Dispose();
         ColorTarget?.Dispose();
+        SceneDataBuffer?.Dispose();
+        PointLightBuffer?.Dispose();
         GraphicsDevice.Dispose();
     }
 }
