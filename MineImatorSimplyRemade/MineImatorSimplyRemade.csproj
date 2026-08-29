@@ -23,22 +23,24 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="Avalonia" Version="11.2.1" />
+      <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />
+      <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.1" />
+      <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.1" />
+      <PackageReference Include="Dock.Avalonia" Version="11.2.1" />
+      <PackageReference Include="Dock.Model.Avalonia" Version="11.2.1" />
+      <PackageReference Include="Veldrid" Version="4.9.0" />
+      <PackageReference Include="Veldrid.SPIRV" Version="1.0.15" />
       <PackageReference Include="Cyotek.Data.Nbt" Version="4.0.0" />
       <PackageReference Include="FFMPEGCore-Fork" Version="1.0.0" />
       <PackageReference Include="FFMpegCore.Extensions.Downloader" Version="5.0.0" />
       <PackageReference Include="GlmSharp" Version="0.9.8" />
-      <PackageReference Include="Hexa.NET.ImGui" Version="2.2.9" />
-      <PackageReference Include="Hexa.NET.ImGui.Backends" Version="1.0.18" />
-      <PackageReference Include="Hexa.NET.ImGui.Backends.GLFW" Version="1.0.18" />
       <PackageReference Include="NativeFileDialogSharp" Version="0.5.0" />
       <PackageReference Include="OpenAL.Soft" Version="1.23.1" />
       <PackageReference Include="Sentry" Version="6.7.0" />
       <PackageReference Include="Silk.NET.Assimp" Version="2.23.0" />
-      <PackageReference Include="Silk.NET.GLFW" Version="2.23.0" />
-      <PackageReference Include="Silk.NET.Input" Version="2.23.0" />
       <PackageReference Include="Silk.NET.OpenAL" Version="2.23.0" />
       <PackageReference Include="Silk.NET.OpenGL" Version="2.23.0" />
-      <PackageReference Include="Silk.NET.Vulkan" Version="2.23.0" />
       <PackageReference Include="StbImageSharp" Version="2.30.15" />
       <PackageReference Include="StbTrueTypeSharp" Version="1.26.13" />
     </ItemGroup>
@@ -50,14 +52,6 @@
     <ItemGroup Condition="'$(OS)' == 'Windows_NT' Or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">
         <None Remove="nfd.dll" />
         <EmbeddedResource Include="nfd.dll" />
-        <None Remove="ImGuiImplGLFW.dll" />
-        <EmbeddedResource Include="ImGuiImplGLFW.dll" />
-        <None Remove="ImGuiImpl.dll" />
-        <EmbeddedResource Include="ImGuiImpl.dll" />
-        <None Remove="glfw3.dll" />
-        <EmbeddedResource Include="glfw3.dll" />
-        <None Remove="cimgui.dll" />
-        <EmbeddedResource Include="cimgui.dll" />
         <None Remove="Assimp64.dll" />
         <EmbeddedResource Include="Assimp64.dll" />
         <None Remove="OpenAL32.dll" />
@@ -105,10 +99,6 @@
 
     <Target Name="RemoveWindowsNativeLibrariesFromPublish" AfterTargets="_CopyResolvedFilesToPublishAlways;_CopyResolvedFilesToPublishPreserveNewest" Condition="'$(OS)' == 'Windows_NT' Or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">
         <ItemGroup>
-            <PublishedNativeLibraries Include="$(PublishDir)cimgui.dll" />
-            <PublishedNativeLibraries Include="$(PublishDir)glfw3.dll" />
-            <PublishedNativeLibraries Include="$(PublishDir)ImGuiImplGLFW.dll" />
-            <PublishedNativeLibraries Include="$(PublishDir)ImGuiImpl.dll" />
             <PublishedNativeLibraries Include="$(PublishDir)Assimp64.dll" />
             <PublishedNativeLibraries Include="$(PublishDir)nfd.dll" />
             <PublishedNativeLibraries Include="$(PublishDir)OpenAL32.dll" />

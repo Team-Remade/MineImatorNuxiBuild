@@ -10,10 +10,6 @@ public static class NativeLibraryBootstrap
 
     private static readonly string[] WindowsNativeLibraries =
     [
-        "cimgui.dll",
-        "glfw3.dll",
-        "ImGuiImplGLFW.dll",
-        "ImGuiImpl.dll",
         "Assimp64.dll",
         "nfd.dll",
         "OpenAL32.dll"

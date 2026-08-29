@@ -1,29 +1,37 @@
-﻿#version 330 core
+﻿#version 450
 
+// MIGRATION NOTE (subsystem pass 1/N): skinning (aBoneIndices/aBoneWeights) and
+// per-instance model matrices (aInstanceM0..3) are deliberately dropped from
+// this pass's vertex inputs - they're a separate "skinning + instancing"
+// follow-up subsystem pass (adding vertex buffers for them, plus wiring
+// MeshUniforms.IsSkinned/UseInstancing back to something meaningful; both
+// fields still exist in the uniform block below and default to 0/false).
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
 layout (location = 2) in vec2 aTexCoord;
-layout (location = 3) in ivec4 aBoneIndices;
-layout (location = 4) in vec4 aBoneWeights;
 
-// Instance model matrix (4 consecutive vec4 attributes, divisor = 1).
-layout (location = 5) in vec4 aInstanceM0;
-layout (location = 6) in vec4 aInstanceM1;
-layout (location = 7) in vec4 aInstanceM2;
-layout (location = 8) in vec4 aInstanceM3;
+// MIGRATION NOTE: Veldrid (via Veldrid.SPIRV -> SPIR-V -> D3D11/Vulkan) does not
+// support GLSL "default block" loose uniforms - every uniform must live in an
+// explicit std140 uniform block with an explicit binding, matching a
+// ResourceLayout created on the C# side in the same declaration order. This
+// replaces the old individual `uniform mat4 uMVP;` etc. declarations with a
+// single MeshUniforms block (see core/render/VeldridMeshUniforms.cs for the
+// matching C# struct - field order/padding must stay in sync with this block).
+layout(set = 0, binding = 0, std140) uniform MeshUniforms {
+    mat4  uMVP;
+    mat4  uModel;
+    vec2  uTexOffset;
+    float uTexScaleV;
+    float _meshPad0;
+    vec2  uTexUvOffset;
+    vec2  uTexUvRepeat;
+    vec2  uTexUvMirror;
+    int   uIsSkinned;
+    int   uUseInstancing;
+    vec2  _meshPad1;
+};
 
-uniform mat4  uMVP;
-uniform mat4  uModel;
-uniform vec2  uTexOffset;
-uniform float uTexScaleV;
-uniform vec2  uTexUvOffset;
-uniform vec2  uTexUvRepeat;
-uniform vec2  uTexUvMirror;
-uniform bool  uIsSkinned;
-uniform bool  uUseInstancing;
-uniform mat4  uBoneMatrices[64];
-
-layout(std140) uniform SceneData {
+layout(set = 1, binding = 0, std140) uniform SceneData {
     mat4  uLightSpaceMatrix;
     vec3  uAmbient;
     float _pad0;
@@ -45,10 +53,10 @@ layout(std140) uniform SceneData {
     int   uMoonFillLightCastsShadows;
 };
 
-out vec3 vNormal;
-out vec3 vFragPos;
-out vec2 vTexCoord;
-out vec4 vShadowCoord;
+layout(location = 0) out vec3 vNormal;
+layout(location = 1) out vec3 vFragPos;
+layout(location = 2) out vec2 vTexCoord;
+layout(location = 3) out vec4 vShadowCoord;
 
 vec2 applyUvTransform(vec2 uv)
 {
@@ -64,26 +72,11 @@ vec2 applyUvTransform(vec2 uv)
 }
 
 void main() {
-    mat4 modelMat = uUseInstancing
-        ? mat4(aInstanceM0, aInstanceM1, aInstanceM2, aInstanceM3)
-        : uModel;
-
-    vec4 pos;
-    vec3 normal;
-
-    if (uIsSkinned) {
-        mat4 skinMatrix = mat4(0.0);
-        for (int i = 0; i < 4; i++) {
-            if (aBoneIndices[i] >= 0 && aBoneIndices[i] < 64 && aBoneWeights[i] > 0.0) {
-                skinMatrix += aBoneWeights[i] * uBoneMatrices[aBoneIndices[i]];
-            }
-        }
-        pos    = skinMatrix * vec4(aPos, 1.0);
-        normal = mat3(skinMatrix) * aNormal;
-    } else {
-        pos    = vec4(aPos, 1.0);
-        normal = aNormal;
-    }
+    // Skinning/instancing intentionally not applied yet - see migration note
+    // above. uModel is always used regardless of uIsSkinned/uUseInstancing.
+    mat4 modelMat = uModel;
+    vec4 pos    = vec4(aPos, 1.0);
+    vec3 normal = aNormal;
 
     vec4 worldPos   = modelMat * pos;
     vFragPos        = worldPos.xyz;

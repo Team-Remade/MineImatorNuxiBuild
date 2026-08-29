@@ -1,0 +1,26 @@
+<window:WindowBase xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:window="using:MineImatorSimplyRemade.core.window"
+                    x:Class="MineImatorSimplyRemade.core.window.windows.CameraWindow"
+                    Title="Camera View"
+                    Width="640" Height="420"
+                    Background="#1A1A1A">
+    <Grid RowDefinitions="Auto,Auto,*" Margin="4">
+        <!-- Header row: camera dropdown + dock/overlays/corner/render-mode controls. -->
+        <StackPanel x:Name="HeaderRow" Orientation="Horizontal" Spacing="6" Grid.Row="0">
+            <ComboBox x:Name="CameraDropdown" MinWidth="160" SelectionChanged="OnCameraSelectionChanged" />
+            <Button Content="Dock" Click="OnDockClicked" />
+            <ToggleButton x:Name="OverlaysToggle" Content="Overlays" Click="OnOverlaysToggled" />
+            <!-- TODO(migration): corner picker + render-mode selector, ported from
+                 Viewport.DrawCornerPicker / DrawRenderModeSelectorPublic once Viewport
+                 itself is ported to Avalonia. -->
+        </StackPanel>
+
+        <Separator Grid.Row="1" Margin="0,4" />
+
+        <!-- Scene display: bitmap pushed here every frame by the (not-yet-ported)
+             Viewport render pipeline via VeldridBitmapRenderSurface.ReadBack(). -->
+        <Image x:Name="SceneImage" Grid.Row="2" Stretch="Uniform"
+               HorizontalAlignment="Center" VerticalAlignment="Center" />
+    </Grid>
+</window:WindowBase>

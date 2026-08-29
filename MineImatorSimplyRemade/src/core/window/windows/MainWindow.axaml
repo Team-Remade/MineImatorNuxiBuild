@@ -1,0 +1,29 @@
+<window:WindowBase xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:window="using:MineImatorSimplyRemade.core.window"
+                    xmlns:panels="using:MineImatorSimplyRemade.core.ui.Panels"
+                    x:Class="MineImatorSimplyRemade.core.window.windows.MainWindow"
+                    Title="Mine Imator Nuxi"
+                    WindowStartupLocation="CenterScreen"
+                    Width="1600" Height="900">
+    <Grid RowDefinitions="Auto,*,Auto">
+        <panels:Menubar x:Name="MenubarControl" Grid.Row="0" />
+
+        <!-- TODO(migration): this is a placeholder content host. The real dockspace
+             (Viewport / Scene Tree / Properties / Timeline / Content Browser panels,
+             the project home screen overlay, and the various modal popups) is ported
+             panel-by-panel in follow-up passes - see the migration todo list. Once
+             Dock.Avalonia is wired up, this Grid.Row="1" cell becomes a
+             Dock.Avalonia `DockControl` hosting the ported panels instead. -->
+        <Border Grid.Row="1" Background="#202020">
+            <TextBlock Text="Editor UI not yet ported to Avalonia - see migration plan."
+                       Foreground="#888"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <Border x:Name="ToastBorder" Grid.Row="2" Padding="8,4" Background="#181818" IsVisible="False">
+            <TextBlock x:Name="ToastText" />
+        </Border>
+    </Grid>
+</window:WindowBase>

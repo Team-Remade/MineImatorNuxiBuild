@@ -1,0 +1,64 @@
+<Menu xmlns="https://github.com/avaloniaui"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      x:Class="MineImatorSimplyRemade.core.ui.Panels.Menubar">
+    <MenuItem Header="_File">
+        <MenuItem Header="New Project" InputGesture="Ctrl+N" Click="OnNewProject" />
+        <MenuItem Header="Open Project" InputGesture="Ctrl+O" Click="OnOpenProject" />
+        <MenuItem Header="Open Recent..." Click="OnOpenRecent" />
+        <Separator />
+        <MenuItem Header="Save Project" InputGesture="Ctrl+S" Click="OnSaveProject" />
+        <MenuItem Header="Save As" InputGesture="Ctrl+Shift+S" Click="OnSaveProjectAs" />
+        <Separator />
+        <MenuItem Header="Import Asset" Click="OnImportAsset" />
+        <MenuItem Header="Import Resource Pack" Click="OnImportResourcePack" />
+        <MenuItem Header="Import Resource Pack Folder" Click="OnImportResourcePackFolder" />
+        <MenuItem Header="Import from world" IsEnabled="False" />
+        <Separator />
+        <MenuItem Header="Exit" Click="OnExit" />
+    </MenuItem>
+    <MenuItem Header="_Edit">
+        <MenuItem Header="Undo" InputGesture="Ctrl+Z" Click="OnUndo" />
+        <MenuItem Header="Redo" InputGesture="Ctrl+Y" Click="OnRedo" />
+        <Separator />
+        <MenuItem Header="Cut" IsEnabled="False" />
+        <MenuItem Header="Copy" IsEnabled="False" />
+        <MenuItem Header="Paste" IsEnabled="False" />
+        <Separator />
+        <MenuItem Header="Select All" IsEnabled="False" />
+        <Separator />
+        <MenuItem Header="Duplicate" InputGesture="Ctrl+D" Click="OnDuplicate" />
+        <MenuItem Header="Delete" InputGesture="Delete" Click="OnDelete" />
+        <Separator />
+        <MenuItem Header="Hide" IsEnabled="False" />
+        <MenuItem Header="Show" IsEnabled="False" />
+        <Separator />
+        <MenuItem Header="Preferences" Click="OnPreferences" />
+    </MenuItem>
+    <MenuItem Header="_Render">
+        <MenuItem Header="Render Image" InputGesture="F7" Click="OnRenderImage" />
+        <MenuItem Header="Render Animation" InputGesture="F8" Click="OnRenderAnimation" />
+    </MenuItem>
+    <MenuItem Header="_View">
+        <MenuItem Header="Reset Layout" Click="OnResetLayout" />
+        <MenuItem Header="Reset Work Camera" Click="OnResetWorkCamera" />
+        <MenuItem Header="Show Secondary View" IsEnabled="False" />
+        <Separator />
+        <MenuItem Header="Show Timeline Markers" IsEnabled="False" />
+        <MenuItem Header="Playback Time" IsEnabled="False" />
+        <Separator />
+        <MenuItem Header="Show Shortcuts Bar" IsEnabled="False" />
+        <Separator />
+        <MenuItem Header="Home Screen" Click="OnHomeScreen" />
+    </MenuItem>
+    <MenuItem Header="_Help">
+        <MenuItem Header="Check for Updates" Click="OnCheckForUpdates" />
+        <Separator />
+        <MenuItem Header="About" Click="OnAbout" />
+        <MenuItem Header="Tutorials" IsEnabled="False" />
+        <Separator />
+        <MenuItem Header="Report Bugs" Click="OnReportBugs" />
+        <MenuItem Header="Visit the Forums" Click="OnVisitForums" />
+        <Separator />
+        <MenuItem Header="Support Us" Click="OnSupportUs" />
+    </MenuItem>
+</Menu>
