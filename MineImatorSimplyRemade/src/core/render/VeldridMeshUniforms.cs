@@ -212,7 +212,7 @@ public struct ShadowDepthUniforms
     public Vector2 TexUvRepeat;
     public Vector2 TexUvMirror;
     public int UseTexture;
-    public int _pad0;
+    public int IsSkinned;
 
     public static ShadowDepthUniforms Default => new()
     {
@@ -224,6 +224,7 @@ public struct ShadowDepthUniforms
         TexUvRepeat = Vector2.One,
         TexUvMirror = Vector2.Zero,
         UseTexture = 0,
+        IsSkinned = 0,
     };
 }
 
@@ -244,7 +245,7 @@ public struct PointShadowDepthUniforms
     public Vector2 TexUvRepeat;
     public Vector2 TexUvMirror;
     public int UseTexture;
-    public int _pad0;
+    public int IsSkinned;
     public Vector3 LightPos;
     public float FarPlane;
 
@@ -259,6 +260,7 @@ public struct PointShadowDepthUniforms
         TexUvRepeat = Vector2.One,
         TexUvMirror = Vector2.Zero,
         UseTexture = 0,
+        IsSkinned = 0,
         LightPos = Vector3.Zero,
         FarPlane = 25f,
     };

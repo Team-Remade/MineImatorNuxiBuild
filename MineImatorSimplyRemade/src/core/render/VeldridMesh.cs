@@ -7,19 +7,18 @@ namespace MineImatorSimplyRemade.core.render;
 /// Replacement for <c>core.mdl.Mesh</c>'s GPU-resident triangle mesh, targeting
 /// Veldrid instead of Silk.NET.OpenGL.
 ///
-/// MIGRATION STATUS - subsystem pass 2/N ("lighting uniforms"): pass 1 ported
-/// geometry upload (position/normal/UV, optional index buffer) and a minimal
-/// unlit/flat-shaded draw call; this pass adds the shared per-frame SceneData
-/// (sun/moon fill lights, ambient) and a simplified point-light array (see
-/// <see cref="PointLightUniforms"/>) as a second bound resource set (set = 1),
-/// sourced from <c>VeldridBitmapRenderSurface.SceneDataBuffer</c>/<c>PointLightBuffer</c>
-/// so every mesh drawn into the same surface shares one lighting state. Still
-/// NOT ported (each is its own follow-up subsystem pass):
-///   - skinning (bone indices/weights) and per-instance matrices
-///   - spot-light cones, per-light shadow-cubemap indices, directional+point
-///     shadow sampling, subsurface scattering, fog/height-fog
-///   - shape keys / morph targets
-///   - animated texture atlas sampling
+/// MIGRATION STATUS - subsystem pass 6/N ("skinning + shape keys"): geometry
+/// upload, full forward lighting (point lights, directional + point-light
+/// shadows, SSS, fog), skinning (bone indices/weights, up to 64 bones shared
+/// across every pipeline this mesh draws through), and shape keys/morph
+/// targets (CPU-side deformation + smooth-normal recompute, matching
+/// <c>core.mdl.Mesh</c>'s <c>RefreshShapeKeyGeometry</c>) are all ported.
+/// Still NOT ported (each is its own follow-up subsystem pass):
+///   - per-instance matrices (needs a second, instance-rate vertex buffer that
+///     doesn't exist yet; <c>MeshUniforms.UseInstancing</c> always reads 0)
+///   - animated texture atlas sampling (depends on the not-yet-ported
+///     TerrainAtlas/ItemsAtlas texture-loading system, which still uses
+///     Silk.NET.OpenGL)
 /// See <c>core.mdl.Mesh</c> (the old GL version, still present elsewhere in the
 /// codebase until every caller is migrated) for the full feature set each of
 /// those passes needs to restore.
@@ -97,11 +96,182 @@ public sealed class VeldridMesh : IDisposable
     private TextureView? _albedoTextureView;
     private Sampler? _albedoSampler;
 
+    // ── Skinning (subsystem pass 6/N) ───────────────────────────────────────
+
+    private const int MaxBones = 64;
+
+    /// <summary>Per-vertex bone indices (up to 4 per vertex), parallel to <see cref="Vertices"/>.</summary>
+    public List<(int X, int Y, int Z, int W)> BoneIndices { get; } = new();
+
+    /// <summary>Per-vertex bone weights (up to 4 per vertex), parallel to <see cref="Vertices"/>.</summary>
+    public List<Vector4> BoneWeights { get; } = new();
+
+    /// <summary>True when this mesh has skinning data uploaded and should be GPU-deformed.</summary>
+    public bool IsSkinned => BoneIndices.Count > 0 && BoneIndices.Count == Vertices.Count;
+
+    /// <summary>Current bone matrices, uploaded to the shared bone buffer each
+    /// <see cref="Render"/>/<see cref="RenderDepthOnly"/>/etc. call. Up to <see cref="MaxBones"/>
+    /// are used; extras are ignored (matches the old renderer's fixed-size array).</summary>
+    public List<Matrix4x4>? BoneMatrices { get; set; }
+
+    private DeviceBuffer? _boneMatrixBuffer;
+    private readonly Matrix4x4[] _boneMatrixScratch = new Matrix4x4[MaxBones];
+
+    // ── Shape keys / morph targets (subsystem pass 6/N) ─────────────────────
+
+    public sealed class ShapeKey
+    {
+        public string Name = "";
+        public float[] Deltas = Array.Empty<float>(); // length == Vertices.Count * 3
+        public float Weight;
+    }
+
+    public List<ShapeKey> ShapeKeys { get; } = new();
+    public bool HasShapeKeys => ShapeKeys.Count > 0;
+    private bool _shapeKeyDirty;
+    private float[]? _baseVertexFloats;
+    private float[]? _deformedVertexFloats;
+    private const int FloatsPerVertex = 8; // px py pz nx ny nz u v (bone data uploaded separately, unaffected by shape keys)
+
+    public void AddShapeKey(string name, float[] deltas)
+    {
+        if (deltas.Length != Vertices.Count * 3) return;
+        ShapeKeys.Add(new ShapeKey { Name = name, Deltas = deltas });
+        _shapeKeyDirty = true;
+    }
+
+    /// <summary>Sets a shape key's weight in [-1, 1] and marks the mesh for a
+    /// vertex-buffer refresh on the next <see cref="Render"/> call.</summary>
+    public void SetShapeKeyWeight(int index, float weight)
+    {
+        if (index < 0 || index >= ShapeKeys.Count) return;
+        float clamped = Math.Clamp(weight, -1f, 1f);
+        if (ShapeKeys[index].Weight == clamped) return;
+        ShapeKeys[index].Weight = clamped;
+        _shapeKeyDirty = true;
+    }
+
+    /// <summary>Recomputes deformed vertex positions from the base geometry plus
+    /// weighted shape-key deltas, recomputes smooth normals for the deformed
+    /// surface, and re-uploads the vertex buffer. Mirrors <c>core.mdl.Mesh</c>'s
+    /// <c>RefreshShapeKeyGeometry</c>/<c>RecomputeShapeKeyNormals</c> - ported
+    /// as-is since this is pure CPU-side geometry, no shader changes needed.</summary>
+    private void RefreshShapeKeyGeometry()
+    {
+        if (_vertexBuffer == null || _baseVertexFloats == null || !_shapeKeyDirty || ShapeKeys.Count == 0)
+        {
+            _shapeKeyDirty = false;
+            return;
+        }
+
+        int vertexCount = Vertices.Count;
+        if (vertexCount == 0) { _shapeKeyDirty = false; return; }
+
+        int totalFloats = vertexCount * FloatsPerVertex;
+
+        bool anyActive = ShapeKeys.Any(sk => sk.Weight != 0f && sk.Deltas.Length >= vertexCount * 3);
+
+        float[] source;
+        if (!anyActive)
+        {
+            source = _baseVertexFloats;
+        }
+        else
+        {
+            if (_deformedVertexFloats == null || _deformedVertexFloats.Length != totalFloats)
+                _deformedVertexFloats = new float[totalFloats];
+            Array.Copy(_baseVertexFloats, _deformedVertexFloats, totalFloats);
+
+            foreach (ShapeKey sk in ShapeKeys)
+            {
+                if (sk.Weight == 0f || sk.Deltas.Length < vertexCount * 3) continue;
+                float w = sk.Weight;
+                for (int v = 0; v < vertexCount; v++)
+                {
+                    int di = v * 3;
+                    int vi = v * FloatsPerVertex;
+                    _deformedVertexFloats[vi + 0] += w * sk.Deltas[di + 0];
+                    _deformedVertexFloats[vi + 1] += w * sk.Deltas[di + 1];
+                    _deformedVertexFloats[vi + 2] += w * sk.Deltas[di + 2];
+                }
+            }
+
+            RecomputeShapeKeyNormals(_deformedVertexFloats, vertexCount);
+            source = _deformedVertexFloats;
+        }
+
+        // The GPU vertex buffer's stride includes bone fields interleaved with
+        // position/normal/uv (see the Vertex struct), so - unlike the old GL
+        // Mesh's plain 8-float stride - a full Vertex[] must be rebuilt here
+        // rather than writing the position/normal/uv floats contiguously.
+        bool hasSkinning = IsSkinned;
+        var vertexData = new Vertex[vertexCount];
+        for (int v = 0; v < vertexCount; v++)
+        {
+            int vi = v * FloatsPerVertex;
+            (int bx, int by, int bz, int bw) = hasSkinning ? BoneIndices[v] : (0, 0, 0, 0);
+            vertexData[v] = new Vertex
+            {
+                Position = new Vector3(source[vi + 0], source[vi + 1], source[vi + 2]),
+                Normal = new Vector3(source[vi + 3], source[vi + 4], source[vi + 5]),
+                TexCoord = new Vector2(source[vi + 6], source[vi + 7]),
+                BoneIndex0 = bx,
+                BoneIndex1 = by,
+                BoneIndex2 = bz,
+                BoneIndex3 = bw,
+                BoneWeight = hasSkinning ? BoneWeights[v] : Vector4.Zero,
+            };
+        }
+        _device.UpdateBuffer(_vertexBuffer, 0, vertexData);
+        _shapeKeyDirty = false;
+    }
+
+    private void RecomputeShapeKeyNormals(float[] data, int vertexCount)
+    {
+        var accum = new Vector3[vertexCount];
+
+        void Accumulate(int i0, int i1, int i2)
+        {
+            int b0 = i0 * FloatsPerVertex, b1 = i1 * FloatsPerVertex, b2 = i2 * FloatsPerVertex;
+            var p0 = new Vector3(data[b0], data[b0 + 1], data[b0 + 2]);
+            var p1 = new Vector3(data[b1], data[b1 + 1], data[b1 + 2]);
+            var p2 = new Vector3(data[b2], data[b2 + 1], data[b2 + 2]);
+            Vector3 faceNormal = Vector3.Cross(p1 - p0, p2 - p0);
+            accum[i0] += faceNormal;
+            accum[i1] += faceNormal;
+            accum[i2] += faceNormal;
+        }
+
+        if (Indices is { Length: >= 3 })
+        {
+            for (int i = 0; i + 2 < Indices.Length; i += 3)
+                Accumulate((int)Indices[i], (int)Indices[i + 1], (int)Indices[i + 2]);
+        }
+        else
+        {
+            for (int i = 0; i + 2 < vertexCount; i += 3)
+                Accumulate(i, i + 1, i + 2);
+        }
+
+        for (int v = 0; v < vertexCount; v++)
+        {
+            Vector3 n = accum[v];
+            if (n.LengthSquared() <= 1e-12f) continue;
+            Vector3 norm = Vector3.Normalize(n);
+            int vi = v * FloatsPerVertex;
+            data[vi + 3] = norm.X;
+            data[vi + 4] = norm.Y;
+            data[vi + 5] = norm.Z;
+        }
+    }
+
     private struct Vertex
     {
         public Vector3 Position;
         public Vector3 Normal;
         public Vector2 TexCoord;
+        public int BoneIndex0, BoneIndex1, BoneIndex2, BoneIndex3;
+        public Vector4 BoneWeight;
     }
 
     public VeldridMesh(GraphicsDevice device)
@@ -130,15 +300,23 @@ public sealed class VeldridMesh : IDisposable
 
         bool hasNormals = Normals.Count == Vertices.Count;
         bool hasUVs = TexCoords.Count == Vertices.Count;
+        bool hasSkinning = IsSkinned;
 
         var vertexData = new Vertex[Vertices.Count];
         for (int i = 0; i < Vertices.Count; i++)
         {
+            (int bx, int by, int bz, int bw) = hasSkinning ? BoneIndices[i] : (0, 0, 0, 0);
+            Vector4 weights = hasSkinning ? BoneWeights[i] : Vector4.Zero;
             vertexData[i] = new Vertex
             {
                 Position = Vertices[i],
                 Normal = hasNormals ? Normals[i] : Vector3.UnitY,
                 TexCoord = hasUVs ? TexCoords[i] : Vector2.Zero,
+                BoneIndex0 = bx,
+                BoneIndex1 = by,
+                BoneIndex2 = bz,
+                BoneIndex3 = bw,
+                BoneWeight = weights,
             };
         }
 
@@ -148,6 +326,33 @@ public sealed class VeldridMesh : IDisposable
         _vertexBuffer = factory.CreateBuffer(new BufferDescription(
             (uint)(vertexData.Length * VertexSizeHelper.SizeInBytes()), BufferUsage.VertexBuffer));
         _device.UpdateBuffer(_vertexBuffer, 0, vertexData);
+
+        // Cache the interleaved [px py pz nx ny nz u v] floats (ignoring the
+        // bone fields, which shape keys never touch) so RefreshShapeKeyGeometry
+        // can rebuild just that region without re-deriving it from Vertex[].
+        if (ShapeKeys.Count > 0)
+        {
+            _baseVertexFloats = new float[Vertices.Count * FloatsPerVertex];
+            for (int i = 0; i < Vertices.Count; i++)
+            {
+                int vi = i * FloatsPerVertex;
+                _baseVertexFloats[vi + 0] = vertexData[i].Position.X;
+                _baseVertexFloats[vi + 1] = vertexData[i].Position.Y;
+                _baseVertexFloats[vi + 2] = vertexData[i].Position.Z;
+                _baseVertexFloats[vi + 3] = vertexData[i].Normal.X;
+                _baseVertexFloats[vi + 4] = vertexData[i].Normal.Y;
+                _baseVertexFloats[vi + 5] = vertexData[i].Normal.Z;
+                _baseVertexFloats[vi + 6] = vertexData[i].TexCoord.X;
+                _baseVertexFloats[vi + 7] = vertexData[i].TexCoord.Y;
+            }
+            _shapeKeyDirty = ShapeKeys.Any(sk => sk.Weight != 0f);
+        }
+        else
+        {
+            _baseVertexFloats = null;
+        }
+
+        _boneMatrixBuffer ??= factory.CreateBuffer(new BufferDescription(MaxBones * 64u, BufferUsage.UniformBuffer));
 
         if (Indices is { Length: > 0 })
         {
@@ -171,19 +376,35 @@ public sealed class VeldridMesh : IDisposable
 
     private static uint AlignTo16(uint size) => (size + 15) / 16 * 16;
 
+    /// <summary>The standard 5-attribute vertex layout (position/normal/uv/
+    /// bone-indices/bone-weights) shared by every pipeline this mesh draws
+    /// through (main color, shadow depth, point-shadow depth, pick/silhouette) -
+    /// they all bind the same <see cref="_vertexBuffer"/>, so their vertex
+    /// shaders must all declare the same 5 inputs (even where unused) for
+    /// Veldrid's ordinal attribute matching to line up. See each shader's
+    /// migration notes for why unused attributes are still declared there.</summary>
+    private static VertexLayoutDescription MakeStandardVertexLayout() => new(
+        new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
+        new VertexElementDescription("Normal", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
+        new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
+        new VertexElementDescription("BoneIndices", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Int4),
+        new VertexElementDescription("BoneWeights", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4));
+
     private void BuildPipelineAndResources()
     {
         ResourceFactory factory = _device.ResourceFactory;
         var (vertexShader, fragmentShader) = VeldridShaderCache.GetOrCompile(_device, "simple.vert", "simple.frag");
 
         // Matches simple.frag's `set = 0` bindings: binding 0 = MeshUniforms,
-        // binding 1 = uTextureSampler, binding 2 = MeshMaterial. Order here
-        // must match the shader's declaration order exactly.
+        // binding 1 = uTextureSampler, binding 2 = MeshMaterial, binding 3 =
+        // BoneMatrices (vertex only). Order here must match the shader's
+        // declaration order exactly.
         _meshResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
             new ResourceLayoutElementDescription("MeshUniforms", ResourceKind.UniformBuffer, ShaderStages.Vertex | ShaderStages.Fragment),
             new ResourceLayoutElementDescription("uTextureSampler", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
             new ResourceLayoutElementDescription("uTextureSamplerState", ResourceKind.Sampler, ShaderStages.Fragment),
-            new ResourceLayoutElementDescription("MeshMaterial", ResourceKind.UniformBuffer, ShaderStages.Fragment)));
+            new ResourceLayoutElementDescription("MeshMaterial", ResourceKind.UniformBuffer, ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("BoneMatrices", ResourceKind.UniformBuffer, ShaderStages.Vertex)));
 
         // Matches simple.vert/simple.frag's `set = 1` bindings: binding 0 =
         // SceneData (read by both stages - simple.vert samples uLightSpaceMatrix),
@@ -211,10 +432,7 @@ public sealed class VeldridMesh : IDisposable
         }
         _pointShadowResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(pointShadowElements));
 
-        var vertexLayout = new VertexLayoutDescription(
-            new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
-            new VertexElementDescription("Normal", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
-            new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2));
+        var vertexLayout = MakeStandardVertexLayout();
 
         _pipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
         {
@@ -240,7 +458,7 @@ public sealed class VeldridMesh : IDisposable
 
         TextureView view = GetOrCreateAlbedoView();
         _meshResourceSet = _device.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
-            _meshResourceLayout, _meshUniformBuffer, view, _albedoSampler, _materialUniformBuffer));
+            _meshResourceLayout, _meshUniformBuffer, view, _albedoSampler, _materialUniformBuffer, _boneMatrixBuffer));
     }
 
     /// <summary>
@@ -341,6 +559,23 @@ public sealed class VeldridMesh : IDisposable
     private Sampler GetOrCreatePlaceholderShadowSampler() =>
         _placeholderShadowSampler ??= _device.ResourceFactory.CreateSampler(SamplerDescription.Point);
 
+    /// <summary>Uploads <see cref="BoneMatrices"/> (padded with identity up to
+    /// <see cref="MaxBones"/>) to the shared bone-matrix buffer used by every
+    /// pipeline this mesh draws through. No-op when not skinned.</summary>
+    private void UploadBoneMatrices(CommandList commandList)
+    {
+        if (_boneMatrixBuffer == null || !IsSkinned)
+            return;
+
+        int count = Math.Min(BoneMatrices?.Count ?? 0, MaxBones);
+        for (int i = 0; i < count; i++)
+            _boneMatrixScratch[i] = BoneMatrices![i];
+        for (int i = count; i < MaxBones; i++)
+            _boneMatrixScratch[i] = Matrix4x4.Identity;
+
+        commandList.UpdateBuffer(_boneMatrixBuffer, 0, _boneMatrixScratch);
+    }
+
     private TextureView GetOrCreateAlbedoView()
     {
         if (AlbedoTexture == null)
@@ -378,6 +613,10 @@ public sealed class VeldridMesh : IDisposable
         if (_pipeline == null || _vertexBuffer == null || _meshUniformBuffer == null || _materialUniformBuffer == null)
             return;
 
+        if (HasShapeKeys)
+            RefreshShapeKeyGeometry();
+        UploadBoneMatrices(commandList);
+
         TextureView shadowView = shadowMap?.DepthTextureView ?? GetOrCreatePlaceholderShadowView();
         Sampler shadowSampler = shadowMap?.DepthSampler ?? GetOrCreatePlaceholderShadowSampler();
         EnsureSceneResourceSet(sceneDataBuffer, pointLightBuffer, shadowView, shadowSampler, environmentBuffer);
@@ -386,6 +625,7 @@ public sealed class VeldridMesh : IDisposable
         var meshUniforms = MeshUniforms.Default;
         meshUniforms.Model = model;
         meshUniforms.MVP = model * view * proj;
+        meshUniforms.IsSkinned = IsSkinned ? 1 : 0;
         commandList.UpdateBuffer(_meshUniformBuffer, 0, ref meshUniforms);
 
         var materialUniforms = MeshMaterialUniforms.Default;
@@ -435,10 +675,15 @@ public sealed class VeldridMesh : IDisposable
         if (_shadowPipeline == null || _shadowUniformBuffer == null || _shadowResourceSet == null)
             return;
 
+        if (HasShapeKeys)
+            RefreshShapeKeyGeometry();
+        UploadBoneMatrices(commandList);
+
         var uniforms = ShadowDepthUniforms.Default;
         uniforms.MVP = lightMvp;
         uniforms.Alpha = Alpha;
         uniforms.UseTexture = AlbedoTexture != null ? 1 : 0;
+        uniforms.IsSkinned = IsSkinned ? 1 : 0;
         commandList.UpdateBuffer(_shadowUniformBuffer, 0, ref uniforms);
 
         commandList.SetPipeline(_shadowPipeline);
@@ -481,11 +726,16 @@ public sealed class VeldridMesh : IDisposable
         if (_pointShadowCasterPipeline == null || _pointShadowUniformBuffer == null || _pointShadowCasterResourceSet == null)
             return;
 
+        if (HasShapeKeys)
+            RefreshShapeKeyGeometry();
+        UploadBoneMatrices(commandList);
+
         var uniforms = PointShadowDepthUniforms.Default;
         uniforms.LightViewProj = faceViewProj;
         uniforms.Model = model;
         uniforms.Alpha = Alpha;
         uniforms.UseTexture = AlbedoTexture != null ? 1 : 0;
+        uniforms.IsSkinned = IsSkinned ? 1 : 0;
         uniforms.LightPos = lightPos;
         uniforms.FarPlane = farPlane;
         commandList.UpdateBuffer(_pointShadowUniformBuffer, 0, ref uniforms);
@@ -520,7 +770,8 @@ public sealed class VeldridMesh : IDisposable
         _pointShadowCasterResourceLayout ??= factory.CreateResourceLayout(new ResourceLayoutDescription(
             new ResourceLayoutElementDescription("PointShadowDepthUniforms", ResourceKind.UniformBuffer, ShaderStages.Vertex | ShaderStages.Fragment),
             new ResourceLayoutElementDescription("uTextureSampler", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
-            new ResourceLayoutElementDescription("uTextureSamplerState", ResourceKind.Sampler, ShaderStages.Fragment)));
+            new ResourceLayoutElementDescription("uTextureSamplerState", ResourceKind.Sampler, ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("BoneMatrices", ResourceKind.UniformBuffer, ShaderStages.Vertex)));
 
         _pointShadowUniformBuffer ??= factory.CreateBuffer(new BufferDescription(
             AlignTo16((uint)System.Runtime.InteropServices.Marshal.SizeOf<PointShadowDepthUniforms>()),
@@ -528,10 +779,7 @@ public sealed class VeldridMesh : IDisposable
 
         _pointShadowCasterSampler ??= factory.CreateSampler(SamplerDescription.Linear);
 
-        var vertexLayout = new VertexLayoutDescription(
-            new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
-            new VertexElementDescription("Normal", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
-            new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2));
+        var vertexLayout = MakeStandardVertexLayout();
 
         _pointShadowCasterPipeline?.Dispose();
         _pointShadowCasterPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
@@ -561,7 +809,7 @@ public sealed class VeldridMesh : IDisposable
         _pointShadowCasterResourceSet?.Dispose();
         TextureView view = GetOrCreateAlbedoView();
         _pointShadowCasterResourceSet = _device.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
-            _pointShadowCasterResourceLayout, _pointShadowUniformBuffer, view, _pointShadowCasterSampler));
+            _pointShadowCasterResourceLayout, _pointShadowUniformBuffer, view, _pointShadowCasterSampler, _boneMatrixBuffer));
         _pointShadowResourceSetAlbedoTexture = AlbedoTexture;
     }
 
@@ -586,6 +834,10 @@ public sealed class VeldridMesh : IDisposable
         if (_vertexBuffer == null)
             return;
 
+        if (HasShapeKeys)
+            RefreshShapeKeyGeometry();
+        UploadBoneMatrices(commandList);
+
         EnsurePickPipelines(outputDescription, null);
         if (_pickColorPipeline == null)
             return;
@@ -601,6 +853,10 @@ public sealed class VeldridMesh : IDisposable
         if (_vertexBuffer == null)
             return;
 
+        if (HasShapeKeys)
+            RefreshShapeKeyGeometry();
+        UploadBoneMatrices(commandList);
+
         EnsurePickPipelines(null, outputDescription);
         if (_silhouettePipeline == null)
             return;
@@ -613,6 +869,7 @@ public sealed class VeldridMesh : IDisposable
     {
         var vertexUniforms = PickVertexUniforms.Default;
         vertexUniforms.MVP = mvp;
+        vertexUniforms.IsSkinned = IsSkinned ? 1 : 0;
         commandList.UpdateBuffer(_pickVertexUniformBuffer, 0, ref vertexUniforms);
 
         var materialUniforms = PickMaterialUniforms.Default;
@@ -650,7 +907,8 @@ public sealed class VeldridMesh : IDisposable
             new ResourceLayoutElementDescription("uTextureTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
             new ResourceLayoutElementDescription("uTextureSampler", ResourceKind.Sampler, ShaderStages.Fragment),
             new ResourceLayoutElementDescription("uAlphaMaskTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
-            new ResourceLayoutElementDescription("uAlphaMaskSampler", ResourceKind.Sampler, ShaderStages.Fragment)));
+            new ResourceLayoutElementDescription("uAlphaMaskSampler", ResourceKind.Sampler, ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("BoneMatrices", ResourceKind.UniformBuffer, ShaderStages.Vertex)));
 
         _pickVertexUniformBuffer ??= factory.CreateBuffer(new BufferDescription(
             AlignTo16((uint)System.Runtime.InteropServices.Marshal.SizeOf<PickVertexUniforms>()), BufferUsage.UniformBuffer));
@@ -658,10 +916,7 @@ public sealed class VeldridMesh : IDisposable
             AlignTo16((uint)System.Runtime.InteropServices.Marshal.SizeOf<PickMaterialUniforms>()), BufferUsage.UniformBuffer));
         _pickSampler ??= factory.CreateSampler(SamplerDescription.Linear);
 
-        var vertexLayout = new VertexLayoutDescription(
-            new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
-            new VertexElementDescription("Normal", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
-            new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2));
+        var vertexLayout = MakeStandardVertexLayout();
 
         bool rebuildResourceSet = _pickResourceSet == null || _pickResourceSetAlbedoTexture != AlbedoTexture;
 
@@ -708,7 +963,7 @@ public sealed class VeldridMesh : IDisposable
             // real alpha mask texture yet - reuse the placeholder (fully opaque)
             // path via the same albedo view/sampler so the resource set is valid.
             _pickResourceSet = factory.CreateResourceSet(new ResourceSetDescription(
-                _pickResourceLayout, _pickVertexUniformBuffer, _pickMaterialUniformBuffer, view, _pickSampler, view, _pickSampler));
+                _pickResourceLayout, _pickVertexUniformBuffer, _pickMaterialUniformBuffer, view, _pickSampler, view, _pickSampler, _boneMatrixBuffer));
             _pickResourceSetAlbedoTexture = AlbedoTexture;
         }
     }
@@ -727,7 +982,8 @@ public sealed class VeldridMesh : IDisposable
         _shadowResourceLayout ??= factory.CreateResourceLayout(new ResourceLayoutDescription(
             new ResourceLayoutElementDescription("ShadowDepthUniforms", ResourceKind.UniformBuffer, ShaderStages.Vertex | ShaderStages.Fragment),
             new ResourceLayoutElementDescription("uTextureSampler", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
-            new ResourceLayoutElementDescription("uTextureSamplerState", ResourceKind.Sampler, ShaderStages.Fragment)));
+            new ResourceLayoutElementDescription("uTextureSamplerState", ResourceKind.Sampler, ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("BoneMatrices", ResourceKind.UniformBuffer, ShaderStages.Vertex)));
 
         _shadowUniformBuffer ??= factory.CreateBuffer(new BufferDescription(
             AlignTo16((uint)System.Runtime.InteropServices.Marshal.SizeOf<ShadowDepthUniforms>()),
@@ -736,12 +992,9 @@ public sealed class VeldridMesh : IDisposable
         _shadowCasterSampler ??= factory.CreateSampler(SamplerDescription.Linear);
 
         // Same vertex layout as the main pipeline - shadow_depth.vert declares
-        // the same 3 interleaved attributes (position/normal/uv) even though it
-        // only reads position+uv, so this reuses the same vertex buffer.
-        var vertexLayout = new VertexLayoutDescription(
-            new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
-            new VertexElementDescription("Normal", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
-            new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2));
+        // the same 5 interleaved attributes even though it only reads
+        // position+uv+bone data, so this reuses the same vertex buffer.
+        var vertexLayout = MakeStandardVertexLayout();
 
         _shadowPipeline?.Dispose();
         _shadowPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
@@ -773,7 +1026,7 @@ public sealed class VeldridMesh : IDisposable
         _shadowResourceSet?.Dispose();
         TextureView view = GetOrCreateAlbedoView();
         _shadowResourceSet = _device.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
-            _shadowResourceLayout, _shadowUniformBuffer, view, _shadowCasterSampler));
+            _shadowResourceLayout, _shadowUniformBuffer, view, _shadowCasterSampler, _boneMatrixBuffer));
         _shadowResourceSetAlbedoTexture = AlbedoTexture;
     }
 
@@ -815,6 +1068,7 @@ public sealed class VeldridMesh : IDisposable
         _pickVertexUniformBuffer?.Dispose();
         _pickMaterialUniformBuffer?.Dispose();
         _pickSampler?.Dispose();
+        _boneMatrixBuffer?.Dispose();
 
         _pipeline = null;
         _meshResourceSet = null;
@@ -864,6 +1118,9 @@ public sealed class VeldridMesh : IDisposable
         _pickColorOutputDescription = null;
         _silhouetteOutputDescription = null;
         _pickResourceSetAlbedoTexture = null;
+        _boneMatrixBuffer = null;
+        _baseVertexFloats = null;
+        _deformedVertexFloats = null;
     }
 
     public void Dispose() => DisposeGpuResources();
@@ -871,5 +1128,6 @@ public sealed class VeldridMesh : IDisposable
 
 internal static class VertexSizeHelper
 {
-    public static int SizeInBytes() => sizeof(float) * (3 + 3 + 2);
+    // Position(3) + Normal(3) + TexCoord(2) floats, plus BoneIndices(4 ints) + BoneWeights(4 floats).
+    public static int SizeInBytes() => sizeof(float) * (3 + 3 + 2 + 4) + sizeof(int) * 4;
 }

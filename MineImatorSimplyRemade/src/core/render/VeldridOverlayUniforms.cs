@@ -36,7 +36,7 @@ public struct PickVertexUniforms
     public Matrix4x4 MVP;
     public Vector2 TexOffset;
     public float TexScaleV;
-    public float _pad0;
+    public int IsSkinned;
     public Vector2 TexUvOffset;
     public Vector2 TexUvRepeat;
     public Vector2 TexUvMirror;
@@ -46,6 +46,7 @@ public struct PickVertexUniforms
     {
         MVP = Matrix4x4.Identity,
         TexScaleV = 1f,
+        IsSkinned = 0,
         TexUvRepeat = Vector2.One,
     };
 }

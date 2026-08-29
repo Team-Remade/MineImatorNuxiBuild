@@ -1,14 +1,14 @@
 ﻿#version 450
 
-// MIGRATION NOTE (subsystem pass 1/N): skinning (aBoneIndices/aBoneWeights) and
-// per-instance model matrices (aInstanceM0..3) are deliberately dropped from
-// this pass's vertex inputs - they're a separate "skinning + instancing"
-// follow-up subsystem pass (adding vertex buffers for them, plus wiring
-// MeshUniforms.IsSkinned/UseInstancing back to something meaningful; both
-// fields still exist in the uniform block below and default to 0/false).
+// MIGRATION NOTE (subsystem pass 6/N - "skinning + shape keys"): skinning
+// restored below. Per-instance model matrices (aInstanceM0..3) and animated
+// texture atlas sampling remain deferred - see the migration notes on
+// uUseInstancing below and in VeldridMesh.cs.
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
 layout (location = 2) in vec2 aTexCoord;
+layout (location = 3) in ivec4 aBoneIndices;
+layout (location = 4) in vec4 aBoneWeights;
 
 // MIGRATION NOTE: Veldrid (via Veldrid.SPIRV -> SPIR-V -> D3D11/Vulkan) does not
 // support GLSL "default block" loose uniforms - every uniform must live in an
@@ -27,8 +27,18 @@ layout(set = 0, binding = 0, std140) uniform MeshUniforms {
     vec2  uTexUvRepeat;
     vec2  uTexUvMirror;
     int   uIsSkinned;
+    // MIGRATION NOTE (deferred): per-instance matrices need a second vertex
+    // buffer (aInstanceM0..3, divisor=1) that VeldridMesh doesn't allocate yet -
+    // uUseInstancing exists for forward compatibility but is always 0 for now,
+    // so uModel is always what's used below.
     int   uUseInstancing;
     vec2  _meshPad1;
+};
+
+// Bone matrices for skinned meshes - a fixed-size array uniform buffer,
+// matching MAX_BONES in the old renderer (Mesh.Render's uBoneMatrices[64] loop).
+layout(set = 0, binding = 3, std140) uniform BoneMatrices {
+    mat4 uBoneMatrices[64];
 };
 
 layout(set = 1, binding = 0, std140) uniform SceneData {
@@ -76,11 +86,24 @@ vec2 applyUvTransform(vec2 uv)
 }
 
 void main() {
-    // Skinning/instancing intentionally not applied yet - see migration note
-    // above. uModel is always used regardless of uIsSkinned/uUseInstancing.
+    // Instancing intentionally not applied yet - see migration note above.
     mat4 modelMat = uModel;
-    vec4 pos    = vec4(aPos, 1.0);
-    vec3 normal = aNormal;
+
+    vec4 pos;
+    vec3 normal;
+    if (uIsSkinned != 0) {
+        mat4 skinMatrix = mat4(0.0);
+        for (int i = 0; i < 4; i++) {
+            if (aBoneIndices[i] >= 0 && aBoneIndices[i] < 64 && aBoneWeights[i] > 0.0) {
+                skinMatrix += aBoneWeights[i] * uBoneMatrices[aBoneIndices[i]];
+            }
+        }
+        pos    = skinMatrix * vec4(aPos, 1.0);
+        normal = mat3(skinMatrix) * aNormal;
+    } else {
+        pos    = vec4(aPos, 1.0);
+        normal = aNormal;
+    }
 
     vec4 worldPos   = modelMat * pos;
     vFragPos        = worldPos.xyz;
