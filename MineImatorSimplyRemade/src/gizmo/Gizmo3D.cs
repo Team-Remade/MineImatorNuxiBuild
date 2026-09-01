@@ -1,11 +1,10 @@
 using System.Numerics;
 using GlmSharp;
-using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core;
-using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.render;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
-using Silk.NET.OpenGL;
+using Veldrid;
 
 namespace MineImatorSimplyRemade.gizmo;
 
@@ -375,10 +374,10 @@ public class Gizmo3D : IDisposable
 
     private struct GizmoPart
     {
-        public uint Vao;
-        public uint Vbo;
+        public Vector3[]    Verts;      // CPU-side position-only vertices (uploaded lazily)
+        public DeviceBuffer? Buffer;    // cached Veldrid vertex buffer
         public int  VertexCount;
-        public bool IsLines;       // true = GL_LINES, false = GL_TRIANGLES
+        public bool IsLines;       // true = LineList, false = TriangleList
         public vec4 NormalColor;
         public vec4 HighlightColor;
     }
@@ -436,29 +435,35 @@ public class Gizmo3D : IDisposable
     private Vector2  _imageMin;
     private Vector2  _imageSize;
 
-    // ── OpenGL ────────────────────────────────────────────────────────────────
+    // ── Veldrid ───────────────────────────────────────────────────────────────
 
-    private readonly GL _gl;
-    private core.mdl.Shader? _shader;
+    private readonly GraphicsDevice _device;
+    private readonly VeldridGizmoOverlayRenderer _overlay;
+    private bool _initialized;
+
+    // Per-frame render context, set at the top of Render() and consumed by the
+    // DrawPart* helpers (replaces the old bound-GL-state approach).
+    private CommandList? _cl;
+    private OutputDescription _outputDescription;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Constructor
     // ─────────────────────────────────────────────────────────────────────────
 
-    public Gizmo3D(GL gl)
+    public Gizmo3D(GraphicsDevice device)
     {
-        _gl = gl;
+        _device  = device;
+        _overlay = new VeldridGizmoOverlayRenderer(device);
     }
 
     /// <summary>
-    /// Compile shaders and build all GPU geometry buffers.
-    /// Must be called once after the OpenGL context is ready (e.g. from Viewport.InitFramebuffer).
+    /// Build all CPU-side geometry. The Veldrid pipelines/buffers are created
+    /// lazily by <see cref="VeldridGizmoOverlayRenderer"/> on first draw.
     /// </summary>
     public void Init()
     {
-        _shader = new core.mdl.Shader(_gl);
-        _shader.CompileShader("gizmo.vert", "gizmo.frag");
         InitIndicators();
+        _initialized = true;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -629,22 +634,23 @@ public class Gizmo3D : IDisposable
     /// Draw all gizmo 3D geometry.  Call after all scene objects are rendered.
     /// <paramref name="view"/> and <paramref name="proj"/> come from the viewport camera.
     /// </summary>
-    public void Render(Camera camera, mat4 view, mat4 proj, Vector2 imageMin, Vector2 imageSize)
+    public void Render(Camera camera, mat4 view, mat4 proj, Vector2 imageMin, Vector2 imageSize,
+                       CommandList commandList, OutputDescription outputDescription)
     {
         _camera    = camera;
         _imageMin  = imageMin;
         _imageSize = imageSize;
         UpdateTransformGizmo();
 
-        if (!Visible || _selections.Count == 0 || _shader == null) return;
+        if (!Visible || _selections.Count == 0 || !_initialized) return;
 
         UpdateTransformGizmoView();
 
-        // Disable depth test so gizmo always renders on top
-        _gl.Disable(GLEnum.DepthTest);
-        _gl.Disable(GLEnum.CullFace);
-
-        _gl.UseProgram(_shader.ShaderProgram);
+        // Cache the per-frame render context for the DrawPart* helpers. The
+        // overlay renderer draws with depth-test disabled so the gizmo always
+        // renders on top of the scene (matching the old glDisable(DEPTH_TEST)).
+        _cl                = commandList;
+        _outputDescription = outputDescription;
 
         bool showGizmo    = !IsRotationArcVisible();
         bool hasMove      = (Mode & ToolMode.Move)   != 0;
@@ -708,13 +714,37 @@ public class Gizmo3D : IDisposable
         if (ShowSelectionBox)
             DrawSelectionBoxes(view, proj);
 
-        _gl.Enable(GLEnum.DepthTest);
-        _gl.Enable(GLEnum.CullFace);
+        _cl = null;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Render – 2D overlay (ImGui draw list)
+    // Render – 2D overlay (screen-space line/triangle draw data)
     // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>A screen-space line the owning Avalonia control should draw on
+    /// top of the rendered viewport image (rotation ring / cursor line).</summary>
+    public readonly struct OverlayLine(Vector2 a, Vector2 b, Vector4 color, float thickness)
+    {
+        public readonly Vector2 A = a;
+        public readonly Vector2 B = b;
+        public readonly Vector4 Color = color;      // RGBA 0-1
+        public readonly float   Thickness = thickness;
+    }
+
+    /// <summary>A screen-space filled triangle (the rotation arc fan).</summary>
+    public readonly struct OverlayTriangle(Vector2 a, Vector2 b, Vector2 c, Vector4 color)
+    {
+        public readonly Vector2 A = a;
+        public readonly Vector2 B = b;
+        public readonly Vector2 C = c;
+        public readonly Vector4 Color = color;      // RGBA 0-1
+    }
+
+    /// <summary>2D overlay draw data produced by <see cref="RenderOverlay"/>. The
+    /// Avalonia viewport control renders these on top of the Veldrid image after
+    /// each frame (replaces the old ImGui draw-list calls).</summary>
+    public readonly List<OverlayLine>     OverlayLines     = new();
+    public readonly List<OverlayTriangle> OverlayTriangles = new();
 
     public void RenderOverlay(Camera camera, Vector2 imageMin, Vector2 imageSize)
     {
@@ -722,9 +752,10 @@ public class Gizmo3D : IDisposable
         _imageMin  = imageMin;
         _imageSize = imageSize;
 
-        if (_edit.Mode != TransformMode.Rotate && _edit.Mode != TransformMode.Bend) return;
+        OverlayLines.Clear();
+        OverlayTriangles.Clear();
 
-        var dl = ImGui.GetWindowDrawList();
+        if (_edit.Mode != TransformMode.Rotate && _edit.Mode != TransformMode.Bend) return;
 
         Vector2 center2d = PointToScreen(_edit.Center);
 
@@ -754,9 +785,9 @@ public class Gizmo3D : IDisposable
                            (right * MathF.Cos(angle) + forward * MathF.Sin(angle));
                 circlePts.Add(PointToScreen(pt3));
             }
-            uint circleCol = ToImGuiColor(HsvAdjust(handleColor, 0.6f, 1f, 0.8f));
+            Vector4 circleCol = ToNumerics(HsvAdjust(handleColor, 0.6f, 1f, 0.8f));
             for (int i = 0; i < circlePts.Count - 1; i++)
-                dl.AddLine(circlePts[i], circlePts[i + 1], circleCol, 2f);
+                OverlayLines.Add(new OverlayLine(circlePts[i], circlePts[i + 1], circleCol, 2f));
 
             // Draw filled arc
             float dispAngle = _edit.DisplayRotationAngle;
@@ -772,7 +803,7 @@ public class Gizmo3D : IDisposable
             int numSeg = Math.Max(8, (int)(absAngle / (MathF.PI * 2f / ARC_SEGMENTS) * ARC_SEGMENTS));
             numSeg = Math.Min(numSeg, ARC_SEGMENTS);
 
-            uint fillCol = ToImGuiColor(new vec4(1f, 1f, 1f, 0.2f));
+            Vector4 fillCol = ToNumerics(new vec4(1f, 1f, 1f, 0.2f));
             float startA = dispAngle > 0 ? 0f : dispAngle;
             float endA   = dispAngle > 0 ? dispAngle : 0f;
 
@@ -788,27 +819,27 @@ public class Gizmo3D : IDisposable
                 vec3 p2_3d = _edit.Center + _gizmoScale * GIZMO_CIRCLE_SIZE *
                              (right * MathF.Cos(a2) + forward * MathF.Sin(a2));
 
-                dl.AddTriangleFilled(
+                OverlayTriangles.Add(new OverlayTriangle(
                     center2d,
                     PointToScreen(p1_3d),
                     PointToScreen(p2_3d),
-                    fillCol);
+                    fillCol));
             }
 
             // Edge lines from center
-            uint edgeCol = ToImGuiColor(HsvAdjust(handleColor, 0.8f, 1f, 0.7f));
+            Vector4 edgeCol = ToNumerics(HsvAdjust(handleColor, 0.8f, 1f, 0.7f));
             vec3 startPt = _edit.Center + _gizmoScale * GIZMO_CIRCLE_SIZE * right;
             vec3 endPt   = _edit.Center + _gizmoScale * GIZMO_CIRCLE_SIZE *
                            (right * MathF.Cos(dispAngle) + forward * MathF.Sin(dispAngle));
-            dl.AddLine(center2d, PointToScreen(startPt), edgeCol, 2f);
-            dl.AddLine(center2d, PointToScreen(endPt),   edgeCol, 2f);
+            OverlayLines.Add(new OverlayLine(center2d, PointToScreen(startPt), edgeCol, 2f));
+            OverlayLines.Add(new OverlayLine(center2d, PointToScreen(endPt),   edgeCol, 2f));
         }
 
         // Rotation line to cursor
         if (_edit.ShowRotationLine && ShowRotationLine)
         {
             vec4  lineColor = HsvAdjust(handleColor, 0.25f, 1f, 1f);
-            dl.AddLine(_edit.MousePos, center2d, ToImGuiColor(lineColor), 2f);
+            OverlayLines.Add(new OverlayLine(_edit.MousePos, center2d, ToNumerics(lineColor), 2f));
         }
     }
 
@@ -978,37 +1009,18 @@ public class Gizmo3D : IDisposable
     // GPU buffer helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private unsafe GizmoPart MakePart(List<vec3> verts, vec4 normalColor, vec4 highlightColor, bool isLines)
+    private GizmoPart MakePart(List<vec3> verts, vec4 normalColor, vec4 highlightColor, bool isLines)
     {
         if (verts.Count == 0) return new GizmoPart();
 
-        _gl.GenVertexArrays(1, out uint vao);
-        _gl.GenBuffers(1, out uint vbo);
-
-        _gl.BindVertexArray(vao);
-        _gl.BindBuffer(GLEnum.ArrayBuffer, vbo);
-
-        float[] data = new float[verts.Count * 3];
+        var data = new Vector3[verts.Count];
         for (int i = 0; i < verts.Count; i++)
-        {
-            data[i * 3 + 0] = verts[i].x;
-            data[i * 3 + 1] = verts[i].y;
-            data[i * 3 + 2] = verts[i].z;
-        }
-
-        fixed (float* p = data)
-            _gl.BufferData(GLEnum.ArrayBuffer, (uint)(data.Length * sizeof(float)), p, GLEnum.StaticDraw);
-
-        _gl.VertexAttribPointer(0, 3, GLEnum.Float, false, 3 * (uint)sizeof(float), 0);
-        _gl.EnableVertexAttribArray(0);
-
-        _gl.BindBuffer(GLEnum.ArrayBuffer, 0);
-        _gl.BindVertexArray(0);
+            data[i] = new Vector3(verts[i].x, verts[i].y, verts[i].z);
 
         return new GizmoPart
         {
-            Vao            = vao,
-            Vbo            = vbo,
+            Verts          = data,
+            Buffer         = null,
             VertexCount    = verts.Count,
             IsLines        = isLines,
             NormalColor    = normalColor,
@@ -1022,33 +1034,27 @@ public class Gizmo3D : IDisposable
 
     private void DrawPart(ref GizmoPart part, mat4 mvp, int highlightAxisCode)
     {
-        if (part.Vao == 0 || part.VertexCount == 0 || _shader == null) return;
+        if (part.Verts == null || part.VertexCount == 0) return;
         bool hl = _highlightAxis == highlightAxisCode;
         DrawPartColor(ref part, mvp, hl ? part.HighlightColor : part.NormalColor);
     }
 
-    private unsafe void DrawPartColor(ref GizmoPart part, mat4 mvp, vec4 color)
+    private void DrawPartColor(ref GizmoPart part, mat4 mvp, vec4 color, bool depthTest = false, bool depthWrite = false)
     {
-        if (part.Vao == 0 || part.VertexCount == 0 || _shader == null) return;
+        if (part.Verts == null || part.VertexCount == 0 || _cl == null) return;
 
-        int mvpLoc   = _gl.GetUniformLocation(_shader.ShaderProgram, "uMVP");
-        int colorLoc = _gl.GetUniformLocation(_shader.ShaderProgram, "uColor");
+        part.Buffer = _overlay.UploadVertices(part.Verts, part.Buffer);
 
-        float[] m =
-        [
-            mvp.m00, mvp.m01, mvp.m02, mvp.m03,
-            mvp.m10, mvp.m11, mvp.m12, mvp.m13,
-            mvp.m20, mvp.m21, mvp.m22, mvp.m23,
-            mvp.m30, mvp.m31, mvp.m32, mvp.m33,
-        ];
-        fixed (float* p = m)
-            _gl.UniformMatrix4(mvpLoc, 1, false, p);
-
-        _gl.Uniform4(colorLoc, color.x, color.y, color.z, color.w);
-
-        _gl.BindVertexArray(part.Vao);
-        _gl.DrawArrays(part.IsLines ? GLEnum.Lines : GLEnum.Triangles, 0, (uint)part.VertexCount);
-        _gl.BindVertexArray(0);
+        _overlay.Render(
+            _cl,
+            part.Buffer,
+            (uint)part.VertexCount,
+            part.IsLines ? PrimitiveTopology.LineList : PrimitiveTopology.TriangleList,
+            ToNumerics(mvp),
+            ToNumerics(color),
+            _outputDescription,
+            depthTest,
+            depthWrite);
     }
 
     private void DrawSelectionBoxes(mat4 view, mat4 proj)
@@ -1073,24 +1079,23 @@ public class Gizmo3D : IDisposable
             vec4 col     = _selBoxColor;
             vec4 xrayCol = WithAlpha(col, 0.15f * Opacity);
 
-            // X-ray pass
+            // X-ray pass: drawn on top (no depth test)
             var xrayPart = MakePart(lineVerts, xrayCol, xrayCol, isLines: true);
             DrawPartColor(ref xrayPart, mvp, xrayCol);
             FreePart(ref xrayPart);
 
-            // Solid pass (re-enable depth briefly)
-            _gl.Enable(GLEnum.DepthTest);
+            // Solid pass: depth-tested so it only shows where visible
             var solidPart = MakePart(lineVerts, col, col, isLines: true);
-            DrawPartColor(ref solidPart, mvp, col);
+            DrawPartColor(ref solidPart, mvp, col, depthTest: true, depthWrite: false);
             FreePart(ref solidPart);
-            _gl.Disable(GLEnum.DepthTest);
         }
     }
 
     private void FreePart(ref GizmoPart part)
     {
-        if (part.Vao != 0) { _gl.DeleteVertexArrays(1, part.Vao); part.Vao = 0; }
-        if (part.Vbo != 0) { _gl.DeleteBuffers(1, part.Vbo); part.Vbo = 0; }
+        part.Buffer?.Dispose();
+        part.Buffer = null;
+        part.Verts  = null!;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2054,14 +2059,13 @@ public class Gizmo3D : IDisposable
         return h;
     }
 
-    private static uint ToImGuiColor(vec4 c)
-    {
-        byte r = (byte)(Math.Clamp(c.x, 0f, 1f) * 255f);
-        byte g = (byte)(Math.Clamp(c.y, 0f, 1f) * 255f);
-        byte b = (byte)(Math.Clamp(c.z, 0f, 1f) * 255f);
-        byte a = (byte)(Math.Clamp(c.w, 0f, 1f) * 255f);
-        return ((uint)a << 24) | ((uint)b << 16) | ((uint)g << 8) | r;
-    }
+    private static Vector4 ToNumerics(vec4 c) => new(c.x, c.y, c.z, c.w);
+
+    private static Matrix4x4 ToNumerics(mat4 m) => new(
+        m.m00, m.m01, m.m02, m.m03,
+        m.m10, m.m11, m.m12, m.m13,
+        m.m20, m.m21, m.m22, m.m23,
+        m.m30, m.m31, m.m32, m.m33);
 
     // ─────────────────────────────────────────────────────────────────────────
     // IDisposable
@@ -2079,6 +2083,6 @@ public class Gizmo3D : IDisposable
             FreePart(ref _scalePlaneGizmo[i]);
             FreePart(ref _axisGizmo[i]);
         }
-        (_shader as IDisposable)?.Dispose();
+        _overlay.Dispose();
     }
 }
