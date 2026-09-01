@@ -164,13 +164,13 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
 
         ColorTarget = ResourceFactory.CreateTexture(TextureDescription.Texture2D(
             width, height, 1, 1,
-            PixelFormat.R8_G8_B8_A8_UNorm,
+            Veldrid.PixelFormat.R8_G8_B8_A8_UNorm,
             TextureUsage.RenderTarget | TextureUsage.Sampled));
         ColorTargetView = ResourceFactory.CreateTextureView(ColorTarget);
 
         DepthTarget = ResourceFactory.CreateTexture(TextureDescription.Texture2D(
             width, height, 1, 1,
-            PixelFormat.D24_UNorm_S8_UInt,
+            Veldrid.PixelFormat.D24_UNorm_S8_UInt,
             // Sampled (in addition to DepthStencil) so screen-space passes
             // (VeldridAmbientOcclusionPass, VeldridIndirectLightingPass) can
             // read it back as a normal texture after the opaque scene pass.
@@ -182,14 +182,14 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
 
         _stagingTexture = ResourceFactory.CreateTexture(TextureDescription.Texture2D(
             width, height, 1, 1,
-            PixelFormat.R8_G8_B8_A8_UNorm,
+            Veldrid.PixelFormat.R8_G8_B8_A8_UNorm,
             TextureUsage.Staging));
 
         _bitmap?.Dispose();
         _bitmap = new WriteableBitmap(
             new PixelSize((int)width, (int)height),
             new Vector(96, 96),
-            PixelFormat.Rgba8888,
+            Avalonia.Platform.PixelFormat.Rgba8888,
             AlphaFormat.Unpremul);
     }
 
