@@ -81,7 +81,7 @@ public sealed class AppDockFactory : Factory
         {
             Id = ContentBrowserToolId,
             Title = "Content Browser",
-            Content = new PlaceholderPanelView("Content Browser"),
+            Content = new ContentBrowserView(),
         };
 
         var viewportDock = new ToolDock
