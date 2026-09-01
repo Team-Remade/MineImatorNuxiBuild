@@ -1,5 +1,6 @@
 ﻿using GlmSharp;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.render;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs;
@@ -230,17 +231,17 @@ public class SceneObject
     /// sub-meshes, or a block with separate overlay geometry).
     /// Use <see cref="AddMesh"/> / <see cref="RemoveMesh"/> to modify the list.
     /// </summary>
-    public List<Mesh> Visuals { get; } = [];
+    public List<VeldridMesh> Visuals { get; } = [];
 
     /// <summary>Attaches a mesh to this object's visual list.</summary>
-    public void AddMesh(Mesh mesh)
+    public void AddMesh(VeldridMesh mesh)
     {
         if (mesh != null && !Visuals.Contains(mesh))
             Visuals.Add(mesh);
     }
 
     /// <summary>Detaches a mesh from this object's visual list.</summary>
-    public void RemoveMesh(Mesh mesh)
+    public void RemoveMesh(VeldridMesh mesh)
     {
         Visuals.Remove(mesh);
     }
@@ -569,16 +570,28 @@ public class SceneObject
 
         foreach (var mesh in Visuals)
         {
-            mesh.Albedo = new vec3(
+            mesh.Albedo = new System.Numerics.Vector3(
                 _materialSettings.AlbedoColor.x,
                 _materialSettings.AlbedoColor.y,
                 _materialSettings.AlbedoColor.z);
-            mesh.BlendColor = _materialSettings.BlendColor;
-            mesh.MixColor = _materialSettings.MixColor;
+            mesh.BlendColor = new System.Numerics.Vector4(
+                _materialSettings.BlendColor.x,
+                _materialSettings.BlendColor.y,
+                _materialSettings.BlendColor.z,
+                _materialSettings.BlendColor.w);
+            mesh.MixColor = new System.Numerics.Vector4(
+                _materialSettings.MixColor.x,
+                _materialSettings.MixColor.y,
+                _materialSettings.MixColor.z,
+                _materialSettings.MixColor.w);
             mesh.DoubleSided = _materialSettings.DoubleSided;
-            mesh.TextureOffset = _materialSettings.TextureOffset;
-            mesh.TextureRepeat = _materialSettings.TextureRepeat;
-            mesh.TextureMirror = _materialSettings.TextureMirror;
+            mesh.TextureOffset = new System.Numerics.Vector2(
+                _materialSettings.TextureOffset.x,
+                _materialSettings.TextureOffset.y);
+            mesh.TextureRepeat = new System.Numerics.Vector2(
+                _materialSettings.TextureRepeat.x,
+                _materialSettings.TextureRepeat.y);
+            mesh.TextureMirror = (_materialSettings.TextureMirror.x, _materialSettings.TextureMirror.y);
             // Combine AlbedoColor.a with (1 - Transparency) so both routes
             // can control opacity: 0 Transparency = fully opaque.
             mesh.Alpha = _materialSettings.AlbedoColor.w * (1f - _materialSettings.Transparency);
@@ -586,21 +599,24 @@ public class SceneObject
             if (useAutoEmission)
             {
                 mesh.EmissionEnabled = true;
-                mesh.EmissionColor = vec3.Ones;
+                mesh.EmissionColor = System.Numerics.Vector3.One;
                 mesh.EmissionEnergy = Math.Clamp(mesh.AutoEmissionLevel / 7.5f, 0f, 10f);
             }
             else
             {
                 mesh.EmissionEnabled = _materialSettings.EmissionEnabled;
-                mesh.EmissionColor = new vec3(
+                mesh.EmissionColor = new System.Numerics.Vector3(
                     _materialSettings.EmissionColor.x,
                     _materialSettings.EmissionColor.y,
                     _materialSettings.EmissionColor.z);
                 mesh.EmissionEnergy = _materialSettings.EmissionEnergy;
             }
             mesh.Subsurface = _materialSettings.Subsurface;
-            mesh.SubsurfaceRadius = _materialSettings.SubsurfaceRadius;
-            mesh.SubsurfaceColor = new vec3(
+            mesh.SubsurfaceRadius = new System.Numerics.Vector3(
+                _materialSettings.SubsurfaceRadius.x,
+                _materialSettings.SubsurfaceRadius.y,
+                _materialSettings.SubsurfaceRadius.z);
+            mesh.SubsurfaceColor = new System.Numerics.Vector3(
                 _materialSettings.SubsurfaceColor.x,
                 _materialSettings.SubsurfaceColor.y,
                 _materialSettings.SubsurfaceColor.z);
@@ -1079,9 +1095,9 @@ public class SceneObject
     /// Returns all <see cref="Mesh"/> instances attached to this object and every
     /// descendant <see cref="SceneObject"/> in the hierarchy (depth-first).
     /// </summary>
-    public List<Mesh> GetMeshInstancesRecursively()
+    public List<VeldridMesh> GetMeshInstancesRecursively()
     {
-        var result = new List<Mesh>(Visuals);
+        var result = new List<VeldridMesh>(Visuals);
         foreach (var child in _children)
             result.AddRange(child.GetMeshInstancesRecursively());
         return result;
@@ -1091,7 +1107,7 @@ public class SceneObject
     /// Convenience alias for <see cref="AddMesh"/>.
     /// Adds a mesh to this object's visual list.
     /// </summary>
-    public void AddVisualInstance(Mesh mesh) => AddMesh(mesh);
+    public void AddVisualInstance(VeldridMesh mesh) => AddMesh(mesh);
 }
 
 // ── ObjectKeyframe ────────────────────────────────────────────────────────────

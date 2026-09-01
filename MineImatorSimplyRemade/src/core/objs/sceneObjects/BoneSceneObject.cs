@@ -1,6 +1,6 @@
-﻿using GlmSharp;
+﻿using System.Numerics;
 using MineImatorSimplyRemade.core.mdl;
-using Silk.NET.OpenGL;
+using MineImatorSimplyRemade.core.render;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
@@ -31,20 +31,20 @@ public class BoneSceneObject : SceneObject
     /// 3-D indicator.  Built once via <see cref="CreateIndicator"/>.
     /// Null until GL is available.
     /// </summary>
-    public Mesh? IndicatorMesh { get; private set; }
+    public VeldridMesh? IndicatorMesh { get; private set; }
 
     /// <summary>
     /// Builds the octahedron indicator mesh.  Must be called once on the GL
     /// thread (typically from <see cref="AssimpModelLoader"/> after import).
     /// </summary>
-    public void CreateIndicator(GL gl)
+    public void CreateIndicator()
     {
         // Small octahedron: 6 vertices, 8 triangular faces.
         // Sized to be clearly visible but not distracting (0.08 world units radius).
         const float r  = 0.08f; // equatorial radius
         const float h  = 0.12f; // half-height (top/bottom tips)
 
-        var verts = new vec3[]
+        var verts = new Vector3[]
         {
             new( 0,  h,  0),  // 0 top
             new( r,  0,  0),  // 1 +X
@@ -68,7 +68,11 @@ public class BoneSceneObject : SceneObject
             5, 1, 4,
         };
 
-        IndicatorMesh = new Mesh(gl, verts, indices: idx);
+        var mesh = new VeldridMesh(VeldridContext.Device);
+        mesh.Vertices.AddRange(verts);
+        mesh.Indices = idx;
+        mesh.Upload(VeldridContext.StandardOutputDescription);
+        IndicatorMesh = mesh;
     }
 
     // ── Icon ──────────────────────────────────────────────────────────────────

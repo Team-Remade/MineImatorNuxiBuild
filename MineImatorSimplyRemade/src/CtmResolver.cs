@@ -1,8 +1,10 @@
+using Veldrid;
+
 namespace MineImatorSimplyRemade;
 
 public class CtmResolvedTile
 {
-    public uint TextureId { get; init; }
+    public Texture? TextureId { get; init; }
     public float UMin { get; init; }
     public float VMin { get; init; }
     public float UMax { get; init; }
@@ -41,8 +43,8 @@ public static class CtmResolver
             tileIndex = 0;
         }
 
-        uint texId = tileIndex < rule.TileTextureIds.Count ? rule.TileTextureIds[tileIndex] : 0;
-        if (texId == 0)
+        Texture? texId = tileIndex < rule.TileTextureIds.Count ? rule.TileTextureIds[tileIndex] : null;
+        if (texId == null)
         {
             return null;
         }

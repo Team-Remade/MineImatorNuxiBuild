@@ -1,6 +1,6 @@
 ﻿using GlmSharp;
 using MineImatorSimplyRemade.core.mdl;
-using Silk.NET.OpenGL;
+using MineImatorSimplyRemade.core.render;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
@@ -95,14 +95,14 @@ public class LightSceneObject : SceneObject
     /// The viewport scales the model matrix by <see cref="LightRange"/> so the
     /// same geometry is reused regardless of the light's actual range.
     /// </summary>
-    public static Mesh? SharedRangeRingMesh { get; private set; }
+    public static VeldridMesh? SharedRangeRingMesh { get; private set; }
 
     /// <summary>
     /// Unit cone mesh (apex at origin, base at +Z = 1) shared by every
     /// <see cref="LightSceneObject"/>.  The viewport scales it to match the
     /// spot light's outer-cone radius / range.
     /// </summary>
-    public static Mesh? SharedSpotConeMesh { get; private set; }
+    public static VeldridMesh? SharedSpotConeMesh { get; private set; }
 
     /// <summary>
     /// Thin unit-length stick (square cross-section cylinder) mesh shared by
@@ -110,17 +110,17 @@ public class LightSceneObject : SceneObject
     /// forward axis in the unselected state.  The default zero rotation aims
     /// the stick along local +Z.
     /// </summary>
-    public static Mesh? SharedSpotStickMesh { get; private set; }
+    public static VeldridMesh? SharedSpotStickMesh { get; private set; }
 
     /// <summary>
     /// Uploads the shared unit-radius ring mesh.  Must be called once on the GL
     /// thread (typically from <c>Viewport.InitLightBillboards</c> after context
     /// creation).  Subsequent calls are no-ops.
     /// </summary>
-    public static void EnsureRangeRingMesh(GL gl)
+    public static void EnsureRangeRingMesh()
     {
-        SharedRangeRingMesh ??= new MineImatorSimplyRemade.core.mdl.meshes.LightRangeRingMesh(gl);
-        SharedSpotConeMesh ??= new MineImatorSimplyRemade.core.mdl.meshes.LightConeMesh(gl);
-        SharedSpotStickMesh ??= new MineImatorSimplyRemade.core.mdl.meshes.LightStickMesh(gl);
+        SharedRangeRingMesh ??= new MineImatorSimplyRemade.core.mdl.meshes.LightRangeRingMesh();
+        SharedSpotConeMesh ??= new MineImatorSimplyRemade.core.mdl.meshes.LightConeMesh();
+        SharedSpotStickMesh ??= new MineImatorSimplyRemade.core.mdl.meshes.LightStickMesh();
     }
 }

@@ -1,3 +1,5 @@
+using Veldrid;
+
 namespace MineImatorSimplyRemade;
 
 public class CtmProperties
@@ -11,7 +13,7 @@ public class CtmProperties
     public string Method { get; set; } = "ctm_compact";
     public List<int> Tiles { get; set; } = new();
     public List<string> Faces { get; set; } = new();
-    public List<uint> TileTextureIds { get; } = new();
+    public List<Texture?> TileTextureIds { get; } = new();
     
     public static CtmProperties Parse(string text, string propertiesPath, string packId)
     {

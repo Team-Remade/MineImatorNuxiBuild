@@ -21,7 +21,7 @@ public static class VeldridSmokeTest
     {
         try
         {
-            using var surface = new VeldridBitmapRenderSurface(320, 240);
+            using var surface = VeldridBitmapRenderSurface.CreateStandalone(320, 240);
             using var mesh = new VeldridMesh(surface.GraphicsDevice);
 
             using var shadowMap = new VeldridShadowMap(surface.GraphicsDevice, 1024);

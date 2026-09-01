@@ -72,27 +72,22 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
     /// across <see cref="Resize"/> calls - pass this to <c>VeldridMesh.Upload</c>.</summary>
     public OutputDescription OutputDescription => Framebuffer.OutputDescription;
 
-    /// <param name="backend">
-    /// Defaults to Direct3D11 on Windows: unlike Veldrid's OpenGL backend, D3D11
-    /// (and Vulkan) can create a fully headless <see cref="GraphicsDevice"/> with
-    /// no native window/context required at all, which is exactly what an
-    /// offscreen-only render target needs.
-    /// </param>
-    public VeldridBitmapRenderSurface(uint width, uint height, GraphicsBackend backend = GraphicsBackend.Direct3D11)
-    {
-        var options = new GraphicsDeviceOptions(
-            debug: false,
-            swapchainDepthFormat: null,
-            syncToVerticalBlank: false,
-            resourceBindingModel: ResourceBindingModel.Improved);
+    /// <summary>True if this surface owns (and must dispose) its <see cref="GraphicsDevice"/>,
+    /// as opposed to sharing <see cref="VeldridContext.Device"/>. Only set via
+    /// <see cref="CreateStandalone"/>.</summary>
+    private bool _ownsDevice;
 
-        GraphicsDevice = backend switch
-        {
-            GraphicsBackend.Direct3D11 => GraphicsDevice.CreateD3D11(options),
-            GraphicsBackend.Vulkan => GraphicsDevice.CreateVulkan(options),
-            _ => throw new NotSupportedException(
-                $"{backend} requires a native window/context and cannot be created headless; use Direct3D11 or Vulkan for offscreen rendering.")
-        };
+    /// <param name="device">
+    /// Defaults to the shared <see cref="VeldridContext.Device"/> - textures/meshes
+    /// created elsewhere (atlases, loaded models) are only usable by surfaces on
+    /// the same device, so most callers should not override this. Pass an
+    /// explicit isolated device only for tools/tests that want independence
+    /// (e.g. <see cref="VeldridSmokeTest"/>), and see <see cref="CreateStandalone"/>
+    /// for a convenience that creates+owns one.
+    /// </param>
+    public VeldridBitmapRenderSurface(uint width, uint height, GraphicsDevice? device = null)
+    {
+        GraphicsDevice = device ?? VeldridContext.Device;
 
         SceneDataBuffer = ResourceFactory.CreateBuffer(new BufferDescription(
             AlignTo16((uint)System.Runtime.InteropServices.Marshal.SizeOf<SceneDataUniforms>()),
@@ -109,6 +104,29 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
         UpdateEnvironment(SceneEnvironmentUniforms.Default);
 
         Resize(Math.Max(1, width), Math.Max(1, height));
+    }
+
+    /// <summary>Creates a surface with its own private, isolated headless
+    /// <see cref="GraphicsDevice"/> (disposed along with this surface) instead of
+    /// the shared <see cref="VeldridContext.Device"/>. For standalone tools/tests
+    /// only - see this class's constructor doc for why sharing is the default.</summary>
+    public static VeldridBitmapRenderSurface CreateStandalone(uint width, uint height, GraphicsBackend backend = GraphicsBackend.Direct3D11)
+    {
+        var options = new GraphicsDeviceOptions(
+            debug: false,
+            swapchainDepthFormat: null,
+            syncToVerticalBlank: false,
+            resourceBindingModel: ResourceBindingModel.Improved);
+
+        GraphicsDevice device = backend switch
+        {
+            GraphicsBackend.Direct3D11 => GraphicsDevice.CreateD3D11(options),
+            GraphicsBackend.Vulkan => GraphicsDevice.CreateVulkan(options),
+            _ => throw new NotSupportedException(
+                $"{backend} requires a native window/context and cannot be created headless; use Direct3D11 or Vulkan for offscreen rendering.")
+        };
+
+        return new VeldridBitmapRenderSurface(width, height, device) { _ownsDevice = true };
     }
 
     private static uint AlignTo16(uint size) => (size + 15) / 16 * 16;
@@ -264,6 +282,7 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
         SceneDataBuffer?.Dispose();
         PointLightBuffer?.Dispose();
         EnvironmentBuffer?.Dispose();
-        GraphicsDevice.Dispose();
+        if (_ownsDevice)
+            GraphicsDevice.Dispose();
     }
 }

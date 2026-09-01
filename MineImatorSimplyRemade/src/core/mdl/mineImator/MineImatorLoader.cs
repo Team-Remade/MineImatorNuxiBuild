@@ -2,9 +2,9 @@ using GlmSharp;
 using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemade.core.render;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
-using Silk.NET.OpenGL;
 using StbImageSharp;
 using System;
 using System.Collections.Generic;
@@ -13,6 +13,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Veldrid;
 
 namespace MineImatorSimplyRemade.core.mdl.mineImator;
 
@@ -43,10 +44,8 @@ public class MineImatorLoader
 
     // ── State ─────────────────────────────────────────────────────────────────
 
-    private GL _gl;
-
     /// <summary>Must be called once before loading any models.</summary>
-    public void Initialize(GL gl) => _gl = gl;
+    public void Initialize(){}
 
     private CharacterSceneObject _currentCharacter;
 
@@ -56,6 +55,29 @@ public class MineImatorLoader
     // ── Texture cache (path → GL texture handle) ──────────────────────────────
 
     private readonly Dictionary<string, uint> _textureCache = new();
+
+    // ── Veldrid texture registry ──────────────────────────────────────────────
+    // The loader's whole texture pipeline still tracks textures by a numeric id
+    // (MiModel/MiPart.LoadedTextures, GetTexture, VeldridMesh.TextureId). Rather
+    // than convert every one of those to Veldrid Texture references, each loaded
+    // texture is assigned a synthetic id that maps to the real Veldrid texture
+    // here, and AlbedoTexture is resolved from this map wherever a mesh's
+    // TextureId is assigned.
+
+    private static readonly Dictionary<uint, Texture> _veldridTextures = new();
+    private static uint _nextTextureId = 1;
+
+    /// <summary>Resolves the Veldrid texture backing a synthetic texture id.</summary>
+    public static Texture? ResolveVeldridTexture(uint id)
+        => id != 0 && _veldridTextures.TryGetValue(id, out var t) ? t : null;
+
+    private uint RegisterVeldridTexture(Texture tex, byte[] rgba, int width, int height)
+    {
+        uint id = _nextTextureId++;
+        _veldridTextures[id] = tex;
+        _pixelCache[id] = (rgba, width, height);
+        return id;
+    }
 
     // ═════════════════════════════════════════════════════════════════════════
     //  Public API
@@ -359,7 +381,8 @@ public class MineImatorLoader
                         if (colorBlend.HasValue)
                         {
                             float mixAmount = Math.Clamp(colorBlendAmount ?? 1f, 0f, 1f);
-                            mesh.BlendColor = new vec4(colorBlend.Value, mixAmount);
+                            vec3 scb = colorBlend.Value;
+                            mesh.BlendColor = new System.Numerics.Vector4(scb.x, scb.y, scb.z, mixAmount);
                         }
                         if (colorAlpha.HasValue) mesh.Alpha = colorAlpha.Value;
                         mesh.DoubleSided = part.Backfaces;
@@ -392,7 +415,7 @@ public class MineImatorLoader
     /// <summary>
     /// Public wrapper for CreateShapeMesh used by BoneSceneObject.RegenerateMeshes.
     /// </summary>
-    public Mesh CreateShapeMeshPublic(string partName, int shapeIndex, MiShape shape, MiModel model,
+    public VeldridMesh CreateShapeMeshPublic(string partName, int shapeIndex, MiShape shape, MiModel model,
         uint textureId, vec3 accumulatedParentScale, BendParams? bendParams = null,
         BendStyle bendStyle = BendStyle.ProjectDefault, vec3? partColorBlend = null,
         float? partColorBlendAmount = null,
@@ -761,9 +784,8 @@ public class MineImatorLoader
         obj.TemporaryItemSheetColumnIndex = columnIndex;
         obj.TemporaryItemSheetRowIndex = rowIndex;
 
-        Mesh mesh = new ExtrudedItemMesh(
-            _gl,
-            tileTextureId,
+        VeldridMesh mesh = new ExtrudedItemMesh(
+            ResolveVeldridTexture(tileTextureId),
             tilePixels,
             is3D: template.Item.ThreeD,
             tileSize: tileSize,
@@ -853,30 +875,19 @@ public class MineImatorLoader
 
     private uint LoadTextureFromRgba(byte[] rgbaPixels, int width, int height)
     {
-        if (_gl == null || rgbaPixels == null || rgbaPixels.Length == 0 || width <= 0 || height <= 0)
+        if (rgbaPixels == null || rgbaPixels.Length == 0 || width <= 0 || height <= 0)
             return 0;
 
         string cacheKey = $"rgba:{width}x{height}:{Convert.ToBase64String(rgbaPixels)}";
         if (_textureCache.TryGetValue(cacheKey, out uint cached))
             return cached;
 
-        uint tex = _gl.GenTexture();
-        _gl.BindTexture(GLEnum.Texture2D, tex);
-        unsafe
-        {
-            fixed (byte* p = rgbaPixels)
-                _gl.TexImage2D(GLEnum.Texture2D, 0, (int)GLEnum.Rgba, (uint)width, (uint)height,
-                    0, GLEnum.Rgba, GLEnum.UnsignedByte, p);
-        }
-
-        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)GLEnum.Nearest);
-        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)GLEnum.Nearest);
-        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)GLEnum.ClampToEdge);
-        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.ClampToEdge);
-        _gl.BindTexture(GLEnum.Texture2D, 0);
-
-        _textureCache[cacheKey] = tex;
-        return tex;
+        // Block/item textures used nearest filtering, clamp-to-edge, no mipmaps.
+        Texture tex = VeldridTextureLoader.UploadRgba(rgbaPixels, (uint)width, (uint)height,
+            nearest: true, generateMipmaps: false, repeat: false);
+        uint id = RegisterVeldridTexture(tex, rgbaPixels, width, height);
+        _textureCache[cacheKey] = id;
+        return id;
     }
 
     private static string GetBoneLookupKey(int boneIdx) => $"bone:{boneIdx}";
@@ -1089,6 +1100,7 @@ public class MineImatorLoader
                 if (onlyIfTextureId != 0 && mesh.TextureId != onlyIfTextureId)
                     continue;
                 mesh.TextureId = textureId;
+                mesh.AlbedoTexture = ResolveVeldridTexture(textureId);
             }
         }
 
@@ -1134,7 +1146,7 @@ public class MineImatorLoader
             boneObject.AssignObjectId();
             // Build the octahedron indicator so the Viewport renders and picks it
             // the same way it does for Assimp-imported bones.
-            boneObject.CreateIndicator(_gl);
+            boneObject.CreateIndicator();
             character.BoneObjects[GetBoneLookupKey(boneIdx)] = boneObject;
         }
 
@@ -1398,30 +1410,19 @@ public class MineImatorLoader
     public uint LoadTextureFromFile(string path)
     {
         if (_textureCache.TryGetValue(path, out uint cached)) return cached;
-        if (_gl == null || !File.Exists(path)) return 0;
+        if (!File.Exists(path)) return 0;
 
         try
         {
             var bytes = File.ReadAllBytes(path);
             ImageResult img = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
 
-            uint tex = _gl.GenTexture();
-            _gl.BindTexture(GLEnum.Texture2D, tex);
-            unsafe
-            {
-                fixed (byte* p = img.Data)
-                    _gl.TexImage2D(GLEnum.Texture2D, 0, (int)GLEnum.Rgba, (uint)img.Width, (uint)img.Height,
-                        0, GLEnum.Rgba, GLEnum.UnsignedByte, p);
-            }
-
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)GLEnum.Nearest);
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)GLEnum.Nearest);
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)GLEnum.ClampToEdge);
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.ClampToEdge);
-            _gl.BindTexture(GLEnum.Texture2D, 0);
-
-            _textureCache[path] = tex;
-            return tex;
+            // Model textures used nearest filtering, clamp-to-edge, no mipmaps.
+            Texture tex = VeldridTextureLoader.UploadRgba(img.Data, (uint)img.Width, (uint)img.Height,
+                nearest: true, generateMipmaps: false, repeat: false);
+            uint id = RegisterVeldridTexture(tex, img.Data, img.Width, img.Height);
+            _textureCache[path] = id;
+            return id;
         }
         catch (Exception ex)
         {
@@ -1451,17 +1452,21 @@ public class MineImatorLoader
         }
     }
 
-    private static void ApplyMaterialSettings(Mesh mesh, MiBoneSceneObject bone, uint textureId)
+    private static void ApplyMaterialSettings(VeldridMesh mesh, MiBoneSceneObject bone, uint textureId)
     {
         if (textureId != 0)
+        {
             mesh.TextureId = textureId;
+            mesh.AlbedoTexture = ResolveVeldridTexture(textureId);
+        }
 
         if (bone.ColorAlpha.HasValue)
             mesh.Alpha = bone.ColorAlpha.Value;
         if (bone.ColorBlend.HasValue)
         {
             float mixAmount = Math.Clamp(bone.ColorBlendAmount ?? 1f, 0f, 1f);
-            mesh.BlendColor = new vec4(bone.ColorBlend.Value, mixAmount);
+            vec3 cb = bone.ColorBlend.Value;
+            mesh.BlendColor = new System.Numerics.Vector4(cb.x, cb.y, cb.z, mixAmount);
         }
 
         mesh.SortDepth = bone.Depth;
@@ -1471,7 +1476,7 @@ public class MineImatorLoader
     //  Mesh generation
     // ═════════════════════════════════════════════════════════════════════════
 
-    private Mesh CreateShapeMesh(string partName, int shapeIndex, MiShape shape, MiModel model,
+    private VeldridMesh CreateShapeMesh(string partName, int shapeIndex, MiShape shape, MiModel model,
         uint textureId, vec3 accumulatedParentScale, BendParams? bendParams = null,
         BendStyle bendStyle = BendStyle.ProjectDefault, vec3? partColorBlend = null,
         float? partColorBlendAmount = null,
@@ -1525,7 +1530,7 @@ public class MineImatorLoader
                          (effectiveBend.Value.Angle.x != 0 || effectiveBend.Value.Angle.y != 0 ||
                           effectiveBend.Value.Angle.z != 0);
 
-        Mesh mesh;
+        VeldridMesh mesh;
 
         if (shape.Type == "plane")
         {
@@ -1563,11 +1568,16 @@ public class MineImatorLoader
         {
             mesh.SortDepth = depth;
 
-            if (textureId != 0) mesh.TextureId = textureId;
+            if (textureId != 0)
+            {
+                mesh.TextureId = textureId;
+                mesh.AlbedoTexture = ResolveVeldridTexture(textureId);
+            }
             if (partColorBlend.HasValue)
             {
                 float mixAmount = Math.Clamp(partColorBlendAmount ?? 1f, 0f, 1f);
-                mesh.BlendColor = new vec4(partColorBlend.Value, mixAmount);
+                vec3 pcb = partColorBlend.Value;
+                mesh.BlendColor = new System.Numerics.Vector4(pcb.x, pcb.y, pcb.z, mixAmount);
             }
             if (partColorAlpha.HasValue) mesh.Alpha = partColorAlpha.Value;
 
@@ -1576,9 +1586,10 @@ public class MineImatorLoader
             // applied to the final vertices (matching non-bent paths).
             if (shapePosition != vec3.Zero)
             {
+                var sp = new System.Numerics.Vector3(shapePosition.x, shapePosition.y, shapePosition.z);
                 for (int i = 0; i < mesh.Vertices.Count; i++)
-                    mesh.Vertices[i] += shapePosition;
-                mesh.Upload();
+                    mesh.Vertices[i] += sp;
+                mesh.Upload(VeldridContext.StandardOutputDescription);
             }
         }
 
@@ -1597,7 +1608,7 @@ public class MineImatorLoader
     //  Block mesh
     // ─────────────────────────────────────────────────────────────────────────
 
-    private Mesh CreateBlockMesh(string partName, int shapeIndex, vec3 from, vec3 to,
+    private VeldridMesh CreateBlockMesh(string partName, int shapeIndex, vec3 from, vec3 to,
         float uvU, float uvV, float sizeX, float sizeY, float sizeZ,
         int texWidth, int texHeight, bool textureMirror, bool textureMirrorY, bool invert, float inflate = 0f,
         BendParams? bend = null, vec3 shapePosition = default, vec3 shapeRotation = default,
@@ -2143,7 +2154,7 @@ public class MineImatorLoader
     //  Plane mesh
     // ─────────────────────────────────────────────────────────────────────────
 
-    private Mesh CreatePlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
+    private VeldridMesh CreatePlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
         int texWidth, int texHeight, bool textureMirror, bool invert, float inflate = 0f,
         vec3 shapeRotation = default, vec3 shapeScale = default,
         bool hideFront = false, bool hideBack = false, vec3[]? shapeVertexOffsets = null)
@@ -2278,7 +2289,7 @@ public class MineImatorLoader
     //  Extruded plane mesh (per-pixel item-style)
     // ─────────────────────────────────────────────────────────────────────────
 
-    private Mesh CreateExtrudedPlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
+    private VeldridMesh CreateExtrudedPlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
         int texWidth, int texHeight, uint textureId, bool textureMirror, bool invert, float inflate = 0f,
         vec3 shapeRotation = default, vec3 shapeScale = default)
     {
@@ -2422,7 +2433,7 @@ public class MineImatorLoader
     //  Bent plane mesh
     // ─────────────────────────────────────────────────────────────────────────
 
-    private Mesh CreateBentPlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
+    private VeldridMesh CreateBentPlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
         int texWidth, int texHeight, bool textureMirror, bool invert, float inflate,
         BendParams bend, vec3 shapePosition, vec3 shapeRotation = default, vec3 shapeScale = default,
         BendStyle bendStyle = BendStyle.ProjectDefault, bool hideFront = false, bool hideBack = false)
@@ -2613,7 +2624,7 @@ public class MineImatorLoader
     //  Bent extruded plane mesh
     // ─────────────────────────────────────────────────────────────────────────
 
-    private Mesh CreateBentExtrudedPlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
+    private VeldridMesh CreateBentExtrudedPlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
         int texWidth, int texHeight, uint textureId, bool textureMirror, bool invert,
         float inflate, BendParams bend, vec3 shapePosition, vec3 shapeRotation = default,
         vec3 shapeScale = default, BendStyle bendStyle = BendStyle.ProjectDefault)
@@ -2827,16 +2838,16 @@ public class MineImatorLoader
     //  Mesh building helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private Mesh BuildMesh(List<vec3> vertices, List<vec3> normals, List<vec2> uvs, List<uint> indices)
+    private VeldridMesh BuildMesh(List<vec3> vertices, List<vec3> normals, List<vec2> uvs, List<uint> indices)
     {
-        if (_gl == null || vertices.Count == 0) return null;
+        if (vertices.Count == 0) return null;
 
-        var mesh = new Mesh(_gl);
-        mesh.Vertices.AddRange(vertices);
-        mesh.Normals.AddRange(normals);
-        mesh.TexCoords.AddRange(uvs);
+        var mesh = new VeldridMesh(VeldridContext.Device);
+        foreach (var v in vertices) mesh.Vertices.Add(new System.Numerics.Vector3(v.x, v.y, v.z));
+        foreach (var n in normals) mesh.Normals.Add(new System.Numerics.Vector3(n.x, n.y, n.z));
+        foreach (var uv in uvs) mesh.TexCoords.Add(new System.Numerics.Vector2(uv.x, uv.y));
         mesh.Indices = indices.ToArray();
-        mesh.Upload();
+        mesh.Upload(VeldridContext.StandardOutputDescription);
         return mesh;
     }
 
@@ -3052,6 +3063,8 @@ public class MineImatorLoader
 
     private byte[]? TryGetPixels(uint textureId, int texWidth, int texHeight, out int imgW, out int imgH)
     {
+        // Raw pixels are cached at upload time (LoadTextureFromRgba/LoadTextureFromFile),
+        // so no GPU readback is needed under the Veldrid texture model.
         if (_pixelCache.TryGetValue(textureId, out var cached))
         {
             imgW = cached.w;
@@ -3059,37 +3072,8 @@ public class MineImatorLoader
             return cached.pixels;
         }
 
-        if (_gl == null)
-        {
-            imgW = imgH = 0;
-            return null;
-        }
-
-        try
-        {
-            // We'll use the expected texWidth/texHeight since we know them from the model
-            imgW = texWidth;
-            imgH = texHeight;
-            int size = texWidth * texHeight * 4;
-            byte[] pixels = new byte[size];
-
-            _gl.BindTexture(GLEnum.Texture2D, textureId);
-            unsafe
-            {
-                fixed (byte* p = pixels)
-                    _gl.GetTexImage(GLEnum.Texture2D, 0, GLEnum.Rgba, GLEnum.UnsignedByte, p);
-            }
-
-            _gl.BindTexture(GLEnum.Texture2D, 0);
-
-            _pixelCache[textureId] = (pixels, texWidth, texHeight);
-            return pixels;
-        }
-        catch
-        {
-            imgW = imgH = 0;
-            return null;
-        }
+        imgW = imgH = 0;
+        return null;
     }
 
     private static float GetAlpha(byte[] pixels, int x, int y, int width)

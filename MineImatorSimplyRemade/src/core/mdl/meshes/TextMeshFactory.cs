@@ -1,7 +1,9 @@
+using System.Numerics;
 using System.Text;
+using MineImatorSimplyRemade.core.render;
 using MineImatorSimplyRemadeNuxi.core.objs;
-using Silk.NET.OpenGL;
 using StbTrueTypeSharp;
+using Veldrid;
 
 namespace MineImatorSimplyRemade.core.mdl.meshes;
 
@@ -9,35 +11,33 @@ namespace MineImatorSimplyRemade.core.mdl.meshes;
 public static class TextMeshFactory
 {
     private const float RasterHeight = 256f;
-    private static GL? _gl;
 
-    public static void Rebuild(SceneObject obj, GL? gl = null)
+    public static void Rebuild(SceneObject obj)
     {
-        _gl = gl ?? _gl;
-        if (_gl == null) return;
-
         // A user/camera albedo is distinct from the generated text mask and
         // must survive rebuilds caused by outline/font/property changes.
-        uint externalTexture = obj.Visuals
-            .FirstOrDefault(mesh => mesh.TextureId != 0 && mesh.TextureId != mesh.AlphaMaskTextureId)
-            ?.TextureId ?? 0;
+        Texture? externalTexture = obj.Visuals
+            .FirstOrDefault(mesh => mesh.AlbedoTexture != null && mesh.AlbedoTexture != mesh.AlphaMaskTexture)
+            ?.AlbedoTexture;
 
         (byte[] pixels, int width, int height) = Rasterize(obj);
         if (obj.TextMeshExtruded)
             MakeAlphaOpaque(pixels);
-        uint texture = UploadTexture(_gl, pixels, width, height);
+        Texture texture = UploadTexture(pixels, width, height);
         float extrusionDepth = Math.Clamp(obj.TextMeshExtrusionDepth, 0.001f, 10f);
-        var replacement = new ExtrudedItemMesh(_gl, texture, pixels, obj.TextMeshExtruded,
+        var replacement = new ExtrudedItemMesh(texture, pixels, obj.TextMeshExtruded,
             (int)RasterHeight, width, height, extrusionDepth, 128)
         {
             BlurTexture = obj.TextMeshAntialiasing,
-            AlphaMaskTextureId = texture,
+            AlphaMaskTexture = texture,
             IsTextAlphaMask = true,
             TextMaskOutlineColor = obj.TextMeshOutlineEnabled
-                ? obj.TextMeshOutlineColor
-                : new GlmSharp.vec4(1f, 1f, 1f, 1f)
+                ? new Vector4(obj.TextMeshOutlineColor.x, obj.TextMeshOutlineColor.y,
+                    obj.TextMeshOutlineColor.z, obj.TextMeshOutlineColor.w)
+                : new Vector4(1f, 1f, 1f, 1f)
         };
-        replacement.TextureId = externalTexture;
+        // The external/user albedo (if any) is applied over the generated mask.
+        replacement.AlbedoTexture = externalTexture;
         float sizeScale = Math.Clamp(obj.TextMeshFontSize, 1f, 512f) / 64f;
         float shiftX = obj.TextMeshHorizontalAlignment switch
         {
@@ -51,12 +51,12 @@ public static class TextMeshFactory
         {
             for (int i = 0; i < replacement.Vertices.Count; i++)
             {
-                GlmSharp.vec3 vertex = replacement.Vertices[i];
-                vertex.x = vertex.x * sizeScale + shiftX;
-                vertex.y = vertex.y * sizeScale + shiftY;
+                Vector3 vertex = replacement.Vertices[i];
+                vertex.X = vertex.X * sizeScale + shiftX;
+                vertex.Y = vertex.Y * sizeScale + shiftY;
                 replacement.Vertices[i] = vertex;
             }
-            replacement.Upload();
+            replacement.Upload(VeldridContext.StandardOutputDescription);
         }
         obj.BlurTexture = obj.TextMeshAntialiasing;
         // A text mask must be sampled from its base level.  At small on-screen
@@ -65,14 +65,14 @@ public static class TextMeshFactory
         // the material shader then renders what looks like a solid plane.
         obj.TextureMipmaps = false;
 
-        foreach (Mesh old in obj.Visuals.ToArray())
+        foreach (VeldridMesh old in obj.Visuals.ToArray())
         {
-            uint oldMaskTexture = old.AlphaMaskTextureId;
+            Texture? oldMaskTexture = old.AlphaMaskTexture;
             obj.RemoveMesh(old);
             old.Dispose();
             // Only the generated mask is owned here. External and camera-feed
             // textures may be shared and are managed by their respective caches.
-            if (oldMaskTexture != 0) _gl.DeleteTexture(oldMaskTexture);
+            oldMaskTexture?.Dispose();
         }
         obj.AddMesh(replacement);
         // Rebuilding text replaces its Mesh instance. Reapply the object's
@@ -232,19 +232,9 @@ public static class TextMeshFactory
         throw new FileNotFoundException("The bundled Minecraftia font could not be found.");
     }
 
-    private static unsafe uint UploadTexture(GL gl, byte[] pixels, int width, int height)
-    {
-        uint texture = gl.GenTexture();
-        gl.BindTexture(GLEnum.Texture2D, texture);
-        fixed (byte* p = pixels)
-            gl.TexImage2D(GLEnum.Texture2D, 0, (int)GLEnum.Rgba, (uint)width, (uint)height,
-                0, GLEnum.Rgba, GLEnum.UnsignedByte, p);
-        gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
-        gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
-        gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
-        gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
-        gl.GenerateMipmap(GLEnum.Texture2D);
-        gl.BindTexture(GLEnum.Texture2D, 0);
-        return texture;
-    }
+    // Text masks used linear filtering with clamp-to-edge wrapping and a full
+    // mip chain in the old GL path; mirror that via the shared Veldrid uploader.
+    private static Texture UploadTexture(byte[] pixels, int width, int height) =>
+        VeldridTextureLoader.UploadRgba(pixels, (uint)width, (uint)height,
+            nearest: false, generateMipmaps: true, repeat: false);
 }

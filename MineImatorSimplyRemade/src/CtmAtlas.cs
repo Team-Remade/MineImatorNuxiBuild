@@ -1,18 +1,17 @@
-using Silk.NET.OpenGL;
+using MineImatorSimplyRemade.core.render;
 using StbImageSharp;
+using Veldrid;
 
 namespace MineImatorSimplyRemade;
 
 public static class CtmAtlas
 {
-    private static GL? _gl;
     private static readonly Dictionary<string, CtmProperties> _rulesByBlockName = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, CtmProperties> _rulesByTextureKey = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, List<CtmProperties>> _rulesByPack = new(StringComparer.OrdinalIgnoreCase);
 
-    public static void Initialize(GL gl)
+    public static void Initialize()
     {
-        _gl = gl;
         _rulesByBlockName.Clear();
         _rulesByTextureKey.Clear();
         _rulesByPack.Clear();
@@ -67,7 +66,7 @@ public static class CtmAtlas
 
     private static void LoadTileTextures(CtmProperties props)
     {
-        if (_gl == null || props.Tiles.Count == 0) return;
+        if (props.Tiles.Count == 0) return;
 
         foreach (int tileIndex in props.Tiles)
         {
@@ -75,45 +74,24 @@ public static class CtmAtlas
             string dir = props.Directory.Replace('\\', '/');
             string expectedPath = $"{dir}/{tileFileName}";
 
-            uint texId = (from file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png") where file.RelativePath.Equals(expectedPath, StringComparison.OrdinalIgnoreCase) let filePackId = MinecraftDataLoader.GetResourcePackId(file.PackName) where filePackId.Equals(props.PackId, StringComparison.OrdinalIgnoreCase) select LoadTextureFromBytes(file.Data)).FirstOrDefault();
+            Texture? texId = (from file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png") where file.RelativePath.Equals(expectedPath, StringComparison.OrdinalIgnoreCase) let filePackId = MinecraftDataLoader.GetResourcePackId(file.PackName) where filePackId.Equals(props.PackId, StringComparison.OrdinalIgnoreCase) select LoadTextureFromBytes(file.Data)).FirstOrDefault();
 
             props.TileTextureIds.Add(texId);
         }
     }
 
-    private static uint LoadTextureFromBytes(byte[] data)
+    private static Texture? LoadTextureFromBytes(byte[] data)
     {
-        if (_gl == null) return 0;
-
         try
         {
             var img = ImageResult.FromMemory(data, ColorComponents.RedGreenBlueAlpha);
-
-            uint texId = _gl.GenTexture();
-            _gl.BindTexture(GLEnum.Texture2D, texId);
-
-            unsafe
-            {
-                fixed (byte* ptr = img.Data)
-                {
-                    _gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba,
-                                   (uint)img.Width, (uint)img.Height, 0,
-                                   PixelFormat.Rgba, GLEnum.UnsignedByte, ptr);
-                }
-            }
-
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
-            _gl.BindTexture(GLEnum.Texture2D, 0);
-
-            return texId;
+            return VeldridTextureLoader.UploadRgba(img.Data, (uint)img.Width, (uint)img.Height,
+                nearest: true, generateMipmaps: false, repeat: false);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to load CTM tile texture: {ex.Message}");
-            return 0;
+            return null;
         }
     }
 

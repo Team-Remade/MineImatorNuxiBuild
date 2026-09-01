@@ -88,7 +88,7 @@ public sealed class VeldridGizmoOverlayRenderer : IDisposable
             new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3));
 
         DepthStencilStateDescription depthState = depthTest
-            ? new DepthStencilStateDescription(depthWrite, ComparisonKind.LessEqual)
+            ? new DepthStencilStateDescription(true, depthWrite, ComparisonKind.LessEqual)
             : DepthStencilStateDescription.Disabled;
 
         Pipeline pipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription

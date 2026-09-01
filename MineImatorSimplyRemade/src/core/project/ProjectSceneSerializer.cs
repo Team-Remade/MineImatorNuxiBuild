@@ -2,6 +2,7 @@ using GlmSharp;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemade.core.render;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -908,7 +909,7 @@ public static class ProjectSceneSerializer
         {
             if (string.IsNullOrEmpty(saved.Name)) continue;
 
-            Mesh? targetMesh = null;
+            VeldridMesh? targetMesh = null;
             int keyIndex = -1;
 
             if (saved.MeshIndex >= 0 && saved.MeshIndex < meshes.Count)

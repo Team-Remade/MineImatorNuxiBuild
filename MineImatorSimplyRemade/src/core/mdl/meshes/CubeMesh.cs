@@ -1,22 +1,22 @@
-﻿using GlmSharp;
-using Silk.NET.OpenGL;
+﻿using System.Numerics;
+using MineImatorSimplyRemade.core.render;
 
 namespace MineImatorSimplyRemade.core.mdl.meshes;
 
-public class CubeMesh : Mesh
+/// <summary>Unit cube, optionally UV-mapped with a 3x2 cross layout. Ported from
+/// the old GL <c>Mesh</c> subclass to <see cref="VeldridMesh"/> - see that
+/// class's migration notes for what's changed (Veldrid pipeline/buffers instead
+/// of a VAO/VBO, explicit <c>Upload(OutputDescription)</c> call).</summary>
+public class CubeMesh : VeldridMesh
 {
     public bool Mapped { get; private set; }
 
-    public CubeMesh(GL gl, bool mapped = false) : base(gl)
+    public CubeMesh(bool mapped = false) : base(VeldridContext.Device)
     {
         Mapped = mapped;
         BuildDefaultCube();
         BuildTexCoords();
-        Upload();
-    }
-
-    public CubeMesh(GL gl, IEnumerable<vec3> vertices, IEnumerable<vec3>? normals = null, uint[]? indices = null) : base(gl, vertices, normals, indices)
-    {
+        Upload(VeldridContext.StandardOutputDescription);
     }
 
     public void SetMapped(bool mapped)
@@ -26,7 +26,31 @@ public class CubeMesh : Mesh
 
         Mapped = mapped;
         BuildTexCoords();
-        Upload();
+        Upload(VeldridContext.StandardOutputDescription);
+    }
+
+    /// <summary>A unit cube (side 1) centred at origin, with per-face flat normals.
+    /// 6 faces x 2 triangles x 3 vertices = 36 vertices (no index buffer).</summary>
+    private void BuildDefaultCube()
+    {
+        var faces = new (Vector3 normal, Vector3[] quad)[]
+        {
+            (new Vector3(0, 0, 1), new[] { new Vector3(-0.5f, -0.5f, 0.5f), new Vector3(0.5f, -0.5f, 0.5f), new Vector3(0.5f, 0.5f, 0.5f), new Vector3(-0.5f, 0.5f, 0.5f) }),
+            (new Vector3(0, 0, -1), new[] { new Vector3(0.5f, -0.5f, -0.5f), new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(-0.5f, 0.5f, -0.5f), new Vector3(0.5f, 0.5f, -0.5f) }),
+            (new Vector3(0, 1, 0), new[] { new Vector3(-0.5f, 0.5f, 0.5f), new Vector3(0.5f, 0.5f, 0.5f), new Vector3(0.5f, 0.5f, -0.5f), new Vector3(-0.5f, 0.5f, -0.5f) }),
+            (new Vector3(0, -1, 0), new[] { new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(0.5f, -0.5f, -0.5f), new Vector3(0.5f, -0.5f, 0.5f), new Vector3(-0.5f, -0.5f, 0.5f) }),
+            (new Vector3(1, 0, 0), new[] { new Vector3(0.5f, -0.5f, 0.5f), new Vector3(0.5f, -0.5f, -0.5f), new Vector3(0.5f, 0.5f, -0.5f), new Vector3(0.5f, 0.5f, 0.5f) }),
+            (new Vector3(-1, 0, 0), new[] { new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(-0.5f, -0.5f, 0.5f), new Vector3(-0.5f, 0.5f, 0.5f), new Vector3(-0.5f, 0.5f, -0.5f) }),
+        };
+
+        foreach (var (normal, quad) in faces)
+        {
+            foreach (int i in new[] { 0, 1, 2, 0, 2, 3 })
+            {
+                Vertices.Add(quad[i]);
+                Normals.Add(normal);
+            }
+        }
     }
 
     private void BuildTexCoords()
@@ -69,10 +93,10 @@ public class CubeMesh : Mesh
     {
         // Face vertex order in BuildDefaultCube is quad[0..3] expanded as
         // triangle indices [0,1,2, 0,2,3].
-        var q0 = new vec2(uMin, vMin);
-        var q1 = new vec2(uMax, vMin);
-        var q2 = new vec2(uMax, vMax);
-        var q3 = new vec2(uMin, vMax);
+        var q0 = new Vector2(uMin, vMin);
+        var q1 = new Vector2(uMax, vMin);
+        var q2 = new Vector2(uMax, vMax);
+        var q3 = new Vector2(uMin, vMax);
 
         TexCoords.Add(q0);
         TexCoords.Add(q1);

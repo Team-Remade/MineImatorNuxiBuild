@@ -4,9 +4,10 @@ using GlmSharp;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using System.Text.Json.Nodes;
+using MineImatorSimplyRemade.core.render;
 using Silk.NET.Assimp;
-using Silk.NET.OpenGL;
 using StbImageSharp;
+using Veldrid;
 
 // Alias Silk.NET.Assimp types that conflict with names already in scope.
 using AiAssimp   = Silk.NET.Assimp.Assimp;
@@ -19,6 +20,7 @@ using AiMaterial = Silk.NET.Assimp.Material;
 using AiTexture  = Silk.NET.Assimp.Texture;
 using AiTexel    = Silk.NET.Assimp.Texel;
 using SysFile    = System.IO.File;
+using VTexture   = Veldrid.Texture;
 
 namespace MineImatorSimplyRemade.core.mdl;
 
@@ -43,7 +45,7 @@ public static class AssimpModelLoader
 {
     // ── Public entry point ────────────────────────────────────────────────────
 
-    public static SceneObject? Load(GL gl, string filePath)
+    public static SceneObject? Load(string filePath)
     {
         if (!SysFile.Exists(filePath))
         {
@@ -103,8 +105,8 @@ public static class AssimpModelLoader
 
             // ── Upload textures ────────────────────────────────────────────
             string modelDir = Path.GetDirectoryName(filePath) ?? "";
-            var texCache = new Dictionary<string, uint>();
-            UploadTextures(assimp, gl, scene, modelDir, texCache, nearestFilter);
+            var texCache = new Dictionary<string, VTexture>();
+            UploadTextures(assimp, scene, modelDir, texCache, nearestFilter);
 
             // ── Detect whether this model uses GPU skinning ─────────────────
             // Skinned meshes carry bone weight attributes (AiMesh.MBones > 0).
@@ -129,7 +131,7 @@ public static class AssimpModelLoader
             GltfShapeKeySource? shapeKeySource = LoadGltfShapeKeySource(filePath);
 
             SceneObject? root = BuildNodeTree(
-                assimp, gl, scene, scene->MRootNode,
+                assimp, scene, scene->MRootNode,
                 boneNames, texCache, filePath, hasSkinnedMeshes, shapeKeySource);
 
             if (root == null)
@@ -230,42 +232,41 @@ public static class AssimpModelLoader
 
     private static unsafe void UploadTextures(
         AiAssimp assimp,
-        GL gl,
         AiScene* scene,
         string modelDir,
-        Dictionary<string, uint> cache,
+        Dictionary<string, VTexture> cache,
         bool nearest = false)
     {
         for (uint mi = 0; mi < scene->MNumMaterials; mi++)
         {
             AiMaterial* mat = scene->MMaterials[mi];
 
-            uint texCount = assimp.GetMaterialTextureCount(mat, TextureType.Diffuse);
+            uint texCount = assimp.GetMaterialTextureCount(mat, Silk.NET.Assimp.TextureType.Diffuse);
             for (uint ti = 0; ti < texCount; ti++)
             {
                 AssimpString path = default;
-                assimp.GetMaterialTexture(mat, TextureType.Diffuse, ti,
+                assimp.GetMaterialTexture(mat, Silk.NET.Assimp.TextureType.Diffuse, ti,
                     ref path, null, null, null, null, null, null);
 
                 string texPath = path.AsString;
                 if (string.IsNullOrEmpty(texPath) || cache.ContainsKey(texPath))
                     continue;
 
-                uint handle = texPath.StartsWith('*')
-                    ? UploadEmbeddedTexture(gl, assimp.GetEmbeddedTexture(scene, texPath), nearest)
-                    : UploadFileTexture(gl, Path.IsPathRooted(texPath)
+                VTexture? handle = texPath.StartsWith('*')
+                    ? UploadEmbeddedTexture(assimp.GetEmbeddedTexture(scene, texPath), nearest)
+                    : UploadFileTexture(Path.IsPathRooted(texPath)
                         ? texPath
                         : Path.Combine(modelDir, texPath), nearest);
 
-                if (handle != 0)
+                if (handle != null)
                     cache[texPath] = handle;
             }
         }
     }
 
-    private static unsafe uint UploadEmbeddedTexture(GL gl, AiTexture* tex, bool nearest = false)
+    private static unsafe VTexture? UploadEmbeddedTexture(AiTexture* tex, bool nearest = false)
     {
-        if (tex == null || tex->PcData == null) return 0;
+        if (tex == null || tex->PcData == null) return null;
 
         byte[] pixels;
         int width, height;
@@ -278,7 +279,7 @@ public static class AssimpModelLoader
                 System.Buffer.MemoryCopy(tex->PcData, dst, len, len);
             ImageResult img;
             try { img = ImageResult.FromMemory(compressed, ColorComponents.RedGreenBlueAlpha); }
-            catch { return 0; }
+            catch { return null; }
             pixels = img.Data; width = img.Width; height = img.Height;
         }
         else
@@ -297,47 +298,31 @@ public static class AssimpModelLoader
             }
         }
 
-        return UploadRgbaPixels(gl, pixels, width, height, nearest);
+        return UploadRgbaPixels(pixels, width, height, nearest);
     }
 
-    private static uint UploadFileTexture(GL gl, string path, bool nearest = false)
+    private static VTexture? UploadFileTexture(string path, bool nearest = false)
     {
-        if (!SysFile.Exists(path)) return 0;
+        if (!SysFile.Exists(path)) return null;
         try
         {
             using var stream = SysFile.OpenRead(path);
             var img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
-            return UploadRgbaPixels(gl, img.Data, img.Width, img.Height, nearest);
+            return UploadRgbaPixels(img.Data, img.Width, img.Height, nearest);
         }
-        catch { return 0; }
+        catch { return null; }
     }
 
-    private static unsafe uint UploadRgbaPixels(GL gl, byte[] pixels, int width, int height,
-                                                bool nearest = false)
+    private static VTexture? UploadRgbaPixels(byte[] pixels, int width, int height,
+                                             bool nearest = false)
     {
-        uint tex = gl.GenTexture();
-        gl.BindTexture(GLEnum.Texture2D, tex);
-        fixed (byte* p = pixels)
-            gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8,
-                (uint)width, (uint)height, 0,
-                PixelFormat.Rgba, GLEnum.UnsignedByte, p);
+        if (pixels == null || pixels.Length == 0 || width <= 0 || height <= 0)
+            return null;
 
-        if (nearest)
-        {
-            gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
-            gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
-            // No mipmaps — nearest filtering is used for pixel-art style textures
-            // where mip-blending would blur the crisp edges.
-        }
-        else
-        {
-            gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.LinearMipmapLinear);
-            gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
-            gl.GenerateMipmap(GLEnum.Texture2D);
-        }
-
-        gl.BindTexture(GLEnum.Texture2D, 0);
-        return tex;
+        // Nearest = pixel-art style, no mipmaps, clamp to edge (matches the old
+        // GL nearest path). Otherwise linear filtering with a full mip chain.
+        return VeldridTextureLoader.UploadRgba(pixels, (uint)width, (uint)height,
+            nearest: nearest, generateMipmaps: !nearest, repeat: false);
     }
 
     // ── Node-tree traversal ───────────────────────────────────────────────────
@@ -352,11 +337,10 @@ public static class AssimpModelLoader
     /// </summary>
     private static unsafe SceneObject? BuildNodeTree(
         AiAssimp assimp,
-        GL gl,
         AiScene* scene,
         AiNode* node,
         HashSet<string> boneNames,
-        Dictionary<string, uint> texCache,
+        Dictionary<string, VTexture> texCache,
         string sourceFilePath,
         bool hasSkinnedMeshes,
         GltfShapeKeySource? shapeKeySource,
@@ -401,14 +385,14 @@ public static class AssimpModelLoader
             for (uint mi = 0; mi < node->MNumMeshes; mi++)
             {
                 uint meshIdx = node->MMeshes[mi];
-                Mesh? glMesh = BuildMesh(assimp, gl, scene, scene->MMeshes[meshIdx], meshIdx, texCache, shapeKeySource);
+                VeldridMesh? glMesh = BuildMesh(assimp, scene, scene->MMeshes[meshIdx], meshIdx, texCache, shapeKeySource);
                 if (glMesh != null)
                     meshObj.AddMesh(glMesh);
             }
 
             for (uint ci = 0; ci < node->MNumChildren; ci++)
             {
-                SceneObject? child = BuildNodeTree(assimp, gl, scene, node->MChildren[ci],
+                SceneObject? child = BuildNodeTree(assimp, scene, node->MChildren[ci],
                     boneNames, texCache, sourceFilePath, hasSkinnedMeshes, shapeKeySource);
                 if (child != null) meshObj.AddChild(child);
             }
@@ -451,7 +435,7 @@ public static class AssimpModelLoader
             }
 
             // Build the small octahedron visual indicator for this bone.
-            ((BoneSceneObject)obj).CreateIndicator(gl);
+            ((BoneSceneObject)obj).CreateIndicator();
         }
         else
         {
@@ -463,7 +447,7 @@ public static class AssimpModelLoader
         for (uint mi = 0; mi < node->MNumMeshes; mi++)
         {
             uint meshIdx = node->MMeshes[mi];
-            Mesh? glMesh = BuildMesh(assimp, gl, scene, scene->MMeshes[meshIdx], meshIdx, texCache, shapeKeySource);
+            VeldridMesh? glMesh = BuildMesh(assimp, scene, scene->MMeshes[meshIdx], meshIdx, texCache, shapeKeySource);
             if (glMesh != null)
                 obj.AddMesh(glMesh);
         }
@@ -472,7 +456,7 @@ public static class AssimpModelLoader
         for (uint ci = 0; ci < node->MNumChildren; ci++)
         {
             SceneObject? child = BuildNodeTree(
-                assimp, gl, scene, node->MChildren[ci],
+                assimp, scene, node->MChildren[ci],
                 boneNames, texCache, sourceFilePath, hasSkinnedMeshes, shapeKeySource,
                 parentBoneQuat: isBone ? boneQuatForChildren : default,
                 parentObj: isBone ? obj : null);
@@ -486,18 +470,17 @@ public static class AssimpModelLoader
 
     // ── Mesh construction ─────────────────────────────────────────────────────
 
-    private static unsafe Mesh? BuildMesh(
+    private static unsafe VeldridMesh? BuildMesh(
         AiAssimp assimp,
-        GL gl,
         AiScene* scene,
         AiMesh* aMesh,
         uint meshIndex,
-        Dictionary<string, uint> texCache,
+        Dictionary<string, VTexture> texCache,
         GltfShapeKeySource? shapeKeySource)
     {
         if (aMesh->MNumVertices == 0) return null;
 
-        var mesh = new Mesh(gl);
+        var mesh = new VeldridMesh(VeldridContext.Device);
 
         bool hasNormals = aMesh->MNormals != null;
         bool hasUVs     = aMesh->MTextureCoords.Element0 != null;
@@ -505,18 +488,18 @@ public static class AssimpModelLoader
         for (uint vi = 0; vi < aMesh->MNumVertices; vi++)
         {
             var v = aMesh->MVertices[vi];
-            mesh.Vertices.Add(new vec3(v.X, v.Y, v.Z));
+            mesh.Vertices.Add(new Vector3(v.X, v.Y, v.Z));
 
             if (hasNormals)
             {
                 var n = aMesh->MNormals[vi];
-                mesh.Normals.Add(new vec3(n.X, n.Y, n.Z));
+                mesh.Normals.Add(new Vector3(n.X, n.Y, n.Z));
             }
 
             if (hasUVs)
             {
                 var uv = aMesh->MTextureCoords.Element0[vi];
-                mesh.TexCoords.Add(new vec2(uv.X, uv.Y));
+                mesh.TexCoords.Add(new Vector2(uv.X, uv.Y));
             }
         }
 
@@ -544,14 +527,14 @@ public static class AssimpModelLoader
             {
                 AiBone* bone = aMesh->MBones[bi];
                 mesh.BoneNames.Add(bone->MName.AsString);
-                mesh.BoneInverseBindMatrices.Add(ToGlmMat4(Matrix4x4.Transpose(bone->MOffsetMatrix)));
+                mesh.BoneInverseBindMatrices.Add(Matrix4x4.Transpose(bone->MOffsetMatrix));
             }
 
             int vertexCount = mesh.Vertices.Count;
             for (int vi = 0; vi < vertexCount; vi++)
             {
-                mesh.BoneIndices.Add(new ivec4(0, 0, 0, 0));
-                mesh.BoneWeights.Add(new vec4(0f, 0f, 0f, 0f));
+                mesh.BoneIndices.Add((0, 0, 0, 0));
+                mesh.BoneWeights.Add(new Vector4(0f, 0f, 0f, 0f));
             }
 
             for (uint bi = 0; bi < boneCount; bi++)
@@ -566,7 +549,7 @@ public static class AssimpModelLoader
 
                     for (int slot = 0; slot < 4; slot++)
                     {
-                        if (mesh.BoneWeights[vertexId][slot] == 0f)
+                        if (GetBoneWeight(mesh.BoneWeights[vertexId], slot) == 0f)
                         {
                             mesh.BoneIndices[vertexId] = SetBoneIndex(mesh.BoneIndices[vertexId], slot, boneIdx);
                             mesh.BoneWeights[vertexId] = SetBoneWeight(mesh.BoneWeights[vertexId], slot, w);
@@ -578,8 +561,8 @@ public static class AssimpModelLoader
 
             for (int vi = 0; vi < vertexCount; vi++)
             {
-                vec4 w = mesh.BoneWeights[vi];
-                float sum = w.x + w.y + w.z + w.w;
+                Vector4 w = mesh.BoneWeights[vi];
+                float sum = w.X + w.Y + w.Z + w.W;
                 if (sum > 0f)
                     mesh.BoneWeights[vi] = w / sum;
             }
@@ -595,12 +578,12 @@ public static class AssimpModelLoader
                 assimp.GetMaterialTexture(mat, Silk.NET.Assimp.TextureType.Diffuse, 0,
                     ref path, null, null, null, null, null, null);
                 string key = path.AsString;
-                if (!string.IsNullOrEmpty(key) && texCache.TryGetValue(key, out uint texId))
-                    mesh.TextureId = texId;
+                if (!string.IsNullOrEmpty(key) && texCache.TryGetValue(key, out VTexture? tex))
+                    mesh.AlbedoTexture = tex;
             }
         }
 
-        mesh.Upload();
+        mesh.Upload(VeldridContext.StandardOutputDescription);
 
         // Attach glTF shape keys (morph targets) if this mesh was built from a
         // glTF primitive and the file declares morph targets.  Looked up by
@@ -630,6 +613,15 @@ public static class AssimpModelLoader
     }
 
     // ── Quaternion to Euler ───────────────────────────────────────────────────
+
+    private static float GetBoneWeight(Vector4 v, int slot) => slot switch
+    {
+        0 => v.X,
+        1 => v.Y,
+        2 => v.Z,
+        3 => v.W,
+        _ => 0f
+    };
 
     private static vec3 QuaternionToEulerXYZ(Quaternion q)
     {
@@ -672,38 +664,26 @@ public static class AssimpModelLoader
 
     // ── Matrix / skinning helpers ─────────────────────────────────────────────
 
-    private static mat4 ToGlmMat4(Matrix4x4 m)
-    {
-        // System.Numerics.Matrix4x4 is row-major (DirectX-style).  GlmSharp mat4
-        // is column-major (OpenGL-style).  Map each row of the System.Numerics
-        // matrix into a column of the GlmSharp matrix.
-        return new mat4(
-            m.M11, m.M12, m.M13, m.M14,
-            m.M21, m.M22, m.M23, m.M24,
-            m.M31, m.M32, m.M33, m.M34,
-            m.M41, m.M42, m.M43, m.M44);
-    }
-
-    private static ivec4 SetBoneIndex(ivec4 v, int slot, int value)
+    private static (int X, int Y, int Z, int W) SetBoneIndex((int X, int Y, int Z, int W) v, int slot, int value)
     {
         return slot switch
         {
-            0 => new ivec4(value, v.y, v.z, v.w),
-            1 => new ivec4(v.x, value, v.z, v.w),
-            2 => new ivec4(v.x, v.y, value, v.w),
-            3 => new ivec4(v.x, v.y, v.z, value),
+            0 => (value, v.Y, v.Z, v.W),
+            1 => (v.X, value, v.Z, v.W),
+            2 => (v.X, v.Y, value, v.W),
+            3 => (v.X, v.Y, v.Z, value),
             _ => v
         };
     }
 
-    private static vec4 SetBoneWeight(vec4 v, int slot, float value)
+    private static Vector4 SetBoneWeight(Vector4 v, int slot, float value)
     {
         return slot switch
         {
-            0 => new vec4(value, v.y, v.z, v.w),
-            1 => new vec4(v.x, value, v.z, v.w),
-            2 => new vec4(v.x, v.y, value, v.w),
-            3 => new vec4(v.x, v.y, v.z, value),
+            0 => new Vector4(value, v.Y, v.Z, v.W),
+            1 => new Vector4(v.X, value, v.Z, v.W),
+            2 => new Vector4(v.X, v.Y, value, v.W),
+            3 => new Vector4(v.X, v.Y, v.Z, value),
             _ => v
         };
     }

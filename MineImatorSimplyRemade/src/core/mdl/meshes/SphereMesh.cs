@@ -1,18 +1,19 @@
-using GlmSharp;
-using Silk.NET.OpenGL;
+using System.Numerics;
+using MineImatorSimplyRemade.core.render;
 
 namespace MineImatorSimplyRemade.core.mdl.meshes;
 
-/// <summary>A smooth UV sphere centred at the origin.</summary>
-public sealed class SphereMesh : Mesh
+/// <summary>A smooth UV sphere centred at the origin. Ported from the old GL
+/// <c>Mesh</c> subclass to <see cref="VeldridMesh"/>.</summary>
+public sealed class SphereMesh : VeldridMesh
 {
     public float Radius { get; private set; }
     public int Segments { get; private set; }
     public int Rings { get; private set; }
     public bool SmoothShading { get; private set; }
 
-    public SphereMesh(GL gl, float radius = 0.5f, int segments = 32, int rings = 16,
-                      bool smoothShading = true) : base(gl)
+    public SphereMesh(float radius = 0.5f, int segments = 32, int rings = 16, bool smoothShading = true)
+        : base(VeldridContext.Device)
     {
         if (radius <= 0f)
             throw new ArgumentOutOfRangeException(nameof(radius), "The radius must be positive.");
@@ -27,7 +28,7 @@ public sealed class SphereMesh : Mesh
         SmoothShading = smoothShading;
 
         GenerateVertices();
-        Upload();
+        Upload(VeldridContext.StandardOutputDescription);
     }
 
     public void SetGeometry(int segments, int rings, bool smoothShading)
@@ -45,17 +46,17 @@ public sealed class SphereMesh : Mesh
         TexCoords.Clear();
         Indices = null;
         GenerateVertices();
-        Upload();
+        Upload(VeldridContext.StandardOutputDescription);
     }
 
-    protected override void GenerateVertices()
+    private void GenerateVertices()
     {
         // Use one vertex at each pole. Duplicating a zero-width pole row can
         // produce cracks at the cap on some drivers because every other
         // triangle in that row is degenerate.
-        Vertices.Add(new vec3(0f, Radius, 0f));
-        Normals.Add(new vec3(0f, 1f, 0f));
-        TexCoords.Add(new vec2(0.5f, 1f));
+        Vertices.Add(new Vector3(0f, Radius, 0f));
+        Normals.Add(new Vector3(0f, 1f, 0f));
+        TexCoords.Add(new Vector2(0.5f, 1f));
 
         // Interior rings duplicate only the longitude seam, allowing U to run
         // cleanly from 0 to 1 without splitting the actual sphere geometry.
@@ -71,21 +72,21 @@ public sealed class SphereMesh : Mesh
                 float u = (float)segment / Segments;
                 float longitude = u * MathF.Tau;
 
-                var normal = new vec3(
+                var normal = new Vector3(
                     sinLatitude * MathF.Cos(longitude),
                     cosLatitude,
                     sinLatitude * MathF.Sin(longitude));
 
                 Vertices.Add(normal * Radius);
                 Normals.Add(normal);
-                TexCoords.Add(new vec2(u, 1f - v));
+                TexCoords.Add(new Vector2(u, 1f - v));
             }
         }
 
         uint bottomPole = (uint)Vertices.Count;
-        Vertices.Add(new vec3(0f, -Radius, 0f));
-        Normals.Add(new vec3(0f, -1f, 0f));
-        TexCoords.Add(new vec2(0.5f, 0f));
+        Vertices.Add(new Vector3(0f, -Radius, 0f));
+        Normals.Add(new Vector3(0f, -1f, 0f));
+        TexCoords.Add(new Vector2(0.5f, 0f));
 
         var indices = new List<uint>(Segments * (Rings - 1) * 6);
         int stride = Segments + 1;
@@ -138,17 +139,16 @@ public sealed class SphereMesh : Mesh
     {
         if (Indices == null) return;
 
-        var flatVertices = new List<vec3>(Indices.Length);
-        var flatNormals = new List<vec3>(Indices.Length);
-        var flatUvs = new List<vec2>(Indices.Length);
+        var flatVertices = new List<Vector3>(Indices.Length);
+        var flatNormals = new List<Vector3>(Indices.Length);
+        var flatUvs = new List<Vector2>(Indices.Length);
 
         for (int i = 0; i < Indices.Length; i += 3)
         {
             uint i0 = Indices[i];
             uint i1 = Indices[i + 1];
             uint i2 = Indices[i + 2];
-            vec3 normal = vec3.Cross(Vertices[(int)i1] - Vertices[(int)i0],
-                                     Vertices[(int)i2] - Vertices[(int)i0]).Normalized;
+            Vector3 normal = Vector3.Normalize(Vector3.Cross(Vertices[(int)i1] - Vertices[(int)i0], Vertices[(int)i2] - Vertices[(int)i0]));
             uint[] triangle = [i0, i1, i2];
             foreach (uint index in triangle)
             {

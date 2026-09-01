@@ -1,6 +1,7 @@
-using Silk.NET.OpenGL;
-using StbImageSharp;
 using MineImatorSimplyRemade.core.project;
+using MineImatorSimplyRemade.core.render;
+using StbImageSharp;
+using Veldrid;
 
 namespace MineImatorSimplyRemade;
 
@@ -30,7 +31,7 @@ public static class ItemsAtlas
     public const int AtlasTiles = 16;
 
     /// <summary>All sliced tile textures, keyed as <c>"x,y"</c>.</summary>
-    public static readonly Dictionary<string, uint> Textures = new();
+    public static readonly Dictionary<string, Texture> Textures = new();
 
     /// <summary>
     /// Raw RGBA pixel bytes for each tile, keyed as <c>"x,y"</c>.
@@ -50,11 +51,8 @@ public static class ItemsAtlas
     /// </summary>
     public static readonly Dictionary<string, TemporaryItemSheet> TemporaryItemSheets = new();
 
-    private static GL? _gl;
-
-    public static void Initialize(GL gl, Action<float, string>? progress = null)
+    public static void Initialize(Action<float, string>? progress = null)
     {
-        _gl = gl;
         LoadAtlas(progress);
     }
 
@@ -75,7 +73,7 @@ public static class ItemsAtlas
 
     public static bool TryRegisterCustomTextureFromFile(string key, string filePath)
     {
-        if (_gl == null || string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             return false;
 
         ImageResult img;
@@ -95,7 +93,7 @@ public static class ItemsAtlas
 
     public static bool TryRegisterCustomTexture(string key, byte[] pixels, int width, int height)
     {
-        if (_gl == null || string.IsNullOrWhiteSpace(key) || pixels == null || pixels.Length == 0 || width <= 0 || height <= 0)
+        if (string.IsNullOrWhiteSpace(key) || pixels == null || pixels.Length == 0 || width <= 0 || height <= 0)
             return false;
 
         UpsertTileTexture(key, pixels, width, height);
@@ -159,7 +157,7 @@ public static class ItemsAtlas
 
     public static bool TryRegisterTemporaryItemTile(string sheetKey, string tileKey, int columnIndex, int rowIndex)
     {
-        if (_gl == null || string.IsNullOrWhiteSpace(sheetKey) || string.IsNullOrWhiteSpace(tileKey))
+        if (string.IsNullOrWhiteSpace(sheetKey) || string.IsNullOrWhiteSpace(tileKey))
             return false;
         if (!TemporaryItemSheets.TryGetValue(sheetKey, out var sheet))
             return false;
@@ -176,9 +174,6 @@ public static class ItemsAtlas
 
     public static void EnsureProjectCustomTexturesLoaded()
     {
-        if (_gl == null)
-            return;
-
         var projectManager = ProjectManager.Instance;
         if (!projectManager.HasProject)
             return;
@@ -204,14 +199,12 @@ public static class ItemsAtlas
         }
     }
 
-    private static unsafe void LoadAtlas(Action<float, string>? progress = null)
+    private static void LoadAtlas(Action<float, string>? progress = null)
     {
-        if (_gl == null) return;
-
         progress?.Invoke(0f, "Clearing previous item textures...");
 
-        foreach (uint tex in Textures.Values)
-            _gl.DeleteTexture(tex);
+        foreach (Texture tex in Textures.Values)
+            tex.Dispose();
         Textures.Clear();
         TilePixels.Clear();
         TileDimensions.Clear();
@@ -262,7 +255,7 @@ public static class ItemsAtlas
 
     private static int LoadModernVersionItemTextures(string versionRoot, Action<float, string>? progress = null)
     {
-        if (_gl == null || string.IsNullOrWhiteSpace(versionRoot))
+        if (string.IsNullOrWhiteSpace(versionRoot))
             return 0;
 
         string? itemRoot = ResolveVersionItemRoot(versionRoot);
@@ -333,8 +326,6 @@ public static class ItemsAtlas
 
     private static void ApplyResourcePackItemsOverrides(Action<float, string>? progress = null)
     {
-        if (_gl == null) return;
-
         // Legacy/old-style item sheet: add a namespaced 16x16 grid for the pack.
         foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/gui", "items.png", (_, containerName, current, total) =>
                  {
@@ -433,8 +424,6 @@ public static class ItemsAtlas
 
     private static void SliceGridAtlas(byte[] src, int atlasSize, string keyPrefix = "")
     {
-        if (_gl == null) return;
-
         for (int ty = 0; ty < AtlasTiles; ty++)
         {
             for (int tx = 0; tx < AtlasTiles; tx++)
@@ -471,31 +460,15 @@ public static class ItemsAtlas
         return tilePixels;
     }
 
-    private static unsafe void UpsertTileTexture(string key, byte[] pixels, int width, int height)
+    private static void UpsertTileTexture(string key, byte[] pixels, int width, int height)
     {
-        if (_gl == null) return;
+        if (Textures.TryGetValue(key, out Texture? oldTexture))
+            oldTexture.Dispose();
 
-        if (Textures.TryGetValue(key, out uint oldTexId) && oldTexId != 0)
-            _gl.DeleteTexture(oldTexId);
+        Texture texture = VeldridTextureLoader.UploadRgba(pixels, (uint)width, (uint)height,
+            nearest: true, generateMipmaps: false, repeat: true);
 
-        uint texId = _gl.GenTexture();
-        _gl.BindTexture(GLEnum.Texture2D, texId);
-
-        fixed (byte* ptr = pixels)
-        {
-            _gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba,
-                           (uint)width, (uint)height, 0,
-                           PixelFormat.Rgba, GLEnum.UnsignedByte, ptr);
-        }
-
-        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
-        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
-        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS,     (int)TextureWrapMode.Repeat);
-        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT,     (int)TextureWrapMode.Repeat);
-
-        _gl.BindTexture(GLEnum.Texture2D, 0);
-
-        Textures[key] = texId;
+        Textures[key] = texture;
         TilePixels[key] = pixels;
         TileDimensions[key] = (width, height);
     }

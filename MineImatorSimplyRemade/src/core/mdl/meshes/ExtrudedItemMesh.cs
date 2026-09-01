@@ -1,5 +1,6 @@
-using GlmSharp;
-using Silk.NET.OpenGL;
+using System.Numerics;
+using MineImatorSimplyRemade.core.render;
+using Veldrid;
 
 namespace MineImatorSimplyRemade.core.mdl.meshes;
 
@@ -17,9 +18,9 @@ namespace MineImatorSimplyRemade.core.mdl.meshes;
 /// entirely (transparent hull).
 ///
 /// UV coordinates always map to the full [0,1]×[0,1] range of the supplied
-/// <see cref="TextureId"/> (the pre-sliced tile texture from the atlas).
+/// <see cref="VeldridMesh.AlbedoTexture"/> (the pre-sliced tile texture from the atlas).
 /// </summary>
-public class ExtrudedItemMesh : Mesh
+public class ExtrudedItemMesh : VeldridMesh
 {
     // ── Parameters ────────────────────────────────────────────────────────────
 
@@ -59,8 +60,7 @@ public class ExtrudedItemMesh : Mesh
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
-    /// <param name="gl">OpenGL context.</param>
-    /// <param name="tileTextureId">GL texture handle of the pre-sliced tile.</param>
+    /// <param name="tileTexture">Veldrid texture of the pre-sliced tile, or null for an untextured hull.</param>
     /// <param name="tilePixels">
     ///   Raw RGBA bytes for the tile (top-to-bottom, 4 bytes per pixel).
     ///   Must be <c>tileWidth * tileHeight * 4</c> bytes long.
@@ -72,8 +72,7 @@ public class ExtrudedItemMesh : Mesh
     /// <param name="extrudeDepth">Total Z depth of the extrusion in world units.</param>
     /// <param name="alphaThreshold">Minimum alpha (0–255) to treat a pixel as opaque.</param>
     public ExtrudedItemMesh(
-        GL gl,
-        uint tileTextureId,
+        Texture? tileTexture,
         byte[] tilePixels,
         bool is3D = true,
         int tileSize = 16,
@@ -81,7 +80,7 @@ public class ExtrudedItemMesh : Mesh
         int? tileHeight = null,
         float extrudeDepth = 1f / 16f,
         byte alphaThreshold = 128)
-        : base(gl)
+        : base(VeldridContext.Device)
     {
         Is3D           = is3D;
         TileWidth      = Math.Max(1, tileWidth ?? tileSize);
@@ -89,16 +88,16 @@ public class ExtrudedItemMesh : Mesh
         TileSize       = Math.Max(TileWidth, TileHeight);
         ExtrudeDepth   = extrudeDepth;
         AlphaThreshold = alphaThreshold;
-        TextureId      = tileTextureId;
+        AlbedoTexture  = tileTexture;
         _pixels        = tilePixels;
 
         GenerateVertices();
-        Upload();
+        Upload(VeldridContext.StandardOutputDescription);
     }
 
     // ── Geometry generation ───────────────────────────────────────────────────
 
-    protected sealed override void GenerateVertices()
+    private void GenerateVertices()
     {
         if (!Is3D)
             BuildFlatPlane();
@@ -118,17 +117,17 @@ public class ExtrudedItemMesh : Mesh
         float halfWidth = TileWidth / (float)TileSize * 0.5f;
         float halfHeight = TileHeight / (float)TileSize * 0.5f;
 
-        vec3[] positions =
+        Vector3[] positions =
         [
-            new vec3( halfWidth,  halfHeight, 0),   // 0 top-right
-            new vec3( halfWidth, -halfHeight, 0),   // 1 bottom-right
-            new vec3(-halfWidth, -halfHeight, 0),   // 2 bottom-left
-            new vec3(-halfWidth,  halfHeight, 0),   // 3 top-left
+            new Vector3( halfWidth,  halfHeight, 0),   // 0 top-right
+            new Vector3( halfWidth, -halfHeight, 0),   // 1 bottom-right
+            new Vector3(-halfWidth, -halfHeight, 0),   // 2 bottom-left
+            new Vector3(-halfWidth,  halfHeight, 0),   // 3 top-left
             // back face duplicates
-            new vec3( halfWidth,  halfHeight, 0),   // 4
-            new vec3( halfWidth, -halfHeight, 0),   // 5
-            new vec3(-halfWidth, -halfHeight, 0),   // 6
-            new vec3(-halfWidth,  halfHeight, 0),   // 7
+            new Vector3( halfWidth,  halfHeight, 0),   // 4
+            new Vector3( halfWidth, -halfHeight, 0),   // 5
+            new Vector3(-halfWidth, -halfHeight, 0),   // 6
+            new Vector3(-halfWidth,  halfHeight, 0),   // 7
         ];
 
         Vertices.AddRange(positions);
@@ -136,10 +135,10 @@ public class ExtrudedItemMesh : Mesh
         // UVs: atlas tiles are uploaded top-to-bottom with no V-flip,
         // so V=0 is image top, V=1 is image bottom.
         // World top (y=+0.5) → UV V=0; world bottom (y=-0.5) → UV V=1.
-        vec2[] uvs =
+        Vector2[] uvs =
         [
-            new vec2(1, 0), new vec2(1, 1), new vec2(0, 1), new vec2(0, 0),
-            new vec2(1, 0), new vec2(1, 1), new vec2(0, 1), new vec2(0, 0),
+            new Vector2(1, 0), new Vector2(1, 1), new Vector2(0, 1), new Vector2(0, 0),
+            new Vector2(1, 0), new Vector2(1, 1), new Vector2(0, 1), new Vector2(0, 0),
         ];
         TexCoords.AddRange(uvs);
 
@@ -150,8 +149,8 @@ public class ExtrudedItemMesh : Mesh
         // Match PlaneMesh convention: indices [0,1,2, 0,2,3] with TR/BR/BL/TL vertex order
         // is CCW when viewed from -Z, so the front face normal is -Z, back is +Z.
         Normals.Clear();
-        var frontN = new vec3(0, 0, -1);
-        var backN  = new vec3(0, 0,  1);
+        var frontN = new Vector3(0, 0, -1);
+        var backN  = new Vector3(0, 0,  1);
         for (int i = 0; i < 4; i++) Normals.Add(frontN);
         for (int i = 0; i < 4; i++) Normals.Add(backN);
     }
@@ -173,9 +172,9 @@ public class ExtrudedItemMesh : Mesh
         var uvs     = TexCoords;
         var indices = new List<uint>();
 
-        void AddQuad(vec3 p0, vec3 p1, vec3 p2, vec3 p3,
-                     vec2 uv0, vec2 uv1, vec2 uv2, vec2 uv3,
-                     vec3 normal)
+        void AddQuad(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3,
+                     Vector2 uv0, Vector2 uv1, Vector2 uv2, Vector2 uv3,
+                     Vector3 normal)
         {
             uint baseIdx = (uint)verts.Count;
             verts.Add(p0); verts.Add(p1); verts.Add(p2); verts.Add(p3);
@@ -203,11 +202,11 @@ public class ExtrudedItemMesh : Mesh
         // Tiles are uploaded top-to-bottom with no V-flip, so V=0 is the top.
         // Center of pixel (px, py): U = (px + 0.5) / n,  V = (py + 0.5) / n.
 
-        vec2 PixelCenterUV(int px, int py)
+        Vector2 PixelCenterUV(int px, int py)
         {
             float u = (px + 0.5f) / width;
             float v = (py + 0.5f) / height;
-            return new vec2(u, v);
+            return new Vector2(u, v);
         }
 
         // World-space X,Y corners of pixel (px, py).
@@ -232,21 +231,21 @@ public class ExtrudedItemMesh : Mesh
                 float y1 = y0 + s;            // top edge
 
                 // All faces for this pixel sample the same point: the pixel center.
-                vec2 uv = PixelCenterUV(px, py);
+                Vector2 uv = PixelCenterUV(px, py);
 
                 // ── Front face (+Z normal) ─────────────────────────────────
                 AddQuad(
-                    new vec3(x0, y1, zF), new vec3(x1, y1, zF),
-                    new vec3(x1, y0, zF), new vec3(x0, y0, zF),
+                    new Vector3(x0, y1, zF), new Vector3(x1, y1, zF),
+                    new Vector3(x1, y0, zF), new Vector3(x0, y0, zF),
                     uv, uv, uv, uv,
-                    new vec3(0, 0, 1));
+                    new Vector3(0, 0, 1));
 
                 // ── Back face (-Z normal) ──────────────────────────────────
                 AddQuad(
-                    new vec3(x1, y1, zB), new vec3(x0, y1, zB),
-                    new vec3(x0, y0, zB), new vec3(x1, y0, zB),
+                    new Vector3(x1, y1, zB), new Vector3(x0, y1, zB),
+                    new Vector3(x0, y0, zB), new Vector3(x1, y0, zB),
                     uv, uv, uv, uv,
-                    new vec3(0, 0, -1));
+                    new Vector3(0, 0, -1));
 
                 // ── Side faces (only at silhouette edges) ─────────────────
                 // Emit a side face only when the neighbour pixel is transparent,
@@ -255,34 +254,34 @@ public class ExtrudedItemMesh : Mesh
                 // Right (+X)
                 if (!IsOpaque(px + 1, py))
                     AddQuad(
-                        new vec3(x1, y1, zF), new vec3(x1, y1, zB),
-                        new vec3(x1, y0, zB), new vec3(x1, y0, zF),
+                        new Vector3(x1, y1, zF), new Vector3(x1, y1, zB),
+                        new Vector3(x1, y0, zB), new Vector3(x1, y0, zF),
                         uv, uv, uv, uv,
-                        new vec3(1, 0, 0));
+                        new Vector3(1, 0, 0));
 
                 // Left (-X)
                 if (!IsOpaque(px - 1, py))
                     AddQuad(
-                        new vec3(x0, y1, zB), new vec3(x0, y1, zF),
-                        new vec3(x0, y0, zF), new vec3(x0, y0, zB),
+                        new Vector3(x0, y1, zB), new Vector3(x0, y1, zF),
+                        new Vector3(x0, y0, zF), new Vector3(x0, y0, zB),
                         uv, uv, uv, uv,
-                        new vec3(-1, 0, 0));
+                        new Vector3(-1, 0, 0));
 
                 // Top (+Y world / row py-1 in image)
                 if (!IsOpaque(px, py - 1))
                     AddQuad(
-                        new vec3(x0, y1, zB), new vec3(x1, y1, zB),
-                        new vec3(x1, y1, zF), new vec3(x0, y1, zF),
+                        new Vector3(x0, y1, zB), new Vector3(x1, y1, zB),
+                        new Vector3(x1, y1, zF), new Vector3(x0, y1, zF),
                         uv, uv, uv, uv,
-                        new vec3(0, 1, 0));
+                        new Vector3(0, 1, 0));
 
                 // Bottom (-Y world / row py+1 in image)
                 if (!IsOpaque(px, py + 1))
                     AddQuad(
-                        new vec3(x1, y0, zB), new vec3(x0, y0, zB),
-                        new vec3(x0, y0, zF), new vec3(x1, y0, zF),
+                        new Vector3(x1, y0, zB), new Vector3(x0, y0, zB),
+                        new Vector3(x0, y0, zF), new Vector3(x1, y0, zF),
                         uv, uv, uv, uv,
-                        new vec3(0, -1, 0));
+                        new Vector3(0, -1, 0));
             }
         }
 

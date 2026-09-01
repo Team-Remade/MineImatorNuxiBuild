@@ -1,14 +1,15 @@
-using GlmSharp;
+using System.Numerics;
 using MineImatorSimplyRemade;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Silk.NET.OpenGL;
+using MineImatorSimplyRemade.core.render;
+using Veldrid;
 
 namespace MineImatorSimplyRemade.core.mdl.meshes;
 
 /// <summary>
 /// Loads OptiFine CEM (<c>.jem</c>) entity model files and converts each box
-/// part into one or more <see cref="Mesh"/> objects ready for rendering.
+/// part into one or more <see cref="VeldridMesh"/> objects ready for rendering.
 ///
 /// Coordinate system notes
 /// ───────────────────────
@@ -29,22 +30,21 @@ public static class CemLoader
     // ── Public API ────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Loads a <c>.jem</c> file and builds one <see cref="Mesh"/> per box part
-    /// that has geometry (boxes with coordinates).  Each mesh receives the GL
-    /// texture loaded for the JEM's declared texture path.
+    /// Loads a <c>.jem</c> file and builds one <see cref="VeldridMesh"/> per box part
+    /// that has geometry (boxes with coordinates).  Each mesh receives the
+    /// Veldrid texture resolved for the JEM's declared texture path.
     /// </summary>
-    /// <param name="gl">Active OpenGL context.</param>
     /// <param name="cemPath">Absolute path to the <c>.jem</c> file.</param>
     /// <param name="versionRoot">Version root directory used to resolve the texture path.</param>
     /// <returns>
     /// List of meshes (one per box), or a single fallback CubeMesh on failure.
     /// </returns>
-    public static List<Mesh> Load(GL gl, string cemPath, string versionRoot, string resourcePackId = "")
+    public static List<VeldridMesh> Load(string cemPath, string versionRoot, string resourcePackId = "")
     {
         if (!File.Exists(cemPath))
         {
             Console.WriteLine($"File not found: {cemPath}");
-            return [new CubeMesh(gl)];
+            return [new CubeMesh()];
         }
 
         JsonObject root;
@@ -56,19 +56,19 @@ public static class CemLoader
         catch (Exception ex)
         {
             Console.WriteLine($"Parse error in '{cemPath}': {ex.Message}");
-            return [new CubeMesh(gl)];
+            return [new CubeMesh()];
         }
 
         // ── Resolve texture ───────────────────────────────────────────────────
-        string texturePath = root["texture"]?.GetValue<string>() ?? "";
-        uint   texId       = ResolveTexture(texturePath, versionRoot, resourcePackId);
+        string   texturePath = root["texture"]?.GetValue<string>() ?? "";
+        Texture? texture     = ResolveTexture(texturePath, versionRoot, resourcePackId);
 
         int[]  texSize     = JsonNodeToIntArray(root["textureSize"]) ?? [64, 64];
         float  texW        = texSize.Length > 0 ? texSize[0] : 64f;
         float  texH        = texSize.Length > 1 ? texSize[1] : 64f;
 
         // ── Build meshes from parts ───────────────────────────────────────────
-        var result = new List<Mesh>();
+        var result = new List<VeldridMesh>();
         if (root["models"] is not JsonArray parts) return result;
 
         foreach (JsonNode? partToken in parts)
@@ -81,32 +81,35 @@ public static class CemLoader
             string  invertAxis = part["invertAxis"]?.GetValue<string>()  ?? "";
             string  partId     = part["id"]?.GetValue<string>()          ?? "";
 
-            mat4 partTransform = BuildPartTransform(translate, invertAxis);
+            Matrix4x4 partTransform = BuildPartTransform(translate, invertAxis);
 
             // Large chest: the left and right halves are both centred at the same
             // origin; offset them by ±0.5 in X so they sit side-by-side.
+            // System.Numerics uses row-vector convention, so composition order is
+            // reversed relative to the old GlmSharp column-vector matrices: to
+            // apply partTransform first then the offset, multiply partTransform * offset.
             if (partId.EndsWith("_left",  StringComparison.OrdinalIgnoreCase))
-                partTransform = mat4.Translate(new vec3( 0.5f, 0f, 0f)) * partTransform;
+                partTransform = partTransform * Matrix4x4.CreateTranslation(new Vector3( 0.5f, 0f, 0f));
             else if (partId.EndsWith("_right", StringComparison.OrdinalIgnoreCase))
-                partTransform = mat4.Translate(new vec3(-0.5f, 0f, 0f)) * partTransform;
+                partTransform = partTransform * Matrix4x4.CreateTranslation(new Vector3(-0.5f, 0f, 0f));
 
             foreach (JsonNode? boxToken in boxes)
             {
                 if (boxToken is not JsonObject box) continue;
-                var mesh = BuildBoxMesh(gl, box, partTransform, texId, texW, texH, invertAxis);
+                var mesh = BuildBoxMesh(box, partTransform, texture, texW, texH, invertAxis);
                 if (mesh != null)
                     result.Add(mesh);
             }
         }
 
-        return result.Count > 0 ? result : [new CubeMesh(gl)];
+        return result.Count > 0 ? result : [new CubeMesh()];
     }
 
     // ── Texture resolution ────────────────────────────────────────────────────
 
-    private static uint ResolveTexture(string texturePath, string versionRoot, string resourcePackId)
+    private static Texture? ResolveTexture(string texturePath, string versionRoot, string resourcePackId)
     {
-        if (string.IsNullOrEmpty(texturePath)) return 0;
+        if (string.IsNullOrEmpty(texturePath)) return null;
 
         // JEM texture paths look like "textures/block/classic_chest.png"
         // Try the key in TerrainAtlas first (key = filename without extension)
@@ -115,23 +118,23 @@ public static class CemLoader
         if (!string.IsNullOrWhiteSpace(normalizedPackId))
         {
             string namespacedKey = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(normalizedPackId, key);
-            if (TerrainAtlas.Textures.TryGetValue(namespacedKey, out uint packAtlasId))
-                return packAtlasId;
+            if (TerrainAtlas.Textures.TryGetValue(namespacedKey, out Texture? packAtlasTex))
+                return packAtlasTex;
         }
 
-        if (TerrainAtlas.Textures.TryGetValue(key, out uint atlasId))
-            return atlasId;
+        if (TerrainAtlas.Textures.TryGetValue(key, out Texture? atlasTex))
+            return atlasTex;
 
         // Fall back: load the file directly relative to versionRoot
         string fullPath = Path.Combine(versionRoot, texturePath.Replace('/', Path.DirectorySeparatorChar));
         if (File.Exists(fullPath))
         {
             Console.WriteLine($"Texture '{key}' not in atlas, loading from disk: {fullPath}");
-            // We can't easily load a GL texture here without the GL context captured in
-            // TerrainAtlas, so just return 0 and let it render untextured.
+            // We can't easily load a texture here without the device-bound loader used by
+            // TerrainAtlas, so just return null and let it render untextured.
         }
 
-        return 0;
+        return null;
     }
 
     // ── Part transform ────────────────────────────────────────────────────────
@@ -146,7 +149,7 @@ public static class CemLoader
     /// coordinates and translate, we must NOT apply the rotate as a mesh-space matrix
     /// rotation (doing so would double-flip and mis-place the geometry).
     /// </summary>
-    private static mat4 BuildPartTransform(float[] translate, string invertAxis)
+    private static Matrix4x4 BuildPartTransform(float[] translate, string invertAxis)
     {
         // The translate is in the same raw JEM pixel space as the box coordinates,
         // so the same invertAxis negation must be applied before scaling.
@@ -165,16 +168,17 @@ public static class CemLoader
 
         // Final centring: after invertAxis + translate the geometry spans 0..1 on each
         // axis, but the scene expects meshes centred at the origin (−0.5..+0.5).
-        mat4 centre = mat4.Translate(new vec3(-0.5f, -0.5f, -0.5f));
-        mat4 t      = mat4.Translate(new vec3(tx, ty, tz));
+        // Row-vector convention: apply t first then centre, so t * centre.
+        Matrix4x4 centre = Matrix4x4.CreateTranslation(new Vector3(-0.5f, -0.5f, -0.5f));
+        Matrix4x4 t      = Matrix4x4.CreateTranslation(new Vector3(tx, ty, tz));
 
-        return centre * t;
+        return t * centre;
     }
 
     // ── Box mesh builder ──────────────────────────────────────────────────────
 
-    private static Mesh? BuildBoxMesh(GL gl, JsonObject box,
-        mat4 partTransform, uint texId,
+    private static VeldridMesh? BuildBoxMesh(JsonObject box,
+        Matrix4x4 partTransform, Texture? texture,
         float texW, float texH, string invertAxis)
     {
         float[]? coords = JsonNodeToFloatArray(box["coordinates"]);
@@ -201,7 +205,7 @@ public static class CemLoader
         float z1 = z0 + bd * PixelScale;
 
         // Build the mesh with per-face UVs
-        var mesh = new Mesh(gl);
+        var mesh = new VeldridMesh(VeldridContext.Device);
 
         // Face order and names for CEM UV keys
         var faceSpecs = new (string uvKey, string faceName)[]
@@ -228,9 +232,9 @@ public static class CemLoader
             float vTL = uvArr[3] / texH;
 
             // Vertex positions for this face (CCW winding from outside)
-            (vec3 v0p, vec3 v1p, vec3 v2p, vec3 v3p) =
+            (Vector3 v0p, Vector3 v1p, Vector3 v2p, Vector3 v3p) =
                 FaceQuad(faceName, x0, y0, z0, x1, y1, z1);
-            vec3 normal = FaceNormal(faceName);
+            Vector3 normal = FaceNormal(faceName);
 
             // Apply part transform to vertices and normal
             v0p = TransformPoint(partTransform, v0p);
@@ -240,10 +244,10 @@ public static class CemLoader
             normal = TransformNormal(partTransform, normal);
 
             // Quad corners: TL=v0p, TR=v1p, BR=v2p, BL=v3p
-            var uvTL = new vec2(uTL, vTL);
-            var uvTR = new vec2(uBR, vTL);
-            var uvBR = new vec2(uBR, vBR);
-            var uvBL = new vec2(uTL, vBR);
+            var uvTL = new Vector2(uTL, vTL);
+            var uvTR = new Vector2(uBR, vTL);
+            var uvBR = new Vector2(uBR, vBR);
+            var uvBL = new Vector2(uTL, vBR);
 
             if (faceName is "east" or "up" or "south" or "west")
             {
@@ -269,54 +273,53 @@ public static class CemLoader
 
         if (mesh.Vertices.Count == 0) return null;
 
-        mesh.TextureId  = texId;
-        mesh.DoubleSided = false;
-        mesh.Upload();
+        mesh.AlbedoTexture = texture;
+        mesh.DoubleSided   = false;
+        mesh.Upload(VeldridContext.StandardOutputDescription);
         return mesh;
     }
 
     // ── Face geometry ─────────────────────────────────────────────────────────
 
     // Same winding convention as MinecraftModelMesh: CCW from outside.
-    private static (vec3, vec3, vec3, vec3) FaceQuad(string face,
+    private static (Vector3, Vector3, Vector3, Vector3) FaceQuad(string face,
         float x0, float y0, float z0, float x1, float y1, float z1)
     {
         return face switch
         {
-            "down"  => (new vec3(x0, y0, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
-            "up"    => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y1, z1), new vec3(x0, y1, z1)),
-            "north" => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x0, y0, z0)),
-            "south" => (new vec3(x0, y1, z1), new vec3(x1, y1, z1), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
-            "west"  => (new vec3(x0, y1, z0), new vec3(x0, y1, z1), new vec3(x0, y0, z1), new vec3(x0, y0, z0)),
-            "east"  => (new vec3(x1, y1, z1), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1)),
-            _       => (vec3.Zero, vec3.Zero, vec3.Zero, vec3.Zero)
+            "down"  => (new Vector3(x0, y0, z0), new Vector3(x1, y0, z0), new Vector3(x1, y0, z1), new Vector3(x0, y0, z1)),
+            "up"    => (new Vector3(x0, y1, z0), new Vector3(x1, y1, z0), new Vector3(x1, y1, z1), new Vector3(x0, y1, z1)),
+            "north" => (new Vector3(x0, y1, z0), new Vector3(x1, y1, z0), new Vector3(x1, y0, z0), new Vector3(x0, y0, z0)),
+            "south" => (new Vector3(x0, y1, z1), new Vector3(x1, y1, z1), new Vector3(x1, y0, z1), new Vector3(x0, y0, z1)),
+            "west"  => (new Vector3(x0, y1, z0), new Vector3(x0, y1, z1), new Vector3(x0, y0, z1), new Vector3(x0, y0, z0)),
+            "east"  => (new Vector3(x1, y1, z1), new Vector3(x1, y1, z0), new Vector3(x1, y0, z0), new Vector3(x1, y0, z1)),
+            _       => (Vector3.Zero, Vector3.Zero, Vector3.Zero, Vector3.Zero)
         };
     }
 
-    private static vec3 FaceNormal(string face) => face switch
+    private static Vector3 FaceNormal(string face) => face switch
     {
-        "down"  => new vec3( 0, -1,  0),
-        "up"    => new vec3( 0,  1,  0),
-        "north" => new vec3( 0,  0, -1),
-        "south" => new vec3( 0,  0,  1),
-        "west"  => new vec3(-1,  0,  0),
-        "east"  => new vec3( 1,  0,  0),
-        _       => vec3.UnitY
+        "down"  => new Vector3( 0, -1,  0),
+        "up"    => new Vector3( 0,  1,  0),
+        "north" => new Vector3( 0,  0, -1),
+        "south" => new Vector3( 0,  0,  1),
+        "west"  => new Vector3(-1,  0,  0),
+        "east"  => new Vector3( 1,  0,  0),
+        _       => Vector3.UnitY
     };
 
     // ── Transform helpers ─────────────────────────────────────────────────────
 
-    private static vec3 TransformPoint(mat4 m, vec3 p)
+    private static Vector3 TransformPoint(Matrix4x4 m, Vector3 p)
     {
-        vec4 t = m * new vec4(p, 1f);
-        return new vec3(t.x, t.y, t.z);
+        // Row-vector convention (System.Numerics): p * m, including translation.
+        return Vector3.Transform(p, m);
     }
 
-    private static vec3 TransformNormal(mat4 m, vec3 n)
+    private static Vector3 TransformNormal(Matrix4x4 m, Vector3 n)
     {
-        vec4 t = m * new vec4(n, 0f);
-        var  r = new vec3(t.x, t.y, t.z);
-        return r.LengthSqr > 0f ? r.Normalized : vec3.UnitY;
+        Vector3 r = Vector3.TransformNormal(n, m);
+        return r.LengthSquared() > 0f ? Vector3.Normalize(r) : Vector3.UnitY;
     }
 
     // ── JSON helpers ──────────────────────────────────────────────────────────

@@ -1,23 +1,24 @@
-using GlmSharp;
+using System.Numerics;
 using MineImatorSimplyRemade;
+using MineImatorSimplyRemade.core.render;
 using MineImatorSimplyRemadeNuxi.core.objs;
-using Silk.NET.OpenGL;
 using StbImageSharp;
+using Veldrid;
 
 namespace MineImatorSimplyRemade.core.mdl.meshes;
 
 /// <summary>
-/// A <see cref="Mesh"/> that renders a fully-resolved Minecraft block model
-/// (<see cref="ResolvedBlockModel"/>) as a set of textured cuboid elements.
+/// Builds a set of <see cref="VeldridMesh"/> instances that render a
+/// fully-resolved Minecraft block model (<see cref="ResolvedBlockModel"/>) as
+/// textured cuboid elements.
 ///
 /// Because Minecraft block models can reference different textures per face,
-/// this mesh is split into one sub-mesh per unique texture used.  Each sub-mesh
-/// is stored as an independent <see cref="Mesh"/> instance in <see cref="SubMeshes"/>;
+/// the model is split into one <see cref="VeldridMesh"/> per unique texture used;
 /// the owner <see cref="SceneObject"/> should add each one to its Visuals list.
 ///
 /// Usage:
 /// <code>
-/// var meshes = MinecraftModelMesh.Build(gl, resolvedModel);
+/// var meshes = MinecraftModelMesh.Build(resolvedModel);
 /// foreach (var m in meshes) sceneObject.AddMesh(m);
 /// </code>
 /// </summary>
@@ -43,10 +44,10 @@ public static class MinecraftModelMesh
     // biome-independent default water colour, used here since there's no
     // biome to sample. Lava needs no entry: lava_still.png is already fully
     // opaque and coloured.
-    private static readonly Dictionary<string, vec3> DefaultBlockTints =
+    private static readonly Dictionary<string, Vector3> DefaultBlockTints =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            { "water", new vec3(63f / 255f, 118f / 255f, 228f / 255f) },
+            { "water", new Vector3(63f / 255f, 118f / 255f, 228f / 255f) },
         };
 
     private static readonly HashSet<string> NoBiomeTintBlocks =
@@ -56,11 +57,11 @@ public static class MinecraftModelMesh
             "pale_oak_leaves",
         };
 
-    private static readonly Lazy<vec3> DefaultGrassTint = new(() =>
-        LoadDefaultColormapTint("grass.png", new vec3(145f / 255f, 189f / 255f, 89f / 255f)));
+    private static readonly Lazy<Vector3> DefaultGrassTint = new(() =>
+        LoadDefaultColormapTint("grass.png", new Vector3(145f / 255f, 189f / 255f, 89f / 255f)));
 
-    private static readonly Lazy<vec3> DefaultFoliageTint = new(() =>
-        LoadDefaultColormapTint("foliage.png", new vec3(72f / 255f, 181f / 255f, 24f / 255f)));
+    private static readonly Lazy<Vector3> DefaultFoliageTint = new(() =>
+        LoadDefaultColormapTint("foliage.png", new Vector3(72f / 255f, 181f / 255f, 24f / 255f)));
 
     private static readonly Dictionary<string, bool> GrayscaleTextureCache =
         new(StringComparer.OrdinalIgnoreCase);
@@ -71,10 +72,10 @@ public static class MinecraftModelMesh
     /// registered tint or when <paramref name="blockName"/> is empty (e.g. spawn-menu
     /// preview thumbnails built without a block-name hint).
     /// </summary>
-    private static void ApplyDefaultBlockTint(List<Mesh> meshes, string blockName)
+    private static void ApplyDefaultBlockTint(List<VeldridMesh> meshes, string blockName)
     {
         if (string.IsNullOrEmpty(blockName)) return;
-        if (!DefaultBlockTints.TryGetValue(blockName, out vec3 tint)) return;
+        if (!DefaultBlockTints.TryGetValue(blockName, out Vector3 tint)) return;
 
         foreach (var mesh in meshes)
             mesh.Albedo = tint;
@@ -86,7 +87,7 @@ public static class MinecraftModelMesh
     /// importer's per-voxel liquid mesher in <c>SpawnMenu</c>, which merges geometry
     /// directly into shared accumulators instead of going through this class).
     /// </summary>
-    public static bool TryGetDefaultBlockTint(string blockName, out vec3 tint) =>
+    public static bool TryGetDefaultBlockTint(string blockName, out Vector3 tint) =>
         DefaultBlockTints.TryGetValue(blockName, out tint);
 
     private enum BiomeTintKind
@@ -96,7 +97,7 @@ public static class MinecraftModelMesh
         Foliage,
     }
 
-    private static vec3 LoadDefaultColormapTint(string colormapFileName, vec3 fallback)
+    private static Vector3 LoadDefaultColormapTint(string colormapFileName, Vector3 fallback)
     {
         // Vanilla-style fallback uses the default climate sample (temp=0.8, downfall=0.4)
         // when colormap data is unavailable.
@@ -123,7 +124,7 @@ public static class MinecraftModelMesh
 
             int i = (y * img.Width + x) * 4;
             byte[] p = img.Data;
-            return new vec3(p[i] / 255f, p[i + 1] / 255f, p[i + 2] / 255f);
+            return new Vector3(p[i] / 255f, p[i + 1] / 255f, p[i + 2] / 255f);
         }
         catch
         {
@@ -131,21 +132,21 @@ public static class MinecraftModelMesh
         }
     }
 
-    private static vec3 GetBiomeTint(BiomeTintKind kind)
+    private static Vector3 GetBiomeTint(BiomeTintKind kind)
     {
         return kind switch
         {
             BiomeTintKind.Grass => DefaultGrassTint.Value,
             BiomeTintKind.Foliage => DefaultFoliageTint.Value,
-            _ => new vec3(1f, 1f, 1f),
+            _ => new Vector3(1f, 1f, 1f),
         };
     }
 
     private static bool TryGetFaceBiomeTint(string blockName, BlockModelFace face, string baseTextureKey, string resolvedTextureKey,
-                                            out BiomeTintKind tintKind, out vec3 tint)
+                                            out BiomeTintKind tintKind, out Vector3 tint)
     {
         tintKind = BiomeTintKind.None;
-        tint = new vec3(1f, 1f, 1f);
+        tint = new Vector3(1f, 1f, 1f);
 
         if (face.TintIndex < 0)
             return false;
@@ -260,9 +261,9 @@ public static class MinecraftModelMesh
     /// floor/ground plane tiles) when that texture is grayscale and its name
     /// matches known grass/foliage patterns.
     /// </summary>
-    public static bool TryGetBiomeTintForTextureKey(string textureKey, out vec3 tint)
+    public static bool TryGetBiomeTintForTextureKey(string textureKey, out Vector3 tint)
     {
-        tint = new vec3(1f, 1f, 1f);
+        tint = new Vector3(1f, 1f, 1f);
         if (string.IsNullOrWhiteSpace(textureKey))
             return false;
 
@@ -281,18 +282,17 @@ public static class MinecraftModelMesh
     }
 
     /// <summary>
-    /// Builds one or more <see cref="Mesh"/> objects from a fully-resolved
+    /// Builds one or more <see cref="VeldridMesh"/> objects from a fully-resolved
     /// Minecraft block model. Returns an empty list when the model has no
     /// renderable geometry.
     /// </summary>
-    /// <param name="gl">Active OpenGL context.</param>
     /// <param name="model">The resolved model (from <see cref="BlockRegistry.ResolveModel"/>).</param>
     /// <param name="variantRotX">Blockstate-level X rotation (degrees, 0/90/180/270).</param>
     /// <param name="variantRotY">Blockstate-level Y rotation (degrees, 0/90/180/270).</param>
     /// <param name="tileX">Number of times to repeat the block along +X (≥1).</param>
     /// <param name="tileY">Number of times to repeat the block along +Y (≥1).</param>
     /// <param name="tileZ">Number of times to repeat the block along +Z (≥1).</param>
-    public static List<Mesh> Build(GL gl, ResolvedBlockModel model,
+    public static List<VeldridMesh> Build(ResolvedBlockModel model,
                                    int variantRotX = 0, int variantRotY = 0,
                                    string resourcePackId = "",
                                    string blockName = "",
@@ -306,9 +306,9 @@ public static class MinecraftModelMesh
         {
             // Model has no geometry elements (e.g. only references a builtin parent).
             // Try to produce a textured cube from whatever textures the model exposes.
-            var fallbackMeshes = new List<Mesh>
+            var fallbackMeshes = new List<VeldridMesh>
             {
-                BuildTiledFallbackCube(gl, model, blockNameHint: blockName,
+                BuildTiledFallbackCube(model, blockNameHint: blockName,
                     resourcePackId: resourcePackId,
                     tileX: tileX, tileY: tileY, tileZ: tileZ)
             };
@@ -318,10 +318,10 @@ public static class MinecraftModelMesh
 
         // Group faces by texture key so each texture gets one draw call
         // key → (vertices, normals, texCoords)
-        var groups = new Dictionary<string, (List<vec3> verts, List<vec3> norms, List<vec2> uvs, uint texId, BiomeTintKind tintKind, vec3 tint)>();
+        var groups = new Dictionary<string, (List<Vector3> verts, List<Vector3> norms, List<Vector2> uvs, Texture? texture, BiomeTintKind tintKind, Vector3 tint)>();
 
         // Blockstate variant rotation matrix (applied on top of element geometry)
-        mat4 variantTransform = BuildVariantTransform(variantRotX, variantRotY);
+        Matrix4x4 variantTransform = BuildVariantTransform(variantRotX, variantRotY);
 
         // Centered offsets so the tile group is anchored on the mesh origin.
         float centerX = (tileX - 1) * 0.5f;
@@ -333,7 +333,7 @@ public static class MinecraftModelMesh
         for (int ty = 0; ty < tileY; ty++)
         for (int tx = 0; tx < tileX; tx++)
         {
-            vec3 tileOffset = new vec3(tx - centerX, ty - centerY, tz - centerZ);
+            Vector3 tileOffset = new Vector3(tx - centerX, ty - centerY, tz - centerZ);
             foreach (var element in model.Elements)
             {
                 AppendElement(element, model, groups, variantTransform, resourcePackId,
@@ -341,17 +341,17 @@ public static class MinecraftModelMesh
             }
         }
 
-        var result = new List<Mesh>();
+        var result = new List<VeldridMesh>();
         foreach (var kvp in groups)
         {
-            var (verts, norms, uvs, texId, tintKind, tint) = kvp.Value;
+            var (verts, norms, uvs, texture, tintKind, tint) = kvp.Value;
             if (verts.Count == 0) continue;
 
-            var mesh = new Mesh(gl);
+            var mesh = new VeldridMesh(VeldridContext.Device);
             mesh.Vertices.AddRange(verts);
             mesh.Normals.AddRange(norms);
             mesh.TexCoords.AddRange(uvs);
-            mesh.TextureId   = texId;
+            mesh.AlbedoTexture = texture;
             mesh.DoubleSided = false;
             if (tintKind != BiomeTintKind.None)
                 mesh.Albedo = tint;
@@ -366,15 +366,15 @@ public static class MinecraftModelMesh
             // Mesh.IsTranslucent.
             mesh.IsTranslucent = TerrainAtlas.IsTextureTranslucent(texKey);
 
-            mesh.Upload();
+            mesh.Upload(VeldridContext.StandardOutputDescription);
             result.Add(mesh);
         }
 
         if (result.Count == 0)
         {
-            var fallbackMeshes = new List<Mesh>
+            var fallbackMeshes = new List<VeldridMesh>
             {
-                BuildTiledFallbackCube(gl, model, blockNameHint: blockName,
+                BuildTiledFallbackCube(model, blockNameHint: blockName,
                     resourcePackId: resourcePackId,
                     tileX: tileX, tileY: tileY, tileZ: tileZ)
             };
@@ -428,12 +428,12 @@ public static class MinecraftModelMesh
     /// also tries direct TerrainAtlas key lookups by the block name.
     /// Falls back to an untextured white cube if nothing is found.
     /// </summary>
-    public static Mesh BuildTexturedFallbackCube(GL gl, ResolvedBlockModel? model,
+    public static VeldridMesh BuildTexturedFallbackCube(ResolvedBlockModel? model,
                                                  string? blockNameHint = null,
                                                  string resourcePackId = "",
                                                  int tileX = 1, int tileY = 1, int tileZ = 1)
     {
-        return BuildTiledFallbackCube(gl, model, blockNameHint, resourcePackId, tileX, tileY, tileZ);
+        return BuildTiledFallbackCube(model, blockNameHint, resourcePackId, tileX, tileY, tileZ);
     }
 
     /// <summary>
@@ -441,7 +441,7 @@ public static class MinecraftModelMesh
     /// of the tile group, so a 100×100×100 fallback only contains the ~6N²
     /// shell faces instead of 6N³ interior faces.
     /// </summary>
-    private static Mesh BuildTiledFallbackCube(GL gl, ResolvedBlockModel? model,
+    private static VeldridMesh BuildTiledFallbackCube(ResolvedBlockModel? model,
                                                string? blockNameHint,
                                                string resourcePackId,
                                                int tileX, int tileY, int tileZ)
@@ -450,16 +450,16 @@ public static class MinecraftModelMesh
         tileY = ClampTileCount(tileY);
         tileZ = ClampTileCount(tileZ);
 
-        uint texId = PickFallbackTexture(model, blockNameHint, resourcePackId);
-        if (texId == 0)
-            return BuildTiledUntexturedCube(gl, tileX, tileY, tileZ);
+        Texture? texture = PickFallbackTexture(model, blockNameHint, resourcePackId);
+        if (texture == null)
+            return BuildTiledUntexturedCube(tileX, tileY, tileZ);
 
-        var mesh = new Mesh(gl);
-        mesh.TextureId = texId;
+        var mesh = new VeldridMesh(VeldridContext.Device);
+        mesh.AlbedoTexture = texture;
         mesh.DoubleSided = false;
 
         // Rare fallback path — a linear reverse lookup is fine here (see Mesh.IsTranslucent).
-        string? texKeyForTranslucency = TerrainAtlas.Textures.FirstOrDefault(kv => kv.Value == texId).Key;
+        string? texKeyForTranslucency = TerrainAtlas.Textures.FirstOrDefault(kv => kv.Value == texture).Key;
         if (texKeyForTranslucency != null)
             mesh.IsTranslucent = TerrainAtlas.IsTextureTranslucent(texKeyForTranslucency);
 
@@ -467,16 +467,16 @@ public static class MinecraftModelMesh
         float centerY = (tileY - 1) * 0.5f;
         float centerZ = (tileZ - 1) * 0.5f;
 
-        var uvCorners = new vec2[]
+        var uvCorners = new Vector2[]
         {
-            new vec2(0, 0), new vec2(1, 0), new vec2(1, 1), new vec2(0, 1)
+            new Vector2(0, 0), new Vector2(1, 0), new Vector2(1, 1), new Vector2(0, 1)
         };
 
         for (int tz = 0; tz < tileZ; tz++)
         for (int ty = 0; ty < tileY; ty++)
         for (int tx = 0; tx < tileX; tx++)
         {
-            vec3 offset = new vec3(tx - centerX, ty - centerY, tz - centerZ);
+            Vector3 offset = new Vector3(tx - centerX, ty - centerY, tz - centerZ);
 
             AppendCubeFaceIfExternal(mesh, "down",  offset, ty > 0,         uvCorners);
             AppendCubeFaceIfExternal(mesh, "up",    offset, ty + 1 < tileY, uvCorners);
@@ -486,12 +486,12 @@ public static class MinecraftModelMesh
             AppendCubeFaceIfExternal(mesh, "east",  offset, tx + 1 < tileX, uvCorners);
         }
 
-        mesh.Upload();
+        mesh.Upload(VeldridContext.StandardOutputDescription);
         return mesh;
     }
 
-    private static void AppendCubeFaceIfExternal(Mesh mesh, string faceName, vec3 offset,
-                                                 bool hasNeighbor, vec2[] uvCorners)
+    private static void AppendCubeFaceIfExternal(VeldridMesh mesh, string faceName, Vector3 offset,
+                                                 bool hasNeighbor, Vector2[] uvCorners)
     {
         if (hasNeighbor) return;
 
@@ -506,8 +506,8 @@ public static class MinecraftModelMesh
             _       => (0f, 0f, 0f, 0f, 0f, 0f)
         };
 
-        (vec3 v0, vec3 v1, vec3 v2, vec3 v3) = FaceQuad(faceName, x0, y0, z0, x1, y1, z1);
-        vec3 n = FaceNormal(faceName);
+        (Vector3 v0, Vector3 v1, Vector3 v2, Vector3 v3) = FaceQuad(faceName, x0, y0, z0, x1, y1, z1);
+        Vector3 n = FaceNormal(faceName);
         v0 += offset; v1 += offset; v2 += offset; v3 += offset;
 
             if (faceName is "east" or "up" or "south" or "west" or "down")
@@ -532,9 +532,9 @@ public static class MinecraftModelMesh
             }
     }
 
-    private static uint PickFallbackTexture(ResolvedBlockModel? model, string? blockNameHint, string resourcePackId)
+    private static Texture? PickFallbackTexture(ResolvedBlockModel? model, string? blockNameHint, string resourcePackId)
     {
-        uint texId = 0;
+        Texture? texId = null;
 
         if (model != null)
         {
@@ -548,7 +548,7 @@ public static class MinecraftModelMesh
                     if (key != null)
                     {
                         string resolvedKey = ResolveTextureKeyForPack(key, resourcePackId);
-                        if (TerrainAtlas.Textures.TryGetValue(resolvedKey, out uint t))
+                        if (TerrainAtlas.Textures.TryGetValue(resolvedKey, out Texture? t))
                         {
                             texId = t;
                             break;
@@ -558,11 +558,11 @@ public static class MinecraftModelMesh
             }
 
             // Last resort: use whatever the first resolvable texture is
-            if (texId == 0)
+            if (texId == null)
             {
                 foreach (var resolvedKey in model.Textures.Select(kvp => BlockRegistry.ResolveTextureKey(model, "#" + kvp.Key)).OfType<string>().Select(key => ResolveTextureKeyForPack(key, resourcePackId)))
                 {
-                    if (TerrainAtlas.Textures.TryGetValue(resolvedKey, out uint t))
+                    if (TerrainAtlas.Textures.TryGetValue(resolvedKey, out Texture? t))
                     {
                         texId = t;
                         break;
@@ -572,7 +572,7 @@ public static class MinecraftModelMesh
         }
 
         // If still no texture and we have a block name hint, try direct atlas lookups
-        if (texId == 0 && !string.IsNullOrEmpty(blockNameHint))
+        if (texId == null && !string.IsNullOrEmpty(blockNameHint))
         {
             // Try exact match, then common suffixes
             string[] candidates = {
@@ -584,7 +584,7 @@ public static class MinecraftModelMesh
             foreach (string candidate in candidates)
             {
                 string resolvedCandidate = ResolveTextureKeyForPack(candidate, resourcePackId);
-                if (TerrainAtlas.Textures.TryGetValue(resolvedCandidate, out uint t) ||
+                if (TerrainAtlas.Textures.TryGetValue(resolvedCandidate, out Texture? t) ||
                     TerrainAtlas.Textures.TryGetValue(candidate, out t))
                 {
                     texId = t;
@@ -600,14 +600,9 @@ public static class MinecraftModelMesh
     /// Builds a tiled untextured cube (white material) with internal face culling.
     /// Used when no texture is available for a fallback.
     /// </summary>
-    private static Mesh BuildTiledUntexturedCube(GL gl, int tileX, int tileY, int tileZ)
+    private static VeldridMesh BuildTiledUntexturedCube(int tileX, int tileY, int tileZ)
     {
-        var cube = new CubeMesh(gl);
-        // CubeMesh already generates a single unit cube; we need a tiled version.
-        // For simplicity and correctness, discard the single cube and build per-tile.
-        cube.Dispose();
-
-        var mesh = new Mesh(gl);
+        var mesh = new VeldridMesh(VeldridContext.Device);
         mesh.DoubleSided = false;
 
         float centerX = (tileX - 1) * 0.5f;
@@ -618,61 +613,61 @@ public static class MinecraftModelMesh
         for (int ty = 0; ty < tileY; ty++)
         for (int tx = 0; tx < tileX; tx++)
         {
-            vec3 offset = new vec3(tx - centerX, ty - centerY, tz - centerZ);
+            Vector3 offset = new Vector3(tx - centerX, ty - centerY, tz - centerZ);
             // CubeMesh face vertex layout (matches FaceQuad winding for the same faces)
-            var faces = new (string name, bool skip, vec3 v0, vec3 v1, vec3 v2, vec3 v3, vec3 n)[]
+            var faces = new (string name, bool skip, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 v3, Vector3 n)[]
             {
-                ("down",  ty > 0,         new vec3(-0.5f, -0.5f, -0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3( 0, -1,  0)),
-                ("up",    ty + 1 < tileY, new vec3(-0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f,  0.5f), new vec3(-0.5f,  0.5f,  0.5f), new vec3( 0,  1,  0)),
-                ("north", tz > 0,         new vec3(-0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3(-0.5f, -0.5f, -0.5f), new vec3( 0,  0, -1)),
-                ("south", tz + 1 < tileZ, new vec3(-0.5f,  0.5f,  0.5f), new vec3( 0.5f,  0.5f,  0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3( 0,  0,  1)),
-                ("west",  tx > 0,         new vec3(-0.5f,  0.5f, -0.5f), new vec3(-0.5f,  0.5f,  0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3(-0.5f, -0.5f, -0.5f), new vec3(-1,  0,  0)),
-                ("east",  tx + 1 < tileX, new vec3( 0.5f,  0.5f,  0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3( 1,  0,  0)),
+                ("down",  ty > 0,         new Vector3(-0.5f, -0.5f, -0.5f), new Vector3( 0.5f, -0.5f, -0.5f), new Vector3( 0.5f, -0.5f,  0.5f), new Vector3(-0.5f, -0.5f,  0.5f), new Vector3( 0, -1,  0)),
+                ("up",    ty + 1 < tileY, new Vector3(-0.5f,  0.5f, -0.5f), new Vector3( 0.5f,  0.5f, -0.5f), new Vector3( 0.5f,  0.5f,  0.5f), new Vector3(-0.5f,  0.5f,  0.5f), new Vector3( 0,  1,  0)),
+                ("north", tz > 0,         new Vector3(-0.5f,  0.5f, -0.5f), new Vector3( 0.5f,  0.5f, -0.5f), new Vector3( 0.5f, -0.5f, -0.5f), new Vector3(-0.5f, -0.5f, -0.5f), new Vector3( 0,  0, -1)),
+                ("south", tz + 1 < tileZ, new Vector3(-0.5f,  0.5f,  0.5f), new Vector3( 0.5f,  0.5f,  0.5f), new Vector3( 0.5f, -0.5f,  0.5f), new Vector3(-0.5f, -0.5f,  0.5f), new Vector3( 0,  0,  1)),
+                ("west",  tx > 0,         new Vector3(-0.5f,  0.5f, -0.5f), new Vector3(-0.5f,  0.5f,  0.5f), new Vector3(-0.5f, -0.5f,  0.5f), new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(-1,  0,  0)),
+                ("east",  tx + 1 < tileX, new Vector3( 0.5f,  0.5f,  0.5f), new Vector3( 0.5f,  0.5f, -0.5f), new Vector3( 0.5f, -0.5f, -0.5f), new Vector3( 0.5f, -0.5f,  0.5f), new Vector3( 1,  0,  0)),
             };
 
             foreach (var (name, skip, v0, v1, v2, v3, n) in faces)
             {
                 if (skip) continue;
                 // Tri 0: v0(TL), v3(BL), v2(BR) — CCW
-                mesh.Vertices.Add(v0 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-                mesh.Vertices.Add(v3 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-                mesh.Vertices.Add(v2 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
+                mesh.Vertices.Add(v0 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(Vector2.Zero);
+                mesh.Vertices.Add(v3 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(Vector2.Zero);
+                mesh.Vertices.Add(v2 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(Vector2.Zero);
                 // Tri 1: v0(TL), v2(BR), v1(TR) — CCW
-                mesh.Vertices.Add(v0 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-                mesh.Vertices.Add(v2 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-                mesh.Vertices.Add(v1 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
+                mesh.Vertices.Add(v0 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(Vector2.Zero);
+                mesh.Vertices.Add(v2 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(Vector2.Zero);
+                mesh.Vertices.Add(v1 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(Vector2.Zero);
             }
         }
 
-        mesh.Upload();
+        mesh.Upload(VeldridContext.StandardOutputDescription);
         return mesh;
     }
 
     // Same vertex order as QuadForFace but using direct world-space coords.
-    private static (vec3, vec3, vec3, vec3) FaceQuad(string face,
+    private static (Vector3, Vector3, Vector3, Vector3) FaceQuad(string face,
         float x0, float y0, float z0, float x1, float y1, float z1)
     {
         return face switch
         {
-            "down"  => (new vec3(x0, y0, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
-            "up"    => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y1, z1), new vec3(x0, y1, z1)),
-            "north" => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x0, y0, z0)),
-            "south" => (new vec3(x0, y1, z1), new vec3(x1, y1, z1), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
-            "west"  => (new vec3(x0, y1, z0), new vec3(x0, y1, z1), new vec3(x0, y0, z1), new vec3(x0, y0, z0)),
-            "east"  => (new vec3(x1, y1, z1), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1)),
-            _       => (vec3.Zero, vec3.Zero, vec3.Zero, vec3.Zero)
+            "down"  => (new Vector3(x0, y0, z0), new Vector3(x1, y0, z0), new Vector3(x1, y0, z1), new Vector3(x0, y0, z1)),
+            "up"    => (new Vector3(x0, y1, z0), new Vector3(x1, y1, z0), new Vector3(x1, y1, z1), new Vector3(x0, y1, z1)),
+            "north" => (new Vector3(x0, y1, z0), new Vector3(x1, y1, z0), new Vector3(x1, y0, z0), new Vector3(x0, y0, z0)),
+            "south" => (new Vector3(x0, y1, z1), new Vector3(x1, y1, z1), new Vector3(x1, y0, z1), new Vector3(x0, y0, z1)),
+            "west"  => (new Vector3(x0, y1, z0), new Vector3(x0, y1, z1), new Vector3(x0, y0, z1), new Vector3(x0, y0, z0)),
+            "east"  => (new Vector3(x1, y1, z1), new Vector3(x1, y1, z0), new Vector3(x1, y0, z0), new Vector3(x1, y0, z1)),
+            _       => (Vector3.Zero, Vector3.Zero, Vector3.Zero, Vector3.Zero)
         };
     }
 
-    private static vec3 FaceNormal(string face) => face switch
+    private static Vector3 FaceNormal(string face) => face switch
     {
-        "down"  => new vec3( 0, -1,  0),
-        "up"    => new vec3( 0,  1,  0),
-        "north" => new vec3( 0,  0, -1),
-        "south" => new vec3( 0,  0,  1),
-        "west"  => new vec3(-1,  0,  0),
-        "east"  => new vec3( 1,  0,  0),
-        _       => vec3.UnitY
+        "down"  => new Vector3( 0, -1,  0),
+        "up"    => new Vector3( 0,  1,  0),
+        "north" => new Vector3( 0,  0, -1),
+        "south" => new Vector3( 0,  0,  1),
+        "west"  => new Vector3(-1,  0,  0),
+        "east"  => new Vector3( 1,  0,  0),
+        _       => Vector3.UnitY
     };
 
     private static string ResolveTextureKeyForPack(string baseTextureKey, string resourcePackId)
@@ -690,11 +685,11 @@ public static class MinecraftModelMesh
     private static void AppendElement(
         BlockModelElement element,
         ResolvedBlockModel model,
-        Dictionary<string, (List<vec3>, List<vec3>, List<vec2>, uint, BiomeTintKind, vec3)> groups,
-        mat4 variantTransform,
+        Dictionary<string, (List<Vector3>, List<Vector3>, List<Vector2>, Texture?, BiomeTintKind, Vector3)> groups,
+        Matrix4x4 variantTransform,
         string resourcePackId,
         string blockName,
-        vec3 tileOffset,
+        Vector3 tileOffset,
         int tx, int ty, int tz,
         int tileX, int tileY, int tileZ)
     {
@@ -706,12 +701,14 @@ public static class MinecraftModelMesh
         float z1 = element.To[2]   * Scale - 0.5f;
 
         // Optional element-level rotation
-        mat4 elementTransform = mat4.Identity;
+        Matrix4x4 elementTransform = Matrix4x4.Identity;
         if (element.Rotation != null)
             elementTransform = BuildElementRotation(element.Rotation);
 
-        // Combined transform: element rotation first, then variant rotation
-        mat4 transform = variantTransform * elementTransform;
+        // Combined transform: element rotation first, then variant rotation.
+        // System.Numerics uses the row-vector convention, so composition order is
+        // reversed relative to the old GlmSharp column-vector matrices.
+        Matrix4x4 transform = elementTransform * variantTransform;
 
         foreach (var (faceName, face) in element.Faces)
         {
@@ -723,12 +720,12 @@ public static class MinecraftModelMesh
             string? texKey = BlockRegistry.ResolveTextureKey(model, face.Texture);
             if (texKey == null)
             {
-            // texture ref missing — skip this face
+                // texture ref missing — skip this face
                 continue;
             }
 
             string resolvedTexKey = ResolveTextureKeyForPack(texKey, resourcePackId);
-            uint texId;
+            Texture? texId;
             CtmResolvedTile? ctmTile = CtmResolver.Resolve(blockName, texKey, faceName,
                                                          tx, ty, tz, tileX, tileY, tileZ,
                                                          resourcePackId);
@@ -739,19 +736,19 @@ public static class MinecraftModelMesh
             }
             else
             {
-                texId = TerrainAtlas.Textures.TryGetValue(resolvedTexKey, out uint t)
+                texId = TerrainAtlas.Textures.TryGetValue(resolvedTexKey, out Texture? t)
                     ? t
-                    : TerrainAtlas.Textures.TryGetValue(texKey, out t) ? t : 0;
+                    : TerrainAtlas.Textures.TryGetValue(texKey, out t) ? t : null;
             }
 
-            bool hasFaceTint = TryGetFaceBiomeTint(blockName, face, texKey, resolvedTexKey, out BiomeTintKind tintKind, out vec3 faceTint);
+            bool hasFaceTint = TryGetFaceBiomeTint(blockName, face, texKey, resolvedTexKey, out BiomeTintKind tintKind, out Vector3 faceTint);
 
             string groupKey = ctmTile != null
                 ? $"ctm:{ctmTile.TextureId}:{ctmTile.TileIndex}:{(hasFaceTint ? tintKind.ToString() : "none")}"
                 : $"{resolvedTexKey}:{(hasFaceTint ? tintKind.ToString() : "none")}";
             if (!groups.TryGetValue(groupKey, out var group))
             {
-                group = ([], [], [], texId, hasFaceTint ? tintKind : BiomeTintKind.None, hasFaceTint ? faceTint : new vec3(1f, 1f, 1f));
+                group = ([], [], [], texId, hasFaceTint ? tintKind : BiomeTintKind.None, hasFaceTint ? faceTint : new Vector3(1f, 1f, 1f));
                 groups[groupKey] = group;
             }
 
@@ -785,8 +782,8 @@ public static class MinecraftModelMesh
                 RotateUv(face.Rotation, uMin, vMin, uMax, vMax);
 
             // Build quad vertices + normals + UVs for this face
-            (vec3 v0, vec3 v1, vec3 v2, vec3 v3) = QuadForFace(faceName, x0, y0, z0, x1, y1, z1);
-            vec3 normal = NormalForFace(faceName);
+            (Vector3 v0, Vector3 v1, Vector3 v2, Vector3 v3) = QuadForFace(faceName, x0, y0, z0, x1, y1, z1);
+            Vector3 normal = NormalForFace(faceName);
 
             // Apply transform to vertices and normals, then add tile offset
             v0 = TransformPoint(transform, v0) + tileOffset;
@@ -798,29 +795,29 @@ public static class MinecraftModelMesh
             if (faceName is "east" or "up" or "south" or "west" or "down")
             {
                 // Positive-direction faces: (V0,V3,V2) and (V0,V2,V1) — CCW
-                verts.Add(v0); norms.Add(normal); uvs.Add(new vec2(ru0, rv0));
-                verts.Add(v3); norms.Add(normal); uvs.Add(new vec2(ru3, rv3));
-                verts.Add(v2); norms.Add(normal); uvs.Add(new vec2(ru2, rv2));
-                verts.Add(v0); norms.Add(normal); uvs.Add(new vec2(ru0, rv0));
-                verts.Add(v2); norms.Add(normal); uvs.Add(new vec2(ru2, rv2));
-                verts.Add(v1); norms.Add(normal); uvs.Add(new vec2(ru1, rv1));
+                verts.Add(v0); norms.Add(normal); uvs.Add(new Vector2(ru0, rv0));
+                verts.Add(v3); norms.Add(normal); uvs.Add(new Vector2(ru3, rv3));
+                verts.Add(v2); norms.Add(normal); uvs.Add(new Vector2(ru2, rv2));
+                verts.Add(v0); norms.Add(normal); uvs.Add(new Vector2(ru0, rv0));
+                verts.Add(v2); norms.Add(normal); uvs.Add(new Vector2(ru2, rv2));
+                verts.Add(v1); norms.Add(normal); uvs.Add(new Vector2(ru1, rv1));
             }
             else
             {
                 // Negative-direction faces: (V0,V1,V2) and (V0,V2,V3) — CCW
-                verts.Add(v0); norms.Add(normal); uvs.Add(new vec2(ru0, rv0));
-                verts.Add(v1); norms.Add(normal); uvs.Add(new vec2(ru1, rv1));
-                verts.Add(v2); norms.Add(normal); uvs.Add(new vec2(ru2, rv2));
-                verts.Add(v0); norms.Add(normal); uvs.Add(new vec2(ru0, rv0));
-                verts.Add(v2); norms.Add(normal); uvs.Add(new vec2(ru2, rv2));
-                verts.Add(v3); norms.Add(normal); uvs.Add(new vec2(ru3, rv3));
+                verts.Add(v0); norms.Add(normal); uvs.Add(new Vector2(ru0, rv0));
+                verts.Add(v1); norms.Add(normal); uvs.Add(new Vector2(ru1, rv1));
+                verts.Add(v2); norms.Add(normal); uvs.Add(new Vector2(ru2, rv2));
+                verts.Add(v0); norms.Add(normal); uvs.Add(new Vector2(ru0, rv0));
+                verts.Add(v2); norms.Add(normal); uvs.Add(new Vector2(ru2, rv2));
+                verts.Add(v3); norms.Add(normal); uvs.Add(new Vector2(ru3, rv3));
             }
         }
     }
 
     // ── Face geometry helpers ─────────────────────────────────────────────────
 
-    private static (vec3, vec3, vec3, vec3) QuadForFace(
+    private static (Vector3, Vector3, Vector3, Vector3) QuadForFace(
         string face, float x0, float y0, float z0, float x1, float y1, float z1)
     {
         // Vertex order: V0=TL, V1=TR, V2=BR, V3=BL when viewed from outside.
@@ -829,27 +826,27 @@ public static class MinecraftModelMesh
         // Down/north use negative-face winding; west uses positive-face winding.
         return face switch
         {
-            "down"  => (new vec3(x0, y0, z1), new vec3(x1, y0, z1), new vec3(x1, y0, z0), new vec3(x0, y0, z0)),
-            "up"    => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y1, z1), new vec3(x0, y1, z1)),
-            "north" => (new vec3(x0, y1, z0), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x0, y0, z0)),
-            "south" => (new vec3(x0, y1, z1), new vec3(x1, y1, z1), new vec3(x1, y0, z1), new vec3(x0, y0, z1)),
-            "west"  => (new vec3(x0, y1, z0), new vec3(x0, y1, z1), new vec3(x0, y0, z1), new vec3(x0, y0, z0)),
-            "east"  => (new vec3(x1, y1, z1), new vec3(x1, y1, z0), new vec3(x1, y0, z0), new vec3(x1, y0, z1)),
-            _       => (vec3.Zero, vec3.Zero, vec3.Zero, vec3.Zero)
+            "down"  => (new Vector3(x0, y0, z1), new Vector3(x1, y0, z1), new Vector3(x1, y0, z0), new Vector3(x0, y0, z0)),
+            "up"    => (new Vector3(x0, y1, z0), new Vector3(x1, y1, z0), new Vector3(x1, y1, z1), new Vector3(x0, y1, z1)),
+            "north" => (new Vector3(x0, y1, z0), new Vector3(x1, y1, z0), new Vector3(x1, y0, z0), new Vector3(x0, y0, z0)),
+            "south" => (new Vector3(x0, y1, z1), new Vector3(x1, y1, z1), new Vector3(x1, y0, z1), new Vector3(x0, y0, z1)),
+            "west"  => (new Vector3(x0, y1, z0), new Vector3(x0, y1, z1), new Vector3(x0, y0, z1), new Vector3(x0, y0, z0)),
+            "east"  => (new Vector3(x1, y1, z1), new Vector3(x1, y1, z0), new Vector3(x1, y0, z0), new Vector3(x1, y0, z1)),
+            _       => (Vector3.Zero, Vector3.Zero, Vector3.Zero, Vector3.Zero)
         };
     }
 
-    private static vec3 NormalForFace(string face)
+    private static Vector3 NormalForFace(string face)
     {
         return face switch
         {
-            "down"  => new vec3( 0, -1,  0),
-            "up"    => new vec3( 0,  1,  0),
-            "north" => new vec3( 0,  0, -1),
-            "south" => new vec3( 0,  0,  1),
-            "west"  => new vec3(-1,  0,  0),
-            "east"  => new vec3( 1,  0,  0),
-            _       => vec3.UnitY
+            "down"  => new Vector3( 0, -1,  0),
+            "up"    => new Vector3( 0,  1,  0),
+            "north" => new Vector3( 0,  0, -1),
+            "south" => new Vector3( 0,  0,  1),
+            "west"  => new Vector3(-1,  0,  0),
+            "east"  => new Vector3( 1,  0,  0),
+            _       => Vector3.UnitY
         };
     }
 
@@ -910,7 +907,7 @@ public static class MinecraftModelMesh
 
     // ── Element rotation ──────────────────────────────────────────────────────
 
-    private static mat4 BuildElementRotation(ElementRotation rot)
+    private static Matrix4x4 BuildElementRotation(ElementRotation rot)
     {
         float ox = rot.Origin[0] * Scale - 0.5f;
         float oy = rot.Origin[1] * Scale - 0.5f;
@@ -918,27 +915,28 @@ public static class MinecraftModelMesh
 
         float rad = rot.Angle * MathF.PI / 180f;
 
-        mat4 toOrigin   = mat4.Translate(new vec3(-ox, -oy, -oz));
-        mat4 fromOrigin = mat4.Translate(new vec3( ox,  oy,  oz));
+        Matrix4x4 toOrigin   = Matrix4x4.CreateTranslation(new Vector3(-ox, -oy, -oz));
+        Matrix4x4 fromOrigin = Matrix4x4.CreateTranslation(new Vector3( ox,  oy,  oz));
 
-        mat4 rotation = rot.Axis.ToLower() switch
+        Matrix4x4 rotation = rot.Axis.ToLower() switch
         {
-            "x" => mat4.RotateX(rad),
-            "y" => mat4.RotateY(rad),
-            "z" => mat4.RotateZ(rad),
-            _   => mat4.Identity
+            "x" => Matrix4x4.CreateRotationX(rad),
+            "y" => Matrix4x4.CreateRotationY(rad),
+            "z" => Matrix4x4.CreateRotationZ(rad),
+            _   => Matrix4x4.Identity
         };
 
         // If rescale, we'd normally scale the non-rotating axes to compensate for the
         // diagonal distortion, but this is a minor visual detail we skip for simplicity.
-        return fromOrigin * rotation * toOrigin;
+        // Row-vector convention: reverse the column-vector order (fromOrigin * rotation * toOrigin).
+        return toOrigin * rotation * fromOrigin;
     }
 
     // ── Variant transform ─────────────────────────────────────────────────────
 
-    private static mat4 BuildVariantTransform(int rotX, int rotY)
+    private static Matrix4x4 BuildVariantTransform(int rotX, int rotY)
     {
-        if (rotX == 0 && rotY == 0) return mat4.Identity;
+        if (rotX == 0 && rotY == 0) return Matrix4x4.Identity;
 
         float radX = rotX * MathF.PI / 180f;
         float radY = rotY * MathF.PI / 180f;
@@ -946,24 +944,24 @@ public static class MinecraftModelMesh
         // Block model convention: X rotation = clockwise when looking from +X,
         // which is the opposite of standard math (right-hand rule). Y rotation
         // uses the same direction as standard math.
-        mat4 rx = mat4.RotateX(-radX);
-        mat4 ry = mat4.RotateY(radY);
-        return ry * rx;
+        Matrix4x4 rx = Matrix4x4.CreateRotationX(-radX);
+        Matrix4x4 ry = Matrix4x4.CreateRotationY(radY);
+        // Row-vector convention: reverse the column-vector order (ry * rx).
+        return rx * ry;
     }
 
     // ── Transform helpers ─────────────────────────────────────────────────────
 
-    private static vec3 TransformPoint(mat4 m, vec3 p)
+    private static Vector3 TransformPoint(Matrix4x4 m, Vector3 p)
     {
-        vec4 t = m * new vec4(p, 1f);
-        return new vec3(t.x, t.y, t.z);
+        // Row-vector convention (System.Numerics): p * m, including translation.
+        return Vector3.Transform(p, m);
     }
 
-    private static vec3 TransformNormal(mat4 m, vec3 n)
+    private static Vector3 TransformNormal(Matrix4x4 m, Vector3 n)
     {
         // Use the upper-left 3×3 (no translation) for normals
-        vec4 t = m * new vec4(n, 0f);
-        var  r = new vec3(t.x, t.y, t.z);
-        return r.LengthSqr > 0 ? r.Normalized : vec3.UnitY;
+        Vector3 r = Vector3.TransformNormal(n, m);
+        return r.LengthSquared() > 0f ? Vector3.Normalize(r) : Vector3.UnitY;
     }
 }

@@ -80,8 +80,8 @@ public sealed class VeldridPointShadowMap : IDisposable
         for (int face = 0; face < 6; face++)
         {
             FaceFramebuffers[face] = _device.ResourceFactory.CreateFramebuffer(new FramebufferDescription(
-                _sharedDepthTarget,
-                new FramebufferAttachmentDescription(ColorCubeTexture, (uint)face)));
+                new FramebufferAttachmentDescription(_sharedDepthTarget, 0),
+                new[] { new FramebufferAttachmentDescription(ColorCubeTexture, (uint)face) }));
         }
 
         CubeTextureView = _device.ResourceFactory.CreateTextureView(ColorCubeTexture);

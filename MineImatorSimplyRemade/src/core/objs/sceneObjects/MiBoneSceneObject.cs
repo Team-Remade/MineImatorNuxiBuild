@@ -1,6 +1,7 @@
 using GlmSharp;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.mineImator;
+using MineImatorSimplyRemade.core.render;
 using System;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -203,6 +204,7 @@ public class MiBoneSceneObject : BoneSceneObject
             if (onlyIfTextureId != 0 && mesh.TextureId != onlyIfTextureId)
                 continue;
             mesh.TextureId = textureId;
+            mesh.AlbedoTexture = MineImatorLoader.ResolveVeldridTexture(textureId);
         }
 
         // Update stored shape data so the override survives RegenerateMeshes()
@@ -311,7 +313,7 @@ public class MiBoneSceneObject : BoneSceneObject
                          sd.TextureId, sd.AccumulatedScale, effectiveBendParams,
                          sd.ModelBendStyle, sd.PartColorBlend, sd.PartColorBlendAmount,
                          sd.PartColorAlpha, sd.PartDepth,
-                         sd.TextureSize)).OfType<Mesh>())
+                         sd.TextureSize)).OfType<VeldridMesh>())
             {
                 AddMesh(mesh);
             }

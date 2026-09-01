@@ -10,6 +10,7 @@ using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
+using MineImatorSimplyRemade.core.render;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -2866,7 +2867,7 @@ public class SpawnMenu : UiPanel
                 uint textureId = kv.Key.TextureId;
                 byte autoEmissionLevel = kv.Key.AutoEmissionLevel;
 
-                var mesh = new Mesh(Gl)
+                var mesh = new VeldridMesh(VeldridContext.Device)
                 {
                     TextureId = textureId,
                     AnimationKey = liquidAnimKeys.TryGetValue(textureId, out string? animKey) ? animKey : "",

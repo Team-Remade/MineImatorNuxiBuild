@@ -23,7 +23,7 @@ namespace MineImatorSimplyRemade.core.render;
 /// codebase until every caller is migrated) for the full feature set each of
 /// those passes needs to restore.
 /// </summary>
-public sealed class VeldridMesh : IDisposable
+public class VeldridMesh : IDisposable
 {
     private readonly GraphicsDevice _device;
 
@@ -91,10 +91,92 @@ public sealed class VeldridMesh : IDisposable
     /// <summary>When false, this mesh is excluded from fog even when global fog is enabled.</summary>
     public bool IncludeInFog { get; set; } = true;
 
+    /// <summary>When true, disables back-face culling for this mesh's pipeline
+    /// (thin single-sided geometry like light-range rings/cones/sticks that
+    /// should be visible from both sides). Read once per <see cref="Upload"/>/
+    /// pipeline-rebuild - matches the old renderer's <c>Mesh.DoubleSided</c>.</summary>
+    public bool DoubleSided { get; set; }
+
+    private FaceCullMode CullMode => DoubleSided ? FaceCullMode.None : FaceCullMode.Back;
+
     /// <summary>Bound texture, or null to render with the flat <see cref="Albedo"/> color.</summary>
     public Texture? AlbedoTexture { get; set; }
     private TextureView? _albedoTextureView;
     private Sampler? _albedoSampler;
+
+    // ── Material data parity with the old GL core.mdl.Mesh ──────────────────
+    // These mirror the loose appearance/material fields the old renderer stored
+    // (there backed by a StandardMaterial). Added ahead of migrating
+    // SceneObject.Visuals / the loaders onto VeldridMesh so those call sites
+    // can assign the same values. Types use System.Numerics to match the rest
+    // of this class; several are not yet consumed by the render passes above
+    // (follow-up subsystem passes) but exist for source-compatibility.
+
+    /// <summary>Multiplicative blend colour (RGBA). Default opaque white = no tint.</summary>
+    public Vector4 BlendColor { get; set; } = Vector4.One;
+
+    /// <summary>Mix/overlay colour (RGBA). Alpha is the mix amount.</summary>
+    public Vector4 MixColor { get; set; } = Vector4.Zero;
+
+    /// <summary>UV offset applied when sampling the albedo texture.</summary>
+    public Vector2 TextureOffset { get; set; } = Vector2.Zero;
+
+    /// <summary>UV repeat/tiling factor. Clamped to a small positive minimum.</summary>
+    private Vector2 _textureRepeat = Vector2.One;
+    public Vector2 TextureRepeat
+    {
+        get => _textureRepeat;
+        set => _textureRepeat = new Vector2(Math.Max(0.0001f, value.X), Math.Max(0.0001f, value.Y));
+    }
+
+    /// <summary>Per-axis UV mirroring (X = U, Y = V). Old renderer's <c>bvec2</c>.</summary>
+    public (bool X, bool Y) TextureMirror { get; set; }
+
+    /// <summary>When true, emissive lighting from this mesh is treated as indirect-only.</summary>
+    public bool EmissionIndirectOnly { get; set; }
+
+    /// <summary>Per-mesh auto-emission level (0..15) inferred from Minecraft block data.</summary>
+    public byte AutoEmissionLevel { get; set; }
+
+    /// <summary>Legacy GL texture handle carried over from the old renderer.
+    /// The Veldrid render path uses <see cref="AlbedoTexture"/> instead; kept for
+    /// source-compatibility with callers still tracking a numeric id.</summary>
+    public uint TextureId { get; set; }
+
+    /// <summary>Optional independent alpha-mask texture (textured flat text).</summary>
+    public Texture? AlphaMaskTexture { get; set; }
+
+    /// <summary>True when this mesh is a textured flat-text alpha mask.</summary>
+    public bool IsTextAlphaMask { get; set; }
+
+    /// <summary>Outline colour used by textured flat-text alpha masks.</summary>
+    public Vector4 TextMaskOutlineColor { get; set; } = new(0f, 0f, 0f, 1f);
+
+    /// <summary>Key into the animated-texture atlas. Empty = static texture.</summary>
+    public string AnimationKey { get; set; } = "";
+
+    /// <summary>True when the mesh is genuinely alpha-blended (e.g. water) rather
+    /// than merely alpha-cutout. Drives the viewport's translucent render pass.</summary>
+    public bool IsTranslucent { get; set; }
+
+    /// <summary>Render ordering hint for coplanar layered meshes. Lower renders first.</summary>
+    public float SortDepth { get; set; }
+
+    /// <summary>When true, the mesh is only used for editor helper passes
+    /// (colour picking / silhouette) and excluded from normal scene rendering.</summary>
+    public bool PickOnly { get; set; }
+
+    /// <summary>When true, depth testing/writes are disabled so the mesh renders on top.</summary>
+    public bool DepthTestDisabled { get; set; }
+
+    /// <summary>When true this mesh uses linear texture filtering; else nearest.</summary>
+    public bool BlurTexture { get; set; }
+
+    /// <summary>When true this mesh samples with mipmap minification filters.</summary>
+    public bool TextureMipmaps { get; set; }
+
+    /// <summary>When true, culls front faces so only backfaces render.</summary>
+    public bool CullFrontFaces { get; set; }
 
     // ── Skinning (subsystem pass 6/N) ───────────────────────────────────────
 
@@ -105,6 +187,19 @@ public sealed class VeldridMesh : IDisposable
 
     /// <summary>Per-vertex bone weights (up to 4 per vertex), parallel to <see cref="Vertices"/>.</summary>
     public List<Vector4> BoneWeights { get; } = new();
+
+    /// <summary>Bone names used by this mesh, indexed by <see cref="BoneIndices"/>.</summary>
+    public List<string> BoneNames { get; } = new();
+
+    /// <summary>Inverse bind matrices for each bone in <see cref="BoneNames"/>
+    /// (mesh space -> bone space in the bind pose).</summary>
+    public List<Matrix4x4> BoneInverseBindMatrices { get; } = new();
+
+    /// <summary>Local-space bounding sphere centre (computed during <see cref="Upload"/>).</summary>
+    public Vector3 BoundingSphereCenter { get; set; }
+
+    /// <summary>Local-space bounding sphere radius (computed during <see cref="Upload"/>).</summary>
+    public float BoundingSphereRadius { get; set; }
 
     /// <summary>True when this mesh has skinning data uploaded and should be GPU-deformed.</summary>
     public bool IsSkinned => BoneIndices.Count > 0 && BoneIndices.Count == Vertices.Count;
@@ -439,7 +534,7 @@ public sealed class VeldridMesh : IDisposable
             BlendState = BlendStateDescription.SingleAlphaBlend,
             DepthStencilState = DepthStencilStateDescription.DepthOnlyLessEqual,
             RasterizerState = new RasterizerStateDescription(
-                FaceCullMode.Back, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
+                CullMode, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
             PrimitiveTopology = PrimitiveTopology.TriangleList,
             ResourceLayouts = new[] { _meshResourceLayout, _sceneResourceLayout, _pointShadowResourceLayout },
             ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, new[] { vertexShader, fragmentShader }),
@@ -787,7 +882,7 @@ public sealed class VeldridMesh : IDisposable
             BlendState = BlendStateDescription.SingleDisabled,
             DepthStencilState = DepthStencilStateDescription.DepthOnlyLessEqual,
             RasterizerState = new RasterizerStateDescription(
-                FaceCullMode.Back, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
+                CullMode, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
             PrimitiveTopology = PrimitiveTopology.TriangleList,
             ResourceLayouts = new[] { _pointShadowCasterResourceLayout },
             ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, new[] { vertexShader, fragmentShader }),
@@ -928,7 +1023,7 @@ public sealed class VeldridMesh : IDisposable
             {
                 BlendState = BlendStateDescription.SingleDisabled,
                 DepthStencilState = DepthStencilStateDescription.DepthOnlyLessEqual,
-                RasterizerState = new RasterizerStateDescription(FaceCullMode.Back, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
+                RasterizerState = new RasterizerStateDescription(CullMode, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _pickResourceLayout },
                 ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, new[] { vs, fs }),
@@ -945,7 +1040,7 @@ public sealed class VeldridMesh : IDisposable
             {
                 BlendState = BlendStateDescription.SingleDisabled,
                 DepthStencilState = DepthStencilStateDescription.DepthOnlyLessEqual,
-                RasterizerState = new RasterizerStateDescription(FaceCullMode.Back, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
+                RasterizerState = new RasterizerStateDescription(CullMode, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _pickResourceLayout },
                 ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, new[] { vs, fs }),
@@ -1002,7 +1097,7 @@ public sealed class VeldridMesh : IDisposable
             BlendState = BlendStateDescription.SingleDisabled,
             DepthStencilState = DepthStencilStateDescription.DepthOnlyLessEqual,
             RasterizerState = new RasterizerStateDescription(
-                FaceCullMode.Back, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
+                CullMode, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
             PrimitiveTopology = PrimitiveTopology.TriangleList,
             ResourceLayouts = new[] { _shadowResourceLayout },
             ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, new[] { vertexShader, fragmentShader }),
