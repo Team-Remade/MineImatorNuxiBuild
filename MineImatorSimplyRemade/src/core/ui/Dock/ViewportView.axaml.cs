@@ -42,6 +42,9 @@ public partial class ViewportView : UserControl
     private VeldridShadowMap? _shadowMap;
     private VeldridAmbientOcclusionPass? _aoPass;
     private VeldridIndirectLightingPass? _indirectPass;
+    private VeldridGlowPass? _glowPass;
+    private VeldridFilmGrainPass? _filmGrainPass;
+    private float _filmGrainFrame;
     private VeldridMesh? _groundMesh;
     private VeldridMesh? _demoCube;
     private readonly DispatcherTimer _renderTimer;
@@ -90,6 +93,8 @@ public partial class ViewportView : UserControl
             _shadowMap = new VeldridShadowMap(_surface.GraphicsDevice, 2048);
             _aoPass = new VeldridAmbientOcclusionPass(_surface.GraphicsDevice) { Radius = 5f, Strength = 0.7f };
             _indirectPass = new VeldridIndirectLightingPass(_surface.GraphicsDevice);
+            _glowPass = new VeldridGlowPass(_surface.GraphicsDevice) { Strength = 0.6f, BlurSize = 2f };
+            _filmGrainPass = new VeldridFilmGrainPass(_surface.GraphicsDevice) { Strength = 0.03f };
             BuildPlaceholderScene();
         }
         else
@@ -98,6 +103,8 @@ public partial class ViewportView : UserControl
         }
 
         _indirectPass?.Resize(width, height);
+        _glowPass?.Resize(width, height);
+        _filmGrainPass?.Resize(width, height);
     }
 
     private void BuildPlaceholderScene()
@@ -194,6 +201,18 @@ public partial class ViewportView : UserControl
                 _indirectPass.RenderRaw(cl, _surface.ColorTargetView, _surface.DepthTargetView, Camera.Near, Camera.Far);
                 cl.SetFramebuffer(_surface.Framebuffer);
                 _indirectPass.CompositeDenoised(cl, _surface.DepthTargetView, Camera.Near, Camera.Far, _surface.OutputDescription);
+            }
+
+            // Bloom/glow: extract+blur the bright scene pixels and composite them
+            // additively back onto the main framebuffer (post-lighting).
+            _glowPass?.Render(cl, _surface.ColorTargetView, _surface.Framebuffer);
+
+            // Film grain applied last, in place on the color target.
+            if (_filmGrainPass != null)
+            {
+                _filmGrainPass.Frame = _filmGrainFrame;
+                _filmGrainFrame += 1f;
+                _filmGrainPass.Render(cl, _surface.ColorTarget, _surface.ColorTargetView);
             }
         });
 

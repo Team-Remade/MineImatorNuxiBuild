@@ -69,12 +69,14 @@ public sealed class VeldridGlowPass : IDisposable
         _device.ResourceFactory.CreateTexture(TextureDescription.Texture2D(
             width, height, 1, 1, PixelFormat.R16_G16_B16_A16_Float, TextureUsage.RenderTarget | TextureUsage.Sampled));
 
-    /// <summary>Renders the full bloom chain and composites additively onto
-    /// whichever framebuffer is currently bound (caller's main scene framebuffer -
-    /// same convention as <see cref="VeldridAmbientOcclusionPass"/>).</summary>
-    public void Render(CommandList commandList, TextureView sceneColorView, OutputDescription mainOutputDescription)
+    /// <summary>Renders the full bloom chain and composites the blurred result
+    /// additively back onto <paramref name="mainFramebuffer"/> (typically the
+    /// caller's main scene framebuffer). The composite step rebinds
+    /// <paramref name="mainFramebuffer"/> explicitly because the internal
+    /// extract/blur steps leave a scratch framebuffer bound.</summary>
+    public void Render(CommandList commandList, TextureView sceneColorView, Framebuffer mainFramebuffer)
     {
-        EnsurePipelines(mainOutputDescription);
+        EnsurePipelines(mainFramebuffer.OutputDescription);
         if (_opaquePipeline == null || _additivePipeline == null || _uniformBuffer == null)
             return;
 
@@ -92,8 +94,8 @@ public sealed class VeldridGlowPass : IDisposable
         DrawPass(commandList, _scratchAFramebuffer!, _opaquePipeline, EnsureResourceSet(ref _resourceSetFromB, _scratchBView!),
             new GlowUniforms { TexelSize = texelSize, Mode = 1, Size = BlurSize, Direction = new Vector2(0, 1) });
 
-        // 4) Composite additively: scratchA -> main framebuffer (caller-bound)
-        DrawPass(commandList, null, _additivePipeline, EnsureResourceSet(ref _resourceSetFromA, _scratchAView!),
+        // 4) Composite additively: scratchA -> main framebuffer
+        DrawPass(commandList, mainFramebuffer, _additivePipeline, EnsureResourceSet(ref _resourceSetFromA, _scratchAView!),
             new GlowUniforms { TexelSize = texelSize, Mode = 2, Strength = Strength });
     }
 
