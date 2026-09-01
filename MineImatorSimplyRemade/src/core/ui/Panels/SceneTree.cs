@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
-using Hexa.NET.ImGui;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -10,58 +8,62 @@ using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
 /// <summary>
-/// ImGui scene-tree panel.  Ported from the Nuxi reference project (ExampleSceneTree).
+/// Scene-tree model.  Originally an ImGui <c>UiPanel</c> (ported from the Nuxi
+/// reference project) that both stored the scene hierarchy logic AND drew the
+/// tree with ImGui.
+///
+/// MIGRATION: in the Avalonia port the tree UI moved to
+/// <see cref="core.ui.Dock.SceneTreeView"/> (a native <c>TreeView</c>), so this
+/// class is now a plain model. It owns the selection / duplicate / delete /
+/// reparent / rename logic and raises <see cref="TreeChanged"/> whenever the
+/// hierarchy is mutated so the view can rebuild.
+///
+/// The old panel read the scene roots from <c>Viewport.SceneObjects</c>. Since
+/// the Viewport isn't ported to Avalonia/Veldrid yet, the roots collection is
+/// injected via <see cref="SceneRoots"/> instead of taking a hard dependency on
+/// the still-broken <c>Viewport</c> type. Once Viewport lands, its host just
+/// assigns <c>sceneTree.SceneRoots = viewport.SceneObjects</c>.
 ///
 /// Supported features
 /// ──────────────────
-///  • Recursive tree built from Viewport.SceneObjects + SceneObject.Children
-///  • Multi-selection (Ctrl+click toggle, Shift+click range)
-///  • Inline rename (double-click label area)
-///  • Right-click context menu (preserves multi-selection)
-///  • Drag-and-drop reparenting (drop on item = child; drop on blank = unparent to root)
+///  • Recursive tree built from <see cref="SceneRoots"/> + SceneObject.Children
+///  • Multi-selection (delegated to <see cref="SelectionManager"/>)
+///  • Rename, duplicate, delete, drag-and-drop reparenting (invoked by the view)
 ///
 /// Not yet implemented
 /// ────────────────────
 ///  • Per-type object icons
 ///  • Keyframe deep-copy on Duplicate
 /// </summary>
-public class SceneTree : UiPanel
+public class SceneTree
 {
-    // ── Owner reference ─────────────────────────────────────────────────────
-    public Viewport Viewport { get; set; }
+    // ── Data source ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The root-level scene objects. Injected by the host (formerly
+    /// <c>Viewport.SceneObjects</c>). Defaults to an empty list so the view can
+    /// bind safely before a real scene is available.
+    /// </summary>
+    public IList<SceneObject> SceneRoots { get; set; } = new List<SceneObject>();
 
     // ── State ───────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Mirror of the first entry in SelectionManager.SelectedObjects, kept in sync
-    /// via the SelectionChanged event for efficient per-frame highlight lookups.
+    /// via the SelectionChanged event (fallback when no SelectionManager exists).
     /// </summary>
     private SceneObject _selectedObject;
     private SceneObject _lastClickedObject;
-    private SceneObject _selectionToReveal;
-    private SceneObject _renamingObject;
-    private string      _renameBuffer = "";
-    private string      _searchQuery = "";
-    private HashSet<SceneObject>? _filteredVisibleSet;
 
-    // Context-menu state
-    private SceneObject _contextMenuTarget;
-    private bool        _openContextMenu;
+    /// <summary>Raised whenever the hierarchy is mutated (duplicate/delete/reparent/rename).</summary>
+    public event Action TreeChanged;
 
-    // Drag-and-drop state
-    private SceneObject _draggingObject;
-
-    // Running ID counter reset each frame
-    private int _nodeIdCounter;
+    private void RaiseTreeChanged() => TreeChanged?.Invoke();
 
     // ── Constructor ─────────────────────────────────────────────────────────
 
     public SceneTree()
     {
-        // Subscribe to SelectionManager once it has been initialized.
-        // SetGL() is called after SelectionManager.Initialize() in MainWindow,
-        // but we can't hook up here yet since SelectionManager may not exist.
-        // Wire the event in SetViewport() or lazily on first Render().
     }
 
     /// <summary>
@@ -76,140 +78,21 @@ public class SceneTree : UiPanel
 
     // ── Public API ──────────────────────────────────────────────────────────
 
-    /// <summary>Rebuilds internal state and redraws the panel.</summary>
-    public override void Render()
-    {
-        ImGui.Begin("Scene Tree");
-
-        if (Viewport == null)
-        {
-            ImGui.TextDisabled("(no viewport)");
-            ImGui.End();
-            return;
-        }
-
-        // Reset per-frame id counter
-        _nodeIdCounter  = 0;
-        _openContextMenu = false;
-
-        ImGui.SetNextItemWidth(-1);
-        ImGui.InputTextWithHint("##sceneTreeSearch", "Search scene objects...", ref _searchQuery, 128);
-        ImGui.Separator();
-
-        string searchTerm = _searchQuery.Trim();
-        _filteredVisibleSet = string.IsNullOrEmpty(searchTerm)
-            ? null
-            : BuildFilterVisibleSet(searchTerm);
-
-        // Draw each top-level object — snapshot the list first so that a
-        // reparent/delete triggered during the same frame doesn't mutate it.
-        int renderedRootCount = 0;
-        foreach (var obj in Viewport.SceneObjects.ToList())
-        {
-            if (_filteredVisibleSet != null && !_filteredVisibleSet.Contains(obj))
-                continue;
-
-            RenderNode(obj, _filteredVisibleSet);
-            renderedRootCount++;
-        }
-
-        if (_filteredVisibleSet != null && renderedRootCount == 0)
-            ImGui.TextDisabled("No scene objects match the current search.");
-
-        // The reveal request is only needed for one frame. By this point all
-        // ancestors have been opened and the selected row has requested scroll.
-        _selectionToReveal = null;
-
-        // ── Root-level drop target ───────────────────────────────────────────
-        // Covers the remaining empty space so dropping onto blank area
-        // unparents the object back to the viewport root.
-        var remaining  = ImGui.GetContentRegionAvail();
-        float dropHeight = Math.Max(remaining.Y, 8f);
-        ImGui.InvisibleButton("##root_drop_target", new Vector2(-1, dropHeight));
-
-        if (ImGui.BeginDragDropTarget())
-        {
-            unsafe
-            {
-                var payload   = ImGui.AcceptDragDropPayload("SCENE_OBJECT");
-                bool delivered = payload.Handle != null && ImGui.IsDelivery(payload);
-                if (delivered && _draggingObject != null)
-                {
-                    if (_draggingObject.Parent != null)
-                        ReparentObject(_draggingObject, newParent: null);
-                    _draggingObject = null;
-                }
-            }
-            ImGui.EndDragDropTarget();
-        }
-
-        // Context menu (opened deferred to avoid conflicting with tree-click handling)
-        if (_openContextMenu && _contextMenuTarget != null)
-            ImGui.OpenPopup("##SceneTreeContextMenu");
-
-        if (ImGui.BeginPopup("##SceneTreeContextMenu"))
-        {
-            if (_contextMenuTarget != null)
-            {
-                ImGui.TextDisabled(_contextMenuTarget.GetDisplayName());
-                ImGui.Separator();
-
-                if (ImGui.MenuItem("Duplicate"))
-                {
-                    DuplicateObject(_contextMenuTarget);
-                    _contextMenuTarget = null;
-                }
-
-                if (_contextMenuTarget is CameraSceneObject cam)
-                {
-                    string activeLabel = cam.Active ? "Clear Active Camera" : "Set as Active Camera";
-                    if (ImGui.MenuItem(activeLabel))
-                    {
-                        if (cam.Active)
-                        {
-                            cam.Active = false;
-                        }
-                        else
-                        {
-                            CameraSceneObject.SetActiveExclusive(cam);
-                        }
-                        _contextMenuTarget = null;
-                    }
-                }
-
-                if (ImGui.MenuItem("Delete"))
-                {
-                    DeleteObject(_contextMenuTarget);
-                    _contextMenuTarget = null;
-                }
-            }
-            ImGui.EndPopup();
-        }
-
-        // Cancel drag if the mouse was released outside any target.
-        if (_draggingObject != null && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
-            _draggingObject = null;
-
-        ImGui.End();
-    }
-
     /// <summary>
     /// Forces the selection to match an externally-chosen object
-    /// (e.g. a future viewport colour-pick).
+    /// (e.g. a viewport colour-pick).
     /// </summary>
     public void SetSelection(SceneObject obj)
     {
-        if (SelectionManager.Instance == null) return;
+        if (SelectionManager.Instance == null)
+        {
+            SelectObject(obj);
+            return;
+        }
         SelectionManager.Instance.ClearSelection();
         if (obj != null)
             SelectionManager.Instance.SelectObject(obj);
     }
-
-    /// <summary>No-op — tree is rebuilt every frame.</summary>
-    public void Refresh() { }
-
-    /// <summary>No-op — tree is rebuilt every frame.</summary>
-    public void RefreshObject(SceneObject obj) { }
 
     /// <summary>Duplicates every selected object using the same logic as the context menu.</summary>
     public void DuplicateSelectedObjects()
@@ -248,6 +131,8 @@ public class SceneTree : UiPanel
         {
             SelectObject(duplicates[0]);
         }
+
+        RaiseTreeChanged();
     }
 
     /// <summary>Deletes every selected object using the same logic as the context menu.</summary>
@@ -270,132 +155,14 @@ public class SceneTree : UiPanel
         }
     }
 
-    // ── Rendering helpers ───────────────────────────────────────────────────
-
-    private void RenderNode(SceneObject obj, HashSet<SceneObject>? visibilityFilter)
-    {
-        if (obj.HideInSceneTree) return;
-
-        int nodeId    = ++_nodeIdCounter;
-        bool hasChildren = obj.Children.Any(c => !c.HideInSceneTree &&
-            (visibilityFilter == null || visibilityFilter.Contains(c)));
-        bool isSelected  = SelectionManager.Instance != null
-            ? SelectionManager.Instance.IsSelected(obj)
-            : _selectedObject == obj;
-        bool isRenaming  = _renamingObject == obj;
-
-        ImGuiTreeNodeFlags flags =
-            ImGuiTreeNodeFlags.OpenOnArrow |
-            ImGuiTreeNodeFlags.SpanAvailWidth;
-
-        if (!hasChildren) flags |= ImGuiTreeNodeFlags.Leaf;
-        if (isSelected)   flags |= ImGuiTreeNodeFlags.Selected;
-
-        ImGui.PushID(nodeId);
-
-        // A viewport pick can select an item whose branch is collapsed. Open
-        // every ancestor on the way to it before rendering the node so the
-        // selected row exists this frame and can be scrolled into view.
-        if (_selectionToReveal != null &&
-            (_selectionToReveal == obj || _selectionToReveal.IsDescendantOf(obj)))
-        {
-            ImGui.SetNextItemOpen(true, ImGuiCond.Always);
-        }
-
-        bool nodeOpen;
-
-        if (isRenaming)
-        {
-            nodeOpen = ImGui.TreeNodeEx("##renaming", flags);
-            ImGui.SameLine();
-            ImGui.SetNextItemWidth(-1);
-            ImGui.SetKeyboardFocusHere();
-            if (ImGui.InputText("##rename_input", ref _renameBuffer, 128,
-                    ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.AutoSelectAll) || !ImGui.IsItemActive() && !ImGui.IsItemFocused())
-            {
-                CommitRename(obj);
-            }
-        }
-        else
-        {
-            nodeOpen = ImGui.TreeNodeEx(obj.GetDisplayName() + "##node", flags);
-        }
-
-        if (_selectionToReveal == obj)
-            ImGui.SetScrollHereY(0.5f);
-
-        // Single click → select (multi-select with Ctrl/Shift)
-        if (ImGui.IsItemClicked(ImGuiMouseButton.Left) && !ImGui.IsItemToggledOpen())
-            HandleClick(obj);
-
-        // Double click → begin inline rename
-        if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-            BeginRename(obj);
-
-        // Right click → context menu (don't clear multi-selection)
-        if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
-        {
-            if (SelectionManager.Instance != null && !SelectionManager.Instance.IsSelected(obj))
-            {
-                SelectionManager.Instance.ClearSelection();
-                SelectionManager.Instance.SelectObject(obj);
-            }
-            _contextMenuTarget = obj;
-            _openContextMenu   = true;
-        }
-
-        // ── Drag source ─────────────────────────────────────────────────────
-        if (ImGui.BeginDragDropSource())
-        {
-            _draggingObject = obj;
-            unsafe
-            {
-                byte dummy = 1;
-                ImGui.SetDragDropPayload("SCENE_OBJECT", &dummy, 1);
-            }
-            ImGui.Text("Move: " + obj.GetDisplayName());
-            ImGui.EndDragDropSource();
-        }
-
-        // ── Drop target ─────────────────────────────────────────────────────
-        if (ImGui.BeginDragDropTarget())
-        {
-            unsafe
-            {
-                var payload   = ImGui.AcceptDragDropPayload("SCENE_OBJECT");
-                bool delivered = payload.Handle != null && ImGui.IsDelivery(payload);
-                if (delivered && _draggingObject != null)
-                {
-                    if (_draggingObject != obj && !obj.IsDescendantOf(_draggingObject))
-                        ReparentObject(_draggingObject, obj);
-                    _draggingObject = null;
-                }
-            }
-            ImGui.EndDragDropTarget();
-        }
-
-        // ── Recurse ─────────────────────────────────────────────────────────
-        if (nodeOpen)
-        {
-            foreach (var child in obj.Children.ToList())
-            {
-                if (child.HideInSceneTree) continue;
-                if (visibilityFilter != null && !visibilityFilter.Contains(child)) continue;
-                RenderNode(child, visibilityFilter);
-            }
-            ImGui.TreePop();
-        }
-
-        ImGui.PopID();
-    }
-
     // ── Selection ───────────────────────────────────────────────────────────
 
-    private void HandleClick(SceneObject obj)
+    /// <summary>
+    /// Selects <paramref name="obj"/> respecting Ctrl (toggle) and Shift (range)
+    /// modifiers, mirroring the old ImGui click handling.
+    /// </summary>
+    public void HandleClick(SceneObject obj, bool ctrlHeld, bool shiftHeld, string searchTerm = "")
     {
-        bool ctrlHeld  = ImGui.GetIO().KeyCtrl;
-        bool shiftHeld = ImGui.GetIO().KeyShift;
-
         if (SelectionManager.Instance != null)
         {
             if (ctrlHeld)
@@ -405,7 +172,8 @@ public class SceneTree : UiPanel
             }
             else if (shiftHeld && _lastClickedObject != null)
             {
-                var flatTree = FlattenVisibleTree(_filteredVisibleSet);
+                var filter = string.IsNullOrEmpty(searchTerm) ? null : BuildFilterVisibleSet(searchTerm);
+                var flatTree = FlattenVisibleTree(filter);
                 int startIdx = flatTree.IndexOf(_lastClickedObject);
                 int endIdx   = flatTree.IndexOf(obj);
                 if (startIdx >= 0 && endIdx >= 0)
@@ -458,17 +226,22 @@ public class SceneTree : UiPanel
         _selectedObject = SelectionManager.Instance?.SelectedObjects.Count > 0
             ? SelectionManager.Instance.SelectedObjects[0]
             : null;
-
-        // The most recently-added object is the useful target for Ctrl-click
-        // multi-selection; for ordinary selection it is also the sole object.
-        _selectionToReveal = SelectionManager.Instance?.SelectedObjects.LastOrDefault();
     }
 
-    private List<SceneObject> FlattenVisibleTree(HashSet<SceneObject>? visibilityFilter = null)
+    public bool IsSelected(SceneObject obj)
+    {
+        return SelectionManager.Instance != null
+            ? SelectionManager.Instance.IsSelected(obj)
+            : _selectedObject == obj;
+    }
+
+    // ── Tree traversal helpers (used by the view) ─────────────────────────────
+
+    public List<SceneObject> FlattenVisibleTree(HashSet<SceneObject>? visibilityFilter = null)
     {
         var result = new List<SceneObject>();
-        if (Viewport == null) return result;
-        foreach (var root in Viewport.SceneObjects)
+        if (SceneRoots == null) return result;
+        foreach (var root in SceneRoots)
             FlattenNode(root, result, visibilityFilter);
         return result;
     }
@@ -482,14 +255,14 @@ public class SceneTree : UiPanel
             FlattenNode(child, result, visibilityFilter);
     }
 
-    private HashSet<SceneObject> BuildFilterVisibleSet(string searchTerm)
+    public HashSet<SceneObject> BuildFilterVisibleSet(string searchTerm)
     {
         var visible = new HashSet<SceneObject>();
 
-        if (Viewport == null)
+        if (SceneRoots == null)
             return visible;
 
-        foreach (var root in Viewport.SceneObjects)
+        foreach (var root in SceneRoots)
             PopulateFilterVisibleSet(root, searchTerm, visible);
 
         return visible;
@@ -517,24 +290,20 @@ public class SceneTree : UiPanel
 
     // ── Rename ──────────────────────────────────────────────────────────────
 
-    private void BeginRename(SceneObject obj)
+    public void RenameObject(SceneObject obj, string newName)
     {
-        _renamingObject = obj;
-        _renameBuffer   = obj.GetDisplayName();
-    }
-
-    private void CommitRename(SceneObject obj)
-    {
-        var trimmed = _renameBuffer.Trim();
+        if (obj == null) return;
+        var trimmed = newName?.Trim();
         if (!string.IsNullOrEmpty(trimmed))
+        {
             obj.Name = trimmed;
-        _renamingObject = null;
-        _renameBuffer   = "";
+            RaiseTreeChanged();
+        }
     }
 
     // ── Duplicate ───────────────────────────────────────────────────────────
 
-    private SceneObject DuplicateObject(SceneObject original, bool selectDuplicate = true)
+    public SceneObject DuplicateObject(SceneObject original, bool selectDuplicate = true)
     {
         var duplicate = CreateSceneObjectDuplicate(original);
         if (duplicate == null) return null;
@@ -544,7 +313,7 @@ public class SceneTree : UiPanel
         if (original.Parent != null)
             original.Parent.AddChild(duplicate);
         else
-            Viewport?.SceneObjects.Add(duplicate);
+            SceneRoots?.Add(duplicate);
 
         if (selectDuplicate)
         {
@@ -557,6 +326,8 @@ public class SceneTree : UiPanel
             {
                 SelectObject(duplicate);
             }
+
+            RaiseTreeChanged();
         }
 
         return duplicate;
@@ -713,13 +484,13 @@ public class SceneTree : UiPanel
         dup.TileY           = original.TileY;
         dup.TileZ           = original.TileZ;
 
-        // Clone each mesh instead of sharing the original's instance — sharing
-        // meant editing material/geometry on either object silently mutated
-        // both, and the duplicate's material settings were lost the moment
-        // any Properties-panel edit lazily created a fresh default
-        // MaterialSettings and stomped the shared mesh.
+        // TODO(migration): the old GL Mesh exposed a Clone() so each duplicate
+        // owned an independent copy (editing material/geometry on either object
+        // wouldn't mutate the other). The new VeldridMesh has no Clone() yet, so
+        // for now the duplicate shares the original's mesh instances. Restore a
+        // deep copy once VeldridMesh gains a Clone()/copy path.
         foreach (var mesh in original.Visuals)
-            dup.AddMesh(mesh.Clone());
+            dup.AddMesh(mesh);
 
         // Preserve the exact material state (own explicit settings, or
         // inherited-from-parent) instead of leaving it null/default.
@@ -730,7 +501,7 @@ public class SceneTree : UiPanel
 
     // ── Delete ──────────────────────────────────────────────────────────────
 
-    private void DeleteObject(SceneObject obj)
+    public void DeleteObject(SceneObject obj)
     {
         if (obj is ParticleSpawnerSceneObject particleSpawner)
             particleSpawner.ResetRuntime();
@@ -743,33 +514,41 @@ public class SceneTree : UiPanel
         if (obj.Parent != null)
             obj.Parent.RemoveChild(obj);
         else
-            Viewport?.SceneObjects.Remove(obj);
+            SceneRoots?.Remove(obj);
 
         RemoveDescendantsFromViewport(obj);
+
+        RaiseTreeChanged();
     }
 
     private void RemoveDescendantsFromViewport(SceneObject obj)
     {
         foreach (var child in obj.Children.ToList())
         {
-            Viewport?.SceneObjects.Remove(child);
+            SceneRoots?.Remove(child);
             RemoveDescendantsFromViewport(child);
         }
     }
 
     // ── Reparent ────────────────────────────────────────────────────────────
 
-    private void ReparentObject(SceneObject obj, SceneObject newParent)
+    public void ReparentObject(SceneObject obj, SceneObject newParent)
     {
+        if (obj == null) return;
+        if (newParent != null && (newParent == obj || newParent.IsDescendantOf(obj)))
+            return;
+
         if (obj.Parent != null)
             obj.Parent.RemoveChild(obj);
         else
-            Viewport?.SceneObjects.Remove(obj);
+            SceneRoots?.Remove(obj);
 
         if (newParent != null)
             newParent.AddChild(obj);
         else
-            Viewport?.SceneObjects.Add(obj);
+            SceneRoots?.Add(obj);
+
+        RaiseTreeChanged();
     }
 
     // ── Naming helpers ──────────────────────────────────────────────────────
@@ -786,8 +565,8 @@ public class SceneTree : UiPanel
     {
         var used = new HashSet<int>();
 
-        if (Viewport != null)
-            foreach (var root in Viewport.SceneObjects)
+        if (SceneRoots != null)
+            foreach (var root in SceneRoots)
                 ScanNode(root);
 
         int next = 1;

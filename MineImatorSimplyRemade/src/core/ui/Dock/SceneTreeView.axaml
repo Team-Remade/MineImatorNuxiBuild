@@ -1,0 +1,35 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="MineImatorSimplyRemade.core.ui.Dock.SceneTreeView">
+    <Grid RowDefinitions="Auto,Auto,*" Background="#181818">
+        <!-- Toolbar -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="6,6,6,4" Spacing="6">
+            <Button x:Name="DuplicateButton" Content="Duplicate" Padding="8,2" />
+            <Button x:Name="DeleteButton" Content="Delete" Padding="8,2" />
+        </StackPanel>
+
+        <!-- Search -->
+        <TextBox x:Name="SearchBox" Grid.Row="1" Margin="6,0,6,4"
+                 Watermark="Search scene objects..." />
+
+        <!-- Tree -->
+        <Grid Grid.Row="2">
+            <TreeView x:Name="Tree"
+                      Margin="4,0,4,4"
+                      SelectionMode="Multiple">
+                <TreeView.ItemTemplate>
+                    <TreeDataTemplate ItemsSource="{Binding Children}">
+                        <TextBlock Text="{Binding DisplayName}" Foreground="#DDD" />
+                    </TreeDataTemplate>
+                </TreeView.ItemTemplate>
+            </TreeView>
+
+            <TextBlock x:Name="EmptyLabel"
+                       Text="No scene objects."
+                       Foreground="#777"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       IsVisible="False" />
+        </Grid>
+    </Grid>
+</UserControl>

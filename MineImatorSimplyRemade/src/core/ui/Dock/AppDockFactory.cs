@@ -2,6 +2,7 @@ using Dock.Model.Avalonia;
 using Dock.Model.Avalonia.Controls;
 using Dock.Model.Controls;
 using Dock.Model.Core;
+using MineImatorSimplyRemade.core.ui.Panels;
 using OrientationEnum = Dock.Model.Core.Orientation;
 
 namespace MineImatorSimplyRemade.core.ui.Dock;
@@ -42,6 +43,15 @@ public sealed class AppDockFactory : Factory
 
     public Tool ViewportTool { get; private set; } = null!;
     public Tool SceneTreeTool { get; private set; } = null!;
+
+    /// <summary>
+    /// The Scene Tree panel's backing model, exposed so the host (MainWindow)
+    /// can call <see cref="SceneTree.Initialize"/> once SelectionManager exists,
+    /// wire the Edit menu's Duplicate/Delete to it, and (once Viewport is ported)
+    /// assign its <see cref="SceneTree.SceneRoots"/> to the viewport's scene
+    /// objects.
+    /// </summary>
+    public SceneTree SceneTreeModel { get; } = new();
     public Tool PropertiesTool { get; private set; } = null!;
     public Tool TimelineTool { get; private set; } = null!;
     public Tool ContentBrowserTool { get; private set; } = null!;
@@ -60,7 +70,7 @@ public sealed class AppDockFactory : Factory
         {
             Id = SceneTreeToolId,
             Title = "Scene Tree",
-            Content = new PlaceholderPanelView("Scene Tree"),
+            Content = new SceneTreeView(SceneTreeModel),
         };
 
         PropertiesTool = new Tool

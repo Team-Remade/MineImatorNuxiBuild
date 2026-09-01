@@ -84,8 +84,8 @@ public partial class MainWindow : WindowBase
         MenubarControl.SaveProjectAsRequested = OpenSaveAsPopup;
         MenubarControl.UndoRequested = PerformUndo;
         MenubarControl.RedoRequested = PerformRedo;
-        MenubarControl.DuplicateRequested = () => { /* TODO(migration): SceneTree */ };
-        MenubarControl.DeleteRequested = () => { /* TODO(migration): SceneTree */ };
+        MenubarControl.DuplicateRequested = () => DockFactory?.SceneTreeModel.DuplicateSelectedObjects();
+        MenubarControl.DeleteRequested = () => DockFactory?.SceneTreeModel.DeleteSelectedObjects();
         MenubarControl.ImportAssetRequested = () => { /* TODO(migration): asset import dialog */ };
         MenubarControl.ImportResourcePackRequested = () => { /* TODO(migration): resource pack import */ };
         MenubarControl.ImportResourcePackFolderRequested = () => { /* TODO(migration): resource pack import */ };
@@ -119,6 +119,12 @@ public partial class MainWindow : WindowBase
 
         MainDockControl.Factory = DockFactory;
         MainDockControl.Layout = layout;
+
+        // Wire the Scene Tree model to the global selection state now that the
+        // layout (and thus the model) exists. Safe to call repeatedly on a
+        // layout reset - Initialize() only subscribes when SelectionManager is
+        // present.
+        DockFactory.SceneTreeModel.Initialize();
     }
 
     private void ResetDockLayout() => WireDockLayout();
