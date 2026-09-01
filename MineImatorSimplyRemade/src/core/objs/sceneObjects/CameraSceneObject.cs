@@ -1,11 +1,12 @@
-using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.render;
+using Camera = MineImatorSimplyRemade.core.Camera;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 /// <summary>
 /// A user-placed camera in the scene.
-/// Carries its own <see cref="Camera"/> with full fly-controls so it can be used
+/// Carries its own <see cref="MineImatorSimplyRemade.core.Camera"/> with full fly-controls so it can be used
 /// as a render viewpoint in the Camera Viewport panel.
 /// </summary>
 public class CameraSceneObject : SceneObject
@@ -83,8 +84,8 @@ public class CameraSceneObject : SceneObject
 
     /// <summary>
     /// The camera that drives this object's viewpoint.
-    /// Its <see cref="Camera.Target"/> / <see cref="Camera.Yaw"/> / <see cref="Camera.Pitch"/>
-    /// / <see cref="Camera.Distance"/> are kept in sync with the scene-object
+    /// Its <see cref="MineImatorSimplyRemade.core.Camera.Target"/> / <see cref="MineImatorSimplyRemade.core.Camera.Yaw"/> / <see cref="MineImatorSimplyRemade.core.Camera.Pitch"/>
+    /// / <see cref="MineImatorSimplyRemade.core.Camera.Distance"/> are kept in sync with the scene-object
     /// transform by <see cref="SyncCameraToTransform"/> and vice-versa.
     /// </summary>
     public Camera ViewCamera { get; } = new Camera();
@@ -137,14 +138,14 @@ public class CameraSceneObject : SceneObject
     /// Populated by the spawn menu when the <c>Camera.glb</c> mesh is loaded.
     /// Hidden when <see cref="Active"/> becomes <c>true</c>.
     /// </summary>
-    public List<Mesh> InactiveVisuals { get; } = new();
+    public List<VeldridMesh> InactiveVisuals { get; } = new();
 
     /// <summary>
     /// Visual meshes that should be displayed while this camera is active.
     /// Populated by the spawn menu when the <c>CameraActive.glb</c> mesh is
     /// loaded.  Hidden when <see cref="Active"/> becomes <c>false</c>.
     /// </summary>
-    public List<Mesh> ActiveVisuals { get; } = new();
+    public List<VeldridMesh> ActiveVisuals { get; } = new();
 
     /// <summary>
     /// Shows or hides <see cref="ActiveVisuals"/> / <see cref="InactiveVisuals"/>
@@ -157,7 +158,7 @@ public class CameraSceneObject : SceneObject
         SetVisualsVisible(InactiveVisuals, !_active);
     }
 
-    private static void SetVisualsVisible(IEnumerable<Mesh> meshes, bool visible)
+    private static void SetVisualsVisible(IEnumerable<VeldridMesh> meshes, bool visible)
     {
         foreach (var mesh in meshes)
         {

@@ -1,14 +1,18 @@
 using System.Numerics;
-using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.gizmo;
-using Silk.NET.GLFW;
 using GlmSharp;
 
 namespace MineImatorSimplyRemade.core;
 
 /// <summary>
 /// Centralized input handler for camera controls and viewport interaction.
-/// Abstracts away ImGui dependencies to support both main and undocked windows.
+///
+/// Avalonia port: the old GLFW cursor read/warp (used for free-fly mouse-look and
+/// mouse-wrap during orbit/pan drags) is replaced by an optional pair of callbacks
+/// the owning Avalonia control supplies - <c>warpCursor</c> to teleport the OS cursor
+/// to a screen-space point, and <c>setCursorHidden</c> to hide/show it while free-fly
+/// is active. When those callbacks are null the handler degrades gracefully to using
+/// the per-frame <c>mousePos</c> deltas with no cursor warping.
 /// </summary>
 public class Input
 {
@@ -39,10 +43,12 @@ public class Input
     private float _pressMouseY = float.NaN;
     private const float OrbitDragThreshold = 4f;
 
-    // ── GLFW references (for mouse wrap via SetCursorPos) ──────────────────
+    // ── Cursor control callbacks (Avalonia-supplied, for mouse wrap / free-fly) ──
 
-    private Glfw? _glfw;
-    private unsafe WindowHandle* _glfwWindow;
+    /// <summary>Teleports the OS cursor to a screen-space point. Null = no warping.</summary>
+    private Action<Vector2>? _warpCursor;
+    /// <summary>Hides/shows the OS cursor (used while free-fly is active). Null = no-op.</summary>
+    private Action<bool>? _setCursorHidden;
 
     // ── Pick state ──────────────────────────────────────────────────────────
 
@@ -69,13 +75,13 @@ public class Input
     /// Process all input for the viewport given explicit input state.
     /// This allows the same logic to work with both main and undocked windows.
     /// </summary>
-    public unsafe void ProcessInput(
+    public void ProcessInput(
         Camera camera,
         Gizmo3D? gizmo,
         Vector2 imageMin,
         Vector2 imageSize,
-        Glfw? glfw,
-        WindowHandle* glfwWindow,
+        Action<Vector2>? warpCursor,
+        Action<bool>? setCursorHidden,
         Vector2 mousePos,
         bool mouseDown_Left,
         bool mouseDown_Right,
@@ -93,9 +99,9 @@ public class Input
         bool ctrlHeld = false,
         bool overlaysEnabled = true)
     {
-        // Cache GLFW for mouse-wrap SetCursorPos calls in the sub-methods.
-        _glfw = glfw;
-        _glfwWindow = glfwWindow;
+        // Cache the cursor-control callbacks for mouse-wrap calls in the sub-methods.
+        _warpCursor = warpCursor;
+        _setCursorHidden = setCursorHidden;
 
         // ── Gizmo global-space toggle (G key) ──────────────────────────────
         // Only allow toggling local/global space when overlays (and therefore
@@ -115,7 +121,7 @@ public class Input
         ProcessZoomInput(camera, mouseWheel, windowHovered);
 
         // ── Free-fly input (right mouse button) ────────────────────────────
-        ProcessFreeFlyInput(camera, glfw, glfwWindow, imageMin, imageSize,
+        ProcessFreeFlyInput(camera, imageMin, imageSize,
                            mousePos, mouseClicked_Right, mouseReleased_Right,
                            keyDown_W, keyDown_S, keyDown_A, keyDown_D,
                            keyDown_E, keyDown_Q, keyDown_Space, keyDown_Shift,
@@ -412,10 +418,8 @@ public class Input
         camera.Zoom(mouseWheel * camera.Distance * 0.1f);
     }
 
-    private unsafe void ProcessFreeFlyInput(
+    private void ProcessFreeFlyInput(
         Camera camera,
-        Glfw? glfw,
-        WindowHandle* glfwWindow,
         Vector2 imageMin,
         Vector2 imageSize,
         Vector2 mousePos,
@@ -430,18 +434,11 @@ public class Input
         float deltaTime,
         bool windowHovered)
     {
-        double glfwCursorX = 0, glfwCursorY = 0;
-        int winX = 0, winY = 0;
-        if (glfw != null)
-        {
-            glfw.GetCursorPos(glfwWindow, out glfwCursorX, out glfwCursorY);
-            glfw.GetWindowPos(glfwWindow, out winX, out winY);
-        }
-
-        // Convert GLFW window-local cursor coordinates to global screen coordinates
-        // to match ImGui's GetCursorScreenPos() when multi-viewport is enabled.
-        double globalCursorX = glfwCursorX + winX;
-        double globalCursorY = glfwCursorY + winY;
+        // Avalonia port: the free-fly cursor position now comes from the per-frame
+        // screen-space mousePos the owning control forwards, rather than being read
+        // directly from GLFW while the OS cursor is locked.
+        double globalCursorX = mousePos.X;
+        double globalCursorY = mousePos.Y;
 
         bool mouseInViewportBounds = globalCursorX >= imageMin.X && globalCursorX <= imageMin.X + imageSize.X &&
                                      globalCursorY >= imageMin.Y && globalCursorY <= imageMin.Y + imageSize.Y;
@@ -450,21 +447,16 @@ public class Input
         if (mouseClicked_Right && mouseInViewportBounds)
         {
             _freeFlyActive = true;
-            if (glfw != null)
-            {
-                glfw.SetInputMode(glfwWindow, CursorStateAttribute.Cursor, CursorModeValue.CursorDisabled);
-                glfw.GetCursorPos(glfwWindow, out double localX, out double localY);
-                _lastMouseX = localX + winX;
-                _lastMouseY = localY + winY;
-            }
+            _setCursorHidden?.Invoke(true);
+            _lastMouseX = mousePos.X;
+            _lastMouseY = mousePos.Y;
         }
 
         // Continue free-fly while button is held
-        if (_freeFlyActive && !mouseReleased_Right && glfw != null)
+        if (_freeFlyActive && !mouseReleased_Right)
         {
-            glfw.GetCursorPos(glfwWindow, out double cursorX, out double cursorY);
-            double globalX = cursorX + winX;
-            double globalY = cursorY + winY;
+            double globalX = mousePos.X;
+            double globalY = mousePos.Y;
 
             // Apply mouse look
             if (!double.IsNaN(globalX) && !double.IsNaN(globalY) &&
@@ -476,12 +468,22 @@ public class Input
                 camera.Look(lookDx, lookDy);
             }
 
-            // Recenter cursor to viewport center (global -> local for SetCursorPos)
+            // Recenter the OS cursor to the viewport center when a warp callback is
+            // available (keeps deltas small on every platform); otherwise just track
+            // the latest position so the next frame's delta stays sane.
             double globalCenterX = imageMin.X + imageSize.X * 0.5;
             double globalCenterY = imageMin.Y + imageSize.Y * 0.5;
-            glfw.SetCursorPos(glfwWindow, globalCenterX - winX, globalCenterY - winY);
-            _lastMouseX = globalCenterX;
-            _lastMouseY = globalCenterY;
+            if (_warpCursor != null)
+            {
+                _warpCursor(new Vector2((float)globalCenterX, (float)globalCenterY));
+                _lastMouseX = globalCenterX;
+                _lastMouseY = globalCenterY;
+            }
+            else
+            {
+                _lastMouseX = globalX;
+                _lastMouseY = globalY;
+            }
 
             // Calculate movement. First-person scene cameras use near-zero
             // Distance to keep eye ~= scene-object position, so use a stable
@@ -517,8 +519,7 @@ public class Input
         else if (mouseReleased_Right && _freeFlyActive)
         {
             // Exit free-fly
-            if (glfw != null)
-                glfw.SetInputMode(glfwWindow, CursorStateAttribute.Cursor, CursorModeValue.CursorNormal);
+            _setCursorHidden?.Invoke(false);
             _freeFlyActive = false;
             _lastMouseX = double.NaN;
             _lastMouseY = double.NaN;
@@ -610,20 +611,16 @@ public class Input
     /// <summary>
     /// Applies a mouse wrap: updates the last-tracked positions for orbit and
     /// pan to the wrapped position (so the next frame's delta is small) and
-    /// moves the OS cursor via GLFW so the OS reports the wrapped position
-    /// from the next frame onward.
+    /// moves the OS cursor (via the Avalonia-supplied <c>warpCursor</c> callback)
+    /// so it reports the wrapped position from the next frame onward.
     /// </summary>
-    private unsafe void ApplyMouseWrap(Vector2 wrappedPos)
+    private void ApplyMouseWrap(Vector2 wrappedPos)
     {
         _orbitLastMouseX = wrappedPos.X;
         _orbitLastMouseY = wrappedPos.Y;
         _panLastMouseX   = wrappedPos.X;
         _panLastMouseY   = wrappedPos.Y;
 
-        if (_glfw != null)
-        {
-            _glfw.GetWindowPos(_glfwWindow, out int winX, out int winY);
-            _glfw.SetCursorPos(_glfwWindow, wrappedPos.X - winX, wrappedPos.Y - winY);
-        }
+        _warpCursor?.Invoke(wrappedPos);
     }
 }
