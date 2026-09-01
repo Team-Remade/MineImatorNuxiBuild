@@ -30,6 +30,11 @@ namespace MineImatorSimplyRemade.core.window.windows;
 public partial class MainWindow : WindowBase
 {
     private readonly ProjectManager _projectManager = ProjectManager.Instance;
+
+    /// <summary>App-wide preferences model, persisted to disk. Edited through the
+    /// ported <see cref="PreferencesView"/> dialog (see <see cref="OpenPreferencesDialog"/>).</summary>
+    private readonly PreferencesPanel _preferences = new();
+
     private readonly string _appTitle;
     private readonly string _aboutVersion;
     private string _lastAppliedWindowTitle = "";
@@ -51,6 +56,8 @@ public partial class MainWindow : WindowBase
         _appTitle = "Mine Imator Nuxi";
         _aboutVersion = ResolveAppVersion();
         Title = _appTitle;
+
+        _preferences.LoadPreferences();
 
         WireMenubar();
         WireDockLayout();
@@ -91,7 +98,7 @@ public partial class MainWindow : WindowBase
         MenubarControl.VisitForumsRequested = OpenForumsLink;
         MenubarControl.SupportUsRequested = OpenDonateLink;
         MenubarControl.RenderRequested = _ => { /* TODO(migration): render output dialog */ };
-        MenubarControl.PreferencesRequested = () => { /* TODO(migration): PreferencesPanel */ };
+        MenubarControl.PreferencesRequested = OpenPreferencesDialog;
         MenubarControl.ExitRequested = () => Close();
     }
 
@@ -231,6 +238,28 @@ public partial class MainWindow : WindowBase
                     Children = { donateButton, discordButton, closeButton }
                 }
             }
+        };
+
+        await dialog.ShowDialog(this);
+    }
+
+    // ── Preferences dialog ─────────────────────────────────────────────────────
+    // Ported from PreferencesPanel.Render(): the old ImGui version drew the
+    // settings as a dockable/floating window. Avalonia gets a proper modal dialog
+    // hosting the ported PreferencesView, bound to the shared _preferences model.
+
+    private async void OpenPreferencesDialog()
+    {
+        var view = new PreferencesView();
+        view.Bind(_preferences);
+
+        var dialog = new Window
+        {
+            Title = "Preferences",
+            Width = 520,
+            Height = 560,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = view,
         };
 
         await dialog.ShowDialog(this);

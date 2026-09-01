@@ -1,0 +1,56 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="MineImatorSimplyRemade.core.ui.Dock.PreferencesView">
+    <ScrollViewer Background="#181818">
+        <StackPanel Margin="16" Spacing="10">
+            <TextBlock Text="Preferences" FontSize="18" FontWeight="Bold" Foreground="#EEE" />
+            <Separator />
+
+            <!-- Program -->
+            <TextBlock Text="Program" FontWeight="Bold" Foreground="#CCC" Margin="0,4,0,0" />
+            <Grid ColumnDefinitions="180,*" RowDefinitions="Auto" Margin="12,0,0,0">
+                <TextBlock Grid.Column="0" Text="Minecraft version:" Foreground="#BBB" VerticalAlignment="Center" />
+                <ComboBox x:Name="MinecraftVersionCombo" Grid.Column="1" MinWidth="180" HorizontalAlignment="Left" />
+            </Grid>
+            <CheckBox x:Name="AutomaticBackupsCheck" Content="Automatic Backups" Foreground="#BBB" Margin="12,0,0,0" />
+            <CheckBox x:Name="CopyWorkCameraCheck" Content="Copy work camera into new cameras" Foreground="#BBB" Margin="12,0,0,0" />
+
+            <Separator />
+
+            <!-- Interface / Appearance -->
+            <TextBlock Text="Appearance" FontWeight="Bold" Foreground="#CCC" Margin="0,4,0,0" />
+            <Grid ColumnDefinitions="180,*" Margin="12,0,0,0">
+                <TextBlock Grid.Column="0" Text="Theme:" Foreground="#BBB" VerticalAlignment="Center" />
+                <ComboBox x:Name="ThemeCombo" Grid.Column="1" MinWidth="180" HorizontalAlignment="Left" />
+            </Grid>
+            <Grid ColumnDefinitions="180,*" Margin="12,0,0,0">
+                <TextBlock Grid.Column="0" Text="Accent color:" Foreground="#BBB" VerticalAlignment="Center" />
+                <ComboBox x:Name="AccentCombo" Grid.Column="1" MinWidth="180" HorizontalAlignment="Left" />
+            </Grid>
+            <Grid ColumnDefinitions="180,*" Margin="12,0,0,0">
+                <TextBlock Grid.Column="0" Text="Language:" Foreground="#BBB" VerticalAlignment="Center" />
+                <ComboBox x:Name="LanguageCombo" Grid.Column="1" MinWidth="180" HorizontalAlignment="Left" SelectedIndex="0">
+                    <ComboBoxItem>English</ComboBoxItem>
+                </ComboBox>
+            </Grid>
+
+            <Separator />
+
+            <!-- Timeline -->
+            <TextBlock Text="Timeline" FontWeight="Bold" Foreground="#CCC" Margin="0,4,0,0" />
+            <CheckBox x:Name="AutoScrollCheck" Content="Auto scroll while playing animation" Foreground="#BBB" Margin="12,0,0,0" />
+
+            <Separator />
+
+            <!-- Tools -->
+            <TextBlock Text="Tools" FontWeight="Bold" Foreground="#CCC" Margin="0,4,0,0" />
+            <CheckBox x:Name="ZIsUpCheck" Content="Z is up" Foreground="#BBB" Margin="12,0,0,0" />
+            <CheckBox x:Name="HideMiBonesCheck" Content="Hide bone display shapes on Mine-imator assets" Foreground="#BBB" Margin="12,0,0,0" />
+            <CheckBox x:Name="HideRegularBonesCheck" Content="Hide bone display shapes on regular assets" Foreground="#BBB" Margin="12,0,0,0" />
+
+            <Separator />
+
+            <Button x:Name="RestoreDefaultsButton" Content="Restore Defaults" HorizontalAlignment="Left" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
