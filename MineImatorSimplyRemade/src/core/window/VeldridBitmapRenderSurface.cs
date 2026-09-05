@@ -41,7 +41,16 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
     public Framebuffer Framebuffer { get; private set; } = null!;
 
     private Texture _stagingTexture = null!;
-    private WriteableBitmap? _bitmap;
+
+    // Double-buffered target bitmaps: each frame we write into the back buffer
+    // and return it, then flip. Returning a *different* instance each frame
+    // guarantees Avalonia's Image control sees a Source reference change and
+    // re-composites (otherwise the displayed frame updates only sporadically,
+    // making camera motion look like it "jumps" while the render loop keeps
+    // running). It also avoids tearing: we never overwrite the bitmap the
+    // compositor is currently displaying.
+    private readonly WriteableBitmap?[] _bitmaps = new WriteableBitmap?[2];
+    private int _backBufferIndex;
 
     public uint Width { get; private set; }
     public uint Height { get; private set; }
@@ -185,12 +194,15 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
             Veldrid.PixelFormat.R8_G8_B8_A8_UNorm,
             TextureUsage.Staging));
 
-        _bitmap?.Dispose();
-        _bitmap = new WriteableBitmap(
-            new PixelSize((int)width, (int)height),
-            new Vector(96, 96),
-            Avalonia.Platform.PixelFormat.Rgba8888,
-            AlphaFormat.Unpremul);
+        _bitmaps[0]?.Dispose();
+        _bitmaps[1]?.Dispose();
+        for (int i = 0; i < _bitmaps.Length; i++)
+            _bitmaps[i] = new WriteableBitmap(
+                new PixelSize((int)width, (int)height),
+                new Vector(96, 96),
+                Avalonia.Platform.PixelFormat.Rgba8888,
+                AlphaFormat.Unpremul);
+        _backBufferIndex = 0;
     }
 
     /// <summary>
@@ -213,11 +225,11 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
 
         recordDrawCalls(commandList);
 
+        commandList.CopyTexture(ColorTarget, _stagingTexture);
         commandList.End();
         GraphicsDevice.SubmitCommands(commandList);
-        GraphicsDevice.WaitForIdle();
 
-        return ReadBack();
+        return ReadBackStagingTexture();
     }
 
     /// <summary>
@@ -233,12 +245,17 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
         commandList.CopyTexture(ColorTarget, _stagingTexture);
         commandList.End();
         GraphicsDevice.SubmitCommands(commandList);
-        GraphicsDevice.WaitForIdle();
 
+        return ReadBackStagingTexture();
+    }
+
+    private WriteableBitmap ReadBackStagingTexture()
+    {
+        WriteableBitmap target = _bitmaps[_backBufferIndex]!;
         MappedResource mapped = GraphicsDevice.Map(_stagingTexture, MapMode.Read);
         try
         {
-            using ILockedFramebuffer fb = _bitmap!.Lock();
+            using ILockedFramebuffer fb = target.Lock();
 
             uint rowBytes = Width * 4;
             if (mapped.RowPitch == rowBytes && fb.RowBytes == rowBytes)
@@ -267,12 +284,16 @@ public sealed class VeldridBitmapRenderSurface : IDisposable
             GraphicsDevice.Unmap(_stagingTexture);
         }
 
-        return _bitmap!;
+        // Flip so the next frame writes the other buffer, leaving this one
+        // untouched while the compositor displays it.
+        _backBufferIndex ^= 1;
+        return target;
     }
 
     public void Dispose()
     {
-        _bitmap?.Dispose();
+        _bitmaps[0]?.Dispose();
+        _bitmaps[1]?.Dispose();
         _stagingTexture?.Dispose();
         Framebuffer?.Dispose();
         DepthTargetView?.Dispose();

@@ -14,12 +14,13 @@ layout(set = 0, binding = 0, std140) uniform ShadowDepthUniforms {
     int   _pad0;
 };
 
-layout(set = 0, binding = 1) uniform sampler2D uTextureSampler;
+layout(set = 0, binding = 1) uniform texture2D uTextureTexture;
+layout(set = 0, binding = 2) uniform sampler uTextureSampler;
 
 void main() {
     float alpha = uAlpha;
     if (uUseTexture != 0)
-        alpha *= texture(uTextureSampler, vTexCoord).a;
+        alpha *= texture(sampler2D(uTextureTexture, uTextureSampler), vTexCoord).a;
 
     if (alpha < 0.01)
         discard;

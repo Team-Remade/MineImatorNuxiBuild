@@ -513,20 +513,6 @@ public class VeldridMesh : IDisposable
             new ResourceLayoutElementDescription("uShadowMapSampler", ResourceKind.Sampler, ShaderStages.Fragment),
             new ResourceLayoutElementDescription("SceneEnvironment", ResourceKind.UniformBuffer, ShaderStages.Fragment)));
 
-        // Matches simple.frag's `set = 2` bindings: 8 explicit (textureCube,
-        // sampler) pairs for point-light shadow cubemaps - see the migration
-        // note above uPointShadowCubeTexture0 in simple.frag for why these are
-        // explicit named bindings instead of a real GLSL sampler array.
-        var pointShadowElements = new ResourceLayoutElementDescription[MaxPointShadows * 2];
-        for (int i = 0; i < MaxPointShadows; i++)
-        {
-            pointShadowElements[i * 2] = new ResourceLayoutElementDescription(
-                $"uPointShadowCubeTexture{i}", ResourceKind.TextureReadOnly, ShaderStages.Fragment);
-            pointShadowElements[i * 2 + 1] = new ResourceLayoutElementDescription(
-                $"uPointShadowCubeSampler{i}", ResourceKind.Sampler, ShaderStages.Fragment);
-        }
-        _pointShadowResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(pointShadowElements));
-
         var vertexLayout = MakeStandardVertexLayout();
 
         _pipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
@@ -536,7 +522,7 @@ public class VeldridMesh : IDisposable
             RasterizerState = new RasterizerStateDescription(
                 CullMode, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
             PrimitiveTopology = PrimitiveTopology.TriangleList,
-            ResourceLayouts = new[] { _meshResourceLayout, _sceneResourceLayout, _pointShadowResourceLayout },
+            ResourceLayouts = new[] { _meshResourceLayout, _sceneResourceLayout },
             ShaderSet = new ShaderSetDescription(new[] { vertexLayout }, new[] { vertexShader, fragmentShader }),
             Outputs = _outputDescription,
         });
@@ -703,7 +689,8 @@ public class VeldridMesh : IDisposable
     /// <param name="environmentBuffer">Typically <c>VeldridBitmapRenderSurface.EnvironmentBuffer</c>.</param>
     public void Render(CommandList commandList, Matrix4x4 model, Matrix4x4 view, Matrix4x4 proj,
         DeviceBuffer sceneDataBuffer, DeviceBuffer pointLightBuffer, DeviceBuffer environmentBuffer,
-        VeldridShadowMap? shadowMap = null, IReadOnlyList<VeldridPointShadowMap?>? pointShadowMaps = null)
+        VeldridShadowMap? shadowMap = null, IReadOnlyList<VeldridPointShadowMap?>? pointShadowMaps = null,
+        bool forceUnlit = false)
     {
         if (_pipeline == null || _vertexBuffer == null || _meshUniformBuffer == null || _materialUniformBuffer == null)
             return;
@@ -715,8 +702,6 @@ public class VeldridMesh : IDisposable
         TextureView shadowView = shadowMap?.DepthTextureView ?? GetOrCreatePlaceholderShadowView();
         Sampler shadowSampler = shadowMap?.DepthSampler ?? GetOrCreatePlaceholderShadowSampler();
         EnsureSceneResourceSet(sceneDataBuffer, pointLightBuffer, shadowView, shadowSampler, environmentBuffer);
-        EnsurePointShadowResourceSet(pointShadowMaps);
-
         var meshUniforms = MeshUniforms.Default;
         meshUniforms.Model = model;
         meshUniforms.MVP = model * view * proj;
@@ -727,7 +712,7 @@ public class VeldridMesh : IDisposable
         materialUniforms.Albedo = Albedo;
         materialUniforms.Alpha = Alpha;
         materialUniforms.UseTexture = AlbedoTexture != null ? 1 : 0;
-        materialUniforms.IsUnlit = Unlit ? 1 : 0;
+        materialUniforms.IsUnlit = Unlit || forceUnlit ? 1 : 0;
         materialUniforms.EmissionEnabled = EmissionEnabled ? 1 : 0;
         materialUniforms.EmissionColor = EmissionColor;
         materialUniforms.EmissionEnergy = EmissionEnergy;
@@ -742,7 +727,6 @@ public class VeldridMesh : IDisposable
         commandList.SetPipeline(_pipeline);
         commandList.SetGraphicsResourceSet(0, _meshResourceSet);
         commandList.SetGraphicsResourceSet(1, _sceneResourceSet);
-        commandList.SetGraphicsResourceSet(2, _pointShadowResourceSet);
         commandList.SetVertexBuffer(0, _vertexBuffer);
 
         if (_indexBuffer != null)

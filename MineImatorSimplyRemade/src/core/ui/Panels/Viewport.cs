@@ -126,6 +126,16 @@ public class Viewport
     /// </summary>
     private int _activeCameraIndex = 0;
 
+    /// <summary>
+    /// Selection for the main viewport camera. <see cref="RenderOutputIndex"/>
+    /// uses the active scene camera; zero uses the work camera.
+    /// </summary>
+    public int ActiveCameraIndex
+    {
+        get => _activeCameraIndex;
+        set => _activeCameraIndex = value;
+    }
+
     // ── Overlay visibility ─────────────────────────────────────────────────────
 
     /// <summary>
@@ -143,6 +153,8 @@ public class Viewport
 
     private ViewportRenderMode _viewportRenderMode = ViewportRenderMode.Shaded;
     private RenderedPassMode _renderedPassMode = RenderedPassMode.Combined;
+    public ViewportRenderMode RenderMode => _viewportRenderMode;
+    public RenderedPassMode RenderedPass => _renderedPassMode;
     public bool HighQualityPreviewEnabled { get; private set; }
     public bool ShadowDebugEnabled { get; private set; }
 
@@ -903,7 +915,7 @@ public class Viewport
     /// <see cref="SceneObject.PickColorId"/> matches <paramref name="pickId"/>.
     /// Returns null if no match is found.
     /// </summary>
-    private static SceneObject? FindObjectByPickId(IEnumerable<SceneObject> objects, int pickId)
+    public static SceneObject? FindObjectByPickId(IEnumerable<SceneObject> objects, int pickId)
     {
         foreach (var obj in objects)
         {

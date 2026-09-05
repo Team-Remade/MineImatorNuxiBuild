@@ -27,7 +27,7 @@ layout(set = 0, binding = 0, std140) uniform MeshUniforms {
     vec2  _meshPad1;
 };
 
-layout(set = 0, binding = 2, std140) uniform MeshMaterial {
+layout(set = 0, binding = 3, std140) uniform MeshMaterial {
     vec3  uAlbedo;
     float uAlpha;
     vec4  uBlendColor;
@@ -77,10 +77,10 @@ layout(set = 1, binding = 0, std140) uniform SceneData {
     int   _scenePad2;
 };
 
-layout(set = 0, binding = 1) uniform sampler2D uTextureSampler;
+layout(set = 0, binding = 1) uniform texture2D uTextureTexture;
+layout(set = 0, binding = 2) uniform sampler uTextureSampler;
 
 #define MAX_POINT_LIGHTS 32
-#define MAX_POINT_SHADOWS 8
 
 // Point-light array. PosRange.xyz = world position, PosRange.w = range;
 // ColorEnergy.rgb = color, ColorEnergy.a = energy multiplier; DirFarPlane.xyz =
@@ -135,29 +135,6 @@ layout(set = 1, binding = 4, std140) uniform SceneEnvironment {
     float _envPad1;
 };
 
-// Point-light shadow cubemaps (subsystem pass 3b/N). Declared as 8 explicit
-// named bindings rather than a real GLSL array of samplerCube, since an
-// array-of-opaque-handles' exact SPIR-V/cross-compiler binding behavior is
-// less predictable across backends than a fixed set of named resources -
-// samplePointShadowCube below picks the right one via an if-chain, mirroring
-// how the old GL renderer's equivalent function was already written.
-layout(set = 2, binding = 0)  uniform textureCube uPointShadowCubeTexture0;
-layout(set = 2, binding = 1)  uniform sampler      uPointShadowCubeSampler0;
-layout(set = 2, binding = 2)  uniform textureCube uPointShadowCubeTexture1;
-layout(set = 2, binding = 3)  uniform sampler      uPointShadowCubeSampler1;
-layout(set = 2, binding = 4)  uniform textureCube uPointShadowCubeTexture2;
-layout(set = 2, binding = 5)  uniform sampler      uPointShadowCubeSampler2;
-layout(set = 2, binding = 6)  uniform textureCube uPointShadowCubeTexture3;
-layout(set = 2, binding = 7)  uniform sampler      uPointShadowCubeSampler3;
-layout(set = 2, binding = 8)  uniform textureCube uPointShadowCubeTexture4;
-layout(set = 2, binding = 9)  uniform sampler      uPointShadowCubeSampler4;
-layout(set = 2, binding = 10) uniform textureCube uPointShadowCubeTexture5;
-layout(set = 2, binding = 11) uniform sampler      uPointShadowCubeSampler5;
-layout(set = 2, binding = 12) uniform textureCube uPointShadowCubeTexture6;
-layout(set = 2, binding = 13) uniform sampler      uPointShadowCubeSampler6;
-layout(set = 2, binding = 14) uniform textureCube uPointShadowCubeTexture7;
-layout(set = 2, binding = 15) uniform sampler      uPointShadowCubeSampler7;
-
 layout(location = 0) out vec4 FragColor;
 
 float calculateShadow(vec3 norm, vec3 lightDir) {
@@ -184,30 +161,6 @@ float calculateShadow(vec3 norm, vec3 lightDir) {
     }
 
     return shadow / 9.0;
-}
-
-float samplePointShadowCube(int shadowIndex, vec3 lightToFrag) {
-    if (shadowIndex == 0) return texture(samplerCube(uPointShadowCubeTexture0, uPointShadowCubeSampler0), lightToFrag).r;
-    if (shadowIndex == 1) return texture(samplerCube(uPointShadowCubeTexture1, uPointShadowCubeSampler1), lightToFrag).r;
-    if (shadowIndex == 2) return texture(samplerCube(uPointShadowCubeTexture2, uPointShadowCubeSampler2), lightToFrag).r;
-    if (shadowIndex == 3) return texture(samplerCube(uPointShadowCubeTexture3, uPointShadowCubeSampler3), lightToFrag).r;
-    if (shadowIndex == 4) return texture(samplerCube(uPointShadowCubeTexture4, uPointShadowCubeSampler4), lightToFrag).r;
-    if (shadowIndex == 5) return texture(samplerCube(uPointShadowCubeTexture5, uPointShadowCubeSampler5), lightToFrag).r;
-    if (shadowIndex == 6) return texture(samplerCube(uPointShadowCubeTexture6, uPointShadowCubeSampler6), lightToFrag).r;
-    if (shadowIndex == 7) return texture(samplerCube(uPointShadowCubeTexture7, uPointShadowCubeSampler7), lightToFrag).r;
-    return 1.0;
-}
-
-float calculatePointShadow(int shadowIndex, vec3 fragPos, vec3 lightPos, float farPlane, vec3 norm, vec3 lightDir) {
-    if (shadowIndex < 0 || shadowIndex >= MAX_POINT_SHADOWS) return 0.0;
-
-    vec3 lightToFrag = fragPos - lightPos;
-    float currentDepth = length(lightToFrag);
-    if (currentDepth <= 0.0001 || currentDepth >= farPlane) return 0.0;
-
-    float closestDepth = samplePointShadowCube(shadowIndex, lightToFrag) * farPlane;
-    float bias = max(0.05 * (1.0 - dot(norm, lightDir)), 0.02);
-    return currentDepth - bias > closestDepth ? 1.0 : 0.0;
 }
 
 float CSPhase(float dotView, float scatter) {
@@ -269,7 +222,7 @@ vec3 estimateDirectionalSubsurface(vec3 norm, vec3 lightDir, vec3 lightColor, fl
 
 vec3 estimatePointSubsurface(vec3 norm, vec3 lightDir, vec3 fragPos, vec3 lightPos, vec3 lightColor,
     float lightEnergy, float farPlane, int shadowIndex, float sss) {
-    if (shadowIndex < 0 || shadowIndex >= MAX_POINT_SHADOWS || sss <= 0.0)
+    if (sss <= 0.0)
         return vec3(0.0);
 
     vec3 lightToFrag = fragPos - lightPos;
@@ -277,12 +230,9 @@ vec3 estimatePointSubsurface(vec3 norm, vec3 lightDir, vec3 fragPos, vec3 lightP
     if (currentDepth <= 0.0001 || currentDepth >= farPlane)
         return vec3(0.0);
 
-    float closestDepth = samplePointShadowCube(shadowIndex, lightToFrag) * farPlane;
-    float bias = max(0.05 * (1.0 - dot(norm, lightDir)), 0.02);
-
     vec3 rad = max((uSSSRadius * uSSSGlobalRadius) * sss, vec3(0.0001));
     vec3 invLight = 1.0 / (max(lightColor * max(lightEnergy, 0.0001), vec3(0.0001)) * rad + 0.001);
-    vec3 dis = max((currentDepth + bias) - closestDepth, 0.0) * invLight;
+    vec3 dis = vec3(0.0) * invLight;
     vec3 base = pow(max(1.0 - pow(dis / rad, vec3(4.0)), 0.0), vec3(2.0))
               / (pow(dis, vec3(2.0)) + 1.0);
 
@@ -295,7 +245,7 @@ void main() {
     float alpha = 1.0;
 
     if (uUseTexture != 0) {
-        vec4 texSample = texture(uTextureSampler, vTexCoord);
+        vec4 texSample = texture(sampler2D(uTextureTexture, uTextureSampler), vTexCoord);
         emissionMask = texSample.rgb;
         baseColor = texSample.rgb * uAlbedo;
         alpha = texSample.a;
@@ -377,7 +327,7 @@ void main() {
             float diff = max(dot(norm, lightDir), 0.0);
 
             float farPlane = uPointLightDirFarPlane[i].w;
-            float pointShadow = calculatePointShadow(shadowIndex, vFragPos, lightPos, farPlane, norm, lightDir);
+            float pointShadow = 0.0;
 
             vec3 color  = uPointLightColorEnergy[i].rgb;
             float energy = uPointLightColorEnergy[i].a;

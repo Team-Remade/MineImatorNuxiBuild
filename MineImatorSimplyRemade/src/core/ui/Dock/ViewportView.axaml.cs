@@ -5,8 +5,10 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using MineImatorSimplyRemade.core.log;
 using MineImatorSimplyRemade.core.render;
 using MineImatorSimplyRemade.core.window;
+using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using Veldrid;
@@ -19,22 +21,9 @@ namespace MineImatorSimplyRemade.core.ui.Dock;
 /// <c>ProcessInput</c>, which this reimplements directly against Avalonia
 /// pointer/keyboard events instead of ImGui IO polling + GLFW cursor warping).
 ///
-/// MIGRATION STATUS: this ports the viewport shell - camera navigation, the
-/// full Veldrid render pipeline (directional shadow map, ambient occlusion,
-/// indirect lighting), and a placeholder ground plane + demo cube standing in
-/// for real scene content. Explicitly NOT ported yet (each is its own
-/// follow-up item):
-///   - real <c>SceneObject</c> rendering (every scene object type still owns a
-///     GL-based <c>core.mdl.Mesh</c>, not a <see cref="VeldridMesh"/> - once
-///     those are migrated, replace BuildPlaceholderScene's demo cube with a
-///     loop over the actual scene graph)
-///   - the 3D manipulation gizmo (<c>Gizmo3D</c> - not ported), click-to-select
-///     picking (VeldridMesh.RenderPick/RenderSilhouette are ready and wired
-///     into the pipeline below, just not driven by real scene objects yet)
-///   - sky/background-image-plane rendering, camera-feed textures, particle
-///     preview, point-light shadow cubemaps for real scene lights
-///   - glow/film-grain post effects (built in VeldridGlowPass/VeldridFilmGrainPass,
-///     not yet wired into this control's per-frame render call)
+/// The view renders the scene's Veldrid meshes and owns the camera navigation
+/// and screen-space rendering passes. Picking, editor overlays, sky/background
+/// rendering, camera feeds, and point-light shadows remain follow-up work.
 /// </summary>
 public partial class ViewportView : UserControl
 {
@@ -50,12 +39,25 @@ public partial class ViewportView : UserControl
     private VeldridIndirectLightingPass? _indirectPass;
     private VeldridGlowPass? _glowPass;
     private VeldridFilmGrainPass? _filmGrainPass;
+    private VeldridSilhouetteMask? _silhouetteMask;
+    private VeldridEdgeOutlinePass? _edgeOutlinePass;
+    private VeldridPickTarget? _pickTarget;
     private float _filmGrainFrame;
-    private readonly List<(Matrix4x4 World, VeldridMesh Mesh)> _renderItems = new();
-    private readonly DispatcherTimer _renderTimer;
+    private readonly List<(Matrix4x4 World, VeldridMesh Mesh, SceneObject Object)> _renderItems = new();
+    private bool _renderLoopActive;
+    // Avalonia paces its compositor to the monitor refresh rate; we cap the
+    // (expensive) 3D render to 60 fps on top of that. The slack keeps a 60 Hz
+    // display from dropping every other frame due to compositor timing jitter.
+    private const double MinRenderIntervalSeconds = 1.0 / 60.0;
+    private const double RenderIntervalSlackSeconds = 0.002;
+    private double _lastRenderSeconds = double.NegativeInfinity;
     private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
     private int _framesThisSecond;
     private double _lastFpsSampleSeconds;
+    private double _lastPreparationMs;
+    private double _lastRenderAndReadbackMs;
+    private readonly List<string> _cameraOptionLabels = new();
+    private bool _updatingToolbar;
 
     // ── Orbit/pan/free-fly input state (ported from core.Input) ─────────────
     private bool _dragging;
@@ -69,19 +71,30 @@ public partial class ViewportView : UserControl
     private const float FreeFlyLookSensitivity = 0.003f;
     private readonly HashSet<Key> _heldKeys = new();
     private double _lastFrameSeconds;
+    private Matrix4x4 _lastViewProjection;
 
     public ViewportView(Panels.Viewport model)
     {
         Model = model;
         InitializeComponent();
 
-        _renderTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000.0 / 60.0) };
-        _renderTimer.Tick += (_, _) => RenderFrame();
+        AttachedToVisualTree += (_, _) =>
+        {
+            EnsureSurfaceForSceneImage();
+            Dispatcher.UIThread.Post(EnsureSurfaceForSceneImage, DispatcherPriority.Render);
+            StartRenderLoop();
+        };
+        DetachedFromVisualTree += (_, _) => _renderLoopActive = false;
 
-        AttachedToVisualTree += (_, _) => _renderTimer.Start();
-        DetachedFromVisualTree += (_, _) => _renderTimer.Stop();
+        ViewportHost.SizeChanged += (_, _) => EnsureSurfaceForSceneImage();
 
-        SceneImage.SizeChanged += (_, e) => EnsureSurface((uint)Math.Max(1, e.NewSize.Width), (uint)Math.Max(1, e.NewSize.Height));
+        CameraDropdown.SelectionChanged += OnCameraSelectionChanged;
+        RenderModeDropdown.SelectionChanged += OnRenderModeSelectionChanged;
+        OverlaysToggle.IsCheckedChanged += (_, _) =>
+        {
+            if (!_updatingToolbar)
+                Model.OverlaysEnabled = OverlaysToggle.IsChecked == true;
+        };
 
         PointerPressed += OnPointerPressed;
         PointerMoved += OnPointerMoved;
@@ -91,38 +104,109 @@ public partial class ViewportView : UserControl
         KeyUp += (_, e) => _heldKeys.Remove(e.Key);
     }
 
+    private void RenderFrameSafely()
+    {
+        double now = _clock.Elapsed.TotalSeconds;
+        if (now - _lastRenderSeconds < MinRenderIntervalSeconds - RenderIntervalSlackSeconds)
+            return;
+        _lastRenderSeconds = now;
+
+        try
+        {
+            RenderFrame();
+        }
+        catch (Exception exception)
+        {
+            _renderLoopActive = false;
+            FpsText.Text = "Viewport render failed";
+            ViewportStatusText.Text = exception.ToString();
+            ViewportStatusText.IsVisible = true;
+            Logger.Error($"Viewport rendering failed: {exception}");
+        }
+    }
+
+    // Drive rendering from Avalonia's per-frame callback (monitor refresh rate)
+    // instead of a fixed-interval UI timer; the 60 fps cap lives in RenderFrameSafely.
+    private void StartRenderLoop()
+    {
+        if (_renderLoopActive)
+            return;
+        _renderLoopActive = true;
+        RequestNextFrame();
+    }
+
+    private void RequestNextFrame()
+    {
+        TopLevel.GetTopLevel(this)?.RequestAnimationFrame(_ =>
+        {
+            if (!_renderLoopActive)
+                return;
+            RenderFrameSafely();
+            RequestNextFrame();
+        });
+    }
+
     private void EnsureSurface(uint width, uint height)
     {
         if (_surface == null)
         {
             _surface = new VeldridBitmapRenderSurface(width, height);
-            _shadowMap = new VeldridShadowMap(_surface.GraphicsDevice, 2048);
-            _aoPass = new VeldridAmbientOcclusionPass(_surface.GraphicsDevice) { Radius = 5f, Strength = 0.7f };
-            _indirectPass = new VeldridIndirectLightingPass(_surface.GraphicsDevice);
-            _glowPass = new VeldridGlowPass(_surface.GraphicsDevice) { Strength = 0.6f, BlurSize = 2f };
-            _filmGrainPass = new VeldridFilmGrainPass(_surface.GraphicsDevice) { Strength = 0.03f };
+            _silhouetteMask = new VeldridSilhouetteMask(_surface.GraphicsDevice, width, height);
+            _edgeOutlinePass = new VeldridEdgeOutlinePass(_surface.GraphicsDevice);
+            _pickTarget = new VeldridPickTarget(_surface.GraphicsDevice, width, height);
         }
         else
         {
             _surface.Resize(width, height);
         }
 
-        _indirectPass?.Resize(width, height);
-        _glowPass?.Resize(width, height);
         _filmGrainPass?.Resize(width, height);
+        _silhouetteMask?.Resize(width, height);
+        _pickTarget?.Resize(width, height);
+    }
+
+    private void EnsureRenderedResources()
+    {
+        if (_surface == null)
+            return;
+
+        _shadowMap ??= new VeldridShadowMap(_surface.GraphicsDevice, 2048);
+        _aoPass ??= new VeldridAmbientOcclusionPass(_surface.GraphicsDevice) { Radius = 5f, Strength = 0.7f };
+        _indirectPass ??= new VeldridIndirectLightingPass(_surface.GraphicsDevice);
+        _glowPass ??= new VeldridGlowPass(_surface.GraphicsDevice) { Strength = 0.6f, BlurSize = 2f };
+        _filmGrainPass ??= new VeldridFilmGrainPass(_surface.GraphicsDevice) { Strength = 0.03f };
+        _indirectPass.Resize(_surface.Width, _surface.Height);
+        _glowPass.Resize(_surface.Width, _surface.Height);
+        _filmGrainPass.Resize(_surface.Width, _surface.Height);
+    }
+
+    private void EnsureSurfaceForSceneImage()
+    {
+        Size size = ViewportHost.Bounds.Size;
+        if (size.Width <= 0 || size.Height <= 0)
+        {
+            ViewportStatusText.Text = "Waiting for viewport surface...";
+            ViewportStatusText.IsVisible = true;
+            return;
+        }
+
+        ViewportStatusText.Text = "Preparing viewport...";
+        ViewportStatusText.IsVisible = true;
+        EnsureSurface((uint)Math.Max(1, Math.Round(size.Width)), (uint)Math.Max(1, Math.Round(size.Height)));
     }
 
     private void RenderFrame()
     {
-        if (_surface == null || _shadowMap == null)
+        if (_surface == null)
             return;
 
+        long frameStart = System.Diagnostics.Stopwatch.GetTimestamp();
         double now = _clock.Elapsed.TotalSeconds;
         float deltaTime = _lastFrameSeconds > 0 ? (float)(now - _lastFrameSeconds) : 1f / 60f;
         _lastFrameSeconds = now;
         Model.FrameDeltaTime = deltaTime;
         ProcessFreeFlyMovement(deltaTime);
-        UpdateFps(now);
+        RefreshToolbar();
 
         // Lazy ground-plane init: atlases may not be loaded when the surface is
         // first created, so retry the texture until the tile resolves.
@@ -137,17 +221,25 @@ public partial class ViewportView : UserControl
         float aspect = _surface.Width / (float)_surface.Height;
         Matrix4x4 view = ToNumerics(renderCam.GetViewMatrix());
         Matrix4x4 proj = ToNumerics(renderCam.GetProjectionMatrix(aspect));
+        _lastViewProjection = view * proj;
 
         Model.UpdateGroundPlaneFollow(renderCam.Target);
         Matrix4x4 groundModel = ToNumerics(Model.GroundPlaneModel);
         VeldridMesh? ground = Model.GroundPlaneVisible ? Model.GroundPlane : null;
+        bool renderedMode = Model.RenderMode == Panels.Viewport.ViewportRenderMode.Rendered;
+        bool ambientOcclusionOnly = Model.RenderedPass == Panels.Viewport.RenderedPassMode.AmbientOcclusion;
+        bool combinedPass = Model.RenderedPass == Panels.Viewport.RenderedPassMode.Combined;
+        bool forceUnlit = Model.RenderMode is Panels.Viewport.ViewportRenderMode.FlatUnshaded or Panels.Viewport.ViewportRenderMode.Wireframe;
+
+        if (renderedMode)
+            EnsureRenderedResources();
 
         // Flatten the scene graph into (world, mesh) draw pairs for this frame.
         _renderItems.Clear();
         foreach (var root in Model.SceneObjects)
         {
             Dictionary<string, BoneSceneObject>? bones = null;
-            CollectRenderables(root, renderCam.Position, ref bones);
+            CollectRenderables(root, renderCam.Position, renderedMode, ref bones);
         }
 
         // TODO(migration): derive the sun direction/shadows from PropertiesPanel
@@ -158,8 +250,9 @@ public partial class ViewportView : UserControl
         var sceneData = SceneDataUniforms.Default;
         sceneData.LightSpaceMatrix = lightSpace;
         sceneData.LightDir = -lightDir;
-        sceneData.MainLightCastsShadows = 1;
-        sceneData.UseShadowMap = 1;
+        sceneData.ShadowDebugMode = renderedMode && Model.RenderedPass == Panels.Viewport.RenderedPassMode.Shadow ? 1 : 0;
+        sceneData.MainLightCastsShadows = renderedMode ? 1 : 0;
+        sceneData.UseShadowMap = renderedMode ? 1 : 0;
         _surface.UpdateSceneData(sceneData);
         _surface.UpdatePointLights(PointLightUniforms.Empty);
 
@@ -167,24 +260,45 @@ public partial class ViewportView : UserControl
         environment.CameraPosition = ToNumerics(renderCam.Position);
         _surface.UpdateEnvironment(environment);
 
-        _shadowMap.RenderShadowPass(cl =>
+        if (renderedMode)
         {
-            ground?.RenderDepthOnly(cl, groundModel * lightSpace, _shadowMap.Framebuffer.OutputDescription);
-            foreach (var (world, mesh) in _renderItems)
-                mesh.RenderDepthOnly(cl, world * lightSpace, _shadowMap.Framebuffer.OutputDescription);
-        });
+            _shadowMap!.RenderShadowPass(cl =>
+            {
+                ground?.RenderDepthOnly(cl, groundModel * lightSpace, _shadowMap.Framebuffer.OutputDescription);
+                foreach (var (world, mesh, _) in _renderItems)
+                    mesh.RenderDepthOnly(cl, world * lightSpace, _shadowMap.Framebuffer.OutputDescription);
+            });
+        }
 
         float[] bg = Model.PropertiesPanel?.BackgroundColor ?? [0.08f, 0.09f, 0.11f, 1f];
+        bool renderSelectionOutline = Model.OverlaysEnabled && _renderItems.Any(item => item.Object.IsSelected);
+        long renderStart = System.Diagnostics.Stopwatch.GetTimestamp();
         var bitmap = _surface.RenderFrame(new RgbaFloat(bg[0], bg[1], bg[2], 1f), cl =>
         {
-            ground?.Render(cl, groundModel, view, proj, _surface.SceneDataBuffer, _surface.PointLightBuffer, _surface.EnvironmentBuffer, _shadowMap);
+            VeldridShadowMap? shadowMap = renderedMode ? _shadowMap : null;
+            ground?.Render(cl, groundModel, view, proj, _surface.SceneDataBuffer, _surface.PointLightBuffer, _surface.EnvironmentBuffer, shadowMap, forceUnlit: forceUnlit);
 
-            foreach (var (world, mesh) in _renderItems)
-                mesh.Render(cl, world, view, proj, _surface.SceneDataBuffer, _surface.PointLightBuffer, _surface.EnvironmentBuffer, _shadowMap);
+            foreach (var (world, mesh, _) in _renderItems)
+                mesh.Render(cl, world, view, proj, _surface.SceneDataBuffer, _surface.PointLightBuffer, _surface.EnvironmentBuffer, shadowMap, forceUnlit: forceUnlit);
 
-            _aoPass?.Render(cl, _surface.DepthTargetView, _surface.Width, _surface.Height, renderCam.Near, renderCam.Far, _surface.OutputDescription);
+            if (renderSelectionOutline && _silhouetteMask != null && _edgeOutlinePass != null)
+            {
+                _silhouetteMask.Clear(cl);
+                foreach (var (world, mesh, obj) in _renderItems)
+                {
+                    if (obj.IsSelected)
+                        mesh.RenderSilhouette(cl, world * view * proj, _silhouetteMask.Framebuffer.OutputDescription);
+                }
+                cl.SetFramebuffer(_surface.Framebuffer);
+            }
 
-            if (_indirectPass != null)
+            if (renderedMode && (Model.PropertiesPanel?.AmbientOcclusionEnabled ?? true))
+            {
+                _aoPass!.DebugOutputMask = ambientOcclusionOnly;
+                _aoPass.Render(cl, _surface.DepthTargetView, _surface.Width, _surface.Height, renderCam.Near, renderCam.Far, _surface.OutputDescription);
+            }
+
+            if (renderedMode && combinedPass && _indirectPass != null && (Model.PropertiesPanel?.IndirectLightingEnabled ?? true))
             {
                 _indirectPass.RenderRaw(cl, _surface.ColorTargetView, _surface.DepthTargetView, renderCam.Near, renderCam.Far);
                 cl.SetFramebuffer(_surface.Framebuffer);
@@ -193,18 +307,71 @@ public partial class ViewportView : UserControl
 
             // Bloom/glow: extract+blur the bright scene pixels and composite them
             // additively back onto the main framebuffer (post-lighting).
-            _glowPass?.Render(cl, _surface.ColorTargetView, _surface.Framebuffer);
+            if (renderedMode && combinedPass)
+                _glowPass?.Render(cl, _surface.ColorTargetView, _surface.Framebuffer);
 
             // Film grain applied last, in place on the color target.
-            if (_filmGrainPass != null)
+            if (renderedMode && combinedPass && _filmGrainPass != null)
             {
                 _filmGrainPass.Frame = _filmGrainFrame;
                 _filmGrainFrame += 1f;
                 _filmGrainPass.Render(cl, _surface.ColorTarget, _surface.ColorTargetView);
             }
+
+            if (renderSelectionOutline && _silhouetteMask != null && _edgeOutlinePass != null)
+                _edgeOutlinePass.Render(cl, _silhouetteMask.TextureView, _surface.Width, _surface.Height, _surface.OutputDescription);
         });
 
         SceneImage.Source = bitmap;
+        ViewportStatusText.IsVisible = false;
+    _lastPreparationMs = System.Diagnostics.Stopwatch.GetElapsedTime(frameStart, renderStart).TotalMilliseconds;
+    _lastRenderAndReadbackMs = System.Diagnostics.Stopwatch.GetElapsedTime(renderStart).TotalMilliseconds;
+    UpdateFps(now);
+    }
+
+    private void RefreshToolbar()
+    {
+        var cameras = Model.GetSpawnedCamerasPublic();
+        var labels = new List<string>(cameras.Count + 2) { "Render Output", "Work Camera" };
+        labels.AddRange(cameras.Select(camera => string.IsNullOrWhiteSpace(camera.Name) ? "Camera" : camera.Name));
+
+        int activeCamera = Model.ActiveCameraIndex;
+        if (activeCamera < Panels.Viewport.RenderOutputIndex || activeCamera > cameras.Count)
+        {
+            activeCamera = 0;
+            Model.ActiveCameraIndex = activeCamera;
+        }
+
+        _updatingToolbar = true;
+        try
+        {
+            if (!_cameraOptionLabels.SequenceEqual(labels))
+            {
+                _cameraOptionLabels.Clear();
+                _cameraOptionLabels.AddRange(labels);
+                CameraDropdown.ItemsSource = _cameraOptionLabels;
+            }
+
+            CameraDropdown.SelectedIndex = activeCamera + 1;
+            RenderModeDropdown.SelectedIndex = (int)Model.RenderMode;
+            OverlaysToggle.IsChecked = Model.OverlaysEnabled;
+        }
+        finally
+        {
+            _updatingToolbar = false;
+        }
+    }
+
+    private void OnCameraSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (!_updatingToolbar && CameraDropdown.SelectedIndex >= 0)
+            Model.ActiveCameraIndex = CameraDropdown.SelectedIndex - 1;
+    }
+
+    private void OnRenderModeSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (!_updatingToolbar && RenderModeDropdown.SelectedIndex >= 0)
+            Model.SetRenderMode((Panels.Viewport.ViewportRenderMode)RenderModeDropdown.SelectedIndex);
     }
 
     /// <summary>
@@ -213,9 +380,10 @@ public partial class ViewportView : UserControl
     /// and refreshing bone matrices for skinned meshes. The bone dictionary is
     /// built lazily once per scene root and shared down its subtree.
     /// </summary>
-    private void CollectRenderables(SceneObject obj, GlmSharp.vec3 cameraPos, ref Dictionary<string, BoneSceneObject>? bones)
+    private void CollectRenderables(SceneObject obj, GlmSharp.vec3 cameraPos, bool highQuality, ref Dictionary<string, BoneSceneObject>? bones)
     {
-        if (!obj.GetEffectiveVisibility()) return;
+        if (!obj.GetEffectiveVisibility() || (highQuality ? !obj.RenderInHighQuality : !obj.RenderInLowQuality))
+            return;
 
         if (obj.Visuals.Count > 0)
         {
@@ -233,12 +401,12 @@ public partial class ViewportView : UserControl
                 }
 
                 mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
-                _renderItems.Add((worldN, mesh));
+                _renderItems.Add((worldN, mesh, obj));
             }
         }
 
         foreach (var child in obj.Children)
-            CollectRenderables(child, cameraPos, ref bones);
+            CollectRenderables(child, cameraPos, highQuality, ref bones);
     }
 
     private static SceneObject FindRoot(SceneObject obj)
@@ -289,7 +457,7 @@ public partial class ViewportView : UserControl
         _framesThisSecond++;
         if (nowSeconds - _lastFpsSampleSeconds >= 1.0)
         {
-            FpsText.Text = $"{_framesThisSecond} fps";
+            FpsText.Text = $"{_framesThisSecond} fps | prep {_lastPreparationMs:F0} ms | render {_lastRenderAndReadbackMs:F0} ms";
             _framesThisSecond = 0;
             _lastFpsSampleSeconds = nowSeconds;
         }
@@ -320,6 +488,7 @@ public partial class ViewportView : UserControl
         else if (e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
         {
             _freeFlyActive = true;
+            _lastOrbitPos = pos;
             Cursor = new Cursor(StandardCursorType.None);
             e.Pointer.Capture(this);
         }
@@ -386,9 +555,10 @@ public partial class ViewportView : UserControl
     {
         if (e.InitialPressMouseButton == MouseButton.Left)
         {
-            // TODO(migration): queue a color-ID pick here once real SceneObjects
-            // and VeldridMesh.RenderPick are wired together (see class doc).
+            bool wasClick = !_dragging;
             _dragging = false;
+            if (wasClick)
+                PickObjectAt(e.GetPosition(SceneImage), e.KeyModifiers.HasFlag(KeyModifiers.Control));
         }
         else if (e.InitialPressMouseButton == MouseButton.Middle)
         {
@@ -402,6 +572,37 @@ public partial class ViewportView : UserControl
 
         if (!_dragging && !_panning && !_freeFlyActive)
             e.Pointer.Capture(null);
+    }
+
+    private void PickObjectAt(Point imagePosition, bool toggleSelection)
+    {
+        if (_pickTarget == null || SceneImage.Bounds.Width <= 0 || SceneImage.Bounds.Height <= 0)
+            return;
+
+        uint x = (uint)Math.Clamp(imagePosition.X * _pickTarget.Width / SceneImage.Bounds.Width, 0, _pickTarget.Width - 1);
+        uint y = (uint)Math.Clamp(imagePosition.Y * _pickTarget.Height / SceneImage.Bounds.Height, 0, _pickTarget.Height - 1);
+        int pickId = _pickTarget.ReadPickId(x, y, commandList =>
+        {
+            foreach (var (world, mesh, obj) in _renderItems)
+                mesh.RenderPick(commandList, world * _lastViewProjection, ToNumerics(obj.PickColor), _pickTarget.OutputDescription);
+        });
+
+        var selection = SelectionManager.Instance;
+        SceneObject? hit = Panels.Viewport.FindObjectByPickId(Model.SceneObjects, pickId);
+        if (hit == null)
+        {
+            if (!toggleSelection)
+                selection.ClearSelection();
+        }
+        else if (toggleSelection)
+        {
+            selection.ToggleSelection(hit);
+        }
+        else
+        {
+            selection.ClearSelection();
+            selection.SelectObject(hit);
+        }
     }
 
     private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)

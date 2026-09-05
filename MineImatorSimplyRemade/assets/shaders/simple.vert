@@ -37,7 +37,7 @@ layout(set = 0, binding = 0, std140) uniform MeshUniforms {
 
 // Bone matrices for skinned meshes - a fixed-size array uniform buffer,
 // matching MAX_BONES in the old renderer (Mesh.Render's uBoneMatrices[64] loop).
-layout(set = 0, binding = 3, std140) uniform BoneMatrices {
+layout(set = 0, binding = 4, std140) uniform BoneMatrices {
     mat4 uBoneMatrices[64];
 };
 

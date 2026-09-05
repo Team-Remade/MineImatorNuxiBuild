@@ -78,7 +78,6 @@ public sealed class VeldridShadowMap : IDisposable
 
         commandList.End();
         _device.SubmitCommands(commandList);
-        _device.WaitForIdle();
     }
 
     /// <summary>

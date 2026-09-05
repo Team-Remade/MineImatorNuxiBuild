@@ -37,18 +37,6 @@ public static class main
         // writing a crash report and showing the native "something went wrong" dialog.
         CrashReporter.Initialize();
 
-        // Renderer-migration verification switch: runs the headless Veldrid smoke
-        // test (see VeldridSmokeTest) and exits, without touching Avalonia/GLFW/
-        // any not-yet-ported panel at all. Not intended for end users.
-        int smokeTestIndex = Array.IndexOf(args, "--veldrid-smoke-test");
-        if (smokeTestIndex >= 0)
-        {
-            string outputPath = smokeTestIndex + 1 < args.Length
-                ? args[smokeTestIndex + 1]
-                : Path.Combine(Path.GetTempPath(), "veldrid-smoke-test.png");
-            return MineImatorSimplyRemade.core.render.VeldridSmokeTest.Run(outputPath);
-        }
-
         try
         {
             return BuildAvaloniaApp()

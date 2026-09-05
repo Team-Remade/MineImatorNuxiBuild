@@ -21,7 +21,7 @@ layout(set = 0, binding = 0, std140) uniform PointShadowDepthUniforms {
     float uFarPlane;
 };
 
-layout(set = 0, binding = 2, std140) uniform BoneMatrices {
+layout(set = 0, binding = 3, std140) uniform BoneMatrices {
     mat4 uBoneMatrices[64];
 };
 
