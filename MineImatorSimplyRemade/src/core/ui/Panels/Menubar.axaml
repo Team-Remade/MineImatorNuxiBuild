@@ -29,6 +29,8 @@
         <MenuItem Header="Duplicate" InputGesture="Ctrl+D" Click="OnDuplicate" />
         <MenuItem Header="Delete" InputGesture="Delete" Click="OnDelete" />
         <Separator />
+        <MenuItem Header="Spawn Object..." Click="OnSpawnObject" />
+        <Separator />
         <MenuItem Header="Hide" IsEnabled="False" />
         <MenuItem Header="Show" IsEnabled="False" />
         <Separator />

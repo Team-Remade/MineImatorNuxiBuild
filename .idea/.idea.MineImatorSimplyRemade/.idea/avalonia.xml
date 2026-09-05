@@ -4,6 +4,8 @@
     <option name="projectPerEditor">
       <map>
         <entry key="MineImatorSimplyRemade/src/core/ui/Dock/ContentBrowserView.axaml" value="MineImatorSimplyRemade/MineImatorSimplyRemade.csproj" />
+        <entry key="MineImatorSimplyRemade/src/core/ui/Dock/SpawnMenuWindow.axaml" value="MineImatorSimplyRemade/MineImatorSimplyRemade.csproj" />
+        <entry key="MineImatorSimplyRemade/src/core/ui/Dock/TimelineView.axaml" value="MineImatorSimplyRemade/MineImatorSimplyRemade.csproj" />
         <entry key="MineImatorSimplyRemade/src/core/ui/Dock/ViewportView.axaml" value="MineImatorSimplyRemade/MineImatorSimplyRemade.csproj" />
         <entry key="MineImatorSimplyRemade/src/core/window/windows/CameraWindow.axaml" value="MineImatorSimplyRemade/MineImatorSimplyRemade.csproj" />
       </map>

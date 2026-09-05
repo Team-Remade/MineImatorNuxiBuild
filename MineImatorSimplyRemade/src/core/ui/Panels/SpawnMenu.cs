@@ -1,11 +1,11 @@
 using System.Numerics;
 using System.Reflection;
+using Avalonia.Media.Imaging;
 using Cyotek.Data.Nbt;
 using GlmSharp;
 using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
-using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
@@ -15,6 +15,7 @@ using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using NativeFileDialogSharp;
 using StbImageSharp;
+using Veldrid;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
@@ -29,15 +30,13 @@ public enum ItemAtlasSource
 }
 
 /// <summary>
-/// Four-column spawn menu (Categories | Objects | Variants | Preview) displayed as a
-/// floating ImGui window.  Ported from the Nuxi reference project.
-///
-/// Usage
-/// ─────
-///  1. Create an instance and assign <see cref="Viewport"/> (the target viewport)
-///     and <see cref="Gl"/> (the OpenGL context, inherited from <see cref="UiPanel"/>).
-///  2. Call <see cref="Render"/> every frame from the main render loop.
-///  3. Call <see cref="Toggle"/> (e.g. from a button handler) to open/close.
+/// UI-agnostic model behind the four-column spawn menu
+/// (Categories | Objects | Variants | Preview). The old ImGui rendering was
+/// removed in the Avalonia+Veldrid port; the Avalonia view
+/// (<c>core.ui.Dock.SpawnMenuWindow</c>) reads/writes the public state and
+/// selection APIs on this class, and this class owns all spawn/mesh-building
+/// logic (also used headlessly by <c>ProjectSceneSerializer</c> and
+/// <c>PropertiesPanel</c>).
 /// </summary>
 public class SpawnMenu
 {
@@ -50,7 +49,6 @@ public class SpawnMenu
     };
 
     // ── State ────────────────────────────────────────────────────────────────
-    private bool _isOpen = false;
 
     // Retry-prompt state for schematic loads that fail on invalid/corrupt data.
     private string? _pendingSchematicRetryPath;
@@ -63,7 +61,6 @@ public class SpawnMenu
     private int    _selectedVariantIndex = -1;
 
     private string _searchQuery  = "";
-    private string _searchBuffer = "";
 
     // ── Items category state ─────────────────────────────────────────────────
 
@@ -79,7 +76,6 @@ public class SpawnMenu
     private bool _item3DMode = true;
 
     /// <summary>Search filter applied to the tile grid list.</summary>
-    private string _itemSearchBuffer = "";
     private string _itemSearchQuery  = "";
 
     /// <summary>Counter used to generate unique custom-item keys.</summary>
@@ -92,7 +88,6 @@ public class SpawnMenu
     private List<string> _currentVariants = new();
 
     // Particle spawner category state
-    private string _particleLibrarySearchBuffer = "";
     private string _particleLibrarySearchQuery = "";
     private string _selectedParticleLibraryEntryId = "";
 
@@ -114,13 +109,9 @@ public class SpawnMenu
     /// </summary>
     public PreferencesPanel? PreferencesPanel { get; set; }
 
-    // ── Window positioning ───────────────────────────────────────────────────
-    private Vector2? _nextWindowPos;
-
     // ── Blocks category state ─────────────────────────────────────────────────
 
     /// <summary>Search filter applied to the blocks object list.</summary>
-    private string _blockSearchBuffer = "";
     private string _blockSearchQuery  = "";
 
     /// <summary>
@@ -149,7 +140,6 @@ public class SpawnMenu
     // ── Characters category state ──────────────────────────────────────────────
 
     /// <summary>Search filter applied to the characters object list.</summary>
-    private string _charSearchBuffer = "";
     private string _charSearchQuery  = "";
 
     /// <summary>
@@ -309,152 +299,80 @@ public class SpawnMenu
             _spawnItemSourceId = "";
     }
 
-    private bool RenderResourcePackSelector(
-        string idSuffix,
-        ref string selectedSourceId,
-        string label = "Resource Pack:",
-        IReadOnlyList<string>? availableIds = null)
-    {
-        ImGui.Text(label);
-        ImGui.SetNextItemWidth(-1);
-
-        bool changed = false;
-        string normalizedSelected = MinecraftDataLoader.NormalizeResourcePackId(selectedSourceId);
-        var options = availableIds ?? _availableResourcePackIds;
-
-        int selectedIndex = 0;
-        for (int i = 0; i < options.Count; i++)
-        {
-            if (!string.Equals(options[i], normalizedSelected, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            selectedIndex = i;
-            break;
-        }
-
-        string selectedLabel = selectedIndex == 0
-            ? "Default"
-            : options[selectedIndex];
-
-        if (ImGui.BeginCombo($"##resourcePack{idSuffix}", selectedLabel))
-        {
-            for (int i = 0; i < options.Count; i++)
-            {
-                string value = options[i];
-                string optionLabel = i == 0 ? "Default" : value;
-                bool selected = i == selectedIndex;
-
-                if (ImGui.Selectable(optionLabel, selected))
-                {
-                    selectedSourceId = value;
-                    changed = true;
-                }
-
-                if (selected)
-                    ImGui.SetItemDefaultFocus();
-            }
-
-            ImGui.EndCombo();
-        }
-
-        return changed;
-    }
-
     // ── Public API ───────────────────────────────────────────────────────────
 
+    /// <summary>Resource pack ids for block/schematic texture selection (index 0 = "" = Default).</summary>
+    public IReadOnlyList<string> AvailableResourcePackIds => _availableResourcePackIds;
+
+    /// <summary>Standalone resource pack ids for the Scenery category (index 0 = "" = Default).</summary>
+    public IReadOnlyList<string> AvailableSceneryResourcePackIds => _availableSceneryResourcePackIds;
+
+    /// <summary>Java-mod source ids for filtering the block list (index 0 = "" = Default).</summary>
+    public IReadOnlyList<string> AvailableSourceModIds => _availableSourceModIds;
+
+    /// <summary>Source ids for filtering the item tile grid (index 0 = "" = Default).</summary>
+    public IReadOnlyList<string> AvailableItemSourceIds => _availableItemSourceIds;
+
+    /// <summary>Selected resource pack for block/schematic spawning ("" = default).</summary>
+    public string SpawnResourcePackId
+    {
+        get => _spawnResourcePackId;
+        set => _spawnResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(value);
+    }
+
+    /// <summary>Selected source mod for the block list ("" = vanilla). Clears an
+    /// out-of-source block selection.</summary>
+    public string SpawnBlockSourceId
+    {
+        get => _spawnBlockSourceId;
+        set
+        {
+            _spawnBlockSourceId = MinecraftDataLoader.NormalizeResourcePackId(value);
+            if (_selectedObjectIndex >= 0 && _selectedObjectIndex < BlockRegistry.Blocks.Count &&
+                !IsBlockFromSelectedSource(BlockRegistry.Blocks[_selectedObjectIndex], _spawnBlockSourceId))
+            {
+                _selectedObjectIndex = -1;
+                _selectedVariantIndex = -1;
+                _currentVariants.Clear();
+            }
+        }
+    }
+
+    /// <summary>Selected source for the item tile grid ("" = base atlases). Clears an
+    /// out-of-source tile selection.</summary>
+    public string SpawnItemSourceId
+    {
+        get => _spawnItemSourceId;
+        set
+        {
+            _spawnItemSourceId = MinecraftDataLoader.NormalizeResourcePackId(value);
+            if (!string.IsNullOrWhiteSpace(_selectedTileKey) &&
+                !IsTextureKeyFromSelectedSource(_selectedTileKey, _spawnItemSourceId))
+            {
+                _selectedTileKey = "";
+            }
+        }
+    }
+
     /// <summary>
-    /// Toggles the spawn menu open or closed.  When opening, the window is
-    /// positioned so its top-left corner is at <paramref name="screenPos"/>.
-    /// Pass the bottom of the button that triggered it.
-    /// If <paramref name="screenPos"/> is null the window is centred on screen.
+    /// Raised when a spawn action completed and the spawn-menu window should close.
     /// </summary>
-    public void Toggle(Vector2? screenPos = null)
+    public event Action? CloseRequested;
+
+    /// <summary>Called by the view whenever the spawn menu window is (re)opened.</summary>
+    public void OnMenuOpened() => RefreshResourcePackOptions();
+
+    private void RequestClose() => CloseRequested?.Invoke();
+
+    /// <summary>Global search text; setting it resets the object/variant selection.</summary>
+    public string SearchQuery
     {
-        if (_isOpen)
+        get => _searchQuery;
+        set
         {
-            _isOpen = false;
-            return;
-        }
-
-        RefreshResourcePackOptions();
-        _isOpen       = true;
-        _nextWindowPos = screenPos;
-    }
-
-    public override unsafe void Render()
-    {
-        // Rendered every frame regardless of _isOpen so a schematic load
-        // failure triggered from the content browser or elsewhere can still
-        // prompt the user, even if the spawn menu window itself isn't shown.
-        RenderSchematicLoadRetryDialog();
-
-        if (!_isOpen) return;
-
-        ImGuiViewportPtr mainViewport = ImGui.GetMainViewport();
-        Vector2 workPos = mainViewport.WorkPos;
-        Vector2 workSize = mainViewport.WorkSize;
-        const float spawnMenuWidth = 1150f;
-        const float spawnMenuHeight = 440f;
-
-        if (_nextWindowPos.HasValue)
-        {
-            // Clamp to the active viewport work rect so monitor moves don't snap
-            // the menu back to the primary display.
-            float minX = workPos.X;
-            float minY = workPos.Y;
-            float maxX = workPos.X + Math.Max(0f, workSize.X - spawnMenuWidth);
-            float maxY = workPos.Y + Math.Max(0f, workSize.Y - spawnMenuHeight);
-            float wx = Math.Clamp(_nextWindowPos.Value.X, minX, maxX);
-            float wy = Math.Clamp(_nextWindowPos.Value.Y, minY, maxY);
-            ImGui.SetNextWindowPos(new Vector2(wx, wy), ImGuiCond.Always);
-            _nextWindowPos = null; // only force position on the first frame
-        }
-        else
-        {
-            // Centre in the current viewport work area.
-            ImGui.SetNextWindowPos(
-                new Vector2(workPos.X + workSize.X * 0.5f, workPos.Y + workSize.Y * 0.5f),
-                ImGuiCond.Appearing,
-                new Vector2(0.5f, 0.5f));
-        }
-
-        ImGui.SetNextWindowSize(new Vector2(spawnMenuWidth, spawnMenuHeight), ImGuiCond.Appearing);
-        ImGui.SetNextWindowViewport(mainViewport.ID);
-
-        // Update the off-screen 3-D preview before the window draws
-        UpdatePreview(VeldridMesh.DeltaTime);
-
-        if (ImGui.Begin("Spawn Menu##SpawnMenuWindow", ref _isOpen))
-        {
-            RenderSearchBar();
-            ImGui.Separator();
-            RenderMainColumns();
-            ImGui.Separator();
-            RenderBottomBar();
-        }
-
-        ImGui.End();
-    }
-
-    // ── Private rendering helpers ────────────────────────────────────────────
-
-    private void RenderSearchBar()
-    {
-        ImGui.Text("Search:");
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(-80);
-        if (ImGui.InputText("##search", ref _searchBuffer, 256))
-        {
-            _searchQuery         = _searchBuffer;
-            _selectedObjectIndex  = -1;
-            _selectedVariantIndex = -1;
-        }
-
-        ImGui.SameLine();
-        if (ImGui.Button("Clear"))
-        {
-            _searchBuffer        = "";
-            _searchQuery         = "";
+            string normalized = value ?? "";
+            if (_searchQuery == normalized) return;
+            _searchQuery          = normalized;
             _selectedObjectIndex  = -1;
             _selectedVariantIndex = -1;
         }
@@ -465,18 +383,16 @@ public class SpawnMenu
     /// <summary>
     /// Ensures the <see cref="PreviewRenderer"/> is created and initialised,
     /// computes the current selection key, rebuilds <see cref="_previewMeshes"/>
-    /// when the selection has changed, and renders them into the preview FBO.
-    /// Must be called each frame <em>before</em> the ImGui column that displays
-    /// the result, so the FBO texture is ready for <c>ImGui.Image</c>.
+    /// when the selection has changed, and renders them off-screen.
+    /// Called by the view on a UI timer; returns the rendered preview bitmap
+    /// (or null when there is nothing to show).
     /// </summary>
-    private void UpdatePreview(double deltaTime)
+    public WriteableBitmap? UpdatePreview(double deltaTime)
     {
-        if (Gl == null) return;
-
         // Lazy-init the renderer
         if (_previewRenderer == null)
         {
-            _previewRenderer = new PreviewRenderer(Gl);
+            _previewRenderer = new PreviewRenderer();
             _previewRenderer.Initialize();
         }
 
@@ -504,9 +420,18 @@ public class SpawnMenu
             _previewRenderer.Pitch    = 0.35f;
         }
 
-        // Render into FBO every frame (so auto-rotation plays)
-        _previewRenderer.Render(_previewMeshes, _previewKey, deltaTime, sceneRoot: _previewCharacter);
+        // Render every frame (so auto-rotation plays)
+        return _previewRenderer.Render(_previewMeshes, _previewKey, deltaTime, sceneRoot: _previewCharacter);
     }
+
+    /// <summary>True when the current selection produced preview geometry.</summary>
+    public bool PreviewHasGeometry => _previewMeshes.Count > 0 || _previewCharacter != null;
+
+    /// <summary>Orbits the preview camera (called from view drag input).</summary>
+    public void OrbitPreview(float deltaYaw, float deltaPitch) => _previewRenderer?.Orbit(deltaYaw, deltaPitch);
+
+    /// <summary>Forces the preview meshes to rebuild on the next <see cref="UpdatePreview"/>.</summary>
+    public void InvalidatePreview() => _previewKey = "";
 
     /// <summary>Returns a string that uniquely identifies the current selection.</summary>
     private string ComputePreviewKey()
@@ -545,7 +470,7 @@ public class SpawnMenu
     }
 
     /// <summary>
-    /// Builds and returns GL meshes for the currently selected item.
+    /// Builds and returns Veldrid meshes for the currently selected item.
     /// Returns an empty list for categories that have no geometry (Camera, Light, Empty, Custom).
     /// </summary>
     private List<VeldridMesh> BuildPreviewMeshes()
@@ -556,7 +481,7 @@ public class SpawnMenu
             {
                 if (string.IsNullOrEmpty(_selectedTileKey)) return new List<VeldridMesh>();
 
-                uint tileTexId = 0;
+                Texture? tileTex = null;
                 byte[]? tilePixels = null;
                 int tileSize;
                 int tileWidth;
@@ -564,24 +489,24 @@ public class SpawnMenu
 
                 if (_itemAtlasSource == ItemAtlasSource.ItemAtlas)
                 {
-                    ItemsAtlas.Textures.TryGetValue(_selectedTileKey, out tileTexId);
+                    ItemsAtlas.Textures.TryGetValue(_selectedTileKey, out tileTex);
                     ItemsAtlas.TilePixels.TryGetValue(_selectedTileKey, out tilePixels);
                     ItemsAtlas.TryGetTileDimensions(_selectedTileKey, out tileWidth, out tileHeight);
                     tileSize = Math.Max(tileWidth, tileHeight);
                 }
                 else
                 {
-                    TerrainAtlas.Textures.TryGetValue(_selectedTileKey, out tileTexId);
+                    TerrainAtlas.Textures.TryGetValue(_selectedTileKey, out tileTex);
                     TerrainAtlas.TilePixels.TryGetValue(_selectedTileKey, out tilePixels);
                     tileWidth = TerrainAtlas.TileSize;
                     tileHeight = TerrainAtlas.TileSize;
                     tileSize = InferTileSizeFromPixels(tilePixels, TerrainAtlas.TileSize);
                 }
 
-                if (tileTexId == 0 || tilePixels == null) return new List<VeldridMesh>();
+                if (tileTex == null || tilePixels == null) return new List<VeldridMesh>();
 
                 var mesh = new ExtrudedItemMesh(
-                    Gl, tileTexId, tilePixels,
+                    tileTex, tilePixels,
                     is3D: _item3DMode, tileSize: tileSize, tileWidth: tileWidth, tileHeight: tileHeight,
                     extrudeDepth: 1f / 16f);
                 return new List<VeldridMesh> { mesh };
@@ -608,11 +533,11 @@ public class SpawnMenu
                     // Centre combined two-block object at the origin
                     var topMeshes = new List<VeldridMesh>();
                     AppendBlockMeshesForPreview(topMeshes, variant.TopHalf, blockName);
-                    vec3 combinedCenter = new vec3(
+                    var combinedCenter = new Vector3(
                         variant.PartOffsetX * 0.5f,
                         variant.PartOffsetY * 0.5f,
                         variant.PartOffsetZ * 0.5f);
-                    vec3 topShift = new vec3(
+                    Vector3 topShift = new Vector3(
                         variant.PartOffsetX,
                         variant.PartOffsetY,
                         variant.PartOffsetZ) - combinedCenter;
@@ -620,25 +545,25 @@ public class SpawnMenu
                     {
                         for (int i = 0; i < m.Vertices.Count; i++)
                             m.Vertices[i] -= combinedCenter;
-                        m.Upload();
+                        m.Upload(VeldridContext.StandardOutputDescription);
                     }
                     foreach (var m in topMeshes)
                     {
                         for (int i = 0; i < m.Vertices.Count; i++)
                             m.Vertices[i] += topShift;
-                        m.Upload();
+                        m.Upload(VeldridContext.StandardOutputDescription);
                     }
                     meshes.AddRange(topMeshes);
                 }
                 else
                 {
                     // Centre single-block meshes so they orbit around (0,0,0) nicely
-                    var downShift = new vec3(0f, -0.5f, 0f);
+                    var downShift = new Vector3(0f, -0.5f, 0f);
                     foreach (var m in meshes)
                     {
                         for (int i = 0; i < m.Vertices.Count; i++)
                             m.Vertices[i] += downShift;
-                        m.Upload();
+                        m.Upload(VeldridContext.StandardOutputDescription);
                     }
                 }
 
@@ -654,13 +579,13 @@ public class SpawnMenu
                 string name = filtered[_selectedObjectIndex];
                 if (name == "Empty") return new List<VeldridMesh>();
 
-                if (name == "Cube")   return new List<VeldridMesh> { new CubeMesh(Gl, _selectedPrimitiveCubeMapped) };
-                if (name == "Sphere") return new List<VeldridMesh> { new SphereMesh(Gl, 0.5f,
+                if (name == "Cube")   return new List<VeldridMesh> { new CubeMesh(_selectedPrimitiveCubeMapped) };
+                if (name == "Sphere") return new List<VeldridMesh> { new SphereMesh(0.5f,
                     _selectedPrimitiveSphereSegments, _selectedPrimitiveSphereRings, _selectedPrimitiveSphereSmooth) };
-                if (name == "Plane")  return new List<VeldridMesh> { new PlaneMesh(Gl, 1f, 1f, _selectedPrimitivePlaneOrientation) };
+                if (name == "Plane")  return new List<VeldridMesh> { new PlaneMesh(1f, 1f, _selectedPrimitivePlaneOrientation) };
 
                 // For shapes not yet implemented, show a cube placeholder
-                return new List<VeldridMesh> { new CubeMesh(Gl) };
+                return new List<VeldridMesh> { new CubeMesh() };
             }
 
             case "Characters":
@@ -701,8 +626,7 @@ public class SpawnMenu
                 else
                 {
                     // Binary / standard 3-D format (.glb, .gltf, .fbx, .obj, …) — use Assimp.
-                    if (Gl == null) return new List<VeldridMesh>();
-                    character = AssimpModelLoader.Load(Gl, entry.FilePath);
+                    character = AssimpModelLoader.Load(entry.FilePath);
                     if (character == null) return new List<VeldridMesh>();
 
                     // Apply the selected texture variant, same as the .mimodel branch above —
@@ -766,8 +690,6 @@ public class SpawnMenu
     /// </summary>
     private void AppendBlockMeshesForPreview(List<VeldridMesh> meshes, BlockVariantEntry variant, string blockName = "")
     {
-        if (Gl == null) return;
-
         string textureSourceId = GetEffectiveBlockTextureSourceId();
 
         ResolvedBlockModel? resolved = null;
@@ -776,13 +698,13 @@ public class SpawnMenu
 
         List<VeldridMesh> built;
         if (!string.IsNullOrEmpty(variant.CemPath))
-            built = CemLoader.Load(Gl, variant.CemPath, BlockRegistry.VersionRoot, textureSourceId);
+            built = CemLoader.Load(variant.CemPath, BlockRegistry.VersionRoot, textureSourceId);
         else if (resolved != null)
-            built = MinecraftModelMesh.Build(Gl, resolved, variant.RotationX, variant.RotationY, textureSourceId, blockName);
+            built = MinecraftModelMesh.Build(resolved, variant.RotationX, variant.RotationY, textureSourceId, blockName);
         else
             built = new List<VeldridMesh>
             {
-                MinecraftModelMesh.BuildTexturedFallbackCube(Gl, null, blockNameHint: "", resourcePackId: textureSourceId)
+                MinecraftModelMesh.BuildTexturedFallbackCube(null, blockNameHint: "", resourcePackId: textureSourceId)
             };
 
         ApplyVariantRotationToCemMeshes(built, variant);
@@ -814,39 +736,39 @@ public class SpawnMenu
             {
                 hasAnyVertex = true;
                 var v = mesh.Vertices[i];
-                if (v.x < minX) minX = v.x;
-                if (v.y < minY) minY = v.y;
-                if (v.z < minZ) minZ = v.z;
-                if (v.x > maxX) maxX = v.x;
-                if (v.y > maxY) maxY = v.y;
-                if (v.z > maxZ) maxZ = v.z;
+                if (v.X < minX) minX = v.X;
+                if (v.Y < minY) minY = v.Y;
+                if (v.Z < minZ) minZ = v.Z;
+                if (v.X > maxX) maxX = v.X;
+                if (v.Y > maxY) maxY = v.Y;
+                if (v.Z > maxZ) maxZ = v.Z;
             }
         }
 
         if (!hasAnyVertex)
             return;
 
-        var pivot = new vec3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, (minZ + maxZ) * 0.5f);
+        var pivot = new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, (minZ + maxZ) * 0.5f);
 
         foreach (var mesh in meshes)
         {
             for (int i = 0; i < mesh.Vertices.Count; i++)
             {
-                vec3 v = mesh.Vertices[i] - pivot;
+                Vector3 v = mesh.Vertices[i] - pivot;
                 v = RotateQuarterTurnsX(v, turnsX);
                 v = RotateQuarterTurnsY(v, turnsY);
                 mesh.Vertices[i] = v + pivot;
 
                 if (i < mesh.Normals.Count)
                 {
-                    vec3 n = mesh.Normals[i];
+                    Vector3 n = mesh.Normals[i];
                     n = RotateQuarterTurnsX(n, turnsX);
                     n = RotateQuarterTurnsY(n, turnsY);
                     mesh.Normals[i] = n;
                 }
             }
 
-            mesh.Upload();
+            mesh.Upload(VeldridContext.StandardOutputDescription);
         }
     }
 
@@ -856,362 +778,233 @@ public class SpawnMenu
         return normalized / 90;
     }
 
-    private static vec3 RotateQuarterTurnsX(vec3 v, int turns)
+    private static Vector3 RotateQuarterTurnsX(Vector3 v, int turns)
     {
         return turns switch
         {
-            1 => new vec3(v.x, -v.z, v.y),
-            2 => new vec3(v.x, -v.y, -v.z),
-            3 => new vec3(v.x, v.z, -v.y),
+            1 => new Vector3(v.X, -v.Z, v.Y),
+            2 => new Vector3(v.X, -v.Y, -v.Z),
+            3 => new Vector3(v.X, v.Z, -v.Y),
             _ => v
         };
     }
 
-    private static vec3 RotateQuarterTurnsY(vec3 v, int turns)
+    private static Vector3 RotateQuarterTurnsY(Vector3 v, int turns)
     {
         return turns switch
         {
-            1 => new vec3(v.z, v.y, -v.x),
-            2 => new vec3(-v.x, v.y, -v.z),
-            3 => new vec3(-v.z, v.y, v.x),
+            1 => new Vector3(v.Z, v.Y, -v.X),
+            2 => new Vector3(-v.X, v.Y, -v.Z),
+            3 => new Vector3(-v.Z, v.Y, v.X),
             _ => v
         };
     }
 
-    private void RenderMainColumns()
+    // ── Selection API (categories / objects / variants) ────────────────────
+
+    /// <summary>Category names in display order.</summary>
+    public IReadOnlyList<string> Categories => _categories.Keys.ToList();
+
+    /// <summary>The currently selected category name.</summary>
+    public string SelectedCategory => _selectedCategory;
+
+    /// <summary>
+    /// Currently selected object index, or -1. For the standard categories this
+    /// indexes <see cref="GetFilteredObjects"/>; for Blocks it indexes
+    /// <see cref="BlockRegistry.Blocks"/>; for Characters it indexes
+    /// <see cref="CharacterRegistry.Characters"/>.
+    /// </summary>
+    public int SelectedObjectIndex => _selectedObjectIndex;
+
+    /// <summary>Variant labels for the current object selection.</summary>
+    public IReadOnlyList<string> CurrentVariants => _currentVariants;
+
+    public int SelectedVariantIndex
     {
-        float totalHeight = ImGui.GetContentRegionAvail().Y - 40; // leave room for bottom bar
-
-        ImGui.BeginChild("##cols", new Vector2(0, totalHeight));
-        float columnWidth = ImGui.GetContentRegionAvail().X / 4f;
-
-        // ── Categories ──────────────────────────────────────────────────────
-        ImGui.BeginChild("##categories", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Categories");
-        ImGui.Separator();
-
-        foreach (var category in _categories.Keys)
-        {
-            bool selected = _selectedCategory == category;
-            if (ImGui.Selectable(category, selected))
-            {
-                if (_selectedCategory != category)
-                {
-                    _selectedCategory          = category;
-                    _selectedObjectIndex        = -1;
-                    _selectedVariantIndex       = -1;
-                    _selectedCharTextureIndex   = -1;
-                    _customCharTexturePath      = "";
-                    _currentVariants.Clear();
-                }
-            }
-        }
-
-        ImGui.EndChild();
-        ImGui.SameLine();
-
-        // ── Objects / Items / Blocks custom UI ───────────────────────────────
-        if (_selectedCategory == "Items")
-        {
-            RenderItemsObjectsColumn(columnWidth);
-            ImGui.SameLine();
-            RenderItemsVariantsColumn(columnWidth);
-            ImGui.SameLine();
-            RenderItemsPreviewColumn();
-        }
-        else if (_selectedCategory == "Blocks")
-        {
-            RenderBlocksObjectsColumn(columnWidth);
-            ImGui.SameLine();
-            RenderBlocksVariantsColumn(columnWidth);
-            ImGui.SameLine();
-            RenderBlocksPreviewColumn();
-        }
-        else if (_selectedCategory == "Characters")
-        {
-            RenderCharactersObjectsColumn(columnWidth);
-            ImGui.SameLine();
-            RenderCharactersVariantsColumn(columnWidth);
-            ImGui.SameLine();
-            RenderStandardPreviewColumn();
-        }
-        else if (_selectedCategory == "Particle Spawners")
-        {
-            RenderParticleSpawnerObjectsColumn(columnWidth);
-            ImGui.SameLine();
-            RenderParticleSpawnerVariantsColumn(columnWidth);
-            ImGui.SameLine();
-            RenderParticleSpawnerPreviewColumn();
-        }
-        else
-        {
-            // Standard objects column
-            ImGui.BeginChild("##objects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-            ImGui.TextDisabled("Objects");
-            ImGui.Separator();
-
-            if (_categories.TryGetValue(_selectedCategory, out var objectList))
-            {
-                var filtered = string.IsNullOrEmpty(_searchQuery)
-                    ? objectList
-                    : objectList
-                        .Where(o => o.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
-                        .ToList();
-
-                for (int i = 0; i < filtered.Count; i++)
-                {
-                    bool sel = _selectedObjectIndex == i;
-                    if (ImGui.Selectable(filtered[i] + "##obj" + i, sel))
-                    {
-                        _selectedObjectIndex  = i;
-                        _selectedVariantIndex = -1;
-                        OnObjectSelected(filtered[i]);
-                    }
-
-                    // Double-click spawns immediately (except "Load...")
-                    if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-                    {
-                        _selectedObjectIndex = i;
-                        OnObjectDoubleClicked(filtered[i]);
-                    }
-                }
-            }
-
-            ImGui.EndChild();
-            ImGui.SameLine();
-
-            // ── Variants ────────────────────────────────────────────────────
-            ImGui.BeginChild("##variants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-            ImGui.TextDisabled("Variants");
-            ImGui.Separator();
-
-            if (_selectedCategory == "Scenery")
-            {
-                RenderResourcePackSelector(
-                    "Scenery",
-                    ref _spawnResourcePackId,
-                    "Resource Pack:",
-                    _availableSceneryResourcePackIds);
-                ImGui.Spacing();
-                ImGui.Separator();
-                ImGui.Spacing();
-            }
-
-            // ── Primitive texture selection ──────────────────────────────────
-            var filteredObjects = GetFilteredObjects();
-            bool isSpherePrimitive = _selectedCategory == "Primitives" &&
-                _selectedObjectIndex >= 0 && _selectedObjectIndex < filteredObjects.Count &&
-                filteredObjects[_selectedObjectIndex] == "Sphere";
-            if (isSpherePrimitive)
-            {
-                ImGui.TextDisabled("Sphere Geometry");
-                bool changed = ImGui.Checkbox("Smooth Shading##sphereSmoothSpawn", ref _selectedPrimitiveSphereSmooth);
-                changed |= ImGui.DragInt("Segments##sphereSegmentsSpawn", ref _selectedPrimitiveSphereSegments, 1f, 3, 256);
-                changed |= ImGui.DragInt("Rings##sphereRingsSpawn", ref _selectedPrimitiveSphereRings, 1f, 2, 128);
-                _selectedPrimitiveSphereSegments = Math.Clamp(_selectedPrimitiveSphereSegments, 3, 256);
-                _selectedPrimitiveSphereRings = Math.Clamp(_selectedPrimitiveSphereRings, 2, 128);
-                if (changed) _previewKey = "";
-                ImGui.Spacing();
-            }
-
-            bool isPrimitiveWithTexture = _selectedCategory == "Primitives" &&
-                _selectedObjectIndex >= 0 && _selectedObjectIndex < filteredObjects.Count &&
-                (filteredObjects[_selectedObjectIndex] == "Plane" || filteredObjects[_selectedObjectIndex] == "Cube");
-
-            if (isPrimitiveWithTexture)
-            {
-                string primitiveName = filteredObjects[_selectedObjectIndex];
-                if (primitiveName == "Plane")
-                {
-                    ImGui.TextDisabled("Orientation");
-                    string[] orientationOptions = { "XY", "XZ" };
-                    int orientationIndex = _selectedPrimitivePlaneOrientation == PlaneOrientation.XZ ? 1 : 0;
-                    if (ImGui.Combo("##planeOrientation", ref orientationIndex, orientationOptions, orientationOptions.Length))
-                        _selectedPrimitivePlaneOrientation = orientationIndex == 1 ? PlaneOrientation.XZ : PlaneOrientation.XY;
-
-                    ImGui.Spacing();
-                }
-                else if (primitiveName == "Cube")
-                {
-                    ImGui.TextDisabled("UV Mapping");
-                    if (ImGui.Checkbox("Mapped##cubeMappedSpawn", ref _selectedPrimitiveCubeMapped))
-                        _previewKey = ""; // force preview rebuild when UV mode changes
-
-                    if (ImGui.Button("Save UV map...##cubeUvMap", new Vector2(-1, 0)))
-                        SaveCubeUvMapGuide();
-
-                    ImGui.TextDisabled("Exports the cube layout reference image.");
-                    ImGui.Spacing();
-                }
-
-                ImGui.TextDisabled("Texture");
-                ImGui.Spacing();
-
-                // Show current texture
-                if (!string.IsNullOrEmpty(_selectedPrimitiveTexturePath))
-                {
-                    string fileName = Path.GetFileName(_selectedPrimitiveTexturePath);
-                    ImGui.Text($"Current: {fileName}");
-                }
-                else
-                {
-                    ImGui.TextDisabled("(None)");
-                }
-
-                ImGui.Spacing();
-
-                // Texture buttons
-                if (ImGui.Button("Load texture...", new Vector2(-1, 0)))
-                {
-                    var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
-                    if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
-                    {
-                        // Clean up old texture
-                        if (_selectedPrimitiveTextureId != 0)
-                            Gl?.DeleteTexture(_selectedPrimitiveTextureId);
-
-                        // Load new texture
-                        _selectedPrimitiveTexturePath = result.Path;
-                        _selectedPrimitiveTextureId = LoadPrimitiveTextureFromFile(result.Path);
-
-                        if (_selectedPrimitiveTextureId != 0)
-                        {
-                            _selectedVariantIndex = 1; // Select "Load texture..."
-                        }
-                        else
-                        {
-                            _selectedPrimitiveTexturePath = "";
-                            _selectedVariantIndex = 0; // Reset to "None"
-                        }
-                    }
-                }
-
-                if (ImGui.Button("Clear", new Vector2(-1, 0)))
-                {
-                    if (_selectedPrimitiveTextureId != 0)
-                        Gl?.DeleteTexture(_selectedPrimitiveTextureId);
-                    _selectedPrimitiveTextureId = 0;
-                    _selectedPrimitiveTexturePath = "";
-                    _selectedVariantIndex = 0;
-                }
-
-                ImGui.Separator();
-                ImGui.Spacing();
-            }
-
-            if (_currentVariants.Count > 0)
-            {
-                for (int i = 0; i < _currentVariants.Count; i++)
-                {
-                    bool sel = _selectedVariantIndex == i;
-                    if (ImGui.Selectable(_currentVariants[i] + "##var" + i, sel))
-                        _selectedVariantIndex = i;
-
-                    if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-                    {
-                        _selectedVariantIndex = i;
-                        TrySpawn();
-                    }
-                }
-            }
-            else if (!isPrimitiveWithTexture)
-            {
-                ImGui.TextDisabled("(not available)");
-            }
-
-            ImGui.EndChild();
-            ImGui.SameLine();
-
-            // ── Preview ─────────────────────────────────────────────────────
-            RenderStandardPreviewColumn();
-        }
-
-        ImGui.EndChild(); // ##cols
+        get => _selectedVariantIndex;
+        set => _selectedVariantIndex = value;
     }
 
-    // ── Standard (non-Items, non-Blocks) preview column ──────────────────────
-
-    private void RenderStandardPreviewColumn()
+    /// <summary>Selects a category, resetting the object/variant selection when it changes.</summary>
+    public void SelectCategory(string category)
     {
-        ImGui.BeginChild("##stdPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Preview");
-        ImGui.Separator();
+        if (!_categories.ContainsKey(category) || _selectedCategory == category)
+            return;
 
+        _selectedCategory          = category;
+        _selectedObjectIndex        = -1;
+        _selectedVariantIndex       = -1;
+        _selectedCharTextureIndex   = -1;
+        _customCharTexturePath      = "";
+        _currentVariants.Clear();
+    }
+
+    /// <summary>Single-click selection of a standard-category object (index into <see cref="GetFilteredObjects"/>).</summary>
+    public void SelectObject(int index)
+    {
         var filtered = GetFilteredObjects();
-        if (_selectedObjectIndex >= 0 && _selectedObjectIndex < filtered.Count)
+        if (index < 0 || index >= filtered.Count) return;
+
+        _selectedObjectIndex  = index;
+        _selectedVariantIndex = -1;
+        OnObjectSelected(filtered[index]);
+    }
+
+    /// <summary>Double-click activation of a standard-category object (spawns immediately, except "Load...").</summary>
+    public void ActivateObject(int index)
+    {
+        var filtered = GetFilteredObjects();
+        if (index < 0 || index >= filtered.Count) return;
+
+        _selectedObjectIndex = index;
+        OnObjectDoubleClicked(filtered[index]);
+    }
+
+    /// <summary>Double-click activation of a variant entry (selects it and spawns).</summary>
+    public void ActivateVariant(int index)
+    {
+        if (index < 0 || index >= _currentVariants.Count) return;
+        _selectedVariantIndex = index;
+        TrySpawn();
+    }
+
+    /// <summary>Display name of the current standard-category selection, or null.</summary>
+    public string? SelectedObjectName
+    {
+        get
         {
-            string objectName = filtered[_selectedObjectIndex];
-
-            bool hasGeometry = _previewMeshes.Count > 0 &&
-                               _previewRenderer != null &&
-                               _previewRenderer.ColorTexture != 0;
-
-            ImGui.Spacing();
-            RenderPreviewImage(hasGeometry);
-            ImGui.Spacing();
-
-            // Centred name label
-            CentreText(objectName);
+            var filtered = GetFilteredObjects();
+            return _selectedObjectIndex >= 0 && _selectedObjectIndex < filtered.Count
+                ? filtered[_selectedObjectIndex]
+                : null;
         }
-        else
+    }
+
+    // ── Primitive options (Variants column state for the Primitives category) ──
+
+    public bool PrimitiveSphereSmooth
+    {
+        get => _selectedPrimitiveSphereSmooth;
+        set { if (_selectedPrimitiveSphereSmooth != value) { _selectedPrimitiveSphereSmooth = value; InvalidatePreview(); } }
+    }
+
+    public int PrimitiveSphereSegments
+    {
+        get => _selectedPrimitiveSphereSegments;
+        set
         {
-            ImGui.Spacing();
-            ImGui.TextDisabled("Select an object\nto see a preview.");
+            int clamped = Math.Clamp(value, 3, 256);
+            if (_selectedPrimitiveSphereSegments != clamped) { _selectedPrimitiveSphereSegments = clamped; InvalidatePreview(); }
+        }
+    }
+
+    public int PrimitiveSphereRings
+    {
+        get => _selectedPrimitiveSphereRings;
+        set
+        {
+            int clamped = Math.Clamp(value, 2, 128);
+            if (_selectedPrimitiveSphereRings != clamped) { _selectedPrimitiveSphereRings = clamped; InvalidatePreview(); }
+        }
+    }
+
+    public PlaneOrientation PrimitivePlaneOrientation
+    {
+        get => _selectedPrimitivePlaneOrientation;
+        set => _selectedPrimitivePlaneOrientation = value;
+    }
+
+    public bool PrimitiveCubeMapped
+    {
+        get => _selectedPrimitiveCubeMapped;
+        set { if (_selectedPrimitiveCubeMapped != value) { _selectedPrimitiveCubeMapped = value; InvalidatePreview(); } }
+    }
+
+    /// <summary>Path of the texture chosen for textured primitives ("" = none).</summary>
+    public string SelectedPrimitiveTexturePath => _selectedPrimitiveTexturePath;
+
+    /// <summary>True when the selected object is the Plane or Cube primitive
+    /// (which support texture selection in the Variants column).</summary>
+    public bool SelectedObjectSupportsPrimitiveTexture =>
+        _selectedCategory == "Primitives" &&
+        (SelectedObjectName == "Plane" || SelectedObjectName == "Cube");
+
+    /// <summary>True when the selected object is the Sphere primitive.</summary>
+    public bool SelectedObjectIsSpherePrimitive =>
+        _selectedCategory == "Primitives" && SelectedObjectName == "Sphere";
+
+    /// <summary>
+    /// Opens a native file dialog and loads the chosen image as the primitive
+    /// texture. Returns true when a texture was successfully loaded.
+    /// </summary>
+    public bool LoadPrimitiveTextureFromDialog()
+    {
+        var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
+        if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path) || !File.Exists(result.Path))
+            return false;
+
+        _selectedPrimitiveTexturePath = result.Path;
+        _selectedPrimitiveTextureId = LoadPrimitiveTextureFromFile(result.Path);
+
+        if (_selectedPrimitiveTextureId != 0)
+        {
+            _selectedVariantIndex = 1; // Select "Load texture..."
+            return true;
         }
 
-        ImGui.EndChild();
+        _selectedPrimitiveTexturePath = "";
+        _selectedVariantIndex = 0; // Reset to "None"
+        return false;
+    }
+
+    public void ClearPrimitiveTexture()
+    {
+        _selectedPrimitiveTextureId = 0;
+        _selectedPrimitiveTexturePath = "";
+        _selectedVariantIndex = 0;
     }
 
     // ── Items category UI ─────────────────────────────────────────────────────
 
-    private unsafe void RenderItemsObjectsColumn(float columnWidth)
+    /// <summary>Which atlas the Items tab sources tiles from; changing it resets the tile selection.</summary>
+    public ItemAtlasSource ItemAtlasSourceSelection
     {
-        ImGui.BeginChild("##itemsObjects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Tiles");
-        ImGui.Separator();
-
-        // Atlas source dropdown
-        ImGui.Text("Atlas:");
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(-1);
-        int atlasIdx = (int)_itemAtlasSource;
-        string[] atlasNames = ["Item Atlas", "Block Atlas"];
-        if (ImGui.Combo("##atlasSource", ref atlasIdx, atlasNames, atlasNames.Length))
+        get => _itemAtlasSource;
+        set
         {
-            _itemAtlasSource = (ItemAtlasSource)atlasIdx;
+            if (_itemAtlasSource == value) return;
+            _itemAtlasSource = value;
             _selectedTileKey = ""; // reset selection when switching atlas
         }
+    }
 
-        ImGui.Spacing();
+    /// <summary>Search filter for the tile grid.</summary>
+    public string ItemSearchQuery
+    {
+        get => _itemSearchQuery;
+        set => _itemSearchQuery = value ?? "";
+    }
 
-        bool itemSourceChanged = RenderResourcePackSelector(
-            "ItemsSource",
-            ref _spawnItemSourceId,
-            "Source:",
-            _availableItemSourceIds);
-        if (itemSourceChanged &&
-            !string.IsNullOrWhiteSpace(_selectedTileKey) &&
-            !IsTextureKeyFromSelectedSource(_selectedTileKey, _spawnItemSourceId))
-        {
-            _selectedTileKey = "";
-        }
+    /// <summary>Currently selected tile key ("" = none).</summary>
+    public string SelectedTileKey
+    {
+        get => _selectedTileKey;
+        set => _selectedTileKey = value ?? "";
+    }
 
-        ImGui.Spacing();
+    /// <summary>When true the spawned item mesh is extruded; otherwise flat.</summary>
+    public bool Item3DMode
+    {
+        get => _item3DMode;
+        set => _item3DMode = value;
+    }
 
-        // Search filter
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##itemSearch", "Filter tiles (e.g. grass)...", ref _itemSearchBuffer, 64))
-            _itemSearchQuery = _itemSearchBuffer;
-
-        ImGui.Separator();
-
-        // Tile grid – show all available tiles as icon buttons in a grid
-        const float iconSize = 28f;
-        float availWidth = ImGui.GetContentRegionAvail().X;
-        int   cols       = Math.Max(1, (int)(availWidth / (iconSize + 4f)));
-
-        ImGui.BeginChild("##tileGrid", new Vector2(0, 0));
-
+    /// <summary>
+    /// Returns the tile keys shown in the Items tab grid for the current atlas,
+    /// source and search filter, sorted alphabetically.
+    /// </summary>
+    public List<string> GetFilteredItemTileKeys()
+    {
         if (_itemAtlasSource == ItemAtlasSource.ItemAtlas)
             ItemsAtlas.EnsureProjectCustomTexturesLoaded();
 
@@ -1219,91 +1012,33 @@ public class SpawnMenu
             ? ItemsAtlas.Textures
             : TerrainAtlas.Textures;
 
-        var filteredTextures = textures
-            .Where(static kvp => kvp.Value != 0)
+        return textures
+            .Where(static kvp => kvp.Value != null)
             .Where(kvp => IsTextureKeyFromSelectedSource(kvp.Key, _spawnItemSourceId))
             .Where(kvp => string.IsNullOrEmpty(_itemSearchQuery) || kvp.Key.Contains(_itemSearchQuery, StringComparison.OrdinalIgnoreCase))
             .OrderBy(kvp => kvp.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(kvp => kvp.Key)
             .ToList();
-
-        int col = 0;
-        foreach (var kvp in filteredTextures)
-        {
-            string key    = kvp.Key;
-            uint   texId  = kvp.Value;
-
-            // Apply search filter
-            if (!string.IsNullOrEmpty(_itemSearchQuery) &&
-                !key.Contains(_itemSearchQuery, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            bool isSel = _selectedTileKey == key;
-
-            if (col > 0) ImGui.SameLine();
-            if (col >= cols) { col = 0; }
-
-            // Highlight selected tile
-            if (isSel)
-                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.3f, 0.5f, 0.9f, 0.8f));
-
-            bool clicked = ImGui.ImageButton(
-                $"##tile_{key}",
-                new ImTextureRef(texId: (ulong)texId),
-                new Vector2(iconSize, iconSize),
-                new Vector2(0, 0),
-                new Vector2(1, 1));
-
-            if (isSel)
-                ImGui.PopStyleColor();
-
-            if (clicked)
-                _selectedTileKey = key;
-
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(key);
-
-            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-            {
-                _selectedTileKey = key;
-                TrySpawnItem();
-            }
-
-            col++;
-            if (col >= cols) col = 0;
-        }
-
-        ImGui.EndChild(); // ##tileGrid
-        ImGui.EndChild(); // ##itemsObjects
     }
 
-    private void RenderItemsVariantsColumn(float columnWidth)
+    /// <summary>Double-click activation of a tile (selects it and spawns).</summary>
+    public void ActivateTile(string tileKey)
     {
-        ImGui.BeginChild("##itemsVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Options");
-        ImGui.Separator();
-
-        // 3D toggle
-        ImGui.Checkbox("3D (extruded)", ref _item3DMode);
-        ImGui.Spacing();
-        ImGui.TextDisabled(_item3DMode
-            ? "Each pixel is extruded\nto form a hull mesh."
-            : "Flat double-sided plane\nwith the tile texture.");
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        if (ImGui.Button("Load custom image...##itemCustom", new Vector2(-1, 0)))
-            ImportCustomItemImageFromDialog(selectInSpawnMenu: true);
-
-        ImGui.EndChild();
+        _selectedTileKey = tileKey ?? "";
+        TrySpawnItem();
     }
+
+    /// <summary>
+    /// Opens a native file dialog and registers the chosen image as a custom item
+    /// tile, selecting it in the Items tab. Returns the new tile key or null.
+    /// </summary>
+    public string? ImportCustomItemImage() => ImportCustomItemImageFromDialog(selectInSpawnMenu: true);
+
+
+
 
     private string? ImportCustomItemImageFromDialog(bool selectInSpawnMenu)
     {
-        if (Gl == null)
-            return null;
-
         var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
         if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
             return null;
@@ -1394,81 +1129,33 @@ public class SpawnMenu
         return string.IsNullOrWhiteSpace(sanitized) ? "custom_item" : sanitized;
     }
 
-    private void RenderItemsPreviewColumn()
+    // ── Blocks category API ────────────────────────────────────────────────────
+
+    /// <summary>Per-column search for the block list; setting it resets the block selection.</summary>
+    public string BlockSearchQuery
     {
-        ImGui.BeginChild("##itemsPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Preview");
-        ImGui.Separator();
-
-        if (!string.IsNullOrEmpty(_selectedTileKey))
+        get => _blockSearchQuery;
+        set
         {
-            bool hasGeometry = _previewMeshes.Count > 0 &&
-                               _previewRenderer != null &&
-                               _previewRenderer.ColorTexture != 0;
-
-            ImGui.Spacing();
-            RenderPreviewImage(hasGeometry);
-            ImGui.Spacing();
-
-            string atlasLabel = _itemAtlasSource == ItemAtlasSource.ItemAtlas ? "ItemAtlas" : "BlockAtlas";
-            CentreText($"{atlasLabel}[{_selectedTileKey}]");
-            ImGui.Spacing();
-            CentreText(_item3DMode ? "3D extruded" : "Flat plane");
-        }
-        else
-        {
-            ImGui.Spacing();
-            ImGui.TextDisabled("Select a tile\nto see a preview.");
-        }
-
-        ImGui.EndChild();
-    }
-
-    // ── Blocks category UI ────────────────────────────────────────────────────
-
-    private void RenderBlocksObjectsColumn(float columnWidth)
-    {
-        ImGui.BeginChild("##blocksObjects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Blocks");
-        ImGui.Separator();
-
-        bool blockSourceChanged = RenderResourcePackSelector(
-            "BlocksSource",
-            ref _spawnBlockSourceId,
-            "Source Mod:",
-            _availableSourceModIds);
-        if (blockSourceChanged && _selectedObjectIndex >= 0 && _selectedObjectIndex < BlockRegistry.Blocks.Count)
-        {
-            string selectedBlock = BlockRegistry.Blocks[_selectedObjectIndex];
-            if (!IsBlockFromSelectedSource(selectedBlock, _spawnBlockSourceId))
-            {
-                _selectedObjectIndex = -1;
-                _selectedVariantIndex = -1;
-                _currentVariants.Clear();
-            }
-        }
-
-        ImGui.Spacing();
-        ImGui.Separator();
-
-        // Per-column search (overrides the global search for this column)
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##blockSearch", "Filter blocks...", ref _blockSearchBuffer, 128))
-        {
-            _blockSearchQuery    = _blockSearchBuffer;
+            string normalized = value ?? "";
+            if (_blockSearchQuery == normalized) return;
+            _blockSearchQuery    = normalized;
             _selectedObjectIndex  = -1;
             _selectedVariantIndex = -1;
             _currentVariants.Clear();
         }
+    }
 
-        ImGui.Separator();
-
-        ImGui.BeginChild("##blockList", new Vector2(0, 0));
-
+    /// <summary>
+    /// Returns the blocks shown in the Blocks tab for the current source mod and
+    /// search filters, as (registry index, block name) pairs.
+    /// </summary>
+    public List<(int Index, string Name)> GetFilteredBlocks()
+    {
+        var result = new List<(int, string)>();
         var blockList = BlockRegistry.Blocks;
-        string query  = string.IsNullOrEmpty(_blockSearchQuery) ? _searchQuery : _blockSearchQuery;
+        string query = string.IsNullOrEmpty(_blockSearchQuery) ? _searchQuery : _blockSearchQuery;
 
-        int displayIndex = 0;
         for (int i = 0; i < blockList.Count; i++)
         {
             string name = blockList[i];
@@ -1479,144 +1166,82 @@ public class SpawnMenu
                 !name.Contains(query, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            bool sel = _selectedObjectIndex == i;
-            if (ImGui.Selectable(name + "##blk" + i, sel))
-            {
-                _selectedObjectIndex  = i;
-                _selectedVariantIndex = -1;
-                OnBlockSelected(name);
-            }
-
-            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-            {
-                _selectedObjectIndex = i;
-                OnBlockSelected(name);
-                // Auto-select first variant
-                if (_currentVariants.Count > 0)
-                    _selectedVariantIndex = 0;
-                TrySpawn();
-            }
-
-            displayIndex++;
+            result.Add((i, name));
         }
 
-        if (displayIndex == 0)
-            ImGui.TextDisabled("(no blocks found)");
-
-        ImGui.EndChild(); // ##blockList
-        ImGui.EndChild(); // ##blocksObjects
+        return result;
     }
 
-    private void RenderBlocksVariantsColumn(float columnWidth)
+    /// <summary>Single-click selection of a block (index into <see cref="BlockRegistry.Blocks"/>).</summary>
+    public void SelectBlock(int registryIndex)
     {
-        ImGui.BeginChild("##blocksVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Variants");
-        ImGui.Separator();
+        if (registryIndex < 0 || registryIndex >= BlockRegistry.Blocks.Count) return;
 
-        RenderResourcePackSelector("BlocksResourcePack", ref _spawnResourcePackId, "Resource Pack:");
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
+        _selectedObjectIndex  = registryIndex;
+        _selectedVariantIndex = -1;
+        OnBlockSelected(BlockRegistry.Blocks[registryIndex]);
+    }
 
+    /// <summary>Double-click activation of a block (selects it, defaults to the first variant, spawns).</summary>
+    public void ActivateBlock(int registryIndex)
+    {
+        if (registryIndex < 0 || registryIndex >= BlockRegistry.Blocks.Count) return;
+
+        _selectedObjectIndex = registryIndex;
+        OnBlockSelected(BlockRegistry.Blocks[registryIndex]);
         if (_currentVariants.Count > 0)
-        {
-            for (int i = 0; i < _currentVariants.Count; i++)
-            {
-                bool sel = _selectedVariantIndex == i;
-                if (ImGui.Selectable(_currentVariants[i] + "##bvar" + i, sel))
-                    _selectedVariantIndex = i;
-
-                if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-                {
-                    _selectedVariantIndex = i;
-                    TrySpawn();
-                }
-            }
-        }
-        else if (_selectedObjectIndex >= 0)
-        {
-            ImGui.Spacing();
-            ImGui.TextDisabled("(no variants)");
-        }
-        else
-        {
-            ImGui.Spacing();
-            ImGui.TextDisabled("Select a block\nto see its variants.");
-        }
-
-        ImGui.EndChild();
+            _selectedVariantIndex = 0;
+        TrySpawn();
     }
 
-    private void RenderBlocksPreviewColumn()
+    /// <summary>Name of the currently selected block, or null.</summary>
+    public string? SelectedBlockName =>
+        _selectedObjectIndex >= 0 && _selectedObjectIndex < BlockRegistry.Blocks.Count
+            ? BlockRegistry.Blocks[_selectedObjectIndex]
+            : null;
+
+    /// <summary>Variant key of the current block selection (first variant when none chosen), or null.</summary>
+    public string? SelectedBlockVariantKey
     {
-        ImGui.BeginChild("##blocksPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Preview");
-        ImGui.Separator();
-
-        if (_selectedObjectIndex >= 0 && _selectedObjectIndex < BlockRegistry.Blocks.Count)
+        get
         {
-            string blockName = BlockRegistry.Blocks[_selectedObjectIndex];
-            int variantIdx   = _selectedVariantIndex >= 0 ? _selectedVariantIndex : 0;
-            var variants     = BlockRegistry.GetVariants(blockName);
-
-            if (variants.Count > 0 && variantIdx < variants.Count)
-            {
-                bool hasGeometry = (_previewMeshes.Count > 0 || _previewCharacter != null) &&
-                                   _previewRenderer != null &&
-                                   _previewRenderer.ColorTexture != 0;
-
-                ImGui.Spacing();
-                RenderPreviewImage(hasGeometry);
-                ImGui.Spacing();
-                CentreText(blockName);
-
-                string varKey = variants[variantIdx].VariantKey;
-                if (!string.IsNullOrEmpty(varKey))
-                {
-                    ImGui.Spacing();
-                    CentreText(varKey);
-                }
-            }
-            else
-            {
-                ImGui.Spacing();
-                ImGui.TextDisabled("(no variants)");
-            }
+            string? blockName = SelectedBlockName;
+            if (blockName == null) return null;
+            var variants = BlockRegistry.GetVariants(blockName);
+            int variantIdx = _selectedVariantIndex >= 0 ? _selectedVariantIndex : 0;
+            return variants.Count > 0 && variantIdx < variants.Count
+                ? variants[variantIdx].VariantKey
+                : null;
         }
-        else
-        {
-            ImGui.Spacing();
-            ImGui.TextDisabled("Select a block\nto see a preview.");
-        }
-
-        ImGui.EndChild();
     }
 
-    // ── Characters category UI ────────────────────────────────────────────────
+    // ── Characters category API ──────────────────────────────────────────────
 
-    private void RenderCharactersObjectsColumn(float columnWidth)
+    /// <summary>Per-column search for the character list; setting it resets the selection.</summary>
+    public string CharSearchQuery
     {
-        ImGui.BeginChild("##charObjects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Characters");
-        ImGui.Separator();
-
-        // Per-column search
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##charSearch", "Filter characters...", ref _charSearchBuffer, 128))
+        get => _charSearchQuery;
+        set
         {
-            _charSearchQuery     = _charSearchBuffer;
+            string normalized = value ?? "";
+            if (_charSearchQuery == normalized) return;
+            _charSearchQuery     = normalized;
             _selectedObjectIndex  = -1;
             _selectedVariantIndex = -1;
         }
+    }
 
-        ImGui.Separator();
-
-        ImGui.BeginChild("##charList", new Vector2(0, 0));
-
+    /// <summary>
+    /// Returns the characters shown in the Characters tab for the current search
+    /// filters, as (registry index, display label) pairs. Labels include a
+    /// [group] prefix when the character lives in a sub-folder.
+    /// </summary>
+    public List<(int Index, string Label)> GetFilteredCharacters()
+    {
+        var result = new List<(int, string)>();
         var chars = CharacterRegistry.Characters;
         string query = string.IsNullOrEmpty(_charSearchQuery) ? _searchQuery : _charSearchQuery;
 
-        int displayIndex = 0;
         for (int i = 0; i < chars.Count; i++)
         {
             var entry = chars[i];
@@ -1626,241 +1251,98 @@ public class SpawnMenu
                 !entry.Group.Contains(query, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // Show a group prefix when the character lives in a sub-folder
             string label = string.IsNullOrEmpty(entry.Group)
                 ? entry.Name
                 : $"[{entry.Group}] {entry.Name}";
 
-            bool sel = _selectedObjectIndex == i;
-            if (ImGui.Selectable(label + "##char" + i, sel))
-            {
-                _selectedObjectIndex       = i;
-                _selectedVariantIndex      = -1;
-                _selectedCharTextureIndex  = -1;
-                _customCharTexturePath     = "";
-                _currentVariants.Clear();
-            }
-
-            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-            {
-                _selectedObjectIndex = i;
-                TrySpawn();
-            }
-
-            displayIndex++;
+            result.Add((i, label));
         }
 
-        if (displayIndex == 0)
-            ImGui.TextDisabled(chars.Count == 0
-                ? "(no characters found –\nplace models in a\n'characters/' folder)"
-                : "(no matches)");
-
-        ImGui.EndChild(); // ##charList
-        ImGui.EndChild(); // ##charObjects
+        return result;
     }
 
-    // ── Characters variants column ────────────────────────────────────────────
+    /// <summary>Single-click selection of a character (index into <see cref="CharacterRegistry.Characters"/>).</summary>
+    public void SelectCharacter(int registryIndex)
+    {
+        if (registryIndex < 0 || registryIndex >= CharacterRegistry.Characters.Count) return;
+
+        _selectedObjectIndex       = registryIndex;
+        _selectedVariantIndex      = -1;
+        _selectedCharTextureIndex  = -1;
+        _customCharTexturePath     = "";
+        _currentVariants.Clear();
+    }
+
+    /// <summary>Double-click activation of a character (selects it and spawns).</summary>
+    public void ActivateCharacter(int registryIndex)
+    {
+        if (registryIndex < 0 || registryIndex >= CharacterRegistry.Characters.Count) return;
+
+        _selectedObjectIndex = registryIndex;
+        TrySpawn();
+    }
+
+    /// <summary>The currently selected character entry, or null.</summary>
+    public CharacterEntry? SelectedCharacterEntry =>
+        _selectedObjectIndex >= 0 && _selectedObjectIndex < CharacterRegistry.Characters.Count
+            ? CharacterRegistry.Characters[_selectedObjectIndex]
+            : null;
+
+    /// <summary>Index into the selected character's texture variants (-1 = default/first).</summary>
+    public int SelectedCharTextureIndex
+    {
+        get => _selectedCharTextureIndex;
+        set => _selectedCharTextureIndex = value;
+    }
+
+    /// <summary>Path picked for the "Custom" texture variant ("" = none chosen).</summary>
+    public string CustomCharTexturePath => _customCharTexturePath;
 
     /// <summary>
-    /// Renders the Variants column for the Characters category.
-    /// Shows a texture selector when the selected character has a
-    /// <c>textures.nux</c> manifest; otherwise shows a "(not available)" notice.
+    /// Opens a native file dialog to pick the custom character texture.
+    /// Returns true when a file was chosen.
     /// </summary>
-    private void RenderCharactersVariantsColumn(float columnWidth)
+    public bool BrowseCustomCharTexture()
     {
-        ImGui.BeginChild("##charVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Texture");
-        ImGui.Separator();
+        var result = Dialog.FileOpen("png,jpg,jpeg,tga,bmp");
+        if (!result.IsOk || string.IsNullOrEmpty(result.Path))
+            return false;
 
-        if (_selectedObjectIndex >= 0 &&
-            _selectedObjectIndex < CharacterRegistry.Characters.Count)
-        {
-            var entry = CharacterRegistry.Characters[_selectedObjectIndex];
-
-            if (entry.TextureVariants.Count > 0)
-            {
-                ImGui.Spacing();
-                ImGui.Text("Skin:");
-
-                // Build the names array for the combo box
-                string[] variantNames = entry.TextureVariants
-                    .Select(v => v.Name)
-                    .ToArray();
-
-                // Default to first variant (index 0) when nothing is explicitly chosen
-                int comboIndex = _selectedCharTextureIndex >= 0 &&
-                                 _selectedCharTextureIndex < variantNames.Length
-                    ? _selectedCharTextureIndex
-                    : 0;
-
-                ImGui.SetNextItemWidth(-1);
-                if (ImGui.Combo("##charTexture", ref comboIndex, variantNames, variantNames.Length))
-                    _selectedCharTextureIndex = comboIndex;
-
-                ImGui.Spacing();
-
-                // Show each variant as a selectable list entry as well
-                for (int i = 0; i < entry.TextureVariants.Count; i++)
-                {
-                    bool sel = (i == comboIndex);
-                    if (ImGui.Selectable(entry.TextureVariants[i].Name + "##ctex" + i, sel))
-                        _selectedCharTextureIndex = i;
-
-                    if (ImGui.IsItemHovered() &&
-                        ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-                    {
-                        _selectedCharTextureIndex = i;
-                        TrySpawn();
-                    }
-                }
-
-                // ── Custom variant file picker ─────────────────────────────
-                var selectedVariant = entry.TextureVariants[comboIndex];
-                if (selectedVariant.IsCustom)
-                {
-                    ImGui.Spacing();
-                    ImGui.Separator();
-                    ImGui.Spacing();
-
-                    if (ImGui.Button("Browse...##charTexBrowse", new Vector2(-1, 0)))
-                    {
-                        var result = Dialog.FileOpen("png,jpg,jpeg,tga,bmp");
-                        if (result.IsOk && !string.IsNullOrEmpty(result.Path))
-                            _customCharTexturePath = result.Path;
-                    }
-
-                    ImGui.Spacing();
-
-                    if (!string.IsNullOrEmpty(_customCharTexturePath))
-                    {
-                        // Show just the filename — full path is too long for the column
-                        string fileName = Path.GetFileName(_customCharTexturePath);
-                        ImGui.TextDisabled(fileName);
-                        if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip(_customCharTexturePath);
-                    }
-                    else
-                    {
-                        ImGui.TextDisabled("No file chosen.");
-                    }
-                }
-            }
-            else
-            {
-                ImGui.Spacing();
-                ImGui.TextDisabled("(no texture variants)");
-            }
-        }
-        else
-        {
-            ImGui.Spacing();
-            ImGui.TextDisabled("Select a character\nto see textures.");
-        }
-
-        ImGui.EndChild();
+        _customCharTexturePath = result.Path;
+        return true;
     }
 
-    // ── Particle Spawners category UI ───────────────────────────────────────
+    /// <summary>Double-click activation of a character texture variant (selects it and spawns).</summary>
+    public void ActivateCharTexture(int variantIndex)
+    {
+        _selectedCharTextureIndex = variantIndex;
+        TrySpawn();
+    }
 
-    private sealed class ParticleLibraryOption
+    // ── Particle Spawners category API ───────────────────────────────────
+
+    public sealed class ParticleLibraryOption
     {
         public string Id = "";
         public string Name = "";
         public string ObjectType = "";
     }
 
-    private void RenderParticleSpawnerObjectsColumn(float columnWidth)
+    /// <summary>Search filter for the particle source (object library) list.</summary>
+    public string ParticleLibrarySearchQuery
     {
-        ImGui.BeginChild("##particleSpawnerObjects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Objects");
-        ImGui.Separator();
-
-        var filtered = GetFilteredObjects();
-        for (int i = 0; i < filtered.Count; i++)
-        {
-            bool selected = _selectedObjectIndex == i;
-            if (ImGui.Selectable(filtered[i] + "##particleSpawnerObj" + i, selected))
-            {
-                _selectedObjectIndex = i;
-                _selectedVariantIndex = -1;
-            }
-
-            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && CanSpawn())
-            {
-                _selectedObjectIndex = i;
-                TrySpawn();
-            }
-        }
-
-        ImGui.EndChild();
+        get => _particleLibrarySearchQuery;
+        set => _particleLibrarySearchQuery = value ?? "";
     }
 
-    private void RenderParticleSpawnerVariantsColumn(float columnWidth)
+    /// <summary>Selected object-library entry id used as the particle source ("" = none).</summary>
+    public string SelectedParticleLibraryEntryId
     {
-        ImGui.BeginChild("##particleSpawnerVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Particle Source");
-        ImGui.Separator();
-
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##particleSourceSearch", "Search object library...", ref _particleLibrarySearchBuffer, 128))
-            _particleLibrarySearchQuery = _particleLibrarySearchBuffer;
-
-        ImGui.Separator();
-
-        var options = GetParticleLibraryOptions();
-        string query = _particleLibrarySearchQuery?.Trim() ?? "";
-        int shown = 0;
-
-        ImGui.BeginChild("##particleSourceList", new Vector2(0, 0));
-        foreach (var option in options)
-        {
-            if (!string.IsNullOrEmpty(query) &&
-                option.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0 &&
-                option.ObjectType.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0)
-                continue;
-
-            shown++;
-            bool selected = string.Equals(_selectedParticleLibraryEntryId, option.Id, StringComparison.OrdinalIgnoreCase);
-            string label = $"{option.Name} [{option.ObjectType}]##particleSource_{option.Id}";
-            if (ImGui.Selectable(label, selected))
-                _selectedParticleLibraryEntryId = option.Id;
-
-            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && CanSpawn())
-            {
-                _selectedParticleLibraryEntryId = option.Id;
-                TrySpawn();
-            }
-        }
-
-        if (shown == 0)
-            ImGui.TextDisabled(options.Count == 0 ? "No object library entries available." : "No matches.");
-
-        ImGui.EndChild();
-        ImGui.EndChild();
+        get => _selectedParticleLibraryEntryId;
+        set => _selectedParticleLibraryEntryId = value ?? "";
     }
 
-    private void RenderParticleSpawnerPreviewColumn()
-    {
-        ImGui.BeginChild("##particleSpawnerPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Preview");
-        ImGui.Separator();
-
-        ImGui.Spacing();
-        CentreText("Particle Spawner");
-        ImGui.Spacing();
-
-        var selected = GetParticleLibraryOptions().FirstOrDefault(o =>
-            string.Equals(o.Id, _selectedParticleLibraryEntryId, StringComparison.OrdinalIgnoreCase));
-
-        if (selected != null)
-            CentreText($"Source: {selected.Name}");
-        else
-            ImGui.TextDisabled("No source selected.\nYou can assign one later\nin Properties > Particles.");
-
-        ImGui.EndChild();
-    }
-
-    private List<ParticleLibraryOption> GetParticleLibraryOptions()
+    public List<ParticleLibraryOption> GetParticleLibraryOptions()
     {
         EnsureObjectLibraryInitializedForSpawn();
 
@@ -1964,84 +1446,8 @@ public class SpawnMenu
 
     // ── Shared preview helpers ────────────────────────────────────────────────
 
-    /// <summary>
-    /// Draws the preview FBO texture (if <paramref name="hasGeometry"/> is true) or a
-    /// "no preview" placeholder.  The image is centred in the available horizontal space
-    /// and sized to fit both the column width and a maximum of 180 px.
-    /// </summary>
-    private unsafe void RenderPreviewImage(bool hasGeometry)
-    {
-        float avail = ImGui.GetContentRegionAvail().X - 8f;
-        float size  = Math.Min(avail, 180f);
-
-        float indent = (ImGui.GetContentRegionAvail().X - size) / 2f;
-        if (indent > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + indent);
-
-        if (hasGeometry && _previewRenderer != null)
-        {
-            // OpenGL textures are stored bottom-up; flip UV Y so the image is right-side-up.
-            ImGui.Image(
-                new ImTextureRef(texId: (ulong)_previewRenderer.ColorTexture),
-                new Vector2(size, size),
-                new Vector2(0, 1),   // uv0: (0,1) = top-left in GL coords
-                new Vector2(1, 0));  // uv1: (1,0) = bottom-right in GL coords
-
-            // Allow dragging on the preview image to orbit the camera
-            if (ImGui.IsItemActive() && ImGui.IsMouseDragging(ImGuiMouseButton.Left))
-            {
-                var delta = ImGui.GetMouseDragDelta(ImGuiMouseButton.Left);
-                ImGui.ResetMouseDragDelta(ImGuiMouseButton.Left);
-                _previewRenderer.Orbit(delta.X * 0.01f, -delta.Y * 0.01f);
-            }
-        }
-        else
-        {
-            // Placeholder rectangle
-            var drawList = ImGui.GetWindowDrawList();
-            var pos      = ImGui.GetCursorScreenPos();
-            drawList.AddRectFilled(pos, new Vector2(pos.X + size, pos.Y + size),
-                                   0xFF222226, 4f);
-            drawList.AddRect(pos, new Vector2(pos.X + size, pos.Y + size),
-                             0xFF555566, 4f, 0, 1.5f);
-
-            // "no preview" text centred inside the box
-            const string msg = "no preview";
-            var ts = ImGui.CalcTextSize(msg);
-            ImGui.SetCursorScreenPos(new Vector2(
-                pos.X + (size - ts.X) * 0.5f,
-                pos.Y + (size - ts.Y) * 0.5f));
-            ImGui.TextDisabled(msg);
-            // Advance cursor past the rectangle
-            ImGui.SetCursorScreenPos(new Vector2(pos.X, pos.Y + size));
-            ImGui.Dummy(new Vector2(size, 0));
-        }
-    }
-
-    /// <summary>Renders <paramref name="text"/> centred in the current column.</summary>
-    private static void CentreText(string text)
-    {
-        if (string.IsNullOrEmpty(text)) return;
-        float lw     = ImGui.CalcTextSize(text).X;
-        float indent = (ImGui.GetContentRegionAvail().X - lw) / 2f;
-        if (indent > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + indent);
-        ImGui.TextDisabled(text);
-    }
-
-    private void RenderBottomBar()
-    {
-        float buttonWidth = 110f;
-        ImGui.SetCursorPosX(ImGui.GetContentRegionAvail().X - buttonWidth + ImGui.GetCursorPosX());
-
-        bool canSpawn = CanSpawn();
-        if (!canSpawn) ImGui.BeginDisabled();
-
-        if (ImGui.Button("Spawn", new Vector2(buttonWidth, 28)))
-            TrySpawn();
-
-        if (!canSpawn) ImGui.EndDisabled();
-    }
-
-    private bool CanSpawn()
+    /// <summary>True when the current selection can be spawned (enables the Spawn button).</summary>
+    public bool CanSpawn()
     {
         if (_selectedCategory == "Items")
             return !string.IsNullOrEmpty(_selectedTileKey);
@@ -2119,11 +1525,7 @@ public class SpawnMenu
             _currentVariants.Add("Load texture...");
             _selectedPrimitiveCubeMapped = false;
             // Reset texture if switching away from textured primitive
-            if (_selectedPrimitiveTextureId != 0)
-            {
-                Gl?.DeleteTexture(_selectedPrimitiveTextureId);
-                _selectedPrimitiveTextureId = 0;
-            }
+            _selectedPrimitiveTextureId = 0;
             _selectedPrimitiveTexturePath = "";
             _selectedVariantIndex = 0; // Select "None" by default
         }
@@ -2131,11 +1533,7 @@ public class SpawnMenu
         {
             _currentVariants.Clear();
             // Clean up texture if switching to non-textured primitive
-            if (_selectedPrimitiveTextureId != 0)
-            {
-                Gl?.DeleteTexture(_selectedPrimitiveTextureId);
-                _selectedPrimitiveTextureId = 0;
-            }
+            _selectedPrimitiveTextureId = 0;
             _selectedPrimitiveTexturePath = "";
         }
     }
@@ -2188,7 +1586,7 @@ public class SpawnMenu
         string pathToSpawn = ResolveSchematicPathForProject(result.Path);
         var root = SpawnSchematicFromPathInteractive(pathToSpawn, _spawnResourcePackId);
         if (root != null)
-            _isOpen = false;
+            RequestClose();
     }
 
     private string ResolveSchematicPathForProject(string sourcePath)
@@ -2250,7 +1648,7 @@ public class SpawnMenu
                 break;
             default:
             {
-                root = AssimpModelLoader.Load(Gl, pathToSpawn);
+                root = AssimpModelLoader.Load(pathToSpawn);
 
                 // AssimpModelLoader always uses whatever diffuse/embedded texture
                 // is baked into the GLB/GLTF/etc. material — it has no concept of
@@ -2396,7 +1794,7 @@ public class SpawnMenu
     private SceneObject? SpawnMiObjectItemViaSpawnMenu(MiTemplate template, MiTimeline timeline,
         IReadOnlyDictionary<string, MiResource> resourceInfoById, string objectDirectory)
     {
-        if (Viewport == null || Gl == null || template?.Item == null || string.IsNullOrWhiteSpace(template.Item.Tex))
+        if (Viewport == null || template?.Item == null || string.IsNullOrWhiteSpace(template.Item.Tex))
             return null;
         if (!resourceInfoById.TryGetValue(template.Item.Tex, out var resource) || string.IsNullOrWhiteSpace(resource?.Filename))
             return null;
@@ -2536,7 +1934,7 @@ public class SpawnMenu
         if (_customModelPaths.TryGetValue(objectName, out string? path))
         {
             SpawnCustomModelFromPath(path);
-            _isOpen = false;
+            RequestClose();
         }
     }
 
@@ -2561,69 +1959,60 @@ public class SpawnMenu
             _pendingSchematicRetryPath = filePath;
             _pendingSchematicRetryResourcePackId = resourcePackId;
             _pendingSchematicRetryError = _lastSchematicLoadError ?? "The file could not be loaded.";
+            SchematicRetryPromptChanged?.Invoke();
         }
         return root;
     }
 
+    // ── Schematic retry prompt API ──────────────────────────────────────────
+
+    /// <summary>Raised when a schematic load failure prompt should be shown or hidden.</summary>
+    public event Action? SchematicRetryPromptChanged;
+
+    /// <summary>True while a failed schematic load is awaiting a Retry/Cancel decision.</summary>
+    public bool SchematicRetryPending => _pendingSchematicRetryPath != null;
+
+    /// <summary>File name of the schematic that failed to load, or null.</summary>
+    public string? SchematicRetryFileName =>
+        _pendingSchematicRetryPath != null ? Path.GetFileName(_pendingSchematicRetryPath) : null;
+
+    /// <summary>Error description for the pending schematic load failure, or null.</summary>
+    public string? SchematicRetryError => _pendingSchematicRetryError;
+
     /// <summary>
-    /// Renders the "schematic failed to load, try again?" confirmation popup.
-    /// Safe to call every frame; it only opens/draws when a retry is pending.
+    /// Retries the pending schematic load. Returns true on success (prompt cleared,
+    /// menu close requested); false when it failed again (prompt stays, error updated).
     /// </summary>
-    private void RenderSchematicLoadRetryDialog()
+    public bool RetrySchematicLoad()
     {
-        if (_pendingSchematicRetryPath != null)
-            ImGui.OpenPopup("##schematicLoadRetryConfirm");
+        if (_pendingSchematicRetryPath == null)
+            return false;
 
-        ImGuiViewportPtr mainViewport = ImGui.GetMainViewport();
-        Vector2 center = new Vector2(
-            mainViewport.WorkPos.X + mainViewport.WorkSize.X * 0.5f,
-            mainViewport.WorkPos.Y + mainViewport.WorkSize.Y * 0.5f);
-        ImGui.SetNextWindowPos(center, ImGuiCond.Appearing, new Vector2(0.5f, 0.5f));
-        ImGui.SetNextWindowViewport(mainViewport.ID);
-
-        bool popupOpen = true;
-        if (!ImGui.BeginPopupModal("##schematicLoadRetryConfirm", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
-            return;
-
-        if (_pendingSchematicRetryPath != null)
+        var root = SpawnSchematicFromPath(_pendingSchematicRetryPath, _pendingSchematicRetryResourcePackId);
+        if (root == null)
         {
-            string fileName = Path.GetFileName(_pendingSchematicRetryPath);
-            ImGui.TextWrapped($"Failed to load schematic '{fileName}'.");
-            ImGui.TextWrapped(_pendingSchematicRetryError ?? "The file contains invalid data.");
-            ImGui.Separator();
-            ImGui.TextWrapped("Do you want to try loading it again?");
-
-            if (ImGui.Button("Retry", new Vector2(120, 0)))
-            {
-                string retryPath = _pendingSchematicRetryPath;
-                string retryPack = _pendingSchematicRetryResourcePackId;
-
-                var root = SpawnSchematicFromPath(retryPath, retryPack);
-                if (root == null)
-                {
-                    // Still failing — keep the popup open with the fresh error.
-                    _pendingSchematicRetryError = _lastSchematicLoadError ?? "The file could not be loaded.";
-                }
-                else
-                {
-                    _pendingSchematicRetryPath = null;
-                    _pendingSchematicRetryError = null;
-                    _isOpen = false;
-                    ImGui.CloseCurrentPopup();
-                }
-            }
-
-            ImGui.SameLine();
-            if (ImGui.Button("Cancel", new Vector2(120, 0)))
-            {
-                Console.Error.WriteLine($"Gave up loading schematic: {_pendingSchematicRetryPath}");
-                _pendingSchematicRetryPath = null;
-                _pendingSchematicRetryError = null;
-                ImGui.CloseCurrentPopup();
-            }
+            _pendingSchematicRetryError = _lastSchematicLoadError ?? "The file could not be loaded.";
+            SchematicRetryPromptChanged?.Invoke();
+            return false;
         }
 
-        ImGui.EndPopup();
+        _pendingSchematicRetryPath = null;
+        _pendingSchematicRetryError = null;
+        SchematicRetryPromptChanged?.Invoke();
+        RequestClose();
+        return true;
+    }
+
+    /// <summary>Dismisses the pending schematic retry prompt.</summary>
+    public void CancelSchematicRetry()
+    {
+        if (_pendingSchematicRetryPath == null)
+            return;
+
+        Console.Error.WriteLine($"Gave up loading schematic: {_pendingSchematicRetryPath}");
+        _pendingSchematicRetryPath = null;
+        _pendingSchematicRetryError = null;
+        SchematicRetryPromptChanged?.Invoke();
     }
 
     /// <summary>
@@ -2632,7 +2021,7 @@ public class SpawnMenu
     /// </summary>
     public SceneObject? SpawnSchematicFromPath(string filePath, string resourcePackId = "")
     {
-        if (Viewport == null || Gl == null) return null;
+        if (Viewport == null) return null;
 
         _lastSchematicLoadError = null;
 
@@ -2741,14 +2130,14 @@ public class SpawnMenu
                 variantCache);
 
             var merged = new Dictionary<MeshBatchKey, MeshAccumulator>();
-            // Texture id -> TerrainAtlas animation key, populated by EmitLiquidVoxel whenever it
+            // Texture -> TerrainAtlas animation key, populated by EmitLiquidVoxel whenever it
             // resolves an animated fluid texture (e.g. "water_still"), so the merged mesh for that
             // texture can be marked animated once assembly finishes below.
-            var liquidAnimKeys = new Dictionary<uint, string>();
-            // Texture id -> tint colour, populated by EmitLiquidVoxel for fluid textures that
+            var liquidAnimKeys = new Dictionary<Texture, string>();
+            // Texture -> tint colour, populated by EmitLiquidVoxel for fluid textures that
             // need a biome-independent default tint (currently just water) since the merged
             // mesh assembly below has no other per-block way to apply Mesh.Albedo.
-            var liquidTintColors = new Dictionary<uint, vec3>();
+            var liquidTintColors = new Dictionary<Texture, Vector3>();
             int placed = 0;
 
             for (int y = 0; y < height; y++)
@@ -2768,7 +2157,7 @@ public class SpawnMenu
 
                             foreach (var template in largePlacement.Info.Templates)
                             {
-                                var acc = GetOrCreateAccumulator(merged, template.TextureId, largePlacement.Info.AutoEmissionLevel);
+                                var acc = GetOrCreateAccumulator(merged, template.Texture, largePlacement.Info.AutoEmissionLevel);
                                 AppendTemplate(acc, template, largePlacement.Px, largePlacement.Py, largePlacement.Pz);
                             }
 
@@ -2833,7 +2222,7 @@ public class SpawnMenu
 
                         foreach (var template in info.Templates)
                         {
-                            var acc = GetOrCreateAccumulator(merged, template.TextureId, info.AutoEmissionLevel);
+                            var acc = GetOrCreateAccumulator(merged, template.Texture, info.AutoEmissionLevel);
                             AppendTemplate(acc, template, px, py, pz);
                         }
                     }
@@ -2848,35 +2237,35 @@ public class SpawnMenu
             }
 
             // Reverse lookup so every merged mesh (not just liquids) can be classified as
-            // alpha-blend vs cutout/opaque from its texture id alone — see Mesh.IsTranslucent.
+            // alpha-blend vs cutout/opaque from its texture alone — see Mesh.IsTranslucent.
             // Built once here rather than per-mesh since TerrainAtlas.Textures has no
-            // texture-id -> key index of its own.
-            var texIdToKey = new Dictionary<uint, string>();
+            // texture -> key index of its own.
+            var texToKey = new Dictionary<Texture, string>();
             foreach (var kv in TerrainAtlas.Textures)
-                texIdToKey[kv.Value] = kv.Key;
+                texToKey[kv.Value] = kv.Key;
 
             foreach (var kv in merged)
             {
                 var acc = kv.Value;
                 if (acc.Vertices.Count == 0) continue;
 
-                uint textureId = kv.Key.TextureId;
+                Texture? texture = kv.Key.Texture;
                 byte autoEmissionLevel = kv.Key.AutoEmissionLevel;
 
                 var mesh = new VeldridMesh(VeldridContext.Device)
                 {
-                    TextureId = textureId,
-                    AnimationKey = liquidAnimKeys.TryGetValue(textureId, out string? animKey) ? animKey : "",
-                    IsTranslucent = texIdToKey.TryGetValue(textureId, out string? texKey) &&
+                    AlbedoTexture = texture,
+                    AnimationKey = texture != null && liquidAnimKeys.TryGetValue(texture, out string? animKey) ? animKey : "",
+                    IsTranslucent = texture != null && texToKey.TryGetValue(texture, out string? texKey) &&
                                     TerrainAtlas.IsTextureTranslucent(texKey)
                 };
-                if (liquidTintColors.TryGetValue(textureId, out vec3 tint))
+                if (texture != null && liquidTintColors.TryGetValue(texture, out Vector3 tint))
                     mesh.Albedo = tint;
                 mesh.AutoEmissionLevel = autoEmissionLevel;
-                mesh.Vertices.AddRange(acc.Vertices);
-                mesh.Normals.AddRange(acc.Normals);
-                mesh.TexCoords.AddRange(acc.TexCoords);
-                mesh.Upload();
+                mesh.Vertices.AddRange(acc.Vertices.Select(v => new Vector3(v.x, v.y, v.z)));
+                mesh.Normals.AddRange(acc.Normals.Select(v => new Vector3(v.x, v.y, v.z)));
+                mesh.TexCoords.AddRange(acc.TexCoords.Select(v => new Vector2(v.x, v.y)));
+                mesh.Upload(VeldridContext.StandardOutputDescription);
                 root.AddMesh(mesh);
             }
 
@@ -3077,26 +2466,26 @@ public class SpawnMenu
 
     private readonly struct MeshBatchKey : IEquatable<MeshBatchKey>
     {
-        public readonly uint TextureId;
+        public readonly Texture? Texture;
         public readonly byte AutoEmissionLevel;
 
-        public MeshBatchKey(uint textureId, byte autoEmissionLevel)
+        public MeshBatchKey(Texture? texture, byte autoEmissionLevel)
         {
-            TextureId = textureId;
+            Texture = texture;
             AutoEmissionLevel = autoEmissionLevel;
         }
 
         public bool Equals(MeshBatchKey other) =>
-            TextureId == other.TextureId && AutoEmissionLevel == other.AutoEmissionLevel;
+            ReferenceEquals(Texture, other.Texture) && AutoEmissionLevel == other.AutoEmissionLevel;
 
         public override bool Equals(object? obj) => obj is MeshBatchKey other && Equals(other);
 
-        public override int GetHashCode() => HashCode.Combine(TextureId, AutoEmissionLevel);
+        public override int GetHashCode() => HashCode.Combine(Texture, AutoEmissionLevel);
     }
 
     private sealed class MeshTemplate
     {
-        public uint TextureId;
+        public Texture? Texture;
         public vec3[] Vertices = Array.Empty<vec3>();
         public vec3[] Normals = Array.Empty<vec3>();
         public vec2[] TexCoords = Array.Empty<vec2>();
@@ -3104,7 +2493,7 @@ public class SpawnMenu
 
     private sealed class CubeFaceInfo
     {
-        public required uint TextureId;
+        public required Texture Texture;
         public required vec2[] Uv; // TL, TR, BR, BL
     }
 
@@ -3611,10 +3000,10 @@ public class SpawnMenu
             if (string.IsNullOrEmpty(texKey)) return null;
 
             string resolvedTexKey = ResolveTerrainTextureKeyForPack(texKey, _spawnResourcePackId);
-            if (!TerrainAtlas.Textures.TryGetValue(resolvedTexKey, out uint texId) || texId == 0) return null;
+            if (!TerrainAtlas.Textures.TryGetValue(resolvedTexKey, out Texture? texId) || texId == null) return null;
 
             var uv = GetFaceUv(faceName, face.Uv, face.Rotation);
-            return new CubeFaceInfo { TextureId = texId, Uv = uv };
+            return new CubeFaceInfo { Texture = texId, Uv = uv };
         }
 
         var set = new CubeFaceSet
@@ -3719,10 +3108,10 @@ public class SpawnMenu
         {
             templates.Add(new MeshTemplate
             {
-                TextureId = mesh.TextureId,
-                Vertices = mesh.Vertices.ToArray(),
-                Normals = mesh.Normals.ToArray(),
-                TexCoords = mesh.TexCoords.ToArray()
+                Texture = mesh.AlbedoTexture,
+                Vertices = mesh.Vertices.Select(v => new vec3(v.X, v.Y, v.Z)).ToArray(),
+                Normals = mesh.Normals.Select(v => new vec3(v.X, v.Y, v.Z)).ToArray(),
+                TexCoords = mesh.TexCoords.Select(v => new vec2(v.X, v.Y)).ToArray()
             });
             mesh.Dispose();
         }
@@ -3740,21 +3129,21 @@ public class SpawnMenu
         return templates;
     }
 
-    private List<Mesh> BuildVariantMeshes(BlockVariantEntry variant)
+    private List<VeldridMesh> BuildVariantMeshes(BlockVariantEntry variant)
     {
-        var meshes = new List<Mesh>();
+        var meshes = new List<VeldridMesh>();
 
         AppendBlockMeshesForPreview(meshes, variant);
         if (variant.TopHalf != null)
         {
-            var top = new List<Mesh>();
+            var top = new List<VeldridMesh>();
             AppendBlockMeshesForPreview(top, variant.TopHalf);
-            var shift = new vec3(variant.PartOffsetX, variant.PartOffsetY, variant.PartOffsetZ);
+            var shift = new Vector3(variant.PartOffsetX, variant.PartOffsetY, variant.PartOffsetZ);
             foreach (var m in top)
             {
                 for (int i = 0; i < m.Vertices.Count; i++)
                     m.Vertices[i] += shift;
-                m.Upload();
+                m.Upload(VeldridContext.StandardOutputDescription);
             }
             meshes.AddRange(top);
         }
@@ -3936,10 +3325,10 @@ public class SpawnMenu
 
     private static MeshAccumulator GetOrCreateAccumulator(
         Dictionary<MeshBatchKey, MeshAccumulator> merged,
-        uint textureId,
+        Texture? texture,
         byte autoEmissionLevel)
     {
-        var key = new MeshBatchKey(textureId, autoEmissionLevel);
+        var key = new MeshBatchKey(texture, autoEmissionLevel);
         if (!merged.TryGetValue(key, out var acc))
         {
             acc = new MeshAccumulator();
@@ -4010,7 +3399,7 @@ public class SpawnMenu
         string faceName,
         byte autoEmissionLevel)
     {
-        var acc = GetOrCreateAccumulator(merged, face.TextureId, autoEmissionLevel);
+        var acc = GetOrCreateAccumulator(merged, face.Texture, autoEmissionLevel);
 
         vec3 v0;
         vec3 v1;
@@ -4174,8 +3563,8 @@ public class SpawnMenu
     /// </summary>
     private static void EmitLiquidVoxel(
         Dictionary<MeshBatchKey, MeshAccumulator> merged,
-        Dictionary<uint, string> animKeysOut,
-        Dictionary<uint, vec3> tintColorsOut,
+        Dictionary<Texture, string> animKeysOut,
+        Dictionary<Texture, Vector3> tintColorsOut,
         VariantRenderInfo?[] voxels,
         int[] liquidLevels,
         int width, int height, int length,
@@ -4237,9 +3626,9 @@ public class SpawnMenu
         string stillKey = ResolveTerrainTextureKeyForPack(blockName + "_still", resourcePackId);
         string flowKey = ResolveTerrainTextureKeyForPack(blockName + "_flow", resourcePackId);
 
-        if (!TerrainAtlas.Textures.TryGetValue(stillKey, out uint stillTex) || stillTex == 0)
+        if (!TerrainAtlas.Textures.TryGetValue(stillKey, out Texture? stillTex) || stillTex == null)
             return;
-        if (!TerrainAtlas.Textures.TryGetValue(flowKey, out uint flowTex) || flowTex == 0)
+        if (!TerrainAtlas.Textures.TryGetValue(flowKey, out Texture? flowTex) || flowTex == null)
             flowTex = stillTex;
 
         if (TerrainAtlas.AnimatedTextures.ContainsKey(stillKey)) animKeysOut[stillTex] = stillKey;
@@ -4249,7 +3638,7 @@ public class SpawnMenu
         // time; apply the same biome-independent default used for spawn-menu-placed water
         // (see MinecraftModelMesh.TryGetDefaultBlockTint) since this schematic path builds
         // its own merged Mesh instances instead of going through MinecraftModelMesh.Build.
-        if (MinecraftModelMesh.TryGetDefaultBlockTint(blockName, out vec3 tint))
+        if (MinecraftModelMesh.TryGetDefaultBlockTint(blockName, out Vector3 tint))
         {
             tintColorsOut[stillTex] = tint;
             tintColorsOut[flowTex] = tint;
@@ -4850,49 +4239,15 @@ public class SpawnMenu
     }
 
     /// <summary>
-    /// Loads a texture from the given file path and creates an OpenGL texture.
-    /// Supports PNG, JPG, BMP, TGA, GIF, WebP, and TIFF formats with RGBA color components.
-    /// Images are flipped vertically on load to match OpenGL conventions.
+    /// Loads a texture file into the shared Veldrid texture registry and returns
+    /// its id (0 on failure). Supports PNG, JPG, BMP, TGA, GIF, WebP, and TIFF.
     /// </summary>
-    private unsafe uint LoadPrimitiveTextureFromFile(string filePath)
+    private static uint LoadPrimitiveTextureFromFile(string filePath)
     {
-        if (Gl == null || !File.Exists(filePath))
+        if (!File.Exists(filePath))
             return 0;
 
-        try
-        {
-            // Flip image vertically on load for OpenGL Y-axis convention
-            StbImage.stbi_set_flip_vertically_on_load(1);
-            
-            var bytes = File.ReadAllBytes(filePath);
-            ImageResult img = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
-            
-            // Reset to default behavior
-            StbImage.stbi_set_flip_vertically_on_load(0);
-
-            uint tex = Gl.GenTexture();
-            Gl.BindTexture(GLEnum.Texture2D, tex);
-
-            fixed (byte* p = img.Data)
-                Gl.TexImage2D(GLEnum.Texture2D, 0, (int)GLEnum.Rgba,
-                    (uint)img.Width, (uint)img.Height,
-                    0, GLEnum.Rgba, GLEnum.UnsignedByte, p);
-
-            // Use linear filtering for better image quality
-            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
-            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
-            // Allow wrapping for tileable textures
-            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.Repeat);
-            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.Repeat);
-            Gl.BindTexture(GLEnum.Texture2D, 0);
-
-            return tex;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"Failed to load primitive texture '{filePath}': {ex.Message}");
-            return 0;
-        }
+        return MineImatorLoader.Instance.LoadTextureFromFile(filePath);
     }
 
     /// <summary>
@@ -4930,7 +4285,8 @@ public class SpawnMenu
 
     // ── Spawn logic ───────────────────────────────────────────────────────────
 
-    private void TrySpawn()
+    /// <summary>Spawns whatever the current selection is (the "Spawn" button action).</summary>
+    public void TrySpawn()
     {
         if (_selectedCategory == "Items")
         {
@@ -4968,7 +4324,7 @@ public class SpawnMenu
         if (_selectedObjectIndex < 0 || _selectedObjectIndex >= filtered.Count) return;
 
         SpawnObject(filtered[_selectedObjectIndex]);
-        _isOpen = false;
+        RequestClose();
     }
 
     private void TrySpawnParticleSpawner()
@@ -4981,7 +4337,7 @@ public class SpawnMenu
         string fullName = nextNum > 1 ? $"{baseName}{nextNum}" : baseName;
 
         SpawnParticleSpawnerObject(fullName, _selectedParticleLibraryEntryId);
-        _isOpen = false;
+        RequestClose();
     }
 
     private void TrySpawnBlock()
@@ -5003,7 +4359,7 @@ public class SpawnMenu
 
         var variant = variants[variantIndex];
         SpawnBlockObject(blockName, variant, GetEffectiveBlockTextureSourceId());
-        _isOpen = false;
+        RequestClose();
     }
 
     private string GetEffectiveBlockTextureSourceId()
@@ -5045,14 +4401,14 @@ public class SpawnMenu
         }
 
         SpawnCustomModelFromPath(entry.FilePath, textureOverride);
-        _isOpen = false;
+        RequestClose();
     }
 
     private void TrySpawnItem()
     {
         if (string.IsNullOrEmpty(_selectedTileKey)) return;
         SpawnItemObject(_selectedTileKey, _itemAtlasSource, _item3DMode);
-        _isOpen = false;
+        RequestClose();
     }
 
     private void SpawnObject(string objectName)
@@ -5111,32 +4467,32 @@ public class SpawnMenu
     /// </summary>
     public SceneObject? SpawnItemObject(string tileKey, ItemAtlasSource atlasSource, bool is3D)
     {
-        if (Viewport == null || Gl == null) return null;
+        if (Viewport == null) return null;
 
         if (atlasSource == ItemAtlasSource.ItemAtlas)
             ItemsAtlas.EnsureProjectCustomTexturesLoaded();
 
-        // Resolve texture ID and pixel data from the appropriate atlas
-        uint tileTexId = 0;
+        // Resolve texture and pixel data from the appropriate atlas
+        Texture? tileTex = null;
         byte[]? tilePixels = null;
         int tileWidth;
         int tileHeight;
 
         if (atlasSource == ItemAtlasSource.ItemAtlas)
         {
-            ItemsAtlas.Textures.TryGetValue(tileKey, out tileTexId);
+            ItemsAtlas.Textures.TryGetValue(tileKey, out tileTex);
             ItemsAtlas.TilePixels.TryGetValue(tileKey, out tilePixels);
             ItemsAtlas.TryGetTileDimensions(tileKey, out tileWidth, out tileHeight);
         }
         else
         {
-            TerrainAtlas.Textures.TryGetValue(tileKey, out tileTexId);
+            TerrainAtlas.Textures.TryGetValue(tileKey, out tileTex);
             TerrainAtlas.TilePixels.TryGetValue(tileKey, out tilePixels);
             tileWidth = TerrainAtlas.TileSize;
             tileHeight = TerrainAtlas.TileSize;
         }
 
-        if (tileTexId == 0 || tilePixels == null) return null;
+        if (tileTex == null || tilePixels == null) return null;
 
         string atlasLabel = atlasSource == ItemAtlasSource.ItemAtlas ? "Item" : "Block";
         string baseName   = $"{atlasLabel}[{tileKey}]";
@@ -5157,8 +4513,7 @@ public class SpawnMenu
 
         int tileSize = Math.Max(tileWidth, tileHeight);
         var mesh = new ExtrudedItemMesh(
-            Gl,
-            tileTexId,
+            tileTex,
             tilePixels,
             is3D: is3D,
             tileSize: tileSize,
@@ -5252,16 +4607,13 @@ public class SpawnMenu
         obj.SetParticleSource(libraryEntryId, displayName);
         obj.AssignObjectId();
 
-        if (Gl != null)
+        var particlePickMesh = new CubeMesh
         {
-            var pickMesh = new CubeMesh(Gl)
-            {
-                Alpha = 0f,
-                Albedo = vec3.Zero,
-                PickOnly = true
-            };
-            obj.AddMesh(pickMesh);
-        }
+            Alpha = 0f,
+            Albedo = Vector3.Zero,
+            PickOnly = true
+        };
+        obj.AddMesh(particlePickMesh);
 
         Viewport.SceneObjects.Add(obj);
         return obj;
@@ -5311,53 +4663,50 @@ public class SpawnMenu
         // Load the Camera.glb mesh from embedded resources and attach it as the
         // visual representation.  We extract to a temp file because AssimpModelLoader
         // requires a file-system path.
-        if (Gl != null)
+        var cameraModelRoot = LoadEmbeddedCameraModel("Camera.glb");
+        if (cameraModelRoot != null)
         {
-            var cameraModelRoot = LoadEmbeddedCameraModel(Gl, "Camera.glb");
-            if (cameraModelRoot != null)
-            {
-                // Flatten visuals from the loaded hierarchy into the camera object.
-                FlattenVisualsInto(cameraModelRoot, obj);
+            // Flatten visuals from the loaded hierarchy into the camera object.
+            FlattenVisualsInto(cameraModelRoot, obj);
 
-                // Mark every camera mesh as unlit (flat colour, no shading) and as
-                // an overlay (renders in front of all scene geometry).
-                foreach (var mesh in obj.Visuals)
-                {
-                    mesh.Unlit             = true;
-                    mesh.DepthTestDisabled = true;
-                    obj.InactiveVisuals.Add(mesh);
-                }
+            // Mark every camera mesh as unlit (flat colour, no shading) and as
+            // an overlay (renders in front of all scene geometry).
+            foreach (var mesh in obj.Visuals)
+            {
+                mesh.Unlit             = true;
+                mesh.DepthTestDisabled = true;
+                obj.InactiveVisuals.Add(mesh);
             }
-
-            // Load the active variant mesh and attach it as a separate visual set.
-            // Only one set is visible at a time, controlled by obj.Active.
-            int visualCountBeforeActive = obj.Visuals.Count;
-            var activeModelRoot = LoadEmbeddedCameraModel(Gl, "CameraActive.glb");
-            if (activeModelRoot != null)
-            {
-                FlattenVisualsInto(activeModelRoot, obj);
-                for (int i = visualCountBeforeActive; i < obj.Visuals.Count; i++)
-                {
-                    var mesh = obj.Visuals[i];
-                    mesh.Unlit             = true;
-                    mesh.DepthTestDisabled = true;
-                    obj.ActiveVisuals.Add(mesh);
-                }
-            }
-
-            // Apply the initial visibility state: a freshly spawned camera is
-            // inactive, so show the inactive mesh set and hide the active one.
-            obj.RefreshActiveMesh();
-
-            // Add an invisible cube for object picking (same approach as lights).
-            var pickMesh = new CubeMesh(Gl)
-            {
-                Alpha    = 0f,
-                Albedo   = vec3.Zero,
-                PickOnly = true
-            };
-            obj.AddMesh(pickMesh);
         }
+
+        // Load the active variant mesh and attach it as a separate visual set.
+        // Only one set is visible at a time, controlled by obj.Active.
+        int visualCountBeforeActive = obj.Visuals.Count;
+        var activeModelRoot = LoadEmbeddedCameraModel("CameraActive.glb");
+        if (activeModelRoot != null)
+        {
+            FlattenVisualsInto(activeModelRoot, obj);
+            for (int i = visualCountBeforeActive; i < obj.Visuals.Count; i++)
+            {
+                var mesh = obj.Visuals[i];
+                mesh.Unlit             = true;
+                mesh.DepthTestDisabled = true;
+                obj.ActiveVisuals.Add(mesh);
+            }
+        }
+
+        // Apply the initial visibility state: a freshly spawned camera is
+        // inactive, so show the inactive mesh set and hide the active one.
+        obj.RefreshActiveMesh();
+
+        // Add an invisible cube for object picking (same approach as lights).
+        var cameraPickMesh = new CubeMesh
+        {
+            Alpha    = 0f,
+            Albedo   = Vector3.Zero,
+            PickOnly = true
+        };
+        obj.AddMesh(cameraPickMesh);
 
         Viewport.SceneObjects.Add(obj);
         return obj;
@@ -5369,7 +4718,7 @@ public class SpawnMenu
     /// <paramref name="fileName"/> is the bare file name inside
     /// <c>MineImatorSimplyRemade.assets.mesh</c> (e.g. <c>Camera.glb</c>).
     /// </summary>
-    private static SceneObject? LoadEmbeddedCameraModel(GL gl, string fileName)
+    private static SceneObject? LoadEmbeddedCameraModel(string fileName)
     {
         string resourceName = $"MineImatorSimplyRemade.assets.mesh.{fileName}";
         var asm = Assembly.GetExecutingAssembly();
@@ -5386,10 +4735,10 @@ public class SpawnMenu
         using (var fs = File.Create(tempPath))
             stream.CopyTo(fs);
 
-        return AssimpModelLoader.Load(gl, tempPath);
+        return AssimpModelLoader.Load(tempPath);
     }
 
-    private static void SaveCubeUvMapGuide()
+    public static void SaveCubeUvMapGuide()
     {
         const string embeddedName = "MineImatorSimplyRemade.assets.img.map.cube.png";
         const string defaultFileName = "cube-uv-map.png";
@@ -5466,16 +4815,13 @@ public class SpawnMenu
         // light (the billboard geometry lives outside the normal Visuals pipeline).
         // Alpha = 0 → invisible in normal/transparent render passes;
         // the flat-colour pick shader ignores alpha so it still works for selection.
-        if (Gl != null)
+        var lightPickMesh = new CubeMesh
         {
-            var pickMesh = new CubeMesh(Gl)
-            {
-                Alpha    = 0f,       // invisible in normal rendering
-                Albedo   = vec3.Zero,
-                PickOnly = true
-            };
-            obj.AddMesh(pickMesh);
-        }
+            Alpha    = 0f,       // invisible in normal rendering
+            Albedo   = Vector3.Zero,
+            PickOnly = true
+        };
+        obj.AddMesh(lightPickMesh);
 
         Viewport.SceneObjects.Add(obj);
         return obj;
@@ -5505,68 +4851,50 @@ public class SpawnMenu
         obj.AssignObjectId();
 
         // Create mesh geometry for supported primitive types.
-        if (primitiveType == "Plane" && Gl != null)
+        if (primitiveType == "Plane")
         {
             // 1-unit × 1-unit plane using the selected orientation.
-            var mesh = new PlaneMesh(Gl, 1f, 1f, planeOrientation);
-            
-            // Apply texture if provided
+            var mesh = new PlaneMesh(1f, 1f, planeOrientation);
+
             if (textureId != 0)
             {
                 mesh.TextureId = textureId;
-                // Enable backface culling for proper rendering
+                mesh.AlbedoTexture = MineImatorLoader.ResolveVeldridTexture(textureId);
                 mesh.DoubleSided = false;
-                
-                // Configure material for transparency
-                if (mesh.GetSurfaceCount() > 0)
-                {
-                    var material = mesh.SurfaceGetMaterial(0);
-                    if (material is StandardMaterial stdMat)
-                    {
-                        stdMat.AlbedoColor = new vec4(1f, 1f, 1f, 1f); // White for full color pass-through
-                        stdMat.DoubleSided = false;
-                    }
-                }
             }
-            
+
             obj.AddMesh(mesh);
         }
 
-        if (primitiveType == "Cube" && Gl != null)
+        if (primitiveType == "Cube")
         {
-            var mesh = new CubeMesh(Gl, cubeMapped);
+            var mesh = new CubeMesh(cubeMapped);
 
             if (textureId != 0)
             {
                 mesh.TextureId = textureId;
-                if (mesh.GetSurfaceCount() > 0)
-                {
-                    var material = mesh.SurfaceGetMaterial(0);
-                    if (material is StandardMaterial stdMat)
-                        stdMat.AlbedoColor = new vec4(1f, 1f, 1f, 1f);
-                }
+                mesh.AlbedoTexture = MineImatorLoader.ResolveVeldridTexture(textureId);
             }
 
             obj.AddMesh(mesh);
         }
 
-        if (primitiveType == "Sphere" && Gl != null)
+        if (primitiveType == "Sphere")
         {
-            var mesh = new SphereMesh(Gl, 0.5f, obj.PrimitiveSphereSegments,
+            var mesh = new SphereMesh(0.5f, obj.PrimitiveSphereSegments,
                 obj.PrimitiveSphereRings, obj.PrimitiveSphereSmooth);
 
             if (textureId != 0)
             {
                 mesh.TextureId = textureId;
-                if (mesh.GetSurfaceCount() > 0 && mesh.SurfaceGetMaterial(0) is StandardMaterial stdMat)
-                    stdMat.AlbedoColor = new vec4(1f, 1f, 1f, 1f);
+                mesh.AlbedoTexture = MineImatorLoader.ResolveVeldridTexture(textureId);
             }
 
             obj.AddMesh(mesh);
         }
 
-        if (primitiveType == "Text Mesh" && Gl != null)
-            TextMeshFactory.Rebuild(obj, Gl);
+        if (primitiveType == "Text Mesh")
+            TextMeshFactory.Rebuild(obj);
 
         Viewport.SceneObjects.Add(obj);
         return obj;
@@ -5584,7 +4912,7 @@ public class SpawnMenu
     public SceneObject? SpawnBlockObject(string blockName, BlockVariantEntry variant, string resourcePackId = "",
                                          int tileX = 1, int tileY = 1, int tileZ = 1)
     {
-        if (Viewport == null || Gl == null) return null;
+        if (Viewport == null) return null;
 
         string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
 
@@ -5789,13 +5117,13 @@ public class SpawnMenu
 
     private bool ReplaceObjectMeshesFromTempSpawn(SceneObject target, SceneObject temp, string normalizedResourcePackId)
     {
-        foreach (Mesh mesh in target.Visuals.ToList())
+        foreach (var mesh in target.Visuals.ToList())
         {
             target.RemoveMesh(mesh);
             mesh.Dispose();
         }
 
-        foreach (Mesh mesh in temp.Visuals.ToList())
+        foreach (var mesh in temp.Visuals.ToList())
         {
             temp.RemoveMesh(mesh);
             target.AddMesh(mesh);
@@ -5821,26 +5149,26 @@ public class SpawnMenu
         if (!string.IsNullOrEmpty(variant.ModelPath))
             resolved = BlockRegistry.ResolveModel(variant.ModelPath);
 
-        List<Mesh> meshes;
+        List<VeldridMesh> meshes;
         if (!string.IsNullOrEmpty(variant.CemPath))
-            meshes = CemLoader.Load(Gl!, variant.CemPath, BlockRegistry.VersionRoot, resourcePackId);
+            meshes = CemLoader.Load(variant.CemPath, BlockRegistry.VersionRoot, resourcePackId);
         else if (resolved != null)
-            meshes = MinecraftModelMesh.Build(Gl!, resolved, variant.RotationX, variant.RotationY, resourcePackId,
+            meshes = MinecraftModelMesh.Build(resolved, variant.RotationX, variant.RotationY, resourcePackId,
                                               obj.ObjectType,
                                               tileX, tileY, tileZ);
         else
-            meshes = new List<Mesh> { MinecraftModelMesh.BuildTexturedFallbackCube(Gl!, null,
+            meshes = new List<VeldridMesh> { MinecraftModelMesh.BuildTexturedFallbackCube(null,
                 blockNameHint: obj.ObjectType, resourcePackId: resourcePackId,
                 tileX: tileX, tileY: tileY, tileZ: tileZ) };
 
         if (offsetX != 0f || offsetY != 0f || offsetZ != 0f)
         {
-            var shift = new vec3(offsetX, offsetY, offsetZ);
+            var shift = new Vector3(offsetX, offsetY, offsetZ);
             foreach (var mesh in meshes)
             {
                 for (int i = 0; i < mesh.Vertices.Count; i++)
                     mesh.Vertices[i] += shift;
-                mesh.Upload();
+                mesh.Upload(VeldridContext.StandardOutputDescription);
             }
         }
 
@@ -5854,7 +5182,7 @@ public class SpawnMenu
 
     // ── Utility helpers ───────────────────────────────────────────────────────
 
-    private List<string> GetFilteredObjects()
+    public List<string> GetFilteredObjects()
     {
         if (!_categories.TryGetValue(_selectedCategory, out var all))
             return new List<string>();

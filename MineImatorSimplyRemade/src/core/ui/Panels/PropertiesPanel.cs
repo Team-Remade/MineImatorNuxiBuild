@@ -2,7 +2,6 @@
 using System.Globalization;
 using System.Reflection;
 using GlmSharp;
-using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
@@ -12,12 +11,11 @@ using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using NativeFileDialogSharp;
-using Silk.NET.OpenGL;
 using StbImageSharp;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
-public class PropertiesPanel : UiPanel
+public class PropertiesPanel
 {
     private const string NoImageSelected = "No image selected";
     private const string BackgroundModeStretch = "stretch";

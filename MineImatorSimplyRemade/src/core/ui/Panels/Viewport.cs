@@ -17,7 +17,7 @@ using Shader = MineImatorSimplyRemade.core.mdl.Shader;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
-public class Viewport : UiPanel
+public class Viewport
 {
     private enum SceneRenderMode
     {

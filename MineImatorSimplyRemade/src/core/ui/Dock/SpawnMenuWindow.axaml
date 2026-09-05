@@ -1,0 +1,63 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MineImatorSimplyRemade.core.ui.Dock.SpawnMenuWindow"
+        Title="Spawn Menu"
+        Width="1150" Height="480"
+        WindowStartupLocation="CenterOwner"
+        Background="#1E1E22">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="8">
+        <!-- Global search bar -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,6">
+            <TextBlock Text="Search:" VerticalAlignment="Center" Foreground="#AAA" Margin="0,0,6,0" />
+            <Button x:Name="ClearSearchButton" DockPanel.Dock="Right" Content="Clear" Margin="6,0,0,0" />
+            <TextBox x:Name="SearchBox" Watermark="Search objects..." />
+        </DockPanel>
+
+        <!-- Categories | Objects | Variants | Preview -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,4,*,4,*,4,*">
+            <Border Grid.Column="0" BorderBrush="#333" BorderThickness="1" CornerRadius="3" Padding="4">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Categories" Foreground="#888" Margin="2,0,0,4" />
+                    <ListBox x:Name="CategoryList" Background="Transparent" />
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="2" BorderBrush="#333" BorderThickness="1" CornerRadius="3" Padding="4">
+                <DockPanel>
+                    <TextBlock x:Name="ObjectsHeader" DockPanel.Dock="Top" Text="Objects" Foreground="#888" Margin="2,0,0,4" />
+                    <ContentControl x:Name="ObjectsHost" />
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="4" BorderBrush="#333" BorderThickness="1" CornerRadius="3" Padding="4">
+                <DockPanel>
+                    <TextBlock x:Name="VariantsHeader" DockPanel.Dock="Top" Text="Variants" Foreground="#888" Margin="2,0,0,4" />
+                    <ContentControl x:Name="VariantsHost" />
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="6" BorderBrush="#333" BorderThickness="1" CornerRadius="3" Padding="4">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Preview" Foreground="#888" Margin="2,0,0,4" />
+                    <StackPanel>
+                        <Border Width="180" Height="180" Background="#222226" CornerRadius="4"
+                                BorderBrush="#556" BorderThickness="1" HorizontalAlignment="Center" Margin="0,4">
+                            <Panel>
+                                <TextBlock x:Name="NoPreviewLabel" Text="no preview" Foreground="#777"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Image x:Name="PreviewImage" Stretch="Uniform" />
+                            </Panel>
+                        </Border>
+                        <TextBlock x:Name="PreviewCaption1" Foreground="#999" TextAlignment="Center" TextWrapping="Wrap" />
+                        <TextBlock x:Name="PreviewCaption2" Foreground="#777" TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!-- Bottom bar -->
+        <DockPanel Grid.Row="2" Margin="0,6,0,0" LastChildFill="False">
+            <Button x:Name="SpawnButton" DockPanel.Dock="Right" Content="Spawn" Width="110" Height="30" />
+        </DockPanel>
+    </Grid>
+</Window>

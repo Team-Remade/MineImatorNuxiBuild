@@ -35,6 +35,13 @@ public partial class MainWindow : WindowBase
     /// ported <see cref="PreferencesView"/> dialog (see <see cref="OpenPreferencesDialog"/>).</summary>
     private readonly PreferencesPanel _preferences = new();
 
+    /// <summary>The spawn menu's backing model. Owned here (not by the dock factory)
+    /// because the spawn menu is a floating window, not a dock tool. Shared with
+    /// ProjectSceneSerializer / PropertiesPanel once those hosts are wired.</summary>
+    public SpawnMenu SpawnMenuModel { get; } = new();
+
+    private SpawnMenuWindow? _spawnMenuWindow;
+
     private readonly string _appTitle;
     private readonly string _aboutVersion;
     private string _lastAppliedWindowTitle = "";
@@ -58,6 +65,9 @@ public partial class MainWindow : WindowBase
         Title = _appTitle;
 
         _preferences.LoadPreferences();
+
+        SpawnMenuModel.PreferencesPanel = _preferences;
+        SpawnMenuModel.ProjectManager = _projectManager;
 
         WireMenubar();
         WireDockLayout();
@@ -86,6 +96,7 @@ public partial class MainWindow : WindowBase
         MenubarControl.RedoRequested = PerformRedo;
         MenubarControl.DuplicateRequested = () => DockFactory?.SceneTreeModel.DuplicateSelectedObjects();
         MenubarControl.DeleteRequested = () => DockFactory?.SceneTreeModel.DeleteSelectedObjects();
+        MenubarControl.SpawnObjectRequested = OpenSpawnMenu;
         MenubarControl.ImportAssetRequested = () => { /* TODO(migration): asset import dialog */ };
         MenubarControl.ImportResourcePackRequested = () => { /* TODO(migration): resource pack import */ };
         MenubarControl.ImportResourcePackFolderRequested = () => { /* TODO(migration): resource pack import */ };
@@ -129,6 +140,24 @@ public partial class MainWindow : WindowBase
     }
 
     private void ResetDockLayout() => WireDockLayout();
+
+    // ── Spawn menu ──────────────────────────────────────────────────────────
+    // The old renderer's SpawnMenu was a floating ImGui window toggled from the
+    // viewport toolbar; until the Viewport is ported it opens from Edit >
+    // Spawn Object... as a separate non-modal window sharing one model instance.
+
+    private void OpenSpawnMenu()
+    {
+        if (_spawnMenuWindow != null)
+        {
+            _spawnMenuWindow.Activate();
+            return;
+        }
+
+        _spawnMenuWindow = new SpawnMenuWindow(SpawnMenuModel);
+        _spawnMenuWindow.Closed += (_, _) => _spawnMenuWindow = null;
+        _spawnMenuWindow.Show(this);
+    }
 
     private static string ResolveAppVersion()
     {

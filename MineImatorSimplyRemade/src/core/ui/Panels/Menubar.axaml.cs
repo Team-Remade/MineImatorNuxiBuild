@@ -28,6 +28,7 @@ public partial class Menubar : UserControl
     public Action? RedoRequested { get; set; }
     public Action? DuplicateRequested { get; set; }
     public Action? DeleteRequested { get; set; }
+    public Action? SpawnObjectRequested { get; set; }
     public Action? ImportAssetRequested { get; set; }
     public Action? ImportResourcePackRequested { get; set; }
     public Action? ImportResourcePackFolderRequested { get; set; }
@@ -62,6 +63,7 @@ public partial class Menubar : UserControl
     private void OnRedo(object? sender, RoutedEventArgs e) => RedoRequested?.Invoke();
     private void OnDuplicate(object? sender, RoutedEventArgs e) => DuplicateRequested?.Invoke();
     private void OnDelete(object? sender, RoutedEventArgs e) => DeleteRequested?.Invoke();
+    private void OnSpawnObject(object? sender, RoutedEventArgs e) => SpawnObjectRequested?.Invoke();
     private void OnPreferences(object? sender, RoutedEventArgs e) => PreferencesRequested?.Invoke();
 
     private void OnRenderImage(object? sender, RoutedEventArgs e) => RenderRequested?.Invoke(RenderRequestKind.Image);
