@@ -46,10 +46,12 @@ public sealed class AppDockFactory : Factory
     /// <summary>The viewport's backing model. Owned by <c>MainWindow</c> (so the
     /// scene survives layout resets) and rendered by <see cref="ViewportView"/>.</summary>
     private readonly Viewport _viewportModel;
+    private readonly Action _openSpawnMenu;
 
-    public AppDockFactory(Viewport viewportModel)
+    public AppDockFactory(Viewport viewportModel, Action openSpawnMenu)
     {
         _viewportModel = viewportModel;
+        _openSpawnMenu = openSpawnMenu;
     }
 
     public Tool ViewportTool { get; private set; } = null!;
@@ -89,7 +91,7 @@ public sealed class AppDockFactory : Factory
             Id = ViewportToolId,
             Title = "Viewport",
             CanClose = false,
-            Content = new Func<IServiceProvider, object>(_ => new TemplateResult<Control>(new ViewportView(_viewportModel), null!)),
+            Content = new Func<IServiceProvider, object>(_ => new TemplateResult<Control>(new ViewportView(_viewportModel, _openSpawnMenu), null!)),
         };
 
         SceneTreeTool = new Tool

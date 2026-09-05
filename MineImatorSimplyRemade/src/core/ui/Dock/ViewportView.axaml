@@ -4,6 +4,22 @@
              Focusable="True">
     <Grid RowDefinitions="Auto,*" Background="#1A1A1A">
         <StackPanel x:Name="ToolbarPanel" Orientation="Horizontal" Spacing="6" Margin="4" Grid.Row="0">
+            <Button x:Name="SpawnMenuButton" Width="22" Height="22" Padding="0"
+                    Background="Transparent" BorderBrush="Transparent" ToolTip.Tip="Spawn object">
+                <Image x:Name="BenchIcon" Width="22" Height="22" />
+                <Button.Styles>
+                    <Style Selector="Button /template/ ContentPresenter">
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="BorderBrush" Value="Transparent" />
+                    </Style>
+                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                        <Setter Property="Background" Value="Transparent" />
+                    </Style>
+                    <Style Selector="Button:pressed /template/ ContentPresenter">
+                        <Setter Property="Background" Value="Transparent" />
+                    </Style>
+                </Button.Styles>
+            </Button>
             <ComboBox x:Name="CameraDropdown" MinWidth="140" SelectedIndex="0" />
             <ComboBox x:Name="RenderModeDropdown" MinWidth="110" SelectedIndex="2">
                 <ComboBoxItem>Wireframe</ComboBoxItem>

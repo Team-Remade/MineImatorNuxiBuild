@@ -135,7 +135,7 @@ public partial class MainWindow : WindowBase
 
     private void WireDockLayout()
     {
-        DockFactory = new AppDockFactory(ViewportModel);
+        DockFactory = new AppDockFactory(ViewportModel, OpenSpawnMenu);
         IRootDock layout = DockFactory.CreateLayout();
         DockFactory.InitLayout(layout);
 

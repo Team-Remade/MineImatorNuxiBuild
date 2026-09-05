@@ -31,6 +31,7 @@ public partial class ViewportView : UserControl
     /// <summary>The UI-agnostic viewport model (scene objects, work camera,
     /// ground plane, render-mode state). Owned by <c>MainWindow</c>.</summary>
     public Panels.Viewport Model { get; }
+    private readonly Action _openSpawnMenu;
 
     public core.Camera Camera => Model.Camera;
     private Vector2 GizmoImageSize => new((float)SceneImage.Bounds.Width, (float)SceneImage.Bounds.Height);
@@ -79,10 +80,12 @@ public partial class ViewportView : UserControl
     private double _lastFrameSeconds;
     private Matrix4x4 _lastViewProjection;
 
-    public ViewportView(Panels.Viewport model)
+    public ViewportView(Panels.Viewport model, Action openSpawnMenu)
     {
         Model = model;
+        _openSpawnMenu = openSpawnMenu;
         InitializeComponent();
+        BenchIcon.Source = core.window.WindowBase.LoadEmbeddedBitmap("bench");
 
         AttachedToVisualTree += (_, _) =>
         {
@@ -96,6 +99,7 @@ public partial class ViewportView : UserControl
 
         CameraDropdown.SelectionChanged += OnCameraSelectionChanged;
         RenderModeDropdown.SelectionChanged += OnRenderModeSelectionChanged;
+        SpawnMenuButton.Click += (_, _) => _openSpawnMenu();
         OverlaysToggle.IsCheckedChanged += (_, _) =>
         {
             if (!_updatingToolbar)
