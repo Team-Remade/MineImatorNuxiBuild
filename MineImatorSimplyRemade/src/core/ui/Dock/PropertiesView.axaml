@@ -73,6 +73,15 @@
                         <Expander x:Name="TilingExpander" Header="Block Tiling" HorizontalAlignment="Stretch">
                             <StackPanel x:Name="TilingPanel" Spacing="6" Margin="4" />
                         </Expander>
+                        <Expander x:Name="AppearanceExpander" Header="Appearance" HorizontalAlignment="Stretch">
+                            <StackPanel x:Name="AppearancePanel" Spacing="6" Margin="4" />
+                        </Expander>
+                        <Expander x:Name="CameraExpander" Header="Camera" HorizontalAlignment="Stretch" IsVisible="False">
+                            <StackPanel x:Name="CameraPanel" Spacing="6" Margin="4" />
+                        </Expander>
+                        <Expander x:Name="LightExpander" Header="Light" HorizontalAlignment="Stretch" IsVisible="False">
+                            <StackPanel x:Name="LightPanel" Spacing="6" Margin="4" />
+                        </Expander>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

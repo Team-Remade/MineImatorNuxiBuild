@@ -1269,7 +1269,157 @@ public partial class PropertiesView : UserControl
         TilingExpander.IsVisible = string.Equals(obj.SpawnCategory, "Blocks", StringComparison.Ordinal);
 
         BuildBendSection(obj);
+        BuildAppearanceSection(obj);
+        BuildCameraSection(obj as CameraSceneObject);
+        BuildLightSection(obj as LightSceneObject);
         RefreshObjectValues();
+    }
+
+    private void BuildAppearanceSection(SceneObject obj)
+    {
+        AppearancePanel.Children.Clear();
+        var material = obj.MaterialSettings;
+
+        void Apply(Action<MaterialSettings> edit)
+        {
+            obj.SetExplicitMaterialSettings();
+            edit(obj.MaterialSettings);
+            obj.PropagateMaterialSettingsToChildren();
+            MarkObjectDirty();
+        }
+
+        AddObjectNumberRow(AppearancePanel, "Opacity", 0, 1, 0.01m,
+            () => material.AlbedoColor.w * (1f - material.Transparency), value => Apply(settings =>
+            {
+                var color = settings.AlbedoColor;
+                color.w = value;
+                settings.AlbedoColor = color;
+                settings.Transparency = 0f;
+            }));
+
+        var doubleSided = new CheckBox { Content = "Double-sided faces", Foreground = MutedBrush, IsChecked = material.DoubleSided };
+        doubleSided.IsCheckedChanged += (_, _) =>
+        {
+            if (!_syncing) Apply(settings => settings.DoubleSided = doubleSided.IsChecked == true);
+        };
+        AppearancePanel.Children.Add(doubleSided);
+
+        var emission = new CheckBox { Content = "Emission", Foreground = MutedBrush, IsChecked = material.EmissionEnabled };
+        emission.IsCheckedChanged += (_, _) =>
+        {
+            if (!_syncing) Apply(settings => settings.EmissionEnabled = emission.IsChecked == true);
+        };
+        AppearancePanel.Children.Add(emission);
+        AddObjectNumberRow(AppearancePanel, "Emission energy", 0, 100, 0.1m,
+            () => material.EmissionEnergy, value => Apply(settings => settings.EmissionEnergy = value));
+    }
+
+    private void BuildCameraSection(CameraSceneObject? camera)
+    {
+        CameraPanel.Children.Clear();
+        CameraExpander.IsVisible = camera != null;
+        if (camera == null)
+            return;
+
+        var active = new CheckBox { Content = "Active render camera", Foreground = MutedBrush, IsChecked = camera.Active };
+        active.IsCheckedChanged += (_, _) =>
+        {
+            if (_syncing) return;
+            if (active.IsChecked == true) CameraSceneObject.SetActiveExclusive(camera); else camera.Active = false;
+            MarkObjectDirty();
+        };
+        CameraPanel.Children.Add(active);
+        AddObjectNumberRow(CameraPanel, "Field of view", 1, 179, 1, () => camera.Fov, value => camera.Fov = value);
+        AddObjectNumberRow(CameraPanel, "Near clip", 0.001m, 1000, 0.01m, () => camera.Near, value => camera.Near = value);
+        AddObjectNumberRow(CameraPanel, "Far clip", 0.01m, 1000000, 1, () => camera.Far, value => camera.Far = Math.Max(value, camera.Near + 0.001f));
+    }
+
+    private void BuildLightSection(LightSceneObject? light)
+    {
+        LightPanel.Children.Clear();
+        LightExpander.IsVisible = light != null;
+        if (light == null)
+            return;
+
+        var type = new ComboBox { ItemsSource = new[] { "Point", "Spot" }, SelectedIndex = (int)light.Type };
+        type.SelectionChanged += (_, _) =>
+        {
+            if (_syncing || type.SelectedIndex < 0) return;
+            light.Type = (LightType)type.SelectedIndex;
+            BuildLightSection(light);
+            MarkObjectDirty();
+        };
+        LightPanel.Children.Add(new TextBlock { Text = "Type", Foreground = MutedBrush });
+        LightPanel.Children.Add(type);
+        AddLightColorRow(LightPanel, light);
+        AddObjectNumberRow(LightPanel, "Energy", 0, 1000, 0.1m, () => light.LightEnergy, value => light.LightEnergy = value);
+        AddObjectNumberRow(LightPanel, "Indirect energy", 0, 1000, 0.1m, () => light.LightIndirectEnergy, value => light.LightIndirectEnergy = value);
+        AddObjectNumberRow(LightPanel, "Specular", 0, 1, 0.05m, () => light.LightSpecular, value => light.LightSpecular = value);
+        AddObjectNumberRow(LightPanel, "Range", 0.01m, 100000, 0.1m, () => light.LightRange, value => light.LightRange = value);
+        var shadows = new CheckBox { Content = "Cast shadows", Foreground = MutedBrush, IsChecked = light.LightShadowEnabled };
+        shadows.IsCheckedChanged += (_, _) => { if (!_syncing) { light.LightShadowEnabled = shadows.IsChecked == true; MarkObjectDirty(); } };
+        LightPanel.Children.Add(shadows);
+
+        if (light.Type == LightType.Spot)
+        {
+            AddObjectNumberRow(LightPanel, "Cone angle", 0.1m, 179.8m, 1, () => light.LightSpotAngle, value => light.LightSpotAngle = value);
+            AddObjectNumberRow(LightPanel, "Edge blend", 0, 89.9m, 0.5m, () => light.LightSpotBlend,
+                value => light.LightSpotBlend = Math.Clamp(value, 0f, light.LightSpotAngle * 0.5f));
+        }
+    }
+
+    private void AddLightColorRow(Panel parent, LightSceneObject light)
+    {
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("130,*,*,*") };
+        grid.Children.Add(new TextBlock { Text = "Color", Foreground = MutedBrush, VerticalAlignment = VerticalAlignment.Center });
+        float[] channels = [light.LightColor.x, light.LightColor.y, light.LightColor.z];
+        string[] labels = ["R", "G", "B"];
+        for (int i = 0; i < channels.Length; i++)
+        {
+            int channel = i;
+            var input = new NumericUpDown
+            {
+                Minimum = 0, Maximum = 1, Increment = 0.01m,
+                FormatString = "0.##", Value = (decimal)channels[i]
+            };
+            input.ValueChanged += (_, e) =>
+            {
+                if (_syncing || e.NewValue == null) return;
+                channels[channel] = (float)e.NewValue.Value;
+                light.LightColor = new vec4(channels[0], channels[1], channels[2], light.LightColor.w);
+                MarkObjectDirty();
+            };
+            Grid.SetColumn(input, i + 1);
+            grid.Children.Add(input);
+        }
+        parent.Children.Add(grid);
+    }
+
+    private void AddObjectNumberRow(Panel parent, string label, decimal minimum, decimal maximum, decimal increment,
+        Func<float> get, Action<float> set)
+    {
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("130,*") };
+        var value = new NumericUpDown
+        {
+            Minimum = minimum, Maximum = maximum, Increment = increment,
+            Value = SafeDecimal(get(), minimum, maximum), FormatString = "0.###"
+        };
+        value.ValueChanged += (_, e) =>
+        {
+            if (_syncing || e.NewValue == null) return;
+            set((float)e.NewValue.Value);
+            MarkObjectDirty();
+        };
+        Grid.SetColumn(value, 1);
+        grid.Children.Add(new TextBlock { Text = label, Foreground = MutedBrush, VerticalAlignment = VerticalAlignment.Center });
+        grid.Children.Add(value);
+        parent.Children.Add(grid);
+    }
+
+    private static void MarkObjectDirty()
+    {
+        if (ProjectManager.Instance.HasProject)
+            ProjectManager.Instance.SetDirty(true);
     }
 
     private void BuildBendSection(SceneObject obj)
