@@ -74,6 +74,11 @@ public partial class MainWindow : WindowBase
         SpawnMenuModel.PreferencesPanel = _preferences;
         SpawnMenuModel.ProjectManager = _projectManager;
 
+        // The global selection singleton must exist before the dock panels wire
+        // their SelectionChanged subscriptions (and before the viewport creates
+        // the gizmo, which registers itself with it).
+        MineImatorSimplyRemadeNuxi.core.SelectionManager.Initialize();
+
         WireMenubar();
         WireDockLayout();
         SetWindowIconFromEmbedded("icons.Icon");

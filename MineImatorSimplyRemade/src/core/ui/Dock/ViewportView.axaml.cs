@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using MineImatorSimplyRemade.core.log;
 using MineImatorSimplyRemade.core.render;
 using MineImatorSimplyRemade.core.window;
+using MineImatorSimplyRemade.gizmo;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -32,7 +33,7 @@ public partial class ViewportView : UserControl
     public Panels.Viewport Model { get; }
 
     public core.Camera Camera => Model.Camera;
-
+    private Vector2 GizmoImageSize => new((float)SceneImage.Bounds.Width, (float)SceneImage.Bounds.Height);
     private VeldridBitmapRenderSurface? _surface;
     private VeldridShadowMap? _shadowMap;
     private VeldridAmbientOcclusionPass? _aoPass;
@@ -42,8 +43,13 @@ public partial class ViewportView : UserControl
     private VeldridSilhouetteMask? _silhouetteMask;
     private VeldridEdgeOutlinePass? _edgeOutlinePass;
     private VeldridPickTarget? _pickTarget;
+    private GizmoOverlayControl? _gizmoOverlay;
+    private core.Camera? _renderCamera;
+    private bool _gizmoDragging;
     private float _filmGrainFrame;
     private readonly List<(Matrix4x4 World, VeldridMesh Mesh, SceneObject Object)> _renderItems = new();
+    private readonly PointLightUniforms _pointLights = new();
+    private readonly List<PointLightEntry> _pointLightEntries = new();
     private bool _renderLoopActive;
     // Avalonia paces its compositor to the monitor refresh rate; we cap the
     // (expensive) 3D render to 60 fps on top of that. The slack keeps a 60 Hz
@@ -100,8 +106,25 @@ public partial class ViewportView : UserControl
         PointerMoved += OnPointerMoved;
         PointerReleased += OnPointerReleased;
         PointerWheelChanged += OnPointerWheelChanged;
-        KeyDown += (_, e) => _heldKeys.Add(e.Key);
+        KeyDown += OnKeyDown;
         KeyUp += (_, e) => _heldKeys.Remove(e.Key);
+
+        // Screen-space gizmo overlay (rotation ring/arc) drawn on top of the
+        // rendered image; reads Model.Gizmo lazily since it is created with the
+        // Veldrid device once the surface exists.
+        _gizmoOverlay = new GizmoOverlayControl(() => Model.Gizmo);
+        SceneImageOverlay.Children.Add(_gizmoOverlay);
+    }
+
+    private void OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        _heldKeys.Add(e.Key);
+
+        // G toggles the gizmo between local and global orientation (matches the
+        // old core.Input handling), only while it is visible and not mid-drag.
+        Gizmo3D? gizmo = Model.Gizmo;
+        if (e.Key == Key.G && Model.OverlaysEnabled && gizmo is { Visible: true, Editing: false })
+            gizmo.UseLocalSpace = !gizmo.UseLocalSpace;
     }
 
     private void RenderFrameSafely()
@@ -154,6 +177,7 @@ public partial class ViewportView : UserControl
             _silhouetteMask = new VeldridSilhouetteMask(_surface.GraphicsDevice, width, height);
             _edgeOutlinePass = new VeldridEdgeOutlinePass(_surface.GraphicsDevice);
             _pickTarget = new VeldridPickTarget(_surface.GraphicsDevice, width, height);
+            Model.InitializeGizmo(_surface.GraphicsDevice);
         }
         else
         {
@@ -218,6 +242,7 @@ public partial class ViewportView : UserControl
         Model.UpdateParticleSpawners(Model.SceneObjects, deltaTime, Panels.Timeline.Instance?.IsPlaying ?? false);
 
         var (renderCam, _) = Model.GetActiveRenderCamera();
+        _renderCamera = renderCam;
         float aspect = _surface.Width / (float)_surface.Height;
         Matrix4x4 view = ToNumerics(renderCam.GetViewMatrix());
         Matrix4x4 proj = ToNumerics(renderCam.GetProjectionMatrix(aspect));
@@ -242,19 +267,42 @@ public partial class ViewportView : UserControl
             CollectRenderables(root, renderCam.Position, renderedMode, ref bones);
         }
 
-        // TODO(migration): derive the sun direction/shadows from PropertiesPanel
-        // sky settings (old RenderSky/ComputeShadowLightSpaceMatrix logic).
-        Vector3 lightDir = Vector3.Normalize(new Vector3(-0.4f, -1f, -0.35f));
+        // Sun direction is derived from the PropertiesPanel sky settings (euler
+        // degrees), matching the old renderer's DirectionFromEuler. sunDir points
+        // toward the sun; the shadow map needs the opposite (light travel) dir.
+        Panels.PropertiesPanel? props = Model.PropertiesPanel;
+        float[] sunAngle = props?.SunAngle ?? [135f, 0f, 0f];
+        Vector3 sunDir = SunDirectionFromEuler(sunAngle);
+        Vector3 lightDir = -sunDir;
         Matrix4x4 lightSpace = VeldridShadowMap.ComputeLightSpaceMatrix(lightDir, ToNumerics(renderCam.Target), extent: 60f, near: 0.1f, far: 200f);
 
+        bool shadowsEnabled = renderedMode && (props?.ShadowsEnabled ?? true);
         var sceneData = SceneDataUniforms.Default;
         sceneData.LightSpaceMatrix = lightSpace;
         sceneData.LightDir = -lightDir;
+        sceneData.SunFillLightDir = sunDir;
+        if (props != null)
+        {
+            sceneData.Ambient = new Vector3(props.AmbientLightColor[0], props.AmbientLightColor[1], props.AmbientLightColor[2]) * props.AmbientLightStrength;
+            sceneData.SunFillLightColor = new Vector3(props.SunFillLightColor[0], props.SunFillLightColor[1], props.SunFillLightColor[2]) * props.SunFillLightStrength;
+        }
         sceneData.ShadowDebugMode = renderedMode && Model.RenderedPass == Panels.Viewport.RenderedPassMode.Shadow ? 1 : 0;
-        sceneData.MainLightCastsShadows = renderedMode ? 1 : 0;
-        sceneData.UseShadowMap = renderedMode ? 1 : 0;
+        sceneData.MainLightCastsShadows = shadowsEnabled ? 1 : 0;
+        sceneData.UseShadowMap = shadowsEnabled ? 1 : 0;
         _surface.UpdateSceneData(sceneData);
-        _surface.UpdatePointLights(PointLightUniforms.Empty);
+
+        // Point/spot lights: collected from the scene each frame. Only affect
+        // lit render modes (Shaded/Rendered); unlit modes get no point lights.
+        if (forceUnlit)
+        {
+            _surface.UpdatePointLights(PointLightUniforms.Empty);
+        }
+        else
+        {
+            Model.CollectPointLights(renderedMode, _pointLightEntries);
+            _pointLights.Set(_pointLightEntries);
+            _surface.UpdatePointLights(_pointLights);
+        }
 
         var environment = SceneEnvironmentUniforms.Default;
         environment.CameraPosition = ToNumerics(renderCam.Position);
@@ -320,10 +368,34 @@ public partial class ViewportView : UserControl
 
             if (renderSelectionOutline && _silhouetteMask != null && _edgeOutlinePass != null)
                 _edgeOutlinePass.Render(cl, _silhouetteMask.TextureView, _surface.Width, _surface.Height, _surface.OutputDescription);
+
+            // Transform gizmo: drawn last, depth-disabled, so its handles sit on
+            // top of the scene. Uses the active render camera and the on-screen
+            // image rect (image-relative coords, origin at 0,0).
+            if (Model.OverlaysEnabled && Model.Gizmo is { } gizmo)
+            {
+                cl.SetFramebuffer(_surface.Framebuffer);
+                gizmo.Render(renderCam, renderCam.GetViewMatrix(), renderCam.GetProjectionMatrix(aspect),
+                    Vector2.Zero, GizmoImageSize, cl, _surface.OutputDescription);
+            }
         });
 
         SceneImage.Source = bitmap;
         ViewportStatusText.IsVisible = false;
+
+        // Rotation ring/arc screen-space overlay (drawn by GizmoOverlayControl).
+        if (Model.OverlaysEnabled && Model.Gizmo is { } overlayGizmo)
+        {
+            overlayGizmo.RenderOverlay(renderCam, Vector2.Zero, GizmoImageSize);
+            _gizmoOverlay?.InvalidateVisual();
+        }
+        else if (_gizmoOverlay != null)
+        {
+            Model.Gizmo?.OverlayLines.Clear();
+            Model.Gizmo?.OverlayTriangles.Clear();
+            _gizmoOverlay.InvalidateVisual();
+        }
+
     _lastPreparationMs = System.Diagnostics.Stopwatch.GetElapsedTime(frameStart, renderStart).TotalMilliseconds;
     _lastRenderAndReadbackMs = System.Diagnostics.Stopwatch.GetElapsedTime(renderStart).TotalMilliseconds;
     UpdateFps(now);
@@ -452,6 +524,21 @@ public partial class ViewportView : UserControl
 
     private static Vector3 ToNumerics(GlmSharp.vec3 v) => new(v.x, v.y, v.z);
 
+    /// <summary>
+    /// World-space direction pointing toward the sun, from the PropertiesPanel's
+    /// euler-degree <c>SunAngle</c>. Ported from the old renderer's
+    /// <c>DirectionFromEuler</c> (base vector 0,0,-1 rotated X→Y→Z).
+    /// </summary>
+    private static Vector3 SunDirectionFromEuler(float[] deg)
+    {
+        float x = deg[0] * MathF.PI / 180f, y = deg[1] * MathF.PI / 180f, z = deg[2] * MathF.PI / 180f;
+        Vector3 v = new(0f, 0f, -1f);
+        v = new Vector3(v.X, v.Y * MathF.Cos(x) - v.Z * MathF.Sin(x), v.Y * MathF.Sin(x) + v.Z * MathF.Cos(x));
+        v = new Vector3(v.X * MathF.Cos(y) + v.Z * MathF.Sin(y), v.Y, -v.X * MathF.Sin(y) + v.Z * MathF.Cos(y));
+        v = new Vector3(v.X * MathF.Cos(z) - v.Y * MathF.Sin(z), v.X * MathF.Sin(z) + v.Y * MathF.Cos(z), v.Z);
+        return Vector3.Normalize(v);
+    }
+
     private void UpdateFps(double nowSeconds)
     {
         _framesThisSecond++;
@@ -476,6 +563,15 @@ public partial class ViewportView : UserControl
 
         if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {
+            // Gizmo grab takes priority over orbit/pick when overlays are on.
+            if (Model.OverlaysEnabled && Model.Gizmo is { } gizmo &&
+                gizmo.TryBeginEdit(ToImage(e), _renderCamera ?? Camera, Vector2.Zero, GizmoImageSize))
+            {
+                _gizmoDragging = true;
+                e.Pointer.Capture(this);
+                return;
+            }
+
             _pressPos = pos;
             _lastOrbitPos = pos;
         }
@@ -498,6 +594,22 @@ public partial class ViewportView : UserControl
     {
         Point pos = e.GetPosition(this);
         PointerPointProperties props = e.GetCurrentPoint(this).Properties;
+
+        core.Camera gizmoCam = _renderCamera ?? Camera;
+
+        if (_gizmoDragging && props.IsLeftButtonPressed)
+        {
+            Model.Gizmo?.ContinueEdit(ToImage(e), gizmoCam, Vector2.Zero, GizmoImageSize);
+            _lastOrbitPos = pos;
+            return;
+        }
+
+        // Hover-highlight the gizmo handles when idle so grabs feel responsive.
+        if (!props.IsLeftButtonPressed && !_panning && !_freeFlyActive &&
+            Model.OverlaysEnabled && Model.Gizmo is { } hoverGizmo)
+        {
+            hoverGizmo.UpdateHover(ToImage(e), gizmoCam, Vector2.Zero, GizmoImageSize);
+        }
 
         if (props.IsLeftButtonPressed)
         {
@@ -555,10 +667,20 @@ public partial class ViewportView : UserControl
     {
         if (e.InitialPressMouseButton == MouseButton.Left)
         {
-            bool wasClick = !_dragging;
-            _dragging = false;
-            if (wasClick)
-                PickObjectAt(e.GetPosition(SceneImage), e.KeyModifiers.HasFlag(KeyModifiers.Control));
+            if (_gizmoDragging)
+            {
+                Model.Gizmo?.EndEdit();
+                _gizmoDragging = false;
+            }
+            else
+            {
+                bool wasClick = !_dragging;
+                _dragging = false;
+                // A gizmo hover means the click landed on a handle, not the scene.
+                bool gizmoHovering = Model.OverlaysEnabled && (Model.Gizmo?.Hovering ?? false);
+                if (wasClick && !gizmoHovering)
+                    PickObjectAt(e.GetPosition(SceneImage), e.KeyModifiers.HasFlag(KeyModifiers.Control));
+            }
         }
         else if (e.InitialPressMouseButton == MouseButton.Middle)
         {
@@ -570,8 +692,15 @@ public partial class ViewportView : UserControl
             Cursor = Cursor.Default;
         }
 
-        if (!_dragging && !_panning && !_freeFlyActive)
+        if (!_dragging && !_panning && !_freeFlyActive && !_gizmoDragging)
             e.Pointer.Capture(null);
+    }
+
+    /// <summary>Pointer position relative to the rendered image, as a Vector2.</summary>
+    private Vector2 ToImage(PointerEventArgs e)
+    {
+        Point p = e.GetPosition(SceneImage);
+        return new Vector2((float)p.X, (float)p.Y);
     }
 
     private void PickObjectAt(Point imagePosition, bool toggleSelection)

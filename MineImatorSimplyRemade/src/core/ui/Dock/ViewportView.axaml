@@ -18,6 +18,7 @@
         <Border x:Name="ViewportHost" Grid.Row="1" Background="Black" ClipToBounds="True">
             <Grid>
                 <Image x:Name="SceneImage" Stretch="Fill" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                <Panel x:Name="SceneImageOverlay" IsHitTestVisible="False" />
                 <TextBlock x:Name="ViewportStatusText"
                            Text="Waiting for viewport surface..."
                            Foreground="#FFB4AB"

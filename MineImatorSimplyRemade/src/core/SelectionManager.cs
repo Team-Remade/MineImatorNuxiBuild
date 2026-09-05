@@ -49,7 +49,10 @@ public class SelectionManager
                 _gizmo.TransformEnd -= OnGizmoTransformEnd;
             _gizmo = value;
             if (_gizmo != null)
+            {
                 _gizmo.TransformEnd += OnGizmoTransformEnd;
+                SyncGizmoSelection();
+            }
         }
     }
 

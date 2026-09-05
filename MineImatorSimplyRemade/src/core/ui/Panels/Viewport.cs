@@ -93,9 +93,75 @@ public class Viewport
 
     /// <summary>
     /// The 3D transform gizmo for moving/rotating/scaling selected objects.
-    /// Created in <see cref="InitFramebuffer"/> once the GL context is ready.
+    /// Created by the viewport view via <see cref="InitializeGizmo"/> once the
+    /// Veldrid graphics device is available.
     /// </summary>
     public Gizmo3D? Gizmo { get; private set; }
+
+    /// <summary>
+    /// Creates the transform gizmo against the supplied graphics device and
+    /// registers it with the <see cref="SelectionManager"/>. Idempotent.
+    /// </summary>
+    public void InitializeGizmo(Veldrid.GraphicsDevice device)
+    {
+        if (Gizmo != null) return;
+        Gizmo = new Gizmo3D(device);
+        Gizmo.Init();
+        if (SelectionManager.Instance != null)
+            SelectionManager.Instance.Gizmo = Gizmo;
+    }
+
+    /// <summary>
+    /// Walks the scene graph and gathers every visible <see cref="LightSceneObject"/>
+    /// into <see cref="PointLightEntry"/> records for the fragment shader's point-light
+    /// block. Spot lights derive their world-space aim and cone cosines the same way
+    /// the old GL renderer's <c>CollectPointLights</c> did so the lit result matches
+    /// the cone/stick visuals. Point-light shadow maps are not populated yet
+    /// (ShadowIndex stays -1). Reuses <paramref name="result"/> to avoid per-frame allocs.
+    /// </summary>
+    public void CollectPointLights(bool highQuality, List<PointLightEntry> result)
+    {
+        result.Clear();
+        CollectPointLightsRecursive(SceneObjects, highQuality, result);
+    }
+
+    private static void CollectPointLightsRecursive(IEnumerable<SceneObject> objects, bool highQuality, List<PointLightEntry> result)
+    {
+        foreach (var obj in objects)
+        {
+            if (!obj.GetEffectiveVisibility()) continue;
+            if (highQuality ? !obj.RenderInHighQuality : !obj.RenderInLowQuality) continue;
+
+            if (obj is LightSceneObject light)
+            {
+                mat4 world = obj.GetWorldMatrix();
+                var pos = new Vector3(world.m30, world.m31, world.m32);
+                var col = new Vector3(light.LightColor.x, light.LightColor.y, light.LightColor.z);
+
+                Vector3 dir = Vector3.Zero;
+                float spotOuterCos = 0f, spotInnerCos = 0f;
+                if (light.Type == LightType.Spot)
+                {
+                    vec4 worldForward = world * new vec4(0f, 0f, 1f, 0f);
+                    var wd = new vec3(worldForward.x, worldForward.y, worldForward.z);
+                    float len = wd.Length;
+                    vec3 d = len > 0.0001f ? wd / len : new vec3(0f, 0f, 1f);
+                    dir = new Vector3(d.x, d.y, d.z);
+
+                    float halfAngleDeg = Math.Clamp(light.LightSpotAngle * 0.5f, 0f, 89.9f);
+                    float blendDeg = Math.Clamp(light.LightSpotBlend, 0f, halfAngleDeg);
+                    float innerDeg = halfAngleDeg + blendDeg;
+                    spotOuterCos = MathF.Cos(glm.Radians(halfAngleDeg));
+                    spotInnerCos = MathF.Cos(glm.Radians(Math.Min(innerDeg, 89.9f)));
+                }
+
+                result.Add(new PointLightEntry(pos, light.LightRange, col, light.LightEnergy,
+                    dir, 25f, spotOuterCos, spotInnerCos, -1));
+            }
+
+            CollectPointLightsRecursive(obj.Children, highQuality, result);
+        }
+    }
     
     // ── Click position for deferred pick ──────────────────────────────────────
 
