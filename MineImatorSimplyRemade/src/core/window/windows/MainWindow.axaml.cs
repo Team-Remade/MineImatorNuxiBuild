@@ -1,4 +1,7 @@
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -60,6 +63,16 @@ public partial class MainWindow : WindowBase
     private bool _closeRequestedWhileDirty;
 
     private readonly DispatcherTimer _titleRefreshTimer;
+    private const int MaxUndoEntries = 100;
+    private const double UndoCommitDelaySeconds = 0.45;
+    private readonly List<string> _undoSceneSnapshots = new();
+    private readonly List<string> _redoSceneSnapshots = new();
+    private string _lastHistorySnapshotJson = "";
+    private string _lastHistoryFingerprint = "";
+    private string _pendingHistorySnapshotJson = "";
+    private string _pendingHistoryFingerprint = "";
+    private DateTime _pendingHistoryChangedAtUtc;
+    private bool _suppressHistoryTracking;
 
     public MainWindow()
     {
@@ -90,7 +103,11 @@ public partial class MainWindow : WindowBase
         // Ported from RefreshWindowTitle()'s per-frame call in the old RenderUi() -
         // Avalonia has no per-frame hook, so a low-frequency timer takes its place.
         _titleRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
-        _titleRefreshTimer.Tick += (_, _) => RefreshWindowTitle();
+        _titleRefreshTimer.Tick += (_, _) =>
+        {
+            UpdateUndoRedoTracking();
+            RefreshWindowTitle();
+        };
         _titleRefreshTimer.Start();
 
         RefreshWindowTitle();
@@ -108,9 +125,9 @@ public partial class MainWindow : WindowBase
         MenubarControl.DuplicateRequested = () => DockFactory?.SceneTreeModel.DuplicateSelectedObjects();
         MenubarControl.DeleteRequested = () => DockFactory?.SceneTreeModel.DeleteSelectedObjects();
         MenubarControl.SpawnObjectRequested = OpenSpawnMenu;
-        MenubarControl.ImportAssetRequested = () => { /* TODO(migration): asset import dialog */ };
-        MenubarControl.ImportResourcePackRequested = () => { /* TODO(migration): resource pack import */ };
-        MenubarControl.ImportResourcePackFolderRequested = () => { /* TODO(migration): resource pack import */ };
+        MenubarControl.ImportAssetRequested = ImportAssetFromDialog;
+        MenubarControl.ImportResourcePackRequested = ImportResourcePackArchiveFromDialog;
+        MenubarControl.ImportResourcePackFolderRequested = ImportResourcePackFolderFromDialog;
         MenubarControl.ResetLayoutRequested = ResetDockLayout;
         MenubarControl.ResetWorkCameraRequested = () => ViewportModel.Camera.ResetToDefaultPose();
         MenubarControl.HomeScreenRequested = ShowHomeScreen;
@@ -135,7 +152,9 @@ public partial class MainWindow : WindowBase
 
     private void WireDockLayout()
     {
-        DockFactory = new AppDockFactory(ViewportModel, OpenSpawnMenu);
+        DockFactory = new AppDockFactory(ViewportModel, OpenSpawnMenu, SpawnAssetFromContentBrowser,
+            AddSoundToTimelineFromContentBrowser, ImportResourcePackArchiveFromDialog,
+            ImportResourcePackFolderFromDialog);
         IRootDock layout = DockFactory.CreateLayout();
         DockFactory.InitLayout(layout);
 
@@ -148,6 +167,7 @@ public partial class MainWindow : WindowBase
         // present.
         DockFactory.SceneTreeModel.Initialize();
         DockFactory.TimelineModel.Initialize();
+        MineImatorSimplyRemadeNuxi.core.SelectionManager.Instance!.Timeline = DockFactory.TimelineModel;
 
         // Viewport model wiring: panel back-references plus the scene-object
         // hooks the other panels consume (formerly direct Viewport references
@@ -391,6 +411,7 @@ public partial class MainWindow : WindowBase
         {
             _projectManager.CreateNewProject(projectName.Text ?? "Untitled Project");
             ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, ViewportModel, SpawnMenuModel, DockFactory.TimelineModel, DockFactory.PropertiesModel);
+            ResetUndoRedoHistory();
             RefreshWindowTitle();
             HideHomeScreen();
             dialog.Close();
@@ -410,7 +431,62 @@ public partial class MainWindow : WindowBase
 
     private void OpenSaveAsPopup()
     {
-        // TODO(migration): port the save-as name-entry modal.
+        if (!_projectManager.HasProject)
+        {
+            OpenNewProjectPopup();
+            return;
+        }
+
+        var projectName = new TextBox
+        {
+            Text = string.IsNullOrWhiteSpace(_projectManager.Manifest.ProjectName)
+                ? "Untitled Project"
+                : _projectManager.Manifest.ProjectName
+        };
+        var dialog = new Window
+        {
+            Title = "Save Project As",
+            Width = 400,
+            Height = 170,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+        var saveButton = new Button { Content = "Save Copy", Width = 100 };
+        var cancelButton = new Button { Content = "Cancel", Width = 100 };
+        saveButton.Click += (_, _) =>
+        {
+            try
+            {
+                ProjectSceneSerializer.WriteSceneToManifest(_projectManager.Manifest, ViewportModel,
+                    DockFactory.TimelineModel, DockFactory.PropertiesModel);
+                _projectManager.SaveProjectAs(projectName.Text ?? "Untitled Project");
+                RefreshWindowTitle();
+                ShowSuccessToast($"Saved copy as {_projectManager.Manifest.ProjectName}");
+                dialog.Close();
+            }
+            catch (Exception exception)
+            {
+                ShowErrorToast($"Save As failed: {exception.Message}");
+            }
+        };
+        cancelButton.Click += (_, _) => dialog.Close();
+        dialog.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(16),
+            Spacing = 12,
+            Children =
+            {
+                new TextBlock { Text = "Project name (copy)" }, projectName,
+                new StackPanel
+                {
+                    Orientation = Avalonia.Layout.Orientation.Horizontal,
+                    Spacing = 8,
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                    Children = { saveButton, cancelButton }
+                }
+            }
+        };
+        dialog.ShowDialog(this);
     }
 
     private void OpenProjectFromDialog()
@@ -442,25 +518,307 @@ public partial class MainWindow : WindowBase
             return;
         }
 
+        ReloadMinecraftDataForCurrentProject();
         ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, ViewportModel, SpawnMenuModel, DockFactory.TimelineModel, DockFactory.PropertiesModel);
+        ResetUndoRedoHistory();
         RefreshWindowTitle();
         HideHomeScreen();
     }
 
+    private void ImportAssetFromDialog()
+    {
+        if (!_projectManager.HasProject)
+        {
+            OpenNewProjectPopup();
+            return;
+        }
+
+        var result = NativeFileDialogSharp.Dialog.FileOpen(
+            "glb,gltf,fbx,obj,dae,3ds,blend,ply,stl,x3d,mimodel,miobject,png,jpg,jpeg,bmp,tga,gif,webp,tiff,wav,mp3,ogg,flac,m4a");
+        if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
+            return;
+
+        try
+        {
+            _projectManager.AddAsset(result.Path, DetectAssetType(result.Path));
+            DockFactory.ContentBrowser?.Refresh();
+            ShowSuccessToast($"Imported {Path.GetFileName(result.Path)}");
+        }
+        catch (Exception exception)
+        {
+            ShowErrorToast($"Asset import failed: {exception.Message}");
+        }
+    }
+
+    private static ProjectAssetType DetectAssetType(string path)
+    {
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".png" or ".jpg" or ".jpeg" or ".bmp" or ".tga" or ".gif" or ".webp" or ".tiff" => ProjectAssetType.Image,
+            ".wav" or ".mp3" or ".ogg" or ".flac" or ".m4a" => ProjectAssetType.Sound,
+            ".glb" or ".gltf" or ".fbx" or ".obj" or ".dae" or ".3ds" or ".blend" or ".ply" or ".stl" or ".x3d" or ".mimodel" or ".miobject" => ProjectAssetType.Model,
+            _ => ProjectAssetType.Other
+        };
+    }
+
+    private void ImportResourcePackArchiveFromDialog()
+    {
+        var result = NativeFileDialogSharp.Dialog.FileOpen("zip");
+        if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path))
+            ImportResourcePack(result.Path);
+    }
+
+    private void ImportResourcePackFolderFromDialog()
+    {
+        var result = NativeFileDialogSharp.Dialog.FolderPicker();
+        if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path))
+            ImportResourcePack(result.Path);
+    }
+
+    private void ImportResourcePack(string sourcePath)
+    {
+        if (!_projectManager.HasProject)
+        {
+            OpenNewProjectPopup();
+            return;
+        }
+
+        try
+        {
+            string snapshot = CaptureSceneSnapshotJson();
+            string importedPath = _projectManager.ImportResourcePack(sourcePath);
+            ReloadMinecraftDataForCurrentProject();
+
+            if (!string.IsNullOrWhiteSpace(snapshot))
+                ApplySceneSnapshot(snapshot);
+
+            DockFactory.SceneTreeModel.Refresh();
+            DockFactory.ContentBrowser?.Refresh();
+            ShowSuccessToast($"Imported resource pack {Path.GetFileName(importedPath)}");
+        }
+        catch (Exception exception)
+        {
+            ShowErrorToast($"Resource pack import failed: {exception.Message}");
+        }
+    }
+
+    private void ReloadMinecraftDataForCurrentProject()
+    {
+        BlockRegistry.Initialize();
+        TerrainAtlas.Initialize();
+        ItemsAtlas.Initialize();
+        SpawnMenuModel.RefreshExternalAssetOptions();
+    }
+
+    private void SpawnAssetFromContentBrowser(ProjectAssetEntry asset)
+    {
+        string path = _projectManager.GetAssetFullPath(asset);
+        if (!File.Exists(path))
+        {
+            ShowErrorToast($"Asset is missing: {asset.DisplayName}");
+            return;
+        }
+
+        var spawned = asset.AssetType == ProjectAssetType.Model
+            ? SpawnMenuModel.SpawnCustomModelFromPath(path)
+            : SpawnMenuModel.SpawnSchematicFromPathInteractive(path);
+        if (spawned == null)
+            ShowErrorToast($"Could not spawn {asset.DisplayName}");
+    }
+
+    private void AddSoundToTimelineFromContentBrowser(ProjectAssetEntry asset)
+    {
+        DockFactory.TimelineModel.AddAudioTrackFromAsset(asset);
+        _projectManager.SetDirty(true);
+        ShowSuccessToast($"Added {asset.DisplayName} to timeline");
+    }
+
     private void SaveProjectWithScene()
     {
-        // TODO(migration): scene snapshot capture depends on the not-yet-ported
-        // Viewport/Timeline; wire this up once they're ported.
+        if (!_projectManager.HasProject)
+        {
+            OpenNewProjectPopup();
+            return;
+        }
+
+        try
+        {
+            ProjectSceneSerializer.WriteSceneToManifest(_projectManager.Manifest, ViewportModel,
+                DockFactory.TimelineModel, DockFactory.PropertiesModel);
+            _projectManager.SaveManifest();
+            RefreshWindowTitle();
+            ShowSuccessToast($"Saved {_projectManager.Manifest.ProjectName}");
+        }
+        catch (Exception exception)
+        {
+            ShowErrorToast($"Save failed: {exception.Message}");
+        }
     }
 
     private void PerformUndo()
     {
-        // TODO(migration): undo/redo scene-snapshot stack depends on Viewport.
+        if (_undoSceneSnapshots.Count == 0)
+            return;
+
+        string currentSnapshot = CaptureSceneSnapshotJson();
+        if (string.IsNullOrWhiteSpace(currentSnapshot))
+            return;
+
+        string targetSnapshot = _undoSceneSnapshots[^1];
+        _undoSceneSnapshots.RemoveAt(_undoSceneSnapshots.Count - 1);
+        PushSnapshot(_redoSceneSnapshots, currentSnapshot);
+
+        if (!ApplySceneSnapshot(targetSnapshot))
+        {
+            _redoSceneSnapshots.RemoveAt(_redoSceneSnapshots.Count - 1);
+            _undoSceneSnapshots.Add(targetSnapshot);
+        }
     }
 
     private void PerformRedo()
     {
-        // TODO(migration): undo/redo scene-snapshot stack depends on Viewport.
+        if (_redoSceneSnapshots.Count == 0)
+            return;
+
+        string currentSnapshot = CaptureSceneSnapshotJson();
+        if (string.IsNullOrWhiteSpace(currentSnapshot))
+            return;
+
+        string targetSnapshot = _redoSceneSnapshots[^1];
+        _redoSceneSnapshots.RemoveAt(_redoSceneSnapshots.Count - 1);
+        PushSnapshot(_undoSceneSnapshots, currentSnapshot);
+
+        if (!ApplySceneSnapshot(targetSnapshot))
+        {
+            _undoSceneSnapshots.RemoveAt(_undoSceneSnapshots.Count - 1);
+            _redoSceneSnapshots.Add(targetSnapshot);
+        }
+    }
+
+    private string CaptureSceneSnapshotJson()
+    {
+        if (!_projectManager.HasProject)
+            return "";
+
+        var snapshot = new ProjectManifest
+        {
+            ProjectName = _projectManager.Manifest.ProjectName,
+            CreatedUtc = _projectManager.Manifest.CreatedUtc,
+            LastSavedUtc = _projectManager.Manifest.LastSavedUtc,
+            Assets = new List<ProjectAssetEntry>(_projectManager.Manifest.Assets)
+        };
+        ProjectSceneSerializer.WriteSceneToManifest(snapshot, ViewportModel,
+            DockFactory.TimelineModel, DockFactory.PropertiesModel);
+        return JsonSerializer.Serialize(snapshot, AppJsonContext.Default.ProjectManifest);
+    }
+
+    private static string ComputeSnapshotFingerprint(string snapshotJson) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(snapshotJson)));
+
+    private void ResetUndoRedoHistory()
+    {
+        _undoSceneSnapshots.Clear();
+        _redoSceneSnapshots.Clear();
+        _pendingHistorySnapshotJson = "";
+        _pendingHistoryFingerprint = "";
+        _lastHistorySnapshotJson = CaptureSceneSnapshotJson();
+        _lastHistoryFingerprint = string.IsNullOrEmpty(_lastHistorySnapshotJson)
+            ? ""
+            : ComputeSnapshotFingerprint(_lastHistorySnapshotJson);
+    }
+
+    private static void PushSnapshot(List<string> history, string snapshot)
+    {
+        if (history.Count >= MaxUndoEntries)
+            history.RemoveAt(0);
+        history.Add(snapshot);
+    }
+
+    private void UpdateUndoRedoTracking()
+    {
+        if (_suppressHistoryTracking || !_projectManager.HasProject)
+            return;
+
+        string snapshot = CaptureSceneSnapshotJson();
+        if (string.IsNullOrEmpty(snapshot))
+            return;
+
+        string fingerprint = ComputeSnapshotFingerprint(snapshot);
+        if (string.IsNullOrEmpty(_lastHistoryFingerprint))
+        {
+            _lastHistorySnapshotJson = snapshot;
+            _lastHistoryFingerprint = fingerprint;
+            return;
+        }
+
+        if (fingerprint == _lastHistoryFingerprint)
+        {
+            _pendingHistorySnapshotJson = "";
+            _pendingHistoryFingerprint = "";
+            return;
+        }
+
+        if (fingerprint != _pendingHistoryFingerprint)
+        {
+            _pendingHistorySnapshotJson = snapshot;
+            _pendingHistoryFingerprint = fingerprint;
+            _pendingHistoryChangedAtUtc = DateTime.UtcNow;
+            return;
+        }
+
+        if ((DateTime.UtcNow - _pendingHistoryChangedAtUtc).TotalSeconds < UndoCommitDelaySeconds)
+            return;
+
+        PushSnapshot(_undoSceneSnapshots, _lastHistorySnapshotJson);
+        _redoSceneSnapshots.Clear();
+        _lastHistorySnapshotJson = _pendingHistorySnapshotJson;
+        _lastHistoryFingerprint = _pendingHistoryFingerprint;
+        _pendingHistorySnapshotJson = "";
+        _pendingHistoryFingerprint = "";
+    }
+
+    private bool ApplySceneSnapshot(string snapshotJson)
+    {
+        var snapshot = JsonSerializer.Deserialize(snapshotJson, AppJsonContext.Default.ProjectManifest);
+        if (snapshot == null)
+            return false;
+
+        var preservedCamera = (ViewportModel.Camera.Target, ViewportModel.Camera.Yaw,
+            ViewportModel.Camera.Pitch, ViewportModel.Camera.Distance);
+        _suppressHistoryTracking = true;
+        try
+        {
+            ProjectSceneSerializer.LoadSceneFromManifest(snapshot, ViewportModel, SpawnMenuModel,
+                DockFactory.TimelineModel, DockFactory.PropertiesModel);
+            ViewportModel.Camera.Target = preservedCamera.Target;
+            ViewportModel.Camera.Yaw = preservedCamera.Yaw;
+            ViewportModel.Camera.Pitch = preservedCamera.Pitch;
+            ViewportModel.Camera.Distance = preservedCamera.Distance;
+            DockFactory.SceneTreeModel.Refresh();
+            MineImatorSimplyRemadeNuxi.core.SelectionManager.Instance?.RefreshSelection();
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            _suppressHistoryTracking = false;
+        }
+
+        // Rehydrating a scene can normalize runtime-only state (for example
+        // timeline keyframe caches). Use its actual serialized form as the
+        // next history baseline so the timer does not treat restoration as a
+        // new edit and clear the redo stack.
+        _lastHistorySnapshotJson = CaptureSceneSnapshotJson();
+        _lastHistoryFingerprint = string.IsNullOrEmpty(_lastHistorySnapshotJson)
+            ? ""
+            : ComputeSnapshotFingerprint(_lastHistorySnapshotJson);
+        _pendingHistorySnapshotJson = "";
+        _pendingHistoryFingerprint = "";
+        _projectManager.SetDirty(true);
+        RefreshWindowTitle();
+        return true;
     }
 
     // ── Keyboard shortcuts ───────────────────────────────────────────────────

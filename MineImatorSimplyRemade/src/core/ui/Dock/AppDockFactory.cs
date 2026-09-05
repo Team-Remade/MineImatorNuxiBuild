@@ -4,6 +4,7 @@ using Dock.Model.Avalonia;
 using Dock.Model.Avalonia.Controls;
 using Dock.Model.Controls;
 using Dock.Model.Core;
+using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui.Panels;
 using OrientationEnum = Dock.Model.Core.Orientation;
 
@@ -47,11 +48,21 @@ public sealed class AppDockFactory : Factory
     /// scene survives layout resets) and rendered by <see cref="ViewportView"/>.</summary>
     private readonly Viewport _viewportModel;
     private readonly Action _openSpawnMenu;
+    private readonly Action<ProjectAssetEntry> _spawnAsset;
+    private readonly Action<ProjectAssetEntry> _addSoundToTimeline;
+    private readonly Action _importResourcePack;
+    private readonly Action _importResourcePackFolder;
 
-    public AppDockFactory(Viewport viewportModel, Action openSpawnMenu)
+    public AppDockFactory(Viewport viewportModel, Action openSpawnMenu,
+        Action<ProjectAssetEntry> spawnAsset, Action<ProjectAssetEntry> addSoundToTimeline,
+        Action importResourcePack, Action importResourcePackFolder)
     {
         _viewportModel = viewportModel;
         _openSpawnMenu = openSpawnMenu;
+        _spawnAsset = spawnAsset;
+        _addSoundToTimeline = addSoundToTimeline;
+        _importResourcePack = importResourcePack;
+        _importResourcePackFolder = importResourcePackFolder;
     }
 
     public Tool ViewportTool { get; private set; } = null!;
@@ -83,6 +94,7 @@ public sealed class AppDockFactory : Factory
     public Tool PropertiesTool { get; private set; } = null!;
     public Tool TimelineTool { get; private set; } = null!;
     public Tool ContentBrowserTool { get; private set; } = null!;
+    public ContentBrowserView? ContentBrowser { get; private set; }
 
     public override IRootDock CreateLayout()
     {
@@ -115,11 +127,19 @@ public sealed class AppDockFactory : Factory
             Content = new Func<IServiceProvider, object>(_ => new TemplateResult<Control>(new TimelineView(TimelineModel), null!)),
         };
 
+        ContentBrowser = new ContentBrowserView
+        {
+            SpawnAssetRequested = _spawnAsset,
+            AddSoundToTimelineRequested = _addSoundToTimeline,
+            ImportResourcePackRequested = _importResourcePack,
+            ImportResourcePackFolderRequested = _importResourcePackFolder
+        };
+
         ContentBrowserTool = new Tool
         {
             Id = ContentBrowserToolId,
             Title = "Content Browser",
-            Content = new Func<IServiceProvider, object>(_ => new TemplateResult<Control>(new ContentBrowserView(), null!)),
+            Content = new Func<IServiceProvider, object>(_ => new TemplateResult<Control>(ContentBrowser, null!)),
         };
 
         var viewportDock = new ToolDock

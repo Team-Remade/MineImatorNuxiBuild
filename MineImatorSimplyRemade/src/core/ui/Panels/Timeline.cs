@@ -691,6 +691,20 @@ public class Timeline
         }
     }
 
+    /// <summary>Selects explicit keyframe/track pairs supplied by the view.
+    /// Additive selection retains the existing selection without toggling entries.</summary>
+    public void SelectKeyframes(IEnumerable<(SceneObject obj, string path, TimelineKeyframe keyframe)> keyframes, bool additive)
+    {
+        if (!additive)
+            ClearKeyframeSelection();
+
+        foreach (var (obj, path, keyframe) in keyframes)
+        {
+            _selectedKeyframes.Add(keyframe);
+            _keyframeOwners[keyframe] = (obj, path);
+        }
+    }
+
     public void MoveIntoPlaybackRegionIfNeeded()
     {
         if (_loopPlayback && _playbackRegionStart.HasValue && _playbackRegionEnd.HasValue &&

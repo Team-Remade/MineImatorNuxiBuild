@@ -1117,7 +1117,7 @@ public partial class PropertiesView : UserControl
             _model.ApplyToSelectedObjects(o => o.InheritPosition = inherit);
         };
         PositionPanel.Children.Add(_inheritPosCheck);
-        _posNuds = BuildAxisNuds(PositionPanel, -1000000, 1000000, 1, _ => OnPositionEdited());
+        _posNuds = BuildAxisNuds(PositionPanel, -1000000, 1000000, 1, _ => OnPositionEdited(), keyframePathPrefix: "position");
         ButtonRow(PositionPanel, ("Reset", () => { _model.ApplyPosition(vec3.Zero); RefreshObjectValues(); }));
 
         // Rotation (displayed degrees, stored radians)
@@ -1129,7 +1129,7 @@ public partial class PropertiesView : UserControl
             _model.ApplyToSelectedObjects(o => o.InheritRotation = inherit);
         };
         RotationPanel.Children.Add(_inheritRotCheck);
-        _rotNuds = BuildAxisNuds(RotationPanel, -1000000, 1000000, 1, _ => OnRotationEdited());
+        _rotNuds = BuildAxisNuds(RotationPanel, -1000000, 1000000, 1, _ => OnRotationEdited(), keyframePathPrefix: "rotation");
         ButtonRow(RotationPanel, ("Reset", () => { _model.ApplyRotation(vec3.Zero); RefreshObjectValues(); }));
 
         // Scale
@@ -1143,7 +1143,7 @@ public partial class PropertiesView : UserControl
         ScalePanel.Children.Add(_inheritScaleCheck);
         _linkScaleCheck = new CheckBox { Content = "Link Scale", Foreground = MutedBrush, IsChecked = true };
         ScalePanel.Children.Add(_linkScaleCheck);
-        _scaleNuds = BuildAxisNuds(ScalePanel, 0.001m, 1000000, 0.05m, OnScaleEdited);
+        _scaleNuds = BuildAxisNuds(ScalePanel, 0.001m, 1000000, 0.05m, OnScaleEdited, keyframePathPrefix: "scale");
         ButtonRow(ScalePanel, ("Reset", () => { _model.ApplyScale(vec3.Ones); RefreshObjectValues(); }));
 
         // Block tiling
@@ -1154,7 +1154,7 @@ public partial class PropertiesView : UserControl
     }
 
     private NumericUpDown[] BuildAxisNuds(Panel parent, decimal min, decimal max, decimal increment,
-        Action<int> onAxisEdited, string format = "0.###")
+        Action<int> onAxisEdited, string format = "0.###", string? keyframePathPrefix = null)
     {
         string[] axes = ["X", "Y", "Z"];
         var nuds = new NumericUpDown[3];
@@ -1173,6 +1173,17 @@ public partial class PropertiesView : UserControl
                 if (_syncing || e.NewValue == null) return;
                 onAxisEdited(axis);
             };
+            if (keyframePathPrefix != null)
+            {
+                string propertyPath = $"{keyframePathPrefix}.{axes[axis].ToLowerInvariant()}";
+                var addKeyframe = new MenuItem { Header = "Add keyframe at playhead" };
+                addKeyframe.Click += (_, _) =>
+                {
+                    if (_model.CurrentObject != null && _model.Timeline != null)
+                        _model.Timeline.AddKeyframeForProperty(_model.CurrentObject, propertyPath, _model.Timeline.CurrentFrame);
+                };
+                nud.ContextMenu = new ContextMenu { ItemsSource = new[] { addKeyframe } };
+            }
             nuds[i] = nud;
 
             Grid.SetColumn(label, 0);

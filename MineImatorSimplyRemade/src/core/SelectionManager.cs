@@ -195,6 +195,13 @@ public class SelectionManager
         return obj != null && SelectedObjects.Contains(obj);
     }
 
+    /// <summary>Rebroadcasts the current selection after external scene reconstruction.</summary>
+    public void RefreshSelection()
+    {
+        SyncGizmoSelection();
+        SelectionChanged?.Invoke();
+    }
+
     /// <summary>
     /// Generates a new globally-unique object identifier and a unique pick-colour ID.
     /// </summary>

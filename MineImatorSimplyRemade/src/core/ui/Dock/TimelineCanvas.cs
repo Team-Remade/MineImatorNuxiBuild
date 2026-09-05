@@ -53,6 +53,10 @@ public sealed class TimelineCanvas : Control
     private bool _draggingKeyframes;
     private bool _dragChangedFrames;
     private int  _dragAnchorFrame;
+    private bool _marqueeSelecting;
+    private bool _marqueeAdditive;
+    private Point _marqueeStart;
+    private Point _marqueeEnd;
 
     private TimelineProperty? _ctxRow;
     private int _ctxFrame;
@@ -83,6 +87,8 @@ public sealed class TimelineCanvas : Control
     private static readonly Pen SeparatorPen = new(new SolidColorBrush(Color.Parse("#0E0E0E")));
     private static readonly Pen PlayheadPen  = new(new SolidColorBrush(Color.Parse("#E53935")), 2);
     private static readonly Pen KeyframeSelPen = new(KeyframeSelBrush, 1.5);
+    private static readonly IBrush MarqueeBrush = new SolidColorBrush(Color.Parse("#446FA8DC"));
+    private static readonly Pen MarqueePen = new(new SolidColorBrush(Color.Parse("#A8C8F0")));
 
     public TimelineCanvas()
     {
@@ -219,6 +225,7 @@ public sealed class TimelineCanvas : Control
         RenderLeftLabels(ctx, bounds, rows);
         RenderRuler(ctx, bounds);
         RenderPlayhead(ctx, bounds);
+        RenderMarquee(ctx);
 
         ctx.DrawLine(SeparatorPen, new Point(LeftColumnWidth, 0), new Point(LeftColumnWidth, bounds.Height));
         ctx.DrawLine(SeparatorPen, new Point(0, RulerHeight), new Point(bounds.Width, RulerHeight));
@@ -416,6 +423,17 @@ public sealed class TimelineCanvas : Control
         ctx.DrawGeometry(PlayheadPen.Brush, null, geometry);
     }
 
+    private void RenderMarquee(DrawingContext ctx)
+    {
+        if (!_marqueeSelecting)
+            return;
+
+        var rect = new Rect(_marqueeStart, _marqueeEnd).Intersect(
+            new Rect(LeftColumnWidth, RulerHeight, TrackViewportWidth, Math.Max(0, Bounds.Height - RulerHeight)));
+        ctx.FillRectangle(MarqueeBrush, rect);
+        ctx.DrawRectangle(null, MarqueePen, rect);
+    }
+
     // ── Hit testing ───────────────────────────────────────────────────────────
 
     private (TimelineProperty row, List<(string path, TimelineKeyframe kf)> hits)? HitTestKeyframe(Point p)
@@ -516,7 +534,19 @@ public sealed class TimelineCanvas : Control
         }
         else if (!additive)
         {
-            Model.ClearKeyframeSelection();
+            _marqueeSelecting = true;
+            _marqueeAdditive = false;
+            _marqueeStart = p;
+            _marqueeEnd = p;
+            e.Pointer.Capture(this);
+        }
+        else
+        {
+            _marqueeSelecting = true;
+            _marqueeAdditive = true;
+            _marqueeStart = p;
+            _marqueeEnd = p;
+            e.Pointer.Capture(this);
         }
         e.Handled = true;
     }
@@ -539,6 +569,12 @@ public sealed class TimelineCanvas : Control
             Model.DragSelectedKeyframes(delta);
             e.Handled = true;
         }
+        else if (_marqueeSelecting)
+        {
+            _marqueeEnd = p;
+            InvalidateVisual();
+            e.Handled = true;
+        }
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -555,6 +591,49 @@ public sealed class TimelineCanvas : Control
             e.Pointer.Capture(null);
             if (_dragChangedFrames) Model?.EndKeyframeDrag();
         }
+        if (_marqueeSelecting)
+        {
+            _marqueeSelecting = false;
+            e.Pointer.Capture(null);
+            SelectMarqueeKeyframes();
+            InvalidateVisual();
+            e.Handled = true;
+        }
+    }
+
+    private void SelectMarqueeKeyframes()
+    {
+        if (Model == null)
+            return;
+
+        var rect = new Rect(_marqueeStart, _marqueeEnd);
+        if (rect.Width < 4 && rect.Height < 4)
+        {
+            if (!_marqueeAdditive)
+                Model.ClearKeyframeSelection();
+            return;
+        }
+
+        var selected = new List<(MineImatorSimplyRemadeNuxi.core.objs.SceneObject obj, string path, TimelineKeyframe keyframe)>();
+        var included = new HashSet<TimelineKeyframe>();
+        foreach (var row in GetVisibleRows())
+        {
+            if (row.PropertyPath == "__header__")
+                continue;
+
+            int rowIndex = YToRowIndex(RowIndexToY(GetVisibleRows().IndexOf(row)) + RowHeight / 2);
+            double rowCenter = RowIndexToY(rowIndex) + RowHeight / 2;
+            if (rowCenter < rect.Top || rowCenter > rect.Bottom)
+                continue;
+
+            foreach (var (path, keyframe) in RowKeyframes(row))
+            {
+                if (FrameToX(keyframe.Frame) >= rect.Left && FrameToX(keyframe.Frame) <= rect.Right && included.Add(keyframe))
+                    selected.Add((row.Object, path, keyframe));
+            }
+        }
+
+        Model.SelectKeyframes(selected, _marqueeAdditive);
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
