@@ -16,6 +16,7 @@
         <Grid Grid.Row="2">
             <TreeView x:Name="Tree"
                       Margin="4,0,4,4"
+                      DragDrop.AllowDrop="True"
                       SelectionMode="Multiple">
                 <TreeView.ItemTemplate>
                     <TreeDataTemplate ItemsSource="{Binding Children}">

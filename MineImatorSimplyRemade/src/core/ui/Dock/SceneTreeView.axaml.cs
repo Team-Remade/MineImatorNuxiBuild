@@ -26,9 +26,7 @@ namespace MineImatorSimplyRemade.core.ui.Dock;
 ///  • Duplicate / Delete toolbar buttons.
 ///
 /// All hierarchy mutation is delegated to the model, which raises
-/// <see cref="SceneTree.TreeChanged"/> so this view rebuilds. Drag-and-drop
-/// reparenting from the old panel is not ported yet (see the model's
-/// <see cref="SceneTree.ReparentObject"/>, which is ready for a future hookup).
+/// <see cref="SceneTree.TreeChanged"/> so this view rebuilds.
 /// </summary>
 public partial class SceneTreeView : UserControl
 {
@@ -53,6 +51,8 @@ public partial class SceneTreeView : UserControl
     // Guards against selection sync feedback loops between the TreeView and the
     // SelectionManager.
     private bool _syncingSelection;
+    private SceneTreeNode? _dragSource;
+    private Point _dragStart;
 
     /// <summary>Parameterless constructor for the XAML designer / previewer.</summary>
     public SceneTreeView() : this(new SceneTree())
@@ -73,6 +73,9 @@ public partial class SceneTreeView : UserControl
         Tree.SelectionChanged += OnTreeSelectionChanged;
         Tree.DoubleTapped += (_, _) => RenameSelected();
         Tree.AddHandler(PointerPressedEvent, OnTreePointerPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        Tree.PointerMoved += OnTreePointerMoved;
+        Tree.AddHandler(DragDrop.DragOverEvent, OnTreeDragOver);
+        Tree.AddHandler(DragDrop.DropEvent, OnTreeDrop);
 
         BuildContextMenu();
 
@@ -176,10 +179,18 @@ public partial class SceneTreeView : UserControl
     private void OnTreePointerPressed(object? sender, PointerPressedEventArgs e)
     {
         var point = e.GetCurrentPoint(Tree);
+        var node = FindNodeFrom(e.Source as Visual);
+
+        if (point.Properties.IsLeftButtonPressed)
+        {
+            _dragSource = node;
+            _dragStart = e.GetPosition(Tree);
+            return;
+        }
+
         if (!point.Properties.IsRightButtonPressed)
             return;
 
-        var node = FindNodeFrom(e.Source as Visual);
         if (node == null)
             return;
 
@@ -191,6 +202,46 @@ public partial class SceneTreeView : UserControl
             Tree.SelectedItems.Clear();
             Tree.SelectedItems.Add(node);
         }
+    }
+
+    private async void OnTreePointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_dragSource == null || !e.GetCurrentPoint(Tree).Properties.IsLeftButtonPressed)
+            return;
+
+        var position = e.GetPosition(Tree);
+        var dragOffset = position - _dragStart;
+        if (Math.Sqrt(dragOffset.X * dragOffset.X + dragOffset.Y * dragOffset.Y) < 4)
+            return;
+
+        var data = new DataObject();
+        data.Set("MineImator.SceneTreeNode", _dragSource);
+        _dragSource = null;
+        await DragDrop.DoDragDrop(e, data, DragDropEffects.Move);
+    }
+
+    private void OnTreeDragOver(object? sender, DragEventArgs e)
+    {
+        var source = e.Data.Get("MineImator.SceneTreeNode") as SceneTreeNode;
+        var target = FindNodeFrom(e.Source as Visual);
+        if (source == null || source == target || target?.Model.IsDescendantOf(source.Model) == true)
+        {
+            e.DragEffects = DragDropEffects.None;
+            return;
+        }
+
+        e.DragEffects = DragDropEffects.Move;
+    }
+
+    private void OnTreeDrop(object? sender, DragEventArgs e)
+    {
+        var source = e.Data.Get("MineImator.SceneTreeNode") as SceneTreeNode;
+        var target = FindNodeFrom(e.Source as Visual);
+        if (source == null || source == target || target?.Model.IsDescendantOf(source.Model) == true)
+            return;
+
+        _model.ReparentObject(source.Model, target?.Model);
+        e.DragEffects = DragDropEffects.Move;
     }
 
     private static SceneTreeNode? FindNodeFrom(Visual? source)

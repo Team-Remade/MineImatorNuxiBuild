@@ -157,6 +157,8 @@ public partial class MainWindow : WindowBase
         ViewportModel.SpawnMenu = SpawnMenuModel;
         SpawnMenuModel.Viewport = ViewportModel;
         DockFactory.SceneTreeModel.SceneRoots = ViewportModel.SceneObjects;
+        SpawnMenuModel.SceneChanged -= OnSpawnMenuSceneChanged;
+        SpawnMenuModel.SceneChanged += OnSpawnMenuSceneChanged;
         DockFactory.TimelineModel.SceneObjectsProvider = () => ViewportModel.SceneObjects;
 
         // Properties panel: subscribe to selection + load current project
@@ -172,6 +174,8 @@ public partial class MainWindow : WindowBase
             entry => ProjectSceneSerializer.SpawnObjectFromEntry(entry, ViewportModel, SpawnMenuModel);
         DockFactory.PropertiesModel.Initialize();
     }
+
+    private void OnSpawnMenuSceneChanged() => DockFactory?.SceneTreeModel.Refresh();
 
     private void ResetDockLayout() => WireDockLayout();
 

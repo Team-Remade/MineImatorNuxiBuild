@@ -359,10 +359,22 @@ public class SpawnMenu
     /// </summary>
     public event Action? CloseRequested;
 
+    /// <summary>Raised after a root object is added to the viewport scene.</summary>
+    public event Action? SceneChanged;
+
     /// <summary>Called by the view whenever the spawn menu window is (re)opened.</summary>
     public void OnMenuOpened() => RefreshResourcePackOptions();
 
     private void RequestClose() => CloseRequested?.Invoke();
+
+    private void AddToScene(SceneObject obj)
+    {
+        if (Viewport == null)
+            return;
+
+        Viewport.SceneObjects.Add(obj);
+        SceneChanged?.Invoke();
+    }
 
     /// <summary>Global search text; setting it resets the object/variant selection.</summary>
     public string SearchQuery
@@ -1683,7 +1695,7 @@ public class SpawnMenu
         if (string.IsNullOrEmpty(root.Name)) root.Name = displayName;
 
         AddToCustomModelHistory(pathToSpawn, displayName);
-        Viewport.SceneObjects.Add(root);
+        AddToScene(root);
         return root;
     }
 
@@ -2278,7 +2290,7 @@ public class SpawnMenu
                 return null;
             }
 
-            Viewport.SceneObjects.Add(root);
+            AddToScene(root);
             return root;
         }
         finally
@@ -4522,7 +4534,7 @@ public class SpawnMenu
             extrudeDepth: 1f / 16f);
 
         obj.AddMesh(mesh);
-        Viewport.SceneObjects.Add(obj);
+        AddToScene(obj);
         return obj;
     }
 
@@ -4615,7 +4627,7 @@ public class SpawnMenu
         };
         obj.AddMesh(particlePickMesh);
 
-        Viewport.SceneObjects.Add(obj);
+        AddToScene(obj);
         return obj;
     }
 
@@ -4708,7 +4720,7 @@ public class SpawnMenu
         };
         obj.AddMesh(cameraPickMesh);
 
-        Viewport.SceneObjects.Add(obj);
+        AddToScene(obj);
         return obj;
     }
 
@@ -4823,7 +4835,7 @@ public class SpawnMenu
         };
         obj.AddMesh(lightPickMesh);
 
-        Viewport.SceneObjects.Add(obj);
+        AddToScene(obj);
         return obj;
     }
 
@@ -4896,7 +4908,7 @@ public class SpawnMenu
         if (primitiveType == "Text Mesh")
             TextMeshFactory.Rebuild(obj);
 
-        Viewport.SceneObjects.Add(obj);
+        AddToScene(obj);
         return obj;
     }
 
@@ -4953,7 +4965,7 @@ public class SpawnMenu
 
         obj.ApplyMaterialSettingsToMeshes();
 
-        Viewport.SceneObjects.Add(obj);
+        AddToScene(obj);
         return obj;
     }
 

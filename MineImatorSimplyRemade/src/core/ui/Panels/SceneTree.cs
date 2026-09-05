@@ -60,6 +60,9 @@ public class SceneTree
 
     private void RaiseTreeChanged() => TreeChanged?.Invoke();
 
+    /// <summary>Refreshes the view after an external mutation of <see cref="SceneRoots"/>.</summary>
+    public void Refresh() => RaiseTreeChanged();
+
     // ── Constructor ─────────────────────────────────────────────────────────
 
     public SceneTree()
