@@ -81,6 +81,7 @@ public partial class MainWindow : WindowBase
 
         WireMenubar();
         WireDockLayout();
+        WireHomeScreen();
         SetWindowIconFromEmbedded("icons.Icon");
 
         KeyDown += OnMainWindowKeyDown;
@@ -99,7 +100,7 @@ public partial class MainWindow : WindowBase
     {
         MenubarControl.NewProjectRequested = OpenNewProjectPopup;
         MenubarControl.OpenProjectRequested = OpenProjectFromDialog;
-        MenubarControl.OpenRecentRequested = () => { /* TODO(migration): project home screen */ };
+        MenubarControl.OpenRecentRequested = ShowHomeScreen;
         MenubarControl.SaveProjectRequested = SaveProjectWithScene;
         MenubarControl.SaveProjectAsRequested = OpenSaveAsPopup;
         MenubarControl.UndoRequested = PerformUndo;
@@ -112,7 +113,7 @@ public partial class MainWindow : WindowBase
         MenubarControl.ImportResourcePackFolderRequested = () => { /* TODO(migration): resource pack import */ };
         MenubarControl.ResetLayoutRequested = ResetDockLayout;
         MenubarControl.ResetWorkCameraRequested = () => ViewportModel.Camera.ResetToDefaultPose();
-        MenubarControl.HomeScreenRequested = () => { /* TODO(migration): project home screen */ };
+        MenubarControl.HomeScreenRequested = ShowHomeScreen;
         MenubarControl.AboutRequested = OpenAboutDialog;
         MenubarControl.CheckForUpdatesRequested = () => { /* TODO(migration): update dialog */ };
         MenubarControl.ReportBugsRequested = OpenIssuesLink;
@@ -173,6 +174,22 @@ public partial class MainWindow : WindowBase
     }
 
     private void ResetDockLayout() => WireDockLayout();
+
+    private void WireHomeScreen()
+    {
+        HomeScreen.NewProjectRequested = OpenNewProjectPopup;
+        HomeScreen.LoadProjectRequested = OpenProjectFromDialog;
+        HomeScreen.OpenRecentRequested = OpenRecentProject;
+        ShowHomeScreen();
+    }
+
+    private void ShowHomeScreen()
+    {
+        HomeScreen.Refresh();
+        HomeScreen.IsVisible = true;
+    }
+
+    private void HideHomeScreen() => HomeScreen.IsVisible = false;
 
     // ── Spawn menu ──────────────────────────────────────────────────────────
     // The old renderer's SpawnMenu was a floating ImGui window toggled from the
@@ -362,7 +379,29 @@ public partial class MainWindow : WindowBase
 
     private void OpenNewProjectPopup()
     {
-        // TODO(migration): port the new-project name-entry modal.
+        var projectName = new TextBox { Text = "Untitled Project" };
+        var dialog = new Window { Title = "New Project", Width = 400, Height = 170, CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var createButton = new Button { Content = "Create", Width = 100 };
+        var cancelButton = new Button { Content = "Cancel", Width = 100 };
+        createButton.Click += (_, _) =>
+        {
+            _projectManager.CreateNewProject(projectName.Text ?? "Untitled Project");
+            ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, ViewportModel, SpawnMenuModel, DockFactory.TimelineModel, DockFactory.PropertiesModel);
+            RefreshWindowTitle();
+            HideHomeScreen();
+            dialog.Close();
+        };
+        cancelButton.Click += (_, _) => dialog.Close();
+        dialog.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(16), Spacing = 12,
+            Children =
+            {
+                new TextBlock { Text = "Project name" }, projectName,
+                new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { createButton, cancelButton } }
+            }
+        };
+        dialog.ShowDialog(this);
     }
 
     private void OpenSaveAsPopup()
@@ -376,8 +415,32 @@ public partial class MainWindow : WindowBase
         if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
             return;
 
-        if (_projectManager.LoadProject(result.Path))
-            RefreshWindowTitle();
+        OpenProject(result.Path, "Failed to open project");
+    }
+
+    private void OpenRecentProject(string projectFilePath)
+    {
+        if (!File.Exists(projectFilePath))
+        {
+            _projectManager.RemoveRecentProject(projectFilePath);
+            HomeScreen.Refresh();
+            return;
+        }
+
+        OpenProject(projectFilePath, "Failed to open recent project");
+    }
+
+    private void OpenProject(string projectPath, string errorMessage)
+    {
+        if (!_projectManager.LoadProject(projectPath))
+        {
+            ShowErrorToast(errorMessage);
+            return;
+        }
+
+        ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, ViewportModel, SpawnMenuModel, DockFactory.TimelineModel, DockFactory.PropertiesModel);
+        RefreshWindowTitle();
+        HideHomeScreen();
     }
 
     private void SaveProjectWithScene()

@@ -216,6 +216,9 @@ public partial class ViewportView : UserControl
 
         ViewportStatusText.Text = "Preparing viewport...";
         ViewportStatusText.IsVisible = true;
+        if (_surface != null && ((uint)Math.Max(1, Math.Round(size.Width)) != _surface.Width ||
+                                 (uint)Math.Max(1, Math.Round(size.Height)) != _surface.Height))
+            SceneImage.Source = null;
         EnsureSurface((uint)Math.Max(1, Math.Round(size.Width)), (uint)Math.Max(1, Math.Round(size.Height)));
     }
 

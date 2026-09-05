@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="MineImatorSimplyRemade.core.ui.Dock.HomeScreenView"
+             Background="#17191D">
+    <Grid RowDefinitions="260,Auto,*" Margin="32">
+        <Border Grid.Row="0" Background="#252B32" BorderBrush="#52606B" BorderThickness="1" CornerRadius="6" Margin="0,0,0,18">
+            <Grid>
+                <Image x:Name="SplashImage" Stretch="UniformToFill" Opacity="0.62" />
+                <Border Background="#B017191D" />
+                <StackPanel Margin="28" VerticalAlignment="Bottom" Spacing="5">
+                    <TextBlock Text="Mine Imator Simply Remade" FontSize="30" FontWeight="Bold" Foreground="White" />
+                    <TextBlock x:Name="SplashText" FontSize="17" Foreground="#E1E8ED" TextWrapping="Wrap" />
+                    <TextBlock x:Name="SplashCredit" Foreground="#AAB7C1" FontSize="12" />
+                </StackPanel>
+            </Grid>
+        </Border>
+        <Grid Grid.Row="1" ColumnDefinitions="300,*" Margin="0,0,0,18">
+            <StackPanel Spacing="10" Margin="0,0,28,0">
+                <TextBlock Text="Projects" FontSize="20" FontWeight="SemiBold" />
+                <TextBlock Text="Create a fresh project, load an existing one, or reopen something recent." Foreground="#B9C2C9" TextWrapping="Wrap" />
+                <Button x:Name="NewProjectButton" Content="New Project" HorizontalAlignment="Stretch" Height="36" />
+                <Button x:Name="LoadProjectButton" Content="Load Project" HorizontalAlignment="Stretch" Height="36" />
+                <Border Background="#20242A" BorderBrush="#39424C" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,8,0,0">
+                    <StackPanel Spacing="3">
+                        <TextBlock Text="Current project" Foreground="#8F9BA5" FontSize="12" />
+                        <TextBlock x:Name="CurrentProjectName" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock x:Name="CurrentProjectPath" Foreground="#9DA8B0" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+            <StackPanel Grid.Column="1">
+                <TextBlock Text="Recent Projects" FontSize="20" FontWeight="SemiBold" />
+                <TextBlock Text="Up to 100 projects" Foreground="#8F9BA5" FontSize="12" Margin="0,2,0,10" />
+            </StackPanel>
+        </Grid>
+        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <WrapPanel x:Name="RecentProjectsPanel" ItemWidth="235" ItemHeight="266" />
+        </ScrollViewer>
+    </Grid>
+</UserControl>

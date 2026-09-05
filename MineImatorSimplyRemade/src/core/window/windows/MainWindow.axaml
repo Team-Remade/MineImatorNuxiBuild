@@ -3,6 +3,7 @@
                     xmlns:window="using:MineImatorSimplyRemade.core.window"
                     xmlns:panels="using:MineImatorSimplyRemade.core.ui.Panels"
                     xmlns:dock="using:Dock.Avalonia.Controls"
+                    xmlns:views="using:MineImatorSimplyRemade.core.ui.Dock"
                     x:Class="MineImatorSimplyRemade.core.window.windows.MainWindow"
                     Title="Mine Imator Nuxi"
                     WindowStartupLocation="CenterScreen"
@@ -23,5 +24,7 @@
         <Border x:Name="ToastBorder" Grid.Row="2" Padding="8,4" Background="#181818" IsVisible="False">
             <TextBlock x:Name="ToastText" />
         </Border>
+
+        <views:HomeScreenView x:Name="HomeScreen" Grid.Row="1" Grid.RowSpan="2" />
     </Grid>
 </window:WindowBase>
