@@ -8,8 +8,12 @@
                     Title="Mine Imator Nuxi"
                     WindowStartupLocation="CenterScreen"
                     Width="1600" Height="900">
-    <Grid RowDefinitions="Auto,*,Auto">
-        <panels:Menubar x:Name="MenubarControl" Grid.Row="0" />
+    <Grid RowDefinitions="32,*,Auto">
+        <panels:Menubar x:Name="MenubarControl"
+                        Grid.Row="0"
+                        Height="32"
+                        VerticalAlignment="Top"
+                        Background="#252526" />
 
         <!-- The default editor dockspace (Viewport / Scene Tree / Properties /
              Timeline / Content Browser) - see AppDockFactory for the layout

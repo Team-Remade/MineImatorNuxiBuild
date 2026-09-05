@@ -1,7 +1,17 @@
 <Menu xmlns="https://github.com/avaloniaui"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-      x:Class="MineImatorSimplyRemade.core.ui.Panels.Menubar">
-    <MenuItem Header="_File">
+      x:Class="MineImatorSimplyRemade.core.ui.Panels.Menubar"
+      Background="#252526"
+      Foreground="#E6E6E6">
+    <Menu.Styles>
+        <Style Selector="MenuItem">
+            <Setter Property="Foreground" Value="#E6E6E6" />
+        </Style>
+        <Style Selector="MenuItem:pointerover">
+            <Setter Property="Background" Value="#3E3E42" />
+        </Style>
+    </Menu.Styles>
+    <MenuItem Header="_File" Foreground="#E6E6E6">
         <MenuItem Header="New Project" InputGesture="Ctrl+N" Click="OnNewProject" />
         <MenuItem Header="Open Project" InputGesture="Ctrl+O" Click="OnOpenProject" />
         <MenuItem Header="Open Recent..." Click="OnOpenRecent" />
@@ -16,7 +26,7 @@
         <Separator />
         <MenuItem Header="Exit" Click="OnExit" />
     </MenuItem>
-    <MenuItem Header="_Edit">
+    <MenuItem Header="_Edit" Foreground="#E6E6E6">
         <MenuItem Header="Undo" InputGesture="Ctrl+Z" Click="OnUndo" />
         <MenuItem Header="Redo" InputGesture="Ctrl+Y" Click="OnRedo" />
         <Separator />
@@ -36,11 +46,11 @@
         <Separator />
         <MenuItem Header="Preferences" Click="OnPreferences" />
     </MenuItem>
-    <MenuItem Header="_Render">
+    <MenuItem Header="_Render" Foreground="#E6E6E6">
         <MenuItem Header="Render Image" InputGesture="F7" Click="OnRenderImage" />
         <MenuItem Header="Render Animation" InputGesture="F8" Click="OnRenderAnimation" />
     </MenuItem>
-    <MenuItem Header="_View">
+    <MenuItem Header="_View" Foreground="#E6E6E6">
         <MenuItem Header="Reset Layout" Click="OnResetLayout" />
         <MenuItem Header="Reset Work Camera" Click="OnResetWorkCamera" />
         <MenuItem Header="Show Secondary View" IsEnabled="False" />
@@ -52,7 +62,7 @@
         <Separator />
         <MenuItem Header="Home Screen" Click="OnHomeScreen" />
     </MenuItem>
-    <MenuItem Header="_Help">
+    <MenuItem Header="_Help" Foreground="#E6E6E6">
         <MenuItem Header="Check for Updates" Click="OnCheckForUpdates" />
         <Separator />
         <MenuItem Header="About" Click="OnAbout" />

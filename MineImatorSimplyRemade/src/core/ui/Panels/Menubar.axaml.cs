@@ -13,6 +13,8 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 /// </summary>
 public partial class Menubar : Menu
 {
+    protected override Type StyleKeyOverride => typeof(Menu);
+
     public enum RenderRequestKind
     {
         Image,
