@@ -137,6 +137,15 @@ public partial class MainWindow : WindowBase
         // present.
         DockFactory.SceneTreeModel.Initialize();
         DockFactory.TimelineModel.Initialize();
+
+        // Properties panel: subscribe to selection + load current project
+        // settings. Timeline/SpawnMenu links replace the old direct panel
+        // references; the viewport hooks (SceneObjectsProvider, ground plane,
+        // background image, spawn-from-library, ambient sink, sky reload) stay
+        // unwired until the Viewport port lands.
+        DockFactory.PropertiesModel.Timeline = DockFactory.TimelineModel;
+        DockFactory.PropertiesModel.SpawnMenu = SpawnMenuModel;
+        DockFactory.PropertiesModel.Initialize();
     }
 
     private void ResetDockLayout() => WireDockLayout();

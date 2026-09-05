@@ -59,6 +59,14 @@ public sealed class AppDockFactory : Factory
     /// the Viewport is ported, assigns <see cref="Timeline.SceneObjectsProvider"/>.
     /// </summary>
     public Timeline TimelineModel { get; } = new();
+
+    /// <summary>
+    /// The Properties panel's backing model. The host (MainWindow) calls
+    /// <see cref="PropertiesPanel.Initialize"/> once SelectionManager exists,
+    /// assigns <see cref="PropertiesPanel.Timeline"/>/<see cref="PropertiesPanel.SpawnMenu"/>,
+    /// and wires the viewport hooks once the Viewport is ported.
+    /// </summary>
+    public PropertiesPanel PropertiesModel { get; } = new();
     public Tool PropertiesTool { get; private set; } = null!;
     public Tool TimelineTool { get; private set; } = null!;
     public Tool ContentBrowserTool { get; private set; } = null!;
@@ -84,7 +92,7 @@ public sealed class AppDockFactory : Factory
         {
             Id = PropertiesToolId,
             Title = "Properties",
-            Content = new PlaceholderPanelView("Properties"),
+            Content = new PropertiesView(PropertiesModel),
         };
 
         TimelineTool = new Tool

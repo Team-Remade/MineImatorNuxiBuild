@@ -1,0 +1,81 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="MineImatorSimplyRemade.core.ui.Dock.PropertiesView">
+    <TabControl Background="#181818" Padding="0">
+        <!-- ── Project tab ─────────────────────────────────────────────── -->
+        <TabItem Header="Project">
+            <ScrollViewer>
+                <StackPanel Margin="8" Spacing="6">
+                    <Expander Header="Project Settings" IsExpanded="True" HorizontalAlignment="Stretch">
+                        <StackPanel x:Name="ProjectSettingsPanel" Spacing="6" Margin="4" />
+                    </Expander>
+
+                    <Expander Header="Library" IsExpanded="True" HorizontalAlignment="Stretch">
+                        <StackPanel Spacing="6" Margin="4">
+                            <TextBox x:Name="LibrarySearchBox" Watermark="Search spawned objects..." />
+                            <TreeView x:Name="LibraryTree" MaxHeight="360">
+                                <TreeView.ItemTemplate>
+                                    <TreeDataTemplate ItemsSource="{Binding Children}">
+                                        <TextBlock Text="{Binding Label}" Foreground="#DDD" />
+                                    </TreeDataTemplate>
+                                </TreeView.ItemTemplate>
+                            </TreeView>
+                            <TextBlock x:Name="LibraryEmptyLabel"
+                                       Text="No objects have been spawned yet."
+                                       Foreground="#777" IsVisible="False" />
+                            <TextBlock x:Name="LibraryTypeLabel" Foreground="#777" IsVisible="False" />
+                            <TextBlock x:Name="LibraryUsageLabel" Foreground="#777" IsVisible="False" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Button x:Name="LibraryCreateButton" Content="Create In Scene From Base" Padding="8,2" />
+                                <Button x:Name="LibraryDeleteButton" Content="Delete From Library" Padding="8,2" />
+                            </StackPanel>
+                            <Button x:Name="LibraryDuplicateButton" Content="Duplicate Selected Library Object" Padding="8,2" />
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="Render Settings" HorizontalAlignment="Stretch">
+                        <StackPanel x:Name="RenderSettingsPanel" Spacing="6" Margin="4" />
+                    </Expander>
+
+                    <Expander Header="Background Settings" HorizontalAlignment="Stretch">
+                        <StackPanel x:Name="BackgroundPanel" Spacing="6" Margin="4" />
+                    </Expander>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <!-- ── Object tab ──────────────────────────────────────────────── -->
+        <TabItem Header="Object">
+            <ScrollViewer>
+                <StackPanel Margin="8" Spacing="6">
+                    <TextBlock x:Name="NoSelectionLabel"
+                               Text="No object selected"
+                               Foreground="#777"
+                               HorizontalAlignment="Center"
+                               Margin="0,12,0,0" />
+                    <StackPanel x:Name="ObjectPanel" Spacing="6" IsVisible="False">
+                        <TextBlock x:Name="ObjectNameLabel"
+                                   Foreground="#FFFF99" FontWeight="Bold"
+                                   HorizontalAlignment="Center" />
+                        <Separator />
+                        <Expander Header="Position" HorizontalAlignment="Stretch">
+                            <StackPanel x:Name="PositionPanel" Spacing="6" Margin="4" />
+                        </Expander>
+                        <Expander x:Name="RotationExpander" Header="Rotation (degrees)" HorizontalAlignment="Stretch">
+                            <StackPanel x:Name="RotationPanel" Spacing="6" Margin="4" />
+                        </Expander>
+                        <Expander x:Name="ScaleExpander" Header="Scale" HorizontalAlignment="Stretch">
+                            <StackPanel x:Name="ScalePanel" Spacing="6" Margin="4" />
+                        </Expander>
+                        <Expander x:Name="BendExpander" Header="Bend (degrees)" HorizontalAlignment="Stretch">
+                            <StackPanel x:Name="BendPanel" Spacing="6" Margin="4" />
+                        </Expander>
+                        <Expander x:Name="TilingExpander" Header="Block Tiling" HorizontalAlignment="Stretch">
+                            <StackPanel x:Name="TilingPanel" Spacing="6" Margin="4" />
+                        </Expander>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+    </TabControl>
+</UserControl>
