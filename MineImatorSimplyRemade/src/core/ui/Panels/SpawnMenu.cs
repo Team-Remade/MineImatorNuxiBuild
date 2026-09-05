@@ -2,7 +2,6 @@ using System.Numerics;
 using System.Reflection;
 using Cyotek.Data.Nbt;
 using GlmSharp;
-using Hexa.NET.ImGui;
 using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
@@ -15,7 +14,6 @@ using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using NativeFileDialogSharp;
-using Silk.NET.OpenGL;
 using StbImageSharp;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
@@ -41,7 +39,7 @@ public enum ItemAtlasSource
 ///  2. Call <see cref="Render"/> every frame from the main render loop.
 ///  3. Call <see cref="Toggle"/> (e.g. from a button handler) to open/close.
 /// </summary>
-public class SpawnMenu : UiPanel
+public class SpawnMenu
 {
     private const string SceneryLoadLabel = "Load schematic...";
 
@@ -203,7 +201,7 @@ public class SpawnMenu : UiPanel
     /// Meshes currently loaded for the preview.  Rebuilt whenever the selection
     /// key changes.  Disposed with the old meshes before rebuilding.
     /// </summary>
-    private List<Mesh> _previewMeshes = new();
+    private List<VeldridMesh> _previewMeshes = new();
 
     /// <summary>
     /// When the selected category is "Characters" this holds the temporary
@@ -424,7 +422,7 @@ public class SpawnMenu : UiPanel
         ImGui.SetNextWindowViewport(mainViewport.ID);
 
         // Update the off-screen 3-D preview before the window draws
-        UpdatePreview(Mesh.DeltaTime);
+        UpdatePreview(VeldridMesh.DeltaTime);
 
         if (ImGui.Begin("Spawn Menu##SpawnMenuWindow", ref _isOpen))
         {
@@ -550,15 +548,13 @@ public class SpawnMenu : UiPanel
     /// Builds and returns GL meshes for the currently selected item.
     /// Returns an empty list for categories that have no geometry (Camera, Light, Empty, Custom).
     /// </summary>
-    private List<Mesh> BuildPreviewMeshes()
+    private List<VeldridMesh> BuildPreviewMeshes()
     {
-        if (Gl == null) return new List<Mesh>();
-
         switch (_selectedCategory)
         {
             case "Items":
             {
-                if (string.IsNullOrEmpty(_selectedTileKey)) return new List<Mesh>();
+                if (string.IsNullOrEmpty(_selectedTileKey)) return new List<VeldridMesh>();
 
                 uint tileTexId = 0;
                 byte[]? tilePixels = null;
@@ -582,35 +578,35 @@ public class SpawnMenu : UiPanel
                     tileSize = InferTileSizeFromPixels(tilePixels, TerrainAtlas.TileSize);
                 }
 
-                if (tileTexId == 0 || tilePixels == null) return new List<Mesh>();
+                if (tileTexId == 0 || tilePixels == null) return new List<VeldridMesh>();
 
                 var mesh = new ExtrudedItemMesh(
                     Gl, tileTexId, tilePixels,
                     is3D: _item3DMode, tileSize: tileSize, tileWidth: tileWidth, tileHeight: tileHeight,
                     extrudeDepth: 1f / 16f);
-                return new List<Mesh> { mesh };
+                return new List<VeldridMesh> { mesh };
             }
 
             case "Blocks":
             {
                 if (_selectedObjectIndex < 0 ||
                     _selectedObjectIndex >= BlockRegistry.Blocks.Count)
-                    return new List<Mesh>();
+                    return new List<VeldridMesh>();
 
                 string blockName = BlockRegistry.Blocks[_selectedObjectIndex];
                 int variantIdx   = _selectedVariantIndex >= 0 ? _selectedVariantIndex : 0;
                 var variants     = BlockRegistry.GetVariants(blockName);
-                if (variants.Count == 0) return new List<Mesh>();
+                if (variants.Count == 0) return new List<VeldridMesh>();
                 if (variantIdx >= variants.Count) variantIdx = 0;
 
                 var variant  = variants[variantIdx];
-                var meshes   = new List<Mesh>();
+                var meshes   = new List<VeldridMesh>();
 
                 AppendBlockMeshesForPreview(meshes, variant, blockName);
                 if (variant.TopHalf != null)
                 {
                     // Centre combined two-block object at the origin
-                    var topMeshes = new List<Mesh>();
+                    var topMeshes = new List<VeldridMesh>();
                     AppendBlockMeshesForPreview(topMeshes, variant.TopHalf, blockName);
                     vec3 combinedCenter = new vec3(
                         variant.PartOffsetX * 0.5f,
@@ -653,28 +649,28 @@ public class SpawnMenu : UiPanel
             {
                 var filtered = GetFilteredObjects();
                 if (_selectedObjectIndex < 0 || _selectedObjectIndex >= filtered.Count)
-                    return new List<Mesh>();
+                    return new List<VeldridMesh>();
 
                 string name = filtered[_selectedObjectIndex];
-                if (name == "Empty") return new List<Mesh>();
+                if (name == "Empty") return new List<VeldridMesh>();
 
-                if (name == "Cube")   return new List<Mesh> { new CubeMesh(Gl, _selectedPrimitiveCubeMapped) };
-                if (name == "Sphere") return new List<Mesh> { new SphereMesh(Gl, 0.5f,
+                if (name == "Cube")   return new List<VeldridMesh> { new CubeMesh(Gl, _selectedPrimitiveCubeMapped) };
+                if (name == "Sphere") return new List<VeldridMesh> { new SphereMesh(Gl, 0.5f,
                     _selectedPrimitiveSphereSegments, _selectedPrimitiveSphereRings, _selectedPrimitiveSphereSmooth) };
-                if (name == "Plane")  return new List<Mesh> { new PlaneMesh(Gl, 1f, 1f, _selectedPrimitivePlaneOrientation) };
+                if (name == "Plane")  return new List<VeldridMesh> { new PlaneMesh(Gl, 1f, 1f, _selectedPrimitivePlaneOrientation) };
 
                 // For shapes not yet implemented, show a cube placeholder
-                return new List<Mesh> { new CubeMesh(Gl) };
+                return new List<VeldridMesh> { new CubeMesh(Gl) };
             }
 
             case "Characters":
             {
                 if (_selectedObjectIndex < 0 ||
                     _selectedObjectIndex >= CharacterRegistry.Characters.Count)
-                    return new List<Mesh>();
+                    return new List<VeldridMesh>();
 
                 var entry = CharacterRegistry.Characters[_selectedObjectIndex];
-                if (string.IsNullOrEmpty(entry.FilePath)) return new List<Mesh>();
+                if (string.IsNullOrEmpty(entry.FilePath)) return new List<VeldridMesh>();
 
                 string ext = Path.GetExtension(entry.FilePath).ToLowerInvariant();
 
@@ -687,10 +683,10 @@ public class SpawnMenu : UiPanel
 
                     var loader = MineImatorLoader.Instance;
                     var model  = loader.LoadModel(entry.FilePath);
-                    if (model == null) return new List<Mesh>();
+                    if (model == null) return new List<VeldridMesh>();
 
                     var miChar = loader.CreateCharacterFromModel(model);
-                    if (miChar == null) return new List<Mesh>();
+                    if (miChar == null) return new List<VeldridMesh>();
 
                     // Apply texture variant if one was selected.
                     if (!string.IsNullOrEmpty(textureOverridePath) && File.Exists(textureOverridePath))
@@ -705,9 +701,9 @@ public class SpawnMenu : UiPanel
                 else
                 {
                     // Binary / standard 3-D format (.glb, .gltf, .fbx, .obj, …) — use Assimp.
-                    if (Gl == null) return new List<Mesh>();
+                    if (Gl == null) return new List<VeldridMesh>();
                     character = AssimpModelLoader.Load(Gl, entry.FilePath);
-                    if (character == null) return new List<Mesh>();
+                    if (character == null) return new List<VeldridMesh>();
 
                     // Apply the selected texture variant, same as the .mimodel branch above —
                     // Assimp always loads whatever texture is embedded/referenced by the
@@ -725,11 +721,11 @@ public class SpawnMenu : UiPanel
                 _previewCharacter = character;
 
                 // Return an empty flat mesh list; the renderer will walk the hierarchy.
-                return new List<Mesh>();
+                return new List<VeldridMesh>();
             }
 
             default:
-                return new List<Mesh>();
+                return new List<VeldridMesh>();
         }
     }
 
@@ -768,7 +764,7 @@ public class SpawnMenu : UiPanel
     /// to <paramref name="meshes"/>.  Mirrors <see cref="AddBlockMeshes"/> but does
     /// not attach anything to a SceneObject.
     /// </summary>
-    private void AppendBlockMeshesForPreview(List<Mesh> meshes, BlockVariantEntry variant, string blockName = "")
+    private void AppendBlockMeshesForPreview(List<VeldridMesh> meshes, BlockVariantEntry variant, string blockName = "")
     {
         if (Gl == null) return;
 
@@ -778,13 +774,13 @@ public class SpawnMenu : UiPanel
         if (!string.IsNullOrEmpty(variant.ModelPath))
             resolved = BlockRegistry.ResolveModel(variant.ModelPath);
 
-        List<Mesh> built;
+        List<VeldridMesh> built;
         if (!string.IsNullOrEmpty(variant.CemPath))
             built = CemLoader.Load(Gl, variant.CemPath, BlockRegistry.VersionRoot, textureSourceId);
         else if (resolved != null)
             built = MinecraftModelMesh.Build(Gl, resolved, variant.RotationX, variant.RotationY, textureSourceId, blockName);
         else
-            built = new List<Mesh>
+            built = new List<VeldridMesh>
             {
                 MinecraftModelMesh.BuildTexturedFallbackCube(Gl, null, blockNameHint: "", resourcePackId: textureSourceId)
             };
@@ -794,7 +790,7 @@ public class SpawnMenu : UiPanel
         meshes.AddRange(built);
     }
 
-    private static void ApplyVariantRotationToCemMeshes(List<Mesh> meshes, BlockVariantEntry variant)
+    private static void ApplyVariantRotationToCemMeshes(List<VeldridMesh> meshes, BlockVariantEntry variant)
     {
         if (string.IsNullOrEmpty(variant.CemPath))
             return;
@@ -2170,7 +2166,7 @@ public class SpawnMenu : UiPanel
     /// </summary>
     private void OpenCustomModelFileDialog()
     {
-        if (Viewport == null || Gl == null) return;
+        if (Viewport == null) return;
 
         var result = Dialog.FileOpen(
             "glb,gltf,fbx,obj,dae,3ds,blend,ply,stl,x3d,mimodel,miobject");
@@ -2184,7 +2180,7 @@ public class SpawnMenu : UiPanel
     /// </summary>
     private void OpenSchematicFileDialog()
     {
-        if (Viewport == null || Gl == null) return;
+        if (Viewport == null) return;
 
         var result = Dialog.FileOpen("schematic,schem");
         if (!result.IsOk || string.IsNullOrEmpty(result.Path)) return;
@@ -2236,7 +2232,7 @@ public class SpawnMenu : UiPanel
     /// </summary>
     public SceneObject? SpawnCustomModelFromPath(string filePath, string? textureOverridePath = null)
     {
-        if (Viewport == null || Gl == null) return null;
+        if (Viewport == null) return null;
 
         string pathToSpawn = ResolveModelPathForProject(filePath);
 

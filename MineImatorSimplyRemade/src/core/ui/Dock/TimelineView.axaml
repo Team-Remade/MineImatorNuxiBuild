@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:dock="using:MineImatorSimplyRemade.core.ui.Dock"
+             x:Class="MineImatorSimplyRemade.core.ui.Dock.TimelineView">
+    <Grid RowDefinitions="Auto,*" Background="#181818">
+        <!-- Transport bar -->
+        <DockPanel Grid.Row="0" Margin="6,4" LastChildFill="False">
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="3">
+                <Button x:Name="JumpStartButton" Content="&#x23EE;" Padding="6,1" ToolTip.Tip="Jump to start" />
+                <Button x:Name="StepBackButton" Content="&#x25C0;" Padding="6,1" ToolTip.Tip="Step back one frame" />
+                <Button x:Name="PlayPauseButton" Content="&#x25B6;" Padding="8,1" ToolTip.Tip="Play / pause (Space)" />
+                <Button x:Name="StopButton" Content="&#x25A0;" Padding="6,1" ToolTip.Tip="Stop and rewind" />
+                <Button x:Name="StepForwardButton" Content="&#x25B6;&#x2758;" Padding="6,1" ToolTip.Tip="Step forward one frame" />
+                <Button x:Name="JumpEndButton" Content="&#x23ED;" Padding="6,1" ToolTip.Tip="Jump to last keyframe" />
+
+                <Rectangle Width="1" Fill="#333" Margin="4,2" />
+
+                <ToggleButton x:Name="LoopToggle" Content="Loop" Padding="6,1"
+                              ToolTip.Tip="Loop playback when reaching the end" />
+                <ToggleButton x:Name="GhostToggle" Content="Ghost" Padding="6,1"
+                              ToolTip.Tip="Ghost mode: hide ghosted tracks" />
+                <ToggleButton x:Name="RecordToggle" Content="&#x25CF;" Padding="6,1"
+                              ToolTip.Tip="Auto-keyframe: record property changes as keyframes">
+                    <ToggleButton.Styles>
+                        <Style Selector="ToggleButton:checked /template/ ContentPresenter">
+                            <Setter Property="Foreground" Value="#E53935" />
+                        </Style>
+                    </ToggleButton.Styles>
+                </ToggleButton>
+
+                <Rectangle Width="1" Fill="#333" Margin="4,2" />
+
+                <TextBlock Text="FPS" VerticalAlignment="Center" Foreground="#AAA" Margin="2,0,0,0" />
+                <NumericUpDown x:Name="FpsBox" Minimum="1" Maximum="120" Increment="1"
+                               Value="30" Width="110" FormatString="0" />
+                <TextBlock Text="Frames" VerticalAlignment="Center" Foreground="#AAA" Margin="6,0,0,0" />
+                <NumericUpDown x:Name="FramesBox" Minimum="10" Maximum="100000" Increment="10"
+                               Value="300" Width="130" FormatString="0" />
+
+                <Rectangle Width="1" Fill="#333" Margin="4,2" />
+
+                <Button x:Name="ZoomOutButton" Content="-" Padding="8,1" ToolTip.Tip="Zoom out (Ctrl + mouse wheel)" />
+                <TextBlock x:Name="ZoomLabel" Text="8 px/f" VerticalAlignment="Center" Foreground="#777" />
+                <Button x:Name="ZoomInButton" Content="+" Padding="8,1" ToolTip.Tip="Zoom in (Ctrl + mouse wheel)" />
+            </StackPanel>
+
+            <TextBlock x:Name="FrameLabel" DockPanel.Dock="Right"
+                       Text="Frame: 0  (0.00s)" VerticalAlignment="Center" Foreground="#DDD" />
+        </DockPanel>
+
+        <!-- Ruler + track area (custom drawn) -->
+        <dock:TimelineCanvas x:Name="Canvas" Grid.Row="1" />
+    </Grid>
+</UserControl>

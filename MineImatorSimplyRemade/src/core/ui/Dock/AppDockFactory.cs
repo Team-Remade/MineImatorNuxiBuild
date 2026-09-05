@@ -52,6 +52,13 @@ public sealed class AppDockFactory : Factory
     /// objects.
     /// </summary>
     public SceneTree SceneTreeModel { get; } = new();
+
+    /// <summary>
+    /// The Timeline panel's backing model. The host (MainWindow) calls
+    /// <see cref="Timeline.Initialize"/> once SelectionManager exists and, once
+    /// the Viewport is ported, assigns <see cref="Timeline.SceneObjectsProvider"/>.
+    /// </summary>
+    public Timeline TimelineModel { get; } = new();
     public Tool PropertiesTool { get; private set; } = null!;
     public Tool TimelineTool { get; private set; } = null!;
     public Tool ContentBrowserTool { get; private set; } = null!;
@@ -84,7 +91,7 @@ public sealed class AppDockFactory : Factory
         {
             Id = TimelineToolId,
             Title = "Timeline",
-            Content = new PlaceholderPanelView("Timeline"),
+            Content = new TimelineView(TimelineModel),
         };
 
         ContentBrowserTool = new Tool

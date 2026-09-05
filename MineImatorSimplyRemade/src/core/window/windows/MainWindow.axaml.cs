@@ -125,6 +125,7 @@ public partial class MainWindow : WindowBase
         // layout reset - Initialize() only subscribes when SelectionManager is
         // present.
         DockFactory.SceneTreeModel.Initialize();
+        DockFactory.TimelineModel.Initialize();
     }
 
     private void ResetDockLayout() => WireDockLayout();

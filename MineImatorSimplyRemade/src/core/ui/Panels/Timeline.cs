@@ -4,10 +4,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Numerics;
-using System.Text;
 using System.Text.Json;
 using GlmSharp;
-using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.audio;
 using MineImatorSimplyRemade.core.mdl.meshes;
@@ -59,13 +57,7 @@ public class TimelineAudioTrack
 
 // ── Timeline panel ────────────────────────────────────────────────────────────
 
-/// <summary>
-/// ImGui timeline panel.  Ported from the Godot TimelinePanel.cs in
-/// simply-remade-nuxi.
-///
-/// Features: frame-based playback, collapsible property groups, keyframe
-/// add/remove/move, interpolation types, multi-select, apply-to-all-objects.
-/// </summary>
+/// <summary>A named, coloured marker pinned to a frame on the timeline.</summary>
 public class TimelineMarker
 {
     public int Frame { get; set; }
@@ -73,7 +65,26 @@ public class TimelineMarker
     public Vector4 Color { get; set; } = new(0.9f, 0.2f, 0.2f, 1f);
 }
 
-public class Timeline : UiPanel
+/// <summary>
+/// Timeline model.  Originally an ImGui <c>UiPanel</c> (ported from the Godot
+/// TimelinePanel.cs in simply-remade-nuxi) that both owned the animation data
+/// AND drew the panel with ImGui draw lists.
+///
+/// MIGRATION: in the Avalonia port the panel UI moved to
+/// <see cref="core.ui.Dock.TimelineView"/> (a custom-drawn control), so this
+/// class is now a plain model. It owns frame-based playback, keyframe storage /
+/// interpolation / apply-to-scene, selection, clipboard, markers, ghost tracks,
+/// the playback region and audio-track playback. All screen-space concerns
+/// (zoom, scrolling, hit-testing, drawing) live in the view.
+///
+/// The old panel enumerated scene objects through <c>Viewport.SceneObjects</c>.
+/// Since the Viewport isn't ported yet, the objects are injected via
+/// <see cref="SceneObjectsProvider"/> instead of a hard dependency on the
+/// still-broken <c>Viewport</c> type; the item-sheet slot application that went
+/// through <c>Viewport.SpawnMenu</c> is likewise exposed as the
+/// <see cref="ApplyItemSheetSlot"/> hook.
+/// </summary>
+public class Timeline
 {
     public static string SanitizeIntegerText(string text)
     {
@@ -86,31 +97,30 @@ public class Timeline : UiPanel
 
     // ── External wiring ───────────────────────────────────────────────────────
 
-    /// <summary>Main viewport — used to enumerate all scene objects for playback.</summary>
-    public Viewport Viewport { get; set; }
+    /// <summary>
+    /// Supplies the root scene objects (formerly <c>Viewport.SceneObjects</c>).
+    /// Assigned by the host once the viewport exists.
+    /// </summary>
+    public Func<IEnumerable<SceneObject>>? SceneObjectsProvider { get; set; }
+
+    /// <summary>
+    /// Applies an item-sheet slot to a spawned object
+    /// (formerly <c>Viewport.SpawnMenu.ApplyTemporaryItemSheetSlotToSpawnedObject</c>).
+    /// Arguments: object, columnIndex, rowIndex.
+    /// </summary>
+    public Action<SceneObject, int, int>? ApplyItemSheetSlot { get; set; }
 
     // ── Playback ──────────────────────────────────────────────────────────────
 
     private int    _currentFrame     = 0;
     private int    _maxFrames        = 300;
     private float  _frameRate        = 30f;
-    private float  _pixelsPerFrame   = 5f;
-    private const float MinPixelsPerFrame = 1f;
-    private const float MaxPixelsPerFrame = 40f;
-    private const float ZoomStep = 1.25f;
     private bool   _isPlaying        = false;
     private bool   _autoKeyframe     = false;
     private bool   _loopPlayback     = false;
     private bool   _ghostModeEnabled = false;
     private double _frameAccumulator = 0.0;
     private long   _lastTimestamp    = Stopwatch.GetTimestamp();
-
-    // ── Scroll sync ───────────────────────────────────────────────────────────
-
-    private float _hScrollOffset = 0f;
-    private float _vScrollOffset = 0f;
-    private float _trackViewportWidth = 0f;
-    private float? _pendingHScrollOffset;
 
     // ── Keyframe data ─────────────────────────────────────────────────────────
 
@@ -125,77 +135,20 @@ public class Timeline : UiPanel
     private readonly Dictionary<TimelineKeyframe, (SceneObject obj, string path)> _keyframeOwners    = new();
 
     private readonly List<TimelineMarker> _markers = new();
-    private TimelineMarker? _activeMarker;
-    private TimelineMarker? _draggedMarker;
-    private bool _isDraggingMarker;
-    private int _contextFrame;
     private int? _selectedRegionStart;
     private int? _selectedRegionEnd;
     private int? _playbackRegionStart;
     private int? _playbackRegionEnd;
     private readonly List<(SceneObject obj, string path, int offset, object value, string interpolation)> _keyframeClipboard = new();
-    private bool _openMarkerEditor;
-    private string _markerLabel = "Marker";
-    private Vector4 _markerColor = new(0.9f, 0.2f, 0.2f, 1f);
-    private float _timelineAreaTop;
 
     // ── Audio tracks ──────────────────────────────────────────────────────────
 
     public  IReadOnlyList<TimelineAudioTrack> AudioTracks => _audioTracks;
     private readonly List<TimelineAudioTrack>  _audioTracks = new();
 
-    private TimelineAudioTrack? _selectedAudioTrack;
-    private bool                _isDraggingAudioClip;
-    private int                 _audioDragStartMouseX;
-    private int                 _audioDragStartFrame;
+    // ── Drag-keyframe (frames at drag start, keyed by keyframe) ───────────────
 
-    // ── Drag-keyframe ─────────────────────────────────────────────────────────
-
-    private bool              _isDraggingKeyframe = false;
-    private TimelineKeyframe? _draggedKeyframe;
-    private int               _dragStartFrame = 0;
     private readonly Dictionary<TimelineKeyframe, int> _selectedStartFrames = new();
-
-    // ── Playhead drag ─────────────────────────────────────────────────────────
-
-    /// <summary>True while the user is dragging the playhead.</summary>
-    private bool  _isDraggingPlayhead = false;
-    /// <summary>Screen-space X of the ruler's left edge at drag start (accounts for scroll).</summary>
-    private float _rulerScreenLeftAtDrag = 0f;
-    /// <summary>Horizontal scroll offset at the moment the drag started.</summary>
-    private float _rulerScrollAtDrag = 0f;
-    private bool  _isDraggingPlaybackRegion;
-    private bool  _playbackRegionDragged;
-    private int   _playbackRegionAnchorFrame;
-
-    // ── Drag-select ───────────────────────────────────────────────────────────
-
-    private bool    _isDragSelecting = false;
-    private bool    _wasDragging     = false;
-    private Vector2 _dragSelectStart;
-    private Vector2 _dragSelectEnd;
-    private const float DragThreshold = 3f;
-
-    // ── Context menu ──────────────────────────────────────────────────────────
-
-    private bool              _openContextMenu = false;
-    private TimelineKeyframe? _ctxKeyframe;
-    private SceneObject?      _ctxObject;
-    private string?           _ctxPropPath;
-    private TimelineProperty? _ctxTrackRow;
-    private bool              _openAddKeyframeMenu = false;
-    private SceneObject?      _ctxAddKeyframeObj;
-    private bool              _openSpeedScaleMenu;
-    private bool              _speedScaleSlowDown = true;
-    private float             _speedScaleFactor   = 2f;
-
-    // ── Layout ────────────────────────────────────────────────────────────────
-
-    private const float MarkerRowHeight    = 26f;
-    private const float LeftColumnWidth    = 200f;
-    private const float RowHeight          = 22f;
-    private const float RulerHeight        = 24f;
-    private const float KeyframeDiamondSize = 5f;
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -203,9 +156,49 @@ public class Timeline : UiPanel
     public int   MaxFrames    => _maxFrames;
     public float Framerate    => _frameRate;
     public bool  IsPlaying    => _isPlaying;
-    public bool  IsWindowHovered { get; private set; }
-    public Vector2 WindowPos { get; private set; }
-    public Vector2 WindowSize { get; private set; }
+
+    public bool AutoKeyframe { get => _autoKeyframe; set => _autoKeyframe = value; }
+    public bool LoopPlayback { get => _loopPlayback; set => _loopPlayback = value; }
+
+    public bool GhostModeEnabled
+    {
+        get => _ghostModeEnabled;
+        set { _ghostModeEnabled = value; PruneHiddenSelection(); }
+    }
+
+    public int? PlaybackRegionStart => _playbackRegionStart;
+    public int? PlaybackRegionEnd   => _playbackRegionEnd;
+    public int? SelectedRegionStart { get => _selectedRegionStart; set => _selectedRegionStart = value; }
+    public int? SelectedRegionEnd   { get => _selectedRegionEnd;   set => _selectedRegionEnd = value; }
+
+    public IReadOnlyList<TimelineMarker>   Markers           => _markers;
+    public IReadOnlyList<TimelineProperty> DisplayRows       => _displayRows;
+    public IReadOnlyList<TimelineKeyframe> SelectedKeyframes => _selectedKeyframes;
+    public bool HasClipboardContent => _keyframeClipboard.Count > 0;
+
+    public void SetMaxFrames(int frames) => _maxFrames = Math.Max(10, frames);
+
+    public void SetPlaybackRegion(int start, int end)
+    {
+        _playbackRegionStart = Math.Min(start, end);
+        _playbackRegionEnd   = Math.Max(start, end);
+    }
+
+    public void ClearPlaybackRegion()
+    {
+        _playbackRegionStart = null;
+        _playbackRegionEnd   = null;
+    }
+
+    public void AddMarker(TimelineMarker marker)
+    {
+        _markers.Add(marker);
+        SortMarkers();
+    }
+
+    public void RemoveMarker(TimelineMarker marker) => _markers.Remove(marker);
+
+    public void SortMarkers() => _markers.Sort((a, b) => a.Frame.CompareTo(b.Frame));
 
     public void SetFrameRate(float frameRate)
     {
@@ -322,92 +315,13 @@ public class Timeline : UiPanel
         Instance = this;
         if (SelectionManager.Instance != null)
             SelectionManager.Instance.SelectionChanged += OnSelectionChanged;
-        TimelineIcons.Initialize(Gl);
-    }
-
-    // ── Render ────────────────────────────────────────────────────────────────
-
-    public override void Render()
-    {
-        UpdatePlayback();
-        SyncAudioWithPlayback();
-
-        if (!ImGui.Begin("Timeline"))
-        {
-            IsWindowHovered = false;
-            WindowPos = Vector2.Zero;
-            WindowSize = Vector2.Zero;
-            ImGui.End();
-            return;
-        }
-
-        IsWindowHovered = ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup);
-        WindowPos = ImGui.GetWindowPos();
-        WindowSize = ImGui.GetWindowSize();
-
-        HandleTimelineZoomShortcut();
-
-        RenderTransportControls();
-        ImGui.Separator();
-
-        float availW = ImGui.GetContentRegionAvail().X;
-        float availH = ImGui.GetContentRegionAvail().Y;
-        float statusH = ImGui.GetFrameHeightWithSpacing();
-        float audioH  = RenderAudioTracksHeight();
-        float tracksH = Math.Max(availH - RulerHeight - MarkerRowHeight - ImGui.GetStyle().ItemSpacing.Y - statusH - audioH, 60f);
-
-        RenderRulerRow(availW);
-        RenderTrackArea(availW, tracksH);
-        RenderMarkers(availW);
-        RenderAudioTracks(availW, audioH);
-
-        // ── Global playhead drag (works even when mouse has left the ruler) ───
-        if (_isDraggingPlayhead)
-        {
-            if (ImGui.IsMouseDown(ImGuiMouseButton.Left))
-            {
-                float mouseX   = ImGui.GetMousePos().X;
-                float localX   = mouseX - _rulerScreenLeftAtDrag + _rulerScrollAtDrag;
-                int   newFrame = Math.Max(0, (int)MathF.Round(localX / _pixelsPerFrame));
-                if (newFrame != _currentFrame)
-                {
-                    _currentFrame     = newFrame;
-                    _frameAccumulator = 0.0;
-                    ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
-                }
-            }
-            else
-            {
-                _isDraggingPlayhead = false;
-            }
-        }
-
-        ImGui.Text($"Frame: {_currentFrame}  ({_currentFrame / _frameRate:F2}s)");
-
-        // Deferred context menu popup
-        if (_openContextMenu)
-        {
-            _openContextMenu = false;
-            ImGui.OpenPopup("##kf_ctx");
-        }
-        RenderContextMenu();
-
-        // Deferred add-keyframe menu popup
-        if (_openAddKeyframeMenu)
-        {
-            _openAddKeyframeMenu = false;
-            ImGui.OpenPopup("##kf_add");
-        }
-        RenderAddKeyframeMenu();
-        RenderSpeedScaleMenu();
-        RenderMarkerEditor();
-
-        ImGui.End();
     }
 
     // ── Playback ──────────────────────────────────────────────────────────────
 
-    private void UpdatePlayback()
+    /// <summary>Advances playback based on wall-clock time. The view calls this
+    /// every UI tick (the old ImGui panel called it once per rendered frame).</summary>
+    public void UpdatePlayback()
     {
         long now = Stopwatch.GetTimestamp();
         double stopwatchDelta = (now - _lastTimestamp) / (double)Stopwatch.Frequency;
@@ -419,18 +333,7 @@ public class Timeline : UiPanel
             return;
         }
 
-        double imguiDelta = ImGui.GetIO().DeltaTime;
-        bool imguiValid = imguiDelta > 0.0 && imguiDelta < 0.5;
-        bool stopwatchValid = stopwatchDelta > 0.0 && stopwatchDelta < 0.5;
-
-        double delta = 0.0;
-        if (imguiValid && stopwatchValid)
-            delta = Math.Max(imguiDelta, stopwatchDelta);
-        else if (imguiValid)
-            delta = imguiDelta;
-        else if (stopwatchValid)
-            delta = stopwatchDelta;
-
+        double delta = stopwatchDelta > 0.0 && stopwatchDelta < 0.5 ? stopwatchDelta : 0.0;
         if (delta <= 0.0)
             return;
 
@@ -471,186 +374,6 @@ public class Timeline : UiPanel
         if (_currentFrame != prev) ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
     }
 
-    // ── Transport controls ────────────────────────────────────────────────────
-
-    private void RenderTransportControls()
-    {
-        var  sz  = new Vector2(20, 20);
-        bool ico = TimelineIcons.IsLoaded;
-
-        // Jump to start
-        if (ico ? IcoBtn("##js", TimelineIcons.JumpStart,   sz) : ImGui.Button("|<"))
-            JumpToStart();
-        ImGui.SameLine();
-
-        // Step backward
-        if (ico ? IcoBtn("##sb", TimelineIcons.StepBack,    sz) : ImGui.Button("<"))
-            StepBackward();
-        ImGui.SameLine();
-
-        // Play / Pause
-        if (_isPlaying)
-        {
-            if (ico ? IcoBtn("##pp", TimelineIcons.Pause, sz) : ImGui.Button(" || "))
-                _isPlaying = false;
-        }
-        else
-        {
-            if (ico ? IcoBtn("##pp", TimelineIcons.Play,  sz) : ImGui.Button(" > "))
-            {
-                if (_loopPlayback && _playbackRegionStart.HasValue && _playbackRegionEnd.HasValue &&
-                    (_currentFrame < _playbackRegionStart.Value || _currentFrame > _playbackRegionEnd.Value))
-                    _currentFrame = _playbackRegionStart.Value;
-                _isPlaying = true;
-                _lastTimestamp = Stopwatch.GetTimestamp();
-            }
-        }
-        ImGui.SameLine();
-
-        // Stop
-        if (ico ? IcoBtn("##st", TimelineIcons.Stop,        sz) : ImGui.Button("[|]"))
-            Stop();
-        ImGui.SameLine();
-
-        // Step forward
-        if (ico ? IcoBtn("##sf", TimelineIcons.StepForward, sz) : ImGui.Button(">"))
-            StepForward();
-        ImGui.SameLine();
-
-        // Jump to end
-        if (ico ? IcoBtn("##je", TimelineIcons.JumpEnd,     sz) : ImGui.Button(">|"))
-            JumpToLastKeyframe();
-        ImGui.SameLine();
-
-        var loopTint = _loopPlayback
-            ? new Vector4(0.35f, 0.75f, 1f, 1f)
-            : Vector4.One;
-        if (ico ? IcoBtnTinted("##loop", TimelineIcons.Loop, sz, loopTint) : ImGui.Button(_loopPlayback ? "Loop*" : "Loop"))
-            _loopPlayback = !_loopPlayback;
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(_loopPlayback
-                ? "Looping enabled (selected playback region takes priority)"
-                : "Looping disabled");
-        ImGui.SameLine();
-
-        var ghostTint = _ghostModeEnabled
-            ? new Vector4(0.75f, 0.95f, 1f, 1f)
-            : Vector4.One;
-        bool canUseGhostIcon = ico && TimelineIcons.Ghost != 0;
-        if (canUseGhostIcon
-                ? IcoBtnTinted("##ghost_mode", TimelineIcons.Ghost, sz, ghostTint)
-                : ImGui.Button(_ghostModeEnabled ? "Ghost*" : "Ghost"))
-        {
-            _ghostModeEnabled = !_ghostModeEnabled;
-            PruneHiddenSelection();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(_ghostModeEnabled
-                ? "Ghost mode ON (ghost tracks hidden)"
-                : "Ghost mode OFF (show all tracks)");
-        ImGui.SameLine();
-
-        // ── Auto-keyframe record button ──────────────────────────────────────
-        ImGui.Spacing(); ImGui.SameLine();
-        bool autoKeyNow = _autoKeyframe;
-        if (!ico)
-        {
-            if (autoKeyNow)
-                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.80f, 0.10f, 0.10f, 1.00f));
-            if (ImGui.Button(" \u25cf "))
-                _autoKeyframe = !_autoKeyframe;
-            if (autoKeyNow)
-                ImGui.PopStyleColor();
-        }
-        else
-        {
-            var tint = autoKeyNow
-                ? new Vector4(1f, 0.3f, 0.3f, 1f)
-                : new Vector4(1f, 1f,   1f,   1f);
-            if (IcoBtnTinted("##ak", TimelineIcons.AutoKey, sz, tint))
-                _autoKeyframe = !_autoKeyframe;
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(_autoKeyframe ? "Auto-keyframing ON" : "Auto-keyframing OFF");
-
-        ImGui.Text("  FPS:");
-        ImGui.SameLine();
-        int fps = (int)Math.Clamp(_frameRate, 1, 120);
-        ImGui.SetNextItemWidth(55f);
-        if (ImGui.GetIO().WantTextInput)
-        {
-            string fpsBuffer = fps.ToString();
-            if (ImGui.InputText("##fps", ref fpsBuffer, 16, ImGuiInputTextFlags.CharsDecimal))
-            {
-                fpsBuffer = SanitizeIntegerText(fpsBuffer);
-                if (int.TryParse(fpsBuffer, NumberStyles.Integer | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedFps))
-                    _frameRate = Math.Clamp(parsedFps, 1, 120);
-            }
-        }
-        else if (ImGui.DragInt("##fps", ref fps, 1f, 1, 120, "%d", ImGuiSliderFlags.AlwaysClamp))
-            _frameRate = Math.Clamp(fps, 1, 120);
-
-        ImGui.SameLine();
-        ImGui.Text("  Frames:");
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(60f);
-        int maxFrames = Math.Max(10, _maxFrames);
-        if (ImGui.GetIO().WantTextInput)
-        {
-            string maxFramesBuffer = maxFrames.ToString();
-            if (ImGui.InputText("##maxf", ref maxFramesBuffer, 16, ImGuiInputTextFlags.CharsDecimal))
-            {
-                maxFramesBuffer = SanitizeIntegerText(maxFramesBuffer);
-                if (int.TryParse(maxFramesBuffer, NumberStyles.Integer | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedMaxFrames))
-                    _maxFrames = Math.Max(10, parsedMaxFrames);
-            }
-        }
-        else if (ImGui.DragInt("##maxf", ref maxFrames, 1f, 10, 100000, "%d", ImGuiSliderFlags.AlwaysClamp))
-            _maxFrames = Math.Max(10, maxFrames);
-
-        ImGui.SameLine();
-        ImGui.Text("  Zoom:");
-        ImGui.SameLine();
-        if (ImGui.SmallButton("-##timeline_zoom_out"))
-            ZoomTimeline(1f / ZoomStep, GetPlayheadZoomAnchor());
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Zoom out (Ctrl + mouse wheel)");
-        ImGui.SameLine();
-        ImGui.TextDisabled($"{_pixelsPerFrame:0.#} px/f");
-        ImGui.SameLine();
-        if (ImGui.SmallButton("+##timeline_zoom_in"))
-            ZoomTimeline(ZoomStep, GetPlayheadZoomAnchor());
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Zoom in (Ctrl + mouse wheel)");
-    }
-
-    private void HandleTimelineZoomShortcut()
-    {
-        var io = ImGui.GetIO();
-        if (!IsWindowHovered || !io.KeyCtrl || MathF.Abs(io.MouseWheel) < float.Epsilon)
-            return;
-
-        float timelineLeft = WindowPos.X + LeftColumnWidth;
-        float mouseViewportX = Math.Clamp(io.MousePos.X - timelineLeft, 0f, Math.Max(0f, _trackViewportWidth));
-        float anchorFrame = (_hScrollOffset + mouseViewportX) / _pixelsPerFrame;
-        ZoomTimeline(MathF.Pow(ZoomStep, io.MouseWheel), (anchorFrame, mouseViewportX));
-    }
-
-    private (float frame, float viewportX) GetPlayheadZoomAnchor()
-    {
-        float viewportX = _currentFrame * _pixelsPerFrame - _hScrollOffset;
-        viewportX = Math.Clamp(viewportX, 0f, Math.Max(0f, _trackViewportWidth));
-        float frame = (_hScrollOffset + viewportX) / _pixelsPerFrame;
-        return (frame, viewportX);
-    }
-
-    private void ZoomTimeline(float factor, (float frame, float viewportX) anchor)
-    {
-        float newScale = Math.Clamp(_pixelsPerFrame * factor, MinPixelsPerFrame, MaxPixelsPerFrame);
-        if (MathF.Abs(newScale - _pixelsPerFrame) < 0.001f) return;
-
-        _pixelsPerFrame = newScale;
-        _pendingHScrollOffset = Math.Max(0f, anchor.frame * newScale - anchor.viewportX);
-    }
-
     private string GetStableObjectTrackId(SceneObject obj)
     {
         return !string.IsNullOrWhiteSpace(obj.LibrarySourceId)
@@ -668,7 +391,7 @@ public class Timeline : UiPanel
         return _ghostTracks.Contains(BuildGhostTrackKey(obj, propertyPath));
     }
 
-    private bool IsTrackRowGhost(TimelineProperty row)
+    public bool IsTrackRowGhost(TimelineProperty row)
     {
         if (row.PropertyPath == "__header__")
             return false;
@@ -691,7 +414,7 @@ public class Timeline : UiPanel
             _ghostTracks.Remove(key);
     }
 
-    private void SetTrackRowGhostState(TimelineProperty row, bool ghost)
+    public void SetTrackRowGhostState(TimelineProperty row, bool ghost)
     {
         if (!row.IsGroupHeader)
         {
@@ -709,7 +432,7 @@ public class Timeline : UiPanel
             SetTrackGhostState(row.Object, path, ghost);
     }
 
-    private bool IsTrackRowVisible(TimelineProperty row)
+    public bool IsTrackRowVisible(TimelineProperty row)
     {
         if (row.PropertyPath == "__header__")
             return true;
@@ -723,7 +446,7 @@ public class Timeline : UiPanel
         return true;
     }
 
-    private bool ShouldShowGhostIndicator(TimelineProperty row)
+    public bool ShouldShowGhostIndicator(TimelineProperty row)
     {
         return !_ghostModeEnabled
                && row.PropertyPath != "__header__"
@@ -757,258 +480,6 @@ public class Timeline : UiPanel
     private const float AudioRowHeight    = 28f;
     private const float AudioFooterHeight = 24f;
     private const float AudioControlWidth = 176f;  // vol slider + M + L + X
-
-    private static string TruncateWithEllipsis(string text, float maxWidth)
-    {
-        if (string.IsNullOrEmpty(text)) return text;
-        if (ImGui.CalcTextSize(text).X <= maxWidth) return text;
-
-        const string ellipsis = "...";
-        float ellipsisWidth = ImGui.CalcTextSize(ellipsis).X;
-        float budget = Math.Max(0f, maxWidth - ellipsisWidth);
-        if (budget <= 0f) return ellipsis;
-
-        int lo = 0, hi = text.Length, best = 0;
-        while (lo <= hi)
-        {
-            int mid = (lo + hi) / 2;
-            if (ImGui.CalcTextSize(text[..mid]).X <= budget)
-            {
-                best = mid;
-                lo = mid + 1;
-            }
-            else
-            {
-                hi = mid - 1;
-            }
-        }
-        return text[..best] + ellipsis;
-    }
-
-    private float RenderAudioTracksHeight()
-    {
-        // One row per clip + a footer row holding the "+ Add Audio Track" button.
-        return Math.Max(48f, _audioTracks.Count * AudioRowHeight + AudioFooterHeight + 4f);
-    }
-
-    private void RenderAudioTracks(float availW, float audioH)
-    {
-        ImGui.Separator();
-
-        // ── Scrollable track list (no visible scrollbar, synced to keyframe tracks above) ──
-        float footerH = AudioFooterHeight + 2f;
-        float tracksH = Math.Max(0f, audioH - footerH);
-
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
-        ImGui.BeginChild("##audio_tracks", new Vector2(availW, tracksH), ImGuiChildFlags.None,
-            ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
-        ImGui.SetScrollX(_hScrollOffset);
-        ImGui.PopStyleVar();
-
-        if (!Services.AudioEngine.IsInitialized)
-        {
-            var warnDl = ImGui.GetWindowDrawList();
-            var p      = ImGui.GetCursorScreenPos();
-            warnDl.AddText(p, 0xFFFFAA66, "Audio: no OpenAL device available (audio disabled).");
-            ImGui.Dummy(new Vector2(0, RowHeight));
-        }
-
-        float leftW  = LeftColumnWidth;
-        float rightW = Math.Max(0f, availW - leftW);
-
-        var   dl       = ImGui.GetWindowDrawList();
-        var   wPos     = ImGui.GetWindowPos();
-        float scrollX  = ImGui.GetScrollX();
-        float contentW = _maxFrames * _pixelsPerFrame * 1.5f;
-
-        for (int i = 0; i < _audioTracks.Count; i++)
-        {
-            var track = _audioTracks[i];
-            bool selected = _selectedAudioTrack == track;
-            float rowTopY = ImGui.GetCursorPosY();
-
-            ImGui.PushID($"aud_{i}");
-            ImGui.BeginGroup();
-
-            // Compact label — truncate to keep controls on the left column.
-            var labelColor = selected
-                ? new Vector4(0.55f, 0.85f, 1f, 1f)
-                : new Vector4(0.85f, 0.85f, 0.85f, 1f);
-            float labelMaxW = Math.Max(60f, LeftColumnWidth - AudioControlWidth - 12f);
-            string labelText = TruncateWithEllipsis(track.ManifestEntry.DisplayName, labelMaxW);
-            ImGui.TextColored(labelColor, labelText);
-            ImGui.SameLine();
-
-            // Compact volume slider
-            float vol = track.ManifestEntry.Volume;
-            ImGui.SetNextItemWidth(70f);
-            if (ImGui.SliderFloat($"##vol{i}", ref vol, 0f, 1f, "%.2f"))
-            {
-                track.ManifestEntry.Volume = vol;
-                if (track.IsLoaded)
-                    Services.AudioEngine.SetSourceVolume(track.Source, vol);
-            }
-            ImGui.SameLine();
-
-            bool muted = track.ManifestEntry.Muted;
-            if (ImGui.Checkbox($"M##mute{i}", ref muted))
-            {
-                track.ManifestEntry.Muted = muted;
-                if (track.IsLoaded)
-                    Services.AudioEngine.SetSourceVolume(track.Source, muted ? 0f : vol);
-            }
-            ImGui.SameLine();
-
-            bool loop = track.ManifestEntry.Loop;
-            if (ImGui.Checkbox($"L##loop{i}", ref loop))
-            {
-                track.ManifestEntry.Loop = loop;
-                if (track.IsLoaded)
-                    Services.AudioEngine.SetSourceLooping(track.Source, loop);
-            }
-            ImGui.SameLine();
-
-            if (ImGui.SmallButton($"X##rm{i}"))
-            {
-                RemoveAudioTrack(track);
-                ImGui.EndGroup();
-                ImGui.PopID();
-                break;
-            }
-
-            ImGui.EndGroup();
-            ImGui.PopID();
-
-            // Right side: clip rectangle, full row height.
-            Vector2 rightMin  = new Vector2(wPos.X + leftW, wPos.Y + rowTopY);
-            Vector2 rightSize = new Vector2(rightW, AudioRowHeight);
-
-            dl.AddRectFilled(rightMin, rightMin + rightSize,
-                ImGui.ColorConvertFloat4ToU32(new Vector4(0.10f, 0.10f, 0.14f, 1f)));
-
-            int durFrames = (int)Math.Ceiling(track.ManifestEntry.CachedDurationSeconds * _frameRate);
-            if (durFrames <= 0 && track.Clip != null)
-            {
-                durFrames = (int)Math.Ceiling(track.Clip.DurationSeconds * _frameRate);
-                if (durFrames > 0)
-                    track.ManifestEntry.CachedDurationSeconds = (float)track.Clip.DurationSeconds;
-            }
-            if (durFrames < 1) durFrames = 1;
-
-            float clipX0 = rightMin.X + track.ManifestEntry.StartFrame * _pixelsPerFrame - scrollX;
-            float clipX1 = clipX0 + durFrames * _pixelsPerFrame;
-            if (clipX1 >= rightMin.X && clipX0 <= rightMin.X + rightSize.X)
-            {
-                var clipMin = new Vector2(Math.Max(clipX0, rightMin.X), rightMin.Y + 2f);
-                var clipMax = new Vector2(Math.Min(clipX1, rightMin.X + rightSize.X), rightMin.Y + rightSize.Y - 2f);
-                uint clipFill = track.IsLoaded
-                    ? (selected ? 0xFF3377CC : 0xFF2266AA)
-                    : (selected ? 0xFF666677 : 0xFF444455);
-                uint clipEdge = selected ? 0xFF66BBFF : 0xFF4488CC;
-                dl.AddRectFilled(clipMin, clipMax, clipFill, 3f);
-                dl.AddRect(clipMin, clipMax, clipEdge, 3f, ImDrawFlags.RoundCornersAll, 1.5f);
-
-                // Always show the start frame at the left edge of the clip.
-                string label = $"f{track.ManifestEntry.StartFrame}";
-                if (!track.IsLoaded) label += " (decoding)";
-                dl.AddText(clipMin + new Vector2(4f, 4f), 0xFFFFFFFF, label);
-
-                // If very thin, still draw a visible left-edge handle.
-                if (clipMax.X - clipMin.X < 6f)
-                {
-                    dl.AddLine(new Vector2(clipMin.X + 1f, clipMin.Y), new Vector2(clipMin.X + 1f, clipMax.Y), 0xFF66BBFF, 2f);
-                }
-
-                Vector2 mouse = ImGui.GetMousePos();
-                bool mouseInClipArea = mouse.X >= rightMin.X && mouse.X < rightMin.X + rightSize.X
-                                    && mouse.Y >= rightMin.Y && mouse.Y < rightMin.Y + rightSize.Y;
-                if (mouseInClipArea && ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup))
-                {
-                    if (_isDraggingAudioClip)
-                        ImGui.SetTooltip("Dragging audio clip to frame " + track.ManifestEntry.StartFrame);
-                    else
-                        ImGui.SetTooltip("Drag to reposition on timeline");
-
-                    if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                    {
-                        _selectedAudioTrack   = track;
-                        _isDraggingAudioClip  = true;
-                        _audioDragStartMouseX = (int)mouse.X;
-                        _audioDragStartFrame  = track.ManifestEntry.StartFrame;
-                    }
-                    else if (ImGui.IsMouseClicked(ImGuiMouseButton.Right))
-                    {
-                        _selectedAudioTrack = track;
-                        ImGui.OpenPopup($"##audio_ctx_{i}");
-                    }
-                }
-
-                if (ImGui.BeginPopup($"##audio_ctx_{i}"))
-                {
-                    if (ImGui.MenuItem("Remove Audio Track"))
-                    {
-                        RemoveAudioTrack(track);
-                        ImGui.EndPopup();
-                        break;
-                    }
-                    ImGui.EndPopup();
-                }
-
-                if (_isDraggingAudioClip && _selectedAudioTrack == track && ImGui.IsMouseDown(ImGuiMouseButton.Left))
-                {
-                    float localX = mouse.X - rightMin.X + scrollX;
-                    int   newFrame = Math.Max(0, (int)MathF.Round(localX / _pixelsPerFrame));
-                    if (newFrame != track.ManifestEntry.StartFrame)
-                    {
-                        track.ManifestEntry.StartFrame = newFrame;
-                        if (track.IsLoaded && _isPlaying)
-                        {
-                            float playOffset = Math.Max(0f, (_currentFrame - track.ManifestEntry.StartFrame) / _frameRate)
-                                             + track.ManifestEntry.SourceOffsetSeconds;
-                            Services.AudioEngine.SetSourceOffsetSeconds(track.Source, playOffset);
-                        }
-                    }
-                }
-            }
-
-            ImGui.Dummy(new Vector2(contentW, AudioRowHeight));
-        }
-
-        if (_isDraggingAudioClip && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
-            _isDraggingAudioClip = false;
-
-        ImGui.EndChild();
-
-        // ── Fixed footer (outside the scrollable area) ──────────────────────
-        if (_audioTracks.Count == 0)
-        {
-            ImGui.TextDisabled("No audio tracks yet.");
-            ImGui.SameLine();
-        }
-        ImGui.SetCursorPosX(availW - 160f);
-        if (ImGui.SmallButton("+ Add Audio Track"))
-            ImGui.OpenPopup("##addAudioPopup");
-
-        if (ImGui.BeginPopup("##addAudioPopup"))
-        {
-            var assets = ProjectManager.Instance.GetProjectAssets();
-            var soundAssets = assets.Where(a => a.AssetType == ProjectAssetType.Sound).ToList();
-            if (soundAssets.Count == 0)
-            {
-                ImGui.TextDisabled("No sound assets in this project.");
-                ImGui.TextDisabled("Import a .wav / .mp3 / .ogg / .flac / .m4a first.");
-            }
-            else
-            {
-                foreach (var a in soundAssets.Where(a => ImGui.MenuItem(a.DisplayName)))
-                {
-                    AddAudioTrackFromAsset(a);
-                    ImGui.CloseCurrentPopup();
-                }
-            }
-            ImGui.EndPopup();
-        }
-    }
 
     /// <summary>Add a new audio track backed by the given sound asset.</summary>
     public TimelineAudioTrack AddAudioTrackFromAsset(ProjectAssetEntry asset)
@@ -1053,7 +524,6 @@ public class Timeline : UiPanel
             Services.AudioEngine.DestroySource(track.Source);
         }
         _audioTracks.Remove(track);
-        if (_selectedAudioTrack == track) _selectedAudioTrack = null;
     }
 
     /// <summary>
@@ -1165,31 +635,12 @@ public class Timeline : UiPanel
         }
     }
 
-    private void JumpToStart()          { _currentFrame = 0; _frameAccumulator = 0.0; StopAllAudio(); ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
-    private void Stop()                 { _isPlaying = false; StopAllAudio(); JumpToStart(); }
-    private void StepBackward()         { _currentFrame = Math.Max(0, _currentFrame - 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
-    private void StepForward()          { _currentFrame = Math.Min(_maxFrames, _currentFrame + 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
+    public void JumpToStart()          { _currentFrame = 0; _frameAccumulator = 0.0; StopAllAudio(); ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
+    public void Stop()                 { _isPlaying = false; StopAllAudio(); JumpToStart(); }
+    public void StepBackward()         { _currentFrame = Math.Max(0, _currentFrame - 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
+    public void StepForward()          { _currentFrame = Math.Min(_maxFrames, _currentFrame + 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
 
-    // ── ImageButton helpers (byte* API required by Hexa.NET.ImGui 2.x) ───────
-
-    private static unsafe bool IcoBtn(string id, uint texId, Vector2 sz)
-    {
-        var tex = new ImTextureRef(texId: (ulong)texId);
-        byte[] b = Encoding.UTF8.GetBytes(id + '\0');
-        fixed (byte* p = b) return ImGui.ImageButton(p, tex, sz);
-    }
-
-    private static unsafe bool IcoBtnTinted(string id, uint texId, Vector2 sz,
-                                             Vector4 tint)
-    {
-        var tex  = new ImTextureRef(texId: (ulong)texId);
-        var uv0  = new Vector2(0, 0);
-        var uv1  = new Vector2(1, 1);
-        var bg   = new Vector4(0, 0, 0, 0);
-        byte[] b = Encoding.UTF8.GetBytes(id + '\0');
-        fixed (byte* p = b) return ImGui.ImageButton(p, tex, sz, uv0, uv1, bg, tint);
-    }
-    private void JumpToLastKeyframe()
+    public void JumpToLastKeyframe()
     {
         int last = 0;
         foreach (var kvp in _propertyKeyframes)
@@ -1200,337 +651,7 @@ public class Timeline : UiPanel
         ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
     }
 
-    // ── Frame ruler ───────────────────────────────────────────────────────────
-
-    private void RenderRulerRow(float availW)
-    {
-        ImGui.Dummy(new Vector2(LeftColumnWidth, RulerHeight));
-        ImGui.SameLine(0, 0);
-
-        var rulerSize = new Vector2(availW - LeftColumnWidth, RulerHeight);
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
-        ImGui.BeginChild("##ruler", rulerSize, ImGuiChildFlags.None,
-            ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
-        ImGui.SetScrollX(_hScrollOffset);
-        ImGui.PopStyleVar();
-
-        var   dl      = ImGui.GetWindowDrawList();
-        var   wPos    = ImGui.GetWindowPos();
-        var   wSize   = ImGui.GetWindowSize();
-        float scrollX = ImGui.GetScrollX();
-        _timelineAreaTop = wPos.Y;
-
-        dl.AddRectFilled(wPos, wPos + wSize,
-            ImGui.ColorConvertFloat4ToU32(new Vector4(0.14f, 0.14f, 0.14f, 1f)));
-
-        if (_playbackRegionStart.HasValue && _playbackRegionEnd.HasValue)
-        {
-            float regionX0 = wPos.X + _playbackRegionStart.Value * _pixelsPerFrame - scrollX;
-            float regionX1 = wPos.X + _playbackRegionEnd.Value * _pixelsPerFrame - scrollX;
-            dl.AddRectFilled(new Vector2(Math.Max(wPos.X, regionX0), wPos.Y),
-                new Vector2(Math.Min(wPos.X + wSize.X, regionX1), wPos.Y + RulerHeight), 0x443399FF);
-            dl.AddLine(new Vector2(regionX0, wPos.Y), new Vector2(regionX0, wPos.Y + RulerHeight), 0xFF66AAFF, 2f);
-            dl.AddLine(new Vector2(regionX1, wPos.Y), new Vector2(regionX1, wPos.Y + RulerHeight), 0xFF66AAFF, 2f);
-        }
-
-        int startF = Math.Max(0, (int)(scrollX / _pixelsPerFrame) - 1);
-        int endF   = Math.Min((int)(_maxFrames * 1.5f), (int)((scrollX + wSize.X) / _pixelsPerFrame) + 2);
-
-        for (int f = startF; f <= endF; f++)
-        {
-            float sx = wPos.X + f * _pixelsPerFrame - scrollX;
-            if (sx < wPos.X - 2 || sx > wPos.X + wSize.X + 2) continue;
-
-            if (f % 10 == 0)
-            {
-                dl.AddLine(new Vector2(sx, wPos.Y + RulerHeight * 0.35f),
-                           new Vector2(sx, wPos.Y + RulerHeight), 0xFFAAAAAA, 1f);
-                if (f % 30 == 0 || _pixelsPerFrame >= 4f)
-                    dl.AddText(new Vector2(sx + 2f, wPos.Y + 2f), 0xFFCCCCCC, f.ToString());
-            }
-            else if (f % 5 == 0)
-            {
-                dl.AddLine(new Vector2(sx, wPos.Y + RulerHeight * 0.55f),
-                           new Vector2(sx, wPos.Y + RulerHeight), 0xFF666666, 1f);
-            }
-        }
-
-        // Playhead triangle on ruler
-        float phX = wPos.X + _currentFrame * _pixelsPerFrame - scrollX;
-        dl.AddLine(wPos with { X = phX }, new Vector2(phX, wPos.Y + RulerHeight), 0xFF3377FF, 2f);
-        dl.AddTriangleFilled(
-            wPos with { X = phX - 5f },
-            wPos with { X = phX + 5f },
-            new Vector2(phX, wPos.Y + 10f), 0xFF3377FF);
-
-        // Start playhead drag on click (global drag handled in Render() outside this child)
-        if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-        {
-            _isDraggingPlayhead      = true;
-            _rulerScreenLeftAtDrag   = wPos.X;
-            _rulerScrollAtDrag       = scrollX;
-            // Seek immediately on the first click
-            int newFrame = Math.Max(0, (int)MathF.Round((ImGui.GetMousePos().X - wPos.X + scrollX) / _pixelsPerFrame));
-            if (newFrame != _currentFrame) { _currentFrame = newFrame; _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
-        }
-
-        if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
-        {
-            _contextFrame = Math.Max(0, (int)MathF.Round((ImGui.GetMousePos().X - wPos.X + scrollX) / _pixelsPerFrame));
-            _playbackRegionAnchorFrame = _contextFrame;
-            _playbackRegionStart = _contextFrame;
-            _playbackRegionEnd = _contextFrame;
-            _isDraggingPlaybackRegion = true;
-            _playbackRegionDragged = false;
-        }
-
-        if (_isDraggingPlaybackRegion && ImGui.IsMouseDown(ImGuiMouseButton.Right))
-        {
-            int frame = Math.Max(0, (int)MathF.Round((ImGui.GetMousePos().X - wPos.X + scrollX) / _pixelsPerFrame));
-            _playbackRegionStart = Math.Min(_playbackRegionAnchorFrame, frame);
-            _playbackRegionEnd = Math.Max(_playbackRegionAnchorFrame, frame);
-            _playbackRegionDragged |= Math.Abs(frame - _playbackRegionAnchorFrame) > 0;
-        }
-
-        if (_isDraggingPlaybackRegion && ImGui.IsMouseReleased(ImGuiMouseButton.Right))
-        {
-            _isDraggingPlaybackRegion = false;
-            if (!_playbackRegionDragged)
-            {
-                _playbackRegionStart = null;
-                _playbackRegionEnd = null;
-                _ctxKeyframe = null;
-                _ctxTrackRow = null;
-                _activeMarker = null;
-                _openContextMenu = true;
-            }
-        }
-
-        ImGui.EndChild();
-    }
-
     // ── Main track area ───────────────────────────────────────────────────────
-
-    private void RenderMarkers(float availW)
-    {
-        // Docked windows can report a zero-width content region for one frame
-        // while ImGui restores the layout. InvisibleButton asserts on either
-        // dimension being exactly zero, so keep its hit target valid.
-        float markerWidth = Math.Max(1f, availW);
-        Vector2 rowPos = ImGui.GetCursorScreenPos();
-        var dl = ImGui.GetWindowDrawList();
-        dl.AddRectFilled(rowPos, rowPos + new Vector2(markerWidth, MarkerRowHeight), 0xFF202020);
-        dl.AddText(rowPos + new Vector2(5f, 5f), 0xFFAAAAAA, "Markers");
-
-        float rightX = rowPos.X + LeftColumnWidth;
-        Vector2 mouse = ImGui.GetMousePos();
-        TimelineMarker? hovered = null;
-        foreach (var marker in _markers.OrderBy(m => m.Frame))
-        {
-            float x = rightX + marker.Frame * _pixelsPerFrame - _hScrollOffset;
-            if (x < rightX || x > rowPos.X + markerWidth) continue;
-            uint color = ImGui.ColorConvertFloat4ToU32(marker.Color);
-            dl.AddLine(new Vector2(x, _timelineAreaTop), new Vector2(x, rowPos.Y + MarkerRowHeight), color, 1.5f);
-            dl.AddTriangleFilled(new Vector2(x - 6f, rowPos.Y + 2f), new Vector2(x + 6f, rowPos.Y + 2f),
-                new Vector2(x, rowPos.Y + 10f), color);
-            string text = string.IsNullOrWhiteSpace(marker.Label) ? $"Frame {marker.Frame}" : marker.Label;
-            dl.AddText(new Vector2(x + 7f, rowPos.Y + 7f), color, text);
-            if (MathF.Abs(mouse.X - x) <= 7f && mouse.Y >= rowPos.Y && mouse.Y < rowPos.Y + MarkerRowHeight)
-                hovered = marker;
-        }
-
-        ImGui.InvisibleButton("##marker_row", new Vector2(markerWidth, MarkerRowHeight));
-        if (hovered != null && ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-        {
-            _draggedMarker = hovered;
-            _activeMarker = hovered;
-            _isDraggingMarker = true;
-        }
-
-        if (_isDraggingMarker && _draggedMarker != null)
-        {
-            if (ImGui.IsMouseDown(ImGuiMouseButton.Left))
-            {
-                _draggedMarker.Frame = Math.Max(0,
-                    (int)MathF.Round((mouse.X - rightX + _hScrollOffset) / _pixelsPerFrame));
-                ImGui.SetTooltip($"{_draggedMarker.Label} · frame {_draggedMarker.Frame}");
-            }
-            else
-            {
-                _isDraggingMarker = false;
-                _draggedMarker = null;
-                _markers.Sort((a, b) => a.Frame.CompareTo(b.Frame));
-            }
-        }
-
-        if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
-        {
-            _contextFrame = Math.Max(0, (int)MathF.Round((mouse.X - rightX + _hScrollOffset) / _pixelsPerFrame));
-            _activeMarker = hovered;
-            _ctxKeyframe = null;
-            _ctxTrackRow = null;
-            _openContextMenu = true;
-        }
-        if (hovered != null && ImGui.IsItemHovered())
-            ImGui.SetTooltip($"{hovered.Label} (frame {hovered.Frame})\nRight-click for options");
-    }
-
-    private void RenderMarkerEditor()
-    {
-        if (_openMarkerEditor)
-        {
-            _openMarkerEditor = false;
-            ImGui.OpenPopup("Add Marker");
-        }
-        bool open = true;
-        if (!ImGui.BeginPopupModal("Add Marker", ref open, ImGuiWindowFlags.AlwaysAutoResize)) return;
-        ImGui.InputText("Label", ref _markerLabel, 128);
-        if (ImGui.BeginCombo("Preset", "Choose color..."))
-        {
-            foreach (var preset in new (string name, Vector4 color)[]
-            {
-                ("Red", new(0.90f, 0.18f, 0.18f, 1f)), ("Orange", new(1f, 0.48f, 0.10f, 1f)),
-                ("Yellow", new(0.95f, 0.82f, 0.12f, 1f)), ("Green", new(0.30f, 0.80f, 0.25f, 1f)),
-                ("Forest Green", new(0.10f, 0.42f, 0.18f, 1f)), ("Teal", new(0.08f, 0.68f, 0.65f, 1f)),
-                ("Blue", new(0.18f, 0.45f, 0.95f, 1f)), ("Purple", new(0.56f, 0.28f, 0.85f, 1f)),
-                ("Pink", new(0.95f, 0.35f, 0.65f, 1f))
-            })
-                if (ImGui.Selectable(preset.name)) _markerColor = preset.color;
-            ImGui.EndCombo();
-        }
-        ImGui.ColorEdit4("Color", ref _markerColor, ImGuiColorEditFlags.NoInputs);
-        ImGui.TextDisabled($"Frame {_contextFrame}");
-        if (ImGui.Button("Add"))
-        {
-            _markers.Add(new TimelineMarker { Frame = _contextFrame,
-                Label = string.IsNullOrWhiteSpace(_markerLabel) ? "Marker" : _markerLabel.Trim(), Color = _markerColor });
-            _markers.Sort((a, b) => a.Frame.CompareTo(b.Frame));
-            ImGui.CloseCurrentPopup();
-        }
-        ImGui.SameLine();
-        if (ImGui.Button("Cancel")) ImGui.CloseCurrentPopup();
-        ImGui.EndPopup();
-    }
-
-    private void RenderTrackArea(float availW, float tracksH)
-    {
-        float rightW = availW - LeftColumnWidth;
-        _trackViewportWidth = Math.Max(0f, rightW);
-
-        // Left column: property labels (no horizontal scroll)
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(4f, 2f));
-        ImGui.BeginChild("##left_labels", new Vector2(LeftColumnWidth, tracksH), ImGuiChildFlags.None,
-            ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
-        ImGui.SetScrollY(_vScrollOffset);
-        RenderLeftLabels();
-        ImGui.EndChild();
-        ImGui.PopStyleVar();
-
-        ImGui.SameLine(0, 0);
-
-        // Right column: keyframe tracks.
-        // AlwaysHorizontalScrollbar keeps the scrollbar permanently visible so the
-        // content-area height never fluctuates and rows stay vertically aligned.
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
-        ImGui.BeginChild("##right_tracks", new Vector2(rightW, tracksH), ImGuiChildFlags.None,
-            ImGuiWindowFlags.HorizontalScrollbar | ImGuiWindowFlags.AlwaysHorizontalScrollbar);
-
-        if (_pendingHScrollOffset.HasValue)
-        {
-            ImGui.SetScrollX(_pendingHScrollOffset.Value);
-            _pendingHScrollOffset = null;
-        }
-
-        // Right panel is the scroll master; left panel mirrors it each frame.
-        _hScrollOffset = ImGui.GetScrollX();
-        _vScrollOffset = ImGui.GetScrollY();
-
-        RenderKeyframeTracks();
-
-        ImGui.EndChild();
-        ImGui.PopStyleVar();
-    }
-
-    // ── Left labels ───────────────────────────────────────────────────────────
-
-    private void RenderLeftLabels()
-    {
-        if (_displayRows.Count == 0)
-        {
-            ImGui.TextDisabled("No object selected");
-            return;
-        }
-
-        foreach (var row in _displayRows)
-        {
-            if (!IsTrackRowVisible(row))
-                continue;
-
-            if (row.PropertyPath == "__header__")
-            {
-                float hY = ImGui.GetCursorPosY();
-                ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.9f, 0.9f, 0.5f, 1f));
-                // Vertically centre the text within RowHeight
-                ImGui.SetCursorPosY(hY + (RowHeight - ImGui.GetTextLineHeight()) * 0.5f);
-                ImGui.Text(row.Label);
-                ImGui.PopStyleColor();
-                ImGui.SetCursorPosY(hY + RowHeight);
-                ImGui.Dummy(Vector2.Zero);  // commit boundary
-                continue;
-            }
-
-            float rowY = ImGui.GetCursorPosY();
-
-            if (row.Indent > 0) ImGui.Indent(12f);
-            bool showGhostIndicator = ShouldShowGhostIndicator(row);
-
-            if (row.IsGroupHeader)
-            {
-                string gk  = $"{row.Object.ObjectId}.{row.PropertyPath}";
-                _groupExpanded.TryAdd(gk, false);
-                bool   exp = _groupExpanded[gk];
-
-                ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetFrameHeight()) * 0.5f);
-                if (ImGui.ArrowButton($"##arr_{gk}", exp ? ImGuiDir.Down : ImGuiDir.Right))
-                    _groupExpanded[gk] = !exp;
-                ImGui.SameLine();
-                ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetTextLineHeight()) * 0.5f);
-                ImGui.Text(row.Label);
-                if (showGhostIndicator)
-                {
-                    ImGui.SameLine();
-                    ImGui.TextColored(new Vector4(0.70f, 0.86f, 0.98f, 1f), "(ghost)");
-                }
-                ImGui.SameLine();
-                ImGui.SetCursorPosX(LeftColumnWidth - 26f);
-                ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetFrameHeight()) * 0.5f);
-                if (ImGui.Button($"+##grp_{gk}"))
-                    foreach (var path in row.GroupPaths ?? Array.Empty<string>())
-                        AddKeyframeForProperty(row.Object, path, _currentFrame);
-            }
-            else
-            {
-                ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetTextLineHeight()) * 0.5f);
-                ImGui.Text(row.Label);
-                if (showGhostIndicator)
-                {
-                    ImGui.SameLine();
-                    ImGui.TextColored(new Vector4(0.70f, 0.86f, 0.98f, 1f), "(ghost)");
-                }
-                ImGui.SameLine();
-                ImGui.SetCursorPosX(LeftColumnWidth - 26f);
-                ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetFrameHeight()) * 0.5f);
-                if (ImGui.Button($"+##{row.Object.ObjectId}_{row.PropertyPath}"))
-                    AddKeyframeForProperty(row.Object, row.PropertyPath, _currentFrame);
-            }
-
-            if (row.Indent > 0) ImGui.Unindent(12f);
-
-            // Force the row to consume exactly RowHeight, matching the right panel.
-            ImGui.SetCursorPosY(rowY + RowHeight);
-            ImGui.Dummy(Vector2.Zero);  // commit boundary
-        }
-    }
 
     private bool IsGroupChildVisible(TimelineProperty childRow)
     {
@@ -1548,531 +669,6 @@ public class Timeline : UiPanel
         return true;
     }
 
-    // ── Keyframe tracks ───────────────────────────────────────────────────────
-
-    private void RenderKeyframeTracks()
-    {
-        float contentW = _maxFrames * _pixelsPerFrame * 1.5f;
-
-        if (_displayRows.Count == 0)
-        {
-            ImGui.Dummy(new Vector2(contentW, 60f));
-            return;
-        }
-
-        var   dl      = ImGui.GetWindowDrawList();
-        var   wPos    = ImGui.GetWindowPos();
-        var   wSize   = ImGui.GetWindowSize();
-        float scrollX = ImGui.GetScrollX();
-
-        foreach (var row in _displayRows)
-        {
-            if (!IsTrackRowVisible(row)) continue;
-            if (row.PropertyPath == "__header__")
-            {
-                // Object header — draw a separator-like bar
-                var hPos = ImGui.GetCursorScreenPos();
-                dl.AddRectFilled(hPos, hPos + new Vector2(contentW, RowHeight),
-                    ImGui.ColorConvertFloat4ToU32(new Vector4(0.18f, 0.18f, 0.1f, 1f)));
-                ImGui.Dummy(new Vector2(contentW, RowHeight));
-                
-                // Handle mouse interactions on header row
-                HandleTrackMouse(row, hPos, contentW, scrollX, wPos, wSize);
-                continue;
-            }
-
-            var  trackPos = ImGui.GetCursorScreenPos();
-            bool showGhostIndicator = ShouldShowGhostIndicator(row);
-
-            // Track background + grid
-            DrawTrackBg(dl, trackPos, wPos, wSize, scrollX, showGhostIndicator);
-
-            // Keyframe diamonds
-            if (!row.IsGroupHeader)
-                DrawSingleTrackKeyframes(dl, trackPos, row, scrollX);
-            else
-                DrawGroupTrackKeyframes(dl, trackPos, row, scrollX);
-
-            // Handle mouse interactions on this track row
-            HandleTrackMouse(row, trackPos, contentW, scrollX, wPos, wSize);
-
-            ImGui.Dummy(new Vector2(contentW, RowHeight));
-        }
-
-        // Global: playhead vertical line
-        float phX = wPos.X + _currentFrame * _pixelsPerFrame - scrollX;
-        if (phX >= wPos.X && phX <= wPos.X + wSize.X)
-            dl.AddLine(wPos with { X = phX }, new Vector2(phX, wPos.Y + wSize.Y), 0xBB3377FF, 2f);
-
-        // Drag-select box
-        if (_isDragSelecting && _wasDragging)
-        {
-            float minX = MathF.Min(_dragSelectStart.X, _dragSelectEnd.X);
-            float minY = MathF.Min(_dragSelectStart.Y, _dragSelectEnd.Y);
-            float maxX = MathF.Max(_dragSelectStart.X, _dragSelectEnd.X);
-            float maxY = MathF.Max(_dragSelectStart.Y, _dragSelectEnd.Y);
-            dl.AddRectFilled(new Vector2(minX, minY), new Vector2(maxX, maxY),
-                ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.6f, 1f, 0.18f)));
-            dl.AddRect(new Vector2(minX, minY), new Vector2(maxX, maxY),
-                ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.6f, 1f, 0.85f)), 0f, ImDrawFlags.None, 1.5f);
-        }
-    }
-
-    private void DrawTrackBg(ImDrawListPtr dl, Vector2 trackPos,
-                              Vector2 wPos, Vector2 wSize, float scrollX, bool ghostTint)
-    {
-        dl.PushClipRect(
-            new Vector2(wPos.X, trackPos.Y),
-            new Vector2(wPos.X + wSize.X, trackPos.Y + RowHeight), true);
-
-        var bgColor = ghostTint
-            ? new Vector4(0.10f, 0.15f, 0.19f, 1f)
-            : new Vector4(0.12f, 0.12f, 0.12f, 1f);
-
-        dl.AddRectFilled(
-            new Vector2(wPos.X, trackPos.Y),
-            new Vector2(wPos.X + wSize.X, trackPos.Y + RowHeight),
-            ImGui.ColorConvertFloat4ToU32(bgColor));
-
-        int startF = Math.Max(0, (int)(scrollX / _pixelsPerFrame) - 1);
-        int endF   = Math.Min((int)(_maxFrames * 1.5f), (int)((scrollX + wSize.X) / _pixelsPerFrame) + 1);
-        for (int f = startF; f <= endF; f++)
-        {
-            if (f % 10 != 0) continue;
-            float x = trackPos.X + f * _pixelsPerFrame - scrollX;
-            dl.AddLine(new Vector2(x, trackPos.Y), new Vector2(x, trackPos.Y + RowHeight),
-                ImGui.ColorConvertFloat4ToU32(new Vector4(0.22f, 0.22f, 0.22f, 0.6f)), 1f);
-        }
-
-        dl.PopClipRect();
-    }
-
-    private void DrawSingleTrackKeyframes(ImDrawListPtr dl, Vector2 trackPos,
-                                           TimelineProperty row, float scrollX)
-    {
-        var  wPos  = ImGui.GetWindowPos();
-        var  wSize = ImGui.GetWindowSize();
-        dl.PushClipRect(new Vector2(wPos.X, trackPos.Y),
-                        new Vector2(wPos.X + wSize.X, trackPos.Y + RowHeight), true);
-
-        foreach (var kf in GetKeyframesForProperty(row.Object, row.PropertyPath))
-        {
-            float cx = trackPos.X + kf.Frame * _pixelsPerFrame - scrollX;
-            float cy = trackPos.Y + RowHeight / 2f;
-            DrawDiamond(dl, cx, cy, KeyframeDiamondSize, _selectedKeyframes.Contains(kf));
-        }
-
-        dl.PopClipRect();
-    }
-
-    private void DrawGroupTrackKeyframes(ImDrawListPtr dl, Vector2 trackPos,
-                                          TimelineProperty row, float scrollX)
-    {
-        if (row.GroupPaths == null) return;
-
-        var frames = new HashSet<int>();
-        foreach (var path in row.GroupPaths)
-            foreach (var kf in GetKeyframesForProperty(row.Object, path))
-                frames.Add(kf.Frame);
-
-        var  wPos  = ImGui.GetWindowPos();
-        var  wSize = ImGui.GetWindowSize();
-        dl.PushClipRect(new Vector2(wPos.X, trackPos.Y),
-                        new Vector2(wPos.X + wSize.X, trackPos.Y + RowHeight), true);
-
-        foreach (int f in frames)
-        {
-            bool anySelected = row.GroupPaths.Any(p =>
-            {
-                var kf2 = GetKeyframesForProperty(row.Object, p).Find(k => k.Frame == f);
-                return kf2 != null && _selectedKeyframes.Contains(kf2);
-            });
-            float cx = trackPos.X + f * _pixelsPerFrame - scrollX;
-            float cy = trackPos.Y + RowHeight / 2f;
-            DrawDiamond(dl, cx, cy, KeyframeDiamondSize - 1f, anySelected);
-        }
-
-        dl.PopClipRect();
-    }
-
-    private static void DrawDiamond(ImDrawListPtr dl, float cx, float cy, float s, bool selected)
-    {
-        uint fill    = selected ? 0xFF4499FF : 0xFF33CCFF;
-        uint outline = selected ? 0xFF2266CC : 0xFF1188AA;
-        dl.AddQuadFilled(new Vector2(cx, cy - s), new Vector2(cx + s, cy),
-                         new Vector2(cx, cy + s), new Vector2(cx - s, cy), fill);
-        dl.AddQuad(new Vector2(cx, cy - s), new Vector2(cx + s, cy),
-                   new Vector2(cx, cy + s), new Vector2(cx - s, cy), outline, 1.5f);
-    }
-
-    // ── Track mouse interactions ──────────────────────────────────────────────
-
-    private void HandleTrackMouse(TimelineProperty row, Vector2 trackPos, float contentW,
-                                   float scrollX, Vector2 wPos, Vector2 wSize)
-    {
-        if (!ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup)) return;
-
-        var   mouse   = ImGui.GetMousePos();
-        bool  inTrack = mouse.Y >= trackPos.Y && mouse.Y < trackPos.Y + RowHeight;
-        if (!inTrack) return;
-
-        float localX     = mouse.X - trackPos.X + scrollX;
-        int   frame      = Math.Max(0, (int)MathF.Round(localX / _pixelsPerFrame));
-        bool  altHeld    = ImGui.GetIO().KeyAlt;
-        bool  shiftHeld  = ImGui.GetIO().KeyShift;
-        bool  ctrlHeld   = ImGui.GetIO().KeyCtrl;
-
-        // Skip hit-test on group headers (no individual keyframes to interact with)
-        TimelineKeyframe? hoveredKf = null;
-        if (!row.IsGroupHeader && row.PropertyPath != "__header__")
-        {
-            hoveredKf = GetKeyframesForProperty(row.Object, row.PropertyPath)
-                .Find(k => Math.Abs(k.Frame - frame) <= 2);
-            if (hoveredKf != null && !_isDraggingKeyframe)
-                ImGui.SetTooltip($"Frame {hoveredKf.Frame} · {hoveredKf.InterpolationType}");
-        }
-
-        // ── Mouse pressed ────────────────────────────────────────────────────
-        if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-        {
-            if (row.IsGroupHeader || row.PropertyPath == "__header__")
-            {
-                // Empty area → start drag-select
-                StartDragSelect(mouse, shiftHeld);
-            }
-            else if (hoveredKf != null && altHeld)
-            {
-                RemoveKeyframeForProperty(row.Object, row.PropertyPath, hoveredKf.Frame);
-            }
-            else if (hoveredKf != null)
-            {
-                // Start keyframe drag / selection
-                if (!shiftHeld && !_selectedKeyframes.Contains(hoveredKf))
-                {
-                    _selectedKeyframes.Clear();
-                    _keyframeOwners.Clear();
-                }
-                if (!_selectedKeyframes.Contains(hoveredKf))
-                {
-                    _selectedKeyframes.Add(hoveredKf);
-                    _keyframeOwners[hoveredKf] = (row.Object, row.PropertyPath);
-                }
-                _isDraggingKeyframe = true;
-                _draggedKeyframe    = hoveredKf;
-                _dragStartFrame     = hoveredKf.Frame;
-                _selectedStartFrames.Clear();
-                foreach (var kf in _selectedKeyframes)
-                    _selectedStartFrames[kf] = kf.Frame;
-            }
-            else
-            {
-                // Click on empty area → only start drag-select, do NOT create keyframe
-                if (!shiftHeld)
-                {
-                    _selectedKeyframes.Clear();
-                    _keyframeOwners.Clear();
-                }
-                StartDragSelect(mouse, shiftHeld);
-            }
-        }
-
-        // ── Dragging keyframe ────────────────────────────────────────────────
-        // Update keyframe frames in real-time during drag, keeping lists sorted for rendering
-        if (_isDraggingKeyframe && _draggedKeyframe != null && ImGui.IsMouseDown(ImGuiMouseButton.Left))
-        {
-            int newFrame = Math.Max(0, (int)MathF.Round(localX / _pixelsPerFrame));
-            int offset   = newFrame - _dragStartFrame;
-            
-            if (offset != 0)
-            {
-                var sortedLists = new HashSet<string>();
-                foreach (var kf in _selectedKeyframes)
-                {
-                    if (_selectedStartFrames.TryGetValue(kf, out int sf))
-                    {
-                        kf.Frame = Math.Max(0, sf + offset);
-                        
-                        // Mark the keyframe's list for sorting
-                        if (_keyframeOwners.TryGetValue(kf, out var owner))
-                        {
-                            string key = $"{owner.obj.ObjectId}.{owner.path}";
-                            sortedLists.Add(key);
-                        }
-                    }
-                }
-                
-                // Sort each affected list to keep keyframes in frame order for rendering
-                foreach (var key in sortedLists)
-                {
-                    if (_propertyKeyframes.TryGetValue(key, out var list))
-                        list.Sort((a, b) => a.Frame.CompareTo(b.Frame));
-                }
-            }
-        }
-
-        // ── Mouse released ───────────────────────────────────────────────────
-        if (_isDraggingKeyframe && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
-        {
-            // Collect all owners that had keyframes moved, then handle collisions and save
-            var changedOwners = new Dictionary<(SceneObject, string), List<TimelineKeyframe>>();
-            
-            foreach (var kf in _selectedKeyframes)
-            {
-                if (!_keyframeOwners.TryGetValue(kf, out var owner)) continue;
-                if (!_selectedStartFrames.TryGetValue(kf, out int sf)) continue;
-                
-                if (kf.Frame != sf)
-                {
-                    var key = (owner.obj, owner.path);
-                    if (!changedOwners.ContainsKey(key))
-                        changedOwners[key] = new();
-                    changedOwners[key].Add(kf);
-                }
-            }
-            
-            // For each changed property, remove collisions and save
-            foreach (var ((obj, path), movedKfs) in changedOwners)
-            {
-                string key = $"{obj.ObjectId}.{path}";
-                if (_propertyKeyframes.TryGetValue(key, out var list))
-                {
-                    // Remove collisions: if multiple keyframes now occupy the same frame,
-                    // keep only the first one and remove duplicates
-                    var frameGroups = movedKfs.GroupBy(k => k.Frame);
-                    foreach (var group in frameGroups.Where(g => g.Count() > 1))
-                    {
-                        var toKeep = group.First();
-                        foreach (var dup in group.Skip(1))
-                            list.Remove(dup);
-                    }
-                    
-                    SaveKeyframesToObject(obj, path);
-                }
-            }
-            
-            _isDraggingKeyframe = false;
-            _draggedKeyframe    = null;
-            _selectedStartFrames.Clear();
-            RecalculateTimelineLength();
-        }
-
-        // ── Right-click context menu ─────────────────────────────────────────
-        if (ImGui.IsMouseClicked(ImGuiMouseButton.Right))
-        {
-            if (!row.IsGroupHeader && row.PropertyPath != "__header__" && hoveredKf != null)
-            {
-                // Right-click on a keyframe
-                _ctxKeyframe = hoveredKf;
-                _ctxObject   = row.Object;
-                _ctxPropPath = row.PropertyPath;
-                _ctxTrackRow = row;
-                if (!_selectedKeyframes.Contains(hoveredKf))
-                {
-                    _selectedKeyframes.Clear();
-                    _keyframeOwners.Clear();
-                    _selectedKeyframes.Add(hoveredKf);
-                    _keyframeOwners[hoveredKf] = (row.Object, row.PropertyPath);
-                }
-                _openContextMenu = true;
-                _contextFrame = hoveredKf.Frame;
-                _activeMarker = null;
-            }
-            else if (row.PropertyPath == "__header__")
-            {
-                // Right-click on object header row
-                _ctxAddKeyframeObj = row.Object;
-                _ctxTrackRow = null;
-                _openAddKeyframeMenu = true;
-            }
-            else
-            {
-                _contextFrame = frame;
-                _ctxKeyframe = null;
-                _ctxObject = row.Object;
-                _ctxPropPath = row.PropertyPath;
-                _ctxTrackRow = row;
-                _activeMarker = null;
-                _openContextMenu = true;
-            }
-        }
-
-        // ── Drag-select ──────────────────────────────────────────────────────
-        if (!_isDraggingKeyframe)
-            UpdateDragSelect(mouse, shiftHeld, scrollX, wPos);
-    }
-
-    private void StartDragSelect(Vector2 mouse, bool shiftHeld)
-    {
-        _isDragSelecting = true;
-        _wasDragging     = false;
-        _dragSelectStart = mouse;
-        _dragSelectEnd   = mouse;
-        if (!shiftHeld)
-        {
-            _selectedKeyframes.Clear();
-            _keyframeOwners.Clear();
-        }
-    }
-
-    private void UpdateDragSelect(Vector2 mouse, bool shiftHeld, float scrollX, Vector2 wPos)
-    {
-        if (!_isDragSelecting)
-        {
-            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                StartDragSelect(mouse, shiftHeld);
-            return;
-        }
-
-        if (ImGui.IsMouseDown(ImGuiMouseButton.Left))
-        {
-            float dist = Vector2.Distance(mouse, _dragSelectStart);
-            if (dist >= DragThreshold) _wasDragging = true;
-            _dragSelectEnd = mouse;
-
-            if (_wasDragging)
-                ApplyDragSelection(scrollX, wPos, shiftHeld);
-        }
-        else
-        {
-            _isDragSelecting = false;
-            _wasDragging     = false;
-        }
-    }
-
-    private void ApplyDragSelection(float scrollX, Vector2 wPos, bool shiftHeld)
-    {
-        float minSX = MathF.Min(_dragSelectStart.X, _dragSelectEnd.X);
-        float maxSX = MathF.Max(_dragSelectStart.X, _dragSelectEnd.X);
-        float minSY = MathF.Min(_dragSelectStart.Y, _dragSelectEnd.Y);
-        float maxSY = MathF.Max(_dragSelectStart.Y, _dragSelectEnd.Y);
-        _selectedRegionStart = Math.Max(0, (int)MathF.Round((minSX - wPos.X + scrollX) / _pixelsPerFrame));
-        _selectedRegionEnd = Math.Max(0, (int)MathF.Round((maxSX - wPos.X + scrollX) / _pixelsPerFrame));
-
-        if (!shiftHeld)
-        {
-            _selectedKeyframes.Clear();
-            _keyframeOwners.Clear();
-        }
-
-        float curY = wPos.Y - _vScrollOffset;
-        foreach (var row in _displayRows)
-        {
-            if (row.PropertyPath == "__header__" || row.IsGroupHeader)
-            { curY += RowHeight; continue; }
-
-            if (!IsTrackRowVisible(row))
-                continue;
-
-            float rowMinY = curY;
-            float rowMaxY = curY + RowHeight;
-            curY += RowHeight;
-
-            if (rowMaxY < minSY || rowMinY > maxSY) continue;
-
-            foreach (var kf in from kf in GetKeyframesForProperty(row.Object, row.PropertyPath) let kfSX = wPos.X + kf.Frame * _pixelsPerFrame - scrollX where !(kfSX < minSX) && !(kfSX > maxSX) where !_selectedKeyframes.Contains(kf) select kf)
-            {
-                _selectedKeyframes.Add(kf);
-                _keyframeOwners[kf] = (row.Object, row.PropertyPath);
-            }
-        }
-    }
-
-    // ── Context menu ──────────────────────────────────────────────────────────
-
-    private void RenderContextMenu()
-    {
-        if (!ImGui.BeginPopup("##kf_ctx")) return;
-
-        ImGui.TextDisabled(_activeMarker != null ? $"Marker: {_activeMarker.Label}" : "Timeline");
-        ImGui.Separator();
-
-        bool hasSelection = _selectedKeyframes.Count > 0;
-        if (ImGui.MenuItem("Cut Keyframes", "Ctrl+X", false, hasSelection)) { CopySelectedKeyframes(); DeleteSelectedKeyframes(); }
-        if (ImGui.MenuItem("Copy Keyframes", "Ctrl+C", false, hasSelection)) CopySelectedKeyframes();
-        if (ImGui.MenuItem("Paste Keyframes", "Ctrl+V", false, _keyframeClipboard.Count > 0)) PasteKeyframes(_contextFrame);
-        if (ImGui.MenuItem("Scale Selected Keyframe Speed...", "", false, _selectedKeyframes.Count > 1))
-        {
-            _speedScaleSlowDown = true;
-            _speedScaleFactor = 2f;
-            _openSpeedScaleMenu = true;
-        }
-        if (ImGui.MenuItem("Reverse Selected Keyframes", "", false, _selectedKeyframes.Count > 1)) TransformSelectedFrames(reverse: true);
-        if (ImGui.MenuItem("Randomize Selected Keyframes", "", false, _selectedKeyframes.Count > 1)) TransformSelectedFrames(reverse: false);
-
-        if (ImGui.BeginMenu("Select Keyframes"))
-        {
-            int markerFrame = _activeMarker?.Frame ?? _contextFrame;
-            if (ImGui.MenuItem("Before Marker")) SelectKeyframes(k => k.Frame < markerFrame);
-            if (ImGui.MenuItem("After Marker")) SelectKeyframes(k => k.Frame > markerFrame);
-            if (ImGui.MenuItem("First")) SelectExtreme(first: true);
-            if (ImGui.MenuItem("Last")) SelectExtreme(first: false);
-            if (ImGui.MenuItem("At Current Frame")) SelectKeyframes(k => k.Frame == _currentFrame);
-            bool hasRegion = _selectedRegionStart.HasValue && _selectedRegionEnd.HasValue;
-            if (ImGui.MenuItem("In Selected Timeline Region", "", false, hasRegion))
-                SelectKeyframes(k => k.Frame >= _selectedRegionStart && k.Frame <= _selectedRegionEnd);
-            ImGui.EndMenu();
-        }
-
-        if (ImGui.MenuItem("Add Marker"))
-        {
-            _markerLabel = "Marker";
-            _markerColor = new Vector4(0.9f, 0.2f, 0.2f, 1f);
-            _openMarkerEditor = true;
-        }
-        if (ImGui.MenuItem("Clear Playback Region", "", false,
-                _playbackRegionStart.HasValue && _playbackRegionEnd.HasValue))
-        {
-            _playbackRegionStart = null;
-            _playbackRegionEnd = null;
-        }
-        if (_activeMarker != null && ImGui.MenuItem("Delete Marker"))
-        {
-            _markers.Remove(_activeMarker);
-            _activeMarker = null;
-        }
-
-        ImGui.Separator();
-
-        if (ImGui.BeginMenu("Interpolation", hasSelection))
-        {
-            foreach (var (lbl, val) in new[]
-            {
-                ("Linear",               "linear"),
-                ("Ease In Quadratic",    "ease-in-quadratic"),
-                ("Ease Out Quadratic",   "ease-out-quadratic"),
-                ("Ease In-Out Quadratic","ease-in-out-quadratic"),
-                ("Instant",              "instant"),
-            })
-            {
-                bool active = _ctxKeyframe?.InterpolationType == val;
-                if (ImGui.MenuItem(lbl, "", active))
-                {
-                    foreach (var kf in _selectedKeyframes) kf.InterpolationType = val;
-                    SaveSelectedOwners();
-                }
-            }
-            ImGui.EndMenu();
-        }
-
-        ImGui.Separator();
-
-        if (_ctxTrackRow is { PropertyPath: not "__header__" } row)
-        {
-            bool rowGhost = IsTrackRowGhost(row);
-            if (ImGui.MenuItem(rowGhost ? "Remove Track from Ghost Timeline" : "Make Track Ghost Timeline"))
-            {
-                SetTrackRowGhostState(row, !rowGhost);
-                PruneHiddenSelection();
-            }
-            ImGui.Separator();
-        }
-
-        if (ImGui.MenuItem("Delete Keyframe(s)", "Delete", false, hasSelection))
-            DeleteSelectedKeyframes();
-
-        ImGui.EndPopup();
-    }
-
     private IEnumerable<(TimelineKeyframe keyframe, SceneObject obj, string path)> EnumerateKeyframes()
     {
         foreach (var row in _displayRows.Where(r => !r.IsGroupHeader && r.PropertyPath != "__header__"))
@@ -2084,7 +680,7 @@ public class Timeline : UiPanel
         }
     }
 
-    private void SelectKeyframes(Func<TimelineKeyframe, bool> predicate)
+    public void SelectKeyframes(Func<TimelineKeyframe, bool> predicate)
     {
         _selectedKeyframes.Clear();
         _keyframeOwners.Clear();
@@ -2095,7 +691,7 @@ public class Timeline : UiPanel
         }
     }
 
-    private void MoveIntoPlaybackRegionIfNeeded()
+    public void MoveIntoPlaybackRegionIfNeeded()
     {
         if (_loopPlayback && _playbackRegionStart.HasValue && _playbackRegionEnd.HasValue &&
             (_currentFrame < _playbackRegionStart.Value || _currentFrame > _playbackRegionEnd.Value))
@@ -2106,7 +702,7 @@ public class Timeline : UiPanel
         }
     }
 
-    private void SelectExtreme(bool first)
+    public void SelectExtreme(bool first)
     {
         var all = EnumerateKeyframes().ToList();
         if (all.Count == 0) { SelectKeyframes(_ => false); return; }
@@ -2114,7 +710,7 @@ public class Timeline : UiPanel
         SelectKeyframes(k => k.Frame == frame);
     }
 
-    private void CopySelectedKeyframes()
+    public void CopySelectedKeyframes()
     {
         _keyframeClipboard.Clear();
         if (_selectedKeyframes.Count == 0) return;
@@ -2124,7 +720,7 @@ public class Timeline : UiPanel
                 _keyframeClipboard.Add((owner.obj, owner.path, keyframe.Frame - origin, keyframe.Value, keyframe.InterpolationType));
     }
 
-    private void PasteKeyframes(int frame)
+    public void PasteKeyframes(int frame)
     {
         _selectedKeyframes.Clear();
         _keyframeOwners.Clear();
@@ -2143,7 +739,7 @@ public class Timeline : UiPanel
         RecalculateTimelineLength();
     }
 
-    private void TransformSelectedFrames(bool reverse)
+    public void TransformSelectedFrames(bool reverse)
     {
         int min = _selectedKeyframes.Min(k => k.Frame);
         int max = _selectedKeyframes.Max(k => k.Frame);
@@ -2153,7 +749,7 @@ public class Timeline : UiPanel
         RemoveSelectedCollisionsAndSave();
     }
 
-    private void ScaleSelectedKeyframeSpeed(float factor, bool slowDown)
+    public void ScaleSelectedKeyframeSpeed(float factor, bool slowDown)
     {
         if (_selectedKeyframes.Count < 2)
             return;
@@ -2200,110 +796,6 @@ public class Timeline : UiPanel
             SaveKeyframesToObject(owner.obj, owner.path);
     }
 
-    private void RenderAddKeyframeMenu()
-    {
-        if (!ImGui.BeginPopup("##kf_add")) return;
-        if (_ctxAddKeyframeObj == null) { ImGui.EndPopup(); return; }
-
-        ImGui.TextDisabled("Add Keyframe");
-        ImGui.Separator();
-
-        bool canRotate = !(_ctxAddKeyframeObj is LightSceneObject);
-        bool canScale = !(_ctxAddKeyframeObj is CameraSceneObject) && !(_ctxAddKeyframeObj is LightSceneObject);
-
-        if (ImGui.MenuItem("All Transforms"))
-        {
-            // Always add position keyframes
-            AddKeyframeForProperty(_ctxAddKeyframeObj, "position.x", _currentFrame);
-            AddKeyframeForProperty(_ctxAddKeyframeObj, "position.y", _currentFrame);
-            AddKeyframeForProperty(_ctxAddKeyframeObj, "position.z", _currentFrame);
-            
-            // Add rotation only if object supports it
-            if (canRotate)
-            {
-                AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.x", _currentFrame);
-                AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.y", _currentFrame);
-                AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.z", _currentFrame);
-            }
-            
-            // Add scale only if object supports it
-            if (canScale)
-            {
-                AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.x", _currentFrame);
-                AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.y", _currentFrame);
-                AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.z", _currentFrame);
-            }
-        }
-
-        if (ImGui.MenuItem("Position"))
-        {
-            AddKeyframeForProperty(_ctxAddKeyframeObj, "position.x", _currentFrame);
-            AddKeyframeForProperty(_ctxAddKeyframeObj, "position.y", _currentFrame);
-            AddKeyframeForProperty(_ctxAddKeyframeObj, "position.z", _currentFrame);
-        }
-
-        if (canRotate && ImGui.MenuItem("Rotation"))
-        {
-            AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.x", _currentFrame);
-            AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.y", _currentFrame);
-            AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.z", _currentFrame);
-        }
-
-        if (canScale && ImGui.MenuItem("Scale"))
-        {
-            AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.x", _currentFrame);
-            AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.y", _currentFrame);
-            AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.z", _currentFrame);
-        }
-
-        ImGui.EndPopup();
-    }
-
-    private void RenderSpeedScaleMenu()
-    {
-        if (_openSpeedScaleMenu)
-        {
-            _openSpeedScaleMenu = false;
-            ImGui.OpenPopup("Scale Selected Keyframe Speed");
-        }
-
-        bool open = true;
-        if (!ImGui.BeginPopupModal("Scale Selected Keyframe Speed", ref open, ImGuiWindowFlags.AlwaysAutoResize))
-            return;
-
-        ImGui.TextDisabled("Scale the selected keyframe timing around the first selected frame.");
-        ImGui.Separator();
-
-        if (ImGui.RadioButton("Slow Down", _speedScaleSlowDown))
-            _speedScaleSlowDown = true;
-        ImGui.SameLine();
-        if (ImGui.RadioButton("Speed Up", !_speedScaleSlowDown))
-            _speedScaleSlowDown = false;
-
-        float factor = _speedScaleFactor;
-        if (ImGui.DragFloat("Scale Factor", ref factor, 0.05f, 1.01f, 20f, "%.2fx", ImGuiSliderFlags.AlwaysClamp))
-            _speedScaleFactor = Math.Clamp(factor, 1.01f, 20f);
-
-        int beforeMin = _selectedKeyframes.Count > 0 ? _selectedKeyframes.Min(k => k.Frame) : 0;
-        int beforeMax = _selectedKeyframes.Count > 0 ? _selectedKeyframes.Max(k => k.Frame) : 0;
-        int beforeSpan = Math.Max(0, beforeMax - beforeMin);
-        float previewScale = _speedScaleSlowDown ? _speedScaleFactor : 1f / Math.Max(1.01f, _speedScaleFactor);
-        int afterSpan = (int)MathF.Round(beforeSpan * previewScale);
-        ImGui.TextDisabled($"Span preview: {beforeSpan}f -> {afterSpan}f");
-
-        bool canApply = _selectedKeyframes.Count > 1;
-        if (ImGui.Button("Apply") && canApply)
-        {
-            ScaleSelectedKeyframeSpeed(_speedScaleFactor, _speedScaleSlowDown);
-            ImGui.CloseCurrentPopup();
-        }
-        ImGui.SameLine();
-        if (ImGui.Button("Cancel"))
-            ImGui.CloseCurrentPopup();
-
-        ImGui.EndPopup();
-    }
-
     public void DeleteSelectedKeyframes()
     {
         var toDelete = _selectedKeyframes
@@ -2324,6 +816,79 @@ public class Timeline : UiPanel
     }
 
     // ── Keyframe operations ───────────────────────────────────────────────────
+
+    /// <summary>Read-only view of the keyframes on one property track.</summary>
+    public IReadOnlyList<TimelineKeyframe> GetKeyframes(SceneObject obj, string propertyPath) =>
+        GetKeyframesForProperty(obj, propertyPath);
+
+    /// <summary>Whether a group header row is currently expanded in the view.</summary>
+    public bool IsGroupExpanded(TimelineProperty header)
+    {
+        string key = $"{header.Object.ObjectId}.{header.PropertyPath}";
+        return _groupExpanded.TryGetValue(key, out bool expanded) && expanded;
+    }
+
+    public void ToggleGroupExpanded(TimelineProperty header)
+    {
+        string key = $"{header.Object.ObjectId}.{header.PropertyPath}";
+        _groupExpanded[key] = !(_groupExpanded.TryGetValue(key, out bool expanded) && expanded);
+    }
+
+    // ── Keyframe selection (view-driven) ──────────────────────────────────────
+
+    public bool IsKeyframeSelected(TimelineKeyframe keyframe) => _selectedKeyframes.Contains(keyframe);
+
+    public void ClearKeyframeSelection()
+    {
+        _selectedKeyframes.Clear();
+        _keyframeOwners.Clear();
+    }
+
+    /// <summary>Click-select a keyframe. With <paramref name="additive"/> the
+    /// keyframe is toggled in/out of the existing selection (ctrl/shift-click).</summary>
+    public void SelectKeyframe(SceneObject obj, string propertyPath, TimelineKeyframe keyframe, bool additive)
+    {
+        if (!additive)
+        {
+            if (_selectedKeyframes.Contains(keyframe)) return; // keep multi-selection for drags
+            ClearKeyframeSelection();
+        }
+        else if (_selectedKeyframes.Remove(keyframe))
+        {
+            _keyframeOwners.Remove(keyframe);
+            return;
+        }
+        _selectedKeyframes.Add(keyframe);
+        _keyframeOwners[keyframe] = (obj, propertyPath);
+    }
+
+    // ── Keyframe dragging (view-driven) ───────────────────────────────────────
+
+    /// <summary>Snapshot selected keyframe frames before a drag starts.</summary>
+    public void BeginKeyframeDrag()
+    {
+        _selectedStartFrames.Clear();
+        foreach (var keyframe in _selectedKeyframes)
+            _selectedStartFrames[keyframe] = keyframe.Frame;
+    }
+
+    /// <summary>Offset all selected keyframes from their drag-start frames.</summary>
+    public void DragSelectedKeyframes(int frameDelta)
+    {
+        if (_selectedStartFrames.Count == 0) return;
+        int minStart = _selectedStartFrames.Values.Min();
+        int clampedDelta = Math.Max(frameDelta, -minStart); // keep everything >= frame 0
+        foreach (var (keyframe, start) in _selectedStartFrames)
+            keyframe.Frame = start + clampedDelta;
+    }
+
+    /// <summary>Commit a drag: resolve frame collisions and flush to the objects.</summary>
+    public void EndKeyframeDrag()
+    {
+        if (_selectedStartFrames.Count == 0) return;
+        _selectedStartFrames.Clear();
+        RemoveSelectedCollisionsAndSave();
+    }
 
     private List<TimelineKeyframe> GetKeyframesForProperty(SceneObject obj, string propertyPath)
     {
@@ -3020,7 +1585,7 @@ public class Timeline : UiPanel
                         break;
 
                     case "item":
-                        if (Viewport?.SpawnMenu == null || obj.TemporaryItemSheetColumns <= 0 || obj.TemporaryItemSheetRows <= 0)
+                        if (ApplyItemSheetSlot == null || obj.TemporaryItemSheetColumns <= 0 || obj.TemporaryItemSheetRows <= 0)
                             break;
 
                         int columnIndex = obj.TemporaryItemSheetColumnIndex;
@@ -3032,7 +1597,7 @@ public class Timeline : UiPanel
                         else
                             break;
 
-                        Viewport.SpawnMenu.ApplyTemporaryItemSheetSlotToSpawnedObject(obj, columnIndex, rowIndex);
+                        ApplyItemSheetSlot(obj, columnIndex, rowIndex);
                         break;
 
                     case "light":
@@ -3271,9 +1836,10 @@ public class Timeline : UiPanel
             foreach (var obj in selected)
                 AddObjectRows(obj);
 
-        if (Viewport != null)
-            LoadKeyframesForAllObjects(CollectAllObjects(Viewport.SceneObjects));
-        
+        var roots = SceneObjectsProvider?.Invoke();
+        if (roots != null)
+            LoadKeyframesForAllObjects(CollectAllObjects(roots));
+
         // Rebuild display rows to only show properties with keyframes
         RebuildDisplayRows();
     }
@@ -3745,8 +2311,9 @@ public class Timeline : UiPanel
     {
         foreach (var row in _displayRows)
             if (row.Object?.ObjectId == id) return row.Object;
-        if (Viewport != null)
-            foreach (var obj in CollectAllObjects(Viewport.SceneObjects))
+        var roots = SceneObjectsProvider?.Invoke();
+        if (roots != null)
+            foreach (var obj in CollectAllObjects(roots))
                 if (obj.ObjectId == id) return obj;
         return null;
     }
