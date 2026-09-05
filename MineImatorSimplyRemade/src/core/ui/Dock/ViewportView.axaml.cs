@@ -7,6 +7,8 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using MineImatorSimplyRemade.core.render;
 using MineImatorSimplyRemade.core.window;
+using MineImatorSimplyRemadeNuxi.core.objs;
+using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using Veldrid;
 
 namespace MineImatorSimplyRemade.core.ui.Dock;
@@ -36,7 +38,11 @@ namespace MineImatorSimplyRemade.core.ui.Dock;
 /// </summary>
 public partial class ViewportView : UserControl
 {
-    public core.Camera Camera { get; } = new();
+    /// <summary>The UI-agnostic viewport model (scene objects, work camera,
+    /// ground plane, render-mode state). Owned by <c>MainWindow</c>.</summary>
+    public Panels.Viewport Model { get; }
+
+    public core.Camera Camera => Model.Camera;
 
     private VeldridBitmapRenderSurface? _surface;
     private VeldridShadowMap? _shadowMap;
@@ -45,8 +51,7 @@ public partial class ViewportView : UserControl
     private VeldridGlowPass? _glowPass;
     private VeldridFilmGrainPass? _filmGrainPass;
     private float _filmGrainFrame;
-    private VeldridMesh? _groundMesh;
-    private VeldridMesh? _demoCube;
+    private readonly List<(Matrix4x4 World, VeldridMesh Mesh)> _renderItems = new();
     private readonly DispatcherTimer _renderTimer;
     private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
     private int _framesThisSecond;
@@ -65,8 +70,9 @@ public partial class ViewportView : UserControl
     private readonly HashSet<Key> _heldKeys = new();
     private double _lastFrameSeconds;
 
-    public ViewportView()
+    public ViewportView(Panels.Viewport model)
     {
+        Model = model;
         InitializeComponent();
 
         _renderTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000.0 / 60.0) };
@@ -95,7 +101,6 @@ public partial class ViewportView : UserControl
             _indirectPass = new VeldridIndirectLightingPass(_surface.GraphicsDevice);
             _glowPass = new VeldridGlowPass(_surface.GraphicsDevice) { Strength = 0.6f, BlurSize = 2f };
             _filmGrainPass = new VeldridFilmGrainPass(_surface.GraphicsDevice) { Strength = 0.03f };
-            BuildPlaceholderScene();
         }
         else
         {
@@ -107,69 +112,48 @@ public partial class ViewportView : UserControl
         _filmGrainPass?.Resize(width, height);
     }
 
-    private void BuildPlaceholderScene()
-    {
-        if (_surface == null) return;
-
-        _groundMesh = new VeldridMesh(_surface.GraphicsDevice) { Albedo = new Vector3(0.35f, 0.45f, 0.3f), Unlit = false };
-        AddQuad(_groundMesh, new Vector3(-25, 0, -25), new Vector3(25, 0, -25), new Vector3(25, 0, 25), new Vector3(-25, 0, 25), Vector3.UnitY);
-        _groundMesh.Upload(_surface.OutputDescription);
-
-        _demoCube = new VeldridMesh(_surface.GraphicsDevice) { Albedo = new Vector3(0.8f, 0.35f, 0.25f), Unlit = false };
-        BuildUnitCube(_demoCube, new Vector3(1, 1, 1));
-        _demoCube.Upload(_surface.OutputDescription);
-    }
-
-    private static void AddQuad(VeldridMesh mesh, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal)
-    {
-        foreach (Vector3 p in new[] { a, b, c, a, c, d })
-        {
-            mesh.Vertices.Add(p);
-            mesh.Normals.Add(normal);
-            mesh.TexCoords.Add(Vector2.Zero);
-        }
-    }
-
-    private static void BuildUnitCube(VeldridMesh mesh, Vector3 size)
-    {
-        Vector3 h = size * 0.5f;
-        var faces = new (Vector3 n, Vector3[] q)[]
-        {
-            (new Vector3(0, 0, 1), new[] { new Vector3(-h.X, -h.Y, h.Z), new Vector3(h.X, -h.Y, h.Z), new Vector3(h.X, h.Y, h.Z), new Vector3(-h.X, h.Y, h.Z) }),
-            (new Vector3(0, 0, -1), new[] { new Vector3(h.X, -h.Y, -h.Z), new Vector3(-h.X, -h.Y, -h.Z), new Vector3(-h.X, h.Y, -h.Z), new Vector3(h.X, h.Y, -h.Z) }),
-            (new Vector3(0, 1, 0), new[] { new Vector3(-h.X, h.Y, h.Z), new Vector3(h.X, h.Y, h.Z), new Vector3(h.X, h.Y, -h.Z), new Vector3(-h.X, h.Y, -h.Z) }),
-            (new Vector3(0, -1, 0), new[] { new Vector3(-h.X, -h.Y, -h.Z), new Vector3(h.X, -h.Y, -h.Z), new Vector3(h.X, -h.Y, h.Z), new Vector3(-h.X, -h.Y, h.Z) }),
-            (new Vector3(1, 0, 0), new[] { new Vector3(h.X, -h.Y, h.Z), new Vector3(h.X, -h.Y, -h.Z), new Vector3(h.X, h.Y, -h.Z), new Vector3(h.X, h.Y, h.Z) }),
-            (new Vector3(-1, 0, 0), new[] { new Vector3(-h.X, -h.Y, -h.Z), new Vector3(-h.X, -h.Y, h.Z), new Vector3(-h.X, h.Y, h.Z), new Vector3(-h.X, h.Y, -h.Z) }),
-        };
-        foreach (var (n, q) in faces)
-        {
-            foreach (int i in new[] { 0, 1, 2, 0, 2, 3 })
-            {
-                mesh.Vertices.Add(q[i]);
-                mesh.Normals.Add(n);
-                mesh.TexCoords.Add(Vector2.Zero);
-            }
-        }
-    }
-
     private void RenderFrame()
     {
-        if (_surface == null || _shadowMap == null || _groundMesh == null || _demoCube == null)
+        if (_surface == null || _shadowMap == null)
             return;
 
         double now = _clock.Elapsed.TotalSeconds;
         float deltaTime = _lastFrameSeconds > 0 ? (float)(now - _lastFrameSeconds) : 1f / 60f;
         _lastFrameSeconds = now;
+        Model.FrameDeltaTime = deltaTime;
         ProcessFreeFlyMovement(deltaTime);
         UpdateFps(now);
 
-        float aspect = _surface.Width / (float)_surface.Height;
-        Matrix4x4 view = ToNumerics(Camera.GetViewMatrix());
-        Matrix4x4 proj = ToNumerics(Camera.GetProjectionMatrix(aspect));
+        // Lazy ground-plane init: atlases may not be loaded when the surface is
+        // first created, so retry the texture until the tile resolves.
+        if (Model.GroundPlane == null)
+            Model.InitGroundPlane();
+        else if (Model.GroundPlane.AlbedoTexture == null)
+            Model.SetGroundPlaneTexture(Model.GroundTileAtlas, Model.GroundTileKey);
 
+        Model.UpdateParticleSpawners(Model.SceneObjects, deltaTime, Panels.Timeline.Instance?.IsPlaying ?? false);
+
+        var (renderCam, _) = Model.GetActiveRenderCamera();
+        float aspect = _surface.Width / (float)_surface.Height;
+        Matrix4x4 view = ToNumerics(renderCam.GetViewMatrix());
+        Matrix4x4 proj = ToNumerics(renderCam.GetProjectionMatrix(aspect));
+
+        Model.UpdateGroundPlaneFollow(renderCam.Target);
+        Matrix4x4 groundModel = ToNumerics(Model.GroundPlaneModel);
+        VeldridMesh? ground = Model.GroundPlaneVisible ? Model.GroundPlane : null;
+
+        // Flatten the scene graph into (world, mesh) draw pairs for this frame.
+        _renderItems.Clear();
+        foreach (var root in Model.SceneObjects)
+        {
+            Dictionary<string, BoneSceneObject>? bones = null;
+            CollectRenderables(root, renderCam.Position, ref bones);
+        }
+
+        // TODO(migration): derive the sun direction/shadows from PropertiesPanel
+        // sky settings (old RenderSky/ComputeShadowLightSpaceMatrix logic).
         Vector3 lightDir = Vector3.Normalize(new Vector3(-0.4f, -1f, -0.35f));
-        Matrix4x4 lightSpace = VeldridShadowMap.ComputeLightSpaceMatrix(lightDir, Vector3.Zero, extent: 40f, near: 0.1f, far: 120f);
+        Matrix4x4 lightSpace = VeldridShadowMap.ComputeLightSpaceMatrix(lightDir, ToNumerics(renderCam.Target), extent: 60f, near: 0.1f, far: 200f);
 
         var sceneData = SceneDataUniforms.Default;
         sceneData.LightSpaceMatrix = lightSpace;
@@ -180,27 +164,31 @@ public partial class ViewportView : UserControl
         _surface.UpdatePointLights(PointLightUniforms.Empty);
 
         var environment = SceneEnvironmentUniforms.Default;
-        environment.CameraPosition = ToNumerics(Camera.Position);
+        environment.CameraPosition = ToNumerics(renderCam.Position);
         _surface.UpdateEnvironment(environment);
 
         _shadowMap.RenderShadowPass(cl =>
         {
-            _groundMesh.RenderDepthOnly(cl, Matrix4x4.Identity * lightSpace, _shadowMap.Framebuffer.OutputDescription);
-            _demoCube.RenderDepthOnly(cl, Matrix4x4.CreateTranslation(0, 0.5f, 0) * lightSpace, _shadowMap.Framebuffer.OutputDescription);
+            ground?.RenderDepthOnly(cl, groundModel * lightSpace, _shadowMap.Framebuffer.OutputDescription);
+            foreach (var (world, mesh) in _renderItems)
+                mesh.RenderDepthOnly(cl, world * lightSpace, _shadowMap.Framebuffer.OutputDescription);
         });
 
-        var bitmap = _surface.RenderFrame(new RgbaFloat(0.08f, 0.09f, 0.11f, 1f), cl =>
+        float[] bg = Model.PropertiesPanel?.BackgroundColor ?? [0.08f, 0.09f, 0.11f, 1f];
+        var bitmap = _surface.RenderFrame(new RgbaFloat(bg[0], bg[1], bg[2], 1f), cl =>
         {
-            _groundMesh.Render(cl, Matrix4x4.Identity, view, proj, _surface.SceneDataBuffer, _surface.PointLightBuffer, _surface.EnvironmentBuffer, _shadowMap);
-            _demoCube.Render(cl, Matrix4x4.CreateTranslation(0, 0.5f, 0), view, proj, _surface.SceneDataBuffer, _surface.PointLightBuffer, _surface.EnvironmentBuffer, _shadowMap);
+            ground?.Render(cl, groundModel, view, proj, _surface.SceneDataBuffer, _surface.PointLightBuffer, _surface.EnvironmentBuffer, _shadowMap);
 
-            _aoPass?.Render(cl, _surface.DepthTargetView, _surface.Width, _surface.Height, Camera.Near, Camera.Far, _surface.OutputDescription);
+            foreach (var (world, mesh) in _renderItems)
+                mesh.Render(cl, world, view, proj, _surface.SceneDataBuffer, _surface.PointLightBuffer, _surface.EnvironmentBuffer, _shadowMap);
+
+            _aoPass?.Render(cl, _surface.DepthTargetView, _surface.Width, _surface.Height, renderCam.Near, renderCam.Far, _surface.OutputDescription);
 
             if (_indirectPass != null)
             {
-                _indirectPass.RenderRaw(cl, _surface.ColorTargetView, _surface.DepthTargetView, Camera.Near, Camera.Far);
+                _indirectPass.RenderRaw(cl, _surface.ColorTargetView, _surface.DepthTargetView, renderCam.Near, renderCam.Far);
                 cl.SetFramebuffer(_surface.Framebuffer);
-                _indirectPass.CompositeDenoised(cl, _surface.DepthTargetView, Camera.Near, Camera.Far, _surface.OutputDescription);
+                _indirectPass.CompositeDenoised(cl, _surface.DepthTargetView, renderCam.Near, renderCam.Far, _surface.OutputDescription);
             }
 
             // Bloom/glow: extract+blur the bright scene pixels and composite them
@@ -217,6 +205,75 @@ public partial class ViewportView : UserControl
         });
 
         SceneImage.Source = bitmap;
+    }
+
+    /// <summary>
+    /// Recursively flattens visible scene objects into <see cref="_renderItems"/>,
+    /// resolving each object's render world matrix (camera-facing planes etc.)
+    /// and refreshing bone matrices for skinned meshes. The bone dictionary is
+    /// built lazily once per scene root and shared down its subtree.
+    /// </summary>
+    private void CollectRenderables(SceneObject obj, GlmSharp.vec3 cameraPos, ref Dictionary<string, BoneSceneObject>? bones)
+    {
+        if (!obj.GetEffectiveVisibility()) return;
+
+        if (obj.Visuals.Count > 0)
+        {
+            GlmSharp.mat4 world = Panels.Viewport.GetRenderableWorldMatrix(obj, cameraPos);
+            Matrix4x4 worldN = ToNumerics(world);
+
+            foreach (var mesh in obj.Visuals)
+            {
+                if (mesh.PickOnly || mesh.Vertices.Count == 0) continue;
+
+                if (mesh.IsSkinned)
+                {
+                    bones ??= Panels.Viewport.BuildBoneDictionary(FindRoot(obj));
+                    UpdateBoneMatrices(mesh, world, bones);
+                }
+
+                mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
+                _renderItems.Add((worldN, mesh));
+            }
+        }
+
+        foreach (var child in obj.Children)
+            CollectRenderables(child, cameraPos, ref bones);
+    }
+
+    private static SceneObject FindRoot(SceneObject obj)
+    {
+        var root = obj;
+        while (root.Parent != null) root = root.Parent;
+        return root;
+    }
+
+    /// <summary>
+    /// Ported from the old GL <c>Viewport.UpdateBoneMatrices</c>: writes each
+    /// bone's mesh-local skinning matrix (inverse bind × current pose) into
+    /// <see cref="VeldridMesh.BoneMatrices"/> for the vertex shader.
+    /// </summary>
+    private static void UpdateBoneMatrices(VeldridMesh mesh, GlmSharp.mat4 meshWorld, Dictionary<string, BoneSceneObject> bones)
+    {
+        if (mesh.BoneNames.Count == 0) return;
+
+        mesh.BoneMatrices ??= new List<Matrix4x4>(mesh.BoneNames.Count);
+        while (mesh.BoneMatrices.Count < mesh.BoneNames.Count)
+            mesh.BoneMatrices.Add(Matrix4x4.Identity);
+
+        GlmSharp.mat4 invMeshWorld = meshWorld.Inverse;
+        for (int i = 0; i < mesh.BoneNames.Count; i++)
+        {
+            if (!bones.TryGetValue(mesh.BoneNames[i], out var bone))
+            {
+                mesh.BoneMatrices[i] = Matrix4x4.Identity;
+                continue;
+            }
+
+            Matrix4x4 poseInMeshSpace = ToNumerics(invMeshWorld * bone.GetWorldMatrix());
+            Matrix4x4 invBind = i < mesh.BoneInverseBindMatrices.Count ? mesh.BoneInverseBindMatrices[i] : Matrix4x4.Identity;
+            mesh.BoneMatrices[i] = invBind * poseInMeshSpace;
+        }
     }
 
     private static Matrix4x4 ToNumerics(GlmSharp.mat4 m) => new(

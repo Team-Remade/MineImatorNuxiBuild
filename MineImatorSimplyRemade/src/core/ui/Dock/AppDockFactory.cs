@@ -1,3 +1,5 @@
+using Avalonia.Controls;
+using Avalonia.Controls.Templates;
 using Dock.Model.Avalonia;
 using Dock.Model.Avalonia.Controls;
 using Dock.Model.Controls;
@@ -41,6 +43,15 @@ public sealed class AppDockFactory : Factory
     public const string TimelineToolId = "Timeline";
     public const string ContentBrowserToolId = "ContentBrowser";
 
+    /// <summary>The viewport's backing model. Owned by <c>MainWindow</c> (so the
+    /// scene survives layout resets) and rendered by <see cref="ViewportView"/>.</summary>
+    private readonly Viewport _viewportModel;
+
+    public AppDockFactory(Viewport viewportModel)
+    {
+        _viewportModel = viewportModel;
+    }
+
     public Tool ViewportTool { get; private set; } = null!;
     public Tool SceneTreeTool { get; private set; } = null!;
 
@@ -78,35 +89,35 @@ public sealed class AppDockFactory : Factory
             Id = ViewportToolId,
             Title = "Viewport",
             CanClose = false,
-            Content = new ViewportView(),
+            Content = new Func<IServiceProvider, object>(_ => new TemplateResult<Control>(new ViewportView(_viewportModel), null!)),
         };
 
         SceneTreeTool = new Tool
         {
             Id = SceneTreeToolId,
             Title = "Scene Tree",
-            Content = new SceneTreeView(SceneTreeModel),
+            Content = new Func<IServiceProvider, object>(_ => new TemplateResult<Control>(new SceneTreeView(SceneTreeModel), null!)),
         };
 
         PropertiesTool = new Tool
         {
             Id = PropertiesToolId,
             Title = "Properties",
-            Content = new PropertiesView(PropertiesModel),
+            Content = new Func<IServiceProvider, object>(_ => new TemplateResult<Control>(new PropertiesView(PropertiesModel), null!)),
         };
 
         TimelineTool = new Tool
         {
             Id = TimelineToolId,
             Title = "Timeline",
-            Content = new TimelineView(TimelineModel),
+            Content = new Func<IServiceProvider, object>(_ => new TemplateResult<Control>(new TimelineView(TimelineModel), null!)),
         };
 
         ContentBrowserTool = new Tool
         {
             Id = ContentBrowserToolId,
             Title = "Content Browser",
-            Content = new ContentBrowserView(),
+            Content = new Func<IServiceProvider, object>(_ => new TemplateResult<Control>(new ContentBrowserView(), null!)),
         };
 
         var viewportDock = new ToolDock

@@ -40,6 +40,11 @@ public partial class MainWindow : WindowBase
     /// ProjectSceneSerializer / PropertiesPanel once those hosts are wired.</summary>
     public SpawnMenu SpawnMenuModel { get; } = new();
 
+    /// <summary>The viewport's backing model (scene objects, work camera, ground
+    /// plane). Owned here so the scene survives dock-layout resets; rendered by
+    /// <see cref="ViewportView"/> via <see cref="AppDockFactory"/>.</summary>
+    public Viewport ViewportModel { get; } = new();
+
     private SpawnMenuWindow? _spawnMenuWindow;
 
     private readonly string _appTitle;
@@ -101,7 +106,7 @@ public partial class MainWindow : WindowBase
         MenubarControl.ImportResourcePackRequested = () => { /* TODO(migration): resource pack import */ };
         MenubarControl.ImportResourcePackFolderRequested = () => { /* TODO(migration): resource pack import */ };
         MenubarControl.ResetLayoutRequested = ResetDockLayout;
-        MenubarControl.ResetWorkCameraRequested = () => { /* TODO(migration): Viewport */ };
+        MenubarControl.ResetWorkCameraRequested = () => ViewportModel.Camera.ResetToDefaultPose();
         MenubarControl.HomeScreenRequested = () => { /* TODO(migration): project home screen */ };
         MenubarControl.AboutRequested = OpenAboutDialog;
         MenubarControl.CheckForUpdatesRequested = () => { /* TODO(migration): update dialog */ };
@@ -124,7 +129,7 @@ public partial class MainWindow : WindowBase
 
     private void WireDockLayout()
     {
-        DockFactory = new AppDockFactory();
+        DockFactory = new AppDockFactory(ViewportModel);
         IRootDock layout = DockFactory.CreateLayout();
         DockFactory.InitLayout(layout);
 
@@ -138,13 +143,27 @@ public partial class MainWindow : WindowBase
         DockFactory.SceneTreeModel.Initialize();
         DockFactory.TimelineModel.Initialize();
 
+        // Viewport model wiring: panel back-references plus the scene-object
+        // hooks the other panels consume (formerly direct Viewport references
+        // in the ImGui version).
+        ViewportModel.PropertiesPanel = DockFactory.PropertiesModel;
+        ViewportModel.PreferencesPanel = _preferences;
+        ViewportModel.SpawnMenu = SpawnMenuModel;
+        SpawnMenuModel.Viewport = ViewportModel;
+        DockFactory.SceneTreeModel.SceneRoots = ViewportModel.SceneObjects;
+        DockFactory.TimelineModel.SceneObjectsProvider = () => ViewportModel.SceneObjects;
+
         // Properties panel: subscribe to selection + load current project
-        // settings. Timeline/SpawnMenu links replace the old direct panel
-        // references; the viewport hooks (SceneObjectsProvider, ground plane,
-        // background image, spawn-from-library, ambient sink, sky reload) stay
-        // unwired until the Viewport port lands.
+        // settings, then wire its viewport hooks.
         DockFactory.PropertiesModel.Timeline = DockFactory.TimelineModel;
         DockFactory.PropertiesModel.SpawnMenu = SpawnMenuModel;
+        DockFactory.PropertiesModel.SceneObjectsProvider = () => ViewportModel.SceneObjects;
+        DockFactory.PropertiesModel.SetGroundPlaneVisible = ViewportModel.SetGroundPlaneVisible;
+        DockFactory.PropertiesModel.SetGroundPlaneTexture = ViewportModel.SetGroundPlaneTexture;
+        DockFactory.PropertiesModel.SetBackgroundImage = ViewportModel.SetBackgroundImage;
+        DockFactory.PropertiesModel.ReloadSkyTextures = ViewportModel.ReloadSkyTextures;
+        DockFactory.PropertiesModel.SpawnFromLibraryEntry =
+            entry => ProjectSceneSerializer.SpawnObjectFromEntry(entry, ViewportModel, SpawnMenuModel);
         DockFactory.PropertiesModel.Initialize();
     }
 

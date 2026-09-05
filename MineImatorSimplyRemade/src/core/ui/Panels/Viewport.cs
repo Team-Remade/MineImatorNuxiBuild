@@ -235,7 +235,21 @@ public class Viewport
         // on very large two-triangle planes; recentering still makes it feel infinite.
         _groundPlane = new PlaneMesh(512f, 512f, PlaneOrientation.XZ);
 
+        // One texture tile per world unit (block); the albedo sampler wraps.
+        for (int i = 0; i < _groundPlane.TexCoords.Count; i++)
+            _groundPlane.TexCoords[i] *= 512f;
+        _groundPlane.Upload(VeldridContext.StandardOutputDescription);
+
         SetGroundPlaneTexture("block", "grass_block_top");
+    }
+
+    /// <summary>
+    /// Recenters the ground plane under the camera target, snapped to whole
+    /// blocks so the world-anchored UV tiling doesn't visibly swim.
+    /// </summary>
+    public void UpdateGroundPlaneFollow(vec3 cameraTarget)
+    {
+        _groundPlaneModel = mat4.Translate(MathF.Floor(cameraTarget.x), 0f, MathF.Floor(cameraTarget.z));
     }
 
     public void SetGroundPlaneVisible(bool visible)
@@ -457,7 +471,7 @@ public class Viewport
         }
     }
    
-    private static mat4 GetRenderableWorldMatrix(SceneObject obj, vec3 cameraPos)
+    public static mat4 GetRenderableWorldMatrix(SceneObject obj, vec3 cameraPos)
     {
         mat4 world = obj.GetWorldMatrix();
 
@@ -501,7 +515,7 @@ public class Viewport
         return translation * rotation * scaling * pivot;
     }
 
-    private void UpdateParticleSpawners(IEnumerable<SceneObject> objects, float deltaTime, bool timelinePlaying)
+    public void UpdateParticleSpawners(IEnumerable<SceneObject> objects, float deltaTime, bool timelinePlaying)
     {
         if (SpawnMenu == null)
             return;
@@ -538,7 +552,7 @@ public class Viewport
     /// Builds a name → BoneSceneObject lookup for the entire hierarchy rooted at
     /// <paramref name="root"/>.
     /// </summary>
-    private static Dictionary<string, BoneSceneObject> BuildBoneDictionary(SceneObject root)
+    public static Dictionary<string, BoneSceneObject> BuildBoneDictionary(SceneObject root)
     {
         var dict = new Dictionary<string, BoneSceneObject>(StringComparer.OrdinalIgnoreCase);
         CollectBones(root, dict);
@@ -860,7 +874,7 @@ public class Viewport
     /// Index 0 = work camera; 1+ = spawned cameras.
     /// Also returns the associated <see cref="CameraSceneObject"/> if applicable.
     /// </summary>
-    private (Camera cam, CameraSceneObject? sceneObj) GetActiveRenderCamera()
+    public (Camera cam, CameraSceneObject? sceneObj) GetActiveRenderCamera()
     {
         if (_activeCameraIndex == RenderOutputIndex)
         {
