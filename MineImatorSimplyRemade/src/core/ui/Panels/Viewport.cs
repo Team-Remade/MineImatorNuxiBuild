@@ -313,11 +313,6 @@ public class Viewport
         // on very large two-triangle planes; recentering still makes it feel infinite.
         _groundPlane = new PlaneMesh(512f, 512f, PlaneOrientation.XZ);
 
-        // One texture tile per world unit (block); the albedo sampler wraps.
-        for (int i = 0; i < _groundPlane.TexCoords.Count; i++)
-            _groundPlane.TexCoords[i] *= 512f;
-        _groundPlane.Upload(VeldridContext.StandardOutputDescription);
-
         SetGroundPlaneTexture("block", "grass_block_top");
     }
 

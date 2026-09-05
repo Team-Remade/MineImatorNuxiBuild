@@ -33,9 +33,19 @@ public partial class TimelineView : UserControl
     public TimelineView(Timeline model)
     {
         _model = model;
+        TimelineIcons.Initialize();
         InitializeComponent();
 
         Canvas.Model = _model;
+        JumpStartIcon.Source = TimelineIcons.JumpStart;
+        StepBackIcon.Source = TimelineIcons.StepBack;
+        PlayPauseIcon.Source = TimelineIcons.Play;
+        StopIcon.Source = TimelineIcons.Stop;
+        StepForwardIcon.Source = TimelineIcons.StepForward;
+        JumpEndIcon.Source = TimelineIcons.JumpEnd;
+        LoopIcon.Source = TimelineIcons.Loop;
+        GhostIcon.Source = TimelineIcons.Ghost;
+        AutoKeyIcon.Source = TimelineIcons.AutoKey;
 
         JumpStartButton.Click   += (_, _) => _model.JumpToStart();
         StepBackButton.Click    += (_, _) => _model.StepBackward();
@@ -68,7 +78,7 @@ public partial class TimelineView : UserControl
     {
         _model.UpdatePlayback();
 
-        PlayPauseButton.Content = _model.IsPlaying ? "\u23F8" : "\u25B6";
+        PlayPauseIcon.Source = _model.IsPlaying ? TimelineIcons.Pause : TimelineIcons.Play;
         FrameLabel.Text = $"Frame: {_model.CurrentFrame}  ({_model.CurrentFrame / _model.Framerate:F2}s)";
         ZoomLabel.Text  = $"{Canvas.PixelsPerFrame:0.#} px/f";
 

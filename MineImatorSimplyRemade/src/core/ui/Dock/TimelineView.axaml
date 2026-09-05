@@ -6,21 +6,22 @@
         <!-- Transport bar -->
         <DockPanel Grid.Row="0" Margin="6,4" LastChildFill="False">
             <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="3">
-                <Button x:Name="JumpStartButton" Content="&#x23EE;" Padding="6,1" ToolTip.Tip="Jump to start" />
-                <Button x:Name="StepBackButton" Content="&#x25C0;" Padding="6,1" ToolTip.Tip="Step back one frame" />
-                <Button x:Name="PlayPauseButton" Content="&#x25B6;" Padding="8,1" ToolTip.Tip="Play / pause (Space)" />
-                <Button x:Name="StopButton" Content="&#x25A0;" Padding="6,1" ToolTip.Tip="Stop and rewind" />
-                <Button x:Name="StepForwardButton" Content="&#x25B6;&#x2758;" Padding="6,1" ToolTip.Tip="Step forward one frame" />
-                <Button x:Name="JumpEndButton" Content="&#x23ED;" Padding="6,1" ToolTip.Tip="Jump to last keyframe" />
+                <Button x:Name="JumpStartButton" Padding="4,1" ToolTip.Tip="Jump to start"><Image x:Name="JumpStartIcon" Width="16" Height="16" /></Button>
+                <Button x:Name="StepBackButton" Padding="4,1" ToolTip.Tip="Step back one frame"><Image x:Name="StepBackIcon" Width="16" Height="16" /></Button>
+                <Button x:Name="PlayPauseButton" Padding="4,1" ToolTip.Tip="Play / pause (Space)"><Image x:Name="PlayPauseIcon" Width="16" Height="16" /></Button>
+                <Button x:Name="StopButton" Padding="4,1" ToolTip.Tip="Stop and rewind"><Image x:Name="StopIcon" Width="16" Height="16" /></Button>
+                <Button x:Name="StepForwardButton" Padding="4,1" ToolTip.Tip="Step forward one frame"><Image x:Name="StepForwardIcon" Width="16" Height="16" /></Button>
+                <Button x:Name="JumpEndButton" Padding="4,1" ToolTip.Tip="Jump to last keyframe"><Image x:Name="JumpEndIcon" Width="16" Height="16" /></Button>
 
                 <Rectangle Width="1" Fill="#333" Margin="4,2" />
 
-                <ToggleButton x:Name="LoopToggle" Content="Loop" Padding="6,1"
-                              ToolTip.Tip="Loop playback when reaching the end" />
-                <ToggleButton x:Name="GhostToggle" Content="Ghost" Padding="6,1"
-                              ToolTip.Tip="Ghost mode: hide ghosted tracks" />
-                <ToggleButton x:Name="RecordToggle" Content="&#x25CF;" Padding="6,1"
+                <ToggleButton x:Name="LoopToggle" Padding="4,1"
+                              ToolTip.Tip="Loop playback when reaching the end"><Image x:Name="LoopIcon" Width="16" Height="16" /></ToggleButton>
+                <ToggleButton x:Name="GhostToggle" Padding="4,1"
+                              ToolTip.Tip="Ghost mode: hide ghosted tracks"><Image x:Name="GhostIcon" Width="16" Height="16" /></ToggleButton>
+                <ToggleButton x:Name="RecordToggle" Padding="4,1"
                               ToolTip.Tip="Auto-keyframe: record property changes as keyframes">
+                    <Image x:Name="AutoKeyIcon" Width="16" Height="16" />
                     <ToggleButton.Styles>
                         <Style Selector="ToggleButton:checked /template/ ContentPresenter">
                             <Setter Property="Foreground" Value="#E53935" />

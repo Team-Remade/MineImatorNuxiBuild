@@ -1,6 +1,9 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
+using MineImatorSimplyRemade.core;
+using MineImatorSimplyRemade.core.startup;
 using MineImatorSimplyRemade.core.window.windows;
 
 namespace MineImatorSimplyRemade;
@@ -27,20 +30,71 @@ public class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // TODO(migration): MainWindow itself is only a partial port right now (see
-            // its class doc) - it has no dockspace/panels/viewport yet, and
-            // InitializeRuntime()'s asset-loading pipeline (BlockRegistry, TerrainAtlas,
-            // etc. against the GL-based renderer) hasn't been wired back up, so the
-            // StartupProgressWindow orchestration from the old main.cs isn't restored
-            // yet either. Once Viewport/the renderer are ported, restore the sequence:
-            //   1. show StartupProgressWindow,
-            //   2. run FfmpegBootstrap / Services.Initialize / runtime init while
-            //      updating startupWindow.ProgressState,
-            //   3. create+show MainWindow and CameraWindow,
-            //   4. close startupWindow and set desktop.MainWindow to MainWindow.
-            desktop.MainWindow = new MainWindow();
+            var startupWindow = new StartupProgressWindow();
+            desktop.MainWindow = startupWindow;
+            startupWindow.Show();
+
+            _ = Task.Run(() => InitializeResources(startupWindow.ProgressState))
+                .ContinueWith(task => Dispatcher.UIThread.Post(() =>
+                {
+                    if (task.IsFaulted)
+                    {
+                        Exception error = task.Exception?.GetBaseException()
+                            ?? new InvalidOperationException("Resource initialization failed.");
+                        startupWindow.ProgressState.Phase = "Startup failed";
+                        startupWindow.ProgressState.Status = error.Message;
+                        startupWindow.ProgressState.Detail = "See the application log for details.";
+                        Console.Error.WriteLine(error);
+                        return;
+                    }
+
+                    var mainWindow = new MainWindow();
+                    desktop.MainWindow = mainWindow;
+                    mainWindow.Show();
+                    startupWindow.Close();
+                }));
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static void InitializeResources(StartupProgressState progress)
+    {
+        const int totalSteps = 5;
+
+        void Report(int step, string phase, string status, float stepProgress, string detail = "")
+        {
+            progress.Title = "Preparing Mine Imator Simply Remade";
+            progress.CurrentStep = step;
+            progress.TotalSteps = totalSteps;
+            progress.Phase = phase;
+            progress.Status = status;
+            progress.Detail = detail;
+            progress.Progress = ((step - 1) + Math.Clamp(stepProgress, 0f, 1f)) / totalSteps;
+        }
+
+        Report(1, "Bootstrapping editor services", "Initializing audio engine...", 0f);
+        Services.Initialize();
+        Report(1, "Bootstrapping editor services", "Editor services ready.", 1f);
+
+        BlockRegistry.Initialize((value, detail) =>
+            Report(2, "Indexing Minecraft data", "Loading block registry...", value, detail));
+        Report(2, "Indexing Minecraft data", "Block registry ready.", 1f,
+            $"Loaded version {BlockRegistry.LoadedVersion}");
+
+        TerrainAtlas.Initialize((value, detail) =>
+            Report(3, "Loading terrain textures", "Building terrain atlas...", value, detail));
+        Report(3, "Loading terrain textures", "Terrain atlas ready.", 1f,
+            $"{TerrainAtlas.Textures.Count} texture(s) available");
+
+        ItemsAtlas.Initialize((value, detail) =>
+            Report(4, "Loading item textures", "Building item atlas...", value, detail));
+        Report(4, "Loading item textures", "Item atlas ready.", 1f,
+            $"{ItemsAtlas.TilePixels.Count} tile(s) available");
+
+        CharacterRegistry.Initialize((value, detail) =>
+            Report(5, "Discovering characters", "Scanning model libraries...", value, detail));
+        Report(5, "Discovering characters", "Character registry ready.", 1f,
+            $"{CharacterRegistry.Characters.Count} character(s) found");
     }
 }

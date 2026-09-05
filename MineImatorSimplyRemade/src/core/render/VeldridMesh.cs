@@ -464,7 +464,8 @@ public class VeldridMesh : IDisposable
             AlignTo16((uint)System.Runtime.InteropServices.Marshal.SizeOf<MeshMaterialUniforms>()),
             BufferUsage.UniformBuffer));
 
-        _albedoSampler = factory.CreateSampler(SamplerDescription.Linear);
+        _albedoSampler = VeldridTextureLoader.CreateSampler(
+            nearest: !BlurTexture, repeat: true, mipmaps: TextureMipmaps, device: _device);
 
         BuildPipelineAndResources();
     }
@@ -540,7 +541,10 @@ public class VeldridMesh : IDisposable
         TextureView view = GetOrCreateAlbedoView();
         _meshResourceSet = _device.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
             _meshResourceLayout, _meshUniformBuffer, view, _albedoSampler, _materialUniformBuffer, _boneMatrixBuffer));
+        _meshResourceSetAlbedoTexture = AlbedoTexture;
     }
+
+    private Texture? _meshResourceSetAlbedoTexture;
 
     /// <summary>
     /// Builds (or rebuilds, if the caller passed different buffer instances than
@@ -693,6 +697,11 @@ public class VeldridMesh : IDisposable
         bool forceUnlit = false)
     {
         if (_pipeline == null || _vertexBuffer == null || _meshUniformBuffer == null || _materialUniformBuffer == null)
+            return;
+
+        if (_meshResourceSetAlbedoTexture != AlbedoTexture)
+            RebuildResourceSet();
+        if (_meshResourceSet == null)
             return;
 
         if (HasShapeKeys)
