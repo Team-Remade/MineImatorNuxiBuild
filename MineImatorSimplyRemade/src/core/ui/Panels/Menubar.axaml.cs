@@ -11,7 +11,7 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 /// etc.) is unchanged so <c>MainWindow</c>'s wiring of this panel keeps
 /// working verbatim.
 /// </summary>
-public partial class Menubar : UserControl
+public partial class Menubar : Menu
 {
     public enum RenderRequestKind
     {
