@@ -76,6 +76,9 @@
                         <Expander x:Name="AppearanceExpander" Header="Appearance" HorizontalAlignment="Stretch">
                             <StackPanel x:Name="AppearancePanel" Spacing="6" Margin="4" />
                         </Expander>
+                        <Expander x:Name="MaterialExpander" Header="Material" HorizontalAlignment="Stretch">
+                            <StackPanel x:Name="MaterialPanel" Spacing="6" Margin="4" />
+                        </Expander>
                         <Expander x:Name="CameraExpander" Header="Camera" HorizontalAlignment="Stretch" IsVisible="False">
                             <StackPanel x:Name="CameraPanel" Spacing="6" Margin="4" />
                         </Expander>

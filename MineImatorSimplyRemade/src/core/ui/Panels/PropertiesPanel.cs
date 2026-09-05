@@ -158,6 +158,9 @@ public class PropertiesPanel
     private string _librarySearch = "";
     private string _selectedLibraryEntryId = "";
 
+    /// <summary>Raised when the object library should be rebuilt by its view.</summary>
+    public event Action? ObjectLibraryChanged;
+
     /// <summary>Filter text for the object library tree.</summary>
     public string LibrarySearch { get => _librarySearch; set => _librarySearch = value ?? ""; }
 
@@ -1136,6 +1139,13 @@ public class PropertiesPanel
         return BuildLibraryTreeRoots(manifest.ObjectLibrary)
             .OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>Synchronizes scene roots into the object library and refreshes its view.</summary>
+    public void SynchronizeObjectLibrary()
+    {
+        GetLibraryTreeRoots();
+        ObjectLibraryChanged?.Invoke();
     }
 
     public ProjectSceneObjectEntry? GetSelectedLibraryEntry()

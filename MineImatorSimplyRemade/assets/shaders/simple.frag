@@ -46,9 +46,10 @@ layout(set = 0, binding = 3, std140) uniform MeshMaterial {
     vec3  uSSSColor;
     float uSSSHighlight;
     float uSSSHighlightStrength;
+    float uMetallic;
+    float uRoughness;
     int   uIncludeInFog;
     int   _matPad1;
-    int   _matPad2;
 };
 
 layout(set = 1, binding = 0, std140) uniform SceneData {
@@ -239,6 +240,18 @@ vec3 estimatePointSubsurface(vec3 norm, vec3 lightDir, vec3 fragPos, vec3 lightP
     return base;
 }
 
+vec3 materialSpecular(vec3 base, vec3 norm, vec3 lightDir, vec3 viewDir, vec3 lightColor) {
+    float ndotl = max(dot(norm, lightDir), 0.0);
+    if (ndotl <= 0.0) return vec3(0.0);
+
+    vec3 halfDir = normalize(lightDir + viewDir);
+    float roughness = clamp(uRoughness, 0.04, 1.0);
+    float shininess = mix(256.0, 2.0, roughness);
+    float highlight = pow(max(dot(norm, halfDir), 0.0), shininess);
+    vec3 reflectance = mix(vec3(0.04), base, clamp(uMetallic, 0.0, 1.0));
+    return reflectance * highlight * lightColor * ndotl;
+}
+
 void main() {
     vec3 baseColor = uAlbedo;
     vec3 emissionMask = vec3(1.0);
@@ -264,9 +277,13 @@ void main() {
         // ambient occlusion and point-light indirect bounce are still missing.
         vec3 norm = gl_FrontFacing ? normalize(vNormal) : -normalize(vNormal);
 
-        float sunDiff  = max(dot(norm, normalize(uLightDir)), 0.0);
-        float sunFill  = max(dot(norm, normalize(uSunFillLightDir)), 0.0);
-        float moonFill = max(dot(norm, normalize(uMoonFillLightDir)), 0.0);
+        vec3 cameraDir = normalize(uCameraPosition - vFragPos);
+        vec3 mainLightDir = normalize(uLightDir);
+        vec3 sunFillDir = normalize(uSunFillLightDir);
+        vec3 moonFillDir = normalize(uMoonFillLightDir);
+        float sunDiff  = max(dot(norm, mainLightDir), 0.0);
+        float sunFill  = max(dot(norm, sunFillDir), 0.0);
+        float moonFill = max(dot(norm, moonFillDir), 0.0);
 
         // Matches the old renderer: whichever fill light is currently the
         // shadow caster (moon takes priority over sun, main light as a
@@ -291,10 +308,12 @@ void main() {
                  + sunDiff  * uLightColor        * mainVisibility
                  + sunFill  * uSunFillLightColor * sunVisibility
                  + moonFill * uMoonFillLightColor * moonVisibility;
+        vec3 specular = materialSpecular(baseColor, norm, mainLightDir, cameraDir, uLightColor) * mainVisibility
+                  + materialSpecular(baseColor, norm, sunFillDir, cameraDir, uSunFillLightColor) * sunVisibility
+                  + materialSpecular(baseColor, norm, moonFillDir, cameraDir, uMoonFillLightColor) * moonVisibility;
 
         float sssAmount = uSSSEnabled != 0 ? clamp(uSSS, 0.0, 1.0) : 0.0;
         vec3 viewDir = normalize(vFragPos - uCameraPosition);
-        vec3 cameraDir = normalize(uCameraPosition - vFragPos);
         float ndotView = max(dot(norm, cameraDir), 0.0);
 
         for (int i = 0; i < uPointLightCount; i++) {
@@ -332,6 +351,7 @@ void main() {
             vec3 color  = uPointLightColorEnergy[i].rgb;
             float energy = uPointLightColorEnergy[i].a;
             lit += color * diff * attenuation * spot * energy * (1.0 - pointShadow);
+            specular += materialSpecular(baseColor, norm, lightDir, cameraDir, color) * attenuation * spot * energy * (1.0 - pointShadow);
 
             if (sssAmount > 0.0) {
                 vec3 pointSubsurf = estimatePointSubsurface(norm, lightDir, vFragPos, lightPos, color, energy, farPlane, shadowIndex, sssAmount);
@@ -358,7 +378,7 @@ void main() {
             }
         }
 
-        result = lit * baseColor;
+        result = lit * baseColor + specular;
 
         if (sssAmount > 0.0) {
             vec3 subsurf = estimateDirectionalSubsurface(norm, shadowLightDir, uLightColor, sssAmount);

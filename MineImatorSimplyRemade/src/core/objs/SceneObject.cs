@@ -584,6 +584,8 @@ public class SceneObject
                 _materialSettings.MixColor.y,
                 _materialSettings.MixColor.z,
                 _materialSettings.MixColor.w);
+            mesh.Metallic = _materialSettings.Metallic;
+            mesh.Roughness = _materialSettings.Roughness;
             mesh.DoubleSided = _materialSettings.DoubleSided;
             mesh.TextureOffset = new System.Numerics.Vector2(
                 _materialSettings.TextureOffset.x,
@@ -623,6 +625,17 @@ public class SceneObject
             mesh.SubsurfaceHighlight = _materialSettings.SubsurfaceHighlight;
             mesh.SubsurfaceHighlightStrength = _materialSettings.SubsurfaceHighlightStrength;
             mesh.EmissionIndirectOnly = _materialSettings.EmissionIndirectOnly;
+        }
+    }
+
+    /// <summary>Applies object-level appearance flags that are independent of material inheritance.</summary>
+    public void ApplyAppearanceSettingsToMeshes()
+    {
+        foreach (var mesh in Visuals)
+        {
+            mesh.BlurTexture = BlurTexture;
+            mesh.TextureMipmaps = TextureMipmaps;
+            mesh.IncludeInFog = IncludeInFog;
         }
     }
 

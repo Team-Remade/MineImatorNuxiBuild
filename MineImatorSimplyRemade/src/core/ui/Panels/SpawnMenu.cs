@@ -362,6 +362,9 @@ public class SpawnMenu
     /// <summary>Raised after a root object is added to the viewport scene.</summary>
     public event Action? SceneChanged;
 
+    /// <summary>Suppresses intermediate scene notifications while project deserialization restores object state.</summary>
+    public bool IsRestoringScene { get; set; }
+
     /// <summary>Called by the view whenever the spawn menu window is (re)opened.</summary>
     public void OnMenuOpened() => RefreshResourcePackOptions();
 
@@ -373,8 +376,12 @@ public class SpawnMenu
             return;
 
         Viewport.SceneObjects.Add(obj);
-        SceneChanged?.Invoke();
+        if (!IsRestoringScene)
+            SceneChanged?.Invoke();
     }
+
+    /// <summary>Notifies views that a batch scene change has completed.</summary>
+    public void NotifySceneChanged() => SceneChanged?.Invoke();
 
     /// <summary>Global search text; setting it resets the object/variant selection.</summary>
     public string SearchQuery

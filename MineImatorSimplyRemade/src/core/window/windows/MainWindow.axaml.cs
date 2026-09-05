@@ -195,7 +195,11 @@ public partial class MainWindow : WindowBase
         DockFactory.PropertiesModel.Initialize();
     }
 
-    private void OnSpawnMenuSceneChanged() => DockFactory?.SceneTreeModel.Refresh();
+    private void OnSpawnMenuSceneChanged()
+    {
+        DockFactory?.SceneTreeModel.Refresh();
+        DockFactory?.PropertiesModel.SynchronizeObjectLibrary();
+    }
 
     private void ResetDockLayout() => WireDockLayout();
 
@@ -411,6 +415,7 @@ public partial class MainWindow : WindowBase
         {
             _projectManager.CreateNewProject(projectName.Text ?? "Untitled Project");
             ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, ViewportModel, SpawnMenuModel, DockFactory.TimelineModel, DockFactory.PropertiesModel);
+            DockFactory.ContentBrowser?.Refresh();
             ResetUndoRedoHistory();
             RefreshWindowTitle();
             HideHomeScreen();
@@ -520,6 +525,7 @@ public partial class MainWindow : WindowBase
 
         ReloadMinecraftDataForCurrentProject();
         ProjectSceneSerializer.LoadSceneFromManifest(_projectManager.Manifest, ViewportModel, SpawnMenuModel, DockFactory.TimelineModel, DockFactory.PropertiesModel);
+        DockFactory.ContentBrowser?.Refresh();
         ResetUndoRedoHistory();
         RefreshWindowTitle();
         HideHomeScreen();

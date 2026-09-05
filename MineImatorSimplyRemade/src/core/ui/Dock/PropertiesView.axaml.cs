@@ -27,8 +27,8 @@ namespace MineImatorSimplyRemade.core.ui.Dock;
 /// forwards edits. Sections are populated in code because the old panel was
 /// fully imperative and the row patterns repeat heavily.
 ///
-/// Not yet ported from the old Object tab: appearance/material, camera, light,
-/// particle, item/text-mesh sections, shape keys, and the right-click
+/// Not yet ported from the old Object tab: particle, item/text-mesh sections,
+/// shape keys, and the right-click
 /// "add keyframe" context menus (model APIs for those already exist).
 /// </summary>
 public partial class PropertiesView : UserControl
@@ -74,6 +74,7 @@ public partial class PropertiesView : UserControl
         AttachedToVisualTree += (_, _) =>
         {
             _model.SettingsLoaded += OnModelSettingsLoaded;
+            _model.ObjectLibraryChanged += OnObjectLibraryChanged;
             if (SelectionManager.Instance != null)
                 SelectionManager.Instance.SelectionChanged += OnSelectionChanged;
 
@@ -88,6 +89,7 @@ public partial class PropertiesView : UserControl
         DetachedFromVisualTree += (_, _) =>
         {
             _model.SettingsLoaded -= OnModelSettingsLoaded;
+            _model.ObjectLibraryChanged -= OnObjectLibraryChanged;
             if (SelectionManager.Instance != null)
                 SelectionManager.Instance.SelectionChanged -= OnSelectionChanged;
 
@@ -104,6 +106,8 @@ public partial class PropertiesView : UserControl
             RebuildLibrary();
         });
     }
+
+    private void OnObjectLibraryChanged() => Dispatcher.UIThread.Post(RebuildLibrary);
 
     private void OnSelectionChanged() => Dispatcher.UIThread.Post(RebuildObjectTab);
 
@@ -353,8 +357,25 @@ public partial class PropertiesView : UserControl
         parent.Children.Add(row);
     }
 
-    /// <summary>Color swatch button with an RGB(A) slider flyout, editing a model float[] in place.</summary>
+    /// <summary>Color swatch button backed by a single color picker, editing a model float[] in place.</summary>
     private void ColorRow(Panel parent, string label, float[] channels, bool hasAlpha, Action? after = null)
+    {
+        ColorRow(parent, label,
+            () => Color.FromArgb(
+                hasAlpha ? ToByte(channels[3]) : (byte)255,
+                ToByte(channels[0]), ToByte(channels[1]), ToByte(channels[2])),
+            color =>
+            {
+                channels[0] = color.R / 255f;
+                channels[1] = color.G / 255f;
+                channels[2] = color.B / 255f;
+                if (hasAlpha)
+                    channels[3] = color.A / 255f;
+            },
+            hasAlpha, after);
+    }
+
+    private void ColorRow(Panel parent, string label, Func<Color> get, Action<Color> set, bool hasAlpha, Action? after = null)
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("130,*") };
         var text = new TextBlock
@@ -379,51 +400,29 @@ public partial class PropertiesView : UserControl
 
         void UpdateSwatch()
         {
-            byte a = hasAlpha ? (byte)(Math.Clamp(channels[3], 0f, 1f) * 255f) : (byte)255;
-            swatch.Background = new SolidColorBrush(Color.FromArgb(
-                a,
-                (byte)(Math.Clamp(channels[0], 0f, 1f) * 255f),
-                (byte)(Math.Clamp(channels[1], 0f, 1f) * 255f),
-                (byte)(Math.Clamp(channels[2], 0f, 1f) * 255f)));
+            swatch.Background = new SolidColorBrush(get());
         }
         UpdateSwatch();
 
-        var flyoutPanel = new StackPanel { Spacing = 4, Width = 220 };
-        string[] channelNames = hasAlpha ? ["R", "G", "B", "A"] : ["R", "G", "B"];
-        var channelSliders = new Slider[channelNames.Length];
-        for (int i = 0; i < channelNames.Length; i++)
+        var picker = new ColorPicker
         {
-            int channel = i;
-            var channelGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("16,*,36") };
-            var channelLabel = new TextBlock { Text = channelNames[i], Foreground = MutedBrush, VerticalAlignment = VerticalAlignment.Center };
-            var slider = new Slider { Minimum = 0, Maximum = 1, Value = Math.Clamp(channels[i], 0f, 1f) };
-            var channelValue = new TextBlock { Foreground = ValueBrush, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
-            channelValue.Text = channels[i].ToString("0.00", CultureInfo.InvariantCulture);
+            Color = get(),
+            IsAlphaEnabled = hasAlpha,
+            Width = 240,
+        };
+        picker.PropertyChanged += (_, eventArgs) =>
+        {
+            if (_syncing || eventArgs.Property != ColorPicker.ColorProperty)
+                return;
+            set(picker.Color);
+            UpdateSwatch();
+            CommitAfter(after);
+        };
 
-            slider.ValueChanged += (_, e) =>
-            {
-                if (_syncing) return;
-                channels[channel] = (float)e.NewValue;
-                channelValue.Text = channels[channel].ToString("0.00", CultureInfo.InvariantCulture);
-                UpdateSwatch();
-                CommitAfter(after);
-            };
-            channelSliders[i] = slider;
-
-            Grid.SetColumn(channelLabel, 0);
-            Grid.SetColumn(slider, 1);
-            Grid.SetColumn(channelValue, 2);
-            channelGrid.Children.Add(channelLabel);
-            channelGrid.Children.Add(slider);
-            channelGrid.Children.Add(channelValue);
-            flyoutPanel.Children.Add(channelGrid);
-        }
-
-        button.Flyout = new Flyout { Content = flyoutPanel };
+        button.Flyout = new Flyout { Content = picker };
         _refreshers.Add(() =>
         {
-            for (int i = 0; i < channelSliders.Length; i++)
-                channelSliders[i].Value = Math.Clamp(channels[i], 0f, 1f);
+            picker.Color = get();
             UpdateSwatch();
         });
 
@@ -433,6 +432,8 @@ public partial class PropertiesView : UserControl
         grid.Children.Add(button);
         parent.Children.Add(grid);
     }
+
+    private static byte ToByte(float channel) => (byte)(Math.Clamp(channel, 0f, 1f) * 255f);
 
     // ── Project Settings section ──────────────────────────────────────────────
 
@@ -1270,6 +1271,7 @@ public partial class PropertiesView : UserControl
 
         BuildBendSection(obj);
         BuildAppearanceSection(obj);
+        BuildMaterialSection(obj);
         BuildCameraSection(obj as CameraSceneObject);
         BuildLightSection(obj as LightSceneObject);
         RefreshObjectValues();
@@ -1278,7 +1280,30 @@ public partial class PropertiesView : UserControl
     private void BuildAppearanceSection(SceneObject obj)
     {
         AppearancePanel.Children.Clear();
-        var material = obj.MaterialSettings;
+        AddAppearanceCheck("Visible", obj.ObjectVisible, (target, value) => target.SetObjectVisible(value), includeDescendants: false);
+        AddAppearanceCheck("Inherit visibility", obj.InheritVisibility, (target, value) => target.InheritVisibility = value);
+
+        if (obj is not CameraSceneObject && obj is not LightSceneObject)
+            AddAppearanceCheck("Cast shadows", obj.CastShadow, (target, value) => target.CastShadow = value);
+
+        AddAppearanceCheck("Invert (render backfaces)", obj.InvertFaces, (target, value) => target.InvertFaces = value);
+        AddAppearanceCheck("Blur texture (linear filtering)", obj.BlurTexture, (target, value) => target.BlurTexture = value);
+        AddAppearanceCheck("Texture filtering (mip maps)", obj.TextureMipmaps, (target, value) => target.TextureMipmaps = value);
+        AddAppearanceCheck("Include in ambient occlusion", obj.IncludeInAmbientOcclusion, (target, value) => target.IncludeInAmbientOcclusion = value);
+        AddAppearanceCheck("Include in fog", obj.IncludeInFog, (target, value) => target.IncludeInFog = value);
+        AddAppearanceCheck("Render in high quality", obj.RenderInHighQuality, (target, value) => target.RenderInHighQuality = value);
+        AddAppearanceCheck("Render in low quality", obj.RenderInLowQuality, (target, value) => target.RenderInLowQuality = value);
+        AddAppearanceNumber("Render depth", -1000, 1000, 0.01m, obj.RenderDepthOffset, (target, value) => target.RenderDepthOffset = value);
+    }
+
+    private void BuildMaterialSection(SceneObject obj)
+    {
+        MaterialPanel.Children.Clear();
+        MaterialExpander.IsVisible = obj is not CameraSceneObject and not LightSceneObject;
+        if (!MaterialExpander.IsVisible)
+            return;
+
+        MaterialSettings Material() => obj.MaterialSettings ?? new MaterialSettings();
 
         void Apply(Action<MaterialSettings> edit)
         {
@@ -1288,30 +1313,203 @@ public partial class PropertiesView : UserControl
             MarkObjectDirty();
         }
 
-        AddObjectNumberRow(AppearancePanel, "Opacity", 0, 1, 0.01m,
-            () => material.AlbedoColor.w * (1f - material.Transparency), value => Apply(settings =>
+        AddMaterialColor("Albedo", () => Material().AlbedoColor, value => Apply(settings => settings.AlbedoColor = value), true);
+        AddMaterialColor("Blend", () => Material().BlendColor, value => Apply(settings => settings.BlendColor = value), false);
+        AddMaterialColor("Mix", () => Material().MixColor, value => Apply(settings => settings.MixColor = value), false);
+        AddMaterialPercentSlider("Mix amount", () => Material().MixColor.w, value => Apply(settings =>
+        {
+            var color = settings.MixColor;
+            color.w = value;
+            settings.MixColor = color;
+        }));
+        AddObjectNumberRow(MaterialPanel, "Metallic", 0, 1, 0.01m, () => Material().Metallic, value => Apply(settings => settings.Metallic = value));
+        AddObjectNumberRow(MaterialPanel, "Roughness", 0, 1, 0.01m, () => Material().Roughness, value => Apply(settings => settings.Roughness = value));
+
+        AddMaterialCheck("Emission", () => Material().EmissionEnabled, value => Apply(settings => settings.EmissionEnabled = value));
+        AddMaterialCheck("Auto emission", () => Material().AutoEmission, value => Apply(settings => settings.AutoEmission = value));
+        AddMaterialColor("Emission", () => Material().EmissionColor, value => Apply(settings => settings.EmissionColor = value), false);
+        AddObjectNumberRow(MaterialPanel, "Emission energy", 0, 10, 0.1m, () => Material().EmissionEnergy, value => Apply(settings => settings.EmissionEnergy = value));
+        AddMaterialCheck("Emission indirect only", () => Material().EmissionIndirectOnly, value => Apply(settings => settings.EmissionIndirectOnly = value));
+
+        AddObjectNumberRow(MaterialPanel, "Subsurface", 0, 1, 0.01m, () => Material().Subsurface, value => Apply(settings => settings.Subsurface = value));
+        AddMaterialVector3("Subsurface radius", () => Material().SubsurfaceRadius, value => Apply(settings => settings.SubsurfaceRadius = value), 0.0001m, 4, 0.01m);
+        AddMaterialColor("Subsurface color", () => Material().SubsurfaceColor, value => Apply(settings => settings.SubsurfaceColor = value), false);
+        AddObjectNumberRow(MaterialPanel, "Subsurface highlight", -0.95m, 0.95m, 0.01m, () => Material().SubsurfaceHighlight, value => Apply(settings => settings.SubsurfaceHighlight = value));
+        AddObjectNumberRow(MaterialPanel, "Highlight strength", 0, 4, 0.01m, () => Material().SubsurfaceHighlightStrength, value => Apply(settings => settings.SubsurfaceHighlightStrength = value));
+
+        AddMaterialCheck("Double-sided faces", () => Material().DoubleSided, value => Apply(settings => settings.DoubleSided = value));
+        AddMaterialVector2("Texture offset", () => Material().TextureOffset, value => Apply(settings => settings.TextureOffset = value), -1000, 1000, 0.01m);
+        AddMaterialVector2("Texture repeat", () => Material().TextureRepeat, value => Apply(settings => settings.TextureRepeat = value), 0.0001m, 256, 0.01m);
+        AddMaterialCheck("Texture mirror H", () => Material().TextureMirror.x, value => Apply(settings => settings.TextureMirror = new bvec2(value, settings.TextureMirror.y)));
+        AddMaterialCheck("Texture mirror V", () => Material().TextureMirror.y, value => Apply(settings => settings.TextureMirror = new bvec2(settings.TextureMirror.x, value)));
+
+        ButtonRow(MaterialPanel, ("Reset material", () => Apply(settings =>
+        {
+            settings.AlbedoColor = new vec4(1f, 1f, 1f, 1f);
+            settings.BlendColor = new vec4(1f, 1f, 1f, 1f);
+            settings.MixColor = new vec4(0f, 0f, 0f, 0f);
+            settings.Metallic = 0f;
+            settings.Roughness = 0.5f;
+            settings.EmissionEnabled = false;
+            settings.EmissionColor = new vec4(0f, 0f, 0f, 1f);
+            settings.EmissionEnergy = 1f;
+            settings.EmissionIndirectOnly = false;
+            settings.AutoEmission = true;
+            settings.Subsurface = 0f;
+            settings.SubsurfaceRadius = new vec3(0.42f, 0.24f, 0.14f);
+            settings.SubsurfaceColor = new vec4(1f, 1f, 1f, 1f);
+            settings.SubsurfaceHighlight = 0.35f;
+            settings.SubsurfaceHighlightStrength = 0.6f;
+            settings.NormalTexture = 0;
+            settings.NormalEnabled = false;
+            settings.DoubleSided = false;
+            settings.TextureOffset = vec2.Zero;
+            settings.TextureRepeat = new vec2(1f, 1f);
+            settings.TextureMirror = new bvec2(false, false);
+        })));
+    }
+
+    private void AddAppearanceCheck(string label, bool initialValue, Action<SceneObject, bool> apply, bool includeDescendants = true)
+    {
+        var check = new CheckBox { Content = label, Foreground = MutedBrush, IsChecked = initialValue };
+        check.IsCheckedChanged += (_, _) =>
+        {
+            if (_syncing) return;
+            ApplyToSelectedObjects(target =>
             {
-                var color = settings.AlbedoColor;
-                color.w = value;
-                settings.AlbedoColor = color;
-                settings.Transparency = 0f;
-            }));
-
-        var doubleSided = new CheckBox { Content = "Double-sided faces", Foreground = MutedBrush, IsChecked = material.DoubleSided };
-        doubleSided.IsCheckedChanged += (_, _) =>
-        {
-            if (!_syncing) Apply(settings => settings.DoubleSided = doubleSided.IsChecked == true);
+                apply(target, check.IsChecked == true);
+                target.ApplyAppearanceSettingsToMeshes();
+                if (includeDescendants)
+                    foreach (var child in target.GetAllDescendants())
+                    {
+                        apply(child, check.IsChecked == true);
+                        child.ApplyAppearanceSettingsToMeshes();
+                    }
+            });
+            MarkObjectDirty();
         };
-        AppearancePanel.Children.Add(doubleSided);
+        AppearancePanel.Children.Add(check);
+    }
 
-        var emission = new CheckBox { Content = "Emission", Foreground = MutedBrush, IsChecked = material.EmissionEnabled };
-        emission.IsCheckedChanged += (_, _) =>
+    private void AddAppearanceNumber(string label, decimal minimum, decimal maximum, decimal increment, float initialValue, Action<SceneObject, float> apply)
+    {
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("130,*") };
+        var input = new NumericUpDown { Minimum = minimum, Maximum = maximum, Increment = increment, Value = SafeDecimal(initialValue, minimum, maximum), FormatString = "0.##" };
+        input.ValueChanged += (_, e) =>
         {
-            if (!_syncing) Apply(settings => settings.EmissionEnabled = emission.IsChecked == true);
+            if (_syncing || e.NewValue == null) return;
+            ApplyToSelectedObjects(target =>
+            {
+                apply(target, (float)e.NewValue.Value);
+                target.ApplyAppearanceSettingsToMeshes();
+                foreach (var child in target.GetAllDescendants())
+                {
+                    apply(child, (float)e.NewValue.Value);
+                    child.ApplyAppearanceSettingsToMeshes();
+                }
+            });
+            MarkObjectDirty();
         };
-        AppearancePanel.Children.Add(emission);
-        AddObjectNumberRow(AppearancePanel, "Emission energy", 0, 100, 0.1m,
-            () => material.EmissionEnergy, value => Apply(settings => settings.EmissionEnergy = value));
+        grid.Children.Add(new TextBlock { Text = label, Foreground = MutedBrush, VerticalAlignment = VerticalAlignment.Center });
+        Grid.SetColumn(input, 1);
+        grid.Children.Add(input);
+        AppearancePanel.Children.Add(grid);
+    }
+
+    private void ApplyToSelectedObjects(Action<SceneObject> apply)
+    {
+        var selected = SelectionManager.Instance?.SelectedObjects;
+        if (selected is { Count: > 0 })
+        {
+            foreach (var target in selected)
+                apply(target);
+            return;
+        }
+
+        if (_model.CurrentObject != null)
+            apply(_model.CurrentObject);
+    }
+
+    private void AddMaterialCheck(string label, Func<bool> get, Action<bool> set)
+    {
+        var check = new CheckBox { Content = label, Foreground = MutedBrush, IsChecked = get() };
+        check.IsCheckedChanged += (_, _) =>
+        {
+            if (!_syncing)
+                set(check.IsChecked == true);
+        };
+        MaterialPanel.Children.Add(check);
+    }
+
+    private void AddMaterialPercentSlider(string label, Func<float> get, Action<float> set)
+    {
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("130,*,48") };
+        var slider = new Slider { Minimum = 0, Maximum = 100, Value = Math.Clamp(get() * 100f, 0f, 100f) };
+        var valueLabel = new TextBlock { Foreground = ValueBrush, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
+
+        void RefreshLabel() => valueLabel.Text = $"{get() * 100f:0}%";
+        RefreshLabel();
+        slider.ValueChanged += (_, e) =>
+        {
+            if (_syncing) return;
+            set((float)e.NewValue / 100f);
+            RefreshLabel();
+        };
+
+        grid.Children.Add(new TextBlock { Text = label, Foreground = MutedBrush, VerticalAlignment = VerticalAlignment.Center });
+        Grid.SetColumn(slider, 1);
+        grid.Children.Add(slider);
+        Grid.SetColumn(valueLabel, 2);
+        grid.Children.Add(valueLabel);
+        MaterialPanel.Children.Add(grid);
+    }
+
+    private void AddMaterialColor(string label, Func<vec4> get, Action<vec4> set, bool includeAlpha)
+    {
+        ColorRow(MaterialPanel, label,
+            () =>
+            {
+                vec4 color = get();
+                return Color.FromArgb(ToByte(color.w), ToByte(color.x), ToByte(color.y), ToByte(color.z));
+            },
+            color =>
+            {
+                vec4 current = get();
+                set(new vec4(color.R / 255f, color.G / 255f, color.B / 255f,
+                    includeAlpha ? color.A / 255f : current.w));
+            },
+            includeAlpha);
+    }
+
+    private void AddMaterialVector2(string label, Func<vec2> get, Action<vec2> set, decimal minimum, decimal maximum, decimal increment)
+    {
+        AddMaterialVector(label, 2, index => get()[index], values => set(new vec2(values[0], values[1])), minimum, maximum, increment);
+    }
+
+    private void AddMaterialVector3(string label, Func<vec3> get, Action<vec3> set, decimal minimum, decimal maximum, decimal increment)
+    {
+        AddMaterialVector(label, 3, index => get()[index], values => set(new vec3(values[0], values[1], values[2])), minimum, maximum, increment);
+    }
+
+    private void AddMaterialVector(string label, int count, Func<int, float> get, Action<float[]> set, decimal minimum, decimal maximum, decimal increment)
+    {
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions($"130,{string.Join(',', Enumerable.Repeat("*", count))}") };
+        grid.Children.Add(new TextBlock { Text = label, Foreground = MutedBrush, VerticalAlignment = VerticalAlignment.Center });
+        for (int index = 0; index < count; index++)
+        {
+            int channel = index;
+            var input = new NumericUpDown { Minimum = minimum, Maximum = maximum, Increment = increment, Value = SafeDecimal(get(channel), minimum, maximum), FormatString = "0.##" };
+            input.ValueChanged += (_, e) =>
+            {
+                if (_syncing || e.NewValue == null) return;
+                var values = Enumerable.Range(0, count).Select(get).ToArray();
+                values[channel] = (float)e.NewValue.Value;
+                set(values);
+            };
+            Grid.SetColumn(input, channel + 1);
+            grid.Children.Add(input);
+        }
+        MaterialPanel.Children.Add(grid);
     }
 
     private void BuildCameraSection(CameraSceneObject? camera)
@@ -1370,29 +1568,14 @@ public partial class PropertiesView : UserControl
 
     private void AddLightColorRow(Panel parent, LightSceneObject light)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("130,*,*,*") };
-        grid.Children.Add(new TextBlock { Text = "Color", Foreground = MutedBrush, VerticalAlignment = VerticalAlignment.Center });
-        float[] channels = [light.LightColor.x, light.LightColor.y, light.LightColor.z];
-        string[] labels = ["R", "G", "B"];
-        for (int i = 0; i < channels.Length; i++)
-        {
-            int channel = i;
-            var input = new NumericUpDown
+        ColorRow(parent, "Color",
+            () => Color.FromRgb(ToByte(light.LightColor.x), ToByte(light.LightColor.y), ToByte(light.LightColor.z)),
+            color =>
             {
-                Minimum = 0, Maximum = 1, Increment = 0.01m,
-                FormatString = "0.##", Value = (decimal)channels[i]
-            };
-            input.ValueChanged += (_, e) =>
-            {
-                if (_syncing || e.NewValue == null) return;
-                channels[channel] = (float)e.NewValue.Value;
-                light.LightColor = new vec4(channels[0], channels[1], channels[2], light.LightColor.w);
+                light.LightColor = new vec4(color.R / 255f, color.G / 255f, color.B / 255f, light.LightColor.w);
                 MarkObjectDirty();
-            };
-            Grid.SetColumn(input, i + 1);
-            grid.Children.Add(input);
-        }
-        parent.Children.Add(grid);
+            },
+            hasAlpha: false);
     }
 
     private void AddObjectNumberRow(Panel parent, string label, decimal minimum, decimal maximum, decimal increment,

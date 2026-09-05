@@ -71,6 +71,11 @@ public partial class ContentBrowserView : UserControl
 
         SpawnButton.Click += (_, _) => SpawnSelectedAsset();
         AddToTimelineButton.Click += (_, _) => AddSelectedAssetToTimeline();
+        RemoveAssetItem.Click += (_, _) =>
+        {
+            if (SelectedAsset is { } asset)
+                RemoveAssetInteractive(asset);
+        };
 
         AttachedToVisualTree += (_, _) => Refresh();
     }

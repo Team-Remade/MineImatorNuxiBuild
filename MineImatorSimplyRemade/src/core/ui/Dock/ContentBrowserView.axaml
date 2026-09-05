@@ -35,7 +35,13 @@
 
         <Border Grid.Row="3" BorderBrush="#3A3A3A" BorderThickness="1">
             <Grid>
-                <ListBox x:Name="AssetList" Background="Transparent" />
+                <ListBox x:Name="AssetList" Background="Transparent">
+                    <ListBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem x:Name="RemoveAssetItem" Header="Remove Asset" />
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
+                </ListBox>
                 <TextBlock x:Name="EmptyLabel" Foreground="#777"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            IsVisible="False" Text="No assets to display." />

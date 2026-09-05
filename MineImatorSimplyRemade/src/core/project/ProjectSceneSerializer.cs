@@ -71,8 +71,16 @@ public static class ProjectSceneSerializer
 
         ClearScene(viewport);
 
-        foreach (var root in manifest.SceneObjects)
-            RestoreNode(root, viewport, spawnMenu, parent: null);
+        spawnMenu.IsRestoringScene = true;
+        try
+        {
+            foreach (var root in manifest.SceneObjects)
+                RestoreNode(root, viewport, spawnMenu, parent: null);
+        }
+        finally
+        {
+            spawnMenu.IsRestoringScene = false;
+        }
 
         // Restore albedo textures that were saved with a path but not yet loaded onto the GPU
         propertiesPanel?.LoadPendingAlbedoTextures(viewport.SceneObjects);
@@ -107,6 +115,8 @@ public static class ProjectSceneSerializer
         var activeCam = FindActiveCameraFromEntries(manifest.SceneObjects, viewport.SceneObjects);
         if (activeCam != null)
             CameraSceneObject.SetActiveExclusive(activeCam);
+
+        spawnMenu.NotifySceneChanged();
     }
 
     private static CameraSceneObject? FindActiveCameraFromEntries(

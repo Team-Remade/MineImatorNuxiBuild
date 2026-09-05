@@ -62,9 +62,10 @@ public struct MeshMaterialUniforms
     public Vector3 SubsurfaceColor;
     public float SubsurfaceHighlight;
     public float SubsurfaceHighlightStrength;
+    public float Metallic;
+    public float Roughness;
     public int IncludeInFog;
     public int _pad1;
-    public int _pad2;
 
     public static MeshMaterialUniforms Default => new()
     {
@@ -82,6 +83,8 @@ public struct MeshMaterialUniforms
         SubsurfaceColor = Vector3.One,
         SubsurfaceHighlight = 0f,
         SubsurfaceHighlightStrength = 0f,
+        Metallic = 0f,
+        Roughness = 0.5f,
         IncludeInFog = 1,
     };
 }

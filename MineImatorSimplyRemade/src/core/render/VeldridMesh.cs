@@ -91,13 +91,23 @@ public class VeldridMesh : IDisposable
     /// <summary>When false, this mesh is excluded from fog even when global fog is enabled.</summary>
     public bool IncludeInFog { get; set; } = true;
 
-    /// <summary>When true, disables back-face culling for this mesh's pipeline
-    /// (thin single-sided geometry like light-range rings/cones/sticks that
-    /// should be visible from both sides). Read once per <see cref="Upload"/>/
-    /// pipeline-rebuild - matches the old renderer's <c>Mesh.DoubleSided</c>.</summary>
-    public bool DoubleSided { get; set; }
+    private bool _doubleSided;
 
-    private FaceCullMode CullMode => DoubleSided ? FaceCullMode.None : FaceCullMode.Back;
+    /// <summary>When true, disables all face culling for this mesh's pipeline.</summary>
+    public bool DoubleSided
+    {
+        get => _doubleSided;
+        set
+        {
+            if (_doubleSided == value) return;
+            _doubleSided = value;
+            RebuildRasterizerPipeline();
+        }
+    }
+
+    private FaceCullMode CullMode => DoubleSided
+        ? FaceCullMode.None
+        : CullFrontFaces ? FaceCullMode.Front : FaceCullMode.Back;
 
     /// <summary>Bound texture, or null to render with the flat <see cref="Albedo"/> color.</summary>
     public Texture? AlbedoTexture { get; set; }
@@ -117,6 +127,12 @@ public class VeldridMesh : IDisposable
 
     /// <summary>Mix/overlay colour (RGBA). Alpha is the mix amount.</summary>
     public Vector4 MixColor { get; set; } = Vector4.Zero;
+
+    /// <summary>Metallic response used by the lit material shader.</summary>
+    public float Metallic { get; set; }
+
+    /// <summary>Surface roughness used to widen or tighten specular highlights.</summary>
+    public float Roughness { get; set; } = 0.5f;
 
     /// <summary>UV offset applied when sampling the albedo texture.</summary>
     public Vector2 TextureOffset { get; set; } = Vector2.Zero;
@@ -169,14 +185,45 @@ public class VeldridMesh : IDisposable
     /// <summary>When true, depth testing/writes are disabled so the mesh renders on top.</summary>
     public bool DepthTestDisabled { get; set; }
 
+    private bool _blurTexture;
     /// <summary>When true this mesh uses linear texture filtering; else nearest.</summary>
-    public bool BlurTexture { get; set; }
+    public bool BlurTexture
+    {
+        get => _blurTexture;
+        set
+        {
+            if (_blurTexture == value) return;
+            _blurTexture = value;
+            RebuildAlbedoSampler();
+        }
+    }
 
+    private bool _textureMipmaps;
     /// <summary>When true this mesh samples with mipmap minification filters.</summary>
-    public bool TextureMipmaps { get; set; }
+    public bool TextureMipmaps
+    {
+        get => _textureMipmaps;
+        set
+        {
+            if (_textureMipmaps == value) return;
+            _textureMipmaps = value;
+            RebuildAlbedoSampler();
+        }
+    }
+
+    private bool _cullFrontFaces;
 
     /// <summary>When true, culls front faces so only backfaces render.</summary>
-    public bool CullFrontFaces { get; set; }
+    public bool CullFrontFaces
+    {
+        get => _cullFrontFaces;
+        set
+        {
+            if (_cullFrontFaces == value) return;
+            _cullFrontFaces = value;
+            RebuildRasterizerPipeline();
+        }
+    }
 
     // ── Skinning (subsystem pass 6/N) ───────────────────────────────────────
 
@@ -472,6 +519,37 @@ public class VeldridMesh : IDisposable
 
     private static uint AlignTo16(uint size) => (size + 15) / 16 * 16;
 
+    private void RebuildAlbedoSampler()
+    {
+        if (_meshResourceLayout == null)
+            return;
+
+        _albedoSampler?.Dispose();
+        _albedoSampler = VeldridTextureLoader.CreateSampler(
+            nearest: !BlurTexture, repeat: true, mipmaps: TextureMipmaps, device: _device);
+        RebuildResourceSet();
+    }
+
+    private void RebuildRasterizerPipeline()
+    {
+        if (_pipeline == null || _meshResourceLayout == null || _sceneResourceLayout == null)
+            return;
+
+        _pipeline.Dispose();
+        var (vertexShader, fragmentShader) = VeldridShaderCache.GetOrCompile(_device, "simple.vert", "simple.frag");
+        _pipeline = _device.ResourceFactory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+        {
+            BlendState = BlendStateDescription.SingleAlphaBlend,
+            DepthStencilState = DepthStencilStateDescription.DepthOnlyLessEqual,
+            RasterizerState = new RasterizerStateDescription(
+                CullMode, PolygonFillMode.Solid, FrontFace.CounterClockwise, true, false),
+            PrimitiveTopology = PrimitiveTopology.TriangleList,
+            ResourceLayouts = new[] { _meshResourceLayout, _sceneResourceLayout },
+            ShaderSet = new ShaderSetDescription(new[] { MakeStandardVertexLayout() }, new[] { vertexShader, fragmentShader }),
+            Outputs = _outputDescription,
+        });
+    }
+
     /// <summary>The standard 5-attribute vertex layout (position/normal/uv/
     /// bone-indices/bone-weights) shared by every pipeline this mesh draws
     /// through (main color, shadow depth, point-shadow depth, pick/silhouette) -
@@ -720,6 +798,8 @@ public class VeldridMesh : IDisposable
         var materialUniforms = MeshMaterialUniforms.Default;
         materialUniforms.Albedo = Albedo;
         materialUniforms.Alpha = Alpha;
+        materialUniforms.BlendColor = BlendColor;
+        materialUniforms.MixColor = MixColor;
         materialUniforms.UseTexture = AlbedoTexture != null ? 1 : 0;
         materialUniforms.IsUnlit = Unlit || forceUnlit ? 1 : 0;
         materialUniforms.EmissionEnabled = EmissionEnabled ? 1 : 0;
@@ -730,6 +810,8 @@ public class VeldridMesh : IDisposable
         materialUniforms.SubsurfaceColor = SubsurfaceColor;
         materialUniforms.SubsurfaceHighlight = SubsurfaceHighlight;
         materialUniforms.SubsurfaceHighlightStrength = SubsurfaceHighlightStrength;
+        materialUniforms.Metallic = Metallic;
+        materialUniforms.Roughness = Roughness;
         materialUniforms.IncludeInFog = IncludeInFog ? 1 : 0;
         commandList.UpdateBuffer(_materialUniformBuffer, 0, ref materialUniforms);
 
