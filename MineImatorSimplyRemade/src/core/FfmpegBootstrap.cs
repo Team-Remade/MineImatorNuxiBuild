@@ -16,7 +16,8 @@ public static class FfmpegBootstrap
 
     public static bool RequiresFirstTimeDownload()
     {
-        return !HasFfmpegBinary(FfmpegBinaryDirectory) || !HasFfprobeBinary(FfmpegBinaryDirectory);
+        string ffmpegPath = GetFfmpegExecutablePath();
+        return !File.Exists(ffmpegPath);
     }
 
     public static bool TryImportExistingInstallOnFirstLaunch(Action<string>? statusCallback = null)
@@ -54,7 +55,46 @@ public static class FfmpegBootstrap
     public static string GetFfmpegExecutablePath()
     {
         string fileName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
-        return Path.Combine(FfmpegBinaryDirectory, fileName);
+
+        // 1. Check user application data directory
+        string localAppDataFfmpeg = Path.Combine(FfmpegBinaryDirectory, fileName);
+        if (File.Exists(localAppDataFfmpeg))
+            return localAppDataFfmpeg;
+
+        // 2. Check local application / bundled directories
+        string appBaseDir = AppDomain.CurrentDomain.BaseDirectory;
+        string appFfmpeg = Path.Combine(appBaseDir, fileName);
+        if (File.Exists(appFfmpeg))
+            return appFfmpeg;
+
+        string appSubFfmpeg = Path.Combine(appBaseDir, "ffmpeg", fileName);
+        if (File.Exists(appSubFfmpeg))
+            return appSubFfmpeg;
+
+        string toolsFfmpeg = Path.Combine(appBaseDir, "tools", fileName);
+        if (File.Exists(toolsFfmpeg))
+            return toolsFfmpeg;
+
+        // 3. Check system PATH
+        string? pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (!string.IsNullOrEmpty(pathEnv))
+        {
+            foreach (string dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                try
+                {
+                    string candidate = Path.Combine(dir, fileName);
+                    if (File.Exists(candidate))
+                        return candidate;
+                }
+                catch
+                {
+                    // Ignore invalid PATH entries
+                }
+            }
+        }
+
+        return localAppDataFfmpeg;
     }
 
     public static void EnsureFfmpegInstalled(Action<string>? statusCallback = null)
@@ -68,15 +108,20 @@ public static class FfmpegBootstrap
             if (_ffmpegReady)
                 return;
 
-            Directory.CreateDirectory(FfmpegBinaryDirectory);
-            Directory.CreateDirectory(Path.Combine(FfmpegBinaryDirectory, "temp"));
+            string executablePath = GetFfmpegExecutablePath();
+            string binaryDir = File.Exists(executablePath)
+                ? (Path.GetDirectoryName(executablePath) ?? FfmpegBinaryDirectory)
+                : FfmpegBinaryDirectory;
 
-            ConfigureGlobalFfmpegOptions(FfmpegBinaryDirectory);
+            Directory.CreateDirectory(binaryDir);
+            Directory.CreateDirectory(Path.Combine(binaryDir, "temp"));
+
+            ConfigureGlobalFfmpegOptions(binaryDir);
 
             if (RequiresFirstTimeDownload())
             {
-                statusCallback?.Invoke("Downloading FFmpeg binaries...");
-                Console.WriteLine($"Downloading binaries to '{FfmpegBinaryDirectory}'...");
+                statusCallback?.Invoke("Downloading minimal FFmpeg binary...");
+                Console.WriteLine($"Downloading binary to '{FfmpegBinaryDirectory}'...");
 
                 var options = new FFOptions
                 {
@@ -87,7 +132,7 @@ public static class FfmpegBootstrap
 
                 FFMpegDownloader
                     .DownloadBinaries(FFMpegVersions.LatestAvailable,
-                                      FFMpegBinaries.FFMpeg | FFMpegBinaries.FFProbe,
+                                      FFMpegBinaries.FFMpeg,
                                       options,
                                       null)
                     .GetAwaiter()
@@ -96,7 +141,12 @@ public static class FfmpegBootstrap
                 statusCallback?.Invoke("Finalizing FFmpeg setup...");
             }
 
-            ConfigureGlobalFfmpegOptions(FfmpegBinaryDirectory);
+            string finalExecutable = GetFfmpegExecutablePath();
+            string finalDir = File.Exists(finalExecutable)
+                ? (Path.GetDirectoryName(finalExecutable) ?? FfmpegBinaryDirectory)
+                : FfmpegBinaryDirectory;
+
+            ConfigureGlobalFfmpegOptions(finalDir);
             _ffmpegReady = true;
             statusCallback?.Invoke("FFmpeg is ready.");
         }
@@ -125,12 +175,6 @@ public static class FfmpegBootstrap
         return File.Exists(Path.Combine(directory, fileName));
     }
 
-    private static bool HasFfprobeBinary(string directory)
-    {
-        string fileName = OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe";
-        return File.Exists(Path.Combine(directory, fileName));
-    }
-
     private static bool TryImportExistingInstallFromExecutable(string selectedExecutablePath, out string detail)
     {
         detail = "";
@@ -153,12 +197,14 @@ public static class FfmpegBootstrap
         }
 
         string sourceDirectory = Path.GetDirectoryName(fullSelectedPath) ?? string.Empty;
-        string sourceFfmpegPath = Path.Combine(sourceDirectory, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
+        string sourceFfmpegPath = File.Exists(fullSelectedPath) && Path.GetFileName(fullSelectedPath).StartsWith("ffmpeg", StringComparison.OrdinalIgnoreCase)
+            ? fullSelectedPath
+            : Path.Combine(sourceDirectory, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
         string sourceFfprobePath = Path.Combine(sourceDirectory, OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe");
 
-        if (!File.Exists(sourceFfmpegPath) || !File.Exists(sourceFfprobePath))
+        if (!File.Exists(sourceFfmpegPath))
         {
-            detail = "Selected folder does not include both ffmpeg and ffprobe binaries. Falling back to download.";
+            detail = "Selected location does not include an ffmpeg binary. Falling back to download.";
             return false;
         }
 
@@ -168,18 +214,21 @@ public static class FfmpegBootstrap
             Directory.CreateDirectory(Path.Combine(FfmpegBinaryDirectory, "temp"));
 
             string targetFfmpegPath = Path.Combine(FfmpegBinaryDirectory, Path.GetFileName(sourceFfmpegPath));
-            string targetFfprobePath = Path.Combine(FfmpegBinaryDirectory, Path.GetFileName(sourceFfprobePath));
-
             File.Copy(sourceFfmpegPath, targetFfmpegPath, overwrite: true);
-            File.Copy(sourceFfprobePath, targetFfprobePath, overwrite: true);
+
+            if (File.Exists(sourceFfprobePath))
+            {
+                string targetFfprobePath = Path.Combine(FfmpegBinaryDirectory, Path.GetFileName(sourceFfprobePath));
+                File.Copy(sourceFfprobePath, targetFfprobePath, overwrite: true);
+            }
 
             ConfigureGlobalFfmpegOptions(FfmpegBinaryDirectory);
-            detail = "Using pre-existing FFmpeg binaries from selected folder.";
+            detail = "Using pre-existing FFmpeg binary from selected location.";
             return true;
         }
         catch (Exception ex)
         {
-            detail = $"Failed to copy existing FFmpeg binaries: {ex.Message}. Falling back to download.";
+            detail = $"Failed to copy existing FFmpeg binary: {ex.Message}. Falling back to download.";
             return false;
         }
     }
