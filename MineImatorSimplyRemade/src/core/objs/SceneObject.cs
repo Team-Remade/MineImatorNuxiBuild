@@ -621,7 +621,25 @@ public class SceneObject
     // ── Selection ────────────────────────────────────────────────────────────
 
     public bool IsSelectable = true;
+    public bool IsLocked = false;
     public bool IsSelected;
+
+    /// <summary>Sets the viewport lock on this object and every descendant.</summary>
+    public void SetLockedRecursive(bool locked)
+    {
+        IsLocked = locked;
+        foreach (var child in Children)
+            child.SetLockedRecursive(locked);
+    }
+
+    /// <summary>Resolves a viewport hit without restricting scene-tree selection.</summary>
+    public SceneObject? GetViewportSelectionTarget()
+    {
+        SceneObject? candidate = this;
+        while (candidate != null && (candidate.IsLocked || !candidate.IsSelectable))
+            candidate = candidate.Parent;
+        return candidate;
+    }
 
     /// <summary>
     /// When true this node is omitted from the scene-tree panel.

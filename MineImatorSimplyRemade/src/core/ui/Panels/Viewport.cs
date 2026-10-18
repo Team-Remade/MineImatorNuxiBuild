@@ -3810,7 +3810,7 @@ public class Viewport : UiPanel
         }
 
         // Resolve pick ID → SceneObject.
-        SceneObject? hit = FindObjectByPickId(sceneObjects, pickId);
+        SceneObject? hit = FindObjectByPickId(sceneObjects, pickId)?.GetViewportSelectionTarget();
 
         var sm = SelectionManager.Instance;
         if (sm == null) return;

@@ -186,6 +186,7 @@ public static class ProjectSceneSerializer
             RenderInLowQuality = obj.RenderInLowQuality,
             RenderDepthOffset = obj.RenderDepthOffset,
             IsSelectable = obj.IsSelectable,
+            IsLocked = obj.IsLocked,
             HideInSceneTree = obj.HideInSceneTree,
             HasMaterialOverrides = obj.HasExplicitMaterialSettings,
             TileX = obj.GetEffectiveTileX(),
@@ -578,6 +579,7 @@ public static class ProjectSceneSerializer
         obj.RenderInLowQuality = entry.RenderInLowQuality;
         obj.RenderDepthOffset = entry.RenderDepthOffset;
         obj.IsSelectable = entry.IsSelectable;
+        obj.IsLocked = entry.IsLocked;
         obj.HideInSceneTree = entry.HideInSceneTree;
 
         obj.TileX = entry.TileX;

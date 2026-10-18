@@ -374,6 +374,7 @@ public class ProjectSceneObjectEntry
     public bool RenderInLowQuality { get; set; } = true;
     public float RenderDepthOffset { get; set; } = 0f;
     public bool IsSelectable { get; set; } = true;
+    public bool IsLocked { get; set; } = false;
     public bool HideInSceneTree { get; set; } = false;
 
     // Material override data

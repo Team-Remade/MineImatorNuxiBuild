@@ -54,6 +54,8 @@ public class SceneTree : UiPanel
     // Running ID counter reset each frame
     private int _nodeIdCounter;
     private readonly List<List<SceneObject>> _childSnapshotsByDepth = [];
+    private uint _lockedIcon;
+    private uint _unlockedIcon;
 
     // ── Constructor ─────────────────────────────────────────────────────────
 
@@ -89,6 +91,11 @@ public class SceneTree : UiPanel
             return;
         }
 
+        if (_lockedIcon == 0)
+            _lockedIcon = SvgLoader.LoadTexture(Gl, "MineImatorSimplyRemade.assets.img.button.mdi--lock.svg");
+        if (_unlockedIcon == 0)
+            _unlockedIcon = SvgLoader.LoadTexture(Gl, "MineImatorSimplyRemade.assets.img.button.mdi--lock-open-variant-outline.svg");
+
         // Reset per-frame id counter
         _nodeIdCounter  = 0;
         _openContextMenu = false;
@@ -105,13 +112,19 @@ public class SceneTree : UiPanel
         // Draw each top-level object — snapshot the list first so that a
         // reparent/delete triggered during the same frame doesn't mutate it.
         int renderedRootCount = 0;
-        foreach (var obj in GetChildSnapshot(Viewport.SceneObjects, depth: 0))
+        if (ImGui.BeginTable("##sceneTreeItems", 2, ImGuiTableFlags.SizingStretchProp))
         {
-            if (_filteredVisibleSet != null && !_filteredVisibleSet.Contains(obj))
-                continue;
+            ImGui.TableSetupColumn("Object", ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn("Lock", ImGuiTableColumnFlags.WidthFixed, ImGui.GetFrameHeight());
+            foreach (var obj in GetChildSnapshot(Viewport.SceneObjects, depth: 0))
+            {
+                if (_filteredVisibleSet != null && !_filteredVisibleSet.Contains(obj))
+                    continue;
 
-            RenderNode(obj, _filteredVisibleSet, depth: 1);
-            renderedRootCount++;
+                RenderNode(obj, _filteredVisibleSet, depth: 1);
+                renderedRootCount++;
+            }
+            ImGui.EndTable();
         }
 
         if (_filteredVisibleSet != null && renderedRootCount == 0)
@@ -277,6 +290,10 @@ public class SceneTree : UiPanel
     {
         if (obj.HideInSceneTree) return;
 
+        ImGui.TableNextRow();
+        ImGui.TableSetColumnIndex(0);
+        ImGui.AlignTextToFramePadding();
+
         int nodeId    = ++_nodeIdCounter;
         bool hasChildren = HasVisibleChildren(obj.Children, visibilityFilter);
         bool isSelected  = SelectionManager.Instance != null
@@ -374,6 +391,10 @@ public class SceneTree : UiPanel
             ImGui.EndDragDropTarget();
         }
 
+        ImGui.TableSetColumnIndex(1);
+        RenderLockButton(obj);
+        ImGui.TableSetColumnIndex(0);
+
         // ── Recurse ─────────────────────────────────────────────────────────
         if (nodeOpen)
         {
@@ -387,6 +408,31 @@ public class SceneTree : UiPanel
         }
 
         ImGui.PopID();
+    }
+
+    private unsafe void RenderLockButton(SceneObject obj)
+    {
+        float iconSize = ImGui.GetTextLineHeight();
+        uint texture = obj.IsLocked ? _lockedIcon : _unlockedIcon;
+        Vector4 tint = obj.IsLocked
+            ? new Vector4(1f, 0.75f, 0.3f, 1f)
+            : new Vector4(1f, 1f, 1f, 0.45f);
+
+        bool clicked;
+        fixed (byte* id = "##lock\0"u8)
+            clicked = ImGui.ImageButton(id, new ImTextureRef(texId: (ulong)texture),
+                new Vector2(iconSize), Vector2.Zero, Vector2.One, Vector4.Zero, tint);
+
+        if (clicked)
+        {
+            obj.SetLockedRecursive(!obj.IsLocked);
+            MineImatorSimplyRemade.core.project.ProjectManager.Instance.SetDirty(true);
+        }
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(obj.IsLocked
+                ? "Unlock viewport selection for this item and all descendants"
+                : "Lock viewport selection for this item and all descendants");
     }
 
     private List<SceneObject> GetChildSnapshot(IReadOnlyCollection<SceneObject> children, int depth)
@@ -691,6 +737,7 @@ public class SceneTree : UiPanel
         dup.ObjectType          = original.ObjectType;
         dup.LibrarySourceId     = original.LibrarySourceId;
         dup.IsSelectable        = original.IsSelectable;
+        dup.IsLocked            = original.IsLocked;
         dup.Position            = original.Position;
         dup.Rotation            = original.Rotation;
         dup.Scale               = original.Scale;
