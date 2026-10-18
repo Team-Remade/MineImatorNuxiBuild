@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using GlmSharp;
 using MineImatorSimplyRemade.core;
+using MineImatorSimplyRemade.core.graphics;
 using MineImatorSimplyRemade.core.log;
 using MineImatorSimplyRemade.core.startup;
 using MineImatorSimplyRemade.core.window.windows;
@@ -105,6 +106,17 @@ public static class main
             Glfw.SwapInterval(0); // Disable GLFW OpenGL VSync blocking to avoid conflicting with the frame limiter
             _gl = GL.GetApi(Glfw.GetProcAddress);
             MainWindow.SetGL(_gl);
+            
+            // Initialize Veldrid Rendering Backend
+            try
+            {
+                VeldridContext.CreateGraphicsDevice(Glfw, MainWindow.WindowHandle, size.x, size.y);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Veldrid] Failed to create Veldrid graphics context: {ex.Message}");
+            }
+
             Directory.CreateDirectory(ApplicationLocalDirectoryPath);
             string mainWindowIniPath = Path.Combine(ApplicationLocalDirectoryPath, "imgui.ini");
             MainWindow.SetupImgui(mainWindowIniPath);
@@ -198,6 +210,8 @@ public static class main
             {
                 long frameStartTicks = frameTimer.ElapsedTicks;
 
+                VeldridContext.BeginFrame();
+
                 Glfw.PollEvents();
 
                 // Main window always renders.
@@ -219,6 +233,8 @@ public static class main
                     Glfw.MakeContextCurrent(MainWindow.WindowHandle);
                 }
 
+                VeldridContext.EndFrame();
+
                 LimitFrameRate(frameTimer, frameStartTicks, targetFrameTicks);
             }
             
@@ -232,6 +248,8 @@ public static class main
 
             MainWindow.ShutdownImgui();
             CameraWindow.ShutdownImgui();
+
+            VeldridContext.Dispose();
 
             _gl.Dispose();
             Glfw.DestroyWindow(CameraWindow.WindowHandle);
@@ -256,7 +274,7 @@ public static class main
     private static void LimitFrameRate(Stopwatch frameTimer, long frameStartTicks, long targetFrameTicks)
     {
         // Temporarily disabled frame limiter for performance/uncapped FPS benchmarking
-        bool disableLimiter = false;
+        bool disableLimiter = true;
         if (disableLimiter || targetFrameTicks <= 0)
             return;
 
