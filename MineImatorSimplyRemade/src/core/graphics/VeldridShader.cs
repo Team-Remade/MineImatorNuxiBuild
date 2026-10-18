@@ -33,6 +33,31 @@ public class VeldridShader : IDisposable
         return reader.ReadToEnd();
     }
 
+    public static Shader[] CompileFromGlsl(GraphicsDevice gd, string vertSrc, string fragSrc)
+    {
+        var vertBytes = Encoding.UTF8.GetBytes(vertSrc);
+        var fragBytes = Encoding.UTF8.GetBytes(fragSrc);
+
+        var vertDesc = new ShaderDescription(ShaderStages.Vertex, vertBytes, "main");
+        var fragDesc = new ShaderDescription(ShaderStages.Fragment, fragBytes, "main");
+
+        if (gd.BackendType == GraphicsBackend.Vulkan ||
+            gd.BackendType == GraphicsBackend.Direct3D11 ||
+            gd.BackendType == GraphicsBackend.Metal)
+        {
+            var crossCompileOptions = new CrossCompileOptions();
+            return gd.ResourceFactory.CreateFromSpirv(vertDesc, fragDesc, crossCompileOptions);
+        }
+        else
+        {
+            return
+            [
+                gd.ResourceFactory.CreateShader(vertDesc),
+                gd.ResourceFactory.CreateShader(fragDesc)
+            ];
+        }
+    }
+
     public static VeldridShader GetOrCreate(
         GraphicsDevice gd,
         string vertName,
