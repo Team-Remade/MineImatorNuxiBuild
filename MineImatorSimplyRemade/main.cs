@@ -255,7 +255,9 @@ public static class main
 
     private static void LimitFrameRate(Stopwatch frameTimer, long frameStartTicks, long targetFrameTicks)
     {
-        if (targetFrameTicks <= 0)
+        // Temporarily disabled frame limiter for performance/uncapped FPS benchmarking
+        bool disableLimiter = false;
+        if (disableLimiter || targetFrameTicks <= 0)
             return;
 
         long oneMillisecondTicks = Stopwatch.Frequency / 1000;
