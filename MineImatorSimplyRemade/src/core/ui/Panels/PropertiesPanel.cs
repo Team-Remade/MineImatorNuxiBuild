@@ -781,6 +781,7 @@ public class PropertiesPanel : UiPanel
         EnsureObjectLibraryInitialized(projectManager.Manifest);
 
         var library = projectManager.Manifest.ObjectLibrary;
+        var libraryUsageCounts = BuildLibraryUsageCounts();
         var selected = FindLibraryEntryById(library, _selectedLibraryEntryId);
 
         ImGui.SetNextItemWidth(-1);
@@ -792,7 +793,7 @@ public class PropertiesPanel : UiPanel
         {
             bool anyVisible = false;
             foreach (var root in BuildLibraryTreeRoots(library).OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase))
-                anyVisible |= RenderObjectLibraryTreeNode(root);
+                anyVisible |= RenderObjectLibraryTreeNode(root, libraryUsageCounts);
 
             if (!anyVisible)
                 ImGui.TextDisabled("No library objects match your search.");
@@ -802,7 +803,7 @@ public class PropertiesPanel : UiPanel
         selected = FindLibraryEntryById(library, _selectedLibraryEntryId);
         if (selected != null)
         {
-            int usageCount = CountLibraryUsage(selected.LibraryEntryId);
+            int usageCount = GetLibraryUsageCount(libraryUsageCounts, selected.LibraryEntryId);
             string type = string.IsNullOrWhiteSpace(selected.ObjectType) ? "Object" : selected.ObjectType;
             ImGui.TextDisabled($"Type: {type}");
             ImGui.TextDisabled($"Used in scene: {usageCount}");
@@ -885,6 +886,7 @@ public class PropertiesPanel : UiPanel
             InheritPivotOffset = source.InheritPivotOffset,
             InheritVisibility = source.InheritVisibility,
             ObjectVisible = source.ObjectVisible,
+            CastShadow = source.CastShadow,
             InvertFaces = source.InvertFaces,
             BlurTexture = source.BlurTexture,
             TextureMipmaps = source.TextureMipmaps,
@@ -1087,13 +1089,15 @@ public class PropertiesPanel : UiPanel
         return clone;
     }
 
-    private bool RenderObjectLibraryTreeNode(ProjectSceneObjectEntry entry)
+    private bool RenderObjectLibraryTreeNode(
+        ProjectSceneObjectEntry entry,
+        IReadOnlyDictionary<string, int> libraryUsageCounts)
     {
         if (!ShouldShowLibraryEntry(entry))
             return false;
 
         bool isSelected = string.Equals(entry.LibraryEntryId, _selectedLibraryEntryId, StringComparison.OrdinalIgnoreCase);
-        string label = $"{GetLibraryDisplayLabel(entry)} ({CountLibraryUsage(entry.LibraryEntryId)} in scene)##{entry.LibraryEntryId}";
+        string label = $"{GetLibraryDisplayLabel(entry)} ({GetLibraryUsageCount(libraryUsageCounts, entry.LibraryEntryId)} in scene)##{entry.LibraryEntryId}";
         bool hasChildren = entry.Children.Count > 0;
 
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen;
@@ -1109,7 +1113,7 @@ public class PropertiesPanel : UiPanel
         if (hasChildren && open)
         {
             foreach (var child in entry.Children)
-                RenderObjectLibraryTreeNode(child);
+                RenderObjectLibraryTreeNode(child, libraryUsageCounts);
             ImGui.TreePop();
         }
 
@@ -1290,13 +1294,29 @@ public class PropertiesPanel : UiPanel
         }
     }
 
-    private int CountLibraryUsage(string libraryEntryId)
+    private Dictionary<string, int> BuildLibraryUsageCounts()
     {
-        if (string.IsNullOrWhiteSpace(libraryEntryId))
-            return 0;
+        var usageCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var obj in EnumerateSceneObjects())
+        {
+            if (string.IsNullOrWhiteSpace(obj.LibrarySourceId))
+                continue;
 
-        return EnumerateSceneObjects().Count(obj =>
-            string.Equals(obj.LibrarySourceId, libraryEntryId, StringComparison.OrdinalIgnoreCase));
+            usageCounts.TryGetValue(obj.LibrarySourceId, out int usageCount);
+            usageCounts[obj.LibrarySourceId] = usageCount + 1;
+        }
+
+        return usageCounts;
+    }
+
+    private static int GetLibraryUsageCount(
+        IReadOnlyDictionary<string, int> libraryUsageCounts,
+        string libraryEntryId)
+    {
+        return string.IsNullOrWhiteSpace(libraryEntryId) ||
+               !libraryUsageCounts.TryGetValue(libraryEntryId, out int usageCount)
+            ? 0
+            : usageCount;
     }
 
     private static ProjectSceneObjectEntry? FindLibraryEntryById(IEnumerable<ProjectSceneObjectEntry> nodes, string libraryEntryId)

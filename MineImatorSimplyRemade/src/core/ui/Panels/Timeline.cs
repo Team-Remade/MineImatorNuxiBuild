@@ -117,6 +117,7 @@ public class Timeline : UiPanel
     private readonly Dictionary<string, List<TimelineKeyframe>> _propertyKeyframes = new();
     private List<TimelineProperty>                              _displayRows        = new();
     private readonly Dictionary<string, bool>                   _groupExpanded      = new();
+    private readonly Dictionary<TimelineProperty, bool>         _trackRowVisibility = new();
     private readonly HashSet<string>                            _ghostTracks        = new(StringComparer.Ordinal);
 
     // ── Selection ─────────────────────────────────────────────────────────────
@@ -331,6 +332,7 @@ public class Timeline : UiPanel
     {
         UpdatePlayback();
         SyncAudioWithPlayback();
+        _trackRowVisibility.Clear();
 
         if (!ImGui.Begin("Timeline"))
         {
@@ -711,16 +713,15 @@ public class Timeline : UiPanel
 
     private bool IsTrackRowVisible(TimelineProperty row)
     {
-        if (row.PropertyPath == "__header__")
-            return true;
+        if (_trackRowVisibility.TryGetValue(row, out bool visible))
+            return visible;
 
-        if (_ghostModeEnabled && IsTrackRowGhost(row))
-            return false;
+        visible = row.PropertyPath == "__header__" ||
+                  (!_ghostModeEnabled || !IsTrackRowGhost(row)) &&
+                  (row.Indent == 0 || IsGroupChildVisible(row));
 
-        if (row.Indent > 0 && !IsGroupChildVisible(row))
-            return false;
-
-        return true;
+        _trackRowVisibility[row] = visible;
+        return visible;
     }
 
     private bool ShouldShowGhostIndicator(TimelineProperty row)
@@ -1493,7 +1494,10 @@ public class Timeline : UiPanel
 
                 ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetFrameHeight()) * 0.5f);
                 if (ImGui.ArrowButton($"##arr_{gk}", exp ? ImGuiDir.Down : ImGuiDir.Right))
+                {
                     _groupExpanded[gk] = !exp;
+                    _trackRowVisibility.Clear();
+                }
                 ImGui.SameLine();
                 ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetTextLineHeight()) * 0.5f);
                 ImGui.Text(row.Label);
@@ -1535,8 +1539,7 @@ public class Timeline : UiPanel
 
     private bool IsGroupChildVisible(TimelineProperty childRow)
     {
-        var rows = _displayRows.ToArray();
-        foreach (var header in rows)
+        foreach (var header in _displayRows)
         {
             if (!header.IsGroupHeader || header.Object != childRow.Object) continue;
             if (header.GroupPaths == null || !header.GroupPaths.Contains(childRow.PropertyPath)) continue;

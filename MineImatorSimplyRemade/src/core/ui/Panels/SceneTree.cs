@@ -53,6 +53,7 @@ public class SceneTree : UiPanel
 
     // Running ID counter reset each frame
     private int _nodeIdCounter;
+    private readonly List<List<SceneObject>> _childSnapshotsByDepth = [];
 
     // ── Constructor ─────────────────────────────────────────────────────────
 
@@ -104,12 +105,12 @@ public class SceneTree : UiPanel
         // Draw each top-level object — snapshot the list first so that a
         // reparent/delete triggered during the same frame doesn't mutate it.
         int renderedRootCount = 0;
-        foreach (var obj in Viewport.SceneObjects.ToList())
+        foreach (var obj in GetChildSnapshot(Viewport.SceneObjects, depth: 0))
         {
             if (_filteredVisibleSet != null && !_filteredVisibleSet.Contains(obj))
                 continue;
 
-            RenderNode(obj, _filteredVisibleSet);
+            RenderNode(obj, _filteredVisibleSet, depth: 1);
             renderedRootCount++;
         }
 
@@ -272,13 +273,12 @@ public class SceneTree : UiPanel
 
     // ── Rendering helpers ───────────────────────────────────────────────────
 
-    private void RenderNode(SceneObject obj, HashSet<SceneObject>? visibilityFilter)
+    private void RenderNode(SceneObject obj, HashSet<SceneObject>? visibilityFilter, int depth)
     {
         if (obj.HideInSceneTree) return;
 
         int nodeId    = ++_nodeIdCounter;
-        bool hasChildren = obj.Children.Any(c => !c.HideInSceneTree &&
-            (visibilityFilter == null || visibilityFilter.Contains(c)));
+        bool hasChildren = HasVisibleChildren(obj.Children, visibilityFilter);
         bool isSelected  = SelectionManager.Instance != null
             ? SelectionManager.Instance.IsSelected(obj)
             : _selectedObject == obj;
@@ -377,16 +377,43 @@ public class SceneTree : UiPanel
         // ── Recurse ─────────────────────────────────────────────────────────
         if (nodeOpen)
         {
-            foreach (var child in obj.Children.ToList())
+            foreach (var child in GetChildSnapshot(obj.Children, depth))
             {
                 if (child.HideInSceneTree) continue;
                 if (visibilityFilter != null && !visibilityFilter.Contains(child)) continue;
-                RenderNode(child, visibilityFilter);
+                RenderNode(child, visibilityFilter, depth + 1);
             }
             ImGui.TreePop();
         }
 
         ImGui.PopID();
+    }
+
+    private List<SceneObject> GetChildSnapshot(IReadOnlyCollection<SceneObject> children, int depth)
+    {
+        while (_childSnapshotsByDepth.Count <= depth)
+            _childSnapshotsByDepth.Add([]);
+
+        var snapshot = _childSnapshotsByDepth[depth];
+        snapshot.Clear();
+        snapshot.EnsureCapacity(children.Count);
+        foreach (var child in children)
+            snapshot.Add(child);
+        return snapshot;
+    }
+
+    private static bool HasVisibleChildren(
+        IEnumerable<SceneObject> children,
+        HashSet<SceneObject>? visibilityFilter)
+    {
+        foreach (var child in children)
+        {
+            if (!child.HideInSceneTree &&
+                (visibilityFilter == null || visibilityFilter.Contains(child)))
+                return true;
+        }
+
+        return false;
     }
 
     // ── Selection ───────────────────────────────────────────────────────────
