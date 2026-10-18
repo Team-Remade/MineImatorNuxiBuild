@@ -1694,11 +1694,14 @@ public class Gizmo3D : IDisposable
 
             switch (_edit.Mode)
             {
-                case TransformMode.Bend when obj is MiBoneSceneObject bone:
+                case TransformMode.Bend when obj is MiBoneSceneObject bone && bone.BendParameters is { } bend:
                 {
                     int axis = (int)_edit.Plane - (int)TransformPlane.X;
                     vec3 bendAngle = item.BendOriginal;
-                    bendAngle[axis] += glm.Degrees(snap);
+                    bool inverted = axis == 0 ? bend.InvertX : axis == 1 ? bend.InvertY : bend.InvertZ;
+                    // Convert the physical drag to authored space before the setter reapplies inversion.
+                    float delta = glm.Degrees(snap);
+                    bendAngle[axis] += inverted ? -delta : delta;
                     bone.SetEditableBendAngle(bendAngle);
                     break;
                 }
