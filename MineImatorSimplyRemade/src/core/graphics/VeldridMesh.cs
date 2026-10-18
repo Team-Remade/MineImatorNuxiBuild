@@ -104,6 +104,29 @@ public class VeldridMesh : IDisposable
         }
     }
 
+    public void DrawInstanced(CommandList cl, DeviceBuffer instanceBuffer, uint instanceCount, uint instanceStart = 0)
+    {
+        if (VertexBuffer == null || VertexCount == 0 || instanceCount == 0) return;
+
+        cl.SetVertexBuffer(0, VertexBuffer);
+        uint instanceSlot = (uint)(IsSkinned && SkinningBuffer != null ? 2 : 1);
+        if (IsSkinned && SkinningBuffer != null)
+        {
+            cl.SetVertexBuffer(1, SkinningBuffer);
+        }
+        cl.SetVertexBuffer(instanceSlot, instanceBuffer);
+
+        if (IsIndexed && IndexBuffer != null)
+        {
+            cl.SetIndexBuffer(IndexBuffer, IndexFormat.UInt32);
+            cl.DrawIndexed(IndexCount, instanceCount, 0, 0, instanceStart);
+        }
+        else
+        {
+            cl.Draw(VertexCount, instanceCount, 0, instanceStart);
+        }
+    }
+
     public void Dispose()
     {
         VertexBuffer?.Dispose();
