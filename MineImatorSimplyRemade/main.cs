@@ -274,7 +274,7 @@ public static class main
     private static void LimitFrameRate(Stopwatch frameTimer, long frameStartTicks, long targetFrameTicks)
     {
         // Temporarily disabled frame limiter for performance/uncapped FPS benchmarking
-        bool disableLimiter = true;
+        bool disableLimiter = false;
         if (disableLimiter || targetFrameTicks <= 0)
             return;
 
