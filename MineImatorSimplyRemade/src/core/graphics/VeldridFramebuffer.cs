@@ -14,21 +14,38 @@ public class VeldridFramebuffer : IDisposable
     public TextureView? DepthTextureView { get; private set; }
     public Framebuffer Framebuffer { get; private set; } = null!;
 
+    public TextureSampleCount SampleCount { get; }
     public bool HasDepth { get; }
     public PixelFormat ColorFormat { get; }
     public PixelFormat DepthFormat { get; }
+
+    // Resolve target when MSAA is enabled (SampleCount > Count1)
+    public Texture? ResolveColorTexture { get; private set; }
+    public TextureView? ResolveColorTextureView { get; private set; }
+    public Framebuffer? ResolveFramebuffer { get; private set; }
+
+    public bool IsMultisampled => SampleCount != TextureSampleCount.Count1;
+
+    /// <summary>
+    /// Gets the sampleable texture view (resolved view if multisampled, otherwise direct color view).
+    /// </summary>
+    public TextureView SampleableTextureView => IsMultisampled && ResolveColorTextureView != null
+        ? ResolveColorTextureView
+        : ColorTextureView;
 
     public VeldridFramebuffer(
         GraphicsDevice gd,
         uint width,
         uint height,
         bool hasDepth = true,
+        TextureSampleCount sampleCount = TextureSampleCount.Count1,
         PixelFormat colorFormat = PixelFormat.R8_G8_B8_A8_UNorm,
         PixelFormat depthFormat = PixelFormat.D24_UNorm_S8_UInt)
     {
         Width = Math.Max(1, width);
         Height = Math.Max(1, height);
         HasDepth = hasDepth;
+        SampleCount = sampleCount;
         ColorFormat = colorFormat;
         DepthFormat = depthFormat;
 
@@ -51,13 +68,22 @@ public class VeldridFramebuffer : IDisposable
 
     private void Recreate(GraphicsDevice gd, uint width, uint height)
     {
-        var colorDesc = TextureDescription.Texture2D(
+        var colorUsage = TextureUsage.RenderTarget;
+        if (!IsMultisampled)
+        {
+            colorUsage |= TextureUsage.Sampled;
+        }
+
+        var colorDesc = new TextureDescription(
             width,
             height,
             1,
             1,
+            1,
             ColorFormat,
-            TextureUsage.RenderTarget | TextureUsage.Sampled);
+            colorUsage,
+            TextureType.Texture2D,
+            SampleCount);
 
         ColorTexture = gd.ResourceFactory.CreateTexture(colorDesc);
         ColorTextureView = gd.ResourceFactory.CreateTextureView(ColorTexture);
@@ -69,13 +95,16 @@ public class VeldridFramebuffer : IDisposable
         FramebufferAttachmentDescription? depthAttachment = null;
         if (HasDepth)
         {
-            var depthDesc = TextureDescription.Texture2D(
+            var depthDesc = new TextureDescription(
                 width,
                 height,
                 1,
                 1,
+                1,
                 DepthFormat,
-                TextureUsage.DepthStencil);
+                TextureUsage.DepthStencil,
+                TextureType.Texture2D,
+                SampleCount);
 
             DepthTexture = gd.ResourceFactory.CreateTexture(depthDesc);
             DepthTextureView = gd.ResourceFactory.CreateTextureView(DepthTexture);
@@ -84,10 +113,48 @@ public class VeldridFramebuffer : IDisposable
 
         var fbDesc = new FramebufferDescription(depthAttachment, colorAttachments);
         Framebuffer = gd.ResourceFactory.CreateFramebuffer(fbDesc);
+
+        // If MSAA is active, create single-sampled resolve destination
+        if (IsMultisampled)
+        {
+            var resolveDesc = TextureDescription.Texture2D(
+                width,
+                height,
+                1,
+                1,
+                ColorFormat,
+                TextureUsage.RenderTarget | TextureUsage.Sampled);
+
+            ResolveColorTexture = gd.ResourceFactory.CreateTexture(resolveDesc);
+            ResolveColorTextureView = gd.ResourceFactory.CreateTextureView(ResolveColorTexture);
+
+            var resolveFbDesc = new FramebufferDescription(
+                null,
+                [new FramebufferAttachmentDescription(ResolveColorTexture, 0)]);
+            ResolveFramebuffer = gd.ResourceFactory.CreateFramebuffer(resolveFbDesc);
+        }
+    }
+
+    /// <summary>
+    /// Resolves multisampled color buffer into the non-multisampled resolve target texture.
+    /// </summary>
+    public void Resolve(CommandList cl)
+    {
+        if (IsMultisampled && ResolveColorTexture != null)
+        {
+            cl.ResolveTexture(ColorTexture, ResolveColorTexture);
+        }
     }
 
     public void Dispose()
     {
+        ResolveFramebuffer?.Dispose();
+        ResolveColorTextureView?.Dispose();
+        ResolveColorTexture?.Dispose();
+        ResolveFramebuffer = null;
+        ResolveColorTextureView = null;
+        ResolveColorTexture = null;
+
         Framebuffer?.Dispose();
         DepthTextureView?.Dispose();
         DepthTexture?.Dispose();
