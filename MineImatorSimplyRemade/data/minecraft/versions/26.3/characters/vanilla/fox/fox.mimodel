@@ -1,0 +1,310 @@
+{
+  "name": "fox",
+  "texture": "..\\..\\..\\textures\\entity\\fox\\fox.png",
+  "texture_size": [
+    48,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        7.5,
+        0
+      ],
+      "bend": {
+        "offset": 0,
+        "end_offset": 5.5,
+        "size": 4,
+        "part": "upper",
+        "axis": [
+          "x",
+          "y"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -3,
+            -5.5,
+            -3
+          ],
+          "to": [
+            3,
+            5.5,
+            3
+          ],
+          "uv": [
+            30,
+            21
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            -1,
+            5.5
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -3,
+                0
+              ],
+              "to": [
+                4,
+                3,
+                6
+              ],
+              "uv": [
+                7,
+                11
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -3,
+                6
+              ],
+              "to": [
+                2,
+                -1,
+                9
+              ],
+              "uv": [
+                9,
+                21
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -4,
+                3,
+                4
+              ],
+              "to": [
+                -2,
+                5,
+                5
+              ],
+              "uv": [
+                9,
+                2
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                2,
+                3,
+                4
+              ],
+              "to": [
+                4,
+                5,
+                5
+              ],
+              "uv": [
+                16,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -1.9375,
+            -1.5,
+            3.5
+          ],
+          "bend": {
+            "offset": -3.75,
+            "end_offset": 2.25,
+            "part": "lower",
+            "axis": "x"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                15,
+                26
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            1.9375,
+            -1.5,
+            3.5
+          ],
+          "bend": {
+            "offset": -3.75,
+            "end_offset": 2.25,
+            "part": "lower",
+            "axis": "x"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                6,
+                26
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -1.9375,
+            -1.5,
+            -3.5
+          ],
+          "lock_bend": 0,
+          "bend": {
+            "offset": -3.75,
+            "end_offset": 2.25,
+            "part": "lower",
+            "axis": "x"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                15,
+                26
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            1.875,
+            -1.5,
+            -3.5
+          ],
+          "lock_bend": 0,
+          "bend": {
+            "offset": -3.75,
+            "end_offset": 2.25,
+            "part": "lower",
+            "axis": "x"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                6,
+                26
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tail",
+          "position": [
+            0,
+            0,
+            -5.5
+          ],
+          "rotation": [
+            85,
+            0,
+            0
+          ],
+          "lock_bend": 0,
+          "bend": {
+            "offset": -4.5,
+            "end_offset": 4.5,
+            "size": 6,
+            "part": "lower",
+            "axis": [
+              "x",
+              "y",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -9,
+                -2.5
+              ],
+              "to": [
+                2,
+                0,
+                2.5
+              ],
+              "uv": [
+                35,
+                5
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

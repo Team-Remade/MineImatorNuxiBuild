@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\zombie_villager\\zombie_villager.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\zombie_villager\\zombie_villager.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

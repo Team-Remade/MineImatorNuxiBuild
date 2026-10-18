@@ -1,0 +1,403 @@
+{
+  "name": "glow_squid_baby",
+  "texture": "..\\..\\..\\textures\\entity\\squid\\glow_squid_baby.png",
+  "texture_size": [
+    32,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "color_brightness": 0.75,
+      "position": [
+        0,
+        3.5,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -4,
+            -3.5,
+            -4
+          ],
+          "to": [
+            4,
+            6.5,
+            4
+          ],
+          "uv": [
+            8,
+            8
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "tentacle_1",
+          "position": [
+            2.12132,
+            -3.5,
+            2.12132
+          ],
+          "rotation": [
+            0,
+            45,
+            0
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_2",
+          "position": [
+            0,
+            -3.5,
+            3
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_3",
+          "position": [
+            -2.12132,
+            -3.5,
+            2.12132
+          ],
+          "rotation": [
+            0,
+            -45,
+            0
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_4",
+          "position": [
+            -3,
+            -3.5,
+            0
+          ],
+          "rotation": [
+            0,
+            -90,
+            0
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_5",
+          "position": [
+            -2.12132,
+            -3.5,
+            -2.12132
+          ],
+          "rotation": [
+            0,
+            -135,
+            0
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_6",
+          "position": [
+            0,
+            -3.5,
+            -3
+          ],
+          "rotation": [
+            0,
+            -180,
+            0
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_7",
+          "position": [
+            2.12132,
+            -3.5,
+            -2.12132
+          ],
+          "rotation": [
+            0,
+            -225,
+            0
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_8",
+          "position": [
+            3,
+            -3.5,
+            0
+          ],
+          "rotation": [
+            0,
+            -270,
+            0
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

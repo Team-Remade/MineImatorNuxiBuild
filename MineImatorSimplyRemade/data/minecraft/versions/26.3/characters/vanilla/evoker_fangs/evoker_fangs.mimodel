@@ -1,0 +1,169 @@
+{
+  "name": "evoker_fangs",
+  "texture": "..\\..\\..\\textures\\entity\\illager\\evoker_fangs.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "base",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -5,
+            0,
+            -5
+          ],
+          "to": [
+            5,
+            12,
+            5
+          ],
+          "uv": [
+            10,
+            10
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "jaw_1",
+          "position": [
+            0,
+            12,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                0,
+                -14,
+                -4
+              ],
+              "to": [
+                4,
+                0,
+                4
+              ],
+              "uv": [
+                48,
+                8
+              ],
+              "position": [
+                -1.5,
+                0,
+                0
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                0,
+                -14,
+                -4
+              ],
+              "to": [
+                4,
+                0,
+                4
+              ],
+              "uv": [
+                48,
+                8
+              ],
+              "position": [
+                -1.5,
+                0,
+                0
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ],
+              "invert": true
+            }
+          ]
+        },
+        {
+          "name": "jaw_2",
+          "position": [
+            0,
+            12,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                0,
+                -14,
+                -4
+              ],
+              "to": [
+                4,
+                0,
+                4
+              ],
+              "uv": [
+                48,
+                8
+              ],
+              "position": [
+                1.5,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                180
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                0,
+                -14,
+                -4
+              ],
+              "to": [
+                4,
+                0,
+                4
+              ],
+              "uv": [
+                48,
+                8
+              ],
+              "position": [
+                1.5,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                180
+              ],
+              "invert": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

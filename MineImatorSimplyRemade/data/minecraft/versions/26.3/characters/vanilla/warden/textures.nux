@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\warden\\warden.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\warden\\warden.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

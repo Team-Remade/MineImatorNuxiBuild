@@ -1,0 +1,57 @@
+{
+  "default": "..\\..\\..\\textures\\block\\oak_planks.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\block\\oak_planks.png"
+    },
+    {
+      "name": "Spruce",
+      "file": "..\\..\\..\\textures\\block\\spruce_planks.png"
+    },
+    {
+      "name": "Birch",
+      "file": "..\\..\\..\\textures\\block\\birch_planks.png"
+    },
+    {
+      "name": "Jungle",
+      "file": "..\\..\\..\\textures\\block\\jungle_planks.png"
+    },
+    {
+      "name": "Acacia",
+      "file": "..\\..\\..\\textures\\block\\acacia_planks.png"
+    },
+    {
+      "name": "Dark Oak",
+      "file": "..\\..\\..\\textures\\block\\dark_oak_planks.png"
+    },
+    {
+      "name": "Mangrove",
+      "file": "..\\..\\..\\textures\\block\\mangrove_planks.png"
+    },
+    {
+      "name": "Cherry",
+      "file": "..\\..\\..\\textures\\block\\cherry_planks.png"
+    },
+    {
+      "name": "Pale Oak",
+      "file": "..\\..\\..\\textures\\block\\pale_oak_planks.png"
+    },
+    {
+      "name": "Poplar",
+      "file": "..\\..\\..\\textures\\block\\poplar_planks.png"
+    },
+    {
+      "name": "Crimson",
+      "file": "..\\..\\..\\textures\\block\\crimson_planks.png"
+    },
+    {
+      "name": "Warped",
+      "file": "..\\..\\..\\textures\\block\\warped_planks.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

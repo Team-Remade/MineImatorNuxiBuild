@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\banner\\banner_base.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\banner\\banner_base.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1071,7 +1071,8 @@ public class MineImatorLoader
             halfDepth - rotPoint[2] / 16f);
     }
 
-    private static void ApplyTextureOverrideToScene(SceneObject root, uint textureId, uint onlyIfTextureId = 0)
+    /// <summary>Replaces matching skin textures, including stored mesh-regeneration data.</summary>
+    public static void ApplyTextureOverrideToScene(SceneObject root, uint textureId, uint onlyIfTextureId = 0)
     {
         if (textureId == 0 || root == null)
             return;

@@ -1,0 +1,268 @@
+{
+  "name": "magma_cube",
+  "texture": "..\\..\\..\\textures\\entity\\slime\\magmacube.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "magma",
+      "color_brightness": 0.75,
+      "position": [
+        0,
+        4,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -2,
+            -2
+          ],
+          "to": [
+            2,
+            2,
+            2
+          ],
+          "uv": [
+            28,
+            44
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "slice_1",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                0,
+                -4
+              ],
+              "to": [
+                4,
+                1,
+                4
+              ],
+              "uv": [
+                8,
+                35
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "slice_2",
+              "position": [
+                0,
+                1,
+                0
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -4,
+                    0,
+                    -4
+                  ],
+                  "to": [
+                    4,
+                    1,
+                    4
+                  ],
+                  "uv": [
+                    8,
+                    26
+                  ]
+                }
+              ],
+              "parts": [
+                {
+                  "name": "slice_3",
+                  "position": [
+                    0,
+                    1,
+                    0
+                  ],
+                  "shapes": [
+                    {
+                      "type": "block",
+                      "from": [
+                        -4,
+                        0,
+                        -4
+                      ],
+                      "to": [
+                        4,
+                        1,
+                        4
+                      ],
+                      "uv": [
+                        8,
+                        17
+                      ]
+                    }
+                  ],
+                  "parts": [
+                    {
+                      "name": "slice_4",
+                      "position": [
+                        0,
+                        1,
+                        0
+                      ],
+                      "shapes": [
+                        {
+                          "type": "block",
+                          "from": [
+                            -4,
+                            0,
+                            -4
+                          ],
+                          "to": [
+                            4,
+                            1,
+                            4
+                          ],
+                          "uv": [
+                            8,
+                            8
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "slice_5",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -1,
+                -4
+              ],
+              "to": [
+                4,
+                0,
+                4
+              ],
+              "uv": [
+                40,
+                8
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "slice_6",
+              "position": [
+                0,
+                -1,
+                0
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -4,
+                    -1,
+                    -4
+                  ],
+                  "to": [
+                    4,
+                    0,
+                    4
+                  ],
+                  "uv": [
+                    40,
+                    17
+                  ]
+                }
+              ],
+              "parts": [
+                {
+                  "name": "slice_7",
+                  "position": [
+                    0,
+                    -1,
+                    0
+                  ],
+                  "shapes": [
+                    {
+                      "type": "block",
+                      "from": [
+                        -4,
+                        -1,
+                        -4
+                      ],
+                      "to": [
+                        4,
+                        0,
+                        4
+                      ],
+                      "uv": [
+                        40,
+                        26
+                      ]
+                    }
+                  ],
+                  "parts": [
+                    {
+                      "name": "slice_8",
+                      "position": [
+                        0,
+                        -1,
+                        0
+                      ],
+                      "shapes": [
+                        {
+                          "type": "block",
+                          "from": [
+                            -4,
+                            -1,
+                            -4
+                          ],
+                          "to": [
+                            4,
+                            0,
+                            4
+                          ],
+                          "uv": [
+                            40,
+                            35
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

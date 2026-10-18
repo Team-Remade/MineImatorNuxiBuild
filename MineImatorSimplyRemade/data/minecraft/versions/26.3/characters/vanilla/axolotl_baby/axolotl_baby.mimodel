@@ -1,0 +1,538 @@
+{
+  "name": "axolotl_baby",
+  "texture": "..\\..\\..\\textures\\entity\\axolotl\\axolotl_lucy_baby.png",
+  "texture_size": [
+    32,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        1,
+        -1
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -1,
+            -3
+          ],
+          "to": [
+            2,
+            1,
+            3
+          ],
+          "uv": [
+            6,
+            6
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            0,
+            -1,
+            -2
+          ],
+          "to": [
+            0,
+            2,
+            3
+          ],
+          "uv": [
+            5,
+            17
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            0,
+            -1,
+            -2
+          ],
+          "to": [
+            0,
+            2,
+            3
+          ],
+          "uv": [
+            5,
+            17
+          ],
+          "invert": true
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            0,
+            3
+          ],
+          "scale": [
+            1.001,
+            1.001,
+            1.001
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -1,
+                0
+              ],
+              "to": [
+                3,
+                2,
+                4
+              ],
+              "uv": [
+                4,
+                12
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "right_gills",
+              "position": [
+                -3,
+                1,
+                2
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -3,
+                    -2,
+                    0
+                  ],
+                  "to": [
+                    0,
+                    3,
+                    0
+                  ],
+                  "uv": [
+                    20,
+                    3
+                  ]
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -3,
+                    -2,
+                    0
+                  ],
+                  "to": [
+                    0,
+                    3,
+                    0
+                  ],
+                  "uv": [
+                    20,
+                    3
+                  ],
+                  "invert": true
+                }
+              ]
+            },
+            {
+              "name": "top_gills",
+              "position": [
+                0,
+                2,
+                2
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -3,
+                    0,
+                    0
+                  ],
+                  "to": [
+                    3,
+                    3,
+                    0
+                  ],
+                  "uv": [
+                    20,
+                    0
+                  ]
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -3,
+                    0,
+                    0
+                  ],
+                  "to": [
+                    3,
+                    3,
+                    0
+                  ],
+                  "uv": [
+                    20,
+                    0
+                  ],
+                  "invert": true
+                }
+              ]
+            },
+            {
+              "name": "left_gills",
+              "position": [
+                3,
+                1,
+                2
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    0,
+                    -2,
+                    0
+                  ],
+                  "to": [
+                    3,
+                    3,
+                    0
+                  ],
+                  "uv": [
+                    20,
+                    8
+                  ]
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    0,
+                    -2,
+                    0
+                  ],
+                  "to": [
+                    3,
+                    3,
+                    0
+                  ],
+                  "uv": [
+                    20,
+                    8
+                  ],
+                  "invert": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -2,
+            0,
+            1.5
+          ],
+          "bend": {
+            "offset": -1.5,
+            "end_offset": 1.5,
+            "part": "left",
+            "axis": "z"
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                -3,
+                -0.5,
+                0
+              ],
+              "to": [
+                0,
+                0.5,
+                0
+              ],
+              "uv": [
+                21,
+                16
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                -3,
+                -0.5,
+                -0.0001
+              ],
+              "to": [
+                0,
+                0.5,
+                -0.0001
+              ],
+              "uv": [
+                24,
+                16
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            2,
+            0,
+            1.5
+          ],
+          "bend": {
+            "offset": 1.5,
+            "end_offset": 1.5,
+            "part": "right",
+            "axis": "z",
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                0,
+                -0.5,
+                0
+              ],
+              "to": [
+                3,
+                0.5,
+                0
+              ],
+              "uv": [
+                21,
+                13
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                0,
+                -0.5,
+                -0.0001
+              ],
+              "to": [
+                3,
+                0.5,
+                -0.0001
+              ],
+              "uv": [
+                24,
+                13
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -2,
+            0,
+            -1.5
+          ],
+          "bend": {
+            "offset": -1.5,
+            "end_offset": 1.5,
+            "part": "left",
+            "axis": "z"
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                -3,
+                -0.5,
+                0
+              ],
+              "to": [
+                0,
+                0.5,
+                0
+              ],
+              "uv": [
+                21,
+                15
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                -3,
+                -0.5,
+                -0.0001
+              ],
+              "to": [
+                0,
+                0.5,
+                -0.0001
+              ],
+              "uv": [
+                24,
+                15
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            2,
+            0,
+            -1.5
+          ],
+          "bend": {
+            "offset": 1.5,
+            "end_offset": 1.5,
+            "part": "right",
+            "axis": "z",
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                0,
+                -0.5,
+                0
+              ],
+              "to": [
+                3,
+                0.5,
+                0
+              ],
+              "uv": [
+                21,
+                14
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                0,
+                -0.5,
+                -0.0001
+              ],
+              "to": [
+                3,
+                0.5,
+                -0.0001
+              ],
+              "uv": [
+                24,
+                14
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tail",
+          "position": [
+            0,
+            0.5,
+            -3
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 4,
+            "size": 6,
+            "detail": 1,
+            "part": "back",
+            "axis": "y"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                0,
+                -1.5,
+                -7
+              ],
+              "to": [
+                0,
+                1.5,
+                1
+              ],
+              "uv": [
+                18,
+                17
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                0,
+                -1.5,
+                -7
+              ],
+              "to": [
+                0,
+                1.5,
+                1
+              ],
+              "uv": [
+                18,
+                17
+              ],
+              "invert": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

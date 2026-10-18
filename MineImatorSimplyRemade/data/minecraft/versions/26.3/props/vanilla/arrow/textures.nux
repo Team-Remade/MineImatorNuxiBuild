@@ -1,0 +1,21 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\projectiles\\arrow.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\projectiles\\arrow.png"
+    },
+    {
+      "name": "Spectral",
+      "file": "..\\..\\..\\textures\\entity\\projectiles\\arrow_spectral.png"
+    },
+    {
+      "name": "Tipped",
+      "file": "..\\..\\..\\textures\\entity\\projectiles\\arrow_tipped.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

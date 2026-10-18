@@ -1,0 +1,431 @@
+{
+  "name": "happy_ghast_baby",
+  "texture": "..\\..\\..\\textures\\entity\\ghast\\happy_ghast_baby.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "scale": [
+    0.95,
+    0.95,
+    0.95
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        8,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -8,
+            -8,
+            -8
+          ],
+          "to": [
+            8,
+            8,
+            8
+          ],
+          "uv": [
+            16,
+            16
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -8,
+            -8,
+            -8
+          ],
+          "to": [
+            8,
+            8,
+            8
+          ],
+          "uv": [
+            16,
+            48
+          ],
+          "inflate": -0.5
+        }
+      ],
+      "parts": [
+        {
+          "name": "tentacle_1",
+          "position": [
+            -3.75,
+            -7,
+            5
+          ],
+          "rotation": [
+            30,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -2.5,
+            "end_offset": 2.5,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -5,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_2",
+          "position": [
+            1.25,
+            -7,
+            5
+          ],
+          "rotation": [
+            30,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -3.5,
+            "end_offset": 3.5,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -7,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_3",
+          "position": [
+            6.25,
+            -7,
+            5
+          ],
+          "rotation": [
+            30,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -2,
+            "end_offset": 2,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -4,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_4",
+          "position": [
+            -6.25,
+            -7,
+            0
+          ],
+          "rotation": [
+            30,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -2.5,
+            "end_offset": 2.5,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -5,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_5",
+          "position": [
+            -1.25,
+            -7,
+            0
+          ],
+          "rotation": [
+            30,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -2.5,
+            "end_offset": 2.5,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -5,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_6",
+          "position": [
+            3.75,
+            -7,
+            0
+          ],
+          "rotation": [
+            30,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -3.5,
+            "end_offset": 3.5,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -7,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_7",
+          "position": [
+            -3.75,
+            -7,
+            -5
+          ],
+          "rotation": [
+            30,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -4,
+            "end_offset": 4,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_8",
+          "position": [
+            1.25,
+            -7,
+            -5
+          ],
+          "rotation": [
+            30,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -4,
+            "end_offset": 4,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tentacle_9",
+          "position": [
+            6.25,
+            -7,
+            -5
+          ],
+          "rotation": [
+            30,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -2.5,
+            "end_offset": 2.5,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -5,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

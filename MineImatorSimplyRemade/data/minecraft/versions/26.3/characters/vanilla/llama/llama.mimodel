@@ -1,0 +1,674 @@
+{
+  "name": "llama",
+  "texture": "..\\..\\..\\textures\\entity\\llama\\llama_creamy.png",
+  "texture_size": [
+    128,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        17,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -6,
+            -8,
+            -5
+          ],
+          "to": [
+            6,
+            10,
+            5
+          ],
+          "uv": [
+            39,
+            10
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "description": "decor",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\llama_body\\white.png",
+          "texture_size": [
+            128,
+            64
+          ],
+          "from": [
+            -6,
+            -8,
+            -5
+          ],
+          "to": [
+            6,
+            10,
+            5
+          ],
+          "uv": [
+            39,
+            10
+          ],
+          "inflate": 0.5,
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "visible": false
+        }
+      ],
+      "parts": [
+        {
+          "name": "neck",
+          "position": [
+            0,
+            -2,
+            7
+          ],
+          "bend": {
+            "offset": 6,
+            "end_offset": 12,
+            "size": 8,
+            "part": "upper",
+            "axis": [
+              "x",
+              "y",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                0,
+                -3
+              ],
+              "to": [
+                4,
+                18,
+                3
+              ],
+              "uv": [
+                6,
+                20
+              ],
+              "position": [
+                0,
+                0,
+                3
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -2,
+                12,
+                3
+              ],
+              "to": [
+                2,
+                16,
+                7
+              ],
+              "uv": [
+                9,
+                9
+              ],
+              "position": [
+                0,
+                0,
+                3
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -4,
+                18,
+                -1
+              ],
+              "to": [
+                -1,
+                21,
+                1
+              ],
+              "uv": [
+                19,
+                2
+              ],
+              "position": [
+                0,
+                0,
+                3
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                1,
+                18,
+                -1
+              ],
+              "to": [
+                4,
+                21,
+                1
+              ],
+              "uv": [
+                19,
+                2
+              ],
+              "position": [
+                0,
+                0,
+                3
+              ]
+            },
+            {
+              "type": "block",
+              "description": "decor",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\llama_body\\white.png",
+              "texture_size": [
+                128,
+                64
+              ],
+              "from": [
+                -4,
+                0,
+                -3
+              ],
+              "to": [
+                4,
+                18,
+                3
+              ],
+              "uv": [
+                6,
+                20
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                0,
+                3
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "decor",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\llama_body\\white.png",
+              "texture_size": [
+                128,
+                64
+              ],
+              "from": [
+                -2,
+                12,
+                3
+              ],
+              "to": [
+                2,
+                16,
+                7
+              ],
+              "uv": [
+                9,
+                9
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                0,
+                3
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "decor",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\llama_body\\white.png",
+              "texture_size": [
+                128,
+                64
+              ],
+              "from": [
+                -4,
+                18,
+                -1
+              ],
+              "to": [
+                -1,
+                21,
+                1
+              ],
+              "uv": [
+                19,
+                2
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                0,
+                3
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "decor",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\llama_body\\white.png",
+              "texture_size": [
+                128,
+                64
+              ],
+              "from": [
+                1,
+                18,
+                -1
+              ],
+              "to": [
+                4,
+                21,
+                1
+              ],
+              "uv": [
+                19,
+                2
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                0,
+                3
+              ],
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -3.5,
+            -5,
+            6
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 7,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                2,
+                2
+              ],
+              "uv": [
+                33,
+                33
+              ]
+            },
+            {
+              "type": "block",
+              "description": "decor",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\llama_body\\white.png",
+              "texture_size": [
+                128,
+                64
+              ],
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                2,
+                2
+              ],
+              "uv": [
+                33,
+                33
+              ],
+              "inflate": 0.5,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            3.5,
+            -5,
+            6
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 7,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                2,
+                2
+              ],
+              "uv": [
+                33,
+                33
+              ]
+            },
+            {
+              "type": "block",
+              "description": "decor",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\llama_body\\white.png",
+              "texture_size": [
+                128,
+                64
+              ],
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                2,
+                2
+              ],
+              "uv": [
+                33,
+                33
+              ],
+              "inflate": 0.5,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -3.5,
+            -5,
+            -5
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 7,
+            "part": "lower",
+            "axis": "x"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                2,
+                2
+              ],
+              "uv": [
+                33,
+                33
+              ]
+            },
+            {
+              "type": "block",
+              "description": "decor",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\llama_body\\white.png",
+              "texture_size": [
+                128,
+                64
+              ],
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                2,
+                2
+              ],
+              "uv": [
+                33,
+                33
+              ],
+              "inflate": 0.5,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            3.5,
+            -5,
+            -5
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 7,
+            "part": "lower",
+            "axis": "x"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                2,
+                2
+              ],
+              "uv": [
+                33,
+                33
+              ]
+            },
+            {
+              "type": "block",
+              "description": "decor",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\llama_body\\white.png",
+              "texture_size": [
+                128,
+                64
+              ],
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                2,
+                2
+              ],
+              "uv": [
+                33,
+                33
+              ],
+              "inflate": 0.5,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "chests",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "parts": [
+            {
+              "name": "right_chest",
+              "position": [
+                -5.5,
+                0,
+                0
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -4,
+                    -4,
+                    0
+                  ],
+                  "to": [
+                    4,
+                    4,
+                    3
+                  ],
+                  "uv": [
+                    48,
+                    31
+                  ],
+                  "rotation": [
+                    0,
+                    -90,
+                    0
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "decor",
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\llama_body\\white.png",
+                  "texture_size": [
+                    128,
+                    64
+                  ],
+                  "from": [
+                    -4,
+                    -4,
+                    0
+                  ],
+                  "to": [
+                    4,
+                    4,
+                    3
+                  ],
+                  "uv": [
+                    48,
+                    31
+                  ],
+                  "inflate": 0.5,
+                  "rotation": [
+                    0,
+                    -90,
+                    0
+                  ],
+                  "visible": false
+                }
+              ],
+              "visible": false
+            },
+            {
+              "name": "left_chest",
+              "position": [
+                5.5,
+                0,
+                0
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -4,
+                    -4,
+                    -3
+                  ],
+                  "to": [
+                    4,
+                    4,
+                    0
+                  ],
+                  "uv": [
+                    48,
+                    44
+                  ],
+                  "rotation": [
+                    0,
+                    -90,
+                    0
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "decor",
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\llama_body\\white.png",
+                  "texture_size": [
+                    128,
+                    64
+                  ],
+                  "from": [
+                    -4,
+                    -4,
+                    -3
+                  ],
+                  "to": [
+                    4,
+                    4,
+                    0
+                  ],
+                  "uv": [
+                    48,
+                    44
+                  ],
+                  "inflate": 0.5,
+                  "rotation": [
+                    0,
+                    -90,
+                    0
+                  ],
+                  "visible": false
+                }
+              ],
+              "visible": false
+            }
+          ],
+          "visible": false
+        }
+      ]
+    }
+  ]
+}

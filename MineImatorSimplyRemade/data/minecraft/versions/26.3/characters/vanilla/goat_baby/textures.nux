@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\goat\\goat_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\goat\\goat_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

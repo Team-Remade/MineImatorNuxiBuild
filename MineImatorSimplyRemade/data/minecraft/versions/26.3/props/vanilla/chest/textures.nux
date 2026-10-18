@@ -1,0 +1,41 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\chest\\normal.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\chest\\normal.png"
+    },
+    {
+      "name": "Trapped",
+      "file": "..\\..\\..\\textures\\entity\\chest\\trapped.png"
+    },
+    {
+      "name": "Copper",
+      "file": "..\\..\\..\\textures\\entity\\chest\\copper.png"
+    },
+    {
+      "name": "Copper Exposed",
+      "file": "..\\..\\..\\textures\\entity\\chest\\copper_exposed.png"
+    },
+    {
+      "name": "Copper Weathered",
+      "file": "..\\..\\..\\textures\\entity\\chest\\copper_weathered.png"
+    },
+    {
+      "name": "Copper Oxidized",
+      "file": "..\\..\\..\\textures\\entity\\chest\\copper_oxidized.png"
+    },
+    {
+      "name": "Ender",
+      "file": "..\\..\\..\\textures\\entity\\chest\\ender.png"
+    },
+    {
+      "name": "Christmas",
+      "file": "..\\..\\..\\textures\\entity\\chest\\christmas.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "name": "shulker_spark",
+  "texture": "..\\..\\..\\textures\\entity\\shulker\\spark.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "spark",
+      "color_brightness": 0.75,
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -4,
+            -4,
+            -1
+          ],
+          "to": [
+            4,
+            4,
+            1
+          ],
+          "uv": [
+            2,
+            2
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -4,
+            -1,
+            -4
+          ],
+          "to": [
+            4,
+            1,
+            4
+          ],
+          "uv": [
+            28,
+            8
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -1,
+            -4,
+            -4
+          ],
+          "to": [
+            1,
+            4,
+            4
+          ],
+          "uv": [
+            8,
+            18
+          ]
+        }
+      ]
+    }
+  ]
+}

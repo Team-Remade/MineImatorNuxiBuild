@@ -1,0 +1,58 @@
+{
+  "name": "cape",
+  "texture": "..\\..\\..\\textures\\entity\\mineimator\\cape_mojang_new.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "cape",
+      "position": [
+        0,
+        6,
+        -2
+      ],
+      "bend": {
+        "offset": -8,
+        "end_offset": 8,
+        "size": 16,
+        "part": "lower",
+        "axis": [
+          "x",
+          "y",
+          "z"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -5,
+            -16,
+            -0.5
+          ],
+          "to": [
+            5,
+            0,
+            0.5
+          ],
+          "uv": [
+            1,
+            1
+          ],
+          "position": [
+            0,
+            0,
+            -0.5
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ]
+        }
+      ]
+    }
+  ]
+}

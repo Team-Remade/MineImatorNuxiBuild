@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\turtle\\turtle_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\turtle\\turtle_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

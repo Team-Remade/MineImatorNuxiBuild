@@ -1,0 +1,25 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\bee\\bee.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\bee\\bee.png"
+    },
+    {
+      "name": "Bee Nectar",
+      "file": "..\\..\\..\\textures\\entity\\bee\\bee_nectar.png"
+    },
+    {
+      "name": "Bee Angry",
+      "file": "..\\..\\..\\textures\\entity\\bee\\bee_angry.png"
+    },
+    {
+      "name": "Bee Angry Nectar",
+      "file": "..\\..\\..\\textures\\entity\\bee\\bee_angry_nectar.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

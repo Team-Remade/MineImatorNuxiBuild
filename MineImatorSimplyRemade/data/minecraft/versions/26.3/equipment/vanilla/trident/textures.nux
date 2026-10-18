@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\trident\\trident.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\trident\\trident.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\piglin\\piglin.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\piglin\\piglin.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

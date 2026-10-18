@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\spider\\cave_spider.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\spider\\cave_spider.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

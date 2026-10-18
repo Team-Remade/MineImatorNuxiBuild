@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\creaking\\creaking.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\creaking\\creaking.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

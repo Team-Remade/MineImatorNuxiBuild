@@ -1,0 +1,257 @@
+{
+	"format": 32,
+	"created_in": "1.2.9 (Patch 2, 2021.12.20)",
+	"is_model": true,
+	"tempo": 24,
+	"length": 20,
+	"keyframes": [
+		{
+			"position": 15,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_Z": 0.09583,
+				"ROT_X": -45.11472,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_Z": 0.09583,
+				"ROT_X": -45.11472,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_Y": 1.33784,
+				"POS_Z": 0.09583,
+				"ROT_X": -55.94033,
+				"ROT_Z": 7.76424,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_Y": 1.33784,
+				"POS_Z": 0.09583,
+				"ROT_X": -55.94033,
+				"ROT_Z": -14.24289,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "left_back_leg",
+			"values": {
+				"POS_Y": -0.28433,
+				"POS_Z": 0.29319,
+				"ROT_X": 5.05962,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "right_back_leg",
+			"values": {
+				"POS_Y": -0.28433,
+				"POS_Z": 0.29319,
+				"ROT_X": 5.05962,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "right_back_leg",
+			"values": {
+				"POS_Y": -0.95076,
+				"POS_Z": -0.73345,
+				"ROT_X": -13.69128,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "left_back_leg",
+			"values": {
+				"POS_Y": -0.95076,
+				"POS_Z": -0.73345,
+				"ROT_X": -13.69128,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "left_back_leg",
+			"values": {
+				"POS_Y": -0.26279,
+				"POS_Z": -0.18519,
+				"ROT_X": -5.45497,
+				"TRANSITION": "easeinsine"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "right_back_leg",
+			"values": {
+				"POS_Y": -0.26279,
+				"POS_Z": -0.18519,
+				"ROT_X": -5.45497,
+				"TRANSITION": "easeinsine"
+			}
+		},
+		{
+			"position": 2,
+			"part_name": "left_back_leg",
+			"values": {
+				"POS_Y": -0.32041,
+				"POS_Z": -0.67698,
+				"ROT_X": 45.34244,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 2,
+			"part_name": "right_back_leg",
+			"values": {
+				"POS_Y": -0.32041,
+				"POS_Z": -0.67698,
+				"ROT_X": 45.34244,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 7.57065,
+				"POS_Z": 1.33684,
+				"ROT_X": 26.07352
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 7.9117,
+				"POS_Z": 11.67547,
+				"ROT_X": 26.92875
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 2.18577,
+				"POS_Z": 11.06588,
+				"ROT_X": -20.55593
+			}
+		},
+		{
+			"position": 2,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 1.07164,
+				"POS_Z": 3.10322,
+				"ROT_X": -25.35
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 6.58181,
+				"POS_Z": 14.46009,
+				"ROT_X": 10.26911
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 3.59069,
+				"POS_Z": 14.46009,
+				"ROT_X": -7.25691
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 4.92553,
+				"POS_Z": 16,
+				"ROT_X": -0.47566
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_Z": 0.4608,
+				"ROT_X": -6.65595,
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_Z": 0.4608,
+				"ROT_X": -6.65595,
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "body",
+			"values": {
+				"POS_Z": -0.14595,
+				"ROT_X": 6.49824,
+				"TRANSITION": "easeinsine"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_Z": 0.11904,
+				"ROT_X": -2.74615
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_Z": 0.11904,
+				"ROT_X": -2.74615
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 6.56557,
+				"POS_Z": -0.06722,
+				"ROT_X": 0.9865
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

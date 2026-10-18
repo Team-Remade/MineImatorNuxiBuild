@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\block\\piston_side.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\block\\piston_side.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

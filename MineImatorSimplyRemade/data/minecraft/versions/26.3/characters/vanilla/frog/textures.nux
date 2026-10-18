@@ -1,0 +1,21 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\frog\\frog_temperate.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\frog\\frog_temperate.png"
+    },
+    {
+      "name": "Frog Cold",
+      "file": "..\\..\\..\\textures\\entity\\frog\\frog_cold.png"
+    },
+    {
+      "name": "Frog Warm",
+      "file": "..\\..\\..\\textures\\entity\\frog\\frog_warm.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

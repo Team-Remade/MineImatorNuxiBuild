@@ -1,0 +1,173 @@
+{
+  "name": "dragon_head",
+  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon.png",
+  "texture_size": [
+    256,
+    256
+  ],
+  "scale": [
+    0.75,
+    0.75,
+    0.75
+  ],
+  "parts": [
+    {
+      "name": "head",
+      "position": [
+        0,
+        -0.01,
+        2
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -8,
+            0,
+            -8
+          ],
+          "to": [
+            8,
+            16,
+            8
+          ],
+          "uv": [
+            128,
+            46
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            3,
+            16,
+            -4
+          ],
+          "to": [
+            5,
+            20,
+            2
+          ],
+          "uv": [
+            6,
+            6
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -5,
+            16,
+            -4
+          ],
+          "to": [
+            -3,
+            20,
+            2
+          ],
+          "uv": [
+            6,
+            6
+          ],
+          "texture_mirror": true
+        }
+      ],
+      "parts": [
+        {
+          "name": "mouth_lower",
+          "position": [
+            0,
+            4.001,
+            6
+          ],
+          "rotation": [
+            12,
+            0,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -6,
+                -4,
+                0
+              ],
+              "to": [
+                6,
+                0,
+                16
+              ],
+              "uv": [
+                192,
+                81
+              ]
+            }
+          ]
+        },
+        {
+          "name": "mouth_upper",
+          "position": [
+            0,
+            4,
+            6
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -6,
+                0,
+                0
+              ],
+              "to": [
+                6,
+                5,
+                16
+              ],
+              "uv": [
+                192,
+                60
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                3,
+                5,
+                10
+              ],
+              "to": [
+                5,
+                7,
+                14
+              ],
+              "uv": [
+                116,
+                4
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -5,
+                5,
+                10
+              ],
+              "to": [
+                -3,
+                7,
+                14
+              ],
+              "uv": [
+                116,
+                4
+              ],
+              "texture_mirror": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

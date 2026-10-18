@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\block\\tripwire_hook.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\block\\tripwire_hook.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,778 @@
+{
+  "name": "raft",
+  "texture": "..\\..\\..\\textures\\entity\\boat\\bamboo.png",
+  "texture_size": [
+    128,
+    64
+  ],
+  "parts": [
+    {
+      "name": "raft",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "description": "raft",
+          "from": [
+            -14,
+            -8,
+            -4
+          ],
+          "to": [
+            14,
+            8,
+            0
+          ],
+          "uv": [
+            4,
+            4
+          ],
+          "rotation": [
+            90,
+            -90,
+            0
+          ],
+          "texture": "..\\..\\..\\textures\\entity\\boat\\bamboo.png"
+        },
+        {
+          "type": "block",
+          "description": "raft",
+          "from": [
+            -14,
+            -10,
+            -8
+          ],
+          "to": [
+            14,
+            10,
+            -4
+          ],
+          "uv": [
+            4,
+            4
+          ],
+          "rotation": [
+            90,
+            -90,
+            0
+          ],
+          "texture": "..\\..\\..\\textures\\entity\\boat\\bamboo.png"
+        },
+        {
+          "type": "block",
+          "description": "raft_chest",
+          "from": [
+            -14,
+            -8,
+            -4
+          ],
+          "to": [
+            14,
+            8,
+            0
+          ],
+          "uv": [
+            4,
+            4
+          ],
+          "rotation": [
+            90,
+            -90,
+            0
+          ],
+          "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "raft_chest",
+          "from": [
+            -14,
+            -10,
+            -8
+          ],
+          "to": [
+            14,
+            10,
+            -4
+          ],
+          "uv": [
+            4,
+            4
+          ],
+          "rotation": [
+            90,
+            -90,
+            0
+          ],
+          "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+          "visible": false
+        }
+      ],
+      "parts": [
+        {
+          "name": "right_paddle",
+          "position": [
+            -9,
+            9,
+            3
+          ],
+          "rotation": [
+            0,
+            30,
+            45
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "description": "raft",
+              "from": [
+                -1,
+                -1,
+                -13
+              ],
+              "to": [
+                1,
+                1,
+                5
+              ],
+              "uv": [
+                58,
+                42
+              ],
+              "rotation": [
+                0,
+                90,
+                0
+              ],
+              "texture": "..\\..\\..\\textures\\entity\\boat\\bamboo.png"
+            },
+            {
+              "type": "block",
+              "description": "raft",
+              "from": [
+                0.01,
+                -2,
+                -15
+              ],
+              "to": [
+                1.01,
+                4,
+                -8
+              ],
+              "uv": [
+                47,
+                31
+              ],
+              "rotation": [
+                0,
+                90,
+                0
+              ],
+              "texture": "..\\..\\..\\textures\\entity\\boat\\bamboo.png"
+            },
+            {
+              "type": "block",
+              "description": "raft_chest",
+              "from": [
+                -1,
+                -1,
+                -13
+              ],
+              "to": [
+                1,
+                1,
+                5
+              ],
+              "uv": [
+                58,
+                42
+              ],
+              "rotation": [
+                0,
+                90,
+                0
+              ],
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "raft_chest",
+              "from": [
+                0.01,
+                -2,
+                -15
+              ],
+              "to": [
+                1.01,
+                4,
+                -8
+              ],
+              "uv": [
+                47,
+                31
+              ],
+              "rotation": [
+                0,
+                90,
+                0
+              ],
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "left_paddle",
+          "position": [
+            9,
+            9,
+            3
+          ],
+          "rotation": [
+            0,
+            -30,
+            -45
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "description": "raft",
+              "from": [
+                -1,
+                -1,
+                -13
+              ],
+              "to": [
+                1,
+                1,
+                5
+              ],
+              "uv": [
+                18,
+                42
+              ],
+              "rotation": [
+                0,
+                -90,
+                0
+              ],
+              "texture": "..\\..\\..\\textures\\entity\\boat\\bamboo.png"
+            },
+            {
+              "type": "block",
+              "description": "raft",
+              "from": [
+                -1.01,
+                -2,
+                -15
+              ],
+              "to": [
+                -0.01,
+                4,
+                -8
+              ],
+              "uv": [
+                7,
+                31
+              ],
+              "rotation": [
+                0,
+                -90,
+                0
+              ],
+              "texture": "..\\..\\..\\textures\\entity\\boat\\bamboo.png"
+            },
+            {
+              "type": "block",
+              "description": "raft_chest",
+              "from": [
+                -1,
+                -1,
+                -13
+              ],
+              "to": [
+                1,
+                1,
+                5
+              ],
+              "uv": [
+                18,
+                42
+              ],
+              "rotation": [
+                0,
+                -90,
+                0
+              ],
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "raft_chest",
+              "from": [
+                -1.01,
+                -2,
+                -15
+              ],
+              "to": [
+                -0.01,
+                4,
+                -8
+              ],
+              "uv": [
+                7,
+                31
+              ],
+              "rotation": [
+                0,
+                -90,
+                0
+              ],
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "chest",
+          "position": [
+            0,
+            8,
+            -8
+          ],
+          "shapes": [
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                -6,
+                0,
+                6
+              ],
+              "to": [
+                6,
+                8,
+                6
+              ],
+              "uv": [
+                36,
+                88
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                -6,
+                0,
+                6
+              ],
+              "to": [
+                6,
+                8,
+                6
+              ],
+              "uv": [
+                24,
+                88
+              ],
+              "rotation": [
+                0,
+                90,
+                0
+              ],
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                -6,
+                0,
+                6
+              ],
+              "to": [
+                6,
+                8,
+                6
+              ],
+              "uv": [
+                0,
+                88
+              ],
+              "rotation": [
+                0,
+                -90,
+                0
+              ],
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                -6,
+                0,
+                6
+              ],
+              "to": [
+                6,
+                8,
+                6
+              ],
+              "uv": [
+                12,
+                88
+              ],
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                -6,
+                -6,
+                0
+              ],
+              "to": [
+                6,
+                6,
+                0
+              ],
+              "uv": [
+                24,
+                76
+              ],
+              "rotation": [
+                90,
+                180,
+                0
+              ],
+              "texture_mirror": true,
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                -6,
+                -6,
+                8
+              ],
+              "to": [
+                6,
+                -4,
+                8
+              ],
+              "uv": [
+                12,
+                86
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                -6,
+                4,
+                8
+              ],
+              "to": [
+                6,
+                6,
+                8
+              ],
+              "uv": [
+                12,
+                76
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                4,
+                -4,
+                8
+              ],
+              "to": [
+                6,
+                4,
+                8
+              ],
+              "uv": [
+                22,
+                78
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                -6,
+                -4,
+                8
+              ],
+              "to": [
+                -4,
+                4,
+                8
+              ],
+              "uv": [
+                12,
+                78
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                -4,
+                -4,
+                1
+              ],
+              "to": [
+                4,
+                4,
+                1
+              ],
+              "uv": [
+                26,
+                61
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                -4,
+                1,
+                -4
+              ],
+              "to": [
+                4,
+                8,
+                -4
+              ],
+              "uv": [
+                26,
+                62
+              ],
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                -4,
+                1,
+                -4
+              ],
+              "to": [
+                4,
+                8,
+                -4
+              ],
+              "uv": [
+                26,
+                62
+              ],
+              "rotation": [
+                0,
+                -90,
+                0
+              ],
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                -4,
+                1,
+                -4
+              ],
+              "to": [
+                4,
+                8,
+                -4
+              ],
+              "uv": [
+                26,
+                62
+              ],
+              "rotation": [
+                0,
+                90,
+                0
+              ],
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "chest",
+              "from": [
+                -4,
+                1,
+                -4
+              ],
+              "to": [
+                4,
+                8,
+                -4
+              ],
+              "uv": [
+                26,
+                62
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "hide_back": true,
+              "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+              "visible": false
+            }
+          ],
+          "parts": [
+            {
+              "name": "top",
+              "position": [
+                0,
+                7,
+                -6
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "description": "chest",
+                  "from": [
+                    -6,
+                    0,
+                    0
+                  ],
+                  "to": [
+                    6,
+                    5,
+                    12
+                  ],
+                  "uv": [
+                    12,
+                    71
+                  ],
+                  "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+                  "visible": false
+                }
+              ],
+              "parts": [
+                {
+                  "name": "lock",
+                  "position": [
+                    0,
+                    1,
+                    12
+                  ],
+                  "shapes": [
+                    {
+                      "type": "block",
+                      "description": "chest",
+                      "from": [
+                        -1,
+                        -3,
+                        0
+                      ],
+                      "to": [
+                        1,
+                        1,
+                        1
+                      ],
+                      "uv": [
+                        1,
+                        60
+                      ],
+                      "texture": "..\\..\\..\\textures\\entity\\chest_boat\\bamboo.png",
+                      "visible": false
+                    }
+                  ],
+                  "visible": false
+                }
+              ],
+              "visible": false
+            }
+          ],
+          "visible": false
+        }
+      ]
+    }
+  ]
+}

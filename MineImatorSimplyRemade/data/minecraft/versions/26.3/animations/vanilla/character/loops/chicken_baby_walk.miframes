@@ -1,0 +1,89 @@
+{
+	"format": 35,
+	"created_in": "2.0.2 Continuation Build 1.0.13 (Indev)",
+	"is_model": true,
+	"tempo": 24,
+	"length": 16,
+	"keyframes": [
+		{
+			"position": 16,
+			"part_name": "body",
+			"values": {
+				"ROT_Y": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "body",
+			"values": {
+				"ROT_Y": 5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Z": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Z": -15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 40,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 40,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 16,
+			"values": {
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

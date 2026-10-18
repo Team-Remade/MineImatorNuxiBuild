@@ -1,0 +1,17 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\strider\\strider.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\strider\\strider.png"
+    },
+    {
+      "name": "Strider Cold",
+      "file": "..\\..\\..\\textures\\entity\\strider\\strider_cold.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

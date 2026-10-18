@@ -1,0 +1,224 @@
+{
+  "name": "pig_baby",
+  "texture": "..\\..\\..\\textures\\entity\\pig\\pig_temperate_baby.png",
+  "texture_size": [
+    32,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        5,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -3.5,
+            -3,
+            -4.5
+          ],
+          "to": [
+            3.5,
+            3,
+            4.5
+          ],
+          "uv": [
+            9,
+            9
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            0,
+            2.5
+          ],
+          "scale": [
+            1.001,
+            1.001,
+            1.001
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3.5,
+                -1,
+                -1
+              ],
+              "to": [
+                3.5,
+                5,
+                5
+              ],
+              "uv": [
+                6,
+                21
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                0,
+                5
+              ],
+              "to": [
+                1.5,
+                2,
+                6
+              ],
+              "uv": [
+                7,
+                28
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -2.5,
+            -3,
+            3.5
+          ],
+          "bend": {
+            "offset": -1,
+            "end_offset": 1,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -2,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                25,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            2.5,
+            -3,
+            3.5
+          ],
+          "bend": {
+            "offset": -1,
+            "end_offset": 1,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -2,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -2.5,
+            -3,
+            -3.5
+          ],
+          "bend": {
+            "offset": -1,
+            "end_offset": 1,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -2,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                25,
+                6
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            2.5,
+            -3,
+            -3.5
+          ],
+          "bend": {
+            "offset": -1,
+            "end_offset": 1,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -2,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                6
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

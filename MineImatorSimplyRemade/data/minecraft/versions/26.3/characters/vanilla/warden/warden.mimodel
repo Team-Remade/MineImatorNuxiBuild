@@ -1,0 +1,832 @@
+{
+  "name": "warden",
+  "texture": "..\\..\\..\\textures\\entity\\warden\\warden.png",
+  "texture_size": [
+    128,
+    128
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        13,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -9,
+            0,
+            -7
+          ],
+          "to": [
+            9,
+            21,
+            4
+          ],
+          "uv": [
+            11,
+            11
+          ]
+        },
+        {
+          "type": "block",
+          "description": "heart",
+          "texture": "..\\..\\..\\textures\\entity\\warden\\warden_heart.png",
+          "texture_size": [
+            128,
+            128
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -9,
+            0,
+            -7
+          ],
+          "to": [
+            9,
+            21,
+            4
+          ],
+          "uv": [
+            11,
+            11
+          ]
+        },
+        {
+          "type": "block",
+          "description": "pulsating_spots_1",
+          "texture": "..\\..\\..\\textures\\entity\\warden\\warden_pulsating_spots_1.png",
+          "texture_size": [
+            128,
+            128
+          ],
+          "color_alpha": 0.25,
+          "color_brightness": 0.75,
+          "from": [
+            -9,
+            0,
+            -7
+          ],
+          "to": [
+            9,
+            21,
+            4
+          ],
+          "uv": [
+            11,
+            11
+          ]
+        },
+        {
+          "type": "block",
+          "description": "pulsating_spots_2",
+          "texture": "..\\..\\..\\textures\\entity\\warden\\warden_pulsating_spots_2.png",
+          "texture_size": [
+            128,
+            128
+          ],
+          "color_alpha": 0.25,
+          "color_brightness": 0.75,
+          "from": [
+            -9,
+            0,
+            -7
+          ],
+          "to": [
+            9,
+            21,
+            4
+          ],
+          "uv": [
+            11,
+            11
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            21,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -8,
+                0,
+                -5
+              ],
+              "to": [
+                8,
+                16,
+                5
+              ],
+              "uv": [
+                10,
+                42
+              ]
+            },
+            {
+              "type": "block",
+              "description": "bioluminescent_layer",
+              "texture": "..\\..\\..\\textures\\entity\\warden\\warden_bioluminescent_layer.png",
+              "texture_size": [
+                128,
+                128
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -8,
+                0,
+                -5
+              ],
+              "to": [
+                8,
+                16,
+                5
+              ],
+              "uv": [
+                10,
+                42
+              ]
+            },
+            {
+              "type": "block",
+              "description": "pulsating_spots_1",
+              "texture": "..\\..\\..\\textures\\entity\\warden\\warden_pulsating_spots_1.png",
+              "texture_size": [
+                128,
+                128
+              ],
+              "color_alpha": 0.25,
+              "color_brightness": 0.75,
+              "from": [
+                -8,
+                0,
+                -5
+              ],
+              "to": [
+                8,
+                16,
+                5
+              ],
+              "uv": [
+                10,
+                42
+              ]
+            },
+            {
+              "type": "block",
+              "description": "pulsating_spots_2",
+              "texture": "..\\..\\..\\textures\\entity\\warden\\warden_pulsating_spots_2.png",
+              "texture_size": [
+                128,
+                128
+              ],
+              "color_alpha": 0.25,
+              "color_brightness": 0.75,
+              "from": [
+                -8,
+                0,
+                -5
+              ],
+              "to": [
+                8,
+                16,
+                5
+              ],
+              "uv": [
+                10,
+                42
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "right_tendril",
+              "position": [
+                -8,
+                12,
+                0
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -16,
+                    -3,
+                    0
+                  ],
+                  "to": [
+                    0,
+                    13,
+                    0
+                  ],
+                  "uv": [
+                    52,
+                    32
+                  ]
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -16,
+                    -3,
+                    0
+                  ],
+                  "to": [
+                    0,
+                    13,
+                    0
+                  ],
+                  "uv": [
+                    52,
+                    32
+                  ],
+                  "invert": true
+                }
+              ]
+            },
+            {
+              "name": "left_tendril",
+              "position": [
+                8,
+                12,
+                0
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    0,
+                    -3,
+                    0
+                  ],
+                  "to": [
+                    16,
+                    13,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    0
+                  ]
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    0,
+                    -3,
+                    0
+                  ],
+                  "to": [
+                    16,
+                    13,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    0
+                  ],
+                  "invert": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_arm",
+          "position": [
+            -13,
+            17,
+            -1
+          ],
+          "bend": {
+            "offset": -10,
+            "end_offset": 14,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -24,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                52,
+                58
+              ]
+            },
+            {
+              "type": "block",
+              "description": "bioluminescent_layer",
+              "texture": "..\\..\\..\\textures\\entity\\warden\\warden_bioluminescent_layer.png",
+              "texture_size": [
+                128,
+                128
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -4,
+                -24,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                52,
+                58
+              ]
+            },
+            {
+              "type": "block",
+              "description": "pulsating_spots_1",
+              "texture": "..\\..\\..\\textures\\entity\\warden\\warden_pulsating_spots_1.png",
+              "texture_size": [
+                128,
+                128
+              ],
+              "color_alpha": 0.25,
+              "color_brightness": 0.75,
+              "from": [
+                -4,
+                -24,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                52,
+                58
+              ]
+            },
+            {
+              "type": "block",
+              "description": "pulsating_spots_2",
+              "texture": "..\\..\\..\\textures\\entity\\warden\\warden_pulsating_spots_2.png",
+              "texture_size": [
+                128,
+                128
+              ],
+              "color_alpha": 0.25,
+              "color_brightness": 0.75,
+              "from": [
+                -4,
+                -24,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                52,
+                58
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_arm",
+          "position": [
+            13,
+            17,
+            -1
+          ],
+          "bend": {
+            "offset": -10,
+            "end_offset": 14,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -24,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                8,
+                66
+              ]
+            },
+            {
+              "type": "block",
+              "description": "bioluminescent_layer",
+              "texture": "..\\..\\..\\textures\\entity\\warden\\warden_bioluminescent_layer.png",
+              "texture_size": [
+                128,
+                128
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -4,
+                -24,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                8,
+                66
+              ]
+            },
+            {
+              "type": "block",
+              "description": "pulsating_spots_1",
+              "texture": "..\\..\\..\\textures\\entity\\warden\\warden_pulsating_spots_1.png",
+              "texture_size": [
+                128,
+                128
+              ],
+              "color_alpha": 0.25,
+              "color_brightness": 0.75,
+              "from": [
+                -4,
+                -24,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                8,
+                66
+              ]
+            },
+            {
+              "type": "block",
+              "description": "pulsating_spots_2",
+              "texture": "..\\..\\..\\textures\\entity\\warden\\warden_pulsating_spots_2.png",
+              "texture_size": [
+                128,
+                128
+              ],
+              "color_alpha": 0.25,
+              "color_brightness": 0.75,
+              "from": [
+                -4,
+                -24,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                8,
+                66
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_ribs",
+          "position": [
+            -7,
+            10,
+            4.0625
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -10,
+                0
+              ],
+              "to": [
+                7,
+                11,
+                0
+              ],
+              "uv": [
+                90,
+                11
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -10,
+                0
+              ],
+              "to": [
+                7,
+                11,
+                0
+              ],
+              "uv": [
+                90,
+                11
+              ],
+              "invert": true
+            }
+          ]
+        },
+        {
+          "name": "left_ribs",
+          "position": [
+            7,
+            10,
+            4.0625
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -7,
+                -10,
+                0
+              ],
+              "to": [
+                2,
+                11,
+                0
+              ],
+              "uv": [
+                90,
+                11
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "from": [
+                -7,
+                -10,
+                0
+              ],
+              "to": [
+                2,
+                11,
+                0
+              ],
+              "uv": [
+                90,
+                11
+              ],
+              "texture_mirror": true,
+              "invert": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "right_leg",
+      "position": [
+        -6,
+        13,
+        0
+      ],
+      "bend": {
+        "offset": -6.5,
+        "end_offset": 6.5,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -3,
+            -13,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            82,
+            54
+          ]
+        },
+        {
+          "type": "block",
+          "description": "bioluminescent_layer",
+          "texture": "..\\..\\..\\textures\\entity\\warden\\warden_bioluminescent_layer.png",
+          "texture_size": [
+            128,
+            128
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -3,
+            -13,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            82,
+            54
+          ]
+        },
+        {
+          "type": "block",
+          "description": "pulsating_spots_1",
+          "texture": "..\\..\\..\\textures\\entity\\warden\\warden_pulsating_spots_1.png",
+          "texture_size": [
+            128,
+            128
+          ],
+          "color_alpha": 0.25,
+          "color_brightness": 0.75,
+          "from": [
+            -3,
+            -13,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            82,
+            54
+          ]
+        },
+        {
+          "type": "block",
+          "description": "pulsating_spots_2",
+          "texture": "..\\..\\..\\textures\\entity\\warden\\warden_pulsating_spots_2.png",
+          "texture_size": [
+            128,
+            128
+          ],
+          "color_alpha": 0.25,
+          "color_brightness": 0.75,
+          "from": [
+            -3,
+            -13,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            82,
+            54
+          ]
+        }
+      ]
+    },
+    {
+      "name": "left_leg",
+      "position": [
+        6,
+        13,
+        0
+      ],
+      "bend": {
+        "offset": -6.5,
+        "end_offset": 6.5,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -3,
+            -13,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            82,
+            82
+          ]
+        },
+        {
+          "type": "block",
+          "description": "bioluminescent_layer",
+          "texture": "..\\..\\..\\textures\\entity\\warden\\warden_bioluminescent_layer.png",
+          "texture_size": [
+            128,
+            128
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -3,
+            -13,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            82,
+            82
+          ]
+        },
+        {
+          "type": "block",
+          "description": "pulsating_spots_1",
+          "texture": "..\\..\\..\\textures\\entity\\warden\\warden_pulsating_spots_1.png",
+          "texture_size": [
+            128,
+            128
+          ],
+          "color_alpha": 0.25,
+          "color_brightness": 0.75,
+          "from": [
+            -3,
+            -13,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            82,
+            82
+          ]
+        },
+        {
+          "type": "block",
+          "description": "pulsating_spots_2",
+          "texture": "..\\..\\..\\textures\\entity\\warden\\warden_pulsating_spots_2.png",
+          "texture_size": [
+            128,
+            128
+          ],
+          "color_alpha": 0.25,
+          "color_brightness": 0.75,
+          "from": [
+            -3,
+            -13,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            82,
+            82
+          ]
+        }
+      ]
+    }
+  ]
+}

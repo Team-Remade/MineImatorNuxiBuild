@@ -1,0 +1,141 @@
+{
+	"format": 24,
+	"is_model": true,
+	"tempo": 24,
+	"length": 20,
+	"keyframes": [
+		{
+			"position": 20,
+			"values": {
+				"POS_Y": -20.28434
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_Y": -33.24912
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "magma",
+			"values": {
+				"POS_Z": 16,
+				"ROT_X": -15.88075,
+				"SCA_Z": 1.7042,
+				"TRANSITION": "easeinsine"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "magma",
+			"values": {
+				"TRANSITION": "easeoutsine"
+			}
+		},
+		{
+			"position": 13,
+			"part_name": "magma",
+			"values": {
+				"POS_Z": -2.54188,
+				"SCA_Z": 0.3827,
+				"TRANSITION": "easeinsine"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "magma",
+			"values": {
+				"POS_Z": 1.81852,
+				"ROT_X": 34.43658,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "slice_6",
+			"values": {
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "slice_8",
+			"values": {
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "slice_7",
+			"values": {
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "slice_1",
+			"values": {
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "slice_2",
+			"values": {
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "slice_3",
+			"values": {
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "slice_6",
+			"values": {
+				"POS_Z": -0.5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "slice_7",
+			"values": {
+				"POS_Z": -0.5
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "slice_1",
+			"values": {
+				"POS_Z": 0.5
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "slice_8",
+			"values": {
+				"POS_Z": -0.5
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "slice_2",
+			"values": {
+				"POS_Z": 0.5
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "slice_3",
+			"values": {
+				"POS_Z": 0.5
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

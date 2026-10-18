@@ -1,0 +1,25 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\fox\\fox.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\fox\\fox.png"
+    },
+    {
+      "name": "Fox Red Sleep",
+      "file": "..\\..\\..\\textures\\entity\\fox\\fox_sleep.png"
+    },
+    {
+      "name": "Fox Snow",
+      "file": "..\\..\\..\\textures\\entity\\fox\\fox_snow.png"
+    },
+    {
+      "name": "Fox Snow Sleep",
+      "file": "..\\..\\..\\textures\\entity\\fox\\fox_snow_sleep.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

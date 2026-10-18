@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\illager\\evoker.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\illager\\evoker.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

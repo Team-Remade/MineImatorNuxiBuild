@@ -1,0 +1,327 @@
+{
+  "name": "allay",
+  "texture": "..\\..\\..\\textures\\entity\\allay\\allay.png",
+  "texture_size": [
+    32,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "color_brightness": 0.5,
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "bend": {
+        "offset": 2,
+        "end_offset": 2.5,
+        "part": "upper",
+        "axis": [
+          "x",
+          "y",
+          "z"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -1.5,
+            0,
+            -1
+          ],
+          "to": [
+            1.5,
+            4,
+            1
+          ],
+          "uv": [
+            2,
+            12
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -1.5,
+            0,
+            -1
+          ],
+          "to": [
+            1.5,
+            4,
+            1
+          ],
+          "uv": [
+            2,
+            12
+          ],
+          "invert": true
+        },
+        {
+          "type": "block",
+          "from": [
+            -1.5,
+            -1,
+            -1
+          ],
+          "to": [
+            1.5,
+            4,
+            1
+          ],
+          "uv": [
+            2,
+            18
+          ],
+          "inflate": -0.2
+        },
+        {
+          "type": "block",
+          "from": [
+            -1.5,
+            -1,
+            -1
+          ],
+          "to": [
+            1.5,
+            4,
+            1
+          ],
+          "uv": [
+            2,
+            18
+          ],
+          "inflate": -0.2,
+          "invert": true
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            4,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                0,
+                -2.5
+              ],
+              "to": [
+                2.5,
+                5,
+                2.5
+              ],
+              "uv": [
+                5,
+                5
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_arm",
+          "position": [
+            -2,
+            3.5,
+            0
+          ],
+          "bend": {
+            "offset": -1.5,
+            "end_offset": 2,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -0.5,
+                -3,
+                -1
+              ],
+              "to": [
+                0.5,
+                1,
+                1
+              ],
+              "uv": [
+                25,
+                2
+              ],
+              "position": [
+                0,
+                -0.5,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_arm",
+          "position": [
+            2,
+            3.5,
+            0
+          ],
+          "bend": {
+            "offset": -1.5,
+            "end_offset": 2,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -0.5,
+                -3,
+                -1
+              ],
+              "to": [
+                0.5,
+                1,
+                1
+              ],
+              "uv": [
+                25,
+                8
+              ],
+              "position": [
+                0,
+                -0.5,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_wing",
+          "position": [
+            -0.5,
+            3,
+            -1
+          ],
+          "rotation": [
+            15,
+            60,
+            0
+          ],
+          "bend": {
+            "offset": -4,
+            "end_offset": 4,
+            "size": 2,
+            "part": "back",
+            "axis": "y"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                0,
+                -5,
+                -8
+              ],
+              "to": [
+                0,
+                0,
+                0
+              ],
+              "uv": [
+                24,
+                22
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                0,
+                -5,
+                -8
+              ],
+              "to": [
+                0,
+                0,
+                0
+              ],
+              "uv": [
+                24,
+                22
+              ],
+              "invert": true
+            }
+          ]
+        },
+        {
+          "name": "left_wing",
+          "position": [
+            0.5,
+            3,
+            -1
+          ],
+          "rotation": [
+            15,
+            -60,
+            0
+          ],
+          "bend": {
+            "offset": -4,
+            "end_offset": 4,
+            "size": 2,
+            "part": "back",
+            "axis": "y",
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                0,
+                -5,
+                -8
+              ],
+              "to": [
+                0,
+                0,
+                0
+              ],
+              "uv": [
+                24,
+                22
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                0,
+                -5,
+                -8
+              ],
+              "to": [
+                0,
+                0,
+                0
+              ],
+              "uv": [
+                24,
+                22
+              ],
+              "invert": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

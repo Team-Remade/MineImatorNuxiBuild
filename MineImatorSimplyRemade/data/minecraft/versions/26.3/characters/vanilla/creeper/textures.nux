@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\creeper\\creeper.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\creeper\\creeper.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

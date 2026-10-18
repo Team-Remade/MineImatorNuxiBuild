@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\bell\\bell_body.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\bell\\bell_body.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

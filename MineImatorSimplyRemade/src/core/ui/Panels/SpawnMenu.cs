@@ -235,6 +235,8 @@ public class SpawnMenu : UiPanel
             { "Blocks",       new List<string>() },
             // Characters: populated from CharacterRegistry at render time.
             { "Characters",   new List<string>() },
+            { "Equipment",    new List<string>() },
+            { "Props",        new List<string>() },
             { "Particle Spawners", new List<string> { "Particle Spawner" } },
             { "Scenery",      new List<string> { SceneryLoadLabel } },
             { "Custom Models", new List<string> { "Load..." } }
@@ -262,7 +264,18 @@ public class SpawnMenu : UiPanel
         _categories["Characters"] = CharacterRegistry.Characters
             .Select(c => c.Name)
             .ToList();
+        _categories["Equipment"] = CharacterRegistry.Equipment.Select(entry => entry.Name).ToList();
+        _categories["Props"] = CharacterRegistry.Props.Select(entry => entry.Name).ToList();
     }
+
+    private bool IsModelCatalogCategory => _selectedCategory is "Characters" or "Equipment" or "Props";
+
+    private IReadOnlyList<CharacterEntry> SelectedModelCatalog => _selectedCategory switch
+    {
+        "Equipment" => CharacterRegistry.Equipment,
+        "Props" => CharacterRegistry.Props,
+        _ => CharacterRegistry.Characters
+    };
 
     public void RefreshExternalAssetOptions()
     {
@@ -520,9 +533,9 @@ public class SpawnMenu : UiPanel
                         $"block:{BlockRegistry.Blocks[_selectedObjectIndex]}:" +
                         $"{(_selectedVariantIndex >= 0 ? _selectedVariantIndex : 0)}:" +
                         $"rp:{GetEffectiveBlockTextureSourceId()}",
-            "Characters" => _selectedObjectIndex < 0 ||
-                            _selectedObjectIndex >= CharacterRegistry.Characters.Count ? "" :
-                            $"char:{CharacterRegistry.Characters[_selectedObjectIndex].FilePath}" +
+            "Characters" or "Equipment" or "Props" => _selectedObjectIndex < 0 ||
+                            _selectedObjectIndex >= SelectedModelCatalog.Count ? "" :
+                            $"char:{SelectedModelCatalog[_selectedObjectIndex].FilePath}" +
                             $":{_selectedCharTextureIndex}",
             _ => _selectedObjectIndex < 0 ? "" :
                   $"std:{_selectedCategory}:{GetFilteredObjects().ElementAtOrDefault(_selectedObjectIndex) ?? ""}:" +
@@ -539,7 +552,7 @@ public class SpawnMenu : UiPanel
             "Items"      => 2.2f,
             "Camera"     => 3.5f,
             "Primitives" => 2.2f,
-            "Characters" => 3.5f,
+            "Characters" or "Equipment" or "Props" => 3.5f,
             _            => 2.5f
         };
     }
@@ -666,12 +679,14 @@ public class SpawnMenu : UiPanel
             }
 
             case "Characters":
+            case "Equipment":
+            case "Props":
             {
                 if (_selectedObjectIndex < 0 ||
-                    _selectedObjectIndex >= CharacterRegistry.Characters.Count)
+                    _selectedObjectIndex >= SelectedModelCatalog.Count)
                     return new List<Mesh>();
 
-                var entry = CharacterRegistry.Characters[_selectedObjectIndex];
+                var entry = SelectedModelCatalog[_selectedObjectIndex];
                 if (string.IsNullOrEmpty(entry.FilePath)) return new List<Mesh>();
 
                 string ext = Path.GetExtension(entry.FilePath).ToLowerInvariant();
@@ -695,7 +710,7 @@ public class SpawnMenu : UiPanel
                     {
                         uint overrideTexId = loader.LoadTextureFromFile(textureOverridePath);
                         if (overrideTexId != 0)
-                            ApplyTextureOverrideToCharacter(miChar, overrideTexId);
+                            MineImatorLoader.ApplyTextureOverrideToScene(miChar, overrideTexId, model.GetTexture());
                     }
 
                     character = miChar;
@@ -929,7 +944,7 @@ public class SpawnMenu : UiPanel
             ImGui.SameLine();
             RenderBlocksPreviewColumn();
         }
-        else if (_selectedCategory == "Characters")
+        else if (IsModelCatalogCategory)
         {
             RenderCharactersObjectsColumn(columnWidth);
             ImGui.SameLine();
@@ -1599,12 +1614,12 @@ public class SpawnMenu : UiPanel
     private void RenderCharactersObjectsColumn(float columnWidth)
     {
         ImGui.BeginChild("##charObjects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Characters");
+        ImGui.TextDisabled(_selectedCategory);
         ImGui.Separator();
 
         // Per-column search
         ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##charSearch", "Filter characters...", ref _charSearchBuffer, 128))
+        if (ImGui.InputTextWithHint("##charSearch", "Filter models...", ref _charSearchBuffer, 128))
         {
             _charSearchQuery     = _charSearchBuffer;
             _selectedObjectIndex  = -1;
@@ -1615,7 +1630,7 @@ public class SpawnMenu : UiPanel
 
         ImGui.BeginChild("##charList", new Vector2(0, 0));
 
-        var chars = CharacterRegistry.Characters;
+        var chars = SelectedModelCatalog;
         string query = string.IsNullOrEmpty(_charSearchQuery) ? _searchQuery : _charSearchQuery;
 
         int displayIndex = 0;
@@ -1654,7 +1669,7 @@ public class SpawnMenu : UiPanel
 
         if (displayIndex == 0)
             ImGui.TextDisabled(chars.Count == 0
-                ? "(no characters found –\nplace models in a\n'characters/' folder)"
+                ? $"(no models found in\n'{_selectedCategory.ToLowerInvariant()}/' folders)"
                 : "(no matches)");
 
         ImGui.EndChild(); // ##charList
@@ -1675,9 +1690,9 @@ public class SpawnMenu : UiPanel
         ImGui.Separator();
 
         if (_selectedObjectIndex >= 0 &&
-            _selectedObjectIndex < CharacterRegistry.Characters.Count)
+            _selectedObjectIndex < SelectedModelCatalog.Count)
         {
-            var entry = CharacterRegistry.Characters[_selectedObjectIndex];
+            var entry = SelectedModelCatalog[_selectedObjectIndex];
 
             if (entry.TextureVariants.Count > 0)
             {
@@ -2073,9 +2088,9 @@ public class SpawnMenu : UiPanel
                    BlockRegistry.GetVariants(blockList[_selectedObjectIndex]).Count > 0;
         }
 
-        if (_selectedCategory == "Characters")
+        if (IsModelCatalogCategory)
         {
-            var chars = CharacterRegistry.Characters;
+            var chars = SelectedModelCatalog;
             if (_selectedObjectIndex < 0 || _selectedObjectIndex >= chars.Count)
                 return false;
 
@@ -2323,8 +2338,8 @@ public class SpawnMenu : UiPanel
 
     /// <summary>
     /// Loads a Mine Imator .mimodel file and creates a CharacterSceneObject.
-    /// When <paramref name="textureOverridePath"/> is non-null the skin texture on
-    /// every bone mesh is replaced with the texture loaded from that path.
+    /// When <paramref name="textureOverridePath"/> is non-null, replaces the base
+    /// skin without changing separately textured overlays or accessories.
     /// </summary>
     private SceneObject? SpawnMineImatorModel(string filePath, string? textureOverridePath = null)
     {
@@ -2339,13 +2354,11 @@ public class SpawnMenu : UiPanel
         character.SourceAssetPath = filePath;
         character.AssignObjectId();
 
-        // Apply texture override: replace every bone mesh's TextureId with the
-        // chosen skin texture so the correct variant is visible from spawn.
         if (!string.IsNullOrEmpty(textureOverridePath) && File.Exists(textureOverridePath))
         {
             uint overrideTexId = loader.LoadTextureFromFile(textureOverridePath);
             if (overrideTexId != 0)
-                ApplyTextureOverrideToCharacter(character, overrideTexId);
+                MineImatorLoader.ApplyTextureOverrideToScene(character, overrideTexId, model.GetTexture());
         }
 
         return character;
@@ -4880,7 +4893,7 @@ public class SpawnMenu : UiPanel
             return;
         }
 
-        if (_selectedCategory == "Characters")
+        if (IsModelCatalogCategory)
         {
             TrySpawnCharacter();
             return;
@@ -4939,7 +4952,7 @@ public class SpawnMenu : UiPanel
 
     private void TrySpawnCharacter()
     {
-        var chars = CharacterRegistry.Characters;
+        var chars = SelectedModelCatalog;
         if (_selectedObjectIndex < 0 || _selectedObjectIndex >= chars.Count) return;
 
         var entry = chars[_selectedObjectIndex];

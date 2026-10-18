@@ -1,0 +1,243 @@
+{
+  "name": "wither",
+  "texture": "..\\..\\..\\textures\\entity\\wither\\wither.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "scale": [
+    2,
+    2,
+    2
+  ],
+  "parts": [
+    {
+      "name": "body_upper",
+      "color_brightness": 0.5,
+      "position": [
+        0,
+        16,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -10,
+            -1.5,
+            -1.5
+          ],
+          "to": [
+            10,
+            1.5,
+            1.5
+          ],
+          "uv": [
+            3,
+            19
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "body_lower",
+          "position": [
+            0,
+            -1.5,
+            1.5
+          ],
+          "rotation": [
+            30,
+            0,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -10,
+                -3
+              ],
+              "to": [
+                1.5,
+                0,
+                0
+              ],
+              "uv": [
+                3,
+                25
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -5.5,
+                -8.5,
+                -2.5
+              ],
+              "to": [
+                5.5,
+                -6.5,
+                -0.5
+              ],
+              "uv": [
+                26,
+                24
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -5.5,
+                -6,
+                -2.5
+              ],
+              "to": [
+                5.5,
+                -4,
+                -0.5
+              ],
+              "uv": [
+                26,
+                24
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -5.5,
+                -3.5,
+                -2.5
+              ],
+              "to": [
+                5.5,
+                -1.5,
+                -0.5
+              ],
+              "uv": [
+                26,
+                24
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "tail",
+              "position": [
+                0,
+                -10,
+                0
+              ],
+              "rotation": [
+                30,
+                0,
+                0
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -1.5,
+                    -6,
+                    -3
+                  ],
+                  "to": [
+                    1.5,
+                    0,
+                    0
+                  ],
+                  "uv": [
+                    15,
+                    25
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_head",
+          "position": [
+            -10,
+            -0.5,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3,
+                0,
+                -3
+              ],
+              "to": [
+                3,
+                6,
+                3
+              ],
+              "uv": [
+                38,
+                6
+              ]
+            }
+          ]
+        },
+        {
+          "name": "middle_head",
+          "position": [
+            0,
+            1.5,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                0,
+                -4
+              ],
+              "to": [
+                4,
+                8,
+                4
+              ],
+              "uv": [
+                8,
+                8
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_head",
+          "position": [
+            10,
+            -0.5,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3,
+                0,
+                -3
+              ],
+              "to": [
+                3,
+                6,
+                3
+              ],
+              "uv": [
+                38,
+                6
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

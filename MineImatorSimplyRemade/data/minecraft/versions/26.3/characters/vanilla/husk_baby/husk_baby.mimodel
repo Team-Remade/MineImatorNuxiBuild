@@ -1,0 +1,251 @@
+{
+  "name": "husk_baby",
+  "texture": "..\\..\\..\\textures\\entity\\zombie\\husk_baby.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "scale": [
+    1.125,
+    1.125,
+    1.125
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        4,
+        0
+      ],
+      "bend": {
+        "offset": 2.5,
+        "end_offset": 2.5,
+        "size": 3,
+        "detail": 1,
+        "part": "upper",
+        "axis": [
+          "x",
+          "y",
+          "z"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            0,
+            -1
+          ],
+          "to": [
+            2,
+            5,
+            1
+          ],
+          "uv": [
+            18,
+            18
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            5,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3,
+                0,
+                -3
+              ],
+              "to": [
+                3,
+                6,
+                3
+              ],
+              "uv": [
+                9,
+                9
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "hat",
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -3,
+                    0,
+                    -3
+                  ],
+                  "to": [
+                    3,
+                    6,
+                    3
+                  ],
+                  "uv": [
+                    41,
+                    9
+                  ],
+                  "inflate": 0.25
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_arm",
+          "position": [
+            -3,
+            4,
+            0
+          ],
+          "bend": {
+            "offset": -1.5,
+            "end_offset": 2.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -4,
+                -1
+              ],
+              "to": [
+                1,
+                1,
+                1
+              ],
+              "uv": [
+                38,
+                18
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_arm",
+          "position": [
+            3,
+            4,
+            0
+          ],
+          "bend": {
+            "offset": -1.5,
+            "end_offset": 2.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -4,
+                -1
+              ],
+              "to": [
+                1,
+                1,
+                1
+              ],
+              "uv": [
+                30,
+                18
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "right_leg",
+      "position": [
+        -1,
+        4,
+        0
+      ],
+      "bend": {
+        "offset": -2,
+        "end_offset": 2,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -1,
+            -4,
+            -1
+          ],
+          "to": [
+            1,
+            0,
+            1
+          ],
+          "uv": [
+            10,
+            18
+          ]
+        }
+      ]
+    },
+    {
+      "name": "left_leg",
+      "position": [
+        1,
+        4,
+        0
+      ],
+      "bend": {
+        "offset": -2,
+        "end_offset": 2,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -1,
+            -4,
+            -1
+          ],
+          "to": [
+            1,
+            0,
+            1
+          ],
+          "uv": [
+            2,
+            18
+          ]
+        }
+      ]
+    }
+  ]
+}

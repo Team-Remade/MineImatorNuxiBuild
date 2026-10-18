@@ -1,0 +1,636 @@
+{
+  "name": "cat",
+  "texture": "..\\..\\..\\textures\\entity\\cat\\ocelot.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        4,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -8,
+            -6
+          ],
+          "to": [
+            2,
+            8,
+            0
+          ],
+          "uv": [
+            26,
+            6
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "description": "collar",
+          "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "from": [
+            -2,
+            -8,
+            -6
+          ],
+          "to": [
+            2,
+            8,
+            0
+          ],
+          "uv": [
+            26,
+            6
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "color_blend": "#B02E26"
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            4.5,
+            8
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -1.5,
+                0
+              ],
+              "to": [
+                2.5,
+                2.5,
+                5
+              ],
+              "uv": [
+                5,
+                5
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -0.5,
+                0,
+                0
+              ],
+              "to": [
+                0.5,
+                1,
+                2
+              ],
+              "uv": [
+                2,
+                12
+              ],
+              "position": [
+                -1.5,
+                2.5,
+                0
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -0.5,
+                0,
+                0
+              ],
+              "to": [
+                0.5,
+                1,
+                2
+              ],
+              "uv": [
+                8,
+                12
+              ],
+              "position": [
+                1.5,
+                2.5,
+                0
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -1.499,
+                0
+              ],
+              "to": [
+                1.5,
+                0.501,
+                2
+              ],
+              "uv": [
+                2,
+                26
+              ],
+              "position": [
+                0,
+                0,
+                4
+              ]
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "from": [
+                -2.5,
+                -1.5,
+                0
+              ],
+              "to": [
+                2.5,
+                2.5,
+                5
+              ],
+              "uv": [
+                5,
+                5
+              ],
+              "color_blend": "#B02E26"
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "from": [
+                -0.5,
+                0,
+                0
+              ],
+              "to": [
+                0.5,
+                1,
+                2
+              ],
+              "uv": [
+                2,
+                12
+              ],
+              "position": [
+                -1.5,
+                2.5,
+                0
+              ],
+              "color_blend": "#B02E26"
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "from": [
+                -0.5,
+                0,
+                0
+              ],
+              "to": [
+                0.5,
+                1,
+                2
+              ],
+              "uv": [
+                8,
+                12
+              ],
+              "position": [
+                1.5,
+                2.5,
+                0
+              ],
+              "color_blend": "#B02E26"
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "from": [
+                -1.5,
+                -1.499,
+                0
+              ],
+              "to": [
+                1.5,
+                0.501,
+                2
+              ],
+              "uv": [
+                2,
+                26
+              ],
+              "position": [
+                0,
+                0,
+                4
+              ],
+              "color_blend": "#B02E26"
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -1.25,
+            5.875,
+            5
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -10,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                42,
+                2
+              ]
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "from": [
+                -1,
+                -10,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                42,
+                2
+              ],
+              "color_blend": "#B02E26"
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            1.25,
+            5.875,
+            5
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -10,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                42,
+                2
+              ]
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "from": [
+                -1,
+                -10,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                42,
+                2
+              ],
+              "color_blend": "#B02E26"
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -1.25,
+            2,
+            -6
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                10,
+                15
+              ]
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                10,
+                15
+              ],
+              "color_blend": "#B02E26"
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            1.25,
+            2,
+            -6
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                10,
+                15
+              ]
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "from": [
+                -1,
+                -6,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                10,
+                15
+              ],
+              "color_blend": "#B02E26"
+            }
+          ]
+        },
+        {
+          "name": "tail",
+          "position": [
+            0,
+            5,
+            -7
+          ],
+          "rotation": [
+            60,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -7,
+            "end_offset": 8,
+            "part": "lower",
+            "axis": [
+              "x",
+              "y",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -0.5,
+                -8,
+                -0.5
+              ],
+              "to": [
+                0.5,
+                0,
+                0.5
+              ],
+              "uv": [
+                5,
+                16
+              ],
+              "position": [
+                0,
+                -7,
+                0
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -0.5,
+                -8,
+                -0.5
+              ],
+              "to": [
+                0.5,
+                0,
+                0.5
+              ],
+              "uv": [
+                1,
+                16
+              ],
+              "position": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "from": [
+                -0.5,
+                -8,
+                -0.5
+              ],
+              "to": [
+                0.5,
+                0,
+                0.5
+              ],
+              "uv": [
+                5,
+                16
+              ],
+              "position": [
+                0,
+                -7,
+                0
+              ],
+              "color_blend": "#B02E26"
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "from": [
+                -0.5,
+                -8,
+                -0.5
+              ],
+              "to": [
+                0.5,
+                0,
+                0.5
+              ],
+              "uv": [
+                1,
+                16
+              ],
+              "position": [
+                0,
+                1,
+                0
+              ],
+              "color_blend": "#B02E26"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

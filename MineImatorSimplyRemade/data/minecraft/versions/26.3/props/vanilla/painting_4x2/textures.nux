@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\painting\\fighters.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\painting\\fighters.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

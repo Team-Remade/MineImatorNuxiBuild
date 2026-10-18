@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\shulker\\spark.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\spark.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

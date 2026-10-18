@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\ghast\\happy_ghast.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\ghast\\happy_ghast.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

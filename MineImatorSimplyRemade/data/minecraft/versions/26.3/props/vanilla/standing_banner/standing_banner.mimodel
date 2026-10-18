@@ -1,0 +1,92 @@
+{
+  "name": "banner",
+  "texture": "..\\..\\..\\textures\\entity\\banner\\banner_base.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "scale": [
+    0.6875,
+    0.6875,
+    0.6875
+  ],
+  "parts": [
+    {
+      "name": "stand",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -1,
+            0,
+            -1
+          ],
+          "to": [
+            1,
+            42,
+            1
+          ],
+          "uv": [
+            46,
+            2
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -10,
+            42,
+            -1
+          ],
+          "to": [
+            10,
+            44,
+            1
+          ],
+          "uv": [
+            2,
+            44
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "banner",
+          "position": [
+            0,
+            44,
+            1
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -10,
+                -40,
+                0
+              ],
+              "to": [
+                10,
+                0,
+                1
+              ],
+              "uv": [
+                1,
+                1
+              ],
+              "wind": {
+                "axis": "all",
+                "ymax": 0
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

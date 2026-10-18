@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\conduit\\base.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\conduit\\base.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

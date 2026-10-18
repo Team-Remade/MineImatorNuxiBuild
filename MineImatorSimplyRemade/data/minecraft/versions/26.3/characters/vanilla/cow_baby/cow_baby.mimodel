@@ -1,0 +1,263 @@
+{
+  "name": "cow_baby",
+  "texture": "..\\..\\..\\textures\\entity\\cow\\cow_temperate_baby.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        9,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "description": "baby",
+          "from": [
+            -4,
+            -3,
+            -6
+          ],
+          "to": [
+            4,
+            3,
+            6
+          ],
+          "uv": [
+            12,
+            12
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            1.25,
+            5.25
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -3,
+                -1.25,
+                -0.25
+              ],
+              "to": [
+                3,
+                4.75,
+                4.75
+              ],
+              "uv": [
+                5,
+                23
+              ]
+            },
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -2,
+                -1.25,
+                4.75
+              ],
+              "to": [
+                2,
+                1.75,
+                5.75
+              ],
+              "uv": [
+                13,
+                30
+              ]
+            },
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -4,
+                3.75,
+                2.75
+              ],
+              "to": [
+                -3,
+                5.75,
+                3.75
+              ],
+              "uv": [
+                5,
+                30
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                3,
+                3.75,
+                2.75
+              ],
+              "to": [
+                4,
+                5.75,
+                3.75
+              ],
+              "uv": [
+                9,
+                30
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -2.5,
+            -3,
+            3.5
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -1.5,
+                -6,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                25,
+                21
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            2.5,
+            -3,
+            3.5
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -1.5,
+                -6,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                37,
+                21
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -2.5,
+            -3,
+            -3.5
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -1.5,
+                -6,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                25,
+                30
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            2.5,
+            -3,
+            -3.5
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -1.5,
+                -6,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                37,
+                30
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

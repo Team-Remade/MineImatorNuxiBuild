@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\horse\\horse_skeleton.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_skeleton.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

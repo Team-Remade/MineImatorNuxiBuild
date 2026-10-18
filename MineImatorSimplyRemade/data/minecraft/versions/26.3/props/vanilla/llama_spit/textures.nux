@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\llama\\llama_spit.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\llama\\llama_spit.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

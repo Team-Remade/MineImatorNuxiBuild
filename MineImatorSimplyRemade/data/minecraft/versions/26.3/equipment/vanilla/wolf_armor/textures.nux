@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

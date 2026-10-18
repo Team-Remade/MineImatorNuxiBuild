@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\chest\\normal_left.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\chest\\normal_left.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

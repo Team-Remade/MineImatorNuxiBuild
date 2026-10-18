@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\dolphin\\dolphin.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\dolphin\\dolphin.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

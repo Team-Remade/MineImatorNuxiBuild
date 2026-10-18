@@ -1,0 +1,555 @@
+{
+  "name": "cat_baby",
+  "texture": "..\\..\\..\\textures\\entity\\cat\\ocelot_baby.png",
+  "texture_size": [
+    32,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        3.5,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "description": "baby",
+          "from": [
+            -2,
+            -1.5,
+            -3.5
+          ],
+          "to": [
+            2,
+            1.5,
+            3.5
+          ],
+          "uv": [
+            7,
+            15
+          ]
+        },
+        {
+          "type": "block",
+          "description": "collar",
+          "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar_baby.png",
+          "texture_size": [
+            32,
+            32
+          ],
+          "from": [
+            -2,
+            -1.5,
+            -3.5
+          ],
+          "to": [
+            2,
+            1.5,
+            3.5
+          ],
+          "uv": [
+            7,
+            15
+          ],
+          "color_blend": "#B02E26"
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            0.5,
+            3.5
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -2.5,
+                -1,
+                -1
+              ],
+              "to": [
+                2.5,
+                3,
+                3
+              ],
+              "uv": [
+                4,
+                4
+              ]
+            },
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -1.5,
+                -1,
+                -1
+              ],
+              "to": [
+                1.5,
+                1,
+                0
+              ],
+              "uv": [
+                19,
+                4
+              ],
+              "position": [
+                0,
+                0,
+                4
+              ]
+            },
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -2,
+                3,
+                -1
+              ],
+              "to": [
+                -1,
+                4,
+                1
+              ],
+              "uv": [
+                20,
+                2
+              ]
+            },
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                1,
+                3,
+                -1
+              ],
+              "to": [
+                2,
+                4,
+                1
+              ],
+              "uv": [
+                26,
+                2
+              ]
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar_baby.png",
+              "texture_size": [
+                32,
+                32
+              ],
+              "from": [
+                -2.5,
+                -1,
+                -1
+              ],
+              "to": [
+                2.5,
+                3,
+                3
+              ],
+              "uv": [
+                4,
+                4
+              ],
+              "color_blend": "#B02E26"
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar_baby.png",
+              "texture_size": [
+                32,
+                32
+              ],
+              "from": [
+                -1.5,
+                -1,
+                -1
+              ],
+              "to": [
+                1.5,
+                1,
+                0
+              ],
+              "uv": [
+                19,
+                4
+              ],
+              "position": [
+                0,
+                0,
+                4
+              ],
+              "color_blend": "#B02E26"
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar_baby.png",
+              "texture_size": [
+                32,
+                32
+              ],
+              "from": [
+                -2,
+                3,
+                -1
+              ],
+              "to": [
+                -1,
+                4,
+                1
+              ],
+              "uv": [
+                20,
+                2
+              ],
+              "color_blend": "#B02E26"
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar_baby.png",
+              "texture_size": [
+                32,
+                32
+              ],
+              "from": [
+                1,
+                3,
+                -1
+              ],
+              "to": [
+                2,
+                4,
+                1
+              ],
+              "uv": [
+                26,
+                2
+              ],
+              "color_blend": "#B02E26"
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -1.25,
+            -1.5,
+            2
+          ],
+          "bend": {
+            "offset": -1,
+            "end_offset": 1,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -0.5,
+                -2,
+                -1
+              ],
+              "to": [
+                0.5,
+                0,
+                1
+              ],
+              "uv": [
+                14,
+                20
+              ]
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar_baby.png",
+              "texture_size": [
+                32,
+                32
+              ],
+              "from": [
+                -0.5,
+                -2,
+                -1
+              ],
+              "to": [
+                0.5,
+                0,
+                1
+              ],
+              "uv": [
+                14,
+                20
+              ],
+              "color_blend": "#B02E26"
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            1.25,
+            -1.5,
+            2
+          ],
+          "bend": {
+            "offset": -1,
+            "end_offset": 1,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -0.5,
+                -2,
+                -1
+              ],
+              "to": [
+                0.5,
+                0,
+                1
+              ],
+              "uv": [
+                20,
+                20
+              ]
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar_baby.png",
+              "texture_size": [
+                32,
+                32
+              ],
+              "from": [
+                -0.5,
+                -2,
+                -1
+              ],
+              "to": [
+                0.5,
+                0,
+                1
+              ],
+              "uv": [
+                20,
+                20
+              ],
+              "color_blend": "#B02E26"
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -1.25,
+            -1.5,
+            -2
+          ],
+          "bend": {
+            "offset": -1,
+            "end_offset": 1,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -0.5,
+                -2,
+                -1
+              ],
+              "to": [
+                0.5,
+                0,
+                1
+              ],
+              "uv": [
+                14,
+                24
+              ]
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar_baby.png",
+              "texture_size": [
+                32,
+                32
+              ],
+              "from": [
+                -0.5,
+                -2,
+                -1
+              ],
+              "to": [
+                0.5,
+                0,
+                1
+              ],
+              "uv": [
+                14,
+                24
+              ],
+              "color_blend": "#B02E26"
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            1.25,
+            -1.5,
+            -2
+          ],
+          "bend": {
+            "offset": -1,
+            "end_offset": 1,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -0.5,
+                -2,
+                -1
+              ],
+              "to": [
+                0.5,
+                0,
+                1
+              ],
+              "uv": [
+                20,
+                24
+              ]
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar_baby.png",
+              "texture_size": [
+                32,
+                32
+              ],
+              "from": [
+                -0.5,
+                -2,
+                -1
+              ],
+              "to": [
+                0.5,
+                0,
+                1
+              ],
+              "uv": [
+                20,
+                24
+              ],
+              "color_blend": "#B02E26"
+            }
+          ]
+        },
+        {
+          "name": "tail",
+          "position": [
+            0,
+            1,
+            -3.25
+          ],
+          "rotation": [
+            -30,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -2.5,
+            "end_offset": 2.5,
+            "part": "back",
+            "axis": [
+              "x",
+              "y",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "description": "baby",
+              "from": [
+                -0.5,
+                -0.5,
+                -5
+              ],
+              "to": [
+                0.5,
+                0.5,
+                0
+              ],
+              "uv": [
+                5,
+                23
+              ]
+            },
+            {
+              "type": "block",
+              "description": "collar",
+              "texture": "..\\..\\..\\textures\\entity\\cat\\cat_collar_baby.png",
+              "texture_size": [
+                32,
+                32
+              ],
+              "from": [
+                -0.5,
+                -0.5,
+                -5
+              ],
+              "to": [
+                0.5,
+                0.5,
+                0
+              ],
+              "uv": [
+                5,
+                23
+              ],
+              "color_blend": "#B02E26"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

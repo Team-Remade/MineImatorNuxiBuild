@@ -1,0 +1,41 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_brown.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_brown.png"
+    },
+    {
+      "name": "Rabbit Black",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_black.png"
+    },
+    {
+      "name": "Rabbit Gold",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_gold.png"
+    },
+    {
+      "name": "Rabbit Salt",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_salt.png"
+    },
+    {
+      "name": "Rabbit White",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_white.png"
+    },
+    {
+      "name": "Rabbit White Splotched",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_white_splotched.png"
+    },
+    {
+      "name": "Rabbit Toast",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_toast.png"
+    },
+    {
+      "name": "Rabbit Caerbannog",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_caerbannog.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

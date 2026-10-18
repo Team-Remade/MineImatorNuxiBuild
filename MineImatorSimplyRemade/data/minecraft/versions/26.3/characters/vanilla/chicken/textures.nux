@@ -1,0 +1,17 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\chicken\\chicken_temperate.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\chicken\\chicken_temperate.png"
+    },
+    {
+      "name": "Chicken Warm",
+      "file": "..\\..\\..\\textures\\entity\\chicken\\chicken_warm.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

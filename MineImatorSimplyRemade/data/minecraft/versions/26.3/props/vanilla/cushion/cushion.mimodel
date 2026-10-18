@@ -1,0 +1,38 @@
+{
+  "name": "cushion",
+  "texture": "..\\..\\..\\textures\\entity\\cushion\\red_cushion.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "cushion",
+      "position": [
+        0,
+        2,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -8,
+            -2,
+            -8
+          ],
+          "to": [
+            8,
+            2,
+            8
+          ],
+          "uv": [
+            16,
+            16
+          ],
+          "inflate": -0.01
+        }
+      ]
+    }
+  ]
+}

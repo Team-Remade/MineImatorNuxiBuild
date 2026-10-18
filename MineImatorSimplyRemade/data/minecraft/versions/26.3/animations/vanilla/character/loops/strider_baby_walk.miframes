@@ -1,0 +1,89 @@
+{
+	"format": 35,
+	"created_in": "2.0.2 Continuation Build 1.0.13 (Alpha 1)",
+	"is_model": true,
+	"tempo": 24,
+	"length": 28,
+	"keyframes": [
+		{
+			"position": 28,
+			"values": {
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+			}
+		},
+		{
+			"position": 28,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": -30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 28,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": -30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "head",
+			"values": {
+				"POS_Z": -0.5,
+				"ROT_Y": -3,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 26,
+			"part_name": "head",
+			"values": {
+				"POS_Z": -0.5,
+				"ROT_Y": 3,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 19,
+			"part_name": "head",
+			"values": {
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "head",
+			"values": {
+				"TRANSITION": "easeoutquad"
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

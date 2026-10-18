@@ -1,0 +1,61 @@
+{
+	"format": 24,
+	"is_model": true,
+	"tempo": 20,
+	"length": 20,
+	"keyframes": [
+		{
+			"position": 5,
+			"part_name": "body",
+			"values": {
+				"POS_Z": 16,
+				"ROT_X": -15.88075,
+				"SCA_Z": 1.7042,
+				"TRANSITION": "easeinsine"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "body",
+			"values": {
+				"TRANSITION": "easeoutsine"
+			}
+		},
+		{
+			"position": 13,
+			"part_name": "body",
+			"values": {
+				"POS_Z": -2.54188,
+				"SCA_Z": 0.3827,
+				"TRANSITION": "easeinsine"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "body",
+			"values": {
+				"POS_Z": 1.81852,
+				"ROT_X": 34.43658,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_Y": -33.24912
+			}
+		},
+		{
+			"position": 20,
+			"values": {
+				"POS_Y": -20.28434
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

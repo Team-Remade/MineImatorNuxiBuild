@@ -1,0 +1,92 @@
+{
+	"format": 24,
+	"is_model": true,
+	"tempo": 24,
+	"length": 10,
+	"keyframes": [
+		{
+			"position": 0,
+			"values": {
+			}
+		},
+		{
+			"position": 10,
+			"values": {
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 40,
+				"BEND_ANGLE": 76.0419,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 40,
+				"BEND_ANGLE": 76.84671,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": 122.26606,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": -111.77938,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "body",
+			"values": {
+				"ROT_X": -25.04308,
+				"ROT_Y": 5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "body",
+			"values": {
+				"ROT_X": -25.04308,
+				"ROT_Y": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

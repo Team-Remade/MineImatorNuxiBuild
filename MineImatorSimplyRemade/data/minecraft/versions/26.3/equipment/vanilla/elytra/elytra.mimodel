@@ -1,0 +1,116 @@
+{
+  "name": "elytra",
+  "texture": "..\\..\\..\\textures\\entity\\equipment\\wings\\elytra.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "right_wing",
+      "position": [
+        -5,
+        6,
+        -3
+      ],
+      "rotation": [
+        10,
+        -5,
+        -15
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            0,
+            -20,
+            -1
+          ],
+          "to": [
+            10,
+            0,
+            1
+          ],
+          "uv": [
+            24,
+            2
+          ],
+          "inflate": 1,
+          "texture_mirror": true
+        },
+        {
+          "type": "block",
+          "from": [
+            0,
+            -20,
+            -1
+          ],
+          "to": [
+            10,
+            0,
+            1
+          ],
+          "uv": [
+            24,
+            2
+          ],
+          "inflate": 1,
+          "texture_mirror": true,
+          "invert": true
+        }
+      ]
+    },
+    {
+      "name": "left_wing",
+      "position": [
+        5,
+        6,
+        -3
+      ],
+      "rotation": [
+        10,
+        5,
+        15
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -10,
+            -20,
+            -1
+          ],
+          "to": [
+            0,
+            0,
+            1
+          ],
+          "uv": [
+            24,
+            2
+          ],
+          "inflate": 1
+        },
+        {
+          "type": "block",
+          "from": [
+            -10,
+            -20,
+            -1
+          ],
+          "to": [
+            0,
+            0,
+            1
+          ],
+          "uv": [
+            24,
+            2
+          ],
+          "inflate": 1,
+          "invert": true
+        }
+      ]
+    }
+  ]
+}

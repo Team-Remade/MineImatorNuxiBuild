@@ -1,0 +1,123 @@
+{
+  "name": "conduit",
+  "texture": "..\\..\\..\\textures\\entity\\conduit\\cage.png",
+  "texture_size": [
+    32,
+    16
+  ],
+  "parts": [
+    {
+      "name": "cage",
+      "position": [
+        0,
+        8,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -4,
+            -4,
+            -4
+          ],
+          "to": [
+            4,
+            4,
+            4
+          ],
+          "uv": [
+            8,
+            8
+          ],
+          "item_bounce": true
+        },
+        {
+          "type": "block",
+          "from": [
+            -4,
+            -4,
+            -4
+          ],
+          "to": [
+            4,
+            4,
+            4
+          ],
+          "uv": [
+            8,
+            8
+          ],
+          "invert": true,
+          "item_bounce": true
+        }
+      ]
+    },
+    {
+      "name": "center",
+      "position": [
+        0,
+        8,
+        0
+      ],
+      "scale": [
+        0.625,
+        0.625,
+        0.625
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "description": "center",
+          "texture": "..\\..\\..\\textures\\entity\\conduit\\closed_eye.png",
+          "texture_size": [
+            16,
+            16
+          ],
+          "from": [
+            -4,
+            -4,
+            0
+          ],
+          "to": [
+            4,
+            4,
+            0
+          ],
+          "uv": [
+            0,
+            0
+          ],
+          "face_camera": true,
+          "item_bounce": true
+        },
+        {
+          "type": "block",
+          "description": "center",
+          "texture": "..\\..\\..\\textures\\entity\\conduit\\closed_eye.png",
+          "texture_size": [
+            16,
+            16
+          ],
+          "from": [
+            -4,
+            -4,
+            0
+          ],
+          "to": [
+            4,
+            4,
+            0
+          ],
+          "uv": [
+            0,
+            0
+          ],
+          "invert": true,
+          "face_camera": true,
+          "item_bounce": true
+        }
+      ]
+    }
+  ]
+}

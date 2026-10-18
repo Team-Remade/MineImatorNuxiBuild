@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\illager\\ravager.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\illager\\ravager.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

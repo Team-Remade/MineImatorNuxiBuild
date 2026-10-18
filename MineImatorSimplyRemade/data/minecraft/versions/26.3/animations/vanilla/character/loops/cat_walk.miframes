@@ -1,0 +1,131 @@
+{
+	"format": 24,
+	"is_model": true,
+	"tempo": 24,
+	"length": 24,
+	"keyframes": [
+		{
+			"position": 0,
+			"part_name": "body",
+			"values": {
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 24,
+			"values": {
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_X": -15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_X": -15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "right_front_leg",
+			"values": {
+				"ROT_X": -15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_front_leg",
+			"values": {
+				"ROT_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_front_leg",
+			"values": {
+				"ROT_X": -15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "left_front_leg",
+			"values": {
+				"ROT_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "head",
+			"values": {
+				"ROT_X": 10,
+				"ROT_Y": 10.01361,
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "head",
+			"values": {
+				"ROT_X": 10,
+				"ROT_Y": -10,
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": 48.67182,
+				"BEND_ANGLE": -15.41772,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": 57.38572,
+				"BEND_ANGLE": 21,
+				"TRANSITION": "easeinoutsine"
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

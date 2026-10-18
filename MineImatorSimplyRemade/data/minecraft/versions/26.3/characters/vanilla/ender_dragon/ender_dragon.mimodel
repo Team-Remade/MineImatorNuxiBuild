@@ -1,0 +1,4080 @@
+{
+  "name": "ender_dragon",
+  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon.png",
+  "texture_size": [
+    256,
+    256
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        48,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -12,
+            -8,
+            -20
+          ],
+          "to": [
+            12,
+            16,
+            44
+          ],
+          "uv": [
+            64,
+            64
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -1,
+            16,
+            26
+          ],
+          "to": [
+            1,
+            22,
+            38
+          ],
+          "uv": [
+            232,
+            65
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -1,
+            16,
+            6
+          ],
+          "to": [
+            1,
+            22,
+            18
+          ],
+          "uv": [
+            232,
+            65
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -1,
+            16,
+            -14
+          ],
+          "to": [
+            1,
+            22,
+            -2
+          ],
+          "uv": [
+            232,
+            65
+          ]
+        },
+        {
+          "type": "block",
+          "description": "eyes",
+          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+          "texture_size": [
+            256,
+            256
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -12,
+            -8,
+            -20
+          ],
+          "to": [
+            12,
+            16,
+            44
+          ],
+          "uv": [
+            64,
+            64
+          ]
+        },
+        {
+          "type": "block",
+          "description": "eyes",
+          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+          "texture_size": [
+            256,
+            256
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -1,
+            16,
+            26
+          ],
+          "to": [
+            1,
+            22,
+            38
+          ],
+          "uv": [
+            232,
+            65
+          ]
+        },
+        {
+          "type": "block",
+          "description": "eyes",
+          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+          "texture_size": [
+            256,
+            256
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -1,
+            16,
+            6
+          ],
+          "to": [
+            1,
+            22,
+            18
+          ],
+          "uv": [
+            232,
+            65
+          ]
+        },
+        {
+          "type": "block",
+          "description": "eyes",
+          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+          "texture_size": [
+            256,
+            256
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -1,
+            16,
+            -14
+          ],
+          "to": [
+            1,
+            22,
+            -2
+          ],
+          "uv": [
+            232,
+            65
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "neck",
+          "position": [
+            0,
+            4,
+            44
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -5,
+                -5,
+                0
+              ],
+              "to": [
+                5,
+                5,
+                10
+              ],
+              "uv": [
+                202,
+                114
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                2,
+                4,
+                6
+              ],
+              "uv": [
+                54,
+                6
+              ],
+              "position": [
+                -1,
+                5,
+                2
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -5,
+                -5,
+                0
+              ],
+              "to": [
+                5,
+                5,
+                10
+              ],
+              "uv": [
+                202,
+                114
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                2,
+                4,
+                6
+              ],
+              "uv": [
+                54,
+                6
+              ],
+              "position": [
+                -1,
+                5,
+                2
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "neck_1",
+              "position": [
+                0,
+                0,
+                10
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -5,
+                    -5,
+                    0
+                  ],
+                  "to": [
+                    5,
+                    5,
+                    10
+                  ],
+                  "uv": [
+                    202,
+                    114
+                  ]
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "to": [
+                    2,
+                    4,
+                    6
+                  ],
+                  "uv": [
+                    54,
+                    6
+                  ],
+                  "position": [
+                    -1,
+                    5,
+                    2
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                  "texture_size": [
+                    256,
+                    256
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    -5,
+                    -5,
+                    0
+                  ],
+                  "to": [
+                    5,
+                    5,
+                    10
+                  ],
+                  "uv": [
+                    202,
+                    114
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                  "texture_size": [
+                    256,
+                    256
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "to": [
+                    2,
+                    4,
+                    6
+                  ],
+                  "uv": [
+                    54,
+                    6
+                  ],
+                  "position": [
+                    -1,
+                    5,
+                    2
+                  ]
+                }
+              ],
+              "parts": [
+                {
+                  "name": "neck_2",
+                  "position": [
+                    0,
+                    0,
+                    10
+                  ],
+                  "shapes": [
+                    {
+                      "type": "block",
+                      "from": [
+                        -5,
+                        -5,
+                        0
+                      ],
+                      "to": [
+                        5,
+                        5,
+                        10
+                      ],
+                      "uv": [
+                        202,
+                        114
+                      ]
+                    },
+                    {
+                      "type": "block",
+                      "from": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "to": [
+                        2,
+                        4,
+                        6
+                      ],
+                      "uv": [
+                        54,
+                        6
+                      ],
+                      "position": [
+                        -1,
+                        5,
+                        2
+                      ]
+                    },
+                    {
+                      "type": "block",
+                      "description": "eyes",
+                      "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                      "texture_size": [
+                        256,
+                        256
+                      ],
+                      "color_brightness": 0.75,
+                      "from": [
+                        -5,
+                        -5,
+                        0
+                      ],
+                      "to": [
+                        5,
+                        5,
+                        10
+                      ],
+                      "uv": [
+                        202,
+                        114
+                      ]
+                    },
+                    {
+                      "type": "block",
+                      "description": "eyes",
+                      "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                      "texture_size": [
+                        256,
+                        256
+                      ],
+                      "color_brightness": 0.75,
+                      "from": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "to": [
+                        2,
+                        4,
+                        6
+                      ],
+                      "uv": [
+                        54,
+                        6
+                      ],
+                      "position": [
+                        -1,
+                        5,
+                        2
+                      ]
+                    }
+                  ],
+                  "parts": [
+                    {
+                      "name": "neck_3",
+                      "position": [
+                        0,
+                        0,
+                        10
+                      ],
+                      "shapes": [
+                        {
+                          "type": "block",
+                          "from": [
+                            -5,
+                            -5,
+                            0
+                          ],
+                          "to": [
+                            5,
+                            5,
+                            10
+                          ],
+                          "uv": [
+                            202,
+                            114
+                          ]
+                        },
+                        {
+                          "type": "block",
+                          "from": [
+                            0,
+                            0,
+                            0
+                          ],
+                          "to": [
+                            2,
+                            4,
+                            6
+                          ],
+                          "uv": [
+                            54,
+                            6
+                          ],
+                          "position": [
+                            -1,
+                            5,
+                            2
+                          ]
+                        },
+                        {
+                          "type": "block",
+                          "description": "eyes",
+                          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                          "texture_size": [
+                            256,
+                            256
+                          ],
+                          "color_brightness": 0.75,
+                          "from": [
+                            -5,
+                            -5,
+                            0
+                          ],
+                          "to": [
+                            5,
+                            5,
+                            10
+                          ],
+                          "uv": [
+                            202,
+                            114
+                          ]
+                        },
+                        {
+                          "type": "block",
+                          "description": "eyes",
+                          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                          "texture_size": [
+                            256,
+                            256
+                          ],
+                          "color_brightness": 0.75,
+                          "from": [
+                            0,
+                            0,
+                            0
+                          ],
+                          "to": [
+                            2,
+                            4,
+                            6
+                          ],
+                          "uv": [
+                            54,
+                            6
+                          ],
+                          "position": [
+                            -1,
+                            5,
+                            2
+                          ]
+                        }
+                      ],
+                      "parts": [
+                        {
+                          "name": "neck_4",
+                          "position": [
+                            0,
+                            0,
+                            10
+                          ],
+                          "shapes": [
+                            {
+                              "type": "block",
+                              "from": [
+                                -5,
+                                -5,
+                                0
+                              ],
+                              "to": [
+                                5,
+                                5,
+                                10
+                              ],
+                              "uv": [
+                                202,
+                                114
+                              ]
+                            },
+                            {
+                              "type": "block",
+                              "from": [
+                                0,
+                                0,
+                                0
+                              ],
+                              "to": [
+                                2,
+                                4,
+                                6
+                              ],
+                              "uv": [
+                                54,
+                                6
+                              ],
+                              "position": [
+                                -1,
+                                5,
+                                2
+                              ]
+                            },
+                            {
+                              "type": "block",
+                              "description": "eyes",
+                              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                              "texture_size": [
+                                256,
+                                256
+                              ],
+                              "color_brightness": 0.75,
+                              "from": [
+                                -5,
+                                -5,
+                                0
+                              ],
+                              "to": [
+                                5,
+                                5,
+                                10
+                              ],
+                              "uv": [
+                                202,
+                                114
+                              ]
+                            },
+                            {
+                              "type": "block",
+                              "description": "eyes",
+                              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                              "texture_size": [
+                                256,
+                                256
+                              ],
+                              "color_brightness": 0.75,
+                              "from": [
+                                0,
+                                0,
+                                0
+                              ],
+                              "to": [
+                                2,
+                                4,
+                                6
+                              ],
+                              "uv": [
+                                54,
+                                6
+                              ],
+                              "position": [
+                                -1,
+                                5,
+                                2
+                              ]
+                            }
+                          ],
+                          "parts": [
+                            {
+                              "name": "neck_5",
+                              "position": [
+                                0,
+                                0,
+                                10
+                              ],
+                              "shapes": [
+                                {
+                                  "type": "block",
+                                  "from": [
+                                    -5,
+                                    -5,
+                                    0
+                                  ],
+                                  "to": [
+                                    5,
+                                    5,
+                                    10
+                                  ],
+                                  "uv": [
+                                    202,
+                                    114
+                                  ]
+                                },
+                                {
+                                  "type": "block",
+                                  "from": [
+                                    0,
+                                    0,
+                                    0
+                                  ],
+                                  "to": [
+                                    2,
+                                    4,
+                                    6
+                                  ],
+                                  "uv": [
+                                    54,
+                                    6
+                                  ],
+                                  "position": [
+                                    -1,
+                                    5,
+                                    2
+                                  ]
+                                },
+                                {
+                                  "type": "block",
+                                  "description": "eyes",
+                                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                  "texture_size": [
+                                    256,
+                                    256
+                                  ],
+                                  "color_brightness": 0.75,
+                                  "from": [
+                                    -5,
+                                    -5,
+                                    0
+                                  ],
+                                  "to": [
+                                    5,
+                                    5,
+                                    10
+                                  ],
+                                  "uv": [
+                                    202,
+                                    114
+                                  ]
+                                },
+                                {
+                                  "type": "block",
+                                  "description": "eyes",
+                                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                  "texture_size": [
+                                    256,
+                                    256
+                                  ],
+                                  "color_brightness": 0.75,
+                                  "from": [
+                                    0,
+                                    0,
+                                    0
+                                  ],
+                                  "to": [
+                                    2,
+                                    4,
+                                    6
+                                  ],
+                                  "uv": [
+                                    54,
+                                    6
+                                  ],
+                                  "position": [
+                                    -1,
+                                    5,
+                                    2
+                                  ]
+                                }
+                              ],
+                              "parts": [
+                                {
+                                  "name": "neck_6",
+                                  "position": [
+                                    0,
+                                    0,
+                                    10
+                                  ],
+                                  "shapes": [
+                                    {
+                                      "type": "block",
+                                      "from": [
+                                        -5,
+                                        -5,
+                                        0
+                                      ],
+                                      "to": [
+                                        5,
+                                        5,
+                                        10
+                                      ],
+                                      "uv": [
+                                        202,
+                                        114
+                                      ]
+                                    },
+                                    {
+                                      "type": "block",
+                                      "from": [
+                                        0,
+                                        0,
+                                        0
+                                      ],
+                                      "to": [
+                                        2,
+                                        4,
+                                        6
+                                      ],
+                                      "uv": [
+                                        54,
+                                        6
+                                      ],
+                                      "position": [
+                                        -1,
+                                        5,
+                                        2
+                                      ]
+                                    },
+                                    {
+                                      "type": "block",
+                                      "description": "eyes",
+                                      "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                      "texture_size": [
+                                        256,
+                                        256
+                                      ],
+                                      "color_brightness": 0.75,
+                                      "from": [
+                                        -5,
+                                        -5,
+                                        0
+                                      ],
+                                      "to": [
+                                        5,
+                                        5,
+                                        10
+                                      ],
+                                      "uv": [
+                                        202,
+                                        114
+                                      ]
+                                    },
+                                    {
+                                      "type": "block",
+                                      "description": "eyes",
+                                      "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                      "texture_size": [
+                                        256,
+                                        256
+                                      ],
+                                      "color_brightness": 0.75,
+                                      "from": [
+                                        0,
+                                        0,
+                                        0
+                                      ],
+                                      "to": [
+                                        2,
+                                        4,
+                                        6
+                                      ],
+                                      "uv": [
+                                        54,
+                                        6
+                                      ],
+                                      "position": [
+                                        -1,
+                                        5,
+                                        2
+                                      ]
+                                    }
+                                  ],
+                                  "parts": [
+                                    {
+                                      "name": "head",
+                                      "position": [
+                                        0,
+                                        0,
+                                        10
+                                      ],
+                                      "shapes": [
+                                        {
+                                          "type": "block",
+                                          "from": [
+                                            -8,
+                                            -8,
+                                            0
+                                          ],
+                                          "to": [
+                                            8,
+                                            8,
+                                            16
+                                          ],
+                                          "uv": [
+                                            128,
+                                            46
+                                          ]
+                                        },
+                                        {
+                                          "type": "block",
+                                          "from": [
+                                            3,
+                                            8,
+                                            4
+                                          ],
+                                          "to": [
+                                            5,
+                                            12,
+                                            10
+                                          ],
+                                          "uv": [
+                                            6,
+                                            6
+                                          ],
+                                          "texture_mirror": true
+                                        },
+                                        {
+                                          "type": "block",
+                                          "from": [
+                                            -5,
+                                            8,
+                                            4
+                                          ],
+                                          "to": [
+                                            -3,
+                                            12,
+                                            10
+                                          ],
+                                          "uv": [
+                                            6,
+                                            6
+                                          ],
+                                          "texture_mirror": true
+                                        },
+                                        {
+                                          "type": "block",
+                                          "description": "eyes",
+                                          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                          "texture_size": [
+                                            256,
+                                            256
+                                          ],
+                                          "color_brightness": 0.75,
+                                          "from": [
+                                            -8,
+                                            -8,
+                                            0
+                                          ],
+                                          "to": [
+                                            8,
+                                            8,
+                                            16
+                                          ],
+                                          "uv": [
+                                            128,
+                                            46
+                                          ]
+                                        },
+                                        {
+                                          "type": "block",
+                                          "description": "eyes",
+                                          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                          "texture_size": [
+                                            256,
+                                            256
+                                          ],
+                                          "color_brightness": 0.75,
+                                          "from": [
+                                            3,
+                                            8,
+                                            4
+                                          ],
+                                          "to": [
+                                            5,
+                                            12,
+                                            10
+                                          ],
+                                          "uv": [
+                                            6,
+                                            6
+                                          ],
+                                          "texture_mirror": true
+                                        },
+                                        {
+                                          "type": "block",
+                                          "description": "eyes",
+                                          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                          "texture_size": [
+                                            256,
+                                            256
+                                          ],
+                                          "color_brightness": 0.75,
+                                          "from": [
+                                            -5,
+                                            8,
+                                            4
+                                          ],
+                                          "to": [
+                                            -3,
+                                            12,
+                                            10
+                                          ],
+                                          "uv": [
+                                            6,
+                                            6
+                                          ],
+                                          "texture_mirror": true
+                                        }
+                                      ],
+                                      "parts": [
+                                        {
+                                          "name": "mouth_lower",
+                                          "position": [
+                                            0,
+                                            -4,
+                                            16
+                                          ],
+                                          "shapes": [
+                                            {
+                                              "type": "block",
+                                              "from": [
+                                                -6,
+                                                -4,
+                                                0
+                                              ],
+                                              "to": [
+                                                6,
+                                                0,
+                                                16
+                                              ],
+                                              "uv": [
+                                                192,
+                                                81
+                                              ]
+                                            },
+                                            {
+                                              "type": "block",
+                                              "description": "eyes",
+                                              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                              "texture_size": [
+                                                256,
+                                                256
+                                              ],
+                                              "color_brightness": 0.75,
+                                              "from": [
+                                                -6,
+                                                -4,
+                                                0
+                                              ],
+                                              "to": [
+                                                6,
+                                                0,
+                                                16
+                                              ],
+                                              "uv": [
+                                                192,
+                                                81
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "name": "mouth_upper",
+                                          "position": [
+                                            0,
+                                            -4,
+                                            16
+                                          ],
+                                          "shapes": [
+                                            {
+                                              "type": "block",
+                                              "from": [
+                                                -6,
+                                                0,
+                                                0
+                                              ],
+                                              "to": [
+                                                6,
+                                                5,
+                                                16
+                                              ],
+                                              "uv": [
+                                                192,
+                                                60
+                                              ]
+                                            },
+                                            {
+                                              "type": "block",
+                                              "from": [
+                                                3,
+                                                5,
+                                                10
+                                              ],
+                                              "to": [
+                                                5,
+                                                7,
+                                                14
+                                              ],
+                                              "uv": [
+                                                116,
+                                                4
+                                              ],
+                                              "texture_mirror": true
+                                            },
+                                            {
+                                              "type": "block",
+                                              "from": [
+                                                -5,
+                                                5,
+                                                10
+                                              ],
+                                              "to": [
+                                                -3,
+                                                7,
+                                                14
+                                              ],
+                                              "uv": [
+                                                116,
+                                                4
+                                              ],
+                                              "texture_mirror": true
+                                            },
+                                            {
+                                              "type": "block",
+                                              "description": "eyes",
+                                              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                              "texture_size": [
+                                                256,
+                                                256
+                                              ],
+                                              "color_brightness": 0.75,
+                                              "from": [
+                                                -6,
+                                                0,
+                                                0
+                                              ],
+                                              "to": [
+                                                6,
+                                                5,
+                                                16
+                                              ],
+                                              "uv": [
+                                                192,
+                                                60
+                                              ]
+                                            },
+                                            {
+                                              "type": "block",
+                                              "description": "eyes",
+                                              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                              "texture_size": [
+                                                256,
+                                                256
+                                              ],
+                                              "color_brightness": 0.75,
+                                              "from": [
+                                                3,
+                                                5,
+                                                10
+                                              ],
+                                              "to": [
+                                                5,
+                                                7,
+                                                14
+                                              ],
+                                              "uv": [
+                                                116,
+                                                4
+                                              ],
+                                              "texture_mirror": true
+                                            },
+                                            {
+                                              "type": "block",
+                                              "description": "eyes",
+                                              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                              "texture_size": [
+                                                256,
+                                                256
+                                              ],
+                                              "color_brightness": 0.75,
+                                              "from": [
+                                                -5,
+                                                5,
+                                                10
+                                              ],
+                                              "to": [
+                                                -3,
+                                                7,
+                                                14
+                                              ],
+                                              "uv": [
+                                                116,
+                                                4
+                                              ],
+                                              "texture_mirror": true
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_wing",
+          "position": [
+            -12,
+            16,
+            32
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -56,
+            "part": "left",
+            "axis": "y"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -56,
+                -4,
+                -4
+              ],
+              "to": [
+                0,
+                4,
+                4
+              ],
+              "uv": [
+                120,
+                96
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -112,
+                -2,
+                -2
+              ],
+              "to": [
+                -56,
+                2,
+                2
+              ],
+              "uv": [
+                116,
+                140
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                -56,
+                2,
+                0
+              ],
+              "to": [
+                0,
+                58,
+                0
+              ],
+              "uv": [
+                0,
+                88
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                -56,
+                2,
+                -1e-05
+              ],
+              "to": [
+                0,
+                58,
+                -1e-05
+              ],
+              "uv": [
+                56,
+                88
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                -112,
+                2,
+                0
+              ],
+              "to": [
+                -56,
+                58,
+                0
+              ],
+              "uv": [
+                0,
+                144
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                -112,
+                2,
+                -1e-05
+              ],
+              "to": [
+                -56,
+                58,
+                -1e-05
+              ],
+              "uv": [
+                56,
+                144
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -56,
+                -4,
+                -4
+              ],
+              "to": [
+                0,
+                4,
+                4
+              ],
+              "uv": [
+                120,
+                96
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -112,
+                -2,
+                -2
+              ],
+              "to": [
+                -56,
+                2,
+                2
+              ],
+              "uv": [
+                116,
+                140
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -56,
+                2,
+                0
+              ],
+              "to": [
+                0,
+                58,
+                0
+              ],
+              "uv": [
+                0,
+                88
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -56,
+                2,
+                -1e-05
+              ],
+              "to": [
+                0,
+                58,
+                -1e-05
+              ],
+              "uv": [
+                56,
+                88
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -112,
+                2,
+                0
+              ],
+              "to": [
+                -56,
+                58,
+                0
+              ],
+              "uv": [
+                0,
+                144
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -112,
+                2,
+                -1e-05
+              ],
+              "to": [
+                -56,
+                58,
+                -1e-05
+              ],
+              "uv": [
+                56,
+                144
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_wing",
+          "position": [
+            12,
+            16,
+            32
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": 56,
+            "part": "right",
+            "axis": "y",
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                0,
+                -4,
+                -4
+              ],
+              "to": [
+                56,
+                4,
+                4
+              ],
+              "uv": [
+                120,
+                96
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "from": [
+                56,
+                -2,
+                -2
+              ],
+              "to": [
+                112,
+                2,
+                2
+              ],
+              "uv": [
+                116,
+                140
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "from": [
+                0,
+                2,
+                0
+              ],
+              "to": [
+                56,
+                58,
+                0
+              ],
+              "uv": [
+                0,
+                88
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "from": [
+                0,
+                2,
+                -1e-05
+              ],
+              "to": [
+                56,
+                58,
+                -1e-05
+              ],
+              "uv": [
+                56,
+                88
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "from": [
+                56,
+                2,
+                0
+              ],
+              "to": [
+                112,
+                58,
+                0
+              ],
+              "uv": [
+                0,
+                144
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "from": [
+                56,
+                2,
+                -1e-05
+              ],
+              "to": [
+                112,
+                58,
+                -1e-05
+              ],
+              "uv": [
+                56,
+                144
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                0,
+                -4,
+                -4
+              ],
+              "to": [
+                56,
+                4,
+                4
+              ],
+              "uv": [
+                120,
+                96
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                56,
+                -2,
+                -2
+              ],
+              "to": [
+                112,
+                2,
+                2
+              ],
+              "uv": [
+                116,
+                140
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                0,
+                2,
+                0
+              ],
+              "to": [
+                56,
+                58,
+                0
+              ],
+              "uv": [
+                0,
+                88
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                0,
+                2,
+                -1e-05
+              ],
+              "to": [
+                56,
+                58,
+                -1e-05
+              ],
+              "uv": [
+                56,
+                88
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                56,
+                2,
+                0
+              ],
+              "to": [
+                112,
+                58,
+                0
+              ],
+              "uv": [
+                0,
+                144
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                56,
+                2,
+                -1e-05
+              ],
+              "to": [
+                112,
+                58,
+                -1e-05
+              ],
+              "uv": [
+                56,
+                144
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            }
+          ]
+        },
+        {
+          "name": "right_arm",
+          "position": [
+            -12,
+            0,
+            32
+          ],
+          "bend": {
+            "offset": -20,
+            "end_offset": 24,
+            "part": "lower",
+            "axis": "x"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -20,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                120,
+                112
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -44,
+                -3
+              ],
+              "to": [
+                3,
+                -20,
+                3
+              ],
+              "uv": [
+                232,
+                144
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -4,
+                -20,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                120,
+                112
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -3,
+                -44,
+                -3
+              ],
+              "to": [
+                3,
+                -20,
+                3
+              ],
+              "uv": [
+                232,
+                144
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "right_hand",
+              "position": [
+                0,
+                -44,
+                0
+              ],
+              "bend": {
+                "offset": 4,
+                "end_offset": 8,
+                "part": "front",
+                "axis": "x",
+                "direction_min": 0
+              },
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -4,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    4,
+                    2,
+                    12
+                  ],
+                  "uv": [
+                    160,
+                    120
+                  ],
+                  "position": [
+                    0,
+                    -2,
+                    0
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                  "texture_size": [
+                    256,
+                    256
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    -4,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    4,
+                    2,
+                    12
+                  ],
+                  "uv": [
+                    160,
+                    120
+                  ],
+                  "position": [
+                    0,
+                    -2,
+                    0
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_arm",
+          "position": [
+            12,
+            0,
+            32
+          ],
+          "bend": {
+            "offset": -20,
+            "end_offset": 24,
+            "part": "lower",
+            "axis": "x"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -20,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                120,
+                112
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -44,
+                -3
+              ],
+              "to": [
+                3,
+                -20,
+                3
+              ],
+              "uv": [
+                232,
+                144
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -4,
+                -20,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                120,
+                112
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -3,
+                -44,
+                -3
+              ],
+              "to": [
+                3,
+                -20,
+                3
+              ],
+              "uv": [
+                232,
+                144
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "left_hand",
+              "position": [
+                0,
+                -44,
+                0
+              ],
+              "bend": {
+                "offset": 4,
+                "end_offset": 8,
+                "part": "front",
+                "axis": "x",
+                "direction_min": 0
+              },
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -4,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    4,
+                    2,
+                    12
+                  ],
+                  "uv": [
+                    160,
+                    120
+                  ],
+                  "position": [
+                    0,
+                    -2,
+                    0
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                  "texture_size": [
+                    256,
+                    256
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    -4,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    4,
+                    2,
+                    12
+                  ],
+                  "uv": [
+                    160,
+                    120
+                  ],
+                  "position": [
+                    0,
+                    -2,
+                    0
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_leg",
+          "position": [
+            -16,
+            4,
+            -4
+          ],
+          "rotation": [
+            35,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -24,
+            "end_offset": 32,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -8,
+                -24,
+                -8
+              ],
+              "to": [
+                8,
+                8,
+                8
+              ],
+              "uv": [
+                16,
+                16
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -6,
+                -56,
+                -8
+              ],
+              "to": [
+                6,
+                -24,
+                4
+              ],
+              "uv": [
+                208,
+                12
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -8,
+                -24,
+                -8
+              ],
+              "to": [
+                8,
+                8,
+                8
+              ],
+              "uv": [
+                16,
+                16
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -6,
+                -56,
+                -8
+              ],
+              "to": [
+                6,
+                -24,
+                4
+              ],
+              "uv": [
+                208,
+                12
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "right_foot",
+              "position": [
+                0,
+                -56,
+                0
+              ],
+              "rotation": [
+                -35,
+                0,
+                0
+              ],
+              "bend": {
+                "offset": 8,
+                "end_offset": 12,
+                "part": "front",
+                "axis": "x",
+                "direction_min": 0
+              },
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -9,
+                    -3,
+                    -4
+                  ],
+                  "to": [
+                    9,
+                    3,
+                    20
+                  ],
+                  "uv": [
+                    136,
+                    24
+                  ],
+                  "position": [
+                    0,
+                    -3,
+                    0
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                  "texture_size": [
+                    256,
+                    256
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    -9,
+                    -3,
+                    -4
+                  ],
+                  "to": [
+                    9,
+                    3,
+                    20
+                  ],
+                  "uv": [
+                    136,
+                    24
+                  ],
+                  "position": [
+                    0,
+                    -3,
+                    0
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_leg",
+          "position": [
+            16,
+            4,
+            -4
+          ],
+          "rotation": [
+            35,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -24,
+            "end_offset": 32,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -8,
+                -24,
+                -8
+              ],
+              "to": [
+                8,
+                8,
+                8
+              ],
+              "uv": [
+                16,
+                16
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -6,
+                -56,
+                -8
+              ],
+              "to": [
+                6,
+                -24,
+                4
+              ],
+              "uv": [
+                208,
+                12
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -8,
+                -24,
+                -8
+              ],
+              "to": [
+                8,
+                8,
+                8
+              ],
+              "uv": [
+                16,
+                16
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -6,
+                -56,
+                -8
+              ],
+              "to": [
+                6,
+                -24,
+                4
+              ],
+              "uv": [
+                208,
+                12
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "left_foot",
+              "position": [
+                0,
+                -56,
+                0
+              ],
+              "rotation": [
+                -35,
+                0,
+                0
+              ],
+              "bend": {
+                "offset": 8,
+                "end_offset": 12,
+                "part": "front",
+                "axis": "x",
+                "direction_min": 0
+              },
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -9,
+                    -3,
+                    -4
+                  ],
+                  "to": [
+                    9,
+                    3,
+                    20
+                  ],
+                  "uv": [
+                    136,
+                    24
+                  ],
+                  "position": [
+                    0,
+                    -3,
+                    0
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                  "texture_size": [
+                    256,
+                    256
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    -9,
+                    -3,
+                    -4
+                  ],
+                  "to": [
+                    9,
+                    3,
+                    20
+                  ],
+                  "uv": [
+                    136,
+                    24
+                  ],
+                  "position": [
+                    0,
+                    -3,
+                    0
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tail",
+          "position": [
+            0,
+            10,
+            -20
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -5,
+                -5,
+                0
+              ],
+              "to": [
+                5,
+                5,
+                10
+              ],
+              "uv": [
+                202,
+                114
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1,
+                5,
+                2
+              ],
+              "to": [
+                1,
+                9,
+                8
+              ],
+              "uv": [
+                54,
+                6
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -5,
+                -5,
+                0
+              ],
+              "to": [
+                5,
+                5,
+                10
+              ],
+              "uv": [
+                202,
+                114
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+              "texture_size": [
+                256,
+                256
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -1,
+                5,
+                2
+              ],
+              "to": [
+                1,
+                9,
+                8
+              ],
+              "uv": [
+                54,
+                6
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "tail_1",
+              "position": [
+                0,
+                0,
+                -10
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -5,
+                    -5,
+                    0
+                  ],
+                  "to": [
+                    5,
+                    5,
+                    10
+                  ],
+                  "uv": [
+                    202,
+                    114
+                  ],
+                  "rotation": [
+                    0,
+                    180,
+                    0
+                  ]
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -1,
+                    5,
+                    2
+                  ],
+                  "to": [
+                    1,
+                    9,
+                    8
+                  ],
+                  "uv": [
+                    54,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    180,
+                    0
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                  "texture_size": [
+                    256,
+                    256
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    -5,
+                    -5,
+                    0
+                  ],
+                  "to": [
+                    5,
+                    5,
+                    10
+                  ],
+                  "uv": [
+                    202,
+                    114
+                  ],
+                  "rotation": [
+                    0,
+                    180,
+                    0
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                  "texture_size": [
+                    256,
+                    256
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    -1,
+                    5,
+                    2
+                  ],
+                  "to": [
+                    1,
+                    9,
+                    8
+                  ],
+                  "uv": [
+                    54,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    180,
+                    0
+                  ]
+                }
+              ],
+              "parts": [
+                {
+                  "name": "tail_2",
+                  "position": [
+                    0,
+                    0,
+                    -10
+                  ],
+                  "shapes": [
+                    {
+                      "type": "block",
+                      "from": [
+                        -5,
+                        -5,
+                        0
+                      ],
+                      "to": [
+                        5,
+                        5,
+                        10
+                      ],
+                      "uv": [
+                        202,
+                        114
+                      ],
+                      "rotation": [
+                        0,
+                        180,
+                        0
+                      ]
+                    },
+                    {
+                      "type": "block",
+                      "from": [
+                        -1,
+                        5,
+                        2
+                      ],
+                      "to": [
+                        1,
+                        9,
+                        8
+                      ],
+                      "uv": [
+                        54,
+                        6
+                      ],
+                      "rotation": [
+                        0,
+                        180,
+                        0
+                      ]
+                    },
+                    {
+                      "type": "block",
+                      "description": "eyes",
+                      "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                      "texture_size": [
+                        256,
+                        256
+                      ],
+                      "color_brightness": 0.75,
+                      "from": [
+                        -5,
+                        -5,
+                        0
+                      ],
+                      "to": [
+                        5,
+                        5,
+                        10
+                      ],
+                      "uv": [
+                        202,
+                        114
+                      ],
+                      "rotation": [
+                        0,
+                        180,
+                        0
+                      ]
+                    },
+                    {
+                      "type": "block",
+                      "description": "eyes",
+                      "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                      "texture_size": [
+                        256,
+                        256
+                      ],
+                      "color_brightness": 0.75,
+                      "from": [
+                        -1,
+                        5,
+                        2
+                      ],
+                      "to": [
+                        1,
+                        9,
+                        8
+                      ],
+                      "uv": [
+                        54,
+                        6
+                      ],
+                      "rotation": [
+                        0,
+                        180,
+                        0
+                      ]
+                    }
+                  ],
+                  "parts": [
+                    {
+                      "name": "tail_3",
+                      "position": [
+                        0,
+                        0,
+                        -10
+                      ],
+                      "shapes": [
+                        {
+                          "type": "block",
+                          "from": [
+                            -5,
+                            -5,
+                            0
+                          ],
+                          "to": [
+                            5,
+                            5,
+                            10
+                          ],
+                          "uv": [
+                            202,
+                            114
+                          ],
+                          "rotation": [
+                            0,
+                            180,
+                            0
+                          ]
+                        },
+                        {
+                          "type": "block",
+                          "from": [
+                            -1,
+                            5,
+                            2
+                          ],
+                          "to": [
+                            1,
+                            9,
+                            8
+                          ],
+                          "uv": [
+                            54,
+                            6
+                          ],
+                          "rotation": [
+                            0,
+                            180,
+                            0
+                          ]
+                        },
+                        {
+                          "type": "block",
+                          "description": "eyes",
+                          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                          "texture_size": [
+                            256,
+                            256
+                          ],
+                          "color_brightness": 0.75,
+                          "from": [
+                            -5,
+                            -5,
+                            0
+                          ],
+                          "to": [
+                            5,
+                            5,
+                            10
+                          ],
+                          "uv": [
+                            202,
+                            114
+                          ],
+                          "rotation": [
+                            0,
+                            180,
+                            0
+                          ]
+                        },
+                        {
+                          "type": "block",
+                          "description": "eyes",
+                          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                          "texture_size": [
+                            256,
+                            256
+                          ],
+                          "color_brightness": 0.75,
+                          "from": [
+                            -1,
+                            5,
+                            2
+                          ],
+                          "to": [
+                            1,
+                            9,
+                            8
+                          ],
+                          "uv": [
+                            54,
+                            6
+                          ],
+                          "rotation": [
+                            0,
+                            180,
+                            0
+                          ]
+                        }
+                      ],
+                      "parts": [
+                        {
+                          "name": "tail_4",
+                          "position": [
+                            0,
+                            0,
+                            -10
+                          ],
+                          "shapes": [
+                            {
+                              "type": "block",
+                              "from": [
+                                -5,
+                                -5,
+                                0
+                              ],
+                              "to": [
+                                5,
+                                5,
+                                10
+                              ],
+                              "uv": [
+                                202,
+                                114
+                              ],
+                              "rotation": [
+                                0,
+                                180,
+                                0
+                              ]
+                            },
+                            {
+                              "type": "block",
+                              "from": [
+                                -1,
+                                5,
+                                2
+                              ],
+                              "to": [
+                                1,
+                                9,
+                                8
+                              ],
+                              "uv": [
+                                54,
+                                6
+                              ],
+                              "rotation": [
+                                0,
+                                180,
+                                0
+                              ]
+                            },
+                            {
+                              "type": "block",
+                              "description": "eyes",
+                              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                              "texture_size": [
+                                256,
+                                256
+                              ],
+                              "color_brightness": 0.75,
+                              "from": [
+                                -5,
+                                -5,
+                                0
+                              ],
+                              "to": [
+                                5,
+                                5,
+                                10
+                              ],
+                              "uv": [
+                                202,
+                                114
+                              ],
+                              "rotation": [
+                                0,
+                                180,
+                                0
+                              ]
+                            },
+                            {
+                              "type": "block",
+                              "description": "eyes",
+                              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                              "texture_size": [
+                                256,
+                                256
+                              ],
+                              "color_brightness": 0.75,
+                              "from": [
+                                -1,
+                                5,
+                                2
+                              ],
+                              "to": [
+                                1,
+                                9,
+                                8
+                              ],
+                              "uv": [
+                                54,
+                                6
+                              ],
+                              "rotation": [
+                                0,
+                                180,
+                                0
+                              ]
+                            }
+                          ],
+                          "parts": [
+                            {
+                              "name": "tail_5",
+                              "position": [
+                                0,
+                                0,
+                                -10
+                              ],
+                              "shapes": [
+                                {
+                                  "type": "block",
+                                  "from": [
+                                    -5,
+                                    -5,
+                                    0
+                                  ],
+                                  "to": [
+                                    5,
+                                    5,
+                                    10
+                                  ],
+                                  "uv": [
+                                    202,
+                                    114
+                                  ],
+                                  "rotation": [
+                                    0,
+                                    180,
+                                    0
+                                  ]
+                                },
+                                {
+                                  "type": "block",
+                                  "from": [
+                                    -1,
+                                    5,
+                                    2
+                                  ],
+                                  "to": [
+                                    1,
+                                    9,
+                                    8
+                                  ],
+                                  "uv": [
+                                    54,
+                                    6
+                                  ],
+                                  "rotation": [
+                                    0,
+                                    180,
+                                    0
+                                  ]
+                                },
+                                {
+                                  "type": "block",
+                                  "description": "eyes",
+                                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                  "texture_size": [
+                                    256,
+                                    256
+                                  ],
+                                  "color_brightness": 0.75,
+                                  "from": [
+                                    -5,
+                                    -5,
+                                    0
+                                  ],
+                                  "to": [
+                                    5,
+                                    5,
+                                    10
+                                  ],
+                                  "uv": [
+                                    202,
+                                    114
+                                  ],
+                                  "rotation": [
+                                    0,
+                                    180,
+                                    0
+                                  ]
+                                },
+                                {
+                                  "type": "block",
+                                  "description": "eyes",
+                                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                  "texture_size": [
+                                    256,
+                                    256
+                                  ],
+                                  "color_brightness": 0.75,
+                                  "from": [
+                                    -1,
+                                    5,
+                                    2
+                                  ],
+                                  "to": [
+                                    1,
+                                    9,
+                                    8
+                                  ],
+                                  "uv": [
+                                    54,
+                                    6
+                                  ],
+                                  "rotation": [
+                                    0,
+                                    180,
+                                    0
+                                  ]
+                                }
+                              ],
+                              "parts": [
+                                {
+                                  "name": "tail_6",
+                                  "position": [
+                                    0,
+                                    0,
+                                    -10
+                                  ],
+                                  "shapes": [
+                                    {
+                                      "type": "block",
+                                      "from": [
+                                        -5,
+                                        -5,
+                                        0
+                                      ],
+                                      "to": [
+                                        5,
+                                        5,
+                                        10
+                                      ],
+                                      "uv": [
+                                        202,
+                                        114
+                                      ],
+                                      "rotation": [
+                                        0,
+                                        180,
+                                        0
+                                      ]
+                                    },
+                                    {
+                                      "type": "block",
+                                      "from": [
+                                        -1,
+                                        5,
+                                        2
+                                      ],
+                                      "to": [
+                                        1,
+                                        9,
+                                        8
+                                      ],
+                                      "uv": [
+                                        54,
+                                        6
+                                      ],
+                                      "rotation": [
+                                        0,
+                                        180,
+                                        0
+                                      ]
+                                    },
+                                    {
+                                      "type": "block",
+                                      "description": "eyes",
+                                      "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                      "texture_size": [
+                                        256,
+                                        256
+                                      ],
+                                      "color_brightness": 0.75,
+                                      "from": [
+                                        -5,
+                                        -5,
+                                        0
+                                      ],
+                                      "to": [
+                                        5,
+                                        5,
+                                        10
+                                      ],
+                                      "uv": [
+                                        202,
+                                        114
+                                      ],
+                                      "rotation": [
+                                        0,
+                                        180,
+                                        0
+                                      ]
+                                    },
+                                    {
+                                      "type": "block",
+                                      "description": "eyes",
+                                      "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                      "texture_size": [
+                                        256,
+                                        256
+                                      ],
+                                      "color_brightness": 0.75,
+                                      "from": [
+                                        -1,
+                                        5,
+                                        2
+                                      ],
+                                      "to": [
+                                        1,
+                                        9,
+                                        8
+                                      ],
+                                      "uv": [
+                                        54,
+                                        6
+                                      ],
+                                      "rotation": [
+                                        0,
+                                        180,
+                                        0
+                                      ]
+                                    }
+                                  ],
+                                  "parts": [
+                                    {
+                                      "name": "tail_7",
+                                      "position": [
+                                        0,
+                                        0,
+                                        -10
+                                      ],
+                                      "shapes": [
+                                        {
+                                          "type": "block",
+                                          "from": [
+                                            -5,
+                                            -5,
+                                            0
+                                          ],
+                                          "to": [
+                                            5,
+                                            5,
+                                            10
+                                          ],
+                                          "uv": [
+                                            202,
+                                            114
+                                          ],
+                                          "rotation": [
+                                            0,
+                                            180,
+                                            0
+                                          ]
+                                        },
+                                        {
+                                          "type": "block",
+                                          "from": [
+                                            -1,
+                                            5,
+                                            2
+                                          ],
+                                          "to": [
+                                            1,
+                                            9,
+                                            8
+                                          ],
+                                          "uv": [
+                                            54,
+                                            6
+                                          ],
+                                          "rotation": [
+                                            0,
+                                            180,
+                                            0
+                                          ]
+                                        },
+                                        {
+                                          "type": "block",
+                                          "description": "eyes",
+                                          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                          "texture_size": [
+                                            256,
+                                            256
+                                          ],
+                                          "color_brightness": 0.75,
+                                          "from": [
+                                            -5,
+                                            -5,
+                                            0
+                                          ],
+                                          "to": [
+                                            5,
+                                            5,
+                                            10
+                                          ],
+                                          "uv": [
+                                            202,
+                                            114
+                                          ],
+                                          "rotation": [
+                                            0,
+                                            180,
+                                            0
+                                          ]
+                                        },
+                                        {
+                                          "type": "block",
+                                          "description": "eyes",
+                                          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                          "texture_size": [
+                                            256,
+                                            256
+                                          ],
+                                          "color_brightness": 0.75,
+                                          "from": [
+                                            -1,
+                                            5,
+                                            2
+                                          ],
+                                          "to": [
+                                            1,
+                                            9,
+                                            8
+                                          ],
+                                          "uv": [
+                                            54,
+                                            6
+                                          ],
+                                          "rotation": [
+                                            0,
+                                            180,
+                                            0
+                                          ]
+                                        }
+                                      ],
+                                      "parts": [
+                                        {
+                                          "name": "tail_8",
+                                          "position": [
+                                            0,
+                                            0,
+                                            -10
+                                          ],
+                                          "shapes": [
+                                            {
+                                              "type": "block",
+                                              "from": [
+                                                -5,
+                                                -5,
+                                                0
+                                              ],
+                                              "to": [
+                                                5,
+                                                5,
+                                                10
+                                              ],
+                                              "uv": [
+                                                202,
+                                                114
+                                              ],
+                                              "rotation": [
+                                                0,
+                                                180,
+                                                0
+                                              ]
+                                            },
+                                            {
+                                              "type": "block",
+                                              "from": [
+                                                -1,
+                                                5,
+                                                2
+                                              ],
+                                              "to": [
+                                                1,
+                                                9,
+                                                8
+                                              ],
+                                              "uv": [
+                                                54,
+                                                6
+                                              ],
+                                              "rotation": [
+                                                0,
+                                                180,
+                                                0
+                                              ]
+                                            },
+                                            {
+                                              "type": "block",
+                                              "description": "eyes",
+                                              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                              "texture_size": [
+                                                256,
+                                                256
+                                              ],
+                                              "color_brightness": 0.75,
+                                              "from": [
+                                                -5,
+                                                -5,
+                                                0
+                                              ],
+                                              "to": [
+                                                5,
+                                                5,
+                                                10
+                                              ],
+                                              "uv": [
+                                                202,
+                                                114
+                                              ],
+                                              "rotation": [
+                                                0,
+                                                180,
+                                                0
+                                              ]
+                                            },
+                                            {
+                                              "type": "block",
+                                              "description": "eyes",
+                                              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                              "texture_size": [
+                                                256,
+                                                256
+                                              ],
+                                              "color_brightness": 0.75,
+                                              "from": [
+                                                -1,
+                                                5,
+                                                2
+                                              ],
+                                              "to": [
+                                                1,
+                                                9,
+                                                8
+                                              ],
+                                              "uv": [
+                                                54,
+                                                6
+                                              ],
+                                              "rotation": [
+                                                0,
+                                                180,
+                                                0
+                                              ]
+                                            }
+                                          ],
+                                          "parts": [
+                                            {
+                                              "name": "tail_9",
+                                              "position": [
+                                                0,
+                                                0,
+                                                -10
+                                              ],
+                                              "shapes": [
+                                                {
+                                                  "type": "block",
+                                                  "from": [
+                                                    -5,
+                                                    -5,
+                                                    0
+                                                  ],
+                                                  "to": [
+                                                    5,
+                                                    5,
+                                                    10
+                                                  ],
+                                                  "uv": [
+                                                    202,
+                                                    114
+                                                  ],
+                                                  "rotation": [
+                                                    0,
+                                                    180,
+                                                    0
+                                                  ]
+                                                },
+                                                {
+                                                  "type": "block",
+                                                  "from": [
+                                                    -1,
+                                                    5,
+                                                    2
+                                                  ],
+                                                  "to": [
+                                                    1,
+                                                    9,
+                                                    8
+                                                  ],
+                                                  "uv": [
+                                                    54,
+                                                    6
+                                                  ],
+                                                  "rotation": [
+                                                    0,
+                                                    180,
+                                                    0
+                                                  ]
+                                                },
+                                                {
+                                                  "type": "block",
+                                                  "description": "eyes",
+                                                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                                  "texture_size": [
+                                                    256,
+                                                    256
+                                                  ],
+                                                  "color_brightness": 0.75,
+                                                  "from": [
+                                                    -5,
+                                                    -5,
+                                                    0
+                                                  ],
+                                                  "to": [
+                                                    5,
+                                                    5,
+                                                    10
+                                                  ],
+                                                  "uv": [
+                                                    202,
+                                                    114
+                                                  ],
+                                                  "rotation": [
+                                                    0,
+                                                    180,
+                                                    0
+                                                  ]
+                                                },
+                                                {
+                                                  "type": "block",
+                                                  "description": "eyes",
+                                                  "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                                  "texture_size": [
+                                                    256,
+                                                    256
+                                                  ],
+                                                  "color_brightness": 0.75,
+                                                  "from": [
+                                                    -1,
+                                                    5,
+                                                    2
+                                                  ],
+                                                  "to": [
+                                                    1,
+                                                    9,
+                                                    8
+                                                  ],
+                                                  "uv": [
+                                                    54,
+                                                    6
+                                                  ],
+                                                  "rotation": [
+                                                    0,
+                                                    180,
+                                                    0
+                                                  ]
+                                                }
+                                              ],
+                                              "parts": [
+                                                {
+                                                  "name": "tail_10",
+                                                  "position": [
+                                                    0,
+                                                    0,
+                                                    -10
+                                                  ],
+                                                  "shapes": [
+                                                    {
+                                                      "type": "block",
+                                                      "from": [
+                                                        -5,
+                                                        -5,
+                                                        0
+                                                      ],
+                                                      "to": [
+                                                        5,
+                                                        5,
+                                                        10
+                                                      ],
+                                                      "uv": [
+                                                        202,
+                                                        114
+                                                      ],
+                                                      "rotation": [
+                                                        0,
+                                                        180,
+                                                        0
+                                                      ]
+                                                    },
+                                                    {
+                                                      "type": "block",
+                                                      "from": [
+                                                        -1,
+                                                        5,
+                                                        2
+                                                      ],
+                                                      "to": [
+                                                        1,
+                                                        9,
+                                                        8
+                                                      ],
+                                                      "uv": [
+                                                        54,
+                                                        6
+                                                      ],
+                                                      "rotation": [
+                                                        0,
+                                                        180,
+                                                        0
+                                                      ]
+                                                    },
+                                                    {
+                                                      "type": "block",
+                                                      "description": "eyes",
+                                                      "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                                      "texture_size": [
+                                                        256,
+                                                        256
+                                                      ],
+                                                      "color_brightness": 0.75,
+                                                      "from": [
+                                                        -5,
+                                                        -5,
+                                                        0
+                                                      ],
+                                                      "to": [
+                                                        5,
+                                                        5,
+                                                        10
+                                                      ],
+                                                      "uv": [
+                                                        202,
+                                                        114
+                                                      ],
+                                                      "rotation": [
+                                                        0,
+                                                        180,
+                                                        0
+                                                      ]
+                                                    },
+                                                    {
+                                                      "type": "block",
+                                                      "description": "eyes",
+                                                      "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                                      "texture_size": [
+                                                        256,
+                                                        256
+                                                      ],
+                                                      "color_brightness": 0.75,
+                                                      "from": [
+                                                        -1,
+                                                        5,
+                                                        2
+                                                      ],
+                                                      "to": [
+                                                        1,
+                                                        9,
+                                                        8
+                                                      ],
+                                                      "uv": [
+                                                        54,
+                                                        6
+                                                      ],
+                                                      "rotation": [
+                                                        0,
+                                                        180,
+                                                        0
+                                                      ]
+                                                    }
+                                                  ],
+                                                  "parts": [
+                                                    {
+                                                      "name": "tail_11",
+                                                      "position": [
+                                                        0,
+                                                        0,
+                                                        -10
+                                                      ],
+                                                      "shapes": [
+                                                        {
+                                                          "type": "block",
+                                                          "from": [
+                                                            -5,
+                                                            -5,
+                                                            0
+                                                          ],
+                                                          "to": [
+                                                            5,
+                                                            5,
+                                                            10
+                                                          ],
+                                                          "uv": [
+                                                            202,
+                                                            114
+                                                          ],
+                                                          "rotation": [
+                                                            0,
+                                                            180,
+                                                            0
+                                                          ]
+                                                        },
+                                                        {
+                                                          "type": "block",
+                                                          "from": [
+                                                            -1,
+                                                            5,
+                                                            2
+                                                          ],
+                                                          "to": [
+                                                            1,
+                                                            9,
+                                                            8
+                                                          ],
+                                                          "uv": [
+                                                            54,
+                                                            6
+                                                          ],
+                                                          "rotation": [
+                                                            0,
+                                                            180,
+                                                            0
+                                                          ]
+                                                        },
+                                                        {
+                                                          "type": "block",
+                                                          "description": "eyes",
+                                                          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                                          "texture_size": [
+                                                            256,
+                                                            256
+                                                          ],
+                                                          "color_brightness": 0.75,
+                                                          "from": [
+                                                            -5,
+                                                            -5,
+                                                            0
+                                                          ],
+                                                          "to": [
+                                                            5,
+                                                            5,
+                                                            10
+                                                          ],
+                                                          "uv": [
+                                                            202,
+                                                            114
+                                                          ],
+                                                          "rotation": [
+                                                            0,
+                                                            180,
+                                                            0
+                                                          ]
+                                                        },
+                                                        {
+                                                          "type": "block",
+                                                          "description": "eyes",
+                                                          "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                                          "texture_size": [
+                                                            256,
+                                                            256
+                                                          ],
+                                                          "color_brightness": 0.75,
+                                                          "from": [
+                                                            -1,
+                                                            5,
+                                                            2
+                                                          ],
+                                                          "to": [
+                                                            1,
+                                                            9,
+                                                            8
+                                                          ],
+                                                          "uv": [
+                                                            54,
+                                                            6
+                                                          ],
+                                                          "rotation": [
+                                                            0,
+                                                            180,
+                                                            0
+                                                          ]
+                                                        }
+                                                      ],
+                                                      "parts": [
+                                                        {
+                                                          "name": "tail_12",
+                                                          "position": [
+                                                            0,
+                                                            0,
+                                                            -10
+                                                          ],
+                                                          "shapes": [
+                                                            {
+                                                              "type": "block",
+                                                              "from": [
+                                                                -5,
+                                                                -5,
+                                                                0
+                                                              ],
+                                                              "to": [
+                                                                5,
+                                                                5,
+                                                                10
+                                                              ],
+                                                              "uv": [
+                                                                202,
+                                                                114
+                                                              ],
+                                                              "rotation": [
+                                                                0,
+                                                                180,
+                                                                0
+                                                              ]
+                                                            },
+                                                            {
+                                                              "type": "block",
+                                                              "from": [
+                                                                -1,
+                                                                5,
+                                                                2
+                                                              ],
+                                                              "to": [
+                                                                1,
+                                                                9,
+                                                                8
+                                                              ],
+                                                              "uv": [
+                                                                54,
+                                                                6
+                                                              ],
+                                                              "rotation": [
+                                                                0,
+                                                                180,
+                                                                0
+                                                              ]
+                                                            },
+                                                            {
+                                                              "type": "block",
+                                                              "description": "eyes",
+                                                              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                                              "texture_size": [
+                                                                256,
+                                                                256
+                                                              ],
+                                                              "color_brightness": 0.75,
+                                                              "from": [
+                                                                -5,
+                                                                -5,
+                                                                0
+                                                              ],
+                                                              "to": [
+                                                                5,
+                                                                5,
+                                                                10
+                                                              ],
+                                                              "uv": [
+                                                                202,
+                                                                114
+                                                              ],
+                                                              "rotation": [
+                                                                0,
+                                                                180,
+                                                                0
+                                                              ]
+                                                            },
+                                                            {
+                                                              "type": "block",
+                                                              "description": "eyes",
+                                                              "texture": "..\\..\\..\\textures\\entity\\enderdragon\\dragon_eyes.png",
+                                                              "texture_size": [
+                                                                256,
+                                                                256
+                                                              ],
+                                                              "color_brightness": 0.75,
+                                                              "from": [
+                                                                -1,
+                                                                5,
+                                                                2
+                                                              ],
+                                                              "to": [
+                                                                1,
+                                                                9,
+                                                                8
+                                                              ],
+                                                              "uv": [
+                                                                54,
+                                                                6
+                                                              ],
+                                                              "rotation": [
+                                                                0,
+                                                                180,
+                                                                0
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

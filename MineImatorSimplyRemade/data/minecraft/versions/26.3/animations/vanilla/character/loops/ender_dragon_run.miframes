@@ -1,0 +1,511 @@
+{
+	"format": 24,
+	"is_model": true,
+	"tempo": 24,
+	"length": 30,
+	"keyframes": [
+		{
+			"position": 30,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": -23.53,
+				"ROT_Z": -35.83679,
+				"BEND_ANGLE": -30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 30,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": 23.52995,
+				"ROT_Z": 35.83679,
+				"BEND_ANGLE": -30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 30,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0,
+				"POS_Z": 0,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0,
+				"POS_Z": 0,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": 23.52995,
+				"ROT_Z": -18.18199,
+				"BEND_ANGLE": 49.24215,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": -23.53,
+				"ROT_Z": 18.18199,
+				"BEND_ANGLE": 48.81027,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": 52.5211,
+				"BEND_ANGLE": 25.10767,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": 52.5211,
+				"BEND_ANGLE": 25.10767,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "left_hand",
+			"values": {
+				"ROT_X": 55.16942,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "right_hand",
+			"values": {
+				"ROT_X": 55.16942,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 14.92468,
+				"BEND_ANGLE": 31.06721,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 14.92468,
+				"BEND_ANGLE": 31.06721,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "left_foot",
+			"values": {
+				"ROT_X": 84.67402,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "right_foot",
+			"values": {
+				"ROT_X": 84.67402,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "body",
+			"values": {
+				"POS_Z": 8,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 30,
+			"part_name": "body",
+			"values": {
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "left_foot",
+			"values": {
+				"ROT_X": 94.22413,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "right_foot",
+			"values": {
+				"ROT_X": 93.72944,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "neck_6",
+			"values": {
+				"ROT_X": 2.42485,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "neck_5",
+			"values": {
+				"ROT_X": 2.42485,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "neck_4",
+			"values": {
+				"ROT_X": -2.60889,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "neck_3",
+			"values": {
+				"ROT_X": -2.60889,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "neck_2",
+			"values": {
+				"ROT_X": -2.60889,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "neck_4",
+			"values": {
+				"ROT_X": 2.37723,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "neck_3",
+			"values": {
+				"ROT_X": 2.37723,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "neck_2",
+			"values": {
+				"ROT_X": 2.37723,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "neck_6",
+			"values": {
+				"ROT_X": -3.73859,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "neck_5",
+			"values": {
+				"ROT_X": -3.73859,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tail_7",
+			"values": {
+				"ROT_X": -1.53627,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tail_6",
+			"values": {
+				"ROT_X": -1.53627,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tail_5",
+			"values": {
+				"ROT_X": -1.53627,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tail_4",
+			"values": {
+				"ROT_X": -1.53627,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tail_3",
+			"values": {
+				"ROT_X": -1.53627,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tail_2",
+			"values": {
+				"ROT_X": -1.53627,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tail_1",
+			"values": {
+				"ROT_X": -1.53627,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "tail_7",
+			"values": {
+				"ROT_X": 0.88821,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "tail_6",
+			"values": {
+				"ROT_X": 0.88821,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "tail_5",
+			"values": {
+				"ROT_X": 0.88821,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "tail_4",
+			"values": {
+				"ROT_X": 0.88821,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "tail_3",
+			"values": {
+				"ROT_X": 0.88821,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "tail_2",
+			"values": {
+				"ROT_X": 0.88821,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "tail_1",
+			"values": {
+				"ROT_X": 0.88821,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "neck_1",
+			"values": {
+				"ROT_X": -3.67052,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "tail_12",
+			"values": {
+				"ROT_X": -3.67052,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "tail_11",
+			"values": {
+				"ROT_X": -3.67052,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "tail_10",
+			"values": {
+				"ROT_X": -3.67052,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "tail_9",
+			"values": {
+				"ROT_X": -3.67052,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "tail_8",
+			"values": {
+				"ROT_X": -3.67052,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "neck_1",
+			"values": {
+				"ROT_X": 4.02608,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tail_12",
+			"values": {
+				"ROT_X": 4.02608,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tail_11",
+			"values": {
+				"ROT_X": 4.02608,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tail_10",
+			"values": {
+				"ROT_X": 4.02608,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tail_9",
+			"values": {
+				"ROT_X": 4.02608,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tail_8",
+			"values": {
+				"ROT_X": 4.02608,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 30,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": 59.84936,
+				"BEND_ANGLE": 25.10767,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 30,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": 57.47506,
+				"BEND_ANGLE": 25.10767,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "left_hand",
+			"values": {
+				"ROT_X": 85.55196,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "right_hand",
+			"values": {
+				"ROT_X": 74.87915,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 30,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 21.08511,
+				"BEND_ANGLE": 31.06721,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 30,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 21.08511,
+				"BEND_ANGLE": 31.06721,
+				"TRANSITION": "easeinoutquad"
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

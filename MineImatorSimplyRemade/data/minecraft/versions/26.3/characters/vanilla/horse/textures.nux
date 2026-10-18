@@ -1,0 +1,37 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\horse\\horse_white.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_white.png"
+    },
+    {
+      "name": "Horse Black",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_black.png"
+    },
+    {
+      "name": "Horse Brown",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_brown.png"
+    },
+    {
+      "name": "Horse Chestnut",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_chestnut.png"
+    },
+    {
+      "name": "Horse Creamy",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_creamy.png"
+    },
+    {
+      "name": "Horse Darkbrown",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_darkbrown.png"
+    },
+    {
+      "name": "Horse Gray",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_gray.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

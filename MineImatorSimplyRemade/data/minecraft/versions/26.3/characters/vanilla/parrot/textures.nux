@@ -1,0 +1,29 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\parrot\\parrot_red_blue.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\parrot\\parrot_red_blue.png"
+    },
+    {
+      "name": "Parrot Blue",
+      "file": "..\\..\\..\\textures\\entity\\parrot\\parrot_blue.png"
+    },
+    {
+      "name": "Parrot Green",
+      "file": "..\\..\\..\\textures\\entity\\parrot\\parrot_green.png"
+    },
+    {
+      "name": "Parrot Grey",
+      "file": "..\\..\\..\\textures\\entity\\parrot\\parrot_grey.png"
+    },
+    {
+      "name": "Parrot Yellow Blue",
+      "file": "..\\..\\..\\textures\\entity\\parrot\\parrot_yellow_blue.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

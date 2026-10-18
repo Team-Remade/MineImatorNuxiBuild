@@ -1,0 +1,17 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\strider\\strider_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\strider\\strider_baby.png"
+    },
+    {
+      "name": "Strider Cold Baby",
+      "file": "..\\..\\..\\textures\\entity\\strider\\strider_cold_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

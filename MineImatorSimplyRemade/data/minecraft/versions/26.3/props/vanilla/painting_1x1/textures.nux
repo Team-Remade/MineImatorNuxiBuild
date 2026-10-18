@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\painting\\aztec.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\painting\\aztec.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

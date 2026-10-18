@@ -1,0 +1,17 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\ghast\\ghast.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\ghast\\ghast.png"
+    },
+    {
+      "name": "Shooting",
+      "file": "..\\..\\..\\textures\\entity\\ghast\\ghast_shooting.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

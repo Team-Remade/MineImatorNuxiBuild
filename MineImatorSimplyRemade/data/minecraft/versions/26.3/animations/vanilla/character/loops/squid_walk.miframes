@@ -1,0 +1,160 @@
+{
+	"format": 35,
+	"created_in": "2.0.2 Continuation Build 1.0.13 (Indev)",
+	"is_model": true,
+	"tempo": 24,
+	"length": 40,
+	"keyframes": [
+		{
+			"position": 7,
+			"part_name": "tentacle_7",
+			"values": {
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tentacle_6",
+			"values": {
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tentacle_5",
+			"values": {
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tentacle_4",
+			"values": {
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tentacle_3",
+			"values": {
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tentacle_2",
+			"values": {
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tentacle_1",
+			"values": {
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tentacle_8",
+			"values": {
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 40,
+			"part_name": "tentacle_4",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 40,
+			"part_name": "tentacle_3",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 40,
+			"part_name": "tentacle_5",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 40,
+			"part_name": "tentacle_2",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 40,
+			"part_name": "tentacle_1",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 40,
+			"part_name": "tentacle_6",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 40,
+			"part_name": "tentacle_7",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 40,
+			"part_name": "tentacle_8",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 40,
+			"part_name": "body",
+			"values": {
+				"POS_Z": -4,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "body",
+			"values": {
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 40,
+			"values": {
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

@@ -1,0 +1,130 @@
+{
+  "name": "shulker",
+  "texture": "..\\..\\..\\textures\\entity\\shulker\\shulker.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "bottom_shell",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -8,
+            0,
+            -8
+          ],
+          "to": [
+            8,
+            8,
+            8
+          ],
+          "uv": [
+            16,
+            44
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -8,
+            0,
+            -8
+          ],
+          "to": [
+            8,
+            8,
+            8
+          ],
+          "uv": [
+            16,
+            44
+          ],
+          "invert": true
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            6,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -3,
+                -3
+              ],
+              "to": [
+                3,
+                3,
+                3
+              ],
+              "uv": [
+                6,
+                58
+              ]
+            }
+          ]
+        },
+        {
+          "name": "top_shell",
+          "position": [
+            0,
+            4,
+            0
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -8,
+                0,
+                -8
+              ],
+              "to": [
+                8,
+                12,
+                8
+              ],
+              "uv": [
+                16,
+                16
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -8,
+                0,
+                -8
+              ],
+              "to": [
+                8,
+                12,
+                8
+              ],
+              "uv": [
+                16,
+                16
+              ],
+              "invert": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

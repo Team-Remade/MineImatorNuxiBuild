@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\projectiles\\wind_charge.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\projectiles\\wind_charge.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

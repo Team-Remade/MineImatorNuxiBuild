@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\nautilus\\nautilus.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\nautilus\\nautilus.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,380 @@
+{
+  "name": "chicken_baby",
+  "texture": "..\\..\\..\\textures\\entity\\chicken\\chicken_temperate_baby.png",
+  "texture_size": [
+    16,
+    16
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        2,
+        -0.5
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "description": "baby",
+          "from": [
+            -2,
+            0,
+            -1.5
+          ],
+          "to": [
+            2,
+            4,
+            2.5
+          ],
+          "uv": [
+            4,
+            4
+          ]
+        },
+        {
+          "type": "block",
+          "description": "baby",
+          "from": [
+            -1,
+            1,
+            2.5
+          ],
+          "to": [
+            1,
+            2,
+            3.5
+          ],
+          "uv": [
+            11,
+            9
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "right_wing",
+          "position": [
+            -2,
+            2,
+            1
+          ],
+          "rotation": [
+            -90,
+            0,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "plane",
+              "description": "baby",
+              "from": [
+                -1,
+                -0.5,
+                0
+              ],
+              "to": [
+                0,
+                1.5,
+                0
+              ],
+              "uv": [
+                6,
+                8
+              ]
+            },
+            {
+              "type": "plane",
+              "description": "baby",
+              "from": [
+                -1,
+                -0.5,
+                -1e-05
+              ],
+              "to": [
+                0,
+                1.5,
+                -1e-05
+              ],
+              "uv": [
+                7,
+                8
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_wing",
+          "position": [
+            2,
+            2,
+            1
+          ],
+          "rotation": [
+            -90,
+            0,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "plane",
+              "description": "baby",
+              "from": [
+                0,
+                -0.5,
+                0
+              ],
+              "to": [
+                1,
+                1.5,
+                0
+              ],
+              "uv": [
+                6,
+                8
+              ]
+            },
+            {
+              "type": "plane",
+              "description": "baby",
+              "from": [
+                0,
+                -0.5,
+                -1e-05
+              ],
+              "to": [
+                1,
+                1.5,
+                -1e-05
+              ],
+              "uv": [
+                7,
+                8
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "right_leg",
+      "position": [
+        -1,
+        2,
+        -0.5
+      ],
+      "bend": {
+        "offset": -1,
+        "end_offset": 1,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "description": "baby",
+          "from": [
+            -0.5,
+            -2,
+            0
+          ],
+          "to": [
+            0.5,
+            0,
+            0
+          ],
+          "uv": [
+            0,
+            2
+          ]
+        },
+        {
+          "type": "block",
+          "description": "baby",
+          "from": [
+            -0.5,
+            -2,
+            0
+          ],
+          "to": [
+            0.5,
+            0,
+            0
+          ],
+          "uv": [
+            0,
+            2
+          ],
+          "invert": true
+        },
+        {
+          "type": "plane",
+          "description": "baby",
+          "from": [
+            -0.5,
+            -1,
+            0
+          ],
+          "to": [
+            0.5,
+            0,
+            0
+          ],
+          "uv": [
+            1,
+            0
+          ],
+          "position": [
+            0,
+            -2,
+            0
+          ],
+          "rotation": [
+            -90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "plane",
+          "description": "baby",
+          "from": [
+            -0.5,
+            -1,
+            -1e-05
+          ],
+          "to": [
+            0.5,
+            0,
+            -1e-05
+          ],
+          "uv": [
+            2,
+            0
+          ],
+          "position": [
+            0,
+            -2,
+            0
+          ],
+          "rotation": [
+            -90,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "left_leg",
+      "position": [
+        1,
+        2,
+        -0.5
+      ],
+      "bend": {
+        "offset": -1,
+        "end_offset": 1,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "description": "baby",
+          "from": [
+            -0.5,
+            -2,
+            0
+          ],
+          "to": [
+            0.5,
+            0,
+            0
+          ],
+          "uv": [
+            2,
+            2
+          ]
+        },
+        {
+          "type": "block",
+          "description": "baby",
+          "from": [
+            -0.5,
+            -2,
+            0
+          ],
+          "to": [
+            0.5,
+            0,
+            0
+          ],
+          "uv": [
+            2,
+            2
+          ],
+          "invert": true
+        },
+        {
+          "type": "plane",
+          "description": "baby",
+          "from": [
+            -0.5,
+            -1,
+            0
+          ],
+          "to": [
+            0.5,
+            0,
+            0
+          ],
+          "uv": [
+            1,
+            1
+          ],
+          "position": [
+            0,
+            -2,
+            0
+          ],
+          "rotation": [
+            -90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "plane",
+          "description": "baby",
+          "from": [
+            -0.5,
+            -1,
+            -1e-05
+          ],
+          "to": [
+            0.5,
+            0,
+            -1e-05
+          ],
+          "uv": [
+            2,
+            1
+          ],
+          "position": [
+            0,
+            -2,
+            0
+          ],
+          "rotation": [
+            -90,
+            0,
+            0
+          ]
+        }
+      ]
+    }
+  ]
+}

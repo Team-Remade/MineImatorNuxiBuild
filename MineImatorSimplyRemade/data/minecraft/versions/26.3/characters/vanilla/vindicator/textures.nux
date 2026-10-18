@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\illager\\vindicator.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\illager\\vindicator.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

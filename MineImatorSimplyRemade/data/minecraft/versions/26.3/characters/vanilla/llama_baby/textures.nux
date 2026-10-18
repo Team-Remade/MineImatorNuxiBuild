@@ -1,0 +1,25 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\llama\\llama_brown_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\llama\\llama_brown_baby.png"
+    },
+    {
+      "name": "Llama Creamy Baby",
+      "file": "..\\..\\..\\textures\\entity\\llama\\llama_creamy_baby.png"
+    },
+    {
+      "name": "Llama Gray Baby",
+      "file": "..\\..\\..\\textures\\entity\\llama\\llama_gray_baby.png"
+    },
+    {
+      "name": "Llama White Baby",
+      "file": "..\\..\\..\\textures\\entity\\llama\\llama_white_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

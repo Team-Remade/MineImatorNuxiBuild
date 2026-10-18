@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\copper_golem\\copper_golem.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\copper_golem\\copper_golem.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

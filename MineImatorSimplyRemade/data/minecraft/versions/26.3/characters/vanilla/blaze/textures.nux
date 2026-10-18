@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\blaze\\blaze.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\blaze\\blaze.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+{
+	"format": 34,
+	"created_in": "2.0.2 Continuation Build 1.0.2 (Indev)",
+	"is_model": true,
+	"tempo": 24,
+	"length": 24,
+	"keyframes": [
+		{
+			"position": 6,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": -2,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": 2,
+				"ROT_Y": 3,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": 2,
+				"ROT_Y": -3,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": -2,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -6.51192,
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -4.70172,
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "left_front_leg",
+			"values": {
+				"ROT_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_front_leg",
+			"values": {
+				"ROT_X": -15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_front_leg",
+			"values": {
+				"ROT_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "right_front_leg",
+			"values": {
+				"ROT_X": -15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_X": -15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_X": -15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0,
+				"POS_Z": 0
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0,
+				"POS_Z": 0
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

@@ -1,0 +1,73 @@
+{
+  "name": "sulfur_cube",
+  "texture": "..\\..\\..\\textures\\entity\\sulfur_cube\\sulfur_cube_outer_small.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "depth": 1,
+      "shadows": false,
+      "position": [
+        0,
+        5,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -5,
+            -5,
+            -5
+          ],
+          "to": [
+            5,
+            5,
+            5
+          ],
+          "uv": [
+            10,
+            10
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "center",
+          "texture": "..\\..\\..\\textures\\entity\\sulfur_cube\\sulfur_cube_inner_small.png",
+          "texture_size": [
+            64,
+            64
+          ],
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -4,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                8,
+                28
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

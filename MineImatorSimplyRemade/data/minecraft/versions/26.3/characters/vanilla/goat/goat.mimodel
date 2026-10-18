@@ -1,0 +1,390 @@
+{
+  "name": "goat",
+  "texture": "..\\..\\..\\textures\\entity\\goat\\goat.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        11.5,
+        0
+      ],
+      "bend": {
+        "offset": 0.5,
+        "end_offset": 8,
+        "size": 7,
+        "part": "front",
+        "axis": [
+          "x",
+          "y"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -4.5,
+            -5.5,
+            -8
+          ],
+          "to": [
+            4.5,
+            5.5,
+            8
+          ],
+          "uv": [
+            17,
+            17
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -5.5,
+            -7.5,
+            -2
+          ],
+          "to": [
+            5.5,
+            6.5,
+            9
+          ],
+          "uv": [
+            11,
+            39
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -5.5,
+            -7.5,
+            -2
+          ],
+          "to": [
+            5.5,
+            6.5,
+            9
+          ],
+          "uv": [
+            11,
+            39
+          ],
+          "inflate": -0.01,
+          "invert": true
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            2.5,
+            5
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -3,
+                -2
+              ],
+              "to": [
+                2.5,
+                4,
+                8
+              ],
+              "uv": [
+                44,
+                56
+              ],
+              "position": [
+                0,
+                4,
+                4
+              ],
+              "rotation": [
+                55,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -5.5,
+                5,
+                5
+              ],
+              "to": [
+                -2.5,
+                7,
+                6
+              ],
+              "uv": [
+                3,
+                62
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                2.5,
+                5,
+                5
+              ],
+              "to": [
+                5.5,
+                7,
+                6
+              ],
+              "uv": [
+                3,
+                62
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "from": [
+                0,
+                -8,
+                5
+              ],
+              "to": [
+                0,
+                -1,
+                10
+              ],
+              "uv": [
+                28,
+                57
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "from": [
+                0,
+                -8,
+                5
+              ],
+              "to": [
+                0,
+                -1,
+                10
+              ],
+              "uv": [
+                28,
+                57
+              ],
+              "texture_mirror": true,
+              "invert": true
+            }
+          ],
+          "parts": [
+            {
+              "name": "right_horn",
+              "position": [
+                -1.49,
+                5,
+                5
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -1,
+                    0,
+                    -1
+                  ],
+                  "to": [
+                    1,
+                    7,
+                    1
+                  ],
+                  "uv": [
+                    14,
+                    57
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "left_horn",
+              "position": [
+                1.49,
+                5,
+                5
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -1,
+                    0,
+                    -1
+                  ],
+                  "to": [
+                    1,
+                    7,
+                    1
+                  ],
+                  "uv": [
+                    14,
+                    57
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -2,
+            -1.5,
+            5.5
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -10,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                38,
+                5
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            2,
+            -1.5,
+            5.5
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -10,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                52,
+                5
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -2,
+            -5.5,
+            -4.5
+          ],
+          "lock_bend": 0,
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -6,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                52,
+                32
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            2,
+            -5.5,
+            -4.5
+          ],
+          "lock_bend": 0,
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -6,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                39,
+                32
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

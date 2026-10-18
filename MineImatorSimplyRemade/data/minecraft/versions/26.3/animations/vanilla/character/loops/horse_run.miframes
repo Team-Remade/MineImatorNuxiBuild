@@ -1,0 +1,278 @@
+{
+	"format": 24,
+	"is_model": true,
+	"tempo": 24,
+	"length": 18,
+	"keyframes": [
+		{
+			"position": 4,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": 27.50978,
+				"BEND_ANGLE": 26.32057
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": 38.53273,
+				"BEND_ANGLE": -20.97615
+			}
+		},
+		{
+			"position": 11,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": 49.55568,
+				"BEND_ANGLE": -13.94194
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": 34.05138,
+				"BEND_ANGLE": 26.78429
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": 19.7132,
+				"BEND_ANGLE": 13.37431
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_X": -2.5685,
+				"BEND_ANGLE": 17.73424
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_X": 26.12862,
+				"BEND_ANGLE": 17.73424
+			}
+		},
+		{
+			"position": 11,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_X": 36.0304,
+				"BEND_ANGLE": 3.08231
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_X": 53.82169,
+				"BEND_ANGLE": 59.71933
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_X": -4.00433,
+				"BEND_ANGLE": 32.58495
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_X": 23.03175,
+				"BEND_ANGLE": 19.54953
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_X": 38.13834,
+				"BEND_ANGLE": 4.98154
+			}
+		},
+		{
+			"position": 11,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_X": 44.25121,
+				"BEND_ANGLE": 37.23036
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_X": 27.19928,
+				"BEND_ANGLE": 60.81226
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_X": -13.7332,
+				"BEND_ANGLE": 18.35133
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "left_front_leg",
+			"values": {
+				"ROT_X": -68.87036,
+				"BEND_ANGLE": 113.89335
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "left_front_leg",
+			"values": {
+				"ROT_X": -75.70284,
+				"BEND_ANGLE": 37.05567
+			}
+		},
+		{
+			"position": 11,
+			"part_name": "left_front_leg",
+			"values": {
+				"ROT_X": -37.05295
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "left_front_leg",
+			"values": {
+				"ROT_X": 26.02551
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "left_front_leg",
+			"values": {
+				"ROT_X": -8.17552,
+				"BEND_ANGLE": 55.77383
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "right_front_leg",
+			"values": {
+				"ROT_X": -49.48364,
+				"BEND_ANGLE": 10.29666
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "right_front_leg",
+			"values": {
+				"ROT_X": -36.3593
+			}
+		},
+		{
+			"position": 11,
+			"part_name": "right_front_leg",
+			"values": {
+				"ROT_X": 27.58502
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "right_front_leg",
+			"values": {
+				"ROT_X": -46.37946,
+				"BEND_ANGLE": 98.18903
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "right_front_leg",
+			"values": {
+				"ROT_X": -57.6722,
+				"BEND_ANGLE": 69.95395
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "neck",
+			"values": {
+				"ROT_X": 21.81268
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "neck",
+			"values": {
+				"ROT_X": 18.73175
+			}
+		},
+		{
+			"position": 11,
+			"part_name": "neck",
+			"values": {
+				"ROT_X": 31.13528,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "neck",
+			"values": {
+				"ROT_X": 18.46025
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "body",
+			"values": {
+				"ROT_X": -3.31699
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "body",
+			"values": {
+			}
+		},
+		{
+			"position": 11,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 3.92314
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "body",
+			"values": {
+				"ROT_X": -3.31699
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": -28.97932
+			}
+		},
+		{
+			"position": 18,
+			"values": {
+				"POS_X": -28.97932
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

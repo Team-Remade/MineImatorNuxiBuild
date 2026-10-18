@@ -1,0 +1,71 @@
+{
+	"format": 24,
+	"is_model": true,
+	"tempo": 24,
+	"length": 24,
+	"keyframes": [
+		{
+			"position": 24,
+			"values": {
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "body_upper",
+			"values": {
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "body_upper",
+			"values": {
+				"POS_Z": 4,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 9,
+			"part_name": "body_lower",
+			"values": {
+				"ROT_X": 12.43344,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": 14.42122,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 21,
+			"part_name": "body_lower",
+			"values": {
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "tail",
+			"values": {
+				"TRANSITION": "easeinoutquad"
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

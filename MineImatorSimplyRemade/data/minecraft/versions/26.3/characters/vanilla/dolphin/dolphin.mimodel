@@ -1,0 +1,241 @@
+{
+  "name": "dolphin",
+  "texture": "..\\..\\..\\textures\\entity\\dolphin\\dolphin.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        3.5,
+        -1.5
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -4,
+            -3.5,
+            -6.5
+          ],
+          "to": [
+            4,
+            3.5,
+            6.5
+          ],
+          "uv": [
+            35,
+            13
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -0.5,
+            -2,
+            -3.5
+          ],
+          "to": [
+            0.5,
+            2,
+            1.5
+          ],
+          "uv": [
+            56,
+            5
+          ],
+          "position": [
+            0,
+            3.75,
+            0
+          ],
+          "rotation": [
+            60,
+            0,
+            0
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            0,
+            6.5
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -3.5,
+                0
+              ],
+              "to": [
+                4,
+                3.5,
+                6
+              ],
+              "uv": [
+                6,
+                6
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -3.5,
+                6
+              ],
+              "to": [
+                1,
+                -1.5,
+                10
+              ],
+              "uv": [
+                4,
+                17
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_fin",
+          "position": [
+            -4,
+            -2,
+            6
+          ],
+          "rotation": [
+            -30,
+            90,
+            90
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -4,
+                -7
+              ],
+              "to": [
+                0,
+                0,
+                0
+              ],
+              "uv": [
+                55,
+                27
+              ],
+              "rotation": [
+                -30,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_fin",
+          "position": [
+            4,
+            -2,
+            6
+          ],
+          "rotation": [
+            -30,
+            -90,
+            -90
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                0,
+                -4,
+                -7
+              ],
+              "to": [
+                1,
+                0,
+                0
+              ],
+              "uv": [
+                55,
+                27
+              ],
+              "rotation": [
+                -30,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            }
+          ]
+        },
+        {
+          "name": "tail",
+          "position": [
+            0,
+            -1,
+            -4.5
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -2.5,
+                -11
+              ],
+              "to": [
+                2,
+                2.5,
+                0
+              ],
+              "uv": [
+                11,
+                30
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "back_fin",
+              "position": [
+                0,
+                0,
+                -9
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -5,
+                    -0.5,
+                    -6
+                  ],
+                  "to": [
+                    5,
+                    0.5,
+                    0
+                  ],
+                  "uv": [
+                    25,
+                    26
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

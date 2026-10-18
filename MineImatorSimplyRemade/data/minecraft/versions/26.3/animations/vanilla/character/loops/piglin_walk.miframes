@@ -1,0 +1,143 @@
+{
+	"format": 32,
+	"created_in": "1.2.6",
+	"is_model": true,
+	"tempo": 24,
+	"length": 24,
+	"keyframes": [
+		{
+			"position": 2,
+			"part_name": "left_ear",
+			"values": {
+				"ROT_Y": 5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 2,
+			"part_name": "right_ear",
+			"values": {
+				"ROT_Y": 5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "left_ear",
+			"values": {
+				"ROT_Y": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "right_ear",
+			"values": {
+				"ROT_Y": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": -30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": -30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": -30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": 30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": 30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": -30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "body",
+			"values": {
+				"ROT_Y": 2,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "body",
+			"values": {
+				"ROT_Y": -2,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": 0.00004,
+				"POS_Y": -0.00008,
+				"POS_Z": 0
+			}
+		},
+		{
+			"position": 24,
+			"values": {
+				"POS_X": 0.00004,
+				"POS_Y": -0.00008,
+				"POS_Z": 0
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

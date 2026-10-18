@@ -1,0 +1,134 @@
+{
+	"format": 35,
+	"created_in": "2.0.2 Continuation Build 1.0.12",
+	"is_model": true,
+	"tempo": 24,
+	"length": 20,
+	"keyframes": [
+		{
+			"position": 20,
+			"values": {
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "head",
+			"values": {
+				"SCA_Y": 0.95,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "body",
+			"values": {
+				"POS_Y": -3,
+				"TRANSITION": "easeoutback"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "body",
+			"values": {
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "inner_tentacles",
+			"values": {
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "inner_tentacles",
+			"values": {
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "inner_tentacles",
+			"values": {
+				"SCA_X": 0.9,
+				"SCA_Y": 1.1,
+				"SCA_Z": 0.9,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "top_tentacles",
+			"values": {
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "bottom_tentacles",
+			"values": {
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "bottom_tentacles",
+			"values": {
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "top_tentacles",
+			"values": {
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "top_tentacles",
+			"values": {
+				"ROT_X": 15,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "bottom_tentacles",
+			"values": {
+				"ROT_X": -15,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "head",
+			"values": {
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "head",
+			"values": {
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "head",
+			"values": {
+				"SCA_Y": 1.1,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

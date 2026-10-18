@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\snow_golem\\snow_golem.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\snow_golem\\snow_golem.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

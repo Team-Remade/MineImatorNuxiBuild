@@ -1,0 +1,483 @@
+{
+  "name": "copper_golem",
+  "texture": "..\\..\\..\\textures\\entity\\copper_golem\\copper_golem.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        5,
+        0
+      ],
+      "bend": {
+        "offset": 3,
+        "end_offset": 3,
+        "size": 4,
+        "detail": 1,
+        "part": "upper",
+        "axis": [
+          "x",
+          "y",
+          "z"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -4,
+            0,
+            -3
+          ],
+          "to": [
+            4,
+            6,
+            3
+          ],
+          "uv": [
+            6,
+            21
+          ]
+        },
+        {
+          "type": "block",
+          "description": "eyes",
+          "texture": "..\\..\\..\\textures\\entity\\copper_golem\\copper_golem_eyes.png",
+          "texture_size": [
+            64,
+            64
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -4,
+            0,
+            -3
+          ],
+          "to": [
+            4,
+            6,
+            3
+          ],
+          "uv": [
+            6,
+            21
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            6,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                0,
+                -5
+              ],
+              "to": [
+                4,
+                5,
+                5
+              ],
+              "uv": [
+                10,
+                10
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                4
+              ],
+              "to": [
+                1,
+                2,
+                6
+              ],
+              "uv": [
+                58,
+                2
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1,
+                5,
+                -1
+              ],
+              "to": [
+                1,
+                9,
+                1
+              ],
+              "uv": [
+                39,
+                10
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -2,
+                9,
+                -2
+              ],
+              "to": [
+                2,
+                13,
+                2
+              ],
+              "uv": [
+                41,
+                4
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\copper_golem\\copper_golem_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -4,
+                0,
+                -5
+              ],
+              "to": [
+                4,
+                5,
+                5
+              ],
+              "uv": [
+                10,
+                10
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\copper_golem\\copper_golem_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -1,
+                -1,
+                4
+              ],
+              "to": [
+                1,
+                2,
+                6
+              ],
+              "uv": [
+                58,
+                2
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\copper_golem\\copper_golem_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -1,
+                5,
+                -1
+              ],
+              "to": [
+                1,
+                9,
+                1
+              ],
+              "uv": [
+                39,
+                10
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\copper_golem\\copper_golem_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -2,
+                9,
+                -2
+              ],
+              "to": [
+                2,
+                13,
+                2
+              ],
+              "uv": [
+                41,
+                4
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_arm",
+          "position": [
+            -5.5,
+            6,
+            0
+          ],
+          "bend": {
+            "offset": -4,
+            "end_offset": 5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -9,
+                -2
+              ],
+              "to": [
+                1.5,
+                1,
+                2
+              ],
+              "uv": [
+                40,
+                20
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\copper_golem\\copper_golem_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -1.5,
+                -9,
+                -2
+              ],
+              "to": [
+                1.5,
+                1,
+                2
+              ],
+              "uv": [
+                40,
+                20
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_arm",
+          "position": [
+            5.5,
+            6,
+            0
+          ],
+          "bend": {
+            "offset": -4,
+            "end_offset": 5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -9,
+                -2
+              ],
+              "to": [
+                1.5,
+                1,
+                2
+              ],
+              "uv": [
+                54,
+                20
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\copper_golem\\copper_golem_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -1.5,
+                -9,
+                -2
+              ],
+              "to": [
+                1.5,
+                1,
+                2
+              ],
+              "uv": [
+                54,
+                20
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "right_leg",
+      "position": [
+        -2,
+        5,
+        0
+      ],
+      "bend": {
+        "offset": -2.5,
+        "end_offset": 2.5,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -5,
+            -2
+          ],
+          "to": [
+            2,
+            0,
+            2
+          ],
+          "uv": [
+            4,
+            31
+          ]
+        },
+        {
+          "type": "block",
+          "description": "eyes",
+          "texture": "..\\..\\..\\textures\\entity\\copper_golem\\copper_golem_eyes.png",
+          "texture_size": [
+            64,
+            64
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -2,
+            -5,
+            -2
+          ],
+          "to": [
+            2,
+            0,
+            2
+          ],
+          "uv": [
+            4,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "name": "left_leg",
+      "position": [
+        2,
+        5,
+        0
+      ],
+      "bend": {
+        "offset": -2.5,
+        "end_offset": 2.5,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -5,
+            -2
+          ],
+          "to": [
+            2,
+            0,
+            2
+          ],
+          "uv": [
+            20,
+            31
+          ]
+        },
+        {
+          "type": "block",
+          "description": "eyes",
+          "texture": "..\\..\\..\\textures\\entity\\copper_golem\\copper_golem_eyes.png",
+          "texture_size": [
+            64,
+            64
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -2,
+            -5,
+            -2
+          ],
+          "to": [
+            2,
+            0,
+            2
+          ],
+          "uv": [
+            20,
+            31
+          ]
+        }
+      ]
+    }
+  ]
+}

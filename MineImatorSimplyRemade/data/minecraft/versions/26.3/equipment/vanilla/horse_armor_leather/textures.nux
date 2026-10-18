@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\breeze\\breeze.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\breeze\\breeze.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

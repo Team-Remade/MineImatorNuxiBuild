@@ -1,0 +1,233 @@
+{
+  "name": "creeper",
+  "texture": "..\\..\\..\\textures\\entity\\creeper\\creeper.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        6,
+        0
+      ],
+      "bend": {
+        "offset": 6,
+        "end_offset": 6,
+        "size": 10,
+        "part": "upper",
+        "axis": [
+          "x",
+          "y",
+          "z"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -4,
+            0,
+            -2
+          ],
+          "to": [
+            4,
+            12,
+            2
+          ],
+          "uv": [
+            20,
+            20
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            12,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                0,
+                -4
+              ],
+              "to": [
+                4,
+                8,
+                4
+              ],
+              "uv": [
+                8,
+                8
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "right_front_foot",
+      "position": [
+        -2,
+        6,
+        2
+      ],
+      "bend": {
+        "offset": -3,
+        "end_offset": 3,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -6,
+            -2
+          ],
+          "to": [
+            2,
+            0,
+            2
+          ],
+          "uv": [
+            4,
+            20
+          ],
+          "position": [
+            0,
+            0,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "name": "left_front_foot",
+      "position": [
+        2,
+        6,
+        2
+      ],
+      "bend": {
+        "offset": -3,
+        "end_offset": 3,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -6,
+            -2
+          ],
+          "to": [
+            2,
+            0,
+            2
+          ],
+          "uv": [
+            4,
+            20
+          ],
+          "position": [
+            0,
+            0,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "name": "right_back_foot",
+      "position": [
+        -2,
+        6,
+        -2
+      ],
+      "bend": {
+        "offset": -3,
+        "end_offset": 3,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -6,
+            -2
+          ],
+          "to": [
+            2,
+            0,
+            2
+          ],
+          "uv": [
+            4,
+            20
+          ],
+          "position": [
+            0,
+            0,
+            -2
+          ]
+        }
+      ]
+    },
+    {
+      "name": "left_back_foot",
+      "position": [
+        2,
+        6,
+        -2
+      ],
+      "bend": {
+        "offset": -3,
+        "end_offset": 3,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -6,
+            -2
+          ],
+          "to": [
+            2,
+            0,
+            2
+          ],
+          "uv": [
+            4,
+            20
+          ],
+          "position": [
+            0,
+            0,
+            -2
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,131 @@
+{
+  "name": "wind_charge",
+  "texture": "..\\..\\..\\textures\\entity\\projectiles\\wind_charge.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "charge",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        180,
+        0,
+        0
+      ],
+      "texture": "..\\..\\..\\textures\\entity\\projectiles\\wind_charge.png",
+      "texture_size": [
+        64,
+        32
+      ],
+      "texture_scroll_speed": 0.6,
+      "texture_scroll_direction": 90,
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -2,
+            -2
+          ],
+          "to": [
+            2,
+            2,
+            2
+          ],
+          "uv": [
+            4,
+            4
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "wind",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -2,
+                -3
+              ],
+              "to": [
+                3,
+                2,
+                3
+              ],
+              "uv": [
+                6,
+                15
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -2,
+                -3
+              ],
+              "to": [
+                3,
+                2,
+                3
+              ],
+              "uv": [
+                6,
+                15
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -1,
+                -4
+              ],
+              "to": [
+                4,
+                1,
+                4
+              ],
+              "uv": [
+                8,
+                28
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -1,
+                -4
+              ],
+              "to": [
+                4,
+                1,
+                4
+              ],
+              "uv": [
+                8,
+                28
+              ],
+              "invert": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

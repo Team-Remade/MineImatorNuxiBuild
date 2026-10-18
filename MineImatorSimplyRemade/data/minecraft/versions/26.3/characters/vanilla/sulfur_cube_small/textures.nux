@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\sulfur_cube\\sulfur_cube_outer_small.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\sulfur_cube\\sulfur_cube_outer_small.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

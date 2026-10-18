@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\camel\\camel_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\camel\\camel_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

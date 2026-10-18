@@ -1,0 +1,21 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\pig\\pig_temperate_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\pig\\pig_temperate_baby.png"
+    },
+    {
+      "name": "Pig Cold Baby",
+      "file": "..\\..\\..\\textures\\entity\\pig\\pig_cold_baby.png"
+    },
+    {
+      "name": "Pig Warm Baby",
+      "file": "..\\..\\..\\textures\\entity\\pig\\pig_warm_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

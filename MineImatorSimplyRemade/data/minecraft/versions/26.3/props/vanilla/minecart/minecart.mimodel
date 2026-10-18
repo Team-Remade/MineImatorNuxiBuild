@@ -1,0 +1,130 @@
+{
+  "name": "minecart",
+  "texture": "..\\..\\..\\textures\\entity\\minecart\\minecart.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "minecart",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        -90,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -10,
+            -8,
+            -2
+          ],
+          "to": [
+            10,
+            8,
+            0
+          ],
+          "uv": [
+            2,
+            12
+          ],
+          "rotation": [
+            90,
+            180,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -8,
+            2,
+            -8
+          ],
+          "to": [
+            8,
+            10,
+            -6
+          ],
+          "uv": [
+            2,
+            2
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -8,
+            2,
+            -10
+          ],
+          "to": [
+            8,
+            10,
+            -8
+          ],
+          "uv": [
+            2,
+            2
+          ],
+          "rotation": [
+            0,
+            90,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -8,
+            2,
+            -8
+          ],
+          "to": [
+            8,
+            10,
+            -6
+          ],
+          "uv": [
+            2,
+            2
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -8,
+            2,
+            -10
+          ],
+          "to": [
+            8,
+            10,
+            -8
+          ],
+          "uv": [
+            2,
+            2
+          ],
+          "rotation": [
+            0,
+            270,
+            0
+          ]
+        }
+      ]
+    }
+  ]
+}

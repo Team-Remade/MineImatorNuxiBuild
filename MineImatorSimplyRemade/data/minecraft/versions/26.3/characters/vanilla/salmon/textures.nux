@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\fish\\salmon.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\fish\\salmon.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

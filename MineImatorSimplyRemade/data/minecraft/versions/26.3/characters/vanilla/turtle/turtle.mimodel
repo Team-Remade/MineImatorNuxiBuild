@@ -1,0 +1,250 @@
+{
+  "name": "turtle",
+  "texture": "..\\..\\..\\textures\\entity\\turtle\\turtle.png",
+  "texture_size": [
+    128,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        4,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -9,
+            -10,
+            -5
+          ],
+          "to": [
+            10,
+            10,
+            1
+          ],
+          "uv": [
+            13,
+            43
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -5.5,
+            -8,
+            1
+          ],
+          "to": [
+            5.5,
+            10,
+            4
+          ],
+          "uv": [
+            34,
+            4
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "description": "has_egg",
+          "from": [
+            -4.5,
+            -8,
+            4
+          ],
+          "to": [
+            4.5,
+            10,
+            5
+          ],
+          "uv": [
+            71,
+            34
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "visible": false
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            0,
+            10
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -3,
+                0
+              ],
+              "to": [
+                3,
+                2,
+                6
+              ],
+              "uv": [
+                9,
+                6
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_front_fin",
+          "position": [
+            -5.5,
+            -1.5,
+            7
+          ],
+          "bend": {
+            "offset": -6.5,
+            "end_offset": 6.5,
+            "part": "left",
+            "axis": "z"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -13,
+                -0.5,
+                -3
+              ],
+              "to": [
+                0,
+                0.5,
+                2
+              ],
+              "uv": [
+                32,
+                35
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_front_fin",
+          "position": [
+            5.5,
+            -1.5,
+            7
+          ],
+          "bend": {
+            "offset": 6.5,
+            "end_offset": 6.5,
+            "part": "right",
+            "axis": "z",
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                0,
+                -0.5,
+                -3
+              ],
+              "to": [
+                13,
+                0.5,
+                2
+              ],
+              "uv": [
+                32,
+                29
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_back_fin",
+          "position": [
+            -3,
+            -2.5,
+            -8
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 5,
+            "part": "back",
+            "axis": "x"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -0.5,
+                -10
+              ],
+              "to": [
+                1.5,
+                0.5,
+                0
+              ],
+              "uv": [
+                11,
+                33
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_back_fin",
+          "position": [
+            4,
+            -2.5,
+            -8
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 5,
+            "part": "back",
+            "axis": "x"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -0.5,
+                -10
+              ],
+              "to": [
+                1.5,
+                0.5,
+                0
+              ],
+              "uv": [
+                11,
+                22
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

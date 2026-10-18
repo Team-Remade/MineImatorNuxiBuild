@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\painting\\courbet.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\painting\\courbet.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

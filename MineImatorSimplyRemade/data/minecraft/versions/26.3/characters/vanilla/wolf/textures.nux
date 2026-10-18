@@ -1,0 +1,117 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\wolf\\wolf.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf.png"
+    },
+    {
+      "name": "Wolf Pale Tame",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_tame.png"
+    },
+    {
+      "name": "Wolf Pale Angry",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_angry.png"
+    },
+    {
+      "name": "Wolf Woods",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_woods.png"
+    },
+    {
+      "name": "Wolf Woods Tame",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_woods_tame.png"
+    },
+    {
+      "name": "Wolf Woods Angry",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_woods_angry.png"
+    },
+    {
+      "name": "Wolf Ashen",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_ashen.png"
+    },
+    {
+      "name": "Wolf Ashen Tame",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_ashen_tame.png"
+    },
+    {
+      "name": "Wolf Ashen Angry",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_ashen_angry.png"
+    },
+    {
+      "name": "Wolf Black",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_black.png"
+    },
+    {
+      "name": "Wolf Black Tame",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_black_tame.png"
+    },
+    {
+      "name": "Wolf Black Angry",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_black_angry.png"
+    },
+    {
+      "name": "Wolf Chestnut",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_chestnut.png"
+    },
+    {
+      "name": "Wolf Chestnut Tame",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_chestnut_tame.png"
+    },
+    {
+      "name": "Wolf Chestnut Angry",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_chestnut_angry.png"
+    },
+    {
+      "name": "Wolf Rusty",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_rusty.png"
+    },
+    {
+      "name": "Wolf Rusty Tame",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_rusty_tame.png"
+    },
+    {
+      "name": "Wolf Rusty Angry",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_rusty_angry.png"
+    },
+    {
+      "name": "Wolf Spotted",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_spotted.png"
+    },
+    {
+      "name": "Wolf Spotted Tame",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_spotted_tame.png"
+    },
+    {
+      "name": "Wolf Spotted Angry",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_spotted_angry.png"
+    },
+    {
+      "name": "Wolf Striped",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_striped.png"
+    },
+    {
+      "name": "Wolf Striped Tame",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_striped_tame.png"
+    },
+    {
+      "name": "Wolf Striped Angry",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_striped_angry.png"
+    },
+    {
+      "name": "Wolf Snowy",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_snowy.png"
+    },
+    {
+      "name": "Wolf Snowy Tame",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_snowy_tame.png"
+    },
+    {
+      "name": "Wolf Snowy Angry",
+      "file": "..\\..\\..\\textures\\entity\\wolf\\wolf_snowy_angry.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

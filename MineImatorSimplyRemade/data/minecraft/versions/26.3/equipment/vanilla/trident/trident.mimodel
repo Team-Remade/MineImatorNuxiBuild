@@ -1,0 +1,89 @@
+{
+  "name": "trident",
+  "texture": "..\\..\\..\\textures\\entity\\trident\\trident.png",
+  "texture_size": [
+    32,
+    32
+  ],
+  "parts": [
+    {
+      "name": "trident",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -0.5,
+            0,
+            -0.5
+          ],
+          "to": [
+            0.5,
+            31,
+            0.5
+          ],
+          "uv": [
+            1,
+            1
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -1.5,
+            25,
+            -0.5
+          ],
+          "to": [
+            1.5,
+            27,
+            0.5
+          ],
+          "uv": [
+            5,
+            1
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            1.5,
+            26,
+            -0.5
+          ],
+          "to": [
+            2.5,
+            30,
+            0.5
+          ],
+          "uv": [
+            5,
+            4
+          ],
+          "texture_mirror": true
+        },
+        {
+          "type": "block",
+          "from": [
+            -2.5,
+            26,
+            -0.5
+          ],
+          "to": [
+            -1.5,
+            30,
+            0.5
+          ],
+          "uv": [
+            5,
+            4
+          ]
+        }
+      ]
+    }
+  ]
+}

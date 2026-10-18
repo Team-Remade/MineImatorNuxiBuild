@@ -1,0 +1,550 @@
+{
+  "name": "zombie_villager_baby",
+  "texture": "..\\..\\..\\textures\\entity\\zombie_villager\\zombie_villager_baby.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        3,
+        0
+      ],
+      "bend": {
+        "offset": 2.5,
+        "end_offset": 2.5,
+        "size": 3,
+        "detail": 1,
+        "part": "upper",
+        "axis": [
+          "x",
+          "y",
+          "z"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            0,
+            -1.5
+          ],
+          "to": [
+            2,
+            5,
+            1.5
+          ],
+          "uv": [
+            3,
+            18
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -3.5,
+            -1.5
+          ],
+          "to": [
+            2,
+            2.5,
+            1.5
+          ],
+          "uv": [
+            19,
+            25
+          ],
+          "inflate": 0.25,
+          "position": [
+            0,
+            2.5,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -3.5,
+            -1.5
+          ],
+          "to": [
+            2,
+            2.5,
+            1.5
+          ],
+          "uv": [
+            19,
+            25
+          ],
+          "inflate": 0.25,
+          "position": [
+            0,
+            2.5,
+            0
+          ],
+          "invert": true
+        },
+        {
+          "type": "block",
+          "description": "biome_baby",
+          "from": [
+            -2,
+            0,
+            -1.5
+          ],
+          "to": [
+            2,
+            5,
+            1.5
+          ],
+          "uv": [
+            3,
+            18
+          ],
+          "texture": "..\\..\\..\\textures\\entity\\zombie_villager\\baby\\plains.png"
+        },
+        {
+          "type": "block",
+          "description": "biome_baby",
+          "from": [
+            -2,
+            -3.5,
+            -1.5
+          ],
+          "to": [
+            2,
+            2.5,
+            1.5
+          ],
+          "uv": [
+            19,
+            25
+          ],
+          "inflate": 0.25,
+          "position": [
+            0,
+            2.5,
+            0
+          ],
+          "texture": "..\\..\\..\\textures\\entity\\zombie_villager\\baby\\plains.png"
+        },
+        {
+          "type": "block",
+          "description": "biome_baby",
+          "from": [
+            -2,
+            -3.5,
+            -1.5
+          ],
+          "to": [
+            2,
+            2.5,
+            1.5
+          ],
+          "uv": [
+            19,
+            25
+          ],
+          "inflate": 0.25,
+          "position": [
+            0,
+            2.5,
+            0
+          ],
+          "invert": true,
+          "texture": "..\\..\\..\\textures\\entity\\zombie_villager\\baby\\plains.png"
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            5,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                0,
+                -3.5
+              ],
+              "to": [
+                4,
+                8,
+                3.5
+              ],
+              "uv": [
+                7,
+                7
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1,
+                0,
+                3.5
+              ],
+              "to": [
+                1,
+                2,
+                4.5
+              ],
+              "uv": [
+                24,
+                1
+              ]
+            },
+            {
+              "type": "block",
+              "description": "biome_baby",
+              "from": [
+                -4,
+                0,
+                -3.5
+              ],
+              "to": [
+                4,
+                8,
+                3.5
+              ],
+              "uv": [
+                7,
+                7
+              ],
+              "texture": "..\\..\\..\\textures\\entity\\zombie_villager\\baby\\plains.png"
+            },
+            {
+              "type": "block",
+              "description": "biome_baby",
+              "from": [
+                -1,
+                0,
+                3.5
+              ],
+              "to": [
+                1,
+                2,
+                4.5
+              ],
+              "uv": [
+                24,
+                1
+              ],
+              "texture": "..\\..\\..\\textures\\entity\\zombie_villager\\baby\\plains.png"
+            }
+          ],
+          "parts": [
+            {
+              "name": "hat",
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -4,
+                    0,
+                    -3.5
+                  ],
+                  "to": [
+                    4,
+                    8,
+                    3.5
+                  ],
+                  "uv": [
+                    7,
+                    38
+                  ],
+                  "inflate": 0.25
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -7,
+                    4,
+                    -6
+                  ],
+                  "to": [
+                    7,
+                    5,
+                    6
+                  ],
+                  "uv": [
+                    12,
+                    58
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "biome_baby",
+                  "from": [
+                    -4,
+                    0,
+                    -3.5
+                  ],
+                  "to": [
+                    4,
+                    8,
+                    3.5
+                  ],
+                  "uv": [
+                    7,
+                    38
+                  ],
+                  "inflate": 0.25,
+                  "texture": "..\\..\\..\\textures\\entity\\zombie_villager\\baby\\plains.png"
+                },
+                {
+                  "type": "block",
+                  "description": "biome_baby",
+                  "from": [
+                    -7,
+                    4,
+                    -6
+                  ],
+                  "to": [
+                    7,
+                    5,
+                    6
+                  ],
+                  "uv": [
+                    12,
+                    58
+                  ],
+                  "texture": "..\\..\\..\\textures\\entity\\zombie_villager\\baby\\plains.png"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_arm",
+          "position": [
+            -3,
+            4,
+            0
+          ],
+          "bend": {
+            "offset": -1.5,
+            "end_offset": 2.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -4,
+                -1
+              ],
+              "to": [
+                1,
+                1,
+                1
+              ],
+              "uv": [
+                26,
+                17
+              ]
+            },
+            {
+              "type": "block",
+              "description": "biome_baby",
+              "from": [
+                -1,
+                -4,
+                -1
+              ],
+              "to": [
+                1,
+                1,
+                1
+              ],
+              "uv": [
+                26,
+                17
+              ],
+              "texture": "..\\..\\..\\textures\\entity\\zombie_villager\\baby\\plains.png"
+            }
+          ]
+        },
+        {
+          "name": "left_arm",
+          "position": [
+            3,
+            4,
+            0
+          ],
+          "bend": {
+            "offset": -1.5,
+            "end_offset": 2.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -4,
+                -1
+              ],
+              "to": [
+                1,
+                1,
+                1
+              ],
+              "uv": [
+                18,
+                17
+              ]
+            },
+            {
+              "type": "block",
+              "description": "biome_baby",
+              "from": [
+                -1,
+                -4,
+                -1
+              ],
+              "to": [
+                1,
+                1,
+                1
+              ],
+              "uv": [
+                18,
+                17
+              ],
+              "texture": "..\\..\\..\\textures\\entity\\zombie_villager\\baby\\plains.png"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "right_leg",
+      "position": [
+        -1,
+        3,
+        0
+      ],
+      "bend": {
+        "offset": -1.5,
+        "end_offset": 1.5,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -1,
+            -3,
+            -1
+          ],
+          "to": [
+            1,
+            0,
+            1
+          ],
+          "uv": [
+            10,
+            25
+          ]
+        },
+        {
+          "type": "block",
+          "description": "biome_baby",
+          "from": [
+            -1,
+            -3,
+            -1
+          ],
+          "to": [
+            1,
+            0,
+            1
+          ],
+          "uv": [
+            10,
+            25
+          ],
+          "texture": "..\\..\\..\\textures\\entity\\zombie_villager\\baby\\plains.png"
+        }
+      ]
+    },
+    {
+      "name": "left_leg",
+      "position": [
+        1,
+        3,
+        0
+      ],
+      "bend": {
+        "offset": -1.5,
+        "end_offset": 1.5,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -1,
+            -3,
+            -1
+          ],
+          "to": [
+            1,
+            0,
+            1
+          ],
+          "uv": [
+            2,
+            25
+          ]
+        },
+        {
+          "type": "block",
+          "description": "biome_baby",
+          "from": [
+            -1,
+            -3,
+            -1
+          ],
+          "to": [
+            1,
+            0,
+            1
+          ],
+          "uv": [
+            2,
+            25
+          ],
+          "texture": "..\\..\\..\\textures\\entity\\zombie_villager\\baby\\plains.png"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\iron.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\iron.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

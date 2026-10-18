@@ -1,0 +1,135 @@
+{
+	"format": 32,
+	"created_in": "1.2.7",
+	"is_model": true,
+	"tempo": 24,
+	"length": 12,
+	"keyframes": [
+		{
+			"position": 12,
+			"part_name": "body",
+			"values": {
+				"POS_Z": -0.85031,
+				"ROT_X": 10.25928,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "body",
+			"values": {
+				"POS_Z": -0.85031,
+				"ROT_X": 8.07425,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_X": 26.7139,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_X": -47.68843,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_X": 26.7139,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_X": -47.68843,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_Y": 0.28216,
+				"POS_Z": 1.82976,
+				"ROT_X": -37.20127,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_Y": 0.28216,
+				"POS_Z": 1.82976,
+				"ROT_X": 19.46256,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_Y": 0.28216,
+				"POS_Z": 1.82976,
+				"ROT_X": -37.20127,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_Y": 0.28216,
+				"POS_Z": 1.82976,
+				"ROT_X": 19.46256,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "head",
+			"values": {
+				"ROT_X": 24.11185,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "head",
+			"values": {
+				"ROT_X": 32.15347,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

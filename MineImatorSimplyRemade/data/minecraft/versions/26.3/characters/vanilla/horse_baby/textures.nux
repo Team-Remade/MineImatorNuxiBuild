@@ -1,0 +1,37 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\horse\\horse_black_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_black_baby.png"
+    },
+    {
+      "name": "Horse Brown Baby",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_brown_baby.png"
+    },
+    {
+      "name": "Horse Chestnut Baby",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_chestnut_baby.png"
+    },
+    {
+      "name": "Horse Creamy Baby",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_creamy_baby.png"
+    },
+    {
+      "name": "Horse Darkbrown Baby",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_darkbrown_baby.png"
+    },
+    {
+      "name": "Horse Gray Baby",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_gray_baby.png"
+    },
+    {
+      "name": "Horse White Baby",
+      "file": "..\\..\\..\\textures\\entity\\horse\\horse_white_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,455 @@
+{
+  "name": "cow",
+  "texture": "..\\..\\..\\textures\\entity\\cow\\cow_temperate.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        12,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -6,
+            -9,
+            -10
+          ],
+          "to": [
+            6,
+            9,
+            0
+          ],
+          "uv": [
+            28,
+            14
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "description": "cold",
+          "from": [
+            -6,
+            -9,
+            -10
+          ],
+          "to": [
+            6,
+            9,
+            0
+          ],
+          "uv": [
+            30,
+            42
+          ],
+          "inflate": 0.5,
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "visible": false
+        },
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -9,
+            0
+          ],
+          "to": [
+            2,
+            -3,
+            1
+          ],
+          "uv": [
+            53,
+            1
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            8,
+            9
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -4,
+                0
+              ],
+              "to": [
+                4,
+                4,
+                6
+              ],
+              "uv": [
+                6,
+                6
+              ]
+            },
+            {
+              "type": "block",
+              "description": "snout",
+              "from": [
+                -3,
+                -4,
+                6
+              ],
+              "to": [
+                3,
+                -1,
+                7
+              ],
+              "uv": [
+                2,
+                34
+              ]
+            },
+            {
+              "type": "block",
+              "description": "cold",
+              "from": [
+                -3,
+                -4,
+                6
+              ],
+              "to": [
+                3,
+                -1,
+                7
+              ],
+              "uv": [
+                10,
+                34
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "temperate",
+              "from": [
+                -5,
+                2,
+                4
+              ],
+              "to": [
+                -4,
+                5,
+                5
+              ],
+              "uv": [
+                23,
+                1
+              ]
+            },
+            {
+              "type": "block",
+              "description": "temperate",
+              "from": [
+                4,
+                2,
+                4
+              ],
+              "to": [
+                5,
+                5,
+                5
+              ],
+              "uv": [
+                23,
+                1
+              ]
+            },
+            {
+              "type": "block",
+              "description": "cold",
+              "from": [
+                -6,
+                2,
+                -4
+              ],
+              "to": [
+                -4,
+                8,
+                -2
+              ],
+              "uv": [
+                2,
+                42
+              ],
+              "rotation": [
+                90,
+                0,
+                0
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "cold",
+              "from": [
+                4,
+                2,
+                -4
+              ],
+              "to": [
+                6,
+                8,
+                -2
+              ],
+              "uv": [
+                2,
+                34
+              ],
+              "rotation": [
+                90,
+                0,
+                0
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "warm",
+              "from": [
+                -8,
+                1,
+                3
+              ],
+              "to": [
+                -4,
+                3,
+                5
+              ],
+              "uv": [
+                29,
+                2
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "warm",
+              "from": [
+                -8,
+                3,
+                3
+              ],
+              "to": [
+                -6,
+                5,
+                5
+              ],
+              "uv": [
+                41,
+                2
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "warm",
+              "from": [
+                4,
+                1,
+                3
+              ],
+              "to": [
+                8,
+                3,
+                5
+              ],
+              "uv": [
+                29,
+                2
+              ],
+              "texture_mirror": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "warm",
+              "from": [
+                6,
+                3,
+                3
+              ],
+              "to": [
+                8,
+                5,
+                5
+              ],
+              "uv": [
+                41,
+                2
+              ],
+              "texture_mirror": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -4,
+            0,
+            6
+          ],
+          "bend": {
+            "offset": -6,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            4,
+            0,
+            6
+          ],
+          "bend": {
+            "offset": -6,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "texture_mirror": true
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -4,
+            0,
+            -6
+          ],
+          "bend": {
+            "offset": -6,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            4,
+            0,
+            -6
+          ],
+          "bend": {
+            "offset": -6,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "texture_mirror": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

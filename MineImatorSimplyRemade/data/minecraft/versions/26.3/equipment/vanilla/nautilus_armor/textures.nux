@@ -1,0 +1,29 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\equipment\\nautilus_body\\iron.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\equipment\\nautilus_body\\iron.png"
+    },
+    {
+      "name": "Copper",
+      "file": "..\\..\\..\\textures\\entity\\equipment\\nautilus_body\\copper.png"
+    },
+    {
+      "name": "Gold",
+      "file": "..\\..\\..\\textures\\entity\\equipment\\nautilus_body\\gold.png"
+    },
+    {
+      "name": "Diamond",
+      "file": "..\\..\\..\\textures\\entity\\equipment\\nautilus_body\\diamond.png"
+    },
+    {
+      "name": "Netherite",
+      "file": "..\\..\\..\\textures\\entity\\equipment\\nautilus_body\\netherite.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

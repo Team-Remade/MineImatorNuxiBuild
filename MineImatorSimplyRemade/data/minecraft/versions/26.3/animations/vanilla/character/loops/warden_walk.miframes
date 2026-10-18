@@ -1,0 +1,164 @@
+{
+	"format": 32,
+	"created_in": "1.2.9 (Patch 2, 2021.12.20)",
+	"is_model": true,
+	"tempo": 24,
+	"length": 44,
+	"keyframes": [
+		{
+			"position": 42,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 12,
+				"ROT_Y": -2,
+				"ROT_Z": -4,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "body",
+			"values": {
+				"ROT_X": -4,
+				"ROT_Y": 2,
+				"ROT_Z": 4,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 31,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 4,
+				"ROT_Y": -1,
+				"ROT_Z": 2,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 9,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 4,
+				"ROT_Y": 1,
+				"ROT_Z": -2,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": 15,
+				"ROT_Y": -3,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": -25,
+				"ROT_Y": -2,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 40,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": -25,
+				"ROT_Y": 1,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 40,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": 15,
+				"ROT_Y": 2,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 28,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -10,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "head",
+			"values": {
+				"ROT_X": 15,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 17,
+			"part_name": "head",
+			"values": {
+				"ROT_X": 2.5,
+				"ROT_Z": -2,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 39,
+			"part_name": "head",
+			"values": {
+				"ROT_X": 2.5,
+				"ROT_Z": 4,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 44,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": -30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 44,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": -30,
+				"TRANSITION": "easeinoutquad"
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

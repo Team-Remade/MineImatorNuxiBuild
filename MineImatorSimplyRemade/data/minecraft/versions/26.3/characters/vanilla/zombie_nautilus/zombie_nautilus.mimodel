@@ -1,0 +1,1056 @@
+{
+  "name": "zombie_nautilus",
+  "texture": "..\\..\\..\\textures\\entity\\nautilus\\zombie_nautilus.png",
+  "texture_size": [
+    128,
+    128
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -7,
+            8,
+            -8
+          ],
+          "to": [
+            7,
+            18,
+            8
+          ],
+          "uv": [
+            16,
+            16
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -7,
+            0,
+            -12
+          ],
+          "to": [
+            7,
+            8,
+            8
+          ],
+          "uv": [
+            20,
+            46
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -7,
+            0,
+            -12
+          ],
+          "to": [
+            7,
+            8,
+            8
+          ],
+          "uv": [
+            20,
+            46
+          ],
+          "invert": true
+        },
+        {
+          "type": "block",
+          "from": [
+            -7,
+            0,
+            -5
+          ],
+          "to": [
+            7,
+            8,
+            -5
+          ],
+          "uv": [
+            48,
+            26
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -7,
+            0,
+            -5
+          ],
+          "to": [
+            7,
+            8,
+            -5
+          ],
+          "uv": [
+            48,
+            26
+          ],
+          "invert": true
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -1.75,
+            0,
+            0
+          ],
+          "to": [
+            2.25,
+            10,
+            0
+          ],
+          "uv": [
+            0,
+            112
+          ],
+          "position": [
+            7,
+            0,
+            8
+          ],
+          "rotation": [
+            0,
+            45,
+            0
+          ],
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -1.75,
+            0,
+            0
+          ],
+          "to": [
+            2.25,
+            10,
+            0
+          ],
+          "uv": [
+            0,
+            112
+          ],
+          "position": [
+            7,
+            0,
+            8
+          ],
+          "rotation": [
+            0,
+            45,
+            0
+          ],
+          "invert": true,
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -3,
+            0,
+            0
+          ],
+          "to": [
+            3,
+            10,
+            0
+          ],
+          "uv": [
+            0,
+            112
+          ],
+          "position": [
+            7,
+            -1,
+            8
+          ],
+          "rotation": [
+            0,
+            -45,
+            0
+          ],
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -3,
+            0,
+            0
+          ],
+          "to": [
+            3,
+            10,
+            0
+          ],
+          "uv": [
+            0,
+            112
+          ],
+          "position": [
+            7,
+            -1,
+            8
+          ],
+          "rotation": [
+            0,
+            -45,
+            0
+          ],
+          "invert": true,
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -3,
+            1,
+            0
+          ],
+          "to": [
+            3,
+            9,
+            0
+          ],
+          "uv": [
+            0,
+            85
+          ],
+          "position": [
+            7,
+            9,
+            -3
+          ],
+          "rotation": [
+            0,
+            45,
+            0
+          ],
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -3,
+            1,
+            0
+          ],
+          "to": [
+            3,
+            9,
+            0
+          ],
+          "uv": [
+            0,
+            85
+          ],
+          "position": [
+            7,
+            9,
+            -3
+          ],
+          "rotation": [
+            0,
+            45,
+            0
+          ],
+          "invert": true,
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -3,
+            1,
+            0
+          ],
+          "to": [
+            3,
+            9,
+            0
+          ],
+          "uv": [
+            0,
+            85
+          ],
+          "position": [
+            7,
+            9,
+            -3
+          ],
+          "rotation": [
+            0,
+            -45,
+            0
+          ],
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -3,
+            1,
+            0
+          ],
+          "to": [
+            3,
+            9,
+            0
+          ],
+          "uv": [
+            0,
+            85
+          ],
+          "position": [
+            7,
+            9,
+            -3
+          ],
+          "rotation": [
+            0,
+            -45,
+            0
+          ],
+          "invert": true,
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -2,
+            0,
+            0
+          ],
+          "to": [
+            3,
+            10,
+            0
+          ],
+          "uv": [
+            0,
+            102
+          ],
+          "position": [
+            -7,
+            -1,
+            4.5
+          ],
+          "rotation": [
+            0,
+            45,
+            0
+          ],
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -2,
+            0,
+            0
+          ],
+          "to": [
+            3,
+            10,
+            0
+          ],
+          "uv": [
+            0,
+            102
+          ],
+          "position": [
+            -7,
+            -1,
+            4.5
+          ],
+          "rotation": [
+            0,
+            45,
+            0
+          ],
+          "invert": true,
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -2,
+            0,
+            0
+          ],
+          "to": [
+            3,
+            10,
+            0
+          ],
+          "uv": [
+            0,
+            102
+          ],
+          "position": [
+            -7,
+            -1,
+            4.5
+          ],
+          "rotation": [
+            0,
+            -45,
+            0
+          ],
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -2,
+            0,
+            0
+          ],
+          "to": [
+            3,
+            10,
+            0
+          ],
+          "uv": [
+            0,
+            102
+          ],
+          "position": [
+            -7,
+            -1,
+            4.5
+          ],
+          "rotation": [
+            0,
+            -45,
+            0
+          ],
+          "invert": true,
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -9,
+            2,
+            17
+          ],
+          "to": [
+            -3,
+            10,
+            17
+          ],
+          "uv": [
+            0,
+            94
+          ],
+          "rotation": [
+            -90,
+            0,
+            0
+          ],
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -9,
+            2,
+            17
+          ],
+          "to": [
+            -3,
+            10,
+            17
+          ],
+          "uv": [
+            0,
+            94
+          ],
+          "rotation": [
+            -90,
+            0,
+            0
+          ],
+          "invert": true,
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -20,
+            2,
+            -6
+          ],
+          "to": [
+            -14,
+            10,
+            -6
+          ],
+          "uv": [
+            0,
+            94
+          ],
+          "rotation": [
+            0,
+            90,
+            -90
+          ],
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "warm",
+          "from": [
+            -20,
+            2,
+            -6
+          ],
+          "to": [
+            -14,
+            10,
+            -6
+          ],
+          "uv": [
+            0,
+            94
+          ],
+          "rotation": [
+            0,
+            90,
+            -90
+          ],
+          "invert": true,
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "saddle",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\nautilus_saddle\\saddle.png",
+          "texture_size": [
+            128,
+            128
+          ],
+          "from": [
+            -7,
+            8,
+            -8
+          ],
+          "to": [
+            7,
+            18,
+            8
+          ],
+          "uv": [
+            16,
+            16
+          ],
+          "inflate": 0.2,
+          "visible": false
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            3.51,
+            -6.25
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -5,
+                -3.5,
+                -11
+              ],
+              "to": [
+                5,
+                4.5,
+                3
+              ],
+              "uv": [
+                14,
+                68
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -5,
+                -3.5,
+                -11
+              ],
+              "to": [
+                5,
+                4.5,
+                3
+              ],
+              "uv": [
+                14,
+                68
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                -5,
+                -3.5,
+                -7
+              ],
+              "to": [
+                5,
+                4.5,
+                -7
+              ],
+              "uv": [
+                0,
+                76
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -5,
+                -3.5,
+                -7
+              ],
+              "to": [
+                5,
+                4.5,
+                -7
+              ],
+              "uv": [
+                0,
+                76
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\nautilus_saddle\\saddle.png",
+              "texture_size": [
+                128,
+                128
+              ],
+              "from": [
+                -5,
+                -3.5,
+                -11
+              ],
+              "to": [
+                5,
+                4.5,
+                3
+              ],
+              "uv": [
+                14,
+                68
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\nautilus_saddle\\saddle.png",
+              "texture_size": [
+                128,
+                128
+              ],
+              "from": [
+                -5,
+                -3.5,
+                -11
+              ],
+              "to": [
+                5,
+                4.5,
+                3
+              ],
+              "uv": [
+                14,
+                68
+              ],
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\nautilus_saddle\\saddle.png",
+              "texture_size": [
+                128,
+                128
+              ],
+              "from": [
+                -5,
+                -3.5,
+                -7
+              ],
+              "to": [
+                5,
+                4.5,
+                -7
+              ],
+              "uv": [
+                0,
+                76
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\nautilus_saddle\\saddle.png",
+              "texture_size": [
+                128,
+                128
+              ],
+              "from": [
+                -5,
+                -3.5,
+                -7
+              ],
+              "to": [
+                5,
+                4.5,
+                -7
+              ],
+              "uv": [
+                0,
+                76
+              ],
+              "invert": true,
+              "visible": false
+            }
+          ],
+          "parts": [
+            {
+              "name": "top_tentacles",
+              "position": [
+                0,
+                2.5,
+                -7
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -5,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    5,
+                    2,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    58
+                  ],
+                  "inflate": -0.001
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -5,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    5,
+                    2,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    58
+                  ],
+                  "inflate": -0.001,
+                  "invert": true
+                },
+                {
+                  "type": "block",
+                  "description": "saddle",
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\nautilus_saddle\\saddle.png",
+                  "texture_size": [
+                    128,
+                    128
+                  ],
+                  "from": [
+                    -5,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    5,
+                    2,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    58
+                  ],
+                  "inflate": -0.001,
+                  "visible": false
+                },
+                {
+                  "type": "block",
+                  "description": "saddle",
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\nautilus_saddle\\saddle.png",
+                  "texture_size": [
+                    128,
+                    128
+                  ],
+                  "from": [
+                    -5,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    5,
+                    2,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    58
+                  ],
+                  "inflate": -0.001,
+                  "invert": true,
+                  "visible": false
+                }
+              ]
+            },
+            {
+              "name": "bottom_tentacles",
+              "position": [
+                0,
+                -1.5,
+                -7
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -5,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    5,
+                    2,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    66
+                  ],
+                  "inflate": -0.001
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -5,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    5,
+                    2,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    66
+                  ],
+                  "inflate": -0.001,
+                  "invert": true
+                },
+                {
+                  "type": "block",
+                  "description": "saddle",
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\nautilus_saddle\\saddle.png",
+                  "texture_size": [
+                    128,
+                    128
+                  ],
+                  "from": [
+                    -5,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    5,
+                    2,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    66
+                  ],
+                  "inflate": -0.001,
+                  "visible": false
+                },
+                {
+                  "type": "block",
+                  "description": "saddle",
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\nautilus_saddle\\saddle.png",
+                  "texture_size": [
+                    128,
+                    128
+                  ],
+                  "from": [
+                    -5,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    5,
+                    2,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    66
+                  ],
+                  "inflate": -0.001,
+                  "invert": true,
+                  "visible": false
+                }
+              ]
+            },
+            {
+              "name": "inner_tentacles",
+              "position": [
+                0,
+                0.5,
+                -7
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -3,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    3,
+                    2,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    74
+                  ]
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -3,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    3,
+                    2,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    74
+                  ],
+                  "invert": true
+                },
+                {
+                  "type": "block",
+                  "description": "saddle",
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\nautilus_saddle\\saddle.png",
+                  "texture_size": [
+                    128,
+                    128
+                  ],
+                  "from": [
+                    -3,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    3,
+                    2,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    74
+                  ],
+                  "visible": false
+                },
+                {
+                  "type": "block",
+                  "description": "saddle",
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\nautilus_saddle\\saddle.png",
+                  "texture_size": [
+                    128,
+                    128
+                  ],
+                  "from": [
+                    -3,
+                    -2,
+                    -4
+                  ],
+                  "to": [
+                    3,
+                    2,
+                    0
+                  ],
+                  "uv": [
+                    58,
+                    74
+                  ],
+                  "invert": true,
+                  "visible": false
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

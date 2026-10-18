@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\enderman\\enderman.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\enderman\\enderman.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

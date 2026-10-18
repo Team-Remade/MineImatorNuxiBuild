@@ -1,0 +1,687 @@
+{
+  "name": "guardian",
+  "texture": "..\\..\\..\\textures\\entity\\guardian\\guardian.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        8,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -6,
+            -6,
+            -8
+          ],
+          "to": [
+            6,
+            6,
+            8
+          ],
+          "uv": [
+            16,
+            16
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -8,
+            -6,
+            -6
+          ],
+          "to": [
+            -6,
+            6,
+            6
+          ],
+          "uv": [
+            12,
+            40
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            6,
+            -6,
+            -6
+          ],
+          "to": [
+            8,
+            6,
+            6
+          ],
+          "uv": [
+            12,
+            40
+          ],
+          "texture_mirror": true
+        },
+        {
+          "type": "block",
+          "from": [
+            -6,
+            6,
+            -6
+          ],
+          "to": [
+            6,
+            8,
+            6
+          ],
+          "uv": [
+            28,
+            52
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -6,
+            -8,
+            -6
+          ],
+          "to": [
+            6,
+            -6,
+            6
+          ],
+          "uv": [
+            28,
+            52
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "eye",
+          "position": [
+            0,
+            0,
+            7.1
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                0
+              ],
+              "to": [
+                1,
+                1,
+                1
+              ],
+              "uv": [
+                9,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tail_1",
+          "position": [
+            0,
+            0,
+            -7
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -2,
+                -8
+              ],
+              "to": [
+                2,
+                2,
+                0
+              ],
+              "uv": [
+                48,
+                8
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "tail_2",
+              "position": [
+                0,
+                0,
+                -7
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -1.5,
+                    -1.5,
+                    -7
+                  ],
+                  "to": [
+                    1.5,
+                    1.5,
+                    0
+                  ],
+                  "uv": [
+                    7,
+                    61
+                  ]
+                }
+              ],
+              "parts": [
+                {
+                  "name": "tail_3",
+                  "position": [
+                    0,
+                    0,
+                    -6
+                  ],
+                  "shapes": [
+                    {
+                      "type": "block",
+                      "from": [
+                        -1,
+                        -1,
+                        -6
+                      ],
+                      "to": [
+                        1,
+                        1,
+                        0
+                      ],
+                      "uv": [
+                        47,
+                        38
+                      ]
+                    },
+                    {
+                      "type": "block",
+                      "from": [
+                        0,
+                        -4.5,
+                        -12
+                      ],
+                      "to": [
+                        1,
+                        4.5,
+                        -3
+                      ],
+                      "uv": [
+                        34,
+                        28
+                      ]
+                    },
+                    {
+                      "type": "block",
+                      "from": [
+                        0,
+                        -4.5,
+                        -12
+                      ],
+                      "to": [
+                        1,
+                        4.5,
+                        -3
+                      ],
+                      "uv": [
+                        34,
+                        28
+                      ],
+                      "invert": true
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "spike_1",
+          "position": [
+            -5,
+            5,
+            0
+          ],
+          "rotation": [
+            45,
+            -90,
+            0
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                -1
+              ],
+              "to": [
+                1,
+                8,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ],
+              "rotation": [
+                0,
+                90,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "spike_2",
+          "position": [
+            0,
+            5,
+            -5
+          ],
+          "rotation": [
+            45,
+            -180,
+            0
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                -1
+              ],
+              "to": [
+                1,
+                8,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "spike_3",
+          "position": [
+            5,
+            5,
+            0
+          ],
+          "rotation": [
+            45,
+            90,
+            0
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                -1
+              ],
+              "to": [
+                1,
+                8,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ],
+              "rotation": [
+                0,
+                -90,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "spike_4",
+          "position": [
+            0,
+            5,
+            5
+          ],
+          "rotation": [
+            45,
+            0,
+            0
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                -1
+              ],
+              "to": [
+                1,
+                8,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "spike_5",
+          "position": [
+            -4,
+            0,
+            4
+          ],
+          "rotation": [
+            90,
+            -45,
+            0
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                -1
+              ],
+              "to": [
+                1,
+                8,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "spike_6",
+          "position": [
+            -4,
+            0,
+            -4
+          ],
+          "rotation": [
+            0,
+            -45,
+            90
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                -1
+              ],
+              "to": [
+                1,
+                8,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ],
+              "rotation": [
+                0,
+                -90,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "spike_7",
+          "position": [
+            4,
+            0,
+            -4
+          ],
+          "rotation": [
+            -90,
+            -45,
+            0
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                -1
+              ],
+              "to": [
+                1,
+                8,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ],
+              "rotation": [
+                0,
+                -180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "spike_8",
+          "position": [
+            4,
+            0,
+            4
+          ],
+          "rotation": [
+            0,
+            -45,
+            -90
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                -1
+              ],
+              "to": [
+                1,
+                8,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ],
+              "rotation": [
+                0,
+                90,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "spike_9",
+          "position": [
+            -5,
+            -5,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            135
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                -1
+              ],
+              "to": [
+                1,
+                8,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "spike_10",
+          "position": [
+            0,
+            -5,
+            -5
+          ],
+          "rotation": [
+            -135,
+            0,
+            0
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                -1
+              ],
+              "to": [
+                1,
+                8,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "spike_11",
+          "position": [
+            5,
+            -5,
+            0
+          ],
+          "rotation": [
+            135,
+            90,
+            0
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                -1
+              ],
+              "to": [
+                1,
+                8,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ],
+              "rotation": [
+                0,
+                -90,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "spike_12",
+          "position": [
+            0,
+            -5,
+            5
+          ],
+          "rotation": [
+            135,
+            0,
+            0
+          ],
+          "show_position": 1,
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -1,
+                -1
+              ],
+              "to": [
+                1,
+                8,
+                1
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

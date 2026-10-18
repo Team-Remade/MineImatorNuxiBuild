@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\phantom\\phantom.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\phantom\\phantom.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

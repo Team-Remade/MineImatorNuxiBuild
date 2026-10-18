@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\skeleton\\bogged.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\skeleton\\bogged.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

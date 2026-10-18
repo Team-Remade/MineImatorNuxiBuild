@@ -1,0 +1,281 @@
+{
+  "name": "polar_bear",
+  "texture": "..\\..\\..\\textures\\entity\\bear\\polarbear.png",
+  "texture_size": [
+    128,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        14,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -7,
+            -13,
+            -5
+          ],
+          "to": [
+            7,
+            1,
+            6
+          ],
+          "uv": [
+            11,
+            30
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -6,
+            1,
+            -4
+          ],
+          "to": [
+            6,
+            13,
+            6
+          ],
+          "uv": [
+            49,
+            10
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            -0.5,
+            13
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3.5,
+                -3.5,
+                -1
+              ],
+              "to": [
+                3.5,
+                3.5,
+                6
+              ],
+              "uv": [
+                7,
+                7
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -3.5,
+                6
+              ],
+              "to": [
+                2.5,
+                -0.5,
+                9
+              ],
+              "uv": [
+                3,
+                47
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -4.5,
+                2.5,
+                3
+              ],
+              "to": [
+                -2.5,
+                4.5,
+                4
+              ],
+              "uv": [
+                27,
+                1
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                2.5,
+                2.5,
+                3
+              ],
+              "to": [
+                4.5,
+                4.5,
+                4
+              ],
+              "uv": [
+                27,
+                1
+              ],
+              "texture_mirror": true
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -3.5,
+            -4,
+            7
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -10,
+                -3
+              ],
+              "to": [
+                2,
+                0,
+                3
+              ],
+              "uv": [
+                56,
+                46
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            3.5,
+            -4,
+            7
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -10,
+                -3
+              ],
+              "to": [
+                2,
+                0,
+                3
+              ],
+              "uv": [
+                56,
+                46
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -4.5,
+            -4,
+            -8
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -10,
+                -4
+              ],
+              "to": [
+                2,
+                0,
+                4
+              ],
+              "uv": [
+                58,
+                30
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            4.5,
+            -4,
+            -8
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -10,
+                -4
+              ],
+              "to": [
+                2,
+                0,
+                4
+              ],
+              "uv": [
+                58,
+                30
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

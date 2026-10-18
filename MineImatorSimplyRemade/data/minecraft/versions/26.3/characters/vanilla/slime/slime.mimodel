@@ -1,0 +1,110 @@
+{
+  "name": "slime",
+  "texture": "..\\..\\..\\textures\\entity\\slime\\slime.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        4,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "description": "inner_block",
+          "from": [
+            -3,
+            -3,
+            -3
+          ],
+          "to": [
+            3,
+            3,
+            3
+          ],
+          "uv": [
+            6,
+            22
+          ]
+        },
+        {
+          "type": "block",
+          "description": "right_eye",
+          "from": [
+            -3.25,
+            0,
+            1.5
+          ],
+          "to": [
+            -1.25,
+            2,
+            3.5
+          ],
+          "uv": [
+            34,
+            2
+          ]
+        },
+        {
+          "type": "block",
+          "description": "left_eye",
+          "from": [
+            1.25,
+            0,
+            1.5
+          ],
+          "to": [
+            3.25,
+            2,
+            3.5
+          ],
+          "uv": [
+            34,
+            6
+          ]
+        },
+        {
+          "type": "block",
+          "description": "mouth",
+          "from": [
+            0,
+            -2,
+            2.5
+          ],
+          "to": [
+            1,
+            -1,
+            3.5
+          ],
+          "uv": [
+            33,
+            9
+          ]
+        },
+        {
+          "type": "block",
+          "description": "outer_block",
+          "from": [
+            -4,
+            -4,
+            -4
+          ],
+          "to": [
+            4,
+            4,
+            4
+          ],
+          "uv": [
+            8,
+            8
+          ]
+        }
+      ]
+    }
+  ]
+}

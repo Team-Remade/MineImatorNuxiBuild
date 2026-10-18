@@ -1,0 +1,42 @@
+{
+  "name": "conduit",
+  "texture": "..\\..\\..\\textures\\entity\\conduit\\base.png",
+  "texture_size": [
+    32,
+    16
+  ],
+  "parts": [
+    {
+      "name": "conduit",
+      "position": [
+        0,
+        8,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -3,
+            -3,
+            -3
+          ],
+          "to": [
+            3,
+            3,
+            3
+          ],
+          "uv": [
+            6,
+            6
+          ],
+          "rotation": [
+            180,
+            0,
+            0
+          ]
+        }
+      ]
+    }
+  ]
+}

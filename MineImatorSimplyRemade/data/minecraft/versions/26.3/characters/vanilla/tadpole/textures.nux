@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\tadpole\\tadpole.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\tadpole\\tadpole.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

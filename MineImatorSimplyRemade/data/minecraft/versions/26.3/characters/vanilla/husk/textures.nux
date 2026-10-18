@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\zombie\\husk.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\zombie\\husk.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

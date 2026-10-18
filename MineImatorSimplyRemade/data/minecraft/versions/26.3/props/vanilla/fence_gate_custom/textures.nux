@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\block\\bamboo_fence_gate.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\block\\bamboo_fence_gate.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+	"format": 32,
+	"created_in": "1.2.6",
+	"is_model": true,
+	"tempo": 24,
+	"length": 12,
+	"keyframes": [
+		{
+			"position": 12,
+			"part_name": "arms",
+			"values": {
+				"ROT_X": -25.44978,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "arms",
+			"values": {
+				"ROT_X": -45.51118,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -24.23909,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -24.23909,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "body",
+			"values": {
+				"ROT_X": -20.14018,
+				"ROT_Y": -2,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "body",
+			"values": {
+				"ROT_X": -20.14018,
+				"ROT_Y": 2,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": -30,
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 30,
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 30,
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": -30,
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 12,
+			"values": {
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

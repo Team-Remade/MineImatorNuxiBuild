@@ -1,0 +1,311 @@
+{
+  "name": "rabbit",
+  "texture": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_brown.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        5,
+        -1.5
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -4,
+            -2.75,
+            -4.75
+          ],
+          "to": [
+            4,
+            3.25,
+            5.25
+          ],
+          "uv": [
+            10,
+            10
+          ],
+          "rotation": [
+            -22.5,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -2,
+            1.25,
+            -6.75
+          ],
+          "to": [
+            2,
+            5.25,
+            -2.75
+          ],
+          "uv": [
+            24,
+            20
+          ],
+          "rotation": [
+            -22.5,
+            0,
+            0
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            4,
+            3
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -2,
+                -1
+              ],
+              "to": [
+                2.5,
+                3,
+                4
+              ],
+              "uv": [
+                5,
+                21
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "right_ear",
+              "position": [
+                -1.5,
+                3,
+                0.5
+              ],
+              "bend": {
+                "offset": 2.5,
+                "end_offset": 2.5,
+                "part": "upper",
+                "axis": "x"
+              },
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -1,
+                    0,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    5,
+                    0.5
+                  ],
+                  "uv": [
+                    27,
+                    1
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "left_ear",
+              "position": [
+                1.5,
+                3,
+                0.5
+              ],
+              "bend": {
+                "offset": 2.5,
+                "end_offset": 2.5,
+                "part": "upper",
+                "axis": "x"
+              },
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -1,
+                    0,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    5,
+                    0.5
+                  ],
+                  "uv": [
+                    33,
+                    1
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_arm",
+          "position": [
+            -2,
+            -1,
+            4
+          ],
+          "bend": {
+            "offset": -2,
+            "end_offset": 2,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -4,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                38,
+                20
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_arm",
+          "position": [
+            2,
+            -1,
+            4
+          ],
+          "bend": {
+            "offset": -2,
+            "end_offset": 2,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -4,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                46,
+                20
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_leg",
+          "position": [
+            -3,
+            -4.5,
+            -2.5
+          ],
+          "rotation": [
+            0,
+            -22.5,
+            0
+          ],
+          "bend": {
+            "offset": 2,
+            "end_offset": 3,
+            "part": "front",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -0.5,
+                -1
+              ],
+              "to": [
+                1,
+                0.5,
+                5
+              ],
+              "uv": [
+                26,
+                30
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_leg",
+          "position": [
+            3,
+            -4.5,
+            -2.5
+          ],
+          "rotation": [
+            0,
+            22.5,
+            0
+          ],
+          "bend": {
+            "offset": 2,
+            "end_offset": 3,
+            "part": "front",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -0.5,
+                -1
+              ],
+              "to": [
+                1,
+                0.5,
+                5
+              ],
+              "uv": [
+                42,
+                30
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

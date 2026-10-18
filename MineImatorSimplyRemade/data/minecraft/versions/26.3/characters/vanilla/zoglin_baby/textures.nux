@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\hoglin\\zoglin_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\hoglin\\zoglin_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

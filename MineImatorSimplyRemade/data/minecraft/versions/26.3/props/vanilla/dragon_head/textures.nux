@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\enderdragon\\dragon.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\enderdragon\\dragon.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\block\\item_frame.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\block\\item_frame.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

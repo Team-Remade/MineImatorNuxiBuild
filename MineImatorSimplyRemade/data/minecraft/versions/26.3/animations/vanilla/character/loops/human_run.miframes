@@ -1,0 +1,343 @@
+{
+	"format": 24,
+	"is_model": true,
+	"tempo": 20,
+	"length": 14,
+	"keyframes": [
+		{
+			"position": 2,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 20.32843
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 39.31789,
+				"BEND_ANGLE": 67.63652
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 22.57085,
+				"BEND_ANGLE": 100.86519
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 3.47748,
+				"BEND_ANGLE": 100.86519
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": -40.25763,
+				"BEND_ANGLE": 79.353
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": -47.33003,
+				"BEND_ANGLE": -12.56807
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": -18.66262,
+				"BEND_ANGLE": -12.56807
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 3.47748,
+				"BEND_ANGLE": 100.86519
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 22.57085,
+				"BEND_ANGLE": 100.86519
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 39.31789,
+				"BEND_ANGLE": 67.63652
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 20.32843
+			}
+		},
+		{
+			"position": 2,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": -40.25763,
+				"BEND_ANGLE": 79.353
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": -47.33003,
+				"BEND_ANGLE": -12.56807
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": -18.66262,
+				"BEND_ANGLE": -12.56807
+			}
+		},
+		{
+			"position": 2,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 36.07288,
+				"BEND_ANGLE": 29.43423
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 36.07288,
+				"ROT_Z": 6,
+				"BEND_ANGLE": 29.43423
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 36.07288,
+				"ROT_Z": 9,
+				"BEND_ANGLE": 29.43423
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 36.07288,
+				"BEND_ANGLE": 29.43423
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 36.07288,
+				"ROT_Z": -6,
+				"BEND_ANGLE": 29.43423
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 36.07288,
+				"ROT_Z": -9,
+				"BEND_ANGLE": 29.43423
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 36.07288,
+				"ROT_Z": -6,
+				"BEND_ANGLE": 29.43423
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": -10.2655,
+				"ROT_Z": 13,
+				"BEND_ANGLE": 97.79636
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": -64.09447,
+				"ROT_Z": 13,
+				"BEND_ANGLE": 88.59423
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": -22.29591,
+				"ROT_Z": 13,
+				"BEND_ANGLE": 104.10058
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": 14.96829,
+				"BEND_ANGLE": 87.96626
+			}
+		},
+		{
+			"position": 2,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": 47.06117,
+				"ROT_Z": 10,
+				"BEND_ANGLE": 76.28156
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": 50.44951,
+				"ROT_Z": 10,
+				"BEND_ANGLE": 29.2155
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": 39.74826,
+				"ROT_Z": 10,
+				"BEND_ANGLE": 38.99193
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -48.2426,
+				"ROT_Z": 5
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -48.2426,
+				"ROT_Z": -5
+			}
+		},
+		{
+			"position": 2,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -48.2426,
+				"ROT_Z": 1.66667
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": 39.74826,
+				"ROT_Z": -10,
+				"BEND_ANGLE": 38.99193
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": 50.44951,
+				"ROT_Z": -10,
+				"BEND_ANGLE": 29.2155
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": 47.06117,
+				"ROT_Z": -10,
+				"BEND_ANGLE": 76.28156
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": 14.96829,
+				"BEND_ANGLE": 87.96626
+			}
+		},
+		{
+			"position": 2,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": -22.29591,
+				"ROT_Z": -13,
+				"BEND_ANGLE": 104.10058
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": -64.09447,
+				"ROT_Z": -13,
+				"BEND_ANGLE": 88.59423
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": -10.2655,
+				"ROT_Z": -13,
+				"BEND_ANGLE": 97.79636
+			}
+		},
+		{
+			"position": 14,
+			"values": {
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

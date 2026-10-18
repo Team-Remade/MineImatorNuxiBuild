@@ -1,0 +1,59 @@
+{
+	"format": 24,
+	"is_model": true,
+	"tempo": 20,
+	"length": 20,
+	"keyframes": [
+		{
+			"position": 20,
+			"values": {
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "body_lower",
+			"values": {
+				"POS_Z": 0.8175,
+				"ROT_X": 7.88339,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 13,
+			"part_name": "body_lower",
+			"values": {
+				"POS_Z": 0.02852,
+				"SCA_Z": 0.7261,
+				"TRANSITION": "easeinsine"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "body_lower",
+			"values": {
+				"TRANSITION": "easeoutsine"
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "body_lower",
+			"values": {
+				"POS_Z": 8,
+				"ROT_X": -6.355,
+				"SCA_Z": 1.1755,
+				"TRANSITION": "easeinsine"
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

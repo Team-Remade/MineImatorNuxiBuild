@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\mineimator\\camera_tripod.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\camera_tripod.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

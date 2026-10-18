@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\decorated_pot\\decorated_pot_base.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\decorated_pot\\decorated_pot_base.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

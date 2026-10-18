@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\boat\\oak.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\boat\\oak.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

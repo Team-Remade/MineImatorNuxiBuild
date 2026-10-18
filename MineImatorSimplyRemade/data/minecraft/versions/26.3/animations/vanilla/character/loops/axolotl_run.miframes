@@ -1,0 +1,161 @@
+{
+	"format": 35,
+	"created_in": "2.0.2 Continuation Build 1.0.13 (Indev)",
+	"is_model": true,
+	"tempo": 24,
+	"length": 24,
+	"keyframes": [
+		{
+			"position": 16,
+			"part_name": "left_back_leg",
+			"values": {
+				"POS_X": 0.25,
+				"POS_Z": -1,
+				"ROT_Y": 100,
+				"ROT_Z": 75,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "left_back_leg",
+			"values": {
+				"POS_X": 0.25,
+				"POS_Z": -1,
+				"ROT_Y": 80,
+				"ROT_Z": 75,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_X": 0.25,
+				"POS_Z": -1,
+				"ROT_Y": 80,
+				"ROT_Z": 75,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_X": 0.25,
+				"POS_Z": -1,
+				"ROT_Y": 100,
+				"ROT_Z": 75,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "right_back_leg",
+			"values": {
+				"POS_X": -0.25,
+				"POS_Z": -1,
+				"ROT_Y": -80,
+				"ROT_Z": -75,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "right_back_leg",
+			"values": {
+				"POS_X": -0.25,
+				"POS_Z": -1,
+				"ROT_Y": -100,
+				"ROT_Z": -75,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_X": -0.25,
+				"POS_Z": -1,
+				"ROT_Y": -100,
+				"ROT_Z": -75,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "tail",
+			"values": {
+				"ROT_Z": -15,
+				"BEND_ANGLE_Z": -5,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "tail",
+			"values": {
+				"ROT_Z": 15,
+				"BEND_ANGLE_Z": 5,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_X": -0.25,
+				"POS_Z": -1,
+				"ROT_Y": -80,
+				"ROT_Z": -75,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "head",
+			"values": {
+				"ROT_X": 15,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -15,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "body",
+			"values": {
+				"ROT_X": -10,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 10,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0,
+				"POS_Z": 8
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

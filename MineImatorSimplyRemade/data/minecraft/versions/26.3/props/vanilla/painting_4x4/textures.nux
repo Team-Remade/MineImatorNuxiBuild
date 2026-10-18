@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\painting\\pigscene.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\painting\\pigscene.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

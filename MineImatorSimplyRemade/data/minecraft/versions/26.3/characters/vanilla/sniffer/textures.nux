@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\sniffer\\sniffer.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\sniffer\\sniffer.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "name": "mob_head",
+  "texture": "..\\..\\..\\textures\\entity\\player\\slim\\steve.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "player_skin": true,
+  "parts": [
+    {
+      "name": "head",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -4,
+            0,
+            -4
+          ],
+          "to": [
+            4,
+            8,
+            4
+          ],
+          "uv": [
+            8,
+            8
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -4,
+            0,
+            -4
+          ],
+          "to": [
+            4,
+            8,
+            4
+          ],
+          "uv": [
+            8,
+            8
+          ],
+          "invert": true
+        }
+      ],
+      "parts": [
+        {
+          "name": "hat",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -4,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                40,
+                8
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                4,
+                0
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -4,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                40,
+                8
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                4,
+                0
+              ],
+              "invert": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

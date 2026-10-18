@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\item\\spyglass_model.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\item\\spyglass_model.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

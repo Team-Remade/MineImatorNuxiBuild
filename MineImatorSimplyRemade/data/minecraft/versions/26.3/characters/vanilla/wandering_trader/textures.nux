@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\wandering_trader\\wandering_trader.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\wandering_trader\\wandering_trader.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

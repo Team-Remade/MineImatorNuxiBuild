@@ -58,7 +58,7 @@ internal class TexturesNuxVariantEntry
 // ── CharacterEntry ────────────────────────────────────────────────────────────
 
 /// <summary>
-/// Represents a single character model discovered on disk.
+/// Represents a character, equipment, or prop model discovered on disk.
 /// </summary>
 public class CharacterEntry
 {
@@ -86,7 +86,7 @@ public class CharacterEntry
 // ── CharacterRegistry ─────────────────────────────────────────────────────────
 
 /// <summary>
-/// Scans every <c>characters/</c> sub-folder found anywhere inside the
+/// Scans every <c>characters/</c>, <c>equipment/</c>, and <c>props/</c> folder inside the
 /// application's <c>data/</c> directory and collects all 3-D model files
 /// into a flat, sorted registry that the spawn menu can display.
 ///
@@ -120,24 +120,32 @@ public static class CharacterRegistry
 
     /// <summary>All discovered character entries, sorted by name.</summary>
     public static IReadOnlyList<CharacterEntry> Characters => _characters;
+    /// <summary>Standalone equipment models, sorted by name.</summary>
+    public static IReadOnlyList<CharacterEntry> Equipment => _equipment;
+    /// <summary>Special-block and prop models, sorted by name.</summary>
+    public static IReadOnlyList<CharacterEntry> Props => _props;
 
     // ── Internal state ────────────────────────────────────────────────────────
     private static readonly List<CharacterEntry> _characters = new();
+    private static readonly List<CharacterEntry> _equipment = new();
+    private static readonly List<CharacterEntry> _props = new();
 
 
 
     // ── Initialization ────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Scans all <c>characters/</c> folders under <c>data/</c> (relative to
-    /// the application base directory) and populates <see cref="Characters"/>.
+    /// Scans model catalog folders under <c>data/</c> (relative to
+    /// the application base directory) and populates the three catalogs.
     /// Safe to call multiple times — clears and rebuilds the list each time.
     /// </summary>
     public static void Initialize(Action<float, string>? progress = null)
     {
         _characters.Clear();
+        _equipment.Clear();
+        _props.Clear();
 
-        progress?.Invoke(0f, "Locating character directories...");
+        progress?.Invoke(0f, "Locating model directories...");
 
         // Resolve the data directory relative to the application executable.
         // Use Environment.ProcessPath (same as BlockRegistry) so that single-file
@@ -152,27 +160,34 @@ public static class CharacterRegistry
             return;
         }
 
-        // Find every directory named "characters" anywhere under data/
-        string[] characterDirectories = Directory.EnumerateDirectories(
-                dataPath, "characters", SearchOption.AllDirectories)
+        var catalogs = new[]
+        {
+            (Folder: "characters", Entries: _characters),
+            (Folder: "equipment", Entries: _equipment),
+            (Folder: "props", Entries: _props)
+        };
+        var directories = catalogs.SelectMany(catalog =>
+                Directory.EnumerateDirectories(dataPath, catalog.Folder, SearchOption.AllDirectories)
+                    .Select(path => (Path: path, catalog.Entries)))
             .ToArray();
 
-        int directoryCount = Math.Max(characterDirectories.Length, 1);
+        int directoryCount = Math.Max(directories.Length, 1);
 
-        for (int i = 0; i < characterDirectories.Length; i++)
+        for (int i = 0; i < directories.Length; i++)
         {
-            string charDir = characterDirectories[i];
-            ScanCharactersDirectory(charDir);
+            string charDir = directories[i].Path;
+            ScanCharactersDirectory(charDir, directories[i].Entries);
             string label = Path.GetFileName(Path.GetDirectoryName(charDir) ?? charDir);
-            progress?.Invoke((i + 1) / (float)directoryCount, $"Characters: {label}");
+            progress?.Invoke((i + 1) / (float)directoryCount, $"Models: {label}");
         }
 
-        _characters.Sort((a, b) =>
-            string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+        foreach (var catalog in catalogs)
+            catalog.Entries.Sort((a, b) =>
+                string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
 
-        Console.WriteLine($"Found {_characters.Count} character(s) " +
-                          $"across all 'characters/' folders.");
-        progress?.Invoke(1f, $"Found {_characters.Count} character model(s)");
+        string summary = $"Found {_characters.Count} character(s), {_equipment.Count} equipment model(s), {_props.Count} prop(s)";
+        Console.WriteLine(summary);
+        progress?.Invoke(1f, summary);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -181,7 +196,7 @@ public static class CharacterRegistry
     /// Recursively enumerates <paramref name="charDir"/> and adds every
     /// supported model file as a <see cref="CharacterEntry"/>.
     /// </summary>
-    private static void ScanCharactersDirectory(string charDir)
+    private static void ScanCharactersDirectory(string charDir, List<CharacterEntry> entries)
     {
         foreach (string filePath in Directory.EnumerateFiles(
                      charDir, "*", SearchOption.AllDirectories))
@@ -201,7 +216,7 @@ public static class CharacterRegistry
             // Try to load texture variants from a sibling textures.nux manifest.
             var variants = LoadTextureVariants(modelDir);
 
-            _characters.Add(new CharacterEntry
+            entries.Add(new CharacterEntry
             {
                 Name            = name,
                 FilePath        = filePath,

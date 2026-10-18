@@ -1,0 +1,507 @@
+{
+  "name": "breeze",
+  "texture": "..\\..\\..\\textures\\entity\\breeze\\breeze.png",
+  "texture_size": [
+    32,
+    32
+  ],
+  "parts": [
+    {
+      "name": "head",
+      "position": [
+        0,
+        20,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -4,
+            0,
+            -4
+          ],
+          "to": [
+            4,
+            8,
+            4
+          ],
+          "uv": [
+            8,
+            8
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -5,
+            2,
+            0.2
+          ],
+          "to": [
+            5,
+            5,
+            4.2
+          ],
+          "uv": [
+            8,
+            28
+          ]
+        },
+        {
+          "type": "block",
+          "description": "eyes",
+          "texture": "..\\..\\..\\textures\\entity\\breeze\\breeze_eyes.png",
+          "texture_size": [
+            32,
+            32
+          ],
+          "color_brightness": 0.25,
+          "from": [
+            -4,
+            0,
+            -4
+          ],
+          "to": [
+            4,
+            8,
+            4
+          ],
+          "uv": [
+            8,
+            8
+          ]
+        },
+        {
+          "type": "block",
+          "description": "eyes",
+          "texture": "..\\..\\..\\textures\\entity\\breeze\\breeze_eyes.png",
+          "texture_size": [
+            32,
+            32
+          ],
+          "color_brightness": 0.25,
+          "from": [
+            -5,
+            2,
+            0.2
+          ],
+          "to": [
+            5,
+            5,
+            4.2
+          ],
+          "uv": [
+            8,
+            28
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rods",
+      "position": [
+        0,
+        14.5,
+        0
+      ],
+      "parts": [
+        {
+          "name": "rod_1",
+          "position": [
+            0,
+            0,
+            3.4641
+          ],
+          "rotation": [
+            22,
+            0,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -4,
+                -1
+              ],
+              "to": [
+                1,
+                4,
+                1
+              ],
+              "uv": [
+                2,
+                19
+              ]
+            }
+          ]
+        },
+        {
+          "name": "rod_2",
+          "position": [
+            -3,
+            0,
+            -1.732
+          ],
+          "rotation": [
+            22,
+            -120,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -4,
+                -1
+              ],
+              "to": [
+                1,
+                4,
+                1
+              ],
+              "uv": [
+                2,
+                19
+              ]
+            }
+          ]
+        },
+        {
+          "name": "rod_3",
+          "position": [
+            3,
+            0,
+            -1.732
+          ],
+          "rotation": [
+            22,
+            120,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -4,
+                -1
+              ],
+              "to": [
+                1,
+                4,
+                1
+              ],
+              "uv": [
+                2,
+                19
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "wind",
+      "texture": "..\\..\\..\\textures\\entity\\breeze\\breeze_wind.png",
+      "texture_size": [
+        128,
+        128
+      ],
+      "texture_scroll_speed": 0.4,
+      "texture_scroll_direction": 90,
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "color_brightness": 0.25,
+      "parts": [
+        {
+          "name": "wind_1",
+          "position": [
+            0,
+            17,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -9,
+                -4,
+                -9
+              ],
+              "to": [
+                9,
+                4,
+                9
+              ],
+              "uv": [
+                18,
+                18
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -9,
+                -4,
+                -9
+              ],
+              "to": [
+                9,
+                4,
+                9
+              ],
+              "uv": [
+                18,
+                18
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                -6,
+                -4,
+                -6
+              ],
+              "to": [
+                6,
+                4,
+                6
+              ],
+              "uv": [
+                12,
+                18
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -6,
+                -4,
+                -6
+              ],
+              "to": [
+                6,
+                4,
+                6
+              ],
+              "uv": [
+                12,
+                18
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -4,
+                -2.5
+              ],
+              "to": [
+                2.5,
+                4,
+                2.5
+              ],
+              "uv": [
+                5,
+                62
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -4,
+                -2.5
+              ],
+              "to": [
+                2.5,
+                4,
+                2.5
+              ],
+              "uv": [
+                5,
+                62
+              ],
+              "invert": true
+            }
+          ]
+        },
+        {
+          "name": "wind_2",
+          "position": [
+            0,
+            11,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -6,
+                -3,
+                -6
+              ],
+              "to": [
+                6,
+                3,
+                6
+              ],
+              "uv": [
+                12,
+                40
+              ],
+              "inflate": 0.01
+            },
+            {
+              "type": "block",
+              "from": [
+                -6,
+                -3,
+                -6
+              ],
+              "to": [
+                6,
+                3,
+                6
+              ],
+              "uv": [
+                12,
+                40
+              ],
+              "inflate": 0.01,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -3,
+                -4
+              ],
+              "to": [
+                4,
+                3,
+                4
+              ],
+              "uv": [
+                8,
+                40
+              ],
+              "inflate": 0.01
+            },
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -3,
+                -4
+              ],
+              "to": [
+                4,
+                3,
+                4
+              ],
+              "uv": [
+                8,
+                40
+              ],
+              "inflate": 0.01,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -3,
+                -2.5
+              ],
+              "to": [
+                2.5,
+                3,
+                2.5
+              ],
+              "uv": [
+                5,
+                76
+              ],
+              "inflate": 0.01
+            },
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -3,
+                -2.5
+              ],
+              "to": [
+                2.5,
+                3,
+                2.5
+              ],
+              "uv": [
+                5,
+                76
+              ],
+              "inflate": 0.01,
+              "invert": true
+            }
+          ]
+        },
+        {
+          "name": "wind_3",
+          "position": [
+            0,
+            3.5,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -3.5,
+                -2.5
+              ],
+              "to": [
+                2.5,
+                3.5,
+                2.5
+              ],
+              "uv": [
+                5,
+                88
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -3.5,
+                -2.5
+              ],
+              "to": [
+                2.5,
+                3.5,
+                2.5
+              ],
+              "uv": [
+                5,
+                88
+              ],
+              "invert": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

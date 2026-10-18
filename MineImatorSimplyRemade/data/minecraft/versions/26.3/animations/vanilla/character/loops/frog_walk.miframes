@@ -1,0 +1,368 @@
+{
+	"format": 32,
+	"created_in": "1.2.9 (Patch 2, 2021.12.20)",
+	"is_model": true,
+	"tempo": 24,
+	"length": 30,
+	"keyframes": [
+		{
+			"position": 30,
+			"part_name": "right_back_leg",
+			"values": {
+				"POS_X": 0.2964,
+				"POS_Y": -1.34005,
+				"POS_Z": 0.01122,
+				"ROT_X": -0.17399,
+				"ROT_Y": -0.4215,
+				"ROT_Z": -4.23652
+			}
+		},
+		{
+			"position": 28,
+			"part_name": "left_back_leg",
+			"values": {
+				"POS_Y": 0.65133,
+				"POS_Z": 0.93338,
+				"ROT_X": -6.07558,
+				"ROT_Y": 3.54742,
+				"ROT_Z": -4.0967
+			}
+		},
+		{
+			"position": 26,
+			"part_name": "left_back_leg",
+			"values": {
+				"POS_Y": -0.06981,
+				"POS_Z": 1.55454,
+				"ROT_X": 3.81901,
+				"ROT_Y": 2.08947,
+				"ROT_Z": -3.39376
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "left_back_leg",
+			"values": {
+				"POS_X": -0.1272,
+				"POS_Y": -0.22995,
+				"POS_Z": 0.46016,
+				"ROT_X": 4.99872,
+				"ROT_Y": 4.23866,
+				"ROT_Z": 2.18572
+			}
+		},
+		{
+			"position": 30,
+			"part_name": "left_back_leg",
+			"values": {
+				"POS_X": 0.21839,
+				"POS_Y": 1.41678,
+				"POS_Z": 0.02619,
+				"ROT_X": -0.06098,
+				"ROT_Z": -5.69078
+			}
+		},
+		{
+			"position": 23,
+			"part_name": "left_back_leg",
+			"values": {
+				"POS_X": 0.16578,
+				"POS_Y": -1.92283,
+				"POS_Z": 0.38134,
+				"ROT_X": 6.49122,
+				"ROT_Y": -0.82644,
+				"ROT_Z": -3.27564
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "left_back_leg",
+			"values": {
+				"POS_X": -0.2964,
+				"POS_Y": -1.34005,
+				"POS_Z": 0.01122,
+				"ROT_X": -0.17399,
+				"ROT_Y": 0.4215,
+				"ROT_Z": 4.23652
+			}
+		},
+		{
+			"position": 21,
+			"part_name": "left_back_leg",
+			"values": {
+				"POS_Y": -1.83793,
+				"POS_Z": 0.02654,
+				"ROT_X": 1.75252,
+				"ROT_Y": -2.24275,
+				"ROT_Z": 0.79825
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "right_back_leg",
+			"values": {
+				"POS_Y": -1.83793,
+				"POS_Z": 0.02654,
+				"ROT_X": 1.75252,
+				"ROT_Y": 2.24275,
+				"ROT_Z": -0.79825
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_back_leg",
+			"values": {
+				"POS_X": -0.16578,
+				"POS_Y": -1.92283,
+				"POS_Z": 0.38134,
+				"ROT_X": 6.49122,
+				"ROT_Y": 0.82644,
+				"ROT_Z": 3.27564
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "right_back_leg",
+			"values": {
+				"POS_X": -0.21839,
+				"POS_Y": 1.41678,
+				"POS_Z": 0.02619,
+				"ROT_X": -0.06098,
+				"ROT_Z": 5.69078
+			}
+		},
+		{
+			"position": 23,
+			"part_name": "right_back_leg",
+			"values": {
+				"POS_X": 0.1272,
+				"POS_Y": -0.22995,
+				"POS_Z": 0.46016,
+				"ROT_X": 4.99872,
+				"ROT_Y": -4.23866,
+				"ROT_Z": -2.18572
+			}
+		},
+		{
+			"position": 11,
+			"part_name": "right_back_leg",
+			"values": {
+				"POS_Y": -0.06981,
+				"POS_Z": 1.55454,
+				"ROT_X": 3.81901,
+				"ROT_Y": -2.08947,
+				"ROT_Z": 3.39376
+			}
+		},
+		{
+			"position": 13,
+			"part_name": "right_back_leg",
+			"values": {
+				"POS_Y": 0.65133,
+				"POS_Z": 0.93338,
+				"ROT_X": -6.07558,
+				"ROT_Y": -3.54742,
+				"ROT_Z": 4.0967
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_X": 0.36059,
+				"POS_Y": 1.74002,
+				"POS_Z": 0.02752,
+				"ROT_X": -0.47021,
+				"ROT_Y": 0.62385,
+				"ROT_Z": 5.49928
+			}
+		},
+		{
+			"position": 13,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_Y": 0.89165,
+				"POS_Z": 0.54933,
+				"ROT_X": -7.37537,
+				"ROT_Y": 1
+			}
+		},
+		{
+			"position": 7,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_Y": -1.50465,
+				"POS_Z": 0.72358,
+				"ROT_X": 13.66225,
+				"ROT_Y": 6.77402
+			}
+		},
+		{
+			"position": 11,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_Y": 0.04329,
+				"POS_Z": 1.06892,
+				"ROT_X": -1.59353,
+				"ROT_Y": 1
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_Y": -1.52681,
+				"POS_Z": 0.08887,
+				"ROT_X": 3.63539,
+				"ROT_Y": 4.57491
+			}
+		},
+		{
+			"position": 23,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_X": -0.13129,
+				"POS_Y": 0.71134,
+				"POS_Z": -0.81677,
+				"ROT_X": 4.91052,
+				"ROT_Y": -5.19733,
+				"ROT_Z": -3.90494
+			}
+		},
+		{
+			"position": 30,
+			"part_name": "left_front_leg",
+			"values": {
+				"POS_X": -0.05471,
+				"POS_Y": -0.23795,
+				"POS_Z": 0.04357,
+				"ROT_X": -0.30958,
+				"ROT_Y": 0.50314,
+				"ROT_Z": -4.93456
+			}
+		},
+		{
+			"position": 28,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_Y": 0.89165,
+				"POS_Z": 0.54933,
+				"ROT_X": -7.37537,
+				"ROT_Y": -1
+			}
+		},
+		{
+			"position": 30,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_X": -0.36059,
+				"POS_Y": 1.74002,
+				"POS_Z": 0.02752,
+				"ROT_X": -0.47021,
+				"ROT_Y": -0.62385,
+				"ROT_Z": -5.49928
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_X": 0.05471,
+				"POS_Y": -0.23795,
+				"POS_Z": 0.04357,
+				"ROT_X": -0.30958,
+				"ROT_Y": -0.50314,
+				"ROT_Z": 4.93456
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_X": 0.13129,
+				"POS_Y": 0.71134,
+				"POS_Z": -0.81677,
+				"ROT_X": 4.91052,
+				"ROT_Y": 5.19733,
+				"ROT_Z": 3.90494
+			}
+		},
+		{
+			"position": 23,
+			"part_name": "body",
+			"values": {
+				"POS_Z": 0.25,
+				"ROT_X": -5,
+				"ROT_Y": 5,
+				"ROT_Z": 3
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "body",
+			"values": {
+				"POS_Z": 0.25,
+				"ROT_X": -5,
+				"ROT_Y": -5,
+				"ROT_Z": -3
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "body",
+			"values": {
+				"ROT_Z": -5
+			}
+		},
+		{
+			"position": 30,
+			"part_name": "body",
+			"values": {
+				"ROT_Z": 5
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_Y": -1.50465,
+				"POS_Z": 0.72358,
+				"ROT_X": 13.66225,
+				"ROT_Y": -6.77402
+			}
+		},
+		{
+			"position": 26,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_Y": 0.04329,
+				"POS_Z": 1.06892,
+				"ROT_X": -1.59353,
+				"ROT_Y": -1
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "right_front_leg",
+			"values": {
+				"POS_Y": -1.52681,
+				"POS_Z": 0.08887,
+				"ROT_X": 3.63539,
+				"ROT_Y": -4.57491
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

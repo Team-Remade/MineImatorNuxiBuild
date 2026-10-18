@@ -1,0 +1,88 @@
+{
+	"format": 24,
+	"is_model": true,
+	"tempo": 24,
+	"length": 16,
+	"keyframes": [
+		{
+			"position": 0,
+			"values": {
+			}
+		},
+		{
+			"position": 16,
+			"values": {
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 40,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 40,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": -20,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": 19.23931,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": -23.24025,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "body",
+			"values": {
+				"ROT_Y": 5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "body",
+			"values": {
+				"ROT_Y": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

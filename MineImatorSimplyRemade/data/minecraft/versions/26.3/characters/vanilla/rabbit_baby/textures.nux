@@ -1,0 +1,41 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_black_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_black_baby.png"
+    },
+    {
+      "name": "Rabbit Brown Baby",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_brown_baby.png"
+    },
+    {
+      "name": "Rabbit Gold Baby",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_gold_baby.png"
+    },
+    {
+      "name": "Rabbit Salt Baby",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_salt_baby.png"
+    },
+    {
+      "name": "Rabbit White Baby",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_white_baby.png"
+    },
+    {
+      "name": "Rabbit White Splotched Baby",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_white_splotched_baby.png"
+    },
+    {
+      "name": "Rabbit Toast Baby",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_toast_baby.png"
+    },
+    {
+      "name": "Rabbit Caerbannog Baby",
+      "file": "..\\..\\..\\textures\\entity\\rabbit\\rabbit_caerbannog_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

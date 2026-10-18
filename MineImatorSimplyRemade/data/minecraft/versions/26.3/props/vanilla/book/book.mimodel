@@ -1,0 +1,266 @@
+{
+  "name": "book",
+  "texture": "..\\..\\..\\textures\\entity\\enchantment\\enchanting_table_book.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "book",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -1,
+            -5,
+            0
+          ],
+          "to": [
+            1,
+            5,
+            0
+          ],
+          "uv": [
+            12,
+            0
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "book_right_half",
+          "position": [
+            1,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            90
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -6,
+                -5,
+                0
+              ],
+              "to": [
+                0,
+                5,
+                0
+              ],
+              "uv": [
+                0,
+                0
+              ],
+              "rotation": [
+                -90,
+                0,
+                180
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "book_right_pages",
+              "position": [
+                0.01,
+                0.01,
+                0
+              ],
+              "show_position": 1,
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -2.5,
+                    -4,
+                    -1
+                  ],
+                  "to": [
+                    2.5,
+                    4,
+                    0
+                  ],
+                  "uv": [
+                    1,
+                    11
+                  ],
+                  "position": [
+                    2.5,
+                    0,
+                    0
+                  ],
+                  "rotation": [
+                    90,
+                    0,
+                    0
+                  ]
+                }
+              ],
+              "parts": [
+                {
+                  "name": "book_right_leaf",
+                  "position": [
+                    0,
+                    1.01,
+                    0
+                  ],
+                  "shapes": [
+                    {
+                      "type": "block",
+                      "from": [
+                        0,
+                        -4,
+                        0
+                      ],
+                      "to": [
+                        5,
+                        4,
+                        0
+                      ],
+                      "uv": [
+                        24,
+                        10
+                      ],
+                      "rotation": [
+                        90,
+                        0,
+                        0
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "book_left_half",
+          "position": [
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            -90
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                0,
+                -5,
+                0
+              ],
+              "to": [
+                6,
+                5,
+                0
+              ],
+              "uv": [
+                16,
+                0
+              ],
+              "rotation": [
+                -90,
+                0,
+                180
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "book_left_pages",
+              "position": [
+                -0.01,
+                0.01,
+                0
+              ],
+              "show_position": 1,
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -2.5,
+                    -4,
+                    -1
+                  ],
+                  "to": [
+                    2.5,
+                    4,
+                    0
+                  ],
+                  "uv": [
+                    13,
+                    11
+                  ],
+                  "position": [
+                    -2.5,
+                    1,
+                    0
+                  ],
+                  "rotation": [
+                    -90,
+                    -180,
+                    0
+                  ]
+                }
+              ],
+              "parts": [
+                {
+                  "name": "book_left_leaf",
+                  "position": [
+                    0,
+                    1.01,
+                    0
+                  ],
+                  "shapes": [
+                    {
+                      "type": "block",
+                      "from": [
+                        0,
+                        -4,
+                        0
+                      ],
+                      "to": [
+                        5,
+                        4,
+                        0
+                      ],
+                      "uv": [
+                        24,
+                        10
+                      ],
+                      "rotation": [
+                        -90,
+                        0,
+                        180
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

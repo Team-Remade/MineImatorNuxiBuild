@@ -1,0 +1,196 @@
+{
+	"format": 35,
+	"created_in": "2.0.2 Continuation Build 1.0.13 (Indev)",
+	"is_model": true,
+	"tempo": 24,
+	"length": 12,
+	"keyframes": [
+		{
+			"position": 4,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 2.66667,
+				"POS_Z": 6.25,
+				"ROT_X": 25
+			}
+		},
+		{
+			"position": 3,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 2,
+				"POS_Z": 6,
+				"ROT_X": 20
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 3.33333,
+				"POS_Z": 5.5,
+				"ROT_X": 30
+			}
+		},
+		{
+			"position": 2,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 1.33333,
+				"POS_Z": 5,
+				"ROT_X": 15
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "body",
+			"values": {
+				"POS_Z": -0.25,
+				"ROT_X": 5
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": -5,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": -5,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": 15,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": 15,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_ear",
+			"values": {
+				"ROT_X": -45,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_ear",
+			"values": {
+				"ROT_X": -45,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 135,
+				"ROT_Y": 30,
+				"ROT_Z": 75,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 135,
+				"ROT_Y": -30,
+				"ROT_Z": -75,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_arm",
+			"values": {
+				"POS_Y": 1,
+				"POS_Z": 1,
+				"ROT_X": -105,
+				"ROT_Z": 15,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "left_arm",
+			"values": {
+				"POS_Y": 1,
+				"POS_Z": 1,
+				"ROT_X": -105,
+				"ROT_Z": -15,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_ear",
+			"values": {
+				"ROT_X": -75,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "left_ear",
+			"values": {
+				"ROT_X": -75,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -30,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 5.33333,
+				"ROT_X": 35
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\painting\\skeleton.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\painting\\skeleton.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

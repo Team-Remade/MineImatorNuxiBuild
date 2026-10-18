@@ -1,0 +1,61 @@
+{
+  "default": "..\\..\\..\\textures\\block\\oak_sign.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\block\\oak_sign.png"
+    },
+    {
+      "name": "Spruce",
+      "file": "..\\..\\..\\textures\\block\\spruce_sign.png"
+    },
+    {
+      "name": "Birch",
+      "file": "..\\..\\..\\textures\\block\\birch_sign.png"
+    },
+    {
+      "name": "Jungle",
+      "file": "..\\..\\..\\textures\\block\\jungle_sign.png"
+    },
+    {
+      "name": "Acacia",
+      "file": "..\\..\\..\\textures\\block\\acacia_sign.png"
+    },
+    {
+      "name": "Dark Oak",
+      "file": "..\\..\\..\\textures\\block\\dark_oak_sign.png"
+    },
+    {
+      "name": "Mangrove",
+      "file": "..\\..\\..\\textures\\block\\mangrove_sign.png"
+    },
+    {
+      "name": "Cherry",
+      "file": "..\\..\\..\\textures\\block\\cherry_sign.png"
+    },
+    {
+      "name": "Pale Oak",
+      "file": "..\\..\\..\\textures\\block\\pale_oak_sign.png"
+    },
+    {
+      "name": "Poplar",
+      "file": "..\\..\\..\\textures\\block\\poplar_sign.png"
+    },
+    {
+      "name": "Bamboo",
+      "file": "..\\..\\..\\textures\\block\\bamboo_sign.png"
+    },
+    {
+      "name": "Crimson",
+      "file": "..\\..\\..\\textures\\block\\crimson_sign.png"
+    },
+    {
+      "name": "Warped",
+      "file": "..\\..\\..\\textures\\block\\warped_sign.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

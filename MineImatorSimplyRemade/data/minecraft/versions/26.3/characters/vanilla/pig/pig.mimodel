@@ -1,0 +1,698 @@
+{
+  "name": "pig",
+  "texture": "..\\..\\..\\textures\\entity\\pig\\pig_temperate.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        6,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -5,
+            -8,
+            -8
+          ],
+          "to": [
+            5,
+            8,
+            0
+          ],
+          "uv": [
+            36,
+            16
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "description": "cold",
+          "from": [
+            -5,
+            -8,
+            -8
+          ],
+          "to": [
+            5,
+            8,
+            0
+          ],
+          "uv": [
+            36,
+            40
+          ],
+          "inflate": 0.5,
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "visible": false
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            6,
+            6
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -4,
+                0
+              ],
+              "to": [
+                4,
+                4,
+                8
+              ],
+              "uv": [
+                8,
+                8
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -3,
+                8
+              ],
+              "to": [
+                2,
+                0,
+                9
+              ],
+              "uv": [
+                17,
+                17
+              ]
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\pig_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -4,
+                -4,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                8,
+                8
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                0,
+                4
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\pig_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -4,
+                -4,
+                -4
+              ],
+              "to": [
+                4,
+                4,
+                4
+              ],
+              "uv": [
+                8,
+                8
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                0,
+                4
+              ],
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\pig_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -1.5,
+                -0.5
+              ],
+              "to": [
+                2,
+                1.5,
+                0.5
+              ],
+              "uv": [
+                17,
+                17
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                -1.5,
+                8.5
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\pig_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -1.5,
+                -0.5
+              ],
+              "to": [
+                2,
+                1.5,
+                0.5
+              ],
+              "uv": [
+                17,
+                17
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                -1.5,
+                8.5
+              ],
+              "invert": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -3,
+            0,
+            5
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -6,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ]
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\pig_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -3,
+                -2
+              ],
+              "to": [
+                2,
+                3,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                -3,
+                0
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\pig_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -3,
+                -2
+              ],
+              "to": [
+                2,
+                3,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                -3,
+                0
+              ],
+              "invert": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            3,
+            0,
+            5
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -6,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\pig_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -3,
+                -2
+              ],
+              "to": [
+                2,
+                3,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                -3,
+                0
+              ],
+              "texture_mirror": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\pig_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -3,
+                -2
+              ],
+              "to": [
+                2,
+                3,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                -3,
+                0
+              ],
+              "invert": true,
+              "texture_mirror": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -3,
+            0,
+            -7
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -6,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ]
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\pig_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -3,
+                -2
+              ],
+              "to": [
+                2,
+                3,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                -3,
+                0
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\pig_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -3,
+                -2
+              ],
+              "to": [
+                2,
+                3,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                -3,
+                0
+              ],
+              "invert": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            3,
+            0,
+            -7
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -6,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\pig_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -3,
+                -2
+              ],
+              "to": [
+                2,
+                3,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                -3,
+                0
+              ],
+              "texture_mirror": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\pig_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -3,
+                -2
+              ],
+              "to": [
+                2,
+                3,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "inflate": 0.5,
+              "position": [
+                0,
+                -3,
+                0
+              ],
+              "invert": true,
+              "texture_mirror": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "saddle",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\pig_saddle\\saddle.png",
+          "texture_size": [
+            64,
+            64
+          ],
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "description": "saddle",
+              "from": [
+                -5,
+                -8,
+                -4
+              ],
+              "to": [
+                5,
+                8,
+                4
+              ],
+              "uv": [
+                36,
+                16
+              ],
+              "inflate": 0.525,
+              "position": [
+                0,
+                4,
+                0
+              ],
+              "rotation": [
+                90,
+                0,
+                0
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "saddle",
+              "from": [
+                -5,
+                -8,
+                -4
+              ],
+              "to": [
+                5,
+                8,
+                4
+              ],
+              "uv": [
+                36,
+                16
+              ],
+              "inflate": 0.525,
+              "position": [
+                0,
+                4,
+                0
+              ],
+              "rotation": [
+                90,
+                0,
+                0
+              ],
+              "invert": true,
+              "visible": false
+            }
+          ],
+          "visible": false
+        }
+      ]
+    }
+  ]
+}

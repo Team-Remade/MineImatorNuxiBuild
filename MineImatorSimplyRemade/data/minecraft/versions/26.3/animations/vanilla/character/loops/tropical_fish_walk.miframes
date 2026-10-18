@@ -1,0 +1,76 @@
+{
+	"format": 28,
+	"is_model": true,
+	"tempo": 20,
+	"length": 20,
+	"keyframes": [
+		{
+			"position": 20,
+			"part_name": "body",
+			"values": {
+				"ROT_Z": 3.25,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "body",
+			"values": {
+				"ROT_Z": -3.25,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "right_fin",
+			"values": {
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "left_fin",
+			"values": {
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "left_fin",
+			"values": {
+				"ROT_Z": -30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "right_fin",
+			"values": {
+				"ROT_Z": 30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "tail",
+			"values": {
+				"ROT_Z": 22.5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "tail",
+			"values": {
+				"ROT_Z": -22.5,
+				"TRANSITION": "easeinoutquad"
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

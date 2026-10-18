@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\cow\\cow_temperate.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\cow\\cow_temperate.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

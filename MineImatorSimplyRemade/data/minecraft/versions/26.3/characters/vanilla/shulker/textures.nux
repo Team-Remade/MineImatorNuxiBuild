@@ -1,0 +1,77 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\shulker\\shulker.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker.png"
+    },
+    {
+      "name": "White",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_white.png"
+    },
+    {
+      "name": "Orange",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_orange.png"
+    },
+    {
+      "name": "Magenta",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_magenta.png"
+    },
+    {
+      "name": "Light Blue",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_light_blue.png"
+    },
+    {
+      "name": "Yellow",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_yellow.png"
+    },
+    {
+      "name": "Lime",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_lime.png"
+    },
+    {
+      "name": "Pink",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_pink.png"
+    },
+    {
+      "name": "Gray",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_gray.png"
+    },
+    {
+      "name": "Light Gray",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_light_gray.png"
+    },
+    {
+      "name": "Cyan",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_cyan.png"
+    },
+    {
+      "name": "Purple",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_purple.png"
+    },
+    {
+      "name": "Blue",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_blue.png"
+    },
+    {
+      "name": "Brown",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_brown.png"
+    },
+    {
+      "name": "Green",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_green.png"
+    },
+    {
+      "name": "Red",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_red.png"
+    },
+    {
+      "name": "Black",
+      "file": "..\\..\\..\\textures\\entity\\shulker\\shulker_black.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,1221 @@
+{
+  "name": "horse_armor",
+  "model_color": "other:leather",
+  "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        16,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "use_model_color": true,
+          "from": [
+            -5,
+            -5,
+            -11
+          ],
+          "to": [
+            5,
+            5,
+            11
+          ],
+          "uv": [
+            22,
+            54
+          ],
+          "inflate": 0.175
+        },
+        {
+          "type": "block",
+          "description": "overlay",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+          "texture_size": [
+            64,
+            64
+          ],
+          "from": [
+            -5,
+            -5,
+            -11
+          ],
+          "to": [
+            5,
+            5,
+            11
+          ],
+          "uv": [
+            22,
+            54
+          ],
+          "inflate": 0.175
+        },
+        {
+          "type": "block",
+          "use_model_color": true,
+          "from": [
+            -5,
+            -5,
+            -11
+          ],
+          "to": [
+            5,
+            5,
+            11
+          ],
+          "uv": [
+            22,
+            54
+          ],
+          "inflate": 0.175,
+          "invert": true
+        },
+        {
+          "type": "block",
+          "description": "overlay",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+          "texture_size": [
+            64,
+            64
+          ],
+          "from": [
+            -5,
+            -5,
+            -11
+          ],
+          "to": [
+            5,
+            5,
+            11
+          ],
+          "uv": [
+            22,
+            54
+          ],
+          "inflate": 0.175,
+          "invert": true
+        }
+      ],
+      "parts": [
+        {
+          "name": "neck",
+          "position": [
+            0,
+            0,
+            7.75
+          ],
+          "rotation": [
+            30,
+            0,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -2,
+                0,
+                -4.25
+              ],
+              "to": [
+                2,
+                12,
+                2.75
+              ],
+              "uv": [
+                7,
+                42
+              ],
+              "inflate": 0.05
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                0,
+                -4.25
+              ],
+              "to": [
+                2,
+                12,
+                2.75
+              ],
+              "uv": [
+                7,
+                42
+              ],
+              "inflate": 0.05
+            },
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -2,
+                0,
+                -4.25
+              ],
+              "to": [
+                2,
+                12,
+                2.75
+              ],
+              "uv": [
+                7,
+                42
+              ],
+              "inflate": 0.05,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                0,
+                -4.25
+              ],
+              "to": [
+                2,
+                12,
+                2.75
+              ],
+              "uv": [
+                7,
+                42
+              ],
+              "inflate": 0.05,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -1,
+                1,
+                -6.26
+              ],
+              "to": [
+                1,
+                17,
+                -4.26
+              ],
+              "uv": [
+                58,
+                38
+              ],
+              "inflate": 0.125
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -1,
+                1,
+                -6.26
+              ],
+              "to": [
+                1,
+                17,
+                -4.26
+              ],
+              "uv": [
+                58,
+                38
+              ],
+              "inflate": 0.125
+            },
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -1,
+                1,
+                -6.26
+              ],
+              "to": [
+                1,
+                17,
+                -4.26
+              ],
+              "uv": [
+                58,
+                38
+              ],
+              "inflate": 0.125,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -1,
+                1,
+                -6.26
+              ],
+              "to": [
+                1,
+                17,
+                -4.26
+              ],
+              "uv": [
+                58,
+                38
+              ],
+              "inflate": 0.125,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -3,
+                12,
+                -4.25
+              ],
+              "to": [
+                3,
+                17,
+                2.75
+              ],
+              "uv": [
+                7,
+                20
+              ],
+              "inflate": 0.125
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -3,
+                12,
+                -4.25
+              ],
+              "to": [
+                3,
+                17,
+                2.75
+              ],
+              "uv": [
+                7,
+                20
+              ],
+              "inflate": 0.125
+            },
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -3,
+                12,
+                -4.25
+              ],
+              "to": [
+                3,
+                17,
+                2.75
+              ],
+              "uv": [
+                7,
+                20
+              ],
+              "inflate": 0.125,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -3,
+                12,
+                -4.25
+              ],
+              "to": [
+                3,
+                17,
+                2.75
+              ],
+              "uv": [
+                7,
+                20
+              ],
+              "inflate": 0.125,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -2,
+                12,
+                2.75
+              ],
+              "to": [
+                2,
+                17,
+                7.75
+              ],
+              "uv": [
+                5,
+                30
+              ],
+              "inflate": 0.125
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                12,
+                2.75
+              ],
+              "to": [
+                2,
+                17,
+                7.75
+              ],
+              "uv": [
+                5,
+                30
+              ],
+              "inflate": 0.125
+            },
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -2,
+                12,
+                2.75
+              ],
+              "to": [
+                2,
+                17,
+                7.75
+              ],
+              "uv": [
+                5,
+                30
+              ],
+              "inflate": 0.125,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                12,
+                2.75
+              ],
+              "to": [
+                2,
+                17,
+                7.75
+              ],
+              "uv": [
+                5,
+                30
+              ],
+              "inflate": 0.125,
+              "invert": true
+            }
+          ],
+          "parts": [
+            {
+              "name": "right_ear",
+              "position": [
+                -1.5,
+                17,
+                -3.745
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "use_model_color": true,
+                  "from": [
+                    -1,
+                    -1,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    2,
+                    0.5
+                  ],
+                  "uv": [
+                    20,
+                    17
+                  ],
+                  "inflate": 0.05
+                },
+                {
+                  "type": "block",
+                  "description": "overlay",
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+                  "texture_size": [
+                    64,
+                    64
+                  ],
+                  "from": [
+                    -1,
+                    -1,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    2,
+                    0.5
+                  ],
+                  "uv": [
+                    20,
+                    17
+                  ],
+                  "inflate": 0.05
+                },
+                {
+                  "type": "block",
+                  "use_model_color": true,
+                  "from": [
+                    -1,
+                    -1,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    2,
+                    0.5
+                  ],
+                  "uv": [
+                    20,
+                    17
+                  ],
+                  "inflate": 0.05,
+                  "invert": true
+                },
+                {
+                  "type": "block",
+                  "description": "overlay",
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+                  "texture_size": [
+                    64,
+                    64
+                  ],
+                  "from": [
+                    -1,
+                    -1,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    2,
+                    0.5
+                  ],
+                  "uv": [
+                    20,
+                    17
+                  ],
+                  "inflate": 0.05,
+                  "invert": true
+                }
+              ]
+            },
+            {
+              "name": "left_ear",
+              "position": [
+                1.5,
+                17,
+                -3.745
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "use_model_color": true,
+                  "from": [
+                    -1,
+                    -1,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    2,
+                    0.5
+                  ],
+                  "uv": [
+                    20,
+                    17
+                  ],
+                  "inflate": 0.05
+                },
+                {
+                  "type": "block",
+                  "description": "overlay",
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+                  "texture_size": [
+                    64,
+                    64
+                  ],
+                  "from": [
+                    -1,
+                    -1,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    2,
+                    0.5
+                  ],
+                  "uv": [
+                    20,
+                    17
+                  ],
+                  "inflate": 0.05
+                },
+                {
+                  "type": "block",
+                  "use_model_color": true,
+                  "from": [
+                    -1,
+                    -1,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    2,
+                    0.5
+                  ],
+                  "uv": [
+                    20,
+                    17
+                  ],
+                  "inflate": 0.05,
+                  "invert": true
+                },
+                {
+                  "type": "block",
+                  "description": "overlay",
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+                  "texture_size": [
+                    64,
+                    64
+                  ],
+                  "from": [
+                    -1,
+                    -1,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    2,
+                    0.5
+                  ],
+                  "uv": [
+                    20,
+                    17
+                  ],
+                  "inflate": 0.05,
+                  "invert": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -3,
+            -5,
+            9
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125
+            },
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125,
+              "invert": true
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            3,
+            -5,
+            9
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125,
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125,
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125,
+              "texture_mirror": true,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125,
+              "texture_mirror": true,
+              "invert": true
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -3,
+            -5,
+            -9
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125
+            },
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125,
+              "invert": true
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            3,
+            -5,
+            -9
+          ],
+          "bend": {
+            "offset": -5,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125,
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125,
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125,
+              "texture_mirror": true,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -2,
+                -11,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                52,
+                25
+              ],
+              "inflate": 0.125,
+              "texture_mirror": true,
+              "invert": true
+            }
+          ]
+        },
+        {
+          "name": "tail",
+          "position": [
+            0,
+            2.25,
+            -10
+          ],
+          "rotation": [
+            30,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -6,
+            "end_offset": 7,
+            "size": 12,
+            "detail": 1,
+            "part": "lower",
+            "axis": [
+              "x",
+              "y",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -1.5,
+                -13,
+                -2
+              ],
+              "to": [
+                1.5,
+                1,
+                2
+              ],
+              "uv": [
+                46,
+                40
+              ],
+              "inflate": 0.125
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -1.5,
+                -13,
+                -2
+              ],
+              "to": [
+                1.5,
+                1,
+                2
+              ],
+              "uv": [
+                46,
+                40
+              ],
+              "inflate": 0.125
+            },
+            {
+              "type": "block",
+              "use_model_color": true,
+              "from": [
+                -1.5,
+                -13,
+                -2
+              ],
+              "to": [
+                1.5,
+                1,
+                2
+              ],
+              "uv": [
+                46,
+                40
+              ],
+              "inflate": 0.125,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\leather_overlay.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "from": [
+                -1.5,
+                -13,
+                -2
+              ],
+              "to": [
+                1.5,
+                1,
+                2
+              ],
+              "uv": [
+                46,
+                40
+              ],
+              "inflate": 0.125,
+              "invert": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

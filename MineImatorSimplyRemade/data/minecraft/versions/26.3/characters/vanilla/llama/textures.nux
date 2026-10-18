@@ -1,0 +1,25 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\llama\\llama_creamy.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\llama\\llama_creamy.png"
+    },
+    {
+      "name": "Llama Brown",
+      "file": "..\\..\\..\\textures\\entity\\llama\\llama_brown.png"
+    },
+    {
+      "name": "Llama Gray",
+      "file": "..\\..\\..\\textures\\entity\\llama\\llama_gray.png"
+    },
+    {
+      "name": "Llama White",
+      "file": "..\\..\\..\\textures\\entity\\llama\\llama_white.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

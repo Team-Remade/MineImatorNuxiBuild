@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\bear\\polarbear.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\bear\\polarbear.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

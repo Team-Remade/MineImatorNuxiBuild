@@ -1,0 +1,57 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\cat\\ocelot_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\cat\\ocelot_baby.png"
+    },
+    {
+      "name": "Cat All Black Baby",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_all_black_baby.png"
+    },
+    {
+      "name": "Cat Black Baby",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_black_baby.png"
+    },
+    {
+      "name": "Cat British Shorthair Baby",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_british_shorthair_baby.png"
+    },
+    {
+      "name": "Cat Calico Baby",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_calico_baby.png"
+    },
+    {
+      "name": "Cat Persian Baby",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_persian_baby.png"
+    },
+    {
+      "name": "Cat Ragdoll Baby",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_ragdoll_baby.png"
+    },
+    {
+      "name": "Cat Red Baby",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_red_baby.png"
+    },
+    {
+      "name": "Cat Siamese Baby",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_siamese_baby.png"
+    },
+    {
+      "name": "Cat Tabby Baby",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_tabby_baby.png"
+    },
+    {
+      "name": "Cat White Baby",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_white_baby.png"
+    },
+    {
+      "name": "Cat Jellie Baby",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_jellie_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

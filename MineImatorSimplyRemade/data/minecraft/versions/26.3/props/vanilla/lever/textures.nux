@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\block\\cobblestone.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\block\\cobblestone.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

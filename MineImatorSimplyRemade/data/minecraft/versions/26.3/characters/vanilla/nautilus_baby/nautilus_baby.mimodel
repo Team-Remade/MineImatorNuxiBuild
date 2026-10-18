@@ -1,0 +1,330 @@
+{
+  "name": "nautilus_baby",
+  "texture": "..\\..\\..\\textures\\entity\\nautilus\\nautilus_baby.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -3.5,
+            4,
+            -3.5
+          ],
+          "to": [
+            3.5,
+            8,
+            3.5
+          ],
+          "uv": [
+            7,
+            7
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -3.5,
+            0,
+            -5.5
+          ],
+          "to": [
+            3.5,
+            4,
+            3.5
+          ],
+          "uv": [
+            9,
+            20
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -3.5,
+            0,
+            -5.5
+          ],
+          "to": [
+            3.5,
+            4,
+            3.5
+          ],
+          "uv": [
+            9,
+            20
+          ],
+          "invert": true
+        },
+        {
+          "type": "block",
+          "from": [
+            -3.5,
+            0,
+            -2.5
+          ],
+          "to": [
+            3.5,
+            4,
+            -2.5
+          ],
+          "uv": [
+            23,
+            11
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -3.5,
+            0,
+            -2.5
+          ],
+          "to": [
+            3.5,
+            4,
+            -2.5
+          ],
+          "uv": [
+            23,
+            11
+          ],
+          "invert": true
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            1.01,
+            -2.5
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -1,
+                -6
+              ],
+              "to": [
+                2.5,
+                3,
+                1
+              ],
+              "uv": [
+                7,
+                31
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -1,
+                -6
+              ],
+              "to": [
+                2.5,
+                3,
+                1
+              ],
+              "uv": [
+                7,
+                31
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -1,
+                -4
+              ],
+              "to": [
+                2.5,
+                3,
+                -4
+              ],
+              "uv": [
+                0,
+                35
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -2.5,
+                -1,
+                -4
+              ],
+              "to": [
+                2.5,
+                3,
+                -4
+              ],
+              "uv": [
+                0,
+                35
+              ],
+              "invert": true
+            }
+          ],
+          "parts": [
+            {
+              "name": "top_tentacles",
+              "position": [
+                0,
+                2,
+                -4
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -2.5,
+                    -1,
+                    -2
+                  ],
+                  "to": [
+                    2.5,
+                    1,
+                    0
+                  ],
+                  "uv": [
+                    26,
+                    26
+                  ],
+                  "inflate": -0.001
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -2.5,
+                    -1,
+                    -2
+                  ],
+                  "to": [
+                    2.5,
+                    1,
+                    0
+                  ],
+                  "uv": [
+                    26,
+                    26
+                  ],
+                  "inflate": -0.001,
+                  "invert": true
+                }
+              ]
+            },
+            {
+              "name": "bottom_tentacles",
+              "position": [
+                0,
+                0,
+                -4
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -2.5,
+                    -1,
+                    -2
+                  ],
+                  "to": [
+                    2.5,
+                    1,
+                    0
+                  ],
+                  "uv": [
+                    26,
+                    30
+                  ],
+                  "inflate": -0.001
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -2.5,
+                    -1,
+                    -2
+                  ],
+                  "to": [
+                    2.5,
+                    1,
+                    0
+                  ],
+                  "uv": [
+                    26,
+                    30
+                  ],
+                  "inflate": -0.001,
+                  "invert": true
+                }
+              ]
+            },
+            {
+              "name": "inner_tentacles",
+              "position": [
+                0,
+                1,
+                -4
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -1.5,
+                    -1,
+                    -2
+                  ],
+                  "to": [
+                    1.5,
+                    1,
+                    0
+                  ],
+                  "uv": [
+                    26,
+                    34
+                  ]
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -1.5,
+                    -1,
+                    -2
+                  ],
+                  "to": [
+                    1.5,
+                    1,
+                    0
+                  ],
+                  "uv": [
+                    26,
+                    34
+                  ],
+                  "invert": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

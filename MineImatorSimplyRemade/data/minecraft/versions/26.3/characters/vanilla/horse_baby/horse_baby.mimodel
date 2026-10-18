@@ -1,0 +1,566 @@
+{
+  "name": "horse_baby",
+  "texture": "..\\..\\..\\textures\\entity\\horse\\horse_black_baby.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        12.5,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -4,
+            -3.5,
+            -7
+          ],
+          "to": [
+            4,
+            3.5,
+            7
+          ],
+          "uv": [
+            14,
+            27
+          ],
+          "inflate": 0.125
+        },
+        {
+          "type": "block",
+          "description": "markings_baby",
+          "from": [
+            -4,
+            -3.5,
+            -7
+          ],
+          "to": [
+            4,
+            3.5,
+            7
+          ],
+          "uv": [
+            14,
+            27
+          ],
+          "inflate": 0.125,
+          "visible": false
+        }
+      ],
+      "parts": [
+        {
+          "name": "neck",
+          "position": [
+            0,
+            2.5,
+            6
+          ],
+          "rotation": [
+            30,
+            0,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -2,
+                -2
+              ],
+              "to": [
+                2,
+                6,
+                2
+              ],
+              "uv": [
+                34,
+                4
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -3,
+                6,
+                -2
+              ],
+              "to": [
+                3,
+                10,
+                7
+              ],
+              "uv": [
+                9,
+                9
+              ]
+            },
+            {
+              "type": "block",
+              "description": "markings_baby",
+              "from": [
+                -2,
+                -2,
+                -2
+              ],
+              "to": [
+                2,
+                6,
+                2
+              ],
+              "uv": [
+                34,
+                4
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "markings_baby",
+              "from": [
+                -3,
+                6,
+                -2
+              ],
+              "to": [
+                3,
+                10,
+                7
+              ],
+              "uv": [
+                9,
+                9
+              ],
+              "visible": false
+            }
+          ],
+          "parts": [
+            {
+              "name": "right_ear",
+              "position": [
+                -2,
+                10.75,
+                -1.25
+              ],
+              "rotation": [
+                0,
+                0,
+                15
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -1,
+                    -1,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    2,
+                    0.5
+                  ],
+                  "uv": [
+                    1,
+                    1
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "markings_baby",
+                  "from": [
+                    -1,
+                    -1,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    2,
+                    0.5
+                  ],
+                  "uv": [
+                    1,
+                    1
+                  ],
+                  "visible": false
+                }
+              ]
+            },
+            {
+              "name": "left_ear",
+              "position": [
+                2,
+                10.75,
+                -1.25
+              ],
+              "rotation": [
+                0,
+                0,
+                -15
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -1,
+                    -1,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    2,
+                    0.5
+                  ],
+                  "uv": [
+                    1,
+                    5
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "markings_baby",
+                  "from": [
+                    -1,
+                    -1,
+                    -0.5
+                  ],
+                  "to": [
+                    1,
+                    2,
+                    0.5
+                  ],
+                  "uv": [
+                    1,
+                    5
+                  ],
+                  "visible": false
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -2.5,
+            -3.5,
+            5.5
+          ],
+          "bend": {
+            "offset": -4.5,
+            "end_offset": 4.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -9,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                3,
+                37
+              ]
+            },
+            {
+              "type": "block",
+              "description": "markings_baby",
+              "from": [
+                -1.5,
+                -9,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                3,
+                37
+              ],
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            2.5,
+            -3.5,
+            5.5
+          ],
+          "bend": {
+            "offset": -4.5,
+            "end_offset": 4.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -9,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                15,
+                37
+              ]
+            },
+            {
+              "type": "block",
+              "description": "markings_baby",
+              "from": [
+                -1.5,
+                -9,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                15,
+                37
+              ],
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -2.5,
+            -3.5,
+            -5.5
+          ],
+          "bend": {
+            "offset": -4.5,
+            "end_offset": 4.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -9,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                3,
+                49
+              ]
+            },
+            {
+              "type": "block",
+              "description": "markings_baby",
+              "from": [
+                -1.5,
+                -9,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                3,
+                49
+              ],
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            2.5,
+            -3.5,
+            -5.5
+          ],
+          "bend": {
+            "offset": -4.5,
+            "end_offset": 4.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -9,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                15,
+                49
+              ]
+            },
+            {
+              "type": "block",
+              "description": "markings_baby",
+              "from": [
+                -1.5,
+                -9,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                0,
+                1.5
+              ],
+              "uv": [
+                15,
+                49
+              ],
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "tail",
+          "position": [
+            0,
+            1,
+            -7
+          ],
+          "rotation": [
+            -60,
+            0,
+            0
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 4,
+            "size": 6,
+            "detail": 1,
+            "part": "back",
+            "axis": [
+              "x",
+              "y",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -1.5,
+                -7
+              ],
+              "to": [
+                1.5,
+                1.5,
+                1
+              ],
+              "uv": [
+                32,
+                42
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -1.5,
+                -7
+              ],
+              "to": [
+                1.5,
+                1.5,
+                1
+              ],
+              "uv": [
+                32,
+                42
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "markings_baby",
+              "from": [
+                -1.5,
+                -1.5,
+                -7
+              ],
+              "to": [
+                1.5,
+                1.5,
+                1
+              ],
+              "uv": [
+                32,
+                42
+              ],
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "markings_baby",
+              "from": [
+                -1.5,
+                -1.5,
+                -7
+              ],
+              "to": [
+                1.5,
+                1.5,
+                1
+              ],
+              "uv": [
+                32,
+                42
+              ],
+              "invert": true,
+              "visible": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

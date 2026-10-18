@@ -1,0 +1,620 @@
+{
+  "name": "bee_baby",
+  "texture": "..\\..\\..\\textures\\entity\\bee\\bee_baby.png",
+  "texture_size": [
+    32,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        3,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -2,
+            -2.5
+          ],
+          "to": [
+            2,
+            2,
+            2.5
+          ],
+          "uv": [
+            5,
+            5
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "right_antenna",
+          "position": [
+            -1,
+            1,
+            2.51
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                0,
+                0
+              ],
+              "to": [
+                0,
+                2,
+                2
+              ],
+              "uv": [
+                2,
+                14
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1,
+                0,
+                0
+              ],
+              "to": [
+                0,
+                2,
+                2
+              ],
+              "uv": [
+                2,
+                14
+              ],
+              "invert": true
+            }
+          ]
+        },
+        {
+          "name": "left_antenna",
+          "position": [
+            1,
+            1,
+            2.51
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                1,
+                2,
+                2
+              ],
+              "uv": [
+                8,
+                14
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                1,
+                2,
+                2
+              ],
+              "uv": [
+                8,
+                14
+              ],
+              "invert": true
+            }
+          ]
+        },
+        {
+          "name": "right_wing",
+          "position": [
+            -1,
+            2.001,
+            1.5
+          ],
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                -3,
+                0,
+                0
+              ],
+              "to": [
+                0,
+                3,
+                0
+              ],
+              "uv": [
+                6,
+                9
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                -3,
+                0,
+                -1e-05
+              ],
+              "to": [
+                0,
+                3,
+                -1e-05
+              ],
+              "uv": [
+                9,
+                9
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_wing",
+          "position": [
+            1,
+            2.001,
+            1.5
+          ],
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                3,
+                3,
+                0
+              ],
+              "uv": [
+                0,
+                9
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "from": [
+                0,
+                0,
+                -1e-05
+              ],
+              "to": [
+                3,
+                3,
+                -1e-05
+              ],
+              "uv": [
+                3,
+                9
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -1,
+            -2,
+            0.5
+          ],
+          "bend": {
+            "offset": -0.5,
+            "end_offset": 0.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                -0.5,
+                -1,
+                0
+              ],
+              "to": [
+                1.5,
+                0,
+                0
+              ],
+              "uv": [
+                13,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                -1.5,
+                -1,
+                0
+              ],
+              "to": [
+                0.5,
+                0,
+                0
+              ],
+              "uv": [
+                17,
+                0
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            1,
+            -2,
+            0.5
+          ],
+          "bend": {
+            "offset": -0.5,
+            "end_offset": 0.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                -1.5,
+                -1,
+                0
+              ],
+              "to": [
+                0.5,
+                0,
+                0
+              ],
+              "uv": [
+                14,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                -0.5,
+                -1,
+                0
+              ],
+              "to": [
+                1.5,
+                0,
+                0
+              ],
+              "uv": [
+                16,
+                0
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_middle_leg",
+          "position": [
+            -1,
+            -2,
+            -0.5
+          ],
+          "bend": {
+            "offset": -0.5,
+            "end_offset": 0.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                -0.5,
+                -1,
+                0
+              ],
+              "to": [
+                1.5,
+                0,
+                0
+              ],
+              "uv": [
+                13,
+                1
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                -1.5,
+                -1,
+                0
+              ],
+              "to": [
+                0.5,
+                0,
+                0
+              ],
+              "uv": [
+                17,
+                1
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_middle_leg",
+          "position": [
+            1,
+            -2,
+            -0.5
+          ],
+          "bend": {
+            "offset": -0.5,
+            "end_offset": 0.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                -1.5,
+                -1,
+                0
+              ],
+              "to": [
+                0.5,
+                0,
+                0
+              ],
+              "uv": [
+                14,
+                1
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                -0.5,
+                -1,
+                0
+              ],
+              "to": [
+                1.5,
+                0,
+                0
+              ],
+              "uv": [
+                16,
+                1
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -1,
+            -2,
+            -1.5
+          ],
+          "bend": {
+            "offset": -0.5,
+            "end_offset": 0.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                -0.5,
+                -1,
+                0
+              ],
+              "to": [
+                1.5,
+                0,
+                0
+              ],
+              "uv": [
+                13,
+                2
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                -1.5,
+                -1,
+                0
+              ],
+              "to": [
+                0.5,
+                0,
+                0
+              ],
+              "uv": [
+                17,
+                2
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            1,
+            -2,
+            -1.5
+          ],
+          "bend": {
+            "offset": -0.5,
+            "end_offset": 0.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                -1.5,
+                -1,
+                0
+              ],
+              "to": [
+                0.5,
+                0,
+                0
+              ],
+              "uv": [
+                14,
+                2
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                -0.5,
+                -1,
+                0
+              ],
+              "to": [
+                1.5,
+                0,
+                0
+              ],
+              "uv": [
+                16,
+                2
+              ],
+              "rotation": [
+                0,
+                180,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "stinger",
+          "position": [
+            0,
+            -0.5,
+            -2.5
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                0,
+                -0.5,
+                -1
+              ],
+              "to": [
+                0,
+                0.5,
+                0
+              ],
+              "uv": [
+                14,
+                3
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                0,
+                -0.5,
+                -1
+              ],
+              "to": [
+                0,
+                0.5,
+                0
+              ],
+              "uv": [
+                14,
+                3
+              ],
+              "invert": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

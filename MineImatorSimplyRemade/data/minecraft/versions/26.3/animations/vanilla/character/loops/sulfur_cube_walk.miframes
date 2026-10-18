@@ -1,0 +1,55 @@
+{
+	"format": 35,
+	"created_in": "2.0.2 Continuation Build 1.0.14 (Indev)",
+	"is_model": true,
+	"tempo": 24,
+	"length": 24,
+	"keyframes": [
+		{
+			"position": 0,
+			"values": {
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "body",
+			"values": {
+				"POS_Z": 2.98104,
+				"ROT_X": 34.43658,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "body",
+			"values": {
+				"POS_Z": -5.578,
+				"SCA_Z": 0.3827,
+				"TRANSITION": "easeinsine"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "body",
+			"values": {
+				"TRANSITION": "easeoutsine"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "body",
+			"values": {
+				"POS_Z": 20,
+				"ROT_X": -15.88075,
+				"SCA_Z": 1.7042,
+				"TRANSITION": "easeinsine"
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

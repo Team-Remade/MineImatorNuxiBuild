@@ -1,0 +1,17 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\wither\\wither.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\wither\\wither.png"
+    },
+    {
+      "name": "Invulnerable",
+      "file": "..\\..\\..\\textures\\entity\\wither\\wither_invulnerable.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

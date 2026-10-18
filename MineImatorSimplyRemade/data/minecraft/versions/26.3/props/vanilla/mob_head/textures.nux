@@ -1,0 +1,29 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\player\\slim\\steve.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\player\\slim\\steve.png"
+    },
+    {
+      "name": "Skeleton",
+      "file": "..\\..\\..\\textures\\entity\\skeleton\\skeleton.png"
+    },
+    {
+      "name": "Wither Skeleton",
+      "file": "..\\..\\..\\textures\\entity\\skeleton\\wither_skeleton.png"
+    },
+    {
+      "name": "Zombie",
+      "file": "..\\..\\..\\textures\\entity\\zombie\\zombie.png"
+    },
+    {
+      "name": "Creeper",
+      "file": "..\\..\\..\\textures\\entity\\creeper\\creeper.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

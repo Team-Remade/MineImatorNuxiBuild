@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\armadillo\\armadillo.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\armadillo\\armadillo.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\piglin\\zombified_piglin_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\piglin\\zombified_piglin_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

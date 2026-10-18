@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\squid\\glow_squid_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\squid\\glow_squid_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

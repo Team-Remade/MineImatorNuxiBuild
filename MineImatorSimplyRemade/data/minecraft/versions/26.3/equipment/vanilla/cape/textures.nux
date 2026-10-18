@@ -1,0 +1,181 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\mineimator\\cape_mojang_new.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_mojang_new.png"
+    },
+    {
+      "name": "Mojang",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_mojang.png"
+    },
+    {
+      "name": "Mojang Old",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_mojang_old.png"
+    },
+    {
+      "name": "Migrator",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_migrator.png"
+    },
+    {
+      "name": "Vanilla",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_vanilla.png"
+    },
+    {
+      "name": "Common",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_common.png"
+    },
+    {
+      "name": "Founders",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_founders.png"
+    },
+    {
+      "name": "Pan",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_pan.png"
+    },
+    {
+      "name": "Cherryblossom",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_cherryblossom.png"
+    },
+    {
+      "name": "15Thanniversary",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_15thanniversary.png"
+    },
+    {
+      "name": "Purpleheart",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_purple_heart.png"
+    },
+    {
+      "name": "Followers",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_followers.png"
+    },
+    {
+      "name": "Mcc15Thyear",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_mcc_15th_year.png"
+    },
+    {
+      "name": "Minecraftexperience",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_minecraft_experience.png"
+    },
+    {
+      "name": "Mojangoffice",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_mojang_office.png"
+    },
+    {
+      "name": "Menace",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_menace.png"
+    },
+    {
+      "name": "Home",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_home.png"
+    },
+    {
+      "name": "Yearn",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_yearn.png"
+    },
+    {
+      "name": "Copper",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_copper.png"
+    },
+    {
+      "name": "Zombie Horse",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_zombie_horse.png"
+    },
+    {
+      "name": "Moonlighttrail",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_moonlighttrail.png"
+    },
+    {
+      "name": "Crafter",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_crafter.png"
+    },
+    {
+      "name": "Builder",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_builder.png"
+    },
+    {
+      "name": "Minecon 2011",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_minecon2011.png"
+    },
+    {
+      "name": "Minecon 2012",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_minecon2012.png"
+    },
+    {
+      "name": "Minecon 2013",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_minecon2013.png"
+    },
+    {
+      "name": "Minecon 2015",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_minecon2015.png"
+    },
+    {
+      "name": "Minecon 2016",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_minecon2016.png"
+    },
+    {
+      "name": "Translator",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_translator.png"
+    },
+    {
+      "name": "Translator Chinese",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_translator_chinese.png"
+    },
+    {
+      "name": "Scrolls Champion",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_scrollschamp.png"
+    },
+    {
+      "name": "Cobalt",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_cobalt.png"
+    },
+    {
+      "name": "Moderator",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_moderator.png"
+    },
+    {
+      "name": "Mapmaker",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_mapmaker.png"
+    },
+    {
+      "name": "Millionthsale",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_millionthsale.png"
+    },
+    {
+      "name": "Dannybstyle",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_dannybstyle.png"
+    },
+    {
+      "name": "Julianclark",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_julianclark.png"
+    },
+    {
+      "name": "Cheapsh0T",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_cheapsh0t.png"
+    },
+    {
+      "name": "Mrmessiah",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_mrmessiah.png"
+    },
+    {
+      "name": "Prismarine",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_prismarine.png"
+    },
+    {
+      "name": "Turtle",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_turtle.png"
+    },
+    {
+      "name": "Birthday",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_birthday.png"
+    },
+    {
+      "name": "Valentine",
+      "file": "..\\..\\..\\textures\\entity\\mineimator\\cape_valentine.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+	"name": "bed",
+	"texture": "entity/bed/red",
+	"texture_size": [ 64, 64 ],
+	"parts": [
+		{
+			"name": "bed",
+			"position": [ 0, 3, 0 ],
+			"shapes": [
+				{
+					"type": "block",
+					"from": [ -16, -3, 5 ],
+					"to": [ -13, 0, 8 ],
+					"uv": [ 53, 9 ],
+					"rotation": [ 0, -90, 0 ]
+				},
+				{
+					"type": "block",
+					"from": [ -8, -3, 13 ],
+					"to": [ -5, 0, 16 ],
+					"uv": [ 53, 21 ],
+					"rotation": [ 0, 180, 0 ]
+				},
+				{
+					"type": "block",
+					"from": [ -16, -3, 5 ],
+					"to": [ -13, 0, 8 ],
+					"uv": [ 53, 15 ],
+					"rotation": [ 0, 90, 0 ]
+				},
+				{
+					"type": "block",
+					"from": [ -8, -3, 13 ],
+					"to": [ -5, 0, 16 ],
+					"uv": [ 53, 3 ]
+				},
+				{
+					"type": "block",
+					"from": [ -8, -16, 0 ],
+					"to": [ 8, 0, 6 ],
+					"uv": [ 6, 28 ],
+					"rotation": [ -90, 0, 0 ]
+				},
+				{
+					"type": "block",
+					"from": [ -8, 0, 0 ],
+					"to": [ 8, 16, 6 ],
+					"uv": [ 6, 6 ],
+					"rotation": [ -90, 0, 0 ]
+				}
+			]
+		}
+	]
+}

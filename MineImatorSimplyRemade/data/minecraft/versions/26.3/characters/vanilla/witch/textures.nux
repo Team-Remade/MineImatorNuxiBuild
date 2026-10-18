@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\witch\\witch.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\witch\\witch.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

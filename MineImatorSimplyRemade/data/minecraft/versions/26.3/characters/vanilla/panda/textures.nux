@@ -1,0 +1,37 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\panda\\panda.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\panda\\panda.png"
+    },
+    {
+      "name": "Panda Lazy",
+      "file": "..\\..\\..\\textures\\entity\\panda\\panda_lazy.png"
+    },
+    {
+      "name": "Panda Playful",
+      "file": "..\\..\\..\\textures\\entity\\panda\\panda_playful.png"
+    },
+    {
+      "name": "Panda Weak",
+      "file": "..\\..\\..\\textures\\entity\\panda\\panda_weak.png"
+    },
+    {
+      "name": "Panda Worried",
+      "file": "..\\..\\..\\textures\\entity\\panda\\panda_worried.png"
+    },
+    {
+      "name": "Panda Aggressive",
+      "file": "..\\..\\..\\textures\\entity\\panda\\panda_aggressive.png"
+    },
+    {
+      "name": "Panda Brown",
+      "file": "..\\..\\..\\textures\\entity\\panda\\panda_brown.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

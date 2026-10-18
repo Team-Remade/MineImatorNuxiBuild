@@ -1,0 +1,289 @@
+{
+  "name": "panda",
+  "texture": "..\\..\\..\\textures\\entity\\panda\\panda.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        14,
+        0
+      ],
+      "bend": {
+        "offset": 0,
+        "size": 9,
+        "part": "upper",
+        "axis": [
+          "x",
+          "y"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -9.5,
+            -13,
+            -6.5
+          ],
+          "to": [
+            9.5,
+            13,
+            6.5
+          ],
+          "uv": [
+            13,
+            38
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            -1.5,
+            16
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -6.5,
+                -5,
+                0
+              ],
+              "to": [
+                6.5,
+                5,
+                9
+              ],
+              "uv": [
+                9,
+                15
+              ],
+              "position": [
+                0,
+                0,
+                -4
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -6.5,
+                -5,
+                0
+              ],
+              "to": [
+                0.5,
+                0,
+                2
+              ],
+              "uv": [
+                47,
+                18
+              ],
+              "position": [
+                3,
+                0,
+                5
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -5,
+                0,
+                0
+              ],
+              "to": [
+                0,
+                4,
+                1
+              ],
+              "uv": [
+                53,
+                26
+              ],
+              "position": [
+                -2.5,
+                4,
+                1
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                5,
+                4,
+                1
+              ],
+              "uv": [
+                53,
+                26
+              ],
+              "position": [
+                2.5,
+                4,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -5.5,
+            -5,
+            9
+          ],
+          "bend": {
+            "offset": -4.5,
+            "end_offset": 4.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -9,
+                -3
+              ],
+              "to": [
+                3,
+                0,
+                3
+              ],
+              "uv": [
+                46,
+                6
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            5.5,
+            -5,
+            9
+          ],
+          "bend": {
+            "offset": -4.5,
+            "end_offset": 4.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -9,
+                -3
+              ],
+              "to": [
+                3,
+                0,
+                3
+              ],
+              "uv": [
+                46,
+                6
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -5.5,
+            -5,
+            -9
+          ],
+          "lock_bend": 0,
+          "bend": {
+            "offset": -4.5,
+            "end_offset": 4.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -9,
+                -3
+              ],
+              "to": [
+                3,
+                0,
+                3
+              ],
+              "uv": [
+                46,
+                6
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            5.5,
+            -5,
+            -9
+          ],
+          "lock_bend": 0,
+          "bend": {
+            "offset": -4.5,
+            "end_offset": 4.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -9,
+                -3
+              ],
+              "to": [
+                3,
+                0,
+                3
+              ],
+              "uv": [
+                46,
+                6
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

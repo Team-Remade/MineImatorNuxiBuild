@@ -1,0 +1,17 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\illager\\vex.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\illager\\vex.png"
+    },
+    {
+      "name": "Charging",
+      "file": "..\\..\\..\\textures\\entity\\illager\\vex_charging.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

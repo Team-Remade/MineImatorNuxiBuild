@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\end_crystal\\end_crystal.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\end_crystal\\end_crystal.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

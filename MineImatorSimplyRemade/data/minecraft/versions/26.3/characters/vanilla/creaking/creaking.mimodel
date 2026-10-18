@@ -1,0 +1,752 @@
+{
+  "name": "creaking",
+  "texture": "..\\..\\..\\textures\\entity\\creaking\\creaking.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        2,
+        16,
+        0
+      ],
+      "bend": {
+        "offset": 6.5,
+        "part": "upper",
+        "axis": [
+          "x",
+          "y",
+          "z"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -3,
+            0,
+            -2.5
+          ],
+          "to": [
+            3,
+            13,
+            2.5
+          ],
+          "uv": [
+            5,
+            21
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -9,
+            7,
+            -2.5
+          ],
+          "to": [
+            -3,
+            14,
+            2.5
+          ],
+          "uv": [
+            29,
+            5
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            -6,
+            14,
+            0.5
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3,
+                0,
+                -3
+              ],
+              "to": [
+                3,
+                10,
+                3
+              ],
+              "uv": [
+                6,
+                6
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -3,
+                10,
+                -3
+              ],
+              "to": [
+                3,
+                13,
+                3
+              ],
+              "uv": [
+                34,
+                37
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -3,
+                10,
+                -3
+              ],
+              "to": [
+                3,
+                13,
+                3
+              ],
+              "uv": [
+                34,
+                37
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                -12,
+                0,
+                0
+              ],
+              "to": [
+                -3,
+                14,
+                0
+              ],
+              "uv": [
+                34,
+                12
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -12,
+                0,
+                0
+              ],
+              "to": [
+                -3,
+                14,
+                0
+              ],
+              "uv": [
+                34,
+                12
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                3,
+                -1,
+                0
+              ],
+              "to": [
+                12,
+                13,
+                0
+              ],
+              "uv": [
+                12,
+                40
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                3,
+                -1,
+                0
+              ],
+              "to": [
+                12,
+                13,
+                0
+              ],
+              "uv": [
+                12,
+                40
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "texture": "..\\..\\..\\textures\\entity\\creaking\\creaking_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.25,
+              "from": [
+                -3,
+                0,
+                -3
+              ],
+              "to": [
+                3,
+                10,
+                3
+              ],
+              "uv": [
+                6,
+                6
+              ]
+            },
+            {
+              "type": "block",
+              "texture": "..\\..\\..\\textures\\entity\\creaking\\creaking_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.25,
+              "from": [
+                -3,
+                10,
+                -3
+              ],
+              "to": [
+                3,
+                13,
+                3
+              ],
+              "uv": [
+                34,
+                37
+              ]
+            },
+            {
+              "type": "block",
+              "texture": "..\\..\\..\\textures\\entity\\creaking\\creaking_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.25,
+              "from": [
+                -3,
+                10,
+                -3
+              ],
+              "to": [
+                3,
+                13,
+                3
+              ],
+              "uv": [
+                34,
+                37
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "texture": "..\\..\\..\\textures\\entity\\creaking\\creaking_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.25,
+              "from": [
+                -12,
+                0,
+                0
+              ],
+              "to": [
+                -3,
+                14,
+                0
+              ],
+              "uv": [
+                34,
+                12
+              ]
+            },
+            {
+              "type": "block",
+              "texture": "..\\..\\..\\textures\\entity\\creaking\\creaking_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.25,
+              "from": [
+                -12,
+                0,
+                0
+              ],
+              "to": [
+                -3,
+                14,
+                0
+              ],
+              "uv": [
+                34,
+                12
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "texture": "..\\..\\..\\textures\\entity\\creaking\\creaking_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.25,
+              "from": [
+                3,
+                -1,
+                0
+              ],
+              "to": [
+                12,
+                13,
+                0
+              ],
+              "uv": [
+                12,
+                40
+              ]
+            },
+            {
+              "type": "block",
+              "texture": "..\\..\\..\\textures\\entity\\creaking\\creaking_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.25,
+              "from": [
+                3,
+                -1,
+                0
+              ],
+              "to": [
+                12,
+                13,
+                0
+              ],
+              "uv": [
+                12,
+                40
+              ],
+              "invert": true
+            }
+          ]
+        },
+        {
+          "name": "right_arm",
+          "position": [
+            -10.5,
+            12.5,
+            -1
+          ],
+          "bend": {
+            "offset": -9,
+            "end_offset": 10.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -19.5,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                1.5,
+                1.5
+              ],
+              "uv": [
+                25,
+                16
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -23.5,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                -19.5,
+                1.5
+              ],
+              "uv": [
+                49,
+                3
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -23.5,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                -19.5,
+                1.5
+              ],
+              "uv": [
+                49,
+                3
+              ],
+              "invert": true
+            }
+          ]
+        },
+        {
+          "name": "left_arm",
+          "position": [
+            4.5,
+            11.5,
+            0
+          ],
+          "bend": {
+            "offset": -6.5,
+            "end_offset": 8,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -14.5,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                1.5,
+                1.5
+              ],
+              "uv": [
+                33,
+                43
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                1.5,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                5.5,
+                1.5
+              ],
+              "uv": [
+                55,
+                15
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                1.5,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                5.5,
+                1.5
+              ],
+              "uv": [
+                55,
+                15
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -18.5,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                -14.5,
+                1.5
+              ],
+              "uv": [
+                55,
+                22
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -18.5,
+                -1.5
+              ],
+              "to": [
+                1.5,
+                -14.5,
+                1.5
+              ],
+              "uv": [
+                55,
+                22
+              ],
+              "invert": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "right_leg",
+      "position": [
+        -2.5,
+        17.5,
+        0
+      ],
+      "bend": {
+        "offset": -8,
+        "end_offset": 9.5,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -1.5,
+            -17.5,
+            -1.5
+          ],
+          "to": [
+            1.5,
+            1.5,
+            1.5
+          ],
+          "uv": [
+            3,
+            37
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -1.5,
+            1.5,
+            -1.5
+          ],
+          "to": [
+            1.5,
+            4.5,
+            1.5
+          ],
+          "uv": [
+            15,
+            37
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -1.5,
+            1.5,
+            -1.5
+          ],
+          "to": [
+            1.5,
+            4.5,
+            1.5
+          ],
+          "uv": [
+            15,
+            37
+          ],
+          "invert": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            -3.5,
+            -4.5,
+            0
+          ],
+          "to": [
+            1.5,
+            4.5,
+            0
+          ],
+          "uv": [
+            54,
+            46
+          ],
+          "position": [
+            0,
+            -17.2,
+            0
+          ],
+          "rotation": [
+            -90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "plane",
+          "from": [
+            -3.5,
+            -4.5,
+            -1e-05
+          ],
+          "to": [
+            1.5,
+            4.5,
+            -1e-05
+          ],
+          "uv": [
+            59,
+            46
+          ],
+          "position": [
+            0,
+            -17.2,
+            0
+          ],
+          "rotation": [
+            -90,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "left_leg",
+      "position": [
+        1.5,
+        16,
+        0
+      ],
+      "bend": {
+        "offset": -8,
+        "end_offset": 8,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -1.5,
+            -13,
+            -1.5
+          ],
+          "to": [
+            1.5,
+            3,
+            1.5
+          ],
+          "uv": [
+            45,
+            43
+          ],
+          "position": [
+            0,
+            -3,
+            0
+          ]
+        },
+        {
+          "type": "plane",
+          "from": [
+            -1.5,
+            -4.5,
+            0
+          ],
+          "to": [
+            3.5,
+            4.5,
+            0
+          ],
+          "uv": [
+            54,
+            55
+          ],
+          "position": [
+            0,
+            -15.7,
+            0
+          ],
+          "rotation": [
+            -90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "plane",
+          "from": [
+            -1.5,
+            -4.5,
+            -1e-05
+          ],
+          "to": [
+            3.5,
+            4.5,
+            -1e-05
+          ],
+          "uv": [
+            59,
+            55
+          ],
+          "position": [
+            0,
+            -15.7,
+            0
+          ],
+          "rotation": [
+            -90,
+            0,
+            0
+          ]
+        }
+      ]
+    }
+  ]
+}

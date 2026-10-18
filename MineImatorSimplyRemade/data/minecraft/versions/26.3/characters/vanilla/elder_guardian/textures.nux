@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\guardian\\guardian_elder.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\guardian\\guardian_elder.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

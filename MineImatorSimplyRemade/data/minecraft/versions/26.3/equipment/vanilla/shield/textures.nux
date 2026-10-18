@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\shield\\shield_base_nopattern.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\shield\\shield_base_nopattern.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

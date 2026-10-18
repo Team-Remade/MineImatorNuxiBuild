@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\silverfish\\silverfish.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\silverfish\\silverfish.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

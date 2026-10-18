@@ -1,0 +1,378 @@
+{
+	"format": 32,
+	"created_in": "1.2.6",
+	"is_model": true,
+	"tempo": 24,
+	"length": 24,
+	"keyframes": [
+		{
+			"position": 24,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_X": 35,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_X": 35,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "left_middle_leg",
+			"values": {
+				"ROT_X": 35,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "right_middle_leg",
+			"values": {
+				"ROT_X": 35,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "left_front_leg",
+			"values": {
+				"ROT_X": 35,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "right_front_leg",
+			"values": {
+				"ROT_X": 35,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_front_leg",
+			"values": {
+				"ROT_X": 45,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_front_leg",
+			"values": {
+				"ROT_X": 45,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_middle_leg",
+			"values": {
+				"ROT_X": 45,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_middle_leg",
+			"values": {
+				"ROT_X": 45,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_X": 45,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_X": 45,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "right_antenna",
+			"values": {
+				"ROT_X": 5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "left_antenna",
+			"values": {
+				"ROT_X": 5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_antenna",
+			"values": {
+				"ROT_X": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_antenna",
+			"values": {
+				"ROT_X": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "left_wing",
+			"values": {
+				"BEND_ANGLE": -21.63612,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 22,
+			"part_name": "right_wing",
+			"values": {
+				"BEND_ANGLE": -32.55159,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": 45,
+				"BEND_ANGLE": 51.22307,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": -45,
+				"BEND_ANGLE": 53.62426,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "left_wing",
+			"values": {
+				"BEND_ANGLE": -21.63612,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "right_wing",
+			"values": {
+				"BEND_ANGLE": -32.55159,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": 45,
+				"BEND_ANGLE": 51.22307,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 20,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": -45,
+				"BEND_ANGLE": 53.62426,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "left_wing",
+			"values": {
+				"BEND_ANGLE": -21.63612,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "right_wing",
+			"values": {
+				"BEND_ANGLE": -32.55159,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": 45,
+				"BEND_ANGLE": 51.22307,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 16,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": -45,
+				"BEND_ANGLE": 53.62426,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "left_wing",
+			"values": {
+				"BEND_ANGLE": -21.63612,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "right_wing",
+			"values": {
+				"BEND_ANGLE": -32.55159,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": 45,
+				"BEND_ANGLE": 51.22307,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": -45,
+				"BEND_ANGLE": 53.62426,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "left_wing",
+			"values": {
+				"BEND_ANGLE": -21.63612,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "right_wing",
+			"values": {
+				"BEND_ANGLE": -32.55159,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": 45,
+				"BEND_ANGLE": 51.22307,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": -45,
+				"BEND_ANGLE": 53.62426,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": -45,
+				"BEND_ANGLE": 53.62426,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": 45,
+				"BEND_ANGLE": 51.22307,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 2,
+			"part_name": "right_wing",
+			"values": {
+				"BEND_ANGLE": -32.55159,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 2,
+			"part_name": "left_wing",
+			"values": {
+				"BEND_ANGLE": -21.63612,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "body",
+			"values": {
+				"POS_Z": 2,
+				"ROT_X": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

@@ -1,0 +1,168 @@
+{
+	"format": 28,
+	"is_model": true,
+	"tempo": 24,
+	"length": 48,
+	"keyframes": [
+		{
+			"position": 24,
+			"part_name": "head",
+			"values": {
+				"POS_Y": -0.25,
+				"ROT_X": 22.5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 48,
+			"part_name": "head",
+			"values": {
+				"POS_Y": -0.25,
+				"ROT_X": 22.5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 36,
+			"part_name": "body",
+			"values": {
+				"ROT_X": -7.5,
+				"TRANSITION": "easeinoutcubic"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "body",
+			"values": {
+				"POS_Z": 2.53451,
+				"ROT_X": -7.5
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "tail_2",
+			"values": {
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "tail_2",
+			"values": {
+				"ROT_X": -7.5
+			}
+		},
+		{
+			"position": 48,
+			"part_name": "tail_2",
+			"values": {
+				"ROT_X": -7.5
+			}
+		},
+		{
+			"position": 36,
+			"part_name": "tail_2",
+			"values": {
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "tail",
+			"values": {
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": -15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "right_wing_2",
+			"values": {
+				"ROT_Y": -15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "left_wing_2",
+			"values": {
+				"ROT_Y": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 48,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 48,
+			"part_name": "right_wing_2",
+			"values": {
+				"ROT_Y": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 48,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": -15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 48,
+			"part_name": "left_wing_2",
+			"values": {
+				"ROT_Y": -15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": -7.5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 36,
+			"part_name": "tail",
+			"values": {
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 48,
+			"part_name": "tail",
+			"values": {
+				"ROT_X": -7.5,
+				"TRANSITION": "easeinoutquad"
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

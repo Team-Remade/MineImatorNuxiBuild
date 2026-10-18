@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\slime\\magmacube.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\slime\\magmacube.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

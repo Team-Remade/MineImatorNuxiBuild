@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\painting\\skull_and_roses.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\painting\\skull_and_roses.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

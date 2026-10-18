@@ -1,0 +1,80 @@
+{
+  "name": "wall_banner",
+  "texture": "..\\..\\..\\textures\\entity\\banner\\banner_base.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "scale": [
+    0.6875,
+    0.6875,
+    0.6875
+  ],
+  "parts": [
+    {
+      "name": "stand",
+      "position": [
+        0,
+        -15.25,
+        -10.625
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -10,
+            0,
+            -1
+          ],
+          "to": [
+            10,
+            2,
+            1
+          ],
+          "uv": [
+            2,
+            44
+          ],
+          "position": [
+            0,
+            42,
+            0
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "banner",
+          "position": [
+            0,
+            44,
+            1
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -10,
+                -40,
+                0
+              ],
+              "to": [
+                10,
+                0,
+                1
+              ],
+              "uv": [
+                1,
+                1
+              ],
+              "wind": {
+                "axis": "all",
+                "ymax": 0
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

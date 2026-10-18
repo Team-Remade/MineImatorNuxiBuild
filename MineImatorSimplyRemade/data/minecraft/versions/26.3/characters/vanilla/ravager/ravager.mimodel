@@ -1,0 +1,424 @@
+{
+  "name": "ravager",
+  "texture": "..\\..\\..\\textures\\entity\\illager\\ravager.png",
+  "texture_size": [
+    128,
+    128
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        26,
+        0
+      ],
+      "bend": {
+        "offset": -2,
+        "end_offset": 16,
+        "size": 10,
+        "part": "upper",
+        "axis": [
+          "x",
+          "y"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -7,
+            -2,
+            -10
+          ],
+          "to": [
+            7,
+            14,
+            10
+          ],
+          "uv": [
+            20,
+            75
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -6,
+            -15,
+            -8
+          ],
+          "to": [
+            6,
+            -2,
+            10
+          ],
+          "uv": [
+            18,
+            109
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "neck",
+          "position": [
+            0,
+            1,
+            0.5
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -5,
+                -5,
+                0
+              ],
+              "to": [
+                5,
+                5,
+                18
+              ],
+              "uv": [
+                86,
+                91
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "head",
+              "position": [
+                0,
+                0,
+                15
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -8,
+                    -10,
+                    0
+                  ],
+                  "to": [
+                    8,
+                    10,
+                    16
+                  ],
+                  "uv": [
+                    16,
+                    16
+                  ],
+                  "position": [
+                    0,
+                    -2,
+                    0
+                  ]
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -8,
+                    -10,
+                    0
+                  ],
+                  "to": [
+                    8,
+                    10,
+                    16
+                  ],
+                  "uv": [
+                    16,
+                    16
+                  ],
+                  "position": [
+                    0,
+                    -2,
+                    0
+                  ],
+                  "invert": true
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -1,
+                    0,
+                    -2
+                  ],
+                  "to": [
+                    1,
+                    14,
+                    2
+                  ],
+                  "uv": [
+                    78,
+                    59
+                  ],
+                  "position": [
+                    -9,
+                    2,
+                    10
+                  ],
+                  "rotation": [
+                    63.25,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -1,
+                    0,
+                    -2
+                  ],
+                  "to": [
+                    1,
+                    14,
+                    2
+                  ],
+                  "uv": [
+                    78,
+                    59
+                  ],
+                  "position": [
+                    9,
+                    2,
+                    10
+                  ],
+                  "rotation": [
+                    63.25,
+                    0,
+                    0
+                  ],
+                  "texture_mirror": true
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -2,
+                    -14,
+                    16
+                  ],
+                  "to": [
+                    2,
+                    -6,
+                    20
+                  ],
+                  "uv": [
+                    4,
+                    4
+                  ]
+                }
+              ],
+              "parts": [
+                {
+                  "name": "mouth",
+                  "position": [
+                    0,
+                    -12,
+                    0
+                  ],
+                  "rotation": [
+                    2.5,
+                    0,
+                    0
+                  ],
+                  "shapes": [
+                    {
+                      "type": "block",
+                      "from": [
+                        -8,
+                        -1,
+                        0
+                      ],
+                      "to": [
+                        8,
+                        2,
+                        16
+                      ],
+                      "uv": [
+                        16,
+                        52
+                      ]
+                    },
+                    {
+                      "type": "block",
+                      "from": [
+                        -8,
+                        -1,
+                        0
+                      ],
+                      "to": [
+                        8,
+                        2,
+                        16
+                      ],
+                      "uv": [
+                        16,
+                        52
+                      ],
+                      "invert": true
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -8,
+            11,
+            11
+          ],
+          "bend": {
+            "offset": -18.5,
+            "end_offset": 18.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -37,
+                -4
+              ],
+              "to": [
+                4,
+                0,
+                4
+              ],
+              "uv": [
+                72,
+                8
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            8,
+            11,
+            11
+          ],
+          "bend": {
+            "offset": -18.5,
+            "end_offset": 18.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -37,
+                -4
+              ],
+              "to": [
+                4,
+                0,
+                4
+              ],
+              "uv": [
+                72,
+                8
+              ],
+              "texture_mirror": true
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -8,
+            11,
+            -12
+          ],
+          "lock_bend": 0,
+          "bend": {
+            "offset": -18.5,
+            "end_offset": 18.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -37,
+                -4
+              ],
+              "to": [
+                4,
+                0,
+                4
+              ],
+              "uv": [
+                104,
+                8
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            8,
+            11,
+            -12
+          ],
+          "lock_bend": 0,
+          "bend": {
+            "offset": -18.5,
+            "end_offset": 18.5,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -37,
+                -4
+              ],
+              "to": [
+                4,
+                0,
+                4
+              ],
+              "uv": [
+                104,
+                8
+              ],
+              "texture_mirror": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

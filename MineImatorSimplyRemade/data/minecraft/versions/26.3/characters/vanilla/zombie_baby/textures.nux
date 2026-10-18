@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\zombie\\zombie_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\zombie\\zombie_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

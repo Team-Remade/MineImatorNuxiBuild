@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\iron_golem\\iron_golem.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\iron_golem\\iron_golem.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

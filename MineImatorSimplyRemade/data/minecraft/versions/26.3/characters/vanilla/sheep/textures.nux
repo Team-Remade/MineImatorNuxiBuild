@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\sheep\\sheep.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\sheep\\sheep.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

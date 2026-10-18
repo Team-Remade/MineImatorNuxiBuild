@@ -1,0 +1,305 @@
+{
+	"format": 32,
+	"created_in": "1.2.9 (Patch 2, 2021.12.20)",
+	"is_model": true,
+	"tempo": 24,
+	"length": 12,
+	"keyframes": [
+		{
+			"position": 0,
+			"values": {
+				"POS_Y": 0
+			}
+		},
+		{
+			"position": 2,
+			"part_name": "left_leg",
+			"values": {
+				"POS_Y": -2.43894,
+				"POS_Z": 0.78408,
+				"ROT_X": -22.63555,
+				"ROT_Y": 5.55556,
+				"ROT_Z": 5.55556,
+				"BEND_ANGLE_X": 94.90515
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_leg",
+			"values": {
+				"POS_Y": -2.43894,
+				"POS_Z": 0.78408,
+				"ROT_X": -22.63555,
+				"ROT_Y": -5.55556,
+				"ROT_Z": -5.55556,
+				"BEND_ANGLE_X": 94.90515
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -18.65695,
+				"ROT_Z": -10,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 3,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -13.46132,
+				"ROT_Z": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 9,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -13.46132,
+				"ROT_Z": 5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -18.65695,
+				"ROT_Z": 10,
+				"TRANSITION": "easeoutquad"
+			}
+		},
+		{
+			"position": 3,
+			"part_name": "right_leg",
+			"values": {
+				"POS_Y": 1.55986,
+				"ROT_X": -1.08911,
+				"ROT_Y": -4,
+				"ROT_Z": -4,
+				"TRANSITION": "easeoutsine"
+			}
+		},
+		{
+			"position": 9,
+			"part_name": "left_leg",
+			"values": {
+				"POS_Y": 1.55986,
+				"ROT_X": -1.08911,
+				"ROT_Y": 4,
+				"ROT_Z": 4,
+				"TRANSITION": "easeoutsine"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "left_leg",
+			"values": {
+				"POS_Y": 5.23676,
+				"ROT_X": -22.01133,
+				"BEND_ANGLE_X": 2.00002
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_leg",
+			"values": {
+				"POS_Y": -1.88225,
+				"POS_Z": 0.93723,
+				"ROT_X": 66.60706,
+				"ROT_Y": 10,
+				"ROT_Z": 10,
+				"BEND_ANGLE_X": 7.25295,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 3,
+			"part_name": "left_leg",
+			"values": {
+				"POS_Y": -3.1348,
+				"POS_Z": 0.59264,
+				"ROT_X": -76.11004,
+				"BEND_ANGLE_X": 92.54321
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": 53.15844,
+				"ROT_Y": -12.47481,
+				"ROT_Z": -2.18912,
+				"BEND_ANGLE_X": 19.72517
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": -25.36628,
+				"ROT_Y": -39.13253,
+				"ROT_Z": 27.94415
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": 48.73636,
+				"ROT_Y": -33.69097,
+				"ROT_Z": -19.92729
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": -40.17558,
+				"ROT_Y": -30,
+				"ROT_Z": 14.63997,
+				"BEND_ANGLE_X": 53.35505
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": -40.17558,
+				"ROT_Y": 30,
+				"ROT_Z": -14.63997,
+				"BEND_ANGLE_X": 53.35505
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": 48.73636,
+				"ROT_Y": 33.69097,
+				"ROT_Z": 19.92729
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": -35.65697,
+				"ROT_Y": 39.13253,
+				"ROT_Z": -27.94415
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": 53.15844,
+				"ROT_Y": 12.47481,
+				"ROT_Z": 2.18912,
+				"BEND_ANGLE_X": 19.72517
+			}
+		},
+		{
+			"position": 11,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 0.50337,
+				"POS_Z": -1.30395,
+				"ROT_X": 15.10609,
+				"ROT_Y": 4,
+				"ROT_Z": 4
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 0.50337,
+				"POS_Z": -1.30395,
+				"ROT_X": 15.10609,
+				"ROT_Y": -4,
+				"ROT_Z": -4
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "body",
+			"values": {
+				"POS_Z": -0.98041,
+				"ROT_X": 14.60609
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "body",
+			"values": {
+				"POS_Z": -0.98041,
+				"ROT_X": 14.60609
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 1.28278,
+				"POS_Z": -2.69068,
+				"ROT_X": 21.35606,
+				"ROT_Y": -6,
+				"ROT_Z": -12,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "body",
+			"values": {
+				"POS_Y": 1.28278,
+				"POS_Z": -2.69068,
+				"ROT_X": 21.35606,
+				"ROT_Y": 6,
+				"ROT_Z": 12,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 9,
+			"part_name": "right_leg",
+			"values": {
+				"POS_Y": -3.1348,
+				"POS_Z": 0.59264,
+				"ROT_X": -76.11004,
+				"BEND_ANGLE_X": 92.54321
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "right_leg",
+			"values": {
+				"POS_Y": -1.88225,
+				"POS_Z": 0.93723,
+				"ROT_X": 66.60706,
+				"ROT_Y": -10,
+				"ROT_Z": -10,
+				"BEND_ANGLE_X": 7.25295,
+				"TRANSITION": "easeinquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "right_leg",
+			"values": {
+				"POS_Y": 5.23676,
+				"ROT_X": -22.01133,
+				"BEND_ANGLE_X": 2.00002
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

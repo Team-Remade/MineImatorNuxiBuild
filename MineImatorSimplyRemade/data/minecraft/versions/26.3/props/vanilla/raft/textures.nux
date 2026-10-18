@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\boat\\bamboo.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\boat\\bamboo.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,415 @@
+{
+  "name": "chest",
+  "texture": "..\\..\\..\\textures\\entity\\chest\\normal.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "bottom",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "plane",
+          "from": [
+            -7,
+            -10,
+            7
+          ],
+          "to": [
+            7,
+            0,
+            7
+          ],
+          "uv": [
+            42,
+            33
+          ],
+          "rotation": [
+            0,
+            0,
+            180
+          ],
+          "hide_back": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            -7,
+            -10,
+            7
+          ],
+          "to": [
+            7,
+            0,
+            7
+          ],
+          "uv": [
+            28,
+            33
+          ],
+          "rotation": [
+            0,
+            90,
+            180
+          ],
+          "hide_back": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            -7,
+            -10,
+            7
+          ],
+          "to": [
+            7,
+            0,
+            7
+          ],
+          "uv": [
+            0,
+            33
+          ],
+          "rotation": [
+            0,
+            -90,
+            180
+          ],
+          "hide_back": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            -7,
+            -10,
+            7
+          ],
+          "to": [
+            7,
+            0,
+            7
+          ],
+          "uv": [
+            14,
+            33
+          ],
+          "rotation": [
+            0,
+            180,
+            180
+          ],
+          "hide_back": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            -7,
+            -7,
+            0
+          ],
+          "to": [
+            7,
+            7,
+            0
+          ],
+          "uv": [
+            14,
+            19
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "hide_back": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            -7,
+            5,
+            10
+          ],
+          "to": [
+            7,
+            7,
+            10
+          ],
+          "uv": [
+            28,
+            19
+          ],
+          "rotation": [
+            -90,
+            0,
+            180
+          ],
+          "texture_mirror": true,
+          "hide_back": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            -7,
+            -7,
+            10
+          ],
+          "to": [
+            7,
+            -5,
+            10
+          ],
+          "uv": [
+            28,
+            31
+          ],
+          "rotation": [
+            -90,
+            0,
+            180
+          ],
+          "texture_mirror": true,
+          "hide_back": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            5,
+            -5,
+            10
+          ],
+          "to": [
+            7,
+            5,
+            10
+          ],
+          "uv": [
+            28,
+            21
+          ],
+          "rotation": [
+            -90,
+            0,
+            180
+          ],
+          "texture_mirror": true,
+          "hide_back": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            -7,
+            -5,
+            10
+          ],
+          "to": [
+            -5,
+            5,
+            10
+          ],
+          "uv": [
+            40,
+            21
+          ],
+          "rotation": [
+            -90,
+            0,
+            180
+          ],
+          "texture_mirror": true,
+          "hide_back": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            -5,
+            -5,
+            1
+          ],
+          "to": [
+            5,
+            5,
+            1
+          ],
+          "uv": [
+            16,
+            2
+          ],
+          "rotation": [
+            -90,
+            0,
+            180
+          ],
+          "texture_mirror": true,
+          "hide_back": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            -5,
+            -10,
+            -5
+          ],
+          "to": [
+            5,
+            -1,
+            -5
+          ],
+          "uv": [
+            16,
+            3
+          ],
+          "rotation": [
+            0,
+            0,
+            180
+          ],
+          "hide_back": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            -5,
+            -10,
+            -5
+          ],
+          "to": [
+            5,
+            -1,
+            -5
+          ],
+          "uv": [
+            16,
+            3
+          ],
+          "rotation": [
+            0,
+            -90,
+            180
+          ],
+          "hide_back": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            -5,
+            -10,
+            -5
+          ],
+          "to": [
+            5,
+            -1,
+            -5
+          ],
+          "uv": [
+            16,
+            3
+          ],
+          "rotation": [
+            0,
+            90,
+            180
+          ],
+          "hide_back": true
+        },
+        {
+          "type": "plane",
+          "from": [
+            -5,
+            -10,
+            -5
+          ],
+          "to": [
+            5,
+            -1,
+            -5
+          ],
+          "uv": [
+            16,
+            3
+          ],
+          "rotation": [
+            0,
+            180,
+            180
+          ],
+          "hide_back": true
+        }
+      ],
+      "parts": [
+        {
+          "name": "top",
+          "position": [
+            0,
+            9,
+            -7
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -7,
+                -5,
+                -14
+              ],
+              "to": [
+                7,
+                0,
+                0
+              ],
+              "uv": [
+                14,
+                14
+              ],
+              "rotation": [
+                180,
+                0,
+                0
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "lock",
+              "position": [
+                0,
+                1,
+                14
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -1,
+                    -1,
+                    -1
+                  ],
+                  "to": [
+                    1,
+                    3,
+                    0
+                  ],
+                  "uv": [
+                    1,
+                    1
+                  ],
+                  "rotation": [
+                    180,
+                    0,
+                    0
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

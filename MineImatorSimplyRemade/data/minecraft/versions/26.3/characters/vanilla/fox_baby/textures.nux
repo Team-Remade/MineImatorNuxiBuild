@@ -1,0 +1,25 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\fox\\fox_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\fox\\fox_baby.png"
+    },
+    {
+      "name": "Fox Red Sleep Baby",
+      "file": "..\\..\\..\\textures\\entity\\fox\\fox_sleep_baby.png"
+    },
+    {
+      "name": "Fox Snow Baby",
+      "file": "..\\..\\..\\textures\\entity\\fox\\fox_snow_baby.png"
+    },
+    {
+      "name": "Fox Snow Sleep Baby",
+      "file": "..\\..\\..\\textures\\entity\\fox\\fox_snow_sleep_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

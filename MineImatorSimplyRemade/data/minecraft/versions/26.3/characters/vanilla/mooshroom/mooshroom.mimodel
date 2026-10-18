@@ -1,0 +1,510 @@
+{
+  "name": "mooshroom",
+  "texture": "..\\..\\..\\textures\\entity\\cow\\mooshroom_red.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        12,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -6,
+            -9,
+            -10
+          ],
+          "to": [
+            6,
+            9,
+            0
+          ],
+          "uv": [
+            28,
+            14
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -9,
+            0
+          ],
+          "to": [
+            2,
+            -3,
+            1
+          ],
+          "uv": [
+            53,
+            1
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "description": "mushroom",
+          "texture": "..\\..\\..\\textures\\block\\red_mushroom.png",
+          "texture_size": [
+            16,
+            16
+          ],
+          "from": [
+            -8,
+            0,
+            0
+          ],
+          "to": [
+            8,
+            16,
+            0
+          ],
+          "uv": [
+            0,
+            0
+          ],
+          "position": [
+            -2.025,
+            9.4444,
+            1.2
+          ],
+          "rotation": [
+            0,
+            51,
+            0
+          ],
+          "scale": [
+            1.2735,
+            1,
+            1
+          ]
+        },
+        {
+          "type": "block",
+          "description": "mushroom",
+          "texture": "..\\..\\..\\textures\\block\\red_mushroom.png",
+          "texture_size": [
+            16,
+            16
+          ],
+          "from": [
+            -8,
+            0,
+            0
+          ],
+          "to": [
+            8,
+            16,
+            0
+          ],
+          "uv": [
+            0,
+            0
+          ],
+          "position": [
+            -2.025,
+            9.4444,
+            1.2
+          ],
+          "rotation": [
+            0,
+            -39,
+            0
+          ],
+          "scale": [
+            1.2735,
+            1,
+            1
+          ]
+        },
+        {
+          "type": "block",
+          "description": "mushroom",
+          "texture": "..\\..\\..\\textures\\block\\red_mushroom.png",
+          "texture_size": [
+            16,
+            16
+          ],
+          "from": [
+            -8,
+            0,
+            0
+          ],
+          "to": [
+            8,
+            16,
+            0
+          ],
+          "uv": [
+            0,
+            0
+          ],
+          "position": [
+            3.2,
+            9.4444,
+            -7
+          ],
+          "rotation": [
+            0,
+            93,
+            0
+          ],
+          "scale": [
+            1.2735,
+            1,
+            1
+          ]
+        },
+        {
+          "type": "block",
+          "description": "mushroom",
+          "texture": "..\\..\\..\\textures\\block\\red_mushroom.png",
+          "texture_size": [
+            16,
+            16
+          ],
+          "from": [
+            -8,
+            0,
+            0
+          ],
+          "to": [
+            8,
+            16,
+            0
+          ],
+          "uv": [
+            0,
+            0
+          ],
+          "position": [
+            3.2,
+            9.4444,
+            -7
+          ],
+          "rotation": [
+            0,
+            3,
+            0
+          ],
+          "scale": [
+            1.2735,
+            1,
+            1
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            8,
+            9
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                -4,
+                0
+              ],
+              "to": [
+                4,
+                4,
+                6
+              ],
+              "uv": [
+                6,
+                6
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -4,
+                6
+              ],
+              "to": [
+                3,
+                -1,
+                7
+              ],
+              "uv": [
+                2,
+                34
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                -5,
+                2,
+                4
+              ],
+              "to": [
+                -4,
+                5,
+                5
+              ],
+              "uv": [
+                23,
+                1
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                4,
+                2,
+                4
+              ],
+              "to": [
+                5,
+                5,
+                5
+              ],
+              "uv": [
+                23,
+                1
+              ]
+            },
+            {
+              "type": "block",
+              "description": "mushroom",
+              "texture": "..\\..\\..\\textures\\block\\red_mushroom.png",
+              "texture_size": [
+                16,
+                16
+              ],
+              "from": [
+                -8,
+                0,
+                0
+              ],
+              "to": [
+                8,
+                16,
+                0
+              ],
+              "uv": [
+                0,
+                0
+              ],
+              "position": [
+                0,
+                3.2,
+                3.2
+              ],
+              "rotation": [
+                0,
+                123,
+                0
+              ],
+              "scale": [
+                1.2735,
+                1,
+                1
+              ]
+            },
+            {
+              "type": "block",
+              "description": "mushroom",
+              "texture": "..\\..\\..\\textures\\block\\red_mushroom.png",
+              "texture_size": [
+                16,
+                16
+              ],
+              "from": [
+                -8,
+                0,
+                0
+              ],
+              "to": [
+                8,
+                16,
+                0
+              ],
+              "uv": [
+                0,
+                0
+              ],
+              "position": [
+                0,
+                3.2,
+                3.2
+              ],
+              "rotation": [
+                0,
+                33,
+                0
+              ],
+              "scale": [
+                1.2735,
+                1,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -4,
+            0,
+            6
+          ],
+          "bend": {
+            "offset": -6,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            4,
+            0,
+            6
+          ],
+          "bend": {
+            "offset": -6,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "texture_mirror": true
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -4,
+            0,
+            -6
+          ],
+          "bend": {
+            "offset": -6,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            4,
+            0,
+            -6
+          ],
+          "bend": {
+            "offset": -6,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -12,
+                -2
+              ],
+              "to": [
+                2,
+                0,
+                2
+              ],
+              "uv": [
+                4,
+                20
+              ],
+              "texture_mirror": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

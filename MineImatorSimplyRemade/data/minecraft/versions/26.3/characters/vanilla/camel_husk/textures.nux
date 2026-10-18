@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\camel\\camel_husk.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\camel\\camel_husk.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

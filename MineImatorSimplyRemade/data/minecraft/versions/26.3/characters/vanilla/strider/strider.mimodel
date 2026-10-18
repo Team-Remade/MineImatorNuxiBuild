@@ -1,0 +1,932 @@
+{
+  "name": "strider",
+  "texture": "..\\..\\..\\textures\\entity\\strider\\strider.png",
+  "texture_size": [
+    64,
+    128
+  ],
+  "parts": [
+    {
+      "name": "head",
+      "position": [
+        0,
+        22,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -8,
+            -8,
+            -8
+          ],
+          "to": [
+            8,
+            6,
+            8
+          ],
+          "uv": [
+            16,
+            16
+          ]
+        },
+        {
+          "type": "block",
+          "description": "saddle",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+          "texture_size": [
+            64,
+            128
+          ],
+          "from": [
+            -8,
+            -8,
+            -8
+          ],
+          "to": [
+            8,
+            6,
+            8
+          ],
+          "uv": [
+            16,
+            16
+          ],
+          "visible": false
+        }
+      ],
+      "parts": [
+        {
+          "name": "right_top_hair",
+          "position": [
+            -8,
+            5,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            60
+          ],
+          "bend": {
+            "offset": -6,
+            "end_offset": 6,
+            "part": "left",
+            "axis": "z"
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                -12,
+                -8,
+                0
+              ],
+              "to": [
+                0,
+                8,
+                0
+              ],
+              "uv": [
+                32,
+                33
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "from": [
+                -12,
+                -8,
+                -1e-05
+              ],
+              "to": [
+                0,
+                8,
+                -1e-05
+              ],
+              "uv": [
+                44,
+                33
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                128
+              ],
+              "from": [
+                -12,
+                -8,
+                0
+              ],
+              "to": [
+                0,
+                8,
+                0
+              ],
+              "uv": [
+                32,
+                33
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true,
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                128
+              ],
+              "from": [
+                -12,
+                -8,
+                -1e-05
+              ],
+              "to": [
+                0,
+                8,
+                -1e-05
+              ],
+              "uv": [
+                44,
+                33
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "right_middle_hair",
+          "position": [
+            -8,
+            1,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            60
+          ],
+          "bend": {
+            "offset": -6,
+            "end_offset": 6,
+            "part": "left",
+            "axis": "z"
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                -12,
+                -8,
+                0
+              ],
+              "to": [
+                0,
+                8,
+                0
+              ],
+              "uv": [
+                32,
+                49
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "from": [
+                -12,
+                -8,
+                -1e-05
+              ],
+              "to": [
+                0,
+                8,
+                -1e-05
+              ],
+              "uv": [
+                44,
+                49
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                128
+              ],
+              "from": [
+                -12,
+                -8,
+                0
+              ],
+              "to": [
+                0,
+                8,
+                0
+              ],
+              "uv": [
+                32,
+                49
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true,
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                128
+              ],
+              "from": [
+                -12,
+                -8,
+                -1e-05
+              ],
+              "to": [
+                0,
+                8,
+                -1e-05
+              ],
+              "uv": [
+                44,
+                49
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "right_bottom_hair",
+          "position": [
+            -8,
+            -4,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            60
+          ],
+          "bend": {
+            "offset": -6,
+            "end_offset": 6,
+            "part": "left",
+            "axis": "z"
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                -12,
+                -8,
+                0
+              ],
+              "to": [
+                0,
+                8,
+                0
+              ],
+              "uv": [
+                32,
+                65
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "from": [
+                -12,
+                -8,
+                -1e-05
+              ],
+              "to": [
+                0,
+                8,
+                -1e-05
+              ],
+              "uv": [
+                44,
+                65
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "plane",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                128
+              ],
+              "from": [
+                -12,
+                -8,
+                0
+              ],
+              "to": [
+                0,
+                8,
+                0
+              ],
+              "uv": [
+                32,
+                65
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true,
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                128
+              ],
+              "from": [
+                -12,
+                -8,
+                -1e-05
+              ],
+              "to": [
+                0,
+                8,
+                -1e-05
+              ],
+              "uv": [
+                44,
+                65
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "texture_mirror": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "left_top_hair",
+          "position": [
+            8,
+            6,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            -60
+          ],
+          "bend": {
+            "offset": 6,
+            "end_offset": 6,
+            "part": "right",
+            "axis": "z",
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                0,
+                -8,
+                0
+              ],
+              "to": [
+                12,
+                8,
+                0
+              ],
+              "uv": [
+                32,
+                33
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                0,
+                -8,
+                -1e-05
+              ],
+              "to": [
+                12,
+                8,
+                -1e-05
+              ],
+              "uv": [
+                44,
+                33
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                128
+              ],
+              "from": [
+                0,
+                -8,
+                0
+              ],
+              "to": [
+                12,
+                8,
+                0
+              ],
+              "uv": [
+                32,
+                33
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                128
+              ],
+              "from": [
+                0,
+                -8,
+                -1e-05
+              ],
+              "to": [
+                12,
+                8,
+                -1e-05
+              ],
+              "uv": [
+                44,
+                33
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "left_middle_hair",
+          "position": [
+            8,
+            2,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            -60
+          ],
+          "bend": {
+            "offset": 6,
+            "end_offset": 6,
+            "part": "right",
+            "axis": "z",
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                0,
+                -8,
+                0
+              ],
+              "to": [
+                12,
+                8,
+                0
+              ],
+              "uv": [
+                32,
+                49
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                0,
+                -8,
+                -1e-05
+              ],
+              "to": [
+                12,
+                8,
+                -1e-05
+              ],
+              "uv": [
+                44,
+                49
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                128
+              ],
+              "from": [
+                0,
+                -8,
+                0
+              ],
+              "to": [
+                12,
+                8,
+                0
+              ],
+              "uv": [
+                32,
+                49
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                128
+              ],
+              "from": [
+                0,
+                -8,
+                -1e-05
+              ],
+              "to": [
+                12,
+                8,
+                -1e-05
+              ],
+              "uv": [
+                44,
+                49
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "left_bottom_hair",
+          "position": [
+            8,
+            -3,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            -60
+          ],
+          "bend": {
+            "offset": 6,
+            "end_offset": 6,
+            "part": "right",
+            "axis": "z",
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "plane",
+              "from": [
+                0,
+                -8,
+                0
+              ],
+              "to": [
+                12,
+                8,
+                0
+              ],
+              "uv": [
+                32,
+                65
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "from": [
+                0,
+                -8,
+                -1e-05
+              ],
+              "to": [
+                12,
+                8,
+                -1e-05
+              ],
+              "uv": [
+                44,
+                65
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ]
+            },
+            {
+              "type": "plane",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                128
+              ],
+              "from": [
+                0,
+                -8,
+                0
+              ],
+              "to": [
+                12,
+                8,
+                0
+              ],
+              "uv": [
+                32,
+                65
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "visible": false
+            },
+            {
+              "type": "plane",
+              "description": "saddle",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+              "texture_size": [
+                64,
+                128
+              ],
+              "from": [
+                0,
+                -8,
+                -1e-05
+              ],
+              "to": [
+                12,
+                8,
+                -1e-05
+              ],
+              "uv": [
+                44,
+                65
+              ],
+              "rotation": [
+                -90,
+                0,
+                0
+              ],
+              "visible": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "right_leg",
+      "position": [
+        -4,
+        16,
+        0
+      ],
+      "bend": {
+        "offset": -8,
+        "end_offset": 8,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -16,
+            -2
+          ],
+          "to": [
+            2,
+            0,
+            2
+          ],
+          "uv": [
+            4,
+            36
+          ]
+        },
+        {
+          "type": "block",
+          "description": "saddle",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+          "texture_size": [
+            64,
+            128
+          ],
+          "from": [
+            -2,
+            -16,
+            -2
+          ],
+          "to": [
+            2,
+            0,
+            2
+          ],
+          "uv": [
+            4,
+            36
+          ],
+          "visible": false
+        }
+      ]
+    },
+    {
+      "name": "left_leg",
+      "position": [
+        4,
+        16,
+        0
+      ],
+      "bend": {
+        "offset": -8,
+        "end_offset": 8,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2,
+            -16,
+            -2
+          ],
+          "to": [
+            2,
+            0,
+            2
+          ],
+          "uv": [
+            4,
+            59
+          ]
+        },
+        {
+          "type": "block",
+          "description": "saddle",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\strider_saddle\\saddle.png",
+          "texture_size": [
+            64,
+            128
+          ],
+          "from": [
+            -2,
+            -16,
+            -2
+          ],
+          "to": [
+            2,
+            0,
+            2
+          ],
+          "uv": [
+            4,
+            59
+          ],
+          "visible": false
+        }
+      ]
+    }
+  ]
+}

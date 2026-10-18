@@ -1,0 +1,518 @@
+{
+  "name": "phantom",
+  "texture": "..\\..\\..\\textures\\entity\\phantom\\phantom.png",
+  "texture_size": [
+    64,
+    64
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -2.5,
+            0,
+            -4.5
+          ],
+          "to": [
+            2.5,
+            3,
+            4.5
+          ],
+          "uv": [
+            9,
+            17
+          ]
+        },
+        {
+          "type": "block",
+          "description": "eyes",
+          "texture": "..\\..\\..\\textures\\entity\\phantom\\phantom_eyes.png",
+          "texture_size": [
+            64,
+            64
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -2.5,
+            0,
+            -4.5
+          ],
+          "to": [
+            2.5,
+            3,
+            4.5
+          ],
+          "uv": [
+            9,
+            17
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            0.5,
+            4.5
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3.5,
+                -1.5,
+                0
+              ],
+              "to": [
+                3.5,
+                1.5,
+                5
+              ],
+              "uv": [
+                5,
+                5
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\phantom\\phantom_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -3.5,
+                -1.5,
+                0
+              ],
+              "to": [
+                3.5,
+                1.5,
+                5
+              ],
+              "uv": [
+                5,
+                5
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_wing",
+          "position": [
+            -2.5,
+            3,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -6,
+                -2,
+                -4.5
+              ],
+              "to": [
+                0,
+                0,
+                4.5
+              ],
+              "uv": [
+                32,
+                21
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\phantom\\phantom_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -6,
+                -2,
+                -4.5
+              ],
+              "to": [
+                0,
+                0,
+                4.5
+              ],
+              "uv": [
+                32,
+                21
+              ],
+              "texture_mirror": true
+            }
+          ],
+          "parts": [
+            {
+              "name": "right_wing_2",
+              "position": [
+                -6,
+                0,
+                0
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -13,
+                    -1,
+                    -4.5
+                  ],
+                  "to": [
+                    0,
+                    0,
+                    4.5
+                  ],
+                  "uv": [
+                    25,
+                    33
+                  ],
+                  "texture_mirror": true
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -13,
+                    -1,
+                    -4.5
+                  ],
+                  "to": [
+                    0,
+                    0,
+                    4.5
+                  ],
+                  "uv": [
+                    25,
+                    33
+                  ],
+                  "texture_mirror": true,
+                  "invert": true
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\phantom\\phantom_eyes.png",
+                  "texture_size": [
+                    64,
+                    64
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    -13,
+                    -1,
+                    -4.5
+                  ],
+                  "to": [
+                    0,
+                    0,
+                    4.5
+                  ],
+                  "uv": [
+                    25,
+                    33
+                  ],
+                  "texture_mirror": true
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\phantom\\phantom_eyes.png",
+                  "texture_size": [
+                    64,
+                    64
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    -13,
+                    -1,
+                    -4.5
+                  ],
+                  "to": [
+                    0,
+                    0,
+                    4.5
+                  ],
+                  "uv": [
+                    25,
+                    33
+                  ],
+                  "texture_mirror": true,
+                  "invert": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_wing",
+          "position": [
+            2.5,
+            3,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                0,
+                -2,
+                -4.5
+              ],
+              "to": [
+                6,
+                0,
+                4.5
+              ],
+              "uv": [
+                32,
+                21
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\phantom\\phantom_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                0,
+                -2,
+                -4.5
+              ],
+              "to": [
+                6,
+                0,
+                4.5
+              ],
+              "uv": [
+                32,
+                21
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "left_wing_2",
+              "position": [
+                6,
+                0,
+                0
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    0,
+                    -1,
+                    -4.5
+                  ],
+                  "to": [
+                    13,
+                    0,
+                    4.5
+                  ],
+                  "uv": [
+                    25,
+                    33
+                  ]
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    0,
+                    -1,
+                    -4.5
+                  ],
+                  "to": [
+                    13,
+                    0,
+                    4.5
+                  ],
+                  "uv": [
+                    25,
+                    33
+                  ],
+                  "invert": true
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\phantom\\phantom_eyes.png",
+                  "texture_size": [
+                    64,
+                    64
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    0,
+                    -1,
+                    -4.5
+                  ],
+                  "to": [
+                    13,
+                    0,
+                    4.5
+                  ],
+                  "uv": [
+                    25,
+                    33
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\phantom\\phantom_eyes.png",
+                  "texture_size": [
+                    64,
+                    64
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    0,
+                    -1,
+                    -4.5
+                  ],
+                  "to": [
+                    13,
+                    0,
+                    4.5
+                  ],
+                  "uv": [
+                    25,
+                    33
+                  ],
+                  "invert": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tail",
+          "position": [
+            0,
+            2,
+            -4.5
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -1,
+                -6
+              ],
+              "to": [
+                1.5,
+                1,
+                0
+              ],
+              "uv": [
+                9,
+                26
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\phantom\\phantom_eyes.png",
+              "texture_size": [
+                64,
+                64
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -1.5,
+                -1,
+                -6
+              ],
+              "to": [
+                1.5,
+                1,
+                0
+              ],
+              "uv": [
+                9,
+                26
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "tail_2",
+              "position": [
+                0,
+                0,
+                -6
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -0.5,
+                    -0.5,
+                    -6
+                  ],
+                  "to": [
+                    0.5,
+                    0.5,
+                    0
+                  ],
+                  "uv": [
+                    10,
+                    35
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\phantom\\phantom_eyes.png",
+                  "texture_size": [
+                    64,
+                    64
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    -0.5,
+                    -0.5,
+                    -6
+                  ],
+                  "to": [
+                    0.5,
+                    0.5,
+                    0
+                  ],
+                  "uv": [
+                    10,
+                    35
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

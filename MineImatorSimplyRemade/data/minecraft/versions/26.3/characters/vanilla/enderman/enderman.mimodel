@@ -1,0 +1,508 @@
+{
+  "name": "enderman",
+  "texture": "..\\..\\..\\textures\\entity\\enderman\\enderman.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        30,
+        0
+      ],
+      "bend": {
+        "offset": 6,
+        "end_offset": 6,
+        "size": 8,
+        "part": "upper",
+        "axis": [
+          "x",
+          "y",
+          "z"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -4,
+            0,
+            -2
+          ],
+          "to": [
+            4,
+            12,
+            2
+          ],
+          "uv": [
+            36,
+            20
+          ]
+        },
+        {
+          "type": "block",
+          "description": "eyes",
+          "texture": "..\\..\\..\\textures\\entity\\enderman\\enderman_eyes.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -4,
+            0,
+            -2
+          ],
+          "to": [
+            4,
+            12,
+            2
+          ],
+          "uv": [
+            36,
+            20
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "mouth",
+          "position": [
+            0,
+            12,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -4,
+                0,
+                -4
+              ],
+              "to": [
+                4,
+                8,
+                4
+              ],
+              "uv": [
+                8,
+                24
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                -4,
+                0,
+                -4
+              ],
+              "to": [
+                4,
+                8,
+                4
+              ],
+              "uv": [
+                8,
+                24
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderman\\enderman_eyes.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -4,
+                0,
+                -4
+              ],
+              "to": [
+                4,
+                8,
+                4
+              ],
+              "uv": [
+                8,
+                24
+              ],
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderman\\enderman_eyes.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -4,
+                0,
+                -4
+              ],
+              "to": [
+                4,
+                8,
+                4
+              ],
+              "uv": [
+                8,
+                24
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "head",
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1.1,
+                1.1,
+                1.1
+              ],
+              "show_position": 1,
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -4,
+                    0,
+                    -4
+                  ],
+                  "to": [
+                    4,
+                    8,
+                    4
+                  ],
+                  "uv": [
+                    8,
+                    8
+                  ]
+                },
+                {
+                  "type": "block",
+                  "from": [
+                    -4,
+                    0,
+                    -4
+                  ],
+                  "to": [
+                    4,
+                    8,
+                    4
+                  ],
+                  "uv": [
+                    8,
+                    8
+                  ],
+                  "invert": true
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\enderman\\enderman_eyes.png",
+                  "texture_size": [
+                    64,
+                    32
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    -4,
+                    0,
+                    -4
+                  ],
+                  "to": [
+                    4,
+                    8,
+                    4
+                  ],
+                  "uv": [
+                    8,
+                    8
+                  ]
+                },
+                {
+                  "type": "block",
+                  "description": "eyes",
+                  "texture": "..\\..\\..\\textures\\entity\\enderman\\enderman_eyes.png",
+                  "texture_size": [
+                    64,
+                    32
+                  ],
+                  "color_brightness": 0.75,
+                  "from": [
+                    -4,
+                    0,
+                    -4
+                  ],
+                  "to": [
+                    4,
+                    8,
+                    4
+                  ],
+                  "uv": [
+                    8,
+                    8
+                  ],
+                  "invert": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_arm",
+          "position": [
+            -5,
+            11,
+            0
+          ],
+          "bend": {
+            "offset": -14,
+            "end_offset": 15,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -29,
+                -1
+              ],
+              "to": [
+                1,
+                1,
+                1
+              ],
+              "uv": [
+                58,
+                2
+              ]
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderman\\enderman_eyes.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -1,
+                -29,
+                -1
+              ],
+              "to": [
+                1,
+                1,
+                1
+              ],
+              "uv": [
+                58,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_arm",
+          "position": [
+            5,
+            11,
+            0
+          ],
+          "bend": {
+            "offset": -14,
+            "end_offset": 15,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -29,
+                -1
+              ],
+              "to": [
+                1,
+                1,
+                1
+              ],
+              "uv": [
+                58,
+                2
+              ],
+              "texture_mirror": true
+            },
+            {
+              "type": "block",
+              "description": "eyes",
+              "texture": "..\\..\\..\\textures\\entity\\enderman\\enderman_eyes.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "color_brightness": 0.75,
+              "from": [
+                -1,
+                -29,
+                -1
+              ],
+              "to": [
+                1,
+                1,
+                1
+              ],
+              "uv": [
+                58,
+                2
+              ],
+              "texture_mirror": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "right_leg",
+      "position": [
+        -2,
+        30,
+        0
+      ],
+      "bend": {
+        "offset": -15,
+        "end_offset": 15,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -1,
+            -30,
+            -1
+          ],
+          "to": [
+            1,
+            0,
+            1
+          ],
+          "uv": [
+            58,
+            2
+          ]
+        },
+        {
+          "type": "block",
+          "description": "eyes",
+          "texture": "..\\..\\..\\textures\\entity\\enderman\\enderman_eyes.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -1,
+            -30,
+            -1
+          ],
+          "to": [
+            1,
+            0,
+            1
+          ],
+          "uv": [
+            58,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "name": "left_leg",
+      "position": [
+        2,
+        30,
+        0
+      ],
+      "bend": {
+        "offset": -15,
+        "end_offset": 15,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -1,
+            -30,
+            -1
+          ],
+          "to": [
+            1,
+            0,
+            1
+          ],
+          "uv": [
+            58,
+            2
+          ],
+          "texture_mirror": true
+        },
+        {
+          "type": "block",
+          "description": "eyes",
+          "texture": "..\\..\\..\\textures\\entity\\enderman\\enderman_eyes.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "color_brightness": 0.75,
+          "from": [
+            -1,
+            -30,
+            -1
+          ],
+          "to": [
+            1,
+            0,
+            1
+          ],
+          "uv": [
+            58,
+            2
+          ],
+          "texture_mirror": true
+        }
+      ]
+    }
+  ]
+}

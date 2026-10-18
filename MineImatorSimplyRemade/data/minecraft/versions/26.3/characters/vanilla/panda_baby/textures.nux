@@ -1,0 +1,37 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\panda\\panda_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\panda\\panda_baby.png"
+    },
+    {
+      "name": "Panda Lazy Baby",
+      "file": "..\\..\\..\\textures\\entity\\panda\\lazy_panda_baby.png"
+    },
+    {
+      "name": "Panda Playful Baby",
+      "file": "..\\..\\..\\textures\\entity\\panda\\playful_panda_baby.png"
+    },
+    {
+      "name": "Panda Weak Baby",
+      "file": "..\\..\\..\\textures\\entity\\panda\\weak_panda_baby.png"
+    },
+    {
+      "name": "Panda Worried Baby",
+      "file": "..\\..\\..\\textures\\entity\\panda\\worried_panda_baby.png"
+    },
+    {
+      "name": "Panda Aggressive Baby",
+      "file": "..\\..\\..\\textures\\entity\\panda\\aggressive_panda_baby.png"
+    },
+    {
+      "name": "Panda Brown Baby",
+      "file": "..\\..\\..\\textures\\entity\\panda\\brown_panda_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\chicken\\chicken_temperate_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\chicken\\chicken_temperate_baby.png"
+    },
+    {
+      "name": "Chicken Cold Baby",
+      "file": "..\\..\\..\\textures\\entity\\chicken\\chicken_cold_baby.png"
+    },
+    {
+      "name": "Chicken Warm Baby",
+      "file": "..\\..\\..\\textures\\entity\\chicken\\chicken_warm_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

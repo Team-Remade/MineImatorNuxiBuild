@@ -1,0 +1,192 @@
+{
+	"format": 35,
+	"created_in": "2.0.2 Continuation Build 1.0.9",
+	"is_model": true,
+	"tempo": 24,
+	"length": 24,
+	"keyframes": [
+		{
+			"position": 3,
+			"part_name": "tentacle_9",
+			"values": {
+				"ROT_X": 10,
+				"BEND_ANGLE_X": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "tentacle_9",
+			"values": {
+				"ROT_X": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "tentacle_8",
+			"values": {
+				"ROT_X": 10,
+				"BEND_ANGLE_X": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "tentacle_8",
+			"values": {
+				"ROT_X": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 21,
+			"part_name": "tentacle_7",
+			"values": {
+				"ROT_X": 10,
+				"BEND_ANGLE_X": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 9,
+			"part_name": "tentacle_7",
+			"values": {
+				"ROT_X": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "tentacle_6",
+			"values": {
+				"ROT_X": 10,
+				"BEND_ANGLE_X": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "tentacle_6",
+			"values": {
+				"ROT_X": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "tentacle_5",
+			"values": {
+				"ROT_X": 10,
+				"BEND_ANGLE_X": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 3,
+			"part_name": "tentacle_5",
+			"values": {
+				"ROT_X": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "tentacle_4",
+			"values": {
+				"ROT_X": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "tentacle_4",
+			"values": {
+				"ROT_X": 10,
+				"BEND_ANGLE_X": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 9,
+			"part_name": "tentacle_3",
+			"values": {
+				"ROT_X": 10,
+				"BEND_ANGLE_X": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 21,
+			"part_name": "tentacle_3",
+			"values": {
+				"ROT_X": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 3,
+			"part_name": "tentacle_1",
+			"values": {
+				"ROT_X": 10,
+				"BEND_ANGLE_X": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 15,
+			"part_name": "tentacle_1",
+			"values": {
+				"ROT_X": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "tentacle_2",
+			"values": {
+				"ROT_X": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "tentacle_2",
+			"values": {
+				"ROT_X": 10,
+				"BEND_ANGLE_X": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 24,
+			"part_name": "body",
+			"values": {
+				"POS_Z": 4,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "body",
+			"values": {
+				"POS_Z": -4,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0,
+				"POS_Z": 0
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

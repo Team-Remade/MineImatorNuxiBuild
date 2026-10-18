@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\slime\\slime.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\slime\\slime.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

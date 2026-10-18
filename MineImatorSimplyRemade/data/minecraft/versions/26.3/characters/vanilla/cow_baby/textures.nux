@@ -1,0 +1,29 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\cow\\cow_temperate_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\cow\\cow_temperate_baby.png"
+    },
+    {
+      "name": "Cow Cold Baby",
+      "file": "..\\..\\..\\textures\\entity\\cow\\cow_cold_baby.png"
+    },
+    {
+      "name": "Cow Warm Baby",
+      "file": "..\\..\\..\\textures\\entity\\cow\\cow_warm_baby.png"
+    },
+    {
+      "name": "Mooshroom Red Baby",
+      "file": "..\\..\\..\\textures\\entity\\cow\\mooshroom_red_baby.png"
+    },
+    {
+      "name": "Mooshroom Brown Baby",
+      "file": "..\\..\\..\\textures\\entity\\cow\\mooshroom_brown_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

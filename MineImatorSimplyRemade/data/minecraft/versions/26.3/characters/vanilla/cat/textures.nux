@@ -1,0 +1,57 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\cat\\ocelot.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\cat\\ocelot.png"
+    },
+    {
+      "name": "Cat All Black",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_all_black.png"
+    },
+    {
+      "name": "Cat Black",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_black.png"
+    },
+    {
+      "name": "Cat British Shorthair",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_british_shorthair.png"
+    },
+    {
+      "name": "Cat Calico",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_calico.png"
+    },
+    {
+      "name": "Cat Persian",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_persian.png"
+    },
+    {
+      "name": "Cat Ragdoll",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_ragdoll.png"
+    },
+    {
+      "name": "Cat Red",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_red.png"
+    },
+    {
+      "name": "Cat Siamese",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_siamese.png"
+    },
+    {
+      "name": "Cat Tabby",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_tabby.png"
+    },
+    {
+      "name": "Cat White",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_white.png"
+    },
+    {
+      "name": "Cat Jellie",
+      "file": "..\\..\\..\\textures\\entity\\cat\\cat_jellie.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

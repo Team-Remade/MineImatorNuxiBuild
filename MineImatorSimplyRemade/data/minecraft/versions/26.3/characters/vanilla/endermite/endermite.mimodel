@@ -1,0 +1,122 @@
+{
+  "name": "endermite",
+  "texture": "..\\..\\..\\textures\\entity\\endermite\\endermite.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        2,
+        0
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -3,
+            -2,
+            -2.5
+          ],
+          "to": [
+            3,
+            2,
+            2.5
+          ],
+          "uv": [
+            5,
+            10
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            -0.5,
+            2.5
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -2,
+                -1.5,
+                0
+              ],
+              "to": [
+                2,
+                1.5,
+                2
+              ],
+              "uv": [
+                2,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tail_1",
+          "position": [
+            0,
+            -0.5,
+            -2.5
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -1.5,
+                -1
+              ],
+              "to": [
+                1.5,
+                1.5,
+                0
+              ],
+              "uv": [
+                1,
+                15
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "name": "tail_2",
+              "position": [
+                0,
+                -0.5,
+                -1
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "from": [
+                    -0.5,
+                    -1,
+                    -1
+                  ],
+                  "to": [
+                    0.5,
+                    1,
+                    0
+                  ],
+                  "uv": [
+                    1,
+                    19
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

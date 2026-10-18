@@ -1,0 +1,29 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\axolotl\\axolotl_lucy_baby.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\axolotl\\axolotl_lucy_baby.png"
+    },
+    {
+      "name": "Axolotl Wild Baby",
+      "file": "..\\..\\..\\textures\\entity\\axolotl\\axolotl_wild_baby.png"
+    },
+    {
+      "name": "Axolotl Gold Baby",
+      "file": "..\\..\\..\\textures\\entity\\axolotl\\axolotl_gold_baby.png"
+    },
+    {
+      "name": "Axolotl Cyan Baby",
+      "file": "..\\..\\..\\textures\\entity\\axolotl\\axolotl_cyan_baby.png"
+    },
+    {
+      "name": "Axolotl Blue Baby",
+      "file": "..\\..\\..\\textures\\entity\\axolotl\\axolotl_blue_baby.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

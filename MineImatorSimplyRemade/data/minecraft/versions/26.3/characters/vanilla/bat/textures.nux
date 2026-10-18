@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\bat\\bat.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\bat\\bat.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

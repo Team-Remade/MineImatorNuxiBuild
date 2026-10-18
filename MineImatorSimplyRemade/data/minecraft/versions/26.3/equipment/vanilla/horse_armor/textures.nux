@@ -1,0 +1,29 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\iron.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\iron.png"
+    },
+    {
+      "name": "Copper",
+      "file": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\copper.png"
+    },
+    {
+      "name": "Gold",
+      "file": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\gold.png"
+    },
+    {
+      "name": "Diamond",
+      "file": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\diamond.png"
+    },
+    {
+      "name": "Netherite",
+      "file": "..\\..\\..\\textures\\entity\\equipment\\horse_body\\netherite.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

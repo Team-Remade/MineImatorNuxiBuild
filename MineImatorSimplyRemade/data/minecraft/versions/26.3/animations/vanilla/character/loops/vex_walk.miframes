@@ -1,0 +1,132 @@
+{
+	"format": 34,
+	"created_in": "2.0 (Pre-release 5)",
+	"is_model": true,
+	"tempo": 24,
+	"length": 12,
+	"keyframes": [
+		{
+			"position": 11,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -25,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 9,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": 30,
+				"ROT_Y": -30,
+				"BEND_ANGLE_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 9,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": 30,
+				"ROT_Y": 30,
+				"BEND_ANGLE_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "right_wing",
+			"values": {
+				"BEND_ANGLE_Z": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 10,
+			"part_name": "left_wing",
+			"values": {
+				"BEND_ANGLE_Z": 10,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 12,
+			"part_name": "body",
+			"values": {
+				"POS_Y": -2,
+				"POS_Z": 0.25,
+				"ROT_X": 25,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 3,
+			"part_name": "right_arm",
+			"values": {
+				"ROT_X": 35,
+				"ROT_Y": -30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 3,
+			"part_name": "left_arm",
+			"values": {
+				"ROT_X": 35,
+				"ROT_Y": 30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": 10,
+				"ROT_Z": -50,
+				"BEND_ANGLE_Z": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 4,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": -10,
+				"ROT_Z": 50,
+				"BEND_ANGLE_Z": -5,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 6,
+			"part_name": "body",
+			"values": {
+				"POS_Y": -2.25,
+				"ROT_X": 30,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0,
+				"POS_Z": 0
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

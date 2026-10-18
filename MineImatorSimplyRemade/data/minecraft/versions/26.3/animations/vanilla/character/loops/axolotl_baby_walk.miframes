@@ -1,0 +1,155 @@
+{
+	"format": 35,
+	"created_in": "2.0.2 Continuation Build 1.0.13 (Indev)",
+	"is_model": true,
+	"tempo": 24,
+	"length": 72,
+	"keyframes": [
+		{
+			"position": 72,
+			"part_name": "tail",
+			"values": {
+				"ROT_Z": 6,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 36,
+			"part_name": "tail",
+			"values": {
+				"ROT_Z": -6,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 36,
+			"part_name": "head",
+			"values": {
+				"ROT_Y": 3,
+				"ROT_Z": -1,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 72,
+			"part_name": "head",
+			"values": {
+				"ROT_Y": -3,
+				"ROT_Z": 1,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 54,
+			"part_name": "body",
+			"values": {
+				"ROT_Y": -5,
+				"ROT_Z": 1,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 18,
+			"part_name": "body",
+			"values": {
+				"ROT_Y": 5,
+				"ROT_Z": -1,
+				"TRANSITION": "easeinoutsine"
+			}
+		},
+		{
+			"position": 36,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_Y": 15,
+				"ROT_Z": 15,
+				"BEND_ANGLE_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 36,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_Y": -15,
+				"ROT_Z": 15,
+				"BEND_ANGLE_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 36,
+			"part_name": "left_front_leg",
+			"values": {
+				"ROT_Y": -15,
+				"ROT_Z": -15,
+				"BEND_ANGLE_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 36,
+			"part_name": "right_front_leg",
+			"values": {
+				"ROT_Y": 15,
+				"ROT_Z": -15,
+				"BEND_ANGLE_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 72,
+			"part_name": "right_front_leg",
+			"values": {
+				"ROT_X": -5,
+				"ROT_Y": 15,
+				"ROT_Z": 15,
+				"BEND_ANGLE_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 72,
+			"part_name": "left_front_leg",
+			"values": {
+				"ROT_Y": -15,
+				"ROT_Z": 15,
+				"BEND_ANGLE_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 72,
+			"part_name": "left_back_leg",
+			"values": {
+				"ROT_Y": -15,
+				"ROT_Z": -15,
+				"BEND_ANGLE_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 72,
+			"part_name": "right_back_leg",
+			"values": {
+				"ROT_Y": 15,
+				"ROT_Z": -15,
+				"BEND_ANGLE_X": 15,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+				"POS_X": 0,
+				"POS_Y": 0
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

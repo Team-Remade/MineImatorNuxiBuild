@@ -1,0 +1,125 @@
+{
+	"format": 24,
+	"is_model": true,
+	"tempo": 24,
+	"length": 17,
+	"keyframes": [
+		{
+			"position": 17,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 27.20558,
+				"BEND_ANGLE": 45.84375,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 17,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 27.20558,
+				"BEND_ANGLE": 45.84375,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "left_leg",
+			"values": {
+				"ROT_X": 36.01227,
+				"BEND_ANGLE": 45.84375,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 8,
+			"part_name": "right_leg",
+			"values": {
+				"ROT_X": 36.01227,
+				"BEND_ANGLE": 45.84375,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": 21,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 14,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": -21.54099,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "left_wing",
+			"values": {
+				"ROT_Y": 110.37683,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 5,
+			"part_name": "right_wing",
+			"values": {
+				"ROT_Y": -110.37683,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 17,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -15.37984,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 9,
+			"part_name": "head",
+			"values": {
+				"ROT_X": -23.5706,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 0,
+			"values": {
+			}
+		},
+		{
+			"position": 17,
+			"values": {
+			}
+		},
+		{
+			"position": 17,
+			"part_name": "body",
+			"values": {
+				"POS_Z": 4,
+				"ROT_X": 25.13123,
+				"TRANSITION": "easeinoutquad"
+			}
+		},
+		{
+			"position": 9,
+			"part_name": "body",
+			"values": {
+				"ROT_X": 25.13123,
+				"TRANSITION": "easeinoutquad"
+			}
+		}
+	],
+	"templates": [
+	],
+	"timelines": [
+	],
+	"resources": [
+	]
+}

@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\fish\\tropical_b.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\fish\\tropical_b.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

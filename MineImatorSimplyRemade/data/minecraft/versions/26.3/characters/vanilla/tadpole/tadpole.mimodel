@@ -1,0 +1,90 @@
+{
+  "name": "tadpole",
+  "texture": "..\\..\\..\\textures\\entity\\tadpole\\tadpole.png",
+  "texture_size": [
+    16,
+    16
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        1,
+        1
+      ],
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -1.5,
+            -1,
+            -1.5
+          ],
+          "to": [
+            1.5,
+            1,
+            1.5
+          ],
+          "uv": [
+            3,
+            3
+          ]
+        }
+      ],
+      "parts": [
+        {
+          "name": "tail",
+          "position": [
+            0,
+            0,
+            -1.5
+          ],
+          "bend": {
+            "offset": -3,
+            "end_offset": 3,
+            "part": "back",
+            "axis": "y"
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                0,
+                -1,
+                -6
+              ],
+              "to": [
+                0,
+                1,
+                1
+              ],
+              "uv": [
+                7,
+                7
+              ]
+            },
+            {
+              "type": "block",
+              "from": [
+                0,
+                -1,
+                -6
+              ],
+              "to": [
+                0,
+                1,
+                1
+              ],
+              "uv": [
+                7,
+                7
+              ],
+              "invert": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

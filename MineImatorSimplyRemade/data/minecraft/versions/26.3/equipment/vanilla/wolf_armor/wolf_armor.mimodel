@@ -1,0 +1,1640 @@
+{
+  "name": "wolf_armor",
+  "model_color": "#F9ABA6",
+  "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        10,
+        0
+      ],
+      "bend": {
+        "offset": 0,
+        "end_offset": 6,
+        "size": 6,
+        "part": "upper",
+        "axis": [
+          "x",
+          "y",
+          "z"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "from": [
+            -4,
+            0,
+            -4
+          ],
+          "to": [
+            4,
+            6,
+            3
+          ],
+          "uv": [
+            28,
+            7
+          ],
+          "inflate": 0.25,
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -4,
+            0,
+            -4
+          ],
+          "to": [
+            4,
+            6,
+            3
+          ],
+          "uv": [
+            28,
+            7
+          ],
+          "inflate": 0.25,
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "invert": true
+        },
+        {
+          "type": "block",
+          "from": [
+            -3,
+            -9,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            24,
+            20
+          ],
+          "inflate": 0.25,
+          "rotation": [
+            90,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "from": [
+            -3,
+            -9,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            24,
+            20
+          ],
+          "inflate": 0.25,
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "invert": true
+        },
+        {
+          "type": "block",
+          "description": "overlay",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "use_model_color": true,
+          "from": [
+            -4,
+            0,
+            -4
+          ],
+          "to": [
+            4,
+            6,
+            3
+          ],
+          "uv": [
+            28,
+            7
+          ],
+          "inflate": 0.25,
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "overlay",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "use_model_color": true,
+          "from": [
+            -4,
+            0,
+            -4
+          ],
+          "to": [
+            4,
+            6,
+            3
+          ],
+          "uv": [
+            28,
+            7
+          ],
+          "inflate": 0.25,
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "invert": true,
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "overlay",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "use_model_color": true,
+          "from": [
+            -3,
+            -9,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            24,
+            20
+          ],
+          "inflate": 0.25,
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "overlay",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "use_model_color": true,
+          "from": [
+            -3,
+            -9,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            24,
+            20
+          ],
+          "inflate": 0.25,
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "invert": true,
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "crack",
+          "from": [
+            -4,
+            0,
+            -4
+          ],
+          "to": [
+            4,
+            6,
+            3
+          ],
+          "uv": [
+            28,
+            7
+          ],
+          "inflate": 0.25,
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "crack",
+          "from": [
+            -4,
+            0,
+            -4
+          ],
+          "to": [
+            4,
+            6,
+            3
+          ],
+          "uv": [
+            28,
+            7
+          ],
+          "inflate": 0.25,
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "invert": true,
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "crack",
+          "from": [
+            -3,
+            -9,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            24,
+            20
+          ],
+          "inflate": 0.25,
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "visible": false
+        },
+        {
+          "type": "block",
+          "description": "crack",
+          "from": [
+            -3,
+            -9,
+            -3
+          ],
+          "to": [
+            3,
+            0,
+            3
+          ],
+          "uv": [
+            24,
+            20
+          ],
+          "inflate": 0.25,
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "invert": true,
+          "visible": false
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            0.5,
+            6
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -3,
+                -1
+              ],
+              "to": [
+                3,
+                3,
+                3
+              ],
+              "uv": [
+                4,
+                4
+              ],
+              "inflate": 0.25
+            },
+            {
+              "type": "block",
+              "from": [
+                -3,
+                -3,
+                -1
+              ],
+              "to": [
+                3,
+                3,
+                3
+              ],
+              "uv": [
+                4,
+                4
+              ],
+              "inflate": 0.25,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -2.999,
+                2
+              ],
+              "to": [
+                1.5,
+                0.001,
+                6
+              ],
+              "uv": [
+                4,
+                14
+              ],
+              "inflate": 0.25
+            },
+            {
+              "type": "block",
+              "from": [
+                -1.5,
+                -2.999,
+                2
+              ],
+              "to": [
+                1.5,
+                0.001,
+                6
+              ],
+              "uv": [
+                4,
+                14
+              ],
+              "inflate": 0.25,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                1,
+                3,
+                0
+              ],
+              "to": [
+                3,
+                5,
+                1
+              ],
+              "uv": [
+                17,
+                15
+              ],
+              "inflate": 0.25
+            },
+            {
+              "type": "block",
+              "from": [
+                1,
+                3,
+                0
+              ],
+              "to": [
+                3,
+                5,
+                1
+              ],
+              "uv": [
+                17,
+                15
+              ],
+              "inflate": 0.25,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "from": [
+                -3,
+                3,
+                0
+              ],
+              "to": [
+                -1,
+                5,
+                1
+              ],
+              "uv": [
+                17,
+                15
+              ],
+              "inflate": 0.25
+            },
+            {
+              "type": "block",
+              "from": [
+                -3,
+                3,
+                0
+              ],
+              "to": [
+                -1,
+                5,
+                1
+              ],
+              "uv": [
+                17,
+                15
+              ],
+              "inflate": 0.25,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -3,
+                -3,
+                -1
+              ],
+              "to": [
+                3,
+                3,
+                3
+              ],
+              "uv": [
+                4,
+                4
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -3,
+                -3,
+                -1
+              ],
+              "to": [
+                3,
+                3,
+                3
+              ],
+              "uv": [
+                4,
+                4
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -1.5,
+                -2.999,
+                2
+              ],
+              "to": [
+                1.5,
+                0.001,
+                6
+              ],
+              "uv": [
+                4,
+                14
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -1.5,
+                -2.999,
+                2
+              ],
+              "to": [
+                1.5,
+                0.001,
+                6
+              ],
+              "uv": [
+                4,
+                14
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                1,
+                3,
+                0
+              ],
+              "to": [
+                3,
+                5,
+                1
+              ],
+              "uv": [
+                17,
+                15
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                1,
+                3,
+                0
+              ],
+              "to": [
+                3,
+                5,
+                1
+              ],
+              "uv": [
+                17,
+                15
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -3,
+                3,
+                0
+              ],
+              "to": [
+                -1,
+                5,
+                1
+              ],
+              "uv": [
+                17,
+                15
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -3,
+                3,
+                0
+              ],
+              "to": [
+                -1,
+                5,
+                1
+              ],
+              "uv": [
+                17,
+                15
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -3,
+                -3,
+                -1
+              ],
+              "to": [
+                3,
+                3,
+                3
+              ],
+              "uv": [
+                4,
+                4
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -3,
+                -3,
+                -1
+              ],
+              "to": [
+                3,
+                3,
+                3
+              ],
+              "uv": [
+                4,
+                4
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -1.5,
+                -2.999,
+                2
+              ],
+              "to": [
+                1.5,
+                0.001,
+                6
+              ],
+              "uv": [
+                4,
+                14
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -1.5,
+                -2.999,
+                2
+              ],
+              "to": [
+                1.5,
+                0.001,
+                6
+              ],
+              "uv": [
+                4,
+                14
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                1,
+                3,
+                0
+              ],
+              "to": [
+                3,
+                5,
+                1
+              ],
+              "uv": [
+                17,
+                15
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                1,
+                3,
+                0
+              ],
+              "to": [
+                3,
+                5,
+                1
+              ],
+              "uv": [
+                17,
+                15
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -3,
+                3,
+                0
+              ],
+              "to": [
+                -1,
+                5,
+                1
+              ],
+              "uv": [
+                17,
+                15
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -3,
+                3,
+                0
+              ],
+              "to": [
+                -1,
+                5,
+                1
+              ],
+              "uv": [
+                17,
+                15
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "right_front_leg",
+          "position": [
+            -1.5,
+            -2,
+            4
+          ],
+          "bend": {
+            "offset": -4,
+            "end_offset": 4,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25
+            },
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "left_front_leg",
+          "position": [
+            1.5,
+            -2,
+            4
+          ],
+          "bend": {
+            "offset": -4,
+            "end_offset": 4,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25
+            },
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "right_back_leg",
+          "position": [
+            -1.5,
+            -2,
+            -7
+          ],
+          "lock_bend": 0,
+          "bend": {
+            "offset": -4,
+            "end_offset": 4,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25
+            },
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "left_back_leg",
+          "position": [
+            1.5,
+            -2,
+            -7
+          ],
+          "lock_bend": 0,
+          "bend": {
+            "offset": -4,
+            "end_offset": 4,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25
+            },
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                2,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            }
+          ]
+        },
+        {
+          "name": "tail",
+          "position": [
+            0,
+            2,
+            -8
+          ],
+          "rotation": [
+            45,
+            0,
+            0
+          ],
+          "lock_bend": 0,
+          "bend": {
+            "offset": -4,
+            "end_offset": 4,
+            "part": "lower",
+            "axis": [
+              "x",
+              "z"
+            ]
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                11,
+                20
+              ],
+              "inflate": 0.25
+            },
+            {
+              "type": "block",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                11,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                11,
+                20
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "overlay",
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\wolf_body\\armadillo_scute_overlay.png",
+              "texture_size": [
+                64,
+                32
+              ],
+              "use_model_color": true,
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                11,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                11,
+                20
+              ],
+              "inflate": 0.25,
+              "visible": false
+            },
+            {
+              "type": "block",
+              "description": "crack",
+              "from": [
+                -1,
+                -8,
+                -1
+              ],
+              "to": [
+                1,
+                0,
+                1
+              ],
+              "uv": [
+                11,
+                20
+              ],
+              "inflate": 0.25,
+              "invert": true,
+              "visible": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

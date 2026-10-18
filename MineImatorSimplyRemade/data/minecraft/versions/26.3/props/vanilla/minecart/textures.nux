@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\minecart\\minecart.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\minecart\\minecart.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

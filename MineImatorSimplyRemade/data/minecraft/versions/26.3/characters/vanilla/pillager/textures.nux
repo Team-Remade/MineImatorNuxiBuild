@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\illager\\pillager.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\illager\\pillager.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

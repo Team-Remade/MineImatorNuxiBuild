@@ -1,0 +1,13 @@
+{
+  "default": "..\\..\\..\\textures\\painting\\bouquet.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\painting\\bouquet.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

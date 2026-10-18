@@ -1,0 +1,73 @@
+{
+  "default": "..\\..\\..\\textures\\entity\\cushion\\red_cushion.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\red_cushion.png"
+    },
+    {
+      "name": "White",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\white_cushion.png"
+    },
+    {
+      "name": "Orange",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\orange_cushion.png"
+    },
+    {
+      "name": "Magenta",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\magenta_cushion.png"
+    },
+    {
+      "name": "Light Blue",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\light_blue_cushion.png"
+    },
+    {
+      "name": "Yellow",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\yellow_cushion.png"
+    },
+    {
+      "name": "Lime",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\lime_cushion.png"
+    },
+    {
+      "name": "Pink",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\pink_cushion.png"
+    },
+    {
+      "name": "Gray",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\gray_cushion.png"
+    },
+    {
+      "name": "Light Gray",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\light_gray_cushion.png"
+    },
+    {
+      "name": "Cyan",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\cyan_cushion.png"
+    },
+    {
+      "name": "Purple",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\purple_cushion.png"
+    },
+    {
+      "name": "Blue",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\blue_cushion.png"
+    },
+    {
+      "name": "Brown",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\brown_cushion.png"
+    },
+    {
+      "name": "Green",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\green_cushion.png"
+    },
+    {
+      "name": "Black",
+      "file": "..\\..\\..\\textures\\entity\\cushion\\black_cushion.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "default": "..\\..\\..\\textures\\block\\oak_hanging_sign.png",
+  "variants": [
+    {
+      "name": "Default",
+      "file": "..\\..\\..\\textures\\block\\oak_hanging_sign.png"
+    },
+    {
+      "name": "Spruce",
+      "file": "..\\..\\..\\textures\\block\\spruce_hanging_sign.png"
+    },
+    {
+      "name": "Birch",
+      "file": "..\\..\\..\\textures\\block\\birch_hanging_sign.png"
+    },
+    {
+      "name": "Jungle",
+      "file": "..\\..\\..\\textures\\block\\jungle_hanging_sign.png"
+    },
+    {
+      "name": "Acacia",
+      "file": "..\\..\\..\\textures\\block\\acacia_hanging_sign.png"
+    },
+    {
+      "name": "Dark Oak",
+      "file": "..\\..\\..\\textures\\block\\dark_oak_hanging_sign.png"
+    },
+    {
+      "name": "Mangrove",
+      "file": "..\\..\\..\\textures\\block\\mangrove_hanging_sign.png"
+    },
+    {
+      "name": "Cherry",
+      "file": "..\\..\\..\\textures\\block\\cherry_hanging_sign.png"
+    },
+    {
+      "name": "Pale Oak",
+      "file": "..\\..\\..\\textures\\block\\pale_oak_hanging_sign.png"
+    },
+    {
+      "name": "Poplar",
+      "file": "..\\..\\..\\textures\\block\\poplar_hanging_sign.png"
+    },
+    {
+      "name": "Bamboo",
+      "file": "..\\..\\..\\textures\\block\\bamboo_hanging_sign.png"
+    },
+    {
+      "name": "Crimson",
+      "file": "..\\..\\..\\textures\\block\\crimson_hanging_sign.png"
+    },
+    {
+      "name": "Warped",
+      "file": "..\\..\\..\\textures\\block\\warped_hanging_sign.png"
+    },
+    {
+      "name": "Custom",
+      "custom": true
+    }
+  ]
+}
