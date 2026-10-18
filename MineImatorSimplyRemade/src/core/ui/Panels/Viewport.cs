@@ -206,6 +206,13 @@ public class Viewport : UiPanel
     private Shader? _indirectDenoiseShader;
     private Shader? _glowShader;
     private Shader? _filmGrainShader;
+    private Shader? _depthOfFieldShader;
+    private CameraSceneObject? _focusCamera;
+    private CameraEffect? _focusEffect;
+    private DepthOfFieldFocusTarget _focusTarget;
+    private Vector2? _focusPoint;
+    private Viewport? _focusSource;
+    public string DepthOfFieldFocusMessage { get; private set; } = "";
     private uint _indirectFbo;
     private uint _indirectTex;
     private uint _indirectPingFbo;
@@ -746,6 +753,8 @@ public class Viewport : UiPanel
         _glowShader.CompileShader("edge.vert", "glow.frag");
         _filmGrainShader = new Shader(Gl);
         _filmGrainShader.CompileShader("edge.vert", "film_grain.frag");
+        _depthOfFieldShader = new Shader(Gl);
+        _depthOfFieldShader.CompileShader("edge.vert", "depth_of_field.frag");
 
         // ── Background quad shader + geometry ───────────────────────────────
         InitBackgroundRenderer();
@@ -2786,8 +2795,12 @@ public class Viewport : UiPanel
         if (renderMode == SceneRenderMode.Rendered)
             ApplyGlowPassGeneric(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, PropertiesPanel, _renderedPassMode);
 
+        ResolveDepthOfFieldFocus(_fbo, w, h, renderNear, renderFar, activeCamObj);
         if (renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
+        {
+            ApplyDepthOfFieldPass(_fbo, _colorTex, _depthTex, _glowFbo, _glowTex, w, h, renderNear, renderFar, activeCamObj);
             ApplyFilmGrainPass(_fbo, _colorTex, _glowFbo, _glowTex, w, h, activeCamObj);
+        }
 
         if (OverlaysEnabled)
         {
@@ -4998,6 +5011,11 @@ public class Viewport : UiPanel
             _filmGrainShader = new Shader(Gl);
             _filmGrainShader.CompileShader("edge.vert", "film_grain.frag");
         }
+        if (_depthOfFieldShader == null)
+        {
+            _depthOfFieldShader = new Shader(Gl);
+            _depthOfFieldShader.CompileShader("edge.vert", "depth_of_field.frag");
+        }
 
         InitGlowResources(ref _previewIndirectFbo, ref _previewIndirectTex, width, height, "Preview indirect");
         InitGlowResources(ref _previewIndirectPingFbo, ref _previewIndirectPingTex, width, height, "Preview indirect ping");
@@ -5271,6 +5289,157 @@ public class Viewport : UiPanel
         float harmonic2 = 0.5f * MathF.Sin(phase * 2.13f + 1.37f + seed * 0.7f);
         float harmonic3 = 0.25f * MathF.Sin(phase * 4.37f + 2.51f + seed * 1.3f);
         return (harmonic1 + harmonic2 + harmonic3) / 1.75f;
+    }
+
+    public void RequestDepthOfFieldFocus(CameraSceneObject camera, CameraEffect effect, DepthOfFieldFocusTarget target)
+    {
+        _focusCamera = camera;
+        _focusEffect = effect;
+        _focusTarget = target;
+        _focusPoint = null;
+        _focusSource = null;
+        DepthOfFieldFocusMessage = target == DepthOfFieldFocusTarget.PickPoint
+            ? "Click in a viewport showing this camera (Escape to cancel)."
+            : "Waiting for this camera to render. Foreground/background selects the nearest/farthest visible surface.";
+    }
+
+    public bool IsDepthOfFieldFocusPending(CameraSceneObject camera, CameraEffect effect) =>
+        ReferenceEquals(camera, _focusCamera) && ReferenceEquals(effect, _focusEffect);
+
+    public void CancelDepthOfFieldFocus()
+    {
+        _focusCamera = null;
+        _focusEffect = null;
+        _focusSource = null;
+        _focusPoint = null;
+        DepthOfFieldFocusMessage = "";
+    }
+
+    private bool HandleDepthOfFieldFocusInput(CameraSceneObject? camera, bool hovered, Vector2 imageMin, Vector2 imageSize)
+    {
+        var owner = MainViewport ?? this;
+        if (owner._focusEffect == null) return false;
+        if (ImGui.IsKeyPressed(ImGuiKey.Escape))
+        {
+            owner.CancelDepthOfFieldFocus();
+            return false;
+        }
+        if (owner._focusTarget != DepthOfFieldFocusTarget.PickPoint ||
+            !ReferenceEquals(owner._focusCamera, camera) || !hovered)
+            return false;
+        Vector2 point = ImGui.GetMousePos() - imageMin;
+        if (imageSize.X <= 0 || imageSize.Y <= 0 ||
+            point.X < 0 || point.Y < 0 || point.X >= imageSize.X || point.Y >= imageSize.Y)
+            return false;
+        ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+        if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        {
+            owner._focusPoint = point / imageSize;
+            owner._focusSource = this;
+        }
+        return true;
+    }
+
+    private unsafe void ResolveDepthOfFieldFocus(uint framebuffer, uint width, uint height, float near, float far,
+        CameraSceneObject? camera)
+    {
+        var owner = MainViewport ?? this;
+        var effect = owner._focusEffect;
+        if (Gl == null || effect == null || camera == null || !ReferenceEquals(owner._focusCamera, camera))
+            return;
+        if (!camera.Effects.Contains(effect))
+        {
+            owner.CancelDepthOfFieldFocus();
+            return;
+        }
+        if (owner._focusTarget == DepthOfFieldFocusTarget.PickPoint &&
+            (!owner._focusPoint.HasValue || !ReferenceEquals(owner._focusSource, this)))
+            return;
+
+        Gl.BindFramebuffer(GLEnum.ReadFramebuffer, framebuffer);
+        float depth;
+        if (owner._focusTarget == DepthOfFieldFocusTarget.PickPoint)
+        {
+            Vector2 point = owner._focusPoint!.Value;
+            int x = Math.Clamp((int)(point.X * width), 0, (int)width - 1);
+            int y = Math.Clamp((int)((1f - point.Y) * height), 0, (int)height - 1);
+            Gl.ReadPixels(x, y, 1, 1, GLEnum.DepthComponent, GLEnum.Float, &depth);
+        }
+        else
+        {
+            // One readback per button press, never a per-frame autofocus stall.
+            float[] depths = new float[checked((int)(width * height))];
+            fixed (float* pixels = depths)
+                Gl.ReadPixels(0, 0, width, height, GLEnum.DepthComponent, GLEnum.Float, pixels);
+            bool foreground = owner._focusTarget == DepthOfFieldFocusTarget.Foreground;
+            depth = foreground ? 1f : -1f;
+            foreach (float sample in depths)
+                if (sample >= 0f && sample < 1f)
+                    depth = foreground ? MathF.Min(depth, sample) : MathF.Max(depth, sample);
+            if (depth < 0f || depth >= 1f)
+            {
+                owner.CancelDepthOfFieldFocus();
+                owner.DepthOfFieldFocusMessage = "No visible surface found. View this camera's scene and try again.";
+                return;
+            }
+        }
+
+        effect.DepthOfField.Depth = DepthOfFieldSettings.LinearizeDepth(depth, near, far);
+        int index = camera.Effects.IndexOf(effect);
+        Timeline.Instance?.RecordAutoKeyframe(camera, $"camera.effect.{index}.depth_of_field.depth");
+        ProjectManager.Instance.SetDirty(true);
+        owner.CancelDepthOfFieldFocus();
+    }
+
+    private void ApplyDepthOfFieldPass(uint sceneFbo, uint sceneTexture, uint depthTexture,
+        uint scratchFbo, uint scratchTexture, uint width, uint height, float near, float far,
+        CameraSceneObject? camera)
+    {
+        if (Gl == null || _depthOfFieldShader == null || camera == null || width == 0 || height == 0)
+            return;
+        foreach (var effect in camera.Effects)
+        {
+            if (effect.Type != CameraEffectType.DepthOfField || effect.DepthOfField.BlurSize <= 0f)
+                continue;
+            var settings = effect.DepthOfField;
+            Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
+            Gl.BindFramebuffer(GLEnum.DrawFramebuffer, scratchFbo);
+            Gl.BlitFramebuffer(0, 0, (int)width, (int)height, 0, 0, (int)width, (int)height,
+                ClearBufferMask.ColorBufferBit, GLEnum.Nearest);
+            Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
+            // Sampling an attached depth texture is undefined even with depth testing disabled.
+            Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.DepthAttachment, GLEnum.Texture2D, 0, 0);
+            Gl.Disable(GLEnum.DepthTest);
+            Gl.Disable(GLEnum.CullFace);
+            Gl.Disable(GLEnum.Blend);
+            Gl.Viewport(0, 0, width, height);
+            Gl.UseProgram(_depthOfFieldShader.ShaderProgram);
+            Gl.ActiveTexture(GLEnum.Texture0);
+            Gl.BindTexture(GLEnum.Texture2D, scratchTexture);
+            Gl.Uniform1(_depthOfFieldShader.GetUniformLocation("uScene"), 0);
+            Gl.ActiveTexture(GLEnum.Texture1);
+            Gl.BindTexture(GLEnum.Texture2D, depthTexture);
+            Gl.Uniform1(_depthOfFieldShader.GetUniformLocation("uDepth"), 1);
+            Gl.Uniform2(_depthOfFieldShader.GetUniformLocation("uResolution"), (float)width, (float)height);
+            Gl.Uniform2(_depthOfFieldShader.GetUniformLocation("uClip"), near, far);
+            Gl.Uniform4(_depthOfFieldShader.GetUniformLocation("uFocus"), MathF.Max(0f, settings.Depth),
+                MathF.Max(0f, settings.FocusRange), MathF.Max(0f, settings.FadeSize), Math.Clamp(settings.BlurSize, 0f, 100f));
+            Gl.Uniform4(_depthOfFieldShader.GetUniformLocation("uBokeh"), Math.Clamp(settings.AnamorphicRatio, 0.1f, 10f),
+                Math.Clamp(settings.EdgeHighlight, 0f, 1f), Math.Clamp(settings.HighlightThreshold, 0f, 1f),
+                Math.Clamp(settings.HighlightStrength, 0f, 10f));
+            Gl.Uniform1(_depthOfFieldShader.GetUniformLocation("uColorFringe"), settings.ColorFringe ? 1 : 0);
+            Gl.Uniform3(_depthOfFieldShader.GetUniformLocation("uFringeAngles"), settings.RedAngle, settings.GreenAngle, settings.BlueAngle);
+            Gl.Uniform3(_depthOfFieldShader.GetUniformLocation("uFringeOffsets"), settings.RedOffset, settings.GreenOffset, settings.BlueOffset);
+            Gl.BindVertexArray(_edgeVao);
+            Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+            Gl.BindVertexArray(0);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+            Gl.ActiveTexture(GLEnum.Texture0);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+            Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.DepthAttachment, GLEnum.Texture2D, depthTexture, 0);
+            Gl.Enable(GLEnum.DepthTest);
+            Gl.Enable(GLEnum.CullFace);
+        }
     }
 
     private void ApplyFilmGrainPass(uint sceneFbo, uint sceneTexture, uint scratchFbo, uint scratchTexture,
@@ -5932,9 +6101,15 @@ public class Viewport : UiPanel
 
         // Live camera textures must include their camera's post effects even
         // when the preview viewport itself is in a shaded/unrendered mode.
+        if (!applyCameraEffects && !highQuality)
+            ResolveDepthOfFieldFocus(_previewFbo, w, h, renderCamera.Near, renderCamera.Far, sceneObj);
         if ((renderMode == SceneRenderMode.Rendered || applyCameraEffects) &&
             effectivePassMode == RenderedPassMode.Combined)
+        {
+            ApplyDepthOfFieldPass(_previewFbo, _previewColorTex, _previewDepthTex, _previewGlowFbo, _previewGlowTex,
+                w, h, renderCamera.Near, renderCamera.Far, sceneObj);
             ApplyFilmGrainPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
+        }
 
         if (OverlaysEnabled)
         {
@@ -5986,6 +6161,13 @@ public class Viewport : UiPanel
 
     public unsafe void HandleFreeFlyPublic(Camera cam, CameraSceneObject? sceneObj, bool hovered, Vector2 imageMin, Vector2 imageSize)
     {
+        if (HandleDepthOfFieldFocusInput(sceneObj, hovered, imageMin, imageSize))
+        {
+            _previewInput.ClearPendingPick();
+            _pendingPreviewPickX = float.NaN;
+            _pendingPreviewPickY = float.NaN;
+            return;
+        }
         // Allow input to continue while free-fly is active even if the ImGui
         // window hover state changes (the OS cursor is locked by GLFW so the real
         // cursor never moved — only the internal ImGui position drifts).
@@ -6171,6 +6353,13 @@ public class Viewport : UiPanel
 
     private unsafe void HandleCameraInput(Vector2 imageMin, Vector2 imageSize, Camera camera, CameraSceneObject? sceneObj)
     {
+        if (HandleDepthOfFieldFocusInput(sceneObj, ImGui.IsWindowHovered(), imageMin, imageSize))
+        {
+            _input.ClearPendingPick();
+            _pendingPickX = float.NaN;
+            _pendingPickY = float.NaN;
+            return;
+        }
         // Allow input to continue while free-fly is active even if the ImGui
         // mouse position has drifted outside the panel (the OS cursor is locked
         // by GLFW so the real cursor never moved — only the internal position).

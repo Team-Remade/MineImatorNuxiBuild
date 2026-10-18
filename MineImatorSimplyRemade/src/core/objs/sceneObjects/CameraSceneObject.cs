@@ -107,6 +107,9 @@ public class CameraSceneObject : SceneObject
                     FilmGrain = new FilmGrainSettings()
                 });
                 break;
+            case CameraEffectType.DepthOfField:
+                Effects.Add(new CameraEffect { Type = CameraEffectType.DepthOfField });
+                break;
         }
     }
 
@@ -115,6 +118,7 @@ public class CameraSceneObject : SceneObject
         return new CameraEffect
         {
             Type = source.Type,
+            DepthOfField = source.DepthOfField.Clone(),
             Shake = new CameraShakeSettings
             {
                 Mode = source.Shake.Mode,

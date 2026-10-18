@@ -288,7 +288,7 @@ public class PropertiesPanel : UiPanel
     // Scale link toggle
     private bool _linkScale = true;
     private int _cameraEffectToAddIndex;
-    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain" };
+    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field" };
     private static readonly string[] CameraShakeModeOptions = { "Rotational", "Positional", "Both" };
 
     // ── Right-click keyframe context menu ──────────────────────────────────
@@ -1027,6 +1027,7 @@ public class PropertiesPanel : UiPanel
                 .Select(effect => new ProjectCameraEffectEntry
                 {
                     Type = effect.Type,
+                    DepthOfField = effect.DepthOfField.Clone(),
                     Shake = new ProjectCameraShakeSettings
                     {
                         Mode = effect.Shake.Mode,
@@ -4189,6 +4190,7 @@ public class PropertiesPanel : UiPanel
                         {
                             CameraEffectType.CameraShake => $"Camera Shake##cameraEffect{i}",
                             CameraEffectType.FilmGrain => $"Film Grain##cameraEffect{i}",
+                            CameraEffectType.DepthOfField => $"Depth of Field##cameraEffect{i}",
                             _ => $"Effect {i + 1}##cameraEffect{i}"
                         };
 
@@ -4327,6 +4329,63 @@ public class PropertiesPanel : UiPanel
                                     changed = true;
                                 }
                                 if (changed) ProjectManager.Instance.SetDirty(true);
+                            }
+
+                            if (effect.Type == CameraEffectType.DepthOfField)
+                            {
+                                ImGui.PushID(i);
+                                string basePath = $"camera.effect.{i}.depth_of_field";
+                                if (ImGui.Button("Focus Foreground"))
+                                    Viewport?.RequestDepthOfFieldFocus(cameraObject, effect, DepthOfFieldFocusTarget.Foreground);
+                                ImGui.SameLine();
+                                if (ImGui.Button("Focus Background"))
+                                    Viewport?.RequestDepthOfFieldFocus(cameraObject, effect, DepthOfFieldFocusTarget.Background);
+                                if (ImGui.Button("Pick Focus Point"))
+                                    Viewport?.RequestDepthOfFieldFocus(cameraObject, effect, DepthOfFieldFocusTarget.PickPoint);
+                                if (Viewport?.IsDepthOfFieldFocusPending(cameraObject, effect) == true)
+                                {
+                                    if (ImGui.Button("Cancel Focus Selection"))
+                                        Viewport.CancelDepthOfFieldFocus();
+                                }
+                                if (!string.IsNullOrEmpty(Viewport?.DepthOfFieldFocusMessage))
+                                    ImGui.TextWrapped(Viewport.DepthOfFieldFocusMessage);
+
+                                foreach (var control in DepthOfFieldSettings.Controls)
+                                {
+                                    float value = effect.DepthOfField.GetValue(control.Key);
+                                    bool changed;
+                                    if (control.Key == "color_fringe")
+                                    {
+                                        bool enabled = effect.DepthOfField.ColorFringe;
+                                        changed = ImGui.Checkbox(control.Label, ref enabled);
+                                        value = enabled ? 1f : 0f;
+                                    }
+                                    else if (control.Key is "depth" or "focus_range" or "fade_size")
+                                        changed = ImGui.DragFloat(control.Label, ref value, 0.05f, control.Min, control.Max, "%.3f", ImGuiSliderFlags.AlwaysClamp);
+                                    else
+                                        changed = ImGui.SliderFloat(control.Label, ref value, control.Min, control.Max, "%.2f", ImGuiSliderFlags.AlwaysClamp);
+
+                                    if (changed)
+                                    {
+                                        effect.DepthOfField.SetValue(control.Key, value);
+                                        Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.{control.Key}");
+                                        ProjectManager.Instance.SetDirty(true);
+                                    }
+                                    if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                                    {
+                                        _ctxPropertyPath = $"{basePath}.{control.Key}";
+                                        _ctxMenuPos = ImGui.GetMousePos();
+                                        _openPropContextMenu = true;
+                                    }
+                                }
+                                if (ImGui.Button("Reset Depth of Field"))
+                                {
+                                    effect.DepthOfField = new DepthOfFieldSettings();
+                                    foreach (var control in DepthOfFieldSettings.Controls)
+                                        Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.{control.Key}");
+                                    ProjectManager.Instance.SetDirty(true);
+                                }
+                                ImGui.PopID();
                             }
 
                             ImGui.TreePop();

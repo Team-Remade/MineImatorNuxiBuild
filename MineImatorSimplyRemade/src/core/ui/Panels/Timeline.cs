@@ -2510,6 +2510,12 @@ public class Timeline : UiPanel
     {
         for (int i = 0; i < cam.Effects.Count; i++)
         {
+            if (cam.Effects[i].Type == CameraEffectType.DepthOfField)
+            {
+                foreach (var control in DepthOfFieldSettings.Controls)
+                    yield return $"camera.effect.{i}.depth_of_field.{control.Key}";
+                continue;
+            }
             if (cam.Effects[i].Type == CameraEffectType.FilmGrain)
             {
                 string grainPath = $"camera.effect.{i}.film_grain";
@@ -2850,6 +2856,8 @@ public class Timeline : UiPanel
                  effectIndex >= 0 && effectIndex < camFx.Effects.Count)
         {
             var effect = camFx.Effects[effectIndex];
+            if (effect.Type == CameraEffectType.DepthOfField && parts.Length == 5 && parts[3] == "depth_of_field")
+                return effect.DepthOfField.GetValue(parts[4]);
             if (effect.Type == CameraEffectType.CameraShake && parts[3] == "shake")
             {
                 if (parts.Length == 5 && parts[4] == "mode")
@@ -3232,6 +3240,15 @@ public class Timeline : UiPanel
                 if (c != obj.TextMeshOutlineColor) { obj.TextMeshOutlineColor = c; TextMeshFactory.Rebuild(obj); }
                 break;
             }
+            case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "depth_of_field" && obj is CameraSceneObject camDof:
+            {
+                if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camDof.Effects.Count)
+                    break;
+                var effect = camDof.Effects[effectIndex];
+                if (effect.Type == CameraEffectType.DepthOfField)
+                    effect.DepthOfField.SetValue(parts[4], value);
+                break;
+            }
             case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "film_grain" && obj is CameraSceneObject camGrain:
             {
                 if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camGrain.Effects.Count)
@@ -3446,6 +3463,17 @@ public class Timeline : UiPanel
                     for (int i = 0; i < cameraObj.Effects.Count; i++)
                     {
                         var effect = cameraObj.Effects[i];
+                        if (effect.Type == CameraEffectType.DepthOfField)
+                        {
+                            string baseDofPath = $"camera.effect.{i}.depth_of_field";
+                            string[] paths = DepthOfFieldSettings.Controls.Select(c => $"{baseDofPath}.{c.Key}").ToArray();
+                            if (!paths.Any(propsWithKeyframes.Contains)) continue;
+                            newRows.Add(MakeGroup(obj, $"Effect {i + 1}: Depth of Field", paths, $"camera.effect.{i}"));
+                            foreach (var control in DepthOfFieldSettings.Controls)
+                                if (propsWithKeyframes.Contains($"{baseDofPath}.{control.Key}"))
+                                    newRows.Add(MakeSingle(obj, control.Label, $"{baseDofPath}.{control.Key}", 1));
+                            continue;
+                        }
                         if (effect.Type == CameraEffectType.FilmGrain)
                         {
                             string grainPath = $"camera.effect.{i}.film_grain";
@@ -3639,6 +3667,15 @@ public class Timeline : UiPanel
             for (int i = 0; i < cameraObj.Effects.Count; i++)
             {
                 var effect = cameraObj.Effects[i];
+                if (effect.Type == CameraEffectType.DepthOfField)
+                {
+                    string baseDofPath = $"camera.effect.{i}.depth_of_field";
+                    string[] paths = DepthOfFieldSettings.Controls.Select(c => $"{baseDofPath}.{c.Key}").ToArray();
+                    _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Depth of Field", paths, $"camera.effect.{i}"));
+                    foreach (var control in DepthOfFieldSettings.Controls)
+                        _displayRows.Add(MakeSingle(obj, control.Label, $"{baseDofPath}.{control.Key}", 1));
+                    continue;
+                }
                 if (effect.Type == CameraEffectType.FilmGrain)
                 {
                     string grainPath = $"camera.effect.{i}.film_grain";

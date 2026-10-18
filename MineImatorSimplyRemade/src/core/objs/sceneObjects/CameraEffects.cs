@@ -5,7 +5,8 @@ namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 public enum CameraEffectType
 {
     CameraShake = 0,
-    FilmGrain = 1
+    FilmGrain = 1,
+    DepthOfField = 2
 }
 
 public class FilmGrainSettings
@@ -44,4 +45,5 @@ public class CameraEffect
     public CameraEffectType Type = CameraEffectType.CameraShake;
     public CameraShakeSettings Shake = new CameraShakeSettings();
     public FilmGrainSettings FilmGrain = new FilmGrainSettings();
+    public DepthOfFieldSettings DepthOfField = new();
 }

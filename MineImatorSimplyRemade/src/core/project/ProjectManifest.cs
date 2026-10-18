@@ -474,6 +474,7 @@ public class ProjectCameraEffectEntry
     public CameraEffectType Type { get; set; } = CameraEffectType.CameraShake;
     public ProjectCameraShakeSettings Shake { get; set; } = new();
     public ProjectFilmGrainSettings FilmGrain { get; set; } = new();
+    public DepthOfFieldSettings DepthOfField { get; set; } = new();
 }
 
 public class ProjectFilmGrainSettings
