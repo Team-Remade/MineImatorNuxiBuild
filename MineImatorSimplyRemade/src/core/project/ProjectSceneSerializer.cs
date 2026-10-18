@@ -176,6 +176,7 @@ public static class ProjectSceneSerializer
             InheritPivotOffset = obj.InheritPivotOffset,
             InheritVisibility = obj.InheritVisibility,
             ObjectVisible = obj.ObjectVisible,
+            CastShadow = obj.CastShadow,
             InvertFaces = obj.InvertFaces,
             BlurTexture = obj.BlurTexture,
             TextureMipmaps = obj.TextureMipmaps,
@@ -185,6 +186,7 @@ public static class ProjectSceneSerializer
             RenderInLowQuality = obj.RenderInLowQuality,
             RenderDepthOffset = obj.RenderDepthOffset,
             IsSelectable = obj.IsSelectable,
+            IsLocked = obj.IsLocked,
             HideInSceneTree = obj.HideInSceneTree,
             HasMaterialOverrides = obj.HasExplicitMaterialSettings,
             TileX = obj.GetEffectiveTileX(),
@@ -567,6 +569,7 @@ public static class ProjectSceneSerializer
         obj.InheritPivotOffset = entry.InheritPivotOffset;
         obj.InheritVisibility = entry.InheritVisibility;
         obj.ObjectVisible = entry.ObjectVisible;
+        obj.CastShadow = entry.CastShadow;
         obj.InvertFaces = entry.InvertFaces;
         obj.BlurTexture = entry.BlurTexture;
         obj.TextureMipmaps = entry.TextureMipmaps;
@@ -576,6 +579,7 @@ public static class ProjectSceneSerializer
         obj.RenderInLowQuality = entry.RenderInLowQuality;
         obj.RenderDepthOffset = entry.RenderDepthOffset;
         obj.IsSelectable = entry.IsSelectable;
+        obj.IsLocked = entry.IsLocked;
         obj.HideInSceneTree = entry.HideInSceneTree;
 
         obj.TileX = entry.TileX;
@@ -778,6 +782,7 @@ public static class ProjectSceneSerializer
         return new ProjectCameraEffectEntry
         {
             Type = effect.Type,
+            DepthOfField = effect.DepthOfField.Clone(),
             Shake = new ProjectCameraShakeSettings
             {
                 Mode = effect.Shake.Mode,
@@ -800,6 +805,7 @@ public static class ProjectSceneSerializer
         return new CameraEffect
         {
             Type = effect.Type,
+            DepthOfField = effect.DepthOfField?.Clone() ?? new DepthOfFieldSettings(),
             Shake = new CameraShakeSettings
             {
                 Mode = effect.Shake?.Mode ?? CameraShakeMode.Both,

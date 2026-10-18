@@ -5,6 +5,7 @@ using System.IO;
 using System.Numerics;
 using System.Reflection;
 using System.Xml.Linq;
+using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.core;
 
@@ -16,6 +17,25 @@ namespace MineImatorSimplyRemade.core;
 /// </summary>
 public static class SvgLoader
 {
+    public static unsafe uint LoadTexture(GL gl, string resourceName, int size = 20)
+    {
+        SvgImage image = LoadEmbedded(resourceName, size);
+        uint texture = gl.GenTexture();
+        gl.BindTexture(GLEnum.Texture2D, texture);
+        fixed (byte* pixels = image.Data)
+        {
+            gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8,
+                (uint)image.Width, (uint)image.Height, 0,
+                PixelFormat.Rgba, GLEnum.UnsignedByte, pixels);
+        }
+        gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
+        gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
+        gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+        gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+        gl.BindTexture(GLEnum.Texture2D, 0);
+        return texture;
+    }
+
     public struct SvgImage
     {
         /// <summary>RGBA bytes, row-major, row 0 = top of image.</summary>

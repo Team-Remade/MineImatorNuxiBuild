@@ -6,12 +6,13 @@
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <Version>0.2.1</Version>
-        <AssemblyVersion>0.2.1.0</AssemblyVersion>
-        <FileVersion>0.2.1.0</FileVersion>
-        <InformationalVersion>v0.2.1</InformationalVersion>
+        <Version>0.3.0</Version>
+        <AssemblyVersion>0.3.0.0</AssemblyVersion>
+        <FileVersion>0.3.0.0</FileVersion>
+        <InformationalVersion>v0.3.0</InformationalVersion>
         <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
         <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+        <DefaultItemExcludes>$(DefaultItemExcludes);tools/**</DefaultItemExcludes>
         <!-- Third-party NativeAOT/single-file warnings from Silk.NET and FFMpegCore. -->
         <!-- NU1701: Package compatibility warnings for packages targeting older frameworks. -->
         <!-- Nullable reference type warnings (CS8600-CS8629): Architecture uses nullable patterns throughout. -->
@@ -41,27 +42,26 @@
       <PackageReference Include="Silk.NET.Vulkan" Version="2.23.0" />
       <PackageReference Include="StbImageSharp" Version="2.30.15" />
       <PackageReference Include="StbTrueTypeSharp" Version="1.26.13" />
+      <PackageReference Include="Veldrid" Version="4.9.0" />
+      <PackageReference Include="Veldrid.SPIRV" Version="1.0.15" />
+      <PackageReference Include="Veldrid.StartupUtilities" Version="4.9.0" />
     </ItemGroup>
     
     <ItemGroup>
         <EmbeddedResource Include="assets\**" />
     </ItemGroup>
 
-    <ItemGroup Condition="'$(OS)' == 'Windows_NT' Or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">
-        <None Remove="nfd.dll" />
-        <EmbeddedResource Include="nfd.dll" />
-        <None Remove="ImGuiImplGLFW.dll" />
-        <EmbeddedResource Include="ImGuiImplGLFW.dll" />
-        <None Remove="ImGuiImpl.dll" />
-        <EmbeddedResource Include="ImGuiImpl.dll" />
-        <None Remove="glfw3.dll" />
-        <EmbeddedResource Include="glfw3.dll" />
-        <None Remove="cimgui.dll" />
-        <EmbeddedResource Include="cimgui.dll" />
-        <None Remove="Assimp64.dll" />
-        <EmbeddedResource Include="Assimp64.dll" />
-        <None Remove="OpenAL32.dll" />
-        <EmbeddedResource Include="OpenAL32.dll" />
+    <PropertyGroup>
+        <IsPublishing Condition="'$(_IsPublishing)' == 'true' Or '$(DeployOnBuild)' == 'true' Or '$(PublishProtocol)' != '' Or '$(PublishProfile)' != '' Or '$(RuntimeIdentifier)' != '' Or '$(BuildingForPublish)' == 'true' Or $([System.String]::Copy('$(MSBuildTargets)').Contains('Publish')) Or $([System.String]::Copy('$(Target)').Contains('Publish'))">true</IsPublishing>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(IsPublishing)' == 'true'">
+        <DanglingDllFiles Include="$(MSBuildProjectDirectory)\*.dll" />
+        <EmbeddedResource Include="@(DanglingDllFiles)" LogicalName="%(Filename)%(Extension)" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(IsPublishing)' != 'true'">
+        <None Include="$(MSBuildProjectDirectory)\*.dll" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <ItemGroup>
@@ -74,7 +74,7 @@
         </ItemGroup>
         <Copy SourceFiles="@(DataFiles)" DestinationFolder="$(OutputPath)data\%(RecursiveDir)" />
     </Target>
-    <Target Name="CopyDataFolderPublish" AfterTargets="_CopyResolvedFilesToPublishAlways;_CopyResolvedFilesToPublishPreserveNewest">
+    <Target Name="CopyDataFolderPublish" AfterTargets="_CopyResolvedFilesToPublishAlways;_CopyResolvedFilesToPublishPreserveNewest;Publish;FileSystemPublish">
         <ItemGroup>
             <DataFiles Include="$(MSBuildProjectDirectory)\data\**\*" />
         </ItemGroup>
@@ -92,7 +92,7 @@
         <Delete Files="@(CopiedModGitkeepFiles)" />
     </Target>
 
-    <Target Name="CopyModsFolderPublish" AfterTargets="_CopyResolvedFilesToPublishAlways;_CopyResolvedFilesToPublishPreserveNewest">
+    <Target Name="CopyModsFolderPublish" AfterTargets="_CopyResolvedFilesToPublishAlways;_CopyResolvedFilesToPublishPreserveNewest;Publish;FileSystemPublish">
         <ItemGroup>
             <ModFiles Include="$(MSBuildProjectDirectory)\mods\**\*" />
         </ItemGroup>
@@ -103,17 +103,12 @@
         <Delete Files="@(PublishedModGitkeepFiles)" />
     </Target>
 
-    <Target Name="RemoveWindowsNativeLibrariesFromPublish" AfterTargets="_CopyResolvedFilesToPublishAlways;_CopyResolvedFilesToPublishPreserveNewest" Condition="'$(OS)' == 'Windows_NT' Or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">
+    <Target Name="RemoveDanglingDllsFromPublish" AfterTargets="_CopyResolvedFilesToPublishAlways;_CopyResolvedFilesToPublishPreserveNewest;Publish;PublishOnly;_PublishNoBuild;FileSystemPublish">
         <ItemGroup>
-            <PublishedNativeLibraries Include="$(PublishDir)cimgui.dll" />
-            <PublishedNativeLibraries Include="$(PublishDir)glfw3.dll" />
-            <PublishedNativeLibraries Include="$(PublishDir)ImGuiImplGLFW.dll" />
-            <PublishedNativeLibraries Include="$(PublishDir)ImGuiImpl.dll" />
-            <PublishedNativeLibraries Include="$(PublishDir)Assimp64.dll" />
-            <PublishedNativeLibraries Include="$(PublishDir)nfd.dll" />
-            <PublishedNativeLibraries Include="$(PublishDir)OpenAL32.dll" />
+            <PublishedDanglingDlls Include="$(PublishDir)*.dll" Exclude="$(PublishDir)$(TargetName).dll" Condition="'$(PublishAot)' != 'true'" />
+            <PublishedDanglingDlls Include="$(PublishDir)*.dll" Condition="'$(PublishAot)' == 'true'" />
         </ItemGroup>
-        <Delete Files="@(PublishedNativeLibraries)" />
+        <Delete Files="@(PublishedDanglingDlls)" />
     </Target>
 
 </Project>

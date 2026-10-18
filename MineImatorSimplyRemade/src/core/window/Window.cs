@@ -9,6 +9,7 @@ using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
 using StbImageSharp;
 using Monitor = Silk.NET.GLFW.Monitor;
+using MineImatorSimplyRemade.core.ui;
 
 namespace MineImatorSimplyRemade.core.window;
 
@@ -180,9 +181,8 @@ public class Window : IDisposable
             : null;
         io.IniFilename = _iniFilenameBuffer;
 
-        io.Fonts.AddFontDefault();
-        
-        ImGui.StyleColorsDark();
+        UiTheme.SetupDefaultFont(io);
+        UiTheme.ApplyTheme(UiTheme.ThemePreset.Darker, UiTheme.AccentPreset.Purple);
         
         ImGuiImplGLFW.SetCurrentContext(ImGuiContext);
         

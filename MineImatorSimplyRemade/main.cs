@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using GlmSharp;
 using MineImatorSimplyRemade.core;
+using MineImatorSimplyRemade.core.graphics;
 using MineImatorSimplyRemade.core.log;
 using MineImatorSimplyRemade.core.startup;
 using MineImatorSimplyRemade.core.window.windows;
@@ -102,8 +103,20 @@ public static class main
             MainWindow.SetClearColor(new vec4(0.3f, 0.4f, 0.5f, 1));
 
             Glfw.MakeContextCurrent(MainWindow.WindowHandle);
+            Glfw.SwapInterval(0); // Disable GLFW OpenGL VSync blocking to avoid conflicting with the frame limiter
             _gl = GL.GetApi(Glfw.GetProcAddress);
             MainWindow.SetGL(_gl);
+            
+            // Initialize Veldrid Rendering Backend
+            try
+            {
+                VeldridContext.CreateGraphicsDevice(Glfw, MainWindow.WindowHandle, size.x, size.y);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Veldrid] Failed to create Veldrid graphics context: {ex.Message}");
+            }
+
             Directory.CreateDirectory(ApplicationLocalDirectoryPath);
             string mainWindowIniPath = Path.Combine(ApplicationLocalDirectoryPath, "imgui.ini");
             MainWindow.SetupImgui(mainWindowIniPath);
@@ -191,11 +204,12 @@ public static class main
 
             // ── Main loop ─────────────────────────────────────────────────────────
             var frameTimer = Stopwatch.StartNew();
-            long targetFrameTicks = Stopwatch.Frequency / MainLoopTargetFps;
 
             while (!Glfw.WindowShouldClose(MainWindow.WindowHandle) || !MainWindow.CanWindowClose())
             {
                 long frameStartTicks = frameTimer.ElapsedTicks;
+
+                VeldridContext.BeginFrame();
 
                 Glfw.PollEvents();
 
@@ -218,6 +232,10 @@ public static class main
                     Glfw.MakeContextCurrent(MainWindow.WindowHandle);
                 }
 
+                VeldridContext.EndFrame();
+
+                int targetFps = preferencesPanel?.TargetFps ?? MainLoopTargetFps;
+                long targetFrameTicks = targetFps > 0 ? Stopwatch.Frequency / targetFps : 0;
                 LimitFrameRate(frameTimer, frameStartTicks, targetFrameTicks);
             }
             
@@ -231,6 +249,8 @@ public static class main
 
             MainWindow.ShutdownImgui();
             CameraWindow.ShutdownImgui();
+
+            VeldridContext.Dispose();
 
             _gl.Dispose();
             Glfw.DestroyWindow(CameraWindow.WindowHandle);
@@ -254,8 +274,12 @@ public static class main
 
     private static void LimitFrameRate(Stopwatch frameTimer, long frameStartTicks, long targetFrameTicks)
     {
-        if (targetFrameTicks <= 0)
+        // Temporarily disabled frame limiter for performance/uncapped FPS benchmarking
+        bool disableLimiter = false;
+        if (disableLimiter || targetFrameTicks <= 0)
             return;
+
+        long oneMillisecondTicks = Stopwatch.Frequency / 1000;
 
         while (true)
         {
@@ -264,16 +288,19 @@ public static class main
             if (remainingTicks <= 0)
                 break;
 
-            long oneMillisecondTicks = Stopwatch.Frequency / 1000;
-            if (remainingTicks > oneMillisecondTicks * 2)
+            // Only sleep if remaining time is well above Windows standard timer resolution (~15ms)
+            // Windows Thread.Sleep(1) often sleeps for 15.6ms, causing severe FPS drops (e.g. 60 FPS -> ~42 FPS)
+            if (remainingTicks > oneMillisecondTicks * 16)
             {
-                int sleepMs = (int)(remainingTicks / oneMillisecondTicks) - 1;
-                if (sleepMs > 0)
-                    Thread.Sleep(sleepMs);
+                Thread.Sleep(1);
+            }
+            else if (remainingTicks > oneMillisecondTicks * 2)
+            {
+                Thread.Yield();
             }
             else
             {
-                Thread.SpinWait(100);
+                Thread.SpinWait(50);
             }
         }
     }

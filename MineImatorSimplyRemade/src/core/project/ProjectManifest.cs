@@ -364,6 +364,7 @@ public class ProjectSceneObjectEntry
     public bool InheritPivotOffset { get; set; } = false;
     public bool InheritVisibility { get; set; } = true;
     public bool ObjectVisible { get; set; } = true;
+    public bool CastShadow { get; set; } = true;
     public bool InvertFaces { get; set; } = false;
     public bool BlurTexture { get; set; } = false;
     public bool TextureMipmaps { get; set; } = false;
@@ -373,6 +374,7 @@ public class ProjectSceneObjectEntry
     public bool RenderInLowQuality { get; set; } = true;
     public float RenderDepthOffset { get; set; } = 0f;
     public bool IsSelectable { get; set; } = true;
+    public bool IsLocked { get; set; } = false;
     public bool HideInSceneTree { get; set; } = false;
 
     // Material override data
@@ -473,6 +475,7 @@ public class ProjectCameraEffectEntry
     public CameraEffectType Type { get; set; } = CameraEffectType.CameraShake;
     public ProjectCameraShakeSettings Shake { get; set; } = new();
     public ProjectFilmGrainSettings FilmGrain { get; set; } = new();
+    public DepthOfFieldSettings DepthOfField { get; set; } = new();
 }
 
 public class ProjectFilmGrainSettings

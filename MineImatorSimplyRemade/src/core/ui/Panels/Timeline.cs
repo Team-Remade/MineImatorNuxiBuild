@@ -115,8 +115,9 @@ public class Timeline : UiPanel
     // ── Keyframe data ─────────────────────────────────────────────────────────
 
     private readonly Dictionary<string, List<TimelineKeyframe>> _propertyKeyframes = new();
-    private readonly List<TimelineProperty>                     _displayRows        = new();
+    private List<TimelineProperty>                              _displayRows        = new();
     private readonly Dictionary<string, bool>                   _groupExpanded      = new();
+    private readonly Dictionary<TimelineProperty, bool>         _trackRowVisibility = new();
     private readonly HashSet<string>                            _ghostTracks        = new(StringComparer.Ordinal);
 
     // ── Selection ─────────────────────────────────────────────────────────────
@@ -331,6 +332,7 @@ public class Timeline : UiPanel
     {
         UpdatePlayback();
         SyncAudioWithPlayback();
+        _trackRowVisibility.Clear();
 
         if (!ImGui.Begin("Timeline"))
         {
@@ -711,16 +713,15 @@ public class Timeline : UiPanel
 
     private bool IsTrackRowVisible(TimelineProperty row)
     {
-        if (row.PropertyPath == "__header__")
-            return true;
+        if (_trackRowVisibility.TryGetValue(row, out bool visible))
+            return visible;
 
-        if (_ghostModeEnabled && IsTrackRowGhost(row))
-            return false;
+        visible = row.PropertyPath == "__header__" ||
+                  (!_ghostModeEnabled || !IsTrackRowGhost(row)) &&
+                  (row.Indent == 0 || IsGroupChildVisible(row));
 
-        if (row.Indent > 0 && !IsGroupChildVisible(row))
-            return false;
-
-        return true;
+        _trackRowVisibility[row] = visible;
+        return visible;
     }
 
     private bool ShouldShowGhostIndicator(TimelineProperty row)
@@ -1461,7 +1462,8 @@ public class Timeline : UiPanel
             return;
         }
 
-        foreach (var row in _displayRows)
+        var rows = _displayRows.ToArray();
+        foreach (var row in rows)
         {
             if (!IsTrackRowVisible(row))
                 continue;
@@ -1492,7 +1494,10 @@ public class Timeline : UiPanel
 
                 ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetFrameHeight()) * 0.5f);
                 if (ImGui.ArrowButton($"##arr_{gk}", exp ? ImGuiDir.Down : ImGuiDir.Right))
+                {
                     _groupExpanded[gk] = !exp;
+                    _trackRowVisibility.Clear();
+                }
                 ImGui.SameLine();
                 ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetTextLineHeight()) * 0.5f);
                 ImGui.Text(row.Label);
@@ -1565,7 +1570,8 @@ public class Timeline : UiPanel
         var   wSize   = ImGui.GetWindowSize();
         float scrollX = ImGui.GetScrollX();
 
-        foreach (var row in _displayRows)
+        var rows = _displayRows.ToArray();
+        foreach (var row in rows)
         {
             if (!IsTrackRowVisible(row)) continue;
             if (row.PropertyPath == "__header__")
@@ -1955,7 +1961,8 @@ public class Timeline : UiPanel
         }
 
         float curY = wPos.Y - _vScrollOffset;
-        foreach (var row in _displayRows)
+        var rows = _displayRows.ToArray();
+        foreach (var row in rows)
         {
             if (row.PropertyPath == "__header__" || row.IsGroupHeader)
             { curY += RowHeight; continue; }
@@ -2075,7 +2082,8 @@ public class Timeline : UiPanel
 
     private IEnumerable<(TimelineKeyframe keyframe, SceneObject obj, string path)> EnumerateKeyframes()
     {
-        foreach (var row in _displayRows.Where(r => !r.IsGroupHeader && r.PropertyPath != "__header__"))
+        var rows = _displayRows.ToArray();
+        foreach (var row in rows.Where(r => !r.IsGroupHeader && r.PropertyPath != "__header__"))
         {
             if (!IsTrackRowVisible(row))
                 continue;
@@ -2502,6 +2510,12 @@ public class Timeline : UiPanel
     {
         for (int i = 0; i < cam.Effects.Count; i++)
         {
+            if (cam.Effects[i].Type == CameraEffectType.DepthOfField)
+            {
+                foreach (var control in DepthOfFieldSettings.Controls)
+                    yield return $"camera.effect.{i}.depth_of_field.{control.Key}";
+                continue;
+            }
             if (cam.Effects[i].Type == CameraEffectType.FilmGrain)
             {
                 string grainPath = $"camera.effect.{i}.film_grain";
@@ -2842,6 +2856,8 @@ public class Timeline : UiPanel
                  effectIndex >= 0 && effectIndex < camFx.Effects.Count)
         {
             var effect = camFx.Effects[effectIndex];
+            if (effect.Type == CameraEffectType.DepthOfField && parts.Length == 5 && parts[3] == "depth_of_field")
+                return effect.DepthOfField.GetValue(parts[4]);
             if (effect.Type == CameraEffectType.CameraShake && parts[3] == "shake")
             {
                 if (parts.Length == 5 && parts[4] == "mode")
@@ -3224,6 +3240,15 @@ public class Timeline : UiPanel
                 if (c != obj.TextMeshOutlineColor) { obj.TextMeshOutlineColor = c; TextMeshFactory.Rebuild(obj); }
                 break;
             }
+            case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "depth_of_field" && obj is CameraSceneObject camDof:
+            {
+                if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camDof.Effects.Count)
+                    break;
+                var effect = camDof.Effects[effectIndex];
+                if (effect.Type == CameraEffectType.DepthOfField)
+                    effect.DepthOfField.SetValue(parts[4], value);
+                break;
+            }
             case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "film_grain" && obj is CameraSceneObject camGrain:
             {
                 if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camGrain.Effects.Count)
@@ -3285,12 +3310,12 @@ public class Timeline : UiPanel
     private void RebuildDisplayRows()
     {
         var selectedObjects = SelectionManager.Instance?.SelectedObjects ?? new List<SceneObject>();
-        _displayRows.Clear();
+        var newRows = new List<TimelineProperty>();
 
         foreach (var obj in selectedObjects)
         {
             // Add header
-            _displayRows.Add(new TimelineProperty { Object = obj, Label = $"── {obj.Name} ──", PropertyPath = "__header__" });
+            newRows.Add(new TimelineProperty { Object = obj, Label = $"── {obj.Name} ──", PropertyPath = "__header__" });
 
             // Collect properties that have keyframes
             var propsWithKeyframes = new HashSet<string>();
@@ -3356,11 +3381,11 @@ public class Timeline : UiPanel
                     // keyframes themselves. Show the header whenever at least
                     // one of its component tracks has keyframes.
                     if (groupPaths.Any(propsWithKeyframes.Contains))
-                        _displayRows.Add(MakeGroup(obj, label, groupPaths));
+                        newRows.Add(MakeGroup(obj, label, groupPaths));
                 }
                 else if (propsWithKeyframes.Contains(path))
                 {
-                    _displayRows.Add(MakeSingle(obj, label, path, indent));
+                    newRows.Add(MakeSingle(obj, label, path, indent));
                 }
             }
 
@@ -3370,11 +3395,11 @@ public class Timeline : UiPanel
                 {
                     string[] groupPaths = ["bend.x", "bend.y", "bend.z"];
                     if (groupPaths.Any(propsWithKeyframes.Contains))
-                        _displayRows.Add(MakeGroup(obj, label, groupPaths, path));
+                        newRows.Add(MakeGroup(obj, label, groupPaths, path));
                 }
                 else if (propsWithKeyframes.Contains(path))
                 {
-                    _displayRows.Add(MakeSingle(obj, label, path, indent));
+                    newRows.Add(MakeSingle(obj, label, path, indent));
                 }
             }
 
@@ -3383,7 +3408,7 @@ public class Timeline : UiPanel
                 foreach (var (label, path, parent, indent) in itemProps)
                 {
                     if (propsWithKeyframes.Contains(path))
-                        _displayRows.Add(MakeSingle(obj, label, path, indent));
+                        newRows.Add(MakeSingle(obj, label, path, indent));
                 }
             }
 
@@ -3408,11 +3433,11 @@ public class Timeline : UiPanel
                     {
                         string[] groupPaths = ["light.color.r", "light.color.g", "light.color.b"];
                         if (groupPaths.Any(propsWithKeyframes.Contains))
-                            _displayRows.Add(MakeGroup(obj, label, groupPaths));
+                            newRows.Add(MakeGroup(obj, label, groupPaths));
                     }
                     else if (propsWithKeyframes.Contains(path))
                     {
-                        _displayRows.Add(MakeSingle(obj, label, path, indent));
+                        newRows.Add(MakeSingle(obj, label, path, indent));
                     }
                 }
             }
@@ -3430,7 +3455,7 @@ public class Timeline : UiPanel
                     bool hasKeyframes = propsWithKeyframes.Contains(path);
                     if (!hasKeyframes) continue;
 
-                    _displayRows.Add(MakeSingle(obj, label, path, indent));
+                    newRows.Add(MakeSingle(obj, label, path, indent));
                 }
 
                 if (obj is CameraSceneObject cameraObj)
@@ -3438,15 +3463,26 @@ public class Timeline : UiPanel
                     for (int i = 0; i < cameraObj.Effects.Count; i++)
                     {
                         var effect = cameraObj.Effects[i];
+                        if (effect.Type == CameraEffectType.DepthOfField)
+                        {
+                            string baseDofPath = $"camera.effect.{i}.depth_of_field";
+                            string[] paths = DepthOfFieldSettings.Controls.Select(c => $"{baseDofPath}.{c.Key}").ToArray();
+                            if (!paths.Any(propsWithKeyframes.Contains)) continue;
+                            newRows.Add(MakeGroup(obj, $"Effect {i + 1}: Depth of Field", paths, $"camera.effect.{i}"));
+                            foreach (var control in DepthOfFieldSettings.Controls)
+                                if (propsWithKeyframes.Contains($"{baseDofPath}.{control.Key}"))
+                                    newRows.Add(MakeSingle(obj, control.Label, $"{baseDofPath}.{control.Key}", 1));
+                            continue;
+                        }
                         if (effect.Type == CameraEffectType.FilmGrain)
                         {
                             string grainPath = $"camera.effect.{i}.film_grain";
                             string[] paths = { $"{grainPath}.strength", $"{grainPath}.saturation", $"{grainPath}.size" };
                             if (!paths.Any(propsWithKeyframes.Contains)) continue;
-                            _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Film Grain", paths, $"camera.effect.{i}"));
-                            if (propsWithKeyframes.Contains(paths[0])) _displayRows.Add(MakeSingle(obj, "Strength", paths[0], 1));
-                            if (propsWithKeyframes.Contains(paths[1])) _displayRows.Add(MakeSingle(obj, "Saturation", paths[1], 1));
-                            if (propsWithKeyframes.Contains(paths[2])) _displayRows.Add(MakeSingle(obj, "Size", paths[2], 1));
+                            newRows.Add(MakeGroup(obj, $"Effect {i + 1}: Film Grain", paths, $"camera.effect.{i}"));
+                            if (propsWithKeyframes.Contains(paths[0])) newRows.Add(MakeSingle(obj, "Strength", paths[0], 1));
+                            if (propsWithKeyframes.Contains(paths[1])) newRows.Add(MakeSingle(obj, "Saturation", paths[1], 1));
+                            if (propsWithKeyframes.Contains(paths[2])) newRows.Add(MakeSingle(obj, "Size", paths[2], 1));
                             continue;
                         }
                         if (effect.Type != CameraEffectType.CameraShake)
@@ -3466,39 +3502,39 @@ public class Timeline : UiPanel
                         if (!allPaths.Any(propsWithKeyframes.Contains))
                             continue;
 
-                        _displayRows.Add(MakeGroup(obj,
+                        newRows.Add(MakeGroup(obj,
                             $"Effect {i + 1}: Camera Shake",
                             allPaths,
                             $"camera.effect.{i}"));
 
                         if (propsWithKeyframes.Contains(modePath))
-                            _displayRows.Add(MakeSingle(obj, "Mode", modePath, 1));
+                            newRows.Add(MakeSingle(obj, "Mode", modePath, 1));
 
                         if (propsWithKeyframes.Contains(traumaPath))
-                            _displayRows.Add(MakeSingle(obj, "Trauma", traumaPath, 1));
+                            newRows.Add(MakeSingle(obj, "Trauma", traumaPath, 1));
 
                         if (strengthPaths.Any(propsWithKeyframes.Contains))
                         {
-                            _displayRows.Add(MakeGroup(obj, "Strength", strengthPaths, strengthGroupPath, 1));
-                            _displayRows.Add(MakeSingle(obj, "X", strengthPaths[0], 2));
-                            _displayRows.Add(MakeSingle(obj, "Y", strengthPaths[1], 2));
-                            _displayRows.Add(MakeSingle(obj, "Z", strengthPaths[2], 2));
+                            newRows.Add(MakeGroup(obj, "Strength", strengthPaths, strengthGroupPath, 1));
+                            newRows.Add(MakeSingle(obj, "X", strengthPaths[0], 2));
+                            newRows.Add(MakeSingle(obj, "Y", strengthPaths[1], 2));
+                            newRows.Add(MakeSingle(obj, "Z", strengthPaths[2], 2));
                         }
 
                         if (speedPaths.Any(propsWithKeyframes.Contains))
                         {
-                            _displayRows.Add(MakeGroup(obj, "Speed", speedPaths, speedGroupPath, 1));
-                            _displayRows.Add(MakeSingle(obj, "X", speedPaths[0], 2));
-                            _displayRows.Add(MakeSingle(obj, "Y", speedPaths[1], 2));
-                            _displayRows.Add(MakeSingle(obj, "Z", speedPaths[2], 2));
+                            newRows.Add(MakeGroup(obj, "Speed", speedPaths, speedGroupPath, 1));
+                            newRows.Add(MakeSingle(obj, "X", speedPaths[0], 2));
+                            newRows.Add(MakeSingle(obj, "Y", speedPaths[1], 2));
+                            newRows.Add(MakeSingle(obj, "Z", speedPaths[2], 2));
                         }
 
                         if (offsetPaths.Any(propsWithKeyframes.Contains))
                         {
-                            _displayRows.Add(MakeGroup(obj, "Offset", offsetPaths, offsetGroupPath, 1));
-                            _displayRows.Add(MakeSingle(obj, "X", offsetPaths[0], 2));
-                            _displayRows.Add(MakeSingle(obj, "Y", offsetPaths[1], 2));
-                            _displayRows.Add(MakeSingle(obj, "Z", offsetPaths[2], 2));
+                            newRows.Add(MakeGroup(obj, "Offset", offsetPaths, offsetGroupPath, 1));
+                            newRows.Add(MakeSingle(obj, "X", offsetPaths[0], 2));
+                            newRows.Add(MakeSingle(obj, "Y", offsetPaths[1], 2));
+                            newRows.Add(MakeSingle(obj, "Z", offsetPaths[2], 2));
                         }
                     }
                 }
@@ -3532,18 +3568,18 @@ public class Timeline : UiPanel
                 foreach (var (label, path, _, indent) in particleProps)
                 {
                     if (propsWithKeyframes.Contains(path))
-                        _displayRows.Add(MakeSingle(obj, label, path, indent));
+                        newRows.Add(MakeSingle(obj, label, path, indent));
                 }
 
-                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Spawn Extents", "particle.spawn_extents", _displayRows);
-                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Velocity Min", "particle.velocity_min", _displayRows);
-                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Velocity Max", "particle.velocity_max", _displayRows);
-                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Gravity", "particle.gravity", _displayRows);
-                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Direction", "particle.direction", _displayRows);
-                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Initial Rotation Min", "particle.rotation_min", _displayRows);
-                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Initial Rotation Max", "particle.rotation_max", _displayRows);
-                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Angular Velocity Min", "particle.angular_velocity_min", _displayRows);
-                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Angular Velocity Max", "particle.angular_velocity_max", _displayRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Spawn Extents", "particle.spawn_extents", newRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Velocity Min", "particle.velocity_min", newRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Velocity Max", "particle.velocity_max", newRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Gravity", "particle.gravity", newRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Direction", "particle.direction", newRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Initial Rotation Min", "particle.rotation_min", newRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Initial Rotation Max", "particle.rotation_max", newRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Angular Velocity Min", "particle.angular_velocity_min", newRows);
+                AddParticleVectorGroupIfKeyed(obj, propsWithKeyframes, "Angular Velocity Max", "particle.angular_velocity_max", newRows);
             }
 
             // Shape key properties — dynamic per-mesh/per-key paths.
@@ -3559,11 +3595,13 @@ public class Timeline : UiPanel
 
                         string keyName = meshes[m].ShapeKeys[k].Name;
                         string label   = meshes.Count > 1 ? $"{keyName} (Mesh {m})" : keyName;
-                        _displayRows.Add(MakeSingle(obj, label, path));
+                        newRows.Add(MakeSingle(obj, label, path));
                     }
                 }
             }
         }
+
+        _displayRows = newRows;
 
         // Keep expanded/collapsed state for groups that still exist after the
         // rebuild, while discarding stale entries from removed rows/objects.
@@ -3629,6 +3667,15 @@ public class Timeline : UiPanel
             for (int i = 0; i < cameraObj.Effects.Count; i++)
             {
                 var effect = cameraObj.Effects[i];
+                if (effect.Type == CameraEffectType.DepthOfField)
+                {
+                    string baseDofPath = $"camera.effect.{i}.depth_of_field";
+                    string[] paths = DepthOfFieldSettings.Controls.Select(c => $"{baseDofPath}.{c.Key}").ToArray();
+                    _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Depth of Field", paths, $"camera.effect.{i}"));
+                    foreach (var control in DepthOfFieldSettings.Controls)
+                        _displayRows.Add(MakeSingle(obj, control.Label, $"{baseDofPath}.{control.Key}", 1));
+                    continue;
+                }
                 if (effect.Type == CameraEffectType.FilmGrain)
                 {
                     string grainPath = $"camera.effect.{i}.film_grain";
@@ -3703,7 +3750,7 @@ public class Timeline : UiPanel
             AddParticleVectorGroup(obj, "Angular Velocity Max", "particle.angular_velocity_max");
         }
 
-        foreach (var row in _displayRows.Where(r => r.Object == obj && !r.IsGroupHeader && r.PropertyPath != "__header__"))
+        foreach (var row in _displayRows.Where(r => r.Object == obj && !r.IsGroupHeader && r.PropertyPath != "__header__").ToArray())
             LoadKeyframesFromObject(obj, row.PropertyPath);
     }
 
@@ -3743,7 +3790,8 @@ public class Timeline : UiPanel
 
     private SceneObject? FindObjectById(string id)
     {
-        foreach (var row in _displayRows)
+        var rows = _displayRows.ToArray();
+        foreach (var row in rows)
             if (row.Object?.ObjectId == id) return row.Object;
         if (Viewport != null)
             foreach (var obj in CollectAllObjects(Viewport.SceneObjects))

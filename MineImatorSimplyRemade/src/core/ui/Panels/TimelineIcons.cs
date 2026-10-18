@@ -43,32 +43,13 @@ public static class TimelineIcons
         IsLoaded = true;
     }
 
-    private static unsafe uint Load(GL gl, string resourceName, int size)
+    private static uint Load(GL gl, string resourceName, int size)
     {
-        SvgLoader.SvgImage img;
-        try   { img = SvgLoader.LoadEmbedded(resourceName, size); }
+        try   { return SvgLoader.LoadTexture(gl, resourceName, size); }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Failed to load {resourceName}: {ex.Message}");
             return 0;
         }
-
-        uint tex = gl.GenTexture();
-        gl.BindTexture(GLEnum.Texture2D, tex);
-
-        fixed (byte* p = img.Data)
-        {
-            gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8,
-                (uint)img.Width, (uint)img.Height, 0,
-                PixelFormat.Rgba, GLEnum.UnsignedByte, p);
-        }
-
-        gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
-        gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
-        gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS,     (int)TextureWrapMode.ClampToEdge);
-        gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT,     (int)TextureWrapMode.ClampToEdge);
-        gl.BindTexture(GLEnum.Texture2D, 0);
-
-        return tex;
     }
 }
