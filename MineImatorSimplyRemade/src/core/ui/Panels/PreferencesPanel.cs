@@ -23,7 +23,9 @@ public class PreferencesPanel : UiPanel
     {
         Light,
         Dark,
-        Darker
+        Darker,
+        Nord,
+        PureBlack
     }
 
     public enum AccentColor
@@ -37,11 +39,14 @@ public class PreferencesPanel : UiPanel
         Blue,
         Purple,
         Pink,
+        Cyan,
+        Indigo,
         Custom
     }
 
     public ThemeMode Theme { get; set; } = ThemeMode.Darker;
     public AccentColor Accent { get; set; } = AccentColor.Purple;
+    public Vector4 CustomAccentColor { get; set; } = new Vector4(0.58f, 0.36f, 0.96f, 1.0f);
     public string Language { get; set; } = "English";
 
     // Timeline
@@ -123,34 +128,33 @@ public class PreferencesPanel : UiPanel
     /// </summary>
     private void ApplyThemeInternal(ThemeMode mode)
     {
-        var style = ImGui.GetStyle();
-
-        switch (mode)
+        UiTheme.ThemePreset themePreset = mode switch
         {
-            case ThemeMode.Light:
-                ImGui.StyleColorsLight();
-                break;
+            ThemeMode.Light => UiTheme.ThemePreset.Light,
+            ThemeMode.Dark => UiTheme.ThemePreset.Dark,
+            ThemeMode.Nord => UiTheme.ThemePreset.Nord,
+            ThemeMode.PureBlack => UiTheme.ThemePreset.PureBlack,
+            _ => UiTheme.ThemePreset.Darker
+        };
 
-            case ThemeMode.Dark:
-                ImGui.StyleColorsDark();
-                break;
+        UiTheme.AccentPreset accentPreset = Accent switch
+        {
+            AccentColor.Red => UiTheme.AccentPreset.Red,
+            AccentColor.Orange => UiTheme.AccentPreset.Orange,
+            AccentColor.Yellow => UiTheme.AccentPreset.Yellow,
+            AccentColor.Lime => UiTheme.AccentPreset.Lime,
+            AccentColor.Green => UiTheme.AccentPreset.Green,
+            AccentColor.SkyBlue => UiTheme.AccentPreset.SkyBlue,
+            AccentColor.Blue => UiTheme.AccentPreset.Blue,
+            AccentColor.Purple => UiTheme.AccentPreset.Purple,
+            AccentColor.Pink => UiTheme.AccentPreset.Pink,
+            AccentColor.Cyan => UiTheme.AccentPreset.Cyan,
+            AccentColor.Indigo => UiTheme.AccentPreset.Indigo,
+            AccentColor.Custom => UiTheme.AccentPreset.Custom,
+            _ => UiTheme.AccentPreset.Purple
+        };
 
-            case ThemeMode.Darker:
-                ImGui.StyleColorsDark();
-                // Make the dark theme even darker
-                style.Colors[(int)ImGuiCol.WindowBg] = new Vector4(0.09f, 0.09f, 0.09f, 1.0f);
-                style.Colors[(int)ImGuiCol.FrameBg] = new Vector4(0.11f, 0.11f, 0.11f, 1.0f);
-                style.Colors[(int)ImGuiCol.FrameBgHovered] = new Vector4(0.15f, 0.15f, 0.15f, 1.0f);
-                style.Colors[(int)ImGuiCol.FrameBgActive] = new Vector4(0.20f, 0.20f, 0.20f, 1.0f);
-                style.Colors[(int)ImGuiCol.MenuBarBg] = new Vector4(0.08f, 0.08f, 0.08f, 1.0f);
-                style.Colors[(int)ImGuiCol.Header] = new Vector4(0.15f, 0.15f, 0.15f, 0.8f);
-                style.Colors[(int)ImGuiCol.HeaderHovered] = new Vector4(0.20f, 0.20f, 0.20f, 0.8f);
-                style.Colors[(int)ImGuiCol.HeaderActive] = new Vector4(0.25f, 0.25f, 0.25f, 0.8f);
-                break;
-        }
-
-        // Re-apply accent color on top of the new theme (since StyleColors* resets all colors)
-        ApplyAccentColorInternal(Accent);
+        UiTheme.ApplyTheme(themePreset, accentPreset, CustomAccentColor);
     }
 
     /// <summary>
@@ -159,70 +163,32 @@ public class PreferencesPanel : UiPanel
     public void ApplyAccentColor(AccentColor color)
     {
         Accent = color;
-        ApplyAccentColorInternal(color);
+        ApplyThemeInternal(Theme);
         AccentColorChanged?.Invoke(color);
-    }
-
-    /// <summary>
-    /// Internal helper to apply accent color without triggering callbacks.
-    /// Used by ApplyTheme to re-apply accent after theme changes.
-    /// </summary>
-    private void ApplyAccentColorInternal(AccentColor color)
-    {
-        var style = ImGui.GetStyle();
-        Vector4 accentVec = GetAccentColorVector(color);
-
-        // Apply accent to various UI elements
-        style.Colors[(int)ImGuiCol.Button] = accentVec with { W = 0.6f };
-        style.Colors[(int)ImGuiCol.ButtonHovered] = accentVec with { W = 0.8f };
-        style.Colors[(int)ImGuiCol.ButtonActive] = accentVec;
-        style.Colors[(int)ImGuiCol.CheckMark] = accentVec;
-        style.Colors[(int)ImGuiCol.SliderGrab] = accentVec with { W = 0.7f };
-        style.Colors[(int)ImGuiCol.SliderGrabActive] = accentVec;
-
-        // Apply accent to window title bars
-        style.Colors[(int)ImGuiCol.TitleBg] = accentVec with { W = 0.5f };
-        style.Colors[(int)ImGuiCol.TitleBgActive] = accentVec with { W = 0.8f };
-        style.Colors[(int)ImGuiCol.TitleBgCollapsed] = accentVec with { W = 0.3f };
-
-        // Apply accent to tabs using reflection to find available tab color enums
-        ApplyAccentToTabColors(accentVec);
-    }
-
-    /// <summary>
-    /// Applies accent color to tab-related ImGui colors.
-    /// </summary>
-    private void ApplyAccentToTabColors(Vector4 accentVec)
-    {
-        var style = ImGui.GetStyle();
-
-        // Apply accent to all tab-related colors
-        style.Colors[(int)ImGuiCol.Tab] = accentVec with { W = 0.4f };
-        style.Colors[(int)ImGuiCol.TabHovered] = accentVec with { W = 0.7f };
-        style.Colors[(int)ImGuiCol.TabSelected] = accentVec;
-        style.Colors[(int)ImGuiCol.TabDimmed] = accentVec with { W = 0.2f };
-        style.Colors[(int)ImGuiCol.TabDimmedSelected] = accentVec with { W = 0.5f };
     }
 
     /// <summary>
     /// Converts an AccentColor enum value to an RGBA vector.
     /// </summary>
-    private Vector4 GetAccentColorVector(AccentColor color)
+    public Vector4 GetAccentColorVector(AccentColor color)
     {
-        return color switch
+        UiTheme.AccentPreset preset = color switch
         {
-            AccentColor.Red => new Vector4(1.0f, 0.2f, 0.2f, 1.0f),
-            AccentColor.Orange => new Vector4(1.0f, 0.6f, 0.2f, 1.0f),
-            AccentColor.Yellow => new Vector4(1.0f, 1.0f, 0.2f, 1.0f),
-            AccentColor.Lime => new Vector4(0.7f, 1.0f, 0.2f, 1.0f),
-            AccentColor.Green => new Vector4(0.2f, 1.0f, 0.5f, 1.0f),
-            AccentColor.SkyBlue => new Vector4(0.4f, 0.8f, 1.0f, 1.0f),
-            AccentColor.Blue => new Vector4(0.3f, 0.5f, 1.0f, 1.0f),
-            AccentColor.Purple => new Vector4(0.8f, 0.3f, 1.0f, 1.0f),
-            AccentColor.Pink => new Vector4(1.0f, 0.4f, 0.7f, 1.0f),
-            AccentColor.Custom => new Vector4(0.5f, 0.5f, 0.5f, 1.0f),
-            _ => new Vector4(0.8f, 0.3f, 1.0f, 1.0f) // Default purple
+            AccentColor.Red => UiTheme.AccentPreset.Red,
+            AccentColor.Orange => UiTheme.AccentPreset.Orange,
+            AccentColor.Yellow => UiTheme.AccentPreset.Yellow,
+            AccentColor.Lime => UiTheme.AccentPreset.Lime,
+            AccentColor.Green => UiTheme.AccentPreset.Green,
+            AccentColor.SkyBlue => UiTheme.AccentPreset.SkyBlue,
+            AccentColor.Blue => UiTheme.AccentPreset.Blue,
+            AccentColor.Purple => UiTheme.AccentPreset.Purple,
+            AccentColor.Pink => UiTheme.AccentPreset.Pink,
+            AccentColor.Cyan => UiTheme.AccentPreset.Cyan,
+            AccentColor.Indigo => UiTheme.AccentPreset.Indigo,
+            AccentColor.Custom => UiTheme.AccentPreset.Custom,
+            _ => UiTheme.AccentPreset.Purple
         };
+        return UiTheme.GetAccentColorVector(preset, CustomAccentColor);
     }
 
     /// <summary>
@@ -323,14 +289,32 @@ public class PreferencesPanel : UiPanel
                 {
                     ImGui.TextUnformatted("Theme:");
                     ImGui.SameLine();
-                    ImGui.SetNextItemWidth(150);
-                    string themeName = Theme.ToString();
+                    ImGui.SetNextItemWidth(180);
+                    string themeName = Theme switch
+                    {
+                        ThemeMode.Darker => "Midnight Darker (Default)",
+                        ThemeMode.Dark => "Studio Dark",
+                        ThemeMode.Nord => "Nord Arctic Slate",
+                        ThemeMode.PureBlack => "OLED Pure Black",
+                        ThemeMode.Light => "Clean Light",
+                        _ => Theme.ToString()
+                    };
+
                     if (ImGui.BeginCombo("##theme", themeName))
                     {
-                        foreach (var mode in new[] { ThemeMode.Light, ThemeMode.Dark, ThemeMode.Darker })
+                        var modes = new[]
+                        {
+                            (ThemeMode.Darker, "Midnight Darker (Default)"),
+                            (ThemeMode.Dark, "Studio Dark"),
+                            (ThemeMode.Nord, "Nord Arctic Slate"),
+                            (ThemeMode.PureBlack, "OLED Pure Black"),
+                            (ThemeMode.Light, "Clean Light")
+                        };
+
+                        foreach (var (mode, label) in modes)
                         {
                             bool selected = Theme == mode;
-                            if (ImGui.Selectable(mode.ToString(), selected))
+                            if (ImGui.Selectable(label, selected))
                             {
                                 ApplyTheme(mode);
                                 preferencesChanged = true;
@@ -346,13 +330,34 @@ public class PreferencesPanel : UiPanel
                 {
                     ImGui.TextUnformatted("Accent color:");
                     ImGui.SameLine();
-                    ImGui.SetNextItemWidth(150);
+                    ImGui.SetNextItemWidth(180);
                     string accentName = Accent.ToString();
                     if (ImGui.BeginCombo("##accent", accentName))
                     {
-                        foreach (var color in new[] { AccentColor.Red, AccentColor.Orange, AccentColor.Yellow, AccentColor.Lime, AccentColor.Green, AccentColor.SkyBlue, AccentColor.Blue, AccentColor.Purple, AccentColor.Pink, AccentColor.Custom })
+                        var colors = new[]
+                        {
+                            AccentColor.Purple,
+                            AccentColor.Blue,
+                            AccentColor.SkyBlue,
+                            AccentColor.Cyan,
+                            AccentColor.Green,
+                            AccentColor.Lime,
+                            AccentColor.Yellow,
+                            AccentColor.Orange,
+                            AccentColor.Red,
+                            AccentColor.Pink,
+                            AccentColor.Indigo,
+                            AccentColor.Custom
+                        };
+
+                        foreach (var color in colors)
                         {
                             bool selected = Accent == color;
+                            Vector4 colorVec = GetAccentColorVector(color);
+                            
+                            // Draw small color swatch
+                            ImGui.ColorButton($"##swatch_{color}", colorVec, ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoPicker, new Vector2(16, 16));
+                            ImGui.SameLine();
                             if (ImGui.Selectable(color.ToString(), selected))
                             {
                                 ApplyAccentColor(color);
@@ -360,6 +365,20 @@ public class PreferencesPanel : UiPanel
                             }
                         }
                         ImGui.EndCombo();
+                    }
+
+                    if (Accent == AccentColor.Custom)
+                    {
+                        ImGui.Spacing();
+                        ImGui.TextUnformatted("Custom color:");
+                        ImGui.SameLine();
+                        Vector4 custom = CustomAccentColor;
+                        if (ImGui.ColorEdit4("##customAccentPicker", ref custom, ImGuiColorEditFlags.AlphaBar))
+                        {
+                            CustomAccentColor = custom;
+                            ApplyAccentColor(AccentColor.Custom);
+                            preferencesChanged = true;
+                        }
                     }
                 }
 
@@ -369,7 +388,7 @@ public class PreferencesPanel : UiPanel
                 {
                     ImGui.TextUnformatted("Language:");
                     ImGui.SameLine();
-                    ImGui.SetNextItemWidth(150);
+                    ImGui.SetNextItemWidth(180);
                     if (ImGui.BeginCombo("##language", Language))
                     {
                         if (ImGui.Selectable("English", Language == "English"))
@@ -475,6 +494,7 @@ public class PreferencesPanel : UiPanel
             CopyWorkCameraIntoNewCameras = CopyWorkCameraIntoNewCameras,
             Theme = Theme,
             Accent = Accent,
+            CustomAccentColor = CustomAccentColor,
             Language = Language,
             AutoScrollWhilePlaying = AutoScrollWhilePlaying,
             PreviewViewportVisible = PreviewViewportVisible,
@@ -504,6 +524,8 @@ public class PreferencesPanel : UiPanel
         CopyWorkCameraIntoNewCameras = state.CopyWorkCameraIntoNewCameras;
         Theme = state.Theme;
         Accent = state.Accent;
+        if (state.CustomAccentColor != Vector4.Zero)
+            CustomAccentColor = state.CustomAccentColor;
         Language = state.Language;
         AutoScrollWhilePlaying = state.AutoScrollWhilePlaying;
         PreviewViewportVisible = state.PreviewViewportVisible;
@@ -527,6 +549,7 @@ public class PreferencesPanel : UiPanel
         CopyWorkCameraIntoNewCameras = defaults.CopyWorkCameraIntoNewCameras;
         Theme = defaults.Theme;
         Accent = defaults.Accent;
+        CustomAccentColor = defaults.CustomAccentColor;
         Language = defaults.Language;
         AutoScrollWhilePlaying = defaults.AutoScrollWhilePlaying;
         PreviewViewportVisible = defaults.PreviewViewportVisible;
@@ -642,6 +665,7 @@ public class PreferencesState
     public bool CopyWorkCameraIntoNewCameras { get; set; } = true;
     public PreferencesPanel.ThemeMode Theme { get; set; } = PreferencesPanel.ThemeMode.Darker;
     public PreferencesPanel.AccentColor Accent { get; set; } = PreferencesPanel.AccentColor.Purple;
+    public Vector4 CustomAccentColor { get; set; } = new Vector4(0.58f, 0.36f, 0.96f, 1.0f);
     public string Language { get; set; } = "English";
     public bool AutoScrollWhilePlaying { get; set; } = true;
     public bool PreviewViewportVisible { get; set; } = true;
