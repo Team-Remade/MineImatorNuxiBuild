@@ -204,7 +204,6 @@ public static class main
 
             // ── Main loop ─────────────────────────────────────────────────────────
             var frameTimer = Stopwatch.StartNew();
-            long targetFrameTicks = Stopwatch.Frequency / MainLoopTargetFps;
 
             while (!Glfw.WindowShouldClose(MainWindow.WindowHandle) || !MainWindow.CanWindowClose())
             {
@@ -235,6 +234,8 @@ public static class main
 
                 VeldridContext.EndFrame();
 
+                int targetFps = preferencesPanel?.TargetFps ?? MainLoopTargetFps;
+                long targetFrameTicks = targetFps > 0 ? Stopwatch.Frequency / targetFps : 0;
                 LimitFrameRate(frameTimer, frameStartTicks, targetFrameTicks);
             }
             

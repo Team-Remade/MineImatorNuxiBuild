@@ -13,6 +13,7 @@ public class PreferencesPanel : UiPanel
     // ── Program Preferences ────────────────────────────────────────────────────
 
     public string MinecraftVersion { get; set; } = PreferencesDefaults.GetDefaultMinecraftVersion();
+    public int TargetFps { get; set; } = 60;
     public bool AutomaticBackups { get; set; } = true;
     public bool CopyWorkCameraIntoNewCameras { get; set; } = true;
 
@@ -242,6 +243,19 @@ public class PreferencesPanel : UiPanel
                     }
 
                     ImGui.EndCombo();
+                }
+            }
+
+            ImGui.Spacing();
+
+            // Target FPS
+            {
+                int targetFps = TargetFps;
+                string format = targetFps == 0 ? "Unlimited" : "%d";
+                if (ImGui.SliderInt("Target framerate##targetFps", ref targetFps, 0, 120, format))
+                {
+                    TargetFps = targetFps;
+                    preferencesChanged = true;
                 }
             }
 
@@ -490,6 +504,7 @@ public class PreferencesPanel : UiPanel
         var state = new PreferencesState
         {
             MinecraftVersion = MinecraftVersion,
+            TargetFps = TargetFps,
             AutomaticBackups = AutomaticBackups,
             CopyWorkCameraIntoNewCameras = CopyWorkCameraIntoNewCameras,
             Theme = Theme,
@@ -520,6 +535,7 @@ public class PreferencesPanel : UiPanel
         MinecraftVersion = string.IsNullOrWhiteSpace(state.MinecraftVersion)
             ? PreferencesDefaults.GetDefaultMinecraftVersion()
             : state.MinecraftVersion;
+        TargetFps = Math.Clamp(state.TargetFps, 0, 120);
         AutomaticBackups = state.AutomaticBackups;
         CopyWorkCameraIntoNewCameras = state.CopyWorkCameraIntoNewCameras;
         Theme = state.Theme;
@@ -545,6 +561,7 @@ public class PreferencesPanel : UiPanel
         var defaults = new PreferencesState();
 
         MinecraftVersion = defaults.MinecraftVersion;
+        TargetFps = defaults.TargetFps;
         AutomaticBackups = defaults.AutomaticBackups;
         CopyWorkCameraIntoNewCameras = defaults.CopyWorkCameraIntoNewCameras;
         Theme = defaults.Theme;
@@ -661,6 +678,7 @@ internal static class PreferencesDefaults
 public class PreferencesState
 {
     public string MinecraftVersion { get; set; } = PreferencesDefaults.GetDefaultMinecraftVersion();
+    public int TargetFps { get; set; } = 60;
     public bool AutomaticBackups { get; set; } = true;
     public bool CopyWorkCameraIntoNewCameras { get; set; } = true;
     public PreferencesPanel.ThemeMode Theme { get; set; } = PreferencesPanel.ThemeMode.Darker;
