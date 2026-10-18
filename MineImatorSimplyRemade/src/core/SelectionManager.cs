@@ -90,31 +90,32 @@ public class SelectionManager
         // Record auto-keyframes for the transformed properties.
         if (Timeline != null)
         {
+            string[] axes = plane switch
+            {
+                Gizmo3D.TransformPlane.X => ["x"],
+                Gizmo3D.TransformPlane.Y => ["y"],
+                Gizmo3D.TransformPlane.Z => ["z"],
+                Gizmo3D.TransformPlane.XY => ["x", "y"],
+                Gizmo3D.TransformPlane.XZ => ["x", "z"],
+                Gizmo3D.TransformPlane.YZ => ["y", "z"],
+                Gizmo3D.TransformPlane.View => ["x", "y", "z"],
+                _ => throw new ArgumentOutOfRangeException(nameof(plane), plane, null)
+            };
+
             foreach (var obj in SelectedObjects)
             {
-                switch (mode)
+                string? property = mode switch
                 {
-                    case Gizmo3D.TransformMode.Translate:
-                        Timeline.RecordAutoKeyframe(obj, "position.x");
-                        Timeline.RecordAutoKeyframe(obj, "position.y");
-                        Timeline.RecordAutoKeyframe(obj, "position.z");
-                        break;
-                    case Gizmo3D.TransformMode.Rotate:
-                        Timeline.RecordAutoKeyframe(obj, "rotation.x");
-                        Timeline.RecordAutoKeyframe(obj, "rotation.y");
-                        Timeline.RecordAutoKeyframe(obj, "rotation.z");
-                        break;
-                    case Gizmo3D.TransformMode.Scale:
-                        Timeline.RecordAutoKeyframe(obj, "scale.x");
-                        Timeline.RecordAutoKeyframe(obj, "scale.y");
-                        Timeline.RecordAutoKeyframe(obj, "scale.z");
-                        break;
-                    case Gizmo3D.TransformMode.Bend when obj is MiBoneSceneObject bendBone:
-                        Timeline.RecordAutoKeyframe(obj, "bend.x");
-                        Timeline.RecordAutoKeyframe(obj, "bend.y");
-                        Timeline.RecordAutoKeyframe(obj, "bend.z");
-                        break;
-                }
+                    Gizmo3D.TransformMode.Translate => "position",
+                    Gizmo3D.TransformMode.Rotate => "rotation",
+                    Gizmo3D.TransformMode.Scale => "scale",
+                    Gizmo3D.TransformMode.Bend when obj is MiBoneSceneObject => "bend",
+                    _ => null
+                };
+
+                if (property == null) continue;
+                foreach (string axis in axes)
+                    Timeline.RecordAutoKeyframe(obj, $"{property}.{axis}");
             }
         }
 
