@@ -364,6 +364,7 @@ public class ProjectSceneObjectEntry
     public bool InheritPivotOffset { get; set; } = false;
     public bool InheritVisibility { get; set; } = true;
     public bool ObjectVisible { get; set; } = true;
+    public bool CastShadow { get; set; } = true;
     public bool InvertFaces { get; set; } = false;
     public bool BlurTexture { get; set; } = false;
     public bool TextureMipmaps { get; set; } = false;

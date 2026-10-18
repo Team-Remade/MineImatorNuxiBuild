@@ -225,6 +225,10 @@ public class Viewport : UiPanel
     private const int MaxPointShadowLights = 8;
     private readonly uint[] _pointShadowCubeTextures = new uint[MaxPointShadowLights];
     private readonly int[] _pointShadowTextureSizes = new int[MaxPointShadowLights];
+    private int _directionalShadowCacheSignature;
+    private bool _hasDirectionalShadowCache;
+    private int _pointShadowCacheSignature;
+    private bool _hasPointShadowCache;
 
     private static readonly vec3[] PointShadowFaceDirections =
     [
@@ -3170,6 +3174,11 @@ public class Viewport : UiPanel
         Mesh.ShadowMapTexture = _shadowTex;
         Mesh.ShadowLightSpaceMatrix = lightViewProj;
 
+        if (CanReuseShadowMaps() &&
+            _hasDirectionalShadowCache &&
+            _directionalShadowCacheSignature == ComputeShadowCacheSignature(SceneObjects, includePointLights: false))
+            return;
+
         Gl.BindFramebuffer(GLEnum.Framebuffer, _shadowFbo);
         Gl.Viewport(0, 0, _shadowMapSize, _shadowMapSize);
         Gl.Clear(ClearBufferMask.DepthBufferBit);
@@ -3185,6 +3194,9 @@ public class Viewport : UiPanel
         Gl.CullFace(GLEnum.Back);
         Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
         Gl.Viewport(0, 0, _viewportWidth, _viewportHeight);
+
+        _directionalShadowCacheSignature = ComputeShadowCacheSignature(SceneObjects, includePointLights: false);
+        _hasDirectionalShadowCache = true;
     }
 
     private Dictionary<LightSceneObject, int> RenderPointShadowMaps(vec3 cameraPos)
@@ -3210,6 +3222,10 @@ public class Viewport : UiPanel
 
         int lightCount = Math.Min(shadowLights.Count, MaxPointShadowLights);
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
+        int cacheSignature = ComputeShadowCacheSignature(SceneObjects, includePointLights: true);
+        bool refreshShadowMaps = !CanReuseShadowMaps() ||
+            !_hasPointShadowCache ||
+            _pointShadowCacheSignature != cacheSignature;
 
         for (int lightIndex = 0; lightIndex < lightCount; lightIndex++)
         {
@@ -3220,6 +3236,9 @@ public class Viewport : UiPanel
             ResizePointShadowTexture(lightIndex, shadowSize);
             shadowIndices[light] = lightIndex;
             Mesh.PointShadowCubeTextures[lightIndex] = _pointShadowCubeTextures[lightIndex];
+
+            if (!refreshShadowMaps)
+                continue;
 
             float farPlane = Math.Max(range, 0.5f);
             mat4 projection = mat4.Perspective(glm.Radians(90f), 1f, 0.05f, farPlane);
@@ -3252,7 +3271,57 @@ public class Viewport : UiPanel
         Gl.CullFace(GLEnum.Back);
         Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
         Gl.Viewport(0, 0, _viewportWidth, _viewportHeight);
+        _pointShadowCacheSignature = cacheSignature;
+        _hasPointShadowCache = true;
         return shadowIndices;
+    }
+
+    private static bool CanReuseShadowMaps()
+    {
+        return !(Timeline.Instance?.IsPlaying ?? false) && !MainWindow.IsAnimationRenderExportActive;
+    }
+
+    private int ComputeShadowCacheSignature(IEnumerable<SceneObject> objects, bool includePointLights)
+    {
+        var hash = new HashCode();
+        hash.Add(_shadowMapSize);
+        hash.Add(PropertiesPanel?.PointShadowBufferSize ?? 1024);
+        hash.Add(PropertiesPanel?.SpotShadowBufferSize ?? 1024);
+        AddShadowCacheState(objects, includePointLights, ref hash);
+        return hash.ToHashCode();
+    }
+
+    private static void AddShadowCacheState(
+        IEnumerable<SceneObject> objects,
+        bool includePointLights,
+        ref HashCode hash)
+    {
+        foreach (var obj in objects)
+        {
+            hash.Add(obj.ObjectVisible);
+            hash.Add(obj.InheritVisibility);
+            hash.Add(obj.CastShadow);
+            hash.Add(obj.RenderInHighQuality);
+            hash.Add(obj.Position.x);
+            hash.Add(obj.Position.y);
+            hash.Add(obj.Position.z);
+            hash.Add(obj.Rotation.x);
+            hash.Add(obj.Rotation.y);
+            hash.Add(obj.Rotation.z);
+            hash.Add(obj.Scale.x);
+            hash.Add(obj.Scale.y);
+            hash.Add(obj.Scale.z);
+            hash.Add(obj.Visuals.Count);
+
+            if (includePointLights && obj is LightSceneObject light)
+            {
+                hash.Add(light.LightShadowEnabled);
+                hash.Add(light.Type);
+                hash.Add(light.LightRange);
+            }
+
+            AddShadowCacheState(obj.Children, includePointLights, ref hash);
+        }
     }
 
     private unsafe void ResizePointShadowTexture(int index, int requestedSize)
