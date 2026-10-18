@@ -1,6 +1,5 @@
 using System.Numerics;
 using System.Reflection;
-using Cyotek.Data.Nbt;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade;
@@ -2645,39 +2644,22 @@ public class SpawnMenu : UiPanel
 
         try
         {
-            NbtDocument doc;
+            SchematicData schematic;
             try
             {
-                doc = NbtDocument.LoadDocument(filePath);
+                schematic = SchematicData.Load(filePath);
             }
             catch (Exception ex)
             {
-                _lastSchematicLoadError = $"The NBT data could not be read: {ex.Message}";
-                Console.Error.WriteLine($"Failed reading NBT schematic '{filePath}': {ex.Message}");
+                _lastSchematicLoadError = $"The schematic data could not be read: {ex.Message}";
+                Console.Error.WriteLine($"Failed reading schematic '{filePath}': {ex.Message}");
                 return null;
             }
 
-            var rootTag = doc.DocumentRoot;
-            if (rootTag == null)
-            {
-                _lastSchematicLoadError = "The file has no NBT root tag.";
-                return null;
-            }
-
-            var schematic = rootTag.GetCompound("Schematic") ?? rootTag;
-
-            int width = GetDimension(schematic, "Width");
-            int height = GetDimension(schematic, "Height");
-            int length = GetDimension(schematic, "Length");
-
-            if (width <= 0 || height <= 0 || length <= 0)
-            {
-                _lastSchematicLoadError = "The schematic dimensions are invalid.";
-                Console.Error.WriteLine($"Invalid schematic dimensions in '{filePath}'.");
-                return null;
-            }
-
-            int total = width * height * length;
+            int width = schematic.Width;
+            int height = schematic.Height;
+            int length = schematic.Length;
+            int total = schematic.Count;
             var variantCache = new Dictionary<string, VariantRenderInfo>(StringComparer.OrdinalIgnoreCase);
             var voxelInfos = new VariantRenderInfo?[total];
             // Minecraft fluid "level" state (0-7 = flowing amount, 8-15 = falling) per voxel.
@@ -2688,30 +2670,29 @@ public class SpawnMenu : UiPanel
             var liquidLevels = new int[total];
             var availableBlocks = new HashSet<string>(BlockRegistry.Blocks, StringComparer.OrdinalIgnoreCase);
 
-            bool modernLoaded = TryLoadModernPaletteBlocks(
-                schematic,
-                total,
-                availableBlocks,
-                variantCache,
-                voxelInfos,
-                liquidLevels);
-
-            if (!modernLoaded)
+            if (schematic.Palette != null)
             {
-                if (!TryLoadLegacyBlocks(
-                        schematic,
-                        width,
-                        height,
-                        length,
-                        total,
-                        availableBlocks,
-                        variantCache,
-                        voxelInfos,
-                        liquidLevels))
-                {
-                    _lastSchematicLoadError = "The block data could not be decoded in either the modern (.schem) or legacy (.schematic) format.";
-                    return null;
-                }
+                LoadModernPaletteBlocks(
+                    schematic.Palette,
+                    schematic.PaletteIndices,
+                    total,
+                    availableBlocks,
+                    variantCache,
+                    voxelInfos,
+                    liquidLevels);
+            }
+            else
+            {
+                LoadLegacyBlocks(
+                    schematic,
+                    width,
+                    height,
+                    length,
+                    total,
+                    availableBlocks,
+                    variantCache,
+                    voxelInfos,
+                    liquidLevels);
             }
 
             string baseName = Path.GetFileNameWithoutExtension(filePath);
@@ -3271,40 +3252,15 @@ public class SpawnMenu : UiPanel
         return false;
     }
 
-    private static int GetDimension(TagCompound root, string key)
-    {
-        int value = root.GetShortValue(key, 0);
-        if (value == 0)
-            value = root.GetIntValue(key, 0);
-        return value;
-    }
-
-    private bool TryLoadModernPaletteBlocks(
-        TagCompound schematic,
+    private void LoadModernPaletteBlocks(
+        Dictionary<int, string> paletteLookup,
+        int[] paletteIndices,
         int total,
         HashSet<string> availableBlocks,
         Dictionary<string, VariantRenderInfo> variantCache,
         VariantRenderInfo?[] outVoxels,
         int[] outLiquidLevels)
     {
-        var palette = schematic.GetCompound("Palette");
-        byte[] blockData = schematic.GetByteArrayValue("BlockData", Array.Empty<byte>());
-        if (palette == null || palette.Count == 0 || blockData.Length == 0)
-            return false;
-
-        if (!TryDecodeVarIntArray(blockData, total, out var paletteIndices))
-        {
-            Console.Error.WriteLine("Failed to decode BlockData varints from .schem file.");
-            return false;
-        }
-
-        var paletteLookup = new Dictionary<int, string>();
-        foreach (Tag tag in palette.Value)
-        {
-            if (tag is TagInt ti)
-                paletteLookup[ti.Value] = ti.Name;
-        }
-
         var idToInfo = new Dictionary<int, VariantRenderInfo?>();
         var idToLevel = new Dictionary<int, int>();
         for (int i = 0; i < total; i++)
@@ -3348,11 +3304,10 @@ public class SpawnMenu : UiPanel
                 outLiquidLevels[i] = level;
         }
 
-        return true;
     }
 
-    private bool TryLoadLegacyBlocks(
-        TagCompound schematic,
+    private void LoadLegacyBlocks(
+        SchematicData schematic,
         int width,
         int height,
         int length,
@@ -3362,15 +3317,9 @@ public class SpawnMenu : UiPanel
         VariantRenderInfo?[] outVoxels,
         int[] outLiquidLevels)
     {
-        byte[] blocks = schematic.GetByteArrayValue("Blocks", Array.Empty<byte>());
-        byte[] data = schematic.GetByteArrayValue("Data", Array.Empty<byte>());
-        byte[] addBlocks = schematic.GetByteArrayValue("AddBlocks", Array.Empty<byte>());
-
-        if (blocks.Length < total)
-        {
-            Console.Error.WriteLine($"Schematic block array is truncated ({blocks.Length} < {total}).");
-            return false;
-        }
+        byte[] blocks = schematic.Blocks;
+        byte[] data = schematic.Metadata;
+        byte[] addBlocks = schematic.AddBlocks;
 
         var legacyCache = new Dictionary<int, VariantRenderInfo?>();
 
@@ -3479,7 +3428,6 @@ public class SpawnMenu : UiPanel
             outVoxels[i] = info;
         }
 
-        return true;
     }
 
     private VariantRenderInfo? GetOrCreateFenceRenderInfo(
@@ -3763,35 +3711,6 @@ public class SpawnMenu : UiPanel
         }
 
         return meshes;
-    }
-
-    private static bool TryDecodeVarIntArray(byte[] data, int expectedCount, out int[] values)
-    {
-        values = new int[expectedCount];
-        int index = 0;
-        int offset = 0;
-
-        while (offset < data.Length && index < expectedCount)
-        {
-            int numRead = 0;
-            int result = 0;
-            byte read;
-
-            do
-            {
-                if (offset >= data.Length) return false;
-                read = data[offset++];
-                int value = read & 0x7F;
-                result |= value << (7 * numRead);
-                numRead++;
-                if (numRead > 5) return false;
-            }
-            while ((read & 0x80) != 0);
-
-            values[index++] = result;
-        }
-
-        return index == expectedCount;
     }
 
     private static bool TryParsePaletteState(
