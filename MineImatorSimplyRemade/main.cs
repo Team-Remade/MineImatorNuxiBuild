@@ -102,6 +102,7 @@ public static class main
             MainWindow.SetClearColor(new vec4(0.3f, 0.4f, 0.5f, 1));
 
             Glfw.MakeContextCurrent(MainWindow.WindowHandle);
+            Glfw.SwapInterval(0); // Disable GLFW OpenGL VSync blocking to avoid conflicting with the frame limiter
             _gl = GL.GetApi(Glfw.GetProcAddress);
             MainWindow.SetGL(_gl);
             Directory.CreateDirectory(ApplicationLocalDirectoryPath);
@@ -257,6 +258,8 @@ public static class main
         if (targetFrameTicks <= 0)
             return;
 
+        long oneMillisecondTicks = Stopwatch.Frequency / 1000;
+
         while (true)
         {
             long elapsedTicks = frameTimer.ElapsedTicks - frameStartTicks;
@@ -264,16 +267,19 @@ public static class main
             if (remainingTicks <= 0)
                 break;
 
-            long oneMillisecondTicks = Stopwatch.Frequency / 1000;
-            if (remainingTicks > oneMillisecondTicks * 2)
+            // Only sleep if remaining time is well above Windows standard timer resolution (~15ms)
+            // Windows Thread.Sleep(1) often sleeps for 15.6ms, causing severe FPS drops (e.g. 60 FPS -> ~42 FPS)
+            if (remainingTicks > oneMillisecondTicks * 16)
             {
-                int sleepMs = (int)(remainingTicks / oneMillisecondTicks) - 1;
-                if (sleepMs > 0)
-                    Thread.Sleep(sleepMs);
+                Thread.Sleep(1);
+            }
+            else if (remainingTicks > oneMillisecondTicks * 2)
+            {
+                Thread.Yield();
             }
             else
             {
-                Thread.SpinWait(100);
+                Thread.SpinWait(50);
             }
         }
     }
