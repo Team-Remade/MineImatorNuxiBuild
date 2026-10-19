@@ -28,21 +28,24 @@ void main()
     }
 
     float centerDepth = linearDepth(rawCenterDepth);
-    // Perspective makes a flat surface's depth change across the screen.  The
-    // old test interpreted that ordinary slope as geometry behind the current
-    // pixel, causing large planes (especially the ground) to bounce their own
-    // already-lit colour back onto themselves like a full-screen bloom pass.
-    // Hardware depth is planar in screen space for a planar primitive, so use
-    // its local gradient to predict and reject samples on that same plane.
-    vec2 rawDepthGradient = vec2(dFdx(rawCenterDepth), dFdy(rawCenterDepth));
+
+    // Predict depth on the local surface tangent plane using linear depth gradients.
+    // Flat surfaces shouldn't bounce their own lit color back onto themselves.
+    vec2 depthGradient = vec2(dFdx(centerDepth), dFdy(centerDepth));
+
     vec3 indirect = vec3(0.0);
-    float weightSum = 0.0;
+    float totalWeight = 0.0;
 
     int samples = clamp(uSampleCount, 4, 64);
     float quality = clamp(uPrecision, 0.0, 1.0);
     float rayStep = clamp(uRayStep, 1.0, 64.0);
-    float baseRadius = mix(1.5, 9.0, quality) * rayStep;
+    float baseRadius = mix(2.0, 10.0, quality) * rayStep;
     const float goldenAngle = 2.39996323;
+
+    // Maximum physical distance (in linear depth units) across which indirect bounce can occur.
+    // Scales moderately with depth and ray step, preventing distant background or fog from bleeding.
+    float maxDistance = max(0.4, rayStep * 0.12 + centerDepth * 0.04);
+    float planeTolerance = max(0.02, fwidth(centerDepth) * 1.5 + centerDepth * 0.001);
 
     for (int i = 0; i < 64; ++i)
     {
@@ -52,7 +55,11 @@ void main()
         float t = (float(i) + 0.5) / float(samples);
         float radius = sqrt(t) * baseRadius;
         vec2 dir = vec2(cos(float(i) * goldenAngle), sin(float(i) * goldenAngle));
-        vec2 sampleUv = uv + dir * radius * uTexelSize;
+        vec2 sampleOffsetPixels = dir * radius;
+        vec2 sampleUv = uv + sampleOffsetPixels * uTexelSize;
+
+        float radialWeight = 1.0 - t;
+        totalWeight += radialWeight;
 
         if (sampleUv.x < 0.0 || sampleUv.x > 1.0 || sampleUv.y < 0.0 || sampleUv.y > 1.0)
             continue;
@@ -61,33 +68,36 @@ void main()
         if (rawSampleDepth >= 0.999999)
             continue;
 
-        vec2 sampleOffsetPixels = dir * radius;
-        float predictedPlaneDepth = rawCenterDepth + dot(rawDepthGradient, sampleOffsetPixels);
-        float planeResidual = rawSampleDepth - predictedPlaneDepth;
-        float planeTolerance = max(0.00002, fwidth(rawCenterDepth) * 0.1);
-        float separateSurfaceWeight = smoothstep(planeTolerance, planeTolerance * 4.0, planeResidual);
+        float sampleDepth = linearDepth(rawSampleDepth);
+
+        // Reject self-bounce on the same flat surface plane.
+        float predictedPlaneDepth = centerDepth + dot(depthGradient, sampleOffsetPixels);
+        float planeDiff = abs(sampleDepth - predictedPlaneDepth);
+        float separateSurfaceWeight = smoothstep(planeTolerance, planeTolerance * 3.0, planeDiff);
         if (separateSurfaceWeight <= 0.0001)
             continue;
 
-        float sampleDepth = linearDepth(rawSampleDepth);
-        float depthDelta = sampleDepth - centerDepth;
+        // Bounded depth distance: bounce can only come from nearby surfaces, not far background or distant fog.
+        float depthDelta = abs(sampleDepth - centerDepth);
+        if (depthDelta >= maxDistance)
+            continue;
 
-        float behindWeight = smoothstep(0.0, max(0.35, centerDepth * 0.04), depthDelta) * separateSurfaceWeight;
-        float depthSimilarity = 1.0 - smoothstep(0.0, max(1.2, centerDepth * 0.12), abs(depthDelta));
-        float radialWeight = 1.0 - t;
-        float weight = behindWeight * depthSimilarity * radialWeight;
+        float distanceFalloff = 1.0 - smoothstep(0.0, maxDistance, depthDelta);
+        float sampleWeight = separateSurfaceWeight * distanceFalloff * radialWeight;
 
-        if (weight <= 0.0001)
+        if (sampleWeight <= 0.0001)
             continue;
 
         vec3 sampleColor = texture(uScene, sampleUv).rgb;
-        indirect += sampleColor * weight;
-        weightSum += weight;
+        indirect += sampleColor * sampleWeight;
     }
 
-    if (weightSum > 0.0001)
-        indirect /= weightSum;
+    if (totalWeight > 0.0001)
+        indirect /= totalWeight;
 
-    indirect *= mix(0.35, 1.1, quality);
+    // Attenuate indirect light in the far distance where fog dominates and depth precision drops.
+    float distanceFade = 1.0 - smoothstep(uFar * 0.4, uFar * 0.85, centerDepth);
+    indirect *= distanceFade;
+
     FragColor = vec4(clamp(indirect, 0.0, 2.0), 1.0);
 }

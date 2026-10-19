@@ -2680,7 +2680,7 @@ public class Viewport : UiPanel
         bool useScreenSpaceGi = renderMode == SceneRenderMode.Rendered &&
                     PropertiesPanel?.IndirectLightingEnabled == true &&
                     !string.Equals(PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
-        Mesh.IndirectWorldEnabled = useWorldGi || useScreenSpaceGi;
+        Mesh.IndirectWorldEnabled = useWorldGi;
         Mesh.IndirectWorldStrength = Math.Clamp(PropertiesPanel?.IndirectLightingStrength ?? 1f, 0f, 4f);
         if (renderMode == SceneRenderMode.Rendered)
         {
@@ -5939,7 +5939,7 @@ public class Viewport : UiPanel
         bool previewScreenSpaceGi = renderMode == SceneRenderMode.Rendered &&
                         MainViewport.PropertiesPanel?.IndirectLightingEnabled == true &&
                         !string.Equals(MainViewport.PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
-        Mesh.IndirectWorldEnabled = previewWorldGi || previewScreenSpaceGi;
+        Mesh.IndirectWorldEnabled = previewWorldGi;
         Mesh.IndirectWorldStrength = Math.Clamp(MainViewport.PropertiesPanel?.IndirectLightingStrength ?? 1f, 0f, 4f);
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);

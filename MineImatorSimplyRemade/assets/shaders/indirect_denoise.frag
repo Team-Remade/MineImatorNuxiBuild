@@ -19,10 +19,16 @@ void main()
 {
     vec2 uv = gl_FragCoord.xy * uTexelSize;
     float centerRawDepth = texture(uDepth, uv).r;
-    float centerDepth = centerRawDepth >= 0.999999 ? uFar : linearDepth(centerRawDepth);
+    if (centerRawDepth >= 0.999999)
+    {
+        FragColor = vec4(0.0);
+        return;
+    }
+
+    float centerDepth = linearDepth(centerRawDepth);
 
     float strength = clamp(uDenoiseStrength, 0.0, 200.0) / 200.0;
-    float depthSigma = mix(0.35, 3.0, strength);
+    float depthSigma = mix(0.15, 1.5, strength);
 
     vec3 accum = vec3(0.0);
     float weightSum = 0.0;
@@ -34,8 +40,14 @@ void main()
             vec2 offset = vec2(float(x), float(y));
             vec2 sampleUv = uv + offset * uTexelSize;
 
+            if (sampleUv.x < 0.0 || sampleUv.x > 1.0 || sampleUv.y < 0.0 || sampleUv.y > 1.0)
+                continue;
+
             float rawDepth = texture(uDepth, sampleUv).r;
-            float sampleDepth = rawDepth >= 0.999999 ? uFar : linearDepth(rawDepth);
+            if (rawDepth >= 0.999999)
+                continue;
+
+            float sampleDepth = linearDepth(rawDepth);
             float depthDelta = abs(sampleDepth - centerDepth);
 
             float spatial = exp(-dot(offset, offset) / 8.0);
