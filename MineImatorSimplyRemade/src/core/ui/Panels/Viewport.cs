@@ -501,9 +501,6 @@ public class Viewport : UiPanel
     /// <summary>Billboard shader used to draw camera-facing light icons.</summary>
     private Shader? _billboardShader;
 
-    /// <summary>Camera-facing ring shader used for selected-light range indicators.</summary>
-    private Shader? _lightRingShader;
-
     /// <summary>GL texture handle for <c>light.png</c>.</summary>
     private uint _lightIconTexture;
 
@@ -515,6 +512,15 @@ public class Viewport : UiPanel
 
     /// <summary>World-space size of the light-ray billboard (slightly larger, drawn behind).</summary>
     private const float LightRayBillboardSize = 0.8f;
+
+    // ── Light wireframe gizmos (Mine-imator style outlines) ─────────────────────
+
+    /// <summary>
+    /// Draws Mine-imator–style wireframe gizmos for every light in the scene:
+    /// a bulb circle + range circle for point lights; a cone box + edge lines +
+    /// base ring for spot lights.  The glow billboard is kept separately.
+    /// </summary>
+    private LightGizmoRenderer? _lightGizmoRenderer;
 
     // ── Ground plane setup ─────────────────────────────────────────────────────
 
@@ -1410,7 +1416,7 @@ public class Viewport : UiPanel
         // Assign to shared static handles on LightSceneObject.
         LightSceneObject.BillboardVao = CreateBillboardVao();
 
-        // Compile billboard shader.
+        // Compile billboard shader (glow icon + ray).
         _billboardShader = new Shader(Gl);
         _billboardShader.CompileShader("billboard.vert", "billboard.frag");
 
@@ -1418,12 +1424,8 @@ public class Viewport : UiPanel
         _boneShader = new Shader(Gl);
         _boneShader.CompileShader("gizmo.vert", "gizmo.frag");
 
-        // Camera-facing ring shader for selected-light range indicators.
-        _lightRingShader = new Shader(Gl);
-        _lightRingShader.CompileShader("lightring.vert", "lightring.frag");
-
-        // Shared procedural ring mesh for selected-light range indicators.
-        LightSceneObject.EnsureRangeRingMesh(Gl);
+        // Mine-imator–style wireframe gizmo renderer for light range/shape.
+        _lightGizmoRenderer = new LightGizmoRenderer(Gl);
     }
 
     /// <summary>
@@ -1666,182 +1668,18 @@ public class Viewport : UiPanel
             RenderBoneIndicatorsRecursive(child, view, proj, mvpLoc, colorLoc, sm);
     }
 
-    // ── Light range indicator render ──────────────────────────────────────────
+    // ── Light wireframe gizmos (Mine-imator style) ────────────────────────────
 
     /// <summary>
-    /// Draws a thin ring on the XZ plane around every selected
-    /// <see cref="LightSceneObject"/>, scaled by the light's
-    /// <c>LightRange</c>.  Uses the gizmo flat-colour shader (same as bone
-    /// indicators) tinted with the light's own colour so each indicator is
-    /// visually tied to its source.  Rendered with depth-test always + no depth
-    /// writes so the range is always visible, even through walls.
+    /// Draws Mine-imator–style wireframe outlines for every visible light:
+    ///   • Point light: small bulb circle + coloured range circle
+    ///   • Spot light:  small bulb circle + cone-box outline + axis/edge lines + base ring
+    /// The glow billboard is rendered separately by <see cref="RenderLightBillboards"/>.
     /// </summary>
-    private unsafe void RenderLightRangeIndicators(mat4 view, mat4 proj)
+    private void RenderLightGizmos(mat4 view, mat4 proj, int viewportW, int viewportH, float fovDeg)
     {
-        if (_lightRingShader == null) return;
-        if (LightSceneObject.SharedRangeRingMesh == null) return;
-
-        var sm = SelectionManager.Instance;
-
-        uint prog = _lightRingShader.ShaderProgram;
-        Gl.UseProgram(prog);
-
-        Gl.Enable(GLEnum.DepthTest);
-        Gl.DepthFunc(GLEnum.Always);
-        Gl.DepthMask(false);
-        Gl.Disable(GLEnum.CullFace);
-        Gl.Disable(GLEnum.Blend);
-
-        int viewLoc   = Gl.GetUniformLocation(prog, "uView");
-        int projLoc   = Gl.GetUniformLocation(prog, "uProj");
-        int posLoc    = Gl.GetUniformLocation(prog, "uWorldPos");
-        int rangeLoc  = Gl.GetUniformLocation(prog, "uRange");
-        int colorLoc  = Gl.GetUniformLocation(prog, "uColor");
-
-        if (viewLoc >= 0)
-        {
-            float[] f =
-            {
-                view.m00, view.m01, view.m02, view.m03,
-                view.m10, view.m11, view.m12, view.m13,
-                view.m20, view.m21, view.m22, view.m23,
-                view.m30, view.m31, view.m32, view.m33,
-            };
-            fixed (float* p = f) Gl.UniformMatrix4(viewLoc, 1, false, p);
-        }
-        if (projLoc >= 0)
-        {
-            float[] f =
-            {
-                proj.m00, proj.m01, proj.m02, proj.m03,
-                proj.m10, proj.m11, proj.m12, proj.m13,
-                proj.m20, proj.m21, proj.m22, proj.m23,
-                proj.m30, proj.m31, proj.m32, proj.m33,
-            };
-            fixed (float* p = f) Gl.UniformMatrix4(projLoc, 1, false, p);
-        }
-
-        foreach (var root in SceneObjects)
-            RenderLightRangeIndicatorsRecursive(root, view, proj, posLoc, rangeLoc, colorLoc, sm);
-
-        Gl.DepthMask(true);
-        Gl.DepthFunc(GLEnum.Less);
-        Gl.Enable(GLEnum.CullFace);
-    }
-
-    private void RenderLightRangeIndicatorsRecursive(
-        SceneObject obj, mat4 view, mat4 proj,
-        int posLoc, int rangeLoc, int colorLoc, SelectionManager? sm)
-    {
-        if (!obj.GetEffectiveVisibility()) return;
-
-        if (obj is LightSceneObject light && sm != null && sm.SelectedObjects.Contains(obj))
-        {
-            mat4 world    = obj.GetWorldMatrix();
-            vec3 lightPos = new vec3(world.m30, world.m31, world.m32);
-
-            if (posLoc   >= 0) Gl.Uniform3(posLoc, lightPos.x, lightPos.y, lightPos.z);
-            if (rangeLoc >= 0) Gl.Uniform1(rangeLoc, MathF.Max(0.01f, light.LightRange / 2f));
-            if (colorLoc >= 0) Gl.Uniform4(colorLoc,
-                light.LightColor.x, light.LightColor.y, light.LightColor.z, 1f);
-
-            LightSceneObject.SharedRangeRingMesh!.RenderPickPass(Gl);
-        }
-
-        foreach (var child in obj.Children)
-            RenderLightRangeIndicatorsRecursive(child, view, proj, posLoc, rangeLoc, colorLoc, sm);
-    }
-
-    // ── Spot-light coverage indicators ────────────────────────────────────────
-
-    /// <summary>
-    /// Draws the spot-light editor representation.  Unselected spot lights
-    /// receive a thin "stick" along their forward axis so the user can see
-    /// the aim direction; selected spot lights receive a procedurally generated
-    /// cone showing the full coverage area.  Both are drawn with depth-test
-    /// always + no depth writes so they remain visible through geometry.
-    /// Uses the same flat-colour gizmo shader as bone indicators / range rings.
-    /// </summary>
-    private void RenderSpotLightIndicators(mat4 view, mat4 proj)
-    {
-        if (_boneShader == null) return;
-        if (LightSceneObject.SharedSpotConeMesh == null ||
-            LightSceneObject.SharedSpotStickMesh == null) return;
-
-        var sm = SelectionManager.Instance;
-
-        uint prog = _boneShader.ShaderProgram;
-        Gl.UseProgram(prog);
-
-        Gl.Enable(GLEnum.DepthTest);
-        Gl.DepthFunc(GLEnum.Always);
-        Gl.DepthMask(false);
-        Gl.Disable(GLEnum.CullFace);
-        Gl.Enable(GLEnum.Blend);
-        Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
-
-        int mvpLoc   = Gl.GetUniformLocation(prog, "uMVP");
-        int colorLoc = Gl.GetUniformLocation(prog, "uColor");
-
-        foreach (var root in SceneObjects)
-            RenderSpotLightIndicatorsRecursive(root, view, proj, mvpLoc, colorLoc, sm);
-
-        Gl.DepthMask(true);
-        Gl.DepthFunc(GLEnum.Less);
-        Gl.Enable(GLEnum.CullFace);
-        Gl.Disable(GLEnum.Blend);
-    }
-
-    private void RenderSpotLightIndicatorsRecursive(
-        SceneObject obj, mat4 view, mat4 proj,
-        int mvpLoc, int colorLoc, SelectionManager? sm)
-    {
-        if (!obj.GetEffectiveVisibility()) return;
-
-        if (obj is LightSceneObject light && light.Type == LightType.Spot)
-        {
-            mat4 world    = obj.GetWorldMatrix();
-            float range   = MathF.Max(0.01f, light.LightRange);
-            float halfAng = MathF.Max(0.1f, light.LightSpotAngle * 0.5f);
-            float tanHalf = MathF.Tan(glm.Radians(halfAng));
-            float baseR   = range * tanHalf;
-
-            // The light's local +Z is the cone / stick aim direction; the world
-            // matrix already encodes the rotation, so scaling the model matrix
-            // by (baseR, baseR, range) and then applying view+proj gives a
-            // correctly oriented cone in world space.
-            mat4 scale = mat4.Scale(new vec3(baseR, baseR, range));
-
-            if (sm != null && sm.SelectedObjects.Contains(obj))
-            {
-                // Selected: draw the full cone (alpha 0.25 so interior is see-through).
-                mat4 mvp = proj * view * world * scale;
-                UploadFlatMVP(mvpLoc, mvp);
-                if (colorLoc >= 0)
-                    Gl.Uniform4(colorLoc,
-                        light.LightColor.x,
-                        light.LightColor.y,
-                        light.LightColor.z,
-                        0.25f);
-                LightSceneObject.SharedSpotConeMesh!.RenderPickPass(Gl);
-            }
-            else
-            {
-                // Unselected: draw a thin stick along the aim direction.
-                mat4 mvp = proj * view * world * scale;
-                UploadFlatMVP(mvpLoc, mvp);
-                if (colorLoc >= 0)
-                    Gl.Uniform4(colorLoc,
-                        light.LightColor.x,
-                        light.LightColor.y,
-                        light.LightColor.z,
-                        1f);
-                LightSceneObject.SharedSpotStickMesh!.RenderPickPass(Gl);
-            }
-        }
-
-        foreach (var child in obj.Children)
-            RenderSpotLightIndicatorsRecursive(child, view, proj, mvpLoc, colorLoc, sm);
+        if (_lightGizmoRenderer == null) return;
+        _lightGizmoRenderer.Draw(SceneObjects, view, proj, viewportW, viewportH, fovDeg);
     }
 
     private unsafe void UploadFlatMVP(int mvpLoc, mat4 mvp)
@@ -1858,16 +1696,17 @@ public class Viewport : UiPanel
     }
 
     /// <summary>
-    /// Renders light billboards and bone indicators into the currently bound FBO
-    /// using the supplied camera matrices.  Called by <see cref="CameraViewport"/>
-    /// when its <c>OverlaysEnabled</c> flag is set, so the two viewports share the
-    /// same overlay shaders and geometry without duplicating code.
+    /// Renders light billboards, bone indicators, and light wireframe gizmos into
+    /// the currently bound FBO using the supplied camera matrices.  Called by
+    /// <see cref="CameraViewport"/> when its <c>OverlaysEnabled</c> flag is set,
+    /// so the two viewports share the same overlay shaders and geometry.
     ///
     /// The caller is responsible for binding the target FBO and setting the
     /// viewport dimensions before calling this method.  GL state is restored to
     /// the expected scene defaults (depth-test on/Less, cull-face on/Back) on return.
     /// </summary>
-    public void RenderOverlaysPublic(mat4 view, mat4 proj)
+    public void RenderOverlaysPublic(mat4 view, mat4 proj,
+        int viewportW = 0, int viewportH = 0, float fovDeg = 60f)
     {
         RenderLightBillboards(view, proj);
 
@@ -1885,16 +1724,17 @@ public class Viewport : UiPanel
         Gl.Enable(GLEnum.CullFace);
         Gl.CullFace(GLEnum.Back);
 
-        RenderLightRangeIndicators(view, proj);
+        // Mine-imator–style wireframe light gizmos (bulb circle, range circle,
+        // spot cone box, axis/edge lines, base ring).
+        int vw = viewportW > 0 ? viewportW : (int)_viewportWidth;
+        int vh = viewportH > 0 ? viewportH : (int)_viewportHeight;
+        RenderLightGizmos(view, proj, vw, vh, fovDeg);
 
-        // Restore state that range indicators may have altered.
+        // Restore state that gizmos may have altered.
         Gl.Enable(GLEnum.DepthTest);
         Gl.DepthFunc(GLEnum.Less);
         Gl.Enable(GLEnum.CullFace);
         Gl.CullFace(GLEnum.Back);
-
-        // Spot-light coverage indicators (cone when selected, stick when unselected).
-        RenderSpotLightIndicators(view, proj);
 
         // Particle spawner emission bounds (wireframe box / ellipsoid).
         RenderParticleSpawnerEmissionShapes(view, proj);
@@ -2819,7 +2659,7 @@ public class Viewport : UiPanel
                 mesh.Render(model, view, proj);
             }
 
-            // ── Light billboards ──────────────────────────────────────────────────
+            // ── Light billboards (glow icon + ray — kept from original system) ──────
             // Drawn after transparent geometry, before the selection outline so
             // selected lights still receive the orange Sobel outline.
             RenderLightBillboards(view, proj);
@@ -2833,24 +2673,14 @@ public class Viewport : UiPanel
             // ── Bone indicators ───────────────────────────────────────────────────
             RenderBoneIndicators(view, proj);
 
-            // ── Selected-light range rings ───────────────────────────────────────
-            // Drawn after bone indicators so they stack on top consistently.
+            // ── Light wireframe gizmos (Mine-imator style) ───────────────────────
+            // Bulb circle + range circle for point lights;
+            // cone outline + edge lines + base ring for spot lights.
             Gl.Enable(GLEnum.DepthTest);
             Gl.DepthFunc(GLEnum.Less);
             Gl.Enable(GLEnum.CullFace);
             Gl.CullFace(GLEnum.Back);
-            RenderLightRangeIndicators(view, proj);
-
-            // ── Spot-light coverage indicators ─────────────────────────────────────
-            // Drawn after the range ring so the cone / stick stack on top.  Shown
-            // in both rendered and unrendered modes so the user can always see
-            // the spot light's aim / coverage; the billboard for spot lights is
-            // skipped below to avoid visual clutter.
-            Gl.Enable(GLEnum.DepthTest);
-            Gl.DepthFunc(GLEnum.Less);
-            Gl.Enable(GLEnum.CullFace);
-            Gl.CullFace(GLEnum.Back);
-            RenderSpotLightIndicators(view, proj);
+            RenderLightGizmos(view, proj, (int)w, (int)h, glm.Degrees(renderCamera.FovY));
 
             // Selected particle spawner emission bounds (wireframe box / ellipsoid).
             RenderParticleSpawnerEmissionShapes(view, proj);
@@ -6159,7 +5989,7 @@ public class Viewport : UiPanel
                 mesh.Render(model, view, proj);
             }
 
-            MainViewport.RenderOverlaysPublic(view, proj);
+            MainViewport.RenderOverlaysPublic(view, proj, (int)w, (int)h, glm.Degrees(renderCamera.FovY));
 
             // Selection outline (Sobel edge over a silhouette mask) so the
             // user can see which object is currently selected inside the
