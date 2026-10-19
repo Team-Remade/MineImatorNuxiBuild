@@ -55,7 +55,7 @@ public class MineImatorLoader
 
     // ── Texture cache (path → GL texture handle) ──────────────────────────────
 
-    private readonly Dictionary<string, uint> _textureCache = new();
+    private readonly Dictionary<(string key, bool makeSquare), uint> _textureCache = new();
 
     // ═════════════════════════════════════════════════════════════════════════
     //  Public API
@@ -126,7 +126,7 @@ public class MineImatorLoader
         {
             foreach (var timeline in miObject.Timelines)
             {
-                if (timeline.Type == "bodypart") continue;
+                if (string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase)) continue;
 
                 MiTemplate template = null;
                 if (!string.IsNullOrEmpty(timeline.Temp))
@@ -216,6 +216,8 @@ public class MineImatorLoader
         {
             foreach (var timeline in miObject.Timelines)
             {
+                // Bodypart IDs are attachment targets, not independently parented objects.
+                if (string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase)) continue;
                 if (!sceneObjectsByTimelineId.TryGetValue(timeline.Id, out var itemObject)) continue;
 
                 SceneObject parentObject = null;
@@ -337,31 +339,19 @@ public class MineImatorLoader
                     uint shapeTexture = GetShapeTexture(shape, part, model);
                     int[]? textureSize = ResolveTextureSize(part, model);
 
-                    // Shape material values override the containing part. This
-                    // is used heavily by facial rigs (for example PikanModel's
-                    // R_Eye plane is 0.01 alpha while the R_Eye part is opaque).
-                    float? colorAlpha = shape.ColorAlpha ?? miBone?.ColorAlpha;
-                    vec3? explicitShapeBlend = ParseMiColor(shape.ColorBlend ?? shape.ColorMix);
-                    // Mine-imator treats mix-percent without an explicit mix color as black.
-                    if (!explicitShapeBlend.HasValue && shape.ColorMixPercent.HasValue)
-                        explicitShapeBlend = vec3.Zero;
-                    vec3? colorBlend = explicitShapeBlend ?? miBone?.ColorBlend;
-                    float? colorBlendAmount = NormalizeMiBlendAmount(shape.ColorMixPercent) ?? miBone?.ColorBlendAmount;
+                    float? colorAlpha = miBone?.ColorAlpha;
+                    vec3? colorBlend = miBone?.ColorBlend;
+                    vec3? colorMix = miBone?.ColorMix;
+                    float? colorBlendAmount = miBone?.ColorBlendAmount;
                     float depth = miBone?.Depth ?? 0f;
 
                     var mesh = CreateShapeMesh(part.Name, shapeIndex, shape, model, shapeTexture,
                         accumulatedScale, effectiveBendParams, _currentCharacter.ModelBendStyle,
-                        colorBlend, colorBlendAmount, colorAlpha, depth, textureSize: textureSize);
+                        colorBlend, colorBlendAmount, colorAlpha, depth, textureSize: textureSize,
+                        partColorMix: colorMix);
 
                     if (mesh != null)
                     {
-                        if (miBone != null) ApplyMaterialSettings(mesh, miBone, shapeTexture);
-                        if (colorBlend.HasValue)
-                        {
-                            float mixAmount = Math.Clamp(colorBlendAmount ?? 1f, 0f, 1f);
-                            mesh.BlendColor = new vec4(colorBlend.Value, mixAmount);
-                        }
-                        if (colorAlpha.HasValue) mesh.Alpha = colorAlpha.Value;
                         mesh.DoubleSided = part.Backfaces;
                         boneObject.AddMesh(mesh);
                         miBone?.RegisterShapeData(new BoneShapeData
@@ -374,10 +364,12 @@ public class MineImatorLoader
                             AccumulatedScale = accumulatedScale,
                             ModelBendStyle = _currentCharacter.ModelBendStyle,
                             PartColorBlend = colorBlend,
+                            PartColorMix = colorMix,
                             PartColorBlendAmount = colorBlendAmount,
                             PartColorAlpha = colorAlpha,
                             PartDepth = depth,
-                            TextureSize = textureSize
+                            TextureSize = textureSize,
+                            DoubleSided = part.Backfaces
                         });
                     }
 
@@ -397,9 +389,10 @@ public class MineImatorLoader
         BendStyle bendStyle = BendStyle.ProjectDefault, vec3? partColorBlend = null,
         float? partColorBlendAmount = null,
         float? partColorAlpha = null,
-        float depth = 0f, int[]? textureSize = null)
+        float depth = 0f, int[]? textureSize = null, vec3? partColorMix = null)
         => CreateShapeMesh(partName, shapeIndex, shape, model, textureId, accumulatedParentScale,
-            bendParams, bendStyle, partColorBlend, partColorBlendAmount, partColorAlpha, depth, textureSize);
+            bendParams, bendStyle, partColorBlend, partColorBlendAmount, partColorAlpha, depth, textureSize,
+            partColorMix);
 
     private static int[]? ResolveTextureSize(MiPart? part, MiModel model)
     {
@@ -473,6 +466,12 @@ public class MineImatorLoader
 
     private static bool ValidateModelRoot(JsonElement root, string modelPath)
     {
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            Console.Error.WriteLine($"Expected a model object in {modelPath}");
+            return false;
+        }
+
         bool HasString(string name) =>
             root.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String;
 
@@ -508,7 +507,8 @@ public class MineImatorLoader
 
     private static void NormalizeTextureSizeSquare(int[]? textureSize)
     {
-        if (textureSize == null || textureSize.Length < 2) return;
+        if (textureSize is not { Length: >= 2 } || textureSize[0] <= 0 || textureSize[1] <= 0)
+            throw new JsonException("Expected 'texture_size' with two positive dimensions.");
         int s = Math.Max(textureSize[0], textureSize[1]);
         textureSize[0] = s;
         textureSize[1] = s;
@@ -518,19 +518,24 @@ public class MineImatorLoader
     {
         foreach (var part in parts)
         {
-            if (part.TextureSize is { Length: >= 2 })
+            if (!part.Visible) continue;
+
+            // Bundled converted models repeat texture paths without repeating dimensions.
+            if (part.Texture != null && part.TextureSize != null)
                 NormalizeTextureSizeSquare(part.TextureSize);
+            else
+                part.TextureSize = fallbackTextureSize?.ToArray();
 
             if (part.Shapes != null)
             {
                 foreach (var shape in part.Shapes)
                 {
-                    if (shape.TextureSize is { Length: >= 2 })
+                    if (!shape.Visible) continue;
+
+                    if (shape.Texture != null && shape.TextureSize != null)
                         NormalizeTextureSizeSquare(shape.TextureSize);
-                    else if (part.TextureSize is { Length: >= 2 })
-                        shape.TextureSize = new[] { part.TextureSize[0], part.TextureSize[1] };
-                    else if (fallbackTextureSize is { Length: >= 2 })
-                        shape.TextureSize = new[] { fallbackTextureSize[0], fallbackTextureSize[1] };
+                    else
+                        shape.TextureSize = part.TextureSize?.ToArray();
                 }
             }
 
@@ -651,7 +656,7 @@ public class MineImatorLoader
         if (!File.Exists(texturePath))
             return 0;
 
-        return LoadTextureFromFile(texturePath);
+        return LoadTextureFromFile(texturePath, makeSquare: true);
     }
 
     private static string ResolveTemplateModelPath(MiTemplate template,
@@ -857,7 +862,7 @@ public class MineImatorLoader
             return 0;
 
         string cacheKey = $"rgba:{width}x{height}:{Convert.ToBase64String(rgbaPixels)}";
-        if (_textureCache.TryGetValue(cacheKey, out uint cached))
+        if (_textureCache.TryGetValue((cacheKey, false), out uint cached))
             return cached;
 
         uint tex = _gl.GenTexture();
@@ -875,7 +880,7 @@ public class MineImatorLoader
         _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.ClampToEdge);
         _gl.BindTexture(GLEnum.Texture2D, 0);
 
-        _textureCache[cacheKey] = tex;
+        _textureCache[(cacheKey, false)] = tex;
         return tex;
     }
 
@@ -1104,6 +1109,8 @@ public class MineImatorLoader
 
         foreach (var part in parts)
         {
+            if (!part.Visible) continue;
+
             int currentIdx = list.Count;
             list.Add((part, currentIdx, parentIdx, accumulatedParentScale));
 
@@ -1204,18 +1211,6 @@ public class MineImatorLoader
             boneObject.CastShadow = part.Shadows;
             boneObject.ObjectVisible = part.Visible;
 
-            // Attach alpha/depth from part
-            if (boneObject is MiBoneSceneObject mibone)
-            {
-                mibone.ColorAlpha = part.ColorAlpha;
-                mibone.ColorBlend = ParseMiColor(part.ColorBlend ?? part.ColorMix);
-                // Mine-imator defaults missing mix color to black when mix percent is authored.
-                if (!mibone.ColorBlend.HasValue && part.ColorMixPercent.HasValue)
-                    mibone.ColorBlend = vec3.Zero;
-                mibone.ColorBlendAmount = NormalizeMiBlendAmount(part.ColorMixPercent);
-                mibone.Depth = part.Depth;
-            }
-
             // Wire into hierarchy
             if (parentIdx >= 0)
             {
@@ -1232,9 +1227,16 @@ public class MineImatorLoader
             // Inherit from parent, then lock in the base pose so the UI shows zero/one offsets.
             if (boneObject is MiBoneSceneObject mib)
             {
-                mib.InheritColorAlphaFromParent();
-                mib.InheritColorBlendFromParent();
-                mib.InheritColorBlendAmountFromParent();
+                var parentBone = mib.Parent as MiBoneSceneObject;
+                var colors = ResolveModelColors(part.ColorInherit, part.ColorBlend, part.ColorMix,
+                    part.ColorAlpha, part.ColorMixPercent, parentBone?.ColorBlend, parentBone?.ColorMix,
+                    parentBone?.ColorAlpha, parentBone?.ColorBlendAmount);
+                mib.ColorBlend = colors.Blend;
+                mib.ColorMix = colors.Mix;
+                mib.ColorAlpha = colors.Alpha;
+                mib.ColorBlendAmount = colors.MixAmount;
+                mib.Depth = part.Depth;
+                mib.IsLocked = part.Locked || parentBone?.IsLocked == true;
                 mib.CommitBasePose();
             }
         }
@@ -1251,7 +1253,7 @@ public class MineImatorLoader
             var path = Path.Combine(model.DirectoryPath, shape.Texture);
             if (File.Exists(path))
             {
-                var t = LoadTextureFromFile(path);
+                var t = LoadTextureFromFile(path, makeSquare: true);
                 if (t != 0) return t;
             }
         }
@@ -1291,7 +1293,7 @@ public class MineImatorLoader
             var path = Path.Combine(model.DirectoryPath, model.Texture);
             if (File.Exists(path))
             {
-                var t = LoadTextureFromFile(path);
+                var t = LoadTextureFromFile(path, makeSquare: true);
                 if (t != 0) model.LoadedTextures["texture"] = t;
             }
         }
@@ -1301,7 +1303,7 @@ public class MineImatorLoader
             var path = Path.Combine(model.DirectoryPath, model.TextureMaterial);
             if (File.Exists(path))
             {
-                var t = LoadTextureFromFile(path);
+                var t = LoadTextureFromFile(path, makeSquare: true);
                 if (t != 0) model.LoadedTextures["texture_material"] = t;
             }
         }
@@ -1311,7 +1313,7 @@ public class MineImatorLoader
             var path = Path.Combine(model.DirectoryPath, model.TextureNormal);
             if (File.Exists(path))
             {
-                var t = LoadTextureFromFile(path);
+                var t = LoadTextureFromFile(path, makeSquare: true);
                 if (t != 0) model.LoadedTextures["texture_normal"] = t;
             }
         }
@@ -1325,7 +1327,7 @@ public class MineImatorLoader
                     ? texPath
                     : Path.Combine(model.DirectoryPath, texPath);
                 if (!File.Exists(fullPath)) continue;
-                var t = LoadTextureFromFile(fullPath);
+                var t = LoadTextureFromFile(fullPath, makeSquare: true);
                 if (t != 0) model.LoadedTextures[name] = t;
             }
         }
@@ -1343,7 +1345,7 @@ public class MineImatorLoader
                 var path = Path.Combine(model.DirectoryPath, part.Texture);
                 if (File.Exists(path))
                 {
-                    var t = LoadTextureFromFile(path);
+                    var t = LoadTextureFromFile(path, makeSquare: true);
                     if (t != 0) part.LoadedTextures["texture"] = t;
                 }
             }
@@ -1353,7 +1355,7 @@ public class MineImatorLoader
                 var path = Path.Combine(model.DirectoryPath, part.TextureMaterial);
                 if (File.Exists(path))
                 {
-                    var t = LoadTextureFromFile(path);
+                    var t = LoadTextureFromFile(path, makeSquare: true);
                     if (t != 0) part.LoadedTextures["texture_material"] = t;
                 }
             }
@@ -1363,7 +1365,7 @@ public class MineImatorLoader
                 var path = Path.Combine(model.DirectoryPath, part.TextureNormal);
                 if (File.Exists(path))
                 {
-                    var t = LoadTextureFromFile(path);
+                    var t = LoadTextureFromFile(path, makeSquare: true);
                     if (t != 0) part.LoadedTextures["texture_normal"] = t;
                 }
             }
@@ -1377,7 +1379,7 @@ public class MineImatorLoader
                         ? kvp.Value
                         : Path.Combine(model.DirectoryPath, kvp.Value);
                     if (!File.Exists(fp)) continue;
-                    var t = LoadTextureFromFile(fp);
+                    var t = LoadTextureFromFile(fp, makeSquare: true);
                     if (t != 0) part.LoadedTextures[kvp.Key] = t;
                 }
             }
@@ -1396,22 +1398,35 @@ public class MineImatorLoader
         }
     }
 
-    public uint LoadTextureFromFile(string path)
+    public uint LoadTextureFromFile(string path, bool makeSquare = false)
     {
-        if (_textureCache.TryGetValue(path, out uint cached)) return cached;
+        var cacheKey = (path, makeSquare);
+        if (_textureCache.TryGetValue(cacheKey, out uint cached)) return cached;
         if (_gl == null || !File.Exists(path)) return 0;
 
         try
         {
             var bytes = File.ReadAllBytes(path);
             ImageResult img = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
+            int width = img.Width;
+            int height = img.Height;
+            byte[] pixels = img.Data;
+            if (makeSquare && width != height)
+            {
+                // Match square model UVs without stretching the original texels.
+                int size = Math.Max(width, height);
+                pixels = new byte[checked(size * size * 4)];
+                for (int row = 0; row < height; row++)
+                    System.Buffer.BlockCopy(img.Data, row * width * 4, pixels, row * size * 4, width * 4);
+                width = height = size;
+            }
 
             uint tex = _gl.GenTexture();
             _gl.BindTexture(GLEnum.Texture2D, tex);
             unsafe
             {
-                fixed (byte* p = img.Data)
-                    _gl.TexImage2D(GLEnum.Texture2D, 0, (int)GLEnum.Rgba, (uint)img.Width, (uint)img.Height,
+                fixed (byte* p = pixels)
+                    _gl.TexImage2D(GLEnum.Texture2D, 0, (int)GLEnum.Rgba, (uint)width, (uint)height,
                         0, GLEnum.Rgba, GLEnum.UnsignedByte, p);
             }
 
@@ -1421,7 +1436,8 @@ public class MineImatorLoader
             _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.ClampToEdge);
             _gl.BindTexture(GLEnum.Texture2D, 0);
 
-            _textureCache[path] = tex;
+            _textureCache[cacheKey] = tex;
+            _pixelCache[tex] = (pixels, width, height);
             return tex;
         }
         catch (Exception ex)
@@ -1452,20 +1468,24 @@ public class MineImatorLoader
         }
     }
 
-    private static void ApplyMaterialSettings(Mesh mesh, MiBoneSceneObject bone, uint textureId)
+    private static (vec3 Blend, vec3 Mix, float Alpha, float MixAmount) ResolveModelColors(
+        bool inherit, string? blend, string? mix, float? alpha, float? mixAmount,
+        vec3? parentBlend, vec3? parentMix, float? parentAlpha, float? parentMixAmount)
     {
-        if (textureId != 0)
-            mesh.TextureId = textureId;
-
-        if (bone.ColorAlpha.HasValue)
-            mesh.Alpha = bone.ColorAlpha.Value;
-        if (bone.ColorBlend.HasValue)
+        vec3 resolvedBlend = ParseMiColor(blend) ?? vec3.Ones;
+        vec3 resolvedMix = ParseMiColor(mix) ?? vec3.Zero;
+        float resolvedAlpha = alpha ?? 1f;
+        float resolvedMixAmount = mixAmount ?? 0f;
+        if (inherit)
         {
-            float mixAmount = Math.Clamp(bone.ColorBlendAmount ?? 1f, 0f, 1f);
-            mesh.BlendColor = new vec4(bone.ColorBlend.Value, mixAmount);
+            resolvedBlend *= parentBlend ?? vec3.Ones;
+            resolvedMix += parentMix ?? vec3.Zero;
+            resolvedAlpha *= parentAlpha ?? 1f;
+            resolvedMixAmount += parentMixAmount ?? 0f;
         }
 
-        mesh.SortDepth = bone.Depth;
+        return (resolvedBlend, vec3.Clamp(resolvedMix, vec3.Zero, vec3.Ones),
+            Math.Clamp(resolvedAlpha, 0f, 1f), Math.Clamp(resolvedMixAmount, 0f, 1f));
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -1477,7 +1497,7 @@ public class MineImatorLoader
         BendStyle bendStyle = BendStyle.ProjectDefault, vec3? partColorBlend = null,
         float? partColorBlendAmount = null,
         float? partColorAlpha = null,
-        float depth = 0f, int[]? textureSize = null)
+        float depth = 0f, int[]? textureSize = null, vec3? partColorMix = null)
     {
         if (shape?.From == null || shape.To == null) return null;
 
@@ -1565,12 +1585,12 @@ public class MineImatorLoader
             mesh.SortDepth = depth;
 
             if (textureId != 0) mesh.TextureId = textureId;
-            if (partColorBlend.HasValue)
-            {
-                float mixAmount = Math.Clamp(partColorBlendAmount ?? 1f, 0f, 1f);
-                mesh.BlendColor = new vec4(partColorBlend.Value, mixAmount);
-            }
-            if (partColorAlpha.HasValue) mesh.Alpha = partColorAlpha.Value;
+            var colors = ResolveModelColors(shape.ColorInherit, shape.ColorBlend, shape.ColorMix,
+                shape.ColorAlpha, shape.ColorMixPercent, partColorBlend, partColorMix,
+                partColorAlpha, partColorBlendAmount);
+            mesh.BlendColor = new vec4(colors.Blend, 1f);
+            mesh.MixColor = new vec4(colors.Mix, colors.MixAmount);
+            mesh.Alpha = colors.Alpha;
 
             // Bend matrix setup uses shapePosition to align the pivot region,
             // but the authored shape translation itself still needs to be
@@ -1584,14 +1604,6 @@ public class MineImatorLoader
         }
 
         return mesh;
-    }
-
-    private static float? NormalizeMiBlendAmount(float? value)
-    {
-        if (!value.HasValue)
-            return null;
-
-        return Math.Clamp(value.Value, 0f, 1f);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -3174,6 +3186,7 @@ public class MiPart
     [JsonPropertyName("depth")] public float Depth { get; set; }
     [JsonPropertyName("backfaces")] [JsonConverter(typeof(MiBoolConverter))] public bool Backfaces { get; set; }
     [JsonPropertyName("shadows")] [JsonConverter(typeof(MiBoolConverter))] public bool Shadows { get; set; } = true;
+    [JsonPropertyName("color_inherit")] [JsonConverter(typeof(MiBoolConverter))] public bool ColorInherit { get; set; } = true;
 
     [JsonPropertyName("color_alpha")]
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
@@ -3198,6 +3211,7 @@ public class MiShape
     [JsonPropertyName("type")] public string Type { get; set; } = "block";
     [JsonPropertyName("description")] public string Description { get; set; }
     [JsonPropertyName("use_model_color")] [JsonConverter(typeof(MiBoolConverter))] public bool UseModelColor { get; set; }
+    [JsonPropertyName("color_inherit")] [JsonConverter(typeof(MiBoolConverter))] public bool ColorInherit { get; set; } = true;
 
     [JsonPropertyName("color_alpha")]
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]

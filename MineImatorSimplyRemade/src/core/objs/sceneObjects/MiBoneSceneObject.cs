@@ -19,10 +19,12 @@ public class BoneShapeData
     public vec3      AccumulatedScale;
     public BendStyle ModelBendStyle;
     public vec3?     PartColorBlend;
+    public vec3?     PartColorMix;
     public float?    PartColorBlendAmount;
     public float?    PartColorAlpha;
     public float     PartDepth;
     public int[]?    TextureSize;
+    public bool      DoubleSided;
 }
 
 /// <summary>
@@ -132,7 +134,10 @@ public class MiBoneSceneObject : BoneSceneObject
     /// <summary>Multiplicative blend colour loaded from color_blend.</summary>
     public vec3? ColorBlend { get; set; }
 
-    /// <summary>Blend weight loaded from color_mix_percent (0-1, defaults to 1).</summary>
+    /// <summary>Additive mix colour loaded from color_mix.</summary>
+    public vec3? ColorMix { get; set; }
+
+    /// <summary>Blend weight loaded from color_mix_percent (0-1, defaults to 0).</summary>
     public float? ColorBlendAmount { get; set; }
 
     /// <summary>Render priority depth from model's depth property.</summary>
@@ -306,13 +311,14 @@ public class MiBoneSceneObject : BoneSceneObject
             BendParams? effectiveBendParams = GetEffectiveBendParameters();
 
             var loader = MineImatorLoader.Instance;
-            foreach (var mesh in _shapeDataList.Select(sd => loader.CreateShapeMeshPublic(
-                         sd.PartName, sd.ShapeIndex, sd.Shape, sd.Model,
-                         sd.TextureId, sd.AccumulatedScale, effectiveBendParams,
-                         sd.ModelBendStyle, sd.PartColorBlend, sd.PartColorBlendAmount,
-                         sd.PartColorAlpha, sd.PartDepth,
-                         sd.TextureSize)).OfType<Mesh>())
+            foreach (var sd in _shapeDataList)
             {
+                var mesh = loader.CreateShapeMeshPublic(sd.PartName, sd.ShapeIndex, sd.Shape, sd.Model,
+                    sd.TextureId, sd.AccumulatedScale, effectiveBendParams,
+                    sd.ModelBendStyle, sd.PartColorBlend, sd.PartColorBlendAmount,
+                    sd.PartColorAlpha, sd.PartDepth, sd.TextureSize, sd.PartColorMix);
+                if (mesh == null) continue;
+                mesh.DoubleSided = sd.DoubleSided;
                 AddMesh(mesh);
             }
         }
@@ -391,29 +397,6 @@ public class MiBoneSceneObject : BoneSceneObject
         float low = Math.Min(minMirrored, maxMirrored);
         float high = Math.Max(minMirrored, maxMirrored);
         return Math.Clamp(value, low, high);
-    }
-
-    // ── Inheritance helpers ───────────────────────────────────────────────────
-
-    public void InheritColorAlphaFromParent()
-    {
-        if (ColorAlpha.HasValue) return;
-        if (Parent is MiBoneSceneObject parentBone)
-            ColorAlpha = parentBone.ColorAlpha;
-    }
-
-    public void InheritColorBlendFromParent()
-    {
-        if (ColorBlend.HasValue) return;
-        if (Parent is MiBoneSceneObject parentBone)
-            ColorBlend = parentBone.ColorBlend;
-    }
-
-    public void InheritColorBlendAmountFromParent()
-    {
-        if (ColorBlendAmount.HasValue) return;
-        if (Parent is MiBoneSceneObject parentBone)
-            ColorBlendAmount = parentBone.ColorBlendAmount;
     }
 
     // ── Icon ──────────────────────────────────────────────────────────────────

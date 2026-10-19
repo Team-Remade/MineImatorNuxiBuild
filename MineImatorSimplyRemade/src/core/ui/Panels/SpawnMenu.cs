@@ -708,7 +708,7 @@ public class SpawnMenu : UiPanel
                     // Apply texture variant if one was selected.
                     if (!string.IsNullOrEmpty(textureOverridePath) && File.Exists(textureOverridePath))
                     {
-                        uint overrideTexId = loader.LoadTextureFromFile(textureOverridePath);
+                        uint overrideTexId = loader.LoadTextureFromFile(textureOverridePath, makeSquare: true);
                         if (overrideTexId != 0)
                             MineImatorLoader.ApplyTextureOverrideToScene(miChar, overrideTexId, model.GetTexture());
                     }
@@ -2356,7 +2356,7 @@ public class SpawnMenu : UiPanel
 
         if (!string.IsNullOrEmpty(textureOverridePath) && File.Exists(textureOverridePath))
         {
-            uint overrideTexId = loader.LoadTextureFromFile(textureOverridePath);
+            uint overrideTexId = loader.LoadTextureFromFile(textureOverridePath, makeSquare: true);
             if (overrideTexId != 0)
                 MineImatorLoader.ApplyTextureOverrideToScene(character, overrideTexId, model.GetTexture());
         }
