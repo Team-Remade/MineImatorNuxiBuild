@@ -33,6 +33,17 @@ void main()
     // Flat surfaces shouldn't bounce their own lit color back onto themselves.
     vec2 depthGradient = vec2(dFdx(centerDepth), dFdy(centerDepth));
 
+    // Suppress SSGI entirely at depth discontinuities (object edges).
+    // At edges, dFdx/dFdy span a large depth jump, making the gradient unreliable
+    // and causing nearby bright surface samples to bleed onto the edge pixel.
+    float edgeSharpness = length(depthGradient);
+    float edgeThreshold = max(0.5, centerDepth * 0.05);
+    if (edgeSharpness > edgeThreshold)
+    {
+        FragColor = vec4(0.0);
+        return;
+    }
+
     vec3 indirect = vec3(0.0);
     float totalWeight = 0.0;
 
@@ -45,7 +56,7 @@ void main()
     // Maximum physical distance (in linear depth units) across which indirect bounce can occur.
     // Scales moderately with depth and ray step, preventing distant background or fog from bleeding.
     float maxDistance = max(0.4, rayStep * 0.12 + centerDepth * 0.04);
-    float planeTolerance = max(0.02, fwidth(centerDepth) * 1.5 + centerDepth * 0.001);
+    float planeTolerance = max(0.02, centerDepth * 0.001);
 
     for (int i = 0; i < 64; ++i)
     {
@@ -70,16 +81,25 @@ void main()
 
         float sampleDepth = linearDepth(rawSampleDepth);
 
-        // Reject self-bounce on the same flat surface plane.
+        // Reject self-bounce: samples on the same flat surface plane don't contribute.
+        // The plane-fitted predicted depth tells us what depth a co-planar neighbor would have.
+        // Only samples that deviate from this prediction (i.e. are on a different surface) are valid bounce sources.
         float predictedPlaneDepth = centerDepth + dot(depthGradient, sampleOffsetPixels);
         float planeDiff = abs(sampleDepth - predictedPlaneDepth);
         float separateSurfaceWeight = smoothstep(planeTolerance, planeTolerance * 3.0, planeDiff);
         if (separateSurfaceWeight <= 0.0001)
             continue;
 
-        // Bounded depth distance: bounce can only come from nearby surfaces, not far background or distant fog.
+        // Bounded depth distance: only nearby surfaces can bounce light.
         float depthDelta = abs(sampleDepth - centerDepth);
         if (depthDelta >= maxDistance)
+            continue;
+
+        // Directional occlusion: reject samples that are significantly closer to the camera than the receiver.
+        // Such samples are "in front" and occlude the receiver rather than bouncing light toward it.
+        // e.g. a white cube face seen by background grass pixels behind it.
+        float depthDiff = centerDepth - sampleDepth; // positive = sample is in front of receiver
+        if (depthDiff > maxDistance * 0.3)
             continue;
 
         float distanceFalloff = 1.0 - smoothstep(0.0, maxDistance, depthDelta);
@@ -89,6 +109,10 @@ void main()
             continue;
 
         vec3 sampleColor = texture(uScene, sampleUv).rgb;
+        // Clamp sample luminance to prevent overbright surfaces from dominating the gather.
+        float sampleLum = dot(sampleColor, vec3(0.2126, 0.7152, 0.0722));
+        if (sampleLum > 0.0001)
+            sampleColor *= min(1.0, 0.6 / sampleLum);
         indirect += sampleColor * sampleWeight;
     }
 
