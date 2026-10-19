@@ -1,4 +1,5 @@
 using GlmSharp;
+using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using Silk.NET.OpenGL;
@@ -6,15 +7,14 @@ using Silk.NET.OpenGL;
 namespace MineImatorSimplyRemade.core.ui;
 
 /// <summary>
-/// Off-screen renderer used by the spawn-menu preview column.
+/// Off-screen renderer used by spawn previews and the world browser.
 ///
-/// Owns a fixed-size FBO (<see cref="TextureSize"/> × <see cref="TextureSize"/>).
+/// Defaults to a square FBO; <see cref="Resize"/> supports rectangular viewports.
 /// Call <see cref="Render"/> with a list of meshes and a selection key each frame;
 /// the result is written to <see cref="ColorTexture"/> which can be displayed
 /// directly in ImGui via <c>ImGui.Image(new ImTextureRef(texId: (ulong)ColorTexture), …)</c>.
 ///
-/// The preview orbits automatically so the object rotates slowly when nothing
-/// is interacted with, and the user can drag to orbit manually.
+/// Uses an orbit camera unless an explicit camera is supplied to <see cref="Render"/>.
 /// </summary>
 public class PreviewRenderer : IDisposable
 {
@@ -45,6 +45,9 @@ public class PreviewRenderer : IDisposable
 
     // ── GL context ────────────────────────────────────────────────────────────
     private readonly GL _gl;
+    public int Width { get; private set; }
+    public int Height { get; private set; }
+    internal mat4 ViewProjection { get; private set; } = mat4.Identity;
 
     // ── Dirty tracking ────────────────────────────────────────────────────────
     /// <summary>
@@ -57,9 +60,24 @@ public class PreviewRenderer : IDisposable
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
-    public PreviewRenderer(GL gl)
+    public PreviewRenderer(GL gl, int textureSize = TextureSize)
     {
         _gl = gl;
+        if (textureSize <= 0) throw new ArgumentOutOfRangeException(nameof(textureSize));
+        Width = Height = textureSize;
+    }
+
+    public void Resize(int width, int height)
+    {
+        width = Math.Max(1, width);
+        height = Math.Max(1, height);
+        float scale = Math.Min(1, 4096f / Math.Max(width, height));
+        width = Math.Max(1, (int)(width * scale));
+        height = Math.Max(1, (int)(height * scale));
+        if (Width == width && Height == height) return;
+        Width = width;
+        Height = height;
+        Initialize();
     }
 
     // ── Initialization ────────────────────────────────────────────────────────
@@ -72,13 +90,13 @@ public class PreviewRenderer : IDisposable
     {
         Dispose(); // release previous resources if any
 
-        uint size = TextureSize;
+        uint width = (uint)Width, height = (uint)Height;
 
         // Color texture (RGBA so ImGui can sample it)
         _gl.GenTextures(1, out uint colorTex);
         _gl.BindTexture(GLEnum.Texture2D, colorTex);
         _gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba,
-                       size, size, 0,
+                       width, height, 0,
                        PixelFormat.Rgba, GLEnum.UnsignedByte, (void*)0);
         _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
         _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
@@ -88,7 +106,7 @@ public class PreviewRenderer : IDisposable
         // Depth+stencil renderbuffer
         _gl.GenRenderbuffers(1, out _rbo);
         _gl.BindRenderbuffer(GLEnum.Renderbuffer, _rbo);
-        _gl.RenderbufferStorage(GLEnum.Renderbuffer, GLEnum.Depth24Stencil8, size, size);
+        _gl.RenderbufferStorage(GLEnum.Renderbuffer, GLEnum.Depth24Stencil8, width, height);
         _gl.BindRenderbuffer(GLEnum.Renderbuffer, 0);
 
         // FBO
@@ -100,10 +118,12 @@ public class PreviewRenderer : IDisposable
                                     GLEnum.Renderbuffer, _rbo);
 
         var status = _gl.CheckFramebufferStatus(GLEnum.Framebuffer);
-        if (status != GLEnum.FramebufferComplete)
-            Console.Error.WriteLine($"FBO incomplete: {status}");
-
         _gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        if (status != GLEnum.FramebufferComplete)
+        {
+            Dispose();
+            throw new InvalidOperationException($"Preview framebuffer is incomplete: {status}");
+        }
 
         _initialized = true;
     }
@@ -130,13 +150,14 @@ public class PreviewRenderer : IDisposable
         string              selectionKey,
         double              deltaTime,
         float               boundsRadius = 0.75f,
-        SceneObject?        sceneRoot    = null)
+        SceneObject?        sceneRoot    = null,
+        Camera?             camera       = null)
     {
         if (!_initialized) Initialize();
         if (_fbo == 0 || ColorTexture == 0) return;
 
         bool selectionChanged = selectionKey != LastSelectionKey;
-        if (selectionChanged)
+        if (selectionChanged && camera == null)
         {
             LastSelectionKey = selectionKey;
             Yaw   = 0.75f;
@@ -144,11 +165,13 @@ public class PreviewRenderer : IDisposable
         }
 
         // Advance auto-orbit
-        Yaw += AutoRotateSpeed * (float)deltaTime;
+        LastSelectionKey = selectionKey;
+        if (camera == null)
+            Yaw += AutoRotateSpeed * (float)deltaTime;
 
         // ── Bind preview FBO ─────────────────────────────────────────────────
         _gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
-        _gl.Viewport(0, 0, (uint)TextureSize, (uint)TextureSize);
+        _gl.Viewport(0, 0, (uint)Width, (uint)Height);
         _gl.Enable(GLEnum.DepthTest);
         _gl.DepthFunc(GLEnum.Less);
         _gl.Enable(GLEnum.CullFace);
@@ -160,7 +183,7 @@ public class PreviewRenderer : IDisposable
         _gl.ClearColor(0.12f, 0.12f, 0.14f, 1.0f);
         _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-        bool hasSomethingToRender = meshes.Count > 0 || sceneRoot != null;
+        bool hasSomethingToRender = meshes.Count > 0 || sceneRoot != null || camera != null;
         if (hasSomethingToRender)
         {
             // ── Camera matrices ───────────────────────────────────────────────
@@ -170,21 +193,30 @@ public class PreviewRenderer : IDisposable
                 MathF.Sin(Pitch),
                 cosP * MathF.Cos(Yaw)) * Distance;
 
-            mat4 view = mat4.LookAt(eye, vec3.Zero, vec3.UnitY);
-            mat4 proj = mat4.Perspective(
+            mat4 view = camera?.GetViewMatrix() ?? mat4.LookAt(eye, vec3.Zero, vec3.UnitY);
+            mat4 proj = camera?.GetProjectionMatrix((float)Width / Height) ?? mat4.Perspective(
                 glm.Radians(50f),   // 50° FOV
-                1.0f,               // 1:1 square FBO
+                (float)Width / Height,
                 0.05f,
                 100f);
+            ViewProjection = proj * view;
 
             // ── Flat mesh list (Items, Blocks, Primitives) ────────────────────
-            mat4 model = mat4.Identity;
-            foreach (var mesh in meshes)
-                mesh.Render(model, view, proj);
+            var previousCameraPosition = Mesh.GlobalCameraPosition;
+            if (camera != null) Mesh.GlobalCameraPosition = camera.Position;
+            try
+            {
+                mat4 model = mat4.Identity;
+                foreach (var mesh in meshes)
+                    mesh.Render(model, view, proj);
 
-            // ── Scene-object hierarchy (Characters) ───────────────────────────
-            if (sceneRoot != null)
-                RenderSceneObjectRecursive(sceneRoot, view, proj);
+                if (sceneRoot != null)
+                    RenderSceneObjectRecursive(sceneRoot, view, proj);
+            }
+            finally
+            {
+                Mesh.GlobalCameraPosition = previousCameraPosition;
+            }
         }
 
         // ── Restore GL state ─────────────────────────────────────────────────

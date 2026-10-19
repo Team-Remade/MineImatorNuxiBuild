@@ -237,6 +237,9 @@ public class Window : IDisposable
         ImGuiImplOpenGL3.Shutdown();
         ImGuiImplGLFW.Shutdown();
         ImGui.DestroyContext(ImGuiContext);
+        // Queued native window callbacks must not use the destroyed context.
+        ImGuiImplGLFW.SetCurrentContext(default);
+        ImGuiImplOpenGL3.SetCurrentContext(default);
 
         ImGuiContext = default;
 

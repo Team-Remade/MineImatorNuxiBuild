@@ -360,7 +360,7 @@ public static class ProjectSceneSerializer
                 continue;
             }
 
-            RestoreNode(childEntry, viewport, spawnMenu, obj);
+            usedChildren.Add(RestoreNode(childEntry, viewport, spawnMenu, obj));
         }
     }
 

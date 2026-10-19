@@ -247,6 +247,7 @@ public static class main
 
             Services.Shutdown();
 
+            MainWindow.ShutdownWorldImporter();
             MainWindow.ShutdownImgui();
             CameraWindow.ShutdownImgui();
 

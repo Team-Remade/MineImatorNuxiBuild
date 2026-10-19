@@ -62,6 +62,15 @@ public static class TerrainAtlas
     /// </summary>
     public static readonly Dictionary<string, AnimatedTextureInfo> AnimatedTextures = new();
 
+    public static string GetAnimationKey(uint textureId)
+    {
+        if (textureId == 0) return "";
+        foreach (string key in AnimatedTextures.Keys)
+            if (Textures.TryGetValue(key, out uint animatedTexture) && animatedTexture == textureId)
+                return key;
+        return "";
+    }
+
     /// <summary>Memoised results of <see cref="IsTextureTranslucent"/>, cleared on reload.</summary>
     private static readonly Dictionary<string, bool> _translucencyCache = new();
 
@@ -403,7 +412,7 @@ public static class TerrainAtlas
         TilePixels[key] = pixels;
     }
 
-    private static AnimatedTextureInfo? ParseMcMetaFromText(string metaText, int imgWidth, int imgHeight)
+    internal static AnimatedTextureInfo? ParseMcMetaFromText(string metaText, int imgWidth, int imgHeight)
     {
         try
         {

@@ -474,6 +474,11 @@ public class Mesh : IDisposable
     public bool CullFrontFaces { get; set; } = false;
 
     /// <summary>
+    /// Intrinsic mesh colour multiplied by the scene object's material colour.
+    /// </summary>
+    public vec3 BaseTint { get; set; } = new vec3(1f);
+
+    /// <summary>
     /// Base colour passed to the fragment shader as <c>uAlbedo</c>.
     /// Backed by the RGB channels of <see cref="StandardMaterial.AlbedoColor"/>.
     /// </summary>
@@ -686,6 +691,7 @@ public class Mesh : IDisposable
         clone.Indices = Indices != null ? (uint[])Indices.Clone() : null;
 
         clone.AnimationKey        = AnimationKey;
+        clone.BaseTint            = BaseTint;
         clone.Unlit                = Unlit;
         clone.DepthTestDisabled    = DepthTestDisabled;
         clone.IsTranslucent        = IsTranslucent;

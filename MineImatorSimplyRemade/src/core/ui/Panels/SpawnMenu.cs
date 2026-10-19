@@ -42,6 +42,8 @@ public enum ItemAtlasSource
 public class SpawnMenu : UiPanel
 {
     private const string SceneryLoadLabel = "Load schematic...";
+    private const string WorldImportLabel = "Import from world...";
+    public Action? ImportWorldRequested { get; set; }
 
     private static readonly string[] WoolColors =
     {
@@ -238,7 +240,7 @@ public class SpawnMenu : UiPanel
             { "Equipment",    new List<string>() },
             { "Props",        new List<string>() },
             { "Particle Spawners", new List<string> { "Particle Spawner" } },
-            { "Scenery",      new List<string> { SceneryLoadLabel } },
+            { "Scenery",      new List<string> { SceneryLoadLabel, WorldImportLabel } },
             { "Custom Models", new List<string> { "Load..." } }
         };
 
@@ -2077,7 +2079,7 @@ public class SpawnMenu : UiPanel
             return objectName == "Load..." || _customModelPaths.ContainsKey(objectName);
 
         if (_selectedCategory == "Scenery")
-            return objectName == SceneryLoadLabel;
+            return objectName is SceneryLoadLabel or WorldImportLabel;
 
         if (_selectedCategory == "Blocks")
         {
@@ -2114,6 +2116,12 @@ public class SpawnMenu : UiPanel
 
     private void OnObjectSelected(string objectName)
     {
+        if (_selectedCategory == "Scenery" && objectName == WorldImportLabel)
+        {
+            ImportWorldRequested?.Invoke();
+            _isOpen = false;
+            return;
+        }
         if (_selectedCategory == "Scenery" && objectName == SceneryLoadLabel)
         {
             _currentVariants.Clear();
@@ -2557,6 +2565,12 @@ public class SpawnMenu : UiPanel
 
     private void SpawnScenery(string objectName)
     {
+        if (objectName == WorldImportLabel)
+        {
+            ImportWorldRequested?.Invoke();
+            _isOpen = false;
+            return;
+        }
         if (objectName != SceneryLoadLabel) return;
         OpenSchematicFileDialog();
     }
@@ -2646,6 +2660,13 @@ public class SpawnMenu : UiPanel
     /// spawns them as a merged scenery object.
     /// </summary>
     public SceneObject? SpawnSchematicFromPath(string filePath, string resourcePackId = "")
+        => BuildSchematicFromPath(filePath, resourcePackId, addToScene: true);
+
+    internal SceneObject CreateSchematicPreview(string filePath, string resourcePackId)
+        => BuildSchematicFromPath(filePath, resourcePackId, addToScene: false) ??
+           throw new InvalidDataException(_lastSchematicLoadError ?? "The terrain could not be meshed.");
+
+    private SceneObject? BuildSchematicFromPath(string filePath, string resourcePackId, bool addToScene)
     {
         if (Viewport == null || Gl == null) return null;
 
@@ -2738,14 +2759,6 @@ public class SpawnMenu : UiPanel
                 variantCache);
 
             var merged = new Dictionary<MeshBatchKey, MeshAccumulator>();
-            // Texture id -> TerrainAtlas animation key, populated by EmitLiquidVoxel whenever it
-            // resolves an animated fluid texture (e.g. "water_still"), so the merged mesh for that
-            // texture can be marked animated once assembly finishes below.
-            var liquidAnimKeys = new Dictionary<uint, string>();
-            // Texture id -> tint colour, populated by EmitLiquidVoxel for fluid textures that
-            // need a biome-independent default tint (currently just water) since the merged
-            // mesh assembly below has no other per-block way to apply Mesh.Albedo.
-            var liquidTintColors = new Dictionary<uint, vec3>();
             int placed = 0;
 
             for (int y = 0; y < height; y++)
@@ -2765,7 +2778,7 @@ public class SpawnMenu : UiPanel
 
                             foreach (var template in largePlacement.Info.Templates)
                             {
-                                var acc = GetOrCreateAccumulator(merged, template.TextureId, largePlacement.Info.AutoEmissionLevel);
+                                var acc = GetOrCreateAccumulator(merged, template.TextureId, largePlacement.Info.AutoEmissionLevel, template.Tint);
                                 AppendTemplate(acc, template, largePlacement.Px, largePlacement.Py, largePlacement.Pz);
                             }
 
@@ -2789,8 +2802,6 @@ public class SpawnMenu : UiPanel
                         {
                             EmitLiquidVoxel(
                                 merged,
-                                liquidAnimKeys,
-                                liquidTintColors,
                                 voxelInfos,
                                 liquidLevels,
                                 width,
@@ -2830,7 +2841,7 @@ public class SpawnMenu : UiPanel
 
                         foreach (var template in info.Templates)
                         {
-                            var acc = GetOrCreateAccumulator(merged, template.TextureId, info.AutoEmissionLevel);
+                            var acc = GetOrCreateAccumulator(merged, template.TextureId, info.AutoEmissionLevel, template.Tint);
                             AppendTemplate(acc, template, px, py, pz);
                         }
                     }
@@ -2863,12 +2874,12 @@ public class SpawnMenu : UiPanel
                 var mesh = new Mesh(Gl)
                 {
                     TextureId = textureId,
-                    AnimationKey = liquidAnimKeys.TryGetValue(textureId, out string? animKey) ? animKey : "",
+                    BaseTint = kv.Key.Tint,
+                    Albedo = kv.Key.Tint,
+                    AnimationKey = TerrainAtlas.GetAnimationKey(textureId),
                     IsTranslucent = texIdToKey.TryGetValue(textureId, out string? texKey) &&
                                     TerrainAtlas.IsTextureTranslucent(texKey)
                 };
-                if (liquidTintColors.TryGetValue(textureId, out vec3 tint))
-                    mesh.Albedo = tint;
                 mesh.AutoEmissionLevel = autoEmissionLevel;
                 mesh.Vertices.AddRange(acc.Vertices);
                 mesh.Normals.AddRange(acc.Normals);
@@ -2886,7 +2897,8 @@ public class SpawnMenu : UiPanel
                 return null;
             }
 
-            Viewport.SceneObjects.Add(root);
+            if (addToScene)
+                Viewport.SceneObjects.Add(root);
             return root;
         }
         finally
@@ -3076,24 +3088,27 @@ public class SpawnMenu : UiPanel
     {
         public readonly uint TextureId;
         public readonly byte AutoEmissionLevel;
+        public readonly vec3 Tint;
 
-        public MeshBatchKey(uint textureId, byte autoEmissionLevel)
+        public MeshBatchKey(uint textureId, byte autoEmissionLevel, vec3 tint)
         {
             TextureId = textureId;
             AutoEmissionLevel = autoEmissionLevel;
+            Tint = tint;
         }
 
         public bool Equals(MeshBatchKey other) =>
-            TextureId == other.TextureId && AutoEmissionLevel == other.AutoEmissionLevel;
+            TextureId == other.TextureId && AutoEmissionLevel == other.AutoEmissionLevel && Tint == other.Tint;
 
         public override bool Equals(object? obj) => obj is MeshBatchKey other && Equals(other);
 
-        public override int GetHashCode() => HashCode.Combine(TextureId, AutoEmissionLevel);
+        public override int GetHashCode() => HashCode.Combine(TextureId, AutoEmissionLevel, Tint);
     }
 
     private sealed class MeshTemplate
     {
         public uint TextureId;
+        public vec3 Tint = new(1f);
         public vec3[] Vertices = Array.Empty<vec3>();
         public vec3[] Normals = Array.Empty<vec3>();
         public vec2[] TexCoords = Array.Empty<vec2>();
@@ -3102,6 +3117,7 @@ public class SpawnMenu : UiPanel
     private sealed class CubeFaceInfo
     {
         public required uint TextureId;
+        public vec3 Tint = new(1f);
         public required vec2[] Uv; // TL, TR, BR, BL
     }
 
@@ -3499,7 +3515,7 @@ public class SpawnMenu : UiPanel
             Variant = post,
             IsCullableCube = false,
             CubeFaces = null,
-            Templates = BuildVariantTemplates(parts)
+            Templates = BuildVariantTemplates(parts, blockName)
         };
 
         byte emissionLevel = ComputeAutoEmissionLevel(blockName, post);
@@ -3528,7 +3544,7 @@ public class SpawnMenu : UiPanel
 
         info.AutoEmissionLevel = ComputeAutoEmissionLevel(blockName, variant);
 
-        info.CubeFaces = TryBuildCullableCubeFaces(variant);
+        info.CubeFaces = TryBuildCullableCubeFaces(variant, blockName);
         info.IsCullableCube = info.CubeFaces != null;
         // Water/lava are always full cubes geometrically but are handled entirely by
         // EmitLiquidVoxel and must never occlude a neighbour's face (see IsOpaque doc).
@@ -3538,13 +3554,13 @@ public class SpawnMenu : UiPanel
                         !IsNonOccludingBlock(blockName);
 
         if (!info.IsCullableCube)
-            info.Templates = BuildVariantTemplates(variant);
+            info.Templates = BuildVariantTemplates(variant, blockName);
 
         cache[cacheKey] = info;
         return info;
     }
 
-    private CubeFaceSet? TryBuildCullableCubeFaces(BlockVariantEntry variant)
+    private CubeFaceSet? TryBuildCullableCubeFaces(BlockVariantEntry variant, string blockName)
     {
         if (!string.IsNullOrEmpty(variant.CemPath) || variant.TopHalf != null)
             return null;
@@ -3578,7 +3594,12 @@ public class SpawnMenu : UiPanel
             if (!TerrainAtlas.Textures.TryGetValue(resolvedTexKey, out uint texId) || texId == 0) return null;
 
             var uv = GetFaceUv(faceName, face.Uv, face.Rotation);
-            return new CubeFaceInfo { TextureId = texId, Uv = uv };
+            return new CubeFaceInfo
+            {
+                TextureId = texId,
+                Uv = uv,
+                Tint = MinecraftModelMesh.GetFaceTint(blockName, face, texKey, resolvedTexKey)
+            };
         }
 
         var set = new CubeFaceSet
@@ -3674,16 +3695,17 @@ public class SpawnMenu : UiPanel
         return TerrainAtlas.Textures.ContainsKey(namespaced) ? namespaced : baseTextureKey;
     }
 
-    private List<MeshTemplate> BuildVariantTemplates(BlockVariantEntry variant)
+    private List<MeshTemplate> BuildVariantTemplates(BlockVariantEntry variant, string blockName)
     {
         var templates = new List<MeshTemplate>();
-        var meshes = BuildVariantMeshes(variant);
+        var meshes = BuildVariantMeshes(variant, blockName);
 
         foreach (var mesh in meshes)
         {
             templates.Add(new MeshTemplate
             {
                 TextureId = mesh.TextureId,
+                Tint = mesh.Albedo,
                 Vertices = mesh.Vertices.ToArray(),
                 Normals = mesh.Normals.ToArray(),
                 TexCoords = mesh.TexCoords.ToArray()
@@ -3694,25 +3716,25 @@ public class SpawnMenu : UiPanel
         return templates;
     }
 
-    private List<MeshTemplate> BuildVariantTemplates(IEnumerable<BlockVariantEntry> variants)
+    private List<MeshTemplate> BuildVariantTemplates(IEnumerable<BlockVariantEntry> variants, string blockName)
     {
         var templates = new List<MeshTemplate>();
 
         foreach (var variant in variants)
-            templates.AddRange(BuildVariantTemplates(variant));
+            templates.AddRange(BuildVariantTemplates(variant, blockName));
 
         return templates;
     }
 
-    private List<Mesh> BuildVariantMeshes(BlockVariantEntry variant)
+    private List<Mesh> BuildVariantMeshes(BlockVariantEntry variant, string blockName)
     {
         var meshes = new List<Mesh>();
 
-        AppendBlockMeshesForPreview(meshes, variant);
+        AppendBlockMeshesForPreview(meshes, variant, blockName);
         if (variant.TopHalf != null)
         {
             var top = new List<Mesh>();
-            AppendBlockMeshesForPreview(top, variant.TopHalf);
+            AppendBlockMeshesForPreview(top, variant.TopHalf, blockName);
             var shift = new vec3(variant.PartOffsetX, variant.PartOffsetY, variant.PartOffsetZ);
             foreach (var m in top)
             {
@@ -3726,7 +3748,7 @@ public class SpawnMenu : UiPanel
         return meshes;
     }
 
-    private static bool TryParsePaletteState(
+    internal static bool TryParsePaletteState(
         string paletteState,
         out string blockName,
         out Dictionary<string, string> properties)
@@ -3802,7 +3824,7 @@ public class SpawnMenu : UiPanel
         return props;
     }
 
-    private static BlockVariantEntry? PickBestVariantForProperties(
+    internal static BlockVariantEntry? PickBestVariantForProperties(
         IReadOnlyList<BlockVariantEntry> variants,
         Dictionary<string, string>? desiredProps,
         string? variantHint)
@@ -3872,9 +3894,10 @@ public class SpawnMenu : UiPanel
     private static MeshAccumulator GetOrCreateAccumulator(
         Dictionary<MeshBatchKey, MeshAccumulator> merged,
         uint textureId,
-        byte autoEmissionLevel)
+        byte autoEmissionLevel,
+        vec3 tint)
     {
-        var key = new MeshBatchKey(textureId, autoEmissionLevel);
+        var key = new MeshBatchKey(textureId, autoEmissionLevel, tint);
         if (!merged.TryGetValue(key, out var acc))
         {
             acc = new MeshAccumulator();
@@ -3945,7 +3968,7 @@ public class SpawnMenu : UiPanel
         string faceName,
         byte autoEmissionLevel)
     {
-        var acc = GetOrCreateAccumulator(merged, face.TextureId, autoEmissionLevel);
+        var acc = GetOrCreateAccumulator(merged, face.TextureId, autoEmissionLevel, face.Tint);
 
         vec3 v0;
         vec3 v1;
@@ -4109,8 +4132,6 @@ public class SpawnMenu : UiPanel
     /// </summary>
     private static void EmitLiquidVoxel(
         Dictionary<MeshBatchKey, MeshAccumulator> merged,
-        Dictionary<uint, string> animKeysOut,
-        Dictionary<uint, vec3> tintColorsOut,
         VariantRenderInfo?[] voxels,
         int[] liquidLevels,
         int width, int height, int length,
@@ -4177,21 +4198,10 @@ public class SpawnMenu : UiPanel
         if (!TerrainAtlas.Textures.TryGetValue(flowKey, out uint flowTex) || flowTex == 0)
             flowTex = stillTex;
 
-        if (TerrainAtlas.AnimatedTextures.ContainsKey(stillKey)) animKeysOut[stillTex] = stillKey;
-        if (TerrainAtlas.AnimatedTextures.ContainsKey(flowKey)) animKeysOut[flowTex] = flowKey;
-
-        // Water's real texture is a light desaturated grey vanilla tints blue at render
-        // time; apply the same biome-independent default used for spawn-menu-placed water
-        // (see MinecraftModelMesh.TryGetDefaultBlockTint) since this schematic path builds
-        // its own merged Mesh instances instead of going through MinecraftModelMesh.Build.
-        if (MinecraftModelMesh.TryGetDefaultBlockTint(blockName, out vec3 tint))
-        {
-            tintColorsOut[stillTex] = tint;
-            tintColorsOut[flowTex] = tint;
-        }
-
-        var stillAcc = GetOrCreateAccumulator(merged, stillTex, autoEmissionLevel);
-        var flowAcc = GetOrCreateAccumulator(merged, flowTex, autoEmissionLevel);
+        vec3 tint = MinecraftModelMesh.TryGetDefaultBlockTint(blockName, out var waterTint)
+            ? waterTint : new vec3(1f);
+        var stillAcc = GetOrCreateAccumulator(merged, stillTex, autoEmissionLevel, tint);
+        var flowAcc = GetOrCreateAccumulator(merged, flowTex, autoEmissionLevel, tint);
 
         bool falling = level >= 8;
         float myHeight = LiquidLevelHeight(level);
@@ -4280,7 +4290,7 @@ public class SpawnMenu : UiPanel
             EmitLiquidSideFace(flowAcc, new vec3(0f, 0f, 1f), baseY, xp, zp, corner2z, 0f, xn, zp, corner3z, 1f);
     }
 
-    private static bool TryResolveLegacyBlock(
+    internal static bool TryResolveLegacyBlock(
         int blockId,
         int blockData,
         out string blockName,
@@ -5518,6 +5528,10 @@ public class SpawnMenu : UiPanel
     /// <param name="tileZ">Tile count along +Z (≥1, ≤ <see cref="SceneObject.MaxTilesPerAxis"/>).</param>
     public SceneObject? SpawnBlockObject(string blockName, BlockVariantEntry variant, string resourcePackId = "",
                                          int tileX = 1, int tileY = 1, int tileZ = 1)
+        => CreateBlockObject(blockName, variant, resourcePackId, tileX, tileY, tileZ, addToScene: true);
+
+    internal SceneObject? CreateBlockObject(string blockName, BlockVariantEntry variant, string resourcePackId,
+        int tileX = 1, int tileY = 1, int tileZ = 1, bool addToScene = false)
     {
         if (Viewport == null || Gl == null) return null;
 
@@ -5560,7 +5574,7 @@ public class SpawnMenu : UiPanel
 
         obj.ApplyMaterialSettingsToMeshes();
 
-        Viewport.SceneObjects.Add(obj);
+        if (addToScene) Viewport.SceneObjects.Add(obj);
         return obj;
     }
 

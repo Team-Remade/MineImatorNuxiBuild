@@ -572,7 +572,7 @@ public class SceneObject
             mesh.Albedo = new vec3(
                 _materialSettings.AlbedoColor.x,
                 _materialSettings.AlbedoColor.y,
-                _materialSettings.AlbedoColor.z);
+                _materialSettings.AlbedoColor.z) * mesh.BaseTint;
             mesh.BlendColor = _materialSettings.BlendColor;
             mesh.MixColor = _materialSettings.MixColor;
             mesh.DoubleSided = _materialSettings.DoubleSided;

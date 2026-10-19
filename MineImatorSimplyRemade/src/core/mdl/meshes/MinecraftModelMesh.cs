@@ -28,21 +28,8 @@ public static class MinecraftModelMesh
 
     // ── Default block tints ───────────────────────────────────────────────────
     //
-    // Vanilla applies a per-biome colour multiply to certain block faces
-    // (tracked via the model's "tintindex" — see BlockModelFace.TintIndex).
-    // This tool has no biome/world data to sample, so instead of wiring up
-    // full per-face tint support we apply one fixed colour per block, keyed
-    // by block name, to every submesh generated for that block.
-    //
-    // Only blocks whose *currently bundled* textures actually need a tint to
-    // look correct are listed here. Several vanilla-era textures in this
-    // asset set (e.g. grass top, leaves) already bake their tint directly
-    // into the PNG, so adding entries for those would double-tint them.
-    // Water's real texture (water_still.png) is a light desaturated grey
-    // that vanilla tints blue at render time — 0x3F76E4 is Minecraft's
-    // biome-independent default water colour, used here since there's no
-    // biome to sample. Lava needs no entry: lava_still.png is already fully
-    // opaque and coloured.
+    // Water uses a block-wide default. Grass and foliage use model tintindex
+    // metadata and the default colormap sample rather than per-world biome data.
     private static readonly Dictionary<string, vec3> DefaultBlockTints =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -77,7 +64,10 @@ public static class MinecraftModelMesh
         if (!DefaultBlockTints.TryGetValue(blockName, out vec3 tint)) return;
 
         foreach (var mesh in meshes)
+        {
+            mesh.BaseTint = tint;
             mesh.Albedo = tint;
+        }
     }
 
     /// <summary>
@@ -88,6 +78,10 @@ public static class MinecraftModelMesh
     /// </summary>
     public static bool TryGetDefaultBlockTint(string blockName, out vec3 tint) =>
         DefaultBlockTints.TryGetValue(blockName, out tint);
+
+    internal static vec3 GetFaceTint(string blockName, BlockModelFace face, string baseTextureKey, string resolvedTextureKey) =>
+        TryGetFaceBiomeTint(blockName, face, baseTextureKey, resolvedTextureKey, out _, out var tint)
+            ? tint : new vec3(1f);
 
     private enum BiomeTintKind
     {
@@ -318,7 +312,7 @@ public static class MinecraftModelMesh
 
         // Group faces by texture key so each texture gets one draw call
         // key → (vertices, normals, texCoords)
-        var groups = new Dictionary<string, (List<vec3> verts, List<vec3> norms, List<vec2> uvs, uint texId, BiomeTintKind tintKind, vec3 tint)>();
+        var groups = new Dictionary<string, (List<vec3> verts, List<vec3> norms, List<vec2> uvs, uint texId, string textureKey, BiomeTintKind tintKind, vec3 tint)>();
 
         // Blockstate variant rotation matrix (applied on top of element geometry)
         mat4 variantTransform = BuildVariantTransform(variantRotX, variantRotY);
@@ -344,7 +338,7 @@ public static class MinecraftModelMesh
         var result = new List<Mesh>();
         foreach (var kvp in groups)
         {
-            var (verts, norms, uvs, texId, tintKind, tint) = kvp.Value;
+            var (verts, norms, uvs, texId, texKey, tintKind, tint) = kvp.Value;
             if (verts.Count == 0) continue;
 
             var mesh = new Mesh(gl);
@@ -354,12 +348,12 @@ public static class MinecraftModelMesh
             mesh.TextureId   = texId;
             mesh.DoubleSided = false;
             if (tintKind != BiomeTintKind.None)
+            {
+                mesh.BaseTint = tint;
                 mesh.Albedo = tint;
+            }
 
-            // If this texture has animation data, wire up the animation key
-            string texKey = kvp.Key;
-            if (TerrainAtlas.AnimatedTextures.ContainsKey(texKey))
-                mesh.AnimationKey = texKey;
+            mesh.AnimationKey = TerrainAtlas.GetAnimationKey(texId);
 
             // Route true alpha-blend textures (water) through the depth-tested,
             // depth-write-off blend pass instead of the cutout/opaque path — see
@@ -456,6 +450,7 @@ public static class MinecraftModelMesh
 
         var mesh = new Mesh(gl);
         mesh.TextureId = texId;
+        mesh.AnimationKey = TerrainAtlas.GetAnimationKey(texId);
         mesh.DoubleSided = false;
 
         // Rare fallback path — a linear reverse lookup is fine here (see Mesh.IsTranslucent).
@@ -690,7 +685,7 @@ public static class MinecraftModelMesh
     private static void AppendElement(
         BlockModelElement element,
         ResolvedBlockModel model,
-        Dictionary<string, (List<vec3>, List<vec3>, List<vec2>, uint, BiomeTintKind, vec3)> groups,
+        Dictionary<string, (List<vec3>, List<vec3>, List<vec2>, uint, string, BiomeTintKind, vec3)> groups,
         mat4 variantTransform,
         string resourcePackId,
         string blockName,
@@ -751,11 +746,11 @@ public static class MinecraftModelMesh
                 : $"{resolvedTexKey}:{(hasFaceTint ? tintKind.ToString() : "none")}";
             if (!groups.TryGetValue(groupKey, out var group))
             {
-                group = ([], [], [], texId, hasFaceTint ? tintKind : BiomeTintKind.None, hasFaceTint ? faceTint : new vec3(1f, 1f, 1f));
+                group = ([], [], [], texId, resolvedTexKey, hasFaceTint ? tintKind : BiomeTintKind.None, hasFaceTint ? faceTint : new vec3(1f, 1f, 1f));
                 groups[groupKey] = group;
             }
 
-            var (verts, norms, uvs, _, _, _) = group;
+            var (verts, norms, uvs, _, _, _, _) = group;
 
             // Determine UV from face data or derive from face extents
             float uMin, vMin, uMax, vMax;

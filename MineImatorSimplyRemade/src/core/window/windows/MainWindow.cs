@@ -88,6 +88,7 @@ public class MainWindow : Window
     private bool _dockSpaceInitialized;
     private bool _dockSpaceRebuildRequested;
     private SpawnMenu? _spawnMenu;
+    private WorldImporter? _worldImporter;
     private Viewport? _cameraViewport;
     private ContentBrowser? _contentBrowser;
     private Viewport? _mainViewport;
@@ -253,6 +254,7 @@ public class MainWindow : Window
         _menubar.DuplicateRequested = () => _sceneTree?.DuplicateSelectedObjects();
         _menubar.DeleteRequested = () => _sceneTree?.DeleteSelectedObjects();
         _menubar.ImportAssetRequested = ImportAssetFromDialog;
+        _menubar.ImportWorldRequested = () => _worldImporter?.Open();
         _menubar.ImportResourcePackRequested = ImportResourcePackArchiveFromDialog;
         _menubar.ImportResourcePackFolderRequested = ImportResourcePackFolderFromDialog;
         _menubar.ResetLayoutRequested = RequestDockSpaceRebuild;
@@ -420,6 +422,8 @@ public class MainWindow : Window
                 ProjectManager = _projectManager,
                 PreferencesPanel = preferencesPanel
             };
+            _worldImporter = new WorldImporter(_spawnMenu, gl) { GlfwApi = Glfw };
+            _spawnMenu.ImportWorldRequested = _worldImporter.Open;
             if (propertiesPanel != null)
                 propertiesPanel.SpawnMenu = _spawnMenu;
             viewport.SpawnMenu = _spawnMenu;
@@ -524,6 +528,7 @@ public class MainWindow : Window
             panel.Render();
 
         _spawnMenu?.Render();
+        _worldImporter?.Render();
         UpdateUndoRedoTracking();
         RenderProjectHomeScreen();
         RenderToast();
@@ -532,6 +537,18 @@ public class MainWindow : Window
     private void RequestDockSpaceRebuild()
     {
         _dockSpaceRebuildRequested = true;
+    }
+
+    public override unsafe void Dispose()
+    {
+        ShutdownWorldImporter();
+        base.Dispose();
+    }
+
+    public unsafe void ShutdownWorldImporter()
+    {
+        Glfw.MakeContextCurrent(windowHandle);
+        _worldImporter?.Dispose();
     }
 
     private void SyncPreviewViewportPreferenceState()
@@ -622,6 +639,7 @@ public class MainWindow : Window
 
     private void HandleKeyboardShortcuts()
     {
+        if (_worldImporter?.IsOpen == true) return;
         ImGuiIOPtr io = ImGui.GetIO();
 
         // Ignore function keys inherited from the IDE/launcher while the app

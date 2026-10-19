@@ -12,6 +12,8 @@ namespace MineImatorSimplyRemade.core;
 /// </summary>
 public class Input
 {
+    public Input(float freeFlySpeed = 5f) => SetFreeFlySpeed(freeFlySpeed);
+
     // ── Free-fly state ──────────────────────────────────────────────────────
 
     private bool  _freeFlyActive;
@@ -57,6 +59,12 @@ public class Input
     public bool IsPanning => _panning;
     public bool IsGizmoDragging => _gizmoDragging;
     public float FreeFlySpeed => _freeFlySpeed;
+    internal void SetFreeFlySpeed(float speed)
+    {
+        if (!float.IsFinite(speed) || speed <= 0)
+            throw new ArgumentOutOfRangeException(nameof(speed));
+        _freeFlySpeed = Math.Clamp(speed, 0.1f, 500f);
+    }
     public bool HasPendingPick => !float.IsNaN(_pendingPickX);
     public (float x, float y) PendingPickPosition => (_pendingPickX, _pendingPickY);
     public bool PendingPickCtrl => _pendingPickCtrl;
@@ -412,7 +420,7 @@ public class Input
         camera.Zoom(mouseWheel * camera.Distance * 0.1f);
     }
 
-    private unsafe void ProcessFreeFlyInput(
+    internal unsafe void ProcessFreeFlyInput(
         Camera camera,
         Glfw? glfw,
         WindowHandle* glfwWindow,
@@ -447,7 +455,7 @@ public class Input
                                      globalCursorY >= imageMin.Y && globalCursorY <= imageMin.Y + imageSize.Y;
 
         // Detect right-click to enter free-fly mode
-        if (mouseClicked_Right && mouseInViewportBounds)
+        if (mouseClicked_Right && windowHovered && mouseInViewportBounds)
         {
             _freeFlyActive = true;
             if (glfw != null)
@@ -516,13 +524,17 @@ public class Input
         }
         else if (mouseReleased_Right && _freeFlyActive)
         {
-            // Exit free-fly
-            if (glfw != null)
-                glfw.SetInputMode(glfwWindow, CursorStateAttribute.Cursor, CursorModeValue.CursorNormal);
-            _freeFlyActive = false;
-            _lastMouseX = double.NaN;
-            _lastMouseY = double.NaN;
+            StopFreeFly(glfw, glfwWindow);
         }
+    }
+
+    internal unsafe void StopFreeFly(Glfw? glfw, WindowHandle* glfwWindow)
+    {
+        if (_freeFlyActive && glfw != null && glfwWindow != null)
+            glfw.SetInputMode(glfwWindow, CursorStateAttribute.Cursor, CursorModeValue.CursorNormal);
+        _freeFlyActive = false;
+        _lastMouseX = double.NaN;
+        _lastMouseY = double.NaN;
     }
 
     // ── Mouse wrap helpers ─────────────────────────────────────────────────

@@ -578,6 +578,8 @@ public sealed class ProjectManager
 
             string ext = Path.GetExtension(current).ToLowerInvariant();
             string currentDir = Path.GetDirectoryName(current) ?? string.Empty;
+            if (IsTextureFile(current) && File.Exists(current + ".mcmeta"))
+                pending.Enqueue(current + ".mcmeta");
 
             if (ext == ".miobject")
             {

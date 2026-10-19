@@ -20,6 +20,7 @@ public class Menubar : UiPanel
     public Action? DuplicateRequested { get; set; }
     public Action? DeleteRequested { get; set; }
     public Action? ImportAssetRequested { get; set; }
+    public Action? ImportWorldRequested { get; set; }
     public Action? ImportResourcePackRequested { get; set; }
     public Action? ImportResourcePackFolderRequested { get; set; }
     public Action? ResetWorkCameraRequested { get; set; }
@@ -76,6 +77,7 @@ public class Menubar : UiPanel
                 }
                 if (ImGui.MenuItem("Import from world"))
                 {
+                    ImportWorldRequested?.Invoke();
                 }
                 ImGui.Separator();
                 if (ImGui.MenuItem("Exit"))

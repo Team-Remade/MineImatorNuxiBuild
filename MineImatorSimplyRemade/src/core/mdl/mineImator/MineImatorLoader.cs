@@ -1411,7 +1411,10 @@ public class MineImatorLoader
             int width = img.Width;
             int height = img.Height;
             byte[] pixels = img.Data;
-            if (makeSquare && width != height)
+            var animation = File.Exists(path + ".mcmeta")
+                ? TerrainAtlas.ParseMcMetaFromText(File.ReadAllText(path + ".mcmeta"), width, height)
+                : null;
+            if (makeSquare && animation == null && width != height)
             {
                 // Match square model UVs without stretching the original texels.
                 int size = Math.Max(width, height);
@@ -1438,6 +1441,11 @@ public class MineImatorLoader
 
             _textureCache[cacheKey] = tex;
             _pixelCache[tex] = (pixels, width, height);
+            if (animation != null)
+            {
+                TerrainAtlas.Textures[path] = tex;
+                TerrainAtlas.AnimatedTextures[path] = animation;
+            }
             return tex;
         }
         catch (Exception ex)
@@ -1584,7 +1592,11 @@ public class MineImatorLoader
         {
             mesh.SortDepth = depth;
 
-            if (textureId != 0) mesh.TextureId = textureId;
+            if (textureId != 0)
+            {
+                mesh.TextureId = textureId;
+                mesh.AnimationKey = TerrainAtlas.GetAnimationKey(textureId);
+            }
             var colors = ResolveModelColors(shape.ColorInherit, shape.ColorBlend, shape.ColorMix,
                 shape.ColorAlpha, shape.ColorMixPercent, partColorBlend, partColorMix,
                 partColorAlpha, partColorBlendAmount);
