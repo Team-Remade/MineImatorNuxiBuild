@@ -41,48 +41,44 @@ public sealed class SceneUniformBuffer : IDisposable
 {
     private readonly GL _gl;
     private uint _ubo;
-    private bool _initialized;
     private const uint BindingPoint = 0;
 
     private readonly byte[] _data = new byte[192];
     private int _lastHash;
     private readonly HashSet<uint> _linkedPrograms = new();
 
-    public SceneUniformBuffer(GL gl) { _gl = gl; }
+    public SceneUniformBuffer(GL gl)
+    {
+        _gl = gl;
+        EnsureBufferCreated();
+    }
+
+    private unsafe void EnsureBufferCreated()
+    {
+        if (_ubo != 0) return;
+        _gl.GenBuffers(1, out _ubo);
+        _gl.BindBuffer(GLEnum.UniformBuffer, _ubo);
+        fixed (byte* p = _data)
+            _gl.BufferData(GLEnum.UniformBuffer, (uint)_data.Length, p, GLEnum.DynamicDraw);
+        _gl.BindBuffer(GLEnum.UniformBuffer, 0);
+    }
 
     public void EnsureInitialized(uint shaderProgram)
     {
-        if (_initialized)
-        {
-            if (!_linkedPrograms.Contains(shaderProgram))
-                BindToShader(shaderProgram);
-            return;
-        }
-
-        unsafe
-        {
-            _gl.GenBuffers(1, out _ubo);
-            _gl.BindBuffer(GLEnum.UniformBuffer, _ubo);
-            _gl.BufferData(GLEnum.UniformBuffer, (uint)_data.Length, (void*)0, GLEnum.DynamicDraw);
-            // Upload the latest cached scene data immediately so the first draw
-            // does not sample uninitialized/zeroed UBO contents.
-            fixed (byte* p = _data)
-                _gl.BufferSubData(GLEnum.UniformBuffer, 0, (uint)_data.Length, p);
-            _gl.BindBuffer(GLEnum.UniformBuffer, 0);
-        }
-
-        _lastHash = HashData();
-
-        BindToShader(shaderProgram);
-        _initialized = true;
+        EnsureBufferCreated();
+        if (!_linkedPrograms.Contains(shaderProgram))
+            BindToShader(shaderProgram);
+        else
+            _gl.BindBufferBase(GLEnum.UniformBuffer, BindingPoint, _ubo);
     }
 
     public void BindToShader(uint shaderProgram)
     {
+        EnsureBufferCreated();
         if (_ubo == 0) return;
         uint idx = _gl.GetUniformBlockIndex(shaderProgram, "SceneData");
-        if (idx == uint.MaxValue) return;
-        _gl.UniformBlockBinding(shaderProgram, idx, BindingPoint);
+        if (idx != uint.MaxValue)
+            _gl.UniformBlockBinding(shaderProgram, idx, BindingPoint);
         _gl.BindBufferBase(GLEnum.UniformBuffer, BindingPoint, _ubo);
         _linkedPrograms.Add(shaderProgram);
     }
@@ -106,6 +102,8 @@ public sealed class SceneUniformBuffer : IDisposable
         bool  sunFillLightCastsShadows,
         bool  moonFillLightCastsShadows)
     {
+        EnsureBufferCreated();
+
         WriteMat4(0,   lightSpaceMatrix);
         WriteVec3(64,  ambient);
         WriteVec3(80,  lightDir);
@@ -120,15 +118,18 @@ public sealed class SceneUniformBuffer : IDisposable
         WriteInt(188, moonFillLightCastsShadows ? 1 : 0);
 
         int hash = HashData();
-        if (hash == _lastHash) return;
-        _lastHash = hash;
-
-        fixed (byte* p = _data)
+        if (hash != _lastHash)
         {
-            _gl.BindBuffer(GLEnum.UniformBuffer, _ubo);
-            _gl.BufferSubData(GLEnum.UniformBuffer, 0, (uint)_data.Length, p);
-            _gl.BindBuffer(GLEnum.UniformBuffer, 0);
+            _lastHash = hash;
+            fixed (byte* p = _data)
+            {
+                _gl.BindBuffer(GLEnum.UniformBuffer, _ubo);
+                _gl.BufferSubData(GLEnum.UniformBuffer, 0, (uint)_data.Length, p);
+                _gl.BindBuffer(GLEnum.UniformBuffer, 0);
+            }
         }
+
+        _gl.BindBufferBase(GLEnum.UniformBuffer, BindingPoint, _ubo);
     }
 
     private void WriteFloat(int o, float v) { System.Buffer.BlockCopy(BitConverter.GetBytes(v), 0, _data, o, 4); }

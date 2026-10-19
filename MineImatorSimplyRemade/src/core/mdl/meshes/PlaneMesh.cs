@@ -75,8 +75,8 @@ public class PlaneMesh : Mesh
                 new vec3(-halfWidth, -halfHeight, 0),   // 6
                 new vec3(-halfWidth,  halfHeight, 0),   // 7
             ];
-            frontNormal = new vec3(0, 0, -1);
-            backNormal  = new vec3(0, 0, 1);
+            frontNormal = new vec3(0, 0, 1);
+            backNormal  = new vec3(0, 0, -1);
         }
         else
         {
@@ -108,10 +108,18 @@ public class PlaneMesh : Mesh
         Vertices.AddRange(positions);
         TexCoords.AddRange(new[] { uv0, uv1, uv2, uv3, uv0, uv1, uv2, uv3 });
 
-        // Front face: CCW from the front (+Z or +Y side) → [0,2,1, 0,3,2]
-        // Back face:  CCW from the back  (-Z or -Y side) → [4,5,6, 4,6,7]
-        Indices = [0, 1, 2,  0, 2, 3,
-                   4, 6, 5,  4, 7, 6];
+        // Front face: CCW from the front (+Z or +Y side)
+        // Back face:  CCW from the back  (-Z or -Y side)
+        if (Orientation == PlaneOrientation.XY)
+        {
+            Indices = [0, 3, 2,  0, 2, 1,
+                       4, 5, 6,  4, 6, 7];
+        }
+        else
+        {
+            Indices = [0, 1, 2,  0, 2, 3,
+                       4, 6, 5,  4, 7, 6];
+        }
 
         // Assign normals explicitly rather than computing via cross product,
         // since both faces share the same position data.

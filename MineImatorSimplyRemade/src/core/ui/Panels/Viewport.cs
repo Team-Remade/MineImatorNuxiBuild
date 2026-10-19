@@ -40,7 +40,8 @@ public class Viewport : UiPanel
     {
         Combined,
         AmbientOcclusion,
-        Shadow
+        Shadow,
+        SolidColors
     }
 
     // ── Scene ──────────────────────────────────────────────────────────────────
@@ -605,6 +606,7 @@ public class Viewport : UiPanel
             RenderedPassMode.Combined => "Combined",
             RenderedPassMode.AmbientOcclusion => "AO",
             RenderedPassMode.Shadow => "Shadow",
+            RenderedPassMode.SolidColors => "Solid Colors",
             _ => "Combined"
         };
     }
@@ -649,6 +651,9 @@ public class Viewport : UiPanel
 
                 bool shadow = _renderedPassMode == RenderedPassMode.Shadow;
                 if (ImGui.Selectable("Shadow", shadow)) SetRenderedPass(RenderedPassMode.Shadow);
+
+                bool solidColors = _renderedPassMode == RenderedPassMode.SolidColors;
+                if (ImGui.Selectable("Solid Colors (Debug)", solidColors)) SetRenderedPass(RenderedPassMode.SolidColors);
             }
 
             ImGui.EndCombo();
@@ -2701,7 +2706,7 @@ public class Viewport : UiPanel
             Mesh.SssHighlightDesaturation = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightDesaturation ?? 0f, 0f, 1f);
             Mesh.SssHighlightColorThreshold = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightColorThreshold ?? 0f, 0f, 1f);
             Mesh.SssAbsorption = Math.Clamp(PropertiesPanel?.SubsurfaceAbsorption ?? 0.35f, -0.95f, 0.95f);
-            Mesh.ShadowDebugMode = _renderedPassMode == RenderedPassMode.Shadow ? 1 : 0;
+            Mesh.ShadowDebugMode = _renderedPassMode == RenderedPassMode.Shadow ? 1 : (_renderedPassMode == RenderedPassMode.SolidColors ? 2 : 0);
             if (Mesh.DirectionalShadowEnabled)
                 RenderShadowMap();
             if (globalShadows)
@@ -2713,6 +2718,7 @@ public class Viewport : UiPanel
         // ── Upload scene UBO ──────────────────────────────────────────────────
         if (_sceneUBO != null)
         {
+            Mesh.SceneUBO = _sceneUBO;
             float fillStrength   = Math.Clamp(Mesh.GlobalFillLightStrength, 0f, 5f);
             var   fillColor      = new vec3(
                 Math.Clamp(Mesh.GlobalFillLightColor.x, 0f, 1f),
@@ -3014,6 +3020,7 @@ public class Viewport : UiPanel
                     _shadowMapSize, 0, PixelFormat.DepthComponent, GLEnum.Float, null);
                 Gl.BindTexture(GLEnum.Texture2D, 0);
                 _allocatedShadowMapSize = _shadowMapSize;
+                _hasDirectionalShadowCache = false;
             }
             return;
         }
@@ -3115,8 +3122,8 @@ public class Viewport : UiPanel
             PixelFormat.DepthComponent,
             GLEnum.Float,
             null);
-        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
-        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+        Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
         Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToBorder);
         Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToBorder);
         float[] borderColor = [1f, 1f, 1f, 1f];
@@ -3173,6 +3180,22 @@ public class Viewport : UiPanel
         Gl.BindTexture(GLEnum.TextureCubeMap, 0);
     }
 
+    private static bool HasAnyShadowCasters(IEnumerable<SceneObject> objects, SceneRenderMode renderMode)
+    {
+        foreach (var obj in objects)
+        {
+            if (!obj.GetEffectiveVisibility() || !ShouldRenderInQuality(obj, renderMode))
+                continue;
+
+            if (obj.CastShadow && obj.Visuals.Any(m => !m.PickOnly && !m.DepthTestDisabled && m.Vertices.Count != 0))
+                return true;
+
+            if (HasAnyShadowCasters(obj.Children, renderMode))
+                return true;
+        }
+        return false;
+    }
+
     private void RenderShadowMap()
     {
         if (Gl == null)
@@ -3181,6 +3204,14 @@ public class Viewport : UiPanel
         EnsureShadowResources();
         if (_shadowShader == null || _shadowFbo == 0 || _shadowTex == 0)
             return;
+
+        bool hasShadowCasters = HasAnyShadowCasters(SceneObjects, SceneRenderMode.Rendered);
+        if (!hasShadowCasters)
+        {
+            Mesh.ShadowsEnabled = false;
+            Mesh.ShadowMapTexture = 0;
+            return;
+        }
 
         mat4 lightViewProj = ComputeShadowLightSpaceMatrix();
         Mesh.ShadowsEnabled = true;
@@ -3197,9 +3228,6 @@ public class Viewport : UiPanel
         Gl.Clear(ClearBufferMask.DepthBufferBit);
         Gl.Enable(GLEnum.DepthTest);
         Gl.Disable(GLEnum.CullFace);
-
-        if (_groundPlane != null && GroundPlaneVisible)
-            _groundPlane.RenderShadow(_shadowShader, lightViewProj, _groundPlaneModel);
 
         RenderShadowCasters(SceneObjects, lightViewProj, _shadowShader!, SceneRenderMode.Rendered);
 
@@ -3272,9 +3300,6 @@ public class Viewport : UiPanel
                 Gl.Clear(ClearBufferMask.DepthBufferBit);
                 Gl.Enable(GLEnum.DepthTest);
                 Gl.Disable(GLEnum.CullFace);
-
-                if (_groundPlane != null && GroundPlaneVisible)
-                    _groundPlane.RenderPointShadow(_pointShadowShader, lightViewProj, _groundPlaneModel, position, farPlane);
 
                 RenderPointShadowCasters(SceneObjects, lightViewProj, position, farPlane, _pointShadowShader!, SceneRenderMode.Rendered);
             }
@@ -3353,17 +3378,19 @@ public class Viewport : UiPanel
     private mat4 ComputeShadowLightSpaceMatrix()
     {
         var bounds = new SceneShadowBounds();
-        CollectShadowBounds(SceneObjects, ref bounds, SceneRenderMode.Rendered);
+        var sceneObjects = IsPreviewViewport ? (MainViewport?.SceneObjects ?? SceneObjects) : SceneObjects;
+        CollectShadowBounds(sceneObjects, ref bounds, SceneRenderMode.Rendered);
 
-        if (GroundPlaneVisible)
+        bool groundVisible = IsPreviewViewport ? (MainViewport?.GroundPlaneVisible ?? GroundPlaneVisible) : GroundPlaneVisible;
+        if (groundVisible && bounds.HasAny)
         {
-            bounds.Include(new vec3(-32f, 0f, -32f));
-            bounds.Include(new vec3(32f, 0f, 32f));
+            bounds.Include(new vec3(bounds.Min.x, 0f, bounds.Min.z));
+            bounds.Include(new vec3(bounds.Max.x, 0f, bounds.Max.z));
         }
 
         if (!bounds.HasAny)
         {
-            bounds.Include(vec3.Zero);
+            bounds.Include(new vec3(-8f, 0f, -8f));
             bounds.Include(new vec3(8f, 8f, 8f));
         }
 
@@ -3476,26 +3503,29 @@ public class Viewport : UiPanel
             if (!ShouldRenderInQuality(obj, renderMode))
                 continue;
 
-            mat4 world = obj.GetWorldMatrix();
-            bool includedMeshVertex = false;
-            foreach (var mesh in obj.Visuals.Where(m => !m.PickOnly && !m.DepthTestDisabled && m.Vertices.Count != 0))
+            if (obj.CastShadow)
             {
-                includedMeshVertex = true;
-                // Use the local bounding sphere to compute world-space extents,
-                // avoiding per-vertex iteration over every mesh.
-                vec3 worldCenter = new vec3((world * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
-                float scale = MathF.Max(
-                    new vec3(world.m00, world.m10, world.m20).Length,
-                    MathF.Max(
-                        new vec3(world.m01, world.m11, world.m21).Length,
-                        new vec3(world.m02, world.m12, world.m22).Length));
-                float worldRadius = mesh.BoundingSphereRadius * scale;
-                bounds.Include(worldCenter - new vec3(worldRadius));
-                bounds.Include(worldCenter + new vec3(worldRadius));
-            }
+                mat4 world = obj.GetWorldMatrix();
+                bool includedMeshVertex = false;
+                foreach (var mesh in obj.Visuals.Where(m => !m.PickOnly && !m.DepthTestDisabled && m.Vertices.Count != 0))
+                {
+                    includedMeshVertex = true;
+                    // Use the local bounding sphere to compute world-space extents,
+                    // avoiding per-vertex iteration over every mesh.
+                    vec3 worldCenter = new vec3((world * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
+                    float scale = MathF.Max(
+                        new vec3(world.m00, world.m10, world.m20).Length,
+                        MathF.Max(
+                            new vec3(world.m01, world.m11, world.m21).Length,
+                            new vec3(world.m02, world.m12, world.m22).Length));
+                    float worldRadius = mesh.BoundingSphereRadius * scale;
+                    bounds.Include(worldCenter - new vec3(worldRadius));
+                    bounds.Include(worldCenter + new vec3(worldRadius));
+                }
 
-            if (!includedMeshVertex)
-                bounds.Include(new vec3(world.m30, world.m31, world.m32));
+                if (!includedMeshVertex)
+                    bounds.Include(new vec3(world.m30, world.m31, world.m32));
+            }
 
             CollectShadowBounds(obj.Children, ref bounds, renderMode);
         }
@@ -3581,6 +3611,15 @@ public class Viewport : UiPanel
         if (_previewShadowShader == null || _previewShadowFbo == 0 || _previewShadowTex == 0)
             return;
 
+        var sceneObjects = MainViewport?.SceneObjects ?? [];
+        bool hasShadowCasters = HasAnyShadowCasters(sceneObjects, SceneRenderMode.Rendered);
+        if (!hasShadowCasters)
+        {
+            Mesh.ShadowsEnabled = false;
+            Mesh.ShadowMapTexture = 0;
+            return;
+        }
+
         mat4 lightViewProj = ComputeShadowLightSpaceMatrix();
         Mesh.ShadowsEnabled = true;
         Mesh.ShadowMapTexture = _previewShadowTex;
@@ -3592,11 +3631,7 @@ public class Viewport : UiPanel
         Gl.Enable(GLEnum.DepthTest);
         Gl.Disable(GLEnum.CullFace);
 
-        if (MainViewport?.GroundPlane != null && MainViewport.GroundPlaneVisible)
-            MainViewport.GroundPlane.RenderShadow(_previewShadowShader, lightViewProj, MainViewport.GroundPlaneModel);
-
-        RenderShadowCasters(MainViewport?.SceneObjects ?? [], lightViewProj, _previewShadowShader!, SceneRenderMode.Rendered);
-
+        RenderShadowCasters(sceneObjects, lightViewProj, _previewShadowShader!, SceneRenderMode.Rendered);
 
         Gl.Enable(GLEnum.CullFace);
         Gl.CullFace(GLEnum.Back);
@@ -3653,9 +3688,6 @@ public class Viewport : UiPanel
                 Gl.Clear(ClearBufferMask.DepthBufferBit);
                 Gl.Enable(GLEnum.DepthTest);
                 Gl.Disable(GLEnum.CullFace);
-
-                if (MainViewport?.GroundPlane != null && MainViewport.GroundPlaneVisible)
-                    MainViewport.GroundPlane.RenderPointShadow(_previewPointShadowShader, lightViewProj, MainViewport.GroundPlaneModel, position, farPlane);
 
                 RenderPointShadowCasters(MainViewport?.SceneObjects ?? [], lightViewProj, position, farPlane, _previewPointShadowShader!, SceneRenderMode.Rendered);
             }
@@ -4293,6 +4325,8 @@ public class Viewport : UiPanel
             return;
 
         bool aoOnlyPass = passMode == RenderedPassMode.AmbientOcclusion;
+        if (passMode != RenderedPassMode.Combined && !aoOnlyPass)
+            return;
         bool aoEnabled = _ambientOcclusionShader != null && settings?.AmbientOcclusionEnabled == true;
 
         if (!aoEnabled)
@@ -4960,6 +4994,11 @@ public class Viewport : UiPanel
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
+
+        // ── Scene UBO ───────────────────────────────────────────────────────
+        // The preview viewport needs its own UBO so it can upload the correct
+        // shadow light-space matrix independently from the main viewport.
+        _sceneUBO ??= new SceneUniformBuffer(Gl);
 
         // ── Pick + silhouette FBOs ──────────────────────────────────────────
         // The preview viewport needs its own GPU picking resources so it can
@@ -6010,7 +6049,7 @@ public class Viewport : UiPanel
             Mesh.SssHighlightDesaturation = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceHighlightDesaturation ?? 0f, 0f, 1f);
             Mesh.SssHighlightColorThreshold = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceHighlightColorThreshold ?? 0f, 0f, 1f);
             Mesh.SssAbsorption = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceAbsorption ?? 0.35f, -0.95f, 0.95f);
-            Mesh.ShadowDebugMode = effectivePassMode == RenderedPassMode.Shadow ? 1 : 0;
+            Mesh.ShadowDebugMode = effectivePassMode == RenderedPassMode.Shadow ? 1 : (effectivePassMode == RenderedPassMode.SolidColors ? 2 : 0);
             if (Mesh.DirectionalShadowEnabled)
                 RenderShadowMapPublic();
             if (globalShadows)
@@ -6020,6 +6059,7 @@ public class Viewport : UiPanel
         // ── Upload scene UBO ─────────────────────────────────────────────────
         if (_sceneUBO != null)
         {
+            Mesh.SceneUBO = _sceneUBO;
             float fillStrength    = Math.Clamp(Mesh.GlobalFillLightStrength, 0f, 5f);
             var   fillColor       = new vec3(
                 Math.Clamp(Mesh.GlobalFillLightColor.x, 0f, 1f),

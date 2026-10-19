@@ -92,7 +92,7 @@ float calculateShadow(vec3 norm, vec3 lightDir) {
     vec3 projCoords = vShadowCoord.xyz / max(vShadowCoord.w, 0.0001);
     projCoords = projCoords * 0.5 + 0.5;
 
-    if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0)
+    if (projCoords.z > 1.0 || projCoords.z < 0.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0)
         return 0.0;
 
     float currentDepth = projCoords.z;
@@ -102,12 +102,21 @@ float calculateShadow(vec3 norm, vec3 lightDir) {
     float shadow = 0.0;
     for (int x = -1; x <= 1; x++) {
         for (int y = -1; y <= 1; y++) {
-            float pcfDepth = texture(uShadowMap, projCoords.xy + vec2(x, y) * texelSize * uShadowBlurStrength).r;
+            vec2 sampleUv = projCoords.xy + vec2(x, y) * texelSize * uShadowBlurStrength;
+            if (sampleUv.x < 0.0 || sampleUv.x > 1.0 || sampleUv.y < 0.0 || sampleUv.y > 1.0)
+                continue;
+
+            float pcfDepth = texture(uShadowMap, sampleUv).r;
             shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
         }
     }
 
-    return shadow / 9.0;
+    shadow /= 9.0;
+
+    // Smoothly fade out shadow at the boundaries of the light space frustum
+    vec2 edgeDist = min(projCoords.xy, vec2(1.0) - projCoords.xy);
+    float edgeFade = clamp(min(edgeDist.x, edgeDist.y) * 20.0, 0.0, 1.0);
+    return shadow * edgeFade;
 }
 
 float samplePointShadowCube(int shadowIndex, vec3 lightToFrag)
@@ -181,8 +190,12 @@ vec3 estimateDirectionalSubsurface(vec3 norm, vec3 lightDir, vec3 lightColor, fl
         float theta = fi * 2.399963;
         vec2 disk = vec2(cos(theta), sin(theta));
         vec2 offset = disk * radius * texelSize * max(uShadowBlurStrength, 0.0001);
+        vec2 sampleUv = projCoords.xy + offset;
+        if (sampleUv.x < 0.0 || sampleUv.x > 1.0 || sampleUv.y < 0.0 || sampleUv.y > 1.0)
+            continue;
+
         float w = 1.0 - radius;
-        sampleDepth += texture(uShadowMap, projCoords.xy + offset).r * w;
+        sampleDepth += texture(uShadowMap, sampleUv).r * w;
         weightSum += w;
     }
     sampleDepth /= max(weightSum, 0.0001);
@@ -229,6 +242,30 @@ vec3 estimatePointSubsurface(
 }
 
 void main() {
+    if (uShadowDebugMode == 2) {
+        float alpha = 1.0;
+        if (uUseTexture) {
+            alpha = texture(uTexture, vTexCoord).a;
+        }
+        if (uUseAlphaMask) {
+            alpha *= texture(uAlphaMask, vTexCoord).a;
+        }
+        alpha *= uAlpha * uBlendColor.a;
+        if (alpha <= 0.0) discard;
+
+        vec3 n = normalize(vNormal);
+        vec3 solidCol;
+        if (abs(n.x) >= abs(n.y) && abs(n.x) >= abs(n.z)) {
+            solidCol = n.x > 0.0 ? vec3(1.0, 0.25, 0.25) : vec3(0.2, 0.85, 0.95);
+        } else if (abs(n.y) >= abs(n.z)) {
+            solidCol = n.y > 0.0 ? vec3(0.25, 0.95, 0.25) : vec3(0.95, 0.25, 0.85);
+        } else {
+            solidCol = n.z > 0.0 ? vec3(0.25, 0.45, 1.0) : vec3(1.0, 0.95, 0.25);
+        }
+        FragColor = vec4(solidCol, 1.0);
+        return;
+    }
+
     vec3  baseColor = uAlbedo;
     vec3  emissionMask = vec3(1.0);
     float alpha     = 1.0;

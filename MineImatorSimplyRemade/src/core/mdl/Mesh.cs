@@ -1205,6 +1205,7 @@ public class Mesh : IDisposable
         SetUniformFloat("uSSSAbsorption", Math.Clamp(SssAbsorption, -0.95f, 0.95f));
         SetUniformBool("uUseShadowMap", DirectionalShadowEnabled && ShadowsEnabled && !Unlit && ShadowMapTexture != 0);
         SetUniformFloat("uShadowBlurStrength", ShadowBlurStrength);
+        SetUniformInt("uShadowDebugMode", ShadowDebugMode);
 
         // The rest of the lighting data (uLightDir, uLightColor, uAmbient, fill
         // lights, shadow flags, uLightSpaceMatrix, uShadowDebugMode) comes from
