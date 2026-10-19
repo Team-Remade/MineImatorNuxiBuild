@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Collections.Generic;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.startup;
+using MineImatorSimplyRemade.core.ui;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
 using StbImageSharp;
@@ -22,7 +23,7 @@ public class StartupProgressWindow : Window
     private double _loadingGifNextFrameAtSeconds;
 
     public StartupProgressWindow(int width, int height, string title, Glfw glfw, GL gl = null)
-        : base(width, height, title, glfw, gl)
+        : base(width, height, Localization.DisplayText(title), glfw, gl)
     {
     }
 
@@ -46,29 +47,29 @@ public class StartupProgressWindow : Window
 
         float clampedProgress = Math.Clamp(ProgressState.Progress, 0f, 1f);
         string stepLabel = ProgressState.TotalSteps > 0
-            ? $"Step {Math.Clamp(ProgressState.CurrentStep, 1, ProgressState.TotalSteps)}/{ProgressState.TotalSteps}"
-            : "Startup";
+            ? Localization.Format("text.window.startup.step", Math.Clamp(ProgressState.CurrentStep, 1, ProgressState.TotalSteps), ProgressState.TotalSteps)
+            : Localization.T("text.window.startup.startup");
 
-        ImGui.TextColored(new Vector4(0.92f, 0.74f, 0.31f, 1f), ProgressState.Title);
-        ImGui.TextDisabled(stepLabel);
+        UiText.Colored(new Vector4(0.92f, 0.74f, 0.31f, 1f), Localization.DisplayText(ProgressState.Title));
+        UiText.Disabled(stepLabel);
         ImGui.Separator();
 
         double elapsed = DateTime.UtcNow.TimeOfDay.TotalSeconds - _startTime;
         int dots = ((int)(elapsed * 2.0) % 4);
-        string animated = "Working" + new string('.', dots);
+        string animated = Localization.T("text.window.startup.working") + new string('.', dots);
 
         ImGui.Dummy(new Vector2(0, 6));
-        ImGui.TextWrapped(ProgressState.Phase);
+        UiText.Wrapped(Localization.DisplayText(ProgressState.Phase));
         ImGui.Dummy(new Vector2(0, 10));
         ImGui.ProgressBar(clampedProgress, new Vector2(-1, 16f), $"{MathF.Round(clampedProgress * 100f)}%");
         ImGui.Dummy(new Vector2(0, 10));
-        ImGui.Text(animated);
-        ImGui.TextWrapped(ProgressState.Status);
+        ImGui.TextUnformatted(animated);
+        UiText.Wrapped(Localization.DisplayText(ProgressState.Status));
 
         if (!string.IsNullOrWhiteSpace(ProgressState.Detail))
         {
             ImGui.Dummy(new Vector2(0, 6));
-            ImGui.TextColored(new Vector4(0.70f, 0.74f, 0.80f, 1f), ProgressState.Detail);
+            UiText.Colored(new Vector4(0.70f, 0.74f, 0.80f, 1f), Localization.DisplayText(ProgressState.Detail));
         }
 
         DrawLoadingGifBottomRight();

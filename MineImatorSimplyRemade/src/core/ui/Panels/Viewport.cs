@@ -1,4 +1,4 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Numerics;
 using System.Reflection;
@@ -597,11 +597,11 @@ public class Viewport : UiPanel
     {
         return _viewportRenderMode switch
         {
-            ViewportRenderMode.Wireframe => "Wireframe",
-            ViewportRenderMode.FlatUnshaded => "Flat",
-            ViewportRenderMode.Shaded => "Shaded",
-            ViewportRenderMode.Rendered => "Rendered",
-            _ => "Shaded"
+            ViewportRenderMode.Wireframe => Localization.T("text.panel.viewport.wireframe"),
+            ViewportRenderMode.FlatUnshaded => Localization.T("text.common.flat"),
+            ViewportRenderMode.Shaded => Localization.T("text.panel.viewport.shaded"),
+            ViewportRenderMode.Rendered => Localization.T("text.panel.viewport.rendered"),
+            _ => Localization.T("text.panel.viewport.shaded")
         };
     }
 
@@ -609,11 +609,11 @@ public class Viewport : UiPanel
     {
         return _renderedPassMode switch
         {
-            RenderedPassMode.Combined => "Combined",
-            RenderedPassMode.AmbientOcclusion => "AO",
-            RenderedPassMode.Shadow => "Shadow",
-            RenderedPassMode.SolidColors => "Solid Colors",
-            _ => "Combined"
+            RenderedPassMode.Combined => Localization.T("text.panel.viewport.combined"),
+            RenderedPassMode.AmbientOcclusion => Localization.T("text.panel.viewport.ao"),
+            RenderedPassMode.Shadow => Localization.T("text.panel.viewport.shadow"),
+            RenderedPassMode.SolidColors => Localization.T("text.panel.viewport.solid_colors"),
+            _ => Localization.T("text.panel.viewport.combined")
         };
     }
 
@@ -632,34 +632,34 @@ public class Viewport : UiPanel
         if (ImGui.BeginCombo($"##renderModeCombo{idSuffix}", previewLabel))
         {
             bool wire = _viewportRenderMode == ViewportRenderMode.Wireframe;
-            if (ImGui.Selectable("Wireframe", wire)) SetRenderMode(ViewportRenderMode.Wireframe);
+            if (ImGui.Selectable(Localization.Label("text.panel.viewport.wireframe", "Wireframe"), wire)) SetRenderMode(ViewportRenderMode.Wireframe);
             if (wire) ImGui.SetItemDefaultFocus();
 
             bool flat = _viewportRenderMode == ViewportRenderMode.FlatUnshaded;
-            if (ImGui.Selectable("Flat (Unshaded)", flat)) SetRenderMode(ViewportRenderMode.FlatUnshaded);
+            if (ImGui.Selectable(Localization.Label("text.panel.viewport.flat_unshaded", "Flat (Unshaded)"), flat)) SetRenderMode(ViewportRenderMode.FlatUnshaded);
 
             bool shaded = _viewportRenderMode == ViewportRenderMode.Shaded;
-            if (ImGui.Selectable("Shaded", shaded)) SetRenderMode(ViewportRenderMode.Shaded);
+            if (ImGui.Selectable(Localization.Label("text.panel.viewport.shaded", "Shaded"), shaded)) SetRenderMode(ViewportRenderMode.Shaded);
 
             bool rendered = _viewportRenderMode == ViewportRenderMode.Rendered;
-            if (ImGui.Selectable("Rendered", rendered)) SetRenderMode(ViewportRenderMode.Rendered);
+            if (ImGui.Selectable(Localization.Label("text.panel.viewport.rendered", "Rendered"), rendered)) SetRenderMode(ViewportRenderMode.Rendered);
 
             if (_viewportRenderMode == ViewportRenderMode.Rendered)
             {
                 ImGui.Separator();
-                ImGui.TextDisabled("Render Pass");
+                UiText.Disabled(Localization.T("text.panel.viewport.render_pass"));
 
                 bool combined = _renderedPassMode == RenderedPassMode.Combined;
-                if (ImGui.Selectable("Combined", combined)) SetRenderedPass(RenderedPassMode.Combined);
+                if (ImGui.Selectable(Localization.Label("text.panel.viewport.combined", "Combined"), combined)) SetRenderedPass(RenderedPassMode.Combined);
 
                 bool ao = _renderedPassMode == RenderedPassMode.AmbientOcclusion;
-                if (ImGui.Selectable("AO", ao)) SetRenderedPass(RenderedPassMode.AmbientOcclusion);
+                if (ImGui.Selectable(Localization.Label("text.panel.viewport.ao", "AO"), ao)) SetRenderedPass(RenderedPassMode.AmbientOcclusion);
 
                 bool shadow = _renderedPassMode == RenderedPassMode.Shadow;
-                if (ImGui.Selectable("Shadow", shadow)) SetRenderedPass(RenderedPassMode.Shadow);
+                if (ImGui.Selectable(Localization.Label("text.panel.viewport.shadow", "Shadow"), shadow)) SetRenderedPass(RenderedPassMode.Shadow);
 
                 bool solidColors = _renderedPassMode == RenderedPassMode.SolidColors;
-                if (ImGui.Selectable("Solid Colors (Debug)", solidColors)) SetRenderedPass(RenderedPassMode.SolidColors);
+                if (ImGui.Selectable(Localization.Label("text.panel.viewport.solid_colors_debug", "Solid Colors (Debug)"), solidColors)) SetRenderedPass(RenderedPassMode.SolidColors);
             }
 
             ImGui.EndCombo();
@@ -2202,7 +2202,7 @@ public class Viewport : UiPanel
         // and title bar all behave normally when docked.
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0);
 
-        ImGui.Begin("Viewport");
+        ImGui.Begin(Localization.Label("text.common.viewport", "Viewport"));
         ImGui.PopStyleVar(); // pop WindowBorderSize — done before widgets
 
         var totalSize = ImGui.GetContentRegionAvail();
@@ -2261,17 +2261,17 @@ public class Viewport : UiPanel
                 string currentCamLabel;
                 if (_activeCameraIndex == RenderOutputIndex)
                 {
-                    currentCamLabel = "Render Output";
+                    currentCamLabel = Localization.T("text.common.render_output");
                 }
                 else if (_activeCameraIndex == 0)
                 {
-                    currentCamLabel = "Work Camera";
+                    currentCamLabel = Localization.T("text.panel.viewport.work_camera");
                 }
                 else
                 {
                     currentCamLabel = _activeCameraIndex - 1 < spawnedCams.Count
                         ? spawnedCams[_activeCameraIndex - 1].Name
-                        : "Render Output";
+                        : Localization.T("text.common.render_output");
                 }
 
                 ImGui.SetCursorPosY(itemY);
@@ -2279,11 +2279,11 @@ public class Viewport : UiPanel
                 if (ImGui.BeginCombo("##vpCamSelect", currentCamLabel))
                 {
                     bool roSel = _activeCameraIndex == RenderOutputIndex;
-                    if (ImGui.Selectable("Render Output##vpcamRO", roSel)) _activeCameraIndex = RenderOutputIndex;
+                    if (ImGui.Selectable(Localization.Label("text.common.render_output", "Render Output##vpcamRO"), roSel)) _activeCameraIndex = RenderOutputIndex;
                     if (roSel) ImGui.SetItemDefaultFocus();
 
                     bool workSel = _activeCameraIndex == 0;
-                    if (ImGui.Selectable("Work Camera", workSel)) _activeCameraIndex = 0;
+                    if (ImGui.Selectable(Localization.Label("text.panel.viewport.work_camera", "Work Camera"), workSel)) _activeCameraIndex = 0;
                     if (workSel) ImGui.SetItemDefaultFocus();
                     for (int i = 0; i < spawnedCams.Count; i++)
                     {
@@ -2320,7 +2320,7 @@ public class Viewport : UiPanel
                     ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(1.0f, 1.0f, 1.0f, 1.0f));
                 }
 
-                if (ImGui.Button(OverlaysEnabled ? "Overlays" : "Overlays",
+                if (ImGui.Button(Localization.Label("text.common.overlays", "Overlays"),
                         new Vector2(0, iconSize)))
                     OverlaysEnabled = !OverlaysEnabled;
 
@@ -2348,7 +2348,7 @@ public class Viewport : UiPanel
                     ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(1.0f, 1.0f, 1.0f, 1.0f));
                 }
 
-                if (ImGui.Button("Particle Preview", new Vector2(0, iconSize)))
+                if (ImGui.Button(Localization.Label("text.panel.viewport.particle_preview", "Particle Preview"), new Vector2(0, iconSize)))
                     ParticlePreviewEnabled = !ParticlePreviewEnabled;
 
                 ImGui.PopStyleColor(4);
@@ -2377,7 +2377,7 @@ public class Viewport : UiPanel
                     ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(1.0f, 1.0f, 1.0f, 1.0f));
                 }
 
-                if (ImGui.Button(previewVisible ? "Hide Preview" : "Show Preview", new Vector2(0, iconSize)))
+                if (ImGui.Button(previewVisible ? Localization.Label("text.panel.viewport.hide_preview", "Hide Preview") : Localization.Label("text.panel.viewport.show_preview", "Show Preview"), new Vector2(0, iconSize)))
                     PreviewViewport.ToggleInlineVisibility();
 
                 ImGui.PopStyleColor(4);
@@ -2387,15 +2387,15 @@ public class Viewport : UiPanel
             bool f5Rendered = previewF5Target
                 ? PreviewViewport!.HighQualityPreviewEnabled
                 : HighQualityPreviewEnabled;
-            string f5TargetLabel = previewF5Target ? "Preview" : "Main";
+            string f5TargetLabel = previewF5Target ? Localization.T("text.common.preview") : Localization.T("text.common.main");
 
             ImGui.SameLine();
             ImGui.SetCursorPosY(itemY + 4f);
-            ImGui.TextDisabled(f5Rendered ? $"Rendered {f5TargetLabel} (F5)" : $"Unrendered {f5TargetLabel} (F5)");
+            UiText.Disabled(f5Rendered ? Localization.Format("text.panel.viewport.rendered_f5", f5TargetLabel) : Localization.Format("text.panel.viewport.unrendered_f5", f5TargetLabel));
 
             ImGui.SameLine();
             ImGui.SetCursorPosY(itemY + 4f);
-            ImGui.TextDisabled(ShadowDebugEnabled ? "Shadow Debug (Ctrl+F6)" : "Shadow Debug Off (Ctrl+F6)");
+            UiText.Disabled(ShadowDebugEnabled ? Localization.T("text.panel.viewport.shadow_debug_ctrl_f6") : Localization.T("text.panel.viewport.shadow_debug_off_ctrl_f6"));
 
             // Render mode selector (header, top-right).
             const float renderModeWidth = 176f;
@@ -2753,7 +2753,7 @@ public class Viewport : UiPanel
         float fps = ImGui.GetIO().Framerate;
         if (fps <= 0f) return;
 
-        string label = $"FPS: {fps:0}";
+        string label = Localization.Format("text.panel.viewport.fps", fps);
         Vector2 textSize = ImGui.CalcTextSize(label);
 
         const float margin = 10f;
@@ -2811,7 +2811,7 @@ public class Viewport : UiPanel
         if (!_freeFly) return;
         if (imageSize.X < 1f || imageSize.Y < 1f) return;
 
-        string label = $"Fly speed x{_freeFlySpeed:0.##}";
+        string label = Localization.Format("text.common.fly_speed_x", _freeFlySpeed);
         Vector2 textSize = ImGui.CalcTextSize(label);
 
         const float margin = 10f;
@@ -5444,7 +5444,7 @@ public class Viewport : UiPanel
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(4, 4));
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);
         ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0.08f, 0.08f, 0.08f, 0.90f));
-        bool beginOk = ImGui.Begin("Camera View##CamViewInline", flags);
+        bool beginOk = ImGui.Begin(Localization.Label("text.common.camera_view", "Camera View##CamViewInline"), flags);
         ImGui.PopStyleColor();
         ImGui.PopStyleVar(2);
 
@@ -5525,7 +5525,7 @@ public class Viewport : UiPanel
         var (activeCam, sceneObj) = DrawCameraDropdown(spawned);
 
         ImGui.SameLine();
-        if (ImGui.Button("Pop"))
+        if (ImGui.Button(Localization.Label("text.panel.viewport.pop", "Pop")))
         {
             Undocked = true;
             PopRequested?.Invoke();
@@ -5550,7 +5550,7 @@ public class Viewport : UiPanel
                 ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.90f, 0.95f, 0.90f, 1.0f));
             }
 
-            if (ImGui.Button("Overlays"))
+            if (ImGui.Button(Localization.Label("text.common.overlays", "Overlays")))
                 OverlaysEnabled = !OverlaysEnabled;
 
             ImGui.PopStyleColor(4);
@@ -5606,20 +5606,20 @@ public class Viewport : UiPanel
     {
         string currentLabel = _selectedCameraIndex switch
         {
-            RenderOutputIndex => "Render Output",
-            0 => "Work Camera",
-            _ => _selectedCameraIndex - 1 < spawned.Count ? spawned[_selectedCameraIndex - 1].Name : "Render Output"
+            RenderOutputIndex => Localization.T("text.common.render_output"),
+            0 => Localization.T("text.panel.viewport.work_camera"),
+            _ => _selectedCameraIndex - 1 < spawned.Count ? spawned[_selectedCameraIndex - 1].Name : Localization.T("text.common.render_output")
         };
 
         ImGui.SetNextItemWidth(160f);
         if (ImGui.BeginCombo("##camSelect", currentLabel))
         {
             bool roSel = _selectedCameraIndex == RenderOutputIndex;
-            if (ImGui.Selectable("Render Output##camRO", roSel)) _selectedCameraIndex = RenderOutputIndex;
+            if (ImGui.Selectable(Localization.Label("text.common.render_output", "Render Output##camRO"), roSel)) _selectedCameraIndex = RenderOutputIndex;
             if (roSel) ImGui.SetItemDefaultFocus();
 
             bool workSel = _selectedCameraIndex == 0;
-            if (ImGui.Selectable("Work Camera", workSel)) _selectedCameraIndex = 0;
+            if (ImGui.Selectable(Localization.Label("text.panel.viewport.work_camera", "Work Camera"), workSel)) _selectedCameraIndex = 0;
             if (workSel) ImGui.SetItemDefaultFocus();
 
             for (int i = 0; i < spawned.Count; i++)
@@ -5640,16 +5640,16 @@ public class Viewport : UiPanel
     {
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(2, 2));
 
-        if (ImGui.Button(_corner == Corner.TopLeft ? "[TL]" : " TL ", new Vector2(28, 16)))
+        if (ImGui.Button(_corner == Corner.TopLeft ? Localization.Label("text.panel.viewport.tl_2", "[TL]") : Localization.Label("text.panel.viewport.tl", " TL "), new Vector2(28, 16)))
             _corner = Corner.TopLeft;
         ImGui.SameLine(0, 2);
-        if (ImGui.Button(_corner == Corner.TopRight ? "[TR]" : " TR ", new Vector2(28, 16)))
+        if (ImGui.Button(_corner == Corner.TopRight ? Localization.Label("text.panel.viewport.tr_2", "[TR]") : Localization.Label("text.panel.viewport.tr", " TR "), new Vector2(28, 16)))
             _corner = Corner.TopRight;
         ImGui.SameLine(0, 2);
-        if (ImGui.Button(_corner == Corner.BottomLeft ? "[BL]" : " BL ", new Vector2(28, 16)))
+        if (ImGui.Button(_corner == Corner.BottomLeft ? Localization.Label("text.panel.viewport.bl_2", "[BL]") : Localization.Label("text.panel.viewport.bl", " BL "), new Vector2(28, 16)))
             _corner = Corner.BottomLeft;
         ImGui.SameLine(0, 2);
-        if (ImGui.Button(_corner == Corner.BottomRight ? "[BR]" : " BR ", new Vector2(28, 16)))
+        if (ImGui.Button(_corner == Corner.BottomRight ? Localization.Label("text.panel.viewport.br_2", "[BR]") : Localization.Label("text.panel.viewport.br", " BR "), new Vector2(28, 16)))
             _corner = Corner.BottomRight;
 
         ImGui.PopStyleVar();

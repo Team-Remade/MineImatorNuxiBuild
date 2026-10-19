@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -82,11 +82,11 @@ public class SceneTree : UiPanel
     /// <summary>Rebuilds internal state and redraws the panel.</summary>
     public override void Render()
     {
-        ImGui.Begin("Scene Tree");
+        ImGui.Begin(Localization.Label("text.common.scene_tree", "Scene Tree"));
 
         if (Viewport == null)
         {
-            ImGui.TextDisabled("(no viewport)");
+            UiText.Disabled(Localization.T("text.panel.scene_tree.no_viewport"));
             ImGui.End();
             return;
         }
@@ -101,7 +101,7 @@ public class SceneTree : UiPanel
         _openContextMenu = false;
 
         ImGui.SetNextItemWidth(-1);
-        ImGui.InputTextWithHint("##sceneTreeSearch", "Search scene objects...", ref _searchQuery, 128);
+        ImGui.InputTextWithHint("##sceneTreeSearch", Localization.T("text.panel.scene_tree.search_scene_objects"), ref _searchQuery, 128);
         ImGui.Separator();
 
         string searchTerm = _searchQuery.Trim();
@@ -114,8 +114,8 @@ public class SceneTree : UiPanel
         int renderedRootCount = 0;
         if (ImGui.BeginTable("##sceneTreeItems", 2, ImGuiTableFlags.SizingStretchProp))
         {
-            ImGui.TableSetupColumn("Object", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("Lock", ImGuiTableColumnFlags.WidthFixed, ImGui.GetFrameHeight());
+            ImGui.TableSetupColumn(Localization.Label("text.common.object", "Object"), ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn(Localization.Label("text.panel.scene_tree.lock", "Lock"), ImGuiTableColumnFlags.WidthFixed, ImGui.GetFrameHeight());
             foreach (var obj in GetChildSnapshot(Viewport.SceneObjects, depth: 0))
             {
                 if (_filteredVisibleSet != null && !_filteredVisibleSet.Contains(obj))
@@ -128,7 +128,7 @@ public class SceneTree : UiPanel
         }
 
         if (_filteredVisibleSet != null && renderedRootCount == 0)
-            ImGui.TextDisabled("No scene objects match the current search.");
+            UiText.Disabled(Localization.T("text.panel.scene_tree.no_scene_objects_match_the_current_search"));
 
         // The reveal request is only needed for one frame. By this point all
         // ancestors have been opened and the selected row has requested scroll.
@@ -165,10 +165,10 @@ public class SceneTree : UiPanel
         {
             if (_contextMenuTarget != null)
             {
-                ImGui.TextDisabled(_contextMenuTarget.GetDisplayName());
+                UiText.Disabled(_contextMenuTarget.GetDisplayName());
                 ImGui.Separator();
 
-                if (ImGui.MenuItem("Duplicate"))
+                if (ImGui.MenuItem(Localization.Label("text.common.duplicate", "Duplicate")))
                 {
                     DuplicateObject(_contextMenuTarget);
                     _contextMenuTarget = null;
@@ -176,7 +176,7 @@ public class SceneTree : UiPanel
 
                 if (_contextMenuTarget is CameraSceneObject cam)
                 {
-                    string activeLabel = cam.Active ? "Clear Active Camera" : "Set as Active Camera";
+                    string activeLabel = cam.Active ? Localization.Label("text.panel.scene_tree.clear_active_camera", "Clear Active Camera") : Localization.Label("text.panel.scene_tree.set_as_active_camera", "Set as Active Camera");
                     if (ImGui.MenuItem(activeLabel))
                     {
                         if (cam.Active)
@@ -191,7 +191,7 @@ public class SceneTree : UiPanel
                     }
                 }
 
-                if (ImGui.MenuItem("Delete"))
+                if (ImGui.MenuItem(Localization.Label("text.common.delete", "Delete")))
                 {
                     DeleteObject(_contextMenuTarget);
                     _contextMenuTarget = null;
@@ -370,7 +370,7 @@ public class SceneTree : UiPanel
                 byte dummy = 1;
                 ImGui.SetDragDropPayload("SCENE_OBJECT", &dummy, 1);
             }
-            ImGui.Text("Move: " + obj.GetDisplayName());
+            ImGui.TextUnformatted(Localization.Format("text.panel.scene_tree.move", obj.GetDisplayName()));
             ImGui.EndDragDropSource();
         }
 
@@ -430,9 +430,9 @@ public class SceneTree : UiPanel
         }
 
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(obj.IsLocked
-                ? "Unlock viewport selection for this item and all descendants"
-                : "Lock viewport selection for this item and all descendants");
+            UiText.Tooltip(obj.IsLocked
+                ? Localization.T("text.panel.scene_tree.unlock_viewport_selection_for_this_item_and_all_descendants")
+                : Localization.T("text.panel.scene_tree.lock_viewport_selection_for_this_item_and_all_descendants"));
     }
 
     private List<SceneObject> GetChildSnapshot(IReadOnlyCollection<SceneObject> children, int depth)

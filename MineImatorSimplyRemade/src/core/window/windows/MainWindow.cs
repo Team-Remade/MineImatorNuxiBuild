@@ -307,7 +307,7 @@ public class MainWindow : Window
             float clampedStepProgress = Math.Clamp(progressWithinStep, 0f, 1f);
             progress?.Invoke(new StartupProgressState
             {
-                Title = "Preparing Mine Imator Simply Remade",
+                Title = Localization.T("text.common.preparing_mine_imator_simply_remade"),
                 CurrentStep = currentStep,
                 TotalSteps = totalSteps,
                 Phase = phase,
@@ -318,31 +318,31 @@ public class MainWindow : Window
         }
 
         SelectionManager.Initialize();
-        ReportStep(1, "Bootstrapping editor services", "Selection state ready.", 1f);
+        ReportStep(1, Localization.T("text.window.main.bootstrapping_editor_services"), Localization.T("text.window.main.selection_state_ready"), 1f);
 
         Services.AudioEngine.Initialize();
-        ReportStep(1, "Bootstrapping editor services", "Audio engine ready.", 1f, Services.AudioEngine.IsInitialized ? "OpenAL device initialised" : "Audio disabled (no OpenAL device)");
+        ReportStep(1, Localization.T("text.window.main.bootstrapping_editor_services"), Localization.T("text.window.main.audio_engine_ready"), 1f, Services.AudioEngine.IsInitialized ? Localization.T("text.window.main.openal_device_initialised") : Localization.T("text.window.main.audio_disabled_no_openal_device"));
 
-        BlockRegistry.Initialize((value, detail) => ReportStep(2, "Indexing Minecraft data", "Loading block registry...", value, detail));
-        ReportStep(2, "Indexing Minecraft data", "Block registry ready.", 1f, $"Loaded version {BlockRegistry.LoadedVersion}");
+        BlockRegistry.Initialize((value, detail) => ReportStep(2, Localization.T("text.window.main.indexing_minecraft_data"), Localization.T("text.window.main.loading_block_registry"), value, detail));
+        ReportStep(2, Localization.T("text.window.main.indexing_minecraft_data"), Localization.T("text.window.main.block_registry_ready"), 1f, Localization.Format("text.window.main.loaded_version", BlockRegistry.LoadedVersion));
 
-        TerrainAtlas.Initialize(gl, (value, detail) => ReportStep(3, "Uploading block textures", "Building terrain atlas...", value, detail));
-        ReportStep(3, "Uploading block textures", "Terrain atlas ready.", 1f, $"{TerrainAtlas.Textures.Count} texture(s) available");
+        TerrainAtlas.Initialize(gl, (value, detail) => ReportStep(3, Localization.T("text.window.main.uploading_block_textures"), Localization.T("text.window.main.building_terrain_atlas"), value, detail));
+        ReportStep(3, Localization.T("text.window.main.uploading_block_textures"), Localization.T("text.window.main.terrain_atlas_ready"), 1f, Localization.Format("text.window.main.texture_s_available", TerrainAtlas.Textures.Count));
 
         CtmAtlas.Initialize(gl);
-        ReportStep(3, "Loading connected textures", "CTM ready.", 1f, "Connected texture support initialized");
+        ReportStep(3, Localization.T("text.window.main.loading_connected_textures"), Localization.T("text.window.main.ctm_ready"), 1f, Localization.T("text.window.main.connected_texture_support_initialized"));
 
-        ItemsAtlas.Initialize(gl, (value, detail) => ReportStep(4, "Uploading item textures", "Building item atlas...", value, detail));
-        ReportStep(4, "Uploading item textures", "Item atlas ready.", 1f, $"{ItemsAtlas.Textures.Count} tile(s) available");
+        ItemsAtlas.Initialize(gl, (value, detail) => ReportStep(4, Localization.T("text.window.main.uploading_item_textures"), Localization.T("text.window.main.building_item_atlas"), value, detail));
+        ReportStep(4, Localization.T("text.window.main.uploading_item_textures"), Localization.T("text.window.main.item_atlas_ready"), 1f, Localization.Format("text.window.main.tile_s_available", ItemsAtlas.Textures.Count));
 
-        CharacterRegistry.Initialize((value, detail) => ReportStep(5, "Discovering characters", "Scanning model libraries...", value, detail));
-        ReportStep(5, "Discovering characters", "Character registry ready.", 1f, $"{CharacterRegistry.Characters.Count} character(s) found");
+        CharacterRegistry.Initialize((value, detail) => ReportStep(5, Localization.T("text.window.main.discovering_characters"), Localization.T("text.window.main.scanning_model_libraries"), value, detail));
+        ReportStep(5, Localization.T("text.window.main.discovering_characters"), Localization.T("text.window.main.character_registry_ready"), 1f, Localization.Format("text.window.main.character_s_found", CharacterRegistry.Characters.Count));
 
-        ReportStep(6, "Preparing runtime", "Binding model import systems...", 0f);
+        ReportStep(6, Localization.T("text.window.main.preparing_runtime"), Localization.T("text.window.main.binding_model_import_systems"), 0f);
         MineImatorLoader.Instance.Initialize(gl);
-        ReportStep(6, "Preparing runtime", "Model import systems ready.", 1f);
+        ReportStep(6, Localization.T("text.window.main.preparing_runtime"), Localization.T("text.window.main.model_import_systems_ready"), 1f);
 
-        ReportStep(7, "Constructing editor UI", "Creating panels and viewports...", 0f);
+        ReportStep(7, Localization.T("text.window.main.constructing_editor_ui"), Localization.T("text.window.main.creating_panels_and_viewports"), 0f);
 
         Viewport? viewport = null;
         SceneTree? sceneTree = null;
@@ -360,7 +360,7 @@ public class MainWindow : Window
                     _mainViewport = vp;
                     vp.InitFramebuffer(1, 1);
                     vp.InitGroundPlane();
-                    ReportStep(7, "Constructing editor UI", "Creating panels and viewports...", 0.30f, "Viewport framebuffer initialized");
+                    ReportStep(7, Localization.T("text.window.main.constructing_editor_ui"), Localization.T("text.window.main.creating_panels_and_viewports"), 0.30f, Localization.T("text.window.main.viewport_framebuffer_initialized"));
                     break;
                 case SceneTree st:
                     sceneTree = st;
@@ -411,7 +411,7 @@ public class MainWindow : Window
         sceneTree?.Initialize();
         propertiesPanel?.Initialize();
         timeline?.Initialize();
-        ReportStep(7, "Constructing editor UI", "Creating panels and viewports...", 0.65f, "Panels initialized");
+        ReportStep(7, Localization.T("text.window.main.constructing_editor_ui"), Localization.T("text.window.main.creating_panels_and_viewports"), 0.65f, Localization.T("text.window.main.panels_initialized"));
 
         if (viewport != null)
         {
@@ -436,7 +436,7 @@ public class MainWindow : Window
             }
         }
 
-        ReportStep(7, "Constructing editor UI", "Creating panels and viewports...", 0.82f, "Spawn tools connected");
+        ReportStep(7, Localization.T("text.window.main.constructing_editor_ui"), Localization.T("text.window.main.creating_panels_and_viewports"), 0.82f, Localization.T("text.window.main.spawn_tools_connected"));
 
         if (viewport != null)
         {
@@ -456,7 +456,7 @@ public class MainWindow : Window
             viewport.PreviewViewport = _cameraViewport;
         }
 
-        ReportStep(7, "Constructing editor UI", "Editor ready.", 1f, "Main window will appear shortly");
+        ReportStep(7, Localization.T("text.window.main.constructing_editor_ui"), Localization.T("text.window.main.editor_ready"), 1f, Localization.T("text.window.main.main_window_will_appear_shortly"));
 
         // Load preferences after all UI is ready
         if (_preferencesPanel != null)
@@ -625,7 +625,7 @@ public class MainWindow : Window
         }
         else
         {
-            title = $"{_appTitle} - No Project";
+            title = Localization.Format("text.window.main.no_project", _appTitle);
         }
 
         if (string.Equals(title, _lastAppliedWindowTitle, StringComparison.Ordinal))
@@ -819,7 +819,7 @@ public class MainWindow : Window
             ImGuiWindowFlags.NoResize |
             ImGuiWindowFlags.NoMove;
 
-        ImGui.Begin("Project Home Screen", flags);
+        ImGui.Begin(Localization.Label("text.common.project_home_screen", "Project Home Screen"), flags);
         ImGui.PopStyleVar(3);
 
         ImDrawListPtr drawList = ImGui.GetWindowDrawList();
@@ -849,7 +849,7 @@ public class MainWindow : Window
 
         drawList.AddRect(splashMin, splashMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.34f, 0.40f, 0.48f, 1f)), 18f, ImDrawFlags.RoundCornersAll, 2f);
         Vector2 titlePos = splashMin + new Vector2(24f, 24f);
-        string titleText = "Mine Imator Simply Remade";
+        string titleText = Localization.T("text.window.main.mine_imator_simply_remade");
         Vector2 titleSize = ImGui.CalcTextSize(titleText);
         Vector2 titlePanelMin = titlePos - new Vector2(10f, 6f);
         Vector2 titlePanelMax = titlePos + titleSize + new Vector2(10f, 6f);
@@ -861,7 +861,7 @@ public class MainWindow : Window
             ImGui.ColorConvertFloat4ToU32(new Vector4(0.92f, 0.95f, 0.98f, 1f)),
             titleText);
 
-        string splashPreview = _homeSplashPlainText;
+        string splashPreview = _homeSplashPlainText == "Splash Screen Placeholder" ? Localization.T("text.window.main.splash_screen_placeholder") : _homeSplashPlainText;
         Vector2 splashTextPos = splashMin + new Vector2(24f, 56f);
         Vector2 splashTextSize = ImGui.CalcTextSize(splashPreview);
         Vector2 splashPanelMin = splashTextPos - new Vector2(10f, 5f);
@@ -873,7 +873,7 @@ public class MainWindow : Window
             splashTextPos,
             ImGui.ColorConvertFloat4ToU32(new Vector4(0.70f, 0.75f, 0.82f, 1f)));
 
-        ImGui.TextDisabled($"Splash art credits: {_homeSplashCreditText}");
+        UiText.Disabled(Localization.Format("text.window.main.splash_art_credits", _homeSplashCreditText == "(unassigned)" ? Localization.T("text.window.main.unassigned") : _homeSplashCreditText));
         ImGui.Spacing();
 
         float leftWidth = MathF.Min(320f, ImGui.GetContentRegionAvail().X * 0.34f);
@@ -881,40 +881,40 @@ public class MainWindow : Window
         float bodyHeight = MathF.Max(260f, ImGui.GetContentRegionAvail().Y - 8f);
 
         ImGui.BeginChild("##projectActions", new Vector2(leftWidth, bodyHeight), ImGuiChildFlags.Borders);
-        ImGui.Text("Projects");
+        ImGui.TextUnformatted(Localization.T("text.common.projects"));
         ImGui.Separator();
-        ImGui.TextWrapped("Create a fresh project, load an existing one, or reopen something recent.");
+        UiText.Wrapped(Localization.T("text.window.main.create_a_fresh_project_load_an_existing_one_or_reopen_something_recent"));
         ImGui.Spacing();
 
-        if (ImGui.Button("New Project", new Vector2(-1, 36f)))
+        if (ImGui.Button(Localization.Label("text.common.new_project", "New Project"), new Vector2(-1, 36f)))
             OpenNewProjectPopup();
-        if (ImGui.Button("Load Project", new Vector2(-1, 36f)))
+        if (ImGui.Button(Localization.Label("text.window.main.load_project", "Load Project"), new Vector2(-1, 36f)))
             OpenProjectFromDialog();
 
         ImGui.Spacing();
         if (_projectManager.HasProject)
         {
-            ImGui.TextDisabled("Current project");
-            ImGui.TextWrapped(_projectManager.Manifest.ProjectName);
-            ImGui.TextWrapped(_projectManager.ProjectFilePath);
+            UiText.Disabled(Localization.T("text.window.main.current_project"));
+            UiText.Wrapped(_projectManager.Manifest.ProjectName);
+            UiText.Wrapped(_projectManager.ProjectFilePath);
         }
         else
         {
-            ImGui.TextDisabled("No project currently open.");
+            UiText.Disabled(Localization.T("text.window.main.no_project_currently_open"));
         }
         ImGui.EndChild();
         ImGui.SameLine();
 
         ImGui.BeginChild("##recentProjects", new Vector2(recentWidth, bodyHeight), ImGuiChildFlags.Borders);
-        ImGui.Text("Recent Projects");
+        ImGui.TextUnformatted(Localization.T("text.window.main.recent_projects"));
         ImGui.SameLine();
-        ImGui.TextDisabled("(max 100)");
+        UiText.Disabled(Localization.T("text.window.main.max_100"));
         ImGui.Separator();
 
         var recents = _projectManager.GetRecentProjects();
         if (recents.Count == 0)
         {
-            ImGui.TextDisabled("No recent projects yet.");
+            UiText.Disabled(Localization.T("text.window.main.no_recent_projects_yet"));
         }
         else
         {
@@ -941,23 +941,23 @@ public class MainWindow : Window
                 }
                 else
                 {
-                    drawList.AddText(thumbMin + new Vector2(18f, 36f), ImGui.ColorConvertFloat4ToU32(new Vector4(0.82f, 0.84f, 0.88f, 1f)), "Thumbnail Placeholder");
+                    drawList.AddText(thumbMin + new Vector2(18f, 36f), ImGui.ColorConvertFloat4ToU32(new Vector4(0.82f, 0.84f, 0.88f, 1f)), Localization.T("text.window.main.thumbnail_placeholder"));
                     ImGui.Dummy(thumbSize);
                 }
 
-                ImGui.TextWrapped(recent.ProjectName);
-                ImGui.TextDisabled(Path.GetFileName(recent.ProjectFilePath));
-                ImGui.TextDisabled(recent.LastOpenedUtc);
+                UiText.Wrapped(recent.ProjectName);
+                UiText.Disabled(Path.GetFileName(recent.ProjectFilePath));
+                UiText.Disabled(recent.LastOpenedUtc);
 
                 bool exists = File.Exists(recent.ProjectFilePath);
                 if (!exists)
                     ImGui.BeginDisabled();
-                if (ImGui.Button("Open", new Vector2(-1, 28f)))
+                if (ImGui.Button(Localization.Label("text.window.main.open", "Open"), new Vector2(-1, 28f)))
                     OpenRecentProject(recent.ProjectFilePath);
                 if (!exists)
                     ImGui.EndDisabled();
 
-                if (ImGui.Button("Remove From Recent", new Vector2(-1, 24f)))
+                if (ImGui.Button(Localization.Label("text.window.main.remove_from_recent", "Remove From Recent"), new Vector2(-1, 24f)))
                 {
                     _projectManager.RemoveRecentProject(recent.ProjectFilePath);
                     ImGui.EndChild();
@@ -968,7 +968,7 @@ public class MainWindow : Window
 
                 if (!exists)
                 {
-                    ImGui.TextColored(new Vector4(0.92f, 0.55f, 0.42f, 1f), "Missing from disk");
+                    UiText.Colored(new Vector4(0.92f, 0.55f, 0.42f, 1f), Localization.T("text.window.main.missing_from_disk"));
                 }
 
                 ImGui.EndChild();
@@ -986,25 +986,25 @@ public class MainWindow : Window
         if (_openProjectDialogPopup)
         {
             _openProjectDialogPopup = false;
-            ImGui.OpenPopup(GetProjectDialogTitle());
+            ImGui.OpenPopup(Localization.DisplayLabel(GetProjectDialogTitle()));
         }
 
         if (_openAboutPopup)
         {
             _openAboutPopup = false;
-            ImGui.OpenPopup("About Mine Imator Nuxi Build");
+            ImGui.OpenPopup(Localization.Label("text.window.main.about_mine_imator_nuxi_build", "About Mine Imator Nuxi Build"));
         }
 
         SetNextModalToMainViewport();
         bool popupOpen = true;
-        string popupTitle = GetProjectDialogTitle();
+        string popupTitle = _projectDialogMode == ProjectDialogMode.SaveAs ? Localization.Label("text.window.main.save_project_as", "Save Project As") : Localization.Label("text.common.new_project", "New Project");
         if (ImGui.BeginPopupModal(popupTitle, ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
         {
-            ImGui.Text(_projectDialogMode == ProjectDialogMode.SaveAs ? "Project name (copy)" : "Project name");
+            ImGui.TextUnformatted(_projectDialogMode == ProjectDialogMode.SaveAs ? Localization.T("text.window.main.project_name_copy") : Localization.T("text.window.main.project_name"));
             ImGui.SetNextItemWidth(320f);
             ImGui.InputText("##newProjectName", ref _newProjectNameBuffer, 128);
 
-            string actionLabel = _projectDialogMode == ProjectDialogMode.SaveAs ? "Save Copy" : "Create";
+            string actionLabel = _projectDialogMode == ProjectDialogMode.SaveAs ? Localization.Label("text.window.main.save_copy", "Save Copy") : Localization.Label("text.window.main.create", "Create");
             if (ImGui.Button(actionLabel, new Vector2(120, 0)))
             {
                 string name = string.IsNullOrWhiteSpace(_newProjectNameBuffer) ? "Untitled Project" : _newProjectNameBuffer.Trim();
@@ -1013,7 +1013,7 @@ public class MainWindow : Window
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Cancel", new Vector2(120, 0)))
+            if (ImGui.Button(Localization.Label("text.common.cancel", "Cancel"), new Vector2(120, 0)))
                 ImGui.CloseCurrentPopup();
 
             ImGui.EndPopup();
@@ -1050,7 +1050,7 @@ public class MainWindow : Window
                     _lastUpdateCheckResult = new UpdateChecker.UpdateCheckResult
                     {
                         Success = false,
-                        Message = $"Error: {ex.Message}"
+                        Message = Localization.Format("text.common.error", ex.Message)
                     };
                 }
                 finally
@@ -1072,47 +1072,47 @@ public class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(fileVersion))
             return fileVersion!;
 
-        return assembly.GetName().Version?.ToString() ?? "Unknown";
+        return assembly.GetName().Version?.ToString() ?? Localization.T("text.common.unknown");
     }
 
     private void RenderAboutPopup()
     {
         SetNextModalToMainViewport();
         bool popupOpen = true;
-        if (!ImGui.BeginPopupModal("About Mine Imator Nuxi Build", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        if (!ImGui.BeginPopupModal(Localization.Label("text.window.main.about_mine_imator_nuxi_build", "About Mine Imator Nuxi Build"), ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
             return;
 
-        ImGui.Text("Mine Imator Nuxi Build");
-        ImGui.TextDisabled($"Version {_aboutVersion}");
+        ImGui.TextUnformatted(Localization.T("text.window.main.mine_imator_nuxi_build"));
+        UiText.Disabled(Localization.Format("text.window.main.version", _aboutVersion));
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
-        ImGui.Text("Credits");
+        ImGui.TextUnformatted(Localization.T("text.window.main.credits"));
 
         if (ImGui.BeginChild("##aboutCredits", new Vector2(720f, 300f), ImGuiChildFlags.Borders))
         {
-            ImGui.TextWrapped("Mine Imator: David Andrei");
-            ImGui.TextWrapped("Mine Imator Development: David, Nimi, Marvin, Mbanders");
-            ImGui.TextWrapped("Mine Imator Beta Testing: 9redwoods, AnxiousCynic, Hozq, Jossamations, Rollo, SoundsDotZip, UpgradedMoon, _Mine_, Randi(11x)Stress, Alpha Toostrr, Cade [CaZaKoJa], Jnick, KeepOnChucking, SKIBBZ, Swooplezz, Vash, Nirwandra, Azaron");
-            ImGui.TextWrapped("Mine Imator Branding: Voxy");
+            UiText.Wrapped(Localization.T("text.window.main.mine_imator_david_andrei"));
+            UiText.Wrapped(Localization.T("text.window.main.mine_imator_development_david_nimi_marvin_mbanders"));
+            UiText.Wrapped(Localization.T("text.window.main.mine_imator_beta_testing_9redwoods_anxiouscynic_hozq_jossamations_rollo"));
+            UiText.Wrapped(Localization.T("text.window.main.mine_imator_branding_voxy"));
             ImGui.Spacing();
-            ImGui.TextWrapped("Nuxi Project Management: frosty boi, AshFX");
-            ImGui.TextWrapped("Nuxi Development: frosty boi, Zandar, & Github Contributors");
-            ImGui.TextWrapped("Nuxi Beta Testing: AshFX, Pikan, Evelyn, Lolin");
-            ImGui.TextWrapped("Nuxi Branding: AshFX");
+            UiText.Wrapped(Localization.T("text.window.main.nuxi_project_management_frosty_boi_ashfx"));
+            UiText.Wrapped(Localization.T("text.window.main.nuxi_development_frosty_boi_zandar_github_contributors"));
+            UiText.Wrapped(Localization.T("text.window.main.nuxi_beta_testing_ashfx_pikan_evelyn_lolin"));
+            UiText.Wrapped(Localization.T("text.window.main.nuxi_branding_ashfx"));
         }
         ImGui.EndChild();
 
         ImGui.Spacing();
-        if (ImGui.Button("Donate (Ko-fi)", new Vector2(150f, 0f)))
+        if (ImGui.Button(Localization.Label("text.window.main.donate_ko_fi", "Donate (Ko-fi)"), new Vector2(150f, 0f)))
             OpenDonateLink();
 
         ImGui.SameLine();
-        if (ImGui.Button("Join Discord", new Vector2(150f, 0f)))
+        if (ImGui.Button(Localization.Label("text.window.main.join_discord", "Join Discord"), new Vector2(150f, 0f)))
             OpenDiscordLink();
 
         ImGui.SameLine();
-        if (ImGui.Button("Close", new Vector2(120f, 0f)))
+        if (ImGui.Button(Localization.Label("text.window.main.close", "Close"), new Vector2(120f, 0f)))
             ImGui.CloseCurrentPopup();
 
         ImGui.EndPopup();
@@ -1125,7 +1125,7 @@ public class MainWindow : Window
 
         SetNextModalToMainViewport();
         bool isOpen = true;
-        if (!ImGui.BeginPopupModal("Check for Updates", ref isOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        if (!ImGui.BeginPopupModal(Localization.Label("text.common.check_for_updates", "Check for Updates"), ref isOpen, ImGuiWindowFlags.AlwaysAutoResize))
         {
             if (!isOpen) _openUpdatePopup = false;
             return;
@@ -1133,39 +1133,39 @@ public class MainWindow : Window
 
         if (_updateCheckInProgress || _updateCheckTask != null && !_updateCheckTask.IsCompleted)
         {
-            ImGui.Text("Checking for updates...");
+            ImGui.TextUnformatted(Localization.T("text.window.main.checking_for_updates"));
             // Simple loading animation using text
             var spinnerChars = new[] { "|", "/", "—", "\\" };
             var frame = (int)((DateTime.UtcNow.Ticks / 100000000) % 4);
-            ImGui.TextDisabled(spinnerChars[frame]);
+            UiText.Disabled(spinnerChars[frame]);
         }
         else if (_lastUpdateCheckResult != null)
         {
             if (!_lastUpdateCheckResult.Success)
             {
-                ImGui.TextColored(new Vector4(1, 0.5f, 0.5f, 1), "Check Failed");
-                ImGui.TextWrapped(_lastUpdateCheckResult.Message ?? "Unknown error");
+                UiText.Colored(new Vector4(1, 0.5f, 0.5f, 1), Localization.T("text.window.main.check_failed"));
+                UiText.Wrapped(_lastUpdateCheckResult.Message == null ? Localization.T("text.window.main.unknown_error") : Localization.DisplayText(_lastUpdateCheckResult.Message));
             }
             else if (_lastUpdateCheckResult.UpdateAvailable)
             {
-                ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1), "Update Available!");
-                ImGui.Text($"Current Version: {UpdateChecker.GetCurrentVersion()}");
-                ImGui.Text($"Available Version: {_lastUpdateCheckResult.AvailableVersion}");
+                UiText.Colored(new Vector4(0.5f, 1f, 0.5f, 1), Localization.T("text.window.main.update_available"));
+                ImGui.TextUnformatted(Localization.Format("text.window.main.current_version", UpdateChecker.GetCurrentVersion()));
+                ImGui.TextUnformatted(Localization.Format("text.window.main.available_version", _lastUpdateCheckResult.AvailableVersion));
                 ImGui.Spacing();
                 
                 if (!string.IsNullOrWhiteSpace(_lastUpdateCheckResult.AvailableVersionName))
                 {
-                    ImGui.TextDisabled("Release Name:");
-                    ImGui.TextWrapped(_lastUpdateCheckResult.AvailableVersionName);
+                    UiText.Disabled(Localization.T("text.window.main.release_name"));
+                    UiText.Wrapped(_lastUpdateCheckResult.AvailableVersionName);
                     ImGui.Spacing();
                 }
 
                 if (!string.IsNullOrWhiteSpace(_lastUpdateCheckResult.ChangeLog))
                 {
-                    ImGui.TextDisabled("Changelog:");
+                    UiText.Disabled(Localization.T("text.window.main.changelog"));
                     if (ImGui.BeginChild("##updateChangelog", new Vector2(600f, 200f), ImGuiChildFlags.Borders))
                     {
-                        ImGui.TextWrapped(_lastUpdateCheckResult.ChangeLog);
+                        UiText.Wrapped(_lastUpdateCheckResult.ChangeLog);
                         ImGui.EndChild();
                     }
                     ImGui.Spacing();
@@ -1174,17 +1174,17 @@ public class MainWindow : Window
                 if (_updateDownloadInProgress || _updateDownloadTask != null && !_updateDownloadTask.IsCompleted)
                 {
                     ImGui.ProgressBar(_updateDownloadProgress, new Vector2(-1, 0), $"{(_updateDownloadProgress * 100):F1}%");
-                    ImGui.TextWrapped(_updateDownloadStatus);
+                    UiText.Wrapped(Localization.DisplayText(_updateDownloadStatus));
                 }
                 else
                 {
-                    if (ImGui.Button("Install Update", new Vector2(150, 0)))
+                    if (ImGui.Button(Localization.Label("text.window.main.install_update", "Install Update"), new Vector2(150, 0)))
                     {
                         if (!string.IsNullOrWhiteSpace(_lastUpdateCheckResult.DownloadUrl))
                         {
                             _updateDownloadInProgress = true;
                             _updateDownloadProgress = 0;
-                            _updateDownloadStatus = "Installing update...";
+                            _updateDownloadStatus = Localization.T("text.window.main.installing_update");
                             _updateDownloadTask = Task.Run(async () =>
                             {
                                 try
@@ -1194,19 +1194,19 @@ public class MainWindow : Window
                                         (downloaded, total) =>
                                         {
                                             _updateDownloadProgress = total > 0 ? (float)downloaded / total : 0;
-                                            _updateDownloadStatus = $"Progress: {FormatBytes(downloaded)} / {FormatBytes(total)}";
+                                            _updateDownloadStatus = Localization.Format("text.window.main.progress_2", FormatBytes(downloaded), FormatBytes(total));
                                         });
 
                                     _updateDownloadStatus = success switch
                                     {
                                         true when needsRestart => message,
-                                        true => $"Success: {message}",
-                                        _ => $"Error: {message}"
+                                        true => Localization.Format("text.window.main.success", message),
+                                        _ => Localization.Format("text.common.error", message)
                                     };
                                 }
                                 catch (Exception ex)
                                 {
-                                    _updateDownloadStatus = $"Error: {ex.Message}";
+                                    _updateDownloadStatus = Localization.Format("text.common.error", ex.Message);
                                 }
                                 finally
                                 {
@@ -1217,7 +1217,7 @@ public class MainWindow : Window
                     }
 
                     ImGui.SameLine();
-                    if (ImGui.Button("Visit Release", new Vector2(120, 0)))
+                    if (ImGui.Button(Localization.Label("text.window.main.visit_release", "Visit Release"), new Vector2(120, 0)))
                     {
                         try
                         {
@@ -1233,8 +1233,8 @@ public class MainWindow : Window
             }
             else
             {
-                ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1), "Up to Date!");
-                ImGui.Text($"You are running the latest version ({UpdateChecker.GetCurrentVersion()})");
+                UiText.Colored(new Vector4(0.5f, 1f, 0.5f, 1), Localization.T("text.window.main.up_to_date"));
+                ImGui.TextUnformatted(Localization.Format("text.window.main.you_are_running_the_latest_version", UpdateChecker.GetCurrentVersion()));
             }
         }
 
@@ -1242,7 +1242,7 @@ public class MainWindow : Window
         ImGui.Separator();
         ImGui.Spacing();
 
-        if (ImGui.Button("Close", new Vector2(120, 0)))
+        if (ImGui.Button(Localization.Label("text.window.main.close", "Close"), new Vector2(120, 0)))
         {
             ImGui.CloseCurrentPopup();
             _openUpdatePopup = false;
@@ -1359,15 +1359,15 @@ public class MainWindow : Window
         if (_openRenderPopup)
         {
             _openRenderPopup = false;
-            ImGui.OpenPopup("Render Output");
+            ImGui.OpenPopup(Localization.Label("text.common.render_output", "Render Output"));
         }
 
         if (_renderJobActive)
-            ImGui.OpenPopup("Render Output");
+            ImGui.OpenPopup(Localization.Label("text.common.render_output", "Render Output"));
 
         SetNextModalToMainViewport();
         bool popupOpen = true;
-        if (!ImGui.BeginPopupModal("Render Output", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        if (!ImGui.BeginPopupModal(Localization.Label("text.common.render_output", "Render Output"), ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
             return;
 
         if (_closeRenderPopupRequested)
@@ -1387,18 +1387,18 @@ public class MainWindow : Window
         if (controlsDisabled)
             ImGui.BeginDisabled();
 
-        string modeLabel = _renderPopupMode == RenderMode.Video ? "Video" : "Image";
-        if (ImGui.BeginCombo("Output Type", modeLabel))
+        string modeLabel = _renderPopupMode == RenderMode.Video ? Localization.T("text.window.main.video") : Localization.T("text.common.image");
+        if (ImGui.BeginCombo(Localization.Label("text.window.main.output_type", "Output Type"), modeLabel))
         {
             bool imageSelected = _renderPopupMode == RenderMode.Image;
-            if (ImGui.Selectable("Image", imageSelected))
+            if (ImGui.Selectable(Localization.Label("text.common.image", "Image"), imageSelected))
             {
                 _renderPopupMode = RenderMode.Image;
                 settingsChanged = true;
             }
 
             bool videoSelected = _renderPopupMode == RenderMode.Video;
-            if (ImGui.Selectable("Video", videoSelected))
+            if (ImGui.Selectable(Localization.Label("text.window.main.video", "Video"), videoSelected))
             {
                 _renderPopupMode = RenderMode.Video;
                 settingsChanged = true;
@@ -1407,13 +1407,13 @@ public class MainWindow : Window
             ImGui.EndCombo();
         }
 
-        string selectedPresetLabel = _renderPopupPreset;
-        if (ImGui.BeginCombo("Resolution Preset", selectedPresetLabel))
+        string selectedPresetLabel = _renderPopupPreset == "Custom" ? Localization.T("text.common.custom") : Localization.DisplayText(_renderPopupPreset);
+        if (ImGui.BeginCombo(Localization.Label("text.window.main.resolution_preset", "Resolution Preset"), selectedPresetLabel))
         {
             foreach (ResolutionPreset preset in RenderResolutionPresets)
             {
                 bool selected = string.Equals(_renderPopupPreset, preset.Name, StringComparison.OrdinalIgnoreCase);
-                if (ImGui.Selectable(preset.Name, selected))
+                if (ImGui.Selectable(Localization.DisplayLabel(preset.Name), selected))
                 {
                     _renderPopupPreset = preset.Name;
                     _renderPopupWidth = preset.Width;
@@ -1423,7 +1423,7 @@ public class MainWindow : Window
             }
 
             bool customSelected = string.Equals(_renderPopupPreset, "Custom", StringComparison.OrdinalIgnoreCase);
-            if (ImGui.Selectable("Custom", customSelected))
+            if (ImGui.Selectable(Localization.Label("text.common.custom", "Custom"), customSelected))
             {
                 _renderPopupPreset = "Custom";
                 settingsChanged = true;
@@ -1438,7 +1438,7 @@ public class MainWindow : Window
         if (ImGui.GetIO().WantTextInput)
         {
             string widthBuffer = width.ToString(CultureInfo.InvariantCulture);
-            if (ImGui.InputText("Width", ref widthBuffer, 16, ImGuiInputTextFlags.CharsDecimal))
+            if (ImGui.InputText(Localization.Label("text.common.width", "Width"), ref widthBuffer, 16, ImGuiInputTextFlags.CharsDecimal))
             {
                 widthBuffer = Timeline.SanitizeIntegerText(widthBuffer);
                 if (int.TryParse(widthBuffer, NumberStyles.Integer | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedWidth))
@@ -1449,7 +1449,7 @@ public class MainWindow : Window
                 }
             }
         }
-        else if (ImGui.DragInt("Width", ref width, 1f, 1, 100000, "%d", ImGuiSliderFlags.AlwaysClamp))
+        else if (ImGui.DragInt(Localization.Label("text.common.width", "Width"), ref width, 1f, 1, 100000, "%d", ImGuiSliderFlags.AlwaysClamp))
         {
             _renderPopupWidth = Math.Max(1, width);
             _renderPopupPreset = "Custom";
@@ -1461,7 +1461,7 @@ public class MainWindow : Window
         if (ImGui.GetIO().WantTextInput)
         {
             string heightBuffer = height.ToString(CultureInfo.InvariantCulture);
-            if (ImGui.InputText("Height", ref heightBuffer, 16, ImGuiInputTextFlags.CharsDecimal))
+            if (ImGui.InputText(Localization.Label("text.common.height", "Height"), ref heightBuffer, 16, ImGuiInputTextFlags.CharsDecimal))
             {
                 heightBuffer = Timeline.SanitizeIntegerText(heightBuffer);
                 if (int.TryParse(heightBuffer, NumberStyles.Integer | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedHeight))
@@ -1472,7 +1472,7 @@ public class MainWindow : Window
                 }
             }
         }
-        else if (ImGui.DragInt("Height", ref height, 1f, 1, 100000, "%d", ImGuiSliderFlags.AlwaysClamp))
+        else if (ImGui.DragInt(Localization.Label("text.common.height", "Height"), ref height, 1f, 1, 100000, "%d", ImGuiSliderFlags.AlwaysClamp))
         {
             _renderPopupHeight = Math.Max(1, height);
             _renderPopupPreset = "Custom";
@@ -1480,22 +1480,22 @@ public class MainWindow : Window
         }
 
         bool highQuality = _renderPopupHighQuality;
-        if (ImGui.Checkbox("Render high quality", ref highQuality))
+        if (ImGui.Checkbox(Localization.Label("text.window.main.render_high_quality", "Render high quality"), ref highQuality))
             _renderPopupHighQuality = highQuality;
 
-        ImGui.TextDisabled(_renderPopupHighQuality
-            ? "Rendered mode: exports include lighting and shadows."
-            : "Unrendered mode: exports keep the current fast viewport setup.");
+        UiText.Disabled(_renderPopupHighQuality
+            ? Localization.T("text.window.main.rendered_mode_exports_include_lighting_and_shadows")
+            : Localization.T("text.window.main.unrendered_mode_exports_keep_the_current_fast_viewport_setup"));
 
         if (_renderPopupMode == RenderMode.Image)
         {
             string formatLabel = _renderPopupImageFormat.ToUpperInvariant();
-            if (ImGui.BeginCombo("File Format", formatLabel))
+            if (ImGui.BeginCombo(Localization.Label("text.window.main.file_format", "File Format"), Localization.DisplayText(formatLabel)))
             {
                 foreach (string candidate in new[] { "png", "jpg", "webp" })
                 {
                     bool selected = string.Equals(_renderPopupImageFormat, candidate, StringComparison.OrdinalIgnoreCase);
-                    if (ImGui.Selectable(candidate.ToUpperInvariant(), selected))
+                    if (ImGui.Selectable(Localization.DisplayLabel(candidate.ToUpperInvariant()), selected))
                     {
                         _renderPopupImageFormat = candidate;
                         settingsChanged = true;
@@ -1508,12 +1508,12 @@ public class MainWindow : Window
         else
         {
             string formatLabel = _renderPopupVideoFormat.ToUpperInvariant();
-            if (ImGui.BeginCombo("File Format", formatLabel))
+            if (ImGui.BeginCombo(Localization.Label("text.window.main.file_format", "File Format"), Localization.DisplayText(formatLabel)))
             {
                 foreach (string candidate in new[] { "mp4", "webm" })
                 {
                     bool selected = string.Equals(_renderPopupVideoFormat, candidate, StringComparison.OrdinalIgnoreCase);
-                    if (ImGui.Selectable(candidate.ToUpperInvariant(), selected))
+                    if (ImGui.Selectable(Localization.DisplayLabel(candidate.ToUpperInvariant()), selected))
                     {
                         _renderPopupVideoFormat = candidate;
                         settingsChanged = true;
@@ -1523,13 +1523,13 @@ public class MainWindow : Window
                 ImGui.EndCombo();
             }
 
-            string fpsLabel = $"{_renderPopupFramerate} fps";
-            if (ImGui.BeginCombo("Framerate", fpsLabel))
+            string fpsLabel = Localization.Format("text.window.main.fps", _renderPopupFramerate);
+            if (ImGui.BeginCombo(Localization.Label("text.window.main.framerate", "Framerate"), fpsLabel))
             {
                 foreach (int fps in RenderFramerateOptions)
                 {
                     bool selected = _renderPopupFramerate == fps;
-                    if (ImGui.Selectable($"{fps} fps", selected))
+                    if (ImGui.Selectable(Localization.ComposeLabel(Localization.Format("text.window.main.fps", fps), $"{fps} fps"), selected))
                     {
                         _renderPopupFramerate = fps;
                         settingsChanged = true;
@@ -1539,13 +1539,13 @@ public class MainWindow : Window
                 ImGui.EndCombo();
             }
 
-            string bitrateLabel = $"{_renderPopupBitrateKbps} kbps";
-            if (ImGui.BeginCombo("Bitrate", bitrateLabel))
+            string bitrateLabel = Localization.Format("text.window.main.kbps", _renderPopupBitrateKbps);
+            if (ImGui.BeginCombo(Localization.Label("text.window.main.bitrate", "Bitrate"), bitrateLabel))
             {
                 foreach (int bitrate in RenderBitrateOptionsKbps)
                 {
                     bool selected = _renderPopupBitrateKbps == bitrate;
-                    if (ImGui.Selectable($"{bitrate} kbps", selected))
+                    if (ImGui.Selectable(Localization.ComposeLabel(Localization.Format("text.window.main.kbps", bitrate), $"{bitrate} kbps"), selected))
                     {
                         _renderPopupBitrateKbps = bitrate;
                         settingsChanged = true;
@@ -1559,7 +1559,7 @@ public class MainWindow : Window
         if (settingsChanged)
             ApplyRenderPopupToProjectSettings();
 
-        if (ImGui.Button(_renderPopupMode == RenderMode.Video ? "Start Render" : "Start Render", new Vector2(140, 0)))
+        if (ImGui.Button(Localization.Label("text.window.main.start_render", "Start Render"), new Vector2(140, 0)))
         {
             StartRenderJob();
         }
@@ -1570,12 +1570,12 @@ public class MainWindow : Window
         ImGui.SameLine();
         if (_renderJobActive)
         {
-            if (ImGui.Button("Abort", new Vector2(120, 0)))
-                CancelRenderJob("Render canceled");
+            if (ImGui.Button(Localization.Label("text.window.main.abort", "Abort"), new Vector2(120, 0)))
+                CancelRenderJob(Localization.T("text.window.main.render_canceled"));
         }
         else
         {
-            if (ImGui.Button(_renderJobFinished ? "Close" : "Cancel", new Vector2(120, 0)))
+            if (ImGui.Button(_renderJobFinished ? Localization.Label("text.window.main.close", "Close") : Localization.Label("text.common.cancel", "Cancel"), new Vector2(120, 0)))
             {
                 _renderJobFinished = false;
                 ImGui.CloseCurrentPopup();
@@ -1595,7 +1595,7 @@ public class MainWindow : Window
             switch (_resourcePackImportStage)
             {
                 case ResourcePackImportStage.CopyPack:
-                    _resourcePackImportStatus = "Copying resource pack into project...";
+                    _resourcePackImportStatus = Localization.T("text.window.main.copying_resource_pack_into_project");
                     _resourcePackImportDetail = Path.GetFileName(_resourcePackImportSourcePath);
                     _resourcePackImportProgress = 0.08f;
                     _resourcePackImportedPath = _projectManager.ImportResourcePack(_resourcePackImportSourcePath);
@@ -1604,7 +1604,7 @@ public class MainWindow : Window
                     break;
 
                 case ResourcePackImportStage.ReloadBlocks:
-                    _resourcePackImportStatus = "Reloading block registry...";
+                    _resourcePackImportStatus = Localization.T("text.window.main.reloading_block_registry");
                     BlockRegistry.Initialize((value, detail) =>
                     {
                         _resourcePackImportProgress = 0.20f + value * 0.22f;
@@ -1615,7 +1615,7 @@ public class MainWindow : Window
                     break;
 
                 case ResourcePackImportStage.ReloadTerrain:
-                    _resourcePackImportStatus = "Reloading terrain textures...";
+                    _resourcePackImportStatus = Localization.T("text.window.main.reloading_terrain_textures");
                     TerrainAtlas.Initialize(GL, (value, detail) =>
                     {
                         _resourcePackImportProgress = 0.42f + value * 0.28f;
@@ -1626,7 +1626,7 @@ public class MainWindow : Window
                     break;
 
                 case ResourcePackImportStage.ReloadItems:
-                    _resourcePackImportStatus = "Reloading item textures...";
+                    _resourcePackImportStatus = Localization.T("text.window.main.reloading_item_textures");
                     ItemsAtlas.Initialize(GL, (value, detail) =>
                     {
                         _resourcePackImportProgress = 0.70f + value * 0.24f;
@@ -1637,8 +1637,8 @@ public class MainWindow : Window
                     break;
 
                 case ResourcePackImportStage.RefreshUi:
-                    _resourcePackImportStatus = "Refreshing spawn menu options...";
-                    _resourcePackImportDetail = "Syncing source selectors";
+                    _resourcePackImportStatus = Localization.T("text.window.main.refreshing_spawn_menu_options");
+                    _resourcePackImportDetail = Localization.T("text.window.main.syncing_source_selectors");
                     _spawnMenu?.RefreshExternalAssetOptions();
                     _resourcePackImportProgress = 1f;
                     _resourcePackImportStage = ResourcePackImportStage.Complete;
@@ -1647,10 +1647,10 @@ public class MainWindow : Window
                 case ResourcePackImportStage.Complete:
                     _resourcePackImportActive = false;
                     _resourcePackImportFinished = true;
-                    _resourcePackImportStatus = "Resource pack imported successfully.";
+                    _resourcePackImportStatus = Localization.T("text.window.main.resource_pack_imported_successfully");
                     _resourcePackImportDetail = Path.GetFileName(_resourcePackImportedPath);
                     _resourcePackImportError = "";
-                    ShowSuccessToast($"Imported resource pack: {Path.GetFileName(_resourcePackImportedPath)}");
+                    ShowSuccessToast(Localization.Format("text.window.main.imported_resource_pack", Path.GetFileName(_resourcePackImportedPath)));
                     break;
             }
         }
@@ -1659,9 +1659,9 @@ public class MainWindow : Window
             _resourcePackImportActive = false;
             _resourcePackImportFinished = true;
             _resourcePackImportError = ex.Message;
-            _resourcePackImportStatus = "Resource pack import failed.";
+            _resourcePackImportStatus = Localization.T("text.window.main.resource_pack_import_failed");
             _resourcePackImportDetail = ex.Message;
-            ShowErrorToast($"Resource pack import failed: {ex.Message}");
+            ShowErrorToast(Localization.Format("text.window.main.resource_pack_import_failed_2", ex.Message));
         }
     }
 
@@ -1670,38 +1670,38 @@ public class MainWindow : Window
         if (_openResourcePackImportPopup)
         {
             _openResourcePackImportPopup = false;
-            ImGui.OpenPopup("Import Resource Pack");
+            ImGui.OpenPopup(Localization.Label("text.common.import_resource_pack", "Import Resource Pack"));
         }
 
         if (_resourcePackImportActive || _resourcePackImportFinished)
-            ImGui.OpenPopup("Import Resource Pack");
+            ImGui.OpenPopup(Localization.Label("text.common.import_resource_pack", "Import Resource Pack"));
 
         SetNextModalToMainViewport();
         bool popupOpen = true;
-        if (!ImGui.BeginPopupModal("Import Resource Pack", ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        if (!ImGui.BeginPopupModal(Localization.Label("text.common.import_resource_pack", "Import Resource Pack"), ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
             return;
 
         float clampedProgress = Math.Clamp(_resourcePackImportProgress, 0f, 1f);
-        ImGui.Text(_resourcePackImportStatus);
+        ImGui.TextUnformatted(_resourcePackImportStatus);
         ImGui.ProgressBar(clampedProgress, new Vector2(360f, 0f), $"{clampedProgress * 100f:0.0}%");
 
         if (!string.IsNullOrWhiteSpace(_resourcePackImportDetail))
         {
             ImGui.Spacing();
-            ImGui.TextWrapped(_resourcePackImportDetail);
+            UiText.Wrapped(_resourcePackImportDetail);
         }
 
         ImGui.Spacing();
         if (_resourcePackImportActive)
         {
-            ImGui.TextDisabled("Please wait while assets are reloaded...");
+            UiText.Disabled(Localization.T("text.window.main.please_wait_while_assets_are_reloaded"));
         }
         else
         {
             if (!string.IsNullOrWhiteSpace(_resourcePackImportError))
-                ImGui.TextColored(new Vector4(0.92f, 0.38f, 0.38f, 1f), _resourcePackImportError);
+                UiText.Colored(new Vector4(0.92f, 0.38f, 0.38f, 1f), _resourcePackImportError);
 
-            if (ImGui.Button("Close", new Vector2(120f, 0f)))
+            if (ImGui.Button(Localization.Label("text.window.main.close", "Close"), new Vector2(120f, 0f)))
             {
                 _resourcePackImportFinished = false;
                 _resourcePackImportStage = ResourcePackImportStage.None;
@@ -1723,15 +1723,15 @@ public class MainWindow : Window
         float progress = _renderFrameTotal <= 0 ? 0f : Math.Clamp(_renderFrameCurrent / (float)_renderFrameTotal, 0f, 1f);
         double elapsed = Math.Max(0d, GetNowSeconds() - _renderJobStartedAtSeconds);
 
-        ImGui.SeparatorText("Progress");
-        ImGui.TextWrapped(_renderJobStatus);
+        ImGui.SeparatorText(Localization.T("text.window.main.progress"));
+        UiText.Wrapped(_renderJobStatus);
         ImGui.ProgressBar(progress, new Vector2(360f, 0f), $"{progress * 100f:0.0}%");
-        ImGui.Text($"Frames: {_renderFrameCurrent}/{_renderFrameTotal}");
-        ImGui.Text($"Elapsed: {elapsed:0.0}s");
+        ImGui.TextUnformatted(Localization.Format("text.window.main.frames", _renderFrameCurrent, _renderFrameTotal));
+        ImGui.TextUnformatted(Localization.Format("text.window.main.elapsed_s", elapsed));
 
         if (_renderPreviewTexture != 0 && _renderPreviewWidth > 0 && _renderPreviewHeight > 0)
         {
-            ImGui.Text("Preview:");
+            ImGui.TextUnformatted(Localization.T("text.window.main.preview"));
             float maxWidth = 360f;
             float previewWidth = maxWidth;
             float previewHeight = previewWidth * (_renderPreviewHeight / (float)_renderPreviewWidth);
@@ -1772,13 +1772,13 @@ public class MainWindow : Window
     {
         if (_cameraViewport == null)
         {
-            ShowErrorToast("Render failed: camera viewport is not initialized");
+            ShowErrorToast(Localization.T("text.window.main.render_failed_camera_viewport_is_not_initialized"));
             return;
         }
 
         if (!_projectManager.HasProject)
         {
-            ShowErrorToast("Open or create a project before rendering");
+            ShowErrorToast(Localization.T("text.window.main.open_or_create_a_project_before_rendering"));
             return;
         }
 
@@ -1827,7 +1827,7 @@ public class MainWindow : Window
             _renderJobMode = _renderPopupMode;
             _renderJobActive = true;
             _renderJobFinished = false;
-            _renderJobStatus = "Starting render...";
+            _renderJobStatus = Localization.T("text.window.main.starting_render");
             _renderJobOutputPath = normalizedPath;
             _renderJobStartedAtSeconds = GetNowSeconds();
             _renderJobWidth = width;
@@ -1840,7 +1840,7 @@ public class MainWindow : Window
             {
                 IsAnimationRenderExportActive = true;
                 if (_timeline == null)
-                    throw new InvalidOperationException("Timeline is not initialized.");
+                    throw new InvalidOperationException(Localization.T("text.window.main.timeline_is_not_initialized"));
 
                 _renderTimelineRestoreFrame = _timeline.CurrentFrame;
                 _renderFrameTotal = _timeline.MaxFrames + 1;
@@ -1867,7 +1867,7 @@ public class MainWindow : Window
             IsAnimationRenderExportActive = false;
             _renderJobActive = false;
             _renderJobFinished = true;
-            _renderJobStatus = $"Render failed: {ex.Message}";
+            _renderJobStatus = Localization.Format("text.window.main.render_failed", ex.Message);
             ShowErrorToast(_renderJobStatus);
         }
     }
@@ -1881,9 +1881,9 @@ public class MainWindow : Window
         {
             if (_renderJobMode == RenderMode.Image)
             {
-                _renderJobStatus = "Rendering image...";
+                _renderJobStatus = Localization.T("text.window.main.rendering_image");
                 if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame))
-                    throw new InvalidOperationException("Failed to capture render frame.");
+                    throw new InvalidOperationException(Localization.T("text.common.failed_to_capture_render_frame"));
 
                 UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight);
                 _renderExporter.ExportImageFromRgb(_renderJobWidth, _renderJobHeight, _renderPopupImageFormat, _renderJobOutputPath, frame);
@@ -1894,12 +1894,12 @@ public class MainWindow : Window
             }
 
             if (_timeline == null)
-                throw new InvalidOperationException("Render session is missing timeline state.");
+                throw new InvalidOperationException(Localization.T("text.window.main.render_session_is_missing_timeline_state"));
 
             if (_renderVideoWarmupFrame)
             {
                 _renderVideoWarmupFrame = false;
-                _renderJobStatus = "Preparing frame 0...";
+                _renderJobStatus = Localization.T("text.window.main.preparing_frame_0");
                 return;
             }
 
@@ -1907,7 +1907,7 @@ public class MainWindow : Window
             {
                 _timeline.SetCurrentFrameForRender(_renderFrameCurrent);
                 if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame))
-                    throw new InvalidOperationException($"Failed to capture frame {_renderFrameCurrent}.");
+                    throw new InvalidOperationException(Localization.Format("text.window.main.failed_to_capture_frame", _renderFrameCurrent));
 
                 UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight);
 
@@ -1916,12 +1916,12 @@ public class MainWindow : Window
 
                 int justRenderedFrame = _renderFrameCurrent;
                 _renderFrameCurrent++;
-                _renderJobStatus = $"Rendered frame {justRenderedFrame}/{_renderFrameTotal - 1}...";
+                _renderJobStatus = Localization.Format("text.window.main.rendered_frame", justRenderedFrame, _renderFrameTotal - 1);
             }
 
             if (_renderFrameCurrent >= _renderFrameTotal && _renderEncodeTask == null)
             {
-                _renderJobStatus = "Encoding video...";
+                _renderJobStatus = Localization.T("text.window.main.encoding_video");
                 string tempDir = _renderTempFramesDir;
                 string outputPath = _renderJobOutputPath;
                 int fps = _renderPopupFramerate;
@@ -1936,7 +1936,7 @@ public class MainWindow : Window
                     return;
 
                 if (_renderEncodeTask.IsFaulted)
-                    throw _renderEncodeTask.Exception?.GetBaseException() ?? new InvalidOperationException("Video encoding failed.");
+                    throw _renderEncodeTask.Exception?.GetBaseException() ?? new InvalidOperationException(Localization.T("text.window.main.video_encoding_failed"));
 
                 CompleteRenderJobSuccess();
             }
@@ -1957,10 +1957,10 @@ public class MainWindow : Window
         _renderExporter = null;
         _renderJobActive = false;
         _renderJobFinished = true;
-        _renderJobStatus = $"Render complete: {Path.GetFileName(_renderJobOutputPath)}";
+        _renderJobStatus = Localization.Format("text.window.main.render_complete", Path.GetFileName(_renderJobOutputPath));
         _closeRenderPopupRequested = true;
         CleanupRenderTempFrames();
-        ShowSuccessToast($"Rendered: {Path.GetFileName(_renderJobOutputPath)}");
+        ShowSuccessToast(Localization.Format("text.window.main.rendered", Path.GetFileName(_renderJobOutputPath)));
     }
 
     private void CancelRenderJob(string message)
@@ -1980,7 +1980,7 @@ public class MainWindow : Window
 
     private void FailRenderJob(string error)
     {
-        CancelRenderJob($"Render failed: {error}");
+        CancelRenderJob(Localization.Format("text.window.main.render_failed", error));
         ShowErrorToast(_renderJobStatus);
     }
 
@@ -2109,7 +2109,7 @@ public class MainWindow : Window
         }
         else
         {
-            ShowErrorToast("Failed to open project");
+            ShowErrorToast(Localization.T("text.window.main.failed_to_open_project"));
         }
     }
 
@@ -2133,7 +2133,7 @@ public class MainWindow : Window
         }
         else
         {
-            ShowErrorToast("Failed to open recent project");
+            ShowErrorToast(Localization.T("text.window.main.failed_to_open_recent_project"));
         }
     }
 
@@ -2189,7 +2189,7 @@ public class MainWindow : Window
 
         if (_resourcePackImportActive)
         {
-            ShowErrorToast("A resource pack import is already running.");
+            ShowErrorToast(Localization.T("text.window.main.a_resource_pack_import_is_already_running"));
             return;
         }
 
@@ -2197,7 +2197,7 @@ public class MainWindow : Window
         _resourcePackImportedPath = "";
         _resourcePackImportError = "";
         _resourcePackImportProgress = 0f;
-        _resourcePackImportStatus = "Preparing import...";
+        _resourcePackImportStatus = Localization.T("text.window.main.preparing_import");
         _resourcePackImportDetail = Path.GetFileName(sourcePath);
         _resourcePackImportFinished = false;
         _resourcePackImportActive = true;
@@ -2247,11 +2247,11 @@ public class MainWindow : Window
             CaptureCurrentSceneAsSavedState();
             RefreshProjectThumbnail();
             RefreshWindowTitle();
-            ShowSuccessToast($"Saved {_projectManager.Manifest.ProjectName}");
+            ShowSuccessToast(Localization.Format("text.window.main.saved", _projectManager.Manifest.ProjectName));
         }
         catch (Exception ex)
         {
-            ShowErrorToast($"Save failed: {ex.Message}");
+            ShowErrorToast(Localization.Format("text.window.main.save_failed", ex.Message));
         }
     }
 
@@ -2527,7 +2527,7 @@ public class MainWindow : Window
                 CaptureCurrentSceneAsSavedState();
                 RefreshProjectThumbnail();
                 RefreshWindowTitle();
-                ShowSuccessToast($"Saved copy as {name}");
+                ShowSuccessToast(Localization.Format("text.window.main.saved_copy_as", name));
                 _showProjectHome = false;
                 return true;
             }
@@ -2544,7 +2544,9 @@ public class MainWindow : Window
         }
         catch (Exception ex)
         {
-            ShowErrorToast($"{GetProjectDialogTitle()} failed: {ex.Message}");
+            ShowErrorToast(_projectDialogMode == ProjectDialogMode.SaveAs
+                ? Localization.Format("text.window.main.save_project_as_failed", ex.Message)
+                : Localization.Format("text.window.main.new_project_failed", ex.Message));
             return false;
         }
     }
@@ -2570,7 +2572,7 @@ public class MainWindow : Window
     {
         if (_showSavingToast)
         {
-            RenderToastWindow("Saving...", ToastKind.Success, 1f);
+            RenderToastWindow(Localization.T("text.window.main.saving"), ToastKind.Success, 1f);
             return;
         }
 
@@ -2643,7 +2645,7 @@ public class MainWindow : Window
             ImGuiWindowFlags.NoInputs;
 
         ImGui.Begin("##SaveToast", flags);
-        ImGui.TextColored(textColor, message);
+        UiText.Colored(textColor, message);
         ImGui.End();
 
         ImGui.PopStyleColor(2);
@@ -2840,6 +2842,12 @@ public class MainWindow : Window
 
     private unsafe void DrawHomeSplashText(ImDrawListPtr drawList, Vector2 start, uint textColor)
     {
+        if (_homeSplashPlainText == "Splash Screen Placeholder")
+        {
+            drawList.AddText(start, textColor, Localization.T("text.window.main.splash_screen_placeholder"));
+            return;
+        }
+
         if (_homeSplashSegments.Count == 0)
         {
             drawList.AddText(start, textColor, _homeSplashPlainText);
@@ -2919,11 +2927,11 @@ public class MainWindow : Window
         uint propertiesDockId = 0;
         uint sceneTreeDockId = ImGuiP.DockBuilderSplitNode(rightId, ImGuiDir.Up, 0.30f, null, &propertiesDockId);
 
-        ImGuiP.DockBuilderDockWindow(ViewportDockId, viewportDockId);
-        ImGuiP.DockBuilderDockWindow(TimelineDockId, timelineDockId);
-        ImGuiP.DockBuilderDockWindow(ContentBrowserDockId, timelineDockId);
-        ImGuiP.DockBuilderDockWindow(SceneTreeDockId, sceneTreeDockId);
-        ImGuiP.DockBuilderDockWindow(PropertiesDockId, propertiesDockId);
+        ImGuiP.DockBuilderDockWindow(Localization.DisplayLabel(ViewportDockId), viewportDockId);
+        ImGuiP.DockBuilderDockWindow(Localization.DisplayLabel(TimelineDockId), timelineDockId);
+        ImGuiP.DockBuilderDockWindow(Localization.DisplayLabel(ContentBrowserDockId), timelineDockId);
+        ImGuiP.DockBuilderDockWindow(Localization.DisplayLabel(SceneTreeDockId), sceneTreeDockId);
+        ImGuiP.DockBuilderDockWindow(Localization.DisplayLabel(PropertiesDockId), propertiesDockId);
 
         ImGuiP.DockBuilderFinish(dockspaceId);
     }
@@ -2973,18 +2981,18 @@ public class MainWindow : Window
         if (!_showUnsavedChangesDialog)
             return;
 
-        if (!ImGui.IsPopupOpen("Unsaved Changes"))
-            ImGui.OpenPopup("Unsaved Changes");
+        if (!ImGui.IsPopupOpen(Localization.Label("text.window.main.unsaved_changes", "Unsaved Changes")))
+            ImGui.OpenPopup(Localization.Label("text.window.main.unsaved_changes", "Unsaved Changes"));
 
         ImGuiViewportPtr viewport = ImGui.GetMainViewport();
         Vector2 center = new Vector2(viewport.Pos.X + viewport.Size.X * 0.5f, viewport.Pos.Y + viewport.Size.Y * 0.5f);
         ImGui.SetNextWindowPos(center, ImGuiCond.Appearing, new Vector2(0.5f, 0.5f));
         ImGui.SetNextWindowViewport(viewport.ID);
 
-        if (ImGui.BeginPopupModal("Unsaved Changes", ref _showUnsavedChangesDialog, ImGuiWindowFlags.AlwaysAutoResize))
+        if (ImGui.BeginPopupModal(Localization.Label("text.window.main.unsaved_changes", "Unsaved Changes"), ref _showUnsavedChangesDialog, ImGuiWindowFlags.AlwaysAutoResize))
         {
-            ImGui.TextWrapped($"The project \"{_projectManager.Manifest.ProjectName}\" has unsaved changes.");
-            ImGui.TextWrapped("What would you like to do?");
+            UiText.Wrapped(Localization.Format("text.window.main.the_project_has_unsaved_changes", _projectManager.Manifest.ProjectName));
+            UiText.Wrapped(Localization.T("text.window.main.what_would_you_like_to_do"));
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
@@ -3000,19 +3008,19 @@ public class MainWindow : Window
             if (offset > 0)
                 ImGui.Indent(offset);
 
-            if (ImGui.Button("Save", new Vector2(buttonWidth, 0)))
+            if (ImGui.Button(Localization.Label("text.window.main.save", "Save"), new Vector2(buttonWidth, 0)))
             {
                 shouldSave = true;
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Exit without Saving", new Vector2(buttonWidth, 0)))
+            if (ImGui.Button(Localization.Label("text.window.main.exit_without_saving", "Exit without Saving"), new Vector2(buttonWidth, 0)))
             {
                 shouldExit = true;
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Cancel", new Vector2(buttonWidth, 0)))
+            if (ImGui.Button(Localization.Label("text.common.cancel", "Cancel"), new Vector2(buttonWidth, 0)))
             {
                 ImGui.CloseCurrentPopup();
                 _showUnsavedChangesDialog = false;

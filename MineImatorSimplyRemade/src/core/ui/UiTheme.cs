@@ -475,12 +475,12 @@ public static class UiTheme
             2.0f);
 
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + barWidth + 6.0f);
-        ImGui.TextColored(new Vector4(1.0f, 1.0f, 1.0f, 1.0f), title);
+        UiText.Colored(new Vector4(1.0f, 1.0f, 1.0f, 1.0f), title);
 
         if (!string.IsNullOrEmpty(subtitle))
         {
             ImGui.SameLine();
-            ImGui.TextDisabled($"— {subtitle}");
+            UiText.Disabled($"— {subtitle}");
         }
 
         ImGui.Spacing();

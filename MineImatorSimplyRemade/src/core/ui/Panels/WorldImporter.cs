@@ -89,7 +89,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         ImGui.SetNextWindowSize(mainViewport.WorkSize * 0.96f, ImGuiCond.Appearing);
         ImGui.SetNextWindowPos(mainViewport.WorkPos + mainViewport.WorkSize * 0.5f,
             ImGuiCond.Appearing, new Vector2(0.5f));
-        bool visible = ImGui.Begin("Import from world", ref _open,
+        bool visible = ImGui.Begin(Localization.Label("text.common.import_from_world", "Import from world"), ref _open,
             ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
         if (!visible)
         {
@@ -121,8 +121,8 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         else
         {
             ImGui.BeginChild("##worldEmpty", _viewportSize, ImGuiChildFlags.Borders);
-            ImGui.TextWrapped("Select a world in the toolbar or browse to a level.dat (Java) or .mcworld (Bedrock) file.");
-            ImGui.TextWrapped("Close the world in Minecraft first. World files are read-only.");
+            UiText.Wrapped(Localization.T("text.panel.world_importer.select_a_world_in_the_toolbar_or_browse_to_a_level_dat_java_or_mcworld_bedrock"));
+            UiText.Wrapped(Localization.T("text.panel.world_importer.close_the_world_in_minecraft_first_world_files_are_read_only"));
             ImGui.EndChild();
         }
         RenderStatus();
@@ -140,11 +140,11 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
 
     private void RenderToolbar()
     {
-        if (ImGui.Button("Cancel")) _open = false;
+        if (ImGui.Button(Localization.Label("text.common.cancel", "Cancel"))) _open = false;
         NextToolbarItem(240);
         ImGui.BeginDisabled(Busy);
         ImGui.SetNextItemWidth(230);
-        if (ImGui.BeginCombo("##World", _world?.Name ?? "Select world..."))
+        if (ImGui.BeginCombo("##World", _world?.Name ?? Localization.T("text.panel.world_importer.select_world")))
         {
             foreach (var world in _worlds)
                 if (ImGui.Selectable($"{world.Name} ({(world.IsBedrock ? "Bedrock" : "Java")})##{world.Folder}",
@@ -154,7 +154,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         }
         NextToolbarItem(160);
         ImGui.SetNextItemWidth(150);
-        if (ImGui.BeginCombo("##Dimension", _world == null ? "Dimension" : Dimension.Name))
+        if (ImGui.BeginCombo("##Dimension", _world == null ? Localization.T("text.panel.world_importer.dimension") : Dimension.Name))
         {
             if (_world != null)
             for (int i = 0; i < _world.Dimensions.Count; i++)
@@ -167,69 +167,69 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             ImGui.EndCombo();
         }
         NextToolbarItem(150);
-        if (ImGui.Button("Browse world..."))
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.browse_world", "Browse world...")))
         {
             var result = Dialog.FileOpen("dat,mcworld");
             if (result.IsOk && !string.IsNullOrEmpty(result.Path))
                 TryAction(() => ChooseWorld(MinecraftWorld.Open(result.Path)));
         }
         NextToolbarItem(65);
-        if (ImGui.Button("Reload"))
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.reload", "Reload")))
         {
             if (_world == null) Refresh();
             else StartRead(preview: true, reload: true);
         }
         NextToolbarItem(100);
-        if (ImGui.Button("World spawn") && _world != null)
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.world_spawn", "World spawn")) && _world != null)
             TryAction(GoToSpawn);
         NextToolbarItem(80);
-        if (ImGui.Button("Position...")) ImGui.OpenPopup("##worldPosition");
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.position", "Position..."))) ImGui.OpenPopup("##worldPosition");
         RenderPositionPopup();
         ImGui.EndDisabled();
         NextToolbarItem(85);
-        if (ImGui.Button("Settings...")) ImGui.OpenPopup("##worldSettings");
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.settings", "Settings..."))) ImGui.OpenPopup("##worldSettings");
         RenderSettingsPopup();
         NextToolbarItem(110);
         string filterLabel = _blockFilter.IsActive
-            ? $"Filter ({_blockFilter.FilteredBlocks.Count})..."
-            : "Filter blocks...";
+            ? Localization.ComposeLabel(Localization.Format("text.panel.world_importer.filter", _blockFilter.FilteredBlocks.Count), $"Filter ({_blockFilter.FilteredBlocks.Count})...")
+            : Localization.Label("text.common.filter_blocks", "Filter blocks...");
         if (ImGui.Button(filterLabel)) ImGui.OpenPopup("##worldBlockFilter");
         RenderBlockFilterPopup();
         ImGui.Separator();
-        ImGui.TextUnformatted("Selection");
+        ImGui.TextUnformatted(Localization.T("text.panel.world_importer.selection"));
         NextToolbarItem(55);
         ImGui.BeginDisabled(_world == null || _readTask != null);
-        if (ImGui.Button("Small")) SetSelectionSize(16);
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.small", "Small"))) SetSelectionSize(16);
         NextToolbarItem(65);
-        if (ImGui.Button("Medium")) SetSelectionSize(32);
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.medium", "Medium"))) SetSelectionSize(32);
         NextToolbarItem(55);
-        if (ImGui.Button("Large")) SetSelectionSize(64);
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.large", "Large"))) SetSelectionSize(64);
         NextToolbarItem(105);
-        if (ImGui.Button("Edit bounds...")) ImGui.OpenPopup("##worldSelection");
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.edit_bounds", "Edit bounds..."))) ImGui.OpenPopup("##worldSelection");
         RenderSelectionPopup();
         NextToolbarItem(125);
-        if (ImGui.Button("Frame selection")) FrameSelection();
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.frame_selection", "Frame selection"))) FrameSelection();
         ImGui.EndDisabled();
         if (_world != null)
         {
             NextToolbarItem(220);
             string? invalid = SelectionError();
             ImGui.TextUnformatted(invalid == null
-                ? $"{Selection.Width} x {Selection.Height} x {Selection.Length} ({Selection.Count:N0} blocks)"
-                : "Invalid selection");
+                ? Localization.Format("text.panel.world_importer.x_x_blocks", Selection.Width, Selection.Height, Selection.Length, Selection.Count)
+                : Localization.T("text.panel.world_importer.invalid_selection"));
         }
     }
 
     private void RenderPositionPopup()
     {
         if (!ImGui.BeginPopup("##worldPosition")) return;
-        ImGui.TextUnformatted("Go to Minecraft coordinates");
+        ImGui.TextUnformatted(Localization.T("text.panel.world_importer.go_to_minecraft_coordinates"));
         ImGui.SetNextItemWidth(180);
-        ImGui.InputInt("X", ref _centerX);
+        ImGui.InputInt(Localization.Label("text.common.x", "X"), ref _centerX);
         ImGui.SetNextItemWidth(180);
-        ImGui.InputInt("Z", ref _centerZ);
+        ImGui.InputInt(Localization.Label("text.common.z", "Z"), ref _centerZ);
         ImGui.BeginDisabled(_world == null);
-        if (ImGui.Button("Go"))
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.go", "Go")))
         {
             _cameraInitialized = false;
             StartRead(preview: true);
@@ -242,32 +242,33 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
     private void RenderSettingsPopup()
     {
         if (!ImGui.BeginPopup("##worldSettings")) return;
-        ImGui.TextUnformatted("World import settings");
-        ImGui.TextWrapped("World files are read-only. Close the world in Minecraft before browsing.");
+        ImGui.TextUnformatted(Localization.T("text.panel.world_importer.world_import_settings"));
+        UiText.Wrapped(Localization.T("text.panel.world_importer.world_files_are_read_only_close_the_world_in_minecraft_before_browsing"));
         ImGui.BeginDisabled(Busy);
-        if (ImGui.Button("Refresh save list")) Refresh();
-        if (ImGui.BeginCombo("Resource pack", string.IsNullOrEmpty(_resourcePack) ? "Default" : _resourcePack))
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.refresh_save_list", "Refresh save list"))) Refresh();
+        if (ImGui.BeginCombo(Localization.Label("text.panel.world_importer.resource_pack", "Resource pack"), string.IsNullOrEmpty(_resourcePack) ? Localization.T("text.common.default") : _resourcePack))
         {
-            if (ImGui.Selectable("Default", _resourcePack.Length == 0)) SetResourcePack("");
+            if (ImGui.Selectable(Localization.Label("text.common.default", "Default"), _resourcePack.Length == 0)) SetResourcePack("");
             foreach (string id in MinecraftDataLoader.GetAvailableStandaloneResourcePackIds())
                 if (ImGui.Selectable(id, _resourcePack == id)) SetResourcePack(id);
             ImGui.EndCombo();
         }
         ImGui.EndDisabled();
         float speed = _flightInput.FreeFlySpeed;
-        if (ImGui.SliderFloat("Fly speed (blocks/s)", ref speed, 0.1f, 500))
+        if (ImGui.SliderFloat(Localization.Label("text.panel.world_importer.fly_speed_blocks_s", "Fly speed (blocks/s)"), ref speed, 0.1f, 500))
             _flightInput.SetFreeFlySpeed(speed);
         ImGui.Separator();
         string filterSummary = _blockFilter.IsActive
-            ? $"Block filter ({_blockFilter.FilteredBlocks.Count} filtered, {_blockFilter.Mode})"
-            : "Block filter (Disabled)";
+            ? Localization.Format("text.panel.world_importer.block_filter_filtered", _blockFilter.FilteredBlocks.Count,
+                _blockFilter.Mode == BlockFilterMode.Remove ? Localization.T("text.common.remove") : Localization.T("text.panel.world_importer.keep"))
+            : Localization.T("text.panel.world_importer.block_filter_disabled");
         ImGui.TextUnformatted(filterSummary);
-        if (ImGui.Button("Configure block filter..."))
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.configure_block_filter", "Configure block filter...")))
             ImGui.OpenPopup("##worldBlockFilter");
         RenderUnavailableBlocks();
-        if (_warnings.Count > 0 && ImGui.TreeNode($"Save discovery warnings ({_warnings.Count})"))
+        if (_warnings.Count > 0 && ImGui.TreeNode(Localization.ComposeLabel(Localization.Format("text.panel.world_importer.save_discovery_warnings", _warnings.Count), $"Save discovery warnings ({_warnings.Count})")))
         {
-            foreach (string warning in _warnings) ImGui.TextWrapped(warning);
+            foreach (string warning in _warnings) UiText.Wrapped(Localization.DisplayText(warning));
             ImGui.TreePop();
         }
         ImGui.EndPopup();
@@ -278,11 +279,11 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         ImGui.SetNextWindowSize(new Vector2(440, 520), ImGuiCond.FirstUseEver);
         if (!ImGui.BeginPopup("##worldBlockFilter")) return;
 
-        ImGui.TextUnformatted("World block filter");
-        ImGui.TextWrapped("Filter out or isolate specific block types from the imported terrain.");
+        ImGui.TextUnformatted(Localization.T("text.panel.world_importer.world_block_filter"));
+        UiText.Wrapped(Localization.T("text.panel.world_importer.filter_out_or_isolate_specific_block_types_from_the_imported_terrain"));
 
         bool enabled = _blockFilter.Enabled;
-        if (ImGui.Checkbox("Enable block filter", ref enabled))
+        if (ImGui.Checkbox(Localization.Label("text.panel.world_importer.enable_block_filter", "Enable block filter"), ref enabled))
         {
             _blockFilter.Enabled = enabled;
             TryAction(BuildPreview);
@@ -291,22 +292,22 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         ImGui.BeginDisabled(!_blockFilter.Enabled);
 
         int mode = (int)_blockFilter.Mode;
-        if (ImGui.RadioButton("Remove filtered blocks", mode == 0))
+        if (ImGui.RadioButton(Localization.Label("text.panel.world_importer.remove_filtered_blocks", "Remove filtered blocks"), mode == 0))
         {
             _blockFilter.Mode = BlockFilterMode.Remove;
             TryAction(BuildPreview);
         }
         ImGui.SameLine();
-        if (ImGui.RadioButton("Keep filtered blocks only", mode == 1))
+        if (ImGui.RadioButton(Localization.Label("text.panel.world_importer.keep_filtered_blocks_only", "Keep filtered blocks only"), mode == 1))
         {
             _blockFilter.Mode = BlockFilterMode.Keep;
             TryAction(BuildPreview);
         }
 
         ImGui.Separator();
-        ImGui.TextUnformatted("Quick actions");
+        ImGui.TextUnformatted(Localization.T("text.panel.world_importer.quick_actions"));
         bool hasWater = _blockFilter.FilteredBlocks.Contains("water");
-        if (ImGui.Button(hasWater ? "Unfilter water" : "Filter water"))
+        if (ImGui.Button(hasWater ? Localization.Label("text.panel.world_importer.unfilter_water", "Unfilter water") : Localization.Label("text.panel.world_importer.filter_water", "Filter water")))
         {
             if (hasWater) _blockFilter.FilteredBlocks.Remove("water");
             else _blockFilter.FilteredBlocks.Add("water");
@@ -314,7 +315,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             TryAction(BuildPreview);
         }
         ImGui.SameLine();
-        if (ImGui.Button("Clear all filters"))
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.clear_all_filters", "Clear all filters")))
         {
             _blockFilter.FilteredBlocks.Clear();
             TryAction(BuildPreview);
@@ -322,14 +323,14 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
 
         if (_blockFilter.IsWaterFilteredOut())
         {
-            ImGui.TextColored(new Vector4(0.35f, 0.75f, 1f, 1f),
-                "Water is filtered: underwater blocks will have their waterlogged property removed.");
+            UiText.Colored(new Vector4(0.35f, 0.75f, 1f, 1f),
+                Localization.T("text.panel.world_importer.water_is_filtered_underwater_blocks_will_have_their_waterlogged_property_removed"));
         }
 
         if (_blockFilter.FilteredBlocks.Count > 0)
         {
             ImGui.Separator();
-            ImGui.TextUnformatted($"Filtered blocks ({_blockFilter.FilteredBlocks.Count}):");
+            ImGui.TextUnformatted(Localization.Format("text.panel.world_importer.filtered_blocks", _blockFilter.FilteredBlocks.Count));
             if (ImGui.BeginChild("##filteredBlockTags", new Vector2(0, 60), ImGuiChildFlags.Borders))
             {
                 string? toRemove = null;
@@ -351,8 +352,8 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         }
 
         ImGui.Separator();
-        ImGui.TextUnformatted("Select blocks to filter");
-        ImGui.InputTextWithHint("##filterSearch", "Search block name...", ref _filterSearchText, 64);
+        ImGui.TextUnformatted(Localization.T("text.panel.world_importer.select_blocks_to_filter"));
+        ImGui.InputTextWithHint("##filterSearch", Localization.T("text.panel.world_importer.search_block_name"), ref _filterSearchText, 64);
 
         if (ImGui.BeginChild("##blockFilterList", new Vector2(0, 180), ImGuiChildFlags.Borders))
         {
@@ -391,7 +392,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
                 shown++;
                 if (shown >= 200 && hasSearch)
                 {
-                    ImGui.TextDisabled("... (refine search to see more)");
+                    UiText.Disabled(Localization.T("text.panel.world_importer.refine_search_to_see_more"));
                     break;
                 }
             }
@@ -401,7 +402,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         ImGui.EndDisabled();
 
         ImGui.Separator();
-        if (ImGui.Button("Done", new Vector2(80, 0)))
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.done", "Done"), new Vector2(80, 0)))
             ImGui.CloseCurrentPopup();
 
         ImGui.EndPopup();
@@ -410,13 +411,13 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
     private void RenderUnavailableBlocks()
     {
         if (_unknown.Length == 0) return;
-        ImGui.TextWrapped($"{_unknown.Length} block types are unavailable in the installed catalog.");
-        if (ImGui.TreeNode("Unavailable blocks"))
+        UiText.Wrapped(Localization.Format("text.panel.world_importer.block_types_are_unavailable_in_the_installed_catalog", _unknown.Length));
+        if (ImGui.TreeNode(Localization.Label("text.panel.world_importer.unavailable_blocks", "Unavailable blocks")))
         {
             foreach (string name in _unknown) ImGui.TextUnformatted(name);
             ImGui.TreePop();
         }
-        ImGui.Checkbox("Allow import with unavailable blocks omitted", ref _allowUnknown);
+        ImGui.Checkbox(Localization.Label("text.panel.world_importer.allow_import_with_unavailable_blocks_omitted", "Allow import with unavailable blocks omitted"), ref _allowUnknown);
     }
 
     private void RenderStatus()
@@ -424,52 +425,52 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         if (Busy && _pendingImport == null)
         {
             ImGui.ProgressBar(_progress, new Vector2(300, 0),
-                _discoveryTask != null ? "Finding worlds..." : _readTask != null ? "Reading selection..." : "Loading nearby terrain...");
+                _discoveryTask != null ? Localization.T("text.panel.world_importer.finding_worlds") : _readTask != null ? Localization.T("text.panel.world_importer.reading_selection") : Localization.T("text.panel.world_importer.loading_nearby_terrain"));
             if (_readTask != null || PreviewBusy)
             {
                 ImGui.SameLine();
-                if (ImGui.Button("Cancel reading")) _cancellation?.Cancel();
+                if (ImGui.Button(Localization.Label("text.panel.world_importer.cancel_reading", "Cancel reading"))) _cancellation?.Cancel();
             }
         }
         else if (_streamingPaused)
-            ImGui.TextUnformatted("Terrain streaming paused. Use Reload to retry.");
+            ImGui.TextUnformatted(Localization.T("text.panel.world_importer.terrain_streaming_paused_use_reload_to_retry"));
         else if (_world != null && _cameraInitialized)
         {
             var eye = _camera.Position + _worldOrigin;
-            ImGui.TextUnformatted($"{Dimension.Name} | X {eye.x:F1}  Y {eye.y:F1}  Z {eye.z:F1} | " +
-                                  $"{_flightInput.FreeFlySpeed:F0} blocks/s | 192 x 192 blocks | {_tiles.Count} cached tiles");
+            ImGui.TextUnformatted(Localization.Format("text.panel.world_importer.x_y_z_blocks_s_192_x_192_blocks_cached_tiles",
+                Dimension.Name, eye.x, eye.y, eye.z, _flightInput.FreeFlySpeed, _tiles.Count));
         }
-        ImGui.TextWrapped("RMB + WASD: fly | Q/E: down/up | Space: faster | Shift: slower | Wheel: speed | LMB: resize face/select | Ctrl+LMB: new box | Esc: cancel/release/close");
-        if (_error != null) ImGui.TextWrapped($"Error: {_error}");
-        if (_notice != null) ImGui.TextWrapped(_notice);
+        UiText.Wrapped(Localization.T("text.panel.world_importer.rmb_wasd_fly_q_e_down_up_space_faster_shift_slower_wheel_speed_lmb_resize_face"));
+        if (_error != null) UiText.Wrapped(Localization.Format("text.common.error", Localization.DisplayText(_error)));
+        if (_notice != null) UiText.Wrapped(Localization.DisplayText(_notice));
     }
 
     private void RenderImportOptions()
     {
         if (_pendingImport == null || _specialBlocks == null) return;
-        const string title = "Special blocks detected";
+        string title = Localization.Label("text.panel.world_importer.special_blocks_detected", "Special blocks detected");
         if (!ImGui.IsPopupOpen(title)) ImGui.OpenPopup(title);
         bool open = true;
         if (ImGui.BeginPopupModal(title, ref open, ImGuiWindowFlags.AlwaysAutoResize))
         {
-            ImGui.TextUnformatted($"{_specialBlocks.Blocks.Count:N0} animatable blocks detected in this selection.");
-            if (ImGui.TreeNode("Detected types"))
+            ImGui.TextUnformatted(Localization.Format("text.panel.world_importer.animatable_blocks_detected_in_this_selection", _specialBlocks.Blocks.Count));
+            if (ImGui.TreeNode(Localization.Label("text.panel.world_importer.detected_types", "Detected types")))
             {
                 foreach (var group in _specialBlocks.Blocks.GroupBy(b => b.Name).OrderBy(g => g.Key))
                     ImGui.TextUnformatted($"{group.Key}: {group.Count():N0}");
                 ImGui.TreePop();
             }
-            ImGui.Checkbox("Convert special blocks to animatable objects", ref _convertSpecialBlocks);
-            ImGui.TextUnformatted("Off: import ordinary merged scenery. On: add editable blocks and model parts.");
+            ImGui.Checkbox(Localization.Label("text.panel.world_importer.convert_special_blocks_to_animatable_objects", "Convert special blocks to animatable objects"), ref _convertSpecialBlocks);
+            ImGui.TextUnformatted(Localization.T("text.panel.world_importer.off_import_ordinary_merged_scenery_on_add_editable_blocks_and_model_parts"));
             if (_specialBlocks.IncompleteBlocks > 0)
-                ImGui.TextUnformatted($"{_specialBlocks.IncompleteBlocks:N0} incomplete multi-block parts stay in the scenery.");
-            ImGui.TextUnformatted("Sign text, banner patterns, custom head skins and pot decorations are not read.");
+                ImGui.TextUnformatted(Localization.Format("text.panel.world_importer.incomplete_multi_block_parts_stay_in_the_scenery", _specialBlocks.IncompleteBlocks));
+            ImGui.TextUnformatted(Localization.T("text.panel.world_importer.sign_text_banner_patterns_custom_head_skins_and_pot_decorations_are_not_read"));
             RenderUnavailableBlocks();
-            if (_error != null) ImGui.TextWrapped(_error);
-            if (ImGui.Button("Import"))
+            if (_error != null) UiText.Wrapped(Localization.DisplayText(_error));
+            if (ImGui.Button(Localization.Label("text.common.import", "Import")))
                 TryAction(() => FinishImport(_convertSpecialBlocks));
             ImGui.SameLine();
-            if (ImGui.Button("Cancel")) open = false;
+            if (ImGui.Button(Localization.Label("text.common.cancel", "Cancel"))) open = false;
             if (!open || _pendingImport == null) ImGui.CloseCurrentPopup();
             ImGui.EndPopup();
         }
@@ -483,20 +484,20 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
     private void RenderSelectionPopup()
     {
         if (!ImGui.BeginPopup("##worldSelection")) return;
-        ImGui.TextUnformatted("Inclusive Minecraft block coordinates");
+        ImGui.TextUnformatted(Localization.T("text.panel.world_importer.inclusive_minecraft_block_coordinates"));
         Span<int> minimum = stackalloc int[] { _minX, _minY, _minZ };
         Span<int> maximum = stackalloc int[] { _maxX, _maxY, _maxZ };
         ImGui.SetNextItemWidth(210);
-        if (ImGui.InputInt3("Minimum X / Y / Z", ref minimum[0]))
+        if (ImGui.InputInt3(Localization.Label("text.panel.world_importer.minimum_x_y_z", "Minimum X / Y / Z"), ref minimum[0]))
         {
             _minX = minimum[0]; _minY = minimum[1]; _minZ = minimum[2];
         }
         ImGui.SetNextItemWidth(210);
-        if (ImGui.InputInt3("Maximum X / Y / Z", ref maximum[0]))
+        if (ImGui.InputInt3(Localization.Label("text.panel.world_importer.maximum_x_y_z", "Maximum X / Y / Z"), ref maximum[0]))
         {
             _maxX = maximum[0]; _maxY = maximum[1]; _maxZ = maximum[2];
         }
-        if (ImGui.Button("Select preview area") && _loadedCenter is { } center)
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.select_preview_area", "Select preview area")) && _loadedCenter is { } center)
         {
             _minX = (center.X - ActiveTileRadius) * TileSize;
             _maxX = (center.X + ActiveTileRadius + 1) * TileSize - 1;
@@ -504,8 +505,8 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             _maxZ = (center.Z + ActiveTileRadius + 1) * TileSize - 1;
         }
         string? invalid = SelectionError();
-        if (invalid != null) ImGui.TextWrapped(invalid);
-        if (ImGui.Button("Done")) ImGui.CloseCurrentPopup();
+        if (invalid != null) UiText.Wrapped(Localization.DisplayText(invalid));
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.done", "Done"))) ImGui.CloseCurrentPopup();
         ImGui.EndPopup();
     }
 
@@ -582,18 +583,18 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         {
             ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
             if (_selectionResize == null)
-                ImGui.SetTooltip("Drag this face to resize. Ctrl+drag starts a new box.");
+                UiText.Tooltip(Localization.T("text.panel.world_importer.drag_this_face_to_resize_ctrl_drag_starts_a_new_box"));
         }
         DrawSelection(_viewportPosition, _viewportSize);
         ImGui.SetCursorScreenPos(importPosition);
         ImGui.BeginDisabled(Busy || SelectionError() != null || !ProjectManager.Instance.HasProject ||
                             (_unknown.Length > 0 && !_allowUnknown));
-        if (ImGui.Button("Import selected area", new Vector2(240, 42))) StartRead(preview: false);
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.import_selected_area", "Import selected area"), new Vector2(240, 42))) StartRead(preview: false);
         ImGui.EndDisabled();
         if (!ProjectManager.Instance.HasProject)
-            ImGui.TextUnformatted("Open a project before importing.");
+            ImGui.TextUnformatted(Localization.T("text.panel.world_importer.open_a_project_before_importing"));
         else if (_unknown.Length > 0 && !_allowUnknown)
-            ImGui.TextUnformatted("Review unavailable blocks in Settings.");
+            ImGui.TextUnformatted(Localization.T("text.panel.world_importer.review_unavailable_blocks_in_settings"));
         ImGui.SetCursorScreenPos(afterImage);
         UpdateStreaming();
     }
@@ -835,7 +836,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
     {
         int index = FindSpawnDimension(_world!);
         if (index < 0)
-            throw new InvalidDataException($"The spawn dimension '{_world!.SpawnDimension}' has no generated terrain.");
+            throw new InvalidDataException(Localization.Format("text.panel.world_importer.the_spawn_dimension_has_no_generated_terrain", _world!.SpawnDimension));
         _dimensionIndex = index;
         ResetArea(useSpawn: true);
         StartRead(preview: true);
@@ -938,7 +939,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         ResetArea(useSpawn: spawnDimension >= 0);
         StartRead(preview: true);
         if (spawnDimension < 0)
-            _notice = $"Spawn dimension '{world.SpawnDimension}' has no generated terrain. Showing {Dimension.Name} around the origin.";
+            _notice = Localization.Format("text.panel.world_importer.spawn_dimension_has_no_generated_terrain_showing_around_the_origin", world.SpawnDimension, Dimension.Name);
     }
 
     private static int FindSpawnDimension(MinecraftWorld world)
@@ -1051,7 +1052,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
 
     private void FinishImport(bool convert)
     {
-        if (_pendingImport == null) throw new InvalidOperationException("There is no pending world selection.");
+        if (_pendingImport == null) throw new InvalidOperationException(Localization.T("text.panel.world_importer.there_is_no_pending_world_selection"));
         ImportSelection(_pendingImport, convert ? _specialBlocks : null);
     }
 
@@ -1060,11 +1061,11 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         var acknowledged = _allowUnknown ? _unknown : [];
         _unknown = FindUnknown(conversion?.Terrain(volume) ?? volume);
         if (!string.Equals(_importProjectPath, ProjectManager.Instance.ProjectFilePath, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("The active project changed while terrain was loading. Import the selection again in the intended project.");
+            throw new InvalidOperationException(Localization.T("text.panel.world_importer.the_active_project_changed_while_terrain_was_loading_import_the_selection_again"));
         if (_unknown.Except(acknowledged, StringComparer.Ordinal).Any())
         {
             _allowUnknown = false;
-            throw new InvalidDataException("The selected area contains unavailable blocks. Review the list and explicitly allow omission before importing.");
+            throw new InvalidDataException(Localization.T("text.panel.world_importer.the_selected_area_contains_unavailable_blocks_review_the_list_and_explicitly"));
         }
         Import(volume, conversion);
         Close();
@@ -1274,7 +1275,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
     private void Import(WorldVolume volume, WorldSpecialBlockPlan? conversion = null)
     {
         var manager = ProjectManager.Instance;
-        if (!manager.HasProject) throw new InvalidOperationException("Open a project before importing terrain.");
+        if (!manager.HasProject) throw new InvalidOperationException(Localization.T("text.panel.world_importer.open_a_project_before_importing_terrain"));
         string path = Path.Combine(Path.GetTempPath(), $"World-{Guid.NewGuid():N}.schem");
         SceneObject? root = null;
         var addedAssets = new List<ProjectAssetEntry>();
@@ -1283,7 +1284,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         {
             var terrain = conversion?.Terrain(volume) ?? volume;
             if (terrain.NonAirCount == 0 && (conversion == null || conversion.Blocks.Count == 0))
-                throw new InvalidDataException("The selected area has no spawnable blocks.");
+                throw new InvalidDataException(Localization.T("text.panel.world_importer.the_selected_area_has_no_spawnable_blocks"));
             if (terrain.NonAirCount > 0)
             {
                 terrain.SaveSchematic(path);
@@ -1307,10 +1308,10 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             spawnMenu.Viewport!.SceneObjects.Add(root);
             SelectionManager.Instance.SelectObject(root);
             manager.SetDirty(true);
-            _notice = $"Imported selection ({volume.NonAirCount:N0} source blocks) into the project." +
-                      (conversion != null ? $" Converted {conversion.Blocks.Count:N0} animatable blocks." : "") +
-                      (_blockFilter.IsActive ? $" Applied block filter ({_blockFilter.FilteredBlocks.Count} types)." : "") +
-                      (_unknown.Length > 0 ? $" Omitted {_unknown.Length} unavailable block types." : "");
+            _notice = Localization.Format("text.panel.world_importer.imported_selection_source_blocks_into_the_project", volume.NonAirCount) +
+                      (conversion != null ? Localization.Format("text.panel.world_importer.converted_animatable_blocks", conversion.Blocks.Count) : "") +
+                      (_blockFilter.IsActive ? Localization.Format("text.panel.world_importer.applied_block_filter_types", _blockFilter.FilteredBlocks.Count) : "") +
+                      (_unknown.Length > 0 ? Localization.Format("text.panel.world_importer.omitted_unavailable_block_types", _unknown.Length) : "");
             committed = true;
             root = null;
         }

@@ -38,12 +38,12 @@ public class ContentBrowser : UiPanel
 
     public override unsafe void Render()
     {
-        ImGui.Begin("Content Browser");
+        ImGui.Begin(Localization.Label("text.common.content_browser", "Content Browser"));
 
         var projectManager = ProjectManager.Instance;
         if (!projectManager.HasProject)
         {
-            ImGui.TextDisabled("No project is currently loaded.");
+            UiText.Disabled(Localization.T("text.panel.content_browser.no_project_is_currently_loaded"));
             ImGui.End();
             return;
         }
@@ -55,13 +55,13 @@ public class ContentBrowser : UiPanel
 
         ImGui.TextUnformatted(projectManager.Manifest.ProjectName);
         ImGui.SameLine();
-        ImGui.TextDisabled("Content Drawer");
+        UiText.Disabled(Localization.T("text.panel.content_browser.content_drawer"));
 
         RenderToolbar();
         ImGui.Separator();
 
         ImGui.SetNextItemWidth(-1);
-        ImGui.InputTextWithHint("##assetSearch", "Search assets...", ref _search, 128);
+        ImGui.InputTextWithHint("##assetSearch", Localization.T("text.panel.content_browser.search_assets"), ref _search, 128);
         ImGui.Separator();
 
         var assets = projectManager.GetProjectAssets();
@@ -84,17 +84,17 @@ public class ContentBrowser : UiPanel
 
         if (canAddAudio)
         {
-            if (ImGui.Button("Add Selected Sound to Timeline", new Vector2(-1, 28)))
+            if (ImGui.Button(Localization.Label("text.panel.content_browser.add_selected_sound_to_timeline", "Add Selected Sound to Timeline"), new Vector2(-1, 28)))
                 AddSelectedAssetToTimeline();
             if (canSpawn)
             {
-                if (ImGui.Button("Spawn Selected Asset", new Vector2(-1, 28)))
+                if (ImGui.Button(Localization.Label("text.panel.content_browser.spawn_selected_asset", "Spawn Selected Asset"), new Vector2(-1, 28)))
                     SpawnSelectedAsset();
             }
         }
         else
         {
-            if (ImGui.Button("Spawn Selected Asset", new Vector2(-1, 28)))
+            if (ImGui.Button(Localization.Label("text.panel.content_browser.spawn_selected_asset", "Spawn Selected Asset"), new Vector2(-1, 28)))
                 SpawnSelectedAsset();
         }
         if (!canSpawn && !canAddAudio) ImGui.EndDisabled();
@@ -104,26 +104,26 @@ public class ContentBrowser : UiPanel
 
     private void RenderToolbar()
     {
-        if (ImGui.Button("Import Asset", new Vector2(-1, 0)))
+        if (ImGui.Button(Localization.Label("text.common.import_asset", "Import Asset"), new Vector2(-1, 0)))
             ImGui.OpenPopup("##importAssetPopup");
 
         if (ImGui.BeginPopup("##importAssetPopup"))
         {
-            if (ImGui.MenuItem("Model"))
+            if (ImGui.MenuItem(Localization.Label("text.common.model", "Model")))
                 ImportAsset(ProjectAssetType.Model, "glb,gltf,fbx,obj,dae,3ds,blend,ply,stl,x3d,mimodel,miobject");
 
-            if (ImGui.MenuItem("Image"))
+            if (ImGui.MenuItem(Localization.Label("text.common.image", "Image")))
                 ImportAsset(ProjectAssetType.Image, "png,jpg,jpeg,bmp,tga,gif,webp,tiff");
 
-            if (ImGui.MenuItem("Sound"))
+            if (ImGui.MenuItem(Localization.Label("text.panel.content_browser.sound_2", "Sound")))
                 ImportAsset(ProjectAssetType.Sound, "wav,mp3,ogg,flac,m4a");
 
             ImGui.Separator();
 
-            if (ImGui.MenuItem("Resource Pack (.zip)"))
+            if (ImGui.MenuItem(Localization.Label("text.panel.content_browser.resource_pack_zip", "Resource Pack (.zip)")))
                 ImportResourcePackRequested?.Invoke();
 
-            if (ImGui.MenuItem("Resource Pack Folder"))
+            if (ImGui.MenuItem(Localization.Label("text.panel.content_browser.resource_pack_folder", "Resource Pack Folder")))
                 ImportResourcePackFolderRequested?.Invoke();
 
             ImGui.EndPopup();
@@ -163,7 +163,7 @@ public class ContentBrowser : UiPanel
             }
         }
 
-        ImGui.TextDisabled("FOLDERS");
+        UiText.Disabled(Localization.T("text.panel.content_browser.folders"));
         RenderFolderItem("All Assets", assets.Count, 0);
         RenderFolderItem("Models", models, 1);
         RenderFolderItem("Images", images, 2);
@@ -179,7 +179,8 @@ public class ContentBrowser : UiPanel
             ImGui.SameLine();
         }
 
-        if (ImGui.Selectable($"{name}  ({count})##folder{folderIndex}", _selectedFolderIndex == folderIndex))
+        string label = Localization.Format("text.panel.content_browser.folder_with_count", Localization.DisplayText(name), count);
+        if (ImGui.Selectable(Localization.ComposeLabel(label, $"{name}  ({count})##folder{folderIndex}"), _selectedFolderIndex == folderIndex))
             _selectedFolderIndex = folderIndex;
     }
 
@@ -187,7 +188,7 @@ public class ContentBrowser : UiPanel
     {
         if (_visibleAssetIndices.Count == 0)
         {
-            ImGui.TextDisabled("No assets match this folder and search.");
+            UiText.Disabled(Localization.T("text.panel.content_browser.no_assets_match_this_folder_and_search"));
             return;
         }
 
@@ -258,7 +259,7 @@ public class ContentBrowser : UiPanel
             else
             {
                 ImGui.SetCursorPos(tilePosition + new Vector2(14f, 43f));
-                ImGui.TextUnformatted(GetAssetTypeLabel(asset.AssetType));
+                ImGui.TextUnformatted(Localization.DisplayText(GetAssetTypeLabel(asset.AssetType)));
             }
         }
 
@@ -282,20 +283,20 @@ public class ContentBrowser : UiPanel
         {
             if (asset.AssetType == ProjectAssetType.Sound && Timeline != null)
             {
-                if (ImGui.MenuItem("Add to Timeline as Audio Track"))
+                if (ImGui.MenuItem(Localization.Label("text.panel.content_browser.add_to_timeline_as_audio_track", "Add to Timeline as Audio Track")))
                 {
                     Timeline.AddAudioTrackFromAsset(asset);
                     ImGui.CloseCurrentPopup();
                 }
                 ImGui.Separator();
             }
-            if (ImGui.MenuItem("Remove asset..."))
+            if (ImGui.MenuItem(Localization.Label("text.panel.content_browser.remove_asset", "Remove asset...")))
                 _pendingRemoval = asset;
             ImGui.EndPopup();
         }
 
         if (hovered)
-            ImGui.SetTooltip(fullPath);
+            UiText.Tooltip(fullPath);
     }
 
     private bool MatchesSelectedFolder(ProjectAssetType assetType)
@@ -451,12 +452,12 @@ public class ContentBrowser : UiPanel
         if (_pendingRemoval != null)
         {
             string confirmMessage = _pendingRemoval.StoredInProject
-                ? $"Remove '{_pendingRemoval.DisplayName}' from the project and delete it from disk?"
-                : $"Remove '{_pendingRemoval.DisplayName}' from the project? This is a built-in data asset, so its file will not be deleted from disk.";
-            ImGui.TextWrapped(confirmMessage);
+                ? Localization.Format("text.panel.content_browser.remove_from_the_project_and_delete_it_from_disk", _pendingRemoval.DisplayName)
+                : Localization.Format("text.panel.content_browser.remove_from_the_project_this_is_a_built_in_data_asset_so_its_file_will_not_be", _pendingRemoval.DisplayName);
+            UiText.Wrapped(confirmMessage);
             ImGui.Separator();
 
-            if (ImGui.Button("Remove", new Vector2(120, 0)))
+            if (ImGui.Button(Localization.Label("text.common.remove", "Remove"), new Vector2(120, 0)))
             {
                 projectManager.RemoveAsset(_pendingRemoval);
                 _selectedAssetIndex = -1;
@@ -465,7 +466,7 @@ public class ContentBrowser : UiPanel
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Cancel", new Vector2(120, 0)))
+            if (ImGui.Button(Localization.Label("text.common.cancel", "Cancel"), new Vector2(120, 0)))
             {
                 _pendingRemoval = null;
                 ImGui.CloseCurrentPopup();

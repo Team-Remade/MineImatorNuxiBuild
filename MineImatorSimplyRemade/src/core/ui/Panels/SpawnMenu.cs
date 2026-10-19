@@ -63,6 +63,7 @@ public class SpawnMenu : UiPanel
     private string _selectedCategory  = "Primitives";
     private int    _selectedObjectIndex  = -1;
     private int    _selectedVariantIndex = -1;
+    private int _localizationRevision = -1;
 
     private string _searchQuery  = "";
     private string _searchBuffer = "";
@@ -330,7 +331,7 @@ public class SpawnMenu : UiPanel
         string label = "Resource Pack:",
         IReadOnlyList<string>? availableIds = null)
     {
-        ImGui.Text(label);
+        ImGui.TextUnformatted(Localization.DisplayText(label));
         ImGui.SetNextItemWidth(-1);
 
         bool changed = false;
@@ -348,7 +349,7 @@ public class SpawnMenu : UiPanel
         }
 
         string selectedLabel = selectedIndex == 0
-            ? "Default"
+            ? Localization.T("text.common.default")
             : options[selectedIndex];
 
         if (ImGui.BeginCombo($"##resourcePack{idSuffix}", selectedLabel))
@@ -356,7 +357,7 @@ public class SpawnMenu : UiPanel
             for (int i = 0; i < options.Count; i++)
             {
                 string value = options[i];
-                string optionLabel = i == 0 ? "Default" : value;
+                string optionLabel = i == 0 ? Localization.Label("text.common.default", "Default") : value;
                 bool selected = i == selectedIndex;
 
                 if (ImGui.Selectable(optionLabel, selected))
@@ -405,6 +406,18 @@ public class SpawnMenu : UiPanel
 
         if (!_isOpen) return;
 
+        if (_localizationRevision != Localization.Revision)
+        {
+            _localizationRevision = Localization.Revision;
+            // Translated search results may reorder the index-based selection.
+            if (!string.IsNullOrEmpty(_searchQuery) &&
+                _selectedCategory is "Camera" or "Light" or "Primitives" or "Scenery" or "Particle Spawners" or "Custom Models")
+            {
+                _selectedObjectIndex = -1;
+                _selectedVariantIndex = -1;
+            }
+        }
+
         ImGuiViewportPtr mainViewport = ImGui.GetMainViewport();
         Vector2 workPos = mainViewport.WorkPos;
         Vector2 workSize = mainViewport.WorkSize;
@@ -439,7 +452,7 @@ public class SpawnMenu : UiPanel
         // Update the off-screen 3-D preview before the window draws
         UpdatePreview(Mesh.DeltaTime);
 
-        if (ImGui.Begin("Spawn Menu##SpawnMenuWindow", ref _isOpen))
+        if (ImGui.Begin(Localization.Label("text.common.spawn_menu", "Spawn Menu##SpawnMenuWindow"), ref _isOpen))
         {
             RenderSearchBar();
             ImGui.Separator();
@@ -455,7 +468,7 @@ public class SpawnMenu : UiPanel
 
     private void RenderSearchBar()
     {
-        ImGui.Text("Search:");
+        ImGui.TextUnformatted(Localization.T("text.panel.spawn.search"));
         ImGui.SameLine();
         ImGui.SetNextItemWidth(-80);
         if (ImGui.InputText("##search", ref _searchBuffer, 256))
@@ -466,7 +479,7 @@ public class SpawnMenu : UiPanel
         }
 
         ImGui.SameLine();
-        if (ImGui.Button("Clear"))
+        if (ImGui.Button(Localization.Label("text.common.clear", "Clear")))
         {
             _searchBuffer        = "";
             _searchQuery         = "";
@@ -906,13 +919,13 @@ public class SpawnMenu : UiPanel
 
         // ── Categories ──────────────────────────────────────────────────────
         ImGui.BeginChild("##categories", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Categories");
+        UiText.Disabled(Localization.T("text.panel.spawn.categories"));
         ImGui.Separator();
 
         foreach (var category in _categories.Keys)
         {
             bool selected = _selectedCategory == category;
-            if (ImGui.Selectable(category, selected))
+            if (ImGui.Selectable(Localization.DisplayLabel(category), selected))
             {
                 if (_selectedCategory != category)
                 {
@@ -966,7 +979,7 @@ public class SpawnMenu : UiPanel
         {
             // Standard objects column
             ImGui.BeginChild("##objects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-            ImGui.TextDisabled("Objects");
+            UiText.Disabled(Localization.T("text.panel.spawn.objects"));
             ImGui.Separator();
 
             if (_categories.TryGetValue(_selectedCategory, out var objectList))
@@ -974,13 +987,19 @@ public class SpawnMenu : UiPanel
                 var filtered = string.IsNullOrEmpty(_searchQuery)
                     ? objectList
                     : objectList
-                        .Where(o => o.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+                        .Where(o => o.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                            ((_selectedCategory is "Camera" or "Light" or "Primitives" or "Scenery" or "Particle Spawners" ||
+                              (_selectedCategory == "Custom Models" && o == "Load...")) &&
+                             Localization.DisplayText(o).Contains(_searchQuery, StringComparison.OrdinalIgnoreCase)))
                         .ToList();
 
                 for (int i = 0; i < filtered.Count; i++)
                 {
                     bool sel = _selectedObjectIndex == i;
-                    if (ImGui.Selectable(filtered[i] + "##obj" + i, sel))
+                    string objectLabel = filtered[i] + "##obj" + i;
+                    if (_selectedCategory != "Custom Models" || filtered[i] == "Load...")
+                        objectLabel = Localization.DisplayLabel(objectLabel);
+                    if (ImGui.Selectable(objectLabel, sel))
                     {
                         _selectedObjectIndex  = i;
                         _selectedVariantIndex = -1;
@@ -1001,7 +1020,7 @@ public class SpawnMenu : UiPanel
 
             // ── Variants ────────────────────────────────────────────────────
             ImGui.BeginChild("##variants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-            ImGui.TextDisabled("Variants");
+            UiText.Disabled(Localization.T("text.panel.spawn.variants"));
             ImGui.Separator();
 
             if (_selectedCategory == "Scenery")
@@ -1023,10 +1042,10 @@ public class SpawnMenu : UiPanel
                 filteredObjects[_selectedObjectIndex] == "Sphere";
             if (isSpherePrimitive)
             {
-                ImGui.TextDisabled("Sphere Geometry");
-                bool changed = ImGui.Checkbox("Smooth Shading##sphereSmoothSpawn", ref _selectedPrimitiveSphereSmooth);
-                changed |= ImGui.DragInt("Segments##sphereSegmentsSpawn", ref _selectedPrimitiveSphereSegments, 1f, 3, 256);
-                changed |= ImGui.DragInt("Rings##sphereRingsSpawn", ref _selectedPrimitiveSphereRings, 1f, 2, 128);
+                UiText.Disabled(Localization.T("text.panel.spawn.sphere_geometry"));
+                bool changed = ImGui.Checkbox(Localization.Label("text.common.smooth_shading", "Smooth Shading##sphereSmoothSpawn"), ref _selectedPrimitiveSphereSmooth);
+                changed |= ImGui.DragInt(Localization.Label("text.common.segments", "Segments##sphereSegmentsSpawn"), ref _selectedPrimitiveSphereSegments, 1f, 3, 256);
+                changed |= ImGui.DragInt(Localization.Label("text.common.rings", "Rings##sphereRingsSpawn"), ref _selectedPrimitiveSphereRings, 1f, 2, 128);
                 _selectedPrimitiveSphereSegments = Math.Clamp(_selectedPrimitiveSphereSegments, 3, 256);
                 _selectedPrimitiveSphereRings = Math.Clamp(_selectedPrimitiveSphereRings, 2, 128);
                 if (changed) _previewKey = "";
@@ -1042,7 +1061,7 @@ public class SpawnMenu : UiPanel
                 string primitiveName = filteredObjects[_selectedObjectIndex];
                 if (primitiveName == "Plane")
                 {
-                    ImGui.TextDisabled("Orientation");
+                    UiText.Disabled(Localization.T("text.common.orientation"));
                     string[] orientationOptions = { "XY", "XZ" };
                     int orientationIndex = _selectedPrimitivePlaneOrientation == PlaneOrientation.XZ ? 1 : 0;
                     if (ImGui.Combo("##planeOrientation", ref orientationIndex, orientationOptions, orientationOptions.Length))
@@ -1052,35 +1071,35 @@ public class SpawnMenu : UiPanel
                 }
                 else if (primitiveName == "Cube")
                 {
-                    ImGui.TextDisabled("UV Mapping");
-                    if (ImGui.Checkbox("Mapped##cubeMappedSpawn", ref _selectedPrimitiveCubeMapped))
+                    UiText.Disabled(Localization.T("text.panel.spawn.uv_mapping"));
+                    if (ImGui.Checkbox(Localization.Label("text.panel.spawn.mapped", "Mapped##cubeMappedSpawn"), ref _selectedPrimitiveCubeMapped))
                         _previewKey = ""; // force preview rebuild when UV mode changes
 
-                    if (ImGui.Button("Save UV map...##cubeUvMap", new Vector2(-1, 0)))
+                    if (ImGui.Button(Localization.Label("text.panel.spawn.save_uv_map", "Save UV map...##cubeUvMap"), new Vector2(-1, 0)))
                         SaveCubeUvMapGuide();
 
-                    ImGui.TextDisabled("Exports the cube layout reference image.");
+                    UiText.Disabled(Localization.T("text.panel.spawn.exports_the_cube_layout_reference_image"));
                     ImGui.Spacing();
                 }
 
-                ImGui.TextDisabled("Texture");
+                UiText.Disabled(Localization.T("text.panel.spawn.texture"));
                 ImGui.Spacing();
 
                 // Show current texture
                 if (!string.IsNullOrEmpty(_selectedPrimitiveTexturePath))
                 {
                     string fileName = Path.GetFileName(_selectedPrimitiveTexturePath);
-                    ImGui.Text($"Current: {fileName}");
+                    ImGui.TextUnformatted(Localization.Format("text.panel.spawn.current", fileName));
                 }
                 else
                 {
-                    ImGui.TextDisabled("(None)");
+                    UiText.Disabled(Localization.T("text.panel.spawn.none"));
                 }
 
                 ImGui.Spacing();
 
                 // Texture buttons
-                if (ImGui.Button("Load texture...", new Vector2(-1, 0)))
+                if (ImGui.Button(Localization.Label("text.panel.spawn.load_texture", "Load texture..."), new Vector2(-1, 0)))
                 {
                     var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
                     if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
@@ -1105,7 +1124,7 @@ public class SpawnMenu : UiPanel
                     }
                 }
 
-                if (ImGui.Button("Clear", new Vector2(-1, 0)))
+                if (ImGui.Button(Localization.Label("text.common.clear", "Clear"), new Vector2(-1, 0)))
                 {
                     if (_selectedPrimitiveTextureId != 0)
                         Gl?.DeleteTexture(_selectedPrimitiveTextureId);
@@ -1123,7 +1142,7 @@ public class SpawnMenu : UiPanel
                 for (int i = 0; i < _currentVariants.Count; i++)
                 {
                     bool sel = _selectedVariantIndex == i;
-                    if (ImGui.Selectable(_currentVariants[i] + "##var" + i, sel))
+                    if (ImGui.Selectable(Localization.DisplayLabel(_currentVariants[i] + "##var" + i), sel))
                         _selectedVariantIndex = i;
 
                     if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
@@ -1135,7 +1154,7 @@ public class SpawnMenu : UiPanel
             }
             else if (!isPrimitiveWithTexture)
             {
-                ImGui.TextDisabled("(not available)");
+                UiText.Disabled(Localization.T("text.panel.spawn.not_available"));
             }
 
             ImGui.EndChild();
@@ -1153,7 +1172,7 @@ public class SpawnMenu : UiPanel
     private void RenderStandardPreviewColumn()
     {
         ImGui.BeginChild("##stdPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Preview");
+        UiText.Disabled(Localization.T("text.common.preview"));
         ImGui.Separator();
 
         var filtered = GetFilteredObjects();
@@ -1170,12 +1189,13 @@ public class SpawnMenu : UiPanel
             ImGui.Spacing();
 
             // Centred name label
-            CentreText(objectName);
+            CentreText(_selectedCategory is "Camera" or "Light" or "Primitives" or "Scenery"
+                ? Localization.DisplayText(objectName) : objectName);
         }
         else
         {
             ImGui.Spacing();
-            ImGui.TextDisabled("Select an object\nto see a preview.");
+            UiText.Disabled(Localization.T("text.panel.spawn.select_an_object_to_see_a_preview"));
         }
 
         ImGui.EndChild();
@@ -1186,15 +1206,15 @@ public class SpawnMenu : UiPanel
     private unsafe void RenderItemsObjectsColumn(float columnWidth)
     {
         ImGui.BeginChild("##itemsObjects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Tiles");
+        UiText.Disabled(Localization.T("text.panel.spawn.tiles"));
         ImGui.Separator();
 
         // Atlas source dropdown
-        ImGui.Text("Atlas:");
+        ImGui.TextUnformatted(Localization.T("text.panel.spawn.atlas"));
         ImGui.SameLine();
         ImGui.SetNextItemWidth(-1);
         int atlasIdx = (int)_itemAtlasSource;
-        string[] atlasNames = ["Item Atlas", "Block Atlas"];
+        string[] atlasNames = [Localization.T("text.common.item_atlas"), Localization.T("text.common.block_atlas")];
         if (ImGui.Combo("##atlasSource", ref atlasIdx, atlasNames, atlasNames.Length))
         {
             _itemAtlasSource = (ItemAtlasSource)atlasIdx;
@@ -1219,7 +1239,7 @@ public class SpawnMenu : UiPanel
 
         // Search filter
         ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##itemSearch", "Filter tiles (e.g. grass)...", ref _itemSearchBuffer, 64))
+        if (ImGui.InputTextWithHint("##itemSearch", Localization.T("text.panel.spawn.filter_tiles_e_g_grass"), ref _itemSearchBuffer, 64))
             _itemSearchQuery = _itemSearchBuffer;
 
         ImGui.Separator();
@@ -1279,7 +1299,7 @@ public class SpawnMenu : UiPanel
                 _selectedTileKey = key;
 
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(key);
+                UiText.Tooltip(key);
 
             if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
             {
@@ -1298,21 +1318,21 @@ public class SpawnMenu : UiPanel
     private void RenderItemsVariantsColumn(float columnWidth)
     {
         ImGui.BeginChild("##itemsVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Options");
+        UiText.Disabled(Localization.T("text.panel.spawn.options"));
         ImGui.Separator();
 
         // 3D toggle
-        ImGui.Checkbox("3D (extruded)", ref _item3DMode);
+        ImGui.Checkbox(Localization.Label("text.panel.spawn.3d_extruded", "3D (extruded)"), ref _item3DMode);
         ImGui.Spacing();
-        ImGui.TextDisabled(_item3DMode
-            ? "Each pixel is extruded\nto form a hull mesh."
-            : "Flat double-sided plane\nwith the tile texture.");
+        UiText.Disabled(_item3DMode
+            ? Localization.T("text.panel.spawn.each_pixel_is_extruded_to_form_a_hull_mesh")
+            : Localization.T("text.panel.spawn.flat_double_sided_plane_with_the_tile_texture"));
 
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
 
-        if (ImGui.Button("Load custom image...##itemCustom", new Vector2(-1, 0)))
+        if (ImGui.Button(Localization.Label("text.common.load_custom_image", "Load custom image...##itemCustom"), new Vector2(-1, 0)))
             ImportCustomItemImageFromDialog(selectInSpawnMenu: true);
 
         ImGui.EndChild();
@@ -1416,7 +1436,7 @@ public class SpawnMenu : UiPanel
     private void RenderItemsPreviewColumn()
     {
         ImGui.BeginChild("##itemsPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Preview");
+        UiText.Disabled(Localization.T("text.common.preview"));
         ImGui.Separator();
 
         if (!string.IsNullOrEmpty(_selectedTileKey))
@@ -1429,15 +1449,15 @@ public class SpawnMenu : UiPanel
             RenderPreviewImage(hasGeometry);
             ImGui.Spacing();
 
-            string atlasLabel = _itemAtlasSource == ItemAtlasSource.ItemAtlas ? "ItemAtlas" : "BlockAtlas";
+            string atlasLabel = _itemAtlasSource == ItemAtlasSource.ItemAtlas ? Localization.T("text.panel.spawn.itematlas") : Localization.T("text.panel.spawn.blockatlas");
             CentreText($"{atlasLabel}[{_selectedTileKey}]");
             ImGui.Spacing();
-            CentreText(_item3DMode ? "3D extruded" : "Flat plane");
+            CentreText(_item3DMode ? Localization.T("text.panel.spawn.3d_extruded_2") : Localization.T("text.panel.spawn.flat_plane"));
         }
         else
         {
             ImGui.Spacing();
-            ImGui.TextDisabled("Select a tile\nto see a preview.");
+            UiText.Disabled(Localization.T("text.panel.spawn.select_a_tile_to_see_a_preview"));
         }
 
         ImGui.EndChild();
@@ -1448,7 +1468,7 @@ public class SpawnMenu : UiPanel
     private void RenderBlocksObjectsColumn(float columnWidth)
     {
         ImGui.BeginChild("##blocksObjects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Blocks");
+        UiText.Disabled(Localization.T("text.common.blocks"));
         ImGui.Separator();
 
         bool blockSourceChanged = RenderResourcePackSelector(
@@ -1472,7 +1492,7 @@ public class SpawnMenu : UiPanel
 
         // Per-column search (overrides the global search for this column)
         ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##blockSearch", "Filter blocks...", ref _blockSearchBuffer, 128))
+        if (ImGui.InputTextWithHint("##blockSearch", Localization.T("text.common.filter_blocks"), ref _blockSearchBuffer, 128))
         {
             _blockSearchQuery    = _blockSearchBuffer;
             _selectedObjectIndex  = -1;
@@ -1520,7 +1540,7 @@ public class SpawnMenu : UiPanel
         }
 
         if (displayIndex == 0)
-            ImGui.TextDisabled("(no blocks found)");
+            UiText.Disabled(Localization.T("text.panel.spawn.no_blocks_found"));
 
         ImGui.EndChild(); // ##blockList
         ImGui.EndChild(); // ##blocksObjects
@@ -1529,7 +1549,7 @@ public class SpawnMenu : UiPanel
     private void RenderBlocksVariantsColumn(float columnWidth)
     {
         ImGui.BeginChild("##blocksVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Variants");
+        UiText.Disabled(Localization.T("text.panel.spawn.variants"));
         ImGui.Separator();
 
         RenderResourcePackSelector("BlocksResourcePack", ref _spawnResourcePackId, "Resource Pack:");
@@ -1555,12 +1575,12 @@ public class SpawnMenu : UiPanel
         else if (_selectedObjectIndex >= 0)
         {
             ImGui.Spacing();
-            ImGui.TextDisabled("(no variants)");
+            UiText.Disabled(Localization.T("text.panel.spawn.no_variants"));
         }
         else
         {
             ImGui.Spacing();
-            ImGui.TextDisabled("Select a block\nto see its variants.");
+            UiText.Disabled(Localization.T("text.panel.spawn.select_a_block_to_see_its_variants"));
         }
 
         ImGui.EndChild();
@@ -1569,7 +1589,7 @@ public class SpawnMenu : UiPanel
     private void RenderBlocksPreviewColumn()
     {
         ImGui.BeginChild("##blocksPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Preview");
+        UiText.Disabled(Localization.T("text.common.preview"));
         ImGui.Separator();
 
         if (_selectedObjectIndex >= 0 && _selectedObjectIndex < BlockRegistry.Blocks.Count)
@@ -1599,13 +1619,13 @@ public class SpawnMenu : UiPanel
             else
             {
                 ImGui.Spacing();
-                ImGui.TextDisabled("(no variants)");
+                UiText.Disabled(Localization.T("text.panel.spawn.no_variants"));
             }
         }
         else
         {
             ImGui.Spacing();
-            ImGui.TextDisabled("Select a block\nto see a preview.");
+            UiText.Disabled(Localization.T("text.panel.spawn.select_a_block_to_see_a_preview"));
         }
 
         ImGui.EndChild();
@@ -1616,12 +1636,12 @@ public class SpawnMenu : UiPanel
     private void RenderCharactersObjectsColumn(float columnWidth)
     {
         ImGui.BeginChild("##charObjects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled(_selectedCategory);
+        UiText.Disabled(Localization.DisplayText(_selectedCategory));
         ImGui.Separator();
 
         // Per-column search
         ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##charSearch", "Filter models...", ref _charSearchBuffer, 128))
+        if (ImGui.InputTextWithHint("##charSearch", Localization.T("text.panel.spawn.filter_models"), ref _charSearchBuffer, 128))
         {
             _charSearchQuery     = _charSearchBuffer;
             _selectedObjectIndex  = -1;
@@ -1670,9 +1690,9 @@ public class SpawnMenu : UiPanel
         }
 
         if (displayIndex == 0)
-            ImGui.TextDisabled(chars.Count == 0
-                ? $"(no models found in\n'{_selectedCategory.ToLowerInvariant()}/' folders)"
-                : "(no matches)");
+            UiText.Disabled(chars.Count == 0
+                ? Localization.Format("text.panel.spawn.no_models_found_in_folders", _selectedCategory.ToLowerInvariant())
+                : Localization.T("text.panel.spawn.no_matches"));
 
         ImGui.EndChild(); // ##charList
         ImGui.EndChild(); // ##charObjects
@@ -1688,7 +1708,7 @@ public class SpawnMenu : UiPanel
     private void RenderCharactersVariantsColumn(float columnWidth)
     {
         ImGui.BeginChild("##charVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Texture");
+        UiText.Disabled(Localization.T("text.panel.spawn.texture"));
         ImGui.Separator();
 
         if (_selectedObjectIndex >= 0 &&
@@ -1699,7 +1719,7 @@ public class SpawnMenu : UiPanel
             if (entry.TextureVariants.Count > 0)
             {
                 ImGui.Spacing();
-                ImGui.Text("Skin:");
+                ImGui.TextUnformatted(Localization.T("text.panel.spawn.skin"));
 
                 // Build the names array for the combo box
                 string[] variantNames = entry.TextureVariants
@@ -1741,7 +1761,7 @@ public class SpawnMenu : UiPanel
                     ImGui.Separator();
                     ImGui.Spacing();
 
-                    if (ImGui.Button("Browse...##charTexBrowse", new Vector2(-1, 0)))
+                    if (ImGui.Button(Localization.Label("text.panel.spawn.browse", "Browse...##charTexBrowse"), new Vector2(-1, 0)))
                     {
                         var result = Dialog.FileOpen("png,jpg,jpeg,tga,bmp");
                         if (result.IsOk && !string.IsNullOrEmpty(result.Path))
@@ -1754,26 +1774,26 @@ public class SpawnMenu : UiPanel
                     {
                         // Show just the filename — full path is too long for the column
                         string fileName = Path.GetFileName(_customCharTexturePath);
-                        ImGui.TextDisabled(fileName);
+                        UiText.Disabled(fileName);
                         if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip(_customCharTexturePath);
+                            UiText.Tooltip(_customCharTexturePath);
                     }
                     else
                     {
-                        ImGui.TextDisabled("No file chosen.");
+                        UiText.Disabled(Localization.T("text.panel.spawn.no_file_chosen"));
                     }
                 }
             }
             else
             {
                 ImGui.Spacing();
-                ImGui.TextDisabled("(no texture variants)");
+                UiText.Disabled(Localization.T("text.panel.spawn.no_texture_variants"));
             }
         }
         else
         {
             ImGui.Spacing();
-            ImGui.TextDisabled("Select a character\nto see textures.");
+            UiText.Disabled(Localization.T("text.panel.spawn.select_a_character_to_see_textures"));
         }
 
         ImGui.EndChild();
@@ -1791,14 +1811,14 @@ public class SpawnMenu : UiPanel
     private void RenderParticleSpawnerObjectsColumn(float columnWidth)
     {
         ImGui.BeginChild("##particleSpawnerObjects", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Objects");
+        UiText.Disabled(Localization.T("text.panel.spawn.objects"));
         ImGui.Separator();
 
         var filtered = GetFilteredObjects();
         for (int i = 0; i < filtered.Count; i++)
         {
             bool selected = _selectedObjectIndex == i;
-            if (ImGui.Selectable(filtered[i] + "##particleSpawnerObj" + i, selected))
+            if (ImGui.Selectable(Localization.DisplayLabel(filtered[i] + "##particleSpawnerObj" + i), selected))
             {
                 _selectedObjectIndex = i;
                 _selectedVariantIndex = -1;
@@ -1817,11 +1837,11 @@ public class SpawnMenu : UiPanel
     private void RenderParticleSpawnerVariantsColumn(float columnWidth)
     {
         ImGui.BeginChild("##particleSpawnerVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Particle Source");
+        UiText.Disabled(Localization.T("text.common.particle_source"));
         ImGui.Separator();
 
         ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##particleSourceSearch", "Search object library...", ref _particleLibrarySearchBuffer, 128))
+        if (ImGui.InputTextWithHint("##particleSourceSearch", Localization.T("text.panel.spawn.search_object_library"), ref _particleLibrarySearchBuffer, 128))
             _particleLibrarySearchQuery = _particleLibrarySearchBuffer;
 
         ImGui.Separator();
@@ -1852,7 +1872,7 @@ public class SpawnMenu : UiPanel
         }
 
         if (shown == 0)
-            ImGui.TextDisabled(options.Count == 0 ? "No object library entries available." : "No matches.");
+            UiText.Disabled(options.Count == 0 ? Localization.T("text.panel.spawn.no_object_library_entries_available") : Localization.T("text.panel.spawn.no_matches_2"));
 
         ImGui.EndChild();
         ImGui.EndChild();
@@ -1861,20 +1881,20 @@ public class SpawnMenu : UiPanel
     private void RenderParticleSpawnerPreviewColumn()
     {
         ImGui.BeginChild("##particleSpawnerPreview", new Vector2(0, 0), ImGuiChildFlags.Borders);
-        ImGui.TextDisabled("Preview");
+        UiText.Disabled(Localization.T("text.common.preview"));
         ImGui.Separator();
 
         ImGui.Spacing();
-        CentreText("Particle Spawner");
+        CentreText(Localization.T("text.common.particle_spawner"));
         ImGui.Spacing();
 
         var selected = GetParticleLibraryOptions().FirstOrDefault(o =>
             string.Equals(o.Id, _selectedParticleLibraryEntryId, StringComparison.OrdinalIgnoreCase));
 
         if (selected != null)
-            CentreText($"Source: {selected.Name}");
+            CentreText(Localization.Format("text.panel.spawn.source_2", selected.Name));
         else
-            ImGui.TextDisabled("No source selected.\nYou can assign one later\nin Properties > Particles.");
+            UiText.Disabled(Localization.T("text.panel.spawn.no_source_selected_you_can_assign_one_later_in_properties_particles"));
 
         ImGui.EndChild();
     }
@@ -2024,12 +2044,12 @@ public class SpawnMenu : UiPanel
                              0xFF555566, 4f, 0, 1.5f);
 
             // "no preview" text centred inside the box
-            const string msg = "no preview";
+            string msg = Localization.T("text.panel.spawn.no_preview");
             var ts = ImGui.CalcTextSize(msg);
             ImGui.SetCursorScreenPos(new Vector2(
                 pos.X + (size - ts.X) * 0.5f,
                 pos.Y + (size - ts.Y) * 0.5f));
-            ImGui.TextDisabled(msg);
+            UiText.Disabled(msg);
             // Advance cursor past the rectangle
             ImGui.SetCursorScreenPos(new Vector2(pos.X, pos.Y + size));
             ImGui.Dummy(new Vector2(size, 0));
@@ -2043,7 +2063,7 @@ public class SpawnMenu : UiPanel
         float lw     = ImGui.CalcTextSize(text).X;
         float indent = (ImGui.GetContentRegionAvail().X - lw) / 2f;
         if (indent > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + indent);
-        ImGui.TextDisabled(text);
+        UiText.Disabled(text);
     }
 
     private void RenderBottomBar()
@@ -2054,7 +2074,7 @@ public class SpawnMenu : UiPanel
         bool canSpawn = CanSpawn();
         if (!canSpawn) ImGui.BeginDisabled();
 
-        if (ImGui.Button("Spawn", new Vector2(buttonWidth, 28)))
+        if (ImGui.Button(Localization.Label("text.panel.spawn.spawn", "Spawn"), new Vector2(buttonWidth, 28)))
             TrySpawn();
 
         if (!canSpawn) ImGui.EndDisabled();
@@ -2617,12 +2637,12 @@ public class SpawnMenu : UiPanel
         if (_pendingSchematicRetryPath != null)
         {
             string fileName = Path.GetFileName(_pendingSchematicRetryPath);
-            ImGui.TextWrapped($"Failed to load schematic '{fileName}'.");
-            ImGui.TextWrapped(_pendingSchematicRetryError ?? "The file contains invalid data.");
+            UiText.Wrapped(Localization.Format("text.panel.spawn.failed_to_load_schematic", fileName));
+            UiText.Wrapped(Localization.DisplayText(_pendingSchematicRetryError ?? "The file contains invalid data."));
             ImGui.Separator();
-            ImGui.TextWrapped("Do you want to try loading it again?");
+            UiText.Wrapped(Localization.T("text.panel.spawn.do_you_want_to_try_loading_it_again"));
 
-            if (ImGui.Button("Retry", new Vector2(120, 0)))
+            if (ImGui.Button(Localization.Label("text.panel.spawn.retry", "Retry"), new Vector2(120, 0)))
             {
                 string retryPath = _pendingSchematicRetryPath;
                 string retryPack = _pendingSchematicRetryResourcePackId;
@@ -2643,7 +2663,7 @@ public class SpawnMenu : UiPanel
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Cancel", new Vector2(120, 0)))
+            if (ImGui.Button(Localization.Label("text.common.cancel", "Cancel"), new Vector2(120, 0)))
             {
                 Console.Error.WriteLine($"Gave up loading schematic: {_pendingSchematicRetryPath}");
                 _pendingSchematicRetryPath = null;
@@ -2685,7 +2705,7 @@ public class SpawnMenu : UiPanel
             }
             catch (Exception ex)
             {
-                _lastSchematicLoadError = $"The schematic data could not be read: {ex.Message}";
+                _lastSchematicLoadError = Localization.Format("text.panel.spawn.the_schematic_data_could_not_be_read", ex.Message);
                 Console.Error.WriteLine($"Failed reading schematic '{filePath}': {ex.Message}");
                 return null;
             }
@@ -5810,7 +5830,10 @@ public class SpawnMenu : UiPanel
 
         return string.IsNullOrEmpty(_searchQuery)
             ? all
-            : all.Where(o => o.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+            : all.Where(o => o.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                ((_selectedCategory is "Camera" or "Light" or "Primitives" or "Scenery" or "Particle Spawners" ||
+                  (_selectedCategory == "Custom Models" && o == "Load...")) &&
+                 Localization.DisplayText(o).Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))).ToList();
     }
 
     /// <summary>

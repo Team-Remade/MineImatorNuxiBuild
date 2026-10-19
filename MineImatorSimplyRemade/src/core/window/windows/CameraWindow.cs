@@ -2,6 +2,7 @@ using System.Numerics;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.GLFW;
 using Hexa.NET.ImGui.Backends.OpenGL3;
+using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using Silk.NET.GLFW;
@@ -27,7 +28,7 @@ public class CameraWindow : Window
     private unsafe WindowHandle* _mainHandle;
 
     public unsafe CameraWindow(Glfw glfw, GL gl, WindowHandle* shareWith)
-        : base(640, 420, "Camera View", glfw, gl, shareWith)
+        : base(640, 420, Localization.T("text.common.camera_view"), glfw, gl, shareWith)
     {
         _mainHandle = shareWith;
     }
@@ -50,6 +51,8 @@ public class CameraWindow : Window
     public override unsafe void Render()
     {
         if (_panel == null) return;
+
+        SetWindowTitle(Localization.T("text.common.camera_view"));
 
         // ── Step 1: scene render on the main context ──────────────────────────
         Glfw.MakeContextCurrent(_mainHandle);
@@ -131,7 +134,7 @@ public class CameraWindow : Window
         _panel.DrawCameraDropdownPublic(spawned); // real combo box UI, mirrors the inline preview header
 
         ImGui.SameLine();
-        if (ImGui.Button("Dock"))
+        if (ImGui.Button(Localization.Label("text.window.camera.dock", "Dock")))
         {
             _panel.DockToInlineVisible();
             // Reset the camera viewport's GLFW references back to the main window
@@ -158,7 +161,7 @@ public class CameraWindow : Window
                 ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(0.90f, 0.95f, 0.90f, 1.0f));
             }
 
-            if (ImGui.Button("Overlays"))
+            if (ImGui.Button(Localization.Label("text.common.overlays", "Overlays")))
                 _panel.OverlaysEnabled = !_panel.OverlaysEnabled;
 
             ImGui.PopStyleColor(4);

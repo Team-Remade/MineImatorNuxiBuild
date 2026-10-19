@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -334,7 +334,7 @@ public class Timeline : UiPanel
         SyncAudioWithPlayback();
         _trackRowVisibility.Clear();
 
-        if (!ImGui.Begin("Timeline"))
+        if (!ImGui.Begin(Localization.Label("text.common.timeline", "Timeline")))
         {
             IsWindowHovered = false;
             WindowPos = Vector2.Zero;
@@ -384,7 +384,7 @@ public class Timeline : UiPanel
             }
         }
 
-        ImGui.Text($"Frame: {_currentFrame}  ({_currentFrame / _frameRate:F2}s)");
+        ImGui.TextUnformatted(Localization.Format("text.panel.timeline.frame_s", _currentFrame, _currentFrame / _frameRate));
 
         // Deferred context menu popup
         if (_openContextMenu)
@@ -527,12 +527,12 @@ public class Timeline : UiPanel
         var loopTint = _loopPlayback
             ? new Vector4(0.35f, 0.75f, 1f, 1f)
             : Vector4.One;
-        if (ico ? IcoBtnTinted("##loop", TimelineIcons.Loop, sz, loopTint) : ImGui.Button(_loopPlayback ? "Loop*" : "Loop"))
+        if (ico ? IcoBtnTinted("##loop", TimelineIcons.Loop, sz, loopTint) : ImGui.Button(_loopPlayback ? Localization.Label("text.panel.timeline.loop_2", "Loop*") : Localization.Label("text.panel.timeline.loop", "Loop")))
             _loopPlayback = !_loopPlayback;
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(_loopPlayback
-                ? "Looping enabled (selected playback region takes priority)"
-                : "Looping disabled");
+            UiText.Tooltip(_loopPlayback
+                ? Localization.T("text.panel.timeline.looping_enabled_selected_playback_region_takes_priority")
+                : Localization.T("text.panel.timeline.looping_disabled"));
         ImGui.SameLine();
 
         var ghostTint = _ghostModeEnabled
@@ -541,15 +541,15 @@ public class Timeline : UiPanel
         bool canUseGhostIcon = ico && TimelineIcons.Ghost != 0;
         if (canUseGhostIcon
                 ? IcoBtnTinted("##ghost_mode", TimelineIcons.Ghost, sz, ghostTint)
-                : ImGui.Button(_ghostModeEnabled ? "Ghost*" : "Ghost"))
+                : ImGui.Button(_ghostModeEnabled ? Localization.Label("text.panel.timeline.ghost_3", "Ghost*") : Localization.Label("text.panel.timeline.ghost_2", "Ghost")))
         {
             _ghostModeEnabled = !_ghostModeEnabled;
             PruneHiddenSelection();
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(_ghostModeEnabled
-                ? "Ghost mode ON (ghost tracks hidden)"
-                : "Ghost mode OFF (show all tracks)");
+            UiText.Tooltip(_ghostModeEnabled
+                ? Localization.T("text.panel.timeline.ghost_mode_on_ghost_tracks_hidden")
+                : Localization.T("text.panel.timeline.ghost_mode_off_show_all_tracks"));
         ImGui.SameLine();
 
         // ── Auto-keyframe record button ──────────────────────────────────────
@@ -573,9 +573,9 @@ public class Timeline : UiPanel
                 _autoKeyframe = !_autoKeyframe;
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(_autoKeyframe ? "Auto-keyframing ON" : "Auto-keyframing OFF");
+            UiText.Tooltip(_autoKeyframe ? Localization.T("text.panel.timeline.auto_keyframing_on") : Localization.T("text.panel.timeline.auto_keyframing_off"));
 
-        ImGui.Text("  FPS:");
+        ImGui.TextUnformatted(Localization.T("text.panel.timeline.fps"));
         ImGui.SameLine();
         int fps = (int)Math.Clamp(_frameRate, 1, 120);
         ImGui.SetNextItemWidth(55f);
@@ -593,7 +593,7 @@ public class Timeline : UiPanel
             _frameRate = Math.Clamp(fps, 1, 120);
 
         ImGui.SameLine();
-        ImGui.Text("  Frames:");
+        ImGui.TextUnformatted(Localization.T("text.panel.timeline.frames"));
         ImGui.SameLine();
         ImGui.SetNextItemWidth(60f);
         int maxFrames = Math.Max(10, _maxFrames);
@@ -611,17 +611,17 @@ public class Timeline : UiPanel
             _maxFrames = Math.Max(10, maxFrames);
 
         ImGui.SameLine();
-        ImGui.Text("  Zoom:");
+        ImGui.TextUnformatted(Localization.T("text.panel.timeline.zoom"));
         ImGui.SameLine();
         if (ImGui.SmallButton("-##timeline_zoom_out"))
             ZoomTimeline(1f / ZoomStep, GetPlayheadZoomAnchor());
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Zoom out (Ctrl + mouse wheel)");
+        if (ImGui.IsItemHovered()) UiText.Tooltip(Localization.T("text.panel.timeline.zoom_out_ctrl_mouse_wheel"));
         ImGui.SameLine();
-        ImGui.TextDisabled($"{_pixelsPerFrame:0.#} px/f");
+        UiText.Disabled(Localization.Format("text.panel.timeline.px_f", _pixelsPerFrame));
         ImGui.SameLine();
         if (ImGui.SmallButton("+##timeline_zoom_in"))
             ZoomTimeline(ZoomStep, GetPlayheadZoomAnchor());
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Zoom in (Ctrl + mouse wheel)");
+        if (ImGui.IsItemHovered()) UiText.Tooltip(Localization.T("text.panel.timeline.zoom_in_ctrl_mouse_wheel"));
     }
 
     private void HandleTimelineZoomShortcut()
@@ -810,7 +810,7 @@ public class Timeline : UiPanel
         {
             var warnDl = ImGui.GetWindowDrawList();
             var p      = ImGui.GetCursorScreenPos();
-            warnDl.AddText(p, 0xFFFFAA66, "Audio: no OpenAL device available (audio disabled).");
+            warnDl.AddText(p, 0xFFFFAA66, Localization.T("text.panel.timeline.audio_no_openal_device_available_audio_disabled"));
             ImGui.Dummy(new Vector2(0, RowHeight));
         }
 
@@ -837,7 +837,7 @@ public class Timeline : UiPanel
                 : new Vector4(0.85f, 0.85f, 0.85f, 1f);
             float labelMaxW = Math.Max(60f, LeftColumnWidth - AudioControlWidth - 12f);
             string labelText = TruncateWithEllipsis(track.ManifestEntry.DisplayName, labelMaxW);
-            ImGui.TextColored(labelColor, labelText);
+            UiText.Colored(labelColor, labelText);
             ImGui.SameLine();
 
             // Compact volume slider
@@ -852,7 +852,7 @@ public class Timeline : UiPanel
             ImGui.SameLine();
 
             bool muted = track.ManifestEntry.Muted;
-            if (ImGui.Checkbox($"M##mute{i}", ref muted))
+            if (ImGui.Checkbox(Localization.T("text.panel.timeline.m") + $"###M##mute{i}", ref muted))
             {
                 track.ManifestEntry.Muted = muted;
                 if (track.IsLoaded)
@@ -861,7 +861,7 @@ public class Timeline : UiPanel
             ImGui.SameLine();
 
             bool loop = track.ManifestEntry.Loop;
-            if (ImGui.Checkbox($"L##loop{i}", ref loop))
+            if (ImGui.Checkbox(Localization.T("text.panel.timeline.l") + $"###L##loop{i}", ref loop))
             {
                 track.ManifestEntry.Loop = loop;
                 if (track.IsLoaded)
@@ -910,8 +910,8 @@ public class Timeline : UiPanel
                 dl.AddRect(clipMin, clipMax, clipEdge, 3f, ImDrawFlags.RoundCornersAll, 1.5f);
 
                 // Always show the start frame at the left edge of the clip.
-                string label = $"f{track.ManifestEntry.StartFrame}";
-                if (!track.IsLoaded) label += " (decoding)";
+                string label = Localization.Format("text.panel.timeline.f", track.ManifestEntry.StartFrame);
+                if (!track.IsLoaded) label += Localization.T("text.panel.timeline.decoding");
                 dl.AddText(clipMin + new Vector2(4f, 4f), 0xFFFFFFFF, label);
 
                 // If very thin, still draw a visible left-edge handle.
@@ -926,9 +926,9 @@ public class Timeline : UiPanel
                 if (mouseInClipArea && ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup))
                 {
                     if (_isDraggingAudioClip)
-                        ImGui.SetTooltip("Dragging audio clip to frame " + track.ManifestEntry.StartFrame);
+                        UiText.Tooltip(Localization.Format("text.panel.timeline.dragging_audio_clip_to_frame", track.ManifestEntry.StartFrame));
                     else
-                        ImGui.SetTooltip("Drag to reposition on timeline");
+                        UiText.Tooltip(Localization.T("text.panel.timeline.drag_to_reposition_on_timeline"));
 
                     if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                     {
@@ -946,7 +946,7 @@ public class Timeline : UiPanel
 
                 if (ImGui.BeginPopup($"##audio_ctx_{i}"))
                 {
-                    if (ImGui.MenuItem("Remove Audio Track"))
+                    if (ImGui.MenuItem(Localization.Label("text.panel.timeline.remove_audio_track", "Remove Audio Track")))
                     {
                         RemoveAudioTrack(track);
                         ImGui.EndPopup();
@@ -983,11 +983,11 @@ public class Timeline : UiPanel
         // ── Fixed footer (outside the scrollable area) ──────────────────────
         if (_audioTracks.Count == 0)
         {
-            ImGui.TextDisabled("No audio tracks yet.");
+            UiText.Disabled(Localization.T("text.panel.timeline.no_audio_tracks_yet"));
             ImGui.SameLine();
         }
         ImGui.SetCursorPosX(availW - 160f);
-        if (ImGui.SmallButton("+ Add Audio Track"))
+        if (ImGui.SmallButton(Localization.Label("text.panel.timeline.add_audio_track", "+ Add Audio Track")))
             ImGui.OpenPopup("##addAudioPopup");
 
         if (ImGui.BeginPopup("##addAudioPopup"))
@@ -996,8 +996,8 @@ public class Timeline : UiPanel
             var soundAssets = assets.Where(a => a.AssetType == ProjectAssetType.Sound).ToList();
             if (soundAssets.Count == 0)
             {
-                ImGui.TextDisabled("No sound assets in this project.");
-                ImGui.TextDisabled("Import a .wav / .mp3 / .ogg / .flac / .m4a first.");
+                UiText.Disabled(Localization.T("text.panel.timeline.no_sound_assets_in_this_project"));
+                UiText.Disabled(Localization.T("text.panel.timeline.import_a_wav_mp3_ogg_flac_m4a_first"));
             }
             else
             {
@@ -1321,7 +1321,7 @@ public class Timeline : UiPanel
         Vector2 rowPos = ImGui.GetCursorScreenPos();
         var dl = ImGui.GetWindowDrawList();
         dl.AddRectFilled(rowPos, rowPos + new Vector2(markerWidth, MarkerRowHeight), 0xFF202020);
-        dl.AddText(rowPos + new Vector2(5f, 5f), 0xFFAAAAAA, "Markers");
+        dl.AddText(rowPos + new Vector2(5f, 5f), 0xFFAAAAAA, Localization.T("text.panel.timeline.markers"));
 
         float rightX = rowPos.X + LeftColumnWidth;
         Vector2 mouse = ImGui.GetMousePos();
@@ -1334,7 +1334,7 @@ public class Timeline : UiPanel
             dl.AddLine(new Vector2(x, _timelineAreaTop), new Vector2(x, rowPos.Y + MarkerRowHeight), color, 1.5f);
             dl.AddTriangleFilled(new Vector2(x - 6f, rowPos.Y + 2f), new Vector2(x + 6f, rowPos.Y + 2f),
                 new Vector2(x, rowPos.Y + 10f), color);
-            string text = string.IsNullOrWhiteSpace(marker.Label) ? $"Frame {marker.Frame}" : marker.Label;
+            string text = string.IsNullOrWhiteSpace(marker.Label) ? Localization.Format("text.panel.timeline.frame", marker.Frame) : marker.Label;
             dl.AddText(new Vector2(x + 7f, rowPos.Y + 7f), color, text);
             if (MathF.Abs(mouse.X - x) <= 7f && mouse.Y >= rowPos.Y && mouse.Y < rowPos.Y + MarkerRowHeight)
                 hovered = marker;
@@ -1354,7 +1354,7 @@ public class Timeline : UiPanel
             {
                 _draggedMarker.Frame = Math.Max(0,
                     (int)MathF.Round((mouse.X - rightX + _hScrollOffset) / _pixelsPerFrame));
-                ImGui.SetTooltip($"{_draggedMarker.Label} · frame {_draggedMarker.Frame}");
+                UiText.Tooltip(Localization.Format("text.panel.timeline.frame_3", _draggedMarker.Label, _draggedMarker.Frame));
             }
             else
             {
@@ -1373,7 +1373,7 @@ public class Timeline : UiPanel
             _openContextMenu = true;
         }
         if (hovered != null && ImGui.IsItemHovered())
-            ImGui.SetTooltip($"{hovered.Label} (frame {hovered.Frame})\nRight-click for options");
+            UiText.Tooltip(Localization.Format("text.panel.timeline.frame_right_click_for_options", hovered.Label, hovered.Frame));
     }
 
     private void RenderMarkerEditor()
@@ -1381,12 +1381,12 @@ public class Timeline : UiPanel
         if (_openMarkerEditor)
         {
             _openMarkerEditor = false;
-            ImGui.OpenPopup("Add Marker");
+            ImGui.OpenPopup(Localization.Label("text.panel.timeline.add_marker", "Add Marker"));
         }
         bool open = true;
-        if (!ImGui.BeginPopupModal("Add Marker", ref open, ImGuiWindowFlags.AlwaysAutoResize)) return;
-        ImGui.InputText("Label", ref _markerLabel, 128);
-        if (ImGui.BeginCombo("Preset", "Choose color..."))
+        if (!ImGui.BeginPopupModal(Localization.Label("text.panel.timeline.add_marker", "Add Marker"), ref open, ImGuiWindowFlags.AlwaysAutoResize)) return;
+        ImGui.InputText(Localization.Label("text.panel.timeline.label", "Label"), ref _markerLabel, 128);
+        if (ImGui.BeginCombo(Localization.Label("text.panel.timeline.preset", "Preset"), Localization.T("text.panel.timeline.choose_color")))
         {
             foreach (var preset in new (string name, Vector4 color)[]
             {
@@ -1396,12 +1396,12 @@ public class Timeline : UiPanel
                 ("Blue", new(0.18f, 0.45f, 0.95f, 1f)), ("Purple", new(0.56f, 0.28f, 0.85f, 1f)),
                 ("Pink", new(0.95f, 0.35f, 0.65f, 1f))
             })
-                if (ImGui.Selectable(preset.name)) _markerColor = preset.color;
+                if (ImGui.Selectable(Localization.DisplayLabel(preset.name))) _markerColor = preset.color;
             ImGui.EndCombo();
         }
-        ImGui.ColorEdit4("Color", ref _markerColor, ImGuiColorEditFlags.NoInputs);
-        ImGui.TextDisabled($"Frame {_contextFrame}");
-        if (ImGui.Button("Add"))
+        ImGui.ColorEdit4(Localization.Label("text.common.color", "Color"), ref _markerColor, ImGuiColorEditFlags.NoInputs);
+        UiText.Disabled(Localization.Format("text.panel.timeline.frame", _contextFrame));
+        if (ImGui.Button(Localization.Label("text.common.add", "Add")))
         {
             _markers.Add(new TimelineMarker { Frame = _contextFrame,
                 Label = string.IsNullOrWhiteSpace(_markerLabel) ? "Marker" : _markerLabel.Trim(), Color = _markerColor });
@@ -1409,7 +1409,7 @@ public class Timeline : UiPanel
             ImGui.CloseCurrentPopup();
         }
         ImGui.SameLine();
-        if (ImGui.Button("Cancel")) ImGui.CloseCurrentPopup();
+        if (ImGui.Button(Localization.Label("text.common.cancel", "Cancel"))) ImGui.CloseCurrentPopup();
         ImGui.EndPopup();
     }
 
@@ -1454,11 +1454,29 @@ public class Timeline : UiPanel
 
     // ── Left labels ───────────────────────────────────────────────────────────
 
+    private static string GetRowDisplayLabel(TimelineProperty row)
+    {
+        if (row.PropertyPath.StartsWith("shapekey.", StringComparison.Ordinal))
+            return row.Label;
+
+        string[] parts = row.PropertyPath.Split('.');
+        if (row.Object is CameraSceneObject camera && parts.Length == 3 && parts[0] == "camera" && parts[1] == "effect" &&
+            int.TryParse(parts[2], out int index) && index >= 0 && index < camera.Effects.Count)
+            return camera.Effects[index].Type switch
+            {
+                CameraEffectType.DepthOfField => Localization.Format("text.panel.timeline.effect_depth_of_field", index + 1),
+                CameraEffectType.FilmGrain => Localization.Format("text.panel.timeline.effect_film_grain", index + 1),
+                _ => Localization.Format("text.panel.timeline.effect_camera_shake", index + 1)
+            };
+
+        return Localization.DisplayText(row.Label);
+    }
+
     private void RenderLeftLabels()
     {
         if (_displayRows.Count == 0)
         {
-            ImGui.TextDisabled("No object selected");
+            UiText.Disabled(Localization.T("text.common.no_object_selected"));
             return;
         }
 
@@ -1474,7 +1492,7 @@ public class Timeline : UiPanel
                 ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.9f, 0.9f, 0.5f, 1f));
                 // Vertically centre the text within RowHeight
                 ImGui.SetCursorPosY(hY + (RowHeight - ImGui.GetTextLineHeight()) * 0.5f);
-                ImGui.Text(row.Label);
+                ImGui.TextUnformatted(row.Label);
                 ImGui.PopStyleColor();
                 ImGui.SetCursorPosY(hY + RowHeight);
                 ImGui.Dummy(Vector2.Zero);  // commit boundary
@@ -1500,11 +1518,11 @@ public class Timeline : UiPanel
                 }
                 ImGui.SameLine();
                 ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetTextLineHeight()) * 0.5f);
-                ImGui.Text(row.Label);
+                ImGui.TextUnformatted(GetRowDisplayLabel(row));
                 if (showGhostIndicator)
                 {
                     ImGui.SameLine();
-                    ImGui.TextColored(new Vector4(0.70f, 0.86f, 0.98f, 1f), "(ghost)");
+                    UiText.Colored(new Vector4(0.70f, 0.86f, 0.98f, 1f), Localization.T("text.panel.timeline.ghost"));
                 }
                 ImGui.SameLine();
                 ImGui.SetCursorPosX(LeftColumnWidth - 26f);
@@ -1516,11 +1534,11 @@ public class Timeline : UiPanel
             else
             {
                 ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetTextLineHeight()) * 0.5f);
-                ImGui.Text(row.Label);
+                ImGui.TextUnformatted(GetRowDisplayLabel(row));
                 if (showGhostIndicator)
                 {
                     ImGui.SameLine();
-                    ImGui.TextColored(new Vector4(0.70f, 0.86f, 0.98f, 1f), "(ghost)");
+                    UiText.Colored(new Vector4(0.70f, 0.86f, 0.98f, 1f), Localization.T("text.panel.timeline.ghost"));
                 }
                 ImGui.SameLine();
                 ImGui.SetCursorPosX(LeftColumnWidth - 26f);
@@ -1735,7 +1753,7 @@ public class Timeline : UiPanel
             hoveredKf = GetKeyframesForProperty(row.Object, row.PropertyPath)
                 .Find(k => Math.Abs(k.Frame - frame) <= 2);
             if (hoveredKf != null && !_isDraggingKeyframe)
-                ImGui.SetTooltip($"Frame {hoveredKf.Frame} · {hoveredKf.InterpolationType}");
+                UiText.Tooltip(Localization.Format("text.panel.timeline.frame_2", hoveredKf.Frame, hoveredKf.InterpolationType));
         }
 
         // ── Mouse pressed ────────────────────────────────────────────────────
@@ -1990,49 +2008,49 @@ public class Timeline : UiPanel
     {
         if (!ImGui.BeginPopup("##kf_ctx")) return;
 
-        ImGui.TextDisabled(_activeMarker != null ? $"Marker: {_activeMarker.Label}" : "Timeline");
+        UiText.Disabled(_activeMarker != null ? Localization.Format("text.panel.timeline.marker", _activeMarker.Label) : Localization.T("text.common.timeline"));
         ImGui.Separator();
 
         bool hasSelection = _selectedKeyframes.Count > 0;
-        if (ImGui.MenuItem("Cut Keyframes", "Ctrl+X", false, hasSelection)) { CopySelectedKeyframes(); DeleteSelectedKeyframes(); }
-        if (ImGui.MenuItem("Copy Keyframes", "Ctrl+C", false, hasSelection)) CopySelectedKeyframes();
-        if (ImGui.MenuItem("Paste Keyframes", "Ctrl+V", false, _keyframeClipboard.Count > 0)) PasteKeyframes(_contextFrame);
-        if (ImGui.MenuItem("Scale Selected Keyframe Speed...", "", false, _selectedKeyframes.Count > 1))
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.cut_keyframes", "Cut Keyframes"), "Ctrl+X", false, hasSelection)) { CopySelectedKeyframes(); DeleteSelectedKeyframes(); }
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.copy_keyframes", "Copy Keyframes"), "Ctrl+C", false, hasSelection)) CopySelectedKeyframes();
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.paste_keyframes", "Paste Keyframes"), "Ctrl+V", false, _keyframeClipboard.Count > 0)) PasteKeyframes(_contextFrame);
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.scale_selected_keyframe_speed_2", "Scale Selected Keyframe Speed..."), "", false, _selectedKeyframes.Count > 1))
         {
             _speedScaleSlowDown = true;
             _speedScaleFactor = 2f;
             _openSpeedScaleMenu = true;
         }
-        if (ImGui.MenuItem("Reverse Selected Keyframes", "", false, _selectedKeyframes.Count > 1)) TransformSelectedFrames(reverse: true);
-        if (ImGui.MenuItem("Randomize Selected Keyframes", "", false, _selectedKeyframes.Count > 1)) TransformSelectedFrames(reverse: false);
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.reverse_selected_keyframes", "Reverse Selected Keyframes"), "", false, _selectedKeyframes.Count > 1)) TransformSelectedFrames(reverse: true);
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.randomize_selected_keyframes", "Randomize Selected Keyframes"), "", false, _selectedKeyframes.Count > 1)) TransformSelectedFrames(reverse: false);
 
-        if (ImGui.BeginMenu("Select Keyframes"))
+        if (ImGui.BeginMenu(Localization.Label("text.panel.timeline.select_keyframes", "Select Keyframes")))
         {
             int markerFrame = _activeMarker?.Frame ?? _contextFrame;
-            if (ImGui.MenuItem("Before Marker")) SelectKeyframes(k => k.Frame < markerFrame);
-            if (ImGui.MenuItem("After Marker")) SelectKeyframes(k => k.Frame > markerFrame);
-            if (ImGui.MenuItem("First")) SelectExtreme(first: true);
-            if (ImGui.MenuItem("Last")) SelectExtreme(first: false);
-            if (ImGui.MenuItem("At Current Frame")) SelectKeyframes(k => k.Frame == _currentFrame);
+            if (ImGui.MenuItem(Localization.Label("text.panel.timeline.before_marker", "Before Marker"))) SelectKeyframes(k => k.Frame < markerFrame);
+            if (ImGui.MenuItem(Localization.Label("text.panel.timeline.after_marker", "After Marker"))) SelectKeyframes(k => k.Frame > markerFrame);
+            if (ImGui.MenuItem(Localization.Label("text.panel.timeline.first", "First"))) SelectExtreme(first: true);
+            if (ImGui.MenuItem(Localization.Label("text.panel.timeline.last", "Last"))) SelectExtreme(first: false);
+            if (ImGui.MenuItem(Localization.Label("text.panel.timeline.at_current_frame", "At Current Frame"))) SelectKeyframes(k => k.Frame == _currentFrame);
             bool hasRegion = _selectedRegionStart.HasValue && _selectedRegionEnd.HasValue;
-            if (ImGui.MenuItem("In Selected Timeline Region", "", false, hasRegion))
+            if (ImGui.MenuItem(Localization.Label("text.panel.timeline.in_selected_timeline_region", "In Selected Timeline Region"), "", false, hasRegion))
                 SelectKeyframes(k => k.Frame >= _selectedRegionStart && k.Frame <= _selectedRegionEnd);
             ImGui.EndMenu();
         }
 
-        if (ImGui.MenuItem("Add Marker"))
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.add_marker", "Add Marker")))
         {
             _markerLabel = "Marker";
             _markerColor = new Vector4(0.9f, 0.2f, 0.2f, 1f);
             _openMarkerEditor = true;
         }
-        if (ImGui.MenuItem("Clear Playback Region", "", false,
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.clear_playback_region", "Clear Playback Region"), "", false,
                 _playbackRegionStart.HasValue && _playbackRegionEnd.HasValue))
         {
             _playbackRegionStart = null;
             _playbackRegionEnd = null;
         }
-        if (_activeMarker != null && ImGui.MenuItem("Delete Marker"))
+        if (_activeMarker != null && ImGui.MenuItem(Localization.Label("text.panel.timeline.delete_marker", "Delete Marker")))
         {
             _markers.Remove(_activeMarker);
             _activeMarker = null;
@@ -2040,7 +2058,7 @@ public class Timeline : UiPanel
 
         ImGui.Separator();
 
-        if (ImGui.BeginMenu("Interpolation", hasSelection))
+        if (ImGui.BeginMenu(Localization.Label("text.panel.timeline.interpolation", "Interpolation"), hasSelection))
         {
             foreach (var (lbl, val) in new[]
             {
@@ -2052,7 +2070,7 @@ public class Timeline : UiPanel
             })
             {
                 bool active = _ctxKeyframe?.InterpolationType == val;
-                if (ImGui.MenuItem(lbl, "", active))
+                if (ImGui.MenuItem(Localization.DisplayLabel(lbl), "", active))
                 {
                     foreach (var kf in _selectedKeyframes) kf.InterpolationType = val;
                     SaveSelectedOwners();
@@ -2066,7 +2084,7 @@ public class Timeline : UiPanel
         if (_ctxTrackRow is { PropertyPath: not "__header__" } row)
         {
             bool rowGhost = IsTrackRowGhost(row);
-            if (ImGui.MenuItem(rowGhost ? "Remove Track from Ghost Timeline" : "Make Track Ghost Timeline"))
+            if (ImGui.MenuItem(rowGhost ? Localization.Label("text.panel.timeline.remove_track_from_ghost_timeline", "Remove Track from Ghost Timeline") : Localization.Label("text.panel.timeline.make_track_ghost_timeline", "Make Track Ghost Timeline")))
             {
                 SetTrackRowGhostState(row, !rowGhost);
                 PruneHiddenSelection();
@@ -2074,7 +2092,7 @@ public class Timeline : UiPanel
             ImGui.Separator();
         }
 
-        if (ImGui.MenuItem("Delete Keyframe(s)", "Delete", false, hasSelection))
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.delete_keyframe_s", "Delete Keyframe(s)"), "Delete", false, hasSelection))
             DeleteSelectedKeyframes();
 
         ImGui.EndPopup();
@@ -2213,13 +2231,13 @@ public class Timeline : UiPanel
         if (!ImGui.BeginPopup("##kf_add")) return;
         if (_ctxAddKeyframeObj == null) { ImGui.EndPopup(); return; }
 
-        ImGui.TextDisabled("Add Keyframe");
+        UiText.Disabled(Localization.T("text.panel.timeline.add_keyframe"));
         ImGui.Separator();
 
         bool canRotate = !(_ctxAddKeyframeObj is LightSceneObject);
         bool canScale = !(_ctxAddKeyframeObj is CameraSceneObject) && !(_ctxAddKeyframeObj is LightSceneObject);
 
-        if (ImGui.MenuItem("All Transforms"))
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.all_transforms", "All Transforms")))
         {
             // Always add position keyframes
             AddKeyframeForProperty(_ctxAddKeyframeObj, "position.x", _currentFrame);
@@ -2243,21 +2261,21 @@ public class Timeline : UiPanel
             }
         }
 
-        if (ImGui.MenuItem("Position"))
+        if (ImGui.MenuItem(Localization.Label("text.common.position", "Position")))
         {
             AddKeyframeForProperty(_ctxAddKeyframeObj, "position.x", _currentFrame);
             AddKeyframeForProperty(_ctxAddKeyframeObj, "position.y", _currentFrame);
             AddKeyframeForProperty(_ctxAddKeyframeObj, "position.z", _currentFrame);
         }
 
-        if (canRotate && ImGui.MenuItem("Rotation"))
+        if (canRotate && ImGui.MenuItem(Localization.Label("text.common.rotation", "Rotation")))
         {
             AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.x", _currentFrame);
             AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.y", _currentFrame);
             AddKeyframeForProperty(_ctxAddKeyframeObj, "rotation.z", _currentFrame);
         }
 
-        if (canScale && ImGui.MenuItem("Scale"))
+        if (canScale && ImGui.MenuItem(Localization.Label("text.common.scale", "Scale")))
         {
             AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.x", _currentFrame);
             AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.y", _currentFrame);
@@ -2272,24 +2290,24 @@ public class Timeline : UiPanel
         if (_openSpeedScaleMenu)
         {
             _openSpeedScaleMenu = false;
-            ImGui.OpenPopup("Scale Selected Keyframe Speed");
+            ImGui.OpenPopup(Localization.Label("text.panel.timeline.scale_selected_keyframe_speed", "Scale Selected Keyframe Speed"));
         }
 
         bool open = true;
-        if (!ImGui.BeginPopupModal("Scale Selected Keyframe Speed", ref open, ImGuiWindowFlags.AlwaysAutoResize))
+        if (!ImGui.BeginPopupModal(Localization.Label("text.panel.timeline.scale_selected_keyframe_speed", "Scale Selected Keyframe Speed"), ref open, ImGuiWindowFlags.AlwaysAutoResize))
             return;
 
-        ImGui.TextDisabled("Scale the selected keyframe timing around the first selected frame.");
+        UiText.Disabled(Localization.T("text.panel.timeline.scale_the_selected_keyframe_timing_around_the_first_selected_frame"));
         ImGui.Separator();
 
-        if (ImGui.RadioButton("Slow Down", _speedScaleSlowDown))
+        if (ImGui.RadioButton(Localization.Label("text.panel.timeline.slow_down", "Slow Down"), _speedScaleSlowDown))
             _speedScaleSlowDown = true;
         ImGui.SameLine();
-        if (ImGui.RadioButton("Speed Up", !_speedScaleSlowDown))
+        if (ImGui.RadioButton(Localization.Label("text.panel.timeline.speed_up", "Speed Up"), !_speedScaleSlowDown))
             _speedScaleSlowDown = false;
 
         float factor = _speedScaleFactor;
-        if (ImGui.DragFloat("Scale Factor", ref factor, 0.05f, 1.01f, 20f, "%.2fx", ImGuiSliderFlags.AlwaysClamp))
+        if (ImGui.DragFloat(Localization.Label("text.panel.timeline.scale_factor", "Scale Factor"), ref factor, 0.05f, 1.01f, 20f, "%.2fx", ImGuiSliderFlags.AlwaysClamp))
             _speedScaleFactor = Math.Clamp(factor, 1.01f, 20f);
 
         int beforeMin = _selectedKeyframes.Count > 0 ? _selectedKeyframes.Min(k => k.Frame) : 0;
@@ -2297,16 +2315,16 @@ public class Timeline : UiPanel
         int beforeSpan = Math.Max(0, beforeMax - beforeMin);
         float previewScale = _speedScaleSlowDown ? _speedScaleFactor : 1f / Math.Max(1.01f, _speedScaleFactor);
         int afterSpan = (int)MathF.Round(beforeSpan * previewScale);
-        ImGui.TextDisabled($"Span preview: {beforeSpan}f -> {afterSpan}f");
+        UiText.Disabled(Localization.Format("text.panel.timeline.span_preview_f_f", beforeSpan, afterSpan));
 
         bool canApply = _selectedKeyframes.Count > 1;
-        if (ImGui.Button("Apply") && canApply)
+        if (ImGui.Button(Localization.Label("text.panel.timeline.apply", "Apply")) && canApply)
         {
             ScaleSelectedKeyframeSpeed(_speedScaleFactor, _speedScaleSlowDown);
             ImGui.CloseCurrentPopup();
         }
         ImGui.SameLine();
-        if (ImGui.Button("Cancel"))
+        if (ImGui.Button(Localization.Label("text.common.cancel", "Cancel")))
             ImGui.CloseCurrentPopup();
 
         ImGui.EndPopup();

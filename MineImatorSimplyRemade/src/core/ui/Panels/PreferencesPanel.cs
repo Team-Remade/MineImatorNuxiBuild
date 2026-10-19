@@ -48,7 +48,11 @@ public class PreferencesPanel : UiPanel
     public ThemeMode Theme { get; set; } = ThemeMode.Darker;
     public AccentColor Accent { get; set; } = AccentColor.Purple;
     public Vector4 CustomAccentColor { get; set; } = new Vector4(0.58f, 0.36f, 0.96f, 1.0f);
-    public string Language { get; set; } = "English";
+    public string Language
+    {
+        get => Localization.CurrentLanguage;
+        set => Localization.SetLanguage(value);
+    }
 
     // Timeline
     public bool AutoScrollWhilePlaying { get; set; } = true;
@@ -90,6 +94,8 @@ public class PreferencesPanel : UiPanel
     public void ToggleVisibility()
     {
         _windowOpen = !_windowOpen;
+        if (_windowOpen)
+            Localization.RefreshLanguages();
     }
 
     /// <summary>
@@ -208,26 +214,27 @@ public class PreferencesPanel : UiPanel
         if (!_windowOpen)
             return;
 
-        if (!ImGui.Begin("Preferences", ref _windowOpen))
+        if (!ImGui.Begin(Localization.Label("text.common.preferences", "Preferences"), ref _windowOpen))
         {
             ImGui.End();
             return;
         }
 
-        ImGui.TextUnformatted("Preferences");
+        ImGui.TextUnformatted(Localization.T("text.common.preferences"));
         ImGui.Separator();
 
         bool preferencesChanged = false;
+        string? selectedLanguage = null;
 
         // ── Program Section ───────────────────────────────────────────────────
-        if (ImGui.CollapsingHeader("Program##PrefProgram", ImGuiTreeNodeFlags.DefaultOpen))
+        if (ImGui.CollapsingHeader(Localization.Label("text.panel.preferences.program", "Program##PrefProgram"), ImGuiTreeNodeFlags.DefaultOpen))
         {
             ImGui.Indent();
 
             IReadOnlyList<string> availableMinecraftVersions = PreferencesDefaults.GetAvailableMinecraftVersions();
 
             {
-                ImGui.TextUnformatted("Minecraft version:");
+                ImGui.TextUnformatted(Localization.T("text.panel.preferences.minecraft_version"));
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(150);
                 if (ImGui.BeginCombo("##minecraftVersion", MinecraftVersion))
@@ -251,8 +258,8 @@ public class PreferencesPanel : UiPanel
             // Target FPS
             {
                 int targetFps = TargetFps;
-                string format = targetFps == 0 ? "Unlimited" : "%d";
-                if (ImGui.SliderInt("Target framerate##targetFps", ref targetFps, 0, 120, format))
+                string format = targetFps == 0 ? Localization.T("text.panel.preferences.unlimited").Replace("%", "%%") : "%d";
+                if (ImGui.SliderInt(Localization.Label("text.panel.preferences.target_framerate", "Target framerate##targetFps"), ref targetFps, 0, 120, format))
                 {
                     TargetFps = targetFps;
                     preferencesChanged = true;
@@ -264,7 +271,7 @@ public class PreferencesPanel : UiPanel
             // Automatic Backups
             {
                 bool backups = AutomaticBackups;
-                if (ImGui.Checkbox("Automatic Backups##backups", ref backups))
+                if (ImGui.Checkbox(Localization.Label("text.panel.preferences.automatic_backups", "Automatic Backups##backups"), ref backups))
                 {
                     AutomaticBackups = backups;
                     preferencesChanged = true;
@@ -277,7 +284,7 @@ public class PreferencesPanel : UiPanel
             // Copy work camera into new cameras
             {
                 bool copyCamera = CopyWorkCameraIntoNewCameras;
-                if (ImGui.Checkbox("Copy work camera into new cameras##copyCamera", ref copyCamera))
+                if (ImGui.Checkbox(Localization.Label("text.panel.preferences.copy_work_camera_into_new_cameras", "Copy work camera into new cameras##copyCamera"), ref copyCamera))
                 {
                     CopyWorkCameraIntoNewCameras = copyCamera;
                     preferencesChanged = true;
@@ -290,18 +297,18 @@ public class PreferencesPanel : UiPanel
         ImGui.Spacing();
 
         // ── Interface Section ──────────────────────────────────────────────────
-        if (ImGui.CollapsingHeader("Interface##PrefInterface", ImGuiTreeNodeFlags.DefaultOpen))
+        if (ImGui.CollapsingHeader(Localization.Label("text.panel.preferences.interface", "Interface##PrefInterface"), ImGuiTreeNodeFlags.DefaultOpen))
         {
             ImGui.Indent();
 
             // ── Appearance ──
-            if (ImGui.TreeNodeEx("Appearance", ImGuiTreeNodeFlags.DefaultOpen))
+            if (ImGui.TreeNodeEx(Localization.Label("text.common.appearance", "Appearance"), ImGuiTreeNodeFlags.DefaultOpen))
             {
                 ImGui.Indent();
 
                 // Theme
                 {
-                    ImGui.TextUnformatted("Theme:");
+                    ImGui.TextUnformatted(Localization.T("text.panel.preferences.theme"));
                     ImGui.SameLine();
                     ImGui.SetNextItemWidth(180);
                     string themeName = Theme switch
@@ -314,7 +321,7 @@ public class PreferencesPanel : UiPanel
                         _ => Theme.ToString()
                     };
 
-                    if (ImGui.BeginCombo("##theme", themeName))
+                    if (ImGui.BeginCombo("##theme", Localization.DisplayText(themeName)))
                     {
                         var modes = new[]
                         {
@@ -328,7 +335,7 @@ public class PreferencesPanel : UiPanel
                         foreach (var (mode, label) in modes)
                         {
                             bool selected = Theme == mode;
-                            if (ImGui.Selectable(label, selected))
+                            if (ImGui.Selectable(Localization.DisplayLabel(label), selected))
                             {
                                 ApplyTheme(mode);
                                 preferencesChanged = true;
@@ -342,11 +349,11 @@ public class PreferencesPanel : UiPanel
 
                 // Accent Color
                 {
-                    ImGui.TextUnformatted("Accent color:");
+                    ImGui.TextUnformatted(Localization.T("text.panel.preferences.accent_color"));
                     ImGui.SameLine();
                     ImGui.SetNextItemWidth(180);
                     string accentName = Accent.ToString();
-                    if (ImGui.BeginCombo("##accent", accentName))
+                    if (ImGui.BeginCombo("##accent", Localization.DisplayText(accentName)))
                     {
                         var colors = new[]
                         {
@@ -372,7 +379,7 @@ public class PreferencesPanel : UiPanel
                             // Draw small color swatch
                             ImGui.ColorButton($"##swatch_{color}", colorVec, ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoPicker, new Vector2(16, 16));
                             ImGui.SameLine();
-                            if (ImGui.Selectable(color.ToString(), selected))
+                            if (ImGui.Selectable(Localization.DisplayLabel(color.ToString()), selected))
                             {
                                 ApplyAccentColor(color);
                                 preferencesChanged = true;
@@ -384,7 +391,7 @@ public class PreferencesPanel : UiPanel
                     if (Accent == AccentColor.Custom)
                     {
                         ImGui.Spacing();
-                        ImGui.TextUnformatted("Custom color:");
+                        ImGui.TextUnformatted(Localization.T("text.panel.preferences.custom_color"));
                         ImGui.SameLine();
                         Vector4 custom = CustomAccentColor;
                         if (ImGui.ColorEdit4("##customAccentPicker", ref custom, ImGuiColorEditFlags.AlphaBar))
@@ -400,15 +407,23 @@ public class PreferencesPanel : UiPanel
 
                 // Language
                 {
-                    ImGui.TextUnformatted("Language:");
+                    ImGui.TextUnformatted(Localization.T("text.panel.preferences.language"));
                     ImGui.SameLine();
                     ImGui.SetNextItemWidth(180);
-                    if (ImGui.BeginCombo("##language", Language))
+                    if (ImGui.BeginCombo("##language", Localization.CurrentLanguageName))
                     {
-                        if (ImGui.Selectable("English", Language == "English"))
+                        foreach (var language in Localization.AvailableLanguages)
                         {
-                            Language = "English";
-                            preferencesChanged = true;
+                            bool selected = Language == language.Code;
+                            ImGui.PushID(language.Code);
+                            if (ImGui.Selectable(language.Name + "###languageOption", selected))
+                            {
+                                selectedLanguage = language.Code;
+                                preferencesChanged = true;
+                            }
+                            if (selected)
+                                ImGui.SetItemDefaultFocus();
+                            ImGui.PopID();
                         }
                         ImGui.EndCombo();
                     }
@@ -421,12 +436,12 @@ public class PreferencesPanel : UiPanel
             ImGui.Spacing();
 
             // ── Timeline ──
-            if (ImGui.TreeNodeEx("Timeline", ImGuiTreeNodeFlags.DefaultOpen))
+            if (ImGui.TreeNodeEx(Localization.Label("text.common.timeline", "Timeline"), ImGuiTreeNodeFlags.DefaultOpen))
             {
                 ImGui.Indent();
 
                 bool autoScroll = AutoScrollWhilePlaying;
-                if (ImGui.Checkbox("Auto scroll while playing animation##autoScroll", ref autoScroll))
+                if (ImGui.Checkbox(Localization.Label("text.panel.preferences.auto_scroll_while_playing_animation", "Auto scroll while playing animation##autoScroll"), ref autoScroll))
                 {
                     AutoScrollWhilePlaying = autoScroll;
                     preferencesChanged = true;
@@ -440,12 +455,12 @@ public class PreferencesPanel : UiPanel
             ImGui.Spacing();
 
             // ── Tools ──
-            if (ImGui.TreeNodeEx("Tools", ImGuiTreeNodeFlags.DefaultOpen))
+            if (ImGui.TreeNodeEx(Localization.Label("text.panel.preferences.tools", "Tools"), ImGuiTreeNodeFlags.DefaultOpen))
             {
                 ImGui.Indent();
 
                 bool zUp = ZIsUp;
-                if (ImGui.Checkbox("Z is up##zUp", ref zUp))
+                if (ImGui.Checkbox(Localization.Label("text.panel.preferences.z_is_up", "Z is up##zUp"), ref zUp))
                 {
                     ZIsUp = zUp;
                     preferencesChanged = true;
@@ -455,7 +470,7 @@ public class PreferencesPanel : UiPanel
                 ImGui.Spacing();
 
                 bool hideBoneDisplayShapes = HideMineImatorBoneDisplayShapes;
-                if (ImGui.Checkbox("Hide bone display shapes on Mine-imator assets##hideMiBoneDisplayShapes", ref hideBoneDisplayShapes))
+                if (ImGui.Checkbox(Localization.Label("text.panel.preferences.hide_bone_display_shapes_on_mine_imator_assets", "Hide bone display shapes on Mine-imator assets##hideMiBoneDisplayShapes"), ref hideBoneDisplayShapes))
                 {
                     HideMineImatorBoneDisplayShapes = hideBoneDisplayShapes;
                     preferencesChanged = true;
@@ -464,7 +479,7 @@ public class PreferencesPanel : UiPanel
                 ImGui.Spacing();
 
                 bool hideRegularBoneDisplayShapes = HideRegularAssetBoneDisplayShapes;
-                if (ImGui.Checkbox("Hide bone display shapes on regular assets##hideRegularBoneDisplayShapes", ref hideRegularBoneDisplayShapes))
+                if (ImGui.Checkbox(Localization.Label("text.panel.preferences.hide_bone_display_shapes_on_regular_assets", "Hide bone display shapes on regular assets##hideRegularBoneDisplayShapes"), ref hideRegularBoneDisplayShapes))
                 {
                     HideRegularAssetBoneDisplayShapes = hideRegularBoneDisplayShapes;
                     preferencesChanged = true;
@@ -481,7 +496,7 @@ public class PreferencesPanel : UiPanel
         ImGui.Separator();
         ImGui.Spacing();
 
-        if (ImGui.Button("Restore Defaults"))
+        if (ImGui.Button(Localization.Label("text.panel.preferences.restore_defaults", "Restore Defaults")))
         {
             RestoreDefaults();
             preferencesChanged = false;
@@ -490,6 +505,8 @@ public class PreferencesPanel : UiPanel
         // Save preferences if any changed
         if (preferencesChanged)
         {
+            if (selectedLanguage != null)
+                Language = selectedLanguage;
             SavePreferences();
         }
 
@@ -521,6 +538,11 @@ public class PreferencesPanel : UiPanel
 
         SavePreferencesState(state);
     }
+
+    /// <summary>
+    /// Applies the language before startup UI exists, without applying ImGui preferences.
+    /// </summary>
+    public static void LoadLanguagePreference() => Localization.SetLanguage(LoadPreferencesState()?.Language);
 
     /// <summary>
     /// Loads preferences from disk. If no saved preferences exist, returns false
@@ -592,7 +614,7 @@ public class PreferencesPanel : UiPanel
     /// <summary>
     /// Loads preferences from disk, returning null if the file doesn't exist or cannot be read.
     /// </summary>
-    private PreferencesState? LoadPreferencesState()
+    private static PreferencesState? LoadPreferencesState()
     {
         if (!File.Exists(PreferencesFilePath))
             return null;
@@ -684,7 +706,7 @@ public class PreferencesState
     public PreferencesPanel.ThemeMode Theme { get; set; } = PreferencesPanel.ThemeMode.Darker;
     public PreferencesPanel.AccentColor Accent { get; set; } = PreferencesPanel.AccentColor.Purple;
     public Vector4 CustomAccentColor { get; set; } = new Vector4(0.58f, 0.36f, 0.96f, 1.0f);
-    public string Language { get; set; } = "English";
+    public string Language { get; set; } = Localization.DefaultLanguage;
     public bool AutoScrollWhilePlaying { get; set; } = true;
     public bool PreviewViewportVisible { get; set; } = true;
     public bool PreviewViewportUndocked { get; set; } = false;

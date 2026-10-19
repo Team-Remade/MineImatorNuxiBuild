@@ -1,9 +1,11 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using GlmSharp;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.graphics;
 using MineImatorSimplyRemade.core.log;
 using MineImatorSimplyRemade.core.startup;
+using MineImatorSimplyRemade.core.ui;
+using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemade.core.window.windows;
 using Silk.NET.Core.Native;
 using Silk.NET.GLFW;
@@ -57,6 +59,7 @@ public static class main
 
         try
         {
+            PreferencesPanel.LoadLanguagePreference();
             NativeLibraryBootstrap.Initialize();
 
             Glfw = Glfw.GetApi();
@@ -119,6 +122,22 @@ public static class main
 
             Directory.CreateDirectory(ApplicationLocalDirectoryPath);
             string mainWindowIniPath = Path.Combine(ApplicationLocalDirectoryPath, "imgui.ini");
+            try
+            {
+                if (File.Exists(mainWindowIniPath))
+                {
+                    string settings = File.ReadAllText(mainWindowIniPath);
+                    string migrated = Localization.MigrateWindowSettings(settings,
+                        "Viewport", "Timeline", "Content Browser", "Scene Tree", "Properties", "Preferences",
+                        "Spawn Menu##SpawnMenuWindow", "Import from world", "Camera View##CamViewInline", "Project Home Screen");
+                    if (migrated != settings)
+                        File.WriteAllText(mainWindowIniPath, migrated);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Debug.WriteLine($"Unable to migrate localized panel layout: {ex.Message}");
+            }
             MainWindow.SetupImgui(mainWindowIniPath);
             Services.Initialize();
             MainWindow.InitializeRuntime(progress => UpdateStartupWindow(startupWindow, RemapStartupState(progress)));
@@ -332,7 +351,7 @@ public static class main
         Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
         Glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
 
-        var startupWindow = new StartupProgressWindow(560, 210, "Preparing Mine Imator Simply Remade", Glfw);
+        var startupWindow = new StartupProgressWindow(560, 210, Localization.T("text.common.preparing_mine_imator_simply_remade"), Glfw);
         if (startupWindow.WindowHandle == null)
         {
             return null;
