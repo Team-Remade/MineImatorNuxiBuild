@@ -62,6 +62,28 @@ public static class TerrainAtlas
     /// </summary>
     public static readonly Dictionary<string, AnimatedTextureInfo> AnimatedTextures = new();
 
+    public static string ResolveTextureKey(string baseTextureKey, string resourcePackId, string blockName = "")
+    {
+        string packId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
+        if (!string.IsNullOrEmpty(packId))
+        {
+            string overrideKey = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(packId, baseTextureKey);
+            if (Textures.ContainsKey(overrideKey))
+                return overrideKey;
+        }
+
+        // Resource packs may override only some textures; retain the originating mod as fallback.
+        string sourceId = BlockRegistry.GetBlockSourceId(blockName);
+        if (!string.IsNullOrEmpty(sourceId))
+        {
+            string sourceKey = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(sourceId, baseTextureKey);
+            if (Textures.ContainsKey(sourceKey))
+                return sourceKey;
+        }
+
+        return baseTextureKey;
+    }
+
     public static string GetAnimationKey(uint textureId)
     {
         if (textureId == 0) return "";

@@ -801,7 +801,7 @@ public class SpawnMenu : UiPanel
     {
         if (Gl == null) return;
 
-        string textureSourceId = GetEffectiveBlockTextureSourceId();
+        string textureSourceId = GetEffectiveBlockTextureSourceId(blockName);
 
         ResolvedBlockModel? resolved = null;
         if (!string.IsNullOrEmpty(variant.ModelPath))
@@ -3624,7 +3624,7 @@ public class SpawnMenu : UiPanel
             string? texKey = BlockRegistry.ResolveTextureKey(resolved, face.Texture);
             if (string.IsNullOrEmpty(texKey)) return null;
 
-            string resolvedTexKey = ResolveTerrainTextureKeyForPack(texKey, _spawnResourcePackId);
+            string resolvedTexKey = TerrainAtlas.ResolveTextureKey(texKey, GetEffectiveBlockTextureSourceId(blockName), blockName);
             if (!TerrainAtlas.Textures.TryGetValue(resolvedTexKey, out uint texId) || texId == 0) return null;
 
             var uv = GetFaceUv(faceName, face.Uv, face.Rotation);
@@ -3719,16 +3719,6 @@ public class SpawnMenu : UiPanel
         };
     }
 
-    private static string ResolveTerrainTextureKeyForPack(string baseTextureKey, string resourcePackId)
-    {
-        string normalizedPackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
-        if (string.IsNullOrWhiteSpace(normalizedPackId))
-            return baseTextureKey;
-
-        string namespaced = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(normalizedPackId, baseTextureKey);
-        return TerrainAtlas.Textures.ContainsKey(namespaced) ? namespaced : baseTextureKey;
-    }
-
     private List<MeshTemplate> BuildVariantTemplates(BlockVariantEntry variant, string blockName)
     {
         var templates = new List<MeshTemplate>();
@@ -3794,8 +3784,10 @@ public class SpawnMenu : UiPanel
         if (bracket >= 0)
             rawName = paletteState[..bracket];
 
-        int colon = rawName.IndexOf(':');
-        blockName = (colon >= 0 ? rawName[(colon + 1)..] : rawName).Trim();
+        blockName = rawName.Trim();
+        // The registry uses bare names for vanilla blocks and namespaced IDs for mods.
+        if (blockName.StartsWith("minecraft:", StringComparison.OrdinalIgnoreCase))
+            blockName = blockName["minecraft:".Length..];
         if (string.IsNullOrEmpty(blockName)) return false;
 
         if (bracket < 0) return true;
@@ -4224,8 +4216,8 @@ public class SpawnMenu : UiPanel
             matchUp && (matchDown || solidDown))
             return;
 
-        string stillKey = ResolveTerrainTextureKeyForPack(blockName + "_still", resourcePackId);
-        string flowKey = ResolveTerrainTextureKeyForPack(blockName + "_flow", resourcePackId);
+        string stillKey = TerrainAtlas.ResolveTextureKey(blockName + "_still", resourcePackId);
+        string flowKey = TerrainAtlas.ResolveTextureKey(blockName + "_flow", resourcePackId);
 
         if (!TerrainAtlas.Textures.TryGetValue(stillKey, out uint stillTex) || stillTex == 0)
             return;
@@ -4985,13 +4977,16 @@ public class SpawnMenu : UiPanel
         _isOpen = false;
     }
 
-    private string GetEffectiveBlockTextureSourceId()
+    private string GetEffectiveBlockTextureSourceId(string blockName = "")
     {
         string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(_spawnResourcePackId);
         if (!string.IsNullOrWhiteSpace(normalizedResourcePackId))
             return normalizedResourcePackId;
 
-        return MinecraftDataLoader.NormalizeResourcePackId(_spawnBlockSourceId);
+        string blockSourceId = string.IsNullOrEmpty(blockName)
+            ? _spawnBlockSourceId
+            : BlockRegistry.GetBlockSourceId(blockName);
+        return MinecraftDataLoader.NormalizeResourcePackId(blockSourceId);
     }
 
     private void TrySpawnCharacter()

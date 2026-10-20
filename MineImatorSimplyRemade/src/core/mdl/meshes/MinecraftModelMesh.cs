@@ -542,7 +542,7 @@ public static class MinecraftModelMesh
                     string? key = BlockRegistry.ResolveTextureKey(model, "#" + slot);
                     if (key != null)
                     {
-                        string resolvedKey = ResolveTextureKeyForPack(key, resourcePackId);
+                        string resolvedKey = TerrainAtlas.ResolveTextureKey(key, resourcePackId, blockNameHint ?? "");
                         if (TerrainAtlas.Textures.TryGetValue(resolvedKey, out uint t))
                         {
                             texId = t;
@@ -555,7 +555,7 @@ public static class MinecraftModelMesh
             // Last resort: use whatever the first resolvable texture is
             if (texId == 0)
             {
-                foreach (var resolvedKey in model.Textures.Select(kvp => BlockRegistry.ResolveTextureKey(model, "#" + kvp.Key)).OfType<string>().Select(key => ResolveTextureKeyForPack(key, resourcePackId)))
+                foreach (var resolvedKey in model.Textures.Select(kvp => BlockRegistry.ResolveTextureKey(model, "#" + kvp.Key)).OfType<string>().Select(key => TerrainAtlas.ResolveTextureKey(key, resourcePackId, blockNameHint ?? "")))
                 {
                     if (TerrainAtlas.Textures.TryGetValue(resolvedKey, out uint t))
                     {
@@ -578,7 +578,7 @@ public static class MinecraftModelMesh
             };
             foreach (string candidate in candidates)
             {
-                string resolvedCandidate = ResolveTextureKeyForPack(candidate, resourcePackId);
+                string resolvedCandidate = TerrainAtlas.ResolveTextureKey(candidate, resourcePackId, blockNameHint);
                 if (TerrainAtlas.Textures.TryGetValue(resolvedCandidate, out uint t) ||
                     TerrainAtlas.Textures.TryGetValue(candidate, out t))
                 {
@@ -670,16 +670,6 @@ public static class MinecraftModelMesh
         _       => vec3.UnitY
     };
 
-    private static string ResolveTextureKeyForPack(string baseTextureKey, string resourcePackId)
-    {
-        string normalizedPackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
-        if (string.IsNullOrWhiteSpace(normalizedPackId))
-            return baseTextureKey;
-
-        string namespaced = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(normalizedPackId, baseTextureKey);
-        return TerrainAtlas.Textures.ContainsKey(namespaced) ? namespaced : baseTextureKey;
-    }
-
     // ── Element geometry builder ──────────────────────────────────────────────
 
     private static void AppendElement(
@@ -722,7 +712,7 @@ public static class MinecraftModelMesh
                 continue;
             }
 
-            string resolvedTexKey = ResolveTextureKeyForPack(texKey, resourcePackId);
+            string resolvedTexKey = TerrainAtlas.ResolveTextureKey(texKey, resourcePackId, blockName);
             uint texId;
             CtmResolvedTile? ctmTile = CtmResolver.Resolve(blockName, texKey, faceName,
                                                          tx, ty, tz, tileX, tileY, tileZ,
