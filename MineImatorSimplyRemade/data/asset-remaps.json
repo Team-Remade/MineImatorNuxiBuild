@@ -1,0 +1,5 @@
+{
+    "PathPrefixes": {
+        "minecraft/characters/": "minecraft/characters/vanilla/"
+    }
+}

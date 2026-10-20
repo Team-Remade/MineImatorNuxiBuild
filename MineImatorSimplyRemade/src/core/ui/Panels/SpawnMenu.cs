@@ -1391,8 +1391,8 @@ public class SpawnMenu : UiPanel
     {
         projectRelativePath = null;
 
-        string fullSourcePath = Path.GetFullPath(sourcePath);
         var projectManager = ProjectManager ?? core.project.ProjectManager.Instance;
+        string fullSourcePath = projectManager.ResolveAssetPath(sourcePath);
 
         if (projectManager == null || !projectManager.HasProject)
             return fullSourcePath;
@@ -1401,7 +1401,7 @@ public class SpawnMenu : UiPanel
         {
             var existing = projectManager.GetProjectAssets().FirstOrDefault(a =>
                 a.AssetType == ProjectAssetType.Image &&
-                string.Equals(Path.GetFullPath(a.SourcePath), fullSourcePath, StringComparison.OrdinalIgnoreCase));
+                projectManager.AssetMatchesPath(a, fullSourcePath));
 
             var asset = existing ?? projectManager.AddAsset(fullSourcePath, ProjectAssetType.Image);
             projectRelativePath = asset.StoredInProject && !string.IsNullOrWhiteSpace(asset.RelativePath)
@@ -2239,7 +2239,8 @@ public class SpawnMenu : UiPanel
 
     private string ResolveSchematicPathForProject(string sourcePath)
     {
-        string fullSourcePath = Path.GetFullPath(sourcePath);
+        var projectManager = ProjectManager ?? core.project.ProjectManager.Instance;
+        string fullSourcePath = projectManager.ResolveAssetPath(sourcePath);
 
         if (ProjectManager == null || !ProjectManager.HasProject)
             return fullSourcePath;
@@ -2247,7 +2248,7 @@ public class SpawnMenu : UiPanel
         try
         {
             var existing = ProjectManager.GetProjectAssets().FirstOrDefault(a =>
-                string.Equals(Path.GetFullPath(a.SourcePath), fullSourcePath, StringComparison.OrdinalIgnoreCase));
+                ProjectManager.AssetMatchesPath(a, fullSourcePath));
             if (existing != null)
                 return ProjectManager.GetAssetFullPath(existing);
 
@@ -2337,7 +2338,8 @@ public class SpawnMenu : UiPanel
 
     private string ResolveModelPathForProject(string sourcePath)
     {
-        string fullSourcePath = Path.GetFullPath(sourcePath);
+        var projectManager = ProjectManager ?? core.project.ProjectManager.Instance;
+        string fullSourcePath = projectManager.ResolveAssetPath(sourcePath);
 
         if (ProjectManager == null || !ProjectManager.HasProject)
             return fullSourcePath;
@@ -2345,9 +2347,7 @@ public class SpawnMenu : UiPanel
         try
         {
             var existing = ProjectManager.GetProjectAssets().FirstOrDefault(a =>
-                string.Equals(Path.GetFullPath(a.SourcePath), fullSourcePath, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(Path.GetFullPath(ProjectManager.GetAssetFullPath(a)), fullSourcePath,
-                    StringComparison.OrdinalIgnoreCase));
+                ProjectManager.AssetMatchesPath(a, fullSourcePath));
             if (existing != null)
             {
                 if (existing.AssetType == ProjectAssetType.Model)
@@ -4880,10 +4880,10 @@ public class SpawnMenu : UiPanel
 
         try
         {
-            string fullSourcePath = Path.GetFullPath(sourcePath);
+            string fullSourcePath = ProjectManager.ResolveAssetPath(sourcePath);
             var existing = ProjectManager.GetProjectAssets().FirstOrDefault(a =>
                 a.AssetType == ProjectAssetType.Image &&
-                string.Equals(Path.GetFullPath(a.SourcePath), fullSourcePath, StringComparison.OrdinalIgnoreCase));
+                ProjectManager.AssetMatchesPath(a, fullSourcePath));
 
             var asset = existing ?? ProjectManager.AddAsset(fullSourcePath, ProjectAssetType.Image);
 

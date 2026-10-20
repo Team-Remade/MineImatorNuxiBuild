@@ -30,7 +30,7 @@ public sealed class ProjectManager
 
     private string LegacyRecentProjectsFilePath => Path.Combine(AppContext.BaseDirectory, "recentProjects.json");
 
-    private string DataRoot => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "data"));
+    private string DataRoot => DataAssetRemapper.Current.DataRoot;
 
     public bool HasProject =>
         !string.IsNullOrEmpty(ProjectFolder) &&
@@ -55,13 +55,75 @@ public sealed class ProjectManager
 
     public string ResolveProjectPath(string path)
     {
-        if (string.IsNullOrWhiteSpace(path) || !HasProject)
+        return ResolveAssetPath(path);
+    }
+
+    public string ResolveAssetPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
             return path;
 
-        if (Path.IsPathRooted(path))
+        string normalized = path.Replace('\\', '/');
+        if (normalized.StartsWith("data://", StringComparison.OrdinalIgnoreCase))
+            return DataAssetRemapper.Current.Resolve(normalized) ?? path;
+
+        string candidate;
+        try
+        {
+            candidate = Path.GetFullPath(!Path.IsPathRooted(normalized) && HasProject
+                ? Path.Combine(ProjectFolder, normalized)
+                : normalized);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return path;
+        }
+
+        if (File.Exists(candidate))
+            return candidate;
+
+        return DataAssetRemapper.Current.Resolve(candidate) ?? candidate;
+    }
+
+    public string ToAssetReference(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
             return path;
 
-        return Path.GetFullPath(Path.Combine(ProjectFolder, path));
+        string reference = DataAssetRemapper.Current.ToReference(path);
+        return reference.StartsWith("data://", StringComparison.OrdinalIgnoreCase)
+            ? reference
+            : ToProjectRelativePath(reference);
+    }
+
+    public void RemapDataReferences(ProjectManifest manifest)
+    {
+        string Remap(string path)
+        {
+            string resolved = ResolveAssetPath(path);
+            if (!File.Exists(resolved))
+                return path;
+
+            string reference = DataAssetRemapper.Current.ToReference(resolved);
+            return reference.StartsWith("data://", StringComparison.OrdinalIgnoreCase) ? reference : path;
+        }
+
+        void RemapNodes(IEnumerable<ProjectSceneObjectEntry> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                node.SourceAssetPath = Remap(node.SourceAssetPath);
+                node.TextureOverridePath = Remap(node.TextureOverridePath);
+                RemapNodes(node.Children);
+            }
+        }
+
+        foreach (var asset in manifest.Assets)
+            if (!asset.StoredInProject)
+                asset.SourcePath = Remap(asset.SourcePath);
+
+        RemapNodes(manifest.SceneObjects);
+        RemapNodes(manifest.ObjectLibrary);
     }
 
     public string ImagesFolder => Path.Combine(ProjectFolder, "images");
@@ -171,6 +233,7 @@ public sealed class ProjectManager
         ProjectFolder = Path.GetDirectoryName(projectFile) ?? "";
         ProjectFilePath = projectFile;
         Manifest = manifest;
+        RemapDataReferences(Manifest);
 
         Directory.CreateDirectory(ImagesFolder);
         Directory.CreateDirectory(ModelsFolder);
@@ -277,10 +340,10 @@ public sealed class ProjectManager
         if (!HasProject)
             throw new InvalidOperationException("No project is currently open.");
 
-        if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+        string fullSourcePath = ResolveAssetPath(sourcePath);
+        if (string.IsNullOrWhiteSpace(fullSourcePath) || !File.Exists(fullSourcePath))
             throw new FileNotFoundException("Source asset not found.", sourcePath);
 
-        string fullSourcePath = Path.GetFullPath(sourcePath);
         string displayName = Path.GetFileName(fullSourcePath);
 
         bool fromDataDirectory = IsPathUnderDirectory(fullSourcePath, DataRoot);
@@ -298,7 +361,7 @@ public sealed class ProjectManager
             DisplayName = displayName,
             RelativePath = relativePath,
             AssetType = assetType,
-            SourcePath = fullSourcePath,
+            SourcePath = fromDataDirectory ? DataAssetRemapper.Current.ToReference(fullSourcePath) : fullSourcePath,
             StoredInProject = storedInProject
         };
         Manifest.Assets.Add(entry);
@@ -310,7 +373,38 @@ public sealed class ProjectManager
     {
         if (asset.StoredInProject && !string.IsNullOrWhiteSpace(asset.RelativePath))
             return Path.Combine(ProjectFolder, asset.RelativePath);
-        return asset.SourcePath;
+        return asset.StoredInProject ? asset.SourcePath : ResolveAssetPath(asset.SourcePath);
+    }
+
+    public bool AssetMatchesPath(ProjectAssetEntry asset, string fullPath)
+    {
+        if (!File.Exists(fullPath))
+            return false;
+        fullPath = Path.GetFullPath(fullPath);
+
+        string assetPath = GetAssetFullPath(asset);
+        if (File.Exists(assetPath) && string.Equals(Path.GetFullPath(assetPath), fullPath, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!asset.StoredInProject)
+            return false;
+
+        // A copied asset's old source is provenance, not a remappable built-in identity.
+        string sourcePath = asset.SourcePath;
+        if (string.IsNullOrWhiteSpace(sourcePath) || sourcePath.StartsWith(DataAssetRemapper.ReferencePrefix, StringComparison.OrdinalIgnoreCase))
+            return false;
+        try
+        {
+            sourcePath = Path.GetFullPath(HasProject && !Path.IsPathRooted(sourcePath)
+                ? Path.Combine(ProjectFolder, sourcePath)
+                : sourcePath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+
+        return File.Exists(sourcePath) && string.Equals(sourcePath, fullPath, StringComparison.OrdinalIgnoreCase);
     }
 
     public IReadOnlyList<ProjectAssetEntry> GetProjectAssets()
@@ -323,7 +417,8 @@ public sealed class ProjectManager
         if (!HasProject || asset == null || asset.AssetType != ProjectAssetType.Model || !asset.StoredInProject)
             return;
 
-        if (string.IsNullOrWhiteSpace(asset.SourcePath) || !File.Exists(asset.SourcePath))
+        string sourcePath = ResolveAssetPath(asset.SourcePath);
+        if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
             return;
 
         string targetModelPath = GetAssetFullPath(asset);
@@ -332,7 +427,7 @@ public sealed class ProjectManager
             return;
 
         Directory.CreateDirectory(modelFolder);
-        CopyModelDependencyTree(asset.SourcePath, modelFolder);
+        CopyModelDependencyTree(sourcePath, modelFolder);
     }
 
     public bool RemoveAsset(ProjectAssetEntry asset)

@@ -1215,8 +1215,11 @@ public class Viewport : UiPanel
 
     private string ResolveBackgroundImagePath(string configuredPath)
     {
-        if (Path.IsPathRooted(configuredPath))
-            return configuredPath;
+        string resolvedPath = ProjectManager.Instance.ResolveAssetPath(configuredPath);
+        if (File.Exists(resolvedPath))
+            return resolvedPath;
+        if (configuredPath.StartsWith(DataAssetRemapper.ReferencePrefix, StringComparison.OrdinalIgnoreCase))
+            return resolvedPath;
 
         if (ProjectManager.Instance.HasProject)
         {

@@ -153,7 +153,7 @@ public static class ProjectSceneSerializer
             BlockVariant = obj.BlockVariant,
             TextureType = obj.TextureType,
             ResourcePackId = obj.ResourcePackId,
-            SourceAssetPath = pm.ToProjectRelativePath(obj.SourceAssetPath),
+            SourceAssetPath = pm.ToAssetReference(obj.SourceAssetPath),
             AlbedoTexturePath = pm.ToProjectRelativePath(obj.AlbedoTexturePath),
             CameraTextureObjectId = obj.CameraTextureObjectId,
             TemporaryItemSheetPath = pm.ToProjectRelativePath(obj.TemporaryItemSheetPath),
@@ -162,7 +162,7 @@ public static class ProjectSceneSerializer
             TemporaryItemSheetRows = obj.TemporaryItemSheetRows,
             TemporaryItemSheetColumnIndex = obj.TemporaryItemSheetColumnIndex,
             TemporaryItemSheetRowIndex = obj.TemporaryItemSheetRowIndex,
-            TextureOverridePath = pm.ToProjectRelativePath(obj.TextureOverridePath),
+            TextureOverridePath = pm.ToAssetReference(obj.TextureOverridePath),
             Position = ToProjectVec3(obj.Position),
             Rotation = ToProjectVec3(obj.Rotation),
             Scale = ToProjectVec3(obj.Scale),
@@ -462,31 +462,30 @@ public static class ProjectSceneSerializer
 
         var pm = ProjectManager.Instance;
 
-        // New saves store paths relative to ProjectFolder — try combining first.
-        if (!Path.IsPathRooted(entry.SourceAssetPath) && pm.HasProject)
-        {
-            string combined = Path.GetFullPath(Path.Combine(pm.ProjectFolder, entry.SourceAssetPath));
-            if (File.Exists(combined))
-                return combined;
-        }
+        string resolved = pm.ResolveAssetPath(entry.SourceAssetPath);
+        if (File.Exists(resolved))
+            return resolved;
 
-        // Legacy saves store absolute paths — try direct existence check.
-        if (File.Exists(entry.SourceAssetPath))
-            return entry.SourceAssetPath;
+        if (entry.SourceAssetPath.StartsWith(DataAssetRemapper.ReferencePrefix, StringComparison.OrdinalIgnoreCase))
+            return resolved;
 
         if (!pm.HasProject)
-            return entry.SourceAssetPath;
+            return resolved;
 
-        // Still not found — try to match by filename in the project's asset list
-        // (handles the case where the project was moved to a different machine).
-        string fileName = Path.GetFileName(entry.SourceAssetPath);
+        // Only an unambiguous existing project asset can repair a missing source.
+        string fileName = Path.GetFileName(entry.SourceAssetPath.Replace('\\', '/'));
         if (string.IsNullOrWhiteSpace(fileName))
-            return entry.SourceAssetPath;
+            return resolved;
 
-        var asset = pm.GetProjectAssets()
-            .FirstOrDefault(a => string.Equals(a.DisplayName, fileName, StringComparison.OrdinalIgnoreCase));
+        var matches = pm.GetProjectAssets()
+            .Where(a => string.Equals(a.DisplayName, fileName, StringComparison.OrdinalIgnoreCase))
+            .Select(a => pm.ResolveAssetPath(pm.GetAssetFullPath(a)))
+            .Where(File.Exists)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .ToList();
 
-        return asset != null ? pm.GetAssetFullPath(asset) : entry.SourceAssetPath;
+        return matches.Count == 1 ? matches[0] : resolved;
     }
 
     /// <summary>
@@ -495,24 +494,7 @@ public static class ProjectSceneSerializer
     /// </summary>
     private static string ResolveTextureOverridePath(string path)
     {
-        if (string.IsNullOrWhiteSpace(path))
-            return path;
-
-        if (File.Exists(path))
-            return path;
-
-        var pm = ProjectManager.Instance;
-        if (!pm.HasProject)
-            return path;
-
-        if (!Path.IsPathRooted(path))
-        {
-            string combined = Path.GetFullPath(Path.Combine(pm.ProjectFolder, path));
-            if (File.Exists(combined))
-                return combined;
-        }
-
-        return path;
+        return ProjectManager.Instance.ResolveAssetPath(path);
     }
 
     private static SceneObject CreateFallbackObject(ProjectSceneObjectEntry entry, Viewport viewport)

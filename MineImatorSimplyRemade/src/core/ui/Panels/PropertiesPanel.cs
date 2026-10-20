@@ -1508,7 +1508,7 @@ public class PropertiesPanel : UiPanel
         {
             var existing = ProjectManager.Instance.GetProjectAssets().FirstOrDefault(a =>
                 a.AssetType == ProjectAssetType.Image &&
-                string.Equals(Path.GetFullPath(a.SourcePath), fullSourcePath, StringComparison.OrdinalIgnoreCase));
+                ProjectManager.Instance.AssetMatchesPath(a, fullSourcePath));
 
             var asset = existing ?? ProjectManager.Instance.AddAsset(fullSourcePath, ProjectAssetType.Image);
             return ProjectManager.Instance.GetAssetFullPath(asset);
@@ -1538,7 +1538,7 @@ public class PropertiesPanel : UiPanel
             // If not loaded, load it from the stored path
             if (!hasTexture)
             {
-                string fullPath = Path.Combine(ProjectManager.Instance.ProjectFolder, _currentObject.AlbedoTexturePath);
+                string fullPath = ProjectManager.Instance.ResolveAssetPath(_currentObject.AlbedoTexturePath);
                 if (File.Exists(fullPath))
                 {
                     OnLoadAlbedoTextureForObject(_currentObject, fullPath);
@@ -1578,7 +1578,7 @@ public class PropertiesPanel : UiPanel
 
             if (!hasTexture)
             {
-                string fullPath = Path.Combine(ProjectManager.Instance.ProjectFolder, obj.AlbedoTexturePath);
+                string fullPath = ProjectManager.Instance.ResolveAssetPath(obj.AlbedoTexturePath);
                 if (File.Exists(fullPath))
                     OnLoadAlbedoTextureForObject(obj, fullPath);
             }
