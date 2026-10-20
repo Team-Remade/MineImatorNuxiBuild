@@ -24,10 +24,10 @@ public class ContentBrowser : UiPanel
     private readonly HashSet<string> _queuedThumbnailPaths = new(StringComparer.OrdinalIgnoreCase);
     private string _thumbnailProjectFolder = "";
 
-    private const float FolderPaneWidth = 150f;
-    private const float TileWidth = 128f;
-    private const float TileHeight = 144f;
-    private const float ThumbnailSize = 96f;
+    private static float FolderPaneWidth => 150f * UiTheme.Scale;
+    private static float TileWidth => 128f * UiTheme.Scale;
+    private static float TileHeight => 144f * UiTheme.Scale;
+    private static float ThumbnailSize => 96f * UiTheme.Scale;
     private const int ThumbnailPixelSize = 96;
 
     private sealed class ThumbnailEntry
@@ -67,12 +67,12 @@ public class ContentBrowser : UiPanel
         var assets = projectManager.GetProjectAssets();
         BuildVisibleAssetIndexList(assets);
 
-        ImGui.BeginChild("##assetFolders", new Vector2(FolderPaneWidth, -34f), ImGuiChildFlags.Borders);
+        ImGui.BeginChild("##assetFolders", new Vector2(FolderPaneWidth, -34f * UiTheme.Scale), ImGuiChildFlags.Borders);
         RenderFolderNavigation(assets);
         ImGui.EndChild();
 
         ImGui.SameLine();
-        ImGui.BeginChild("##assetGrid", new Vector2(0, -34f), ImGuiChildFlags.Borders);
+        ImGui.BeginChild("##assetGrid", new Vector2(0, -34f * UiTheme.Scale), ImGuiChildFlags.Borders);
         RenderAssetGrid(assets, projectManager);
         ImGui.EndChild();
 
@@ -84,17 +84,17 @@ public class ContentBrowser : UiPanel
 
         if (canAddAudio)
         {
-            if (ImGui.Button(Localization.Label("text.panel.content_browser.add_selected_sound_to_timeline", "Add Selected Sound to Timeline"), new Vector2(-1, 28)))
+            if (ImGui.Button(Localization.Label("text.panel.content_browser.add_selected_sound_to_timeline", "Add Selected Sound to Timeline"), new Vector2(-1, 28f * UiTheme.Scale)))
                 AddSelectedAssetToTimeline();
             if (canSpawn)
             {
-                if (ImGui.Button(Localization.Label("text.panel.content_browser.spawn_selected_asset", "Spawn Selected Asset"), new Vector2(-1, 28)))
+                if (ImGui.Button(Localization.Label("text.panel.content_browser.spawn_selected_asset", "Spawn Selected Asset"), new Vector2(-1, 28f * UiTheme.Scale)))
                     SpawnSelectedAsset();
             }
         }
         else
         {
-            if (ImGui.Button(Localization.Label("text.panel.content_browser.spawn_selected_asset", "Spawn Selected Asset"), new Vector2(-1, 28)))
+            if (ImGui.Button(Localization.Label("text.panel.content_browser.spawn_selected_asset", "Spawn Selected Asset"), new Vector2(-1, 28f * UiTheme.Scale)))
                 SpawnSelectedAsset();
         }
         if (!canSpawn && !canAddAudio) ImGui.EndDisabled();
@@ -175,7 +175,7 @@ public class ContentBrowser : UiPanel
     {
         if (ContentBrowserIcons.Folder != 0)
         {
-            ImGui.Image(new ImTextureRef(texId: ContentBrowserIcons.Folder), new Vector2(16f, 16f));
+            ImGui.Image(new ImTextureRef(texId: ContentBrowserIcons.Folder), new Vector2(16f, 16f) * UiTheme.Scale);
             ImGui.SameLine();
         }
 
@@ -217,30 +217,31 @@ public class ContentBrowser : UiPanel
         }
 
         ImGui.SetCursorPos(new Vector2(gridOrigin.X, gridOrigin.Y + rowCount * TileHeight));
-        ImGui.Dummy(new Vector2(1f, 1f));
+        ImGui.Dummy(new Vector2(1f, 1f) * UiTheme.Scale);
     }
 
     private unsafe void RenderAssetTile(ProjectAssetEntry asset, int assetIndex, ProjectManager projectManager)
     {
+        float scale = UiTheme.Scale;
         Vector2 tilePosition = ImGui.GetCursorPos();
         Vector2 screenPosition = ImGui.GetCursorScreenPos();
         var drawList = ImGui.GetWindowDrawList();
         var style = ImGui.GetStyle();
         bool selected = _selectedAssetIndex == assetIndex;
-        Vector2 tileSize = new(TileWidth - 6f, TileHeight - 6f);
+        Vector2 tileSize = new(TileWidth - 6f * scale, TileHeight - 6f * scale);
         uint background = ImGui.ColorConvertFloat4ToU32(style.Colors[(int)(selected
             ? ImGuiCol.HeaderActive
             : ImGuiCol.FrameBg)]);
         drawList.AddRectFilled(screenPosition, screenPosition + tileSize, background, style.FrameRounding);
         drawList.AddRect(screenPosition, screenPosition + tileSize,
-            ImGui.ColorConvertFloat4ToU32(style.Colors[(int)ImGuiCol.Border]), style.FrameRounding);
+            ImGui.ColorConvertFloat4ToU32(style.Colors[(int)ImGuiCol.Border]), style.FrameRounding, ImDrawFlags.None, scale);
 
         string fullPath = projectManager.GetAssetFullPath(asset);
         uint thumbnailTexture = asset.AssetType == ProjectAssetType.Image
             ? GetOrQueueThumbnail(fullPath)
             : 0;
 
-        ImGui.SetCursorPos(tilePosition + new Vector2(14f, 8f));
+        ImGui.SetCursorPos(tilePosition + new Vector2(14f, 8f) * scale);
         if (thumbnailTexture != 0)
         {
             ImGui.Image(new ImTextureRef(texId: thumbnailTexture), new Vector2(ThumbnailSize, ThumbnailSize));
@@ -253,18 +254,18 @@ public class ContentBrowser : UiPanel
             uint icon = GetAssetTypeIcon(asset.AssetType);
             if (icon != 0)
             {
-                ImGui.SetCursorPos(tilePosition + new Vector2(38f, 30f));
-                ImGui.Image(new ImTextureRef(texId: icon), new Vector2(48f, 48f));
+                ImGui.SetCursorPos(tilePosition + new Vector2(38f, 30f) * scale);
+                ImGui.Image(new ImTextureRef(texId: icon), new Vector2(48f, 48f) * scale);
             }
             else
             {
-                ImGui.SetCursorPos(tilePosition + new Vector2(14f, 43f));
+                ImGui.SetCursorPos(tilePosition + new Vector2(14f, 43f) * scale);
                 ImGui.TextUnformatted(Localization.DisplayText(GetAssetTypeLabel(asset.AssetType)));
             }
         }
 
-        ImGui.SetCursorPos(tilePosition + new Vector2(8f, 108f));
-        ImGui.PushTextWrapPos(screenPosition.X + TileWidth - 10f);
+        ImGui.SetCursorPos(tilePosition + new Vector2(8f, 108f) * scale);
+        ImGui.PushTextWrapPos(tilePosition.X + TileWidth - 10f * scale);
         ImGui.TextUnformatted(AbbreviateAssetName(asset.DisplayName));
         ImGui.PopTextWrapPos();
 
@@ -457,7 +458,7 @@ public class ContentBrowser : UiPanel
             UiText.Wrapped(confirmMessage);
             ImGui.Separator();
 
-            if (ImGui.Button(Localization.Label("text.common.remove", "Remove"), new Vector2(120, 0)))
+            if (ImGui.Button(Localization.Label("text.common.remove", "Remove"), new Vector2(120f * UiTheme.Scale, 0)))
             {
                 projectManager.RemoveAsset(_pendingRemoval);
                 _selectedAssetIndex = -1;
@@ -466,7 +467,7 @@ public class ContentBrowser : UiPanel
             }
 
             ImGui.SameLine();
-            if (ImGui.Button(Localization.Label("text.common.cancel", "Cancel"), new Vector2(120, 0)))
+            if (ImGui.Button(Localization.Label("text.common.cancel", "Cancel"), new Vector2(120f * UiTheme.Scale, 0)))
             {
                 _pendingRemoval = null;
                 ImGui.CloseCurrentPopup();

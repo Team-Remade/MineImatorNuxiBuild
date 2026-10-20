@@ -175,7 +175,7 @@ public class Timeline : UiPanel
     private bool    _wasDragging     = false;
     private Vector2 _dragSelectStart;
     private Vector2 _dragSelectEnd;
-    private const float DragThreshold = 3f;
+    private static float DragThreshold => 3f * UiTheme.Scale;
 
     // ── Context menu ──────────────────────────────────────────────────────────
 
@@ -192,11 +192,11 @@ public class Timeline : UiPanel
 
     // ── Layout ────────────────────────────────────────────────────────────────
 
-    private const float MarkerRowHeight    = 26f;
-    private const float LeftColumnWidth    = 200f;
-    private const float RowHeight          = 22f;
-    private const float RulerHeight        = 24f;
-    private const float KeyframeDiamondSize = 5f;
+    private static float MarkerRowHeight => 26f * UiTheme.Scale;
+    private static float LeftColumnWidth => 200f * UiTheme.Scale;
+    private static float RowHeight => 22f * UiTheme.Scale;
+    private static float RulerHeight => 24f * UiTheme.Scale;
+    private static float KeyframeDiamondSize => 5f * UiTheme.Scale;
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -356,7 +356,7 @@ public class Timeline : UiPanel
         float availH = ImGui.GetContentRegionAvail().Y;
         float statusH = ImGui.GetFrameHeightWithSpacing();
         float audioH  = RenderAudioTracksHeight();
-        float tracksH = Math.Max(availH - RulerHeight - MarkerRowHeight - ImGui.GetStyle().ItemSpacing.Y - statusH - audioH, 60f);
+        float tracksH = Math.Max(availH - RulerHeight - MarkerRowHeight - ImGui.GetStyle().ItemSpacing.Y - statusH - audioH, 60f * UiTheme.Scale);
 
         RenderRulerRow(availW);
         RenderTrackArea(availW, tracksH);
@@ -477,7 +477,7 @@ public class Timeline : UiPanel
 
     private void RenderTransportControls()
     {
-        var  sz  = new Vector2(20, 20);
+        var  sz  = new Vector2(20, 20) * UiTheme.Scale;
         bool ico = TimelineIcons.IsLoaded;
 
         // Jump to start
@@ -578,7 +578,7 @@ public class Timeline : UiPanel
         ImGui.TextUnformatted(Localization.T("text.panel.timeline.fps"));
         ImGui.SameLine();
         int fps = (int)Math.Clamp(_frameRate, 1, 120);
-        ImGui.SetNextItemWidth(55f);
+        ImGui.SetNextItemWidth(55f * UiTheme.Scale);
         if (ImGui.GetIO().WantTextInput)
         {
             string fpsBuffer = fps.ToString();
@@ -595,7 +595,7 @@ public class Timeline : UiPanel
         ImGui.SameLine();
         ImGui.TextUnformatted(Localization.T("text.panel.timeline.frames"));
         ImGui.SameLine();
-        ImGui.SetNextItemWidth(60f);
+        ImGui.SetNextItemWidth(60f * UiTheme.Scale);
         int maxFrames = Math.Max(10, _maxFrames);
         if (ImGui.GetIO().WantTextInput)
         {
@@ -755,9 +755,9 @@ public class Timeline : UiPanel
 
     // ── Audio tracks ──────────────────────────────────────────────────────────
 
-    private const float AudioRowHeight    = 28f;
-    private const float AudioFooterHeight = 24f;
-    private const float AudioControlWidth = 176f;  // vol slider + M + L + X
+    private static float AudioRowHeight => 28f * UiTheme.Scale;
+    private static float AudioFooterHeight => 24f * UiTheme.Scale;
+    private static float AudioControlWidth => 176f * UiTheme.Scale;  // vol slider + M + L + X
 
     private static string TruncateWithEllipsis(string text, float maxWidth)
     {
@@ -789,7 +789,7 @@ public class Timeline : UiPanel
     private float RenderAudioTracksHeight()
     {
         // One row per clip + a footer row holding the "+ Add Audio Track" button.
-        return Math.Max(48f, _audioTracks.Count * AudioRowHeight + AudioFooterHeight + 4f);
+        return Math.Max(48f * UiTheme.Scale, _audioTracks.Count * AudioRowHeight + AudioFooterHeight + 4f * UiTheme.Scale);
     }
 
     private void RenderAudioTracks(float availW, float audioH)
@@ -797,7 +797,7 @@ public class Timeline : UiPanel
         ImGui.Separator();
 
         // ── Scrollable track list (no visible scrollbar, synced to keyframe tracks above) ──
-        float footerH = AudioFooterHeight + 2f;
+        float footerH = AudioFooterHeight + 2f * UiTheme.Scale;
         float tracksH = Math.Max(0f, audioH - footerH);
 
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
@@ -835,14 +835,14 @@ public class Timeline : UiPanel
             var labelColor = selected
                 ? new Vector4(0.55f, 0.85f, 1f, 1f)
                 : new Vector4(0.85f, 0.85f, 0.85f, 1f);
-            float labelMaxW = Math.Max(60f, LeftColumnWidth - AudioControlWidth - 12f);
+            float labelMaxW = Math.Max(60f * UiTheme.Scale, LeftColumnWidth - AudioControlWidth - 12f * UiTheme.Scale);
             string labelText = TruncateWithEllipsis(track.ManifestEntry.DisplayName, labelMaxW);
             UiText.Colored(labelColor, labelText);
             ImGui.SameLine();
 
             // Compact volume slider
             float vol = track.ManifestEntry.Volume;
-            ImGui.SetNextItemWidth(70f);
+            ImGui.SetNextItemWidth(70f * UiTheme.Scale);
             if (ImGui.SliderFloat($"##vol{i}", ref vol, 0f, 1f, "%.2f"))
             {
                 track.ManifestEntry.Volume = vol;
@@ -900,24 +900,24 @@ public class Timeline : UiPanel
             float clipX1 = clipX0 + durFrames * _pixelsPerFrame;
             if (clipX1 >= rightMin.X && clipX0 <= rightMin.X + rightSize.X)
             {
-                var clipMin = new Vector2(Math.Max(clipX0, rightMin.X), rightMin.Y + 2f);
-                var clipMax = new Vector2(Math.Min(clipX1, rightMin.X + rightSize.X), rightMin.Y + rightSize.Y - 2f);
+                var clipMin = new Vector2(Math.Max(clipX0, rightMin.X), rightMin.Y + 2f * UiTheme.Scale);
+                var clipMax = new Vector2(Math.Min(clipX1, rightMin.X + rightSize.X), rightMin.Y + rightSize.Y - 2f * UiTheme.Scale);
                 uint clipFill = track.IsLoaded
                     ? (selected ? 0xFF3377CC : 0xFF2266AA)
                     : (selected ? 0xFF666677 : 0xFF444455);
                 uint clipEdge = selected ? 0xFF66BBFF : 0xFF4488CC;
-                dl.AddRectFilled(clipMin, clipMax, clipFill, 3f);
-                dl.AddRect(clipMin, clipMax, clipEdge, 3f, ImDrawFlags.RoundCornersAll, 1.5f);
+                dl.AddRectFilled(clipMin, clipMax, clipFill, 3f * UiTheme.Scale);
+                dl.AddRect(clipMin, clipMax, clipEdge, 3f * UiTheme.Scale, ImDrawFlags.RoundCornersAll, 1.5f * UiTheme.Scale);
 
                 // Always show the start frame at the left edge of the clip.
                 string label = Localization.Format("text.panel.timeline.f", track.ManifestEntry.StartFrame);
                 if (!track.IsLoaded) label += Localization.T("text.panel.timeline.decoding");
-                dl.AddText(clipMin + new Vector2(4f, 4f), 0xFFFFFFFF, label);
+                dl.AddText(clipMin + new Vector2(4f, 4f) * UiTheme.Scale, 0xFFFFFFFF, label);
 
                 // If very thin, still draw a visible left-edge handle.
-                if (clipMax.X - clipMin.X < 6f)
+                if (clipMax.X - clipMin.X < 6f * UiTheme.Scale)
                 {
-                    dl.AddLine(new Vector2(clipMin.X + 1f, clipMin.Y), new Vector2(clipMin.X + 1f, clipMax.Y), 0xFF66BBFF, 2f);
+                    dl.AddLine(new Vector2(clipMin.X + UiTheme.Scale, clipMin.Y), new Vector2(clipMin.X + UiTheme.Scale, clipMax.Y), 0xFF66BBFF, 2f * UiTheme.Scale);
                 }
 
                 Vector2 mouse = ImGui.GetMousePos();
@@ -986,7 +986,7 @@ public class Timeline : UiPanel
             UiText.Disabled(Localization.T("text.panel.timeline.no_audio_tracks_yet"));
             ImGui.SameLine();
         }
-        ImGui.SetCursorPosX(availW - 160f);
+        ImGui.SetCursorPosX(availW - 160f * UiTheme.Scale);
         if (ImGui.SmallButton(Localization.Label("text.panel.timeline.add_audio_track", "+ Add Audio Track")))
             ImGui.OpenPopup("##addAudioPopup");
 
@@ -1230,8 +1230,8 @@ public class Timeline : UiPanel
             float regionX1 = wPos.X + _playbackRegionEnd.Value * _pixelsPerFrame - scrollX;
             dl.AddRectFilled(new Vector2(Math.Max(wPos.X, regionX0), wPos.Y),
                 new Vector2(Math.Min(wPos.X + wSize.X, regionX1), wPos.Y + RulerHeight), 0x443399FF);
-            dl.AddLine(new Vector2(regionX0, wPos.Y), new Vector2(regionX0, wPos.Y + RulerHeight), 0xFF66AAFF, 2f);
-            dl.AddLine(new Vector2(regionX1, wPos.Y), new Vector2(regionX1, wPos.Y + RulerHeight), 0xFF66AAFF, 2f);
+            dl.AddLine(new Vector2(regionX0, wPos.Y), new Vector2(regionX0, wPos.Y + RulerHeight), 0xFF66AAFF, 2f * UiTheme.Scale);
+            dl.AddLine(new Vector2(regionX1, wPos.Y), new Vector2(regionX1, wPos.Y + RulerHeight), 0xFF66AAFF, 2f * UiTheme.Scale);
         }
 
         int startF = Math.Max(0, (int)(scrollX / _pixelsPerFrame) - 1);
@@ -1240,29 +1240,29 @@ public class Timeline : UiPanel
         for (int f = startF; f <= endF; f++)
         {
             float sx = wPos.X + f * _pixelsPerFrame - scrollX;
-            if (sx < wPos.X - 2 || sx > wPos.X + wSize.X + 2) continue;
+            if (sx < wPos.X - 2f * UiTheme.Scale || sx > wPos.X + wSize.X + 2f * UiTheme.Scale) continue;
 
             if (f % 10 == 0)
             {
                 dl.AddLine(new Vector2(sx, wPos.Y + RulerHeight * 0.35f),
-                           new Vector2(sx, wPos.Y + RulerHeight), 0xFFAAAAAA, 1f);
+                           new Vector2(sx, wPos.Y + RulerHeight), 0xFFAAAAAA, UiTheme.Scale);
                 if (f % 30 == 0 || _pixelsPerFrame >= 4f)
-                    dl.AddText(new Vector2(sx + 2f, wPos.Y + 2f), 0xFFCCCCCC, f.ToString());
+                    dl.AddText(new Vector2(sx + 2f * UiTheme.Scale, wPos.Y + 2f * UiTheme.Scale), 0xFFCCCCCC, f.ToString());
             }
             else if (f % 5 == 0)
             {
                 dl.AddLine(new Vector2(sx, wPos.Y + RulerHeight * 0.55f),
-                           new Vector2(sx, wPos.Y + RulerHeight), 0xFF666666, 1f);
+                           new Vector2(sx, wPos.Y + RulerHeight), 0xFF666666, UiTheme.Scale);
             }
         }
 
         // Playhead triangle on ruler
         float phX = wPos.X + _currentFrame * _pixelsPerFrame - scrollX;
-        dl.AddLine(wPos with { X = phX }, new Vector2(phX, wPos.Y + RulerHeight), 0xFF3377FF, 2f);
+        dl.AddLine(wPos with { X = phX }, new Vector2(phX, wPos.Y + RulerHeight), 0xFF3377FF, 2f * UiTheme.Scale);
         dl.AddTriangleFilled(
-            wPos with { X = phX - 5f },
-            wPos with { X = phX + 5f },
-            new Vector2(phX, wPos.Y + 10f), 0xFF3377FF);
+            wPos with { X = phX - 5f * UiTheme.Scale },
+            wPos with { X = phX + 5f * UiTheme.Scale },
+            new Vector2(phX, wPos.Y + 10f * UiTheme.Scale), 0xFF3377FF);
 
         // Start playhead drag on click (global drag handled in Render() outside this child)
         if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
@@ -1317,11 +1317,11 @@ public class Timeline : UiPanel
         // Docked windows can report a zero-width content region for one frame
         // while ImGui restores the layout. InvisibleButton asserts on either
         // dimension being exactly zero, so keep its hit target valid.
-        float markerWidth = Math.Max(1f, availW);
+        float markerWidth = Math.Max(UiTheme.Scale, availW);
         Vector2 rowPos = ImGui.GetCursorScreenPos();
         var dl = ImGui.GetWindowDrawList();
         dl.AddRectFilled(rowPos, rowPos + new Vector2(markerWidth, MarkerRowHeight), 0xFF202020);
-        dl.AddText(rowPos + new Vector2(5f, 5f), 0xFFAAAAAA, Localization.T("text.panel.timeline.markers"));
+        dl.AddText(rowPos + new Vector2(5f, 5f) * UiTheme.Scale, 0xFFAAAAAA, Localization.T("text.panel.timeline.markers"));
 
         float rightX = rowPos.X + LeftColumnWidth;
         Vector2 mouse = ImGui.GetMousePos();
@@ -1331,12 +1331,12 @@ public class Timeline : UiPanel
             float x = rightX + marker.Frame * _pixelsPerFrame - _hScrollOffset;
             if (x < rightX || x > rowPos.X + markerWidth) continue;
             uint color = ImGui.ColorConvertFloat4ToU32(marker.Color);
-            dl.AddLine(new Vector2(x, _timelineAreaTop), new Vector2(x, rowPos.Y + MarkerRowHeight), color, 1.5f);
-            dl.AddTriangleFilled(new Vector2(x - 6f, rowPos.Y + 2f), new Vector2(x + 6f, rowPos.Y + 2f),
-                new Vector2(x, rowPos.Y + 10f), color);
+            dl.AddLine(new Vector2(x, _timelineAreaTop), new Vector2(x, rowPos.Y + MarkerRowHeight), color, 1.5f * UiTheme.Scale);
+            dl.AddTriangleFilled(new Vector2(x - 6f * UiTheme.Scale, rowPos.Y + 2f * UiTheme.Scale), new Vector2(x + 6f * UiTheme.Scale, rowPos.Y + 2f * UiTheme.Scale),
+                new Vector2(x, rowPos.Y + 10f * UiTheme.Scale), color);
             string text = string.IsNullOrWhiteSpace(marker.Label) ? Localization.Format("text.panel.timeline.frame", marker.Frame) : marker.Label;
-            dl.AddText(new Vector2(x + 7f, rowPos.Y + 7f), color, text);
-            if (MathF.Abs(mouse.X - x) <= 7f && mouse.Y >= rowPos.Y && mouse.Y < rowPos.Y + MarkerRowHeight)
+            dl.AddText(new Vector2(x + 7f * UiTheme.Scale, rowPos.Y + 7f * UiTheme.Scale), color, text);
+            if (MathF.Abs(mouse.X - x) <= 7f * UiTheme.Scale && mouse.Y >= rowPos.Y && mouse.Y < rowPos.Y + MarkerRowHeight)
                 hovered = marker;
         }
 
@@ -1419,7 +1419,7 @@ public class Timeline : UiPanel
         _trackViewportWidth = Math.Max(0f, rightW);
 
         // Left column: property labels (no horizontal scroll)
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(4f, 2f));
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(4f, 2f) * UiTheme.Scale);
         ImGui.BeginChild("##left_labels", new Vector2(LeftColumnWidth, tracksH), ImGuiChildFlags.None,
             ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
         ImGui.SetScrollY(_vScrollOffset);
@@ -1501,7 +1501,7 @@ public class Timeline : UiPanel
 
             float rowY = ImGui.GetCursorPosY();
 
-            if (row.Indent > 0) ImGui.Indent(12f);
+            if (row.Indent > 0) ImGui.Indent(12f * UiTheme.Scale);
             bool showGhostIndicator = ShouldShowGhostIndicator(row);
 
             if (row.IsGroupHeader)
@@ -1525,7 +1525,7 @@ public class Timeline : UiPanel
                     UiText.Colored(new Vector4(0.70f, 0.86f, 0.98f, 1f), Localization.T("text.panel.timeline.ghost"));
                 }
                 ImGui.SameLine();
-                ImGui.SetCursorPosX(LeftColumnWidth - 26f);
+                ImGui.SetCursorPosX(LeftColumnWidth - 26f * UiTheme.Scale);
                 ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetFrameHeight()) * 0.5f);
                 if (ImGui.Button($"+##grp_{gk}"))
                     foreach (var path in row.GroupPaths ?? Array.Empty<string>())
@@ -1541,13 +1541,13 @@ public class Timeline : UiPanel
                     UiText.Colored(new Vector4(0.70f, 0.86f, 0.98f, 1f), Localization.T("text.panel.timeline.ghost"));
                 }
                 ImGui.SameLine();
-                ImGui.SetCursorPosX(LeftColumnWidth - 26f);
+                ImGui.SetCursorPosX(LeftColumnWidth - 26f * UiTheme.Scale);
                 ImGui.SetCursorPosY(rowY + (RowHeight - ImGui.GetFrameHeight()) * 0.5f);
                 if (ImGui.Button($"+##{row.Object.ObjectId}_{row.PropertyPath}"))
                     AddKeyframeForProperty(row.Object, row.PropertyPath, _currentFrame);
             }
 
-            if (row.Indent > 0) ImGui.Unindent(12f);
+            if (row.Indent > 0) ImGui.Unindent(12f * UiTheme.Scale);
 
             // Force the row to consume exactly RowHeight, matching the right panel.
             ImGui.SetCursorPosY(rowY + RowHeight);
@@ -1579,7 +1579,7 @@ public class Timeline : UiPanel
 
         if (_displayRows.Count == 0)
         {
-            ImGui.Dummy(new Vector2(contentW, 60f));
+            ImGui.Dummy(new Vector2(contentW, 60f * UiTheme.Scale));
             return;
         }
 
@@ -1626,7 +1626,7 @@ public class Timeline : UiPanel
         // Global: playhead vertical line
         float phX = wPos.X + _currentFrame * _pixelsPerFrame - scrollX;
         if (phX >= wPos.X && phX <= wPos.X + wSize.X)
-            dl.AddLine(wPos with { X = phX }, new Vector2(phX, wPos.Y + wSize.Y), 0xBB3377FF, 2f);
+            dl.AddLine(wPos with { X = phX }, new Vector2(phX, wPos.Y + wSize.Y), 0xBB3377FF, 2f * UiTheme.Scale);
 
         // Drag-select box
         if (_isDragSelecting && _wasDragging)
@@ -1638,7 +1638,7 @@ public class Timeline : UiPanel
             dl.AddRectFilled(new Vector2(minX, minY), new Vector2(maxX, maxY),
                 ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.6f, 1f, 0.18f)));
             dl.AddRect(new Vector2(minX, minY), new Vector2(maxX, maxY),
-                ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.6f, 1f, 0.85f)), 0f, ImDrawFlags.None, 1.5f);
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.6f, 1f, 0.85f)), 0f, ImDrawFlags.None, 1.5f * UiTheme.Scale);
         }
     }
 
@@ -1665,7 +1665,7 @@ public class Timeline : UiPanel
             if (f % 10 != 0) continue;
             float x = trackPos.X + f * _pixelsPerFrame - scrollX;
             dl.AddLine(new Vector2(x, trackPos.Y), new Vector2(x, trackPos.Y + RowHeight),
-                ImGui.ColorConvertFloat4ToU32(new Vector4(0.22f, 0.22f, 0.22f, 0.6f)), 1f);
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0.22f, 0.22f, 0.22f, 0.6f)), UiTheme.Scale);
         }
 
         dl.PopClipRect();
@@ -1713,7 +1713,7 @@ public class Timeline : UiPanel
             });
             float cx = trackPos.X + f * _pixelsPerFrame - scrollX;
             float cy = trackPos.Y + RowHeight / 2f;
-            DrawDiamond(dl, cx, cy, KeyframeDiamondSize - 1f, anySelected);
+            DrawDiamond(dl, cx, cy, KeyframeDiamondSize - UiTheme.Scale, anySelected);
         }
 
         dl.PopClipRect();
@@ -1726,7 +1726,7 @@ public class Timeline : UiPanel
         dl.AddQuadFilled(new Vector2(cx, cy - s), new Vector2(cx + s, cy),
                          new Vector2(cx, cy + s), new Vector2(cx - s, cy), fill);
         dl.AddQuad(new Vector2(cx, cy - s), new Vector2(cx + s, cy),
-                   new Vector2(cx, cy + s), new Vector2(cx - s, cy), outline, 1.5f);
+                   new Vector2(cx, cy + s), new Vector2(cx - s, cy), outline, 1.5f * UiTheme.Scale);
     }
 
     // ── Track mouse interactions ──────────────────────────────────────────────
@@ -1751,7 +1751,7 @@ public class Timeline : UiPanel
         if (!row.IsGroupHeader && row.PropertyPath != "__header__")
         {
             hoveredKf = GetKeyframesForProperty(row.Object, row.PropertyPath)
-                .Find(k => Math.Abs(k.Frame - frame) <= 2);
+                .Find(k => MathF.Abs(k.Frame * _pixelsPerFrame - localX) <= Math.Max(KeyframeDiamondSize, 2f * _pixelsPerFrame * UiTheme.Scale));
             if (hoveredKf != null && !_isDraggingKeyframe)
                 UiText.Tooltip(Localization.Format("text.panel.timeline.frame_2", hoveredKf.Frame, hoveredKf.InterpolationType));
         }

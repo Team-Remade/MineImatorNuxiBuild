@@ -814,7 +814,7 @@ public class MainWindow : Window
 
         ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 0f);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0f);
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(28f, 24f));
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(28f, 24f) * mainViewport.DpiScale);
 
         ImGuiWindowFlags flags =
             ImGuiWindowFlags.NoDocking |
@@ -826,9 +826,10 @@ public class MainWindow : Window
         ImGui.Begin(Localization.Label("text.common.project_home_screen", "Project Home Screen"), flags);
         ImGui.PopStyleVar(3);
 
+        float scale = UiTheme.Scale;
         ImDrawListPtr drawList = ImGui.GetWindowDrawList();
         Vector2 splashMin = ImGui.GetCursorScreenPos();
-        Vector2 splashSize = new Vector2(MathF.Min(ImGui.GetContentRegionAvail().X, 920f), 180f);
+        Vector2 splashSize = new Vector2(MathF.Min(ImGui.GetContentRegionAvail().X, 920f * scale), 180f * scale);
         Vector2 splashMax = splashMin + splashSize;
         uint splashTexture = GetThumbnailTexture(SplashImagePath);
 
@@ -841,24 +842,24 @@ public class MainWindow : Window
                 Vector2.Zero,
                 Vector2.One,
                 0xFFFFFFFF,
-                18f,
+                18f * scale,
                 ImDrawFlags.RoundCornersAll);
             ImGui.Dummy(splashSize);
         }
         else
         {
-            drawList.AddRectFilled(splashMin, splashMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.16f, 0.18f, 0.22f, 1f)), 18f);
+            drawList.AddRectFilled(splashMin, splashMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.16f, 0.18f, 0.22f, 1f)), 18f * scale);
             ImGui.Dummy(splashSize);
         }
 
-        drawList.AddRect(splashMin, splashMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.34f, 0.40f, 0.48f, 1f)), 18f, ImDrawFlags.RoundCornersAll, 2f);
-        Vector2 titlePos = splashMin + new Vector2(24f, 24f);
+        drawList.AddRect(splashMin, splashMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.34f, 0.40f, 0.48f, 1f)), 18f * scale, ImDrawFlags.RoundCornersAll, 2f * scale);
+        Vector2 titlePos = splashMin + new Vector2(24f, 24f) * scale;
         string titleText = Localization.T("text.window.main.mine_imator_simply_remade");
         Vector2 titleSize = ImGui.CalcTextSize(titleText);
-        Vector2 titlePanelMin = titlePos - new Vector2(10f, 6f);
-        Vector2 titlePanelMax = titlePos + titleSize + new Vector2(10f, 6f);
+        Vector2 titlePanelMin = titlePos - new Vector2(10f, 6f) * scale;
+        Vector2 titlePanelMax = titlePos + titleSize + new Vector2(10f, 6f) * scale;
         uint labelPanelColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.05f, 0.06f, 0.08f, 0.68f));
-        drawList.AddRectFilled(titlePanelMin, titlePanelMax, labelPanelColor, 8f);
+        drawList.AddRectFilled(titlePanelMin, titlePanelMax, labelPanelColor, 8f * scale);
 
         drawList.AddText(
             titlePos,
@@ -866,11 +867,11 @@ public class MainWindow : Window
             titleText);
 
         string splashPreview = _homeSplashPlainText == "Splash Screen Placeholder" ? Localization.T("text.window.main.splash_screen_placeholder") : _homeSplashPlainText;
-        Vector2 splashTextPos = splashMin + new Vector2(24f, 56f);
+        Vector2 splashTextPos = splashMin + new Vector2(24f, 56f) * scale;
         Vector2 splashTextSize = ImGui.CalcTextSize(splashPreview);
-        Vector2 splashPanelMin = splashTextPos - new Vector2(10f, 5f);
-        Vector2 splashPanelMax = splashTextPos + splashTextSize + new Vector2(10f, 5f);
-        drawList.AddRectFilled(splashPanelMin, splashPanelMax, labelPanelColor, 8f);
+        Vector2 splashPanelMin = splashTextPos - new Vector2(10f, 5f) * scale;
+        Vector2 splashPanelMax = splashTextPos + splashTextSize + new Vector2(10f, 5f) * scale;
+        drawList.AddRectFilled(splashPanelMin, splashPanelMax, labelPanelColor, 8f * scale);
 
         DrawHomeSplashText(
             drawList,
@@ -880,9 +881,9 @@ public class MainWindow : Window
         UiText.Disabled(Localization.Format("text.window.main.splash_art_credits", _homeSplashCreditText == "(unassigned)" ? Localization.T("text.window.main.unassigned") : _homeSplashCreditText));
         ImGui.Spacing();
 
-        float leftWidth = MathF.Min(320f, ImGui.GetContentRegionAvail().X * 0.34f);
+        float leftWidth = MathF.Min(320f * scale, ImGui.GetContentRegionAvail().X * 0.34f);
         float recentWidth = ImGui.GetContentRegionAvail().X - leftWidth - ImGui.GetStyle().ItemSpacing.X;
-        float bodyHeight = MathF.Max(260f, ImGui.GetContentRegionAvail().Y - 8f);
+        float bodyHeight = MathF.Max(260f * scale, ImGui.GetContentRegionAvail().Y - 8f * scale);
 
         ImGui.BeginChild("##projectActions", new Vector2(leftWidth, bodyHeight), ImGuiChildFlags.Borders);
         ImGui.TextUnformatted(Localization.T("text.common.projects"));
@@ -890,9 +891,9 @@ public class MainWindow : Window
         UiText.Wrapped(Localization.T("text.window.main.create_a_fresh_project_load_an_existing_one_or_reopen_something_recent"));
         ImGui.Spacing();
 
-        if (ImGui.Button(Localization.Label("text.common.new_project", "New Project"), new Vector2(-1, 36f)))
+        if (ImGui.Button(Localization.Label("text.common.new_project", "New Project"), new Vector2(-1, 36f * scale)))
             OpenNewProjectPopup();
-        if (ImGui.Button(Localization.Label("text.window.main.load_project", "Load Project"), new Vector2(-1, 36f)))
+        if (ImGui.Button(Localization.Label("text.window.main.load_project", "Load Project"), new Vector2(-1, 36f * scale)))
             OpenProjectFromDialog();
 
         ImGui.Spacing();
@@ -922,18 +923,18 @@ public class MainWindow : Window
         }
         else
         {
-            const float cardWidth = 210f;
-            const float thumbHeight = 96f;
+            float cardWidth = 210f * scale;
+            float thumbHeight = 96f * scale;
             float spacing = ImGui.GetStyle().ItemSpacing.X;
-            int columns = Math.Max(1, (int)((recentWidth - 24f) / (cardWidth + spacing)));
+            int columns = Math.Max(1, (int)((recentWidth - 24f * scale) / (cardWidth + spacing)));
 
             for (int i = 0; i < recents.Count; i++)
             {
                 RecentProjectEntry recent = recents[i];
-                ImGui.BeginChild($"##recentCard{i}", new Vector2(cardWidth, 190f), ImGuiChildFlags.Borders);
+                ImGui.BeginChild($"##recentCard{i}", new Vector2(cardWidth, 190f * scale), ImGuiChildFlags.Borders);
 
                 Vector2 thumbMin = ImGui.GetCursorScreenPos();
-                Vector2 thumbSize = new Vector2(cardWidth - 16f, thumbHeight);
+                Vector2 thumbSize = new Vector2(cardWidth - 16f * scale, thumbHeight);
                 Vector2 thumbMax = thumbMin + thumbSize;
                 drawList.AddRectFilled(thumbMin, thumbMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.19f, 0.20f, 0.24f, 1f)), 10f);
                 drawList.AddRect(thumbMin, thumbMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.36f, 0.40f, 0.45f, 1f)), 10f, ImDrawFlags.RoundCornersAll, 1.5f);
@@ -945,7 +946,7 @@ public class MainWindow : Window
                 }
                 else
                 {
-                    drawList.AddText(thumbMin + new Vector2(18f, 36f), ImGui.ColorConvertFloat4ToU32(new Vector4(0.82f, 0.84f, 0.88f, 1f)), Localization.T("text.window.main.thumbnail_placeholder"));
+                    drawList.AddText(thumbMin + new Vector2(18f, 36f) * scale, ImGui.ColorConvertFloat4ToU32(new Vector4(0.82f, 0.84f, 0.88f, 1f)), Localization.T("text.window.main.thumbnail_placeholder"));
                     ImGui.Dummy(thumbSize);
                 }
 
@@ -956,12 +957,12 @@ public class MainWindow : Window
                 bool exists = File.Exists(recent.ProjectFilePath);
                 if (!exists)
                     ImGui.BeginDisabled();
-                if (ImGui.Button(Localization.Label("text.window.main.open", "Open"), new Vector2(-1, 28f)))
+                if (ImGui.Button(Localization.Label("text.window.main.open", "Open"), new Vector2(-1, 28f * scale)))
                     OpenRecentProject(recent.ProjectFilePath);
                 if (!exists)
                     ImGui.EndDisabled();
 
-                if (ImGui.Button(Localization.Label("text.window.main.remove_from_recent", "Remove From Recent"), new Vector2(-1, 24f)))
+                if (ImGui.Button(Localization.Label("text.window.main.remove_from_recent", "Remove From Recent"), new Vector2(-1, 24f * scale)))
                 {
                     _projectManager.RemoveRecentProject(recent.ProjectFilePath);
                     ImGui.EndChild();
@@ -1005,11 +1006,11 @@ public class MainWindow : Window
         if (ImGui.BeginPopupModal(popupTitle, ref popupOpen, ImGuiWindowFlags.AlwaysAutoResize))
         {
             ImGui.TextUnformatted(_projectDialogMode == ProjectDialogMode.SaveAs ? Localization.T("text.window.main.project_name_copy") : Localization.T("text.window.main.project_name"));
-            ImGui.SetNextItemWidth(320f);
+            ImGui.SetNextItemWidth(320f * UiTheme.Scale);
             ImGui.InputText("##newProjectName", ref _newProjectNameBuffer, 128);
 
             string actionLabel = _projectDialogMode == ProjectDialogMode.SaveAs ? Localization.Label("text.window.main.save_copy", "Save Copy") : Localization.Label("text.window.main.create", "Create");
-            if (ImGui.Button(actionLabel, new Vector2(120, 0)))
+            if (ImGui.Button(actionLabel, new Vector2(120 * UiTheme.Scale, 0)))
             {
                 string name = string.IsNullOrWhiteSpace(_newProjectNameBuffer) ? "Untitled Project" : _newProjectNameBuffer.Trim();
                 if (ExecuteProjectDialogAction(name))
@@ -1017,7 +1018,7 @@ public class MainWindow : Window
             }
 
             ImGui.SameLine();
-            if (ImGui.Button(Localization.Label("text.common.cancel", "Cancel"), new Vector2(120, 0)))
+            if (ImGui.Button(Localization.Label("text.common.cancel", "Cancel"), new Vector2(120 * UiTheme.Scale, 0)))
                 ImGui.CloseCurrentPopup();
 
             ImGui.EndPopup();
@@ -1093,7 +1094,7 @@ public class MainWindow : Window
         ImGui.Spacing();
         ImGui.TextUnformatted(Localization.T("text.window.main.credits"));
 
-        if (ImGui.BeginChild("##aboutCredits", new Vector2(720f, 300f), ImGuiChildFlags.Borders))
+        if (ImGui.BeginChild("##aboutCredits", new Vector2(720f, 300f) * UiTheme.Scale, ImGuiChildFlags.Borders))
         {
             UiText.Wrapped(Localization.T("text.window.main.mine_imator_david_andrei"));
             UiText.Wrapped(Localization.T("text.window.main.mine_imator_development_david_nimi_marvin_mbanders"));
@@ -1108,15 +1109,15 @@ public class MainWindow : Window
         ImGui.EndChild();
 
         ImGui.Spacing();
-        if (ImGui.Button(Localization.Label("text.window.main.donate_ko_fi", "Donate (Ko-fi)"), new Vector2(150f, 0f)))
+        if (ImGui.Button(Localization.Label("text.window.main.donate_ko_fi", "Donate (Ko-fi)"), new Vector2(150f * UiTheme.Scale, 0f)))
             OpenDonateLink();
 
         ImGui.SameLine();
-        if (ImGui.Button(Localization.Label("text.window.main.join_discord", "Join Discord"), new Vector2(150f, 0f)))
+        if (ImGui.Button(Localization.Label("text.window.main.join_discord", "Join Discord"), new Vector2(150f * UiTheme.Scale, 0f)))
             OpenDiscordLink();
 
         ImGui.SameLine();
-        if (ImGui.Button(Localization.Label("text.window.main.close", "Close"), new Vector2(120f, 0f)))
+        if (ImGui.Button(Localization.Label("text.window.main.close", "Close"), new Vector2(120f * UiTheme.Scale, 0f)))
             ImGui.CloseCurrentPopup();
 
         ImGui.EndPopup();
@@ -1167,7 +1168,7 @@ public class MainWindow : Window
                 if (!string.IsNullOrWhiteSpace(_lastUpdateCheckResult.ChangeLog))
                 {
                     UiText.Disabled(Localization.T("text.window.main.changelog"));
-                    if (ImGui.BeginChild("##updateChangelog", new Vector2(600f, 200f), ImGuiChildFlags.Borders))
+                    if (ImGui.BeginChild("##updateChangelog", new Vector2(600f, 200f) * UiTheme.Scale, ImGuiChildFlags.Borders))
                     {
                         UiText.Wrapped(_lastUpdateCheckResult.ChangeLog);
                         ImGui.EndChild();
@@ -1182,7 +1183,7 @@ public class MainWindow : Window
                 }
                 else
                 {
-                    if (ImGui.Button(Localization.Label("text.window.main.install_update", "Install Update"), new Vector2(150, 0)))
+                    if (ImGui.Button(Localization.Label("text.window.main.install_update", "Install Update"), new Vector2(150 * UiTheme.Scale, 0)))
                     {
                         if (!string.IsNullOrWhiteSpace(_lastUpdateCheckResult.DownloadUrl))
                         {
@@ -1221,7 +1222,7 @@ public class MainWindow : Window
                     }
 
                     ImGui.SameLine();
-                    if (ImGui.Button(Localization.Label("text.window.main.visit_release", "Visit Release"), new Vector2(120, 0)))
+                    if (ImGui.Button(Localization.Label("text.window.main.visit_release", "Visit Release"), new Vector2(120 * UiTheme.Scale, 0)))
                     {
                         try
                         {
@@ -1246,7 +1247,7 @@ public class MainWindow : Window
         ImGui.Separator();
         ImGui.Spacing();
 
-        if (ImGui.Button(Localization.Label("text.window.main.close", "Close"), new Vector2(120, 0)))
+        if (ImGui.Button(Localization.Label("text.window.main.close", "Close"), new Vector2(120 * UiTheme.Scale, 0)))
         {
             ImGui.CloseCurrentPopup();
             _openUpdatePopup = false;
@@ -1439,7 +1440,7 @@ public class MainWindow : Window
 
         int width = Math.Max(1, _renderPopupWidth);
         int height = Math.Max(1, _renderPopupHeight);
-        ImGui.SetNextItemWidth(120f);
+        ImGui.SetNextItemWidth(120f * UiTheme.Scale);
         if (ImGui.GetIO().WantTextInput)
         {
             string widthBuffer = width.ToString(CultureInfo.InvariantCulture);
@@ -1462,7 +1463,7 @@ public class MainWindow : Window
         }
 
         ImGui.SameLine();
-        ImGui.SetNextItemWidth(120f);
+        ImGui.SetNextItemWidth(120f * UiTheme.Scale);
         if (ImGui.GetIO().WantTextInput)
         {
             string heightBuffer = height.ToString(CultureInfo.InvariantCulture);
@@ -1569,7 +1570,7 @@ public class MainWindow : Window
         if (settingsChanged)
             ApplyRenderPopupToProjectSettings();
 
-        if (ImGui.Button(Localization.Label("text.window.main.start_render", "Start Render"), new Vector2(140, 0)))
+        if (ImGui.Button(Localization.Label("text.window.main.start_render", "Start Render"), new Vector2(140 * UiTheme.Scale, 0)))
         {
             StartRenderJob();
         }
@@ -1580,12 +1581,12 @@ public class MainWindow : Window
         ImGui.SameLine();
         if (_renderJobActive)
         {
-            if (ImGui.Button(Localization.Label("text.window.main.abort", "Abort"), new Vector2(120, 0)))
+            if (ImGui.Button(Localization.Label("text.window.main.abort", "Abort"), new Vector2(120 * UiTheme.Scale, 0)))
                 CancelRenderJob(Localization.T("text.window.main.render_canceled"));
         }
         else
         {
-            if (ImGui.Button(_renderJobFinished ? Localization.Label("text.window.main.close", "Close") : Localization.Label("text.common.cancel", "Cancel"), new Vector2(120, 0)))
+            if (ImGui.Button(_renderJobFinished ? Localization.Label("text.window.main.close", "Close") : Localization.Label("text.common.cancel", "Cancel"), new Vector2(120 * UiTheme.Scale, 0)))
             {
                 _renderJobFinished = false;
                 ImGui.CloseCurrentPopup();
@@ -1693,7 +1694,7 @@ public class MainWindow : Window
 
         float clampedProgress = Math.Clamp(_resourcePackImportProgress, 0f, 1f);
         ImGui.TextUnformatted(_resourcePackImportStatus);
-        ImGui.ProgressBar(clampedProgress, new Vector2(360f, 0f), $"{clampedProgress * 100f:0.0}%");
+        ImGui.ProgressBar(clampedProgress, new Vector2(360f * UiTheme.Scale, 0f), $"{clampedProgress * 100f:0.0}%");
 
         if (!string.IsNullOrWhiteSpace(_resourcePackImportDetail))
         {
@@ -1711,7 +1712,7 @@ public class MainWindow : Window
             if (!string.IsNullOrWhiteSpace(_resourcePackImportError))
                 UiText.Colored(new Vector4(0.92f, 0.38f, 0.38f, 1f), _resourcePackImportError);
 
-            if (ImGui.Button(Localization.Label("text.window.main.close", "Close"), new Vector2(120f, 0f)))
+            if (ImGui.Button(Localization.Label("text.window.main.close", "Close"), new Vector2(120f * UiTheme.Scale, 0f)))
             {
                 _resourcePackImportFinished = false;
                 _resourcePackImportStage = ResourcePackImportStage.None;
@@ -1735,7 +1736,7 @@ public class MainWindow : Window
 
         ImGui.SeparatorText(Localization.T("text.window.main.progress"));
         UiText.Wrapped(_renderJobStatus);
-        ImGui.ProgressBar(progress, new Vector2(360f, 0f), $"{progress * 100f:0.0}%");
+        ImGui.ProgressBar(progress, new Vector2(360f * UiTheme.Scale, 0f), $"{progress * 100f:0.0}%");
         ImGui.TextUnformatted(Localization.Format("text.window.main.frames", _renderFrameCurrent, _renderFrameTotal));
         ImGui.TextUnformatted(Localization.Format("text.window.main.elapsed_s", elapsed));
 
@@ -2614,16 +2615,17 @@ public class MainWindow : Window
     private void RenderToastWindow(string message, ToastKind kind, float alpha)
     {
         ImGuiViewportPtr mainViewport = ImGui.GetMainViewport();
-        Vector2 size = new Vector2(280f, 0f);
-        Vector2 pos = new Vector2(mainViewport.WorkPos.X + mainViewport.WorkSize.X - size.X - 20f, mainViewport.WorkPos.Y + 20f);
+        float scale = mainViewport.DpiScale;
+        Vector2 size = new Vector2(280f * scale, 0f);
+        Vector2 pos = new Vector2(mainViewport.WorkPos.X + mainViewport.WorkSize.X - size.X - 20f * scale, mainViewport.WorkPos.Y + 20f * scale);
 
         ImGui.SetNextWindowPos(pos, ImGuiCond.Always);
         ImGui.SetNextWindowSize(size, ImGuiCond.Always);
         ImGui.SetNextWindowViewport(mainViewport.ID);
 
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 10f);
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(14f, 12f));
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 10f * scale);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f * scale);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(14f, 12f) * scale);
 
         Vector4 bgColor;
         Vector4 borderColor;
@@ -3011,7 +3013,7 @@ public class MainWindow : Window
             bool shouldSave = false;
             bool shouldExit = false;
 
-            float buttonWidth = 150f;
+            float buttonWidth = 150f * UiTheme.Scale;
             float totalButtonWidth = (buttonWidth * 3) + (ImGui.GetStyle().ItemSpacing.X * 2);
             float availableWidth = ImGui.GetContentRegionAvail().X;
             float offset = (availableWidth - totalButtonWidth) / 2;

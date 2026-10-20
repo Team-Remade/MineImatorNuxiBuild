@@ -23,7 +23,7 @@ public class StartupProgressWindow : Window
     private double _loadingGifNextFrameAtSeconds;
 
     public StartupProgressWindow(int width, int height, string title, Glfw glfw, GL gl = null)
-        : base(width, height, Localization.DisplayText(title), glfw, gl)
+        : base(width, height, Localization.DisplayText(title), glfw, gl, scaleToMonitor: true)
     {
     }
 
@@ -41,8 +41,17 @@ public class StartupProgressWindow : Window
                                  ImGuiWindowFlags.NoScrollbar |
                                  ImGuiWindowFlags.NoSavedSettings;
 
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(22f, 20f));
         ImGui.Begin("##StartupProgress", flags);
+        float uiScale = UiTheme.Scale;
+        Vector2 padding = new Vector2(22f, 20f) * uiScale;
+        ImGui.SetCursorPos(padding);
+        Vector2 contentSize = ImGui.GetWindowSize() - padding * 2f;
+        // Keep the animation in its own column, outside text and progress hit areas.
+        if (_loadingGifFrames.Count > 0)
+            contentSize.X -= (84f + 16f) * uiScale;
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
+        ImGui.BeginChild("##StartupContent", Vector2.Max(Vector2.One, contentSize), ImGuiChildFlags.None,
+            ImGuiWindowFlags.NoBackground | ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
         ImGui.PopStyleVar();
 
         float clampedProgress = Math.Clamp(ProgressState.Progress, 0f, 1f);
@@ -58,21 +67,24 @@ public class StartupProgressWindow : Window
         int dots = ((int)(elapsed * 2.0) % 4);
         string animated = Localization.T("text.window.startup.working") + new string('.', dots);
 
-        ImGui.Dummy(new Vector2(0, 6));
+        ImGui.Dummy(new Vector2(0, 6f * uiScale));
         UiText.Wrapped(Localization.DisplayText(ProgressState.Phase));
-        ImGui.Dummy(new Vector2(0, 10));
-        ImGui.ProgressBar(clampedProgress, new Vector2(-1, 16f), $"{MathF.Round(clampedProgress * 100f)}%");
-        ImGui.Dummy(new Vector2(0, 10));
+        ImGui.Dummy(new Vector2(0, 10f * uiScale));
+        ImGui.ProgressBar(clampedProgress, new Vector2(-1, 16f * UiTheme.Scale), $"{MathF.Round(clampedProgress * 100f)}%");
+        ImGui.Dummy(new Vector2(0, 10f * uiScale));
         ImGui.TextUnformatted(animated);
         UiText.Wrapped(Localization.DisplayText(ProgressState.Status));
 
         if (!string.IsNullOrWhiteSpace(ProgressState.Detail))
         {
-            ImGui.Dummy(new Vector2(0, 6));
-            UiText.Colored(new Vector4(0.70f, 0.74f, 0.80f, 1f), Localization.DisplayText(ProgressState.Detail));
+            ImGui.Dummy(new Vector2(0, 6f * uiScale));
+            ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.70f, 0.74f, 0.80f, 1f));
+            UiText.Wrapped(Localization.DisplayText(ProgressState.Detail));
+            ImGui.PopStyleColor();
         }
 
-        DrawLoadingGifBottomRight();
+        ImGui.EndChild();
+        DrawLoadingGifBottomRight(padding);
 
         ImGui.End();
     }
@@ -144,7 +156,7 @@ public class StartupProgressWindow : Window
         _loadingGifNextFrameAtSeconds = -1;
     }
 
-    private unsafe void DrawLoadingGifBottomRight()
+    private unsafe void DrawLoadingGifBottomRight(Vector2 padding)
     {
         if (_loadingGifFrames.Count == 0)
             return;
@@ -152,17 +164,15 @@ public class StartupProgressWindow : Window
         AdvanceLoadingGifFrame();
         GifFrame frame = _loadingGifFrames[_loadingGifFrameIndex];
 
-        ImGuiStylePtr style = ImGui.GetStyle();
         Vector2 windowSize = ImGui.GetWindowSize();
 
-        const float maxSize = 84f;
+        float maxSize = 84f * UiTheme.Scale;
         float scale = MathF.Min(maxSize / frame.Width, maxSize / frame.Height);
-        scale = MathF.Max(0.1f, scale);
 
         Vector2 drawSize = new(frame.Width * scale, frame.Height * scale);
         Vector2 drawPos = new(
-            windowSize.X - style.WindowPadding.X - drawSize.X,
-            windowSize.Y - style.WindowPadding.Y - drawSize.Y);
+            windowSize.X - padding.X - drawSize.X,
+            windowSize.Y - padding.Y - drawSize.Y);
 
         ImGui.SetCursorPos(drawPos);
         ImGui.Image(new ImTextureRef(texId: (ulong)frame.TextureId), drawSize);

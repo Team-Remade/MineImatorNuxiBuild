@@ -53,6 +53,8 @@ public class CameraWindow : Window
         if (_panel == null) return;
 
         SetWindowTitle(Localization.T("text.common.camera_view"));
+        SetContextCurrent();
+        UpdateDpiScale();
 
         // ── Step 1: scene render on the main context ──────────────────────────
         Glfw.MakeContextCurrent(_mainHandle);
@@ -63,8 +65,8 @@ public class CameraWindow : Window
         // Estimate available content size for this frame and fit it to the
         // project's render-resolution aspect ratio so the preview stays accurate.
         var estimatedAvail = new Vector2(
-            Math.Max(4, WindowWidth - 8),
-            Math.Max(4, WindowHeight - 56));
+            Math.Max(4, WindowWidth - 8 * ImGui.GetStyle().FontScaleDpi),
+            Math.Max(4, WindowHeight - 56 * ImGui.GetStyle().FontScaleDpi));
         Vector2 drawSizeEstimate = _panel.GetPreviewDrawSize(estimatedAvail);
         uint sceneW = (uint)Math.Max(4, (int)MathF.Round(drawSizeEstimate.X));
         uint sceneH = (uint)Math.Max(4, (int)MathF.Round(drawSizeEstimate.Y));
@@ -83,6 +85,7 @@ public class CameraWindow : Window
 
         ImGuiImplOpenGL3.NewFrame();
         ImGuiImplGLFW.NewFrame();
+        UpdateDpiScale();
         ImGui.NewFrame();
 
         RenderUi(activeCam, sceneObj, sceneW, sceneH);
@@ -173,7 +176,7 @@ public class CameraWindow : Window
         _panel.DrawCornerPicker();
 
         ImGui.SameLine();
-        _panel.DrawRenderModeSelectorPublic("PreviewWindowHeader", 176f);
+        _panel.DrawRenderModeSelectorPublic("PreviewWindowHeader", 176f * UiTheme.Scale);
 
         ImGui.Separator();
 

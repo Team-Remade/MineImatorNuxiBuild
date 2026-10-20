@@ -236,7 +236,7 @@ public class PreferencesPanel : UiPanel
             {
                 ImGui.TextUnformatted(Localization.T("text.panel.preferences.minecraft_version"));
                 ImGui.SameLine();
-                ImGui.SetNextItemWidth(150);
+                ImGui.SetNextItemWidth(150f * UiTheme.Scale);
                 if (ImGui.BeginCombo("##minecraftVersion", MinecraftVersion))
                 {
                     foreach (string version in availableMinecraftVersions)
@@ -310,7 +310,7 @@ public class PreferencesPanel : UiPanel
                 {
                     ImGui.TextUnformatted(Localization.T("text.panel.preferences.theme"));
                     ImGui.SameLine();
-                    ImGui.SetNextItemWidth(180);
+                    ImGui.SetNextItemWidth(180f * UiTheme.Scale);
                     string themeName = Theme switch
                     {
                         ThemeMode.Darker => "Midnight Darker (Default)",
@@ -351,7 +351,7 @@ public class PreferencesPanel : UiPanel
                 {
                     ImGui.TextUnformatted(Localization.T("text.panel.preferences.accent_color"));
                     ImGui.SameLine();
-                    ImGui.SetNextItemWidth(180);
+                    ImGui.SetNextItemWidth(180f * UiTheme.Scale);
                     string accentName = Accent.ToString();
                     if (ImGui.BeginCombo("##accent", Localization.DisplayText(accentName)))
                     {
@@ -377,7 +377,7 @@ public class PreferencesPanel : UiPanel
                             Vector4 colorVec = GetAccentColorVector(color);
                             
                             // Draw small color swatch
-                            ImGui.ColorButton($"##swatch_{color}", colorVec, ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoPicker, new Vector2(16, 16));
+                            ImGui.ColorButton($"##swatch_{color}", colorVec, ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoPicker, new Vector2(16, 16) * UiTheme.Scale);
                             ImGui.SameLine();
                             if (ImGui.Selectable(Localization.DisplayLabel(color.ToString()), selected))
                             {
@@ -409,7 +409,7 @@ public class PreferencesPanel : UiPanel
                 {
                     ImGui.TextUnformatted(Localization.T("text.panel.preferences.language"));
                     ImGui.SameLine();
-                    ImGui.SetNextItemWidth(180);
+                    ImGui.SetNextItemWidth(180f * UiTheme.Scale);
                     if (ImGui.BeginCombo("##language", Localization.CurrentLanguageName))
                     {
                         foreach (var language in Localization.AvailableLanguages)

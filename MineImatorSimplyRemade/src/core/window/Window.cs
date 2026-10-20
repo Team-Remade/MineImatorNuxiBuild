@@ -15,6 +15,8 @@ namespace MineImatorSimplyRemade.core.window;
 
 public class Window : IDisposable
 {
+    // GLFW 3.3 hint not exposed by Silk.NET's WindowHintBool enum.
+    private const WindowHintBool ScaleToMonitor = (WindowHintBool)0x0002200C;
     protected unsafe WindowHandle* windowHandle;
     public unsafe WindowHandle* WindowHandle => windowHandle;
     public int WindowWidth, WindowHeight;
@@ -26,6 +28,41 @@ public class Window : IDisposable
     private vec4 clearColor = new vec4(0, 0, 0, 1);
     private ImGuiIOPtr io;
     protected ImGuiContextPtr ImGuiContext { get; private set; }
+
+    private ImGuiStyle _unscaledStyle;
+    private float _dpiScale;
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private unsafe delegate void ViewportChangedCallback(ImGuiViewport* viewport);
+    private ViewportChangedCallback? _viewportChangedCallback;
+
+    // Always scale from the original metrics, never from rounded, already-scaled values.
+    private unsafe void ApplyDpiScale(float scale)
+    {
+        if (!float.IsFinite(scale) || scale <= 0)
+            scale = 1f;
+        if (_dpiScale == scale)
+            return;
+
+        var style = ImGui.GetStyle();
+        ImGuiStyle previous = *style.Handle;
+        ImGuiStylePtr previousStyle = new(&previous);
+        *style.Handle = _unscaledStyle;
+        for (int i = 0; i < (int)ImGuiCol.Count; i++)
+            style.Colors[i] = previousStyle.Colors[i];
+        style.Alpha = previousStyle.Alpha;
+        style.DisabledAlpha = previousStyle.DisabledAlpha;
+        style.FontScaleMain = previousStyle.FontScaleMain;
+        style.FontScaleDpi = scale;
+        style.ScaleAllSizes(scale);
+        _dpiScale = scale;
+    }
+
+    protected unsafe void UpdateDpiScale()
+    {
+        var platform = ImGui.GetPlatformIO();
+        var getScale = (delegate* unmanaged[Cdecl]<ImGuiViewport*, float>)platform.PlatformGetWindowDpiScale;
+        ApplyDpiScale(getScale != null ? getScale(ImGui.GetMainViewport().Handle) : 1f);
+    }
 
     // Dear ImGui stores io.IniFilename as a raw pointer (it never copies or owns the
     // string), so the backing buffer must be allocated on the unmanaged heap and kept
@@ -89,14 +126,17 @@ public class Window : IDisposable
     /// Creates a visible window with its own GL context.
     /// Used for the main application window.
     /// </summary>
-    protected unsafe Window(int width, int height, string title, Glfw glfw, GL gl = null, bool visible = true)
+    protected unsafe Window(int width, int height, string title, Glfw glfw, GL gl = null, bool visible = true,
+                            bool scaleToMonitor = false)
     {
         Glfw = glfw;
 
         if (!visible)
             Glfw.WindowHint(WindowHintBool.Visible, false);
 
+        Glfw.WindowHint(ScaleToMonitor, scaleToMonitor);
         windowHandle = Glfw.CreateWindow(width, height, title, null, null);
+        Glfw.WindowHint(ScaleToMonitor, false);
 
         if (!visible)
             Glfw.WindowHint(WindowHintBool.Visible, true);
@@ -106,6 +146,8 @@ public class Window : IDisposable
         WindowWidth = width;
         WindowHeight = height;
 
+        if (windowHandle != null)
+            Glfw.GetFramebufferSize(windowHandle, out WindowWidth, out WindowHeight);
         Glfw.SetFramebufferSizeCallback(windowHandle, FrameBufferResizeCallback);
     }
 
@@ -122,7 +164,9 @@ public class Window : IDisposable
 
         // Start hidden — caller decides when to show it.
         Glfw.WindowHint(WindowHintBool.Visible, false);
+        Glfw.WindowHint(ScaleToMonitor, true);
         windowHandle = Glfw.CreateWindow(width, height, title, null, shareWith);
+        Glfw.WindowHint(ScaleToMonitor, false);
         // Reset the visible hint so subsequent windows aren't affected.
         Glfw.WindowHint(WindowHintBool.Visible, true);
 
@@ -131,6 +175,8 @@ public class Window : IDisposable
         WindowWidth = width;
         WindowHeight = height;
 
+        if (windowHandle != null)
+            Glfw.GetFramebufferSize(windowHandle, out WindowWidth, out WindowHeight);
         Glfw.SetFramebufferSizeCallback(windowHandle, FrameBufferResizeCallback);
     }
 
@@ -171,6 +217,8 @@ public class Window : IDisposable
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
         io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;
         io.ConfigWindowsMoveFromTitleBarOnly = true;
+        io.ConfigDpiScaleFonts = true;
+        io.ConfigDpiScaleViewports = true;
 
         // io.IniFilename is a raw byte* that Dear ImGui reads from directly (on
         // NewFrame()/autosave) without ever copying it, so the buffer must be
@@ -182,7 +230,9 @@ public class Window : IDisposable
         io.IniFilename = _iniFilenameBuffer;
 
         UiTheme.SetupDefaultFont(io);
+        UiTheme.ApplyModernMetrics(ImGui.GetStyle());
         UiTheme.ApplyTheme(UiTheme.ThemePreset.Darker, UiTheme.AccentPreset.Purple);
+        _unscaledStyle = *ImGui.GetStyle().Handle;
         
         ImGuiImplGLFW.SetCurrentContext(ImGuiContext);
         
@@ -191,6 +241,13 @@ public class Window : IDisposable
         
         ImGuiImplOpenGL3.SetCurrentContext(ImGuiContext);
         ImGuiImplOpenGL3.Init("#version 150");
+        UpdateDpiScale();
+
+        // Detached panels may be on a different monitor from their parent context.
+        _viewportChangedCallback = viewport => ApplyDpiScale(viewport->DpiScale);
+        var platform = ImGui.GetPlatformIO();
+        platform.PlatformOnChangedViewport =
+            (void*)Marshal.GetFunctionPointerForDelegate(_viewportChangedCallback);
     }
 
     public virtual unsafe void Render()
@@ -203,6 +260,7 @@ public class Window : IDisposable
 
         ImGuiImplOpenGL3.NewFrame();
         ImGuiImplGLFW.NewFrame();
+        UpdateDpiScale();
         ImGui.NewFrame();
 
         RenderUi();
@@ -242,6 +300,8 @@ public class Window : IDisposable
         ImGuiImplOpenGL3.SetCurrentContext(default);
 
         ImGuiContext = default;
+        _viewportChangedCallback = null;
+        _dpiScale = 0;
 
         if (_iniFilenameBuffer != null)
         {

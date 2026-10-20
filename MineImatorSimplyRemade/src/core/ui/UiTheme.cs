@@ -11,6 +11,9 @@ namespace MineImatorSimplyRemade.core.ui;
 /// </summary>
 public static class UiTheme
 {
+    /// <summary>Converts logical UI dimensions to the current window's monitor scale.</summary>
+    public static float Scale => ImGui.GetWindowDpiScale();
+
     public enum ThemePreset
     {
         Darker,     // Midnight / Deep Charcoal (Default pro creative suite look)
@@ -153,7 +156,6 @@ public static class UiTheme
     public static void ApplyTheme(ThemePreset theme, AccentPreset accent, Vector4? customAccent = null)
     {
         var style = ImGui.GetStyle();
-        ApplyModernMetrics(style);
 
         Vector4 accentVec = GetAccentColorVector(accent, customAccent);
 

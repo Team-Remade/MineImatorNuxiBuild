@@ -2202,7 +2202,7 @@ public class Viewport : UiPanel
     // ── Render ─────────────────────────────────────────────────────────────────
 
     // Height of the top bar (camera dropdown + bench button row) in pixels.
-    private const float TopBarHeight = 28f;
+    private static float TopBarHeight => 28f * UiTheme.Scale;
 
     public override unsafe void Render()
     {
@@ -2227,8 +2227,8 @@ public class Viewport : UiPanel
         // Left-aligned: bench button | camera dropdown.
         // Background drawn via the draw list; widgets laid out with SameLine.
         {
-            const float barPadX = 4f;
-            const float barPadY = 3f;
+            float barPadX = 4f * UiTheme.Scale;
+            float barPadY = 3f * UiTheme.Scale;
             float iconSize = TopBarHeight - barPadY * 2f;
 
             // Solid background strip.
@@ -2283,7 +2283,7 @@ public class Viewport : UiPanel
                 }
 
                 ImGui.SetCursorPosY(itemY);
-                ImGui.SetNextItemWidth(160f);
+                ImGui.SetNextItemWidth(160f * UiTheme.Scale);
                 if (ImGui.BeginCombo("##vpCamSelect", currentCamLabel))
                 {
                     bool roSel = _activeCameraIndex == RenderOutputIndex;
@@ -2398,16 +2398,16 @@ public class Viewport : UiPanel
             string f5TargetLabel = previewF5Target ? Localization.T("text.common.preview") : Localization.T("text.common.main");
 
             ImGui.SameLine();
-            ImGui.SetCursorPosY(itemY + 4f);
+            ImGui.SetCursorPosY(itemY + 4f * UiTheme.Scale);
             UiText.Disabled(f5Rendered ? Localization.Format("text.panel.viewport.rendered_f5", f5TargetLabel) : Localization.Format("text.panel.viewport.unrendered_f5", f5TargetLabel));
 
             ImGui.SameLine();
-            ImGui.SetCursorPosY(itemY + 4f);
+            ImGui.SetCursorPosY(itemY + 4f * UiTheme.Scale);
             UiText.Disabled(ShadowDebugEnabled ? Localization.T("text.panel.viewport.shadow_debug_ctrl_f6") : Localization.T("text.panel.viewport.shadow_debug_off_ctrl_f6"));
 
             // Render mode selector (header, top-right).
-            const float renderModeWidth = 176f;
-            float rightAlignedX = MathF.Max(4f, totalSize.X - renderModeWidth - 8f);
+            float renderModeWidth = 176f * UiTheme.Scale;
+            float rightAlignedX = MathF.Max(4f * UiTheme.Scale, totalSize.X - renderModeWidth - 8f * UiTheme.Scale);
             ImGui.SetCursorPos(new Vector2(rightAlignedX, itemY));
             DrawRenderModeSelector("MainHeader", renderModeWidth);
 
@@ -5632,7 +5632,7 @@ public class Viewport : UiPanel
             _ => _selectedCameraIndex - 1 < spawned.Count ? spawned[_selectedCameraIndex - 1].Name : Localization.T("text.common.render_output")
         };
 
-        ImGui.SetNextItemWidth(160f);
+        ImGui.SetNextItemWidth(160f * UiTheme.Scale);
         if (ImGui.BeginCombo("##camSelect", currentLabel))
         {
             bool roSel = _selectedCameraIndex == RenderOutputIndex;
@@ -5659,18 +5659,19 @@ public class Viewport : UiPanel
 
     public void DrawCornerPicker()
     {
-        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(2, 2));
+        float scale = UiTheme.Scale;
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(2, 2) * scale);
 
-        if (ImGui.Button(_corner == Corner.TopLeft ? Localization.Label("text.panel.viewport.tl_2", "[TL]") : Localization.Label("text.panel.viewport.tl", " TL "), new Vector2(28, 16)))
+        if (ImGui.Button(_corner == Corner.TopLeft ? Localization.Label("text.panel.viewport.tl_2", "[TL]") : Localization.Label("text.panel.viewport.tl", " TL "), new Vector2(28, 16) * scale))
             _corner = Corner.TopLeft;
-        ImGui.SameLine(0, 2);
-        if (ImGui.Button(_corner == Corner.TopRight ? Localization.Label("text.panel.viewport.tr_2", "[TR]") : Localization.Label("text.panel.viewport.tr", " TR "), new Vector2(28, 16)))
+        ImGui.SameLine(0, 2 * scale);
+        if (ImGui.Button(_corner == Corner.TopRight ? Localization.Label("text.panel.viewport.tr_2", "[TR]") : Localization.Label("text.panel.viewport.tr", " TR "), new Vector2(28, 16) * scale))
             _corner = Corner.TopRight;
-        ImGui.SameLine(0, 2);
-        if (ImGui.Button(_corner == Corner.BottomLeft ? Localization.Label("text.panel.viewport.bl_2", "[BL]") : Localization.Label("text.panel.viewport.bl", " BL "), new Vector2(28, 16)))
+        ImGui.SameLine(0, 2 * scale);
+        if (ImGui.Button(_corner == Corner.BottomLeft ? Localization.Label("text.panel.viewport.bl_2", "[BL]") : Localization.Label("text.panel.viewport.bl", " BL "), new Vector2(28, 16) * scale))
             _corner = Corner.BottomLeft;
-        ImGui.SameLine(0, 2);
-        if (ImGui.Button(_corner == Corner.BottomRight ? Localization.Label("text.panel.viewport.br_2", "[BR]") : Localization.Label("text.panel.viewport.br", " BR "), new Vector2(28, 16)))
+        ImGui.SameLine(0, 2 * scale);
+        if (ImGui.Button(_corner == Corner.BottomRight ? Localization.Label("text.panel.viewport.br_2", "[BR]") : Localization.Label("text.panel.viewport.br", " BR "), new Vector2(28, 16) * scale))
             _corner = Corner.BottomRight;
 
         ImGui.PopStyleVar();

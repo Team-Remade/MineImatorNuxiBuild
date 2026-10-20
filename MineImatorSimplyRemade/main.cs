@@ -351,7 +351,7 @@ public static class main
         Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
         Glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
 
-        var startupWindow = new StartupProgressWindow(560, 210, Localization.T("text.common.preparing_mine_imator_simply_remade"), Glfw);
+        var startupWindow = new StartupProgressWindow(560, 280, Localization.T("text.common.preparing_mine_imator_simply_remade"), Glfw);
         if (startupWindow.WindowHandle == null)
         {
             return null;
