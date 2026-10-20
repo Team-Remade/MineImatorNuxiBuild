@@ -14,6 +14,7 @@ internal sealed class SchematicData
     public byte[] Blocks { get; private set; } = [];
     public byte[] Metadata { get; private set; } = [];
     public byte[] AddBlocks { get; private set; } = [];
+    public byte[] EmbeddedModels { get; private set; } = [];
 
     public static SchematicData Load(string path)
     {
@@ -56,7 +57,8 @@ internal sealed class SchematicData
             Width = width,
             Height = height,
             Length = length,
-            Count = (int)count
+            Count = (int)count,
+            EmbeddedModels = schematic.GetTag("NuxiSpecialBlockModels") is TagByteArray models ? models.Value : []
         };
 
         bool modern = schematic.Contains("Version") || schematic.Contains("Palette") ||

@@ -10,6 +10,7 @@ using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui;
+using MineImatorSimplyRemade.core.world;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using NativeFileDialogSharp;
@@ -2868,7 +2869,7 @@ public class SpawnMenu : UiPanel
                 }
             }
 
-            if (placed == 0 || merged.Count == 0)
+            if ((placed == 0 || merged.Count == 0) && schematic.EmbeddedModels.Length == 0)
             {
                 _lastSchematicLoadError = "The schematic had no spawnable blocks.";
                 Console.Error.WriteLine($"Schematic had no spawnable blocks: {filePath}");
@@ -2908,6 +2909,19 @@ public class SpawnMenu : UiPanel
                 root.AddMesh(mesh);
             }
 
+            if (schematic.EmbeddedModels.Length > 0)
+            {
+                try
+                {
+                    using var specialImporter = new WorldSpecialBlockImporter(this, normalizedResourcePackId, []);
+                    specialImporter.AddEmbedded(schematic.EmbeddedModels, root);
+                }
+                catch
+                {
+                    foreach (var mesh in root.Visuals) mesh.Dispose();
+                    throw;
+                }
+            }
             root.ApplyMaterialSettingsToMeshes();
 
             if (root.Visuals.Count == 0)

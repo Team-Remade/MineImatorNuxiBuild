@@ -130,12 +130,15 @@ internal sealed class WorldVolume
         return copy;
     }
 
-    public void SaveSchematic(string path)
+    public void SaveSchematic(string path, byte[]? embeddedModels = null)
     {
         var root = new TagCompound("Schematic");
         root.Value.Add(new TagShort("Width", (short)Bounds.Width));
         root.Value.Add(new TagShort("Height", (short)Bounds.Height));
         root.Value.Add(new TagShort("Length", (short)Bounds.Length));
+        // Keep entity-rendered block models and their textures portable with the scenery asset.
+        if (embeddedModels != null)
+            root.Value.Add(new TagByteArray("NuxiSpecialBlockModels", embeddedModels));
         bool legacy = Palette.Skip(1).Any(s => s.StartsWith("legacy:", StringComparison.Ordinal));
         if (legacy)
         {

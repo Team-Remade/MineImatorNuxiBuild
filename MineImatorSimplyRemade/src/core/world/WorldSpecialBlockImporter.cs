@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using GlmSharp;
 using MineImatorSimplyRemade.core.mdl.mineImator;
@@ -13,10 +15,11 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
 {
     private readonly string _temporaryDirectory = Path.Combine(Path.GetTempPath(), $"nuxi-world-blocks-{Guid.NewGuid():N}");
     private readonly Dictionary<string, string> _models = new(StringComparer.Ordinal);
+    private string? _embeddedDirectory;
     private Dictionary<string, byte[]>? _packTextures;
     private Dictionary<string, byte[]>? _packMetadata;
 
-    public SceneObject Create(WorldSpecialBlock block)
+    public SceneObject Create(WorldSpecialBlock block, string? embeddedModelPath = null)
     {
         SceneObject? root = null;
         try
@@ -32,7 +35,7 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
             }
             else
             {
-                string modelPath = PortableModel(block);
+                string modelPath = embeddedModelPath ?? PortableModel(block);
                 var loader = MineImatorLoader.Instance;
                 loader.Initialize(spawnMenu.Gl!);
                 var model = loader.LoadModel(modelPath) ??
@@ -56,13 +59,92 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
         }
     }
 
-    private string PortableModel(WorldSpecialBlock block)
+    public byte[] Embed(IEnumerable<WorldSpecialBlock> blocks)
+    {
+        var placements = new JsonArray();
+        foreach (var block in blocks)
+        {
+            string path = PortableModel(block, addToProject: false);
+            var properties = new JsonObject();
+            foreach (var (name, value) in block.Properties) properties[name] = value;
+            placements.Add((JsonNode)new JsonObject
+            {
+                ["name"] = block.Name, ["model"] = block.Model,
+                ["path"] = Path.GetRelativePath(_temporaryDirectory, path).Replace('\\', '/'),
+                ["properties"] = properties,
+                ["position"] = new JsonArray(block.Position.x, block.Position.y, block.Position.z),
+                ["rotation"] = new JsonArray(block.Rotation.x, block.Rotation.y, block.Rotation.z)
+            });
+        }
+        using var output = new MemoryStream();
+        using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (string model in _models.Values)
+                foreach (string file in Directory.EnumerateFiles(Path.GetDirectoryName(model)!))
+                    archive.CreateEntryFromFile(file,
+                        Path.GetRelativePath(_temporaryDirectory, file).Replace('\\', '/'));
+            using var manifest = new StreamWriter(archive.CreateEntry("blocks.json").Open());
+            manifest.Write(placements.ToJsonString());
+        }
+        return output.ToArray();
+    }
+
+    public void AddEmbedded(byte[] data, SceneObject destination)
+    {
+        // The loader caches textures by path; identical assets must reuse the same cache keys.
+        string directory = _embeddedDirectory = Path.Combine(Path.GetTempPath(),
+            "nuxi-world-models-" + Convert.ToHexString(SHA256.HashData(data)));
+        Directory.CreateDirectory(directory);
+        using var input = new MemoryStream(data, writable: false);
+        ZipFile.ExtractToDirectory(input, directory, overwriteFiles: true);
+        var blocks = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "blocks.json"))) as JsonArray ??
+            throw new InvalidDataException("The embedded scenery models have no placements.");
+        foreach (var item in blocks)
+        {
+            string path = Path.GetFullPath(Path.Combine(directory, item!["path"]!.GetValue<string>()));
+            if (!path.StartsWith(directory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Invalid embedded scenery model placement.");
+            var properties = item["properties"]!.AsObject().ToDictionary(p => p.Key,
+                p => p.Value!.GetValue<string>(), StringComparer.OrdinalIgnoreCase);
+            var block = new WorldSpecialBlock(item["name"]!.GetValue<string>(), properties,
+                item["model"]!.GetValue<string>(), null, [],
+                ReadVector(item["position"]), ReadVector(item["rotation"]), vec3.Zero);
+            var scene = Create(block, path);
+            try { Flatten(scene); }
+            finally { DisposeScene(scene); }
+        }
+
+        static vec3 ReadVector(JsonNode? value) => value is JsonArray { Count: 3 } array
+            ? new vec3(array[0]!.GetValue<float>(), array[1]!.GetValue<float>(), array[2]!.GetValue<float>())
+            : throw new InvalidDataException("Invalid embedded scenery model transform.");
+
+        void Flatten(SceneObject node)
+        {
+            // Bake the complete posed hierarchy, including pivots and parent transforms.
+            var transform = node.GetWorldMatrix();
+            var normalTransform = transform.Inverse.Transposed;
+            foreach (var mesh in node.Visuals.ToArray())
+            {
+                for (int i = 0; i < mesh.Vertices.Count; i++)
+                    mesh.Vertices[i] = (transform * new vec4(mesh.Vertices[i], 1)).xyz;
+                for (int i = 0; i < mesh.Normals.Count; i++)
+                    mesh.Normals[i] = (normalTransform * new vec4(mesh.Normals[i], 0)).xyz.Normalized;
+                mesh.BaseTint = mesh.Albedo;
+                mesh.Upload();
+                destination.AddMesh(mesh);
+                node.Visuals.Remove(mesh);
+            }
+            foreach (var child in node.Children) Flatten(child);
+        }
+    }
+
+    private string PortableModel(WorldSpecialBlock block, bool addToProject = true)
     {
         string key = $"{block.Model}|{block.Texture}|{(block.Name == "sticky_piston")}|{block.Property("attached")}";
         if (_models.TryGetValue(key, out string? cached)) return cached;
         var entry = CharacterRegistry.Props.Concat(CharacterRegistry.Characters)
             .FirstOrDefault(e => e.Name == block.Model && Path.GetExtension(e.FilePath) == ".mimodel") ??
-            throw new InvalidDataException($"The animatable {block.Model} model is not installed. Import without conversion or install the Minecraft model catalog.");
+            throw new InvalidDataException($"The {block.Model} model is not installed. Install the Minecraft model catalog before importing this block.");
         var document = JsonNode.Parse(File.ReadAllText(entry.FilePath)) as JsonObject ??
             throw new InvalidDataException($"Invalid model file for {block.Name}.");
         string sourceDirectory = Path.GetDirectoryName(entry.FilePath)!;
@@ -143,6 +225,11 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
         Snapshot(document);
         string snapshot = Path.Combine(snapshotDirectory, block.Model + ".mimodel");
         File.WriteAllText(snapshot, document.ToJsonString());
+        if (!addToProject)
+        {
+            _models.Add(key, snapshot);
+            return snapshot;
+        }
         var manager = ProjectManager.Instance;
         var asset = manager.AddAsset(snapshot, ProjectAssetType.Model);
         addedAssets.Add(asset);
@@ -239,6 +326,8 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
     public void Dispose()
     {
         if (Directory.Exists(_temporaryDirectory)) Directory.Delete(_temporaryDirectory, recursive: true);
+        if (_embeddedDirectory != null && Directory.Exists(_embeddedDirectory))
+            Directory.Delete(_embeddedDirectory, recursive: true);
     }
 
     private static void DisposeScene(SceneObject scene)

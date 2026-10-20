@@ -1053,10 +1053,13 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
     private void FinishImport(bool convert)
     {
         if (_pendingImport == null) throw new InvalidOperationException(Localization.T("text.panel.world_importer.there_is_no_pending_world_selection"));
-        ImportSelection(_pendingImport, convert ? _specialBlocks : null);
+        var plan = convert || _specialBlocks == null ? _specialBlocks :
+            new WorldSpecialBlockPlan(_specialBlocks.Blocks.Where(b => b.Model != null).ToList(),
+                _specialBlocks.IncompleteBlocks);
+        ImportSelection(_pendingImport, plan, convert);
     }
 
-    private void ImportSelection(WorldVolume volume, WorldSpecialBlockPlan? conversion)
+    private void ImportSelection(WorldVolume volume, WorldSpecialBlockPlan? conversion, bool animate = true)
     {
         var acknowledged = _allowUnknown ? _unknown : [];
         _unknown = FindUnknown(conversion?.Terrain(volume) ?? volume);
@@ -1067,7 +1070,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             _allowUnknown = false;
             throw new InvalidDataException(Localization.T("text.panel.world_importer.the_selected_area_contains_unavailable_blocks_review_the_list_and_explicitly"));
         }
-        Import(volume, conversion);
+        Import(volume, conversion, animate);
         Close();
     }
 
@@ -1272,7 +1275,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         });
     }
 
-    private void Import(WorldVolume volume, WorldSpecialBlockPlan? conversion = null)
+    private void Import(WorldVolume volume, WorldSpecialBlockPlan? conversion = null, bool animate = true)
     {
         var manager = ProjectManager.Instance;
         if (!manager.HasProject) throw new InvalidOperationException(Localization.T("text.panel.world_importer.open_a_project_before_importing_terrain"));
@@ -1285,9 +1288,12 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             var terrain = conversion?.Terrain(volume) ?? volume;
             if (terrain.NonAirCount == 0 && (conversion == null || conversion.Blocks.Count == 0))
                 throw new InvalidDataException(Localization.T("text.panel.world_importer.the_selected_area_has_no_spawnable_blocks"));
-            if (terrain.NonAirCount > 0)
+            if (terrain.NonAirCount > 0 || !animate && conversion?.Blocks.Count > 0)
             {
-                terrain.SaveSchematic(path);
+                using var specialImporter = new WorldSpecialBlockImporter(spawnMenu, _resourcePack, addedAssets);
+                byte[]? embeddedModels = !animate && conversion?.Blocks.Count > 0
+                    ? specialImporter.Embed(conversion.Blocks) : null;
+                terrain.SaveSchematic(path, embeddedModels);
                 root = spawnMenu.CreateSchematicPreview(path, _resourcePack);
                 var asset = manager.AddAsset(path, ProjectAssetType.Other);
                 addedAssets.Add(asset);
@@ -1298,7 +1304,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
                 root = new SceneObject { ObjectType = "WorldImportGroup", PivotOffset = vec3.Zero };
                 root.AssignObjectId();
             }
-            if (conversion != null)
+            if (animate && conversion != null)
             {
                 using var specialImporter = new WorldSpecialBlockImporter(spawnMenu, _resourcePack, addedAssets);
                 foreach (var block in conversion.Blocks)
@@ -1309,7 +1315,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             SelectionManager.Instance.SelectObject(root);
             manager.SetDirty(true);
             _notice = Localization.Format("text.panel.world_importer.imported_selection_source_blocks_into_the_project", volume.NonAirCount) +
-                      (conversion != null ? Localization.Format("text.panel.world_importer.converted_animatable_blocks", conversion.Blocks.Count) : "") +
+                      (animate && conversion != null ? Localization.Format("text.panel.world_importer.converted_animatable_blocks", conversion.Blocks.Count) : "") +
                       (_blockFilter.IsActive ? Localization.Format("text.panel.world_importer.applied_block_filter_types", _blockFilter.FilteredBlocks.Count) : "") +
                       (_unknown.Length > 0 ? Localization.Format("text.panel.world_importer.omitted_unavailable_block_types", _unknown.Length) : "");
             committed = true;
