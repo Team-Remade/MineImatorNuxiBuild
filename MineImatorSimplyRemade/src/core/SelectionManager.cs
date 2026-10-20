@@ -74,12 +74,15 @@ public class SelectionManager
     /// Re-syncs the gizmo's selection list with <see cref="SelectedObjects"/>.
     /// Safe to call when <see cref="Gizmo"/> is null.
     /// </summary>
-    private void SyncGizmoSelection()
+    public void SyncGizmoSelection()
     {
         if (_gizmo == null) return;
         _gizmo.ClearSelection();
         foreach (var obj in SelectedObjects)
-            _gizmo.Select(obj);
+        {
+            if (!obj.IsHiddenForRendering())
+                _gizmo.Select(obj);
+        }
     }
 
     private void OnGizmoTransformEnd(Gizmo3D.TransformMode mode, Gizmo3D.TransformPlane plane)
@@ -104,6 +107,9 @@ public class SelectionManager
 
             foreach (var obj in SelectedObjects)
             {
+                if (_gizmo?.IsSelected(obj) != true)
+                    continue;
+
                 string? property = mode switch
                 {
                     Gizmo3D.TransformMode.Translate => "position",

@@ -91,11 +91,11 @@ public sealed class RenderExporter
         _cameraViewport = cameraViewport;
     }
 
-    public string ExportImage(int width, int height, string imageFormat, string outputPath, bool highQuality = false)
+    public string ExportImage(int width, int height, string imageFormat, string outputPath, bool highQuality = false, bool showHiddenObjects = false)
     {
         EnsureFfmpegReady();
 
-        return !_cameraViewport.CaptureCurrentViewRgb((uint)width, (uint)height, highQuality, out byte[] frame) ? throw new InvalidOperationException("Failed to capture render frame.") : ExportImageFromRgb(width, height, imageFormat, outputPath, frame);
+        return !_cameraViewport.CaptureCurrentViewRgb((uint)width, (uint)height, highQuality, out byte[] frame, showHiddenObjects: showHiddenObjects) ? throw new InvalidOperationException("Failed to capture render frame.") : ExportImageFromRgb(width, height, imageFormat, outputPath, frame);
     }
 
     public string ExportImageFromRgb(int width, int height, string imageFormat, string outputPath, byte[] rgbFrame)
@@ -247,7 +247,8 @@ public sealed class RenderExporter
         string videoFormat,
         string outputPath,
         Timeline timeline,
-        bool highQuality = false)
+        bool highQuality = false,
+        bool showHiddenObjects = false)
     {
         EnsureFfmpegReady();
 
@@ -265,7 +266,7 @@ public sealed class RenderExporter
             for (int frame = 0; frame <= timeline.MaxFrames; frame++)
             {
                 timeline.SetCurrentFrame(frame);
-                if (!_cameraViewport.CaptureCurrentViewRgb((uint)width, (uint)height, highQuality, out byte[] rgbFrame))
+                if (!_cameraViewport.CaptureCurrentViewRgb((uint)width, (uint)height, highQuality, out byte[] rgbFrame, showHiddenObjects: showHiddenObjects))
                     throw new InvalidOperationException($"Failed to capture frame {frame}.");
 
                 session.AppendFrame(rgbFrame);

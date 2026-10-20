@@ -136,6 +136,7 @@ public class ProjectRenderSettings
     public string RenderVideoFormat { get; set; } = "mp4";
     public int RenderVideoBitrateKbps { get; set; } = 12000;
     public string RenderResolutionPreset { get; set; } = "1080P";
+    public bool RenderShowHiddenObjects { get; set; } = false;
     public int TextureAnimationFps { get; set; } = 20;
     public bool UseSky { get; set; } = true;
     public bool UseAdvancedSky { get; set; } = false;
@@ -364,6 +365,7 @@ public class ProjectSceneObjectEntry
     public bool InheritPivotOffset { get; set; } = false;
     public bool InheritVisibility { get; set; } = true;
     public bool ObjectVisible { get; set; } = true;
+    public bool IsHidden { get; set; } = false;
     public bool CastShadow { get; set; } = true;
     public bool InvertFaces { get; set; } = false;
     public bool BlurTexture { get; set; } = false;

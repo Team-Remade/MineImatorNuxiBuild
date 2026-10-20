@@ -56,6 +56,8 @@ public class SceneTree : UiPanel
     private readonly List<List<SceneObject>> _childSnapshotsByDepth = [];
     private uint _lockedIcon;
     private uint _unlockedIcon;
+    private uint _visibleIcon;
+    private uint _hiddenIcon;
 
     // ── Constructor ─────────────────────────────────────────────────────────
 
@@ -95,6 +97,10 @@ public class SceneTree : UiPanel
             _lockedIcon = SvgLoader.LoadTexture(Gl, "MineImatorSimplyRemade.assets.img.button.mdi--lock.svg");
         if (_unlockedIcon == 0)
             _unlockedIcon = SvgLoader.LoadTexture(Gl, "MineImatorSimplyRemade.assets.img.button.mdi--lock-open-variant-outline.svg");
+        if (_visibleIcon == 0)
+            _visibleIcon = SvgLoader.LoadTexture(Gl, "MineImatorSimplyRemade.assets.img.button.mdi--eye-outline.svg");
+        if (_hiddenIcon == 0)
+            _hiddenIcon = SvgLoader.LoadTexture(Gl, "MineImatorSimplyRemade.assets.img.button.mdi--eye-off-outline.svg");
 
         // Reset per-frame id counter
         _nodeIdCounter  = 0;
@@ -112,10 +118,11 @@ public class SceneTree : UiPanel
         // Draw each top-level object — snapshot the list first so that a
         // reparent/delete triggered during the same frame doesn't mutate it.
         int renderedRootCount = 0;
-        if (ImGui.BeginTable("##sceneTreeItems", 2, ImGuiTableFlags.SizingStretchProp))
+        if (ImGui.BeginTable("##sceneTreeItems", 3, ImGuiTableFlags.SizingStretchProp))
         {
             ImGui.TableSetupColumn(Localization.Label("text.common.object", "Object"), ImGuiTableColumnFlags.WidthStretch);
             ImGui.TableSetupColumn(Localization.Label("text.panel.scene_tree.lock", "Lock"), ImGuiTableColumnFlags.WidthFixed, ImGui.GetFrameHeight());
+            ImGui.TableSetupColumn(Localization.Label("text.panel.scene_tree.visibility", "Visibility"), ImGuiTableColumnFlags.WidthFixed, ImGui.GetFrameHeight());
             foreach (var obj in GetChildSnapshot(Viewport.SceneObjects, depth: 0))
             {
                 if (_filteredVisibleSet != null && !_filteredVisibleSet.Contains(obj))
@@ -166,6 +173,12 @@ public class SceneTree : UiPanel
             if (_contextMenuTarget != null)
             {
                 UiText.Disabled(_contextMenuTarget.GetDisplayName());
+                ImGui.Separator();
+
+                if (ImGui.MenuItem(Localization.Label("text.menu.hide", "Hide")))
+                    SetSelectedObjectsHidden(true);
+                if (ImGui.MenuItem(Localization.Label("text.common.show", "Show")))
+                    SetSelectedObjectsHidden(false);
                 ImGui.Separator();
 
                 if (ImGui.MenuItem(Localization.Label("text.common.duplicate", "Duplicate")))
@@ -284,6 +297,22 @@ public class SceneTree : UiPanel
         }
     }
 
+    public void SetSelectedObjectsHidden(bool hidden)
+    {
+        var selectedObjects = SelectionManager.Instance?.SelectedObjects.ToList()
+            ?? (_selectedObject != null ? new List<SceneObject> { _selectedObject } : new List<SceneObject>());
+        bool changed = false;
+        foreach (var obj in selectedObjects)
+        {
+            changed |= obj.SetHiddenRecursive(hidden);
+        }
+        if (changed)
+        {
+            SelectionManager.Instance?.SyncGizmoSelection();
+            MineImatorSimplyRemade.core.project.ProjectManager.Instance.SetDirty(true);
+        }
+    }
+
     // ── Rendering helpers ───────────────────────────────────────────────────
 
     private void RenderNode(SceneObject obj, HashSet<SceneObject>? visibilityFilter, int depth)
@@ -393,6 +422,8 @@ public class SceneTree : UiPanel
 
         ImGui.TableSetColumnIndex(1);
         RenderLockButton(obj);
+        ImGui.TableSetColumnIndex(2);
+        RenderVisibilityButton(obj);
         ImGui.TableSetColumnIndex(0);
 
         // ── Recurse ─────────────────────────────────────────────────────────
@@ -433,6 +464,32 @@ public class SceneTree : UiPanel
             UiText.Tooltip(obj.IsLocked
                 ? Localization.T("text.panel.scene_tree.unlock_viewport_selection_for_this_item_and_all_descendants")
                 : Localization.T("text.panel.scene_tree.lock_viewport_selection_for_this_item_and_all_descendants"));
+    }
+
+    private unsafe void RenderVisibilityButton(SceneObject obj)
+    {
+        float iconSize = ImGui.GetTextLineHeight();
+        uint texture = obj.IsHidden ? _hiddenIcon : _visibleIcon;
+        Vector4 tint = obj.IsHidden
+            ? new Vector4(1f, 0.75f, 0.3f, 1f)
+            : new Vector4(1f, 1f, 1f, 0.45f);
+
+        bool clicked;
+        fixed (byte* id = "##visibility\0"u8)
+            clicked = ImGui.ImageButton(id, new ImTextureRef(texId: (ulong)texture),
+                new Vector2(iconSize), Vector2.Zero, Vector2.One, Vector4.Zero, tint);
+
+        if (clicked)
+        {
+            obj.SetHiddenRecursive(!obj.IsHidden);
+            SelectionManager.Instance?.SyncGizmoSelection();
+            MineImatorSimplyRemade.core.project.ProjectManager.Instance.SetDirty(true);
+        }
+
+        if (ImGui.IsItemHovered())
+            UiText.Tooltip(obj.IsHidden
+                ? Localization.T("text.panel.scene_tree.show_in_viewport")
+                : Localization.T("text.panel.scene_tree.hide_in_viewport"));
     }
 
     private List<SceneObject> GetChildSnapshot(IReadOnlyCollection<SceneObject> children, int depth)
@@ -738,6 +795,7 @@ public class SceneTree : UiPanel
         dup.LibrarySourceId     = original.LibrarySourceId;
         dup.IsSelectable        = original.IsSelectable;
         dup.IsLocked            = original.IsLocked;
+        dup.IsHidden            = original.IsHidden;
         dup.Position            = original.Position;
         dup.Rotation            = original.Rotation;
         dup.Scale               = original.Scale;
@@ -844,6 +902,7 @@ public class SceneTree : UiPanel
             newParent.AddChild(obj);
         else
             Viewport?.SceneObjects.Add(obj);
+        SelectionManager.Instance?.SyncGizmoSelection();
     }
 
     // ── Naming helpers ──────────────────────────────────────────────────────

@@ -176,6 +176,7 @@ public static class ProjectSceneSerializer
             InheritPivotOffset = obj.InheritPivotOffset,
             InheritVisibility = obj.InheritVisibility,
             ObjectVisible = obj.ObjectVisible,
+            IsHidden = obj.IsHidden,
             CastShadow = obj.CastShadow,
             InvertFaces = obj.InvertFaces,
             BlurTexture = obj.BlurTexture,
@@ -569,6 +570,7 @@ public static class ProjectSceneSerializer
         obj.InheritPivotOffset = entry.InheritPivotOffset;
         obj.InheritVisibility = entry.InheritVisibility;
         obj.ObjectVisible = entry.ObjectVisible;
+        obj.IsHidden = entry.IsHidden;
         obj.CastShadow = entry.CastShadow;
         obj.InvertFaces = entry.InvertFaces;
         obj.BlurTexture = entry.BlurTexture;

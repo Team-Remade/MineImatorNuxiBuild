@@ -48,6 +48,11 @@ public class Viewport : UiPanel
 
     public List<SceneObject> SceneObjects { get; } = new();
 
+    private bool _showHiddenObjects;
+
+    private bool IsObjectVisible(SceneObject obj) =>
+        obj.GetEffectiveVisibility() && (_showHiddenObjects || !obj.IsHiddenForRendering());
+
     // ── Panel references ───────────────────────────────────────────────────────
 
     /// <summary>
@@ -1556,7 +1561,7 @@ public class Viewport : UiPanel
     {
         if (!obj.GetEffectiveVisibility()) return;
 
-        if (obj is LightSceneObject light)
+        if (IsObjectVisible(obj) && obj is LightSceneObject light)
         {
             vec3 worldPos = new vec3(
                 obj.GetWorldMatrix().m30,
@@ -1640,7 +1645,7 @@ public class Viewport : UiPanel
     {
         if (!obj.GetEffectiveVisibility()) return;
 
-        if (obj is BoneSceneObject bone && bone.IndicatorMesh != null && ShouldShowBoneIndicator(bone))
+        if (IsObjectVisible(obj) && obj is BoneSceneObject bone && bone.IndicatorMesh != null && ShouldShowBoneIndicator(bone))
         {
             mat4 model = obj.GetWorldMatrix();
             mat4 mvp   = proj * view * model;
@@ -1784,7 +1789,7 @@ public class Viewport : UiPanel
         if (!obj.GetEffectiveVisibility())
             return;
 
-        if (obj is ParticleSpawnerSceneObject spawner && !spawner.IsRuntimeTransient)
+        if (IsObjectVisible(obj) && obj is ParticleSpawnerSceneObject spawner && !spawner.IsRuntimeTransient)
         {
             vec3 extents = new vec3(
                 MathF.Max(0f, spawner.SpawnBoxExtents.x),
@@ -3010,14 +3015,14 @@ public class Viewport : UiPanel
         Gl.BindTexture(GLEnum.TextureCubeMap, 0);
     }
 
-    private static bool HasAnyShadowCasters(IEnumerable<SceneObject> objects, SceneRenderMode renderMode)
+    private bool HasAnyShadowCasters(IEnumerable<SceneObject> objects, SceneRenderMode renderMode)
     {
         foreach (var obj in objects)
         {
             if (!obj.GetEffectiveVisibility() || !ShouldRenderInQuality(obj, renderMode))
                 continue;
 
-            if (obj.CastShadow && obj.Visuals.Any(m => !m.PickOnly && !m.DepthTestDisabled && m.Vertices.Count != 0))
+            if (IsObjectVisible(obj) && obj.CastShadow && obj.Visuals.Any(m => !m.PickOnly && !m.DepthTestDisabled && m.Vertices.Count != 0))
                 return true;
 
             if (HasAnyShadowCasters(obj.Children, renderMode))
@@ -3152,6 +3157,7 @@ public class Viewport : UiPanel
     private int ComputeShadowCacheSignature(IEnumerable<SceneObject> objects, bool includePointLights)
     {
         var hash = new HashCode();
+        hash.Add(_showHiddenObjects);
         hash.Add(_shadowMapSize);
         hash.Add(PropertiesPanel?.PointShadowBufferSize ?? 1024);
         hash.Add(PropertiesPanel?.SpotShadowBufferSize ?? 1024);
@@ -3167,6 +3173,7 @@ public class Viewport : UiPanel
         foreach (var obj in objects)
         {
             hash.Add(obj.ObjectVisible);
+            hash.Add(obj.IsHiddenForRendering());
             hash.Add(obj.InheritVisibility);
             hash.Add(obj.CastShadow);
             hash.Add(obj.RenderInHighQuality);
@@ -3296,7 +3303,7 @@ public class Viewport : UiPanel
             // Respect the per-object "Cast Shadow" toggle: objects with it
             // disabled still render normally but are skipped from the
             // directional (sun) shadow-map pass.
-            if (obj.CastShadow)
+            if (IsObjectVisible(obj) && obj.CastShadow)
             {
                 foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly && !mesh.DepthTestDisabled))
                 {
@@ -3324,7 +3331,7 @@ public class Viewport : UiPanel
         }
     }
 
-    private static void CollectShadowBounds(IEnumerable<SceneObject> objects, ref SceneShadowBounds bounds, SceneRenderMode renderMode)
+    private void CollectShadowBounds(IEnumerable<SceneObject> objects, ref SceneShadowBounds bounds, SceneRenderMode renderMode)
     {
         foreach (var obj in objects)
         {
@@ -3333,7 +3340,7 @@ public class Viewport : UiPanel
             if (!ShouldRenderInQuality(obj, renderMode))
                 continue;
 
-            if (obj.CastShadow)
+            if (IsObjectVisible(obj) && obj.CastShadow)
             {
                 mat4 world = obj.GetWorldMatrix();
                 bool includedMeshVertex = false;
@@ -3380,7 +3387,7 @@ public class Viewport : UiPanel
             // ever read by the (now identical) directional-shadow pass'
             // stub, so it was silently ignored everywhere and every visible
             // mesh always cast point/spot shadows regardless of the setting.
-            if (obj.CastShadow)
+            if (IsObjectVisible(obj) && obj.CastShadow)
             {
                 foreach (var mesh in obj.Visuals.Where(mesh => mesh is { PickOnly: false, DepthTestDisabled: false }))
                 {
@@ -3409,7 +3416,7 @@ public class Viewport : UiPanel
         }
     }
 
-    private static void CollectPointShadowCasters(IEnumerable<SceneObject> objects, SceneRenderMode renderMode, List<(LightSceneObject Light, vec3 Position, float Range)> result)
+    private void CollectPointShadowCasters(IEnumerable<SceneObject> objects, SceneRenderMode renderMode, List<(LightSceneObject Light, vec3 Position, float Range)> result)
     {
         foreach (var obj in objects)
         {
@@ -3418,7 +3425,7 @@ public class Viewport : UiPanel
             if (!ShouldRenderInQuality(obj, renderMode))
                 continue;
 
-            if (obj is LightSceneObject light && light.LightShadowEnabled)
+            if (IsObjectVisible(obj) && obj is LightSceneObject light && light.LightShadowEnabled)
             {
                 mat4 world = obj.GetWorldMatrix();
                 result.Add((light, new vec3(world.m30, world.m31, world.m32), Math.Max(light.LightRange, 0.5f)));
@@ -3711,7 +3718,7 @@ public class Viewport : UiPanel
                 localBoneDict = BuildBoneDictionary(obj);
 
             bool hasBoneIndicator = obj is BoneSceneObject b && b.IndicatorMesh != null && ShouldShowBoneIndicator(b);
-            if (obj.IsSelectable && (obj.Visuals.Count > 0 || hasBoneIndicator))
+            if (IsObjectVisible(obj) && obj.IsSelectable && (obj.Visuals.Count > 0 || hasBoneIndicator))
             {
                 mat4 model = GetRenderableWorldMatrix(obj, Mesh.GlobalCameraPosition);
                 mat4 mvp   = proj * view * model;
@@ -3812,7 +3819,7 @@ public class Viewport : UiPanel
 
         foreach (var obj in outlineObjects)
         {
-            if (!obj.GetEffectiveVisibility()) continue;
+            if (!IsObjectVisible(obj)) continue;
             if (obj.Visuals.Count == 0) continue;
 
             mat4 model = GetRenderableWorldMatrix(obj, Mesh.GlobalCameraPosition);
@@ -3951,7 +3958,7 @@ public class Viewport : UiPanel
     /// the direction is (0,0,0) and the spot-cosines are 0, which the shader
     /// interprets as "no cone test".
     /// </summary>
-    private static void CollectPointLights(
+    private void CollectPointLights(
         IEnumerable<SceneObject> objects,
         SceneRenderMode renderMode,
         Dictionary<LightSceneObject, int> shadowIndices,
@@ -3962,6 +3969,12 @@ public class Viewport : UiPanel
         {
             if (!obj.GetEffectiveVisibility()) continue;
             if (!ShouldRenderInQuality(obj, renderMode)) continue;
+
+            if (!IsObjectVisible(obj))
+            {
+                CollectPointLights(obj.Children, renderMode, shadowIndices, screenSpaceIndirectFallback, result);
+                continue;
+            }
 
             if (obj is LightSceneObject light)
             {
@@ -4505,12 +4518,17 @@ public class Viewport : UiPanel
             if (!obj.GetEffectiveVisibility()) continue;
             if (!ShouldRenderInQuality(obj, renderMode)) continue;
 
+            // Hidden nodes suppress only their own meshes, not explicitly shown descendants.
+            var localBoneDict = boneDict ?? BuildBoneDictionary(obj);
+            if (!IsObjectVisible(obj))
+            {
+                CollectRenderPairs(obj.Children, camPos, renderMode, frustum, renderItems, renderItemsNoAo, overlays, localBoneDict);
+                continue;
+            }
+
             mat4  model    = GetRenderableWorldMatrix(obj, camPos);
             vec3  worldPos = new vec3(model.m30, model.m31, model.m32);
             float dist     = (worldPos - camPos).LengthSqr;
-
-            // Build a bone dictionary once for each top-level model hierarchy.
-            var localBoneDict = boneDict ?? BuildBoneDictionary(obj);
 
             // Only this node's own Visuals — not its descendants.
             foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly))
@@ -6124,7 +6142,7 @@ public class Viewport : UiPanel
         }
     }
 
-    public unsafe bool CaptureCurrentViewRgb(uint w, uint h, bool highQuality, out byte[] rgbPixels)
+    public unsafe bool CaptureCurrentViewRgb(uint w, uint h, bool highQuality, out byte[] rgbPixels, bool showHiddenObjects = false)
     {
         rgbPixels = Array.Empty<byte>();
         if (Gl == null || MainViewport == null || _previewFbo == 0 || w == 0 || h == 0)
@@ -6134,9 +6152,12 @@ public class Viewport : UiPanel
         var (activeCam, sceneObj) = GetRenderOutputCamera(spawned);
 
         bool previousOverlays = OverlaysEnabled;
+        bool previousShowHiddenObjects = _showHiddenObjects;
         OverlaysEnabled = false;
+        _showHiddenObjects = showHiddenObjects;
         try
         {
+            UpdateCameraTextureFeeds();
             ResizeFboPublic(w, h);
             RenderScenePublic(activeCam, sceneObj, w, h, highQuality);
 
@@ -6154,7 +6175,10 @@ public class Viewport : UiPanel
         }
         finally
         {
+            _showHiddenObjects = previousShowHiddenObjects;
             OverlaysEnabled = previousOverlays;
+            if (previousShowHiddenObjects != showHiddenObjects)
+                UpdateCameraTextureFeeds();
         }
     }
 

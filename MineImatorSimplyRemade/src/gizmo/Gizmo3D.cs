@@ -467,7 +467,7 @@ public class Gizmo3D : IDisposable
 
     public void Select(SceneObject obj)
     {
-        if (obj == null) return;
+        if (obj == null || obj.IsHiddenForRendering()) return;
         if (_selections.Any(s => s.Object == obj))
         {
             return;

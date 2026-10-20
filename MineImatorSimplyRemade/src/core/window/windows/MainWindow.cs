@@ -119,6 +119,7 @@ public class MainWindow : Window
     private int _renderPopupFramerate = 30;
     private int _renderPopupBitrateKbps = 12000;
     private bool _renderPopupHighQuality = true;
+    private bool _renderPopupShowHiddenObjects;
     private string _renderPopupImageFormat = "png";
     private string _renderPopupVideoFormat = "mp4";
     private string _renderPopupPreset = "1080P";
@@ -132,6 +133,7 @@ public class MainWindow : Window
     private int _renderFrameTotal = 1;
     private int _renderJobWidth;
     private int _renderJobHeight;
+    private bool _renderJobShowHiddenObjects;
     private int _renderTimelineRestoreFrame;
     private bool _renderVideoWarmupFrame;
     private string _renderTempFramesDir = "";
@@ -253,6 +255,8 @@ public class MainWindow : Window
         _menubar.RedoRequested = PerformRedo;
         _menubar.DuplicateRequested = () => _sceneTree?.DuplicateSelectedObjects();
         _menubar.DeleteRequested = () => _sceneTree?.DeleteSelectedObjects();
+        _menubar.HideRequested = () => _sceneTree?.SetSelectedObjectsHidden(true);
+        _menubar.ShowRequested = () => _sceneTree?.SetSelectedObjectsHidden(false);
         _menubar.ImportAssetRequested = ImportAssetFromDialog;
         _menubar.ImportWorldRequested = () => _worldImporter?.Open();
         _menubar.ImportResourcePackRequested = ImportResourcePackArchiveFromDialog;
@@ -1349,6 +1353,7 @@ public class MainWindow : Window
             _renderPopupVideoFormat = _propertiesPanel.GetRenderVideoFormat();
             _renderPopupBitrateKbps = _propertiesPanel.GetRenderVideoBitrateKbps();
             _renderPopupPreset = _propertiesPanel.GetRenderResolutionPreset();
+            _renderPopupShowHiddenObjects = _propertiesPanel.GetRenderShowHiddenObjects();
         }
 
         _openRenderPopup = true;
@@ -1486,6 +1491,11 @@ public class MainWindow : Window
         UiText.Disabled(_renderPopupHighQuality
             ? Localization.T("text.window.main.rendered_mode_exports_include_lighting_and_shadows")
             : Localization.T("text.window.main.unrendered_mode_exports_keep_the_current_fast_viewport_setup"));
+
+        if (ImGui.Checkbox(Localization.Label("text.window.main.show_hidden_objects", "Show hidden objects"), ref _renderPopupShowHiddenObjects))
+            settingsChanged = true;
+        if (ImGui.IsItemHovered())
+            UiText.Tooltip(Localization.T("text.window.main.show_hidden_objects_tooltip"));
 
         if (_renderPopupMode == RenderMode.Image)
         {
@@ -1763,7 +1773,7 @@ public class MainWindow : Window
 
         string mode = _renderPopupMode == RenderMode.Video ? "video" : "image";
         _propertiesPanel.SetRenderDimensionsAndFramerate(_renderPopupWidth, _renderPopupHeight, _renderPopupFramerate);
-        _propertiesPanel.SetRenderExportSettings(mode, _renderPopupImageFormat, _renderPopupVideoFormat, _renderPopupBitrateKbps, _renderPopupPreset);
+        _propertiesPanel.SetRenderExportSettings(mode, _renderPopupImageFormat, _renderPopupVideoFormat, _renderPopupBitrateKbps, _renderPopupPreset, _renderPopupShowHiddenObjects);
 
         _projectManager.SetDirty(true);
     }
@@ -1832,6 +1842,7 @@ public class MainWindow : Window
             _renderJobStartedAtSeconds = GetNowSeconds();
             _renderJobWidth = width;
             _renderJobHeight = height;
+            _renderJobShowHiddenObjects = _renderPopupShowHiddenObjects;
             _renderFrameCurrent = 0;
             _renderVideoWarmupFrame = false;
             _closeRenderPopupRequested = false;
@@ -1882,7 +1893,7 @@ public class MainWindow : Window
             if (_renderJobMode == RenderMode.Image)
             {
                 _renderJobStatus = Localization.T("text.window.main.rendering_image");
-                if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame))
+                if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame, showHiddenObjects: _renderJobShowHiddenObjects))
                     throw new InvalidOperationException(Localization.T("text.common.failed_to_capture_render_frame"));
 
                 UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight);
@@ -1906,7 +1917,7 @@ public class MainWindow : Window
             if (_renderFrameCurrent < _renderFrameTotal)
             {
                 _timeline.SetCurrentFrameForRender(_renderFrameCurrent);
-                if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame))
+                if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame, showHiddenObjects: _renderJobShowHiddenObjects))
                     throw new InvalidOperationException(Localization.Format("text.window.main.failed_to_capture_frame", _renderFrameCurrent));
 
                 UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight);

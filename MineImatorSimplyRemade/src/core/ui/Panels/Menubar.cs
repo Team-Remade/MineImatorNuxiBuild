@@ -19,6 +19,8 @@ public class Menubar : UiPanel
     public Action? RedoRequested { get; set; }
     public Action? DuplicateRequested { get; set; }
     public Action? DeleteRequested { get; set; }
+    public Action? HideRequested { get; set; }
+    public Action? ShowRequested { get; set; }
     public Action? ImportAssetRequested { get; set; }
     public Action? ImportWorldRequested { get; set; }
     public Action? ImportResourcePackRequested { get; set; }
@@ -123,10 +125,12 @@ public class Menubar : UiPanel
                 ImGui.Separator();
                 if (ImGui.MenuItem(Localization.Label("text.menu.hide", "Hide")))
                 {
+                    HideRequested?.Invoke();
                 }
 
                 if (ImGui.MenuItem(Localization.Label("text.common.show", "Show")))
                 {
+                    ShowRequested?.Invoke();
                 }
                 ImGui.Separator();
                 if (ImGui.MenuItem(Localization.Label("text.common.preferences", "Preferences")))

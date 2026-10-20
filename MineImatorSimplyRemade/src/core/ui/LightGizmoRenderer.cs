@@ -403,7 +403,7 @@ public sealed class LightGizmoRenderer : IDisposable
         foreach (var obj in roots)
         {
             if (!obj.GetEffectiveVisibility()) continue;
-            if (obj is LightSceneObject light) result.Add(light);
+            if (!obj.IsHiddenForRendering() && obj is LightSceneObject light) result.Add(light);
             CollectLights(obj.Children, result);
         }
     }

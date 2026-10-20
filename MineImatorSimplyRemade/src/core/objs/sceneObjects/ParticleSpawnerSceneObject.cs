@@ -330,9 +330,10 @@ public class ParticleSpawnerSceneObject : SceneObject
         }
     }
 
-    private static void MarkRuntimeNode(SceneObject node)
+    private void MarkRuntimeNode(SceneObject node)
     {
         node.IsRuntimeTransient = true;
+        node.RuntimeHiddenParent = this;
         node.IsSelectable = false;
         node.HideInSceneTree = true;
 

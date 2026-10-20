@@ -136,6 +136,7 @@ public class PropertiesPanel : UiPanel
     private string _renderVideoFormat = "mp4";
     private int _renderVideoBitrateKbps = 12000;
     private string _renderResolutionPreset = "1080P";
+    private bool _renderShowHiddenObjects;
     private string _librarySearch = "";
     private string _selectedLibraryEntryId = "";
 
@@ -247,6 +248,7 @@ public class PropertiesPanel : UiPanel
     public string GetRenderVideoFormat() => _renderVideoFormat;
     public int GetRenderVideoBitrateKbps() => _renderVideoBitrateKbps;
     public string GetRenderResolutionPreset() => _renderResolutionPreset;
+    public bool GetRenderShowHiddenObjects() => _renderShowHiddenObjects;
 
     public void SetRenderDimensionsAndFramerate(int width, int height, int framerate)
     {
@@ -258,13 +260,14 @@ public class PropertiesPanel : UiPanel
             WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
     }
 
-    public void SetRenderExportSettings(string mode, string imageFormat, string videoFormat, int videoBitrateKbps, string resolutionPreset)
+    public void SetRenderExportSettings(string mode, string imageFormat, string videoFormat, int videoBitrateKbps, string resolutionPreset, bool showHiddenObjects)
     {
         _renderMode = string.Equals(mode, "video", StringComparison.OrdinalIgnoreCase) ? "video" : "image";
         _renderImageFormat = string.IsNullOrWhiteSpace(imageFormat) ? "png" : imageFormat.Trim().ToLowerInvariant();
         _renderVideoFormat = string.IsNullOrWhiteSpace(videoFormat) ? "mp4" : videoFormat.Trim().ToLowerInvariant();
         _renderVideoBitrateKbps = Math.Clamp(videoBitrateKbps, 500, 200000);
         _renderResolutionPreset = string.IsNullOrWhiteSpace(resolutionPreset) ? "Custom" : resolutionPreset.Trim();
+        _renderShowHiddenObjects = showHiddenObjects;
 
         if (ProjectManager.Instance.HasProject)
             WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
@@ -376,6 +379,7 @@ public class PropertiesPanel : UiPanel
         _renderVideoFormat = string.IsNullOrWhiteSpace(settings.RenderVideoFormat) ? "mp4" : settings.RenderVideoFormat.Trim().ToLowerInvariant();
         _renderVideoBitrateKbps = Math.Clamp(settings.RenderVideoBitrateKbps, 500, 200000);
         _renderResolutionPreset = string.IsNullOrWhiteSpace(settings.RenderResolutionPreset) ? "Custom" : settings.RenderResolutionPreset.Trim();
+        _renderShowHiddenObjects = settings.RenderShowHiddenObjects;
         TextureAnimationFps = Math.Clamp(settings.TextureAnimationFps, 1, 240);
         UseSky = settings.UseSky;
         UseAdvancedSky = settings.UseAdvancedSky;
@@ -519,6 +523,7 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.RenderVideoFormat = string.IsNullOrWhiteSpace(_renderVideoFormat) ? "mp4" : _renderVideoFormat.Trim().ToLowerInvariant();
         manifest.Settings.RenderVideoBitrateKbps = Math.Clamp(_renderVideoBitrateKbps, 500, 200000);
         manifest.Settings.RenderResolutionPreset = string.IsNullOrWhiteSpace(_renderResolutionPreset) ? "Custom" : _renderResolutionPreset.Trim();
+        manifest.Settings.RenderShowHiddenObjects = _renderShowHiddenObjects;
         manifest.Settings.TextureAnimationFps = Math.Clamp(TextureAnimationFps, 1, 240);
         manifest.Settings.UseSky = UseSky;
         manifest.Settings.UseAdvancedSky = UseAdvancedSky;
@@ -886,6 +891,7 @@ public class PropertiesPanel : UiPanel
             InheritPivotOffset = source.InheritPivotOffset,
             InheritVisibility = source.InheritVisibility,
             ObjectVisible = source.ObjectVisible,
+            IsHidden = source.IsHidden,
             CastShadow = source.CastShadow,
             InvertFaces = source.InvertFaces,
             BlurTexture = source.BlurTexture,

@@ -371,6 +371,12 @@ public class SceneObject
 
     public bool ObjectVisible = true;
 
+    /// <summary>Editor hiding is independent of authored/keyframed visibility.</summary>
+    public bool IsHidden { get; set; } = false;
+
+    // Top-level runtime particles still follow their emitter's hidden state.
+    internal SceneObject? RuntimeHiddenParent { get; set; }
+
     /// <summary>
     /// When true this object renders backfaces instead of front faces.
     /// Descendants inherit this through <see cref="GetEffectiveInvertFaces"/>.
@@ -843,6 +849,19 @@ public class SceneObject
 
         return ObjectVisible;
     }
+
+    /// <summary>Applies editor hiding to this object and its descendants.</summary>
+    public bool SetHiddenRecursive(bool hidden)
+    {
+        bool changed = IsHidden != hidden;
+        IsHidden = hidden;
+        foreach (var child in Children)
+            changed |= child.SetHiddenRecursive(hidden);
+        return changed;
+    }
+
+    /// <summary>Runtime particles follow their emitter; ordinary children have independent hide flags.</summary>
+    public bool IsHiddenForRendering() => IsHidden || RuntimeHiddenParent?.IsHiddenForRendering() == true;
 
     /// <summary>
     /// Gets whether this object should render backfaces, including parent inheritance.
