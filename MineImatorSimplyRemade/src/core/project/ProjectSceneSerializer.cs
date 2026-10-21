@@ -581,7 +581,7 @@ public static class ProjectSceneSerializer
                 bend.InheritBend = entry.InheritBend.Value;
                 bendBone.SetBendParameters(bend, entry.LockBend ?? bendBone.LockBend);
                 if (entry.BendAngle == null)
-                    bendBone.RegenerateMeshes();
+                    bendBone.SetBendAngle(bend.Angle);
             }
             if (entry.BendAngle != null)
                 bendBone.SetBendAngle(ToVec3(entry.BendAngle));

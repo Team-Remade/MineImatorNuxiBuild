@@ -13,8 +13,25 @@ uniform vec2  uTexUvRepeat;
 uniform vec2  uTexUvMirror;
 uniform bool  uIsSkinned;
 uniform mat4  uBoneMatrices[64];
+uniform bool uBendEnabled; uniform vec3 uBendAngle; uniform vec3 uBendPivot; uniform vec3 uBendShapePosition;
+uniform mat4 uBendInverseShape; uniform int uBendSegmentAxis; uniform int uBendScaleAxis;
+uniform float uBendAxisStart; uniform float uBendStart; uniform float uBendEnd; uniform float uBendSize;
+uniform bool uBendInvert; uniform bool uBendSharp;
 
 out vec2 vTexCoord;
+
+float bc(vec3 v, int a) { return a == 0 ? v.x : a == 1 ? v.y : v.z; }
+float be(float t) { if (t <= 0.0) return 0.0; if (t >= 1.0) return 1.0; float x=t*2.0; return x<1.0?0.5*pow(x,5.0):0.5*(pow(x-2.0,5.0)+2.0); }
+mat3 br(vec3 d) { vec3 a=radians(d); float cx=cos(a.x),sx=sin(a.x),cy=cos(a.y),sy=sin(a.y),cz=cos(a.z),sz=sin(a.z); return mat3(cy,0,-sy,0,1,0,sy,0,cy)*mat3(1,0,0,0,cx,sx,0,-sx,cx)*mat3(cz,sz,0,-sz,cz,0,0,0,1); }
+vec3 bendPosition(vec3 p) {
+    if (!uBendEnabled) return p;
+    vec3 local=p-uBendShapePosition; vec3 source=(uBendInverseShape*vec4(local,1.0)).xyz;
+    float segment=bc(source,uBendSegmentAxis)-uBendAxisStart;
+    float w=segment<uBendStart?0.0:segment>=uBendEnd?1.0:1.0-(uBendEnd-segment)/uBendSize; if(uBendInvert)w=1.0-w;
+    vec3 bv=uBendSharp?uBendAngle*w:vec3(uBendAngle.x*be(w),uBendAngle.y*w,uBendAngle.z*be(w)); vec3 s=vec3(1.0+w*0.005);
+    if(uBendSharp&&uBendScaleAxis>=0&&segment>uBendStart&&segment<uBendEnd){float q=(w<=0.5?w:1.0-w)*2.0;float a=abs(bc(uBendAngle,uBendScaleAxis));if(a>90.0)a=180.0-a;float c=pow(q*clamp(a/90.0,0.0,1.0),3.0)/2.5;if(uBendScaleAxis!=0)s.x+=c;if(uBendScaleAxis!=1)s.y+=c;if(uBendScaleAxis!=2)s.z+=c;}
+    return uBendPivot+br(bv)*(s*(local-uBendPivot))+uBendShapePosition;
+}
 
 vec2 applyUvTransform(vec2 uv)
 {
@@ -30,6 +47,7 @@ vec2 applyUvTransform(vec2 uv)
 }
 
 void main() {
+    vec3 bentPosition = bendPosition(aPos);
     vec4 pos;
     if (uIsSkinned) {
         mat4 skinMatrix = mat4(0.0);
@@ -38,9 +56,9 @@ void main() {
                 skinMatrix += aBoneWeights[i] * uBoneMatrices[aBoneIndices[i]];
             }
         }
-        pos = skinMatrix * vec4(aPos, 1.0);
+        pos = skinMatrix * vec4(bentPosition, 1.0);
     } else {
-        pos = vec4(aPos, 1.0);
+        pos = vec4(bentPosition, 1.0);
     }
 
     vec2 baseUv = vec2(aTexCoord.x, aTexCoord.y * uTexScaleV + uTexOffset.y);

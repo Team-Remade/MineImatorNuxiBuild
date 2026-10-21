@@ -2,6 +2,7 @@
 using GlmSharp;
 using MineImatorSimplyRemade.core.mdl.material;
 using MineImatorSimplyRemade.core.mdl.material.materials;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.core.mdl;
@@ -78,6 +79,9 @@ public class Mesh : IDisposable
     /// so the shader can deform vertices in the mesh's local space.
     /// </summary>
     public List<mat4>? BoneMatrices { get; set; }
+
+    /// <summary>Optional GPU bend state shared by all meshes on a Mine-imator bone.</summary>
+    public GpuBendState? GpuBend { get; set; }
 
     /// <summary>True when this mesh has skinning data and should be GPU-deformed.</summary>
     public bool IsSkinned => BoneIndices.Count > 0 && BoneIndices.Count == Vertices.Count;
@@ -691,6 +695,7 @@ public class Mesh : IDisposable
         clone.BoneWeights.AddRange(BoneWeights);
         clone.BoneNames.AddRange(BoneNames);
         clone.BoneInverseBindMatrices.AddRange(BoneInverseBindMatrices);
+        clone.GpuBend = GpuBend;
         clone.Indices = Indices != null ? (uint[])Indices.Clone() : null;
 
         clone.AnimationKey        = AnimationKey;
@@ -1159,6 +1164,7 @@ public class Mesh : IDisposable
             RefreshShapeKeyGeometry();
 
         _gl.UseProgram(_shader.ShaderProgram);
+        ApplyBendUniforms(_shader);
 
         // Bind the shared scene UBO (initializes link on first use).
         SceneUBO?.EnsureInitialized(_shader.ShaderProgram);
@@ -1420,6 +1426,7 @@ public class Mesh : IDisposable
             return;
 
         _gl.UseProgram(shader.ShaderProgram);
+        ApplyBendUniforms(shader);
         SetUniformMat4(shader, "uMVP", lightViewProj * model);
 
         SetUniformBool(shader, "uIsSkinned", IsSkinned);
@@ -1498,6 +1505,7 @@ public class Mesh : IDisposable
             return;
 
         _gl.UseProgram(shader.ShaderProgram);
+        ApplyBendUniforms(shader);
         SetUniformMat4(shader, "uLightViewProj", lightViewProj);
         SetUniformMat4(shader, "uModel", model);
         SetUniformVec3(shader, "uLightPos", lightPos);
@@ -1688,6 +1696,26 @@ public class Mesh : IDisposable
             SetUniformMat4(shader, $"uBoneMatrices[{i}]", BoneMatrices[i]);
     }
 
+    public void ApplyBendUniforms(Shader shader)
+    {
+        GpuBendState? bend = GpuBend;
+        SetUniformBool(shader, "uBendEnabled", bend != null);
+        if (bend == null) return;
+
+        SetUniformVec3(shader, "uBendAngle", bend.Angle);
+        SetUniformVec3(shader, "uBendPivot", bend.Pivot);
+        SetUniformVec3(shader, "uBendShapePosition", bend.ShapePosition);
+        SetUniformMat4(shader, "uBendInverseShape", bend.InverseShapeTransform);
+        SetUniformInt(shader, "uBendSegmentAxis", bend.SegmentAxis);
+        SetUniformInt(shader, "uBendScaleAxis", bend.ScaleCorrectionAxis);
+        SetUniformFloat(shader, "uBendAxisStart", bend.AxisStart);
+        SetUniformFloat(shader, "uBendStart", bend.BendStart);
+        SetUniformFloat(shader, "uBendEnd", bend.BendEnd);
+        SetUniformFloat(shader, "uBendSize", bend.BendSize);
+        SetUniformBool(shader, "uBendInvert", bend.InvertWeight);
+        SetUniformBool(shader, "uBendSharp", bend.Sharp);
+    }
+
     /// <summary>
     /// Draws the mesh geometry using whatever shader program is currently bound.
     /// Used by the colour-pick pass in <c>Viewport</c>, which sets up the flat
@@ -1717,6 +1745,8 @@ public class Mesh : IDisposable
     public unsafe void RenderPickPass(Shader shader)
     {
         if (_vao == 0 || shader == null) return;
+
+        ApplyBendUniforms(shader);
 
         float texOffsetV = 0f;
         float texScaleV = 1f;

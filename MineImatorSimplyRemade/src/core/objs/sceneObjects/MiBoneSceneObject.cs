@@ -240,7 +240,7 @@ public class MiBoneSceneObject : BoneSceneObject
         }
     }
 
-    /// <summary>Updates the bend angle and regenerates all shape meshes.</summary>
+    /// <summary>Updates the bend angle used by the vertex shader.</summary>
     public void SetBendAngle(vec3 newAngle, bool regenerateMeshes = true)
     {
         if (!BendParameters.HasValue) return;
@@ -258,8 +258,7 @@ public class MiBoneSceneObject : BoneSceneObject
         bp.Angle   = newAngle;
         BendParameters = bp;
 
-        if (regenerateMeshes)
-            RegenerateMeshes();
+        UpdateGpuBendStates(propagateInheritedBends: regenerateMeshes);
     }
 
     /// <summary>
@@ -358,6 +357,24 @@ public class MiBoneSceneObject : BoneSceneObject
             {
                 childBone.RegenerateMeshes();
             }
+        }
+    }
+
+    private void UpdateGpuBendStates(bool propagateInheritedBends)
+    {
+        vec3 effectiveAngle = GetEffectiveBendAngle();
+        foreach (var mesh in Visuals)
+        {
+            if (mesh.GpuBend != null)
+                mesh.GpuBend.Angle = effectiveAngle;
+        }
+
+        if (!propagateInheritedBends) return;
+        foreach (var child in Children)
+        {
+            if (child is MiBoneSceneObject childBone &&
+                childBone.BendParameters is { InheritBend: true })
+                childBone.UpdateGpuBendStates(true);
         }
     }
 

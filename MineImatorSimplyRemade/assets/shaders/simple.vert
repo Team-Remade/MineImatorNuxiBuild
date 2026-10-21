@@ -22,6 +22,19 @@ uniform vec2  uTexUvMirror;
 uniform bool  uIsSkinned;
 uniform bool  uUseInstancing;
 uniform mat4  uBoneMatrices[64];
+uniform bool  uBendEnabled;
+uniform vec3  uBendAngle;
+uniform vec3  uBendPivot;
+uniform vec3  uBendShapePosition;
+uniform mat4  uBendInverseShape;
+uniform int   uBendSegmentAxis;
+uniform int   uBendScaleAxis;
+uniform float uBendAxisStart;
+uniform float uBendStart;
+uniform float uBendEnd;
+uniform float uBendSize;
+uniform bool  uBendInvert;
+uniform bool  uBendSharp;
 
 layout(std140) uniform SceneData {
     mat4  uLightSpaceMatrix;
@@ -50,6 +63,54 @@ out vec3 vFragPos;
 out vec2 vTexCoord;
 out vec4 vShadowCoord;
 
+float bendComponent(vec3 value, int axis) {
+    return axis == 0 ? value.x : axis == 1 ? value.y : value.z;
+}
+
+float bendEase(float t) {
+    if (t <= 0.0) return 0.0;
+    if (t >= 1.0) return 1.0;
+    float x = t * 2.0;
+    return x < 1.0 ? 0.5 * pow(x, 5.0) : 0.5 * (pow(x - 2.0, 5.0) + 2.0);
+}
+
+mat3 bendRotation(vec3 degrees) {
+    vec3 a = radians(degrees);
+    float cx = cos(a.x), sx = sin(a.x);
+    float cy = cos(a.y), sy = sin(a.y);
+    float cz = cos(a.z), sz = sin(a.z);
+    mat3 rx = mat3(1, 0, 0, 0, cx, sx, 0, -sx, cx);
+    mat3 ry = mat3(cy, 0, -sy, 0, 1, 0, sy, 0, cy);
+    mat3 rz = mat3(cz, sz, 0, -sz, cz, 0, 0, 0, 1);
+    return ry * rx * rz;
+}
+
+void applyBend(inout vec3 position, inout vec3 normal) {
+    if (!uBendEnabled) return;
+    vec3 localPosition = position - uBendShapePosition;
+    vec3 sourcePosition = (uBendInverseShape * vec4(localPosition, 1.0)).xyz;
+    float segmentPosition = bendComponent(sourcePosition, uBendSegmentAxis) - uBendAxisStart;
+    float weight = segmentPosition < uBendStart ? 0.0 :
+        segmentPosition >= uBendEnd ? 1.0 : 1.0 - (uBendEnd - segmentPosition) / uBendSize;
+    if (uBendInvert) weight = 1.0 - weight;
+    vec3 bendVector = uBendSharp
+        ? uBendAngle * weight
+        : vec3(uBendAngle.x * bendEase(weight), uBendAngle.y * weight, uBendAngle.z * bendEase(weight));
+    vec3 scale = vec3(1.0 + weight * 0.005);
+    if (uBendSharp && uBendScaleAxis >= 0 && segmentPosition > uBendStart && segmentPosition < uBendEnd) {
+        float triangle = (weight <= 0.5 ? weight : 1.0 - weight) * 2.0;
+        float angle = abs(bendComponent(uBendAngle, uBendScaleAxis));
+        if (angle > 90.0) angle = 180.0 - angle;
+        float correction = pow(triangle * clamp(angle / 90.0, 0.0, 1.0), 3.0) / 2.5;
+        if (uBendScaleAxis != 0) scale.x += correction;
+        if (uBendScaleAxis != 1) scale.y += correction;
+        if (uBendScaleAxis != 2) scale.z += correction;
+    }
+    mat3 rotation = bendRotation(bendVector);
+    position = uBendPivot + rotation * (scale * (localPosition - uBendPivot)) + uBendShapePosition;
+    normal = normalize(rotation * (scale * normal));
+}
+
 vec2 applyUvTransform(vec2 uv)
 {
     vec2 repeated = uv * uTexUvRepeat;
@@ -68,6 +129,9 @@ void main() {
         ? mat4(aInstanceM0, aInstanceM1, aInstanceM2, aInstanceM3)
         : uModel;
 
+    vec3 bentPosition = aPos;
+    vec3 bentNormal = aNormal;
+    applyBend(bentPosition, bentNormal);
     vec4 pos;
     vec3 normal;
 
@@ -78,11 +142,11 @@ void main() {
                 skinMatrix += aBoneWeights[i] * uBoneMatrices[aBoneIndices[i]];
             }
         }
-        pos    = skinMatrix * vec4(aPos, 1.0);
-        normal = mat3(skinMatrix) * aNormal;
+        pos    = skinMatrix * vec4(bentPosition, 1.0);
+        normal = mat3(skinMatrix) * bentNormal;
     } else {
-        pos    = vec4(aPos, 1.0);
-        normal = aNormal;
+        pos    = vec4(bentPosition, 1.0);
+        normal = bentNormal;
     }
 
     vec4 worldPos   = modelMat * pos;

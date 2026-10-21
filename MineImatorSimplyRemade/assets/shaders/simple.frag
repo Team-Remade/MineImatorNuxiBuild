@@ -9,6 +9,8 @@ uniform vec3  uAlbedo;
 uniform vec4  uBlendColor;
 uniform vec4  uMixColor;
 uniform float uAlpha;
+uniform bool  uBendEnabled;
+uniform bool  uBendSharp;
 uniform bool  uEmissionEnabled;
 uniform vec3  uEmissionColor;
 uniform float uEmissionEnergy;
@@ -299,7 +301,13 @@ void main() {
     vec3 result = baseColor;
 
     if (!uIsUnlit) {
-    vec3 norm    = gl_FrontFacing ? normalize(vNormal) : -normalize(vNormal);
+    vec3 vertexNormal = normalize(vNormal);
+    if (uBendEnabled && uBendSharp) {
+        vec3 flatNormal = normalize(cross(dFdx(vFragPos), dFdy(vFragPos)));
+        if (dot(flatNormal, vertexNormal) < 0.0) flatNormal = -flatNormal;
+        vertexNormal = flatNormal;
+    }
+    vec3 norm    = gl_FrontFacing ? vertexNormal : -vertexNormal;
     vec3 sunDir  = normalize(uLightDir);
     float diff   = max(dot(norm, sunDir), 0.0);
     vec3 diffuse = diff * uLightColor;

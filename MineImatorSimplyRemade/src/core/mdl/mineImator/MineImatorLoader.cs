@@ -277,11 +277,10 @@ public class MineImatorLoader
         void RefreshInheritedBends(SceneObject obj)
         {
             if (!refreshed.Add(obj)) return;
-            // Meshes were built against the model hierarchy. Their inherited
-            // bend must now agree with attachment transforms in the authored hierarchy.
+            // Refresh the shader angle now that the authored hierarchy is final.
             if (obj is MiBoneSceneObject bone && bone.BendParameters.HasValue &&
                 (changedBends.Contains(obj) || bone.BendParameters.Value.InheritBend))
-                bone.RegenerateMeshes(propagateInheritedBends: false);
+                bone.SetBendAngle(bone.BendParameters.Value.Angle, regenerateMeshes: false);
             foreach (var child in obj.Children)
                 RefreshInheritedBends(child);
         }
@@ -1644,10 +1643,15 @@ public class MineImatorLoader
         float inflate = shape.Inflate / 16f;
 
         BendParams? effectiveBend = (shape.Bend && bendParams.HasValue) ? bendParams : null;
+        BendParams? geometryBend = effectiveBend;
+        if (geometryBend.HasValue)
+        {
+            var value = geometryBend.Value;
+            value.Angle = vec3.Zero;
+            geometryBend = value;
+        }
 
-        bool planeBent = effectiveBend.HasValue &&
-                         (effectiveBend.Value.Angle.x != 0 || effectiveBend.Value.Angle.y != 0 ||
-                          effectiveBend.Value.Angle.z != 0);
+        bool planeBent = effectiveBend.HasValue;
 
         Mesh mesh;
 
@@ -1657,7 +1661,7 @@ public class MineImatorLoader
             {
                 if (planeBent)
                     mesh = CreateBentExtrudedPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
-                        textureId, shape.TextureMirror, shape.Invert, inflate, effectiveBend.Value,
+                        textureId, shape.TextureMirror, shape.Invert, inflate, geometryBend!.Value,
                         shapePosition, shapeRotation, shapeScale, bendStyle);
                 else
                     mesh = CreateExtrudedPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
@@ -1666,7 +1670,7 @@ public class MineImatorLoader
             else if (planeBent)
             {
                 mesh = CreateBentPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
-                    shape.TextureMirror, shape.Invert, inflate, effectiveBend.Value, shapePosition,
+                    shape.TextureMirror, shape.Invert, inflate, geometryBend!.Value, shapePosition,
                     shapeRotation, shapeScale, bendStyle, shape.HideFront, shape.HideBack);
             }
             else
@@ -1679,7 +1683,7 @@ public class MineImatorLoader
         else
         {
             mesh = CreateBlockMesh(partName, shapeIndex, from, to, uvU, uvV, sizeX, sizeY, sizeZ,
-                texWidth, texHeight, shape.TextureMirror, shape.TextureMirrorY, shape.Invert, inflate, effectiveBend,
+                texWidth, texHeight, shape.TextureMirror, shape.TextureMirrorY, shape.Invert, inflate, geometryBend,
                 shapePosition, shapeRotation, shapeScale, bendStyle, shapeVertexOffsets);
         }
 
@@ -1709,9 +1713,56 @@ public class MineImatorLoader
                     mesh.Vertices[i] += shapePosition;
                 mesh.Upload();
             }
+
+            if (effectiveBend.HasValue)
+            {
+                mesh.GpuBend = CreateGpuBendState(effectiveBend.Value, from, to, inflate,
+                    shapePosition, shapeRotation, shapeScale, bendStyle);
+            }
         }
 
         return mesh;
+    }
+
+    private static GpuBendState CreateGpuBendState(BendParams bend, vec3 from, vec3 to, float inflate,
+        vec3 shapePosition, vec3 shapeRotation, vec3 shapeScale, BendStyle bendStyle)
+    {
+        int segmentAxis = bend.Part switch
+        {
+            BendPart.Right or BendPart.Left => 0,
+            BendPart.Upper or BendPart.Lower => 1,
+            _ => 2
+        };
+        float axisScale = MathF.Max(MathF.Abs(shapeScale[segmentAxis]), 1e-6f);
+        float bendSize = bend.BendSize / 16f / axisScale;
+        float bendOffset = bend.BendOffset / 16f / axisScale;
+        float bendShapePosition = shapePosition[segmentAxis] / axisScale;
+        float axisStart = Math.Min(from[segmentAxis], to[segmentAxis]) - inflate;
+        float bendStart = bendOffset - (bendShapePosition + axisStart) - bendSize / 2f;
+        float bendEnd = bendStart + bendSize;
+        BendStyle effectiveStyle = bendStyle == BendStyle.ProjectDefault ? ProjectBendStyle : bendStyle;
+        bool singleXorZ = (bend.AxisX && !bend.AxisY && !bend.AxisZ) ||
+                          (!bend.AxisX && !bend.AxisY && bend.AxisZ);
+        bool sharp = effectiveStyle == BendStyle.Blocky && !bend.ExplicitBendSize && singleXorZ;
+        int scaleAxis = bend.AxisX && !bend.AxisY && !bend.AxisZ ? 0 :
+            !bend.AxisX && !bend.AxisY && bend.AxisZ ? 2 : -1;
+        mat4 shapeTransform = BuildShapeRotMat(shapeRotation) * mat4.Scale(shapeScale);
+
+        return new GpuBendState
+        {
+            Angle = bend.Angle,
+            Pivot = BendHelper.GetBendPivot(bend, shapePosition),
+            ShapePosition = shapePosition,
+            InverseShapeTransform = shapeTransform.Inverse,
+            SegmentAxis = segmentAxis,
+            ScaleCorrectionAxis = scaleAxis,
+            AxisStart = axisStart,
+            BendStart = bendStart,
+            BendEnd = bendEnd,
+            BendSize = bendSize,
+            InvertWeight = bend.Part is BendPart.Lower or BendPart.Back or BendPart.Left,
+            Sharp = sharp
+        };
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1817,8 +1868,7 @@ public class MineImatorLoader
             FlipFaceVertically(ref texDown1, ref texDown2, ref texDown3, ref texDown4);
         }
 
-        bool isBent = bend.HasValue &&
-                      (bend.Value.Angle.x != 0 || bend.Value.Angle.y != 0 || bend.Value.Angle.z != 0);
+        bool isBent = bend.HasValue;
 
         if (!isBent)
         {
@@ -2034,8 +2084,6 @@ public class MineImatorLoader
             n3 = BendHelper.TransformDirection(rsm, n3);
             n4 = BendHelper.TransformDirection(rsm, n4);
 
-            const float scaleFactor = 0.005f;
-
             float startP = bendStart > 0 ? 0f : bendEnd < 0 ? 1f : 1f - bendEnd / bendSize;
             if (invAngle) startP = 1f - startP;
 
@@ -2176,7 +2224,7 @@ public class MineImatorLoader
                 vec3 segScaleCorr = sharpBend
                     ? BendHelper.GetBendScaleCorrection(bendStart, bendEnd, segP, segPos, b.Angle, b)
                     : vec3.Zero;
-                vec3 segMatScale = vec3.Ones + segScaleCorr + new vec3(segP * scaleFactor);
+                vec3 segMatScale = vec3.Ones + segScaleCorr;
                 mat4 segMat = BendHelper.GetBendMatrix(b, segBendVec, shapePosition, shapeScale, segMatScale);
 
                 np1 = BendHelper.TransformPoint(segMat, np1);
