@@ -23,7 +23,7 @@ namespace MineImatorSimplyRemade.core.mdl.meshes;
 /// </summary>
 public static class MinecraftModelMesh
 {
-    // Minecraft model coordinates are 0–16; we normalise to 0–1 (one block unit)
+    // Preserve Minecraft's model origin, scaling 0..16 to 0..1 block units.
     private const float Scale = 1f / 16f;
 
     // ── Default block tints ───────────────────────────────────────────────────
@@ -317,17 +317,12 @@ public static class MinecraftModelMesh
         // Blockstate variant rotation matrix (applied on top of element geometry)
         mat4 variantTransform = BuildVariantTransform(variantRotX, variantRotY);
 
-        // Centered offsets so the tile group is anchored on the mesh origin.
-        float centerX = (tileX - 1) * 0.5f;
-        float centerY = (tileY - 1) * 0.5f;
-        float centerZ = (tileZ - 1) * 0.5f;
-
         // Generate geometry per tile, culling internal faces between adjacent tiles.
         for (int tz = 0; tz < tileZ; tz++)
         for (int ty = 0; ty < tileY; ty++)
         for (int tx = 0; tx < tileX; tx++)
         {
-            vec3 tileOffset = new vec3(tx - centerX, ty - centerY, tz - centerZ);
+            vec3 tileOffset = new vec3(tx, ty, tz);
             foreach (var element in model.Elements)
             {
                 AppendElement(element, model, groups, variantTransform, resourcePackId,
@@ -458,10 +453,6 @@ public static class MinecraftModelMesh
         if (texKeyForTranslucency != null)
             mesh.IsTranslucent = TerrainAtlas.IsTextureTranslucent(texKeyForTranslucency);
 
-        float centerX = (tileX - 1) * 0.5f;
-        float centerY = (tileY - 1) * 0.5f;
-        float centerZ = (tileZ - 1) * 0.5f;
-
         var uvCorners = new vec2[]
         {
             new vec2(0, 0), new vec2(1, 0), new vec2(1, 1), new vec2(0, 1)
@@ -471,7 +462,7 @@ public static class MinecraftModelMesh
         for (int ty = 0; ty < tileY; ty++)
         for (int tx = 0; tx < tileX; tx++)
         {
-            vec3 offset = new vec3(tx - centerX, ty - centerY, tz - centerZ);
+            vec3 offset = new vec3(tx, ty, tz);
 
             AppendCubeFaceIfExternal(mesh, "down",  offset, ty > 0,         uvCorners);
             AppendCubeFaceIfExternal(mesh, "up",    offset, ty + 1 < tileY, uvCorners);
@@ -492,12 +483,12 @@ public static class MinecraftModelMesh
 
         var (x0, y0, z0, x1, y1, z1) = faceName switch
         {
-            "down"  => (-0.5f, -0.5f, -0.5f,  0.5f, -0.5f,  0.5f),
-            "up"    => (-0.5f,  0.5f, -0.5f,  0.5f,  0.5f,  0.5f),
-            "north" => (-0.5f, -0.5f, -0.5f,  0.5f,  0.5f, -0.5f),
-            "south" => (-0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f),
-            "west"  => (-0.5f, -0.5f, -0.5f, -0.5f,  0.5f,  0.5f),
-            "east"  => ( 0.5f, -0.5f, -0.5f,  0.5f,  0.5f,  0.5f),
+            "down"  => (0f, 0f, 0f, 1f, 0f, 1f),
+            "up"    => (0f, 1f, 0f, 1f, 1f, 1f),
+            "north" => (0f, 0f, 0f, 1f, 1f, 0f),
+            "south" => (0f, 0f, 1f, 1f, 1f, 1f),
+            "west"  => (0f, 0f, 0f, 0f, 1f, 1f),
+            "east"  => (1f, 0f, 0f, 1f, 1f, 1f),
             _       => (0f, 0f, 0f, 0f, 0f, 0f)
         };
 
@@ -505,7 +496,7 @@ public static class MinecraftModelMesh
         vec3 n = FaceNormal(faceName);
         v0 += offset; v1 += offset; v2 += offset; v3 += offset;
 
-            if (faceName is "east" or "up" or "south" or "west" or "down")
+            if (faceName is "east" or "up" or "south" or "west")
             {
                 // Positive-direction faces: (V0,V3,V2) and (V0,V2,V1) — CCW
                 mesh.Vertices.Add(v0); mesh.Normals.Add(n); mesh.TexCoords.Add(uvCorners[0]);
@@ -597,46 +588,21 @@ public static class MinecraftModelMesh
     /// </summary>
     private static Mesh BuildTiledUntexturedCube(GL gl, int tileX, int tileY, int tileZ)
     {
-        var cube = new CubeMesh(gl);
-        // CubeMesh already generates a single unit cube; we need a tiled version.
-        // For simplicity and correctness, discard the single cube and build per-tile.
-        cube.Dispose();
-
         var mesh = new Mesh(gl);
         mesh.DoubleSided = false;
-
-        float centerX = (tileX - 1) * 0.5f;
-        float centerY = (tileY - 1) * 0.5f;
-        float centerZ = (tileZ - 1) * 0.5f;
+        vec2[] uvs = [vec2.Zero, vec2.Zero, vec2.Zero, vec2.Zero];
 
         for (int tz = 0; tz < tileZ; tz++)
         for (int ty = 0; ty < tileY; ty++)
         for (int tx = 0; tx < tileX; tx++)
         {
-            vec3 offset = new vec3(tx - centerX, ty - centerY, tz - centerZ);
-            // CubeMesh face vertex layout (matches FaceQuad winding for the same faces)
-            var faces = new (string name, bool skip, vec3 v0, vec3 v1, vec3 v2, vec3 v3, vec3 n)[]
-            {
-                ("down",  ty > 0,         new vec3(-0.5f, -0.5f, -0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3( 0, -1,  0)),
-                ("up",    ty + 1 < tileY, new vec3(-0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f,  0.5f), new vec3(-0.5f,  0.5f,  0.5f), new vec3( 0,  1,  0)),
-                ("north", tz > 0,         new vec3(-0.5f,  0.5f, -0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3(-0.5f, -0.5f, -0.5f), new vec3( 0,  0, -1)),
-                ("south", tz + 1 < tileZ, new vec3(-0.5f,  0.5f,  0.5f), new vec3( 0.5f,  0.5f,  0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3( 0,  0,  1)),
-                ("west",  tx > 0,         new vec3(-0.5f,  0.5f, -0.5f), new vec3(-0.5f,  0.5f,  0.5f), new vec3(-0.5f, -0.5f,  0.5f), new vec3(-0.5f, -0.5f, -0.5f), new vec3(-1,  0,  0)),
-                ("east",  tx + 1 < tileX, new vec3( 0.5f,  0.5f,  0.5f), new vec3( 0.5f,  0.5f, -0.5f), new vec3( 0.5f, -0.5f, -0.5f), new vec3( 0.5f, -0.5f,  0.5f), new vec3( 1,  0,  0)),
-            };
-
-            foreach (var (name, skip, v0, v1, v2, v3, n) in faces)
-            {
-                if (skip) continue;
-                // Tri 0: v0(TL), v3(BL), v2(BR) — CCW
-                mesh.Vertices.Add(v0 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-                mesh.Vertices.Add(v3 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-                mesh.Vertices.Add(v2 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-                // Tri 1: v0(TL), v2(BR), v1(TR) — CCW
-                mesh.Vertices.Add(v0 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-                mesh.Vertices.Add(v2 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-                mesh.Vertices.Add(v1 + offset); mesh.Normals.Add(n); mesh.TexCoords.Add(vec2.Zero);
-            }
+            vec3 offset = new vec3(tx, ty, tz);
+            AppendCubeFaceIfExternal(mesh, "down", offset, ty > 0, uvs);
+            AppendCubeFaceIfExternal(mesh, "up", offset, ty + 1 < tileY, uvs);
+            AppendCubeFaceIfExternal(mesh, "north", offset, tz > 0, uvs);
+            AppendCubeFaceIfExternal(mesh, "south", offset, tz + 1 < tileZ, uvs);
+            AppendCubeFaceIfExternal(mesh, "west", offset, tx > 0, uvs);
+            AppendCubeFaceIfExternal(mesh, "east", offset, tx + 1 < tileX, uvs);
         }
 
         mesh.Upload();
@@ -683,12 +649,12 @@ public static class MinecraftModelMesh
         int tx, int ty, int tz,
         int tileX, int tileY, int tileZ)
     {
-        float x0 = element.From[0] * Scale - 0.5f;
-        float y0 = element.From[1] * Scale - 0.5f;
-        float z0 = element.From[2] * Scale - 0.5f;
-        float x1 = element.To[0]   * Scale - 0.5f;
-        float y1 = element.To[1]   * Scale - 0.5f;
-        float z1 = element.To[2]   * Scale - 0.5f;
+        float x0 = element.From[0] * Scale;
+        float y0 = element.From[1] * Scale;
+        float z0 = element.From[2] * Scale;
+        float x1 = element.To[0]   * Scale;
+        float y1 = element.To[1]   * Scale;
+        float z1 = element.To[2]   * Scale;
 
         // Optional element-level rotation
         mat4 elementTransform = mat4.Identity;
@@ -897,9 +863,9 @@ public static class MinecraftModelMesh
 
     private static mat4 BuildElementRotation(ElementRotation rot)
     {
-        float ox = rot.Origin[0] * Scale - 0.5f;
-        float oy = rot.Origin[1] * Scale - 0.5f;
-        float oz = rot.Origin[2] * Scale - 0.5f;
+        float ox = rot.Origin[0] * Scale;
+        float oy = rot.Origin[1] * Scale;
+        float oz = rot.Origin[2] * Scale;
 
         float rad = rot.Angle * MathF.PI / 180f;
 
@@ -933,7 +899,8 @@ public static class MinecraftModelMesh
         // uses the same direction as standard math.
         mat4 rx = mat4.RotateX(-radX);
         mat4 ry = mat4.RotateY(radY);
-        return ry * rx;
+        // Blockstate rotations are about the block center, not its mesh origin.
+        return mat4.Translate(new vec3(0.5f)) * ry * rx * mat4.Translate(new vec3(-0.5f));
     }
 
     // ── Transform helpers ─────────────────────────────────────────────────────

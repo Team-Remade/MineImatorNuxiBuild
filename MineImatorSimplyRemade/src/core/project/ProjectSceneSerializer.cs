@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using GlmSharp;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
@@ -187,6 +189,7 @@ public static class ProjectSceneSerializer
             LockBend = obj.LockBend,
             InheritBend = obj is MiBoneSceneObject bendSource ? bendSource.BendParameters?.InheritBend : null,
             InheritPivotOffset = obj.InheritPivotOffset,
+            PivotOffsetInheritsModelOrigin = obj.PivotOffsetInheritsModelOrigin,
             InheritVisibility = obj.InheritVisibility,
             ObjectVisible = obj.ObjectVisible,
             IsHidden = obj.IsHidden,
@@ -206,6 +209,7 @@ public static class ProjectSceneSerializer
             TileX = obj.GetEffectiveTileX(),
             TileY = obj.GetEffectiveTileY(),
             TileZ = obj.GetEffectiveTileZ(),
+            BlockMeshOriginVersion = 1,
             PrimitivePlaneOrientation = obj.SpawnCategory == "Primitives" && obj.ObjectType == "Plane"
                 ? obj.Visuals.OfType<PlaneMesh>().FirstOrDefault()?.Orientation ?? PlaneOrientation.XY
                 : PlaneOrientation.XY,
@@ -359,8 +363,10 @@ public static class ProjectSceneSerializer
         ProjectSceneObjectEntry entry,
         Viewport viewport,
         SpawnMenu spawnMenu,
-        SceneObject? parent)
+        SceneObject? parent,
+        vec3 parentOriginDelta = default)
     {
+        vec3 originDelta = UpgradeBlockMeshOrigin(entry);
         SceneObject obj = CreateSpawnedObject(entry, spawnMenu) ?? CreateFallbackObject(entry, viewport);
 
         if (parent != null)
@@ -371,14 +377,16 @@ public static class ProjectSceneSerializer
 
         // Apply serialized state after parent linkage so inherited bend can
         // resolve against the correct parent during SetBendAngle regeneration.
+        RebaseBonePositionKeyframes(obj, entry, parentOriginDelta);
         ApplyEntryToObject(obj, entry);
 
-        RestoreChildren(entry, obj, viewport, spawnMenu);
+        RestoreChildren(entry, obj, viewport, spawnMenu, originDelta);
 
         return obj;
     }
 
-    private static void RestoreChildren(ProjectSceneObjectEntry entry, SceneObject obj, Viewport viewport, SpawnMenu spawnMenu)
+    private static void RestoreChildren(ProjectSceneObjectEntry entry, SceneObject obj, Viewport viewport, SpawnMenu spawnMenu,
+        vec3 originDelta)
     {
         var usedChildren = new HashSet<SceneObject>();
 
@@ -388,12 +396,14 @@ public static class ProjectSceneSerializer
             if (existingChild != null)
             {
                 usedChildren.Add(existingChild);
+                vec3 childOriginDelta = UpgradeBlockMeshOrigin(childEntry);
+                RebaseBonePositionKeyframes(existingChild, childEntry, originDelta);
                 ApplyEntryToObject(existingChild, childEntry);
-                RestoreChildren(childEntry, existingChild, viewport, spawnMenu);
+                RestoreChildren(childEntry, existingChild, viewport, spawnMenu, childOriginDelta);
                 continue;
             }
 
-            usedChildren.Add(RestoreNode(childEntry, viewport, spawnMenu, obj));
+            usedChildren.Add(RestoreNode(childEntry, viewport, spawnMenu, obj, originDelta));
         }
     }
 
@@ -599,6 +609,7 @@ public static class ProjectSceneSerializer
             else
                 obj.LockBend = entry.LockBend.Value;
         }
+        obj.PivotOffsetInheritsModelOrigin = entry.PivotOffsetInheritsModelOrigin;
         obj.InheritPivotOffset = entry.InheritPivotOffset;
         obj.InheritVisibility = entry.InheritVisibility;
         obj.ObjectVisible = entry.ObjectVisible;
@@ -860,6 +871,71 @@ public static class ProjectSceneSerializer
     private static vec4 ToVec4(ProjectVec4 value)
     {
         return new vec4(value.X, value.Y, value.Z, value.W);
+    }
+
+    internal static vec3 UpgradeBlockMeshOrigin(ProjectSceneObjectEntry entry)
+    {
+        if (entry.BlockMeshOriginVersion != 0 || entry.SpawnCategory != "Blocks")
+            return vec3.Zero;
+
+        var variants = BlockRegistry.GetVariants(entry.ObjectType);
+        var variant = variants.FirstOrDefault(v => v.VariantKey == entry.BlockVariant)
+                      ?? variants.FirstOrDefault();
+        // CEM ignores tiling, unlike JSON models and fallback cubes.
+        var delta = !string.IsNullOrEmpty(variant?.CemPath)
+            ? new vec3(0.5f)
+            : new vec3(Math.Clamp(entry.TileX, 1, SceneObject.MaxTilesPerAxis),
+                       Math.Clamp(entry.TileY, 1, SceneObject.MaxTilesPerAxis),
+                       Math.Clamp(entry.TileZ, 1, SceneObject.MaxTilesPerAxis)) * 0.5f;
+        entry.PivotOffset = ToProjectVec3(ToVec3(entry.PivotOffset) - delta);
+
+        // The parent's mesh stays put, but its visual attachment frame shifts.
+        foreach (var child in entry.Children)
+        {
+            if (!child.InheritPivotOffset || !child.InheritPosition)
+                continue;
+
+            vec3 childDelta = child.PivotOffsetInheritsModelOrigin ? delta : -delta;
+            child.Position = ToProjectVec3(ToVec3(child.Position) + childDelta);
+            OffsetPositionKeyframes(child, childDelta);
+        }
+
+        entry.BlockMeshOriginVersion = 1;
+        return delta;
+    }
+
+    private static void RebaseBonePositionKeyframes(SceneObject obj, ProjectSceneObjectEntry entry, vec3 delta)
+    {
+        if (obj is not MiBoneSceneObject bone || delta == vec3.Zero ||
+            !entry.InheritPivotOffset || !entry.InheritPosition)
+            return;
+
+        if (!entry.PivotOffsetInheritsModelOrigin)
+            delta = -delta;
+        // Bone timeline positions use the model's rotated base-pose frame.
+        vec3 position = bone.Position;
+        vec3 offset = bone.OffsetPosition;
+        bone.SetLocalPosition(position + delta);
+        vec3 offsetDelta = bone.OffsetPosition - offset;
+        bone.SetLocalPosition(position);
+        OffsetPositionKeyframes(entry, offsetDelta - delta);
+    }
+
+    private static void OffsetPositionKeyframes(ProjectSceneObjectEntry entry, vec3 delta)
+    {
+        foreach (var axis in new[] { ("position.x", delta.x), ("position.y", delta.y), ("position.z", delta.z) })
+        {
+            if (!entry.Keyframes.TryGetValue(axis.Item1, out var keyframes))
+                continue;
+            foreach (var keyframe in keyframes)
+            {
+                string? value = keyframe.Value is JsonElement json
+                    ? json.ToString()
+                    : Convert.ToString(keyframe.Value, CultureInfo.InvariantCulture);
+                if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float position))
+                    keyframe.Value = position + axis.Item2;
+            }
+        }
     }
 
     private static Dictionary<string, List<ProjectKeyframeEntry>> SerializeKeyframes(SceneObject obj)

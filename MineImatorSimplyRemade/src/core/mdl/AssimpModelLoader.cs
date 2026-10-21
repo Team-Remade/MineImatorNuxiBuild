@@ -387,6 +387,7 @@ public static class AssimpModelLoader
                 SpawnCategory   = "Custom Models",
                 SourceAssetPath = sourceFilePath,
                 PivotOffset     = vec3.Zero,
+                ScaleResize     = false,
                 IsSelectable    = false,
                 HideInSceneTree = true,
             };
@@ -427,6 +428,8 @@ public static class AssimpModelLoader
         obj.SpawnCategory   = "Custom Models";
         obj.SourceAssetPath = sourceFilePath;
         obj.PivotOffset     = vec3.Zero;
+        // Imported affine hierarchies must retain their authored bind transforms.
+        obj.ScaleResize     = false;
         obj.AssignObjectId();
 
         Quaternion boneQuatForChildren = default;

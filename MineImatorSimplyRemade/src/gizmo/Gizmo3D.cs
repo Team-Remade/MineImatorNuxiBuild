@@ -1067,7 +1067,8 @@ public class Gizmo3D : IDisposable
 
             if (lineVerts.Count == 0) continue;
 
-            mat4 worldMat = item.TargetGlobal.ToMat4();
+            mat4 worldMat = item.Object.SpawnCategory == "Blocks"
+                ? item.Object.GetWorldMatrix() : item.TargetGlobal.ToMat4();
             mat4 mvp      = proj * view * worldMat;
 
             vec4 col     = _selBoxColor;
@@ -1964,6 +1965,20 @@ public class Gizmo3D : IDisposable
 
     private static (vec3 pos, vec3 size) GetObjectAabb(SceneObject obj)
     {
+        if (obj.SpawnCategory == "Blocks")
+        {
+            vec3 min = new vec3(float.PositiveInfinity);
+            vec3 max = new vec3(float.NegativeInfinity);
+            foreach (var mesh in obj.Visuals)
+            foreach (var vertex in mesh.Vertices)
+            {
+                min = vec3.Min(min, vertex);
+                max = vec3.Max(max, vertex);
+            }
+            if (float.IsFinite(min.x))
+                return (min, max - min);
+            return (vec3.Zero, vec3.Ones);
+        }
         vec3 scale = obj.Scale == vec3.Zero ? vec3.Ones : obj.Scale;
         vec3 size  = scale;
         vec3 pos   = -size * 0.5f - obj.PivotOffset;

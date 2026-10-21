@@ -1,6 +1,7 @@
 ﻿using GlmSharp;
 using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs;
@@ -386,7 +387,7 @@ public class SceneObject
     public bool InheritScale = true;
 
     /// <summary>Rebuild inherited scale along the resolved local axes instead of shearing the child.</summary>
-    public bool ScaleResize = false;
+    public bool ScaleResize = true;
 
     // ── Pivot offset ──────────────────────────────────────────────────────────
 
@@ -407,11 +408,25 @@ public class SceneObject
         }
     }
 
+    /// <summary>The editor's pivot inheritance setting; checked uses the parent's pivot frame.</summary>
+    public bool InheritPivot
+    {
+        get => !InheritPivotOffset;
+        set
+        {
+            PivotOffsetInheritsModelOrigin = false;
+            InheritPivotOffset = !value;
+        }
+    }
+
+    /// <summary>Preserves model-origin attachment for imported and older serialized inheritance flags.</summary>
+    public bool PivotOffsetInheritsModelOrigin = true;
+
     private bool _inheritPivotOffset = false;
 
     /// <summary>
-    /// When true this object attaches to the parent's visual origin, including
-    /// its pivot displacement. Otherwise it attaches to the parent's logical origin.
+    /// Selects the parent's offset frame instead of its logical pivot frame.
+    /// The offset direction is controlled by <see cref="PivotOffsetInheritsModelOrigin"/>.
     /// </summary>
     public bool InheritPivotOffset
     {
@@ -1059,7 +1074,7 @@ public class SceneObject
         // Mine-imator applies inheritance overrides after composing the full
         // transform. Removing rotation/scale must not change child placement.
         mat4 basis = world;
-        if (ScaleResize || !InheritScale)
+        if (ScaleResize || !InheritScale || this is ParticleSpawnerSceneObject)
         {
             vec3 parentScale = GetBasisScale(parentWorld);
             if (parentScale.x > 0f && parentScale.y > 0f && parentScale.z > 0f)
@@ -1135,7 +1150,16 @@ public class SceneObject
         if (Parent == null)
             return mat4.Identity;
 
-        mat4 parentWorld = InheritPivotOffset ? Parent.GetWorldMatrix() : Parent.GetWorldMatrixNoPivot();
+        mat4 parentWorld = Parent.GetWorldMatrixNoPivot();
+        if (InheritPivotOffset)
+        {
+            vec3 offset = Parent.PivotOffset;
+            if (Parent.Visuals.OfType<ExtrudedItemMesh>().FirstOrDefault() is { } item)
+                offset -= item.CenterOffset;
+            // The editor's unchecked state removes the negative render displacement.
+            // Imported flags instead attach directly to the original model-origin frame.
+            parentWorld *= mat4.Translate(PivotOffsetInheritsModelOrigin ? offset : -offset);
+        }
 
         if (LockBend > 0f && Parent is MiBoneSceneObject bendAncestor)
         {

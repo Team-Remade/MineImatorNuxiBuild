@@ -43,6 +43,7 @@ public class MiBoneSceneObject : BoneSceneObject
         // The default SceneObject pivot (0, 0.5, 0) must not displace them.
         PivotOffset = vec3.Zero;
         InheritPivotOffset = true;
+        ScaleResize = false;
     }
 
     // ── Base pose (set once by the loader, never changed by the user) ─────────

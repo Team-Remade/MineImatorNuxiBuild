@@ -534,7 +534,8 @@ public class SpawnMenu : UiPanel
         }
 
         // Render into FBO every frame (so auto-rotation plays)
-        _previewRenderer.Render(_previewMeshes, _previewKey, deltaTime, sceneRoot: _previewCharacter);
+        _previewRenderer.Render(_previewMeshes, _previewKey, deltaTime, sceneRoot: _previewCharacter,
+            centerMeshes: _selectedCategory == "Blocks");
     }
 
     /// <summary>Returns a string that uniquely identifies the current selection.</summary>
@@ -636,23 +637,12 @@ public class SpawnMenu : UiPanel
                 AppendBlockMeshesForPreview(meshes, variant, blockName);
                 if (variant.TopHalf != null)
                 {
-                    // Centre combined two-block object at the origin
                     var topMeshes = new List<Mesh>();
                     AppendBlockMeshesForPreview(topMeshes, variant.TopHalf, blockName);
-                    vec3 combinedCenter = new vec3(
-                        variant.PartOffsetX * 0.5f,
-                        variant.PartOffsetY * 0.5f,
-                        variant.PartOffsetZ * 0.5f);
                     vec3 topShift = new vec3(
                         variant.PartOffsetX,
                         variant.PartOffsetY,
-                        variant.PartOffsetZ) - combinedCenter;
-                    foreach (var m in meshes)
-                    {
-                        for (int i = 0; i < m.Vertices.Count; i++)
-                            m.Vertices[i] -= combinedCenter;
-                        m.Upload();
-                    }
+                        variant.PartOffsetZ);
                     foreach (var m in topMeshes)
                     {
                         for (int i = 0; i < m.Vertices.Count; i++)
@@ -661,18 +651,6 @@ public class SpawnMenu : UiPanel
                     }
                     meshes.AddRange(topMeshes);
                 }
-                else
-                {
-                    // Centre single-block meshes so they orbit around (0,0,0) nicely
-                    var downShift = new vec3(0f, -0.5f, 0f);
-                    foreach (var m in meshes)
-                    {
-                        for (int i = 0; i < m.Vertices.Count; i++)
-                            m.Vertices[i] += downShift;
-                        m.Upload();
-                    }
-                }
-
                 return meshes;
             }
 
@@ -2497,7 +2475,7 @@ public class SpawnMenu : UiPanel
         obj.Name = !string.IsNullOrWhiteSpace(timeline.Name) ? timeline.Name : "Item";
         obj.ObjectType = "Item";
         obj.PrimitivePlaneFaceCamera = template.Item.FaceCamera;
-        obj.PivotOffset = vec3.Zero;
+        obj.PivotOffset = ExtrudedItemMesh.GetDefaultPivotOffset(cellWidth, cellHeight);
         obj.ResourcePackId = "";
         obj.TemporaryItemSheetPath = texturePath;
         obj.TemporaryItemSheetCacheKey = sheetKey;
@@ -3719,7 +3697,8 @@ public class SpawnMenu : UiPanel
             {
                 TextureId = mesh.TextureId,
                 Tint = mesh.Albedo,
-                Vertices = mesh.Vertices.ToArray(),
+                // Schematic placement uses voxel centers; generators use native block coordinates.
+                Vertices = mesh.Vertices.Select(vertex => vertex - new vec3(0.5f)).ToArray(),
                 Normals = mesh.Normals.ToArray(),
                 TexCoords = mesh.TexCoords.ToArray()
             });
@@ -5119,6 +5098,7 @@ public class SpawnMenu : UiPanel
         obj.AssignObjectId();
 
         int tileSize = Math.Max(tileWidth, tileHeight);
+        obj.PivotOffset = ExtrudedItemMesh.GetDefaultPivotOffset(tileWidth, tileHeight);
         var mesh = new ExtrudedItemMesh(
             Gl,
             tileTexId,
@@ -5567,7 +5547,7 @@ public class SpawnMenu : UiPanel
             TextureType   = "block",
             ResourcePackId = normalizedResourcePackId,
             Position      = vec3.Zero,
-            PivotOffset   = new vec3(0f, 0.5f, 0f),
+            PivotOffset   = new vec3(-0.5f, 0f, -0.5f),
             TileX         = tileX,
             TileY         = tileY,
             TileZ         = tileZ

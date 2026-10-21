@@ -800,6 +800,7 @@ public class SceneTree : UiPanel
         dup.Rotation            = original.Rotation;
         dup.Scale               = original.Scale;
         dup.PivotOffset         = original.PivotOffset;
+        dup.PivotOffsetInheritsModelOrigin = original.PivotOffsetInheritsModelOrigin;
         dup.InheritPivotOffset  = original.InheritPivotOffset;
         dup.ObjectVisible       = original.ObjectVisible;
         dup.InvertFaces         = original.InvertFaces;

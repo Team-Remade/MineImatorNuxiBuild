@@ -327,6 +327,9 @@ public class ProjectSceneObjectEntry
     public int TileY { get; set; } = 1;
     public int TileZ { get; set; } = 1;
 
+    // 0 (including absent) uses centered generated block meshes; 1 uses native coordinates.
+    public int BlockMeshOriginVersion { get; set; }
+
     // Primitive plane orientation. Only used for Primitives/Plane objects.
     public PlaneOrientation PrimitivePlaneOrientation { get; set; } = PlaneOrientation.XY;
 
@@ -366,6 +369,7 @@ public class ProjectSceneObjectEntry
     public float? LockBend { get; set; }
     public bool? InheritBend { get; set; }
     public bool InheritPivotOffset { get; set; } = false;
+    public bool PivotOffsetInheritsModelOrigin { get; set; } = true;
     public bool InheritVisibility { get; set; } = true;
     public bool ObjectVisible { get; set; } = true;
     public bool IsHidden { get; set; } = false;

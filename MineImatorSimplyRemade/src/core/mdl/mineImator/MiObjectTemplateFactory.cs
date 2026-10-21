@@ -129,8 +129,9 @@ public static class MiObjectTemplateFactory
                     ? MinecraftModelMesh.Build(gl, resolved, entry.RotationX, entry.RotationY,
                         blockName: name, tileX: obj.TileX, tileY: obj.TileY, tileZ: obj.TileZ)
                     : new List<Mesh>();
-            // Registry meshes are centered; MI block custom pivots use positive block coordinates.
-            var shift = new vec3(obj.TileX, obj.TileY, obj.TileZ) * 0.5f + offset;
+            // CEM does not repeat geometry, so retain the imported repeat-frame displacement.
+            var shift = string.IsNullOrEmpty(entry.CemPath) ? offset
+                : offset + (new vec3(obj.TileX, obj.TileY, obj.TileZ) - vec3.Ones) * 0.5f;
             foreach (var mesh in meshes)
             {
                 for (int i = 0; i < mesh.Vertices.Count; i++) mesh.Vertices[i] += shift;

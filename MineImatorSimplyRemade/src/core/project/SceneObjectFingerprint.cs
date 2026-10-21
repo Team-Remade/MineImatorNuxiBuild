@@ -86,6 +86,7 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.ScaleResize);
         hash.Add(obj.LockBend);
         hash.Add(obj.InheritPivotOffset);
+        hash.Add(obj.PivotOffsetInheritsModelOrigin);
         hash.Add(obj.InheritVisibility);
         hash.Add(obj.ObjectVisible);
         hash.Add(obj.IsHidden);

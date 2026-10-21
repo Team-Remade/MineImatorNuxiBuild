@@ -803,7 +803,7 @@ public class MineImatorLoader
             SpawnCategory = "Items",
             TextureType = "local",
             Position = vec3.Zero,
-            PivotOffset = vec3.Zero
+            PivotOffset = ExtrudedItemMesh.GetDefaultPivotOffset(cellWidth, cellHeight)
         };
         obj.AssignObjectId();
 

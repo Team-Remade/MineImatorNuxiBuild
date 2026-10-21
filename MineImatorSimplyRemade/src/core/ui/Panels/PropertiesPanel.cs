@@ -877,6 +877,7 @@ public class PropertiesPanel : UiPanel
             TileX = source.TileX,
             TileY = source.TileY,
             TileZ = source.TileZ,
+            BlockMeshOriginVersion = source.BlockMeshOriginVersion,
             Position = new ProjectVec3 { X = source.Position.X, Y = source.Position.Y, Z = source.Position.Z },
             Rotation = new ProjectVec3 { X = source.Rotation.X, Y = source.Rotation.Y, Z = source.Rotation.Z },
             Scale = new ProjectVec3 { X = source.Scale.X, Y = source.Scale.Y, Z = source.Scale.Z },
@@ -891,6 +892,7 @@ public class PropertiesPanel : UiPanel
             LockBend = source.LockBend,
             InheritBend = source.InheritBend,
             InheritPivotOffset = source.InheritPivotOffset,
+            PivotOffsetInheritsModelOrigin = source.PivotOffsetInheritsModelOrigin,
             InheritVisibility = source.InheritVisibility,
             ObjectVisible = source.ObjectVisible,
             IsHidden = source.IsHidden,
@@ -3265,11 +3267,11 @@ public class PropertiesPanel : UiPanel
         // ── Pivot Offset ──────────────────────────────────────────────────────
         if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.pivot_offset", "Pivot Offset")))
         {
-            bool inheritPivot = _currentObject.InheritPivotOffset;
+            bool inheritPivot = _currentObject.InheritPivot;
             if (ImGui.Checkbox(Localization.Label("text.panel.properties.inherit_pivot", "Inherit Pivot##pivot"), ref inheritPivot))
-                ApplyToSelectedObjects(obj => obj.InheritPivotOffset = inheritPivot);
+                ApplyToSelectedObjects(obj => obj.InheritPivot = inheritPivot);
 
-            vec3 pivot = _currentObject.PivotOffset;
+            vec3 pivot = GetEditablePivotOffset(_currentObject);
             float pivX = pivot.x * 16f;
             float pivY = pivot.y * 16f;
             float pivZ = pivot.z * 16f;
@@ -3286,7 +3288,8 @@ public class PropertiesPanel : UiPanel
             ImGui.PopItemWidth();
 
             if (ImGui.Button(Localization.Label("text.panel.properties.reset", "Reset##pivReset")))
-                ApplyToSelectedObjects(obj => obj.PivotOffset = vec3.Zero);
+                ApplyToSelectedObjects(obj => obj.PivotOffset = obj.SpawnCategory == "Blocks"
+                    ? new vec3(-0.5f, 0f, -0.5f) : vec3.Zero);
         }
 
         // ── Material ──────────────────────────────────────────────────────────
@@ -4635,11 +4638,17 @@ public class PropertiesPanel : UiPanel
 
     private void ApplyPivotOffset(vec3 pivot)
     {
-        vec3 origin = _currentObject?.PivotOffset ?? vec3.Zero;
+        vec3 origin = _currentObject != null ? GetEditablePivotOffset(_currentObject) : vec3.Zero;
         vec3 delta = pivot - origin;
 
-        ApplyToSelectedObjects(obj => obj.PivotOffset = obj.PivotOffset + delta);
+        ApplyToSelectedObjects(obj => obj.PivotOffset += obj.SpawnCategory == "Blocks" ? -delta : delta);
         ProjectManager.Instance.SetDirty(true);
+    }
+
+    private static vec3 GetEditablePivotOffset(SceneObject obj)
+    {
+        // Blocks expose a pivot in model coordinates; storage is the opposite visual translation.
+        return obj.SpawnCategory == "Blocks" ? -obj.PivotOffset : obj.PivotOffset;
     }
 
     private static vec3 GetEditablePosition(SceneObject obj)

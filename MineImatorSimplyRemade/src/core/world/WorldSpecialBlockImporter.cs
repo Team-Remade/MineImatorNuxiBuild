@@ -30,7 +30,7 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
                     block.Properties, null) ?? throw new InvalidDataException($"No block model is installed for {block.Name}.");
                 root = spawnMenu.CreateBlockObject(block.Name, variant, resourcePack) ??
                     throw new InvalidDataException($"Could not create {block.Name}.");
-                root.PivotOffset -= block.Pivot;
+                root.PivotOffset = new vec3(-0.5f, 0, -0.5f) - block.Pivot;
                 root.SetLocalPosition(block.Position + block.Pivot);
             }
             else

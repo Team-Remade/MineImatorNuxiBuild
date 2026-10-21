@@ -37,14 +37,14 @@ public static class CemLoader
     /// <param name="cemPath">Absolute path to the <c>.jem</c> file.</param>
     /// <param name="versionRoot">Version root directory used to resolve the texture path.</param>
     /// <returns>
-    /// List of meshes (one per box), or a single fallback CubeMesh on failure.
+    /// List of meshes (one per box), or a native-origin fallback cube on failure.
     /// </returns>
     public static List<Mesh> Load(GL gl, string cemPath, string versionRoot, string resourcePackId = "")
     {
         if (!File.Exists(cemPath))
         {
             Console.WriteLine($"File not found: {cemPath}");
-            return [new CubeMesh(gl)];
+            return [MinecraftModelMesh.BuildTexturedFallbackCube(gl, null)];
         }
 
         JsonObject root;
@@ -56,7 +56,7 @@ public static class CemLoader
         catch (Exception ex)
         {
             Console.WriteLine($"Parse error in '{cemPath}': {ex.Message}");
-            return [new CubeMesh(gl)];
+            return [MinecraftModelMesh.BuildTexturedFallbackCube(gl, null)];
         }
 
         // ── Resolve texture ───────────────────────────────────────────────────
@@ -99,7 +99,7 @@ public static class CemLoader
             }
         }
 
-        return result.Count > 0 ? result : [new CubeMesh(gl)];
+        return result.Count > 0 ? result : [MinecraftModelMesh.BuildTexturedFallbackCube(gl, null)];
     }
 
     // ── Texture resolution ────────────────────────────────────────────────────
@@ -163,12 +163,7 @@ public static class CemLoader
         ty *= PixelScale;
         tz *= PixelScale;
 
-        // Final centring: after invertAxis + translate the geometry spans 0..1 on each
-        // axis, but the scene expects meshes centred at the origin (−0.5..+0.5).
-        mat4 centre = mat4.Translate(new vec3(-0.5f, -0.5f, -0.5f));
-        mat4 t      = mat4.Translate(new vec3(tx, ty, tz));
-
-        return centre * t;
+        return mat4.Translate(new vec3(tx, ty, tz));
     }
 
     // ── Box mesh builder ──────────────────────────────────────────────────────
@@ -192,7 +187,7 @@ public static class CemLoader
         if (invertAxis.Contains('y')) { by = -by - bh; }
         if (invertAxis.Contains('z')) { bz = -bz - bd; }
 
-        // Convert pixel units → block units (scale to 0..1 range, then centre)
+        // Convert pixel units to native block coordinates.
         float x0 = bx * PixelScale;
         float y0 = by * PixelScale;
         float z0 = bz * PixelScale;

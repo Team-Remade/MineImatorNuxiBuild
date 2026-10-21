@@ -151,7 +151,8 @@ public class PreviewRenderer : IDisposable
         double              deltaTime,
         float               boundsRadius = 0.75f,
         SceneObject?        sceneRoot    = null,
-        Camera?             camera       = null)
+        Camera?             camera       = null,
+        bool                centerMeshes = false)
     {
         if (!_initialized) Initialize();
         if (_fbo == 0 || ColorTexture == 0) return;
@@ -207,6 +208,19 @@ public class PreviewRenderer : IDisposable
             try
             {
                 mat4 model = mat4.Identity;
+                if (centerMeshes)
+                {
+                    vec3 min = new vec3(float.PositiveInfinity);
+                    vec3 max = new vec3(float.NegativeInfinity);
+                    foreach (var mesh in meshes)
+                    foreach (var vertex in mesh.Vertices)
+                    {
+                        min = vec3.Min(min, vertex);
+                        max = vec3.Max(max, vertex);
+                    }
+                    if (float.IsFinite(min.x))
+                        model = mat4.Translate(-(min + max) * 0.5f);
+                }
                 foreach (var mesh in meshes)
                     mesh.Render(model, view, proj);
 

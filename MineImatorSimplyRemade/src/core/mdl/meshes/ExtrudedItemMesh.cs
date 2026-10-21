@@ -42,6 +42,10 @@ public class ExtrudedItemMesh : Mesh
     /// </summary>
     public float ExtrudeDepth { get; }
 
+    /// <summary>Translation from centered mesh coordinates to native item coordinates.</summary>
+    public vec3 CenterOffset => new(TileWidth / (float)TileSize * 0.5f,
+        TileHeight / (float)TileSize * 0.5f, Is3D ? ExtrudeDepth * 0.5f : 0f);
+
     /// <summary>
     /// Pixels whose alpha (0–255) is at or above this value are included in the
     /// hull and used for side-face neighbour checks.  Default: 128 (A &gt; 0.5),
@@ -56,6 +60,13 @@ public class ExtrudedItemMesh : Mesh
     /// Length must equal <c>TileWidth * TileHeight * 4</c>.
     /// </summary>
     private readonly byte[] _pixels;
+
+    public static vec3 GetDefaultPivotOffset(int tileWidth, int tileHeight)
+    {
+        float size = Math.Max(1, Math.Max(tileWidth, tileHeight));
+        // The reference pivot is at the canvas's horizontal center and vertical bottom.
+        return new vec3(tileWidth / size * 0.5f - 0.5f, tileHeight / size * 0.5f, 0f);
+    }
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
