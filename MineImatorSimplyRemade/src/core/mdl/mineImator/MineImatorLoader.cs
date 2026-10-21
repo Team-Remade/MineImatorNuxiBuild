@@ -1529,8 +1529,8 @@ public class MineImatorLoader
 
             _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)GLEnum.Nearest);
             _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)GLEnum.Nearest);
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)GLEnum.ClampToEdge);
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.ClampToEdge);
+            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)GLEnum.Repeat);
+            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.Repeat);
             _gl.BindTexture(GLEnum.Texture2D, 0);
 
             _textureCache[cacheKey] = tex;
@@ -2796,12 +2796,10 @@ public class MineImatorLoader
             return CreateBentPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
                 textureMirror, invert, inflate, bend, shapePosition, shapeRotation, shapeScale, bendStyle);
 
-        int uvStartX = Math.Max(0, Math.Min((int)uvU, texWidth - 1));
-        int uvStartY = Math.Max(0, Math.Min((int)uvV, texHeight - 1));
-        int uvEndX = Math.Max(0, Math.Min((int)(uvU + sizeX), texWidth));
-        int uvEndY = Math.Max(0, Math.Min((int)(uvV + sizeY), texHeight));
-        int regionW = uvEndX - uvStartX;
-        int regionH = uvEndY - uvStartY;
+        int uvStartX = (int)MathF.Ceiling(uvU);
+        int uvStartY = (int)MathF.Ceiling(uvV);
+        int regionW = (int)MathF.Ceiling(sizeX);
+        int regionH = (int)MathF.Ceiling(sizeY);
 
         if (regionW <= 0 || regionH <= 0)
             return CreateBentPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
@@ -2902,8 +2900,9 @@ public class MineImatorLoader
         var uvs = new List<vec2>();
         var indices = new List<uint>();
 
-        float texNormW = 1f / texWidth;
-        float texNormH = 1f / texHeight;
+        float texScaleX = MathF.Ceiling(sizeX) / regionW;
+        float texScaleY = MathF.Ceiling(sizeY) / regionH;
+        float texelInset = 1f - 1f / 256f;
 
         for (int outer = 0; outer < outerCount; outer++)
         {
@@ -2921,14 +2920,18 @@ public class MineImatorLoader
                     ay = regionH - 1 - inner;
                 }
 
-                int texX = uvStartX + ax;
-                int texY = uvStartY + ay;
-                if (texX >= imgW || texY >= imgH) continue;
+                int texX = WrapIndex(uvStartX + ax, imgW);
+                int texY = WrapIndex(uvStartY + ay, imgH);
                 if (GetAlpha(pixels, texX, texY, imgW) <= 0.5f) continue;
 
-                float uvX = (texX + 0.5f) * texNormW;
-                float uvY = (texY + 0.5f) * texNormH;
-                var pixUV = new vec2(uvX, uvY);
+                float uvX = (uvU + ax * texScaleX) / texWidth;
+                float uvY = (uvV + ay * texScaleY) / texHeight;
+                float uvWidth = texScaleX * texelInset / texWidth;
+                float uvHeight = texScaleY * texelInset / texHeight;
+                var t1 = new vec2(uvX, uvY);
+                var t2 = new vec2(uvX + uvWidth, uvY);
+                var t3 = new vec2(uvX + uvWidth, uvY + uvHeight);
+                var t4 = new vec2(uvX, uvY + uvHeight);
 
                 vec3 p1, p2, p3, p4, np1, np2, np3, np4;
                 if (bendAlongX)
@@ -2954,10 +2957,10 @@ public class MineImatorLoader
                     np4 = gridTop[outer, inner + 1];
                 }
 
-                bool leftEmpty = ax == 0 || GetAlpha(pixels, uvStartX + ax - 1, texY, imgW) <= 0.5f;
-                bool rightEmpty = ax == regionW - 1 || GetAlpha(pixels, uvStartX + ax + 1, texY, imgW) <= 0.5f;
-                bool topEmpty = ay == 0 || GetAlpha(pixels, texX, uvStartY + ay - 1, imgW) <= 0.5f;
-                bool bottomEmpty = ay == regionH - 1 || GetAlpha(pixels, texX, uvStartY + ay + 1, imgW) <= 0.5f;
+                bool leftEmpty = ax == 0 || GetAlpha(pixels, WrapIndex(uvStartX + ax - 1, imgW), texY, imgW) <= 0.5f;
+                bool rightEmpty = ax == regionW - 1 || GetAlpha(pixels, WrapIndex(uvStartX + ax + 1, imgW), texY, imgW) <= 0.5f;
+                bool topEmpty = ay == 0 || GetAlpha(pixels, texX, WrapIndex(uvStartY + ay - 1, imgH), imgW) <= 0.5f;
+                bool bottomEmpty = ay == regionH - 1 || GetAlpha(pixels, texX, WrapIndex(uvStartY + ay + 1, imgH), imgW) <= 0.5f;
 
                 bool wface = textureMirror ? rightEmpty : leftEmpty;
                 bool eface = textureMirror ? leftEmpty : rightEmpty;
@@ -2966,21 +2969,21 @@ public class MineImatorLoader
 
                 if (bendAlongX)
                 {
-                    if (eface) AddSimpleQuad(vertices, normals, uvs, indices, np3, np4, np1, np2, pixUV, invert);
-                    if (wface) AddSimpleQuad(vertices, normals, uvs, indices, p4, p3, p2, p1, pixUV, invert);
-                    AddSimpleQuad(vertices, normals, uvs, indices, p3, np3, np2, p2, pixUV, invert);
-                    AddSimpleQuad(vertices, normals, uvs, indices, np4, p4, p1, np1, pixUV, invert);
-                    if (aface) AddSimpleQuad(vertices, normals, uvs, indices, p2, np2, np1, p1, pixUV, invert);
-                    if (bface) AddSimpleQuad(vertices, normals, uvs, indices, p4, np4, np3, p3, pixUV, invert);
+                    if (eface) AddSimpleQuad(vertices, normals, uvs, indices, np3, np4, np1, np2, t1, t2, t3, t4, invert);
+                    if (wface) AddSimpleQuad(vertices, normals, uvs, indices, p4, p3, p2, p1, t1, t2, t3, t4, invert);
+                    AddSimpleQuad(vertices, normals, uvs, indices, p3, np3, np2, p2, t2, t1, t4, t3, invert);
+                    AddSimpleQuad(vertices, normals, uvs, indices, np4, p4, p1, np1, t2, t1, t4, t3, invert);
+                    if (aface) AddSimpleQuad(vertices, normals, uvs, indices, p2, np2, np1, p1, t1, t2, t3, t4, invert);
+                    if (bface) AddSimpleQuad(vertices, normals, uvs, indices, p4, np4, np3, p3, t1, t2, t3, t4, invert);
                 }
                 else
                 {
-                    if (eface) AddSimpleQuad(vertices, normals, uvs, indices, p3, p2, np2, np3, pixUV, invert);
-                    if (wface) AddSimpleQuad(vertices, normals, uvs, indices, p1, p4, np4, np1, pixUV, invert);
-                    AddSimpleQuad(vertices, normals, uvs, indices, p4, p3, np3, np4, pixUV, invert);
-                    AddSimpleQuad(vertices, normals, uvs, indices, p2, p1, np1, np2, pixUV, invert);
-                    if (aface) AddSimpleQuad(vertices, normals, uvs, indices, np4, np3, np2, np1, pixUV, invert);
-                    if (bface) AddSimpleQuad(vertices, normals, uvs, indices, p1, p2, p3, p4, pixUV, invert);
+                    if (eface) AddSimpleQuad(vertices, normals, uvs, indices, p3, p2, np2, np3, t1, t2, t3, t4, invert);
+                    if (wface) AddSimpleQuad(vertices, normals, uvs, indices, p1, p4, np4, np1, t1, t2, t3, t4, invert);
+                    AddSimpleQuad(vertices, normals, uvs, indices, p4, p3, np3, np4, t2, t1, t4, t3, invert);
+                    AddSimpleQuad(vertices, normals, uvs, indices, p2, p1, np1, np2, t2, t1, t4, t3, invert);
+                    if (aface) AddSimpleQuad(vertices, normals, uvs, indices, np4, np3, np2, np1, t1, t2, t3, t4, invert);
+                    if (bface) AddSimpleQuad(vertices, normals, uvs, indices, p1, p2, p3, p4, t1, t2, t3, t4, invert);
                 }
             }
         }
@@ -3160,7 +3163,7 @@ public class MineImatorLoader
     }
 
     private static void AddSimpleQuad(List<vec3> verts, List<vec3> normals, List<vec2> uvs, List<uint> indices,
-        vec3 v0, vec3 v1, vec3 v2, vec3 v3, vec2 uv, bool invert)
+        vec3 v0, vec3 v1, vec3 v2, vec3 v3, vec2 uv0, vec2 uv1, vec2 uv2, vec2 uv3, bool invert)
     {
         var normal = CalculateFaceNormal(v0, v1, v2);
         if (invert) normal = -normal;
@@ -3174,10 +3177,10 @@ public class MineImatorLoader
         normals.Add(normal);
         normals.Add(normal);
         normals.Add(normal);
-        uvs.Add(uv);
-        uvs.Add(uv);
-        uvs.Add(uv);
-        uvs.Add(uv);
+        uvs.Add(uv0);
+        uvs.Add(uv1);
+        uvs.Add(uv2);
+        uvs.Add(uv3);
 
         AddQuadIndices(indices, bv, invert);
     }
@@ -3266,6 +3269,12 @@ public class MineImatorLoader
         int idx = (y * width + x) * 4 + 3;
         if (idx < 0 || idx >= pixels.Length) return 0f;
         return pixels[idx] / 255f;
+    }
+
+    private static int WrapIndex(int value, int length)
+    {
+        int wrapped = value % length;
+        return wrapped < 0 ? wrapped + length : wrapped;
     }
 }
 
