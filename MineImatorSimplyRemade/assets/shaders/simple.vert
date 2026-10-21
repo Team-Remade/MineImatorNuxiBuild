@@ -87,6 +87,7 @@ mat3 bendRotation(vec3 degrees) {
 
 void applyBend(inout vec3 position, inout vec3 normal) {
     if (!uBendEnabled) return;
+    if (all(equal(uBendAngle, vec3(0.0)))) return;
     vec3 localPosition = position - uBendShapePosition;
     vec3 sourcePosition = (uBendInverseShape * vec4(localPosition, 1.0)).xyz;
     float segmentPosition = bendComponent(sourcePosition, uBendSegmentAxis) - uBendAxisStart;

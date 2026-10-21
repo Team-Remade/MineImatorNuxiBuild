@@ -317,7 +317,8 @@ public static class BendHelper
     /// Returns Modelbench's bent-half attachment matrix for a child part.
     /// Unlike shape vertices, child parts have already had the bend offset
     /// subtracted from their local position, so this is T(pivot) * R without
-    /// the trailing T(-pivot).
+    /// the trailing T(-pivot). The endpoint mesh expansion is visual-only and
+    /// must not move the child attachment frame.
     /// </summary>
     public static mat4 GetPartBendMatrix(BendParams b, vec3 bendVec)
     {

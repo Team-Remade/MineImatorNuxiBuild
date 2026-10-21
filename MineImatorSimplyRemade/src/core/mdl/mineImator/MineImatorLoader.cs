@@ -1263,11 +1263,10 @@ public class MineImatorLoader
                 position *= accumulatedParentScale;
             }
 
-            // Port of Modelbench el_update_part.gml lock_bend positioning. A child
-            // locked to a bent half first subtracts the parent's scaled bend offset
-            // from its local position, then inherits the parent's bent-half matrix.
-            // Omitting this adjustment leaves a gap at every joint in chains made
-            // from adjacent planes (PikanModel's JacketBend is a representative case).
+            // The parent bend is applied to locked children by SceneObject.GetWorldMatrix,
+            // while the parent's mesh is bent in the vertex shader around its local pivot.
+            // Move the child into that same pivot-relative coordinate space before the CPU
+            // bend matrix is applied, matching Mine-imator's split transform path.
             if (parentIdx >= 0)
             {
                 MiPart parentPart = boneDataList[parentIdx].part;
