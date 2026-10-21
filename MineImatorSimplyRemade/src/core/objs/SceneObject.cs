@@ -102,6 +102,7 @@ public class SceneObject
     private long _worldEvaluation;
     private long _visibilityEvaluation;
     private mat4 _evaluatedWorldMatrix;
+    private mat4 _evaluatedWorldMatrixNoPivot;
     private bool _evaluatedVisibility;
 
     // Public transform fields can change without notifications, so reuse is bounded
@@ -384,6 +385,9 @@ public class SceneObject
     /// <summary>When true, this object inherits the parent's scale (default: true).</summary>
     public bool InheritScale = true;
 
+    /// <summary>Rebuild inherited scale along the resolved local axes instead of shearing the child.</summary>
+    public bool ScaleResize = false;
+
     // ── Pivot offset ──────────────────────────────────────────────────────────
 
     private vec3 _pivotOffset = new vec3(0, 0.5f, 0);
@@ -406,8 +410,8 @@ public class SceneObject
     private bool _inheritPivotOffset = false;
 
     /// <summary>
-    /// When true this object accumulates the parent's pivot offset into its own
-    /// visual position.  When false the parent's pivot offset is ignored (default).
+    /// When true this object attaches to the parent's visual origin, including
+    /// its pivot displacement. Otherwise it attaches to the parent's logical origin.
     /// </summary>
     public bool InheritPivotOffset
     {
@@ -640,7 +644,7 @@ public class SceneObject
             mesh.TextureMirror = _materialSettings.TextureMirror;
             // Combine AlbedoColor.a with (1 - Transparency) so both routes
             // can control opacity: 0 Transparency = fully opaque.
-            mesh.Alpha = _materialSettings.AlbedoColor.w * (1f - _materialSettings.Transparency);
+            mesh.Alpha = mesh.BaseAlpha * _materialSettings.AlbedoColor.w * (1f - _materialSettings.Transparency);
             bool useAutoEmission = _materialSettings.AutoEmission && mesh.AutoEmissionLevel > 0;
             if (useAutoEmission)
             {
@@ -983,23 +987,32 @@ public class SceneObject
     /// always happen around <c>Position</c> (the scene object's own origin), never
     /// the mesh geometry's center.
     /// Transform order (column-vector, applied right-to-left):
-    ///   T(pos) * R * S * T(pivot)
+    ///   ModelBase * T(pos) * S * R * T(pivot)
     ///   1. T(pivot)  — displace mesh geometry to the pivot offset
-    ///   2. S         — scale
-    ///   3. R         — rotate around Position (local origin)
+    ///   2. R         — rotate around Position (local origin)
+    ///   3. S         — scale along the timeline axes
     ///   4. T(pos)    — translate to world position
     /// </summary>
     public mat4 GetLocalMatrix()
     {
-        vec3 pivot = GetAccumulatedPivotOffset();
-        mat4 t      = mat4.Translate(Position);
-        mat4 tPivot = mat4.Translate(pivot);
+        GetTimelineTransform(out mat4 modelTransform, out vec3 position, out mat4 rotation);
+        return modelTransform * mat4.Translate(position) * mat4.Scale(Scale) * rotation
+            * mat4.Translate(_pivotOffset);
+    }
+
+    protected mat4 GetLocalRotationMatrix()
+    {
         mat4 rx = mat4.RotateX(Rotation.x);
         mat4 ry = mat4.RotateY(Rotation.y);
         mat4 rz = mat4.RotateZ(Rotation.z);
-        mat4 rotation = _localRotationMatrixOverride ?? (rz * ry * rx);
-        mat4 s  = mat4.Scale(Scale);
-        return t * rotation * s * tPivot;
+        return _localRotationMatrixOverride ?? (rz * ry * rx);
+    }
+
+    protected virtual void GetTimelineTransform(out mat4 modelTransform, out vec3 position, out mat4 rotation)
+    {
+        modelTransform = mat4.Identity;
+        position = Position;
+        rotation = GetLocalRotationMatrix();
     }
 
     /// <summary>
@@ -1008,121 +1021,103 @@ public class SceneObject
     /// </summary>
     public mat4 GetWorldMatrix()
     {
+        return GetEvaluatedWorldMatrix(includePivot: true);
+    }
+
+    private mat4 GetEvaluatedWorldMatrix(bool includePivot)
+    {
         FrameProfiler.Shared.Count(ProfileCounter.WorldMatrixQueries);
         long evaluation = _renderEvaluation;
         if (evaluation != 0 && _worldEvaluation == evaluation)
         {
             FrameProfiler.Shared.Count(ProfileCounter.WorldMatrixCacheHits);
-            return _evaluatedWorldMatrix;
+            return includePivot ? _evaluatedWorldMatrix : _evaluatedWorldMatrixNoPivot;
         }
 
         using var timing = FrameProfiler.Shared.Measure(ProfileStage.TransformEvaluation);
-        mat4 world = ComputeWorldMatrix();
+        mat4 logicalWorld = ComputeWorldMatrixNoPivot();
+        mat4 world = logicalWorld * mat4.Translate(_pivotOffset);
         if (evaluation != 0)
         {
             _evaluatedWorldMatrix = world;
+            _evaluatedWorldMatrixNoPivot = logicalWorld;
             _worldEvaluation = evaluation;
+        }
+        return includePivot ? world : logicalWorld;
+    }
+
+    private mat4 ComputeWorldMatrixNoPivot()
+    {
+        GetTimelineTransform(out mat4 modelTransform, out vec3 position, out mat4 rotation);
+        // GameMaker matrix_build rotates before scaling. The resize override
+        // below deliberately rebuilds its basis in the opposite order.
+        mat4 local = mat4.Translate(position) * mat4.Scale(Scale) * rotation;
+
+        mat4 parentWorld = GetBendAdjustedParentMatrix() * modelTransform;
+        mat4 world = parentWorld * local;
+
+        // Mine-imator applies inheritance overrides after composing the full
+        // transform. Removing rotation/scale must not change child placement.
+        mat4 basis = world;
+        if (ScaleResize || !InheritScale)
+        {
+            vec3 parentScale = GetBasisScale(parentWorld);
+            if (parentScale.x > 0f && parentScale.y > 0f && parentScale.z > 0f)
+            {
+                parentWorld.m00 /= parentScale.x; parentWorld.m01 /= parentScale.x; parentWorld.m02 /= parentScale.x;
+                parentWorld.m10 /= parentScale.y; parentWorld.m11 /= parentScale.y; parentWorld.m12 /= parentScale.y;
+                parentWorld.m20 /= parentScale.z; parentWorld.m21 /= parentScale.z; parentWorld.m22 /= parentScale.z;
+            }
+            if (!InheritRotation)
+                parentWorld = mat4.Scale(GetBasisScale(parentWorld));
+            vec3 scale = Scale;
+            if (InheritScale)
+            {
+                for (SceneObject current = this; current.InheritScale && current.Parent != null; current = current.Parent)
+                    scale *= current.Parent.Scale;
+            }
+            basis = parentWorld * rotation * mat4.Scale(scale);
+        }
+        else if (!InheritRotation)
+        {
+            basis = mat4.Scale(GetBasisScale(world)) * rotation;
+        }
+
+        world.m00 = basis.m00; world.m01 = basis.m01; world.m02 = basis.m02;
+        world.m10 = basis.m10; world.m11 = basis.m11; world.m12 = basis.m12;
+        world.m20 = basis.m20; world.m21 = basis.m21; world.m22 = basis.m22;
+        if (!InheritPosition)
+        {
+            world.m30 = position.x;
+            world.m31 = position.y;
+            world.m32 = position.z;
         }
         return world;
     }
 
-    private mat4 ComputeWorldMatrix()
-    {
-        mat4 local = GetLocalMatrix();
-
-        if (Parent == null)
-            return local;
-
-        mat4 parentWorld = GetBendAdjustedParentMatrix();
-
-        // Selectively strip parent contributions that are not inherited.
-        // For full inheritance just multiply; partial inheritance is handled
-        // by rebuilding the parent matrix with only the inherited components.
-        if (InheritPosition && InheritRotation && InheritScale && InheritPivotOffset)
-            return parentWorld * local;
-
-        // Decompose parent matrix into T, R, S and recombine with only the
-        // parts this child wants to inherit.
-        // GlmSharp is row-major: translation lives in Row3 (m30, m31, m32).
-        vec3 parentPos = new vec3(parentWorld.m30, parentWorld.m31, parentWorld.m32);
-        // Extract scale lengths from the upper-left 3×3 rows.
-        vec3 row0 = new vec3(parentWorld.m00, parentWorld.m01, parentWorld.m02);
-        vec3 row1 = new vec3(parentWorld.m10, parentWorld.m11, parentWorld.m12);
-        vec3 row2 = new vec3(parentWorld.m20, parentWorld.m21, parentWorld.m22);
-        vec3 parentScale = new vec3(row0.Length, row1.Length, row2.Length);
-
-        // When InheritPivotOffset is false, cancel the parent's pivot displacement
-        // from the decomposed translation so the child is not shifted by it.
-        if (!InheritPivotOffset)
-            parentPos += Parent._pivotOffset;
-
-        // Normalised rotation rows
-        mat4 parentRot = mat4.Identity;
-        if (parentScale.x != 0) { parentRot.m00 = row0.x / parentScale.x; parentRot.m01 = row0.y / parentScale.x; parentRot.m02 = row0.z / parentScale.x; }
-        if (parentScale.y != 0) { parentRot.m10 = row1.x / parentScale.y; parentRot.m11 = row1.y / parentScale.y; parentRot.m12 = row1.z / parentScale.y; }
-        if (parentScale.z != 0) { parentRot.m20 = row2.x / parentScale.z; parentRot.m21 = row2.y / parentScale.z; parentRot.m22 = row2.z / parentScale.z; }
-
-        mat4 inherited = mat4.Identity;
-        if (InheritPosition) inherited = mat4.Translate(parentPos) * inherited;
-        if (InheritRotation) inherited *= parentRot;
-        if (InheritScale)    inherited *= mat4.Scale(parentScale);
-
-        return inherited * local;
-    }
+    private static vec3 GetBasisScale(mat4 matrix) => new(
+        new vec3(matrix.m00, matrix.m01, matrix.m02).Length,
+        new vec3(matrix.m10, matrix.m11, matrix.m12).Length,
+        new vec3(matrix.m20, matrix.m21, matrix.m22).Length);
 
     /// <summary>
-    /// Returns the world-space coordinates of this object's <see cref="Position"/> point
-    /// (i.e. the rotation/gizmo anchor), without any pivot-offset displacement.
-    /// For a root object this equals <see cref="Position"/>; for a child it is
-    /// <see cref="Position"/> transformed by the parent's world matrix.
+    /// Returns the logical world-space rotation/gizmo anchor before this object's
+    /// visual pivot displacement, using the same model and inheritance stages as rendering.
     /// </summary>
     public vec3 GetWorldPosition()
     {
-        if (Parent == null)
-            return Position;
-
-        mat4 parentTransform = GetParentWorldTransform();
-        // Transform Position by the parent matrix (GlmSharp column-vector: mat4 * vec4).
-        vec4 worldPos = parentTransform * new vec4(Position, 1f);
-        return new vec3(worldPos.x, worldPos.y, worldPos.z);
+        mat4 world = GetWorldMatrixNoPivot();
+        return new vec3(world.m30, world.m31, world.m32);
     }
 
     /// <summary>
-    /// Returns the effective parent world matrix as seen by this child, accounting
-    /// for <see cref="InheritPivotOffset"/> by cancelling the parent's pivot
-    /// displacement when the flag is false.
+    /// Returns the parent frame selected by <see cref="InheritPivotOffset"/>,
+    /// including bend attachment. Position uses this entire frame when inherited;
+    /// rotation and scale inheritance affect the child's basis independently.
     /// </summary>
     public mat4 GetParentWorldTransform()
     {
-        if (Parent == null)
-            return mat4.Identity;
-
-        mat4 parentWorld = GetBendAdjustedParentMatrix();
-
-        if (InheritPivotOffset)
-            return parentWorld;
-
-        // Decompose and reconstruct the parent matrix without its pivot offset
-        // so the gizmo/logical position anchor is not displaced by the parent's pivot.
-        vec3 parentPos = new vec3(parentWorld.m30, parentWorld.m31, parentWorld.m32);
-        vec3 row0 = new vec3(parentWorld.m00, parentWorld.m01, parentWorld.m02);
-        vec3 row1 = new vec3(parentWorld.m10, parentWorld.m11, parentWorld.m12);
-        vec3 row2 = new vec3(parentWorld.m20, parentWorld.m21, parentWorld.m22);
-        vec3 parentScale = new vec3(row0.Length, row1.Length, row2.Length);
-
-        // Cancel the parent's pivot displacement.
-        parentPos += Parent._pivotOffset;
-
-        mat4 parentRot = mat4.Identity;
-        if (parentScale.x != 0) { parentRot.m00 = row0.x / parentScale.x; parentRot.m01 = row0.y / parentScale.x; parentRot.m02 = row0.z / parentScale.x; }
-        if (parentScale.y != 0) { parentRot.m10 = row1.x / parentScale.y; parentRot.m11 = row1.y / parentScale.y; parentRot.m12 = row1.z / parentScale.y; }
-        if (parentScale.z != 0) { parentRot.m20 = row2.x / parentScale.z; parentRot.m21 = row2.y / parentScale.z; parentRot.m22 = row2.z / parentScale.z; }
-
-        mat4 result = mat4.Identity;
-        if (InheritScale)    result *= mat4.Scale(parentScale);
-        if (InheritRotation) result *= parentRot;
-        if (InheritPosition) result = mat4.Translate(parentPos) * result;
-        return result;
+        return GetBendAdjustedParentMatrix();
     }
 
     /// <summary>
@@ -1132,18 +1127,7 @@ public class SceneObject
     /// </summary>
     public mat4 GetWorldMatrixNoPivot()
     {
-        mat4 t = mat4.Translate(Position);
-        mat4 rx = mat4.RotateX(Rotation.x);
-        mat4 ry = mat4.RotateY(Rotation.y);
-        mat4 rz = mat4.RotateZ(Rotation.z);
-        mat4 rotation = _localRotationMatrixOverride ?? (rz * ry * rx);
-        mat4 s = mat4.Scale(Scale);
-        mat4 localNoPivot = t * rotation * s;
-
-        if (Parent == null)
-            return localNoPivot;
-
-        return Parent.GetWorldMatrix() * localNoPivot;
+        return GetEvaluatedWorldMatrix(includePivot: false);
     }
 
     private mat4 GetBendAdjustedParentMatrix()
@@ -1151,7 +1135,7 @@ public class SceneObject
         if (Parent == null)
             return mat4.Identity;
 
-        mat4 parentWorld = Parent.GetWorldMatrix();
+        mat4 parentWorld = InheritPivotOffset ? Parent.GetWorldMatrix() : Parent.GetWorldMatrixNoPivot();
 
         if (LockBend > 0f && Parent is MiBoneSceneObject bendAncestor)
         {
@@ -1164,29 +1148,11 @@ public class SceneObject
     // ── Pivot helpers ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns the accumulated pivot offset from this object and its parent chain,
-    /// respecting each object's <see cref="InheritPivotOffset"/> flag.
-    /// </summary>
-    public vec3 GetAccumulatedPivotOffset()
-    {
-        var accumulated = _pivotOffset;
-
-        if (_inheritPivotOffset && Parent != null)
-            accumulated += Parent.GetAccumulatedPivotOffset();
-
-        return accumulated;
-    }
-
-    /// <summary>
-    /// Recalculates the visual position offset from the accumulated pivot.
-    /// Call after pivot or inheritance changes.
+    /// Invalidates the evaluated transform after pivot or inheritance changes.
     /// </summary>
     public void UpdateVisualPosition()
     {
         InvalidateRenderEvaluation();
-        // In MonoGame the visual offset is tracked separately from the scene node
-        // position.  Callers/renderers should offset by -GetAccumulatedPivotOffset()
-        // when computing the final world matrix for the visual mesh.
     }
 
     private void UpdateChildrenPivotOffsets()

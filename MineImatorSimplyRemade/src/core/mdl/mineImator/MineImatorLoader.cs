@@ -126,7 +126,8 @@ public class MineImatorLoader
         {
             foreach (var timeline in miObject.Timelines)
             {
-                if (string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase)) continue;
+                if (string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrEmpty(timeline.PartOf) && timeline.PartOf != "null") continue;
 
                 MiTemplate template = null;
                 if (!string.IsNullOrEmpty(timeline.Temp))
@@ -134,7 +135,8 @@ public class MineImatorLoader
 
                 SceneObject itemObject = null;
 
-                if (template != null && !string.IsNullOrEmpty(template.Model))
+                if (template != null && !string.Equals(template.Type, "bodypart", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrEmpty(template.Model))
                 {
                     string modelPath = ResolveTemplateModelPath(template, resourceDict, miObject);
                     if (!string.IsNullOrWhiteSpace(modelPath) && File.Exists(modelPath))
@@ -155,8 +157,12 @@ public class MineImatorLoader
 
                                 // Mine-imator templates can override a model's base skin via
                                 // model_tex (direct filename or resource id).
-                                uint templateTexture = ResolveTemplateTexture(template, resourceDict,
-                                    miObject.DirectoryPath);
+                                string textureRef = GetFirstTimelineKeyframe(timeline)?.TextureObject;
+                                if (string.IsNullOrWhiteSpace(textureRef) && timeline.DefaultValues != null)
+                                    timeline.DefaultValues.TryGetString("TEXTURE_OBJ", out textureRef);
+                                uint templateTexture = ResolveTextureRefTexture(textureRef, resourceDict, miObject.DirectoryPath);
+                                if (templateTexture == 0)
+                                    templateTexture = ResolveTemplateTexture(template, resourceDict, miObject.DirectoryPath);
                                 if (templateTexture != 0)
                                     ApplyTextureOverrideToScene(character, templateTexture, modelBaseTexture);
 
@@ -189,6 +195,9 @@ public class MineImatorLoader
                                  ?? CreateSceneObjectFromItemTemplate(template, timeline, resourceInfoById, miObject.DirectoryPath);
                 }
 
+                if (itemObject == null && template != null)
+                    itemObject = MiObjectTemplateFactory.Create(this, _gl, template, timeline, resourceInfoById, miObject.DirectoryPath);
+
                 itemObject ??= new SceneObject
                 {
                     Name = !string.IsNullOrWhiteSpace(timeline.ModelPartName)
@@ -202,36 +211,80 @@ public class MineImatorLoader
 
                 ApplyTimelineTransform(itemObject, timeline);
                 ApplyTimelineSettings(itemObject, timeline, includeHierarchySettings: true);
+                if (template?.Item != null && itemObject.ObjectType == "Item")
+                    ImportItemSlotKeyframes(itemObject, timeline, template,
+                        itemObject.TemporaryItemSheetColumns, itemObject.TemporaryItemSheetRows);
 
                 if (!string.IsNullOrEmpty(timeline.Id))
                     sceneObjectsByTimelineId[timeline.Id] = itemObject;
             }
         }
 
-            // Apply bodypart timelines onto imported model bones.
-            ApplyBodypartTimelines(miObject, sceneObjectsByTimelineId);
+        // Resolve every bodypart ID before wiring attachments or authored reparenting.
+        RegisterBodypartTimelines(miObject, sceneObjectsByTimelineId);
 
+        var reparentedBodyparts = new HashSet<SceneObject>();
         // Wire parent-child relationships
         if (miObject.Timelines != null)
         {
+            // Remove replaced model links first, so a valid authored hierarchy
+            // cannot be rejected because its old model hierarchy still exists.
             foreach (var timeline in miObject.Timelines)
             {
-                // Bodypart IDs are attachment targets, not independently parented objects.
-                if (string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase) ||
+                    string.IsNullOrWhiteSpace(timeline.Id) || string.IsNullOrWhiteSpace(timeline.Parent) ||
+                    !sceneObjectsByTimelineId.TryGetValue(timeline.Id, out var bone))
+                    continue;
+                sceneObjectsByTimelineId.TryGetValue(timeline.Parent, out var target);
+                if (target == null && !string.Equals(timeline.Parent, "null", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                target ??= sceneRoot;
+                if (target != bone && target != bone.Parent)
+                {
+                    reparentedBodyparts.Add(bone);
+                    bone.SetParent(sceneRoot);
+                }
+            }
+
+            foreach (var timeline in miObject.Timelines)
+            {
+                if (string.IsNullOrWhiteSpace(timeline.Id)) continue;
                 if (!sceneObjectsByTimelineId.TryGetValue(timeline.Id, out var itemObject)) continue;
+
+                bool bodypart = string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrEmpty(timeline.PartOf) && timeline.PartOf != "null";
 
                 SceneObject parentObject = null;
                 if (!string.IsNullOrEmpty(timeline.Parent))
                     sceneObjectsByTimelineId.TryGetValue(timeline.Parent, out parentObject);
 
                 if (parentObject != null)
-                    parentObject.AddChild(itemObject);
-                else
-                    sceneRoot.AddChild(itemObject);
+                    itemObject.SetParent(parentObject);
+                else if (!bodypart || string.Equals(timeline.Parent, "null", StringComparison.OrdinalIgnoreCase))
+                    itemObject.SetParent(sceneRoot);
             }
         }
 
+        var changedBends = new HashSet<SceneObject>();
+        ApplyBodypartTimelines(miObject, sceneObjectsByTimelineId, changedBends);
+
+        var refreshed = new HashSet<SceneObject>();
+        foreach (var bodypart in reparentedBodyparts.Concat(changedBends))
+            RefreshInheritedBends(bodypart);
+
         return sceneRoot;
+
+        void RefreshInheritedBends(SceneObject obj)
+        {
+            if (!refreshed.Add(obj)) return;
+            // Meshes were built against the model hierarchy. Their inherited
+            // bend must now agree with attachment transforms in the authored hierarchy.
+            if (obj is MiBoneSceneObject bone && bone.BendParameters.HasValue &&
+                (changedBends.Contains(obj) || bone.BendParameters.Value.InheritBend))
+                bone.RegenerateMeshes(propagateInheritedBends: false);
+            foreach (var child in obj.Children)
+                RefreshInheritedBends(child);
+        }
     }
 
     /// <summary>Loads a .mimodel file.</summary>
@@ -419,8 +472,11 @@ public class MineImatorLoader
     /// </summary>
     private static vec3 ConvertMiRotation(float[] rotDeg)
     {
-        mat4 m = ConvertMiRotationMatrix(rotDeg);
+        return MatrixToEulerRzRyRx(ConvertMiRotationMatrix(rotDeg));
+    }
 
+    private static vec3 MatrixToEulerRzRyRx(mat4 m)
+    {
         // Decompose into Rz(z') * Ry(y') * Rx(x') (engine convention)
         // For R = Rz(z') * Ry(y') * Rx(x'):
         //   m02 = -sin(y')
@@ -429,7 +485,7 @@ public class MineImatorLoader
         //   m01 =  cos(y')*sin(z')
         //   m00 =  cos(y')*cos(z')
         const float eps = 1e-6f;
-        float yy = MathF.Asin(-Math.Clamp(m.m02, -1f, 1f));
+        float yy = MathF.Atan2(-m.m02, MathF.Sqrt(m.m00 * m.m00 + m.m01 * m.m01));
         float xx, zz;
 
         if (MathF.Abs(m.m02) < 1f - eps)
@@ -556,32 +612,49 @@ public class MineImatorLoader
 
     private void ApplyTimelineTransform(SceneObject obj, MiTimeline timeline)
     {
-        if (timeline.Position is { Length: >= 3 })
-            obj.SetLocalPosition(new vec3(timeline.Position[0] / 16f, timeline.Position[1] / 16f,
-                timeline.Position[2] / 16f));
-
-        if (timeline.Rotation is { Length: >= 3 })
-            obj.SetLocalRotation(ConvertMiRotation(timeline.Rotation));
-
-        if (timeline.Scale is { Length: >= 3 })
-            obj.SetLocalScale(new vec3(timeline.Scale[0], timeline.Scale[1], timeline.Scale[2]));
-
-        MiKeyframe? firstKeyframe = GetFirstTimelineKeyframe(timeline);
-        if (firstKeyframe != null)
+        ResolveTimelineTransform(timeline, out vec3 position, out mat4 rotation, out vec3 scale);
+        if (obj is MiBoneSceneObject bone)
         {
-            float[]? pos = firstKeyframe.GetPosition();
-
-            if (pos != null)
-                obj.SetLocalPosition(new vec3(pos[0] / 16f, pos[1] / 16f, pos[2] / 16f));
-
-            float[]? rot = firstKeyframe.GetRotation();
-            if (rot is { Length: >= 3 })
-                obj.SetLocalRotation(ConvertMiRotation(rot));
-
-            float[]? scale = firstKeyframe.GetScale();
-            if (scale is { Length: >= 3 })
-                obj.SetLocalScale(new vec3(scale[0], scale[1], scale[2]));
+            bone.OffsetPosition = position;
+            bone.SetOffsetRotationMatrix(rotation);
+            bone.OffsetScale = scale;
         }
+        else
+        {
+            obj.SetLocalPosition(position);
+            obj.SetLocalRotationMatrix(rotation, MatrixToEulerRzRyRx(rotation));
+            obj.SetLocalScale(scale);
+        }
+    }
+
+    private static void ResolveTimelineTransform(MiTimeline timeline, out vec3 position, out mat4 rotation, out vec3 scale)
+    {
+        float Default(string key, float fallback) =>
+            timeline.DefaultValues != null && timeline.DefaultValues.TryGetValue(key, out float value) ? value : fallback;
+
+        float[] pos = timeline.Position is { Length: >= 3 } ? (float[])timeline.Position.Clone() : [0f, 0f, 0f];
+        float[] rot = timeline.Rotation is { Length: >= 3 } ? (float[])timeline.Rotation.Clone() : [0f, 0f, 0f];
+        float[] sca = timeline.Scale is { Length: >= 3 } ? (float[])timeline.Scale.Clone() : [1f, 1f, 1f];
+        // All scalar timeline axes use project-space Z-up. Model/legacy arrays
+        // use Y-up, matching value_get_point3D's Y/Z swap in the reference loader.
+        pos[0] = Default("POS_X", pos[0]); pos[1] = Default("POS_Z", pos[1]); pos[2] = Default("POS_Y", pos[2]);
+        rot[0] = Default("ROT_X", rot[0]); rot[1] = Default("ROT_Z", rot[1]); rot[2] = Default("ROT_Y", rot[2]);
+        sca[0] = Default("SCA_X", sca[0]); sca[1] = Default("SCA_Z", sca[1]); sca[2] = Default("SCA_Y", sca[2]);
+
+        MiKeyframe? frame = GetFirstTimelineKeyframe(timeline);
+        if (frame != null)
+        {
+            pos = frame.Position is { Length: >= 3 } ? frame.Position :
+                [frame.PosX ?? pos[0], frame.PosZ ?? pos[1], frame.PosY ?? pos[2]];
+            rot = frame.Rotation is { Length: >= 3 } ? frame.Rotation :
+                [frame.RotX ?? rot[0], frame.RotZ ?? rot[1], frame.RotY ?? rot[2]];
+            sca = frame.Scale is { Length: >= 3 } ? frame.Scale :
+                [frame.ScaX ?? sca[0], frame.ScaZ ?? sca[1], frame.ScaY ?? sca[2]];
+        }
+
+        position = new vec3(pos[0], pos[1], pos[2]) / 16f;
+        rotation = ConvertMiRotationMatrix(rot);
+        scale = new vec3(sca[0], sca[1], sca[2]);
     }
 
     private static MiKeyframe? GetFirstTimelineKeyframe(MiTimeline timeline)
@@ -696,67 +769,52 @@ public class MineImatorLoader
     private SceneObject? CreateSceneObjectFromItemTemplate(MiTemplate template, MiTimeline timeline,
         IReadOnlyDictionary<string, MiResource> resourceInfoById, string objectDirectory)
     {
-        if (template?.Item == null || string.IsNullOrWhiteSpace(template.Item.Tex))
+        if (template.Item is not { } item) return null;
+        var selection = MiObjectItemSelection.Resolve(template, timeline, GetFirstTimelineKeyframe(timeline),
+            resourceInfoById, objectDirectory);
+        if (selection == null || !File.Exists(selection.TexturePath))
             return null;
-        if (!resourceInfoById.TryGetValue(template.Item.Tex, out var resource) ||
-            string.IsNullOrWhiteSpace(resource?.Filename))
-            return null;
-
-        string texturePath = Path.IsPathRooted(resource.Filename)
-            ? resource.Filename
-            : Path.Combine(objectDirectory, resource.Filename);
-        if (!File.Exists(texturePath))
-            return null;
-
-        uint textureId = LoadTextureFromFile(texturePath);
-        if (textureId == 0)
-            return null;
-
+        string texturePath = selection.TexturePath;
         var bytes = File.ReadAllBytes(texturePath);
         ImageResult image = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
         int texWidth = image.Width;
         int texHeight = image.Height;
 
-        int columns = Math.Max(1, resource.ItemSheetSize is { Length: >= 1 } ? resource.ItemSheetSize[0] : 1);
-        int rows = Math.Max(1, resource.ItemSheetSize is { Length: >= 2 } ? resource.ItemSheetSize[1] : 1);
+        int columns = selection.Columns;
+        int rows = selection.Rows;
         int cellWidth = Math.Max(1, texWidth / columns);
         int cellHeight = Math.Max(1, texHeight / rows);
 
-        MiKeyframe? firstKf = GetFirstTimelineKeyframe(timeline);
-        int columnIndex = 0;
-        int rowIndex = 0;
-
-        if (firstKf?.ItemSlot.HasValue == true)
-            columnIndex = Math.Clamp(firstKf.ItemSlot.Value, 0, columns - 1);
-        else if (template.Item.Slot.HasValue)
-            columnIndex = Math.Clamp(template.Item.Slot.Value, 0, columns - 1);
-
-        if (firstKf?.CustomItemSlot.HasValue == true)
-            rowIndex = Math.Clamp(firstKf.CustomItemSlot.Value - 1, 0, rows - 1);
+        int columnIndex = selection.ColumnIndex;
+        int rowIndex = selection.RowIndex;
 
         byte[] tilePixels = ExtractItemSheetTile(image.Data, texWidth, texHeight,
             columnIndex * cellWidth, rowIndex * cellHeight, cellWidth, cellHeight);
         int tileSize = Math.Max(cellWidth, cellHeight);
 
         uint tileTextureId = LoadTextureFromRgba(tilePixels, cellWidth, cellHeight);
-        if (tileTextureId == 0)
+        if (_gl != null && tileTextureId == 0)
             return null;
 
         var obj = new SceneObject
         {
             Name = !string.IsNullOrWhiteSpace(timeline.Name) ? timeline.Name : "Item",
             ObjectType = "Item",
-            PrimitivePlaneFaceCamera = template.Item.FaceCamera,
+            PrimitivePlaneFaceCamera = item.FaceCamera,
             SpawnCategory = "Items",
             TextureType = "local",
-            Position = vec3.Zero
+            Position = vec3.Zero,
+            PivotOffset = vec3.Zero
         };
         obj.AssignObjectId();
 
         string sheetKey = ItemsAtlas.BuildTemporaryItemSheetKey(texturePath, columns, rows);
-        ItemsAtlas.TryRegisterTemporaryItemSheet(sheetKey, texturePath, columns, rows);
         string tileKey = BuildImportedItemTileKey(texturePath, obj.ObjectId, columnIndex, rowIndex);
-        ItemsAtlas.TryRegisterTemporaryItemTile(sheetKey, tileKey, columnIndex, rowIndex);
+        if (_gl != null)
+        {
+            ItemsAtlas.TryRegisterTemporaryItemSheet(sheetKey, texturePath, columns, rows);
+            ItemsAtlas.TryRegisterTemporaryItemTile(sheetKey, tileKey, columnIndex, rowIndex);
+        }
 
         obj.ItemTileKey = tileKey;
         obj.TemporaryItemSheetPath = texturePath;
@@ -766,19 +824,14 @@ public class MineImatorLoader
         obj.TemporaryItemSheetColumnIndex = columnIndex;
         obj.TemporaryItemSheetRowIndex = rowIndex;
 
-        Mesh mesh = new ExtrudedItemMesh(
-            _gl,
-            tileTextureId,
-            tilePixels,
-            is3D: template.Item.ThreeD,
-            tileSize: tileSize,
-            tileWidth: cellWidth,
-            tileHeight: cellHeight,
-            extrudeDepth: 1f / 16f);
-
-        mesh.DoubleSided = true;
-        obj.AddMesh(mesh);
-        ImportItemSlotKeyframes(obj, timeline, columns, rows);
+        if (_gl != null)
+        {
+            Mesh mesh = new ExtrudedItemMesh(
+                _gl, tileTextureId, tilePixels, is3D: item.ThreeD,
+                tileSize: tileSize, tileWidth: cellWidth, tileHeight: cellHeight, extrudeDepth: 1f / 16f);
+            mesh.DoubleSided = true;
+            obj.AddMesh(mesh);
+        }
         return obj;
     }
 
@@ -801,38 +854,30 @@ public class MineImatorLoader
         return string.IsNullOrWhiteSpace(sanitized) ? "miobject_item" : sanitized;
     }
 
-    private static void ImportItemSlotKeyframes(SceneObject obj, MiTimeline timeline, int columns, int rows)
+    private static void ImportItemSlotKeyframes(SceneObject obj, MiTimeline timeline, MiTemplate template, int columns, int rows)
     {
-        if (obj == null || timeline?.Keyframes == null || timeline.Keyframes.Count == 0)
+        if (obj == null || timeline?.Keyframes == null || timeline.Keyframes.Count == 0 || columns <= 0 || rows <= 0 ||
+            template.Item is not { } item)
             return;
 
         var itemSlotKeyframes = new List<ObjectKeyframe>();
         var customSlotKeyframes = new List<ObjectKeyframe>();
 
-        foreach (var kvp in timeline.Keyframes)
+        bool custom = timeline.DefaultValues != null && timeline.DefaultValues.TryGetBool("CUSTOM_ITEM_SLOT", out bool enabled) && enabled;
+        int slot = timeline.DefaultValues != null && timeline.DefaultValues.TryGetValue("ITEM_SLOT", out float defaultSlot)
+            ? (int)defaultSlot : 0;
+        foreach (var kvp in timeline.Keyframes.OrderBy(pair =>
+                     int.TryParse(pair.Key, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index) ? index : int.MaxValue))
         {
             if (!int.TryParse(kvp.Key, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frame) || kvp.Value == null)
                 continue;
 
-            if (kvp.Value.ItemSlot.HasValue)
-            {
-                itemSlotKeyframes.Add(new ObjectKeyframe
-                {
-                    Frame = frame,
-                    Value = Math.Clamp(kvp.Value.ItemSlot.Value, 0, columns - 1),
-                    InterpolationType = "instant"
-                });
-            }
-
-            if (kvp.Value.CustomItemSlot.HasValue)
-            {
-                customSlotKeyframes.Add(new ObjectKeyframe
-                {
-                    Frame = frame,
-                    Value = Math.Clamp(kvp.Value.CustomItemSlot.Value - 1, 0, rows - 1),
-                    InterpolationType = "instant"
-                });
-            }
+            if (!kvp.Value.ItemSlot.HasValue && !kvp.Value.CustomItemSlot.HasValue) continue;
+            slot = kvp.Value.ItemSlot ?? slot;
+            if (kvp.Value.CustomItemSlot.HasValue) custom = kvp.Value.CustomItemSlot.Value != 0f;
+            long selected = Math.Clamp((long)(custom ? slot : item.Slot ?? 0), 0, (long)columns * rows - 1);
+            itemSlotKeyframes.Add(new ObjectKeyframe { Frame = frame, Value = (int)(selected % columns), InterpolationType = "instant" });
+            customSlotKeyframes.Add(new ObjectKeyframe { Frame = frame, Value = (int)(selected / columns), InterpolationType = "instant" });
         }
 
         if (itemSlotKeyframes.Count > 0)
@@ -894,7 +939,7 @@ public class MineImatorLoader
         return boneObj != null;
     }
 
-    private void ApplyBodypartTimelines(MiObject miObject,
+    private void RegisterBodypartTimelines(MiObject miObject,
         Dictionary<string, SceneObject> sceneObjectsByTimelineId)
     {
         if (miObject?.Timelines == null)
@@ -904,7 +949,7 @@ public class MineImatorLoader
         {
             if (!string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase))
                 continue;
-            if (string.IsNullOrWhiteSpace(timeline.PartOf) || string.IsNullOrWhiteSpace(timeline.ModelPartName))
+            if (string.IsNullOrWhiteSpace(timeline.PartOf) || string.IsNullOrEmpty(timeline.ModelPartName))
                 continue;
             if (!sceneObjectsByTimelineId.TryGetValue(timeline.PartOf, out var ownerSceneObject))
                 continue;
@@ -917,17 +962,58 @@ public class MineImatorLoader
 
             if (!string.IsNullOrWhiteSpace(timeline.Id))
                 sceneObjectsByTimelineId[timeline.Id] = boneObj;
-
-            // Bodypart timelines in .miobject often include editor-channel values.
-            // Do not override model bone transforms/lock_bend from them at import
-            // time; that can corrupt authored bend chains.
-            ApplyTimelineSettings(boneObj, timeline, includeHierarchySettings: false,
-                includeMaterialAndDepthSettings: false, applyBaseVisibilityFromHide: false);
-
-            bool? explicitVisible = ResolveTimelineVisible(timeline, GetFirstTimelineKeyframe(timeline));
-            if (explicitVisible.HasValue)
-                boneObj.ObjectVisible = explicitVisible.Value;
         }
+    }
+
+    private void ApplyBodypartTimelines(MiObject miObject, Dictionary<string, SceneObject> sceneObjectsByTimelineId,
+        HashSet<SceneObject> changedBends)
+    {
+        if (miObject.Timelines == null) return;
+        foreach (var timeline in miObject.Timelines)
+        {
+            if (!string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(timeline.Id) ||
+                !sceneObjectsByTimelineId.TryGetValue(timeline.Id, out var obj) || obj is not MiBoneSceneObject bone)
+                continue;
+
+            ApplyTimelineTransform(bone, timeline);
+            ApplyTimelineSettings(bone, timeline, includeHierarchySettings: true,
+                includeMaterialAndDepthSettings: false, applyBaseVisibilityFromHide: false);
+            if (timeline.LockBend.HasValue)
+                bone.SetLockBend(timeline.LockBend.Value);
+            if (ApplyTimelineBend(bone, timeline))
+                changedBends.Add(bone);
+        }
+    }
+
+    private static bool ApplyTimelineBend(MiBoneSceneObject bone, MiTimeline timeline)
+    {
+        if (!bone.BendParameters.HasValue) return false;
+        var bend = bone.BendParameters.Value;
+        vec3 editable = new vec3(
+            bend.Angle.x * (bend.InvertX ? -1f : 1f),
+            bend.Angle.y * (bend.InvertY ? -1f : 1f),
+            bend.Angle.z * (bend.InvertZ ? -1f : 1f));
+        float Default(string channel, float fallback) =>
+            timeline.DefaultValues != null && timeline.DefaultValues.TryGetValue(channel, out float value) ? value : fallback;
+        editable.x = Default("BEND_ANGLE_X", editable.x);
+        editable.y = Default("BEND_ANGLE_Z", editable.y);
+        editable.z = Default("BEND_ANGLE_Y", editable.z);
+        var frame = GetFirstTimelineKeyframe(timeline);
+        editable.x = frame?.BendAngleX ?? editable.x;
+        editable.y = frame?.BendAngleZ ?? editable.y;
+        editable.z = frame?.BendAngleY ?? editable.z;
+
+        bool inherit = timeline.Inherit?.Bend ?? bend.InheritBend;
+        vec3 stored = new vec3(editable.x * (bend.InvertX ? -1f : 1f),
+            editable.y * (bend.InvertY ? -1f : 1f), editable.z * (bend.InvertZ ? -1f : 1f));
+        if (inherit == bend.InheritBend && stored == bend.Angle) return false;
+        bend.InheritBend = inherit;
+        bone.SetBendParameters(bend, bone.LockBend);
+        // Timeline channels are local angles; inherited parent angles are added
+        // during evaluation. Rebuild meshes once all channels and links are loaded.
+        bone.SetBendAngle(stored, regenerateMeshes: false);
+        return true;
     }
 
     private void ApplyTimelineSettings(SceneObject obj, MiTimeline timeline, bool includeHierarchySettings,
@@ -974,10 +1060,11 @@ public class MineImatorLoader
                 obj.InheritPivotOffset = timeline.Inherit.RotPoint.Value;
         }
 
+        if (includeHierarchySettings)
+            obj.ScaleResize = timeline.ScaleResize ?? !string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase);
+
         if (includeHierarchySettings && timeline.RotPointCustom && timeline.RotPoint is { Length: >= 3 })
             obj.PivotOffset = ResolveTimelinePivotOffset(obj, timeline.RotPoint);
-        else if (includeHierarchySettings && !timeline.RotPointCustom)
-            obj.PivotOffset = vec3.Zero;
         if (includeMaterialAndDepthSettings && timeline.Backfaces)
         {
             obj.SetExplicitMaterialSettings();
@@ -991,6 +1078,9 @@ public class MineImatorLoader
         if (explicitVisible.HasValue)
             obj.ObjectVisible = explicitVisible.Value;
 
+        string? multiplyColorValue = firstKf?.MultiplyColor;
+        if (string.IsNullOrWhiteSpace(multiplyColorValue) && timeline.DefaultValues != null)
+            timeline.DefaultValues.TryGetString("RGB_MUL", out multiplyColorValue);
         string? mixColorValue = firstKf?.MixColor;
         if (string.IsNullOrWhiteSpace(mixColorValue) && timeline.DefaultValues != null &&
             timeline.DefaultValues.TryGetString("MIX_COLOR", out string defaultMixColor))
@@ -1015,11 +1105,15 @@ public class MineImatorLoader
         bool hasMixColor = includeMaterialAndDepthSettings && !string.IsNullOrWhiteSpace(mixColorValue);
         bool hasMixPercent = includeMaterialAndDepthSettings && mixPercentValue.HasValue;
         bool hasAlpha = includeMaterialAndDepthSettings && alphaValue.HasValue;
+        bool hasMultiplyColor = !string.IsNullOrWhiteSpace(multiplyColorValue);
 
-        if (!(hasMixColor || hasMixPercent || hasAlpha))
+        if (!(hasMixColor || hasMixPercent || hasAlpha || hasMultiplyColor))
             return;
 
         obj.SetExplicitMaterialSettings();
+
+        if (hasMultiplyColor && ParseMiColor(multiplyColorValue) is { } multiplyColor)
+            obj.MaterialSettings.BlendColor = new vec4(multiplyColor, 1f);
 
         if (hasMixColor)
         {
@@ -1044,7 +1138,7 @@ public class MineImatorLoader
             float alpha = Math.Clamp(alphaValue!.Value, 0f, 1f);
             var ac = obj.MaterialSettings.AlbedoColor;
             obj.MaterialSettings.AlbedoColor = new vec4(ac.x, ac.y, ac.z, alpha);
-            obj.MaterialSettings.Transparency = 1f - alpha;
+            obj.MaterialSettings.Transparency = 0f;
         }
 
         obj.PropagateMaterialSettingsToChildren();
@@ -1056,9 +1150,9 @@ public class MineImatorLoader
         if (importedItemMesh == null)
         {
             return new vec3(
-                rotPoint[0] / 16f,
-                rotPoint[1] / 16f,
-                rotPoint[2] / 16f);
+                -rotPoint[0] / 16f,
+                -rotPoint[1] / 16f,
+                -rotPoint[2] / 16f);
         }
 
         float normalizedWidth = importedItemMesh.TileWidth / (float)importedItemMesh.TileSize;
@@ -1142,7 +1236,8 @@ public class MineImatorLoader
             boneObject.AssignObjectId();
             // Build the octahedron indicator so the Viewport renders and picks it
             // the same way it does for Assimp-imported bones.
-            boneObject.CreateIndicator(_gl);
+            if (_gl != null)
+                boneObject.CreateIndicator(_gl);
             character.BoneObjects[GetBoneLookupKey(boneIdx)] = boneObject;
         }
 
@@ -1602,6 +1697,7 @@ public class MineImatorLoader
                 partColorAlpha, partColorBlendAmount);
             mesh.BlendColor = new vec4(colors.Blend, 1f);
             mesh.MixColor = new vec4(colors.Mix, colors.MixAmount);
+            mesh.BaseAlpha = colors.Alpha;
             mesh.Alpha = colors.Alpha;
 
             // Bend matrix setup uses shapePosition to align the pivot region,
@@ -3340,9 +3436,24 @@ public class MiTemplate
     [JsonPropertyName("id")] public string Id { get; set; }
     [JsonPropertyName("type")] public string Type { get; set; }
     [JsonPropertyName("name")] public string Name { get; set; }
-    [JsonPropertyName("model")]
-    [JsonConverter(typeof(MiStringOrObjectRefConverter))]
-    public string Model { get; set; }
+    [JsonPropertyName("model")] public JsonElement? ModelDefinition { get; set; }
+    [JsonIgnore]
+    public string Model
+    {
+        get
+        {
+            if (ModelDefinition is not { } model) return string.Empty;
+            if (model.ValueKind == JsonValueKind.String) return model.GetString() ?? string.Empty;
+            if (model.ValueKind == JsonValueKind.Object)
+                foreach (string key in new[] { "id", "resource", "filename", "file", "path", "model" })
+                    if (model.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
+                        return value.GetString() ?? string.Empty;
+            return string.Empty;
+        }
+        set => ModelDefinition = JsonSerializer.SerializeToElement(value, AppJsonContext.Default.String);
+    }
+    [JsonPropertyName("shape")] public JsonElement? Shape { get; set; }
+    [JsonPropertyName("block")] public JsonElement? Block { get; set; }
     [JsonPropertyName("model_tex")] public string ModelTex { get; set; }
     [JsonPropertyName("model_tex_material")] public string ModelTexMaterial { get; set; }
     [JsonPropertyName("model_tex_normal")] public string ModelTexNormal { get; set; }
@@ -3374,6 +3485,7 @@ public class MiTimeline
     [JsonConverter(typeof(MiBoolOrNumberConverter))]
     public float? LockBend { get; set; }
     [JsonPropertyName("inherit")] public MiInherit? Inherit { get; set; }
+    [JsonPropertyName("scale_resize")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? ScaleResize { get; set; }
     [JsonPropertyName("rot_point_custom")] [JsonConverter(typeof(MiBoolConverter))] public bool RotPointCustom { get; set; }
     [JsonPropertyName("rot_point")] public float[]? RotPoint { get; set; }
     [JsonPropertyName("backfaces")] [JsonConverter(typeof(MiBoolConverter))] public bool Backfaces { get; set; }
@@ -3405,10 +3517,14 @@ public class MiKeyframe
     [JsonPropertyName("SCA_X")] public float? ScaX { get; set; }
     [JsonPropertyName("SCA_Y")] public float? ScaY { get; set; }
     [JsonPropertyName("SCA_Z")] public float? ScaZ { get; set; }
+    [JsonPropertyName("BEND_ANGLE_X")] public float? BendAngleX { get; set; }
+    [JsonPropertyName("BEND_ANGLE_Y")] public float? BendAngleY { get; set; }
+    [JsonPropertyName("BEND_ANGLE_Z")] public float? BendAngleZ { get; set; }
     [JsonPropertyName("VISIBLE")]
     [JsonConverter(typeof(MiNullableBoolConverter))]
     public bool? Visible { get; set; }
-    [JsonPropertyName("TEXTURE_OBJ")] public string? TextureObj { get; set; }
+    [JsonPropertyName("TEXTURE_OBJ")] public string? TextureObject { get; set; }
+    [JsonPropertyName("RGB_MUL")] public string? MultiplyColor { get; set; }
     [JsonPropertyName("MIX_COLOR")] public string? MixColor { get; set; }
     [JsonPropertyName("MIX_PERCENT")]
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
@@ -3420,8 +3536,8 @@ public class MiKeyframe
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
     public int? ItemSlot { get; set; }
     [JsonPropertyName("CUSTOM_ITEM_SLOT")]
-    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
-    public int? CustomItemSlot { get; set; }
+    [JsonConverter(typeof(MiBoolOrNumberConverter))]
+    public float? CustomItemSlot { get; set; }
 
     public float[] GetPosition()
     {
@@ -3437,7 +3553,7 @@ public class MiKeyframe
     {
         if (Rotation is { Length: >= 3 }) return Rotation;
         if (RotX.HasValue || RotY.HasValue || RotZ.HasValue)
-            return new[] { RotX ?? 0, RotY ?? 0, RotZ ?? 0 };
+            return new[] { RotX ?? 0, RotZ ?? 0, RotY ?? 0 };
         return null;
     }
 
@@ -3445,7 +3561,7 @@ public class MiKeyframe
     {
         if (Scale is { Length: >= 3 }) return Scale;
         if (ScaX.HasValue || ScaY.HasValue || ScaZ.HasValue)
-            return new[] { ScaX ?? 1, ScaY ?? 1, ScaZ ?? 1 };
+            return new[] { ScaX ?? 1, ScaZ ?? 1, ScaY ?? 1 };
         return null;
     }
 }
@@ -3460,6 +3576,9 @@ public class MiResource
 
 public class MiInherit
 {
+    [JsonPropertyName("bend")]
+    [JsonConverter(typeof(MiNullableBoolConverter))]
+    public bool? Bend { get; set; }
     [JsonPropertyName("position")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Position { get; set; }
     [JsonPropertyName("rotation")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Rotation { get; set; }
     [JsonPropertyName("scale")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Scale { get; set; }
@@ -3495,6 +3614,13 @@ public class MiKeyValueMap
             default:
                 return false;
         }
+    }
+
+    public bool TryGetBool(string key, out bool value)
+    {
+        bool found = TryGetValue(key, out float numeric);
+        value = numeric != 0f;
+        return found;
     }
 
     public bool TryGetValue(string key, out float value)

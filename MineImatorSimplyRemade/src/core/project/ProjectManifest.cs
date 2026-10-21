@@ -362,6 +362,9 @@ public class ProjectSceneObjectEntry
     public bool InheritPosition { get; set; } = true;
     public bool InheritRotation { get; set; } = true;
     public bool InheritScale { get; set; } = true;
+    public bool ScaleResize { get; set; } = false;
+    public float? LockBend { get; set; }
+    public bool? InheritBend { get; set; }
     public bool InheritPivotOffset { get; set; } = false;
     public bool InheritVisibility { get; set; } = true;
     public bool ObjectVisible { get; set; } = true;

@@ -4730,7 +4730,7 @@ public class Viewport : UiPanel
 
         mat4 translation = mat4.Translate(worldPos);
         mat4 scaling = mat4.Scale(scale);
-        mat4 pivot = mat4.Translate(obj.GetAccumulatedPivotOffset());
+        mat4 pivot = mat4.Translate(obj.PivotOffset);
         return translation * rotation * scaling * pivot;
     }
 

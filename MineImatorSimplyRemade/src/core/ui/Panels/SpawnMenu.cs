@@ -2440,16 +2440,13 @@ public class SpawnMenu : UiPanel
     private SceneObject? SpawnMiObjectItemViaSpawnMenu(MiTemplate template, MiTimeline timeline,
         IReadOnlyDictionary<string, MiResource> resourceInfoById, string objectDirectory)
     {
-        if (Viewport == null || Gl == null || template?.Item == null || string.IsNullOrWhiteSpace(template.Item.Tex))
+        if (Viewport == null || Gl == null || template?.Item == null)
             return null;
-        if (!resourceInfoById.TryGetValue(template.Item.Tex, out var resource) || string.IsNullOrWhiteSpace(resource?.Filename))
+        var selection = MiObjectItemSelection.Resolve(template, timeline, GetFirstTimelineKeyframe(timeline),
+            resourceInfoById, objectDirectory);
+        if (selection == null || !File.Exists(selection.TexturePath))
             return null;
-
-        string texturePath = Path.IsPathRooted(resource.Filename)
-            ? resource.Filename
-            : Path.Combine(objectDirectory, resource.Filename);
-        if (!File.Exists(texturePath))
-            return null;
+        string texturePath = selection.TexturePath;
 
         ImageResult image;
         try
@@ -2464,22 +2461,13 @@ public class SpawnMenu : UiPanel
 
         int texWidth = image.Width;
         int texHeight = image.Height;
-        int columns = Math.Max(1, resource.ItemSheetSize is { Length: >= 1 } ? resource.ItemSheetSize[0] : 1);
-        int rows = Math.Max(1, resource.ItemSheetSize is { Length: >= 2 } ? resource.ItemSheetSize[1] : 1);
+        int columns = selection.Columns;
+        int rows = selection.Rows;
         int cellWidth = Math.Max(1, texWidth / columns);
         int cellHeight = Math.Max(1, texHeight / rows);
 
-        MiKeyframe? firstKf = GetFirstTimelineKeyframe(timeline);
-        int columnIndex = 0;
-        int rowIndex = 0;
-
-        if (firstKf?.ItemSlot.HasValue == true)
-            columnIndex = Math.Clamp(firstKf.ItemSlot.Value, 0, columns - 1);
-        else if (template.Item.Slot.HasValue)
-            columnIndex = Math.Clamp(template.Item.Slot.Value, 0, columns - 1);
-
-        if (firstKf?.CustomItemSlot.HasValue == true)
-            rowIndex = Math.Clamp(firstKf.CustomItemSlot.Value - 1, 0, rows - 1);
+        int columnIndex = selection.ColumnIndex;
+        int rowIndex = selection.RowIndex;
 
         byte[] tilePixels = ExtractItemSheetTile(image.Data, texWidth, texHeight,
             columnIndex * cellWidth, rowIndex * cellHeight, cellWidth, cellHeight);
@@ -2509,6 +2497,7 @@ public class SpawnMenu : UiPanel
         obj.Name = !string.IsNullOrWhiteSpace(timeline.Name) ? timeline.Name : "Item";
         obj.ObjectType = "Item";
         obj.PrimitivePlaneFaceCamera = template.Item.FaceCamera;
+        obj.PivotOffset = vec3.Zero;
         obj.ResourcePackId = "";
         obj.TemporaryItemSheetPath = texturePath;
         obj.TemporaryItemSheetCacheKey = sheetKey;

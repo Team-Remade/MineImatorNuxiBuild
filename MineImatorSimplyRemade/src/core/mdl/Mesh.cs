@@ -478,6 +478,9 @@ public class Mesh : IDisposable
     /// </summary>
     public vec3 BaseTint { get; set; } = new vec3(1f);
 
+    /// <summary>Authored geometry opacity multiplied by the scene material opacity.</summary>
+    public float BaseAlpha { get; set; } = 1f;
+
     /// <summary>
     /// Base colour passed to the fragment shader as <c>uAlbedo</c>.
     /// Backed by the RGB channels of <see cref="StandardMaterial.AlbedoColor"/>.
@@ -692,6 +695,7 @@ public class Mesh : IDisposable
 
         clone.AnimationKey        = AnimationKey;
         clone.BaseTint            = BaseTint;
+        clone.BaseAlpha           = BaseAlpha;
         clone.Unlit                = Unlit;
         clone.DepthTestDisabled    = DepthTestDisabled;
         clone.IsTranslucent        = IsTranslucent;

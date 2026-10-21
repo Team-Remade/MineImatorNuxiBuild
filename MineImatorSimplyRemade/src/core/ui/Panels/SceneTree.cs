@@ -807,6 +807,8 @@ public class SceneTree : UiPanel
         dup.InheritPosition     = original.InheritPosition;
         dup.InheritRotation     = original.InheritRotation;
         dup.InheritScale        = original.InheritScale;
+        dup.ScaleResize         = original.ScaleResize;
+        dup.LockBend            = original.LockBend;
         dup.CastShadow          = original.CastShadow;
         dup.BlurTexture         = original.BlurTexture;
         dup.TextureMipmaps      = original.TextureMipmaps;

@@ -75,11 +75,16 @@ internal static class SceneObjectFingerprint
         bool hasBend = obj is MiBoneSceneObject { BendParameters: not null };
         hash.Add(hasBend);
         if (obj is MiBoneSceneObject { BendParameters: { } bend })
+        {
             hash.Add(bend.Angle);
+            hash.Add(bend.InheritBend);
+        }
         hash.Add(obj.PivotOffset);
         hash.Add(obj.InheritPosition);
         hash.Add(obj.InheritRotation);
         hash.Add(obj.InheritScale);
+        hash.Add(obj.ScaleResize);
+        hash.Add(obj.LockBend);
         hash.Add(obj.InheritPivotOffset);
         hash.Add(obj.InheritVisibility);
         hash.Add(obj.ObjectVisible);

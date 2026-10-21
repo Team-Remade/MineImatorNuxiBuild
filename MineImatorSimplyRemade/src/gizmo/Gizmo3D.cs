@@ -1709,7 +1709,11 @@ public class Gizmo3D : IDisposable
                 {
                     vec3 newWorldPos = newTransform.Origin;
 
-                    if (obj.Parent != null)
+                    if (obj is MiBoneSceneObject independentPositionBone && !obj.InheritPosition)
+                    {
+                        independentPositionBone.OffsetPosition = newWorldPos;
+                    }
+                    else if (obj.Parent != null && obj.InheritPosition)
                     {
                         mat4 parentTransform = obj.GetParentWorldTransform();
                         mat4 parentInverse   = parentTransform.Inverse;
@@ -1738,7 +1742,7 @@ public class Gizmo3D : IDisposable
                     // parent's own transform during rendering, once already present in the
                     // stored "local" value), visibly flipping/misrotating any bone whose
                     // parent bone itself had a non-identity rotation.
-                    if (!localCoords && obj.Parent != null)
+                    if (!localCoords && obj.Parent != null && obj.InheritRotation)
                     {
                         // Must match exactly how GetWorldTransform(obj) built
                         // item.TargetGlobal.Basis in the first place (parentRot *
@@ -1751,7 +1755,11 @@ public class Gizmo3D : IDisposable
                     // In local-rotation mode, ComputeTransform returns purRot * rotMat * scaleMat,
                     // so the basis includes scale. MatrixToEulerYXZ assumes a pure-rotation matrix
                     // (m.m21 == -sin(x) only holds without scale), so we must normalise first.
-                    obj.SetLocalRotation(GizmoMath.MatrixToEulerYXZ(NormalizeRotation(rotBasis)));
+                    vec3 rotation = GizmoMath.MatrixToEulerYXZ(NormalizeRotation(rotBasis));
+                    if (obj is MiBoneSceneObject independentRotationBone && !obj.InheritRotation)
+                        independentRotationBone.OffsetRotation = rotation;
+                    else
+                        obj.SetLocalRotation(rotation);
                     if (obj is CameraSceneObject cameraObject)
                         cameraObject.SyncCameraToTransform();
                     break;
@@ -1907,14 +1915,15 @@ public class Gizmo3D : IDisposable
 
         // Build a pure-rotation basis (no scale) so gizmo axes are always unit-length
         // and correctly oriented regardless of the object's scale.
-        mat4 rx  = mat4.RotateX(obj.Rotation.x);
-        mat4 ry  = mat4.RotateY(obj.Rotation.y);
-        mat4 rz  = mat4.RotateZ(obj.Rotation.z);
+        vec3 rotation = obj is MiBoneSceneObject bone && !obj.InheritRotation ? bone.OffsetRotation : obj.Rotation;
+        mat4 rx  = mat4.RotateX(rotation.x);
+        mat4 ry  = mat4.RotateY(rotation.y);
+        mat4 rz  = mat4.RotateZ(rotation.z);
         mat4 rot = rz * ry * rx;   // local rotation only
 
         // Accumulate parent rotations (strip scale from each parent's contribution
         // by normalising each column before combining).
-        if (obj.Parent != null)
+        if (obj.Parent != null && obj.InheritRotation)
         {
             mat4 parentWorld = obj.GetParentWorldTransform();
             mat4 parentRot   = NormalizeRotation(parentWorld);
@@ -1943,9 +1952,10 @@ public class Gizmo3D : IDisposable
 
     private static Transform3D GetLocalTransform(SceneObject obj)
     {
-        mat4 rx   = mat4.RotateX(obj.Rotation.x);
-        mat4 ry   = mat4.RotateY(obj.Rotation.y);
-        mat4 rz   = mat4.RotateZ(obj.Rotation.z);
+        vec3 rotation = obj is MiBoneSceneObject bone && !obj.InheritRotation ? bone.OffsetRotation : obj.Rotation;
+        mat4 rx   = mat4.RotateX(rotation.x);
+        mat4 ry   = mat4.RotateY(rotation.y);
+        mat4 rz   = mat4.RotateZ(rotation.z);
         mat4 rot  = rz * ry * rx;
         mat4 scl  = mat4.Scale(obj.Scale);
         mat4 basis = rot * scl;

@@ -183,6 +183,9 @@ public static class ProjectSceneSerializer
             InheritPosition = obj.InheritPosition,
             InheritRotation = obj.InheritRotation,
             InheritScale = obj.InheritScale,
+            ScaleResize = obj.ScaleResize,
+            LockBend = obj.LockBend,
+            InheritBend = obj is MiBoneSceneObject bendSource ? bendSource.BendParameters?.InheritBend : null,
             InheritPivotOffset = obj.InheritPivotOffset,
             InheritVisibility = obj.InheritVisibility,
             ObjectVisible = obj.ObjectVisible,
@@ -571,13 +574,31 @@ public static class ProjectSceneSerializer
         obj.SetLocalPosition(ToVec3(entry.Position));
         obj.SetLocalRotation(ToVec3(entry.Rotation));
         obj.SetLocalScale(ToVec3(entry.Scale));
-        if (obj is MiBoneSceneObject bendBone && entry.BendAngle != null)
-            bendBone.SetBendAngle(ToVec3(entry.BendAngle));
+        if (obj is MiBoneSceneObject bendBone)
+        {
+            if (entry.InheritBend.HasValue && bendBone.BendParameters is { } bend)
+            {
+                bend.InheritBend = entry.InheritBend.Value;
+                bendBone.SetBendParameters(bend, entry.LockBend ?? bendBone.LockBend);
+                if (entry.BendAngle == null)
+                    bendBone.RegenerateMeshes();
+            }
+            if (entry.BendAngle != null)
+                bendBone.SetBendAngle(ToVec3(entry.BendAngle));
+        }
 
         obj.PivotOffset = ToVec3(entry.PivotOffset);
         obj.InheritPosition = entry.InheritPosition;
         obj.InheritRotation = entry.InheritRotation;
         obj.InheritScale = entry.InheritScale;
+        obj.ScaleResize = entry.ScaleResize;
+        if (entry.LockBend.HasValue)
+        {
+            if (obj is MiBoneSceneObject lockBone)
+                lockBone.SetLockBend(entry.LockBend.Value);
+            else
+                obj.LockBend = entry.LockBend.Value;
+        }
         obj.InheritPivotOffset = entry.InheritPivotOffset;
         obj.InheritVisibility = entry.InheritVisibility;
         obj.ObjectVisible = entry.ObjectVisible;

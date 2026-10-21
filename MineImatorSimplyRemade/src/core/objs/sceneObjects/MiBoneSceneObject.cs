@@ -33,7 +33,7 @@ public class BoneShapeData
 /// Bones store their model-loaded transform as a "base pose" and expose a
 /// user-editable delta on top of it.  The Properties panel reads/writes
 /// <see cref="OffsetPosition"/> / <see cref="OffsetRotation"/> / <see cref="OffsetScale"/>
-/// which are always zero / one at load time.
+/// which default to zero / one before imported timeline channels are applied.
 /// </summary>
 public class MiBoneSceneObject : BoneSceneObject
 {
@@ -42,12 +42,14 @@ public class MiBoneSceneObject : BoneSceneObject
         // Mine Imator shapes are already positioned relative to their bone origin.
         // The default SceneObject pivot (0, 0.5, 0) must not displace them.
         PivotOffset = vec3.Zero;
+        InheritPivotOffset = true;
     }
 
     // ── Base pose (set once by the loader, never changed by the user) ─────────
 
     private vec3  _basePosePosition = vec3.Zero;
-    private vec3  _basePoseRotation = vec3.Zero;
+    private mat4  _basePoseRotation = mat4.Identity;
+    private mat4  _basePoseRotationInverse = mat4.Identity;
     private vec3  _basePoseScale    = vec3.Ones;
 
     /// <summary>
@@ -58,9 +60,11 @@ public class MiBoneSceneObject : BoneSceneObject
     /// </summary>
     public void CommitBasePose()
     {
-        _basePosePosition = LocalPosition;
-        _basePoseRotation = LocalRotation;
-        _basePoseScale    = LocalScale;
+        _basePosePosition = Position;
+        _basePoseRotation = GetLocalRotationMatrix();
+        _basePoseRotationInverse = _basePoseRotation.Inverse;
+        _basePoseScale    = Scale;
+        InvalidateRenderEvaluation();
         // Offsets start at zero / one — no extra work needed since the properties
         // below derive them on demand.
     }
@@ -70,8 +74,16 @@ public class MiBoneSceneObject : BoneSceneObject
     /// <summary>Position delta relative to the base pose (displayed in the UI).</summary>
     public vec3 OffsetPosition
     {
-        get => LocalPosition - _basePosePosition;
-        set => SetLocalPosition(_basePosePosition + value);
+        get
+        {
+            vec4 offset = _basePoseRotationInverse * new vec4(Position - _basePosePosition, 0f);
+            return new vec3(offset.x, offset.y, offset.z);
+        }
+        set
+        {
+            vec4 offset = _basePoseRotation * new vec4(value, 0f);
+            SetLocalPosition(_basePosePosition + new vec3(offset.x, offset.y, offset.z));
+        }
     }
 
     /// <summary>Rotation delta relative to the base pose (displayed in the UI).</summary>
@@ -79,21 +91,28 @@ public class MiBoneSceneObject : BoneSceneObject
     {
         get
         {
-            // Mine-imator offsets are authored relative to the imported base pose in
-            // parent/model space. Derive delta with right-side inverse so mirrored
-            // base poses (e.g. Y=180) keep the expected up/down direction.
-            mat4 baseRot = BuildRotationMatrix(_basePoseRotation);
-            mat4 localRot = BuildRotationMatrix(LocalRotation);
-            mat4 deltaRot = localRot * baseRot.Inverse;
+            mat4 deltaRot = _basePoseRotationInverse * GetLocalRotationMatrix();
             return MatrixToEulerRzRyRx(deltaRot);
         }
         set
         {
-            mat4 baseRot = BuildRotationMatrix(_basePoseRotation);
-            mat4 deltaRot = BuildRotationMatrix(value);
-            mat4 composed = deltaRot * baseRot;
-            SetLocalRotation(MatrixToEulerRzRyRx(composed));
+            SetOffsetRotationMatrix(BuildRotationMatrix(value));
         }
+    }
+
+    public void SetOffsetRotationMatrix(mat4 rotation)
+    {
+        mat4 composed = _basePoseRotation * rotation;
+        SetLocalRotationMatrix(composed, MatrixToEulerRzRyRx(composed));
+    }
+
+    protected override void GetTimelineTransform(out mat4 modelTransform, out vec3 position, out mat4 rotation)
+    {
+        // Model part placement precedes editable timeline channels. Inheritance
+        // overrides must operate on those channels, not on the combined pose.
+        modelTransform = mat4.Translate(_basePosePosition) * _basePoseRotation;
+        position = OffsetPosition;
+        rotation = _basePoseRotationInverse * GetLocalRotationMatrix();
     }
 
     /// <summary>
@@ -103,9 +122,9 @@ public class MiBoneSceneObject : BoneSceneObject
     public vec3 OffsetScale
     {
         get => new(
-            _basePoseScale.x != 0 ? LocalScale.x / _basePoseScale.x : LocalScale.x,
-            _basePoseScale.y != 0 ? LocalScale.y / _basePoseScale.y : LocalScale.y,
-            _basePoseScale.z != 0 ? LocalScale.z / _basePoseScale.z : LocalScale.z);
+            _basePoseScale.x != 0 ? Scale.x / _basePoseScale.x : Scale.x,
+            _basePoseScale.y != 0 ? Scale.y / _basePoseScale.y : Scale.y,
+            _basePoseScale.z != 0 ? Scale.z / _basePoseScale.z : Scale.z);
         set => SetLocalScale(new vec3(
             _basePoseScale.x * value.x,
             _basePoseScale.y * value.y,
@@ -148,6 +167,7 @@ public class MiBoneSceneObject : BoneSceneObject
     /// <summary>Stores the bend parameters for this bone (called by the loader).</summary>
     public void SetBendParameters(BendParams? bendParams, float lockBend)
     {
+        InvalidateRenderEvaluation();
         BendParameters = bendParams;
         LockBend = Math.Clamp(lockBend, 0f, 1f);
         // SceneObject.GetWorldMatrix reads the inherited field. Keep it in sync
@@ -157,6 +177,7 @@ public class MiBoneSceneObject : BoneSceneObject
 
     public void SetLockBend(float lockBend)
     {
+        InvalidateRenderEvaluation();
         LockBend = Math.Clamp(lockBend, 0f, 1f);
         base.LockBend = LockBend;
     }
@@ -220,9 +241,10 @@ public class MiBoneSceneObject : BoneSceneObject
     }
 
     /// <summary>Updates the bend angle and regenerates all shape meshes.</summary>
-    public void SetBendAngle(vec3 newAngle)
+    public void SetBendAngle(vec3 newAngle, bool regenerateMeshes = true)
     {
         if (!BendParameters.HasValue) return;
+        InvalidateRenderEvaluation();
 
         var bp = BendParameters.Value;
         // Never allow bend on axes disabled by the model's bend definition.
@@ -236,7 +258,8 @@ public class MiBoneSceneObject : BoneSceneObject
         bp.Angle   = newAngle;
         BendParameters = bp;
 
-        RegenerateMeshes();
+        if (regenerateMeshes)
+            RegenerateMeshes();
     }
 
     /// <summary>
@@ -415,7 +438,7 @@ public class MiBoneSceneObject : BoneSceneObject
     private static vec3 MatrixToEulerRzRyRx(mat4 m)
     {
         // Decompose for R = Rz * Ry * Rx to keep parity with SceneObject/Gizmo.
-        float yaw = MathF.Asin(-Math.Clamp(m.m02, -1f, 1f));
+        float yaw = MathF.Atan2(-m.m02, MathF.Sqrt(m.m00 * m.m00 + m.m01 * m.m01));
         float pitch;
         float roll;
 
