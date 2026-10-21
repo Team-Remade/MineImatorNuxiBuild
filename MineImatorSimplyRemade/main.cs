@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using GlmSharp;
 using MineImatorSimplyRemade.core;
+using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.graphics;
 using MineImatorSimplyRemade.core.log;
 using MineImatorSimplyRemade.core.startup;
@@ -226,36 +227,52 @@ public static class main
 
             while (!Glfw.WindowShouldClose(MainWindow.WindowHandle) || !MainWindow.CanWindowClose())
             {
-                long frameStartTicks = frameTimer.ElapsedTicks;
-
-                VeldridContext.BeginFrame();
-
-                Glfw.PollEvents();
-
-                // Main window always renders.
-                Glfw.MakeContextCurrent(MainWindow.WindowHandle);
-                MainWindow.Render();
-
-                // Camera window: handle OS close button, then render if visible.
-                // CameraWindow.Render() manages its own context switching internally.
-                if (CameraWindow.ShouldClose)
+                var profiler = FrameProfiler.Shared;
+                profiler.BeginFrame();
+                try
                 {
-                    if (camViewport != null) camViewport.DockToInlineVisible();
-                    CameraWindow.Hide();
-                    Glfw.SetWindowShouldClose(CameraWindow.WindowHandle, false);
+                    long frameStartTicks = frameTimer.ElapsedTicks;
+                    using (profiler.Measure(ProfileStage.FrameWork))
+                    {
+                        using (profiler.Measure(ProfileStage.BackendBegin))
+                            VeldridContext.BeginFrame();
+                        using (profiler.Measure(ProfileStage.Events))
+                            Glfw.PollEvents();
+
+                        using (profiler.Measure(ProfileStage.MainWindow))
+                        {
+                            Glfw.MakeContextCurrent(MainWindow.WindowHandle);
+                            MainWindow.Render();
+                        }
+
+                        // CameraWindow.Render manages its own context switching.
+                        if (CameraWindow.ShouldClose)
+                        {
+                            if (camViewport != null) camViewport.DockToInlineVisible();
+                            CameraWindow.Hide();
+                            Glfw.SetWindowShouldClose(CameraWindow.WindowHandle, false);
+                        }
+                        else if (IsWindowVisible())
+                        {
+                            using (profiler.Measure(ProfileStage.PreviewWindow))
+                            {
+                                CameraWindow.Render();
+                                Glfw.MakeContextCurrent(MainWindow.WindowHandle);
+                            }
+                        }
+                        using (profiler.Measure(ProfileStage.BackendEnd))
+                            VeldridContext.EndFrame();
+                    }
+
+                    int targetFps = preferencesPanel?.TargetFps ?? MainLoopTargetFps;
+                    long targetFrameTicks = targetFps > 0 ? Stopwatch.Frequency / targetFps : 0;
+                    using (profiler.Measure(ProfileStage.FrameLimiter))
+                        LimitFrameRate(frameTimer, frameStartTicks, targetFrameTicks);
                 }
-                else if (IsWindowVisible())
+                finally
                 {
-                    CameraWindow.Render();
-                    // Restore main context after camera window's render.
-                    Glfw.MakeContextCurrent(MainWindow.WindowHandle);
+                    profiler.EndFrame();
                 }
-
-                VeldridContext.EndFrame();
-
-                int targetFps = preferencesPanel?.TargetFps ?? MainLoopTargetFps;
-                long targetFrameTicks = targetFps > 0 ? Stopwatch.Frequency / targetFps : 0;
-                LimitFrameRate(frameTimer, frameStartTicks, targetFrameTicks);
             }
             
             Console.WriteLine("Stopping...");

@@ -10,6 +10,7 @@ using Silk.NET.OpenGL;
 using StbImageSharp;
 using Monitor = Silk.NET.GLFW.Monitor;
 using MineImatorSimplyRemade.core.ui;
+using MineImatorSimplyRemade.core.diagnostics;
 
 namespace MineImatorSimplyRemade.core.window;
 
@@ -252,29 +253,37 @@ public class Window : IDisposable
 
     public virtual unsafe void Render()
     {
-        SetContextCurrent();
+        using (FrameProfiler.Shared.Measure(ProfileStage.UiSetup))
+        {
+            SetContextCurrent();
 
-        Glfw.MakeContextCurrent(windowHandle);
-        _gl.ClearColor(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
-        _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+            Glfw.MakeContextCurrent(windowHandle);
+            _gl.ClearColor(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
+            _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-        ImGuiImplOpenGL3.NewFrame();
-        ImGuiImplGLFW.NewFrame();
-        UpdateDpiScale();
-        ImGui.NewFrame();
+            ImGuiImplOpenGL3.NewFrame();
+            ImGuiImplGLFW.NewFrame();
+            UpdateDpiScale();
+            ImGui.NewFrame();
+        }
 
         RenderUi();
 
-        ImGui.Render();
-        ImGuiImplOpenGL3.RenderDrawData(ImGui.GetDrawData());
+        using (FrameProfiler.Shared.Measure(ProfileStage.ImGuiDraw))
+        {
+            ImGui.Render();
+            ImGuiImplOpenGL3.RenderDrawData(ImGui.GetDrawData());
+        }
 
         if ((io.ConfigFlags & ImGuiConfigFlags.ViewportsEnable) != 0)
         {
+            using var platformTiming = FrameProfiler.Shared.Measure(ProfileStage.PlatformWindows);
             ImGui.UpdatePlatformWindows();
             ImGui.RenderPlatformWindowsDefault();
         }
 
-        Glfw.SwapBuffers(windowHandle);
+        using (FrameProfiler.Shared.Measure(ProfileStage.SwapBuffers))
+            Glfw.SwapBuffers(windowHandle);
     }
 
     /// <summary>

@@ -10,6 +10,7 @@ using Hexa.NET.ImGui;
 using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.audio;
+using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.render;
@@ -96,6 +97,7 @@ public class MainWindow : Window
     private PropertiesPanel? _propertiesPanel;
 
     private readonly Menubar _menubar;
+    private readonly PerformancePanel _performancePanel = new();
     private readonly ProjectManager _projectManager = ProjectManager.Instance;
     private readonly Dictionary<string, uint> _thumbnailTextures = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _homeSplashPool = new();
@@ -219,6 +221,10 @@ public class MainWindow : Window
     private string _pendingHistoryFingerprint = "";
     private double _pendingHistoryChangedAtSeconds;
     private bool _suppressHistoryTracking;
+    private ulong _cachedObjectsFingerprint;
+    private string _cachedSceneMetadataJson = "";
+    private string _cachedSceneSnapshotJson = "";
+    private string _cachedSceneSnapshotFingerprint = "";
 
     private readonly UiPanel[] _panels =
     [
@@ -262,6 +268,8 @@ public class MainWindow : Window
         _menubar.ImportResourcePackRequested = ImportResourcePackArchiveFromDialog;
         _menubar.ImportResourcePackFolderRequested = ImportResourcePackFolderFromDialog;
         _menubar.ResetLayoutRequested = RequestDockSpaceRebuild;
+        _menubar.PerformanceRequested = () => _performancePanel.IsOpen = !_performancePanel.IsOpen;
+        _performancePanel.CaptureContext = BuildBenchmarkContext;
         _menubar.ResetWorkCameraRequested = () => _mainViewport?.Camera.ResetToDefaultPose();
         _menubar.HomeScreenRequested = () =>
         {
@@ -485,7 +493,8 @@ public class MainWindow : Window
 
         HandleKeyboardShortcuts();
         ProcessPendingSaveAction();
-        UpdateDirtyStateFromScene();
+        using (FrameProfiler.Shared.Measure(ProfileStage.DirtyTracking))
+            UpdateDirtyStateFromScene();
         RefreshWindowTitle();
         AdvanceRenderJob();
         AdvanceResourcePackImportJob();
@@ -529,13 +538,58 @@ public class MainWindow : Window
         ImGui.End();
 
         foreach (UiPanel panel in _panels)
+        {
+            using var panelTiming = FrameProfiler.Shared.Measure(panel switch
+            {
+                Viewport => ProfileStage.MainViewportPanel,
+                Timeline => ProfileStage.TimelinePanel,
+                SceneTree => ProfileStage.SceneTreePanel,
+                PropertiesPanel => ProfileStage.PropertiesPanel,
+                ContentBrowser => ProfileStage.ContentBrowserPanel,
+                PreferencesPanel => ProfileStage.PreferencesPanel,
+                _ => ProfileStage.OtherPanels
+            });
             panel.Render();
+        }
 
-        _spawnMenu?.Render();
-        _worldImporter?.Render();
-        UpdateUndoRedoTracking();
+        using (FrameProfiler.Shared.Measure(ProfileStage.OtherPanels))
+        {
+            _spawnMenu?.Render();
+            _worldImporter?.Render();
+        }
+        using (FrameProfiler.Shared.Measure(ProfileStage.HistoryTracking))
+            UpdateUndoRedoTracking();
         RenderProjectHomeScreen();
         RenderToast();
+        _performancePanel.Render();
+    }
+
+    private unsafe string BuildBenchmarkContext()
+    {
+        int nodes = 0, hidden = 0, meshes = 0, depth = 0;
+        long vertices = 0;
+        if (_mainViewport != null)
+            foreach (var root in _mainViewport.SceneObjects)
+                CountNodes(root, 1);
+        string gpu = Silk.NET.Core.Native.SilkMarshal.PtrToString((IntPtr)GL.GetString(StringName.Renderer)) ?? "Unknown";
+        string glVersion = Silk.NET.Core.Native.SilkMarshal.PtrToString((IntPtr)GL.GetString(StringName.Version)) ?? "Unknown";
+        return $"GPU: {gpu}\nOpenGL: {glVersion}\nWindow framebuffer: {WindowWidth}x{WindowHeight}\n" +
+               $"FPS cap: {_preferencesPanel?.TargetFps ?? 60} (0 = unlimited)\n" +
+               $"Main viewport: {_mainViewport?.GetProfilingDescription()}\n" +
+               $"Preview: {_cameraViewport?.GetProfilingDescription()}, inline={_cameraViewport?.InlineVisible}, detached={_cameraViewport?.Undocked}\n" +
+               $"Scene roots: {_mainViewport?.SceneObjects.Count ?? 0}, nodes: {nodes}, editor-hidden nodes: {hidden}, max depth: {depth}\n" +
+               $"Mesh instances: {meshes}, vertices (including repeated mesh instances): {vertices}, selected objects: {SelectionManager.Instance?.SelectedObjects.Count ?? 0}\n" +
+               $"Timeline playing: {_timeline?.IsPlaying ?? false}\nAnimation export active: {IsAnimationRenderExportActive}";
+
+        void CountNodes(MineImatorSimplyRemadeNuxi.core.objs.SceneObject node, int level)
+        {
+            nodes++;
+            if (node.IsHidden) hidden++;
+            depth = Math.Max(depth, level);
+            meshes += node.Visuals.Count;
+            foreach (var mesh in node.Visuals) vertices += mesh.Vertices.Count;
+            foreach (var child in node.Children) CountNodes(child, level + 1);
+        }
     }
 
     private void RequestDockSpaceRebuild()
@@ -2285,7 +2339,7 @@ public class MainWindow : Window
         _spawnMenu?.RefreshExternalAssetOptions();
     }
 
-    private ProjectManifest CreateSceneSnapshotManifest()
+    private ProjectManifest CreateSceneSnapshotManifest(bool includeSceneObjects = true)
     {
         var manifestSnapshot = new ProjectManifest
         {
@@ -2296,7 +2350,12 @@ public class MainWindow : Window
         };
 
         if (_mainViewport != null)
-            ProjectSceneSerializer.WriteSceneToManifest(manifestSnapshot, _mainViewport, _timeline, _propertiesPanel);
+        {
+            if (includeSceneObjects)
+                ProjectSceneSerializer.WriteSceneToManifest(manifestSnapshot, _mainViewport, _timeline, _propertiesPanel);
+            else
+                ProjectSceneSerializer.WriteSceneMetadataToManifest(manifestSnapshot, _mainViewport, _timeline, _propertiesPanel);
+        }
 
         // Preserve work camera state in snapshots so undo/redo restores the correct camera position.
         // Fly-camera-only changes are filtered out in UpdateUndoRedoTracking when they don't affect
@@ -2321,22 +2380,49 @@ public class MainWindow : Window
 
     private string CaptureSceneSnapshotJson(out string fingerprint)
     {
+        using var snapshotTiming = FrameProfiler.Shared.Measure(ProfileStage.SnapshotCheck);
         fingerprint = "";
 
         if (!_projectManager.HasProject || _mainViewport == null)
             return "";
 
+        // Check live state without allocating a serialized copy of every object each frame.
+        ulong objectsFingerprint;
+        using (FrameProfiler.Shared.Measure(ProfileStage.SceneFingerprint))
+            objectsFingerprint = SceneObjectFingerprint.Compute(_mainViewport.SceneObjects);
+        string metadataJson;
+        using (FrameProfiler.Shared.Measure(ProfileStage.SnapshotMetadata))
+            metadataJson = JsonSerializer.Serialize(CreateSceneSnapshotManifest(includeSceneObjects: false), AppJsonContext.Default.ProjectManifest);
+        if (!string.IsNullOrEmpty(_cachedSceneSnapshotJson) &&
+            objectsFingerprint == _cachedObjectsFingerprint &&
+            string.Equals(metadataJson, _cachedSceneMetadataJson, StringComparison.Ordinal))
+        {
+            FrameProfiler.Shared.Count(ProfileCounter.SnapshotCacheHits);
+            fingerprint = _cachedSceneSnapshotFingerprint;
+            return _cachedSceneSnapshotJson;
+        }
+
+        using var serializationTiming = FrameProfiler.Shared.Measure(ProfileStage.SnapshotSerialize);
+        FrameProfiler.Shared.Count(ProfileCounter.SnapshotsCreated);
         ProjectManifest manifestSnapshot = CreateSceneSnapshotManifest();
         string snapshotJson = JsonSerializer.Serialize(manifestSnapshot, AppJsonContext.Default.ProjectManifest);
         if (string.IsNullOrEmpty(snapshotJson))
             return "";
 
         fingerprint = ComputeSnapshotFingerprint(snapshotJson);
+        // Serialization can assign previously missing library source IDs.
+        _cachedObjectsFingerprint = SceneObjectFingerprint.Compute(_mainViewport.SceneObjects);
+        _cachedSceneMetadataJson = metadataJson;
+        _cachedSceneSnapshotJson = snapshotJson;
+        _cachedSceneSnapshotFingerprint = fingerprint;
         return snapshotJson;
     }
 
     private void ResetUndoRedoHistory()
     {
+        _cachedSceneSnapshotJson = "";
+        _cachedSceneMetadataJson = "";
+        _cachedSceneSnapshotFingerprint = "";
         _undoSceneSnapshots.Clear();
         _redoSceneSnapshots.Clear();
         _pendingHistorySnapshotJson = "";

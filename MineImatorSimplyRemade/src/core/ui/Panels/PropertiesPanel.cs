@@ -787,7 +787,6 @@ public class PropertiesPanel : UiPanel
 
         var library = projectManager.Manifest.ObjectLibrary;
         var libraryUsageCounts = BuildLibraryUsageCounts();
-        var selected = FindLibraryEntryById(library, _selectedLibraryEntryId);
 
         ImGui.SetNextItemWidth(-1);
         ImGui.InputTextWithHint("##ProjectObjectLibrarySearch", Localization.T("text.panel.properties.search_spawned_objects"), ref _librarySearch, 256);
@@ -805,7 +804,7 @@ public class PropertiesPanel : UiPanel
         }
         ImGui.EndChild();
 
-        selected = FindLibraryEntryById(library, _selectedLibraryEntryId);
+        var selected = FindLibraryEntryById(library, _selectedLibraryEntryId);
         if (selected != null)
         {
             int usageCount = GetLibraryUsageCount(libraryUsageCounts, selected.LibraryEntryId);
@@ -1104,7 +1103,9 @@ public class PropertiesPanel : UiPanel
             return false;
 
         bool isSelected = string.Equals(entry.LibraryEntryId, _selectedLibraryEntryId, StringComparison.OrdinalIgnoreCase);
-        string label = Localization.Format("text.panel.properties.in_scene", GetLibraryDisplayLabel(entry), GetLibraryUsageCount(libraryUsageCounts, entry.LibraryEntryId)) + $"###{GetLibraryDisplayLabel(entry)} ({GetLibraryUsageCount(libraryUsageCounts, entry.LibraryEntryId)} in scene)##{entry.LibraryEntryId}";
+        string displayLabel = GetLibraryDisplayLabel(entry);
+        int usageCount = GetLibraryUsageCount(libraryUsageCounts, entry.LibraryEntryId);
+        string label = Localization.Format("text.panel.properties.in_scene", displayLabel, usageCount) + $"###{displayLabel} ({usageCount} in scene)##{entry.LibraryEntryId}";
         bool hasChildren = entry.Children.Count > 0;
 
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen;
@@ -1248,7 +1249,7 @@ public class PropertiesPanel : UiPanel
         {
             EnsureSceneLibrarySourceIdsRecursive(root);
 
-            if (ContainsLibraryEntryId(manifest.ObjectLibrary, root.LibrarySourceId))
+            if (usedIds.Contains(root.LibrarySourceId))
                 continue;
 
             var libraryEntry = ProjectSceneSerializer.SerializeObjectForLibrary(root);
@@ -1278,42 +1279,28 @@ public class PropertiesPanel : UiPanel
             EnsureUniqueLibraryIdsRecursive(child, usedIds);
     }
 
-    private IEnumerable<SceneObject> EnumerateSceneObjects()
-    {
-        if (Viewport == null)
-            yield break;
-
-        foreach (var root in Viewport.SceneObjects)
-        {
-            yield return root;
-            foreach (var child in EnumerateSceneObjectsRecursive(root))
-                yield return child;
-        }
-    }
-
-    private static IEnumerable<SceneObject> EnumerateSceneObjectsRecursive(SceneObject node)
-    {
-        foreach (var child in node.Children)
-        {
-            yield return child;
-            foreach (var nested in EnumerateSceneObjectsRecursive(child))
-                yield return nested;
-        }
-    }
-
     private Dictionary<string, int> BuildLibraryUsageCounts()
     {
         var usageCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var obj in EnumerateSceneObjects())
+        if (Viewport != null)
         {
-            if (string.IsNullOrWhiteSpace(obj.LibrarySourceId))
-                continue;
+            for (int i = 0; i < Viewport.SceneObjects.Count; i++)
+                AccumulateLibraryUsageCounts(Viewport.SceneObjects[i], usageCounts);
+        }
 
+        return usageCounts;
+    }
+
+    private static void AccumulateLibraryUsageCounts(SceneObject obj, Dictionary<string, int> usageCounts)
+    {
+        if (!string.IsNullOrWhiteSpace(obj.LibrarySourceId))
+        {
             usageCounts.TryGetValue(obj.LibrarySourceId, out int usageCount);
             usageCounts[obj.LibrarySourceId] = usageCount + 1;
         }
 
-        return usageCounts;
+        for (int i = 0; i < obj.Children.Count; i++)
+            AccumulateLibraryUsageCounts(obj.Children[i], usageCounts);
     }
 
     private static int GetLibraryUsageCount(
@@ -1386,30 +1373,13 @@ public class PropertiesPanel : UiPanel
         }
     }
 
-    private static bool ContainsLibraryEntryId(IEnumerable<ProjectSceneObjectEntry> nodes, string libraryEntryId)
-    {
-        if (string.IsNullOrWhiteSpace(libraryEntryId))
-            return false;
-
-        foreach (var node in nodes)
-        {
-            if (string.Equals(node.LibraryEntryId, libraryEntryId, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            if (ContainsLibraryEntryId(node.Children, libraryEntryId))
-                return true;
-        }
-
-        return false;
-    }
-
     private static void EnsureSceneLibrarySourceIdsRecursive(SceneObject obj)
     {
         if (string.IsNullOrWhiteSpace(obj.LibrarySourceId))
             obj.LibrarySourceId = string.IsNullOrWhiteSpace(obj.ObjectId) ? Guid.NewGuid().ToString("N") : obj.ObjectId;
 
-        foreach (var child in obj.Children)
-            EnsureSceneLibrarySourceIdsRecursive(child);
+        for (int i = 0; i < obj.Children.Count; i++)
+            EnsureSceneLibrarySourceIdsRecursive(obj.Children[i]);
     }
 
     private void RemoveSceneObjectsFromLibrary(string libraryEntryId)
@@ -5079,8 +5049,11 @@ public class PropertiesPanel : UiPanel
     /// </summary>
     private static bool HasAnyShapeKeys(SceneObject obj)
     {
-        foreach (var mesh in obj.GetMeshInstancesRecursively())
+        foreach (var mesh in obj.Visuals)
             if (mesh.HasShapeKeys) return true;
+        var children = obj.Children;
+        for (int i = 0; i < children.Count; i++)
+            if (HasAnyShapeKeys(children[i])) return true;
         return false;
     }
 

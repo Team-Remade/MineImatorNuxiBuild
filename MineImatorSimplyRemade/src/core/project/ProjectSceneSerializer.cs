@@ -28,9 +28,17 @@ public static class ProjectSceneSerializer
 
     public static void WriteSceneToManifest(ProjectManifest manifest, Viewport viewport, Timeline? timeline = null, PropertiesPanel? propertiesPanel = null)
     {
-        propertiesPanel?.WriteProjectSettingsToManifest(manifest);
-
         SyncObjectLibraryFromScene(manifest, viewport.SceneObjects);
+        WriteSceneMetadataToManifest(manifest, viewport, timeline, propertiesPanel);
+
+        manifest.SceneObjects = viewport.SceneObjects
+            .Select(SerializeNode)
+            .ToList();
+    }
+
+    internal static void WriteSceneMetadataToManifest(ProjectManifest manifest, Viewport viewport, Timeline? timeline = null, PropertiesPanel? propertiesPanel = null)
+    {
+        propertiesPanel?.WriteProjectSettingsToManifest(manifest);
 
         manifest.WorkCamera = new ProjectWorkCameraState
         {
@@ -42,10 +50,6 @@ public static class ProjectSceneSerializer
 
         // Persist which camera the preview viewport is currently using (0 = work camera)
         manifest.ActivePreviewCameraIndex = viewport.PreviewViewport?.SelectedCameraIndex ?? 0;
-
-        manifest.SceneObjects = viewport.SceneObjects
-            .Select(SerializeNode)
-            .ToList();
 
         // Save currently selected object names so selection can be restored on undo/redo
         manifest.SelectedObjectNames = SelectionManager.Instance?.SelectedObjects
@@ -142,6 +146,12 @@ public static class ProjectSceneSerializer
 
     private static ProjectSceneObjectEntry SerializeNode(SceneObject obj)
     {
+        return SerializeNode(obj, out _);
+    }
+
+    private static ProjectSceneObjectEntry SerializeNode(SceneObject obj, out int meshCount)
+    {
+        // Keep SceneObjectFingerprint aligned with the authored values captured here.
         var pm = ProjectManager.Instance;
         var entry = new ProjectSceneObjectEntry
         {
@@ -218,8 +228,7 @@ public static class ProjectSceneSerializer
             TextMeshOutlineEnabled = obj.TextMeshOutlineEnabled,
             TextMeshOutlineColor = ToProjectVec4(obj.TextMeshOutlineColor),
             TextMeshOutlineThickness = obj.TextMeshOutlineThickness,
-            Keyframes = SerializeKeyframes(obj),
-            ShapeKeyWeights = SerializeShapeKeyWeights(obj)
+            Keyframes = SerializeKeyframes(obj)
         };
 
         if (obj is { HasExplicitMaterialSettings: true, MaterialSettings: not null })
@@ -317,8 +326,28 @@ public static class ProjectSceneSerializer
             entry.LightSpotBlend = light.LightSpotBlend;
         }
 
-        foreach (var child in obj.Children.Where(static child => !child.IsRuntimeTransient))
-            entry.Children.Add(SerializeNode(child));
+        meshCount = 0;
+        AppendOwnShapeKeyWeights(obj, entry.ShapeKeyWeights, ref meshCount);
+        foreach (var child in obj.Children)
+        {
+            if (child.IsRuntimeTransient)
+            {
+                AppendShapeKeyWeightsRecursive(child, entry.ShapeKeyWeights, ref meshCount);
+                continue;
+            }
+
+            var childEntry = SerializeNode(child, out int childMeshCount);
+            entry.Children.Add(childEntry);
+            // Preserve the saved depth-first mesh indices without flattening every subtree.
+            foreach (var weight in childEntry.ShapeKeyWeights)
+                entry.ShapeKeyWeights.Add(new ProjectShapeKeyWeightEntry
+                {
+                    MeshIndex = meshCount + weight.MeshIndex,
+                    Name = weight.Name,
+                    Weight = weight.Weight
+                });
+            meshCount += childMeshCount;
+        }
 
         return entry;
     }
@@ -864,19 +893,22 @@ public static class ProjectSceneSerializer
     /// never serialized (meshes are re-imported from <see cref="SceneObject.SourceAssetPath"/>
     /// on load) so only the lightweight name→weight state is saved here.
     /// </summary>
-    private static List<ProjectShapeKeyWeightEntry> SerializeShapeKeyWeights(SceneObject obj)
+    private static void AppendOwnShapeKeyWeights(SceneObject obj, List<ProjectShapeKeyWeightEntry> result, ref int meshIndex)
     {
-        var result = new List<ProjectShapeKeyWeightEntry>();
-        var meshes = obj.GetMeshInstancesRecursively();
-
-        for (int m = 0; m < meshes.Count; m++)
+        foreach (var mesh in obj.Visuals)
         {
-            if (!meshes[m].HasShapeKeys) continue;
-
-            result.AddRange(from sk in meshes[m].ShapeKeys where sk.Weight != 0f select new ProjectShapeKeyWeightEntry { MeshIndex = m, Name = sk.Name, Weight = sk.Weight });
+            foreach (var key in mesh.ShapeKeys)
+                if (key.Weight != 0f)
+                    result.Add(new ProjectShapeKeyWeightEntry { MeshIndex = meshIndex, Name = key.Name, Weight = key.Weight });
+            meshIndex++;
         }
+    }
 
-        return result;
+    private static void AppendShapeKeyWeightsRecursive(SceneObject obj, List<ProjectShapeKeyWeightEntry> result, ref int meshIndex)
+    {
+        AppendOwnShapeKeyWeights(obj, result, ref meshIndex);
+        foreach (var child in obj.Children)
+            AppendShapeKeyWeightsRecursive(child, result, ref meshIndex);
     }
 
     /// <summary>

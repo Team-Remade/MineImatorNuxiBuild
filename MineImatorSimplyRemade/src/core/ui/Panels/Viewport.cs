@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Reflection;
 using GlmSharp;
 using Hexa.NET.ImGui;
+using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.project;
@@ -49,9 +50,22 @@ public class Viewport : UiPanel
     public List<SceneObject> SceneObjects { get; } = new();
 
     private bool _showHiddenObjects;
+    private bool _profilingCameraFeeds;
+    private readonly List<ParticleSpawnerSceneObject> _particleSpawnersToUpdate = new();
 
     private bool IsObjectVisible(SceneObject obj) =>
         obj.GetEffectiveVisibility() && (_showHiddenObjects || !obj.IsHiddenForRendering());
+
+    /// <summary>Capture-start metadata only; does not include camera or asset names.</summary>
+    public string GetProfilingDescription()
+    {
+        uint width = IsPreviewViewport ? _previewWidth : _viewportWidth;
+        uint height = IsPreviewViewport ? _previewHeight : _viewportHeight;
+        int cameraIndex = IsPreviewViewport ? _selectedCameraIndex : _activeCameraIndex;
+        return $"{(IsPreviewViewport ? "Preview" : "Main")}: framebuffer={width}x{height}; " +
+               $"mode={_viewportRenderMode}; pass={_renderedPassMode}; overlays={OverlaysEnabled}; " +
+               $"showHidden={_showHiddenObjects}; cameraIndex={cameraIndex}";
+    }
 
     // ── Panel references ───────────────────────────────────────────────────────
 
@@ -240,6 +254,7 @@ public class Viewport : UiPanel
     private readonly int[] _pointShadowTextureSizes = new int[MaxPointShadowLights];
     private int _directionalShadowCacheSignature;
     private bool _hasDirectionalShadowCache;
+    private mat4 _directionalShadowLightSpaceMatrix;
     private int _pointShadowCacheSignature;
     private bool _hasPointShadowCache;
 
@@ -1564,12 +1579,10 @@ public class Viewport : UiPanel
     {
         if (!obj.GetEffectiveVisibility()) return;
 
-        if (IsObjectVisible(obj) && obj is LightSceneObject light)
+        if (obj is LightSceneObject light && (_showHiddenObjects || !obj.IsHiddenForRendering()))
         {
-            vec3 worldPos = new vec3(
-                obj.GetWorldMatrix().m30,
-                obj.GetWorldMatrix().m31,
-                obj.GetWorldMatrix().m32);
+            mat4 world = obj.GetWorldMatrix();
+            vec3 worldPos = new vec3(world.m30, world.m31, world.m32);
 
             if (posLoc >= 0) Gl.Uniform3(posLoc, worldPos.x, worldPos.y, worldPos.z);
 
@@ -1599,8 +1612,9 @@ public class Viewport : UiPanel
             }
         }
 
-        foreach (var child in obj.Children)
-            RenderLightBillboardsRecursive(child, posLoc, sizeLoc, tintLoc);
+        var children = obj.Children;
+        for (int i = 0; i < children.Count; i++)
+            RenderLightBillboardsRecursive(children[i], posLoc, sizeLoc, tintLoc);
     }
 
     // ── Bone indicator render ─────────────────────────────────────────────────
@@ -1648,7 +1662,8 @@ public class Viewport : UiPanel
     {
         if (!obj.GetEffectiveVisibility()) return;
 
-        if (IsObjectVisible(obj) && obj is BoneSceneObject bone && bone.IndicatorMesh != null && ShouldShowBoneIndicator(bone))
+        if (obj is BoneSceneObject bone && bone.IndicatorMesh != null && ShouldShowBoneIndicator(bone) &&
+            (_showHiddenObjects || !obj.IsHiddenForRendering()))
         {
             mat4 model = obj.GetWorldMatrix();
             mat4 mvp   = proj * view * model;
@@ -1672,8 +1687,9 @@ public class Viewport : UiPanel
             bone.IndicatorMesh.RenderPickPass(Gl);
         }
 
-        foreach (var child in obj.Children)
-            RenderBoneIndicatorsRecursive(child, view, proj, mvpLoc, colorLoc, sm);
+        var children = obj.Children;
+        for (int i = 0; i < children.Count; i++)
+            RenderBoneIndicatorsRecursive(children[i], view, proj, mvpLoc, colorLoc, sm);
     }
 
     // ── Light wireframe gizmos (Mine-imator style) ────────────────────────────
@@ -1792,7 +1808,8 @@ public class Viewport : UiPanel
         if (!obj.GetEffectiveVisibility())
             return;
 
-        if (IsObjectVisible(obj) && obj is ParticleSpawnerSceneObject spawner && !spawner.IsRuntimeTransient)
+        if (obj is ParticleSpawnerSceneObject spawner && !spawner.IsRuntimeTransient &&
+            (_showHiddenObjects || !obj.IsHiddenForRendering()))
         {
             vec3 extents = new vec3(
                 MathF.Max(0f, spawner.SpawnBoxExtents.x),
@@ -1828,8 +1845,9 @@ public class Viewport : UiPanel
             }
         }
 
-        foreach (var child in obj.Children)
-            RenderParticleSpawnerEmissionShapesRecursive(child, view, proj);
+        var children = obj.Children;
+        for (int i = 0; i < children.Count; i++)
+            RenderParticleSpawnerEmissionShapesRecursive(children[i], view, proj);
     }
 
     /// <summary>
@@ -1974,6 +1992,7 @@ public class Viewport : UiPanel
         PropertiesPanel? settings,
         RenderedPassMode passMode)
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.Glow);
         if (Gl == null || _glowShader == null || sceneFbo == 0 || sourceColorTex == 0 || glowFbo == 0 || glowTex == 0 || glowPingFbo == 0 || glowPingTex == 0)
             return;
         if (width == 0 || height == 0 || settings == null || passMode != RenderedPassMode.Combined || !settings.GlowEnabled)
@@ -2459,265 +2478,286 @@ public class Viewport : UiPanel
         HandleCameraInput(imageMin, imageSize, activeCamera, activeCamObj);
 
         // ── 3D render into FBO ────────────────────────────────────────────────
-        Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
-        Gl.DrawBuffer(GLEnum.ColorAttachment0);
-        Gl.ReadBuffer(GLEnum.ColorAttachment0);
-        Gl.Viewport(0, 0, w, h);
-
-        Gl.Enable(GLEnum.DepthTest);
-        Gl.DepthFunc(GLEnum.Less);
-
-        Gl.Enable(GLEnum.CullFace);
-        Gl.CullFace(GLEnum.Back);
-        Gl.FrontFace(GLEnum.Ccw);
-
-        float[] bg = PropertiesPanel?.BackgroundColor ?? [0.18f, 0.18f, 0.18f, 1.0f];
-        Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
-        Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-
-        float aspect = (h > 0) ? (float)w / h : 1f;
-
-        var renderCamera = BuildPreparedCamera(activeCamera, activeCamObj);
-
-        mat4 view = renderCamera.GetViewMatrix();
-        mat4 proj = renderCamera.GetProjectionMatrix(aspect);
-        float renderNear = renderCamera.Near;
-        float renderFar = renderCamera.Far;
-
-        RenderSky(renderCamera, w, h);
-        RenderBackgroundPlane(w, h);
-        // Sky and procedural clouds are background elements, not AO geometry.
-        // Preserve their colour while resetting depth before scene objects draw.
-        Gl.Clear(ClearBufferMask.DepthBufferBit);
-
-
-        // Build frustum for per-frame culling.
-        Frustum frustum = Frustum.FromViewProj(proj * view);
-
-        // ── Per-frame mesh globals ─────────────────────────────────────────────
-        Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
-        bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
-        if (!IsPreviewViewport)
-            UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
-
-        Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
-        int textureAnimFps = Math.Clamp(PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240);
-        Mesh.AnimatedTextureSpeedScale = textureAnimFps / 20.0;
-        Mesh.ShadowsEnabled = false;
-        Mesh.ShadowMapTexture = 0;
-        Mesh.ShadowLightSpaceMatrix = mat4.Identity;
-        Mesh.ShadowDebugMode = 0;
-        bool globalShadows = PropertiesPanel?.ShadowsEnabled ?? true;
-        Mesh.DirectionalShadowEnabled = globalShadows && (Mesh.MainFillLightCastsShadows ||
-                        Mesh.SunFillLightCastsShadows ||
-                        Mesh.MoonFillLightCastsShadows);
-        Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
-
-        // Rebuild the full scene light list every frame so that moved / deleted
-        // lights are always up-to-date. This is the unfiltered candidate list;
-        // Mesh.PointLights (what the shader actually reads) is repopulated per
-        // mesh by SelectPointLightsForMesh just before each draw call.
-        Dictionary<LightSceneObject, int> pointShadowIndices = new();
-        _cachedAllPointLights.Clear();
-        vec3 camPos = renderCamera.Position;
-
-        SceneRenderMode renderMode = _viewportRenderMode == ViewportRenderMode.Rendered
-            ? SceneRenderMode.Rendered
-            : SceneRenderMode.Unrendered;
-        bool forceUnshaded = _viewportRenderMode == ViewportRenderMode.FlatUnshaded ||
-                             _viewportRenderMode == ViewportRenderMode.Wireframe;
-        bool wireframeMode = _viewportRenderMode == ViewportRenderMode.Wireframe;
-        bool useWorldGi = renderMode == SceneRenderMode.Rendered &&
-                  PropertiesPanel?.IndirectLightingEnabled == true &&
-                  string.Equals(PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
-        bool useScreenSpaceGi = renderMode == SceneRenderMode.Rendered &&
-                    PropertiesPanel?.IndirectLightingEnabled == true &&
-                    !string.Equals(PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
-        Mesh.IndirectWorldEnabled = useWorldGi;
-        Mesh.IndirectWorldStrength = Math.Clamp(PropertiesPanel?.IndirectLightingStrength ?? 1f, 0f, 4f);
-        if (renderMode == SceneRenderMode.Rendered)
         {
-            Mesh.ShadowBlurStrength = Math.Clamp(PropertiesPanel?.ShadowBlurStrength ?? 1f, 0f, 4f);
-            Mesh.SssEnabled = PropertiesPanel?.SubsurfaceEnabled == true;
-            Mesh.SssBlurSamples = Math.Clamp(PropertiesPanel?.SubsurfaceBlurSamples ?? 8, 0, 32);
-            Mesh.SssStrength = Math.Clamp(PropertiesPanel?.SubsurfaceStrength ?? 1f, 0f, 4f);
-            Mesh.SssDesaturation = Math.Clamp(PropertiesPanel?.SubsurfaceDesaturation ?? 0f, 0f, 1f);
-            Mesh.SssColorThreshold = Math.Clamp(PropertiesPanel?.SubsurfaceColorThreshold ?? 0f, 0f, 1f);
-            float[] sssRadius = PropertiesPanel?.SubsurfaceRadiusRgb ?? [0.42f, 0.24f, 0.14f];
-            Mesh.SssRadius = new vec3(
-                Math.Clamp(sssRadius[0], 0.0001f, 8f),
-                Math.Clamp(sssRadius[1], 0.0001f, 8f),
-                Math.Clamp(sssRadius[2], 0.0001f, 8f));
-            Mesh.SssHighlightSize = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightSize ?? 1f, 0f, 8f);
-            Mesh.SssHighlightStrength = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightStrength ?? 1f, 0f, 8f);
-            Mesh.SssHighlightSharpness = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightSharpness ?? 2f, 0.01f, 16f);
-            Mesh.SssHighlightDesaturation = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightDesaturation ?? 0f, 0f, 1f);
-            Mesh.SssHighlightColorThreshold = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightColorThreshold ?? 0f, 0f, 1f);
-            Mesh.SssAbsorption = Math.Clamp(PropertiesPanel?.SubsurfaceAbsorption ?? 0.35f, -0.95f, 0.95f);
-            Mesh.ShadowDebugMode = _renderedPassMode == RenderedPassMode.Shadow ? 1 : (_renderedPassMode == RenderedPassMode.SolidColors ? 2 : 0);
-            if (Mesh.DirectionalShadowEnabled)
-                RenderShadowMap();
-            if (globalShadows)
-                pointShadowIndices = RenderPointShadowMaps(camPos);
-        }
-
-        CollectPointLights(SceneObjects, renderMode, pointShadowIndices, useScreenSpaceGi, _cachedAllPointLights);
-
-        // ── Upload scene UBO ──────────────────────────────────────────────────
-        if (_sceneUBO != null)
-        {
-            Mesh.SceneUBO = _sceneUBO;
-            float fillStrength   = Math.Clamp(Mesh.GlobalFillLightStrength, 0f, 5f);
-            var   fillColor      = new vec3(
-                Math.Clamp(Mesh.GlobalFillLightColor.x, 0f, 1f),
-                Math.Clamp(Mesh.GlobalFillLightColor.y, 0f, 1f),
-                Math.Clamp(Mesh.GlobalFillLightColor.z, 0f, 1f));
-            float sunStrength    = Math.Clamp(Mesh.GlobalSunFillLightStrength, 0f, 5f);
-            float moonStrength   = Math.Clamp(Mesh.GlobalMoonFillLightStrength, 0f, 5f);
-            float ambientStrength= Math.Clamp(Mesh.GlobalAmbientStrength, 0f, 5f);
-            var   ambientColor   = new vec3(
-                Math.Clamp(Mesh.GlobalAmbientColor.x, 0f, 1f),
-                Math.Clamp(Mesh.GlobalAmbientColor.y, 0f, 1f),
-                Math.Clamp(Mesh.GlobalAmbientColor.z, 0f, 1f));
-
-            bool mainShadows  = Mesh.MainFillLightCastsShadows && !Mesh.SunFillLightCastsShadows && !Mesh.MoonFillLightCastsShadows;
-            bool sunShadows   = Mesh.SunFillLightCastsShadows && !Mesh.MoonFillLightCastsShadows;
-            bool moonShadows  = Mesh.MoonFillLightCastsShadows;
-
-            _sceneUBO.Upload(
-                Mesh.ShadowLightSpaceMatrix,
-                ambientColor * ambientStrength,
-                new vec3(1f, 1f, 1f).Normalized,
-                fillColor * fillStrength,
-                Mesh.GlobalSunFillLightDirection,
-                Mesh.GlobalSunFillLightColor * sunStrength,
-                Mesh.GlobalMoonFillLightDirection,
-                Mesh.GlobalMoonFillLightColor * moonStrength,
-                Mesh.ShadowDebugMode,
-                mainShadows,
-                sunShadows,
-                moonShadows);
-        }
-
-        // ── Ground plane ──────────────────────────────────────────────────────
-        if (wireframeMode)
-            Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
-
-        if (_groundPlane != null && GroundPlaneVisible)
-        {
-            SelectPointLightsForMesh(vec3.Zero, _cachedAllPointLights);
-            RenderMeshWithModeOverride(_groundPlane, _groundPlaneModel, view, proj, forceUnshaded);
-        }
-
-        // ── Scene objects ─────────────────────────────────────────────────────
-        // Split meshes into three buckets:
-        //   opaque       – Alpha == 1, no texture  → normal depth read+write
-        //   textured     – has a TextureId          → depth pre-pass + color pass (LEQUAL)
-        //   alphaBlend   – Alpha < 1, no texture    → straight back-to-front blend, no pre-pass
-        _cachedRenderItems.Clear();
-        _cachedRenderItemsNoAo.Clear();
-        _cachedOverlays.Clear();
-
-        CollectRenderPairs(SceneObjects, camPos, renderMode, frustum, _cachedRenderItems, _cachedRenderItemsNoAo, _cachedOverlays);
-
-        bool splitAoObjects = renderMode == SceneRenderMode.Rendered &&
-                              _ambientOcclusionShader != null &&
-                              PropertiesPanel?.AmbientOcclusionEnabled == true;
-
-        if (splitAoObjects)
-        {
-            RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights, forceUnshaded);
-        }
-        else
-        {
-            _cachedRenderItems.AddRange(_cachedRenderItemsNoAo);
-            RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights, forceUnshaded);
-        }
-        if (wireframeMode)
-            Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Fill);
-
-        if (renderMode == SceneRenderMode.Rendered)
-            RenderAmbientOcclusion(_fbo, _depthTex, w, h, renderNear, renderFar, PropertiesPanel, _renderedPassMode);
-
-        if (splitAoObjects && _renderedPassMode != RenderedPassMode.AmbientOcclusion)
-            RenderDepthOrdered(view, proj, _cachedRenderItemsNoAo, _cachedAllPointLights, forceUnshaded);
-
-        if (renderMode == SceneRenderMode.Rendered)
-            ApplyIndirectLightingPassGeneric(_fbo, _colorTex, _depthTex, _indirectFbo, _indirectTex, _indirectPingFbo, _indirectPingTex,
-                w, h, renderNear, renderFar, PropertiesPanel, _renderedPassMode);
-
-        if (renderMode == SceneRenderMode.Rendered)
-            ApplyGlowPassGeneric(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, PropertiesPanel, _renderedPassMode);
-
-        ResolveDepthOfFieldFocus(_fbo, w, h, renderNear, renderFar, activeCamObj);
-        if (renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
-        {
-            ApplyDepthOfFieldPass(_fbo, _colorTex, _depthTex, _glowFbo, _glowTex, w, h, renderNear, renderFar, activeCamObj);
-            ApplyFilmGrainPass(_fbo, _colorTex, _glowFbo, _glowTex, w, h, activeCamObj);
-        }
-
-        if (OverlaysEnabled)
-        {
-            // ── Object-mesh overlays (e.g. camera icon) ───────────────────────────
-            // Rendered with depth-test off so they always appear on top.
-            // Mesh.Render() handles the DepthTestDisabled / Unlit flags internally.
-            foreach (var (model, mesh) in _cachedOverlays)
+            // Excludes camera feeds above and the inline preview below.
+            using var mainSceneScope = FrameProfiler.Shared.Measure(ProfileStage.MainScene);
+            FrameProfiler.Shared.Count(ProfileCounter.MainRenderInvocations);
+            Camera renderCamera;
+            mat4 view, proj;
+            float renderNear, renderFar;
+            Frustum frustum;
             {
-                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), _cachedAllPointLights);
-                mesh.Render(model, view, proj);
+                using var preparationScope = FrameProfiler.Shared.Measure(ProfileStage.ScenePreparation);
+                Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
+                Gl.DrawBuffer(GLEnum.ColorAttachment0);
+                Gl.ReadBuffer(GLEnum.ColorAttachment0);
+                Gl.Viewport(0, 0, w, h);
+
+                Gl.Enable(GLEnum.DepthTest);
+                Gl.DepthFunc(GLEnum.Less);
+
+                Gl.Enable(GLEnum.CullFace);
+                Gl.CullFace(GLEnum.Back);
+                Gl.FrontFace(GLEnum.Ccw);
+
+                float[] bg = PropertiesPanel?.BackgroundColor ?? [0.18f, 0.18f, 0.18f, 1.0f];
+                Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
+                Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+
+                float aspect = (h > 0) ? (float)w / h : 1f;
+
+                renderCamera = BuildPreparedCamera(activeCamera, activeCamObj);
+
+                view = renderCamera.GetViewMatrix();
+                proj = renderCamera.GetProjectionMatrix(aspect);
+                renderNear = renderCamera.Near;
+                renderFar = renderCamera.Far;
+
+                RenderSky(renderCamera, w, h);
+                RenderBackgroundPlane(w, h);
+                // Sky and procedural clouds are background elements, not AO geometry.
+                // Preserve their colour while resetting depth before scene objects draw.
+                Gl.Clear(ClearBufferMask.DepthBufferBit);
+
+
+                // Build frustum for per-frame culling.
+                frustum = Frustum.FromViewProj(proj * view);
             }
 
-            // ── Light billboards (glow icon + ray — kept from original system) ──────
-            // Drawn after transparent geometry, before the selection outline so
-            // selected lights still receive the orange Sobel outline.
-            RenderLightBillboards(view, proj);
+            // ── Per-frame mesh globals ─────────────────────────────────────────────
+            Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
+            bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
+            if (!IsPreviewViewport)
+            {
+                using var particleScope = FrameProfiler.Shared.Measure(ProfileStage.ParticleUpdate);
+                UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
+            }
 
-            // Restore state that billboards may have altered.
-            Gl.Enable(GLEnum.DepthTest);
-            Gl.DepthFunc(GLEnum.Less);
-            Gl.Enable(GLEnum.CullFace);
-            Gl.CullFace(GLEnum.Back);
+            using var evaluation = SceneObject.BeginRenderEvaluation();
+            Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
+            int textureAnimFps = Math.Clamp(PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240);
+            Mesh.AnimatedTextureSpeedScale = textureAnimFps / 20.0;
+            Mesh.ShadowsEnabled = false;
+            Mesh.ShadowMapTexture = 0;
+            Mesh.ShadowLightSpaceMatrix = mat4.Identity;
+            Mesh.ShadowDebugMode = 0;
+            bool globalShadows = PropertiesPanel?.ShadowsEnabled ?? true;
+            Mesh.DirectionalShadowEnabled = globalShadows && (Mesh.MainFillLightCastsShadows ||
+                            Mesh.SunFillLightCastsShadows ||
+                            Mesh.MoonFillLightCastsShadows);
+            Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
-            // ── Bone indicators ───────────────────────────────────────────────────
-            RenderBoneIndicators(view, proj);
+            // Rebuild the full scene light list every frame so that moved / deleted
+            // lights are always up-to-date. This is the unfiltered candidate list;
+            // Mesh.PointLights (what the shader actually reads) is repopulated per
+            // mesh by SelectPointLightsForMesh just before each draw call.
+            Dictionary<LightSceneObject, int> pointShadowIndices = new();
+            _cachedAllPointLights.Clear();
+            vec3 camPos = renderCamera.Position;
 
-            // ── Light wireframe gizmos (Mine-imator style) ───────────────────────
-            // Bulb circle + range circle for point lights;
-            // cone outline + edge lines + base ring for spot lights.
-            Gl.Enable(GLEnum.DepthTest);
-            Gl.DepthFunc(GLEnum.Less);
-            Gl.Enable(GLEnum.CullFace);
-            Gl.CullFace(GLEnum.Back);
-            RenderLightGizmos(view, proj, (int)w, (int)h, glm.Degrees(renderCamera.FovY));
+            SceneRenderMode renderMode = _viewportRenderMode == ViewportRenderMode.Rendered
+                ? SceneRenderMode.Rendered
+                : SceneRenderMode.Unrendered;
+            bool forceUnshaded = _viewportRenderMode == ViewportRenderMode.FlatUnshaded ||
+                                 _viewportRenderMode == ViewportRenderMode.Wireframe;
+            bool wireframeMode = _viewportRenderMode == ViewportRenderMode.Wireframe;
+            bool useWorldGi = renderMode == SceneRenderMode.Rendered &&
+                      PropertiesPanel?.IndirectLightingEnabled == true &&
+                      string.Equals(PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
+            bool useScreenSpaceGi = renderMode == SceneRenderMode.Rendered &&
+                        PropertiesPanel?.IndirectLightingEnabled == true &&
+                        !string.Equals(PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
+            Mesh.IndirectWorldEnabled = useWorldGi;
+            Mesh.IndirectWorldStrength = Math.Clamp(PropertiesPanel?.IndirectLightingStrength ?? 1f, 0f, 4f);
+            if (renderMode == SceneRenderMode.Rendered)
+            {
+                Mesh.ShadowBlurStrength = Math.Clamp(PropertiesPanel?.ShadowBlurStrength ?? 1f, 0f, 4f);
+                Mesh.SssEnabled = PropertiesPanel?.SubsurfaceEnabled == true;
+                Mesh.SssBlurSamples = Math.Clamp(PropertiesPanel?.SubsurfaceBlurSamples ?? 8, 0, 32);
+                Mesh.SssStrength = Math.Clamp(PropertiesPanel?.SubsurfaceStrength ?? 1f, 0f, 4f);
+                Mesh.SssDesaturation = Math.Clamp(PropertiesPanel?.SubsurfaceDesaturation ?? 0f, 0f, 1f);
+                Mesh.SssColorThreshold = Math.Clamp(PropertiesPanel?.SubsurfaceColorThreshold ?? 0f, 0f, 1f);
+                float[] sssRadius = PropertiesPanel?.SubsurfaceRadiusRgb ?? [0.42f, 0.24f, 0.14f];
+                Mesh.SssRadius = new vec3(
+                    Math.Clamp(sssRadius[0], 0.0001f, 8f),
+                    Math.Clamp(sssRadius[1], 0.0001f, 8f),
+                    Math.Clamp(sssRadius[2], 0.0001f, 8f));
+                Mesh.SssHighlightSize = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightSize ?? 1f, 0f, 8f);
+                Mesh.SssHighlightStrength = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightStrength ?? 1f, 0f, 8f);
+                Mesh.SssHighlightSharpness = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightSharpness ?? 2f, 0.01f, 16f);
+                Mesh.SssHighlightDesaturation = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightDesaturation ?? 0f, 0f, 1f);
+                Mesh.SssHighlightColorThreshold = Math.Clamp(PropertiesPanel?.SubsurfaceHighlightColorThreshold ?? 0f, 0f, 1f);
+                Mesh.SssAbsorption = Math.Clamp(PropertiesPanel?.SubsurfaceAbsorption ?? 0.35f, -0.95f, 0.95f);
+                Mesh.ShadowDebugMode = _renderedPassMode == RenderedPassMode.Shadow ? 1 : (_renderedPassMode == RenderedPassMode.SolidColors ? 2 : 0);
+                if (Mesh.DirectionalShadowEnabled)
+                    RenderShadowMap();
+                if (globalShadows)
+                    pointShadowIndices = RenderPointShadowMaps(camPos);
+            }
 
-            // Selected particle spawner emission bounds (wireframe box / ellipsoid).
-            RenderParticleSpawnerEmissionShapes(view, proj);
+            CollectPointLights(SceneObjects, renderMode, pointShadowIndices, useScreenSpaceGi, _cachedAllPointLights);
 
-            // ── Selection highlight: Sobel edge detection ─────────────────────────
-            // Pass 1: stamp flat-white silhouette mask into _silhouetteFbo.
-            //         No depth test → X-ray: occluded parts still contribute.
-            RenderSilhouettePass(view, proj);
-            // Pass 2: Sobel filter over the mask; composite edges onto _fbo.
-            //         Restores depth/cull/FBO state before returning.
-            RenderEdgePass();
+            // ── Upload scene UBO ──────────────────────────────────────────────────
+            if (_sceneUBO != null)
+            {
+                Mesh.SceneUBO = _sceneUBO;
+                float fillStrength   = Math.Clamp(Mesh.GlobalFillLightStrength, 0f, 5f);
+                var   fillColor      = new vec3(
+                    Math.Clamp(Mesh.GlobalFillLightColor.x, 0f, 1f),
+                    Math.Clamp(Mesh.GlobalFillLightColor.y, 0f, 1f),
+                    Math.Clamp(Mesh.GlobalFillLightColor.z, 0f, 1f));
+                float sunStrength    = Math.Clamp(Mesh.GlobalSunFillLightStrength, 0f, 5f);
+                float moonStrength   = Math.Clamp(Mesh.GlobalMoonFillLightStrength, 0f, 5f);
+                float ambientStrength= Math.Clamp(Mesh.GlobalAmbientStrength, 0f, 5f);
+                var   ambientColor   = new vec3(
+                    Math.Clamp(Mesh.GlobalAmbientColor.x, 0f, 1f),
+                    Math.Clamp(Mesh.GlobalAmbientColor.y, 0f, 1f),
+                    Math.Clamp(Mesh.GlobalAmbientColor.z, 0f, 1f));
 
-            // ── Gizmo 3D ──────────────────────────────────────────────────────────
-            Gizmo?.Render(Camera, view, proj, imageMin, size);
+                bool mainShadows  = Mesh.MainFillLightCastsShadows && !Mesh.SunFillLightCastsShadows && !Mesh.MoonFillLightCastsShadows;
+                bool sunShadows   = Mesh.SunFillLightCastsShadows && !Mesh.MoonFillLightCastsShadows;
+                bool moonShadows  = Mesh.MoonFillLightCastsShadows;
+
+                _sceneUBO.Upload(
+                    Mesh.ShadowLightSpaceMatrix,
+                    ambientColor * ambientStrength,
+                    new vec3(1f, 1f, 1f).Normalized,
+                    fillColor * fillStrength,
+                    Mesh.GlobalSunFillLightDirection,
+                    Mesh.GlobalSunFillLightColor * sunStrength,
+                    Mesh.GlobalMoonFillLightDirection,
+                    Mesh.GlobalMoonFillLightColor * moonStrength,
+                    Mesh.ShadowDebugMode,
+                    mainShadows,
+                    sunShadows,
+                    moonShadows);
+            }
+
+            // ── Ground plane ──────────────────────────────────────────────────────
+            if (wireframeMode)
+                Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
+
+            if (_groundPlane != null && GroundPlaneVisible)
+            {
+                using var drawScope = FrameProfiler.Shared.Measure(ProfileStage.SceneDraw);
+                SelectPointLightsForMesh(vec3.Zero, _cachedAllPointLights);
+                RenderMeshWithModeOverride(_groundPlane, _groundPlaneModel, view, proj, forceUnshaded);
+            }
+
+            // ── Scene objects ─────────────────────────────────────────────────────
+            // Split meshes into three buckets:
+            //   opaque       – Alpha == 1, no texture  → normal depth read+write
+            //   textured     – has a TextureId          → depth pre-pass + color pass (LEQUAL)
+            //   alphaBlend   – Alpha < 1, no texture    → straight back-to-front blend, no pre-pass
+            {
+                using var collectionScope = FrameProfiler.Shared.Measure(ProfileStage.SceneCollection);
+                _cachedRenderItems.Clear();
+                _cachedRenderItemsNoAo.Clear();
+                _cachedOverlays.Clear();
+
+                CollectRenderPairs(SceneObjects, camPos, renderMode, frustum, _cachedRenderItems, _cachedRenderItemsNoAo, _cachedOverlays);
+            }
+
+            bool splitAoObjects = renderMode == SceneRenderMode.Rendered &&
+                                  _ambientOcclusionShader != null &&
+                                  PropertiesPanel?.AmbientOcclusionEnabled == true;
+
+            if (splitAoObjects)
+            {
+                RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights, forceUnshaded);
+            }
+            else
+            {
+                _cachedRenderItems.AddRange(_cachedRenderItemsNoAo);
+                RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights, forceUnshaded);
+            }
+            if (wireframeMode)
+                Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Fill);
+
+            if (renderMode == SceneRenderMode.Rendered)
+                RenderAmbientOcclusion(_fbo, _depthTex, w, h, renderNear, renderFar, PropertiesPanel, _renderedPassMode);
+
+            if (splitAoObjects && _renderedPassMode != RenderedPassMode.AmbientOcclusion)
+                RenderDepthOrdered(view, proj, _cachedRenderItemsNoAo, _cachedAllPointLights, forceUnshaded);
+
+            if (renderMode == SceneRenderMode.Rendered)
+                ApplyIndirectLightingPassGeneric(_fbo, _colorTex, _depthTex, _indirectFbo, _indirectTex, _indirectPingFbo, _indirectPingTex,
+                    w, h, renderNear, renderFar, PropertiesPanel, _renderedPassMode);
+
+            if (renderMode == SceneRenderMode.Rendered)
+                ApplyGlowPassGeneric(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, PropertiesPanel, _renderedPassMode);
+
+            ResolveDepthOfFieldFocus(_fbo, w, h, renderNear, renderFar, activeCamObj);
+            if (renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
+            {
+                ApplyDepthOfFieldPass(_fbo, _colorTex, _depthTex, _glowFbo, _glowTex, w, h, renderNear, renderFar, activeCamObj);
+                ApplyFilmGrainPass(_fbo, _colorTex, _glowFbo, _glowTex, w, h, activeCamObj);
+            }
+
+            if (OverlaysEnabled)
+            {
+                using var overlaysScope = FrameProfiler.Shared.Measure(ProfileStage.Overlays);
+                // ── Object-mesh overlays (e.g. camera icon) ───────────────────────────
+                // Rendered with depth-test off so they always appear on top.
+                // Mesh.Render() handles the DepthTestDisabled / Unlit flags internally.
+                foreach (var (model, mesh) in _cachedOverlays)
+                {
+                    SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), _cachedAllPointLights);
+                    mesh.Render(model, view, proj);
+                }
+
+                // ── Light billboards (glow icon + ray — kept from original system) ──────
+                // Drawn after transparent geometry, before the selection outline so
+                // selected lights still receive the orange Sobel outline.
+                RenderLightBillboards(view, proj);
+
+                // Restore state that billboards may have altered.
+                Gl.Enable(GLEnum.DepthTest);
+                Gl.DepthFunc(GLEnum.Less);
+                Gl.Enable(GLEnum.CullFace);
+                Gl.CullFace(GLEnum.Back);
+
+                // ── Bone indicators ───────────────────────────────────────────────────
+                RenderBoneIndicators(view, proj);
+
+                // ── Light wireframe gizmos (Mine-imator style) ───────────────────────
+                // Bulb circle + range circle for point lights;
+                // cone outline + edge lines + base ring for spot lights.
+                Gl.Enable(GLEnum.DepthTest);
+                Gl.DepthFunc(GLEnum.Less);
+                Gl.Enable(GLEnum.CullFace);
+                Gl.CullFace(GLEnum.Back);
+                RenderLightGizmos(view, proj, (int)w, (int)h, glm.Degrees(renderCamera.FovY));
+
+                // Selected particle spawner emission bounds (wireframe box / ellipsoid).
+                RenderParticleSpawnerEmissionShapes(view, proj);
+
+                // ── Selection highlight: Sobel edge detection ─────────────────────────
+                // Pass 1: stamp flat-white silhouette mask into _silhouetteFbo.
+                //         No depth test → X-ray: occluded parts still contribute.
+                RenderSilhouettePass(view, proj);
+                // Pass 2: Sobel filter over the mask; composite edges onto _fbo.
+                //         Restores depth/cull/FBO state before returning.
+                RenderEdgePass();
+
+                // ── Gizmo 3D ──────────────────────────────────────────────────────────
+                Gizmo?.Render(Camera, view, proj, imageMin, size);
+            }
+
+            Gl.Disable(GLEnum.CullFace);
+            Gl.Disable(GLEnum.DepthTest);
+            Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+            Mesh.ShadowsEnabled = false;
+            Mesh.ShadowMapTexture = 0;
+            Mesh.ShadowLightSpaceMatrix = mat4.Identity;
+            Mesh.ShadowDebugMode = 0;
+            Mesh.IndirectWorldEnabled = false;
+            Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
+
+            // ── Colour-pick pass (only when a click was queued this frame) ─────────
+            if (!float.IsNaN(_pendingPickX))
+                ExecutePendingPick(imageMin, imageSize);
         }
-
-        Gl.Disable(GLEnum.CullFace);
-        Gl.Disable(GLEnum.DepthTest);
-        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
-        Mesh.ShadowsEnabled = false;
-        Mesh.ShadowMapTexture = 0;
-        Mesh.ShadowLightSpaceMatrix = mat4.Identity;
-        Mesh.ShadowDebugMode = 0;
-        Mesh.IndirectWorldEnabled = false;
-        Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
-
-        // ── Colour-pick pass (only when a click was queued this frame) ─────────
-        if (!float.IsNaN(_pendingPickX))
-            ExecutePendingPick(imageMin, imageSize);
 
         // ── Display FBO as ImGui image (flip V for OpenGL→ImGui convention) ────
         ImGui.Image(
@@ -3036,6 +3076,7 @@ public class Viewport : UiPanel
 
     private void RenderShadowMap()
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.ShadowPass);
         if (Gl == null)
             return;
 
@@ -3051,14 +3092,13 @@ public class Viewport : UiPanel
             return;
         }
 
-        mat4 lightViewProj = ComputeShadowLightSpaceMatrix();
+        int cacheSignature = ComputeShadowCacheSignature(SceneObjects, includePointLights: false);
+        mat4 lightViewProj = GetDirectionalShadowLightSpaceMatrix(cacheSignature, out bool reuseShadowMap);
         Mesh.ShadowsEnabled = true;
         Mesh.ShadowMapTexture = _shadowTex;
         Mesh.ShadowLightSpaceMatrix = lightViewProj;
 
-        if (CanReuseShadowMaps() &&
-            _hasDirectionalShadowCache &&
-            _directionalShadowCacheSignature == ComputeShadowCacheSignature(SceneObjects, includePointLights: false))
+        if (reuseShadowMap)
             return;
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, _shadowFbo);
@@ -3074,12 +3114,29 @@ public class Viewport : UiPanel
         Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
         Gl.Viewport(0, 0, _viewportWidth, _viewportHeight);
 
-        _directionalShadowCacheSignature = ComputeShadowCacheSignature(SceneObjects, includePointLights: false);
+        _directionalShadowCacheSignature = cacheSignature;
+        _directionalShadowLightSpaceMatrix = lightViewProj;
         _hasDirectionalShadowCache = true;
+    }
+
+    private mat4 GetDirectionalShadowLightSpaceMatrix(int cacheSignature, out bool reuseShadowMap)
+    {
+        reuseShadowMap = CanReuseShadowMaps() &&
+            _hasDirectionalShadowCache &&
+            _directionalShadowCacheSignature == cacheSignature;
+        if (reuseShadowMap)
+        {
+            // A cached depth map must be sampled with the matrix that produced it.
+            FrameProfiler.Shared.Count(ProfileCounter.ShadowCacheHits);
+            return _directionalShadowLightSpaceMatrix;
+        }
+
+        return ComputeShadowLightSpaceMatrix();
     }
 
     private Dictionary<LightSceneObject, int> RenderPointShadowMaps(vec3 cameraPos)
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.ShadowPass);
         Dictionary<LightSceneObject, int> shadowIndices = new();
         if (Gl == null)
             return shadowIndices;
@@ -3159,16 +3216,29 @@ public class Viewport : UiPanel
 
     private int ComputeShadowCacheSignature(IEnumerable<SceneObject> objects, bool includePointLights)
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.ShadowSignature);
         var hash = new HashCode();
         hash.Add(_showHiddenObjects);
         hash.Add(_shadowMapSize);
         hash.Add(PropertiesPanel?.PointShadowBufferSize ?? 1024);
         hash.Add(PropertiesPanel?.SpotShadowBufferSize ?? 1024);
+        if (!includePointLights)
+        {
+            hash.Add(GroundPlaneVisible);
+            hash.Add(Mesh.MoonFillLightCastsShadows);
+            hash.Add(Mesh.SunFillLightCastsShadows);
+            hash.Add(Mesh.GlobalMoonFillLightDirection.x);
+            hash.Add(Mesh.GlobalMoonFillLightDirection.y);
+            hash.Add(Mesh.GlobalMoonFillLightDirection.z);
+            hash.Add(Mesh.GlobalSunFillLightDirection.x);
+            hash.Add(Mesh.GlobalSunFillLightDirection.y);
+            hash.Add(Mesh.GlobalSunFillLightDirection.z);
+        }
         AddShadowCacheState(objects, includePointLights, ref hash);
         return hash.ToHashCode();
     }
 
-    private static void AddShadowCacheState(
+    private void AddShadowCacheState(
         IEnumerable<SceneObject> objects,
         bool includePointLights,
         ref HashCode hash)
@@ -3190,6 +3260,29 @@ public class Viewport : UiPanel
             hash.Add(obj.Scale.y);
             hash.Add(obj.Scale.z);
             hash.Add(obj.Visuals.Count);
+
+            if (!includePointLights && obj.RenderInHighQuality && IsObjectVisible(obj) && obj.CastShadow)
+            {
+                // Resolved matrices cover pivots, inheritance, exact imported rotations,
+                // bend-adjusted parents and reparenting without duplicating transform rules.
+                mat4 world = obj.GetWorldMatrix();
+                hash.Add(world.m00); hash.Add(world.m01); hash.Add(world.m02); hash.Add(world.m03);
+                hash.Add(world.m10); hash.Add(world.m11); hash.Add(world.m12); hash.Add(world.m13);
+                hash.Add(world.m20); hash.Add(world.m21); hash.Add(world.m22); hash.Add(world.m23);
+                hash.Add(world.m30); hash.Add(world.m31); hash.Add(world.m32); hash.Add(world.m33);
+                for (int i = 0; i < obj.Visuals.Count; i++)
+                {
+                    var mesh = obj.Visuals[i];
+                    hash.Add(mesh);
+                    hash.Add(mesh.PickOnly);
+                    hash.Add(mesh.DepthTestDisabled);
+                    hash.Add(mesh.Vertices.Count);
+                    hash.Add(mesh.BoundingSphereCenter.x);
+                    hash.Add(mesh.BoundingSphereCenter.y);
+                    hash.Add(mesh.BoundingSphereCenter.z);
+                    hash.Add(mesh.BoundingSphereRadius);
+                }
+            }
 
             if (includePointLights && obj is LightSceneObject light)
             {
@@ -3219,7 +3312,11 @@ public class Viewport : UiPanel
     {
         var bounds = new SceneShadowBounds();
         var sceneObjects = IsPreviewViewport ? (MainViewport?.SceneObjects ?? SceneObjects) : SceneObjects;
-        CollectShadowBounds(sceneObjects, ref bounds, SceneRenderMode.Rendered);
+        {
+            using var boundsScope = FrameProfiler.Shared.Measure(ProfileStage.ShadowBounds);
+            FrameProfiler.Shared.Count(ProfileCounter.ShadowBoundsRebuilds);
+            CollectShadowBounds(sceneObjects, ref bounds, SceneRenderMode.Rendered);
+        }
 
         bool groundVisible = IsPreviewViewport ? (MainViewport?.GroundPlaneVisible ?? GroundPlaneVisible) : GroundPlaneVisible;
         if (groundVisible && bounds.HasAny)
@@ -3444,6 +3541,7 @@ public class Viewport : UiPanel
     /// </summary>
     public void RenderShadowMapPublic()
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.ShadowPass);
         if (Gl == null || !IsPreviewViewport)
             return;
 
@@ -3485,6 +3583,7 @@ public class Viewport : UiPanel
     /// </summary>
     public Dictionary<LightSceneObject, int> RenderPointShadowMapsPublic(vec3 cameraPos)
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.ShadowPass);
         Dictionary<LightSceneObject, int> shadowIndices = new();
         if (Gl == null || !IsPreviewViewport)
             return shadowIndices;
@@ -3577,6 +3676,8 @@ public class Viewport : UiPanel
     /// </summary>
     private void ExecutePendingPick(Vector2 imageMin, Vector2 imageSize)
     {
+        using var uncached = SceneObject.SuspendRenderEvaluation();
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.Picking);
         var (pickCamera, pickCamObj) = GetActiveRenderCamera();
         var preparedPickCamera = BuildPreparedCamera(pickCamera, pickCamObj);
         float aspect = (_viewportHeight > 0) ? (float)_viewportWidth / _viewportHeight : 1f;
@@ -3617,6 +3718,8 @@ public class Viewport : UiPanel
         float screenY,
         bool ctrlHeld)
     {
+        // Selection callbacks can edit raw public fields while handling a pick.
+        using var uncached = SceneObject.SuspendRenderEvaluation();
         if (_pickShader == null) return;
         if (pickFbo == 0 || pickColorTex == 0 || w == 0 || h == 0) return;
 
@@ -4167,6 +4270,7 @@ public class Viewport : UiPanel
     private void RenderAmbientOcclusion(uint displayFbo, uint depthTexture, uint width, uint height,
         float nearPlane, float farPlane, PropertiesPanel? settings, RenderedPassMode passMode)
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.AmbientOcclusion);
         if (displayFbo == 0 || depthTexture == 0 || width == 0 || height == 0)
             return;
 
@@ -4272,6 +4376,7 @@ public class Viewport : UiPanel
         PropertiesPanel? settings,
         RenderedPassMode passMode)
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.IndirectLighting);
         if (Gl == null || settings == null || passMode != RenderedPassMode.Combined)
             return;
         if (_indirectLightingShader == null || _glowShader == null || sourceColorTex == 0 || depthTexture == 0 ||
@@ -4456,6 +4561,8 @@ public class Viewport : UiPanel
             float spotCosOuterAngle, float spotCosInnerAngle)> allLights,
         bool forceUnshaded)
     {
+        // Shared across main, preview and feeds; includes deferred stable OrderBy sorting.
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.SceneDraw);
         // LINQ OrderBy is stable, matching Modelbench's insertion behavior for
         // parts with equal depth. Camera distance intentionally has no role.
         Gl.Enable(GLEnum.Blend);
@@ -4479,6 +4586,8 @@ public class Viewport : UiPanel
         bool blurTexture = false,
         bool textureMipmaps = false)
     {
+        // Counts helper submissions, including ground, but not direct overlay/shadow/pick draws.
+        FrameProfiler.Shared.Count(ProfileCounter.MeshesSubmitted);
         bool previousUnlit = mesh.Unlit;
         bool previousIncludeFog = mesh.IncludeInFog;
         bool previousBlurTexture = mesh.BlurTexture;
@@ -4518,6 +4627,7 @@ public class Viewport : UiPanel
     {
         foreach (var obj in objects)
         {
+            FrameProfiler.Shared.Count(ProfileCounter.SceneNodesVisited);
             if (!obj.GetEffectiveVisibility()) continue;
             if (!ShouldRenderInQuality(obj, renderMode)) continue;
 
@@ -4624,24 +4734,22 @@ public class Viewport : UiPanel
         return translation * rotation * scaling * pivot;
     }
 
-    private void UpdateParticleSpawners(IEnumerable<SceneObject> objects, float deltaTime, bool timelinePlaying)
+    private void UpdateParticleSpawners(IReadOnlyList<SceneObject> objects, float deltaTime, bool timelinePlaying)
     {
         if (SpawnMenu == null)
             return;
 
-        float timelineSeconds = timelinePlaying ? GetTimelineEffectTimeSeconds() : 0f;
         SelectionManager? selection = SelectionManager.Instance;
+        if (!timelinePlaying && (!ParticlePreviewEnabled || selection == null || selection.SelectedObjects.Count == 0))
+            return;
 
-        // Particle simulation may add/remove child nodes while traversing.
-        // Iterate over a snapshot to avoid invalidating the collection enumerator.
-        var snapshot = new List<SceneObject>(objects);
-
-        foreach (var obj in snapshot)
+        float timelineSeconds = timelinePlaying ? GetTimelineEffectTimeSeconds() : 0f;
+        _particleSpawnersToUpdate.Clear();
+        try
         {
-            if (!obj.GetEffectiveVisibility())
-                continue;
-
-            if (obj is ParticleSpawnerSceneObject spawner && !spawner.IsRuntimeTransient)
+            // Discover first: simulation can insert/remove roots and child nodes.
+            CollectParticleSpawners(objects, _particleSpawnersToUpdate);
+            foreach (var spawner in _particleSpawnersToUpdate)
             {
                 bool previewSelected = ParticlePreviewEnabled &&
                                        selection != null &&
@@ -4652,8 +4760,28 @@ public class Viewport : UiPanel
                 else if (previewSelected)
                     spawner.Step(deltaTime, this, SpawnMenu);
             }
+        }
+        finally
+        {
+            _particleSpawnersToUpdate.Clear();
+        }
+    }
 
-            UpdateParticleSpawners(obj.Children, deltaTime, timelinePlaying);
+    internal static void CollectParticleSpawners(IReadOnlyList<SceneObject> objects, List<ParticleSpawnerSceneObject> result)
+    {
+        for (int i = 0; i < objects.Count; i++)
+            if (objects[i].GetEffectiveVisibility())
+                Collect(objects[i], result);
+
+        static void Collect(SceneObject obj, List<ParticleSpawnerSceneObject> result)
+        {
+            // Preserve the original authored-invisible-parent subtree pruning.
+            if (!obj.ObjectVisible) return;
+            if (obj is ParticleSpawnerSceneObject spawner && !spawner.IsRuntimeTransient)
+                result.Add(spawner);
+            var children = obj.Children;
+            for (int i = 0; i < children.Count; i++)
+                Collect(children[i], result);
         }
     }
 
@@ -4663,6 +4791,7 @@ public class Viewport : UiPanel
     /// </summary>
     private static Dictionary<string, BoneSceneObject> BuildBoneDictionary(SceneObject root)
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.BoneLookup);
         var dict = new Dictionary<string, BoneSceneObject>(StringComparer.OrdinalIgnoreCase);
         CollectBones(root, dict);
         return dict;
@@ -4687,6 +4816,7 @@ public class Viewport : UiPanel
     /// </summary>
     private static void UpdateBoneMatrices(Mesh mesh, mat4 meshWorld, Dictionary<string, BoneSceneObject> boneDict)
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.BoneMatrices);
         if (mesh.BoneNames.Count == 0 || mesh.BoneInverseBindMatrices.Count == 0)
             return;
 
@@ -5233,6 +5363,7 @@ public class Viewport : UiPanel
     private unsafe void ResolveDepthOfFieldFocus(uint framebuffer, uint width, uint height, float near, float far,
         CameraSceneObject? camera)
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.DepthOfField);
         var owner = MainViewport ?? this;
         var effect = owner._focusEffect;
         if (Gl == null || effect == null || camera == null || !ReferenceEquals(owner._focusCamera, camera))
@@ -5285,6 +5416,7 @@ public class Viewport : UiPanel
         uint scratchFbo, uint scratchTexture, uint width, uint height, float near, float far,
         CameraSceneObject? camera)
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.DepthOfField);
         if (Gl == null || _depthOfFieldShader == null || camera == null || width == 0 || height == 0)
             return;
         foreach (var effect in camera.Effects)
@@ -5335,6 +5467,7 @@ public class Viewport : UiPanel
     private void ApplyFilmGrainPass(uint sceneFbo, uint sceneTexture, uint scratchFbo, uint scratchTexture,
         uint width, uint height, CameraSceneObject? cameraObject)
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.FilmGrain);
         if (Gl == null || _filmGrainShader == null || cameraObject == null || width == 0 || height == 0)
             return;
 
@@ -5719,6 +5852,8 @@ public class Viewport : UiPanel
     /// </summary>
     public unsafe void UpdateCameraTextureFeeds()
     {
+        // Includes collection, feed rendering and texture copies, but not the visible preview.
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.CameraFeeds);
         if (!IsPreviewViewport || Gl == null || MainViewport == null || _previewFbo == 0)
             return;
 
@@ -5750,6 +5885,8 @@ public class Viewport : UiPanel
             _viewportRenderMode == ViewportRenderMode.Rendered ||
             MainViewport._viewportRenderMode == ViewportRenderMode.Rendered;
         OverlaysEnabled = false;
+        bool wasProfilingCameraFeeds = _profilingCameraFeeds;
+        _profilingCameraFeeds = true;
         try
         {
             // RenderScenePublic sets the GL viewport, but it does not allocate
@@ -5764,6 +5901,7 @@ public class Viewport : UiPanel
                 uint destination = _cameraFeedTextures[cameraId];
 
                 camera.SyncCameraToTransform();
+                FrameProfiler.Shared.Count(ProfileCounter.CameraFeedRenderInvocations);
                 RenderScenePublic(camera.ViewCamera, camera, CameraFeedSize, CameraFeedSize,
                     highQuality: renderFeedsHighQuality, applyCameraEffects: true);
 
@@ -5782,6 +5920,7 @@ public class Viewport : UiPanel
         }
         finally
         {
+            _profilingCameraFeeds = wasProfilingCameraFeeds;
             OverlaysEnabled = overlays;
             Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         }
@@ -5815,6 +5954,13 @@ public class Viewport : UiPanel
         bool highQuality = false, bool applyCameraEffects = false)
     {
         if (Gl == null || MainViewport == null) return;
+        using var uncachedPreparation = SceneObject.SuspendRenderEvaluation();
+
+        // Render substages/counters aggregate across all views; feed time stays out of PreviewScene.
+        using var sceneScope = FrameProfiler.Shared.Measure(
+            _profilingCameraFeeds ? ProfileStage.CameraFeeds : ProfileStage.PreviewScene);
+        if (!_profilingCameraFeeds)
+            FrameProfiler.Shared.Count(ProfileCounter.PreviewRenderInvocations);
 
         ViewportRenderMode effectiveMode = highQuality ? ViewportRenderMode.Rendered : _viewportRenderMode;
         SceneRenderMode renderMode = effectiveMode == ViewportRenderMode.Rendered
@@ -5833,27 +5979,32 @@ public class Viewport : UiPanel
         Mesh.IndirectWorldEnabled = previewWorldGi;
         Mesh.IndirectWorldStrength = Math.Clamp(MainViewport.PropertiesPanel?.IndirectLightingStrength ?? 1f, 0f, 4f);
 
-        Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
-        Gl.DrawBuffer(GLEnum.ColorAttachment0);
-        Gl.ReadBuffer(GLEnum.ColorAttachment0);
-        Gl.Viewport(0, 0, w, h);
+        Camera renderCamera;
+        mat4 view, proj;
+        {
+            using var preparationScope = FrameProfiler.Shared.Measure(ProfileStage.PreviewPreparation);
+            Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
+            Gl.DrawBuffer(GLEnum.ColorAttachment0);
+            Gl.ReadBuffer(GLEnum.ColorAttachment0);
+            Gl.Viewport(0, 0, w, h);
 
-        Gl.Enable(GLEnum.DepthTest);
-        Gl.DepthFunc(GLEnum.Less);
-        Gl.Enable(GLEnum.CullFace);
-        Gl.CullFace(GLEnum.Back);
-        Gl.FrontFace(GLEnum.Ccw);
+            Gl.Enable(GLEnum.DepthTest);
+            Gl.DepthFunc(GLEnum.Less);
+            Gl.Enable(GLEnum.CullFace);
+            Gl.CullFace(GLEnum.Back);
+            Gl.FrontFace(GLEnum.Ccw);
 
-        float[] bg = MainViewport.PropertiesPanel?.BackgroundColor ?? [0.18f, 0.18f, 0.18f, 1.0f];
-        Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
-        Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+            float[] bg = MainViewport.PropertiesPanel?.BackgroundColor ?? [0.18f, 0.18f, 0.18f, 1.0f];
+            Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
+            Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-        float aspect = h > 0 ? (float)w / h : 1f;
+            float aspect = h > 0 ? (float)w / h : 1f;
 
-        var renderCamera = BuildPreparedCamera(cam, sceneObj);
+            renderCamera = BuildPreparedCamera(cam, sceneObj);
 
-        mat4 view = renderCamera.GetViewMatrix();
-        mat4 proj = renderCamera.GetProjectionMatrix(aspect);
+            view = renderCamera.GetViewMatrix();
+            proj = renderCamera.GetProjectionMatrix(aspect);
+        }
 
         MainViewport.RenderSkyPublic(renderCamera, w, h);
         MainViewport.RenderBackgroundPlanePublic(w, h);
@@ -5863,8 +6014,12 @@ public class Viewport : UiPanel
         Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
         bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
         if (!IsPreviewViewport)
+        {
+            using var particleScope = FrameProfiler.Shared.Measure(ProfileStage.ParticleUpdate);
             UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
+        }
 
+        using var evaluation = SceneObject.BeginRenderEvaluation();
         Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
         int textureAnimFps = Math.Clamp(MainViewport.PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240);
         Mesh.AnimatedTextureSpeedScale = textureAnimFps / 20.0;
@@ -5951,6 +6106,7 @@ public class Viewport : UiPanel
 
         if (MainViewport.GroundPlane != null && MainViewport.GroundPlaneVisible)
         {
+            using var drawScope = FrameProfiler.Shared.Measure(ProfileStage.SceneDraw);
             SelectPointLightsForMesh(vec3.Zero, allPointLights);
             RenderMeshWithModeOverride(MainViewport.GroundPlane, MainViewport.GroundPlaneModel, view, proj, forceUnshaded);
         }
@@ -5959,7 +6115,10 @@ public class Viewport : UiPanel
         var renderItemsNoAo = new List<(mat4, Mesh, float, bool, bool, bool)>();
         var overlays = new List<(mat4, Mesh)>();
         Frustum previewFrustum = Frustum.FromViewProj(proj * view);
-        CollectRenderPairs(MainViewport.SceneObjects, camPos, renderMode, previewFrustum, renderItems, renderItemsNoAo, overlays);
+        {
+            using var collectionScope = FrameProfiler.Shared.Measure(ProfileStage.SceneCollection);
+            CollectRenderPairs(MainViewport.SceneObjects, camPos, renderMode, previewFrustum, renderItems, renderItemsNoAo, overlays);
+        }
 
         bool splitAoObjects = renderMode == SceneRenderMode.Rendered &&
                               _ambientOcclusionShader != null &&
@@ -6005,6 +6164,7 @@ public class Viewport : UiPanel
 
         if (OverlaysEnabled)
         {
+            using var overlaysScope = FrameProfiler.Shared.Measure(ProfileStage.Overlays);
             foreach (var (model, mesh) in overlays)
             {
                 SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allPointLights);
@@ -6030,6 +6190,7 @@ public class Viewport : UiPanel
         // ── Pending pick (left-click) → GPU colour-ID pass ───────────────────
         if (!float.IsNaN(_pendingPreviewPickX))
         {
+            using var pickingScope = FrameProfiler.Shared.Measure(ProfileStage.Picking);
             ExecutePendingPickGeneric(
                 _previewPickFbo, _previewPickColorTex, w, h,
                 view, proj, MainViewport.SceneObjects,

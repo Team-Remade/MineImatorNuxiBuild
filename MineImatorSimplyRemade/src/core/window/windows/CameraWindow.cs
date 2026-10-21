@@ -2,6 +2,7 @@ using System.Numerics;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.GLFW;
 using Hexa.NET.ImGui.Backends.OpenGL3;
+using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -52,9 +53,12 @@ public class CameraWindow : Window
     {
         if (_panel == null) return;
 
-        SetWindowTitle(Localization.T("text.common.camera_view"));
-        SetContextCurrent();
-        UpdateDpiScale();
+        {
+            using var setupScope = FrameProfiler.Shared.Measure(ProfileStage.UiSetup);
+            SetWindowTitle(Localization.T("text.common.camera_view"));
+            SetContextCurrent();
+            UpdateDpiScale();
+        }
 
         // ── Step 1: scene render on the main context ──────────────────────────
         Glfw.MakeContextCurrent(_mainHandle);
@@ -76,33 +80,43 @@ public class CameraWindow : Window
 
         // ── Step 2: ImGui frame on this window's context ──────────────────────
         // Make GL context current FIRST, before setting ImGui contexts
-        SetContextCurrent();
-        Glfw.MakeContextCurrent(WindowHandle);
+        {
+            using var setupScope = FrameProfiler.Shared.Measure(ProfileStage.UiSetup);
+            SetContextCurrent();
+            Glfw.MakeContextCurrent(WindowHandle);
 
-        GL.ClearColor(ClearR, ClearG, ClearB, ClearA);
-        GL.Clear(ClearBufferMask.ColorBufferBit |
-                 ClearBufferMask.DepthBufferBit);
+            GL.ClearColor(ClearR, ClearG, ClearB, ClearA);
+            GL.Clear(ClearBufferMask.ColorBufferBit |
+                     ClearBufferMask.DepthBufferBit);
 
-        ImGuiImplOpenGL3.NewFrame();
-        ImGuiImplGLFW.NewFrame();
-        UpdateDpiScale();
-        ImGui.NewFrame();
+            ImGuiImplOpenGL3.NewFrame();
+            ImGuiImplGLFW.NewFrame();
+            UpdateDpiScale();
+            ImGui.NewFrame();
+        }
 
         RenderUi(activeCam, sceneObj, sceneW, sceneH);
 
-        ImGui.Render();
-        ImGuiImplOpenGL3.RenderDrawData(ImGui.GetDrawData());
+        {
+            using var drawScope = FrameProfiler.Shared.Measure(ProfileStage.ImGuiDraw);
+            ImGui.Render();
+            ImGuiImplOpenGL3.RenderDrawData(ImGui.GetDrawData());
+        }
 
         // Required every frame that ends with ImGui.Render() — without this,
         // ImGui asserts on the next NewFrame() that UpdatePlatformWindows was skipped.
         var ioFlags = ImGui.GetIO().ConfigFlags;
         if ((ioFlags & ImGuiConfigFlags.ViewportsEnable) != 0)
         {
+            using var platformScope = FrameProfiler.Shared.Measure(ProfileStage.PlatformWindows);
             ImGui.UpdatePlatformWindows();
             ImGui.RenderPlatformWindowsDefault();
         }
 
-        Glfw.SwapBuffers(WindowHandle);
+        {
+            using var swapScope = FrameProfiler.Shared.Measure(ProfileStage.SwapBuffers);
+            Glfw.SwapBuffers(WindowHandle);
+        }
 
         // ── Step 3: restore main context ──────────────────────────────────────
         Glfw.MakeContextCurrent(_mainHandle);

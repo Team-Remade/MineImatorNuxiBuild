@@ -401,11 +401,16 @@ public sealed class LightGizmoRenderer : IDisposable
     private static void CollectLights(IEnumerable<SceneObject> roots, List<LightSceneObject> result)
     {
         foreach (var obj in roots)
-        {
-            if (!obj.GetEffectiveVisibility()) continue;
-            if (!obj.IsHiddenForRendering() && obj is LightSceneObject light) result.Add(light);
-            CollectLights(obj.Children, result);
-        }
+            CollectLight(obj, result);
+    }
+
+    private static void CollectLight(SceneObject obj, List<LightSceneObject> result)
+    {
+        if (!obj.GetEffectiveVisibility()) return;
+        if (obj is LightSceneObject light && !obj.IsHiddenForRendering()) result.Add(light);
+        var children = obj.Children;
+        for (int i = 0; i < children.Count; i++)
+            CollectLight(children[i], result);
     }
 
     // ── IDisposable ─────────────────────────────────────────────────────────────

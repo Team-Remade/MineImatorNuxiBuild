@@ -27,6 +27,7 @@ public class Menubar : UiPanel
     public Action? ImportResourcePackFolderRequested { get; set; }
     public Action? ResetWorkCameraRequested { get; set; }
     public Action? ResetLayoutRequested { get; set; }
+    public Action? PerformanceRequested { get; set; }
     public Action? HomeScreenRequested { get; set; }
     public Action? AboutRequested { get; set; }
     public Action? ReportBugsRequested { get; set; }
@@ -155,6 +156,9 @@ public class Menubar : UiPanel
 
             if (ImGui.BeginMenu(Localization.Label("text.menu.view", "View")))
             {
+                if (ImGui.MenuItem("Performance / Benchmark"))
+                    PerformanceRequested?.Invoke();
+                ImGui.Separator();
                 if (ImGui.MenuItem(Localization.Label("text.menu.reset_layout", "Reset Layout")))
                 {
                     ResetLayoutRequested?.Invoke();

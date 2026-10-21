@@ -1,4 +1,5 @@
 ﻿using GlmSharp;
+using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
@@ -96,6 +97,54 @@ public class MaterialSettings
 
 public class SceneObject
 {
+    [ThreadStatic] private static long _renderEvaluation;
+    private static long _nextRenderEvaluation;
+    private long _worldEvaluation;
+    private long _visibilityEvaluation;
+    private mat4 _evaluatedWorldMatrix;
+    private bool _evaluatedVisibility;
+
+    // Public transform fields can change without notifications, so reuse is bounded
+    // to explicit renderer read phases, never an entire editor frame or idle period.
+    internal static EvaluationScope BeginRenderEvaluation()
+    {
+        long previous = _renderEvaluation;
+        _renderEvaluation = Interlocked.Increment(ref _nextRenderEvaluation);
+        return new EvaluationScope(previous);
+    }
+
+    internal static EvaluationScope SuspendRenderEvaluation()
+    {
+        long previous = _renderEvaluation;
+        _renderEvaluation = 0;
+        return new EvaluationScope(previous);
+    }
+
+    internal static void InvalidateRenderEvaluation()
+    {
+        if (_renderEvaluation != 0)
+            _renderEvaluation = Interlocked.Increment(ref _nextRenderEvaluation);
+    }
+
+    internal readonly struct EvaluationScope : IDisposable
+    {
+        private readonly long _previous;
+        private readonly int _thread;
+
+        internal EvaluationScope(long previous)
+        {
+            _previous = previous;
+            _thread = Environment.CurrentManagedThreadId;
+        }
+
+        public void Dispose()
+        {
+            if (_thread != Environment.CurrentManagedThreadId) return;
+            // A nested phase may have edited the scene or replaced cached values.
+            _renderEvaluation = _previous == 0 ? 0 : Interlocked.Increment(ref _nextRenderEvaluation);
+        }
+    }
+
     // ── Basic identity ────────────────────────────────────────────────────────
 
     public string ObjectType = "Object";
@@ -276,6 +325,7 @@ public class SceneObject
     /// <summary>Sets the local position and keeps the cache in sync.</summary>
     public void SetLocalPosition(vec3 pos)
     {
+        InvalidateRenderEvaluation();
         _localPosition = pos;
         Position = pos;
     }
@@ -283,6 +333,7 @@ public class SceneObject
     /// <summary>Sets the local rotation and keeps the cache in sync.</summary>
     public void SetLocalRotation(vec3 rot)
     {
+        InvalidateRenderEvaluation();
         _localRotation = rot;
         Rotation = rot;
         _localRotationMatrixOverride = null;
@@ -295,6 +346,7 @@ public class SceneObject
     /// </summary>
     public void SetLocalRotationMatrix(mat4 matrix, vec3 equivalentEuler)
     {
+        InvalidateRenderEvaluation();
         _localRotation = equivalentEuler;
         Rotation = equivalentEuler;
         _localRotationMatrixOverride = matrix;
@@ -303,6 +355,7 @@ public class SceneObject
     /// <summary>Sets the local scale and keeps the cache in sync.</summary>
     public void SetLocalScale(vec3 scale)
     {
+        InvalidateRenderEvaluation();
         _localScale = scale;
         Scale = scale;
     }
@@ -727,13 +780,17 @@ public class SceneObject
         child.Parent?.RemoveChild(child);
         child.Parent = this;
         _children.Add(child);
+        InvalidateRenderEvaluation();
     }
 
     /// <summary>Removes a child and clears its <see cref="Parent"/>.</summary>
     public void RemoveChild(SceneObject child)
     {
         if (_children.Remove(child))
+        {
             child.Parent = null;
+            InvalidateRenderEvaluation();
+        }
     }
 
     /// <summary>
@@ -841,13 +898,22 @@ public class SceneObject
     /// </summary>
     public bool GetEffectiveVisibility()
     {
-        if (!_inheritVisibility)
-            return ObjectVisible;
+        FrameProfiler.Shared.Count(ProfileCounter.VisibilityQueries);
+        long evaluation = _renderEvaluation;
+        if (evaluation != 0 && _visibilityEvaluation == evaluation)
+        {
+            FrameProfiler.Shared.Count(ProfileCounter.VisibilityCacheHits);
+            return _evaluatedVisibility;
+        }
 
-        if (Parent != null)
-            return ObjectVisible && Parent.GetEffectiveVisibility();
-
-        return ObjectVisible;
+        using var timing = FrameProfiler.Shared.Measure(ProfileStage.VisibilityEvaluation);
+        bool visible = ObjectVisible && (!_inheritVisibility || Parent == null || Parent.GetEffectiveVisibility());
+        if (evaluation != 0)
+        {
+            _evaluatedVisibility = visible;
+            _visibilityEvaluation = evaluation;
+        }
+        return visible;
     }
 
     /// <summary>Applies editor hiding to this object and its descendants.</summary>
@@ -894,6 +960,7 @@ public class SceneObject
     /// </summary>
     private void ApplyEffectiveVisibility()
     {
+        InvalidateRenderEvaluation();
         // No Godot .Visible on Visual in MonoGame; callers/renderer should
         // query GetEffectiveVisibility() when deciding whether to draw this object.
         UpdateChildrenVisibility();
@@ -940,6 +1007,26 @@ public class SceneObject
     /// multiplying up the parent chain, respecting inheritance flags.
     /// </summary>
     public mat4 GetWorldMatrix()
+    {
+        FrameProfiler.Shared.Count(ProfileCounter.WorldMatrixQueries);
+        long evaluation = _renderEvaluation;
+        if (evaluation != 0 && _worldEvaluation == evaluation)
+        {
+            FrameProfiler.Shared.Count(ProfileCounter.WorldMatrixCacheHits);
+            return _evaluatedWorldMatrix;
+        }
+
+        using var timing = FrameProfiler.Shared.Measure(ProfileStage.TransformEvaluation);
+        mat4 world = ComputeWorldMatrix();
+        if (evaluation != 0)
+        {
+            _evaluatedWorldMatrix = world;
+            _worldEvaluation = evaluation;
+        }
+        return world;
+    }
+
+    private mat4 ComputeWorldMatrix()
     {
         mat4 local = GetLocalMatrix();
 
@@ -1096,6 +1183,7 @@ public class SceneObject
     /// </summary>
     public void UpdateVisualPosition()
     {
+        InvalidateRenderEvaluation();
         // In MonoGame the visual offset is tracked separately from the scene node
         // position.  Callers/renderers should offset by -GetAccumulatedPivotOffset()
         // when computing the final world matrix for the visual mesh.
@@ -1118,10 +1206,18 @@ public class SceneObject
     /// </summary>
     public List<Mesh> GetMeshInstancesRecursively()
     {
-        var result = new List<Mesh>(Visuals);
-        foreach (var child in _children)
-            result.AddRange(child.GetMeshInstancesRecursively());
+        using var timing = FrameProfiler.Shared.Measure(ProfileStage.MeshFlattening);
+        FrameProfiler.Shared.Count(ProfileCounter.MeshFlattenCalls);
+        var result = new List<Mesh>();
+        Collect(this, result);
         return result;
+
+        static void Collect(SceneObject obj, List<Mesh> meshes)
+        {
+            meshes.AddRange(obj.Visuals);
+            foreach (var child in obj._children)
+                Collect(child, meshes);
+        }
     }
 
     /// <summary>
