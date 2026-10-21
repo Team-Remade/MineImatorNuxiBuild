@@ -258,7 +258,7 @@ public class MiBoneSceneObject : BoneSceneObject
         bp.Angle   = newAngle;
         BendParameters = bp;
 
-        UpdateGpuBendStates(propagateInheritedBends: regenerateMeshes);
+        RefreshBendVisuals(propagateInheritedBends: regenerateMeshes);
     }
 
     /// <summary>
@@ -294,7 +294,8 @@ public class MiBoneSceneObject : BoneSceneObject
         editableAngle.z = Math.Clamp(editableAngle.z, bp.DirectionMin.z, bp.DirectionMax.z);
 
         vec3 localEditable = editableAngle;
-        if (bp.InheritBend && Parent is MiBoneSceneObject parentBone && parentBone.BendParameters.HasValue)
+        MiBoneSceneObject? parentBone = FindParentBendBone();
+        if (bp.InheritBend && parentBone != null)
             localEditable -= parentBone.GetEffectiveEditableBendAngle();
 
         vec3 stored = EditableToStored(localEditable, bp);
@@ -349,33 +350,27 @@ public class MiBoneSceneObject : BoneSceneObject
         if (!propagateInheritedBends)
             return;
 
-        foreach (var child in GetChildrenObjects())
-        {
-            if (child is MiBoneSceneObject childBone &&
-                childBone.BendParameters.HasValue &&
-                childBone.BendParameters.Value.InheritBend)
-            {
-                childBone.RegenerateMeshes();
-            }
-        }
+        PropagateInheritedBends(this, static bone => bone.RegenerateMeshes());
     }
 
-    private void UpdateGpuBendStates(bool propagateInheritedBends)
+    private void RefreshBendVisuals(bool propagateInheritedBends)
     {
-        vec3 effectiveAngle = GetEffectiveBendAngle();
-        foreach (var mesh in Visuals)
+        if (_shapeDataList.Any(static data => data.Shape is { Type: "plane", ThreeD: true, Bend: true }))
         {
-            if (mesh.GpuBend != null)
-                mesh.GpuBend.Angle = effectiveAngle;
+            RegenerateMeshes(propagateInheritedBends: false);
+        }
+        else
+        {
+            vec3 effectiveAngle = GetEffectiveBendAngle();
+            foreach (var mesh in Visuals)
+            {
+                if (mesh.GpuBend != null)
+                    mesh.GpuBend.Angle = effectiveAngle;
+            }
         }
 
         if (!propagateInheritedBends) return;
-        foreach (var child in Children)
-        {
-            if (child is MiBoneSceneObject childBone &&
-                childBone.BendParameters is { InheritBend: true })
-                childBone.UpdateGpuBendStates(true);
-        }
+        PropagateInheritedBends(this, static bone => bone.RefreshBendVisuals(true));
     }
 
     private vec3 GetEffectiveBendAngle()
@@ -393,7 +388,8 @@ public class MiBoneSceneObject : BoneSceneObject
         var bp = BendParameters.Value;
         vec3 editable = StoredToEditable(bp.Angle, bp);
 
-        if (bp.InheritBend && Parent is MiBoneSceneObject parentBone && parentBone.BendParameters.HasValue)
+        MiBoneSceneObject? parentBone = FindParentBendBone();
+        if (bp.InheritBend && parentBone != null)
             editable += parentBone.GetEffectiveEditableBendAngle();
 
         if (!bp.AxisX) editable.x = 0f;
@@ -405,6 +401,32 @@ public class MiBoneSceneObject : BoneSceneObject
         editable.z = bp.AxisZ ? Math.Clamp(editable.z, bp.DirectionMin.z, bp.DirectionMax.z) : 0f;
 
         return editable;
+    }
+
+    private MiBoneSceneObject? FindParentBendBone()
+    {
+        for (SceneObject? ancestor = Parent; ancestor != null; ancestor = ancestor.Parent)
+        {
+            if (ancestor is MiBoneSceneObject { BendParameters: not null } bone)
+                return bone;
+        }
+
+        return null;
+    }
+
+    private static void PropagateInheritedBends(SceneObject source, Action<MiBoneSceneObject> update)
+    {
+        foreach (var child in source.Children)
+        {
+            if (child is MiBoneSceneObject { BendParameters: not null } childBone)
+            {
+                if (childBone.BendParameters.Value.InheritBend)
+                    update(childBone);
+                continue;
+            }
+
+            PropagateInheritedBends(child, update);
+        }
     }
 
     private static vec3 StoredToEditable(vec3 stored, BendParams bp)

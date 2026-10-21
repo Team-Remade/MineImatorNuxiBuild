@@ -1059,6 +1059,9 @@ public class MineImatorLoader
                 obj.InheritPivotOffset = timeline.Inherit.RotPoint.Value;
         }
 
+        if (includeHierarchySettings && timeline.LockBend.HasValue)
+            obj.LockBend = Math.Clamp(timeline.LockBend.Value, 0f, 1f);
+
         if (includeHierarchySettings)
             obj.ScaleResize = timeline.ScaleResize ?? !string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase);
 
@@ -1503,6 +1506,8 @@ public class MineImatorLoader
             ImageResult img = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
             int width = img.Width;
             int height = img.Height;
+            int contentWidth = width;
+            int contentHeight = height;
             byte[] pixels = img.Data;
             var animation = File.Exists(path + ".mcmeta")
                 ? TerrainAtlas.ParseMcMetaFromText(File.ReadAllText(path + ".mcmeta"), width, height)
@@ -1533,7 +1538,7 @@ public class MineImatorLoader
             _gl.BindTexture(GLEnum.Texture2D, 0);
 
             _textureCache[cacheKey] = tex;
-            _pixelCache[tex] = (pixels, width, height);
+            _pixelCache[tex] = (pixels, width, height, contentWidth, contentHeight);
             if (animation != null)
             {
                 TerrainAtlas.Textures[path] = tex;
@@ -1643,7 +1648,8 @@ public class MineImatorLoader
 
         BendParams? effectiveBend = (shape.Bend && bendParams.HasValue) ? bendParams : null;
         BendParams? geometryBend = effectiveBend;
-        if (geometryBend.HasValue)
+        bool cpuBentExtrudedPlane = shape.Type == "plane" && shape.ThreeD && geometryBend.HasValue;
+        if (geometryBend.HasValue && !cpuBentExtrudedPlane)
         {
             var value = geometryBend.Value;
             value.Angle = vec3.Zero;
@@ -1713,7 +1719,7 @@ public class MineImatorLoader
                 mesh.Upload();
             }
 
-            if (effectiveBend.HasValue)
+            if (effectiveBend.HasValue && !cpuBentExtrudedPlane)
             {
                 mesh.GpuBend = CreateGpuBendState(effectiveBend.Value, from, to, inflate,
                     shapePosition, shapeRotation, shapeScale, bendStyle);
@@ -2454,18 +2460,16 @@ public class MineImatorLoader
             return CreatePlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
                 textureMirror, invert, inflate, shapeRotation, shapeScale);
 
-        var pixels = TryGetPixels(textureId, texWidth, texHeight, out int imgW, out int imgH);
+        var pixels = TryGetPixels(textureId, texWidth, texHeight,
+            out int imgW, out int imgH, out int contentW, out int contentH);
         if (pixels == null)
             return CreatePlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
                 textureMirror, invert, inflate, shapeRotation, shapeScale);
 
-        int uvStartX = Math.Max(0, Math.Min((int)uvU, texWidth - 1));
-        int uvStartY = Math.Max(0, Math.Min((int)uvV, texHeight - 1));
-        int uvEndX = Math.Max(0, Math.Min((int)(uvU + sizeX), texWidth));
-        int uvEndY = Math.Max(0, Math.Min((int)(uvV + sizeY), texHeight));
-
-        int regionW = uvEndX - uvStartX;
-        int regionH = uvEndY - uvStartY;
+        int uvStartX = Math.Clamp((int)MathF.Ceiling(uvU / texWidth * contentW), 0, contentW - 1);
+        int uvStartY = Math.Clamp((int)MathF.Ceiling(uvV / texHeight * contentH), 0, contentH - 1);
+        int regionW = Math.Min((int)MathF.Ceiling(sizeX / texWidth * contentW), contentW - uvStartX);
+        int regionH = Math.Min((int)MathF.Ceiling(sizeY / texHeight * contentH), contentH - uvStartY);
 
         if (regionW <= 0 || regionH <= 0)
             return CreatePlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
@@ -2510,8 +2514,8 @@ public class MineImatorLoader
                 float adjPSY = pixScaleY + (inflate != 0f ? inflate * 2 : 0f);
                 float centerZ = from.z + 0.5f * 0.0625f;
 
-                float uvX = (texX + 0.5f) / texWidth;
-                float uvY = (texY + 0.5f) / texHeight;
+                float uvX = (texX + 0.5f) / imgW;
+                float uvY = (texY + 0.5f) / imgH;
 
                 int bv = vertices.Count;
                 AddExtrudedQuad(vertices, normals, uvs, indices, (uint)bv,
@@ -2790,15 +2794,16 @@ public class MineImatorLoader
             return CreateBentPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
                 textureMirror, invert, inflate, bend, shapePosition, shapeRotation, shapeScale, bendStyle);
 
-        var pixels = TryGetPixels(textureId, texWidth, texHeight, out int imgW, out int imgH);
+        var pixels = TryGetPixels(textureId, texWidth, texHeight,
+            out int imgW, out int imgH, out int contentW, out int contentH);
         if (pixels == null)
             return CreateBentPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
                 textureMirror, invert, inflate, bend, shapePosition, shapeRotation, shapeScale, bendStyle);
 
-        int uvStartX = (int)MathF.Ceiling(uvU);
-        int uvStartY = (int)MathF.Ceiling(uvV);
-        int regionW = (int)MathF.Ceiling(sizeX);
-        int regionH = (int)MathF.Ceiling(sizeY);
+        int uvStartX = (int)MathF.Ceiling(uvU / texWidth * contentW);
+        int uvStartY = (int)MathF.Ceiling(uvV / texHeight * contentH);
+        int regionW = (int)MathF.Ceiling(sizeX / texWidth * contentW);
+        int regionH = (int)MathF.Ceiling(sizeY / texHeight * contentH);
 
         if (regionW <= 0 || regionH <= 0)
             return CreateBentPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
@@ -2899,8 +2904,6 @@ public class MineImatorLoader
         var uvs = new List<vec2>();
         var indices = new List<uint>();
 
-        float texScaleX = MathF.Ceiling(sizeX) / regionW;
-        float texScaleY = MathF.Ceiling(sizeY) / regionH;
         float texelInset = 1f - 1f / 256f;
 
         for (int outer = 0; outer < outerCount; outer++)
@@ -2923,10 +2926,10 @@ public class MineImatorLoader
                 int texY = WrapIndex(uvStartY + ay, imgH);
                 if (GetAlpha(pixels, texX, texY, imgW) <= 0.5f) continue;
 
-                float uvX = (uvU + ax * texScaleX) / texWidth;
-                float uvY = (uvV + ay * texScaleY) / texHeight;
-                float uvWidth = texScaleX * texelInset / texWidth;
-                float uvHeight = texScaleY * texelInset / texHeight;
+                float uvX = (uvStartX + ax) / (float)imgW;
+                float uvY = (uvStartY + ay) / (float)imgH;
+                float uvWidth = texelInset / imgW;
+                float uvHeight = texelInset / imgH;
                 var t1 = new vec2(uvX, uvY);
                 var t2 = new vec2(uvX + uvWidth, uvY);
                 var t3 = new vec2(uvX + uvWidth, uvY + uvHeight);
@@ -3219,32 +3222,42 @@ public class MineImatorLoader
     // ─────────────────────────────────────────────────────────────────────────
 
     // Cache for readback pixel data: textureId → (pixels, width, height)
-    private readonly Dictionary<uint, (byte[] pixels, int w, int h)> _pixelCache = new();
+    private readonly Dictionary<uint, (byte[] pixels, int w, int h, int contentW, int contentH)> _pixelCache = new();
 
-    private byte[]? TryGetPixels(uint textureId, int texWidth, int texHeight, out int imgW, out int imgH)
+    private byte[]? TryGetPixels(uint textureId, int texWidth, int texHeight,
+        out int imgW, out int imgH, out int contentW, out int contentH)
     {
         if (_pixelCache.TryGetValue(textureId, out var cached))
         {
             imgW = cached.w;
             imgH = cached.h;
+            contentW = cached.contentW;
+            contentH = cached.contentH;
             return cached.pixels;
         }
 
         if (_gl == null)
         {
-            imgW = imgH = 0;
+            imgW = imgH = contentW = contentH = 0;
             return null;
         }
 
         try
         {
-            // We'll use the expected texWidth/texHeight since we know them from the model
-            imgW = texWidth;
-            imgH = texHeight;
-            int size = texWidth * texHeight * 4;
-            byte[] pixels = new byte[size];
-
             _gl.BindTexture(GLEnum.Texture2D, textureId);
+            _gl.GetTexLevelParameter(GLEnum.Texture2D, 0, GLEnum.TextureWidth, out imgW);
+            _gl.GetTexLevelParameter(GLEnum.Texture2D, 0, GLEnum.TextureHeight, out imgH);
+            if (imgW <= 0 || imgH <= 0)
+            {
+                _gl.BindTexture(GLEnum.Texture2D, 0);
+                imgW = imgH = contentW = contentH = 0;
+                return null;
+            }
+
+            contentW = imgW;
+            contentH = imgH;
+
+            byte[] pixels = new byte[imgW * imgH * 4];
             unsafe
             {
                 fixed (byte* p = pixels)
@@ -3253,12 +3266,12 @@ public class MineImatorLoader
 
             _gl.BindTexture(GLEnum.Texture2D, 0);
 
-            _pixelCache[textureId] = (pixels, texWidth, texHeight);
+            _pixelCache[textureId] = (pixels, imgW, imgH, contentW, contentH);
             return pixels;
         }
         catch
         {
-            imgW = imgH = 0;
+            imgW = imgH = contentW = contentH = 0;
             return null;
         }
     }
