@@ -3124,12 +3124,14 @@ public class SpawnMenu : UiPanel
 
     private sealed class CubeFaceSet
     {
-        public CubeFaceInfo? Up;
-        public CubeFaceInfo? Down;
-        public CubeFaceInfo? North;
-        public CubeFaceInfo? South;
-        public CubeFaceInfo? West;
-        public CubeFaceInfo? East;
+        public List<CubeFaceInfo> Up = new();
+        public List<CubeFaceInfo> Down = new();
+        public List<CubeFaceInfo> North = new();
+        public List<CubeFaceInfo> South = new();
+        public List<CubeFaceInfo> West = new();
+        public List<CubeFaceInfo> East = new();
+        public vec3 Min = new(-0.5f);
+        public vec3 Max = new(0.5f);
     }
 
     private sealed class VariantRenderInfo
@@ -3570,21 +3572,10 @@ public class SpawnMenu : UiPanel
             return null;
 
         var resolved = BlockRegistry.ResolveModel(variant.ModelPath);
-        if (resolved == null || resolved.Elements.Count != 1)
+        if (resolved == null || resolved.Elements.Count == 0)
             return null;
 
-        var element = resolved.Elements[0];
-        if (element.Rotation != null)
-            return null;
-
-        if (element.From.Length < 3 || element.To.Length < 3)
-            return null;
-
-        if (element.From[0] != 0f || element.From[1] != 0f || element.From[2] != 0f ||
-            element.To[0] != 16f || element.To[1] != 16f || element.To[2] != 16f)
-            return null;
-
-        CubeFaceInfo? BuildFace(string faceName)
+        CubeFaceInfo? BuildFace(BlockModelElement element, string faceName)
         {
             if (!element.Faces.TryGetValue(faceName, out var face)) return null;
 
@@ -3603,19 +3594,42 @@ public class SpawnMenu : UiPanel
             };
         }
 
-        var set = new CubeFaceSet
+        var set = new CubeFaceSet();
+        float[]? commonFrom = null;
+        float[]? commonTo = null;
+        foreach (var element in resolved.Elements)
         {
-            Up = BuildFace("up"),
-            Down = BuildFace("down"),
-            North = BuildFace("north"),
-            South = BuildFace("south"),
-            West = BuildFace("west"),
-            East = BuildFace("east")
-        };
+            if (element.Rotation != null ||
+                element.From.Length < 3 || element.To.Length < 3)
+                return null;
 
-        if (set.Up == null || set.Down == null || set.North == null ||
-            set.South == null || set.West == null || set.East == null)
+            commonFrom ??= element.From;
+            commonTo ??= element.To;
+            if (!element.From.AsSpan(0, 3).SequenceEqual(commonFrom.AsSpan(0, 3)) ||
+                !element.To.AsSpan(0, 3).SequenceEqual(commonTo.AsSpan(0, 3)))
+                return null;
+
+            bool AddFace(string faceName, List<CubeFaceInfo> destination)
+            {
+                if (!element.Faces.ContainsKey(faceName)) return true;
+                var face = BuildFace(element, faceName);
+                if (face == null) return false;
+                destination.Add(face);
+                return true;
+            }
+
+            if (!AddFace("up", set.Up) || !AddFace("down", set.Down) ||
+                !AddFace("north", set.North) || !AddFace("south", set.South) ||
+                !AddFace("west", set.West) || !AddFace("east", set.East))
+                return null;
+        }
+
+        if (set.Up.Count == 0 || set.Down.Count == 0 || set.North.Count == 0 ||
+            set.South.Count == 0 || set.West.Count == 0 || set.East.Count == 0)
             return null;
+
+        set.Min = new vec3(commonFrom![0] / 16f - 0.5f, commonFrom[1] / 16f - 0.5f, commonFrom[2] / 16f - 0.5f);
+        set.Max = new vec3(commonTo![0] / 16f - 0.5f, commonTo[1] / 16f - 0.5f, commonTo[2] / 16f - 0.5f);
 
         int turnsY = NormalizeQuarterTurns(variant.RotationY);
         if (turnsY != 0)
@@ -3638,6 +3652,13 @@ public class SpawnMenu : UiPanel
             set.East = oldSouth;
             set.South = oldWest;
             set.West = oldNorth;
+
+            float oldMinX = set.Min.x;
+            float oldMaxX = set.Max.x;
+            float oldMinZ = set.Min.z;
+            float oldMaxZ = set.Max.z;
+            set.Min = new vec3(-oldMaxZ, set.Min.y, oldMinX);
+            set.Max = new vec3(-oldMinZ, set.Max.y, oldMaxX);
         }
     }
 
@@ -3927,7 +3948,7 @@ public class SpawnMenu : UiPanel
         float pz,
         byte autoEmissionLevel)
     {
-        bool IsOccluded(int nx, int ny, int nz)
+        bool IsOccluded(int nx, int ny, int nz, string faceName)
         {
             if (nx < 0 || ny < 0 || nz < 0 || nx >= width || ny >= height || nz >= length)
                 return false;
@@ -3936,26 +3957,54 @@ public class SpawnMenu : UiPanel
             var n = voxels[nIndex];
             // IsOpaque (not IsCullableCube): glass/leaves/ice/liquids are full cubes
             // geometrically but must never hide a neighbour's face — see VariantRenderInfo.IsOpaque.
-            return n != null && n.IsOpaque;
+            if (n == null || !n.IsOpaque || n.CubeFaces == null)
+                return false;
+
+            var neighbor = n.CubeFaces;
+            const float epsilon = 0.0001f;
+            return faceName switch
+            {
+                "up" => neighbor.Min.y <= faces.Max.y - 1f + epsilon &&
+                        neighbor.Min.x <= faces.Min.x + epsilon && neighbor.Max.x >= faces.Max.x - epsilon &&
+                        neighbor.Min.z <= faces.Min.z + epsilon && neighbor.Max.z >= faces.Max.z - epsilon,
+                "down" => neighbor.Max.y >= faces.Min.y + 1f - epsilon &&
+                          neighbor.Min.x <= faces.Min.x + epsilon && neighbor.Max.x >= faces.Max.x - epsilon &&
+                          neighbor.Min.z <= faces.Min.z + epsilon && neighbor.Max.z >= faces.Max.z - epsilon,
+                "north" => neighbor.Max.z >= faces.Min.z + 1f - epsilon &&
+                           neighbor.Min.x <= faces.Min.x + epsilon && neighbor.Max.x >= faces.Max.x - epsilon &&
+                           neighbor.Min.y <= faces.Min.y + epsilon && neighbor.Max.y >= faces.Max.y - epsilon,
+                "south" => neighbor.Min.z <= faces.Max.z - 1f + epsilon &&
+                           neighbor.Min.x <= faces.Min.x + epsilon && neighbor.Max.x >= faces.Max.x - epsilon &&
+                           neighbor.Min.y <= faces.Min.y + epsilon && neighbor.Max.y >= faces.Max.y - epsilon,
+                "west" => neighbor.Max.x >= faces.Min.x + 1f - epsilon &&
+                          neighbor.Min.y <= faces.Min.y + epsilon && neighbor.Max.y >= faces.Max.y - epsilon &&
+                          neighbor.Min.z <= faces.Min.z + epsilon && neighbor.Max.z >= faces.Max.z - epsilon,
+                "east" => neighbor.Min.x <= faces.Max.x - 1f + epsilon &&
+                          neighbor.Min.y <= faces.Min.y + epsilon && neighbor.Max.y >= faces.Max.y - epsilon &&
+                          neighbor.Min.z <= faces.Min.z + epsilon && neighbor.Max.z >= faces.Max.z - epsilon,
+                _ => false
+            };
         }
 
-        if (!IsOccluded(x, y + 1, z) && faces.Up != null)
-            EmitFace(merged, faces.Up, px, py, pz, "up", autoEmissionLevel);
-        if (!IsOccluded(x, y - 1, z) && faces.Down != null)
-            EmitFace(merged, faces.Down, px, py, pz, "down", autoEmissionLevel);
-        if (!IsOccluded(x, y, z - 1) && faces.North != null)
-            EmitFace(merged, faces.North, px, py, pz, "north", autoEmissionLevel);
-        if (!IsOccluded(x, y, z + 1) && faces.South != null)
-            EmitFace(merged, faces.South, px, py, pz, "south", autoEmissionLevel);
-        if (!IsOccluded(x - 1, y, z) && faces.West != null)
-            EmitFace(merged, faces.West, px, py, pz, "west", autoEmissionLevel);
-        if (!IsOccluded(x + 1, y, z) && faces.East != null)
-            EmitFace(merged, faces.East, px, py, pz, "east", autoEmissionLevel);
+        void EmitFaces(List<CubeFaceInfo> faceLayers, string faceName)
+        {
+            foreach (var face in faceLayers)
+                EmitFace(merged, face, faces.Min, faces.Max, px, py, pz, faceName, autoEmissionLevel);
+        }
+
+        if (!IsOccluded(x, y + 1, z, "up")) EmitFaces(faces.Up, "up");
+        if (!IsOccluded(x, y - 1, z, "down")) EmitFaces(faces.Down, "down");
+        if (!IsOccluded(x, y, z - 1, "north")) EmitFaces(faces.North, "north");
+        if (!IsOccluded(x, y, z + 1, "south")) EmitFaces(faces.South, "south");
+        if (!IsOccluded(x - 1, y, z, "west")) EmitFaces(faces.West, "west");
+        if (!IsOccluded(x + 1, y, z, "east")) EmitFaces(faces.East, "east");
     }
 
     private static void EmitFace(
         Dictionary<MeshBatchKey, MeshAccumulator> merged,
         CubeFaceInfo face,
+        vec3 min,
+        vec3 max,
         float px,
         float py,
         float pz,
@@ -3973,45 +4022,45 @@ public class SpawnMenu : UiPanel
         switch (faceName)
         {
             case "up":
-                v0 = new vec3(px - 0.5f, py + 0.5f, pz + 0.5f);
-                v1 = new vec3(px + 0.5f, py + 0.5f, pz + 0.5f);
-                v2 = new vec3(px + 0.5f, py + 0.5f, pz - 0.5f);
-                v3 = new vec3(px - 0.5f, py + 0.5f, pz - 0.5f);
+                v0 = new vec3(px + min.x, py + max.y, pz + max.z);
+                v1 = new vec3(px + max.x, py + max.y, pz + max.z);
+                v2 = new vec3(px + max.x, py + max.y, pz + min.z);
+                v3 = new vec3(px + min.x, py + max.y, pz + min.z);
                 n = new vec3(0f, 1f, 0f);
                 break;
             case "down":
-                v0 = new vec3(px - 0.5f, py - 0.5f, pz - 0.5f);
-                v1 = new vec3(px + 0.5f, py - 0.5f, pz - 0.5f);
-                v2 = new vec3(px + 0.5f, py - 0.5f, pz + 0.5f);
-                v3 = new vec3(px - 0.5f, py - 0.5f, pz + 0.5f);
+                v0 = new vec3(px + min.x, py + min.y, pz + min.z);
+                v1 = new vec3(px + max.x, py + min.y, pz + min.z);
+                v2 = new vec3(px + max.x, py + min.y, pz + max.z);
+                v3 = new vec3(px + min.x, py + min.y, pz + max.z);
                 n = new vec3(0f, -1f, 0f);
                 break;
             case "north":
-                v0 = new vec3(px - 0.5f, py + 0.5f, pz - 0.5f);
-                v1 = new vec3(px + 0.5f, py + 0.5f, pz - 0.5f);
-                v2 = new vec3(px + 0.5f, py - 0.5f, pz - 0.5f);
-                v3 = new vec3(px - 0.5f, py - 0.5f, pz - 0.5f);
+                v0 = new vec3(px + min.x, py + max.y, pz + min.z);
+                v1 = new vec3(px + max.x, py + max.y, pz + min.z);
+                v2 = new vec3(px + max.x, py + min.y, pz + min.z);
+                v3 = new vec3(px + min.x, py + min.y, pz + min.z);
                 n = new vec3(0f, 0f, -1f);
                 break;
             case "south":
-                v0 = new vec3(px + 0.5f, py + 0.5f, pz + 0.5f);
-                v1 = new vec3(px - 0.5f, py + 0.5f, pz + 0.5f);
-                v2 = new vec3(px - 0.5f, py - 0.5f, pz + 0.5f);
-                v3 = new vec3(px + 0.5f, py - 0.5f, pz + 0.5f);
+                v0 = new vec3(px + max.x, py + max.y, pz + max.z);
+                v1 = new vec3(px + min.x, py + max.y, pz + max.z);
+                v2 = new vec3(px + min.x, py + min.y, pz + max.z);
+                v3 = new vec3(px + max.x, py + min.y, pz + max.z);
                 n = new vec3(0f, 0f, 1f);
                 break;
             case "west":
-                v0 = new vec3(px - 0.5f, py + 0.5f, pz + 0.5f);
-                v1 = new vec3(px - 0.5f, py + 0.5f, pz - 0.5f);
-                v2 = new vec3(px - 0.5f, py - 0.5f, pz - 0.5f);
-                v3 = new vec3(px - 0.5f, py - 0.5f, pz + 0.5f);
+                v0 = new vec3(px + min.x, py + max.y, pz + max.z);
+                v1 = new vec3(px + min.x, py + max.y, pz + min.z);
+                v2 = new vec3(px + min.x, py + min.y, pz + min.z);
+                v3 = new vec3(px + min.x, py + min.y, pz + max.z);
                 n = new vec3(-1f, 0f, 0f);
                 break;
             default: // east
-                v0 = new vec3(px + 0.5f, py + 0.5f, pz - 0.5f);
-                v1 = new vec3(px + 0.5f, py + 0.5f, pz + 0.5f);
-                v2 = new vec3(px + 0.5f, py - 0.5f, pz + 0.5f);
-                v3 = new vec3(px + 0.5f, py - 0.5f, pz - 0.5f);
+                v0 = new vec3(px + max.x, py + max.y, pz + min.z);
+                v1 = new vec3(px + max.x, py + max.y, pz + max.z);
+                v2 = new vec3(px + max.x, py + min.y, pz + max.z);
+                v3 = new vec3(px + max.x, py + min.y, pz + min.z);
                 n = new vec3(1f, 0f, 0f);
                 break;
         }
