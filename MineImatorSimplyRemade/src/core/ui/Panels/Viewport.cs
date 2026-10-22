@@ -130,6 +130,7 @@ public class Viewport : UiPanel
     private readonly uint[] _moonPhaseTextures = new uint[8];
     private readonly string[] _loadedMoonPhasePaths = new string[8];
     private bool _moonTextureIsAtlas = true;
+    private bool _useMoonPhaseTextures;
     private string _loadedSunPath = "", _loadedMoonPath = "", _loadedCloudPath = "";
 
     private const string LegacySunTexturePath = "minecraft:environment/sun.png";
@@ -900,8 +901,8 @@ public class Viewport : UiPanel
         if (TryLoadSkyTexture(configuredPath, ref _moonTexture, ref _loadedMoonPath, out int width, out int height))
         {
             _moonTextureIsAtlas = IsMoonAtlasSize(width, height);
-            if (_moonTextureIsAtlas)
-                DeleteMoonPhaseTextures();
+            _useMoonPhaseTextures = false;
+            DeleteMoonPhaseTextures();
             return;
         }
 
@@ -910,10 +911,12 @@ public class Viewport : UiPanel
             TryLoadModernMoonPhaseTextures())
         {
             _moonTextureIsAtlas = false;
+            _useMoonPhaseTextures = true;
             return;
         }
 
         _moonTextureIsAtlas = true;
+        _useMoonPhaseTextures = false;
     }
 
     private bool TryLoadModernMoonPhaseTextures()
@@ -955,7 +958,7 @@ public class Viewport : UiPanel
 
     private uint GetMoonTextureForPhase(int phase)
     {
-        if (_moonTextureIsAtlas)
+        if (!_useMoonPhaseTextures)
             return _moonTexture;
 
         int index = Math.Clamp(phase, 0, _moonPhaseTextures.Length - 1);
