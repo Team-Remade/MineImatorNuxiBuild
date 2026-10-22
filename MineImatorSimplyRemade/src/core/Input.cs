@@ -23,6 +23,7 @@ public class Input
 
     // ── Orbit/pan state ─────────────────────────────────────────────────────
 
+    private static Input? _leftPressOwner;
     private static Input? _orbitOwner;
     private static Input? _panOwner;
     private static Input? _gizmoOwner;
@@ -58,6 +59,7 @@ public class Input
     public bool IsDragging => _dragging;
     public bool IsPanning => _panning;
     public bool IsGizmoDragging => _gizmoDragging;
+    public bool HasLeftPressCapture => _leftPressOwner == this;
     public float FreeFlySpeed => _freeFlySpeed;
     internal void SetFreeFlySpeed(float speed)
     {
@@ -160,11 +162,23 @@ public class Input
             _orbitLastMouseY = mousePos.Y;
         }
 
-        // Cross-viewport guard: if another viewport's Input already owns the
-        // orbit or gizmo drag, this one must not steal it. We still need to
+        bool mouseInsideImage =
+            mousePos.X >= imageMin.X && mousePos.X <= imageMin.X + imageSize.X &&
+            mousePos.Y >= imageMin.Y && mousePos.Y <= imageMin.Y + imageSize.Y;
+
+        // Reserve the complete press for the viewport where it began. Waiting
+        // until the orbit threshold is crossed allows a fast drag into another
+        // viewport to seed a second press there before either viewport owns the
+        // resulting drag.
+        if (mouseClicked_Left && windowHovered && mouseInsideImage && _leftPressOwner == null)
+            _leftPressOwner = this;
+
+        // Cross-viewport guard: if another viewport's Input owns the press,
+        // orbit, or gizmo drag, this one must not steal it. We still need to
         // track the mouse position so when ownership eventually returns here
         // we don't apply a huge accumulated delta.
-        if (mouseDown_Left && (_orbitOwner != null && _orbitOwner != this) ||
+        if (((mouseDown_Left || mouseReleased_Left) && _leftPressOwner != null && _leftPressOwner != this) ||
+            (mouseDown_Left && _orbitOwner != null && _orbitOwner != this) ||
             (_gizmoOwner != null && _gizmoOwner != this))
         {
             _orbitLastMouseX = mousePos.X;
@@ -288,6 +302,7 @@ public class Input
             _gizmoDragging = false;
             if (_orbitOwner == this) _orbitOwner = null;
             if (_gizmoOwner == this) _gizmoOwner = null;
+            if (_leftPressOwner == this) _leftPressOwner = null;
             _gizmoVirtualMouseX = double.NaN;
             _gizmoVirtualMouseY = double.NaN;
             _gizmoVirtualPosInitialized = false;

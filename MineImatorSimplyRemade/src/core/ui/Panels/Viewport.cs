@@ -6235,7 +6235,7 @@ public class Viewport : UiPanel
         // Also continue while an orbit/pan/gizmo drag is active so the mouse-
         // wrap at the viewport edge can fire and the action keeps going even
         // when the cursor has been dragged past the ImGui window boundary.
-        if (!_previewInput.IsFreeFlyActive && !hovered &&
+        if (!_previewInput.IsFreeFlyActive && !_previewInput.HasLeftPressCapture && !hovered &&
             !_previewInput.IsDragging && !_previewInput.IsPanning && !_previewInput.IsGizmoDragging) return;
 
         var io = ImGui.GetIO();
@@ -6434,7 +6434,7 @@ public class Viewport : UiPanel
         // wrap at the viewport edge can fire and the action keeps going even
         // when the cursor has been dragged past the ImGui window boundary.
         bool windowHovered = ImGui.IsWindowHovered();
-        if (!_input.IsFreeFlyActive && !windowHovered &&
+        if (!_input.IsFreeFlyActive && !_input.HasLeftPressCapture && !windowHovered &&
             !_input.IsDragging && !_input.IsPanning && !_input.IsGizmoDragging) return;
 
         var io = ImGui.GetIO();
