@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using GlmSharp;
 using MineImatorSimplyRemade.core;
+using MineImatorSimplyRemade.core.history;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.ui.Panels;
@@ -13,6 +14,21 @@ namespace MineImatorSimplyRemade.core.project;
 
 public static class ProjectSceneSerializer
 {
+    internal static ProjectSceneObjectEntry CaptureObjectState(SceneObject obj)
+    {
+        return SerializeNode(obj, includeChildren: false, out _);
+    }
+
+    internal static void ApplyObjectStates(
+        PropertiesPanel? propertiesPanel,
+        IEnumerable<(SceneObject Object, ProjectSceneObjectEntry Entry)> states)
+    {
+        (SceneObject Object, ProjectSceneObjectEntry Entry)[] stateArray = states.ToArray();
+        foreach ((SceneObject obj, ProjectSceneObjectEntry entry) in stateArray)
+            ApplyEntryToObject(obj, entry);
+        propertiesPanel?.LoadPendingAlbedoTextures(stateArray.Select(state => state.Object));
+    }
+
     public static ProjectSceneObjectEntry SerializeObjectForLibrary(SceneObject obj)
     {
         var entry = SerializeNode(obj);
@@ -26,6 +42,80 @@ public static class ProjectSceneSerializer
             return null;
 
         return RestoreNode(entry, viewport, spawnMenu, parent);
+    }
+
+    public static bool TryApplySceneObjectRoots(
+        ProjectManifest manifest,
+        Viewport viewport,
+        PropertiesPanel? propertiesPanel,
+        IReadOnlyList<int> rootIndices)
+    {
+        foreach (int rootIndex in rootIndices)
+        {
+            if ((uint)rootIndex >= (uint)manifest.SceneObjects.Count ||
+                (uint)rootIndex >= (uint)viewport.SceneObjects.Count ||
+                !HasMatchingHierarchy(viewport.SceneObjects[rootIndex], manifest.SceneObjects[rootIndex]))
+                return false;
+        }
+
+        foreach (int rootIndex in rootIndices)
+            ApplyEntryToHierarchy(viewport.SceneObjects[rootIndex], manifest.SceneObjects[rootIndex]);
+
+        propertiesPanel?.LoadPendingAlbedoTextures(viewport.SceneObjects);
+        return true;
+    }
+
+    internal static bool TryApplySceneObjectStates(
+        Viewport viewport,
+        PropertiesPanel? propertiesPanel,
+        IReadOnlyList<SceneHistoryAction.SceneObjectState> states)
+    {
+        var targets = new List<(SceneObject Object, ProjectSceneObjectEntry Entry)>(states.Count);
+        foreach (SceneHistoryAction.SceneObjectState state in states)
+        {
+            if (state.IndexPath.Count == 0 || (uint)state.IndexPath[0] >= (uint)viewport.SceneObjects.Count)
+                return false;
+
+            SceneObject target = viewport.SceneObjects[state.IndexPath[0]];
+            for (int depth = 1; depth < state.IndexPath.Count; depth++)
+            {
+                int childIndex = state.IndexPath[depth];
+                if ((uint)childIndex >= (uint)target.Children.Count)
+                    return false;
+                target = target.Children[childIndex];
+            }
+
+            if (!string.Equals(target.ObjectId, state.Entry.ObjectId, StringComparison.Ordinal))
+                return false;
+            targets.Add((target, state.Entry));
+        }
+
+        foreach ((SceneObject target, ProjectSceneObjectEntry entry) in targets)
+            ApplyEntryToObject(target, entry);
+
+        propertiesPanel?.LoadPendingAlbedoTextures(targets.Select(target => target.Object));
+        return true;
+    }
+
+    private static bool HasMatchingHierarchy(SceneObject obj, ProjectSceneObjectEntry entry)
+    {
+        if (!string.Equals(obj.ObjectId, entry.ObjectId, StringComparison.Ordinal) || obj.Children.Count != entry.Children.Count)
+            return false;
+
+        for (int index = 0; index < obj.Children.Count; index++)
+        {
+            if (!HasMatchingHierarchy(obj.Children[index], entry.Children[index]))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static void ApplyEntryToHierarchy(SceneObject obj, ProjectSceneObjectEntry entry)
+    {
+        ApplyEntryToObject(obj, entry);
+        for (int index = 0; index < obj.Children.Count; index++)
+            ApplyEntryToHierarchy(obj.Children[index], entry.Children[index]);
     }
 
     public static void WriteSceneToManifest(ProjectManifest manifest, Viewport viewport, Timeline? timeline = null, PropertiesPanel? propertiesPanel = null)
@@ -148,10 +238,10 @@ public static class ProjectSceneSerializer
 
     private static ProjectSceneObjectEntry SerializeNode(SceneObject obj)
     {
-        return SerializeNode(obj, out _);
+        return SerializeNode(obj, includeChildren: true, out _);
     }
 
-    private static ProjectSceneObjectEntry SerializeNode(SceneObject obj, out int meshCount)
+    private static ProjectSceneObjectEntry SerializeNode(SceneObject obj, bool includeChildren, out int meshCount)
     {
         // Keep SceneObjectFingerprint aligned with the authored values captured here.
         var pm = ProjectManager.Instance;
@@ -335,6 +425,9 @@ public static class ProjectSceneSerializer
 
         meshCount = 0;
         AppendOwnShapeKeyWeights(obj, entry.ShapeKeyWeights, ref meshCount);
+        if (!includeChildren)
+            return entry;
+
         foreach (var child in obj.Children)
         {
             if (child.IsRuntimeTransient)
@@ -343,7 +436,7 @@ public static class ProjectSceneSerializer
                 continue;
             }
 
-            var childEntry = SerializeNode(child, out int childMeshCount);
+            var childEntry = SerializeNode(child, includeChildren: true, out int childMeshCount);
             entry.Children.Add(childEntry);
             // Preserve the saved depth-first mesh indices without flattening every subtree.
             foreach (var weight in childEntry.ShapeKeyWeights)

@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using System.Reflection;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Hexa.NET.ImGui;
@@ -11,6 +10,7 @@ using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.audio;
 using MineImatorSimplyRemade.core.diagnostics;
+using MineImatorSimplyRemade.core.history;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.render;
@@ -19,6 +19,7 @@ using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemade.core.update;
 using MineImatorSimplyRemadeNuxi.core;
+using MineImatorSimplyRemadeNuxi.core.objs;
 using NativeFileDialogSharp;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
@@ -205,26 +206,15 @@ public class MainWindow : Window
     private readonly string _appTitle;
     private readonly string _aboutVersion;
     private string _lastAppliedWindowTitle = "";
-    private string _savedSceneFingerprint = "";
-    private double _nextDirtyCheckAtSeconds;
-    private const double DirtyCheckIntervalSeconds = 0.35;
 
     private const int MaxUndoEntries = 100;
-    private const double UndoCommitDelaySeconds = 0.45;
 
-    private readonly List<string> _undoSceneSnapshots = new();
-    private readonly List<string> _redoSceneSnapshots = new();
+    private readonly List<SceneHistoryAction> _undoActions = new();
+    private readonly List<SceneHistoryAction> _redoActions = new();
 
-    private string _lastHistorySnapshotJson = "";
-    private string _lastHistoryFingerprint = "";
-    private string _pendingHistorySnapshotJson = "";
-    private string _pendingHistoryFingerprint = "";
-    private double _pendingHistoryChangedAtSeconds;
-    private bool _suppressHistoryTracking;
-    private ulong _cachedObjectsFingerprint;
-    private string _cachedSceneMetadataJson = "";
-    private string _cachedSceneSnapshotJson = "";
-    private string _cachedSceneSnapshotFingerprint = "";
+    private readonly Dictionary<SceneObject, ProjectSceneObjectEntry> _historyObjectBaselines = new();
+    private readonly Dictionary<SceneObject, ProjectSceneObjectEntry> _activeHistoryObjectBaselines = new();
+    private bool _historyInteractionActive;
 
     private readonly UiPanel[] _panels =
     [
@@ -493,8 +483,6 @@ public class MainWindow : Window
 
         HandleKeyboardShortcuts();
         ProcessPendingSaveAction();
-        using (FrameProfiler.Shared.Measure(ProfileStage.DirtyTracking))
-            UpdateDirtyStateFromScene();
         RefreshWindowTitle();
         AdvanceRenderJob();
         AdvanceResourcePackImportJob();
@@ -626,51 +614,15 @@ public class MainWindow : Window
         _preferencesPanel.SavePreferences();
     }
 
-    private void UpdateDirtyStateFromScene()
-    {
-        if (!_projectManager.HasProject || _mainViewport == null)
-        {
-            _projectManager.SetDirty(false);
-            _savedSceneFingerprint = "";
-            return;
-        }
-
-        double now = GetNowSeconds();
-        if (now < _nextDirtyCheckAtSeconds)
-            return;
-
-        _nextDirtyCheckAtSeconds = now + DirtyCheckIntervalSeconds;
-
-        string currentFingerprint = BuildSceneFingerprint();
-        if (string.IsNullOrEmpty(currentFingerprint))
-            return;
-
-        if (string.IsNullOrEmpty(_savedSceneFingerprint))
-            _savedSceneFingerprint = currentFingerprint;
-
-        _projectManager.SetDirty(!string.Equals(currentFingerprint, _savedSceneFingerprint, StringComparison.Ordinal));
-    }
-
     private void CaptureCurrentSceneAsSavedState()
     {
         if (!_projectManager.HasProject || _mainViewport == null)
         {
-            _savedSceneFingerprint = "";
             _projectManager.SetDirty(false);
             return;
         }
 
-        _savedSceneFingerprint = BuildSceneFingerprint();
         _projectManager.SetDirty(false);
-    }
-
-    private string BuildSceneFingerprint()
-    {
-        if (_mainViewport == null)
-            return "";
-
-        string snapshotJson = CaptureSceneSnapshotJson(out string fingerprint);
-        return string.IsNullOrEmpty(snapshotJson) ? "" : fingerprint;
     }
 
     private void RefreshWindowTitle()
@@ -2339,248 +2291,112 @@ public class MainWindow : Window
         _spawnMenu?.RefreshExternalAssetOptions();
     }
 
-    private ProjectManifest CreateSceneSnapshotManifest(bool includeSceneObjects = true)
-    {
-        var manifestSnapshot = new ProjectManifest
-        {
-            ProjectName = _projectManager.Manifest.ProjectName,
-            CreatedUtc = _projectManager.Manifest.CreatedUtc,
-            LastSavedUtc = _projectManager.Manifest.LastSavedUtc,
-            Assets = new List<ProjectAssetEntry>(_projectManager.Manifest.Assets)
-        };
-
-        if (_mainViewport != null)
-        {
-            if (includeSceneObjects)
-                ProjectSceneSerializer.WriteSceneToManifest(manifestSnapshot, _mainViewport, _timeline, _propertiesPanel);
-            else
-                ProjectSceneSerializer.WriteSceneMetadataToManifest(manifestSnapshot, _mainViewport, _timeline, _propertiesPanel);
-        }
-
-        // Preserve work camera state in snapshots so undo/redo restores the correct camera position.
-        // Fly-camera-only changes are filtered out in UpdateUndoRedoTracking when they don't affect
-        // the scene fingerprint, not by clearing the camera state.
-        if (_projectManager.Manifest.WorkCamera != null)
-            manifestSnapshot.WorkCamera = new ProjectWorkCameraState
-            {
-                Target = new ProjectVec3 { X = _projectManager.Manifest.WorkCamera.Target.X, Y = _projectManager.Manifest.WorkCamera.Target.Y, Z = _projectManager.Manifest.WorkCamera.Target.Z },
-                Yaw = _projectManager.Manifest.WorkCamera.Yaw,
-                Pitch = _projectManager.Manifest.WorkCamera.Pitch,
-                Distance = _projectManager.Manifest.WorkCamera.Distance
-            };
-
-        return manifestSnapshot;
-    }
-
-    private static string ComputeSnapshotFingerprint(string snapshotJson)
-    {
-        byte[] hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(snapshotJson));
-        return Convert.ToHexString(hashBytes);
-    }
-
-    private string CaptureSceneSnapshotJson(out string fingerprint)
-    {
-        using var snapshotTiming = FrameProfiler.Shared.Measure(ProfileStage.SnapshotCheck);
-        fingerprint = "";
-
-        if (!_projectManager.HasProject || _mainViewport == null)
-            return "";
-
-        // Check live state without allocating a serialized copy of every object each frame.
-        ulong objectsFingerprint;
-        using (FrameProfiler.Shared.Measure(ProfileStage.SceneFingerprint))
-            objectsFingerprint = SceneObjectFingerprint.Compute(_mainViewport.SceneObjects);
-        string metadataJson;
-        using (FrameProfiler.Shared.Measure(ProfileStage.SnapshotMetadata))
-            metadataJson = JsonSerializer.Serialize(CreateSceneSnapshotManifest(includeSceneObjects: false), AppJsonContext.Default.ProjectManifest);
-        if (!string.IsNullOrEmpty(_cachedSceneSnapshotJson) &&
-            objectsFingerprint == _cachedObjectsFingerprint &&
-            string.Equals(metadataJson, _cachedSceneMetadataJson, StringComparison.Ordinal))
-        {
-            FrameProfiler.Shared.Count(ProfileCounter.SnapshotCacheHits);
-            fingerprint = _cachedSceneSnapshotFingerprint;
-            return _cachedSceneSnapshotJson;
-        }
-
-        using var serializationTiming = FrameProfiler.Shared.Measure(ProfileStage.SnapshotSerialize);
-        FrameProfiler.Shared.Count(ProfileCounter.SnapshotsCreated);
-        ProjectManifest manifestSnapshot = CreateSceneSnapshotManifest();
-        string snapshotJson = JsonSerializer.Serialize(manifestSnapshot, AppJsonContext.Default.ProjectManifest);
-        if (string.IsNullOrEmpty(snapshotJson))
-            return "";
-
-        fingerprint = ComputeSnapshotFingerprint(snapshotJson);
-        // Serialization can assign previously missing library source IDs.
-        _cachedObjectsFingerprint = SceneObjectFingerprint.Compute(_mainViewport.SceneObjects);
-        _cachedSceneMetadataJson = metadataJson;
-        _cachedSceneSnapshotJson = snapshotJson;
-        _cachedSceneSnapshotFingerprint = fingerprint;
-        return snapshotJson;
-    }
-
     private void ResetUndoRedoHistory()
     {
-        _cachedSceneSnapshotJson = "";
-        _cachedSceneMetadataJson = "";
-        _cachedSceneSnapshotFingerprint = "";
-        _undoSceneSnapshots.Clear();
-        _redoSceneSnapshots.Clear();
-        _pendingHistorySnapshotJson = "";
-        _pendingHistoryFingerprint = "";
-        _pendingHistoryChangedAtSeconds = 0;
-
-        _lastHistorySnapshotJson = CaptureSceneSnapshotJson(out _lastHistoryFingerprint);
+        _undoActions.Clear();
+        _redoActions.Clear();
+        _historyObjectBaselines.Clear();
+        _activeHistoryObjectBaselines.Clear();
+        _historyInteractionActive = false;
+        CaptureSelectedObjectBaselines(_historyObjectBaselines);
     }
 
-    private void PushUndoSnapshot(string snapshotJson)
+    private void CaptureSelectedObjectBaselines(Dictionary<SceneObject, ProjectSceneObjectEntry> destination)
     {
-        if (string.IsNullOrWhiteSpace(snapshotJson))
+        destination.Clear();
+        if (SelectionManager.Instance == null)
             return;
 
-        if (_undoSceneSnapshots.Count >= MaxUndoEntries)
-            _undoSceneSnapshots.RemoveAt(0);
-
-        _undoSceneSnapshots.Add(snapshotJson);
+        foreach (SceneObject obj in SelectionManager.Instance.SelectedObjects)
+            destination[obj] = ProjectSceneSerializer.CaptureObjectState(obj);
     }
 
-    private void PushRedoSnapshot(string snapshotJson)
+    private static void PushHistoryAction(List<SceneHistoryAction> actions, SceneHistoryAction action)
     {
-        if (string.IsNullOrWhiteSpace(snapshotJson))
-            return;
+        if (actions.Count >= MaxUndoEntries)
+            actions.RemoveAt(0);
 
-        if (_redoSceneSnapshots.Count >= MaxUndoEntries)
-            _redoSceneSnapshots.RemoveAt(0);
-
-        _redoSceneSnapshots.Add(snapshotJson);
-    }
-
-    private bool ApplySceneSnapshot(string snapshotJson)
-    {
-        if (string.IsNullOrWhiteSpace(snapshotJson) || _mainViewport == null || _spawnMenu == null)
-            return false;
-
-        ProjectManifest? snapshotManifest = JsonSerializer.Deserialize(snapshotJson, AppJsonContext.Default.ProjectManifest);
-        if (snapshotManifest == null)
-            return false;
-
-        // Undo/redo should restore scene state without moving the user's current work camera.
-        var preservedCameraTarget = _mainViewport.Camera.Target;
-        float preservedCameraYaw = _mainViewport.Camera.Yaw;
-        float preservedCameraPitch = _mainViewport.Camera.Pitch;
-        float preservedCameraDistance = _mainViewport.Camera.Distance;
-
-        _suppressHistoryTracking = true;
-        try
-        {
-            ProjectSceneSerializer.LoadSceneFromManifest(snapshotManifest, _mainViewport, _spawnMenu, _timeline, _propertiesPanel);
-
-            _mainViewport.Camera.Target = preservedCameraTarget;
-            _mainViewport.Camera.Yaw = preservedCameraYaw;
-            _mainViewport.Camera.Pitch = preservedCameraPitch;
-            _mainViewport.Camera.Distance = preservedCameraDistance;
-        }
-        finally
-        {
-            _suppressHistoryTracking = false;
-        }
-
-        _lastHistorySnapshotJson = snapshotJson;
-        _lastHistoryFingerprint = ComputeSnapshotFingerprint(snapshotJson);
-        _pendingHistorySnapshotJson = "";
-        _pendingHistoryFingerprint = "";
-        _pendingHistoryChangedAtSeconds = 0;
-        _nextDirtyCheckAtSeconds = 0;
-        UpdateDirtyStateFromScene();
-        RefreshWindowTitle();
-        return true;
+        actions.Add(action);
     }
 
     private void UpdateUndoRedoTracking()
     {
-        if (_suppressHistoryTracking || !_projectManager.HasProject || _mainViewport == null || _spawnMenu == null)
+        if (!_projectManager.HasProject || _mainViewport == null || _spawnMenu == null)
             return;
 
-        string currentSnapshotJson = CaptureSceneSnapshotJson(out string currentFingerprint);
-        if (string.IsNullOrEmpty(currentSnapshotJson))
-            return;
+        var currentStates = new Dictionary<SceneObject, ProjectSceneObjectEntry>();
+        CaptureSelectedObjectBaselines(currentStates);
 
-        if (string.IsNullOrEmpty(_lastHistoryFingerprint))
+        bool interactionActive = ImGui.IsAnyItemActive() ||
+                                 ImGui.IsMouseDown(ImGuiMouseButton.Left) ||
+                                 ImGui.IsMouseDown(ImGuiMouseButton.Right) ||
+                                 ImGui.IsMouseDown(ImGuiMouseButton.Middle);
+
+        if (interactionActive)
         {
-            _lastHistoryFingerprint = currentFingerprint;
-            _lastHistorySnapshotJson = currentSnapshotJson;
+            if (!_historyInteractionActive)
+            {
+                _activeHistoryObjectBaselines.Clear();
+                foreach ((SceneObject obj, ProjectSceneObjectEntry state) in _historyObjectBaselines)
+                    _activeHistoryObjectBaselines[obj] = state;
+            }
+
+            _historyInteractionActive = true;
             return;
         }
 
-        if (string.Equals(currentFingerprint, _lastHistoryFingerprint, StringComparison.Ordinal))
+        Dictionary<SceneObject, ProjectSceneObjectEntry> beforeStates = _historyInteractionActive
+            ? _activeHistoryObjectBaselines
+            : _historyObjectBaselines;
+        _historyInteractionActive = false;
+        SceneHistoryAction? action = SceneHistoryAction.Create(currentStates
+            .Where(pair => beforeStates.ContainsKey(pair.Key))
+            .Select(pair => (pair.Key, beforeStates[pair.Key], pair.Value)));
+        if (action != null)
         {
-            _pendingHistorySnapshotJson = "";
-            _pendingHistoryFingerprint = "";
-            _pendingHistoryChangedAtSeconds = 0;
-            return;
+            PushHistoryAction(_undoActions, action);
+            _redoActions.Clear();
         }
 
-        if (!string.Equals(currentFingerprint, _pendingHistoryFingerprint, StringComparison.Ordinal))
-        {
-            _pendingHistoryFingerprint = currentFingerprint;
-            _pendingHistorySnapshotJson = currentSnapshotJson;
-            _pendingHistoryChangedAtSeconds = GetNowSeconds();
-            return;
-        }
-
-        if (GetNowSeconds() - _pendingHistoryChangedAtSeconds < UndoCommitDelaySeconds)
-            return;
-
-        PushUndoSnapshot(_lastHistorySnapshotJson);
-        _redoSceneSnapshots.Clear();
-
-        _lastHistoryFingerprint = _pendingHistoryFingerprint;
-        _lastHistorySnapshotJson = _pendingHistorySnapshotJson;
-        _pendingHistoryFingerprint = "";
-        _pendingHistorySnapshotJson = "";
-        _pendingHistoryChangedAtSeconds = 0;
+        _activeHistoryObjectBaselines.Clear();
+        _historyObjectBaselines.Clear();
+        foreach ((SceneObject obj, ProjectSceneObjectEntry state) in currentStates)
+            _historyObjectBaselines[obj] = state;
     }
 
     private void PerformUndo()
     {
-        if (_undoSceneSnapshots.Count == 0)
+        if (_undoActions.Count == 0 || _mainViewport == null)
             return;
 
-        string currentSnapshotJson = CaptureSceneSnapshotJson(out _);
-        if (string.IsNullOrWhiteSpace(currentSnapshotJson))
-            return;
-
-        string targetSnapshot = _undoSceneSnapshots[^1];
-        _undoSceneSnapshots.RemoveAt(_undoSceneSnapshots.Count - 1);
-        PushRedoSnapshot(currentSnapshotJson);
-
-        if (!ApplySceneSnapshot(targetSnapshot))
+        SceneHistoryAction action = _undoActions[^1];
+        if (action.Apply(_mainViewport, _propertiesPanel, undo: true))
         {
-            string redoSnapshot = _redoSceneSnapshots[^1];
-            _redoSceneSnapshots.RemoveAt(_redoSceneSnapshots.Count - 1);
-            _undoSceneSnapshots.Add(targetSnapshot);
-            ApplySceneSnapshot(redoSnapshot);
+            _undoActions.RemoveAt(_undoActions.Count - 1);
+            PushHistoryAction(_redoActions, action);
+            CaptureSelectedObjectBaselines(_historyObjectBaselines);
+            _activeHistoryObjectBaselines.Clear();
+            _historyInteractionActive = false;
+            _projectManager.SetDirty(true);
+            RefreshWindowTitle();
         }
     }
 
     private void PerformRedo()
     {
-        if (_redoSceneSnapshots.Count == 0)
+        if (_redoActions.Count == 0 || _mainViewport == null)
             return;
 
-        string currentSnapshotJson = CaptureSceneSnapshotJson(out _);
-        if (string.IsNullOrWhiteSpace(currentSnapshotJson))
-            return;
-
-        string targetSnapshot = _redoSceneSnapshots[^1];
-        _redoSceneSnapshots.RemoveAt(_redoSceneSnapshots.Count - 1);
-        PushUndoSnapshot(currentSnapshotJson);
-
-        if (!ApplySceneSnapshot(targetSnapshot))
+        SceneHistoryAction action = _redoActions[^1];
+        if (action.Apply(_mainViewport, _propertiesPanel, undo: false))
         {
-            string undoSnapshot = _undoSceneSnapshots[^1];
-            _undoSceneSnapshots.RemoveAt(_undoSceneSnapshots.Count - 1);
-            _redoSceneSnapshots.Add(targetSnapshot);
-            ApplySceneSnapshot(undoSnapshot);
+            _redoActions.RemoveAt(_redoActions.Count - 1);
+            PushHistoryAction(_undoActions, action);
+            CaptureSelectedObjectBaselines(_historyObjectBaselines);
+            _activeHistoryObjectBaselines.Clear();
+            _historyInteractionActive = false;
+            _projectManager.SetDirty(true);
+            RefreshWindowTitle();
         }
     }
 
