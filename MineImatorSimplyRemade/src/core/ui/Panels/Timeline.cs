@@ -2454,7 +2454,7 @@ public class Timeline : UiPanel
         };
         string[] cameraPaths =
         {
-            "camera.active",
+            "camera.active", "camera.fov",
         };
         string[] particleScalarPaths =
         {
@@ -2797,8 +2797,13 @@ public class Timeline : UiPanel
                         };
                     break;
                 case "camera":
-                    if (comp == "active" && obj is CameraSceneObject camAct)
-                        return camAct.Active ? 1f : 0f;
+                    if (obj is CameraSceneObject cam)
+                        return comp switch
+                        {
+                            "active" => cam.Active ? 1f : 0f,
+                            "fov" => cam.Fov,
+                            _ => 0f,
+                        };
                     break;
                 case "particle":
                     if (obj is ParticleSpawnerSceneObject particle)
@@ -3085,13 +3090,18 @@ public class Timeline : UiPanel
                         break;
 
                     case "camera":
-                        if (comp == "active" && obj is CameraSceneObject camSet)
+                        if (obj is CameraSceneObject camSet)
                         {
-                            bool shouldBeActive = value >= 0.5f;
-                            if (shouldBeActive)
-                                CameraSceneObject.SetActiveExclusive(camSet);
-                            else
-                                camSet.Active = false;
+                            if (comp == "active")
+                            {
+                                bool shouldBeActive = value >= 0.5f;
+                                if (shouldBeActive)
+                                    CameraSceneObject.SetActiveExclusive(camSet);
+                                else
+                                    camSet.Active = false;
+                            }
+                            else if (comp == "fov" && float.IsFinite(value))
+                                camSet.Fov = Math.Clamp(value, 1f, 179f);
                         }
                         break;
 
@@ -3466,6 +3476,7 @@ public class Timeline : UiPanel
                 var cameraProps = new[]
                 {
                     (label: "Active", path: "camera.active", parent: "", indent: 0),
+                    (label: "Field of View", path: "camera.fov", parent: "", indent: 0),
                 };
 
                 foreach (var (label, path, parent, indent) in cameraProps)
@@ -3681,6 +3692,7 @@ public class Timeline : UiPanel
         if (obj is CameraSceneObject cameraObj)
         {
             _displayRows.Add(MakeSingle(obj, "Active", "camera.active"));
+            _displayRows.Add(MakeSingle(obj, "Field of View", "camera.fov"));
 
             for (int i = 0; i < cameraObj.Effects.Count; i++)
             {

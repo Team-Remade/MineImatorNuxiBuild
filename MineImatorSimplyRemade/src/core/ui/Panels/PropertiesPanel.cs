@@ -4382,6 +4382,30 @@ public class PropertiesPanel : UiPanel
             }
         }
 
+        if (_currentObject is CameraSceneObject selectedCamera &&
+            ImGui.CollapsingHeader(Localization.Label("text.common.camera", "Camera")))
+        {
+            float fov = selectedCamera.Fov;
+            if (InputFloatEditor("Field of View (degrees)", ref fov, 0.1f, 1f, 179f, "%.1f"))
+            {
+                ApplyToSelectedObjects(obj =>
+                {
+                    if (obj is CameraSceneObject camera)
+                    {
+                        camera.Fov = fov;
+                        Timeline?.RecordAutoKeyframe(camera, "camera.fov");
+                    }
+                });
+                ProjectManager.Instance.SetDirty(true);
+            }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "camera.fov";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
+            }
+        }
+
         if (ImGui.CollapsingHeader(Localization.Label("text.common.appearance", "Appearance")))
         {
             bool vis = _currentObject.ObjectVisible;
