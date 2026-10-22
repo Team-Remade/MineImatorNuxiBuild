@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Hexa.NET.ImGui;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -669,7 +670,10 @@ public class SceneTree : UiPanel
         var duplicate = CreateSceneObjectDuplicate(original);
         if (duplicate == null) return null;
 
-        DuplicateChildrenRecursive(original, duplicate);
+        // Mine-imator characters are rebuilt by their loader, including their
+        // complete bone hierarchy and mesh regeneration state.
+        if (original is not CharacterSceneObject)
+            DuplicateChildrenRecursive(original, duplicate);
 
         if (original.Parent != null)
             original.Parent.AddChild(duplicate);
@@ -709,12 +713,23 @@ public class SceneTree : UiPanel
     /// <summary>Shallow-copies a SceneObject without copying its children.</summary>
     private SceneObject CreateSceneObjectDuplicate(SceneObject original)
     {
-        if (original is CharacterSceneObject) return null;
-
         SceneObject dup;
 
         switch (original)
         {
+            case CharacterSceneObject character when character.SourceMineImatorModel != null:
+                var characterDuplicate = MineImatorLoader.Instance.CreateCharacterFromModel(
+                    character.SourceMineImatorModel);
+                if (characterDuplicate == null) return null;
+
+                characterDuplicate.CharacterName = character.CharacterName;
+                characterDuplicate.ModelBendStyle = character.ModelBendStyle;
+                dup = characterDuplicate;
+                break;
+
+            case CharacterSceneObject:
+                return null;
+
             case ParticleSpawnerSceneObject particleSpawner:
                 dup = new ParticleSpawnerSceneObject
                 {

@@ -24,6 +24,9 @@ public class CharacterSceneObject : SceneObject
     /// <summary>The character display name (e.g. "Steve", or the .mimodel name).</summary>
     public string CharacterName = "";
 
+    /// <summary>The parsed Mine-imator model used to build this character, when applicable.</summary>
+    public MiModel? SourceMineImatorModel { get; set; }
+
     /// <summary>
     /// Bend style for Mine Imator character models.
     /// Defaults to sharp/blocky; ProjectDefault resolves through

@@ -340,7 +340,10 @@ public class MineImatorLoader
             modelScale = new vec3(model.Scale[0], model.Scale[1], model.Scale[2]);
         FlattenPartsForBones(model.Parts, -1, modelScale, boneDataList);
 
-        var character = new CharacterSceneObject();
+        var character = new CharacterSceneObject
+        {
+            SourceMineImatorModel = model
+        };
         character.Name = model.Name;
         character.ObjectType = "MineImator";
         character.AssignObjectId();
