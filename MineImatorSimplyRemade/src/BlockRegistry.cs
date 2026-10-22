@@ -812,9 +812,10 @@ public static class BlockRegistry
 
         // Recursively resolve parent first
         ResolvedBlockModel? parentResolved = null;
-        if (raw["parent"] is JsonNode parentToken)
+        if (raw["parent"] is JsonValue parentToken &&
+            parentToken.TryGetValue(out string? parentValue))
         {
-            string parentPath = NormalizeModelPath(parentToken.GetValue<string>() ?? "");
+            string parentPath = NormalizeModelPath(parentValue ?? "");
             // Skip the built-in "builtin/generated" or "builtin/entity" parents
             if (!parentPath.StartsWith("builtin/") && !parentPath.Contains("builtin/"))
                 parentResolved = BuildResolvedModel(parentPath, visited);
@@ -854,8 +855,12 @@ public static class BlockRegistry
             foreach (var prop in texObj)
             {
                 string slotName  = prop.Key;
-                string slotValue = prop.Value?.GetValue<string>() ?? "";
-                result.Textures[slotName] = slotValue;
+                if (prop.Value is JsonValue slotToken &&
+                    slotToken.TryGetValue(out string? slotValue) &&
+                    slotValue != null)
+                {
+                    result.Textures[slotName] = slotValue;
+                }
             }
         }
 
