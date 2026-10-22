@@ -1505,7 +1505,7 @@ public class PropertiesPanel : UiPanel
         // If object has a stored albedo texture path but hasn't loaded the texture yet, load it now
         if (_currentObject != null && 
             !string.IsNullOrEmpty(_currentObject.AlbedoTexturePath) &&
-            string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase))
+            SupportsAlbedoTexture(_currentObject))
         {
             // Check if any mesh already has the texture loaded
             bool hasTexture = _currentObject.Visuals.Any(mesh => mesh.TextureId != 0);
@@ -1538,7 +1538,7 @@ public class PropertiesPanel : UiPanel
     {
         if (obj == null) return;
 
-        if (string.Equals(obj.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) &&
+        if (SupportsAlbedoTexture(obj) &&
             !string.IsNullOrEmpty(obj.AlbedoTexturePath))
         {
             bool hasTexture = false;
@@ -3499,8 +3499,8 @@ public class PropertiesPanel : UiPanel
                 ImGui.Spacing();
             }
 
-            // Albedo texture (for primitives and custom objects)
-            if (string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase))
+            // Albedo texture (for renderable geometry)
+            if (SupportsAlbedoTexture(_currentObject))
             {
                 // Refresh texture cache from scene
                 RefreshLoadedTextures();
@@ -3527,18 +3527,14 @@ public class PropertiesPanel : UiPanel
                 {
                     currentLabel = selectedCameraTexture.Name;
                 }
-                else if (currentTextureId != 0 && _loadedTexturePathCache.ContainsKey(currentTextureId))
+                else if (!string.IsNullOrWhiteSpace(_currentObject.AlbedoTexturePath))
                 {
-                    currentLabel = Path.GetFileName(_loadedTexturePathCache[currentTextureId]);
+                    string fullPath = ProjectManager.Instance.ResolveAssetPath(_currentObject.AlbedoTexturePath);
+                    currentLabel = Path.GetFileName(fullPath);
                 }
-                else if (currentTextureId == 0 && !string.IsNullOrEmpty(_currentObject.AlbedoTexturePath))
+                else if (currentTextureId != 0 && _loadedTexturePathCache.TryGetValue(currentTextureId, out string? cachedPath))
                 {
-                    // Texture path stored but ID is 0, show the filename
-                    string fullPath = Path.Combine(ProjectManager.Instance.ProjectFolder, _currentObject.AlbedoTexturePath);
-                    if (File.Exists(fullPath))
-                    {
-                        currentLabel = Path.GetFileName(fullPath);
-                    }
+                    currentLabel = Path.GetFileName(cachedPath);
                 }
 
                 // Texture dropdown
@@ -3546,7 +3542,10 @@ public class PropertiesPanel : UiPanel
                 if (ImGui.BeginCombo("##AlbedoTextureCombo", currentLabel))
                 {
                     // "None" option
-                    if (ImGui.Selectable(Localization.Label("text.panel.properties.none", "(none)"), currentTextureId == 0))
+                    bool hasAssignedTexture = selectedCameraTexture != null ||
+                                              currentTextureId != 0 ||
+                                              !string.IsNullOrWhiteSpace(_currentObject.AlbedoTexturePath);
+                    if (ImGui.Selectable(Localization.Label("text.panel.properties.none", "(none)"), !hasAssignedTexture))
                     {
                         // Clear texture from all meshes
                         foreach (var mesh in _currentObject.Visuals)
@@ -4930,21 +4929,23 @@ public class PropertiesPanel : UiPanel
             }
         }
 
-        // Then scan primitives to find currently loaded textures and map their real IDs
+        // Then scan geometry to find currently loaded textures and map their real IDs
         foreach (var obj in Viewport.SceneObjects)
         {
-            ScanPrimitiveObjectForTextures(obj);
+            ScanGeometryObjectForTextures(obj);
         }
 
         _cachedTextureIds = _loadedTexturePathCache.Keys.ToArray();
     }
 
-    private void ScanPrimitiveObjectForTextures(SceneObject obj)
+    private static bool SupportsAlbedoTexture(SceneObject obj)
+        => obj.Visuals.Any(mesh => !mesh.PickOnly);
+
+    private void ScanGeometryObjectForTextures(SceneObject obj)
     {
         if (obj == null) return;
 
-        // Only scan objects in the Primitives category
-        if (string.Equals(obj.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase))
+        if (SupportsAlbedoTexture(obj))
         {
             // Scan this object's meshes for loaded textures
             foreach (var mesh in obj.Visuals.Where(mesh => mesh.TextureId != 0 && !_loadedTexturePathCache.ContainsKey(mesh.TextureId)))
@@ -4952,7 +4953,7 @@ public class PropertiesPanel : UiPanel
                 // Map the real texture ID to its path
                 if (!string.IsNullOrEmpty(obj.AlbedoTexturePath))
                 {
-                    string fullPath = Path.Combine(ProjectManager.Instance.ProjectFolder, obj.AlbedoTexturePath);
+                    string fullPath = ProjectManager.Instance.ResolveAssetPath(obj.AlbedoTexturePath);
 
                     // Replace any existing fake/import entry that points to the same file
                     // so this texture appears only once in the dropdown.
@@ -4983,7 +4984,7 @@ public class PropertiesPanel : UiPanel
         // Scan children recursively
         foreach (var child in obj.Children)
         {
-            ScanPrimitiveObjectForTextures(child);
+            ScanGeometryObjectForTextures(child);
         }
     }
 
@@ -5026,10 +5027,6 @@ public class PropertiesPanel : UiPanel
             // Apply to all meshes
             foreach (var mesh in obj.Visuals)
             {
-                // Delete old texture if exists
-                if (mesh.TextureId != 0 && mesh.TextureId != mesh.AlphaMaskTextureId)
-                    Gl.DeleteTexture(mesh.TextureId);
-                
                 mesh.TextureId = tex;
                 
                 // Configure material for proper rendering
