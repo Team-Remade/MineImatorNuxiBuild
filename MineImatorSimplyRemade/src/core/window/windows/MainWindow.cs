@@ -2405,6 +2405,8 @@ public class MainWindow : Window
         {
             PushHistoryAction(_undoActions, action);
             _redoActions.Clear();
+            _projectManager.SetDirty(true);
+            RefreshWindowTitle();
         }
 
         _activeHistoryObjectBaselines.Clear();
