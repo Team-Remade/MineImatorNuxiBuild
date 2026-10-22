@@ -2111,7 +2111,7 @@ public class Viewport : UiPanel
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
 
         byte[] resized = ResizeRgbNearest(source, srcWidth, srcHeight, outputWidth, outputHeight);
-        WritePng24(filePath, resized, outputWidth, outputHeight);
+        WritePng24(filePath, resized, outputWidth, outputHeight, bottomUp: true);
         return true;
     }
 
@@ -2139,8 +2139,13 @@ public class Viewport : UiPanel
 
     private static readonly byte[] PngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
 
-    private static void WritePng24(string filePath, byte[] rgbPixels, int width, int height)
+    internal static void WritePng24(string filePath, byte[] rgbPixels, int width, int height, bool bottomUp)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        if (rgbPixels.Length != checked(width * height * 3))
+            throw new ArgumentException("Unexpected RGB frame size.", nameof(rgbPixels));
+
         Directory.CreateDirectory(Path.GetDirectoryName(filePath) ?? ".");
 
         int stride = width * 3;
@@ -2148,7 +2153,7 @@ public class Viewport : UiPanel
         for (int y = 0; y < height; y++)
         {
             int destRow = y * (stride + 1);
-            int srcY = height - 1 - y;
+            int srcY = bottomUp ? height - 1 - y : y;
             int srcRow = srcY * stride;
             Buffer.BlockCopy(rgbPixels, srcRow, scanlines, destRow + 1, stride);
         }

@@ -1524,13 +1524,18 @@ public class MainWindow : Window
         }
         else
         {
-            string formatLabel = _renderPopupVideoFormat.ToUpperInvariant();
-            if (ImGui.BeginCombo(Localization.Label("text.window.main.file_format", "File Format"), Localization.DisplayText(formatLabel)))
+            string formatLabel = _renderPopupVideoFormat == "png"
+                ? Localization.T("text.window.main.png_sequence")
+                : Localization.DisplayText(_renderPopupVideoFormat.ToUpperInvariant());
+            if (ImGui.BeginCombo(Localization.Label("text.window.main.file_format", "File Format"), formatLabel))
             {
-                foreach (string candidate in new[] { "mp4", "webm" })
+                foreach (string candidate in new[] { "mp4", "webm", "png" })
                 {
                     bool selected = string.Equals(_renderPopupVideoFormat, candidate, StringComparison.OrdinalIgnoreCase);
-                    if (ImGui.Selectable(Localization.DisplayLabel(candidate.ToUpperInvariant()), selected))
+                    string candidateLabel = candidate == "png"
+                        ? Localization.Label("text.window.main.png_sequence", "PNG Sequence")
+                        : Localization.DisplayLabel(candidate.ToUpperInvariant());
+                    if (ImGui.Selectable(candidateLabel, selected))
                     {
                         _renderPopupVideoFormat = candidate;
                         settingsChanged = true;
@@ -1556,6 +1561,7 @@ public class MainWindow : Window
                 ImGui.EndCombo();
             }
 
+            ImGui.BeginDisabled(_renderPopupVideoFormat == "png");
             string bitrateLabel = Localization.Format("text.window.main.kbps", _renderPopupBitrateKbps);
             if (ImGui.BeginCombo(Localization.Label("text.window.main.bitrate", "Bitrate"), bitrateLabel))
             {
@@ -1570,6 +1576,14 @@ public class MainWindow : Window
                 }
 
                 ImGui.EndCombo();
+            }
+            ImGui.EndDisabled();
+
+            if (_renderPopupVideoFormat == "png")
+            {
+                ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + 360f * UiTheme.Scale);
+                UiText.Disabled(Localization.T("text.window.main.png_sequence_hint"));
+                ImGui.PopTextWrapPos();
             }
         }
 
@@ -1805,7 +1819,8 @@ public class MainWindow : Window
         int width = Math.Max(1, _renderPopupWidth);
         int height = Math.Max(1, _renderPopupHeight);
 
-        if (_renderPopupMode == RenderMode.Video)
+        bool isPngSequence = _renderPopupMode == RenderMode.Video && _renderPopupVideoFormat == "png";
+        if (_renderPopupMode == RenderMode.Video && !isPngSequence)
         {
             if ((width & 1) != 0) width -= 1;
             if ((height & 1) != 0) height -= 1;
@@ -1821,7 +1836,17 @@ public class MainWindow : Window
 
         string target;
         string? selectedOutput;
-        if (_renderPopupMode == RenderMode.Video)
+        if (isPngSequence)
+        {
+            var result = Dialog.FolderPicker(rendersDir);
+            if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
+                return;
+
+            selectedOutput = Path.Combine(result.Path, $"{baseName}_{stamp}_png");
+            if (Directory.Exists(selectedOutput) || File.Exists(selectedOutput))
+                selectedOutput += $"_{Guid.NewGuid():N}";
+        }
+        else if (_renderPopupMode == RenderMode.Video)
         {
             target = Path.Combine(rendersDir, $"{baseName}_{stamp}.{_renderPopupVideoFormat}");
             selectedOutput = PickRenderOutputPath(target, _renderPopupVideoFormat);
@@ -1835,7 +1860,9 @@ public class MainWindow : Window
         if (string.IsNullOrWhiteSpace(selectedOutput))
             return;
 
-        string normalizedPath = EnsureOutputExtension(selectedOutput, _renderPopupMode == RenderMode.Video ? _renderPopupVideoFormat : _renderPopupImageFormat);
+        string normalizedPath = isPngSequence
+            ? selectedOutput
+            : EnsureOutputExtension(selectedOutput, _renderPopupMode == RenderMode.Video ? _renderPopupVideoFormat : _renderPopupImageFormat);
 
         try
         {
@@ -1864,8 +1891,16 @@ public class MainWindow : Window
                 _renderFrameTotal = _timeline.MaxFrames + 1;
                 _timeline.SetCurrentFrameForRender(0);
                 _renderVideoWarmupFrame = true;
-                _renderTempFramesDir = Path.Combine(rendersDir, $"_render_frames_{stamp}_{Guid.NewGuid():N}");
-                Directory.CreateDirectory(_renderTempFramesDir);
+                _renderTempFramesDir = "";
+                if (isPngSequence)
+                {
+                    Directory.CreateDirectory(_renderJobOutputPath);
+                }
+                else
+                {
+                    _renderTempFramesDir = Path.Combine(rendersDir, $"_render_frames_{stamp}_{Guid.NewGuid():N}");
+                    Directory.CreateDirectory(_renderTempFramesDir);
+                }
                 _renderEncodeTask = null;
             }
             else
@@ -1929,8 +1964,16 @@ public class MainWindow : Window
 
                 UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight);
 
-                string framePath = Path.Combine(_renderTempFramesDir, $"frame_{_renderFrameCurrent:D6}.ppm");
-                WritePpmFrame(framePath, frame, _renderJobWidth, _renderJobHeight);
+                if (_renderPopupVideoFormat == "png")
+                {
+                    string framePath = Path.Combine(_renderJobOutputPath, $"frame_{_renderFrameCurrent:D6}.png");
+                    Viewport.WritePng24(framePath, frame, _renderJobWidth, _renderJobHeight, bottomUp: false);
+                }
+                else
+                {
+                    string framePath = Path.Combine(_renderTempFramesDir, $"frame_{_renderFrameCurrent:D6}.ppm");
+                    WritePpmFrame(framePath, frame, _renderJobWidth, _renderJobHeight);
+                }
 
                 int justRenderedFrame = _renderFrameCurrent;
                 _renderFrameCurrent++;
@@ -1939,6 +1982,12 @@ public class MainWindow : Window
 
             if (_renderFrameCurrent >= _renderFrameTotal && _renderEncodeTask == null)
             {
+                if (_renderPopupVideoFormat == "png")
+                {
+                    CompleteRenderJobSuccess();
+                    return;
+                }
+
                 _renderJobStatus = Localization.T("text.window.main.encoding_video");
                 string tempDir = _renderTempFramesDir;
                 string outputPath = _renderJobOutputPath;

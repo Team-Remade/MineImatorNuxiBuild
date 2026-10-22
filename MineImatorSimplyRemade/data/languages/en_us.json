@@ -837,6 +837,8 @@
     "text.window.main.failed_to_open_project": "Failed to open project",
     "text.window.main.failed_to_open_recent_project": "Failed to open recent project",
     "text.window.main.file_format": "File Format",
+    "text.window.main.png_sequence": "PNG Sequence",
+    "text.window.main.png_sequence_hint": "Saves frame_000000.png, frame_000001.png, etc. in a new subfolder of the selected folder. Audio is not included. Completed frames are kept if canceled.",
     "text.window.main.fps": "{0} fps",
     "text.window.main.framerate": "Framerate",
     "text.window.main.frames": "Frames: {0}/{1}",
