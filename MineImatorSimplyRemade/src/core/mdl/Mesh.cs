@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Runtime.InteropServices;
 using GlmSharp;
+using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.mdl.material;
 using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.mdl.mineImator;
@@ -20,7 +22,7 @@ namespace MineImatorSimplyRemade.core.mdl;
 ///   3. Optionally set <see cref="Indices"/> for indexed drawing; leave null
 ///      for non-indexed mode.
 ///   4. Call <see cref="Upload"/> to push data to the GPU.
-///   5. Call <see cref="Render(mat4, mat4, mat4)"/> each frame.
+///   5. Call <see cref="Render"/> each frame.
 ///   6. Optionally set <see cref="TextureId"/> to a GL texture handle to
 ///      render with a texture instead of the flat <see cref="Albedo"/> colour.
 /// </summary>
@@ -1143,6 +1145,8 @@ public class Mesh : IDisposable
     /// Must match <c>MAX_POINT_SHADOWS</c> in simple.frag.
     /// </summary>
     public static readonly uint[] PointShadowCubeTextures = new uint[8];
+    private static readonly string[] PointShadowSamplerNames = Enumerable.Range(0, 8)
+        .Select(i => $"uPointShadowMaps[{i}]").ToArray();
 
     /// <summary>
     /// Elapsed seconds since the last frame.  Set by the Viewport once per frame
@@ -1176,7 +1180,7 @@ public class Mesh : IDisposable
     /// The shader must already be loaded; call <see cref="Upload"/> before the
     /// first frame.
     /// </summary>
-    public unsafe void Render(mat4 model, mat4 view, mat4 proj)
+    public unsafe void Render(mat4 model, mat4 view, mat4 proj, HashSet<uint>? preparedMipmaps = null)
     {
         if (_vao == 0 || _shader == null)
         {
@@ -1202,14 +1206,7 @@ public class Mesh : IDisposable
         SetUniformMat4("uMVP",   mvp);
         SetUniformMat4("uModel", model);
 
-        SetUniformBool("uIsSkinned", IsSkinned);
-        if (IsSkinned && BoneMatrices != null)
-        {
-            const int maxBones = 64;
-            int count = Math.Min(BoneMatrices.Count, maxBones);
-            for (int i = 0; i < count; i++)
-                SetUniformMat4($"uBoneMatrices[{i}]", BoneMatrices[i]);
-        }
+        ApplySkinningUniforms(_shader);
 
         SetUniformVec3("uAlbedo", Albedo);
         SetUniformVec4("uBlendColor", BlendColor);
@@ -1261,24 +1258,7 @@ public class Mesh : IDisposable
         SetUniformBool("uIndirectWorldEnabled", IndirectWorldEnabled && !Unlit);
         SetUniformFloat("uIndirectWorldStrength", Math.Max(IndirectWorldStrength, 0f));
 
-        // ── Point lights ──────────────────────────────────────────────────────
-        // Must match MAX_POINT_LIGHTS in simple.frag.
-        const int maxLights = 32;
-        int lightCount = Math.Min(PointLights.Count, maxLights);
-        SetUniformInt("uPointLightCount", lightCount);
-        for (int i = 0; i < lightCount; i++)
-        {
-            var (lpos, lcol, lrange, lenergy, lshadowIndex, ldir, lindirect, lspotOuter, lspotInner) = PointLights[i];
-            SetUniformVec3($"uPointLightPos[{i}]",   lpos);
-            SetUniformVec3($"uPointLightColor[{i}]", lcol);
-            SetUniformFloat($"uPointLightRange[{i}]",  lrange);
-            SetUniformFloat($"uPointLightEnergy[{i}]", lenergy);
-            SetUniformInt($"uPointLightShadowIndex[{i}]", lshadowIndex);
-            SetUniformVec3($"uPointLightDir[{i}]", ldir);
-            SetUniformFloat($"uPointLightIndirectEnergy[{i}]", lindirect);
-            SetUniformFloat($"uPointLightSpotCosOuter[{i}]", lspotOuter);
-            SetUniformFloat($"uPointLightSpotCosInner[{i}]", lspotInner);
-        }
+        UploadPointLights();
 
         // ── Animation UV offset ───────────────────────────────────────────────
         float texOffsetV = 0f;
@@ -1321,7 +1301,10 @@ public class Mesh : IDisposable
             _gl.BindTexture(GLEnum.Texture2D, TextureId);
             if (TextureMipmaps)
             {
-                _gl.GenerateMipmap(GLEnum.Texture2D);
+                // The batch owns this set and clears it before the next pass, so
+                // shared textures generate once without retaining stale dynamic content.
+                if (preparedMipmaps == null || preparedMipmaps.Add(TextureId))
+                    _gl.GenerateMipmap(GLEnum.Texture2D);
                 _gl.TexParameter(
                     GLEnum.Texture2D,
                     GLEnum.TextureMinFilter,
@@ -1367,7 +1350,7 @@ public class Mesh : IDisposable
 
                 _gl.ActiveTexture((GLEnum)((int)GLEnum.Texture0 + 2 + i));
                 _gl.BindTexture(GLEnum.TextureCubeMap, cubeTex);
-                SetUniformInt($"uPointShadowMaps[{i}]", 2 + i);
+                SetUniformInt(PointShadowSamplerNames[i], 2 + i);
             }
             _gl.ActiveTexture(GLEnum.Texture0);
         }
@@ -1456,14 +1439,7 @@ public class Mesh : IDisposable
         ApplyBendUniforms(shader);
         SetUniformMat4(shader, "uMVP", lightViewProj * model);
 
-        SetUniformBool(shader, "uIsSkinned", IsSkinned);
-        if (IsSkinned && BoneMatrices != null)
-        {
-            const int maxBones = 64;
-            int count = Math.Min(BoneMatrices.Count, maxBones);
-            for (int i = 0; i < count; i++)
-                SetUniformMat4(shader, $"uBoneMatrices[{i}]", BoneMatrices[i]);
-        }
+        ApplySkinningUniforms(shader);
 
         float texOffsetV = 0f;
         float texScaleV  = 1f;
@@ -1538,14 +1514,7 @@ public class Mesh : IDisposable
         SetUniformVec3(shader, "uLightPos", lightPos);
         SetUniformFloat(shader, "uFarPlane", farPlane);
 
-        SetUniformBool(shader, "uIsSkinned", IsSkinned);
-        if (IsSkinned && BoneMatrices != null)
-        {
-            const int maxBones = 64;
-            int count = Math.Min(BoneMatrices.Count, maxBones);
-            for (int i = 0; i < count; i++)
-                SetUniformMat4(shader, $"uBoneMatrices[{i}]", BoneMatrices[i]);
-        }
+        ApplySkinningUniforms(shader);
 
         float texOffsetV = 0f;
         float texScaleV = 1f;
@@ -1600,34 +1569,15 @@ public class Mesh : IDisposable
 
     // ── Uniform helpers (cached locations via Shader) ─────────────────────────
 
-    private unsafe void SetUniformMat4(string name, mat4 m)
-    {
-        int loc = _shader.GetUniformLocation(name);
-        if (loc < 0) return;
-        
-        float[] f =
-        {
-            m.m00, m.m01, m.m02, m.m03,   // column 0
-            m.m10, m.m11, m.m12, m.m13,   // column 1
-            m.m20, m.m21, m.m22, m.m23,   // column 2
-            m.m30, m.m31, m.m32, m.m33,   // column 3
-        };
-        fixed (float* p = f) _gl.UniformMatrix4(loc, 1, false, p);
-    }
+    private void SetUniformMat4(string name, mat4 m) => SetUniformMat4(_shader, name, m);
 
     private unsafe void SetUniformMat4(Shader shader, string name, mat4 m)
     {
         int loc = shader.GetUniformLocation(name);
         if (loc < 0) return;
 
-        float[] f =
-        {
-            m.m00, m.m01, m.m02, m.m03,
-            m.m10, m.m11, m.m12, m.m13,
-            m.m20, m.m21, m.m22, m.m23,
-            m.m30, m.m31, m.m32, m.m33,
-        };
-        fixed (float* p = f) _gl.UniformMatrix4(loc, 1, false, p);
+        // GlmSharp mat4 is sequential: four columns of four floats, matching GL.
+        _gl.UniformMatrix4(loc, 1, false, (float*)&m);
     }
 
     private void SetUniformVec2(string name, vec2 v)
@@ -1710,7 +1660,7 @@ public class Mesh : IDisposable
     /// use this after computing the current bone palette so skinned meshes are
     /// drawn in their deformed pose.
     /// </summary>
-    public void ApplySkinningUniforms(Shader shader)
+    public unsafe void ApplySkinningUniforms(Shader shader)
     {
         if (shader == null) return;
 
@@ -1719,8 +1669,70 @@ public class Mesh : IDisposable
 
         const int maxBones = 64;
         int count = Math.Min(BoneMatrices.Count, maxBones);
+        if (count == 0) return;
+        int loc = shader.GetUniformLocation("uBoneMatrices[0]");
+        if (loc < 0) return;
+        fixed (mat4* matrices = CollectionsMarshal.AsSpan(BoneMatrices))
+            _gl.UniformMatrix4(loc, (uint)count, false, (float*)matrices);
+    }
+
+    private unsafe void UploadPointLights()
+    {
+        // Must match MAX_POINT_LIGHTS in simple.frag. Upload arrays rather than
+        // rebuilding indexed names and issuing nine driver calls for every light.
+        const int maxLights = 32;
+        int count = Math.Min(PointLights.Count, maxLights);
+        FrameProfiler.Shared.Count(ProfileCounter.PointLightsUploaded, count);
+        SetUniformInt("uPointLightCount", count);
+        if (count == 0) return;
+
+        float* positions = stackalloc float[count * 3];
+        float* colors = stackalloc float[count * 3];
+        float* directions = stackalloc float[count * 3];
+        float* ranges = stackalloc float[count];
+        float* energies = stackalloc float[count];
+        float* indirectEnergies = stackalloc float[count];
+        float* spotOuter = stackalloc float[count];
+        float* spotInner = stackalloc float[count];
+        int* shadowIndices = stackalloc int[count];
         for (int i = 0; i < count; i++)
-            SetUniformMat4(shader, $"uBoneMatrices[{i}]", BoneMatrices[i]);
+        {
+            var light = PointLights[i];
+            positions[i * 3] = light.pos.x;
+            positions[i * 3 + 1] = light.pos.y;
+            positions[i * 3 + 2] = light.pos.z;
+            colors[i * 3] = light.color.x;
+            colors[i * 3 + 1] = light.color.y;
+            colors[i * 3 + 2] = light.color.z;
+            directions[i * 3] = light.direction.x;
+            directions[i * 3 + 1] = light.direction.y;
+            directions[i * 3 + 2] = light.direction.z;
+            ranges[i] = light.range;
+            energies[i] = light.energy;
+            indirectEnergies[i] = light.indirectEnergy;
+            spotOuter[i] = light.spotCosOuterAngle;
+            spotInner[i] = light.spotCosInnerAngle;
+            shadowIndices[i] = light.shadowIndex;
+        }
+
+        int loc = _shader.GetUniformLocation("uPointLightPos[0]");
+        if (loc >= 0) _gl.Uniform3(loc, (uint)count, positions);
+        loc = _shader.GetUniformLocation("uPointLightColor[0]");
+        if (loc >= 0) _gl.Uniform3(loc, (uint)count, colors);
+        loc = _shader.GetUniformLocation("uPointLightDir[0]");
+        if (loc >= 0) _gl.Uniform3(loc, (uint)count, directions);
+        loc = _shader.GetUniformLocation("uPointLightRange[0]");
+        if (loc >= 0) _gl.Uniform1(loc, (uint)count, ranges);
+        loc = _shader.GetUniformLocation("uPointLightEnergy[0]");
+        if (loc >= 0) _gl.Uniform1(loc, (uint)count, energies);
+        loc = _shader.GetUniformLocation("uPointLightIndirectEnergy[0]");
+        if (loc >= 0) _gl.Uniform1(loc, (uint)count, indirectEnergies);
+        loc = _shader.GetUniformLocation("uPointLightSpotCosOuter[0]");
+        if (loc >= 0) _gl.Uniform1(loc, (uint)count, spotOuter);
+        loc = _shader.GetUniformLocation("uPointLightSpotCosInner[0]");
+        if (loc >= 0) _gl.Uniform1(loc, (uint)count, spotInner);
+        loc = _shader.GetUniformLocation("uPointLightShadowIndex[0]");
+        if (loc >= 0) _gl.Uniform1(loc, (uint)count, shadowIndices);
     }
 
     public void ApplyBendUniforms(Shader shader)

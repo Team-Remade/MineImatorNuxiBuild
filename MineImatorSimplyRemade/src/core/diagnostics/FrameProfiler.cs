@@ -17,7 +17,7 @@ public enum ProfileStage
     VisibilityEvaluation, BoneLookup, MeshFlattening, ProfilerUi, CameraFeeds,
     AmbientOcclusion, IndirectLighting, Glow, DepthOfField, FilmGrain, Picking,
     ShadowSignature, ShadowBounds, BoneMatrices, FrameWork, SceneFingerprint,
-    SnapshotMetadata, Count
+    SnapshotMetadata, LightSelection, Count
 }
 
 public enum ProfileCounter
@@ -25,7 +25,8 @@ public enum ProfileCounter
     SceneNodesVisited, MeshesSubmitted, WorldMatrixQueries, VisibilityQueries,
     MeshFlattenCalls, SnapshotsCreated, SnapshotCacheHits, MainRenderInvocations,
     PreviewRenderInvocations, CameraFeedRenderInvocations, WorldMatrixCacheHits,
-    VisibilityCacheHits, ShadowCacheHits, ShadowBoundsRebuilds, Count
+    VisibilityCacheHits, ShadowCacheHits, ShadowBoundsRebuilds, LightCandidatesExamined,
+    PointLightsUploaded, EmissiveProxyLights, Count
 }
 
 public readonly record struct ProfileStageSummary(ProfileStage Stage, double MeanMs, double MaxMs, double MeanCalls);
@@ -352,6 +353,7 @@ public sealed class FrameProfiler
         text.AppendLine("World/visibility queries include cache hits; evaluation timings measure misses. Caches exist only inside renderer read phases, not across editor updates or separate views.");
         text.AppendLine("ShadowCacheHits covers main directional-map reuse; ShadowBoundsRebuilds also includes uncached preview bounds.");
         text.AppendLine("MeshesSubmitted counts scene/ground submissions, not GL draw calls; excludes shadow, picking and direct-overlay draws. Close the profiler panel during recording to reduce UI overhead.");
+        text.AppendLine("LightCandidatesExamined sums candidate-list sizes across per-mesh light selections; PointLightsUploaded sums selected lights across color draws. EmissiveProxyLights counts generated fallback lights (suppressed by screen-space GI).");
         text.AppendLine("GPU work is asynchronous: CPU submission/swap time is not GPU execution time. Allocations are main-thread only; GC counts are process-wide.");
         return text.ToString();
     }

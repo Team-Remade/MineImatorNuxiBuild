@@ -2680,10 +2680,10 @@ public class Viewport : UiPanel
                         !string.Equals(PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
             Mesh.IndirectWorldEnabled = useWorldGi;
             Mesh.IndirectWorldStrength = Math.Clamp(PropertiesPanel?.IndirectLightingStrength ?? 1f, 0f, 4f);
+            Mesh.SssEnabled = renderMode == SceneRenderMode.Rendered && PropertiesPanel?.SubsurfaceEnabled == true;
             if (renderMode == SceneRenderMode.Rendered)
             {
                 Mesh.ShadowBlurStrength = Math.Clamp(PropertiesPanel?.ShadowBlurStrength ?? 1f, 0f, 4f);
-                Mesh.SssEnabled = PropertiesPanel?.SubsurfaceEnabled == true;
                 Mesh.SssBlurSamples = Math.Clamp(PropertiesPanel?.SubsurfaceBlurSamples ?? 8, 0, 32);
                 Mesh.SssStrength = Math.Clamp(PropertiesPanel?.SubsurfaceStrength ?? 1f, 0f, 4f);
                 Mesh.SssDesaturation = Math.Clamp(PropertiesPanel?.SubsurfaceDesaturation ?? 0f, 0f, 1f);
@@ -2757,10 +2757,7 @@ public class Viewport : UiPanel
             }
 
             // ── Scene objects ─────────────────────────────────────────────────────
-            // Split meshes into three buckets:
-            //   opaque       – Alpha == 1, no texture  → normal depth read+write
-            //   textured     – has a TextureId          → depth pre-pass + color pass (LEQUAL)
-            //   alphaBlend   – Alpha < 1, no texture    → straight back-to-front blend, no pre-pass
+            // Collect parts for stable render-depth ordering, optionally splitting AO participants.
             {
                 using var collectionScope = FrameProfiler.Shared.Measure(ProfileStage.SceneCollection);
                 _cachedRenderItems.Clear();
@@ -4389,6 +4386,7 @@ public class Viewport : UiPanel
                 indirectEnergy,
                 0f,
                 0f));
+            FrameProfiler.Shared.Count(ProfileCounter.EmissiveProxyLights);
         }
     }
 
@@ -4405,6 +4403,8 @@ public class Viewport : UiPanel
     private readonly List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> _cachedRenderItems = new();
     private readonly List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> _cachedRenderItemsNoAo = new();
     private readonly List<(mat4 model, Mesh mesh)> _cachedOverlays = new();
+    private readonly List<(float depth, int index)> _renderOrder = new();
+    private readonly HashSet<uint> _preparedMipmaps = new();
 
     /// <summary>
     /// Maximum number of point/spot lights selected per individual mesh draw
@@ -4412,12 +4412,6 @@ public class Viewport : UiPanel
     /// (32, see simple.frag) so there is headroom.
     /// </summary>
     private const int MaxLightsPerMesh = 16;
-
-    /// <summary>
-    /// Scratch buffer reused every call to avoid a per-mesh, per-frame
-    /// allocation while scoring candidate lights.
-    /// </summary>
-    private static readonly List<(float score, int index)> _lightScoreScratch = new();
 
     /// <summary>
     /// Picks the <see cref="MaxLightsPerMesh"/> lights most relevant to a mesh
@@ -4441,10 +4435,12 @@ public class Viewport : UiPanel
     /// lights from its own nearest/brightest lights no matter how many other
     /// lights exist elsewhere in the scene.
     /// </summary>
-    private static void SelectPointLightsForMesh(
+    private static unsafe void SelectPointLightsForMesh(
         vec3 meshWorldPos,
         List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle)> allLights)
     {
+        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.LightSelection);
+        FrameProfiler.Shared.Count(ProfileCounter.LightCandidatesExamined, allLights.Count);
         Mesh.PointLights.Clear();
 
         if (allLights.Count <= MaxLightsPerMesh)
@@ -4453,19 +4449,65 @@ public class Viewport : UiPanel
             return;
         }
 
-        _lightScoreScratch.Clear();
+        // Retain only the best 16 in a max-heap, rather than sorting every
+        // emissive proxy in the scene for every submitted mesh.
+        (float score, int index)* best = stackalloc (float, int)[MaxLightsPerMesh];
         for (int i = 0; i < allLights.Count; i++)
         {
             var l = allLights[i];
             float rangeEnergy = MathF.Max(0.01f, l.range * MathF.Max(l.energy, 0.01f));
             float score = (l.pos - meshWorldPos).Length / rangeEnergy;
-            _lightScoreScratch.Add((score, i));
+            var candidate = (score, i);
+            if (i < MaxLightsPerMesh)
+            {
+                int slot = i;
+                while (slot > 0)
+                {
+                    int parent = (slot - 1) / 2;
+                    if (CompareLightScore(candidate, best[parent]) <= 0) break;
+                    best[slot] = best[parent];
+                    slot = parent;
+                }
+                best[slot] = candidate;
+            }
+            else if (CompareLightScore(candidate, best[0]) < 0)
+            {
+                int slot = 0;
+                while (slot * 2 + 1 < MaxLightsPerMesh)
+                {
+                    int child = slot * 2 + 1;
+                    if (child + 1 < MaxLightsPerMesh && CompareLightScore(best[child + 1], best[child]) > 0)
+                        child++;
+                    if (CompareLightScore(candidate, best[child]) >= 0) break;
+                    best[slot] = best[child];
+                    slot = child;
+                }
+                best[slot] = candidate;
+            }
         }
 
-        _lightScoreScratch.Sort((a, b) => a.score.CompareTo(b.score));
+        // Sorting just the retained set preserves nearest/brightest upload order.
+        for (int i = 1; i < MaxLightsPerMesh; i++)
+        {
+            var candidate = best[i];
+            int slot = i;
+            while (slot > 0 && CompareLightScore(candidate, best[slot - 1]) < 0)
+            {
+                best[slot] = best[slot - 1];
+                slot--;
+            }
+            best[slot] = candidate;
+        }
 
         for (int i = 0; i < MaxLightsPerMesh; i++)
-            Mesh.PointLights.Add(allLights[_lightScoreScratch[i].index]);
+            Mesh.PointLights.Add(allLights[best[i].index]);
+    }
+
+    private static int CompareLightScore((float score, int index) a, (float score, int index) b)
+    {
+        int scoreOrder = a.score.CompareTo(b.score);
+        // Equal relevance keeps the earlier scene light, avoiding arbitrary tie flicker.
+        return scoreOrder != 0 ? scoreOrder : a.index.CompareTo(b.index);
     }
 
     private void RenderAmbientOcclusion(uint displayFbo, uint depthTexture, uint width, uint height,
@@ -4761,22 +4803,36 @@ public class Viewport : UiPanel
             float spotCosOuterAngle, float spotCosInnerAngle)> allLights,
         bool forceUnshaded)
     {
-        // Shared across main, preview and feeds; includes deferred stable OrderBy sorting.
+        // Shared across main, preview and feeds; includes stable render-depth sorting.
         using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.SceneDraw);
-        // LINQ OrderBy is stable, matching Modelbench's insertion behavior for
-        // parts with equal depth. Camera distance intentionally has no role.
+        using (FrameProfiler.Shared.Measure(ProfileStage.SceneSort))
+        {
+            _renderOrder.Clear();
+            for (int i = 0; i < renderItems.Count; i++)
+                _renderOrder.Add((renderItems[i].sortDepth, i));
+            _renderOrder.Sort(CompareRenderOrder);
+        }
+        _preparedMipmaps.Clear();
         Gl.Enable(GLEnum.Blend);
         Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
         // Material/source data follows the winning depth fragment, not display alpha blending.
         Gl.Disable(GLEnum.Blend, 1);
         Gl.Disable(GLEnum.Blend, 2);
         Gl.DepthMask(true);
-        foreach (var (model, mesh, _, includeFog, blurTexture, textureMipmaps) in renderItems.OrderBy(x => x.sortDepth))
+        foreach (var (_, index) in _renderOrder)
         {
+            var (model, mesh, _, includeFog, blurTexture, textureMipmaps) = renderItems[index];
             SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allLights);
-            RenderMeshWithModeOverride(mesh, model, view, proj, forceUnshaded, includeFog, blurTexture, textureMipmaps);
+            RenderMeshWithModeOverride(mesh, model, view, proj, forceUnshaded, includeFog, blurTexture, textureMipmaps, _preparedMipmaps);
         }
         Gl.Disable(GLEnum.Blend);
+    }
+
+    private static int CompareRenderOrder((float depth, int index) a, (float depth, int index) b)
+    {
+        int depthOrder = a.depth.CompareTo(b.depth);
+        // Preserve insertion order for equal depths, just like the previous OrderBy.
+        return depthOrder != 0 ? depthOrder : a.index.CompareTo(b.index);
     }
 
     private static void RenderMeshWithModeOverride(
@@ -4787,7 +4843,8 @@ public class Viewport : UiPanel
         bool forceUnshaded,
         bool includeFog = true,
         bool blurTexture = false,
-        bool textureMipmaps = false)
+        bool textureMipmaps = false,
+        HashSet<uint>? preparedMipmaps = null)
     {
         // Counts helper submissions, including ground, but not direct overlay/shadow/pick draws.
         FrameProfiler.Shared.Count(ProfileCounter.MeshesSubmitted);
@@ -4803,7 +4860,7 @@ public class Viewport : UiPanel
         if (forceUnshaded)
             mesh.Unlit = true;
 
-        mesh.Render(model, view, proj);
+        mesh.Render(model, view, proj, preparedMipmaps);
 
         if (forceUnshaded)
             mesh.Unlit = previousUnlit;
@@ -6231,6 +6288,7 @@ public class Viewport : UiPanel
                         !string.Equals(MainViewport.PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
         Mesh.IndirectWorldEnabled = previewWorldGi;
         Mesh.IndirectWorldStrength = Math.Clamp(MainViewport.PropertiesPanel?.IndirectLightingStrength ?? 1f, 0f, 4f);
+        Mesh.SssEnabled = renderMode == SceneRenderMode.Rendered && MainViewport.PropertiesPanel?.SubsurfaceEnabled == true;
 
         Camera renderCamera;
         mat4 view, proj;
@@ -6295,7 +6353,6 @@ public class Viewport : UiPanel
         if (renderMode == SceneRenderMode.Rendered)
         {
             Mesh.ShadowBlurStrength = Math.Clamp(MainViewport.PropertiesPanel?.ShadowBlurStrength ?? 1f, 0f, 4f);
-            Mesh.SssEnabled = MainViewport.PropertiesPanel?.SubsurfaceEnabled == true;
             Mesh.SssBlurSamples = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceBlurSamples ?? 8, 0, 32);
             Mesh.SssStrength = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceStrength ?? 1f, 0f, 4f);
             Mesh.SssDesaturation = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceDesaturation ?? 0f, 0f, 1f);
