@@ -5,6 +5,7 @@ layout (location = 1) in vec3 aNormal;
 layout (location = 2) in vec2 aTexCoord;
 layout (location = 3) in ivec4 aBoneIndices;
 layout (location = 4) in vec4 aBoneWeights;
+layout (location = 9) in float aBendSourceSegmentPosition;
 
 // Instance model matrix (4 consecutive vec4 attributes, divisor = 1).
 layout (location = 5) in vec4 aInstanceM0;
@@ -23,6 +24,7 @@ uniform bool  uIsSkinned;
 uniform bool  uUseInstancing;
 uniform mat4  uBoneMatrices[64];
 uniform bool  uBendEnabled;
+uniform bool  uBendHasSourceSegments;
 uniform vec3  uBendAngle;
 uniform vec3  uBendPivot;
 uniform vec3  uBendShapePosition;
@@ -36,6 +38,7 @@ uniform float uBendSize;
 uniform bool  uBendInvert;
 uniform bool  uBendSharp;
 uniform bool  uBendPlane;
+uniform bool  uBendExtrudedPlane;
 
 layout(std140) uniform SceneData {
     mat4  uLightSpaceMatrix;
@@ -92,7 +95,8 @@ void applyBend(inout vec3 position, inout vec3 normal) {
     if (all(equal(uBendAngle, vec3(0.0)))) return;
     vec3 localPosition = position - uBendShapePosition;
     vec3 sourcePosition = (uBendInverseShape * vec4(localPosition, 1.0)).xyz;
-    float segmentPosition = bendComponent(sourcePosition, uBendSegmentAxis) - uBendAxisStart;
+    float segmentPosition = uBendHasSourceSegments ? aBendSourceSegmentPosition
+        : bendComponent(sourcePosition, uBendSegmentAxis) - uBendAxisStart;
     float weight = segmentPosition < uBendStart ? 0.0 :
         segmentPosition >= uBendEnd ? 1.0 : 1.0 - (uBendEnd - segmentPosition) / uBendSize;
     if (uBendInvert) weight = 1.0 - weight;
@@ -102,7 +106,7 @@ void applyBend(inout vec3 position, inout vec3 normal) {
     // Recovering source coordinates through the inverse can move the first ring a few ULPs.
     bool initial = abs(segmentPosition) <= max(1e-7, abs(uBendAxisStart) * 1e-6);
     vec3 scale = vec3(1.0 + (!uBendPlane && !initial ? weight * 0.005 : 0.0));
-    if (uBendSharp && (!uBendPlane || initial) && uBendScaleAxis >= 0 && segmentPosition > uBendStart && segmentPosition < uBendEnd) {
+    if (uBendSharp && (!uBendPlane || uBendExtrudedPlane || initial) && uBendScaleAxis >= 0 && segmentPosition > uBendStart && segmentPosition < uBendEnd) {
         float triangle = (weight <= 0.5 ? weight : 1.0 - weight) * 2.0;
         float angle = abs(bendComponent(uBendAngle, uBendScaleAxis));
         if (angle > 90.0) angle = 180.0 - angle;

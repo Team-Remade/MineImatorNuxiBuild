@@ -286,14 +286,16 @@ public sealed class VeldridSceneRenderer : IDisposable
             {
                 vec3 local = vertex.Position - bend.ShapePosition;
                 vec3 source = (bend.InverseShapeTransform * new vec4(local, 1)).xyz;
-                float segment = source[bend.SegmentAxis] - bend.AxisStart;
+                float segment = mesh.BendSourceSegmentPositions.Count == vertices.Length
+                    ? mesh.BendSourceSegmentPositions[i]
+                    : source[bend.SegmentAxis] - bend.AxisStart;
                 float weight = segment < bend.BendStart ? 0 : segment >= bend.BendEnd ? 1 :
                     1 - (bend.BendEnd - segment) / bend.BendSize;
                 if (bend.InvertWeight) weight = 1 - weight;
                 vec3 angle = bend.Sharp ? bend.Angle * weight : BendHelper.GetBendVector(bend.Angle, weight);
                 bool initial = MathF.Abs(segment) <= Math.Max(1e-7f, MathF.Abs(bend.AxisStart) * 1e-6f);
                 vec3 scale = new(1 + (!bend.Plane && !initial ? weight * 0.005f : 0));
-                if (bend.Sharp && (!bend.Plane || initial) && bend.ScaleCorrectionAxis >= 0 && segment > bend.BendStart && segment < bend.BendEnd)
+                if (bend.Sharp && (!bend.Plane || bend.ExtrudedPlane || initial) && bend.ScaleCorrectionAxis >= 0 && segment > bend.BendStart && segment < bend.BendEnd)
                 {
                     float triangle = (weight <= 0.5f ? weight : 1 - weight) * 2;
                     float degrees = MathF.Abs(bend.Angle[bend.ScaleCorrectionAxis]);

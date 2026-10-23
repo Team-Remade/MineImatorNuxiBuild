@@ -399,7 +399,8 @@ public class MiBoneSceneObject : BoneSceneObject
 
     private void RefreshBendVisuals(bool propagateInheritedBends)
     {
-        if (_shapeDataList.Any(static data => data.Shape is { Type: "plane", ThreeD: true, Bend: true }))
+        if (_shapeDataList.Zip(Visuals).Any(static pair =>
+            pair.First.Shape is { Type: "plane", ThreeD: true, Bend: true } && pair.Second.GpuBend == null))
         {
             RegenerateMeshes(propagateInheritedBends: false);
         }

@@ -4,6 +4,7 @@ layout (location = 0) in vec3 aPos;
 layout (location = 2) in vec2 aTexCoord;
 layout (location = 3) in ivec4 aBoneIndices;
 layout (location = 4) in vec4 aBoneWeights;
+layout (location = 9) in float aBendSourceSegmentPosition;
 
 uniform mat4  uMVP;
 uniform vec2  uTexOffset;
@@ -18,6 +19,8 @@ uniform mat4 uBendInverseShape; uniform int uBendSegmentAxis; uniform int uBendS
 uniform float uBendAxisStart; uniform float uBendStart; uniform float uBendEnd; uniform float uBendSize;
 uniform bool uBendInvert; uniform bool uBendSharp;
 uniform bool uBendPlane;
+uniform bool uBendExtrudedPlane;
+uniform bool uBendHasSourceSegments;
 
 out vec2 vTexCoord;
 
@@ -27,11 +30,11 @@ mat3 br(vec3 d) { vec3 a=radians(d); float cx=cos(a.x),sx=sin(a.x),cy=cos(a.y),s
 vec3 bendPosition(vec3 p) {
     if (!uBendEnabled || all(equal(uBendAngle, vec3(0.0)))) return p;
     vec3 local=p-uBendShapePosition; vec3 source=(uBendInverseShape*vec4(local,1.0)).xyz;
-    float segment=bc(source,uBendSegmentAxis)-uBendAxisStart;
+    float segment=uBendHasSourceSegments?aBendSourceSegmentPosition:bc(source,uBendSegmentAxis)-uBendAxisStart;
     float w=segment<uBendStart?0.0:segment>=uBendEnd?1.0:1.0-(uBendEnd-segment)/uBendSize; if(uBendInvert)w=1.0-w;
     bool initial=abs(segment)<=max(1e-7,abs(uBendAxisStart)*1e-6);
     vec3 bv=uBendSharp?uBendAngle*w:vec3(uBendAngle.x*be(w),uBendAngle.y*w,uBendAngle.z*be(w)); vec3 s=vec3(1.0+(!uBendPlane&&!initial?w*0.005:0.0));
-    if(uBendSharp&&(!uBendPlane||initial)&&uBendScaleAxis>=0&&segment>uBendStart&&segment<uBendEnd){float q=(w<=0.5?w:1.0-w)*2.0;float a=abs(bc(uBendAngle,uBendScaleAxis));if(a>90.0)a=180.0-a;float c=pow(q*clamp(a/90.0,0.0,1.0),3.0)/2.5;if(uBendScaleAxis!=0)s.x+=c;if(uBendScaleAxis!=1)s.y+=c;if(uBendScaleAxis!=2)s.z+=c;}
+    if(uBendSharp&&(!uBendPlane||uBendExtrudedPlane||initial)&&uBendScaleAxis>=0&&segment>uBendStart&&segment<uBendEnd){float q=(w<=0.5?w:1.0-w)*2.0;float a=abs(bc(uBendAngle,uBendScaleAxis));if(a>90.0)a=180.0-a;float c=pow(q*clamp(a/90.0,0.0,1.0),3.0)/2.5;if(uBendScaleAxis!=0)s.x+=c;if(uBendScaleAxis!=1)s.y+=c;if(uBendScaleAxis!=2)s.z+=c;}
     return uBendPivot+br(bv)*(s*(local-uBendPivot))+uBendShapePosition;
 }
 

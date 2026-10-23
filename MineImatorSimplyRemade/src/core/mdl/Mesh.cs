@@ -83,6 +83,13 @@ public class Mesh : IDisposable
     /// <summary>Optional GPU bend state shared by all meshes on a Mine-imator bone.</summary>
     public GpuBendState? GpuBend { get; set; }
 
+    /// <summary>
+    /// Original undeformed segment distances from the bend's AxisStart, parallel to
+    /// <see cref="Vertices"/>. Optional; populate before <see cref="Upload"/> so
+    /// vertex edits do not change bend weights.
+    /// </summary>
+    public readonly List<float> BendSourceSegmentPositions = new();
+
     /// <summary>True when this mesh has skinning data and should be GPU-deformed.</summary>
     public bool IsSkinned => BoneIndices.Count > 0 && BoneIndices.Count == Vertices.Count;
 
@@ -210,6 +217,7 @@ public class Mesh : IDisposable
     /// generating the VBO when a shape-key weight changes.
     /// </summary>
     private float[]? _baseVertexData;
+    private int _vertexFloats = 8;
 
     /// <summary>
     /// CPU-side copy of the deformed interleaved vertex data, rebuilt from
@@ -279,7 +287,7 @@ public class Mesh : IDisposable
         int vertexCount = Vertices.Count;
         if (vertexCount == 0) { _shapeKeyDirty = false; return; }
 
-        const int floatsPerVertex = 8;
+        int floatsPerVertex = _vertexFloats;
         int totalFloats = vertexCount * floatsPerVertex;
         int totalBytes  = totalFloats * sizeof(float);
 
@@ -700,6 +708,7 @@ public class Mesh : IDisposable
         clone.BoneNames.AddRange(BoneNames);
         clone.BoneInverseBindMatrices.AddRange(BoneInverseBindMatrices);
         clone.GpuBend = GpuBend;
+        clone.BendSourceSegmentPositions.AddRange(BendSourceSegmentPositions);
         clone.Indices = Indices != null ? (uint[])Indices.Clone() : null;
 
         clone.AnimationKey        = AnimationKey;
@@ -890,8 +899,9 @@ public class Mesh : IDisposable
 
         bool isSkinned = IsSkinned;
 
-        // Interleave: [ px py pz nx ny nz u v ] per vertex
-        const int floatsPerVertex = 8;
+        bool hasSourceSegments = BendSourceSegmentPositions.Count == Vertices.Count;
+        // Append the original segment distance only for meshes that supply it.
+        int floatsPerVertex = _vertexFloats = hasSourceSegments ? 9 : 8;
         float[] data = new float[Vertices.Count * floatsPerVertex];
         for (int i = 0; i < Vertices.Count; i++)
         {
@@ -903,6 +913,8 @@ public class Mesh : IDisposable
             data[i * floatsPerVertex + 5] = Normals[i].z;
             data[i * floatsPerVertex + 6] = hasUVs ? TexCoords[i].x : 0f;
             data[i * floatsPerVertex + 7] = hasUVs ? TexCoords[i].y : 0f;
+            if (hasSourceSegments)
+                data[i * floatsPerVertex + 8] = BendSourceSegmentPositions[i];
         }
 
         _gl.GenVertexArrays(1, out _vao);
@@ -923,6 +935,13 @@ public class Mesh : IDisposable
         // location 2: texcoord
         _gl.VertexAttribPointer(2, 2, GLEnum.Float, false, stride, 6 * sizeof(float));
         _gl.EnableVertexAttribArray(2);
+
+        // Locations 5..8 are reserved for the instance model matrix.
+        if (hasSourceSegments)
+        {
+            _gl.VertexAttribPointer(9, 1, GLEnum.Float, false, stride, 8 * sizeof(float));
+            _gl.EnableVertexAttribArray(9);
+        }
 
         // Skinning attributes
         if (isSkinned)
@@ -1708,6 +1727,8 @@ public class Mesh : IDisposable
     {
         GpuBendState? bend = GpuBend;
         SetUniformBool(shader, "uBendEnabled", bend != null);
+        SetUniformBool(shader, "uBendHasSourceSegments",
+            BendSourceSegmentPositions.Count > 0 && BendSourceSegmentPositions.Count == Vertices.Count);
         if (bend == null) return;
 
         SetUniformVec3(shader, "uBendAngle", bend.Angle);
@@ -1723,6 +1744,7 @@ public class Mesh : IDisposable
         SetUniformBool(shader, "uBendInvert", bend.InvertWeight);
         SetUniformBool(shader, "uBendSharp", bend.Sharp);
         SetUniformBool(shader, "uBendPlane", bend.Plane);
+        SetUniformBool(shader, "uBendExtrudedPlane", bend.ExtrudedPlane);
     }
 
     /// <summary>

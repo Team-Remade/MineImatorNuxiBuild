@@ -1697,7 +1697,8 @@ public class MineImatorLoader
         BendStyle bendStyle = BendStyle.ProjectDefault, vec3? partColorBlend = null,
         float? partColorBlendAmount = null,
         float? partColorAlpha = null,
-        float depth = 0f, int[]? textureSize = null, vec3? partColorMix = null)
+        float depth = 0f, int[]? textureSize = null, vec3? partColorMix = null,
+        bool referenceGeometry = false)
     {
         if (shape?.From == null || shape.To == null) return null;
 
@@ -1737,12 +1738,15 @@ public class MineImatorLoader
         shapeScale *= accumulatedParentScale;
 
         vec3[]? shapeVertexOffsets = GetShapeVertexOffsets(shape);
+        if (referenceGeometry && shapeVertexOffsets != null)
+            shapeVertexOffsets = new vec3[8];
 
         float inflate = shape.Inflate / 16f;
 
         BendParams? effectiveBend = (shape.Bend && bendParams.HasValue) ? bendParams : null;
         BendParams? geometryBend = effectiveBend;
-        bool cpuBentExtrudedPlane = shape.Type == "plane" && shape.ThreeD && geometryBend.HasValue;
+        bool cpuBentExtrudedPlane = shape.Type == "plane" && shape.ThreeD && geometryBend.HasValue &&
+            shapeVertexOffsets == null;
         if (geometryBend.HasValue && !cpuBentExtrudedPlane)
         {
             var value = geometryBend.Value;
@@ -1761,16 +1765,17 @@ public class MineImatorLoader
                 if (planeBent)
                     mesh = CreateBentExtrudedPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
                         textureId, shape.TextureMirror, shape.Invert, inflate, geometryBend!.Value,
-                        shapePosition, shapeRotation, shapeScale, bendStyle);
+                        shapePosition, shapeRotation, shapeScale, bendStyle, shapeVertexOffsets);
                 else
                     mesh = CreateExtrudedPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
-                        textureId, shape.TextureMirror, shape.Invert, inflate, shapeRotation, shapeScale);
+                        textureId, shape.TextureMirror, shape.Invert, inflate, shapeRotation, shapeScale,
+                        shapeVertexOffsets);
             }
             else if (planeBent)
             {
                 mesh = CreateBentPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
                     shape.TextureMirror, shape.Invert, inflate, geometryBend!.Value, shapePosition,
-                    shapeRotation, shapeScale, bendStyle, shape.HideFront, shape.HideBack);
+                    shapeRotation, shapeScale, bendStyle, shape.HideFront, shape.HideBack, shapeVertexOffsets);
             }
             else
             {
@@ -1812,14 +1817,33 @@ public class MineImatorLoader
             {
                 for (int i = 0; i < mesh.Vertices.Count; i++)
                     mesh.Vertices[i] += shapePosition;
-                mesh.Upload();
             }
 
             if (effectiveBend.HasValue && !cpuBentExtrudedPlane)
             {
                 mesh.GpuBend = CreateGpuBendState(effectiveBend.Value, from, to, inflate,
                     shapePosition, shapeRotation, shapeScale, bendStyle, shape.Type == "plane");
+                mesh.GpuBend.ExtrudedPlane = shape.Type == "plane" && shape.ThreeD;
+                if (shapeVertexOffsets != null && !referenceGeometry)
+                {
+                    // Keep a matching undeformed topology to capture segment weights.
+                    // Only the edited geometry is uploaded; angle changes stay on the GPU.
+                    using var source = CreateShapeMesh(partName, shapeIndex, shape, model, textureId,
+                        accumulatedParentScale, bendParams, bendStyle, partColorBlend, partColorBlendAmount,
+                        partColorAlpha, depth, textureSize, partColorMix, referenceGeometry: true);
+                    if (source == null || source.Vertices.Count != mesh.Vertices.Count)
+                        throw new InvalidOperationException("Vertex edit bend topology does not match its source geometry.");
+                    foreach (vec3 position in source.Vertices)
+                    {
+                        vec3 local = BendHelper.TransformPoint(mesh.GpuBend.InverseShapeTransform,
+                            position - shapePosition);
+                        mesh.BendSourceSegmentPositions.Add(local[mesh.GpuBend.SegmentAxis] - mesh.GpuBend.AxisStart);
+                    }
+                }
             }
+
+            if (!referenceGeometry)
+                mesh.Upload();
         }
 
         return mesh;
@@ -1999,38 +2023,44 @@ public class MineImatorLoader
 
             float x1 = min.x, x2 = max.x, y1 = min.y, y2 = max.y, z1 = min.z, z2 = max.z;
 
-            vec3 c1 = new vec3(x1, y2, z1) + GetOffset(0); // vert1
-            vec3 c2 = new vec3(x2, y2, z1) + GetOffset(1); // vert2
+            vec3 c1 = new vec3(x1, y2, z1) + GetOffset(7);
+            vec3 c2 = new vec3(x2, y2, z1) + GetOffset(6);
             vec3 c3 = new vec3(x2, y1, z1) + GetOffset(2); // vert3
             vec3 c4 = new vec3(x1, y1, z1) + GetOffset(3); // vert4
             vec3 c5 = new vec3(x1, y2, z2) + GetOffset(4); // vert5
             vec3 c6 = new vec3(x2, y2, z2) + GetOffset(5); // vert6
-            vec3 c7 = new vec3(x2, y1, z2) + GetOffset(6); // vert7
-            vec3 c8 = new vec3(x1, y1, z2) + GetOffset(7); // vert8
+            vec3 c7 = new vec3(x2, y1, z2) + GetOffset(1);
+            vec3 c8 = new vec3(x1, y1, z2) + GetOffset(0);
 
             AddFaceWithUVs(vertices, normals, uvs, indices,
                 Rv(c8), Rv(c7), Rv(c6), Rv(c5),
-                Rn(new vec3(0, 0, 1)), texSouth4, texSouth3, texSouth2, texSouth1, invert);
+                Rn(new vec3(0, 0, 1)), texSouth4, texSouth3, texSouth2, texSouth1, invert,
+                alternateDiagonal: shapeVertexOffsets != null);
 
             AddFaceWithUVs(vertices, normals, uvs, indices,
                 Rv(c7), Rv(c3), Rv(c2), Rv(c6),
-                Rn(new vec3(1, 0, 0)), texEast4, texEast3, texEast2, texEast1, invert);
+                Rn(new vec3(1, 0, 0)), texEast4, texEast3, texEast2, texEast1, invert,
+                alternateDiagonal: shapeVertexOffsets != null);
 
             AddFaceWithUVs(vertices, normals, uvs, indices,
                 Rv(c4), Rv(c8), Rv(c5), Rv(c1),
-                Rn(new vec3(-1, 0, 0)), texWest4, texWest3, texWest2, texWest1, invert);
+                Rn(new vec3(-1, 0, 0)), texWest4, texWest3, texWest2, texWest1, invert,
+                alternateDiagonal: shapeVertexOffsets != null);
 
             AddFaceWithUVs(vertices, normals, uvs, indices,
                 Rv(c3), Rv(c4), Rv(c1), Rv(c2),
-                Rn(new vec3(0, 0, -1)), texNorth4, texNorth3, texNorth2, texNorth1, invert);
+                Rn(new vec3(0, 0, -1)), texNorth4, texNorth3, texNorth2, texNorth1, invert,
+                alternateDiagonal: shapeVertexOffsets != null);
 
             AddFaceWithUVs(vertices, normals, uvs, indices,
                 Rv(c5), Rv(c6), Rv(c2), Rv(c1),
-                Rn(new vec3(0, 1, 0)), texUp4, texUp3, texUp2, texUp1, invert);
+                Rn(new vec3(0, 1, 0)), texUp4, texUp3, texUp2, texUp1, invert,
+                alternateDiagonal: shapeVertexOffsets != null);
 
             AddFaceWithUVs(vertices, normals, uvs, indices,
                 Rv(c4), Rv(c3), Rv(c7), Rv(c8),
-                Rn(new vec3(0, -1, 0)), texDown4, texDown3, texDown2, texDown1, invert);
+                Rn(new vec3(0, -1, 0)), texDown4, texDown3, texDown2, texDown1, invert,
+                alternateDiagonal: shapeVertexOffsets != null);
         }
         else
         {
@@ -2079,6 +2109,27 @@ public class MineImatorLoader
             // rotated shapes as soon as a non-zero bend is applied.
             mat4 rsm = shapeRotMat * shapeScaleMat;
             float axisStart = segAxis == 0 ? x1 : segAxis == 1 ? y1 : z1;
+            int[] startCorners = segAxis switch
+            {
+                0 => [0, 4, 7, 3],
+                1 => [1, 0, 3, 2],
+                _ => [7, 6, 2, 3]
+            };
+            int[] endCorners = segAxis switch
+            {
+                0 => [1, 5, 6, 2],
+                1 => [5, 4, 7, 6],
+                _ => [4, 5, 1, 0]
+            };
+            vec3 EditedPoint(vec3 p, int corner, float weight)
+            {
+                if (shapeVertexOffsets != null)
+                {
+                    vec3 start = shapeVertexOffsets[startCorners[corner]];
+                    p += start + (shapeVertexOffsets[endCorners[corner]] - start) * weight;
+                }
+                return BendHelper.TransformPoint(rsm, p);
+            }
 
             float bendStart, bendEnd;
             switch (segAxis)
@@ -2182,10 +2233,10 @@ public class MineImatorLoader
                     break;
             }
 
-            p1 = BendHelper.TransformPoint(rsm, p1);
-            p2 = BendHelper.TransformPoint(rsm, p2);
-            p3 = BendHelper.TransformPoint(rsm, p3);
-            p4 = BendHelper.TransformPoint(rsm, p4);
+            p1 = EditedPoint(p1, 0, 0f);
+            p2 = EditedPoint(p2, 1, 0f);
+            p3 = EditedPoint(p3, 2, 0f);
+            p4 = EditedPoint(p4, 3, 0f);
             n1 = BendHelper.TransformDirection(rsm, n1);
             n2 = BendHelper.TransformDirection(rsm, n2);
             n3 = BendHelper.TransformDirection(rsm, n3);
@@ -2314,10 +2365,11 @@ public class MineImatorLoader
                         break;
                 }
 
-                np1 = BendHelper.TransformPoint(rsm, np1);
-                np2 = BendHelper.TransformPoint(rsm, np2);
-                np3 = BendHelper.TransformPoint(rsm, np3);
-                np4 = BendHelper.TransformPoint(rsm, np4);
+                float offsetWeight = segPos / totalSize;
+                np1 = EditedPoint(np1, 0, offsetWeight);
+                np2 = EditedPoint(np2, 1, offsetWeight);
+                np3 = EditedPoint(np3, 2, offsetWeight);
+                np4 = EditedPoint(np4, 3, offsetWeight);
                 nn1 = BendHelper.TransformDirection(rsm, nn1);
                 nn2 = BendHelper.TransformDirection(rsm, nn2);
                 nn3 = BendHelper.TransformDirection(rsm, nn3);
@@ -2413,7 +2465,7 @@ public class MineImatorLoader
             }
         }
 
-        return BuildMesh(vertices, normals, uvs, indices);
+        return BuildMesh(vertices, normals, uvs, indices, shapeVertexOffsets != null);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2460,22 +2512,16 @@ public class MineImatorLoader
                    (shapeScale != default && shapeScale != vec3.Ones ? mat4.Scale(shapeScale) : mat4.Identity);
         vec3 Rv(vec3 v) => BendHelper.TransformPoint(rsm, v);
 
-        vec3 GetOffset(int index)
-        {
-            if (shapeVertexOffsets == null || index < 0 || index >= shapeVertexOffsets.Length)
-                return vec3.Zero;
-            return shapeVertexOffsets[index];
-        }
-
         float x1 = min.x, x2 = max.x, y1 = min.y, y2 = max.y, z1 = min.z, z2 = max.z;
-        vec3 c1 = new vec3(x1, y2, z1) + GetOffset(0); // vert1
-        vec3 c2 = new vec3(x2, y2, z1) + GetOffset(1); // vert2
-        vec3 c3 = new vec3(x2, y1, z1) + GetOffset(2); // vert3
-        vec3 c4 = new vec3(x1, y1, z1) + GetOffset(3); // vert4
-        vec3 c5 = new vec3(x1, y2, z2) + GetOffset(4); // vert5
-        vec3 c6 = new vec3(x2, y2, z2) + GetOffset(5); // vert6
-        vec3 c7 = new vec3(x2, y1, z2) + GetOffset(6); // vert7
-        vec3 c8 = new vec3(x1, y1, z2) + GetOffset(7); // vert8
+        vec3 Offset(vec3 p) => p + InterpolatePlaneVertexOffset(p, min, max, shapeVertexOffsets);
+        vec3 c1 = Offset(new vec3(x1, y2, z1));
+        vec3 c2 = Offset(new vec3(x2, y2, z1));
+        vec3 c3 = Offset(new vec3(x2, y1, z1));
+        vec3 c4 = Offset(new vec3(x1, y1, z1));
+        vec3 c5 = Offset(new vec3(x1, y2, z2));
+        vec3 c6 = Offset(new vec3(x2, y2, z2));
+        vec3 c7 = Offset(new vec3(x2, y1, z2));
+        vec3 c8 = Offset(new vec3(x1, y1, z2));
 
         if (!hideFront)
         {
@@ -2548,7 +2594,7 @@ public class MineImatorLoader
             AddQuadIndices(indices, (uint)bv, invert: true);
         }
 
-        return BuildMesh(vertices, normals, uvs, indices);
+        return BuildMesh(vertices, normals, uvs, indices, shapeVertexOffsets != null);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2557,17 +2603,17 @@ public class MineImatorLoader
 
     private Mesh CreateExtrudedPlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
         int texWidth, int texHeight, uint textureId, bool textureMirror, bool invert, float inflate = 0f,
-        vec3 shapeRotation = default, vec3 shapeScale = default)
+        vec3 shapeRotation = default, vec3 shapeScale = default, vec3[]? shapeVertexOffsets = null)
     {
         if (textureId == 0)
             return CreatePlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
-                textureMirror, invert, inflate, shapeRotation, shapeScale);
+                textureMirror, invert, inflate, shapeRotation, shapeScale, shapeVertexOffsets: shapeVertexOffsets);
 
         var pixels = TryGetPixels(textureId, texWidth, texHeight,
             out int imgW, out int imgH, out int contentW, out int contentH);
         if (pixels == null)
             return CreatePlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
-                textureMirror, invert, inflate, shapeRotation, shapeScale);
+                textureMirror, invert, inflate, shapeRotation, shapeScale, shapeVertexOffsets: shapeVertexOffsets);
 
         int uvStartX = Math.Clamp((int)MathF.Ceiling(uvU / texWidth * contentW), 0, contentW - 1);
         int uvStartY = Math.Clamp((int)MathF.Ceiling(uvV / texHeight * contentH), 0, contentH - 1);
@@ -2576,19 +2622,26 @@ public class MineImatorLoader
 
         if (regionW <= 0 || regionH <= 0)
             return CreatePlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
-                textureMirror, invert, inflate, shapeRotation, shapeScale);
+                textureMirror, invert, inflate, shapeRotation, shapeScale, shapeVertexOffsets: shapeVertexOffsets);
 
         const float thickness = 1f / 16f;
         float halfThickness = thickness / 2f + inflate;
 
-        vec3 size = to - from;
+        vec3 planeFrom = from, planeTo = to;
+        if (shapeVertexOffsets != null)
+        {
+            planeFrom -= new vec3(inflate, inflate, 0);
+            planeTo += new vec3(inflate, inflate, 0);
+        }
+        vec3 size = planeTo - planeFrom;
         float pixScaleX = size.x / regionW;
         float pixScaleY = size.y / regionH;
 
         // Rotate/scale around the bone origin (vec3.Zero), matching Mine Imator's behaviour.
         mat4 rsm = BuildShapeRotMat(shapeRotation) *
                    (shapeScale != default && shapeScale != vec3.Ones ? mat4.Scale(shapeScale) : mat4.Identity);
-        vec3 Rv(vec3 v) => BendHelper.TransformPoint(rsm, v);
+        vec3 Rv(vec3 v) => BendHelper.TransformPoint(rsm,
+            v + InterpolatePlaneVertexOffset(v, planeFrom, planeTo, shapeVertexOffsets));
 
         var vertices = new List<vec3>();
         var normals = new List<vec3>();
@@ -2604,17 +2657,18 @@ public class MineImatorLoader
                 if (texX >= imgW || texY >= imgH) continue;
                 if (GetAlpha(pixels, texX, texY, imgW) <= 0.5f) continue;
 
-                float posX = textureMirror ? (to.x - (px + 1) * pixScaleX) : (from.x + px * pixScaleX);
-                float posY = to.y - (py + 1) * pixScaleY;
+                float posX = textureMirror ? (planeTo.x - (px + 1) * pixScaleX) : (planeFrom.x + px * pixScaleX);
+                float posY = planeTo.y - (py + 1) * pixScaleY;
 
-                if (inflate != 0f)
+                float pixelInflate = shapeVertexOffsets == null ? inflate : 0f;
+                if (pixelInflate != 0f)
                 {
-                    posX -= inflate;
-                    posY -= inflate;
+                    posX -= pixelInflate;
+                    posY -= pixelInflate;
                 }
 
-                float adjPSX = pixScaleX + (inflate != 0f ? inflate * 2 : 0f);
-                float adjPSY = pixScaleY + (inflate != 0f ? inflate * 2 : 0f);
+                float adjPSX = pixScaleX + pixelInflate * 2;
+                float adjPSY = pixScaleY + pixelInflate * 2;
                 float centerZ = from.z + 0.5f * 0.0625f;
 
                 float uvX = (texX + 0.5f) / imgW;
@@ -2690,7 +2744,7 @@ public class MineImatorLoader
             }
         }
 
-        return BuildMesh(vertices, normals, uvs, indices);
+        return BuildMesh(vertices, normals, uvs, indices, shapeVertexOffsets != null);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2700,7 +2754,8 @@ public class MineImatorLoader
     private Mesh CreateBentPlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
         int texWidth, int texHeight, bool textureMirror, bool invert, float inflate,
         BendParams bend, vec3 shapePosition, vec3 shapeRotation = default, vec3 shapeScale = default,
-        BendStyle bendStyle = BendStyle.ProjectDefault, bool hideFront = false, bool hideBack = false)
+        BendStyle bendStyle = BendStyle.ProjectDefault, bool hideFront = false, bool hideBack = false,
+        vec3[]? shapeVertexOffsets = null)
     {
         var vertices = new List<vec3>();
         var normals = new List<vec3>();
@@ -2766,12 +2821,15 @@ public class MineImatorLoader
         mat4 rsm = BuildShapeRotMat(shapeRotation) *
                    (shapeScale != default && shapeScale != vec3.Ones ? mat4.Scale(shapeScale) : mat4.Identity);
 
+        vec3 Rv(vec3 p) => BendHelper.TransformPoint(rsm, p + InterpolatePlaneVertexOffset(p,
+            new vec3(x1, y1, z1), new vec3(x2, y2, z1), shapeVertexOffsets));
+
         vec3 p1 = segAxis == 0 ? new vec3(x1, y2, z1) : new vec3(x1, y1, z1);
         vec3 p2 = segAxis == 0 ? new vec3(x1, y1, z1) : new vec3(x2, y1, z1);
         float texp1 = segAxis == 0 ? tex1.x : tex3.y;
 
-        p1 = BendHelper.TransformPoint(rsm, p1);
-        p2 = BendHelper.TransformPoint(rsm, p2);
+        p1 = Rv(p1);
+        p2 = Rv(p2);
 
         float startP = bendStart > 0 ? 0f : bendEnd < 0 ? 1f : 1f - bendEnd / bendSize;
         if (invAngle) startP = 1f - startP;
@@ -2815,15 +2873,15 @@ public class MineImatorLoader
             float ntexp1;
             if (segAxis == 0)
             {
-                np1 = BendHelper.TransformPoint(rsm, new vec3(x1 + segPos, y2, z1));
-                np2 = BendHelper.TransformPoint(rsm, new vec3(x1 + segPos, y1, z1));
+                np1 = Rv(new vec3(x1 + segPos, y2, z1));
+                np2 = Rv(new vec3(x1 + segPos, y1, z1));
                 float toff = (segPos / totalSize) * texSX * (textureMirror ? -1f : 1f);
                 ntexp1 = tex1.x + toff;
             }
             else
             {
-                np1 = BendHelper.TransformPoint(rsm, new vec3(x1, y1 + segPos, z1));
-                np2 = BendHelper.TransformPoint(rsm, new vec3(x2, y1 + segPos, z1));
+                np1 = Rv(new vec3(x1, y1 + segPos, z1));
+                np2 = Rv(new vec3(x2, y1 + segPos, z1));
                 float toff = (segPos / totalSize) * texSY;
                 ntexp1 = tex3.y - toff;
             }
@@ -2881,7 +2939,7 @@ public class MineImatorLoader
             texp1 = ntexp1;
         }
 
-        return BuildMesh(vertices, normals, uvs, indices);
+        return BuildMesh(vertices, normals, uvs, indices, shapeVertexOffsets != null);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2891,17 +2949,20 @@ public class MineImatorLoader
     private Mesh CreateBentExtrudedPlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
         int texWidth, int texHeight, uint textureId, bool textureMirror, bool invert,
         float inflate, BendParams bend, vec3 shapePosition, vec3 shapeRotation = default,
-        vec3 shapeScale = default, BendStyle bendStyle = BendStyle.ProjectDefault)
+        vec3 shapeScale = default, BendStyle bendStyle = BendStyle.ProjectDefault,
+        vec3[]? shapeVertexOffsets = null)
     {
         if (textureId == 0)
             return CreateBentPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
-                textureMirror, invert, inflate, bend, shapePosition, shapeRotation, shapeScale, bendStyle);
+                textureMirror, invert, inflate, bend, shapePosition, shapeRotation, shapeScale, bendStyle,
+                shapeVertexOffsets: shapeVertexOffsets);
 
         var pixels = TryGetPixels(textureId, texWidth, texHeight,
             out int imgW, out int imgH, out int contentW, out int contentH);
         if (pixels == null)
             return CreateBentPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
-                textureMirror, invert, inflate, bend, shapePosition, shapeRotation, shapeScale, bendStyle);
+                textureMirror, invert, inflate, bend, shapePosition, shapeRotation, shapeScale, bendStyle,
+                shapeVertexOffsets: shapeVertexOffsets);
 
         int uvStartX = (int)MathF.Ceiling(uvU / texWidth * contentW);
         int uvStartY = (int)MathF.Ceiling(uvV / texHeight * contentH);
@@ -2910,11 +2971,20 @@ public class MineImatorLoader
 
         if (regionW <= 0 || regionH <= 0)
             return CreateBentPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
-                textureMirror, invert, inflate, bend, shapePosition, shapeRotation, shapeScale, bendStyle);
+                textureMirror, invert, inflate, bend, shapePosition, shapeRotation, shapeScale, bendStyle,
+                shapeVertexOffsets: shapeVertexOffsets);
 
         float x1 = Math.Min(from.x, to.x), x2 = Math.Max(from.x, to.x);
         float y1 = Math.Min(from.y, to.y), y2 = Math.Max(from.y, to.y);
         float z1 = from.z + 0.5f * 0.0625f;
+
+        if (shapeVertexOffsets != null)
+        {
+            x1 -= inflate;
+            x2 += inflate;
+            y1 -= inflate;
+            y2 += inflate;
+        }
 
         float pixScaleX = (x2 - x1) / regionW;
         float pixScaleY = (y2 - y1) / regionH;
@@ -2977,8 +3047,12 @@ public class MineImatorLoader
                     pTop = new vec3(px, py, z1 + halfT);
                 }
 
-                pBot = BendHelper.TransformPoint(rsm, pBot);
-                pTop = BendHelper.TransformPoint(rsm, pTop);
+                pBot = BendHelper.TransformPoint(rsm,
+                    pBot + InterpolatePlaneVertexOffset(pBot, new vec3(x1, y1, z1),
+                        new vec3(x2, y2, z1), shapeVertexOffsets));
+                pTop = BendHelper.TransformPoint(rsm,
+                    pTop + InterpolatePlaneVertexOffset(pTop, new vec3(x1, y1, z1),
+                        new vec3(x2, y2, z1), shapeVertexOffsets));
 
                 float innerPos = inner * (bendAlongX ? pixScaleX : pixScaleY);
                 float segP;
@@ -3095,25 +3169,44 @@ public class MineImatorLoader
 
         if (vertices.Count == 0)
             return CreateBentPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
-                textureMirror, invert, inflate, bend, shapePosition, shapeRotation, shapeScale, bendStyle);
+                textureMirror, invert, inflate, bend, shapePosition, shapeRotation, shapeScale, bendStyle,
+                shapeVertexOffsets: shapeVertexOffsets);
 
-        return BuildMesh(vertices, normals, uvs, indices);
+        return BuildMesh(vertices, normals, uvs, indices, shapeVertexOffsets != null);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Mesh building helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private Mesh BuildMesh(List<vec3> vertices, List<vec3> normals, List<vec2> uvs, List<uint> indices)
+    private Mesh BuildMesh(List<vec3> vertices, List<vec3> normals, List<vec2> uvs, List<uint> indices,
+        bool flatNormals = false)
     {
         if (_gl == null || vertices.Count == 0) return null;
+
+        if (flatNormals)
+        {
+            var flatVertices = new List<vec3>(indices.Count);
+            var flatNormalsList = new List<vec3>(indices.Count);
+            var flatUvs = new List<vec2>(indices.Count);
+            var flatIndices = new List<uint>(indices.Count);
+            for (int i = 0; i < indices.Count; i += 3)
+            {
+                int a = (int)indices[i], b = (int)indices[i + 1], c = (int)indices[i + 2];
+                AddFlatTriangle(flatVertices, flatNormalsList, flatUvs, flatIndices,
+                    vertices[a], vertices[b], vertices[c], uvs[a], uvs[b], uvs[c], invert: false);
+            }
+            vertices = flatVertices;
+            normals = flatNormalsList;
+            uvs = flatUvs;
+            indices = flatIndices;
+        }
 
         var mesh = new Mesh(_gl);
         mesh.Vertices.AddRange(vertices);
         mesh.Normals.AddRange(normals);
         mesh.TexCoords.AddRange(uvs);
         mesh.Indices = indices.ToArray();
-        mesh.Upload();
         return mesh;
     }
 
@@ -3138,7 +3231,8 @@ public class MineImatorLoader
 
         bool hasAny = false;
         var result = new vec3[8];
-        for (int i = 0; i < offsets.Length; i++)
+        int count = shape.Type == "plane" ? 4 : 8;
+        for (int i = 0; i < count; i++)
         {
             var entry = offsets[i];
             if (entry == null || entry.Length < 3)
@@ -3155,6 +3249,15 @@ public class MineImatorLoader
         return hasAny ? result : null;
     }
 
+    private static vec3 InterpolatePlaneVertexOffset(vec3 p, vec3 from, vec3 to, vec3[]? offsets)
+    {
+        if (offsets == null) return vec3.Zero;
+        float x = to.x == from.x ? 0f : (p.x - from.x) / (to.x - from.x);
+        float y = to.y == from.y ? 0f : (p.y - from.y) / (to.y - from.y);
+        vec3 Lerp(vec3 a, vec3 b, float t) => a + (b - a) * t;
+        return Lerp(Lerp(offsets[0], offsets[1], x), Lerp(offsets[2], offsets[3], x), y);
+    }
+
     private static void FlipFaceVertically(ref vec2 uv1, ref vec2 uv2, ref vec2 uv3, ref vec2 uv4)
     {
         (uv1, uv4) = (uv4, uv1);
@@ -3164,9 +3267,17 @@ public class MineImatorLoader
     // Adds a face quad with uniform normal and per-vertex UVs
     private static void AddFaceWithUVs(List<vec3> verts, List<vec3> normals, List<vec2> uvs, List<uint> indices,
         vec3 v0, vec3 v1, vec3 v2, vec3 v3, vec3 normal,
-        vec2 uv0, vec2 uv1, vec2 uv2, vec2 uv3, bool invert)
-        => AddFaceWithUVs(verts, normals, uvs, indices, v0, v1, v2, v3, normal, normal, normal, normal, uv0, uv1, uv2,
-            uv3, invert);
+        vec2 uv0, vec2 uv1, vec2 uv2, vec2 uv3, bool invert, bool alternateDiagonal = false)
+    {
+        // Non-planar edited blocks must retain Mine-imator's triangle diagonal.
+        if (alternateDiagonal)
+        {
+            (v0, v1, v2, v3) = (v3, v0, v1, v2);
+            (uv0, uv1, uv2, uv3) = (uv3, uv0, uv1, uv2);
+        }
+        AddFaceWithUVs(verts, normals, uvs, indices, v0, v1, v2, v3,
+            normal, normal, normal, normal, uv0, uv1, uv2, uv3, invert);
+    }
 
     private static void AddFaceWithUVs(List<vec3> verts, List<vec3> normals, List<vec2> uvs, List<uint> indices,
         vec3 v0, vec3 v1, vec3 v2, vec3 v3, vec3 n01, vec3 n23,
