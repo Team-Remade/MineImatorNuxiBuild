@@ -156,7 +156,7 @@ public class Menubar : UiPanel
 
             if (ImGui.BeginMenu(Localization.Label("text.menu.view", "View")))
             {
-                if (ImGui.MenuItem("Performance / Benchmark"))
+                if (ImGui.MenuItem("Rendering Debug / Benchmark", "F11"))
                     PerformanceRequested?.Invoke();
                 ImGui.Separator();
                 if (ImGui.MenuItem(Localization.Label("text.menu.reset_layout", "Reset Layout")))

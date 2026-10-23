@@ -23,6 +23,8 @@ namespace MineImatorSimplyRemade.core.window.windows;
 public class CameraWindow : Window
 {
     private Viewport? _panel;
+    public Action? RenderingDebugRequested { get; set; }
+    public PerformanceMetricsOverlay? MetricsOverlay { get; set; }
 
     /// <summary>The main window's GLFW handle, used to restore its GL context
     /// after this window finishes its ImGui frame.</summary>
@@ -225,10 +227,11 @@ public class CameraWindow : Window
         }
 
         ImGui.End();
+        MetricsOverlay?.Render();
     }
 
     /// <summary>
-    /// Handles keyboard shortcuts (F5, F6) specific to the undocked camera window.
+    /// Handles keyboard shortcuts (F5, F6, F11, F12) in the undocked camera window.
     /// This ensures that when the camera window is in focus in its own native window,
     /// keyboard shortcuts are processed by this window's ImGui context instead of 
     /// being lost to the main window's context.
@@ -244,13 +247,20 @@ public class CameraWindow : Window
 
         if (!_keyboardShortcutsArmed)
         {
-            if (!ImGui.IsKeyDown(ImGuiKey.F5) && !ImGui.IsKeyDown(ImGuiKey.F6))
+            if (!ImGui.IsKeyDown(ImGuiKey.F5) && !ImGui.IsKeyDown(ImGuiKey.F6) &&
+                !ImGui.IsKeyDown(ImGuiKey.F11) && !ImGui.IsKeyDown(ImGuiKey.F12))
                 _keyboardShortcutsArmed = true;
             return;
         }
 
         switch (io.WantTextInput)
         {
+            case false when ImGui.IsKeyPressed(ImGuiKey.F12, false):
+                MetricsOverlay?.ToggleVisibility();
+                return;
+            case false when ImGui.IsKeyPressed(ImGuiKey.F11, false):
+                RenderingDebugRequested?.Invoke();
+                return;
             // F5: Toggle high-quality preview (shadows) for the camera viewport
             case false when ImGui.IsKeyPressed(ImGuiKey.F5, false):
                 _panel.ToggleHighQualityPreview();

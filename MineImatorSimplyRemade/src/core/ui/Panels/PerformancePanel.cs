@@ -20,23 +20,36 @@ public sealed class PerformancePanel : UiPanel
     private ProfileSummary? _summary;
     private ProfileStageSummary[] _stages = [];
     private string _message = "";
+    private string _renderContext = "";
+
+    public void ToggleVisibility()
+    {
+        IsOpen = !IsOpen;
+        if (!IsOpen) return;
+
+        FrameProfiler.Shared.Enabled = true;
+        _showCapture = false;
+        _nextRefresh = 0;
+    }
 
     public override void Render()
     {
         if (!IsOpen) return;
         using var timing = FrameProfiler.Shared.Measure(ProfileStage.ProfilerUi);
         ImGui.SetNextWindowSize(new Vector2(760, 620), ImGuiCond.FirstUseEver);
-        if (!ImGui.Begin("Performance / Benchmark", ref IsOpen))
+        if (!ImGui.Begin("Rendering Debug / Benchmark###Performance / Benchmark", ref IsOpen))
         {
             ImGui.End();
             return;
         }
 
         var profiler = FrameProfiler.Shared;
+        ImGui.TextUnformatted("F11: toggle rendering debug view");
         bool enabled = profiler.Enabled;
         if (ImGui.Checkbox("Enable CPU profiling", ref enabled))
             profiler.Enabled = enabled;
         ImGui.TextWrapped("CPU wall-clock timings include driver blocking, not asynchronous GPU execution. Stages are inclusive: child rows overlap their parents and must not be added together.");
+        ImGui.TextWrapped("Closing this view leaves profiling and active captures running. Uncheck CPU profiling to disable sampling.");
         ImGui.Separator();
         ImGui.SetNextItemWidth(280);
         ImGui.InputText("Capture label", ref _label, 160);
@@ -96,6 +109,7 @@ public sealed class PerformancePanel : UiPanel
             _summary = _showCapture ? profiler.GetCaptureSummary() : profiler.GetLiveSummary();
             _stages = _summary.Stages.Where(row => row.MeanCalls > 0 || row.MeanMs > 0)
                 .OrderByDescending(row => row.MeanMs).ToArray();
+            _renderContext = CaptureContext?.Invoke() ?? "";
             _nextRefresh = now + 0.5;
         }
 
@@ -117,6 +131,8 @@ public sealed class PerformancePanel : UiPanel
                     ImGui.TextUnformatted($"{row.Counter}: mean {row.MeanValue:N1}/frame, max {row.MaxValue:N0}");
             ImGui.TextWrapped("Counters count repeated work across views, not unique objects. MeshesSubmitted counts scene/ground submissions, excluding shadow/pick/direct-overlay draws; it is not a GL draw-call count. SceneDraw includes sorting. Frame includes limiter/swap waits. Disable profiling for normal use.");
         }
+        if (ImGui.CollapsingHeader("Current renderer / scene details"))
+            ImGui.TextWrapped(_renderContext);
         ImGui.End();
     }
 

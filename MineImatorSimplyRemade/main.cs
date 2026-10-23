@@ -167,6 +167,8 @@ public static class main
             Glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
 
             CameraWindow = new CameraWindow(Glfw, _gl, MainWindow.WindowHandle);
+            CameraWindow.RenderingDebugRequested = MainWindow.ToggleRenderingDebug;
+            CameraWindow.MetricsOverlay = MainWindow.MetricsOverlay;
             CameraWindow.SetClearColor(new vec4(0.1f, 0.1f, 0.1f, 1f));
             // Each window owns its own ImGui context. Render() sets it current before
             // every frame so the two contexts never interfere.
@@ -277,9 +279,13 @@ public static class main
                     }
 
                     int targetFps = preferencesPanel?.TargetFps ?? MainLoopTargetFps;
+                    long workEndTicks = frameTimer.ElapsedTicks;
                     long targetFrameTicks = targetFps > 0 ? Stopwatch.Frequency / targetFps : 0;
                     using (profiler.Measure(ProfileStage.FrameLimiter))
                         LimitFrameRate(frameTimer, frameStartTicks, targetFrameTicks);
+                    MainWindow.MetricsOverlay.RecordFrame(
+                        (frameTimer.ElapsedTicks - frameStartTicks) * 1000.0 / Stopwatch.Frequency,
+                        (workEndTicks - frameStartTicks) * 1000.0 / Stopwatch.Frequency, targetFps);
                 }
                 finally
                 {

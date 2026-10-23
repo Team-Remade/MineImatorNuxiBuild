@@ -99,6 +99,7 @@ public class MainWindow : Window
 
     private readonly Menubar _menubar;
     private readonly PerformancePanel _performancePanel = new();
+    public PerformanceMetricsOverlay MetricsOverlay { get; } = new();
     private readonly ProjectManager _projectManager = ProjectManager.Instance;
     private readonly Dictionary<string, uint> _thumbnailTextures = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _homeSplashPool = new();
@@ -258,7 +259,7 @@ public class MainWindow : Window
         _menubar.ImportResourcePackRequested = ImportResourcePackArchiveFromDialog;
         _menubar.ImportResourcePackFolderRequested = ImportResourcePackFolderFromDialog;
         _menubar.ResetLayoutRequested = RequestDockSpaceRebuild;
-        _menubar.PerformanceRequested = () => _performancePanel.IsOpen = !_performancePanel.IsOpen;
+        _menubar.PerformanceRequested = ToggleRenderingDebug;
         _performancePanel.CaptureContext = BuildBenchmarkContext;
         _menubar.ResetWorkCameraRequested = () => _mainViewport?.Camera.ResetToDefaultPose();
         _menubar.HomeScreenRequested = () =>
@@ -295,6 +296,8 @@ public class MainWindow : Window
     public Viewport? GetCameraViewport() => _cameraViewport;
 
     public PreferencesPanel? GetPreferencesPanel() => _preferencesPanel;
+
+    public void ToggleRenderingDebug() => _performancePanel.ToggleVisibility();
 
     public void InitializeRuntime(Action<StartupProgressState>? progress = null)
     {
@@ -550,6 +553,7 @@ public class MainWindow : Window
         RenderProjectHomeScreen();
         RenderToast();
         _performancePanel.Render();
+        MetricsOverlay.Render();
     }
 
     private unsafe string BuildBenchmarkContext()
@@ -561,7 +565,9 @@ public class MainWindow : Window
                 CountNodes(root, 1);
         string gpu = Silk.NET.Core.Native.SilkMarshal.PtrToString((IntPtr)GL.GetString(StringName.Renderer)) ?? "Unknown";
         string glVersion = Silk.NET.Core.Native.SilkMarshal.PtrToString((IntPtr)GL.GetString(StringName.Version)) ?? "Unknown";
-        return $"GPU: {gpu}\nOpenGL: {glVersion}\nWindow framebuffer: {WindowWidth}x{WindowHeight}\n" +
+        var sceneDevice = MineImatorSimplyRemade.core.graphics.VeldridContext.GraphicsDevice;
+        string sceneBackend = sceneDevice == null ? "OpenGL" : $"{sceneDevice.BackendType} ({sceneDevice.DeviceName})";
+        return $"Scene backend: {sceneBackend}\nUI / previews / exports: OpenGL\nGPU (OpenGL): {gpu}\nOpenGL: {glVersion}\nWindow framebuffer: {WindowWidth}x{WindowHeight}\n" +
                $"FPS cap: {_preferencesPanel?.TargetFps ?? 60} (0 = unlimited)\n" +
                $"Main viewport: {_mainViewport?.GetProfilingDescription()}\n" +
                $"Preview: {_cameraViewport?.GetProfilingDescription()}, inline={_cameraViewport?.InlineVisible}, detached={_cameraViewport?.Undocked}\n" +
@@ -658,8 +664,21 @@ public class MainWindow : Window
         if (!_keyboardShortcutsArmed)
         {
             if (!ImGui.IsKeyDown(ImGuiKey.F5) && !ImGui.IsKeyDown(ImGuiKey.F6) &&
-                !ImGui.IsKeyDown(ImGuiKey.F7) && !ImGui.IsKeyDown(ImGuiKey.F8))
+                !ImGui.IsKeyDown(ImGuiKey.F7) && !ImGui.IsKeyDown(ImGuiKey.F8) &&
+                !ImGui.IsKeyDown(ImGuiKey.F11) && !ImGui.IsKeyDown(ImGuiKey.F12))
                 _keyboardShortcutsArmed = true;
+            return;
+        }
+
+        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F12, false))
+        {
+            MetricsOverlay.ToggleVisibility();
+            return;
+        }
+
+        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F11, false))
+        {
+            ToggleRenderingDebug();
             return;
         }
 
