@@ -60,6 +60,14 @@ public static class main
 
         try
         {
+            string renderer = args.FirstOrDefault(arg => arg.StartsWith("--renderer=", StringComparison.OrdinalIgnoreCase))?
+                .Split('=', 2)[1].ToLowerInvariant() ?? "opengl";
+            if (renderer is not ("opengl" or "vulkan" or "d3d11"))
+            {
+                Console.Error.WriteLine("Supported renderers: --renderer=opengl, --renderer=vulkan, --renderer=d3d11");
+                return 1;
+            }
+
             PreferencesPanel.LoadLanguagePreference();
             NativeLibraryBootstrap.Initialize();
 
@@ -111,14 +119,18 @@ public static class main
             _gl = GL.GetApi(Glfw.GetProcAddress);
             MainWindow.SetGL(_gl);
             
-            // Initialize Veldrid Rendering Backend
-            try
+            if (renderer != "opengl")
             {
-                VeldridContext.CreateGraphicsDevice(Glfw, MainWindow.WindowHandle, size.x, size.y);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Veldrid] Failed to create Veldrid graphics context: {ex.Message}");
+                try
+                {
+                    VeldridContext.CreateSceneRenderer(_gl, renderer == "vulkan"
+                        ? Veldrid.GraphicsBackend.Vulkan
+                        : Veldrid.GraphicsBackend.Direct3D11);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Veldrid] Failed to initialize requested {renderer} scene renderer: {ex.Message}. Using OpenGL.");
+                }
             }
 
             Directory.CreateDirectory(ApplicationLocalDirectoryPath);
@@ -305,6 +317,7 @@ public static class main
         }
         finally
         {
+            VeldridContext.Dispose();
             Logger.Shutdown();
         }
     }

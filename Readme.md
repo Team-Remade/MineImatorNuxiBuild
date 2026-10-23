@@ -19,6 +19,23 @@ Requirements
 5. Run `cd ./MineImatorSimplyRemade`
 6. Run `dotnet run`
 
+## Experimental Veldrid scene renderer
+
+OpenGL remains the default renderer. To render the main scene through Veldrid,
+run `dotnet run -- --renderer=vulkan` or, on Windows,
+`dotnet run -- --renderer=d3d11` from `MineImatorSimplyRemade`.
+Use `--renderer=opengl` to explicitly select the default path.
+
+This is an incremental migration, not a GL-free renderer. Veldrid renders the
+main viewport's geometry into an offscreen target and submits real GPU draw
+commands. Its output is read back and uploaded into the existing OpenGL UI.
+The window, asset uploads, editor overlays, camera previews, and exports still
+use OpenGL. Advanced scene lighting and post-processing are not yet ported;
+editor overlays do not have the Veldrid scene depth buffer. The bridge incurs
+GPU synchronization and CPU-transfer overhead and is not a performance upgrade.
+The viewport labels the experimental backend, and initialization or rendering
+failures are logged before falling back to OpenGL.
+
 ## Mine-imator Minecraft assets
 
 The bundled 26.3 catalog includes 129 additional character models from the

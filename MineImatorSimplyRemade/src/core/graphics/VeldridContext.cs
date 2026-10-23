@@ -12,7 +12,10 @@ public static class VeldridContext
     public static GraphicsDevice? GraphicsDevice { get; private set; }
     public static ResourceFactory? ResourceFactory => GraphicsDevice?.ResourceFactory;
     public static CommandList? MainCommandList { get; private set; }
-    public static Swapchain? MainSwapchain => GraphicsDevice?.MainSwapchain;
+    public static Swapchain? MainSwapchain => _hasMainSwapchain ? GraphicsDevice?.MainSwapchain : null;
+    private static bool _hasMainSwapchain;
+
+    public static VeldridSceneRenderer? SceneRenderer { get; private set; }
 
     public static VeldridPipelineCache? PipelineCache { get; private set; }
     public static VeldridUniformBufferPool? UniformBufferPool { get; private set; }
@@ -21,6 +24,39 @@ public static class VeldridContext
     public static VeldridCommandRecorder? CommandRecorder { get; private set; }
 
     public static bool IsInitialized => GraphicsDevice != null;
+
+    public static void CreateSceneRenderer(Silk.NET.OpenGL.GL gl, GraphicsBackend backend)
+    {
+        if (IsInitialized)
+            throw new InvalidOperationException("A Veldrid device is already initialized.");
+
+        // The editor still owns an OpenGL window. Do not attach a competing
+        // swapchain to it: render the scene offscreen and bridge its output.
+        var options = new GraphicsDeviceOptions(
+            debug: false,
+            swapchainDepthFormat: null,
+            syncToVerticalBlank: false,
+            resourceBindingModel: ResourceBindingModel.Improved,
+            preferDepthRangeZeroToOne: true,
+            preferStandardClipSpaceYDirection: true);
+
+        try
+        {
+            GraphicsDevice = backend switch
+            {
+                GraphicsBackend.Vulkan => Veldrid.GraphicsDevice.CreateVulkan(options),
+                GraphicsBackend.Direct3D11 => Veldrid.GraphicsDevice.CreateD3D11(options),
+                _ => throw new NotSupportedException($"Unsupported scene backend: {backend}")
+            };
+            SceneRenderer = new VeldridSceneRenderer(GraphicsDevice, gl);
+            Console.WriteLine($"[Veldrid] Experimental scene renderer: Backend={GraphicsDevice.BackendType}, DeviceName={GraphicsDevice.DeviceName}. UI, previews and exports remain OpenGL.");
+        }
+        catch
+        {
+            Dispose();
+            throw;
+        }
+    }
 
     public static unsafe GraphicsDevice CreateGraphicsDevice(
         Glfw glfw,
@@ -74,6 +110,7 @@ public static class VeldridContext
         }
 
         MainCommandList = GraphicsDevice.ResourceFactory.CreateCommandList();
+        _hasMainSwapchain = true;
 
         // Initialize shared caching and resource management subsystems
         PipelineCache = new VeldridPipelineCache(GraphicsDevice);
@@ -110,7 +147,9 @@ public static class VeldridContext
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             var hwnd = nativeWindow.Win32?.Hwnd ?? IntPtr.Zero;
-            var hinstance = Process.GetCurrentProcess().Handle;
+            using var process = Process.GetCurrentProcess();
+            var hinstance = process.MainModule?.BaseAddress
+                ?? throw new InvalidOperationException("Unable to obtain the Win32 module instance.");
             return SwapchainSource.CreateWin32((nint)hwnd, hinstance);
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
@@ -135,6 +174,9 @@ public static class VeldridContext
 
     public static void Dispose()
     {
+        GraphicsDevice?.WaitForIdle();
+        SceneRenderer?.Dispose();
+        SceneRenderer = null;
         CommandRecorder?.Dispose();
         CommandRecorder = null;
         UploadManager?.Dispose();
@@ -150,5 +192,6 @@ public static class VeldridContext
         MainCommandList = null;
         GraphicsDevice?.Dispose();
         GraphicsDevice = null;
+        _hasMainSwapchain = false;
     }
 }

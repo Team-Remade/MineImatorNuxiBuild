@@ -68,11 +68,8 @@ public class VeldridFramebuffer : IDisposable
 
     private void Recreate(GraphicsDevice gd, uint width, uint height)
     {
-        var colorUsage = TextureUsage.RenderTarget;
-        if (!IsMultisampled)
-        {
-            colorUsage |= TextureUsage.Sampled;
-        }
+        // Views require Sampled or Storage usage, including multisampled views.
+        var colorUsage = TextureUsage.RenderTarget | TextureUsage.Sampled;
 
         var colorDesc = new TextureDescription(
             width,
@@ -102,7 +99,7 @@ public class VeldridFramebuffer : IDisposable
                 1,
                 1,
                 DepthFormat,
-                TextureUsage.DepthStencil,
+                TextureUsage.DepthStencil | TextureUsage.Sampled,
                 TextureType.Texture2D,
                 SampleCount);
 

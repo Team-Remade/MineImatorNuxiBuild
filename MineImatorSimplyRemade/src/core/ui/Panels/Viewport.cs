@@ -5,6 +5,7 @@ using System.Reflection;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.diagnostics;
+using MineImatorSimplyRemade.core.graphics;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.project;
@@ -1077,10 +1078,11 @@ public class Viewport : UiPanel
         return normalizedX >= CelestialFillLightMinXAngle && normalizedX <= CelestialFillLightMaxXAngle;
     }
 
-    private void RenderSky(Camera camera, uint width, uint height)
+    private (vec3 Sun, vec3 Moon, vec3 Fog) PrepareSceneEnvironment(Camera camera)
     {
+        Mesh.GlobalCameraPosition = camera.Position;
         var p = PropertiesPanel;
-        if (p == null) return;
+        if (p == null) return (vec3.Zero, vec3.Zero, vec3.Zero);
         float orbit = p.SkyTime * 15f;
         float[] sunAngles = [p.SunAngle[0] + orbit, p.SunAngle[1], p.SunAngle[2]];
         bool sunFillLightActive = IsCelestialFillLightActive(sunAngles[0]);
@@ -1117,7 +1119,6 @@ public class Viewport : UiPanel
         vec3 fogColor = p.CustomFogColor
             ? new vec3(p.FogColor[0], p.FogColor[1], p.FogColor[2])
             : new vec3(p.BackgroundColor[0], p.BackgroundColor[1], p.BackgroundColor[2]);
-        Mesh.GlobalCameraPosition = camera.Position;
         Mesh.FogEnabled = p.FogEnabled;
         Mesh.FogColor = p.CustomObjectFogColor
             ? new vec3(p.ObjectFogColor[0], p.ObjectFogColor[1], p.ObjectFogColor[2])
@@ -1131,6 +1132,14 @@ public class Viewport : UiPanel
             : Mesh.FogColor;
         Mesh.HeightFogSize = Math.Max(1f, p.HeightFogSize);
         Mesh.HeightFogOffset = p.HeightFogOffset;
+        return (sunDirection, moonDirection, fogColor);
+    }
+
+    private void RenderSky(Camera camera, uint width, uint height)
+    {
+        var p = PropertiesPanel;
+        if (p == null) return;
+        var (sunDirection, moonDirection, fogColor) = PrepareSceneEnvironment(camera);
         if (!p.UseSky || _skyShader == null || _backgroundVao == 0) return;
         ReloadSkyTextures();
         vec3 forward = (camera.Target - camera.Position).Normalized;
@@ -2457,6 +2466,13 @@ public class Viewport : UiPanel
             ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
         ImGui.PopStyleVar();
 
+        if (VeldridContext.SceneRenderer != null)
+        {
+            UiText.Disabled($"Experimental {VeldridContext.GraphicsDevice!.BackendType} scene | OpenGL UI and editor overlays");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Basic scene shading only. Advanced lighting/effects, camera previews and exports still use the OpenGL renderer. GPU readback is used to display this viewport.");
+        }
+
         var size = ImGui.GetContentRegionAvail();
         if (size.X < 1) size.X = 1;
         if (size.Y < 1) size.Y = 1;
@@ -2486,6 +2502,22 @@ public class Viewport : UiPanel
         HandleCameraInput(imageMin, imageSize, activeCamera, activeCamObj);
 
         // ── 3D render into FBO ────────────────────────────────────────────────
+        bool renderedWithVeldrid = false;
+        if (VeldridContext.SceneRenderer is { } sceneRenderer)
+        {
+            try
+            {
+                RenderVeldridScene(sceneRenderer, activeCamera, activeCamObj, w, h, imageMin, imageSize);
+                renderedWithVeldrid = true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Veldrid] Scene rendering failed: {ex}. Reverting to OpenGL.");
+                VeldridContext.Dispose();
+            }
+        }
+
+        if (!renderedWithVeldrid)
         {
             // Excludes camera feeds above and the inline preview below.
             using var mainSceneScope = FrameProfiler.Shared.Measure(ProfileStage.MainScene);
@@ -2797,6 +2829,87 @@ public class Viewport : UiPanel
 
         ImGui.EndChild();
         ImGui.End();
+    }
+
+    private void RenderVeldridScene(
+        VeldridSceneRenderer renderer, Camera activeCamera, CameraSceneObject? activeCamObj,
+        uint width, uint height, Vector2 imageMin, Vector2 imageSize)
+    {
+        using var mainSceneScope = FrameProfiler.Shared.Measure(ProfileStage.MainScene);
+        FrameProfiler.Shared.Count(ProfileCounter.MainRenderInvocations);
+        Camera camera = BuildPreparedCamera(activeCamera, activeCamObj);
+        PrepareSceneEnvironment(camera);
+        mat4 view = camera.GetViewMatrix();
+        mat4 projection = camera.GetProjectionMatrix((float)width / height);
+        var frustum = Frustum.FromViewProj(projection * view);
+        float[] background = PropertiesPanel?.BackgroundColor ?? [0.18f, 0.18f, 0.18f, 1f];
+        bool wireframe = _viewportRenderMode == ViewportRenderMode.Wireframe;
+        bool forceUnshaded = wireframe || _viewportRenderMode == ViewportRenderMode.FlatUnshaded;
+        SceneRenderMode renderMode = _viewportRenderMode == ViewportRenderMode.Rendered
+            ? SceneRenderMode.Rendered : SceneRenderMode.Unrendered;
+
+        Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
+        bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
+        UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
+        Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
+        Mesh.AnimatedTextureSpeedScale = Math.Clamp(PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240) / 20.0;
+        using var evaluation = SceneObject.BeginRenderEvaluation();
+        foreach (var root in SceneObjects)
+            root.RefreshInheritedMaterials();
+
+        _cachedRenderItems.Clear();
+        _cachedRenderItemsNoAo.Clear();
+        _cachedOverlays.Clear();
+        CollectRenderPairs(SceneObjects, camera.Position, renderMode, frustum,
+            _cachedRenderItems, _cachedRenderItemsNoAo, _cachedOverlays);
+        _cachedRenderItems.AddRange(_cachedRenderItemsNoAo);
+
+        renderer.BeginFrame(width, height, view, projection,
+            new Vector4(background[0], background[1], background[2], background[3]), wireframe);
+        if (_groundPlane != null && GroundPlaneVisible)
+            renderer.Draw(_groundPlane, _groundPlaneModel, forceUnshaded);
+        foreach (var item in _cachedRenderItems.OrderBy(item => item.sortDepth))
+        {
+            bool previousBlur = item.mesh.BlurTexture;
+            item.mesh.BlurTexture = item.blurTexture;
+            try { renderer.Draw(item.mesh, item.model, forceUnshaded); }
+            finally { item.mesh.BlurTexture = previousBlur; }
+            FrameProfiler.Shared.Count(ProfileCounter.MeshesSubmitted);
+        }
+        if (OverlaysEnabled)
+            foreach (var (model, mesh) in _cachedOverlays)
+                renderer.Draw(mesh, model, true);
+        renderer.EndFrame(_colorTex);
+
+        // Keep editor tools usable during the scene-renderer migration. These
+        // draw over the bridged colour target; scene shading above is Veldrid.
+        Mesh.ShadowsEnabled = false;
+        Mesh.ShadowMapTexture = 0;
+        Mesh.ShadowLightSpaceMatrix = mat4.Identity;
+        Mesh.ShadowDebugMode = 0;
+        Mesh.IndirectWorldEnabled = false;
+        Array.Clear(Mesh.PointShadowCubeTextures);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
+        Gl.Viewport(0, 0, width, height);
+        Gl.DepthMask(true);
+        Gl.Clear(ClearBufferMask.DepthBufferBit);
+        if (OverlaysEnabled)
+        {
+            RenderLightBillboards(view, projection);
+            RenderBoneIndicators(view, projection);
+            RenderLightGizmos(view, projection, (int)width, (int)height, glm.Degrees(camera.FovY));
+            RenderParticleSpawnerEmissionShapes(view, projection);
+            RenderSilhouettePass(view, projection);
+            RenderEdgePass();
+            Gizmo?.Render(Camera, view, projection, imageMin, imageSize);
+        }
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Disable(GLEnum.DepthTest);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+        if (!float.IsNaN(_pendingPickX))
+            ExecutePendingPick(imageMin, imageSize);
     }
 
     /// <summary>
