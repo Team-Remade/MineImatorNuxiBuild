@@ -302,6 +302,7 @@ public static class main
             Services.Shutdown();
 
             MainWindow.ShutdownWorldImporter();
+            MainWindow.ShutdownViewportFramebuffers();
             MainWindow.ShutdownImgui();
             CameraWindow.ShutdownImgui();
 

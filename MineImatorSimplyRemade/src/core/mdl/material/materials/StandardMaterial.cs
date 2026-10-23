@@ -49,14 +49,14 @@ public class StandardMaterial : Material
     public float EmissionEnergyMultiplier = 1f;
 
     /// <summary>
-    /// Base subsurface scattering amount (0 = disabled).
+    /// Subsurface scattering distance in Mine-imator pixels, 16 per block (0 = disabled).
     /// </summary>
     public float Subsurface = 0f;
 
     /// <summary>
     /// Per-channel subsurface scattering radius.
     /// </summary>
-    public vec3 SubsurfaceRadius = new vec3(0.42f, 0.24f, 0.14f);
+    public vec3 SubsurfaceRadius = vec3.Ones;
 
     /// <summary>
     /// Subsurface tint colour.

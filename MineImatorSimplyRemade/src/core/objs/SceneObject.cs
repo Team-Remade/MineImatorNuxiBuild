@@ -37,7 +37,7 @@ public class MaterialSettings
     public vec4 EmissionColor = new vec4(0f, 0f, 0f, 1f);
     public float EmissionEnergy = 1f;
     public float Subsurface = 0f;
-    public vec3 SubsurfaceRadius = new vec3(0.42f, 0.24f, 0.14f);
+    public vec3 SubsurfaceRadius = vec3.Ones;
     public vec4 SubsurfaceColor = new vec4(1f, 1f, 1f, 1f);
     public float SubsurfaceHighlight = 0.35f;
     public float SubsurfaceHighlightStrength = 0.6f;
@@ -877,12 +877,12 @@ public class SceneObject
             mesh.SubsurfaceHighlight = settings.SubsurfaceHighlight;
             mesh.SubsurfaceHighlightStrength = settings.SubsurfaceHighlightStrength;
             mesh.EmissionIndirectOnly = settings.EmissionIndirectOnly;
-            if (UsePropertyInheritance)
+            for (int i = 0; i < mesh.GetSurfaceCount(); i++)
             {
-                for (int i = 0; i < mesh.GetSurfaceCount(); i++)
+                if (mesh.SurfaceGetMaterial(i) is not StandardMaterial material) continue;
+                material.Metallic = settings.Metallic;
+                if (UsePropertyInheritance)
                 {
-                    if (mesh.SurfaceGetMaterial(i) is not StandardMaterial material) continue;
-                    material.Metallic = settings.Metallic;
                     material.Roughness = settings.Roughness;
                     material.NormalEnabled = settings.NormalEnabled;
                     material.NormalTexture = settings.NormalTexture;

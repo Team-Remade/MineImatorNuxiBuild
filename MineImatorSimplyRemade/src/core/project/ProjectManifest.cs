@@ -118,9 +118,9 @@ public class ProjectRenderSettings
     public float SubsurfaceStrength { get; set; } = 1f;
     public float SubsurfaceDesaturation { get; set; } = 0f;
     public float SubsurfaceColorThreshold { get; set; } = 0f;
-    public float SubsurfaceRadiusR { get; set; } = 0.42f;
-    public float SubsurfaceRadiusG { get; set; } = 0.24f;
-    public float SubsurfaceRadiusB { get; set; } = 0.14f;
+    public float SubsurfaceRadiusR { get; set; } = 1f;
+    public float SubsurfaceRadiusG { get; set; } = 1f;
+    public float SubsurfaceRadiusB { get; set; } = 1f;
     public float SubsurfaceHighlightSize { get; set; } = 1f;
     public float SubsurfaceHighlightStrength { get; set; } = 1f;
     public float SubsurfaceHighlightSharpness { get; set; } = 2f;
@@ -415,9 +415,9 @@ public class ProjectSceneObjectEntry
     public ProjectVec4 EmissionColor { get; set; } = new() { X = 0f, Y = 0f, Z = 0f, W = 1f };
     public float EmissionEnergy { get; set; } = 1f;
     public float Subsurface { get; set; } = 0f;
-    public float SubsurfaceRadiusR { get; set; } = 0.42f;
-    public float SubsurfaceRadiusG { get; set; } = 0.24f;
-    public float SubsurfaceRadiusB { get; set; } = 0.14f;
+    public float SubsurfaceRadiusR { get; set; } = 1f;
+    public float SubsurfaceRadiusG { get; set; } = 1f;
+    public float SubsurfaceRadiusB { get; set; } = 1f;
     public ProjectVec4 SubsurfaceColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f, W = 1f };
     public float SubsurfaceHighlight { get; set; } = 0.35f;
     public float SubsurfaceHighlightStrength { get; set; } = 0.6f;

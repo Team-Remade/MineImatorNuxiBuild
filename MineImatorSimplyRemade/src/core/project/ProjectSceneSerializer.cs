@@ -848,9 +848,9 @@ public static class ProjectSceneSerializer
             material.EmissionEnergy = entry.EmissionEnergy;
             material.Subsurface = entry.Subsurface;
             material.SubsurfaceRadius = new vec3(
-                Math.Max(0.0001f, entry.SubsurfaceRadiusR),
-                Math.Max(0.0001f, entry.SubsurfaceRadiusG),
-                Math.Max(0.0001f, entry.SubsurfaceRadiusB));
+                Math.Max(0f, entry.SubsurfaceRadiusR),
+                Math.Max(0f, entry.SubsurfaceRadiusG),
+                Math.Max(0f, entry.SubsurfaceRadiusB));
             material.SubsurfaceColor = ToVec4(entry.SubsurfaceColor);
             material.SubsurfaceHighlight = Math.Clamp(entry.SubsurfaceHighlight, -0.95f, 0.95f);
             material.SubsurfaceHighlightStrength = Math.Max(0f, entry.SubsurfaceHighlightStrength);

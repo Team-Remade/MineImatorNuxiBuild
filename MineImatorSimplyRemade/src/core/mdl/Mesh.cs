@@ -584,12 +584,12 @@ public class Mesh : IDisposable
     }
 
     /// <summary>
-    /// Base subsurface scattering amount (0 = disabled).
+    /// Subsurface scattering distance in Mine-imator pixels, 16 per block (0 = disabled).
     /// </summary>
     public float Subsurface
     {
         get => DefaultMaterial.Subsurface;
-        set => DefaultMaterial.Subsurface = Math.Clamp(value, 0f, 1f);
+        set => DefaultMaterial.Subsurface = Math.Max(value, 0f);
     }
 
     /// <summary>
@@ -599,9 +599,9 @@ public class Mesh : IDisposable
     {
         get => DefaultMaterial.SubsurfaceRadius;
         set => DefaultMaterial.SubsurfaceRadius = new vec3(
-            Math.Max(0.0001f, value.x),
-            Math.Max(0.0001f, value.y),
-            Math.Max(0.0001f, value.z));
+            Math.Max(0f, value.x),
+            Math.Max(0f, value.y),
+            Math.Max(0f, value.z));
     }
 
     /// <summary>
@@ -1112,7 +1112,7 @@ public class Mesh : IDisposable
     public static float SssStrength = 1f;
     public static float SssDesaturation = 0f;
     public static float SssColorThreshold = 0f;
-    public static vec3 SssRadius = new(0.42f, 0.24f, 0.14f);
+    public static vec3 SssRadius = vec3.Ones;
     public static float SssHighlightSize = 1f;
     public static float SssHighlightStrength = 1f;
     public static float SssHighlightSharpness = 2f;
@@ -1199,6 +1199,8 @@ public class Mesh : IDisposable
         SetUniformBool("uEmissionEnabled", EmissionEnabled);
         SetUniformVec3("uEmissionColor", EmissionColor);
         SetUniformFloat("uEmissionEnergy", EmissionEnergy);
+        SetUniformBool("uEmissionIndirectOnly", EmissionIndirectOnly);
+        SetUniformFloat("uMetallic", Math.Clamp(DefaultMaterial.Metallic, 0f, 1f));
         SetUniformFloat("uSSS", Subsurface);
         SetUniformVec3("uSSSRadius", SubsurfaceRadius);
         SetUniformVec3("uSSSColor", SubsurfaceColor);
@@ -1210,9 +1212,9 @@ public class Mesh : IDisposable
         SetUniformFloat("uSSSDesaturation", Math.Clamp(SssDesaturation, 0f, 1f));
         SetUniformFloat("uSSSColorThreshold", Math.Clamp(SssColorThreshold, 0f, 1f));
         SetUniformVec3("uSSSGlobalRadius", new vec3(
-            Math.Max(SssRadius.x, 0.0001f),
-            Math.Max(SssRadius.y, 0.0001f),
-            Math.Max(SssRadius.z, 0.0001f)));
+            Math.Max(SssRadius.x, 0f),
+            Math.Max(SssRadius.y, 0f),
+            Math.Max(SssRadius.z, 0f)));
         SetUniformFloat("uSSSHighlightSize", Math.Max(SssHighlightSize, 0f));
         SetUniformFloat("uSSSGlobalHighlightStrength", Math.Max(SssHighlightStrength, 0f));
         SetUniformFloat("uSSSHighlightSharpness", Math.Max(SssHighlightSharpness, 0.01f));

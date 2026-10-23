@@ -4,124 +4,155 @@ out vec4 FragColor;
 
 uniform sampler2D uScene;
 uniform sampler2D uDepth;
+uniform sampler2D uAlbedo;
 uniform vec2 uTexelSize;
-uniform float uNear;
-uniform float uFar;
+uniform mat4 uProjection;
+uniform mat4 uInverseProjection;
 uniform float uPrecision;
 uniform float uRayStep;
 uniform int uSampleCount;
 
-float linearDepth(float depth)
+vec3 viewPosition(vec2 uv, float depth)
 {
-    float z = depth * 2.0 - 1.0;
-    return (2.0 * uNear * uFar) / max(uFar + uNear - z * (uFar - uNear), 0.0001);
+    vec4 p = uInverseProjection * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    return p.xyz / p.w;
+}
+
+vec3 surfaceNormal(vec2 uv, vec3 p)
+{
+    // Select one-sided differences on the same surface, rather than crossing silhouettes.
+    vec3 l = viewPosition(uv - vec2(uTexelSize.x, 0.0), texture(uDepth, uv - vec2(uTexelSize.x, 0.0)).r);
+    vec3 r = viewPosition(uv + vec2(uTexelSize.x, 0.0), texture(uDepth, uv + vec2(uTexelSize.x, 0.0)).r);
+    vec3 b = viewPosition(uv - vec2(0.0, uTexelSize.y), texture(uDepth, uv - vec2(0.0, uTexelSize.y)).r);
+    vec3 t = viewPosition(uv + vec2(0.0, uTexelSize.y), texture(uDepth, uv + vec2(0.0, uTexelSize.y)).r);
+    vec3 dx = abs(r.z - p.z) < abs(p.z - l.z) ? r - p : p - l;
+    vec3 dy = abs(t.z - p.z) < abs(p.z - b.z) ? t - p : p - b;
+    vec3 n = cross(dx, dy);
+    if (dot(n, n) < 0.0000000001)
+        return normalize(-p);
+    n = normalize(n);
+    return dot(n, -p) < 0.0 ? -n : n;
+}
+
+bool insideScreen(vec2 uv)
+{
+    return all(greaterThanEqual(uv, uTexelSize * 0.5)) && all(lessThanEqual(uv, 1.0 - uTexelSize * 0.5));
+}
+
+vec3 traceBounce(vec3 p, vec3 normal, vec3 direction, float jitter)
+{
+    float quality = clamp(uPrecision, 0.0, 1.0);
+    float bias = max(0.002, -p.z * 0.0002);
+    vec3 start = p + normal * bias;
+    // A bounded ray, not a depth-dependent gather radius. Units are Minecraft blocks.
+    float rayLength = 1000.0 / 16.0;
+    if (direction.z > 0.0)
+        rayLength = min(rayLength, max(0.0, (viewPosition(vec2(0.5), 0.0).z - start.z) / direction.z));
+    vec3 end = start + direction * rayLength;
+    vec4 h0 = uProjection * vec4(start, 1.0);
+    vec4 h1 = uProjection * vec4(end, 1.0);
+    if (h0.w <= 0.0 || h1.w <= 0.0 || rayLength <= bias)
+        return vec3(0.0);
+
+    vec2 uv0 = h0.xy / h0.w * 0.5 + 0.5;
+    vec2 uv1 = h1.xy / h1.w * 0.5 + 0.5;
+    vec3 q0 = start / h0.w;
+    vec3 q1 = end / h1.w;
+    float k0 = 1.0 / h0.w;
+    float k1 = 1.0 / h1.w;
+    // Clip in projected space, preserving reciprocal depth at the clipped endpoint.
+    vec2 delta = uv1 - uv0;
+    float clipT = 1.0;
+    for (int axis = 0; axis < 2; ++axis)
+    {
+        if (delta[axis] > 0.000001)
+            clipT = min(clipT, (1.0 - uTexelSize[axis] * 0.5 - uv0[axis]) / delta[axis]);
+        else if (delta[axis] < -0.000001)
+            clipT = min(clipT, (uTexelSize[axis] * 0.5 - uv0[axis]) / delta[axis]);
+    }
+    clipT = clamp(clipT, 0.0, 1.0);
+    uv1 = mix(uv0, uv1, clipT);
+    q1 = mix(q0, q1, clipT);
+    k1 = mix(k0, k1, clipT);
+    float screenLength = length((uv1 - uv0) / uTexelSize);
+    if (screenLength < 1.0) return vec3(0.0);
+    float stepT = max(uRayStep, 1.0) / screenLength;
+    float previousT = 0.0;
+    int steps = int(mix(24.0, 96.0, quality));
+    float thickness = mix(0.25, 0.0625, quality);
+
+    for (int i = 0; i < 96; ++i)
+    {
+        if (i >= steps) break;
+        // Resolve nearby geometry first, then cover the rest of the segment at any resolution.
+        float rayT = i < 8 ? (float(i) + 1.0 + jitter) * stepT
+            : mix(min((8.0 + jitter) * stepT, 1.0), 1.0,
+                (float(i - 8) + 1.0 + jitter) / float(steps - 8));
+        rayT = min(rayT, 1.0);
+        vec2 rayUv = mix(uv0, uv1, rayT);
+        if (!insideScreen(rayUv)) break;
+        float depth = texture(uDepth, rayUv).r;
+        vec3 rayPos = mix(q0, q1, rayT) / mix(k0, k1, rayT);
+        if (depth < 0.999999 && rayPos.z <= viewPosition(rayUv, depth).z)
+        {
+            // Refine the first depth crossing; a failed crossing is an occluder, not a later light source.
+            float lo = previousT;
+            float hi = rayT;
+            for (int refine = 0; refine < 5; ++refine)
+            {
+                float mid = (lo + hi) * 0.5;
+                vec2 midUv = mix(uv0, uv1, mid);
+                float midDepth = texture(uDepth, midUv).r;
+                vec3 midPos = mix(q0, q1, mid) / mix(k0, k1, mid);
+                if (midDepth < 0.999999 && midPos.z <= viewPosition(midUv, midDepth).z)
+                    hi = mid;
+                else
+                    lo = mid;
+            }
+            vec2 hitUv = mix(uv0, uv1, hi);
+            vec3 hitPos = viewPosition(hitUv, texture(uDepth, hitUv).r);
+            vec3 hitRayPos = mix(q0, q1, hi) / mix(k0, k1, hi);
+            if (hitPos.z - hitRayPos.z > thickness || dot(hitPos - p, normal) <= bias * 2.0)
+                return vec3(0.0);
+            vec3 hitNormal = surfaceNormal(hitUv, hitPos);
+            float facing = max(dot(hitNormal, -direction), 0.0);
+            vec2 edge = min(hitUv, 1.0 - hitUv);
+            float confidence = smoothstep(0.0, 0.05, min(edge.x, edge.y));
+            return max(texture(uScene, hitUv).rgb, 0.0) * facing * confidence;
+        }
+        previousT = rayT;
+        if (rayT >= 1.0) break;
+    }
+    // Offscreen, sky and exhausted rays have no known incoming radiance.
+    return vec3(0.0);
 }
 
 void main()
 {
     vec2 uv = gl_FragCoord.xy * uTexelSize;
-    float rawCenterDepth = texture(uDepth, uv).r;
-    if (rawCenterDepth >= 0.999999)
+    float depth = texture(uDepth, uv).r;
+    if (depth >= 0.999999 || texture(uAlbedo, uv).a <= 0.0)
     {
         FragColor = vec4(0.0);
         return;
     }
 
-    float centerDepth = linearDepth(rawCenterDepth);
-
-    // Predict depth on the local surface tangent plane using linear depth gradients.
-    // Flat surfaces shouldn't bounce their own lit color back onto themselves.
-    vec2 depthGradient = vec2(dFdx(centerDepth), dFdy(centerDepth));
-
-    // Suppress SSGI entirely at depth discontinuities (object edges).
-    // At edges, dFdx/dFdy span a large depth jump, making the gradient unreliable
-    // and causing nearby bright surface samples to bleed onto the edge pixel.
-    float edgeSharpness = length(depthGradient);
-    float edgeThreshold = max(0.5, centerDepth * 0.05);
-    if (edgeSharpness > edgeThreshold)
-    {
-        FragColor = vec4(0.0);
-        return;
-    }
-
+    vec3 p = viewPosition(uv, depth);
+    vec3 normal = surfaceNormal(uv, p);
+    vec3 tangent = normalize(cross(abs(normal.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0), normal));
+    vec3 bitangent = cross(normal, tangent);
+    float noise = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+    int samples = clamp(uSampleCount, 1, 16);
     vec3 indirect = vec3(0.0);
-    float totalWeight = 0.0;
-
-    int samples = clamp(uSampleCount, 4, 64);
-    float quality = clamp(uPrecision, 0.0, 1.0);
-    float rayStep = clamp(uRayStep, 1.0, 64.0);
-    float baseRadius = mix(2.0, 10.0, quality) * rayStep;
-    const float goldenAngle = 2.39996323;
-
-    // Maximum physical distance (in linear depth units) across which indirect bounce can occur.
-    // Scales moderately with depth and ray step, preventing distant background or fog from bleeding.
-    float maxDistance = max(0.4, rayStep * 0.12 + centerDepth * 0.04);
-    float planeTolerance = max(0.02, centerDepth * 0.001);
-
-    for (int i = 0; i < 64; ++i)
+    for (int i = 0; i < 16; ++i)
     {
-        if (i >= samples)
-            break;
-
-        float t = (float(i) + 0.5) / float(samples);
-        float radius = sqrt(t) * baseRadius;
-        vec2 dir = vec2(cos(float(i) * goldenAngle), sin(float(i) * goldenAngle));
-        vec2 sampleOffsetPixels = dir * radius;
-        vec2 sampleUv = uv + sampleOffsetPixels * uTexelSize;
-
-        float radialWeight = 1.0 - t;
-        totalWeight += radialWeight;
-
-        if (sampleUv.x < 0.0 || sampleUv.x > 1.0 || sampleUv.y < 0.0 || sampleUv.y > 1.0)
-            continue;
-
-        float rawSampleDepth = texture(uDepth, sampleUv).r;
-        if (rawSampleDepth >= 0.999999)
-            continue;
-
-        float sampleDepth = linearDepth(rawSampleDepth);
-
-        // Reject self-bounce: samples on the same flat surface plane don't contribute.
-        // The plane-fitted predicted depth tells us what depth a co-planar neighbor would have.
-        // Only samples that deviate from this prediction (i.e. are on a different surface) are valid bounce sources.
-        float predictedPlaneDepth = centerDepth + dot(depthGradient, sampleOffsetPixels);
-        float planeDiff = abs(sampleDepth - predictedPlaneDepth);
-        float separateSurfaceWeight = smoothstep(planeTolerance, planeTolerance * 3.0, planeDiff);
-        if (separateSurfaceWeight <= 0.0001)
-            continue;
-
-        // Bounded depth distance: only nearby surfaces can bounce light.
-        float depthDelta = abs(sampleDepth - centerDepth);
-        if (depthDelta >= maxDistance)
-            continue;
-
-        // Directional occlusion: reject samples that are significantly closer to the camera than the receiver.
-        // Such samples are "in front" and occlude the receiver rather than bouncing light toward it.
-        // e.g. a white cube face seen by background grass pixels behind it.
-        float depthDiff = centerDepth - sampleDepth; // positive = sample is in front of receiver
-        if (depthDiff > maxDistance * 0.3)
-            continue;
-
-        float distanceFalloff = 1.0 - smoothstep(0.0, maxDistance, depthDelta);
-        float sampleWeight = separateSurfaceWeight * distanceFalloff * radialWeight;
-
-        if (sampleWeight <= 0.0001)
-            continue;
-
-        vec3 sampleColor = texture(uScene, sampleUv).rgb;
-        // Clamp sample luminance to prevent overbright surfaces from dominating the gather.
-        float sampleLum = dot(sampleColor, vec3(0.2126, 0.7152, 0.0722));
-        if (sampleLum > 0.0001)
-            sampleColor *= min(1.0, 0.6 / sampleLum);
-        indirect += sampleColor * sampleWeight;
+        if (i >= samples) break;
+        float xi = (float(i) + 0.5) / float(samples);
+        float angle = float(i) * 2.39996323 + noise * 6.28318531;
+        vec3 direction = tangent * (sqrt(xi) * cos(angle))
+                       + bitangent * (sqrt(xi) * sin(angle)) + normal * sqrt(1.0 - xi);
+        indirect += traceBounce(p, normal, direction, noise * 0.5);
     }
-
-    if (totalWeight > 0.0001)
-        indirect /= totalWeight;
-
-    // Attenuate indirect light in the far distance where fog dominates and depth precision drops.
-    float distanceFade = 1.0 - smoothstep(uFar * 0.4, uFar * 0.85, centerDepth);
-    indirect *= distanceFade;
-
-    FragColor = vec4(clamp(indirect, 0.0, 2.0), 1.0);
+    // Cosine-weighted sampling cancels the diffuse cosine/PDF. Misses still count.
+    FragColor = vec4(indirect / float(samples), 1.0);
 }

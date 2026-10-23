@@ -14,6 +14,8 @@ uniform bool  uBendSharp;
 uniform bool  uEmissionEnabled;
 uniform vec3  uEmissionColor;
 uniform float uEmissionEnergy;
+uniform bool  uEmissionIndirectOnly;
+uniform float uMetallic;
 uniform float uSSS;
 uniform vec3  uSSSRadius;
 uniform vec3  uSSSColor;
@@ -86,7 +88,9 @@ uniform samplerCube uPointShadowMaps[MAX_POINT_SHADOWS];
 uniform bool  uIndirectWorldEnabled;
 uniform float uIndirectWorldStrength;
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 GiAlbedo;
+layout(location = 2) out vec4 GiRadiance;
 
 float calculateShadow(vec3 norm, vec3 lightDir) {
     if (!uUseShadowMap) return 0.0;
@@ -147,24 +151,40 @@ float calculatePointShadow(int shadowIndex, vec3 fragPos, vec3 lightPos, float f
     return currentDepth - bias > closestDepth ? 1.0 : 0.0;
 }
 
-float CSPhase(float dotView, float scatter)
+float HGPhase(float cosTheta, float scatter)
 {
-    float g = scatter;
+    float g = clamp(scatter, 0.0, 0.99);
     float g2 = g * g;
-    float denom = 2.0 * (2.0 + g2) * pow(max(1.0 + g2 - 2.0 * g * dotView, 0.0001), 1.5);
-    return (3.0 * (1.0 - g2) * (1.0 + dotView)) / max(denom, 0.0001);
+    return (1.0 - g2) / pow(max(1.0 + g2 - 2.0 * g * cosTheta, 0.001), 1.5);
 }
 
-float computeSssRim(float ndotView, float backLighting)
+vec3 subsurfaceTransmission(float thickness, float sss)
 {
-    float edge = clamp(1.0 - ndotView, 0.0, 1.0);
-    float sizeFactor = max(uSSSHighlightSize, 0.001);
-    float rimBase = pow(edge, 1.0 / sizeFactor);
-    float rimSharp = pow(rimBase, max(uSSSHighlightSharpness, 0.01));
-    return rimSharp * clamp(backLighting, 0.0, 1.0);
+    // Mine-imator authors the radius in pixels, like imported positions (16 per block).
+    vec3 radius = max(uSSSRadius * uSSSGlobalRadius * sss, vec3(0.001)) / 16.0;
+    return exp(-max(thickness, 0.0) / radius);
 }
 
-vec3 estimateDirectionalSubsurface(vec3 norm, vec3 lightDir, vec3 lightColor, float sss)
+vec3 subsurfaceLighting(vec3 transmission, vec3 norm, vec3 lightDir, vec3 lightColor, vec3 viewDir)
+{
+    float backLighting = max(dot(-norm, lightDir), 0.0);
+    float scatter = clamp((uSSSAbsorption + uSSSHighlight) * 0.5, 0.0, 0.99);
+    scatter = pow(scatter, max(uSSSHighlightSize, 0.001));
+    float phase = HGPhase(dot(viewDir, lightDir), scatter) / max(HGPhase(1.0, scatter), 0.001);
+    phase = pow(clamp(phase, 0.0, 1.0), max(uSSSHighlightSharpness, 0.01));
+
+    // Saturation controls must preserve light energy, especially for black lights.
+    float lightLuma = dot(lightColor, vec3(0.299, 0.587, 0.114));
+    vec3 tint = mix(lightColor, vec3(lightLuma), clamp(uSSSDesaturation, 0.0, 1.0));
+    tint = mix(tint, vec3(lightLuma), clamp(uSSSColorThreshold, 0.0, 1.0));
+    float highlightDesaturation = max(uSSSHighlightDesaturation, uSSSHighlightColorThreshold);
+    tint = mix(tint, vec3(lightLuma), clamp(highlightDesaturation * phase, 0.0, 1.0));
+    float strength = 1.25 * max(uSSSStrength, 0.0) * max(uSSSHighlightStrength, 0.0)
+                   * max(uSSSGlobalHighlightStrength, 0.0);
+    return tint * uSSSColor * transmission * backLighting * phase * strength;
+}
+
+vec3 estimateDirectionalSubsurface(float sss)
 {
     if (!uUseShadowMap || sss <= 0.0)
         return vec3(0.0);
@@ -172,7 +192,7 @@ vec3 estimateDirectionalSubsurface(vec3 norm, vec3 lightDir, vec3 lightColor, fl
     vec3 projCoords = vShadowCoord.xyz / max(vShadowCoord.w, 0.0001);
     projCoords = projCoords * 0.5 + 0.5;
 
-    if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0)
+    if (projCoords.z < 0.0 || projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0)
         return vec3(0.0);
 
     float currentDepth = projCoords.z;
@@ -181,14 +201,17 @@ vec3 estimateDirectionalSubsurface(vec3 norm, vec3 lightDir, vec3 lightColor, fl
     if (sampleCount <= 0)
         sampleCount = 1;
 
-    float sampleDepth = 0.0;
+    // Orthographic shadow depths are normalized; recover the actual world distance.
+    vec3 depthRow = vec3(uLightSpaceMatrix[0][2], uLightSpaceMatrix[1][2], uLightSpaceMatrix[2][2]);
+    float depthRange = 2.0 / max(length(depthRow), 0.000001);
+    vec3 transmission = vec3(0.0);
     float weightSum = 0.0;
     for (int i = 0; i < 32; i++) {
         if (i >= sampleCount)
             break;
 
         float fi = float(i);
-        float radius = sqrt(fi + 0.5) / sqrt(float(sampleCount));
+        float radius = sampleCount == 1 ? 0.0 : sqrt(fi / float(sampleCount));
         float theta = fi * 2.399963;
         vec2 disk = vec2(cos(theta), sin(theta));
         vec2 offset = disk * radius * texelSize * max(uShadowBlurStrength, 0.0001);
@@ -197,28 +220,18 @@ vec3 estimateDirectionalSubsurface(vec3 norm, vec3 lightDir, vec3 lightColor, fl
             continue;
 
         float w = 1.0 - radius;
-        sampleDepth += texture(uShadowMap, sampleUv).r * w;
+        float sampleDepth = texture(uShadowMap, sampleUv).r;
+        // An empty shadow texel is not an entry surface for transmission.
+        if (sampleDepth < 1.0)
+            transmission += subsurfaceTransmission((currentDepth - sampleDepth) * depthRange, sss) * w;
         weightSum += w;
     }
-    sampleDepth /= max(weightSum, 0.0001);
-    float bias = max(0.0025 * (1.0 - dot(norm, lightDir)), 0.0007);
-
-    vec3 rad = max((uSSSRadius * uSSSGlobalRadius) * sss, vec3(0.0001));
-    vec3 invLight = 1.0 / (max(lightColor, vec3(0.0001)) * rad + 0.001);
-    vec3 dis = max((currentDepth + bias) - sampleDepth, 0.0) * invLight;
-    vec3 base = pow(max(1.0 - pow(dis / rad, vec3(4.0)), 0.0), vec3(2.0))
-              / (pow(dis, vec3(2.0)) + 1.0);
-
-    return base;
+    return transmission / max(weightSum, 0.0001);
 }
 
 vec3 estimatePointSubsurface(
-    vec3 norm,
-    vec3 lightDir,
     vec3 fragPos,
     vec3 lightPos,
-    vec3 lightColor,
-    float lightEnergy,
     float farPlane,
     int shadowIndex,
     float sss)
@@ -231,19 +244,15 @@ vec3 estimatePointSubsurface(
     if (currentDepth <= 0.0001 || currentDepth >= farPlane)
         return vec3(0.0);
 
-    float closestDepth = samplePointShadowCube(shadowIndex, lightToFrag) * farPlane;
-    float bias = max(0.05 * (1.0 - dot(norm, lightDir)), 0.02);
-
-    vec3 rad = max((uSSSRadius * uSSSGlobalRadius) * sss, vec3(0.0001));
-    vec3 invLight = 1.0 / (max(lightColor * max(lightEnergy, 0.0001), vec3(0.0001)) * rad + 0.001);
-    vec3 dis = max((currentDepth + bias) - closestDepth, 0.0) * invLight;
-    vec3 base = pow(max(1.0 - pow(dis / rad, vec3(4.0)), 0.0), vec3(2.0))
-              / (pow(dis, vec3(2.0)) + 1.0);
-
-    return base;
+    float sampleDepth = samplePointShadowCube(shadowIndex, lightToFrag);
+    if (sampleDepth >= 1.0)
+        return vec3(0.0);
+    return subsurfaceTransmission(currentDepth - sampleDepth * farPlane, sss);
 }
 
 void main() {
+    GiAlbedo = vec4(0.0);
+    GiRadiance = vec4(0.0);
     if (uShadowDebugMode == 2) {
         float alpha = 1.0;
         if (uUseTexture) {
@@ -299,6 +308,9 @@ void main() {
     if (alpha <= 0.0) discard;
 
     vec3 result = baseColor;
+    vec3 linearAlbedo = pow(max(baseColor, 0.0), vec3(2.2));
+    vec3 bounceSource = vec3(0.0);
+    float giVisibility = uIsUnlit ? 0.0 : 1.0 - clamp(uMetallic, 0.0, 1.0);
 
     if (!uIsUnlit) {
     vec3 vertexNormal = normalize(vNormal);
@@ -311,12 +323,12 @@ void main() {
     vec3 sunDir  = normalize(uLightDir);
     float diff   = max(dot(norm, sunDir), 0.0);
     vec3 diffuse = diff * uLightColor;
-    float sssAmount = (uSSSEnabled ? clamp(uSSS, 0.0, 1.0) : 0.0);
+    float sssAmount = uSSSEnabled ? max(uSSS, 0.0) : 0.0;
     vec3 viewDir = normalize(vFragPos - uCameraPosition);
-    vec3 cameraDir = normalize(uCameraPosition - vFragPos);
-    float ndotView = max(dot(norm, cameraDir), 0.0);
+    vec3 sssDirectTint = mix(vec3(1.0), uSSSColor, clamp(sssAmount, 0.0, 1.0));
 
     vec3 pointLightSum = vec3(0.0);
+    vec3 pointBounceSum = vec3(0.0);
     vec3 pointIndirectSum = vec3(0.0);
     for (int i = 0; i < uPointLightCount; i++) {
         vec3  toLight   = uPointLightPos[i] - vFragPos;
@@ -346,40 +358,20 @@ void main() {
         float diffFact = max(dot(norm, lightDir), 0.0);
         float pointShadow = calculatePointShadow(uPointLightShadowIndex[i], vFragPos, uPointLightPos[i], range, norm, lightDir);
 
-        pointLightSum += uPointLightColor[i] * diffFact * attenuation * spot * uPointLightEnergy[i] * (1.0 - pointShadow);
+        vec3 pointDirect = uPointLightColor[i] * diffFact * attenuation * spot * uPointLightEnergy[i] * (1.0 - pointShadow);
 
         if (sssAmount > 0.0) {
             vec3 pointSubsurf = estimatePointSubsurface(
-                norm,
-                lightDir,
                 vFragPos,
                 uPointLightPos[i],
-                uPointLightColor[i],
-                uPointLightEnergy[i],
                 range,
                 uPointLightShadowIndex[i],
                 sssAmount);
-            pointSubsurf *= attenuation * spot;
-            float transDif = max(0.0, dot(normalize(-norm), lightDir));
-            vec3 pointSssTint = mix(uPointLightColor[i], vec3(1.0), clamp(uSSSColorThreshold, 0.0, 1.0));
-            float pointSssLuma = dot(pointSssTint, vec3(0.299, 0.587, 0.114));
-            pointSssTint = mix(pointSssTint, vec3(pointSssLuma), clamp(uSSSDesaturation, 0.0, 1.0));
-            pointSubsurf *= max(uSSSStrength, 0.0);
-
-            float phase = CSPhase(dot(viewDir, lightDir), uSSSAbsorption);
-            float sizeFactor = max(uSSSHighlightSize, 0.001);
-            float highlightMask = pow(transDif, 1.0 / sizeFactor);
-            float highlightShape = pow(max(highlightMask, 0.0), max(uSSSHighlightSharpness, 0.01));
-            float rim = computeSssRim(ndotView, transDif);
-            vec3 pointHighlightTint = mix(uPointLightColor[i], vec3(1.0), clamp(uSSSHighlightColorThreshold, 0.0, 1.0));
-            float pointHighlightLuma = dot(pointHighlightTint, vec3(0.299, 0.587, 0.114));
-            pointHighlightTint = mix(pointHighlightTint, vec3(pointHighlightLuma), clamp(uSSSHighlightDesaturation, 0.0, 1.0));
-
-            pointSubsurf += pointSubsurf * (uSSSHighlightStrength * max(uSSSGlobalHighlightStrength, 0.0)) * phase * highlightShape;
-            pointLightSum += pointSssTint * max(uPointLightEnergy[i], 0.0) * uSSSColor * transDif * pointSubsurf;
-            pointLightSum += pointHighlightTint * (uSSSHighlightStrength * max(uSSSGlobalHighlightStrength, 0.0)) * phase * highlightShape * 0.25;
-            pointLightSum += pointHighlightTint * (uSSSHighlightStrength * max(uSSSGlobalHighlightStrength, 0.0)) * rim * 0.35;
+            pointDirect += subsurfaceLighting(pointSubsurf, norm, lightDir, uPointLightColor[i], viewDir)
+                         * attenuation * spot * max(uPointLightEnergy[i], 0.0);
         }
+        pointLightSum += pointDirect * sssDirectTint;
+        pointBounceSum += pointDirect * sssDirectTint * max(uPointLightIndirectEnergy[i], 0.0);
 
         if (uIndirectWorldEnabled) {
             float indirectEnergy = max(uPointLightIndirectEnergy[i], 0.0);
@@ -406,53 +398,50 @@ void main() {
     float mainVisibility = uMainLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
     float sunVisibility = uSunFillLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
     float moonVisibility = uMoonFillLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
-    result = (uAmbient + diffuse * mainVisibility + uSunFillLightColor * sunFillDiffuse * sunVisibility + uMoonFillLightColor * moonFillDiffuse * moonVisibility + pointLightSum) * baseColor;
+    vec3 directionalLight = diffuse * mainVisibility + uSunFillLightColor * sunFillDiffuse * sunVisibility
+                          + uMoonFillLightColor * moonFillDiffuse * moonVisibility;
 
     if (sssAmount > 0.0) {
-        vec3 subsurf = estimateDirectionalSubsurface(norm, shadowLightDir, uLightColor, sssAmount);
-        float transDif = max(0.0, dot(normalize(-norm), sunDir));
-        vec3 sssTint = mix(uLightColor, vec3(1.0), clamp(uSSSColorThreshold, 0.0, 1.0));
-        float sssLuma = dot(sssTint, vec3(0.299, 0.587, 0.114));
-        sssTint = mix(sssTint, vec3(sssLuma), clamp(uSSSDesaturation, 0.0, 1.0));
-        subsurf *= max(uSSSStrength, 0.0);
-
-        float phase = CSPhase(dot(viewDir, sunDir), uSSSAbsorption);
-        float sizeFactor = max(uSSSHighlightSize, 0.001);
-        float highlightMask = pow(transDif, 1.0 / sizeFactor);
-        float highlightShape = pow(max(highlightMask, 0.0), max(uSSSHighlightSharpness, 0.01));
-        float rim = computeSssRim(ndotView, transDif);
-        vec3 highlightTint = mix(uLightColor, vec3(1.0), clamp(uSSSHighlightColorThreshold, 0.0, 1.0));
-        float highlightLuma = dot(highlightTint, vec3(0.299, 0.587, 0.114));
-        highlightTint = mix(highlightTint, vec3(highlightLuma), clamp(uSSSHighlightDesaturation, 0.0, 1.0));
-
-        subsurf += subsurf * (uSSSHighlightStrength * max(uSSSGlobalHighlightStrength, 0.0)) * phase * highlightShape;
-        result += (sssTint * uSSSColor) * transDif * subsurf;
-        result += highlightTint * (uSSSHighlightStrength * max(uSSSGlobalHighlightStrength, 0.0)) * phase * highlightShape * 0.25;
-        result += highlightTint * (uSSSHighlightStrength * max(uSSSGlobalHighlightStrength, 0.0)) * rim * 0.35;
-        result *= mix(vec3(1.0), uSSSColor, sssAmount);
+        vec3 subsurf = estimateDirectionalSubsurface(sssAmount);
+        // There is one directional depth map. Never use it for a different light.
+        if (uMoonFillLightCastsShadows != 0)
+            directionalLight += subsurfaceLighting(subsurf, norm, shadowLightDir, uMoonFillLightColor, viewDir);
+        else if (uSunFillLightCastsShadows != 0)
+            directionalLight += subsurfaceLighting(subsurf, norm, shadowLightDir, uSunFillLightColor, viewDir);
+        else if (uMainLightCastsShadows != 0)
+            directionalLight += subsurfaceLighting(subsurf, norm, shadowLightDir, uLightColor, viewDir);
     }
+    result = (uAmbient + directionalLight * sssDirectTint + pointLightSum) * baseColor;
+    // GI transports outgoing diffuse light, not ambient, fog or post-processing.
+    bounceSource = (directionalLight * sssDirectTint + pointBounceSum) * linearAlbedo * giVisibility;
 
     if (uIndirectWorldEnabled) {
         result += baseColor * pointIndirectSum * max(uIndirectWorldStrength, 0.0);
     }
-    if (uEmissionEnabled) {
-        result += (uEmissionColor * emissionMask) * max(uEmissionEnergy, 0.0);
     }
+    if (uEmissionEnabled) {
+        vec3 emission = (uEmissionColor * emissionMask) * max(uEmissionEnergy, 0.0);
+        if (!uIsUnlit && !uEmissionIndirectOnly) result += emission;
+        bounceSource += pow(max(uEmissionColor * emissionMask, 0.0), vec3(2.2)) * max(uEmissionEnergy, 0.0);
     }
     if (uFogEnabled) {
         float distancePixels = length(vFragPos - uCameraPosition) * 64.0;
         float distanceFog = smoothstep(max(uFogDistance - uFogFadeSize, 0.0), max(uFogDistance, 1.0), distancePixels);
         result = mix(result, uFogColor, distanceFog);
+        giVisibility *= 1.0 - distanceFog;
         if (uHeightFogEnabled) {
             float worldHeightPixels = vFragPos.y * 64.0;
             float heightStart = uFogHeight + uHeightFogOffset;
             float heightFog = 1.0 - smoothstep(heightStart, heightStart + max(uHeightFogSize, 1.0), worldHeightPixels);
             result = mix(result, uHeightFogColor, heightFog);
+            giVisibility *= 1.0 - heightFog;
         }
     }
     // Apply the outline last so material textures, tint/mix, lighting and
     // emission affect only the glyph fill and cannot overwrite its colour.
     if (uIsTextAlphaMask)
         result = mix(uTextOutlineColor.rgb, result, textFillWeight);
+    GiAlbedo = vec4(linearAlbedo, giVisibility * textFillWeight * alpha);
+    GiRadiance = vec4(bounceSource * textFillWeight * alpha, alpha);
     FragColor   = vec4(result, alpha);
 }

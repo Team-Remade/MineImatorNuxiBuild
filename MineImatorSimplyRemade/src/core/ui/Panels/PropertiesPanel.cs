@@ -117,7 +117,7 @@ public class PropertiesPanel : UiPanel
     public float SubsurfaceStrength = 1f;
     public float SubsurfaceDesaturation = 0f;
     public float SubsurfaceColorThreshold = 0f;
-    public readonly float[] SubsurfaceRadiusRgb = [0.42f, 0.24f, 0.14f];
+    public readonly float[] SubsurfaceRadiusRgb = [1f, 1f, 1f];
     public float SubsurfaceHighlightSize = 1f;
     public float SubsurfaceHighlightStrength = 1f;
     public float SubsurfaceHighlightSharpness = 2f;
@@ -362,9 +362,9 @@ public class PropertiesPanel : UiPanel
         SubsurfaceStrength = Math.Clamp(settings.SubsurfaceStrength, 0f, 4f);
         SubsurfaceDesaturation = Math.Clamp(settings.SubsurfaceDesaturation, 0f, 1f);
         SubsurfaceColorThreshold = Math.Clamp(settings.SubsurfaceColorThreshold, 0f, 1f);
-        SubsurfaceRadiusRgb[0] = Math.Clamp(settings.SubsurfaceRadiusR, 0.0001f, 8f);
-        SubsurfaceRadiusRgb[1] = Math.Clamp(settings.SubsurfaceRadiusG, 0.0001f, 8f);
-        SubsurfaceRadiusRgb[2] = Math.Clamp(settings.SubsurfaceRadiusB, 0.0001f, 8f);
+        SubsurfaceRadiusRgb[0] = Math.Clamp(settings.SubsurfaceRadiusR, 0f, 8f);
+        SubsurfaceRadiusRgb[1] = Math.Clamp(settings.SubsurfaceRadiusG, 0f, 8f);
+        SubsurfaceRadiusRgb[2] = Math.Clamp(settings.SubsurfaceRadiusB, 0f, 8f);
         SubsurfaceHighlightSize = Math.Clamp(settings.SubsurfaceHighlightSize, 0f, 8f);
         SubsurfaceHighlightStrength = Math.Clamp(settings.SubsurfaceHighlightStrength, 0f, 8f);
         SubsurfaceHighlightSharpness = Math.Clamp(settings.SubsurfaceHighlightSharpness, 0.01f, 16f);
@@ -505,9 +505,9 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.SubsurfaceStrength = Math.Clamp(SubsurfaceStrength, 0f, 4f);
         manifest.Settings.SubsurfaceDesaturation = Math.Clamp(SubsurfaceDesaturation, 0f, 1f);
         manifest.Settings.SubsurfaceColorThreshold = Math.Clamp(SubsurfaceColorThreshold, 0f, 1f);
-        manifest.Settings.SubsurfaceRadiusR = Math.Clamp(SubsurfaceRadiusRgb[0], 0.0001f, 8f);
-        manifest.Settings.SubsurfaceRadiusG = Math.Clamp(SubsurfaceRadiusRgb[1], 0.0001f, 8f);
-        manifest.Settings.SubsurfaceRadiusB = Math.Clamp(SubsurfaceRadiusRgb[2], 0.0001f, 8f);
+        manifest.Settings.SubsurfaceRadiusR = Math.Clamp(SubsurfaceRadiusRgb[0], 0f, 8f);
+        manifest.Settings.SubsurfaceRadiusG = Math.Clamp(SubsurfaceRadiusRgb[1], 0f, 8f);
+        manifest.Settings.SubsurfaceRadiusB = Math.Clamp(SubsurfaceRadiusRgb[2], 0f, 8f);
         manifest.Settings.SubsurfaceHighlightSize = Math.Clamp(SubsurfaceHighlightSize, 0f, 8f);
         manifest.Settings.SubsurfaceHighlightStrength = Math.Clamp(SubsurfaceHighlightStrength, 0f, 8f);
         manifest.Settings.SubsurfaceHighlightSharpness = Math.Clamp(SubsurfaceHighlightSharpness, 0.01f, 16f);
@@ -2226,7 +2226,7 @@ public class PropertiesPanel : UiPanel
             changed |= PercentageSlider("Desaturation##sss", ref SubsurfaceDesaturation, 0f, 100f);
             changed |= PercentageSlider("Color Threshold##sss", ref SubsurfaceColorThreshold, 0f, 100f);
             fixed (float* sssRadius = SubsurfaceRadiusRgb)
-                changed |= ImGui.DragFloat3(Localization.Label("text.panel.properties.radius_rgb", "Radius RGB##sss"), sssRadius, 0.01f, 0.0001f, 8f, "%.3f");
+                changed |= ImGui.DragFloat3(Localization.Label("text.panel.properties.radius_rgb", "Radius RGB##sss"), sssRadius, 0.01f, 0f, 8f, "%.3f");
             changed |= InputFloatEditor("Highlight Size##sss", ref SubsurfaceHighlightSize, 0.01f, 0f, 8f, "%.2f");
             changed |= PercentageSlider("Highlight Strength##sss", ref SubsurfaceHighlightStrength, 0f, 800f);
             changed |= InputFloatEditor("Highlight Sharpness##sss", ref SubsurfaceHighlightSharpness, 0.05f, 0.01f, 16f, "%.2f");
@@ -3872,23 +3872,23 @@ public class PropertiesPanel : UiPanel
             // Subsurface scattering controls (inspired by Mine-imator high-light shaders).
             {
                 float sss = mat?.Subsurface ?? 0f;
-                if (ImGui.SliderFloat(Localization.Label("text.panel.properties.subsurface", "Subsurface"), ref sss, 0f, 1f))
+                if (ImGui.DragFloat(Localization.Label("text.panel.properties.subsurface", "Subsurface"), ref sss, 0.1f, 0f, float.MaxValue, "%.2f px"))
                 {
                     EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.Subsurface = sss;
+                    _currentObject.MaterialSettings.Subsurface = Math.Max(sss, 0f);
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
 
-                vec3 sssRadius = mat?.SubsurfaceRadius ?? new vec3(0.42f, 0.24f, 0.14f);
+                vec3 sssRadius = mat?.SubsurfaceRadius ?? vec3.Ones;
                 var sssRadiusVec = new Vector3(sssRadius.x, sssRadius.y, sssRadius.z);
-                if (ImGui.DragFloat3(Localization.Label("text.panel.properties.subsurface_radius_rgb", "Subsurface Radius RGB"), ref sssRadiusVec, 0.01f, 0.0001f, 4f))
+                if (ImGui.DragFloat3(Localization.Label("text.panel.properties.subsurface_radius_rgb", "Subsurface Radius RGB"), ref sssRadiusVec, 0.01f, 0f, 4f))
                 {
                     EnsureMaterialSettings();
                     _currentObject.MaterialSettings.SubsurfaceRadius = new vec3(
-                        Math.Max(0.0001f, sssRadiusVec.X),
-                        Math.Max(0.0001f, sssRadiusVec.Y),
-                        Math.Max(0.0001f, sssRadiusVec.Z));
+                        Math.Max(0f, sssRadiusVec.X),
+                        Math.Max(0f, sssRadiusVec.Y),
+                        Math.Max(0f, sssRadiusVec.Z));
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
@@ -4011,7 +4011,7 @@ public class PropertiesPanel : UiPanel
                 m.EmissionEnabled = false;
                 m.EmissionEnergy  = 1f;
                 m.Subsurface      = 0f;
-                m.SubsurfaceRadius = new vec3(0.42f, 0.24f, 0.14f);
+                m.SubsurfaceRadius = vec3.Ones;
                 m.SubsurfaceColor = new vec4(1f, 1f, 1f, 1f);
                 m.SubsurfaceHighlight = 0.35f;
                 m.SubsurfaceHighlightStrength = 0.6f;

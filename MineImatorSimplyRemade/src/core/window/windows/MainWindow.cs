@@ -594,7 +594,15 @@ public class MainWindow : Window
     public override unsafe void Dispose()
     {
         ShutdownWorldImporter();
+        ShutdownViewportFramebuffers();
         base.Dispose();
+    }
+
+    public unsafe void ShutdownViewportFramebuffers()
+    {
+        Glfw.MakeContextCurrent(windowHandle);
+        _mainViewport?.DisposeFramebufferResources();
+        _cameraViewport?.DisposeFramebufferResources();
     }
 
     public unsafe void ShutdownWorldImporter()
