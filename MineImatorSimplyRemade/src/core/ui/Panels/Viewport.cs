@@ -230,6 +230,7 @@ public class Viewport : UiPanel
     private Shader? _indirectDenoiseShader;
     private Shader? _glowShader;
     private Shader? _filmGrainShader;
+    private Shader? _antiAliasingShader;
     private Shader? _depthOfFieldShader;
     private CameraSceneObject? _focusCamera;
     private CameraEffect? _focusEffect;
@@ -793,6 +794,8 @@ public class Viewport : UiPanel
         _glowShader.CompileShader("edge.vert", "glow.frag");
         _filmGrainShader = new Shader(Gl);
         _filmGrainShader.CompileShader("edge.vert", "film_grain.frag");
+        _antiAliasingShader = new Shader(Gl);
+        _antiAliasingShader.CompileShader("edge.vert", "fxaa.frag");
         _depthOfFieldShader = new Shader(Gl);
         _depthOfFieldShader.CompileShader("edge.vert", "depth_of_field.frag");
 
@@ -2805,6 +2808,7 @@ public class Viewport : UiPanel
             if (renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
             {
                 ApplyDepthOfFieldPass(_fbo, _colorTex, _depthTex, _glowFbo, _glowTex, w, h, renderNear, renderFar, activeCamObj);
+                ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel);
                 ApplyFilmGrainPass(_fbo, _colorTex, _glowFbo, _glowTex, w, h, activeCamObj);
             }
 
@@ -2952,6 +2956,9 @@ public class Viewport : UiPanel
             foreach (var (model, mesh) in _cachedOverlays)
                 renderer.Draw(mesh, model, true);
         renderer.EndFrame(_colorTex);
+
+        if (renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
+            ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel);
 
         // Keep editor tools usable during the scene-renderer migration. These
         // draw over the bridged colour target; scene shading above is Veldrid.
@@ -5230,6 +5237,11 @@ public class Viewport : UiPanel
             _filmGrainShader = new Shader(Gl);
             _filmGrainShader.CompileShader("edge.vert", "film_grain.frag");
         }
+        if (_antiAliasingShader == null)
+        {
+            _antiAliasingShader = new Shader(Gl);
+            _antiAliasingShader.CompileShader("edge.vert", "fxaa.frag");
+        }
         if (_depthOfFieldShader == null)
         {
             _depthOfFieldShader = new Shader(Gl);
@@ -5663,6 +5675,46 @@ public class Viewport : UiPanel
             Gl.Enable(GLEnum.DepthTest);
             Gl.Enable(GLEnum.CullFace);
         }
+    }
+
+    private void ApplyAntiAliasingPass(uint sceneFbo, uint scratchFbo, uint scratchTexture,
+        uint width, uint height, PropertiesPanel? settings)
+    {
+        if (Gl == null || _antiAliasingShader == null || settings?.AntiAliasingEnabled != true ||
+            width == 0 || height == 0 || sceneFbo == 0 || scratchFbo == 0 || scratchTexture == 0)
+            return;
+
+        bool depthTest = Gl.IsEnabled(GLEnum.DepthTest);
+        bool cullFace = Gl.IsEnabled(GLEnum.CullFace);
+        bool blend = Gl.IsEnabled(GLEnum.Blend);
+        Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
+        Gl.BindFramebuffer(GLEnum.DrawFramebuffer, scratchFbo);
+        Gl.BlitFramebuffer(0, 0, (int)width, (int)height, 0, 0, (int)width, (int)height,
+            ClearBufferMask.ColorBufferBit, GLEnum.Nearest);
+
+        // Use the existing linear-filtered scratch target to avoid sampling our output attachment.
+        Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.Disable(GLEnum.DepthTest);
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Disable(GLEnum.Blend);
+        Gl.Viewport(0, 0, width, height);
+        Gl.UseProgram(_antiAliasingShader.ShaderProgram);
+        Gl.ActiveTexture(GLEnum.Texture0);
+        Gl.BindTexture(GLEnum.Texture2D, scratchTexture);
+        Gl.Uniform1(_antiAliasingShader.GetUniformLocation("uScene"), 0);
+        Gl.Uniform2(_antiAliasingShader.GetUniformLocation("uTexelSize"), 1f / width, 1f / height);
+        Gl.Uniform1(_antiAliasingShader.GetUniformLocation("uSubpixel"), settings.AntiAliasingSubpixel);
+        Gl.Uniform1(_antiAliasingShader.GetUniformLocation("uEdgeThreshold"), settings.AntiAliasingEdgeThreshold);
+        Gl.Uniform1(_antiAliasingShader.GetUniformLocation("uMinimumThreshold"), settings.AntiAliasingMinimumThreshold);
+        Gl.BindVertexArray(_edgeVao);
+        Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+        Gl.BindVertexArray(0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        if (depthTest) Gl.Enable(GLEnum.DepthTest);
+        if (cullFace) Gl.Enable(GLEnum.CullFace);
+        if (blend) Gl.Enable(GLEnum.Blend);
     }
 
     private void ApplyFilmGrainPass(uint sceneFbo, uint sceneTexture, uint scratchFbo, uint scratchTexture,
@@ -6368,6 +6420,7 @@ public class Viewport : UiPanel
         {
             ApplyDepthOfFieldPass(_previewFbo, _previewColorTex, _previewDepthTex, _previewGlowFbo, _previewGlowTex,
                 w, h, renderCamera.Near, renderCamera.Far, sceneObj);
+            ApplyAntiAliasingPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, MainViewport.PropertiesPanel);
             ApplyFilmGrainPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
         }
 

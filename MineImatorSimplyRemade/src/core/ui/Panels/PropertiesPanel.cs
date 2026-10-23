@@ -89,6 +89,10 @@ public class PropertiesPanel : UiPanel
     public float FillLightStrength = 1f;
     public bool FillLightCastsShadows = true;
 
+    public bool AntiAliasingEnabled;
+    public float AntiAliasingSubpixel = 0.75f;
+    public float AntiAliasingEdgeThreshold = 0.125f;
+    public float AntiAliasingMinimumThreshold = 0.03125f;
     public bool AmbientOcclusionEnabled = true;
     public float AmbientOcclusionRadius = 12f;
     public float AmbientOcclusionStrength = 1f;
@@ -334,6 +338,10 @@ public class PropertiesPanel : UiPanel
         _projectName = string.IsNullOrWhiteSpace(manifest.ProjectName) ? "Untitled Project" : manifest.ProjectName;
 
         ProjectRenderSettings settings = manifest.Settings;
+        AntiAliasingEnabled = settings.AntiAliasingEnabled;
+        AntiAliasingSubpixel = float.IsFinite(settings.AntiAliasingSubpixel) ? Math.Clamp(settings.AntiAliasingSubpixel, 0f, 1f) : 0.75f;
+        AntiAliasingEdgeThreshold = float.IsFinite(settings.AntiAliasingEdgeThreshold) ? Math.Clamp(settings.AntiAliasingEdgeThreshold, 0.03125f, 0.5f) : 0.125f;
+        AntiAliasingMinimumThreshold = float.IsFinite(settings.AntiAliasingMinimumThreshold) ? Math.Clamp(settings.AntiAliasingMinimumThreshold, 0.001f, 0.25f) : 0.03125f;
         AmbientOcclusionEnabled = settings.AmbientOcclusionEnabled;
         AmbientOcclusionRadius = Math.Clamp(settings.AmbientOcclusionRadius, 0f, 128f);
         AmbientOcclusionStrength = Math.Clamp(settings.AmbientOcclusionStrength, 0f, 2f);
@@ -477,6 +485,10 @@ public class PropertiesPanel : UiPanel
         _projectName = normalizedName;
         manifest.ProjectName = normalizedName;
 
+        manifest.Settings.AntiAliasingEnabled = AntiAliasingEnabled;
+        manifest.Settings.AntiAliasingSubpixel = Math.Clamp(AntiAliasingSubpixel, 0f, 1f);
+        manifest.Settings.AntiAliasingEdgeThreshold = Math.Clamp(AntiAliasingEdgeThreshold, 0.03125f, 0.5f);
+        manifest.Settings.AntiAliasingMinimumThreshold = Math.Clamp(AntiAliasingMinimumThreshold, 0.001f, 0.25f);
         manifest.Settings.AmbientOcclusionEnabled = AmbientOcclusionEnabled;
         manifest.Settings.AmbientOcclusionRadius = Math.Clamp(AmbientOcclusionRadius, 0f, 128f);
         manifest.Settings.AmbientOcclusionStrength = Math.Clamp(AmbientOcclusionStrength, 0f, 2f);
@@ -2136,6 +2148,25 @@ public class PropertiesPanel : UiPanel
     {
         bool changed = false;
 
+        ImGui.TextUnformatted(Localization.T("text.panel.properties.anti_aliasing"));
+        changed |= ImGui.Checkbox(Localization.Label("text.panel.properties.enabled", "Enabled##antiAliasing"), ref AntiAliasingEnabled);
+        if (AntiAliasingEnabled)
+        {
+            ImGui.Indent();
+            changed |= PercentageSlider("Subpixel Smoothing##antiAliasing", ref AntiAliasingSubpixel, 0f, 100f);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(Localization.T("text.panel.properties.anti_aliasing_subpixel_smoothing_tooltip"));
+            changed |= ImGui.SliderFloat(Localization.Label("text.panel.properties.anti_aliasing_edge_threshold", "Edge Threshold##antiAliasing"), ref AntiAliasingEdgeThreshold, 0.03125f, 0.5f, "%.3f");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(Localization.T("text.panel.properties.anti_aliasing_edge_threshold_tooltip"));
+            changed |= ImGui.SliderFloat(Localization.Label("text.panel.properties.anti_aliasing_minimum_threshold", "Minimum Threshold##antiAliasing"), ref AntiAliasingMinimumThreshold, 0.001f, 0.25f, "%.3f");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(Localization.T("text.panel.properties.anti_aliasing_minimum_threshold_tooltip"));
+            ImGui.TextWrapped(Localization.T("text.panel.properties.anti_aliasing_description"));
+            ImGui.Unindent();
+        }
+
+        ImGui.Separator();
         ImGui.TextUnformatted(Localization.T("text.panel.properties.ambient_occlusion"));
         changed |= ImGui.Checkbox(Localization.Label("text.panel.properties.enabled", "Enabled##ambientOcclusion"), ref AmbientOcclusionEnabled);
         if (AmbientOcclusionEnabled)

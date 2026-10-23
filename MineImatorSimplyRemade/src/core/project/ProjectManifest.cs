@@ -90,6 +90,10 @@ public class ProjectWorkCameraState
 
 public class ProjectRenderSettings
 {
+    public bool AntiAliasingEnabled { get; set; } = false;
+    public float AntiAliasingSubpixel { get; set; } = 0.75f;
+    public float AntiAliasingEdgeThreshold { get; set; } = 0.125f;
+    public float AntiAliasingMinimumThreshold { get; set; } = 0.03125f;
     public bool AmbientOcclusionEnabled { get; set; } = true;
     public float AmbientOcclusionRadius { get; set; } = 12f;
     public float AmbientOcclusionStrength { get; set; } = 1f;
