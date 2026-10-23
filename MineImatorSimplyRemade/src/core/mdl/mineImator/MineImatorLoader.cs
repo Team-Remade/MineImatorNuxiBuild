@@ -1818,7 +1818,7 @@ public class MineImatorLoader
             if (effectiveBend.HasValue && !cpuBentExtrudedPlane)
             {
                 mesh.GpuBend = CreateGpuBendState(effectiveBend.Value, from, to, inflate,
-                    shapePosition, shapeRotation, shapeScale, bendStyle);
+                    shapePosition, shapeRotation, shapeScale, bendStyle, shape.Type == "plane");
             }
         }
 
@@ -1826,13 +1826,13 @@ public class MineImatorLoader
     }
 
     private static GpuBendState CreateGpuBendState(BendParams bend, vec3 from, vec3 to, float inflate,
-        vec3 shapePosition, vec3 shapeRotation, vec3 shapeScale, BendStyle bendStyle)
+        vec3 shapePosition, vec3 shapeRotation, vec3 shapeScale, BendStyle bendStyle, bool plane)
     {
         int segmentAxis = bend.Part switch
         {
             BendPart.Right or BendPart.Left => 0,
             BendPart.Upper or BendPart.Lower => 1,
-            _ => 2
+            _ => plane ? 1 : 2
         };
         float axisScale = MathF.Max(MathF.Abs(shapeScale[segmentAxis]), 1e-6f);
         float bendSize = bend.BendSize / 16f / axisScale;
@@ -1847,14 +1847,19 @@ public class MineImatorLoader
         bool sharp = effectiveStyle == BendStyle.Blocky && !bend.ExplicitBendSize && singleXorZ;
         int scaleAxis = bend.AxisX && !bend.AxisY && !bend.AxisZ ? 0 :
             !bend.AxisX && !bend.AxisY && bend.AxisZ ? 2 : -1;
-        mat4 shapeTransform = BuildShapeRotMat(shapeRotation) * mat4.Scale(shapeScale);
+        // Flat shapes may have a zero scale on a non-segment axis. Inverting
+        // R*S would then poison every component, even the valid segment axis.
+        vec3 inverseScale = new vec3(
+            shapeScale.x == 0f ? 0f : 1f / shapeScale.x,
+            shapeScale.y == 0f ? 0f : 1f / shapeScale.y,
+            shapeScale.z == 0f ? 0f : 1f / shapeScale.z);
 
         return new GpuBendState
         {
             Angle = bend.Angle,
             Pivot = BendHelper.GetBendPivot(bend, shapePosition),
             ShapePosition = shapePosition,
-            InverseShapeTransform = shapeTransform.Inverse,
+            InverseShapeTransform = mat4.Scale(inverseScale) * BuildShapeRotMat(shapeRotation).Inverse,
             SegmentAxis = segmentAxis,
             ScaleCorrectionAxis = scaleAxis,
             AxisStart = axisStart,
@@ -1862,7 +1867,8 @@ public class MineImatorLoader
             BendEnd = bendEnd,
             BendSize = bendSize,
             InvertWeight = bend.Part is BendPart.Lower or BendPart.Back or BendPart.Left,
-            Sharp = sharp
+            Sharp = sharp,
+            Plane = plane
         };
     }
 
@@ -2243,13 +2249,14 @@ public class MineImatorLoader
                         float fromCoord = segAxis == 0 ? x1
                             : segAxis == 1 ? y1
                             : z1;
-                        curSegSize -= ModFix(fromCoord - bendStart, segSize);
+                        curSegSize -= (fromCoord - bendStart) % segSize;
                     }
 
                     curSegSize = Math.Min(totalSize - segPos, curSegSize);
                 }
 
-                segPos += Math.Max(curSegSize, 0.005f);
+                // Reference minimum is 0.005 scaled pixels, not world units.
+                segPos = Math.Min(totalSize, segPos + Math.Max(curSegSize, 0.005f / (16f * axisScale)));
 
                 vec3 np1, np2, np3, np4;
                 vec3 nn1, nn2, nn3, nn4;
@@ -2796,13 +2803,13 @@ public class MineImatorLoader
                     // Mine-imator uses local from[segAxis] here. bendStart
                     // already includes the shape position term.
                     float fromCoord = segAxis == 0 ? x1 : y1;
-                    curSegSize -= ModFix(fromCoord - bendStart, segSize);
+                    curSegSize -= (fromCoord - bendStart) % segSize;
                 }
 
                 curSegSize = Math.Min(totalSize - segPos, curSegSize);
             }
 
-            segPos += Math.Max(curSegSize, 0.005f);
+            segPos = Math.Min(totalSize, segPos + Math.Max(curSegSize, 0.005f / (16f * axisScale)));
 
             vec3 np1, np2;
             float ntexp1;
@@ -3152,18 +3159,6 @@ public class MineImatorLoader
     {
         (uv1, uv4) = (uv4, uv1);
         (uv2, uv3) = (uv3, uv2);
-    }
-
-    // Matches Mine-imator's mod_fix(x, y): wrap negative values before modulo.
-    private static float ModFix(float x, float y)
-    {
-        if (MathF.Abs(y) <= 1e-6f)
-            return 0f;
-
-        while (x < 0f)
-            x += y;
-
-        return x % y;
     }
 
     // Adds a face quad with uniform normal and per-vertex UVs

@@ -1720,6 +1720,7 @@ public class Mesh : IDisposable
         SetUniformFloat(shader, "uBendSize", bend.BendSize);
         SetUniformBool(shader, "uBendInvert", bend.InvertWeight);
         SetUniformBool(shader, "uBendSharp", bend.Sharp);
+        SetUniformBool(shader, "uBendPlane", bend.Plane);
     }
 
     /// <summary>

@@ -35,6 +35,7 @@ uniform float uBendEnd;
 uniform float uBendSize;
 uniform bool  uBendInvert;
 uniform bool  uBendSharp;
+uniform bool  uBendPlane;
 
 layout(std140) uniform SceneData {
     mat4  uLightSpaceMatrix;
@@ -71,7 +72,8 @@ float bendEase(float t) {
     if (t <= 0.0) return 0.0;
     if (t >= 1.0) return 1.0;
     float x = t * 2.0;
-    return x < 1.0 ? 0.5 * pow(x, 5.0) : 0.5 * (pow(x - 2.0, 5.0) + 2.0);
+    // GLSL pow is undefined for negative bases, including integer exponents.
+    return x < 1.0 ? 0.5 * pow(x, 5.0) : 1.0 - 0.5 * pow(2.0 - x, 5.0);
 }
 
 mat3 bendRotation(vec3 degrees) {
@@ -97,8 +99,10 @@ void applyBend(inout vec3 position, inout vec3 normal) {
     vec3 bendVector = uBendSharp
         ? uBendAngle * weight
         : vec3(uBendAngle.x * bendEase(weight), uBendAngle.y * weight, uBendAngle.z * bendEase(weight));
-    vec3 scale = vec3(1.0 + weight * 0.005);
-    if (uBendSharp && uBendScaleAxis >= 0 && segmentPosition > uBendStart && segmentPosition < uBendEnd) {
+    // Recovering source coordinates through the inverse can move the first ring a few ULPs.
+    bool initial = abs(segmentPosition) <= max(1e-7, abs(uBendAxisStart) * 1e-6);
+    vec3 scale = vec3(1.0 + (!uBendPlane && !initial ? weight * 0.005 : 0.0));
+    if (uBendSharp && (!uBendPlane || initial) && uBendScaleAxis >= 0 && segmentPosition > uBendStart && segmentPosition < uBendEnd) {
         float triangle = (weight <= 0.5 ? weight : 1.0 - weight) * 2.0;
         float angle = abs(bendComponent(uBendAngle, uBendScaleAxis));
         if (angle > 90.0) angle = 180.0 - angle;

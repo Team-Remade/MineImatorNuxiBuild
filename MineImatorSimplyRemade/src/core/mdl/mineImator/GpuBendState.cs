@@ -17,4 +17,6 @@ public sealed class GpuBendState
     public float BendSize;
     public bool InvertWeight;
     public bool Sharp;
+    // Flat planes omit block expansion and per-segment pinch correction.
+    public bool Plane;
 }
