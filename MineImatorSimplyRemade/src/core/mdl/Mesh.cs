@@ -485,6 +485,10 @@ public class Mesh : IDisposable
     /// <summary>Authored geometry opacity multiplied by the scene material opacity.</summary>
     public float BaseAlpha { get; set; } = 1f;
 
+    // Model/shape colors remain separate from editable timeline material channels.
+    public vec4 BaseBlendColor { get; set; } = vec4.Ones;
+    public vec4 BaseMixColor { get; set; } = vec4.Zero;
+
     /// <summary>
     /// Base colour passed to the fragment shader as <c>uAlbedo</c>.
     /// Backed by the RGB channels of <see cref="StandardMaterial.AlbedoColor"/>.
@@ -701,6 +705,8 @@ public class Mesh : IDisposable
         clone.AnimationKey        = AnimationKey;
         clone.BaseTint            = BaseTint;
         clone.BaseAlpha           = BaseAlpha;
+        clone.BaseBlendColor      = BaseBlendColor;
+        clone.BaseMixColor        = BaseMixColor;
         clone.Unlit                = Unlit;
         clone.DepthTestDisabled    = DepthTestDisabled;
         clone.IsTranslucent        = IsTranslucent;

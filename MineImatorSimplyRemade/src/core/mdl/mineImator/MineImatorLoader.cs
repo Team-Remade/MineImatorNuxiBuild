@@ -157,12 +157,9 @@ public class MineImatorLoader
 
                                 // Mine-imator templates can override a model's base skin via
                                 // model_tex (direct filename or resource id).
-                                string textureRef = GetFirstTimelineKeyframe(timeline)?.TextureObject;
-                                if (string.IsNullOrWhiteSpace(textureRef) && timeline.DefaultValues != null)
-                                    timeline.DefaultValues.TryGetString("TEXTURE_OBJ", out textureRef);
-                                uint templateTexture = ResolveTextureRefTexture(textureRef, resourceDict, miObject.DirectoryPath);
-                                if (templateTexture == 0)
-                                    templateTexture = ResolveTemplateTexture(template, resourceDict, miObject.DirectoryPath);
+                                uint templateTexture = ResolveTemplateTexture(template, resourceDict, miObject.DirectoryPath);
+                                character.TextureOverridePath = ResolveTextureRefPath(template.ModelTex,
+                                    resourceDict, miObject.DirectoryPath);
                                 if (templateTexture != 0)
                                     ApplyTextureOverrideToScene(character, templateTexture, modelBaseTexture);
 
@@ -211,6 +208,7 @@ public class MineImatorLoader
 
                 ApplyTimelineTransform(itemObject, timeline);
                 ApplyTimelineSettings(itemObject, timeline, includeHierarchySettings: true);
+                ApplyTimelineTexture(itemObject, timeline, resourceDict, miObject.DirectoryPath);
                 if (template?.Item != null && itemObject.ObjectType == "Item")
                     ImportItemSlotKeyframes(itemObject, timeline, template,
                         itemObject.TemporaryItemSheetColumns, itemObject.TemporaryItemSheetRows);
@@ -272,6 +270,7 @@ public class MineImatorLoader
         foreach (var bodypart in reparentedBodyparts.Concat(changedBends))
             RefreshInheritedBends(bodypart);
 
+        sceneRoot.RefreshInheritedMaterials();
         return sceneRoot;
 
         void RefreshInheritedBends(SceneObject obj)
@@ -342,8 +341,10 @@ public class MineImatorLoader
 
         var character = new CharacterSceneObject
         {
-            SourceMineImatorModel = model
+            SourceMineImatorModel = model,
+            UsePropertyInheritance = true
         };
+        InitializeImportedMaterial(character);
         character.Name = model.Name;
         character.ObjectType = "MineImator";
         character.AssignObjectId();
@@ -720,18 +721,39 @@ public class MineImatorLoader
     private uint ResolveTextureRefTexture(string textureRef, IReadOnlyDictionary<string, string> resourceDict,
         string objectDirectory)
     {
-        string resolvedRef = ResolveResourceFilename(textureRef, resourceDict);
-        if (string.IsNullOrWhiteSpace(resolvedRef))
-            return 0;
+        string path = ResolveTextureRefPath(textureRef, resourceDict, objectDirectory);
+        return string.IsNullOrEmpty(path) ? 0 : LoadTextureFromFile(path, makeSquare: true);
+    }
 
-        string texturePath = Path.IsPathRooted(resolvedRef)
-            ? resolvedRef
-            : Path.Combine(objectDirectory, resolvedRef);
+    private static string ResolveTextureRefPath(string? textureRef, IReadOnlyDictionary<string, string> resources,
+        string directory)
+    {
+        if (string.IsNullOrWhiteSpace(textureRef) || textureRef is "null" or "default") return "";
+        string reference = ResolveResourceFilename(textureRef, resources);
+        string path = Path.IsPathRooted(reference) ? reference : Path.Combine(directory, reference);
+        return File.Exists(path) ? Path.GetFullPath(path) : "";
+    }
 
-        if (!File.Exists(texturePath))
-            return 0;
-
-        return LoadTextureFromFile(texturePath, makeSquare: true);
+    private void ApplyTimelineTexture(SceneObject obj, MiTimeline timeline,
+        IReadOnlyDictionary<string, string> resources, string directory)
+    {
+        // Item texture channels select sprite sheets, not a whole-mesh override.
+        if (obj.ObjectType == "Item") return;
+        string? reference = GetFirstTimelineKeyframe(timeline)?.TextureObject;
+        if (reference == null && timeline.DefaultValues != null)
+            timeline.DefaultValues.TryGetString("TEXTURE_OBJ", out reference);
+        string path = ResolveTextureRefPath(reference, resources, directory);
+        if (string.IsNullOrEmpty(path)) return;
+        obj.AlbedoTexturePath = path;
+        uint texture = LoadTextureFromFile(path, makeSquare: obj is CharacterSceneObject or MiBoneSceneObject);
+        if (texture == 0) return;
+        // Keep descendants' authored textures intact; runtime inheritance decides
+        // which children use this override and restores them when it is disabled.
+        if (obj is MiBoneSceneObject bone)
+            bone.OverrideTexture(texture);
+        else
+            foreach (var mesh in obj.Visuals)
+                mesh.TextureId = texture;
     }
 
     private static string ResolveTemplateModelPath(MiTemplate template,
@@ -971,6 +993,10 @@ public class MineImatorLoader
         HashSet<SceneObject> changedBends)
     {
         if (miObject.Timelines == null) return;
+        var resources = new Dictionary<string, string>();
+        foreach (var resource in miObject.Resources ?? [])
+            if (!string.IsNullOrWhiteSpace(resource.Id) && !string.IsNullOrWhiteSpace(resource.Filename))
+                resources[resource.Id] = resource.Filename;
         foreach (var timeline in miObject.Timelines)
         {
             if (!string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase) ||
@@ -980,7 +1006,8 @@ public class MineImatorLoader
 
             ApplyTimelineTransform(bone, timeline);
             ApplyTimelineSettings(bone, timeline, includeHierarchySettings: true,
-                includeMaterialAndDepthSettings: false, applyBaseVisibilityFromHide: false);
+                includeMaterialAndDepthSettings: true, applyBaseVisibilityFromHide: false);
+            ApplyTimelineTexture(bone, timeline, resources, miObject.DirectoryPath);
             if (timeline.LockBend.HasValue)
                 bone.SetLockBend(timeline.LockBend.Value);
             if (ApplyTimelineBend(bone, timeline))
@@ -1024,8 +1051,13 @@ public class MineImatorLoader
         if (obj == null || timeline == null)
             return;
 
+        InitializeImportedMaterial(obj);
+
         if (applyBaseVisibilityFromHide)
             obj.ObjectVisible = !timeline.Hide;
+
+        if (obj.ObjectType == "Item")
+            obj.MaterialSettings.DoubleSided = true;
 
         if (includeMaterialAndDepthSettings)
         {
@@ -1060,6 +1092,14 @@ public class MineImatorLoader
                 obj.InheritVisibility = timeline.Inherit.Visibility.Value;
             if (timeline.Inherit.RotPoint.HasValue)
                 obj.InheritPivotOffset = timeline.Inherit.RotPoint.Value;
+            obj.InheritAlpha = timeline.Inherit.Alpha ?? obj.InheritAlpha;
+            obj.InheritColor = timeline.Inherit.Color ?? obj.InheritColor;
+            obj.InheritTexture = timeline.Inherit.Texture ?? obj.InheritTexture;
+            obj.InheritSurface = timeline.Inherit.Surface ?? obj.InheritSurface;
+            obj.InheritSubsurface = timeline.Inherit.Subsurface ?? obj.InheritSubsurface;
+            obj.InheritGlowColor = timeline.Inherit.GlowColor ?? obj.InheritGlowColor;
+            obj.InheritSelect = timeline.Inherit.Select ?? obj.InheritSelect;
+            obj.InheritPose = timeline.Inherit.Pose ?? obj.InheritPose;
         }
 
         if (includeHierarchySettings && timeline.LockBend.HasValue)
@@ -1078,6 +1118,7 @@ public class MineImatorLoader
         }
 
         MiKeyframe? firstKf = GetFirstTimelineKeyframe(timeline);
+        ApplyImportedSurfaceChannels(obj, timeline, firstKf);
 
         bool? explicitVisible = ResolveTimelineVisible(timeline, firstKf);
         if (explicitVisible.HasValue)
@@ -1147,6 +1188,49 @@ public class MineImatorLoader
         }
 
         obj.PropagateMaterialSettingsToChildren();
+    }
+
+    private static void InitializeImportedMaterial(SceneObject obj)
+    {
+        if (obj.UsePropertyInheritance && obj.HasExplicitMaterialSettings)
+            return;
+        obj.UsePropertyInheritance = true;
+        obj.SetExplicitMaterialSettings();
+        obj.MaterialSettings.Roughness = 1f;
+        obj.MaterialSettings.EmissionColor = vec4.Ones;
+        obj.MaterialSettings.EmissionEnergy = 0f;
+        obj.MaterialSettings.SubsurfaceRadius = vec3.Ones;
+    }
+
+    private static void ApplyImportedSurfaceChannels(SceneObject obj, MiTimeline timeline, MiKeyframe? frame)
+    {
+        float? Number(string key, float? value) => value ??
+            (timeline.DefaultValues != null && timeline.DefaultValues.TryGetValue(key, out float fallback) ? fallback : null);
+        string? Color(string key, string? value) => value ??
+            (timeline.DefaultValues != null && timeline.DefaultValues.TryGetString(key, out string fallback) ? fallback : null);
+
+        var material = obj.MaterialSettings;
+        if (Number("METALLIC", frame?.Metallic) is { } metallic)
+            material.Metallic = Math.Clamp(metallic, 0f, 1f);
+        if (Number("ROUGHNESS", frame?.Roughness) is { } roughness)
+            material.Roughness = Math.Clamp(roughness, 0f, 1f);
+        if (Number("EMISSIVE", frame?.Emissive) is { } emissive)
+        {
+            material.EmissionEnergy = emissive;
+            material.EmissionEnabled = emissive != 0f;
+        }
+        if (ParseMiColor(Color("GLOW_COLOR", frame?.GlowColor)) is { } glow)
+            material.EmissionColor = new vec4(glow, 1f);
+        if (Number("SUBSURFACE", frame?.Subsurface) is { } subsurface)
+            material.Subsurface = subsurface;
+        var radius = material.SubsurfaceRadius;
+        radius.x = Number("SUBSURFACE_RADIUS_RED", frame?.SubsurfaceRadiusRed) ?? radius.x;
+        radius.y = Number("SUBSURFACE_RADIUS_GREEN", frame?.SubsurfaceRadiusGreen) ?? radius.y;
+        radius.z = Number("SUBSURFACE_RADIUS_BLUE", frame?.SubsurfaceRadiusBlue) ?? radius.z;
+        material.SubsurfaceRadius = radius;
+        if (ParseMiColor(Color("SUBSURFACE_COLOR", frame?.SubsurfaceColor)) is { } color)
+            material.SubsurfaceColor = new vec4(color, 1f);
+        obj.ApplyMaterialSettingsToMeshes();
     }
 
     private static vec3 ResolveTimelinePivotOffset(SceneObject obj, float[] rotPoint)
@@ -1236,8 +1320,15 @@ public class MineImatorLoader
             {
                 Name = boneName,
                 BoneName = boneName,
-                ObjectType = "Bone"
+                ObjectType = "Bone",
+                ModelOwner = character,
+                UsePropertyInheritance = true,
+                InheritAlpha = true,
+                InheritColor = true,
+                InheritTexture = true
             };
+            InitializeImportedMaterial(boneObject);
+            boneObject.MaterialSettings.DoubleSided = part.Backfaces;
             boneObject.AssignObjectId();
             // Build the octahedron indicator so the Viewport renders and picks it
             // the same way it does for Assimp-imported bones.
@@ -1709,6 +1800,8 @@ public class MineImatorLoader
                 partColorAlpha, partColorBlendAmount);
             mesh.BlendColor = new vec4(colors.Blend, 1f);
             mesh.MixColor = new vec4(colors.Mix, colors.MixAmount);
+            mesh.BaseBlendColor = mesh.BlendColor;
+            mesh.BaseMixColor = mesh.MixColor;
             mesh.BaseAlpha = colors.Alpha;
             mesh.Alpha = colors.Alpha;
 
@@ -3575,6 +3668,7 @@ public class MiTimeline
     [JsonPropertyName("keyframes")] public Dictionary<string, MiKeyframe> Keyframes { get; set; }
 }
 
+[JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
 public class MiKeyframe
 {
     [JsonPropertyName("position")] public float[] Position { get; set; }
@@ -3597,6 +3691,15 @@ public class MiKeyframe
     public bool? Visible { get; set; }
     [JsonPropertyName("TEXTURE_OBJ")] public string? TextureObject { get; set; }
     [JsonPropertyName("RGB_MUL")] public string? MultiplyColor { get; set; }
+    [JsonPropertyName("GLOW_COLOR")] public string? GlowColor { get; set; }
+    [JsonPropertyName("EMISSIVE")] public float? Emissive { get; set; }
+    [JsonPropertyName("METALLIC")] public float? Metallic { get; set; }
+    [JsonPropertyName("ROUGHNESS")] public float? Roughness { get; set; }
+    [JsonPropertyName("SUBSURFACE")] public float? Subsurface { get; set; }
+    [JsonPropertyName("SUBSURFACE_RADIUS_RED")] public float? SubsurfaceRadiusRed { get; set; }
+    [JsonPropertyName("SUBSURFACE_RADIUS_GREEN")] public float? SubsurfaceRadiusGreen { get; set; }
+    [JsonPropertyName("SUBSURFACE_RADIUS_BLUE")] public float? SubsurfaceRadiusBlue { get; set; }
+    [JsonPropertyName("SUBSURFACE_COLOR")] public string? SubsurfaceColor { get; set; }
     [JsonPropertyName("MIX_COLOR")] public string? MixColor { get; set; }
     [JsonPropertyName("MIX_PERCENT")]
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
@@ -3655,6 +3758,13 @@ public class MiInherit
     [JsonPropertyName("rotation")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Rotation { get; set; }
     [JsonPropertyName("scale")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Scale { get; set; }
     [JsonPropertyName("alpha")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Alpha { get; set; }
+    [JsonPropertyName("color")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Color { get; set; }
+    [JsonPropertyName("texture")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Texture { get; set; }
+    [JsonPropertyName("surface")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Surface { get; set; }
+    [JsonPropertyName("subsurface")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Subsurface { get; set; }
+    [JsonPropertyName("glow_color")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? GlowColor { get; set; }
+    [JsonPropertyName("select")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Select { get; set; }
+    [JsonPropertyName("pose")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Pose { get; set; }
     [JsonPropertyName("visibility")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Visibility { get; set; }
     [JsonPropertyName("rot_point")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? RotPoint { get; set; }
 }

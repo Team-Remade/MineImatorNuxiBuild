@@ -2542,6 +2542,8 @@ public class Viewport : UiPanel
             }
 
             using var evaluation = SceneObject.BeginRenderEvaluation();
+            foreach (var root in SceneObjects)
+                root.RefreshInheritedMaterials();
             Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
             int textureAnimFps = Math.Clamp(PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240);
             Mesh.AnimatedTextureSpeedScale = textureAnimFps / 20.0;
@@ -6028,6 +6030,8 @@ public class Viewport : UiPanel
         }
 
         using var evaluation = SceneObject.BeginRenderEvaluation();
+        foreach (var root in MainViewport.SceneObjects)
+            root.RefreshInheritedMaterials();
         Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
         int textureAnimFps = Math.Clamp(MainViewport.PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240);
         Mesh.AnimatedTextureSpeedScale = textureAnimFps / 20.0;

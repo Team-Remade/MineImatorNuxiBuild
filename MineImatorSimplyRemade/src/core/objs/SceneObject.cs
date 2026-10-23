@@ -1,7 +1,10 @@
 ﻿using GlmSharp;
 using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemade.core.mdl.mineImator;
+using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs;
@@ -294,6 +297,8 @@ public class SceneObject
     public void RemoveMesh(Mesh mesh)
     {
         Visuals.Remove(mesh);
+        if (_inheritedTextures.Remove(mesh, out var previous) && mesh.TextureId == previous.Applied)
+            mesh.TextureId = previous.Local;
     }
 
     // ── Transform – local cache ───────────────────────────────────────────────
@@ -385,6 +390,34 @@ public class SceneObject
 
     /// <summary>When true, this object inherits the parent's scale (default: true).</summary>
     public bool InheritScale = true;
+
+    public bool InheritAlpha = false;
+    public bool InheritColor = false;
+    public bool InheritTexture = false;
+    public bool InheritSurface = true;
+    public bool InheritSubsurface = true;
+    public bool InheritGlowColor = true;
+    public bool InheritSelect = false;
+    public bool InheritPose = false;
+
+    private bool _usePropertyInheritance;
+
+    /// <summary>
+    /// Resolves Mine-imator material channels independently. False preserves
+    /// whole-material sharing in native projects created before these flags existed.
+    /// </summary>
+    public bool UsePropertyInheritance
+    {
+        get => _usePropertyInheritance;
+        set
+        {
+            // Legacy inherited references are not authored local overrides.
+            if (value && !_usePropertyInheritance && !_hasExplicitMaterialSettings &&
+                Parent != null && ReferenceEquals(_materialSettings, Parent._materialSettings))
+                _materialSettings = null;
+            _usePropertyInheritance = value;
+        }
+    }
 
     /// <summary>Rebuild inherited scale along the resolved local axes instead of shearing the child.</summary>
     public bool ScaleResize = true;
@@ -592,6 +625,14 @@ public class SceneObject
     /// </summary>
     public bool HasExplicitMaterialSettings => _hasExplicitMaterialSettings;
 
+    internal void RestoreInheritedMaterialSettings()
+    {
+        _hasExplicitMaterialSettings = false;
+        _materialSettings = UsePropertyInheritance ? null : Parent?._materialSettings;
+        ApplyMaterialSettingsToMeshes();
+        PropagateMaterialSettingsToChildren();
+    }
+
     /// <summary>
     /// Copies <paramref name="other"/>'s current material state (a cloned
     /// <see cref="MaterialSettings"/> plus whether it is explicit or inherited)
@@ -622,6 +663,11 @@ public class SceneObject
     /// </summary>
     public void PropagateMaterialSettingsToChildren()
     {
+        if (UsePropertyInheritance)
+        {
+            RefreshInheritedMaterials();
+            return;
+        }
         if (_materialSettings == null) return;
 
         // Always apply to self first so the object that was just edited updates too.
@@ -629,7 +675,11 @@ public class SceneObject
 
         foreach (var child in GetChildrenObjects())
         {
-            if (!child._hasExplicitMaterialSettings)
+            if (child.UsePropertyInheritance)
+            {
+                child.RefreshInheritedMaterials();
+            }
+            else if (!child._hasExplicitMaterialSettings)
             {
                 child._materialSettings = _materialSettings;
                 child.ApplyMaterialSettingsToMeshes();
@@ -639,28 +689,170 @@ public class SceneObject
     }
 
     /// <summary>
-    /// Applies the current <see cref="MaterialSettings"/> to this object's own meshes.
+    /// Returns a resolved copy without modifying authored settings. Each channel
+    /// stops at the first ancestor whose corresponding inheritance flag is false.
+    /// </summary>
+    public MaterialSettings GetEffectiveMaterialSettings()
+    {
+        var resolved = _materialSettings?.Clone() ?? new MaterialSettings
+        {
+            Roughness = 1f,
+            EmissionColor = new vec4(1f),
+            EmissionEnergy = 0f,
+            SubsurfaceRadius = vec3.Ones
+        };
+        if (!UsePropertyInheritance) return resolved;
+
+        bool alpha = true, color = true, surface = true, subsurface = true, glow = true;
+        resolved.EmissionEnergy = resolved.EmissionEnabled ? resolved.EmissionEnergy : 0f;
+        for (SceneObject current = this; current.Parent != null; current = current.Parent)
+        {
+            alpha &= current.InheritAlpha;
+            color &= current.InheritColor;
+            surface &= current.InheritSurface;
+            subsurface &= current.InheritSubsurface;
+            glow &= current.InheritGlowColor;
+            if (!(alpha || color || surface || subsurface || glow)) break;
+
+            var parent = current.Parent._materialSettings;
+            if (parent == null) continue;
+            if (alpha)
+                resolved.AlbedoColor.w *= parent.AlbedoColor.w * (1f - parent.Transparency);
+            if (color)
+            {
+                resolved.AlbedoColor.x *= parent.AlbedoColor.x;
+                resolved.AlbedoColor.y *= parent.AlbedoColor.y;
+                resolved.AlbedoColor.z *= parent.AlbedoColor.z;
+                resolved.BlendColor.x *= parent.BlendColor.x;
+                resolved.BlendColor.y *= parent.BlendColor.y;
+                resolved.BlendColor.z *= parent.BlendColor.z;
+                resolved.MixColor = new vec4(
+                    Math.Clamp(resolved.MixColor.x + parent.MixColor.x, 0f, 1f),
+                    Math.Clamp(resolved.MixColor.y + parent.MixColor.y, 0f, 1f),
+                    Math.Clamp(resolved.MixColor.z + parent.MixColor.z, 0f, 1f),
+                    Math.Clamp(resolved.MixColor.w + parent.MixColor.w, 0f, 1f));
+            }
+            if (surface)
+            {
+                resolved.Metallic = Math.Clamp(resolved.Metallic + parent.Metallic, 0f, 1f);
+                resolved.Roughness = Math.Clamp(resolved.Roughness * parent.Roughness, 0f, 1f);
+                resolved.EmissionEnergy += parent.EmissionEnabled ? parent.EmissionEnergy : 0f;
+                resolved.EmissionEnabled |= parent.EmissionEnabled;
+            }
+            if (subsurface)
+            {
+                resolved.Subsurface += parent.Subsurface;
+                resolved.SubsurfaceRadius = new vec3(
+                    Math.Clamp(resolved.SubsurfaceRadius.x * parent.SubsurfaceRadius.x, 0f, 1f),
+                    Math.Clamp(resolved.SubsurfaceRadius.y * parent.SubsurfaceRadius.y, 0f, 1f),
+                    Math.Clamp(resolved.SubsurfaceRadius.z * parent.SubsurfaceRadius.z, 0f, 1f));
+                resolved.SubsurfaceColor.x *= parent.SubsurfaceColor.x;
+                resolved.SubsurfaceColor.y *= parent.SubsurfaceColor.y;
+                resolved.SubsurfaceColor.z *= parent.SubsurfaceColor.z;
+            }
+            if (glow)
+            {
+                resolved.EmissionColor.x *= parent.EmissionColor.x;
+                resolved.EmissionColor.y *= parent.EmissionColor.y;
+                resolved.EmissionColor.z *= parent.EmissionColor.z;
+            }
+        }
+        return resolved;
+    }
+
+    /// <summary>
+    /// Reapply after animation and live camera texture updates, before any render
+    /// passes. Legacy objects are traversed but retain their existing push updates.
+    /// </summary>
+    public void RefreshInheritedMaterials()
+    {
+        if (this is MiBoneSceneObject poseBone) poseBone.RefreshInheritedPoseBend();
+        if (UsePropertyInheritance || _inheritedTextures.Count > 0) ApplyMaterialSettingsToMeshes();
+        foreach (var child in _children)
+            child.RefreshInheritedMaterials();
+    }
+
+    /// <summary>
+    /// Finds the nearest explicit albedo override along the texture inheritance
+    /// chain. Embedded textures and filtered model skin variants are not timeline overrides.
+    /// </summary>
+    public SceneObject? GetEffectiveTextureSource()
+    {
+        for (SceneObject current = this; ; current = current.Parent)
+        {
+            if (!string.IsNullOrEmpty(current.AlbedoTexturePath) ||
+                !string.IsNullOrEmpty(current.CameraTextureObjectId))
+                return current;
+            if (!current.InheritTexture || current.Parent == null) return null;
+        }
+    }
+
+    private readonly Dictionary<Mesh, (uint Local, uint Applied)> _inheritedTextures = new();
+
+    private void ApplyInheritedTexture()
+    {
+        var source = UsePropertyInheritance ? GetEffectiveTextureSource() : null;
+        uint? inherited = source != null && source != this
+            ? source.Visuals.FirstOrDefault(mesh => !mesh.PickOnly)?.TextureId
+            : null;
+        if (source != null && source != this && !inherited.HasValue &&
+            string.IsNullOrEmpty(source.CameraTextureObjectId))
+        {
+            string path = !string.IsNullOrEmpty(source.AlbedoTexturePath)
+                ? source.AlbedoTexturePath : source.TextureOverridePath;
+            path = ProjectManager.Instance?.ResolveAssetPath(path) ?? path;
+            uint loaded = MineImatorLoader.Instance.LoadTextureFromFile(path,
+                makeSquare: source is CharacterSceneObject or MiBoneSceneObject);
+            if (loaded != 0) inherited = loaded;
+        }
+        foreach (var mesh in Visuals)
+        {
+            if (_inheritedTextures.TryGetValue(mesh, out var previous))
+            {
+                // Preserve a new texture assigned by animation, the UI, or a camera.
+                if (mesh.TextureId == previous.Applied) mesh.TextureId = previous.Local;
+                _inheritedTextures.Remove(mesh);
+            }
+            if (inherited.HasValue && !mesh.PickOnly)
+            {
+                _inheritedTextures[mesh] = (mesh.TextureId, inherited.Value);
+                mesh.TextureId = inherited.Value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Applies resolved settings to meshes without changing the local material.
     /// </summary>
     public void ApplyMaterialSettingsToMeshes()
     {
-        if (_materialSettings == null) return;
+        ApplyInheritedTexture();
+        var settings = UsePropertyInheritance ? GetEffectiveMaterialSettings() : _materialSettings;
+        if (settings == null) return;
 
         foreach (var mesh in Visuals)
         {
             mesh.Albedo = new vec3(
-                _materialSettings.AlbedoColor.x,
-                _materialSettings.AlbedoColor.y,
-                _materialSettings.AlbedoColor.z) * mesh.BaseTint;
-            mesh.BlendColor = _materialSettings.BlendColor;
-            mesh.MixColor = _materialSettings.MixColor;
-            mesh.DoubleSided = _materialSettings.DoubleSided;
-            mesh.TextureOffset = _materialSettings.TextureOffset;
-            mesh.TextureRepeat = _materialSettings.TextureRepeat;
-            mesh.TextureMirror = _materialSettings.TextureMirror;
+                settings.AlbedoColor.x,
+                settings.AlbedoColor.y,
+                settings.AlbedoColor.z) * mesh.BaseTint;
+            mesh.BlendColor = UsePropertyInheritance
+                ? mesh.BaseBlendColor * settings.BlendColor : settings.BlendColor;
+            mesh.MixColor = UsePropertyInheritance
+                ? new vec4(
+                    Math.Clamp(mesh.BaseMixColor.x + settings.MixColor.x, 0f, 1f),
+                    Math.Clamp(mesh.BaseMixColor.y + settings.MixColor.y, 0f, 1f),
+                    Math.Clamp(mesh.BaseMixColor.z + settings.MixColor.z, 0f, 1f),
+                    Math.Clamp(mesh.BaseMixColor.w + settings.MixColor.w, 0f, 1f))
+                : settings.MixColor;
+            mesh.DoubleSided = settings.DoubleSided;
+            mesh.TextureOffset = settings.TextureOffset;
+            mesh.TextureRepeat = settings.TextureRepeat;
+            mesh.TextureMirror = settings.TextureMirror;
             // Combine AlbedoColor.a with (1 - Transparency) so both routes
             // can control opacity: 0 Transparency = fully opaque.
-            mesh.Alpha = mesh.BaseAlpha * _materialSettings.AlbedoColor.w * (1f - _materialSettings.Transparency);
-            bool useAutoEmission = _materialSettings.AutoEmission && mesh.AutoEmissionLevel > 0;
+            mesh.Alpha = mesh.BaseAlpha * settings.AlbedoColor.w * (1f - settings.Transparency);
+            bool useAutoEmission = settings.AutoEmission && mesh.AutoEmissionLevel > 0;
             if (useAutoEmission)
             {
                 mesh.EmissionEnabled = true;
@@ -669,22 +861,33 @@ public class SceneObject
             }
             else
             {
-                mesh.EmissionEnabled = _materialSettings.EmissionEnabled;
+                mesh.EmissionEnabled = settings.EmissionEnabled;
                 mesh.EmissionColor = new vec3(
-                    _materialSettings.EmissionColor.x,
-                    _materialSettings.EmissionColor.y,
-                    _materialSettings.EmissionColor.z);
-                mesh.EmissionEnergy = _materialSettings.EmissionEnergy;
+                    settings.EmissionColor.x,
+                    settings.EmissionColor.y,
+                    settings.EmissionColor.z);
+                mesh.EmissionEnergy = settings.EmissionEnergy;
             }
-            mesh.Subsurface = _materialSettings.Subsurface;
-            mesh.SubsurfaceRadius = _materialSettings.SubsurfaceRadius;
+            mesh.Subsurface = settings.Subsurface;
+            mesh.SubsurfaceRadius = settings.SubsurfaceRadius;
             mesh.SubsurfaceColor = new vec3(
-                _materialSettings.SubsurfaceColor.x,
-                _materialSettings.SubsurfaceColor.y,
-                _materialSettings.SubsurfaceColor.z);
-            mesh.SubsurfaceHighlight = _materialSettings.SubsurfaceHighlight;
-            mesh.SubsurfaceHighlightStrength = _materialSettings.SubsurfaceHighlightStrength;
-            mesh.EmissionIndirectOnly = _materialSettings.EmissionIndirectOnly;
+                settings.SubsurfaceColor.x,
+                settings.SubsurfaceColor.y,
+                settings.SubsurfaceColor.z);
+            mesh.SubsurfaceHighlight = settings.SubsurfaceHighlight;
+            mesh.SubsurfaceHighlightStrength = settings.SubsurfaceHighlightStrength;
+            mesh.EmissionIndirectOnly = settings.EmissionIndirectOnly;
+            if (UsePropertyInheritance)
+            {
+                for (int i = 0; i < mesh.GetSurfaceCount(); i++)
+                {
+                    if (mesh.SurfaceGetMaterial(i) is not StandardMaterial material) continue;
+                    material.Metallic = settings.Metallic;
+                    material.Roughness = settings.Roughness;
+                    material.NormalEnabled = settings.NormalEnabled;
+                    material.NormalTexture = settings.NormalTexture;
+                }
+            }
         }
     }
 
@@ -1101,6 +1304,8 @@ public class SceneObject
         world.m00 = basis.m00; world.m01 = basis.m01; world.m02 = basis.m02;
         world.m10 = basis.m10; world.m11 = basis.m11; world.m12 = basis.m12;
         world.m20 = basis.m20; world.m21 = basis.m21; world.m22 = basis.m22;
+        if (this is MiBoneSceneObject poseBone)
+            world *= poseBone.GetInheritedPoseTransform();
         if (!InheritPosition)
         {
             world.m30 = position.x;

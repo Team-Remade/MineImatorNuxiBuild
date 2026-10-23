@@ -888,6 +888,15 @@ public class PropertiesPanel : UiPanel
             InheritPosition = source.InheritPosition,
             InheritRotation = source.InheritRotation,
             InheritScale = source.InheritScale,
+            UsePropertyInheritance = source.UsePropertyInheritance,
+            InheritAlpha = source.InheritAlpha,
+            InheritColor = source.InheritColor,
+            InheritTexture = source.InheritTexture,
+            InheritSurface = source.InheritSurface,
+            InheritSubsurface = source.InheritSubsurface,
+            InheritGlowColor = source.InheritGlowColor,
+            InheritSelect = source.InheritSelect,
+            InheritPose = source.InheritPose,
             ScaleResize = source.ScaleResize,
             LockBend = source.LockBend,
             InheritBend = source.InheritBend,
@@ -3290,6 +3299,42 @@ public class PropertiesPanel : UiPanel
             if (ImGui.Button(Localization.Label("text.panel.properties.reset", "Reset##pivReset")))
                 ApplyToSelectedObjects(obj => obj.PivotOffset = obj.SpawnCategory == "Blocks"
                     ? new vec3(-0.5f, 0f, -0.5f) : vec3.Zero);
+        }
+
+        if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.property_inheritance", "Property Inheritance")))
+        {
+            void InheritanceCheckbox(string label, bool value, Action<SceneObject, bool> apply, bool material = true)
+            {
+                if (!ImGui.Checkbox(label, ref value)) return;
+
+                ApplyToSelectedObjects(obj =>
+                {
+                    apply(obj, value);
+                    if (material)
+                    {
+                        obj.UsePropertyInheritance = true;
+                        obj.PropagateMaterialSettingsToChildren();
+                    }
+                });
+                ProjectManager.Instance.SetDirty(true);
+            }
+
+            InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_alpha", "Inherit Alpha"),
+                _currentObject.InheritAlpha, (obj, value) => obj.InheritAlpha = value);
+            InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_color", "Inherit Color"),
+                _currentObject.InheritColor, (obj, value) => obj.InheritColor = value);
+            InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_texture", "Inherit Texture"),
+                _currentObject.InheritTexture, (obj, value) => obj.InheritTexture = value);
+            InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_surface", "Inherit Surface"),
+                _currentObject.InheritSurface, (obj, value) => obj.InheritSurface = value);
+            InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_subsurface", "Inherit Subsurface"),
+                _currentObject.InheritSubsurface, (obj, value) => obj.InheritSubsurface = value);
+            InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_glow_color", "Inherit Glow Color"),
+                _currentObject.InheritGlowColor, (obj, value) => obj.InheritGlowColor = value);
+            InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_select", "Inherit Selection"),
+                _currentObject.InheritSelect, (obj, value) => obj.InheritSelect = value, material: false);
+            InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_pose", "Inherit Pose"),
+                _currentObject.InheritPose, (obj, value) => obj.InheritPose = value, material: false);
         }
 
         // ── Material ──────────────────────────────────────────────────────────

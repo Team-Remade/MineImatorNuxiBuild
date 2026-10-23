@@ -275,6 +275,15 @@ public static class ProjectSceneSerializer
             InheritPosition = obj.InheritPosition,
             InheritRotation = obj.InheritRotation,
             InheritScale = obj.InheritScale,
+            UsePropertyInheritance = obj.UsePropertyInheritance,
+            InheritAlpha = obj.InheritAlpha,
+            InheritColor = obj.InheritColor,
+            InheritTexture = obj.InheritTexture,
+            InheritSurface = obj.InheritSurface,
+            InheritSubsurface = obj.InheritSubsurface,
+            InheritGlowColor = obj.InheritGlowColor,
+            InheritSelect = obj.InheritSelect,
+            InheritPose = obj.InheritPose,
             ScaleResize = obj.ScaleResize,
             LockBend = obj.LockBend,
             InheritBend = obj is MiBoneSceneObject bendSource ? bendSource.BendParameters?.InheritBend : null,
@@ -694,6 +703,15 @@ public static class ProjectSceneSerializer
         obj.InheritPosition = entry.InheritPosition;
         obj.InheritRotation = entry.InheritRotation;
         obj.InheritScale = entry.InheritScale;
+        obj.UsePropertyInheritance = entry.UsePropertyInheritance;
+        obj.InheritAlpha = entry.InheritAlpha;
+        obj.InheritColor = entry.InheritColor;
+        obj.InheritTexture = entry.InheritTexture;
+        obj.InheritSurface = entry.InheritSurface;
+        obj.InheritSubsurface = entry.InheritSubsurface;
+        obj.InheritGlowColor = entry.InheritGlowColor;
+        obj.InheritSelect = entry.InheritSelect;
+        obj.InheritPose = entry.InheritPose;
         obj.ScaleResize = entry.ScaleResize;
         if (entry.LockBend.HasValue)
         {
@@ -813,7 +831,8 @@ public static class ProjectSceneSerializer
 
         if (entry.HasMaterialOverrides)
         {
-            var material = obj.MaterialSettings ?? new MaterialSettings();
+            obj.SetExplicitMaterialSettings();
+            var material = obj.MaterialSettings;
             material.AlbedoColor = ToVec4(entry.AlbedoColor);
             material.BlendColor = ToVec4(entry.BlendColor);
             material.MixColor = ToVec4(entry.MixColor);
@@ -840,6 +859,12 @@ public static class ProjectSceneSerializer
             obj.MaterialSettings = material;
             obj.SetExplicitMaterialSettings();
             obj.PropagateMaterialSettingsToChildren();
+        }
+        else
+        {
+            // Fresh imports have local channel defaults; an older saved object
+            // without overrides must resume legacy sharing instead of keeping them.
+            obj.RestoreInheritedMaterialSettings();
         }
 
         obj.Keyframes = DeserializeKeyframes(entry.Keyframes);

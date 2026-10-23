@@ -46,6 +46,49 @@ public class MiBoneSceneObject : BoneSceneObject
         ScaleResize = false;
     }
 
+    internal CharacterSceneObject? ModelOwner { get; set; }
+
+    private MiBoneSceneObject? FindInheritedPoseBone()
+    {
+        CharacterSceneObject? owner = ModelOwner;
+        if (owner == null)
+            for (SceneObject? ancestor = Parent; ancestor != null; ancestor = ancestor.Parent)
+                if (ancestor is CharacterSceneObject character)
+                {
+                    owner = character;
+                    break;
+                }
+        if (owner?.InheritPose != true || owner.Parent is not CharacterSceneObject parentCharacter)
+            return null;
+
+        // Only the parent's own part list is eligible, never sibling models
+        // under a folder (which could otherwise inherit poses from each other).
+        return parentCharacter.BoneObjects.Values.OfType<MiBoneSceneObject>()
+            .FirstOrDefault(bone => bone != this && bone.ModelOwner != owner &&
+            string.Equals(bone.BoneName, BoneName, StringComparison.Ordinal));
+    }
+
+    /// <summary>Matching part's editable pose, excluding its model's rest placement.</summary>
+    public mat4 GetInheritedPoseTransform()
+    {
+        var source = FindInheritedPoseBone();
+        if (source == null) return mat4.Identity;
+        return mat4.Translate(source.OffsetPosition) * mat4.Scale(source.Scale)
+            * (source._basePoseRotationInverse * source.GetLocalRotationMatrix());
+    }
+
+    private vec3? _lastInheritedPoseBend;
+
+    internal void RefreshInheritedPoseBend()
+    {
+        bool inheritsPose = FindInheritedPoseBone() != null;
+        if (!inheritsPose && !_lastInheritedPoseBend.HasValue) return;
+        vec3 angle = GetEffectiveBendAngle();
+        if (_lastInheritedPoseBend != angle)
+            RefreshBendVisuals(propagateInheritedBends: false);
+        _lastInheritedPoseBend = inheritsPose ? angle : null;
+    }
+
     // ── Base pose (set once by the loader, never changed by the user) ─────────
 
     private vec3  _basePosePosition = vec3.Zero;
@@ -392,6 +435,8 @@ public class MiBoneSceneObject : BoneSceneObject
         MiBoneSceneObject? parentBone = FindParentBendBone();
         if (bp.InheritBend && parentBone != null)
             editable += parentBone.GetEffectiveEditableBendAngle();
+        if (FindInheritedPoseBone() is { } poseBone)
+            editable += poseBone.GetEffectiveEditableBendAngle();
 
         if (!bp.AxisX) editable.x = 0f;
         if (!bp.AxisY) editable.y = 0f;

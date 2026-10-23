@@ -365,6 +365,16 @@ public class ProjectSceneObjectEntry
     public bool InheritPosition { get; set; } = true;
     public bool InheritRotation { get; set; } = true;
     public bool InheritScale { get; set; } = true;
+    // Absent in older native scenes, which retain legacy material inheritance.
+    public bool UsePropertyInheritance { get; set; } = false;
+    public bool InheritAlpha { get; set; } = false;
+    public bool InheritColor { get; set; } = false;
+    public bool InheritTexture { get; set; } = false;
+    public bool InheritSurface { get; set; } = true;
+    public bool InheritSubsurface { get; set; } = true;
+    public bool InheritGlowColor { get; set; } = true;
+    public bool InheritSelect { get; set; } = false;
+    public bool InheritPose { get; set; } = false;
     public bool ScaleResize { get; set; } = false;
     public float? LockBend { get; set; }
     public bool? InheritBend { get; set; }

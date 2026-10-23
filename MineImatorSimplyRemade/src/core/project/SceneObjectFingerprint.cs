@@ -83,6 +83,15 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.InheritPosition);
         hash.Add(obj.InheritRotation);
         hash.Add(obj.InheritScale);
+        hash.Add(obj.UsePropertyInheritance);
+        hash.Add(obj.InheritAlpha);
+        hash.Add(obj.InheritColor);
+        hash.Add(obj.InheritTexture);
+        hash.Add(obj.InheritSurface);
+        hash.Add(obj.InheritSubsurface);
+        hash.Add(obj.InheritGlowColor);
+        hash.Add(obj.InheritSelect);
+        hash.Add(obj.InheritPose);
         hash.Add(obj.ScaleResize);
         hash.Add(obj.LockBend);
         hash.Add(obj.InheritPivotOffset);

@@ -133,19 +133,34 @@ public class SelectionManager
 
     /// <summary>
     /// Adds <paramref name="obj"/> to the selection.
-    /// No-op if it is already selected or if <c>obj.IsSelectable</c> is false.
+    /// Recursively includes descendants whose selection inheritance chain is enabled.
+    /// No-op if nothing changes or if <c>obj.IsSelectable</c> is false.
     /// </summary>
     public void SelectObject(SceneObject obj)
     {
         if (obj == null) return;
-        if (SelectedObjects.Contains(obj)) return;
         if (!obj.IsSelectable) return;
-
-        SelectedObjects.Add(obj);
-        obj.IsSelected = true;
+        if (!AddInheritedSelection(obj)) return;
 
         SyncGizmoSelection();
         SelectionChanged?.Invoke();
+    }
+
+    private bool AddInheritedSelection(SceneObject obj)
+    {
+        bool changed = false;
+        if (obj.IsSelectable && !SelectedObjects.Contains(obj))
+        {
+            SelectedObjects.Add(obj);
+            obj.SetSelected(true);
+            changed = true;
+        }
+        foreach (var child in obj.Children)
+        {
+            if (child.InheritSelect)
+                changed |= AddInheritedSelection(child);
+        }
+        return changed;
     }
 
     /// <summary>
@@ -158,7 +173,7 @@ public class SelectionManager
         if (!SelectedObjects.Contains(obj)) return;
 
         SelectedObjects.Remove(obj);
-        obj.IsSelected = false;
+        obj.SetSelected(false);
 
         SyncGizmoSelection();
         SelectionChanged?.Invoke();
@@ -185,7 +200,7 @@ public class SelectionManager
         if (SelectedObjects.Count == 0) return;
 
         foreach (var obj in SelectedObjects)
-            obj.IsSelected = false;
+            obj.SetSelected(false);
 
         SelectedObjects.Clear();
 

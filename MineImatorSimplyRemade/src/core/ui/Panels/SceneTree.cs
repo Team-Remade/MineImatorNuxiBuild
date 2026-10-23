@@ -823,6 +823,7 @@ public class SceneTree : UiPanel
         dup.InheritPosition     = original.InheritPosition;
         dup.InheritRotation     = original.InheritRotation;
         dup.InheritScale        = original.InheritScale;
+        CopyPropertyInheritanceSettings(original, dup, original is CharacterSceneObject);
         dup.ScaleResize         = original.ScaleResize;
         dup.LockBend            = original.LockBend;
         dup.CastShadow          = original.CastShadow;
@@ -876,6 +877,36 @@ public class SceneTree : UiPanel
         dup.CopyMaterialSettingsFrom(original);
 
         return dup;
+    }
+
+    private static void CopyPropertyInheritanceSettings(SceneObject original, SceneObject duplicate, bool copyChildren)
+    {
+        duplicate.UsePropertyInheritance = original.UsePropertyInheritance;
+        duplicate.InheritAlpha = original.InheritAlpha;
+        duplicate.InheritColor = original.InheritColor;
+        duplicate.InheritTexture = original.InheritTexture;
+        duplicate.InheritSurface = original.InheritSurface;
+        duplicate.InheritSubsurface = original.InheritSubsurface;
+        duplicate.InheritGlowColor = original.InheritGlowColor;
+        duplicate.InheritSelect = original.InheritSelect;
+        duplicate.InheritPose = original.InheritPose;
+
+        if (!copyChildren) return;
+
+        // Character descendants are rebuilt by the loader instead of the normal copy path.
+        var usedChildren = new HashSet<SceneObject>();
+        foreach (var child in original.Children)
+        {
+            var childDuplicate = duplicate.Children.FirstOrDefault(candidate =>
+                !usedChildren.Contains(candidate) && candidate.ObjectType == child.ObjectType &&
+                (candidate is BoneSceneObject candidateBone && child is BoneSceneObject childBone
+                    ? candidateBone.BoneName == childBone.BoneName
+                    : candidate.Name == child.Name));
+            if (childDuplicate == null) continue;
+
+            usedChildren.Add(childDuplicate);
+            CopyPropertyInheritanceSettings(child, childDuplicate, true);
+        }
     }
 
     // ── Delete ──────────────────────────────────────────────────────────────
