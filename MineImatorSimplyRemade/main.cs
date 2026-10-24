@@ -409,63 +409,18 @@ public static class main
 
     private static void RunFfmpegBootstrap(StartupProgressWindow? startupWindow)
     {
-        if (!FfmpegBootstrap.RequiresFirstTimeDownload())
-        {
-            UpdateStartupWindow(startupWindow, new StartupProgressState
-            {
-                CurrentStep = 1,
-                TotalSteps = 8,
-                Phase = "Bootstrapping startup",
-                Status = "Verifying FFmpeg binaries...",
-                Detail = "Local video encoding tools already exist",
-                Progress = 0.08f
-            });
-            FfmpegBootstrap.EnsureFfmpegInstalled();
-            return;
-        }
-
-        UpdateStartupWindow(startupWindow, new StartupProgressState
-        {
-            CurrentStep = 1,
-            TotalSteps = 8,
-            Phase = "Installing video encoding tools",
-            Status = "First launch detected. Looking for an existing FFmpeg install.",
-            Detail = "You can choose an existing ffmpeg binary, or cancel to download automatically",
-            Progress = 0.05f
-        });
-
-        string importStatus = "No existing ffmpeg binary selected.";
-        bool importedExistingInstall =
-            FfmpegBootstrap.TryImportExistingInstallOnFirstLaunch(message => importStatus = message);
-
-        if (importedExistingInstall && !FfmpegBootstrap.RequiresFirstTimeDownload())
-        {
-            UpdateStartupWindow(startupWindow, new StartupProgressState
-            {
-                CurrentStep = 1,
-                TotalSteps = 8,
-                Phase = "Bootstrapping startup",
-                Status = "Using existing FFmpeg binaries.",
-                Detail = importStatus,
-                Progress = 0.09f
-            });
-
-            FfmpegBootstrap.EnsureFfmpegInstalled();
-            return;
-        }
-
         string status = "Preparing FFmpeg setup...";
-        Exception? downloadError = null;
+        Exception? setupError = null;
 
         var installTask = Task.Run(() =>
         {
             try
             {
-                FfmpegBootstrap.EnsureFfmpegInstalled(message => status = message);
+                FfmpegBootstrap.EnsureFfmpegInstalled(message => Volatile.Write(ref status, message));
             }
             catch (Exception ex)
             {
-                downloadError = ex;
+                setupError = ex;
             }
         });
 
@@ -476,17 +431,18 @@ public static class main
                 CurrentStep = 1,
                 TotalSteps = 8,
                 Phase = "Installing video encoding tools",
-                Status = "First launch detected. Downloading FFmpeg binaries.",
-                Detail = status,
+                Status = "Preparing bundled FFmpeg binaries...",
+                Detail = Volatile.Read(ref status),
                 Progress = 0.06f
             });
 
             Thread.Sleep(16);
         }
 
-        if (downloadError != null)
+        installTask.GetAwaiter().GetResult();
+        if (setupError != null)
         {
-            Console.Error.WriteLine($"[FFmpeg] Failed to initialize local ffmpeg binaries: {downloadError.Message}");
+            Console.Error.WriteLine($"[FFmpeg] Failed to initialize local ffmpeg binaries: {setupError.Message}");
         }
 
         UpdateStartupWindow(startupWindow, new StartupProgressState
@@ -495,7 +451,7 @@ public static class main
             TotalSteps = 8,
             Phase = "Bootstrapping startup",
             Status = "FFmpeg check complete.",
-            Detail = downloadError == null
+            Detail = setupError == null
                 ? "Continuing into asset initialization"
                 : "FFmpeg failed to initialize; continuing startup",
             Progress = 0.10f

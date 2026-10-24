@@ -14,7 +14,7 @@
         <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
         <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
         <DefaultItemExcludes>$(DefaultItemExcludes);tools/**</DefaultItemExcludes>
-        <!-- Third-party NativeAOT/single-file warnings from Silk.NET and FFMpegCore. -->
+        <!-- Third-party NativeAOT/single-file warnings from Silk.NET. -->
         <!-- NU1701: Package compatibility warnings for packages targeting older frameworks. -->
         <!-- Nullable reference type warnings (CS8600-CS8629): Architecture uses nullable patterns throughout. -->
         <!-- CS8619: Nullability mismatch in array initialization from shape vertex data. -->
@@ -26,8 +26,6 @@
 
     <ItemGroup>
       <PackageReference Include="Cyotek.Data.Nbt" Version="4.0.0" />
-      <PackageReference Include="FFMPEGCore-Fork" Version="1.0.0" />
-      <PackageReference Include="FFMpegCore.Extensions.Downloader" Version="5.0.0" />
       <PackageReference Include="GlmSharp" Version="0.9.8" />
       <PackageReference Include="Hexa.NET.ImGui" Version="2.2.9" />
       <PackageReference Include="Hexa.NET.ImGui.Backends" Version="1.0.18" />
@@ -51,7 +49,12 @@
     
     <ItemGroup>
         <EmbeddedResource Include="assets\**" />
+        <EmbeddedResource Update="assets\ffmpeg\win-x64.zip" LogicalName="MineImatorSimplyRemade.ffmpeg.win-x64.zip" />
     </ItemGroup>
+
+    <Target Name="ValidateBundledFfmpeg" BeforeTargets="PrepareForBuild">
+        <Error Condition="!Exists('$(MSBuildProjectDirectory)\assets\ffmpeg\win-x64.zip')" Text="Bundled FFmpeg is missing. Restore assets/ffmpeg/win-x64.zip or run tools/UpdateBundledFfmpeg.ps1." />
+    </Target>
 
     <PropertyGroup>
         <IsPublishing Condition="'$(_IsPublishing)' == 'true' Or '$(DeployOnBuild)' == 'true' Or '$(PublishProtocol)' != '' Or '$(PublishProfile)' != '' Or '$(RuntimeIdentifier)' != '' Or '$(BuildingForPublish)' == 'true' Or $([System.String]::Copy('$(MSBuildTargets)').Contains('Publish')) Or $([System.String]::Copy('$(Target)').Contains('Publish'))">true</IsPublishing>
@@ -64,10 +67,6 @@
 
     <ItemGroup Condition="'$(IsPublishing)' != 'true'">
         <None Include="$(MSBuildProjectDirectory)\*.dll" CopyToOutputDirectory="PreserveNewest" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <TrimmerRootDescriptor Include="TrimmerRoots.xml" />
     </ItemGroup>
 
     <Target Name="CopyDataFolder" AfterTargets="Build">

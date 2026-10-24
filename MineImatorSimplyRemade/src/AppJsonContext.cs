@@ -34,7 +34,6 @@ namespace MineImatorSimplyRemade;
 [JsonSerializable(typeof(ProjectAudioTrack))]
 [JsonSerializable(typeof(RecentProjectsState))]
 [JsonSerializable(typeof(PreferencesState))]
-[JsonSerializable(typeof(FfmpegBootstrap.FfmpegBootstrapState))]
 [JsonSerializable(typeof(UpdateChecker.UpdateState))]
 [JsonSerializable(typeof(List<UpdateChecker.GitHubRelease>))]
 internal partial class AppJsonContext : JsonSerializerContext
