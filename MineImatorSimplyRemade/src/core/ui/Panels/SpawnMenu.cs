@@ -2311,6 +2311,8 @@ public class SpawnMenu : UiPanel
 
         AddToCustomModelHistory(pathToSpawn, displayName);
         Viewport.SceneObjects.Add(root);
+        if (ext == ".miobject")
+            Timeline.Instance?.LoadKeyframesForAllObjects(new[] { root }.Concat(root.GetAllDescendants()));
         return root;
     }
 

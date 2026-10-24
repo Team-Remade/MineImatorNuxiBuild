@@ -10,6 +10,7 @@ using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.audio;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core;
@@ -119,6 +120,30 @@ public class Timeline : UiPanel
     private readonly Dictionary<string, bool>                   _groupExpanded      = new();
     private readonly Dictionary<TimelineProperty, bool>         _trackRowVisibility = new();
     private readonly HashSet<string>                            _ghostTracks        = new(StringComparer.Ordinal);
+
+    private static readonly (string Label, string Path)[] MaterialScalarChannels =
+    {
+        ("Metallic", "material.metallic"),
+        ("Roughness", "material.roughness"),
+        ("Emissive", "material.emissive"),
+        ("Subsurface", "material.subsurface"),
+        ("Mix Amount", "material.mix_percent"),
+    };
+
+    private static readonly (string Label, string Path)[] MaterialVectorChannels =
+    {
+        ("Blend Color", "material.blend"),
+        ("Mix Color", "material.mix"),
+        ("Glow Color", "material.glow"),
+        ("Subsurface Color", "material.subsurface_color"),
+        ("Subsurface Radius", "material.subsurface_radius"),
+    };
+
+    private static readonly HashSet<string> MaterialPropertyPaths = new(
+        MaterialScalarChannels.Select(channel => channel.Path)
+            .Concat(MaterialVectorChannels.SelectMany(channel =>
+                new[] { $"{channel.Path}.r", $"{channel.Path}.g", $"{channel.Path}.b" }))
+            .Append("material.alpha"), StringComparer.Ordinal);
 
     // ── Selection ─────────────────────────────────────────────────────────────
 
@@ -2371,8 +2396,26 @@ public class Timeline : UiPanel
 
     public void AddKeyframeForProperty(SceneObject obj, string propertyPath, int frame)
     {
+        if (propertyPath.StartsWith("rotation.", StringComparison.Ordinal) &&
+            obj.Keyframes.Keys.Any(p => p.StartsWith("mirotation.", StringComparison.Ordinal)))
+            propertyPath = "mirotation." + propertyPath["rotation.".Length..];
         string key   = $"{obj.ObjectId}.{propertyPath}";
         object value = GetPropertyValue(obj, propertyPath);
+        if (propertyPath.StartsWith("mirotation.", StringComparison.Ordinal))
+        {
+            vec3 reference = GetMiRotationAngles(obj);
+            for (int axis = 0; axis < 3; axis++)
+            {
+                string path = "mirotation." + (axis == 0 ? "x" : axis == 1 ? "y" : "z");
+                if (!_propertyKeyframes.ContainsKey($"{obj.ObjectId}.{path}")) LoadKeyframesFromObject(obj, path);
+                if (_propertyKeyframes.TryGetValue($"{obj.ObjectId}.{path}", out var track) &&
+                    InterpolateKeyframes(track, path, frame, true) is { } sampled &&
+                    TryConvertKeyframeValue(sampled, out float angle)) reference[axis] = angle;
+            }
+            vec3 recorded = GetMiRotationAngles(obj, reference);
+            value = propertyPath.EndsWith(".x", StringComparison.Ordinal) ? recorded.x
+                : propertyPath.EndsWith(".y", StringComparison.Ordinal) ? recorded.y : recorded.z;
+        }
         if (!_propertyKeyframes.ContainsKey(key))
             _propertyKeyframes[key] = new List<TimelineKeyframe>();
 
@@ -2437,9 +2480,10 @@ public class Timeline : UiPanel
     {
         string[] standardPaths =
         {
-            "visible", "material.alpha",
+            "visible", "material.alpha", "material.texture",
             "position.x", "position.y", "position.z",
             "rotation.x", "rotation.y", "rotation.z",
+            "mirotation.x", "mirotation.y", "mirotation.z",
             "scale.x",    "scale.y",    "scale.z",
         };
         string[] itemPaths =
@@ -2483,6 +2527,7 @@ public class Timeline : UiPanel
             IEnumerable<string> paths = obj is LightSceneObject   ? standardPaths.Concat(lightPaths)
                                       : obj is CameraSceneObject  ? standardPaths.Concat(cameraPaths)
                                       : standardPaths;
+            paths = paths.Concat(MaterialPropertyPaths);
             if (obj is MiBoneSceneObject)
                 paths = paths.Concat(new[] { "bend.x", "bend.y", "bend.z" });
             if (obj is CameraSceneObject cameraObj)
@@ -2570,6 +2615,7 @@ public class Timeline : UiPanel
 
     private void ApplyKeyframesAtCurrentFrame(bool holdFirstKeyframeBeforeStart)
     {
+        var rotatedObjects = new HashSet<string>();
         foreach (var kvp in _propertyKeyframes)
         {
             var keyframes = kvp.Value;
@@ -2582,6 +2628,26 @@ public class Timeline : UiPanel
 
             var target = FindObjectById(objectId);
             if (target == null) continue;
+
+            if (propertyPath.StartsWith("mirotation.", StringComparison.Ordinal))
+            {
+                if (!rotatedObjects.Add(objectId)) continue;
+                vec3 angles = GetMiRotationAngles(target);
+                for (int axis = 0; axis < 3; axis++)
+                {
+                    string path = "mirotation." + (axis == 0 ? "x" : axis == 1 ? "y" : "z");
+                    if (_propertyKeyframes.TryGetValue($"{objectId}.{path}", out var track) &&
+                        InterpolateKeyframes(track, path, _currentFrame, holdFirstKeyframeBeforeStart) is { } raw &&
+                        TryConvertKeyframeValue(raw, out float angle))
+                        angles[axis] = angle;
+                }
+                mat4 rotation = MineImatorLoader.ConvertMiRotationMatrix([angles.x, angles.y, angles.z]);
+                if (target is MiBoneSceneObject bone)
+                    bone.SetOffsetRotationMatrix(rotation);
+                else
+                    target.SetLocalRotationMatrix(rotation, MineImatorLoader.MatrixToEulerRzRyRx(rotation));
+                continue;
+            }
 
             object? value = InterpolateKeyframes(keyframes, propertyPath, _currentFrame, holdFirstKeyframeBeforeStart);
             if (value != null)
@@ -2610,12 +2676,12 @@ public class Timeline : UiPanel
         if (prev == null)
         {
             if (holdFirstKeyframeBeforeStart && next != null)
-                return path == "text.font" ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
+                return path is "text.font" or "material.texture" ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
             return null;
         }
 
         // At or after the last keyframe, or exactly on a keyframe.
-        if (path == "text.font") return prev.Value;
+        if (path is "text.font" or "material.texture") return prev.Value;
         if (next == null || prev.Frame == frame)
             return TryConvertKeyframeValue(prev.Value, out float prevDirect) ? prevDirect : null;
 
@@ -2634,7 +2700,13 @@ public class Timeline : UiPanel
             return null;
 
         float t  = (frame - prev.Frame) / (float)(next.Frame - prev.Frame);
-        return pv + (nv - pv) * ApplyInterpolation(t, prev.InterpolationType);
+        float progress = ApplyInterpolation(t, prev.InterpolationType);
+        if (path.StartsWith("material.blend.", StringComparison.Ordinal) ||
+            path.StartsWith("material.mix.", StringComparison.Ordinal) ||
+            path.StartsWith("material.glow.", StringComparison.Ordinal) ||
+            path.StartsWith("material.subsurface_color.", StringComparison.Ordinal))
+            progress = Math.Clamp(progress, 0f, 1f);
+        return pv + (nv - pv) * progress;
     }
 
     private static bool TryConvertKeyframeValue(object? rawValue, out float value)
@@ -2710,20 +2782,87 @@ public class Timeline : UiPanel
         return false;
     }
 
-    private static float ApplyInterpolation(float t, string type) => type switch
+    private static float ApplyInterpolation(float t, string type)
     {
-        "ease-in-quadratic"       => t * t,
-        "ease-out-quadratic"      => 1f - (1f - t) * (1f - t),
-        "ease-in-out-quadratic"   => t < 0.5f ? 2f * t * t : 1f - MathF.Pow(-2f * t + 2f, 2f) / 2f,
-        "instant"                 => 0f,
-        _                         => t,
-    };
+        if (t <= 0f || t >= 1f) return Math.Clamp(t, 0f, 1f);
+        type = type switch
+        {
+            "ease-in-quadratic" => "easeinquad",
+            "ease-out-quadratic" => "easeoutquad",
+            "ease-in-out-quadratic" => "easeinoutquad",
+            _ => type
+        };
+        if (type == "instant") return 0f;
+        if (type.StartsWith("bezier:", StringComparison.Ordinal))
+        {
+            string[] parts = type[7..].Split(',');
+            float[] controls = new float[4];
+            if (parts.Length != 4) return t;
+            for (int i = 0; i < 4; i++)
+                if (!float.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out controls[i]) ||
+                    !float.IsFinite(controls[i])) return t;
+            float lower = 0f, upper = 1f, u = 0.5f;
+            // Match Mine-imator's X search, then evaluate the corresponding Y.
+            for (int i = 0; i <= 10; i++)
+            {
+                u = (lower + upper) * 0.5f;
+                float x = Bezier(u, controls[0], controls[2]);
+                if (MathF.Abs(t - x) < 0.001f) break;
+                if (t > x) lower = u; else upper = u;
+            }
+            return Bezier(u, controls[1], controls[3]);
+        }
+
+        bool inOut = type.StartsWith("easeinout", StringComparison.Ordinal);
+        bool easeOut = type.StartsWith("easeout", StringComparison.Ordinal);
+        if (!inOut && !easeOut && !type.StartsWith("easein", StringComparison.Ordinal)) return t;
+        string curve = type[(inOut ? 9 : easeOut ? 7 : 6)..];
+        if (inOut)
+            return t < 0.5f ? 0.5f * EaseIn(t * 2f, curve, true)
+                : 1f - 0.5f * EaseIn(2f - t * 2f, curve, true);
+        return easeOut ? 1f - EaseIn(1f - t, curve, false) : EaseIn(t, curve, false);
+
+        static float Bezier(float u, float a, float b) =>
+            3f * (1f - u) * (1f - u) * u * a + 3f * (1f - u) * u * u * b + u * u * u;
+
+        static float EaseIn(float v, string curve, bool inOut)
+        {
+            if (v <= 0f || v >= 1f) return v;
+            float s = 1.70158f * (inOut ? 1.525f : 1f);
+            float period = inOut ? 0.45f : 0.3f;
+            return curve switch
+            {
+                "quad" => v * v,
+                "cubic" => v * v * v,
+                "quart" => MathF.Pow(v, 4f),
+                "quint" => MathF.Pow(v, 5f),
+                "sine" => 1f - MathF.Cos(v * MathF.PI * 0.5f),
+                "expo" => MathF.Pow(2f, 10f * (v - 1f)),
+                "circ" => 1f - MathF.Sqrt(Math.Max(0f, 1f - v * v)),
+                "elastic" => -MathF.Pow(2f, 10f * (v - 1f)) *
+                    MathF.Sin((v - 1f - period * 0.25f) * (2f * MathF.PI) / period),
+                "back" => v * v * ((s + 1f) * v - s),
+                "bounce" => 1f - BounceOut(1f - v),
+                _ => v
+            };
+        }
+
+        static float BounceOut(float v)
+        {
+            if (v < 1f / 2.75f) return 7.5625f * v * v;
+            if (v < 2f / 2.75f) { v -= 1.5f / 2.75f; return 7.5625f * v * v + 0.75f; }
+            if (v < 2.5f / 2.75f) { v -= 2.25f / 2.75f; return 7.5625f * v * v + 0.9375f; }
+            v -= 2.625f / 2.75f;
+            return 7.5625f * v * v + 0.984375f;
+        }
+    }
 
     // ── Get / set property values ─────────────────────────────────────────────
 
     private object GetPropertyValue(SceneObject obj, string path)
     {
         if (path == "visible") return obj.ObjectVisible ? 1f : 0f;
+        if (path == "material.texture") return obj.AlbedoTexturePath;
         if (path == "text.font") return obj.TextMeshFontPath;
 
         var parts = path.Split('.');
@@ -2732,6 +2871,11 @@ public class Timeline : UiPanel
             string prop = parts[0], comp = parts[1];
             switch (prop)
             {
+                case "mirotation":
+                {
+                    vec3 angles = GetMiRotationAngles(obj);
+                    return comp switch { "x" => angles.x, "y" => angles.y, "z" => angles.z, _ => 0f };
+                }
                 case "position":
                 {
                     vec3 p = obj is MiBoneSceneObject mb ? mb.OffsetPosition
@@ -2763,8 +2907,16 @@ public class Timeline : UiPanel
                     break;
                 }
                 case "material":
-                    if (comp == "alpha") return obj.MaterialSettings?.AlbedoColor.w ?? 1f;
-                    break;
+                    return comp switch
+                    {
+                        "alpha" => obj.MaterialSettings?.AlbedoColor.w ?? 1f,
+                        "metallic" => obj.MaterialSettings?.Metallic ?? 0f,
+                        "roughness" => obj.MaterialSettings?.Roughness ?? (obj.UsePropertyInheritance ? 1f : 0.5f),
+                        "emissive" => obj.MaterialSettings?.EmissionEnabled == true ? obj.MaterialSettings.EmissionEnergy : 0f,
+                        "subsurface" => obj.MaterialSettings?.Subsurface ?? 0f,
+                        "mix_percent" => obj.MaterialSettings?.MixColor.w ?? 0f,
+                        _ => 0f,
+                    };
                 case "text":
                     return comp switch
                     {
@@ -2834,6 +2986,21 @@ public class Timeline : UiPanel
                     }
                     break;
             }
+        }
+        else if (parts.Length == 3 && parts[0] == "material")
+        {
+            var material = obj.MaterialSettings;
+            vec4 color = parts[1] switch
+            {
+                "blend" => material?.BlendColor ?? vec4.Ones,
+                "mix" => material?.MixColor ?? vec4.Zero,
+                "glow" => material?.EmissionColor ?? (obj.UsePropertyInheritance ? vec4.Ones : new vec4(0f, 0f, 0f, 1f)),
+                "subsurface_color" => material?.SubsurfaceColor ?? vec4.Ones,
+                "subsurface_radius" => material == null ? vec4.Ones : new vec4(
+                    material.SubsurfaceRadius.x, material.SubsurfaceRadius.y, material.SubsurfaceRadius.z, 1f),
+                _ => vec4.Zero,
+            };
+            return parts[2] switch { "r" => color.x, "g" => color.y, "b" => color.z, _ => 0f };
         }
         else if (parts.Length == 3 && parts[0] == "text" && parts[1] == "outline")
         {
@@ -2942,8 +3109,46 @@ public class Timeline : UiPanel
         return shapeKeys[keyIndex].Weight;
     }
 
+    private static vec3 GetMiRotationAngles(SceneObject obj, vec3? reference = null)
+    {
+        vec3 euler = obj is MiBoneSceneObject bone ? bone.OffsetRotation : obj.LocalRotation;
+        mat4 rotation = mat4.RotateZ(euler.z) * mat4.RotateY(euler.y) * mat4.RotateX(euler.x);
+        float x = MathF.Asin(Math.Clamp(-rotation.m21, -1f, 1f));
+        bool singular = MathF.Abs(rotation.m21) >= 1f - 1e-6f;
+        vec3 angles = new vec3(x, singular ? MathF.Atan2(-rotation.m02, rotation.m00) : MathF.Atan2(rotation.m20, rotation.m22),
+            singular ? 0f : MathF.Atan2(rotation.m01, rotation.m11)) * (180f / MathF.PI);
+        if (reference is not { } previous) return angles;
+
+        mat4 expected = MineImatorLoader.ConvertMiRotationMatrix([previous.x, previous.y, previous.z]);
+        bool unchanged = true;
+        for (int column = 0; column < 3; column++)
+            for (int row = 0; row < 3; row++)
+                unchanged &= MathF.Abs(expected[column, row] - rotation[column, row]) < 1e-5f;
+        if (unchanged) return previous;
+
+        vec3 alternative = new vec3(180f - angles.x, angles.y + 180f, angles.z + 180f);
+        for (int axis = 0; axis < 3; axis++)
+        {
+            angles[axis] += 360f * MathF.Round((previous[axis] - angles[axis]) / 360f);
+            alternative[axis] += 360f * MathF.Round((previous[axis] - alternative[axis]) / 360f);
+        }
+        return (angles - previous).LengthSqr <= (alternative - previous).LengthSqr ? angles : alternative;
+    }
+
     private void SetPropertyValue(SceneObject obj, string path, object rawValue)
     {
+        if (path == "material.texture")
+        {
+            string texture = rawValue is JsonElement jsonTexture && jsonTexture.ValueKind == JsonValueKind.String
+                ? jsonTexture.GetString() ?? "" : Convert.ToString(rawValue, CultureInfo.InvariantCulture) ?? "";
+            texture = ProjectManager.Instance.ResolveAssetPath(texture);
+            if (obj.AlbedoTexturePath != texture)
+            {
+                obj.AlbedoTexturePath = texture;
+                obj.RefreshInheritedMaterials();
+            }
+            return;
+        }
         if (path == "text.font")
         {
             string font = rawValue is JsonElement json && json.ValueKind == JsonValueKind.String
@@ -2955,6 +3160,64 @@ public class Timeline : UiPanel
         if (path == "visible") { obj.ObjectVisible = value >= 0.5f; return; }
 
         var parts = path.Split('.');
+        if (MaterialPropertyPaths.Contains(path))
+        {
+            // Detach inherited settings before changing a local animation channel.
+            if (obj.MaterialSettings == null && obj.UsePropertyInheritance)
+                obj.MaterialSettings = new MaterialSettings
+                {
+                    Roughness = 1f,
+                    EmissionColor = vec4.Ones,
+                    EmissionEnergy = 0f,
+                };
+            obj.SetExplicitMaterialSettings();
+            var material = obj.MaterialSettings!;
+            if (parts.Length == 2)
+            {
+                switch (parts[1])
+                {
+                    case "alpha": material.AlbedoColor.w = Math.Clamp(value, 0f, 1f); break;
+                    case "metallic": material.Metallic = Math.Clamp(value, 0f, 1f); break;
+                    case "roughness": material.Roughness = Math.Clamp(value, 0f, 1f); break;
+                    case "emissive":
+                        material.EmissionEnergy = Math.Max(value, 0f);
+                        material.EmissionEnabled = material.EmissionEnergy != 0f;
+                        break;
+                    case "subsurface": material.Subsurface = Math.Max(value, 0f); break;
+                    case "mix_percent": material.MixColor.w = Math.Clamp(value, 0f, 1f); break;
+                }
+            }
+            else
+            {
+                int component = parts[2] == "r" ? 0 : parts[2] == "g" ? 1 : 2;
+                if (parts[1] == "subsurface_radius")
+                {
+                    var radius = material.SubsurfaceRadius;
+                    radius[component] = Math.Max(value, 0f);
+                    material.SubsurfaceRadius = radius;
+                }
+                else
+                {
+                    var color = parts[1] switch
+                    {
+                        "blend" => material.BlendColor,
+                        "mix" => material.MixColor,
+                        "glow" => material.EmissionColor,
+                        _ => material.SubsurfaceColor,
+                    };
+                    color[component] = Math.Clamp(value, 0f, 1f);
+                    switch (parts[1])
+                    {
+                        case "blend": material.BlendColor = color; break;
+                        case "mix": material.MixColor = color; break;
+                        case "glow": material.EmissionColor = color; break;
+                        case "subsurface_color": material.SubsurfaceColor = color; break;
+                    }
+                }
+            }
+            obj.PropagateMaterialSettingsToChildren();
+            return;
+        }
         switch (parts.Length)
         {
             case 2:
@@ -3044,17 +3307,6 @@ public class Timeline : UiPanel
                             var angle = mbB.GetEditableBendAngle();
                             if (comp == "x") angle.x = value; else if (comp == "y") angle.y = value; else if (comp == "z") angle.z = value;
                             mbB.SetEditableBendAngle(angle);
-                        }
-                        break;
-
-                    case "material":
-                        if (comp == "alpha")
-                        {
-                            if (obj.MaterialSettings == null) obj.MaterialSettings = new MaterialSettings();
-                            var c = obj.MaterialSettings.AlbedoColor;
-                            c.w = Math.Clamp(value, 0f, 1f);
-                            obj.MaterialSettings.AlbedoColor = c;
-                            obj.ApplyMaterialSettingsToMeshes();
                         }
                         break;
 
@@ -3363,6 +3615,7 @@ public class Timeline : UiPanel
             {
                 (label: "Visible",         path: "visible", parent: "", indent: 0),
                 (label: "Alpha",           path: "material.alpha", parent: "", indent: 0),
+                (label: "Texture",         path: "material.texture", parent: "", indent: 0),
                 (label: "Position",        path: "position", parent: "", indent: 0),
                 (label: "X",               path: "position.x", parent: "position", indent: 1),
                 (label: "Y",               path: "position.y", parent: "position", indent: 1),
@@ -3371,6 +3624,10 @@ public class Timeline : UiPanel
                 (label: "X",               path: "rotation.x", parent: "rotation", indent: 1),
                 (label: "Y",               path: "rotation.y", parent: "rotation", indent: 1),
                 (label: "Z",               path: "rotation.z", parent: "rotation", indent: 1),
+                (label: "Rotation",        path: "mirotation", parent: "", indent: 0),
+                (label: "X",               path: "mirotation.x", parent: "mirotation", indent: 1),
+                (label: "Y",               path: "mirotation.y", parent: "mirotation", indent: 1),
+                (label: "Z",               path: "mirotation.z", parent: "mirotation", indent: 1),
                 (label: "Scale",           path: "scale", parent: "", indent: 0),
                 (label: "X",               path: "scale.x", parent: "scale", indent: 1),
                 (label: "Y",               path: "scale.y", parent: "scale", indent: 1),
@@ -3394,13 +3651,14 @@ public class Timeline : UiPanel
             // Add rows for properties with keyframes
             foreach (var (label, path, parent, indent) in standardProps)
             {
-                if (path == "position" || path == "rotation" || path == "scale")
+                if (path == "position" || path == "rotation" || path == "mirotation" || path == "scale")
                 {
                     // This is a group header
                     string[] groupPaths = path switch
                     {
                         "position" => new[] { "position.x", "position.y", "position.z" },
                         "rotation" => new[] { "rotation.x", "rotation.y", "rotation.z" },
+                        "mirotation" => new[] { "mirotation.x", "mirotation.y", "mirotation.z" },
                         "scale" => new[] { "scale.x", "scale.y", "scale.z" },
                         _ => Array.Empty<string>()
                     };
@@ -3415,6 +3673,20 @@ public class Timeline : UiPanel
                 {
                     newRows.Add(MakeSingle(obj, label, path, indent));
                 }
+            }
+
+            foreach (var (label, path) in MaterialScalarChannels)
+                if (propsWithKeyframes.Contains(path))
+                    newRows.Add(MakeSingle(obj, label, path));
+
+            foreach (var (label, basePath) in MaterialVectorChannels)
+            {
+                string[] paths = { $"{basePath}.r", $"{basePath}.g", $"{basePath}.b" };
+                if (!paths.Any(propsWithKeyframes.Contains)) continue;
+                newRows.Add(MakeGroup(obj, label, paths, basePath));
+                for (int i = 0; i < paths.Length; i++)
+                    if (propsWithKeyframes.Contains(paths[i]))
+                        newRows.Add(MakeSingle(obj, i == 0 ? "R" : i == 1 ? "G" : "B", paths[i], 1));
             }
 
             foreach (var (label, path, parent, indent) in bendProps)
@@ -3782,6 +4054,8 @@ public class Timeline : UiPanel
 
         foreach (var row in _displayRows.Where(r => r.Object == obj && !r.IsGroupHeader && r.PropertyPath != "__header__").ToArray())
             LoadKeyframesFromObject(obj, row.PropertyPath);
+        foreach (var path in MaterialPropertyPaths)
+            LoadKeyframesFromObject(obj, path);
     }
 
     private static TimelineProperty MakeSingle(SceneObject obj, string label, string path, int indent = 0) =>

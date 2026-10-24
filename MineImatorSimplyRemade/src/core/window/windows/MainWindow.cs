@@ -964,10 +964,10 @@ public class MainWindow : Window
             for (int i = 0; i < recents.Count; i++)
             {
                 RecentProjectEntry recent = recents[i];
-                ImGui.BeginChild($"##recentCard{i}", new Vector2(cardWidth, 190f * scale), ImGuiChildFlags.Borders);
+                ImGui.BeginChild($"##recentCard{i}", new Vector2(cardWidth, 0), ImGuiChildFlags.Borders | ImGuiChildFlags.AutoResizeY);
 
                 Vector2 thumbMin = ImGui.GetCursorScreenPos();
-                Vector2 thumbSize = new Vector2(cardWidth - 16f * scale, thumbHeight);
+                Vector2 thumbSize = new Vector2(ImGui.GetContentRegionAvail().X, thumbHeight);
                 Vector2 thumbMax = thumbMin + thumbSize;
                 drawList.AddRectFilled(thumbMin, thumbMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.19f, 0.20f, 0.24f, 1f)), 10f);
                 drawList.AddRect(thumbMin, thumbMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.36f, 0.40f, 0.45f, 1f)), 10f, ImDrawFlags.RoundCornersAll, 1.5f);

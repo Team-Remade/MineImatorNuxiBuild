@@ -1069,7 +1069,10 @@ public static class ProjectSceneSerializer
                 .Select(kf => new ProjectKeyframeEntry
                 {
                     Frame = kf.Frame,
-                    Value = kf.Value,
+                    Value = pair.Key == "material.texture"
+                        ? ProjectManager.Instance.ToProjectRelativePath(kf.Value is JsonElement json && json.ValueKind == JsonValueKind.String
+                            ? json.GetString() ?? "" : Convert.ToString(kf.Value, CultureInfo.InvariantCulture) ?? "")
+                        : kf.Value,
                     InterpolationType = kf.InterpolationType
                 })
                 .OrderBy(kf => kf.Frame)

@@ -795,7 +795,7 @@ public class SceneObject
         uint? inherited = source != null && source != this
             ? source.Visuals.FirstOrDefault(mesh => !mesh.PickOnly)?.TextureId
             : null;
-        if (source != null && source != this && !inherited.HasValue &&
+        if (source != null && !inherited.HasValue &&
             string.IsNullOrEmpty(source.CameraTextureObjectId))
         {
             string path = !string.IsNullOrEmpty(source.AlbedoTexturePath)

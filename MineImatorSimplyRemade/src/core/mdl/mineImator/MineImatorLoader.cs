@@ -206,6 +206,9 @@ public class MineImatorLoader
                     PivotOffset = vec3.Zero
                 };
 
+                if (string.IsNullOrEmpty(itemObject.ObjectId))
+                    itemObject.AssignObjectId();
+
                 ApplyTimelineTransform(itemObject, timeline);
                 ApplyTimelineSettings(itemObject, timeline, includeHierarchySettings: true);
                 ApplyTimelineTexture(itemObject, timeline, resourceDict, miObject.DirectoryPath);
@@ -265,6 +268,10 @@ public class MineImatorLoader
 
         var changedBends = new HashSet<SceneObject>();
         ApplyBodypartTimelines(miObject, sceneObjectsByTimelineId, changedBends);
+        foreach (var timeline in miObject.Timelines ?? [])
+            if (!string.IsNullOrEmpty(timeline.Id) &&
+                sceneObjectsByTimelineId.TryGetValue(timeline.Id, out var obj))
+                ImportTimelineKeyframes(obj, timeline, resourceDict, miObject.DirectoryPath);
 
         var refreshed = new HashSet<SceneObject>();
         foreach (var bodypart in reparentedBodyparts.Concat(changedBends))
@@ -478,7 +485,7 @@ public class MineImatorLoader
         return MatrixToEulerRzRyRx(ConvertMiRotationMatrix(rotDeg));
     }
 
-    private static vec3 MatrixToEulerRzRyRx(mat4 m)
+    internal static vec3 MatrixToEulerRzRyRx(mat4 m)
     {
         // Decompose into Rz(z') * Ry(y') * Rx(x') (engine convention)
         // For R = Rz(z') * Ry(y') * Rx(x'):
@@ -505,7 +512,7 @@ public class MineImatorLoader
         return new vec3(xx, yy, zz);
     }
 
-    private static mat4 ConvertMiRotationMatrix(float[] rotDeg)
+    internal static mat4 ConvertMiRotationMatrix(float[] rotDeg)
     {
         float x = BendHelper.DegToRad(rotDeg[0]);
         float y = BendHelper.DegToRad(rotDeg[1]);
@@ -632,6 +639,13 @@ public class MineImatorLoader
 
     private static void ResolveTimelineTransform(MiTimeline timeline, out vec3 position, out mat4 rotation, out vec3 scale)
     {
+        ResolveTimelineTransformValues(timeline, GetFirstTimelineKeyframe(timeline), out position, out var angles, out scale);
+        rotation = ConvertMiRotationMatrix([angles.x, angles.y, angles.z]);
+    }
+
+    private static void ResolveTimelineTransformValues(MiTimeline timeline, MiKeyframe? frame,
+        out vec3 position, out vec3 angles, out vec3 scale)
+    {
         float Default(string key, float fallback) =>
             timeline.DefaultValues != null && timeline.DefaultValues.TryGetValue(key, out float value) ? value : fallback;
 
@@ -644,7 +658,6 @@ public class MineImatorLoader
         rot[0] = Default("ROT_X", rot[0]); rot[1] = Default("ROT_Z", rot[1]); rot[2] = Default("ROT_Y", rot[2]);
         sca[0] = Default("SCA_X", sca[0]); sca[1] = Default("SCA_Z", sca[1]); sca[2] = Default("SCA_Y", sca[2]);
 
-        MiKeyframe? frame = GetFirstTimelineKeyframe(timeline);
         if (frame != null)
         {
             pos = frame.Position is { Length: >= 3 } ? frame.Position :
@@ -656,7 +669,7 @@ public class MineImatorLoader
         }
 
         position = new vec3(pos[0], pos[1], pos[2]) / 16f;
-        rotation = ConvertMiRotationMatrix(rot);
+        angles = new vec3(rot[0], rot[1], rot[2]);
         scale = new vec3(sca[0], sca[1], sca[2]);
     }
 
@@ -745,15 +758,9 @@ public class MineImatorLoader
         string path = ResolveTextureRefPath(reference, resources, directory);
         if (string.IsNullOrEmpty(path)) return;
         obj.AlbedoTexturePath = path;
-        uint texture = LoadTextureFromFile(path, makeSquare: obj is CharacterSceneObject or MiBoneSceneObject);
-        if (texture == 0) return;
-        // Keep descendants' authored textures intact; runtime inheritance decides
-        // which children use this override and restores them when it is disabled.
-        if (obj is MiBoneSceneObject bone)
-            bone.OverrideTexture(texture);
-        else
-            foreach (var mesh in obj.Visuals)
-                mesh.TextureId = texture;
+        // Reversible overrides leave model textures intact for default keys
+        // and mesh regeneration.
+        obj.ApplyMaterialSettingsToMeshes();
     }
 
     private static string ResolveTemplateModelPath(MiTemplate template,
@@ -887,18 +894,17 @@ public class MineImatorLoader
         var itemSlotKeyframes = new List<ObjectKeyframe>();
         var customSlotKeyframes = new List<ObjectKeyframe>();
 
-        bool custom = timeline.DefaultValues != null && timeline.DefaultValues.TryGetBool("CUSTOM_ITEM_SLOT", out bool enabled) && enabled;
-        int slot = timeline.DefaultValues != null && timeline.DefaultValues.TryGetValue("ITEM_SLOT", out float defaultSlot)
-            ? (int)defaultSlot : 0;
+        bool defaultCustom = timeline.DefaultValues != null && timeline.DefaultValues.TryGetBool("CUSTOM_ITEM_SLOT", out bool enabled) && enabled;
+        int defaultSlot = timeline.DefaultValues != null && timeline.DefaultValues.TryGetValue("ITEM_SLOT", out float value)
+            ? (int)value : 0;
         foreach (var kvp in timeline.Keyframes.OrderBy(pair =>
                      int.TryParse(pair.Key, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index) ? index : int.MaxValue))
         {
-            if (!int.TryParse(kvp.Key, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frame) || kvp.Value == null)
+            if (!int.TryParse(kvp.Key, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frame) || frame < 0 || kvp.Value == null)
                 continue;
 
-            if (!kvp.Value.ItemSlot.HasValue && !kvp.Value.CustomItemSlot.HasValue) continue;
-            slot = kvp.Value.ItemSlot ?? slot;
-            if (kvp.Value.CustomItemSlot.HasValue) custom = kvp.Value.CustomItemSlot.Value != 0f;
+            int slot = kvp.Value.ItemSlot ?? defaultSlot;
+            bool custom = kvp.Value.CustomItemSlot.HasValue ? kvp.Value.CustomItemSlot.Value != 0f : defaultCustom;
             long selected = Math.Clamp((long)(custom ? slot : item.Slot ?? 0), 0, (long)columns * rows - 1);
             itemSlotKeyframes.Add(new ObjectKeyframe { Frame = frame, Value = (int)(selected % columns), InterpolationType = "instant" });
             customSlotKeyframes.Add(new ObjectKeyframe { Frame = frame, Value = (int)(selected / columns), InterpolationType = "instant" });
@@ -908,6 +914,103 @@ public class MineImatorLoader
             obj.Keyframes["item.slot"] = itemSlotKeyframes.OrderBy(kf => kf.Frame).ToList();
         if (customSlotKeyframes.Count > 0)
             obj.Keyframes["item.custom_slot"] = customSlotKeyframes.OrderBy(kf => kf.Frame).ToList();
+    }
+
+    private static void ImportTimelineKeyframes(SceneObject obj, MiTimeline timeline,
+        IReadOnlyDictionary<string, string> resources, string directory)
+    {
+        var frames = (timeline.Keyframes ?? [])
+            .Select(pair => (Frame: int.TryParse(pair.Key, NumberStyles.Integer, CultureInfo.InvariantCulture,
+                out int frame) ? frame : -1, Key: pair.Value))
+            .Where(pair => pair.Frame >= 0 && pair.Key != null)
+            .OrderBy(pair => pair.Frame).ToList();
+        if (frames.Count == 0) return;
+
+        float Default(string channel, float fallback) =>
+            timeline.DefaultValues != null && timeline.DefaultValues.TryGetValue(channel, out float value) ? value : fallback;
+        string DefaultColor(string channel, string fallback) =>
+            timeline.DefaultValues != null && timeline.DefaultValues.TryGetString(channel, out string value) ? value : fallback;
+        bool HasChannel(string channel) => timeline.DefaultValues?.Values.ContainsKey(channel) == true;
+
+        var scalars = new (string Channel, string Path, Func<MiKeyframe, float?> Read, float Default)[]
+        {
+            ("ALPHA", "material.alpha", k => k.Alpha, 1f),
+            ("METALLIC", "material.metallic", k => k.Metallic, 0f),
+            ("ROUGHNESS", "material.roughness", k => k.Roughness, 1f),
+            ("EMISSIVE", "material.emissive", k => k.Emissive, 0f),
+            ("SUBSURFACE", "material.subsurface", k => k.Subsurface, 0f),
+            ("SUBSURFACE_RADIUS_RED", "material.subsurface_radius.r", k => k.SubsurfaceRadiusRed, 1f),
+            ("SUBSURFACE_RADIUS_GREEN", "material.subsurface_radius.g", k => k.SubsurfaceRadiusGreen, 1f),
+            ("SUBSURFACE_RADIUS_BLUE", "material.subsurface_radius.b", k => k.SubsurfaceRadiusBlue, 1f),
+            ("MIX_PERCENT", "material.mix_percent", k => k.MixPercent, 0f),
+        }.Where(c => HasChannel(c.Channel) || frames.Any(f => c.Read(f.Key).HasValue)).ToArray();
+        var colors = new (string Channel, string Path, Func<MiKeyframe, string?> Read, string Default)[]
+        {
+            ("RGB_MUL", "material.blend", k => k.MultiplyColor, "#FFFFFF"),
+            ("MIX_COLOR", "material.mix", k => k.MixColor, "#FFFFFF"),
+            ("GLOW_COLOR", "material.glow", k => k.GlowColor, "#FFFFFF"),
+            ("SUBSURFACE_COLOR", "material.subsurface_color", k => k.SubsurfaceColor, "#FFFFFF"),
+        }.Where(c => HasChannel(c.Channel) || frames.Any(f => c.Read(f.Key) != null)).ToArray();
+        bool hasVisibility = HasChannel("VISIBLE") || HasChannel("HIDE") || frames.Any(f => f.Key.Visible.HasValue);
+        bool hasTexture = obj.ObjectType != "Item" &&
+            (HasChannel("TEXTURE_OBJ") || frames.Any(f => f.Key.TextureObject != null));
+        bool hasBend = obj is MiBoneSceneObject { BendParameters: not null } &&
+            (HasChannel("BEND_ANGLE_X") || HasChannel("BEND_ANGLE_Y") || HasChannel("BEND_ANGLE_Z") ||
+             frames.Any(f => f.Key.BendAngleX.HasValue || f.Key.BendAngleY.HasValue || f.Key.BendAngleZ.HasValue));
+
+        foreach (var (frame, key) in frames)
+        {
+            string transition = key.Transition ?? DefaultColor("TRANSITION", "linear");
+            if (transition == "bezier")
+                transition = string.Create(CultureInfo.InvariantCulture,
+                    $"bezier:{key.EaseInX ?? Default("EASE_IN_X", 1f)},{key.EaseInY ?? Default("EASE_IN_Y", 0f)},{key.EaseOutX ?? Default("EASE_OUT_X", 0f)},{key.EaseOutY ?? Default("EASE_OUT_Y", 1f)}");
+            // Each saved pose is relative to default_values, not the preceding keyframe.
+            ResolveTimelineTransformValues(timeline, key, out var position, out var rotation, out var scale);
+            AddVector("position", position);
+            // Preserve source Euler angles so full turns and Y-X-Z interpolation survive.
+            AddVector("mirotation", rotation);
+            AddVector("scale", scale);
+            if (hasBend)
+                AddVector("bend", new vec3(key.BendAngleX ?? Default("BEND_ANGLE_X", 0f),
+                    key.BendAngleZ ?? Default("BEND_ANGLE_Z", 0f), key.BendAngleY ?? Default("BEND_ANGLE_Y", 0f)));
+            if (hasVisibility)
+                Add("visible", ResolveTimelineVisible(timeline, key) == false ? 0f : 1f, "instant");
+            foreach (var scalar in scalars)
+                Add(scalar.Path, scalar.Read(key) ?? Default(scalar.Channel, scalar.Default));
+            foreach (var color in colors)
+            {
+                vec3 value = ParseMiColor(color.Read(key) ?? DefaultColor(color.Channel, color.Default)) ?? vec3.Ones;
+                Add(color.Path + ".r", value.x);
+                Add(color.Path + ".g", value.y);
+                Add(color.Path + ".b", value.z);
+            }
+            if (hasTexture)
+                Add("material.texture", ResolveTextureRefPath(key.TextureObject ?? DefaultColor("TEXTURE_OBJ", ""),
+                    resources, directory), "instant");
+
+            void AddVector(string path, vec3 value)
+            {
+                Add(path + ".x", value.x);
+                Add(path + ".y", value.y);
+                Add(path + ".z", value.z);
+            }
+
+            void Add(string path, object value, string? interpolation = null)
+            {
+                if (!obj.Keyframes.TryGetValue(path, out var track))
+                    obj.Keyframes[path] = track = [];
+                track.Add(new ObjectKeyframe { Frame = frame, Value = value, InterpolationType = interpolation ?? transition });
+            }
+        }
+
+        // Mine-imator holds the first pose before its first authored frame. An
+        // explicit start key also makes backwards seeking deterministic here.
+        foreach (var track in obj.Keyframes.Values)
+            if (track.Count > 0 && track[0].Frame > 0)
+                track.Insert(0, new ObjectKeyframe
+                {
+                    Frame = 0, Value = track[0].Value, InterpolationType = "instant"
+                });
     }
 
     private static byte[] ExtractItemSheetTile(byte[] rgbaPixels, int imageWidth, int imageHeight,
@@ -3777,6 +3880,11 @@ public class MiTimeline
 [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
 public class MiKeyframe
 {
+    [JsonPropertyName("TRANSITION")] public string? Transition { get; set; }
+    [JsonPropertyName("EASE_IN_X")] public float? EaseInX { get; set; }
+    [JsonPropertyName("EASE_IN_Y")] public float? EaseInY { get; set; }
+    [JsonPropertyName("EASE_OUT_X")] public float? EaseOutX { get; set; }
+    [JsonPropertyName("EASE_OUT_Y")] public float? EaseOutY { get; set; }
     [JsonPropertyName("position")] public float[] Position { get; set; }
     [JsonPropertyName("POS_X")] public float? PosX { get; set; }
     [JsonPropertyName("POS_Y")] public float? PosY { get; set; }

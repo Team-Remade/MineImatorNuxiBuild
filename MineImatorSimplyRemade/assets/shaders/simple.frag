@@ -92,6 +92,27 @@ layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 GiAlbedo;
 layout(location = 2) out vec4 GiRadiance;
 
+vec4 shadowBilinearWeights(vec2 fraction)
+{
+    return vec4((1.0 - fraction.x) * (1.0 - fraction.y),
+                fraction.x * (1.0 - fraction.y),
+                (1.0 - fraction.x) * fraction.y,
+                fraction.x * fraction.y);
+}
+
+vec4 directionalShadowDepths(vec2 uv, out vec4 weights)
+{
+    vec2 size = vec2(textureSize(uShadowMap, 0));
+    vec2 texel = uv * size - 0.5;
+    vec2 baseUv = (floor(texel) + 0.5) / size;
+    vec2 stepUv = 1.0 / size;
+    weights = shadowBilinearWeights(fract(texel));
+    return vec4(texture(uShadowMap, baseUv).r,
+                texture(uShadowMap, baseUv + vec2(stepUv.x, 0.0)).r,
+                texture(uShadowMap, baseUv + vec2(0.0, stepUv.y)).r,
+                texture(uShadowMap, baseUv + stepUv).r);
+}
+
 float calculateShadow(vec3 norm, vec3 lightDir) {
     if (!uUseShadowMap) return 0.0;
 
@@ -112,8 +133,10 @@ float calculateShadow(vec3 norm, vec3 lightDir) {
             if (sampleUv.x < 0.0 || sampleUv.x > 1.0 || sampleUv.y < 0.0 || sampleUv.y > 1.0)
                 continue;
 
-            float pcfDepth = texture(uShadowMap, sampleUv).r;
-            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+            vec4 weights;
+            vec4 depths = directionalShadowDepths(sampleUv, weights);
+            // Interpolate visibility, not depth, so texel edges do not become hard steps.
+            shadow += dot(vec4(lessThan(depths, vec4(currentDepth - bias))), weights);
         }
     }
 
@@ -138,6 +161,60 @@ float samplePointShadowCube(int shadowIndex, vec3 lightToFrag)
     return 1.0;
 }
 
+float pointShadowMapSize(int shadowIndex)
+{
+    if (shadowIndex == 0) return float(textureSize(uPointShadowMaps[0], 0).x);
+    if (shadowIndex == 1) return float(textureSize(uPointShadowMaps[1], 0).x);
+    if (shadowIndex == 2) return float(textureSize(uPointShadowMaps[2], 0).x);
+    if (shadowIndex == 3) return float(textureSize(uPointShadowMaps[3], 0).x);
+    if (shadowIndex == 4) return float(textureSize(uPointShadowMaps[4], 0).x);
+    if (shadowIndex == 5) return float(textureSize(uPointShadowMaps[5], 0).x);
+    if (shadowIndex == 6) return float(textureSize(uPointShadowMaps[6], 0).x);
+    if (shadowIndex == 7) return float(textureSize(uPointShadowMaps[7], 0).x);
+    return 1.0;
+}
+
+vec4 pointShadowDepths(int shadowIndex, vec3 direction, float size, out vec4 weights)
+{
+    vec3 magnitude = abs(direction);
+    vec3 face = direction / max(max(magnitude.x, magnitude.y), magnitude.z);
+    vec3 axisU;
+    vec3 axisV;
+    if (magnitude.x >= magnitude.y && magnitude.x >= magnitude.z) {
+        axisU = vec3(0.0, 1.0, 0.0);
+        axisV = vec3(0.0, 0.0, 1.0);
+    } else if (magnitude.y >= magnitude.z) {
+        axisU = vec3(1.0, 0.0, 0.0);
+        axisV = vec3(0.0, 0.0, 1.0);
+    } else {
+        axisU = vec3(1.0, 0.0, 0.0);
+        axisV = vec3(0.0, 1.0, 0.0);
+    }
+    vec2 faceUv = vec2(dot(face, axisU), dot(face, axisV));
+    vec2 texel = (faceUv * 0.5 + 0.5) * size - 0.5;
+    vec2 center = (floor(texel) + 0.5) * (2.0 / size) - 1.0;
+    vec3 baseDirection = face + axisU * (center.x - faceUv.x) + axisV * (center.y - faceUv.y);
+    vec3 stepU = axisU * (2.0 / size);
+    vec3 stepV = axisV * (2.0 / size);
+    weights = shadowBilinearWeights(fract(texel));
+    // Directions outside this face naturally sample its neighbor across cube seams.
+    return vec4(samplePointShadowCube(shadowIndex, baseDirection),
+                samplePointShadowCube(shadowIndex, baseDirection + stepU),
+                samplePointShadowCube(shadowIndex, baseDirection + stepV),
+                samplePointShadowCube(shadowIndex, baseDirection + stepU + stepV));
+}
+
+vec3 pointShadowSampleDirection(vec3 direction, int index, int sampleCount, float size)
+{
+    vec3 axis = abs(direction.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tangent = normalize(cross(axis, direction));
+    vec3 bitangent = cross(direction, tangent);
+    float radius = sqrt(float(index) / float(sampleCount));
+    float angle = float(index) * 2.399963;
+    float spread = 2.0 * max(uShadowBlurStrength, 0.0) / size;
+    return direction + (tangent * cos(angle) + bitangent * sin(angle)) * radius * spread;
+}
+
 float calculatePointShadow(int shadowIndex, vec3 fragPos, vec3 lightPos, float farPlane, vec3 norm, vec3 lightDir)
 {
     if (shadowIndex < 0 || shadowIndex >= MAX_POINT_SHADOWS) return 0.0;
@@ -146,9 +223,17 @@ float calculatePointShadow(int shadowIndex, vec3 fragPos, vec3 lightPos, float f
     float currentDepth = length(lightToFrag);
     if (currentDepth <= 0.0001 || currentDepth >= farPlane) return 0.0;
 
-    float closestDepth = samplePointShadowCube(shadowIndex, lightToFrag) * farPlane;
     float bias = max(0.05 * (1.0 - dot(norm, lightDir)), 0.02);
-    return currentDepth - bias > closestDepth ? 1.0 : 0.0;
+    float size = pointShadowMapSize(shadowIndex);
+    vec3 direction = lightToFrag / currentDepth;
+    float shadow = 0.0;
+    for (int i = 0; i < 9; i++) {
+        vec3 sampleDirection = pointShadowSampleDirection(direction, i, 9, size);
+        vec4 weights;
+        vec4 depths = pointShadowDepths(shadowIndex, sampleDirection, size, weights) * farPlane;
+        shadow += dot(vec4(lessThan(depths, vec4(currentDepth - bias))), weights);
+    }
+    return shadow / 9.0;
 }
 
 float HGPhase(float cosTheta, float scatter)
@@ -163,6 +248,17 @@ vec3 subsurfaceTransmission(float thickness, float sss)
     // Mine-imator authors the radius in pixels, like imported positions (16 per block).
     vec3 radius = max(uSSSRadius * uSSSGlobalRadius * sss, vec3(0.001)) / 16.0;
     return exp(-max(thickness, 0.0) / radius);
+}
+
+vec3 filteredSubsurfaceTransmission(vec4 depths, vec4 weights, float currentDepth, float depthRange, float sss)
+{
+    vec3 transmission = vec3(0.0);
+    for (int i = 0; i < 4; i++) {
+        // Filter transmission after attenuation; empty texels must not invent entry surfaces.
+        if (depths[i] < 1.0)
+            transmission += subsurfaceTransmission((currentDepth - depths[i]) * depthRange, sss) * weights[i];
+    }
+    return transmission;
 }
 
 vec3 subsurfaceLighting(vec3 transmission, vec3 norm, vec3 lightDir, vec3 lightColor, vec3 viewDir)
@@ -220,10 +316,9 @@ vec3 estimateDirectionalSubsurface(float sss)
             continue;
 
         float w = 1.0 - radius;
-        float sampleDepth = texture(uShadowMap, sampleUv).r;
-        // An empty shadow texel is not an entry surface for transmission.
-        if (sampleDepth < 1.0)
-            transmission += subsurfaceTransmission((currentDepth - sampleDepth) * depthRange, sss) * w;
+        vec4 weights;
+        vec4 depths = directionalShadowDepths(sampleUv, weights);
+        transmission += filteredSubsurfaceTransmission(depths, weights, currentDepth, depthRange, sss) * w;
         weightSum += w;
     }
     return transmission / max(weightSum, 0.0001);
@@ -244,10 +339,22 @@ vec3 estimatePointSubsurface(
     if (currentDepth <= 0.0001 || currentDepth >= farPlane)
         return vec3(0.0);
 
-    float sampleDepth = samplePointShadowCube(shadowIndex, lightToFrag);
-    if (sampleDepth >= 1.0)
-        return vec3(0.0);
-    return subsurfaceTransmission(currentDepth - sampleDepth * farPlane, sss);
+    float size = pointShadowMapSize(shadowIndex);
+    vec3 direction = lightToFrag / currentDepth;
+    int sampleCount = clamp(uSSSBlurSamples, 1, 32);
+    vec3 transmission = vec3(0.0);
+    float weightSum = 0.0;
+    for (int i = 0; i < 32; i++) {
+        if (i >= sampleCount)
+            break;
+        vec3 sampleDirection = pointShadowSampleDirection(direction, i, sampleCount, size);
+        vec4 weights;
+        vec4 depths = pointShadowDepths(shadowIndex, sampleDirection, size, weights);
+        float w = 1.0 - sqrt(float(i) / float(sampleCount));
+        transmission += filteredSubsurfaceTransmission(depths, weights, currentDepth / farPlane, farPlane, sss) * w;
+        weightSum += w;
+    }
+    return transmission / max(weightSum, 0.0001);
 }
 
 void main() {

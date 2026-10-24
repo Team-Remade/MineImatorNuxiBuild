@@ -415,10 +415,12 @@ public class Viewport : UiPanel
     private uint _previewHeight = 1;
     private uint _previewShadowFbo;
     private uint _previewShadowTex;
+    private uint _previewAllocatedShadowMapSize;
     private Shader? _previewShadowShader;
     private uint _previewPointShadowFbo;
     private Shader? _previewPointShadowShader;
     private readonly uint[] _previewPointShadowCubeTextures = new uint[MaxPointShadowLights];
+    private readonly int[] _previewPointShadowTextureSizes = new int[MaxPointShadowLights];
 
     // Preview pick / silhouette FBOs. Mirrors the main viewport's resources so
     // the camera preview can run its own GPU colour-ID pick and Sobel outline
@@ -3166,8 +3168,8 @@ public class Viewport : UiPanel
                     null);
             }
 
-            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
-            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapR, (int)TextureWrapMode.ClampToEdge);
@@ -3180,8 +3182,23 @@ public class Viewport : UiPanel
 
     private unsafe void EnsurePreviewShadowResources()
     {
-        if (Gl == null || !IsPreviewViewport || _previewShadowShader != null)
+        if (Gl == null || !IsPreviewViewport)
             return;
+
+        var properties = MainViewport?.PropertiesPanel ?? PropertiesPanel;
+        _shadowMapSize = (uint)Math.Clamp(properties?.SunShadowBufferSize ?? 2048, 256, 8192);
+        if (_previewShadowShader != null)
+        {
+            if (_previewAllocatedShadowMapSize != _shadowMapSize)
+            {
+                Gl.BindTexture(GLEnum.Texture2D, _previewShadowTex);
+                Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.DepthComponent32f, _shadowMapSize,
+                    _shadowMapSize, 0, PixelFormat.DepthComponent, GLEnum.Float, null);
+                Gl.BindTexture(GLEnum.Texture2D, 0);
+                _previewAllocatedShadowMapSize = _shadowMapSize;
+            }
+            return;
+        }
 
         _previewShadowShader = new Shader(Gl);
         _previewShadowShader.CompileShader("shadow_depth.vert", "shadow_depth.frag");
@@ -3213,6 +3230,7 @@ public class Viewport : UiPanel
         Gl.ReadBuffer(GLEnum.None);
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
+        _previewAllocatedShadowMapSize = _shadowMapSize;
     }
 
     private unsafe void EnsurePreviewPointShadowResources()
@@ -3246,11 +3264,12 @@ public class Viewport : UiPanel
                     null);
             }
 
-            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
-            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
             Gl.TexParameter(GLEnum.TextureCubeMap, GLEnum.TextureWrapR, (int)TextureWrapMode.ClampToEdge);
+            _previewPointShadowTextureSizes[i] = 1024;
         }
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
@@ -3505,6 +3524,19 @@ public class Viewport : UiPanel
                 (uint)size, (uint)size, 0, PixelFormat.DepthComponent, GLEnum.Float, null);
         Gl.BindTexture(GLEnum.TextureCubeMap, 0);
         _pointShadowTextureSizes[index] = size;
+    }
+
+    private unsafe void ResizePreviewPointShadowTexture(int index, int requestedSize)
+    {
+        int size = Math.Clamp(requestedSize, 256, 8192);
+        if (Gl == null || _previewPointShadowTextureSizes[index] == size)
+            return;
+        Gl.BindTexture(GLEnum.TextureCubeMap, _previewPointShadowCubeTextures[index]);
+        for (int face = 0; face < 6; face++)
+            Gl.TexImage2D(GLEnum.TextureCubeMapPositiveX + face, 0, InternalFormat.DepthComponent32f,
+                (uint)size, (uint)size, 0, PixelFormat.DepthComponent, GLEnum.Float, null);
+        Gl.BindTexture(GLEnum.TextureCubeMap, 0);
+        _previewPointShadowTextureSizes[index] = size;
     }
 
     private mat4 ComputeShadowLightSpaceMatrix()
@@ -3763,7 +3795,7 @@ public class Viewport : UiPanel
         Mesh.ShadowLightSpaceMatrix = lightViewProj;
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, _previewShadowFbo);
-        Gl.Viewport(0, 0, _shadowMapSize, _shadowMapSize);
+        Gl.Viewport(0, 0, _previewAllocatedShadowMapSize, _previewAllocatedShadowMapSize);
         Gl.Clear(ClearBufferMask.DepthBufferBit);
         Gl.Enable(GLEnum.DepthTest);
         Gl.Disable(GLEnum.CullFace);
@@ -3801,9 +3833,15 @@ public class Viewport : UiPanel
         int lightCount = Math.Min(shadowLights.Count, MaxPointShadowLights);
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
+        var properties = MainViewport?.PropertiesPanel ?? PropertiesPanel;
         for (int lightIndex = 0; lightIndex < lightCount; lightIndex++)
         {
             var (light, position, range) = shadowLights[lightIndex];
+            int shadowSize = light.Type == LightType.Spot
+                ? properties?.SpotShadowBufferSize ?? 1024
+                : properties?.PointShadowBufferSize ?? 1024;
+            ResizePreviewPointShadowTexture(lightIndex, shadowSize);
+            shadowSize = _previewPointShadowTextureSizes[lightIndex];
             shadowIndices[light] = lightIndex;
             Mesh.PointShadowCubeTextures[lightIndex] = _previewPointShadowCubeTextures[lightIndex];
 
@@ -3822,7 +3860,7 @@ public class Viewport : UiPanel
                     GLEnum.TextureCubeMapPositiveX + face,
                     _previewPointShadowCubeTextures[lightIndex],
                     0);
-                Gl.Viewport(0, 0, 1024, 1024);
+                Gl.Viewport(0, 0, (uint)shadowSize, (uint)shadowSize);
                 Gl.Clear(ClearBufferMask.DepthBufferBit);
                 Gl.Enable(GLEnum.DepthTest);
                 Gl.Disable(GLEnum.CullFace);
