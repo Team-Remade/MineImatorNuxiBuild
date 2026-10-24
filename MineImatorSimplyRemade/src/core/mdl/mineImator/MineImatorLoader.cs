@@ -1709,12 +1709,17 @@ public class MineImatorLoader
         try
         {
             var bytes = File.ReadAllBytes(path);
-            ImageResult img = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
-            int width = img.Width;
-            int height = img.Height;
+            int width, height;
+            byte[] pixels;
+            if (Path.GetExtension(path).Equals(".exr", StringComparison.OrdinalIgnoreCase))
+                (width, height, pixels) = ExrTextureDecoder.Decode(bytes);
+            else
+            {
+                ImageResult img = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
+                (width, height, pixels) = (img.Width, img.Height, img.Data);
+            }
             int contentWidth = width;
             int contentHeight = height;
-            byte[] pixels = img.Data;
             if (flipVertically)
             {
                 int stride = checked(width * 4);
@@ -1735,9 +1740,10 @@ public class MineImatorLoader
             {
                 // Match square model UVs without stretching the original texels.
                 int size = Math.Max(width, height);
+                byte[] sourcePixels = pixels;
                 pixels = new byte[checked(size * size * 4)];
                 for (int row = 0; row < height; row++)
-                    System.Buffer.BlockCopy(img.Data, row * width * 4, pixels, row * size * 4, width * 4);
+                    System.Buffer.BlockCopy(sourcePixels, row * width * 4, pixels, row * size * 4, width * 4);
                 width = height = size;
             }
 

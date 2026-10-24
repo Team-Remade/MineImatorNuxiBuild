@@ -20,7 +20,14 @@ public class StandardMaterial : Material
     public uint AlbedoTexture = 0;
 
     public float Metallic;
-    public float Roughness;
+    public float Roughness = 1f;
+    public bool PbrEnabled = false;
+
+    /// <summary>Linear packed surface data: R = AO, G = roughness, B = metallic, A = height.</summary>
+    public uint SurfaceTexture = 0;
+    public float NormalStrength = 1f;
+    public float OcclusionStrength = 1f;
+    public float HeightScale = 0f;
     public bool NormalEnabled;
 
     /// <summary>

@@ -116,6 +116,11 @@ public sealed class ProjectManager
                 node.TextureOverridePath = Remap(node.TextureOverridePath);
                 node.NormalTexturePath = Remap(node.NormalTexturePath);
                 node.EmissionTexturePath = Remap(node.EmissionTexturePath);
+                node.SurfaceTexturePath = Remap(node.SurfaceTexturePath);
+                node.OcclusionTexturePath = node.OcclusionTexturePath == null ? null : Remap(node.OcclusionTexturePath);
+                node.RoughnessTexturePath = node.RoughnessTexturePath == null ? null : Remap(node.RoughnessTexturePath);
+                node.MetallicTexturePath = node.MetallicTexturePath == null ? null : Remap(node.MetallicTexturePath);
+                node.HeightTexturePath = node.HeightTexturePath == null ? null : Remap(node.HeightTexturePath);
                 RemapNodes(node.Children);
             }
         }

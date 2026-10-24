@@ -23,6 +23,10 @@ public class MaterialSettings
     public vec4 MixColor = new vec4(0f, 0f, 0f, 0f);
     public float Metallic = 0f;
     public float Roughness = 0.5f;
+    public bool PbrEnabled = false;
+    public float NormalStrength = 1f;
+    public float OcclusionStrength = 1f;
+    public float HeightScale = 0f;
     public bool NormalEnabled = false;
 
     /// <summary>
@@ -77,6 +81,10 @@ public class MaterialSettings
             MixColor = this.MixColor,
             Metallic = this.Metallic,
             Roughness = this.Roughness,
+            PbrEnabled = this.PbrEnabled,
+            NormalStrength = this.NormalStrength,
+            OcclusionStrength = this.OcclusionStrength,
+            HeightScale = this.HeightScale,
             NormalEnabled = this.NormalEnabled,
             NormalTexture = this.NormalTexture,
             Transparency = this.Transparency,
@@ -231,6 +239,13 @@ public class SceneObject
     public string AlbedoTexturePath = "";
     public string NormalTexturePath = "";
     public string EmissionTexturePath = "";
+    /// <summary>Packed linear AO, roughness, metallic and height texture.</summary>
+    public string SurfaceTexturePath = "";
+    // Source metadata: null = packed source unknown, empty = explicitly absent.
+    public string? OcclusionTexturePath;
+    public string? RoughnessTexturePath;
+    public string? MetallicTexturePath;
+    public string? HeightTexturePath;
     public string NormalResourcePackId = "";
     public string EmissionResourcePackId = "";
 
@@ -742,6 +757,10 @@ public class SceneObject
             }
             if (surface)
             {
+                resolved.PbrEnabled |= parent.PbrEnabled;
+                resolved.NormalStrength *= parent.NormalStrength;
+                resolved.OcclusionStrength *= parent.OcclusionStrength;
+                resolved.HeightScale = Math.Max(resolved.HeightScale, parent.HeightScale);
                 resolved.Metallic = Math.Clamp(resolved.Metallic + parent.Metallic, 0f, 1f);
                 resolved.Roughness = Math.Clamp(resolved.Roughness * parent.Roughness, 0f, 1f);
                 resolved.EmissionEnergy += parent.EmissionEnabled ? parent.EmissionEnergy : 0f;
@@ -802,6 +821,17 @@ public class SceneObject
         return source == null ? "" : normal ? source.NormalTexturePath : source.EmissionTexturePath;
     }
 
+    public string GetEffectiveSurfaceTexturePath() => GetEffectiveSurfaceTextureSource()?.SurfaceTexturePath ?? "";
+
+    public SceneObject? GetEffectiveSurfaceTextureSource()
+    {
+        for (SceneObject current = this; ; current = current.Parent)
+        {
+            if (!string.IsNullOrEmpty(current.SurfaceTexturePath)) return current;
+            if (!UsePropertyInheritance || !current.InheritTexture || current.Parent == null) return null;
+        }
+    }
+
     public string GetEffectiveAuxiliaryResourcePackId(bool normal)
     {
         var source = GetAuxiliaryTextureSource(normal);
@@ -836,9 +866,13 @@ public class SceneObject
         var emissionSource = GetAuxiliaryTextureSource(false);
         uint normalTexture = normalSource?.LoadTexture(normalSource.NormalTexturePath) ?? 0;
         uint emissionTexture = emissionSource?.LoadTexture(emissionSource.EmissionTexturePath) ?? 0;
+        uint surfaceTexture = LoadTexture(GetEffectiveSurfaceTexturePath());
         foreach (var mesh in Visuals)
         {
             if (mesh.PickOnly) continue;
+            for (int i = 0; i < mesh.GetSurfaceCount(); i++)
+                if (mesh.SurfaceGetMaterial(i) is StandardMaterial material)
+                    material.SurfaceTexture = surfaceTexture;
             mesh.NormalTexture = normalSource != null && !string.IsNullOrEmpty(normalSource.NormalResourcePackId)
                 ? ResourcePackMaterialTextures.GetTexture(normalSource.NormalResourcePackId,
                     mesh.MinecraftTextureKey, mesh.MinecraftItemTexture, true, mesh.TextureId)
@@ -946,10 +980,11 @@ public class SceneObject
             {
                 if (mesh.SurfaceGetMaterial(i) is not StandardMaterial material) continue;
                 material.Metallic = settings.Metallic;
-                if (UsePropertyInheritance)
-                {
-                    material.Roughness = settings.Roughness;
-                }
+                material.Roughness = settings.Roughness;
+                material.PbrEnabled = settings.PbrEnabled;
+                material.NormalStrength = settings.NormalStrength;
+                material.OcclusionStrength = settings.OcclusionStrength;
+                material.HeightScale = settings.HeightScale;
             }
         }
     }

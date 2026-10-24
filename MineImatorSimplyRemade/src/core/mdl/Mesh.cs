@@ -477,6 +477,48 @@ public class Mesh : IDisposable
         set => DefaultMaterial.NormalTexture = value;
     }
 
+    public uint SurfaceTexture
+    {
+        get => DefaultMaterial.SurfaceTexture;
+        set => DefaultMaterial.SurfaceTexture = value;
+    }
+
+    public bool PbrEnabled
+    {
+        get => DefaultMaterial.PbrEnabled;
+        set => DefaultMaterial.PbrEnabled = value;
+    }
+
+    public float Metallic
+    {
+        get => DefaultMaterial.Metallic;
+        set => DefaultMaterial.Metallic = Math.Clamp(value, 0f, 1f);
+    }
+
+    public float Roughness
+    {
+        get => DefaultMaterial.Roughness;
+        set => DefaultMaterial.Roughness = Math.Clamp(value, 0f, 1f);
+    }
+
+    public float NormalStrength
+    {
+        get => DefaultMaterial.NormalStrength;
+        set => DefaultMaterial.NormalStrength = Math.Max(value, 0f);
+    }
+
+    public float OcclusionStrength
+    {
+        get => DefaultMaterial.OcclusionStrength;
+        set => DefaultMaterial.OcclusionStrength = Math.Clamp(value, 0f, 1f);
+    }
+
+    public float HeightScale
+    {
+        get => DefaultMaterial.HeightScale;
+        set => DefaultMaterial.HeightScale = Math.Clamp(value, -0.1f, 0.1f);
+    }
+
     public bool NormalEnabled
     {
         get => DefaultMaterial.NormalEnabled;
@@ -774,6 +816,11 @@ public class Mesh : IDisposable
         dstMat.AlbedoTexture            = srcMat.AlbedoTexture;
         dstMat.Metallic                 = srcMat.Metallic;
         dstMat.Roughness                = srcMat.Roughness;
+        dstMat.PbrEnabled               = srcMat.PbrEnabled;
+        dstMat.SurfaceTexture           = srcMat.SurfaceTexture;
+        dstMat.NormalStrength           = srcMat.NormalStrength;
+        dstMat.OcclusionStrength        = srcMat.OcclusionStrength;
+        dstMat.HeightScale              = srcMat.HeightScale;
         dstMat.NormalEnabled             = srcMat.NormalEnabled;
         dstMat.NormalTexture             = srcMat.NormalTexture;
         dstMat.Transparency              = srcMat.Transparency;
@@ -1244,6 +1291,11 @@ public class Mesh : IDisposable
         SetUniformFloat("uEmissionEnergy", EmissionEnergy);
         SetUniformBool("uEmissionIndirectOnly", EmissionIndirectOnly);
         SetUniformFloat("uMetallic", Math.Clamp(DefaultMaterial.Metallic, 0f, 1f));
+        SetUniformFloat("uRoughness", Math.Clamp(Roughness, 0f, 1f));
+        SetUniformBool("uPbrEnabled", PbrEnabled);
+        SetUniformFloat("uNormalStrength", Math.Max(NormalStrength, 0f));
+        SetUniformFloat("uOcclusionStrength", Math.Clamp(OcclusionStrength, 0f, 1f));
+        SetUniformFloat("uHeightScale", Math.Clamp(HeightScale, -0.1f, 0.1f));
         SetUniformFloat("uSSS", Subsurface);
         SetUniformVec3("uSSSRadius", SubsurfaceRadius);
         SetUniformVec3("uSSSColor", SubsurfaceColor);
@@ -1320,12 +1372,15 @@ public class Mesh : IDisposable
         bool useAlphaMask = AlphaMaskTextureId != 0 && TexCoords.Count == Vertices.Count;
         bool useNormalTexture = NormalEnabled && NormalTexture != 0 && TexCoords.Count == Vertices.Count;
         bool useEmissionTexture = EmissionTexture != 0 && TexCoords.Count == Vertices.Count;
+        bool useSurfaceTexture = PbrEnabled && !Unlit && !IsTextAlphaMask && SurfaceTexture != 0 && TexCoords.Count == Vertices.Count;
         SetUniformBool("uUseTexture", useTexture);
         SetUniformBool("uUseAlphaMask", useAlphaMask);
         SetUniformBool("uUseNormalTexture", useNormalTexture);
         SetUniformBool("uUseEmissionTexture", useEmissionTexture);
+        SetUniformBool("uUseSurfaceTexture", useSurfaceTexture);
         SetUniformInt("uNormalTexture", 10);
         SetUniformInt("uEmissionTexture", 11);
+        SetUniformInt("uSurfaceTexture", 13);
         SetUniformBool("uIsTextAlphaMask", IsTextAlphaMask);
         SetUniformVec4("uTextOutlineColor", TextMaskOutlineColor);
         if (useTexture)
@@ -1337,6 +1392,11 @@ public class Mesh : IDisposable
             BindSurfaceTexture(NormalTexture, GLEnum.Texture10);
         if (useEmissionTexture)
             BindSurfaceTexture(EmissionTexture, GLEnum.Texture11);
+        _gl.ActiveTexture(GLEnum.Texture13);
+        _gl.BindTexture(GLEnum.Texture2D, 0);
+        _gl.BindSampler(13, 0);
+        if (useSurfaceTexture)
+            BindSurfaceTexture(SurfaceTexture, GLEnum.Texture13);
         _gl.ActiveTexture(GLEnum.Texture0);
 
         void BindSurfaceTexture(uint texture, GLEnum unit)
@@ -1434,6 +1494,16 @@ public class Mesh : IDisposable
         if (useEmissionTexture)
         {
             _gl.ActiveTexture(GLEnum.Texture11);
+            _gl.BindTexture(GLEnum.Texture2D, 0);
+        }
+        _gl.ActiveTexture(GLEnum.Texture13);
+        _gl.BindTexture(GLEnum.Texture2D, 0);
+        _gl.BindSampler(13, 0);
+        SetUniformBool("uUseSurfaceTexture", false);
+        SetUniformBool("uPbrEnabled", false);
+        if (useAlphaMask)
+        {
+            _gl.ActiveTexture(GLEnum.Texture15);
             _gl.BindTexture(GLEnum.Texture2D, 0);
         }
         _gl.ActiveTexture(GLEnum.Texture0);

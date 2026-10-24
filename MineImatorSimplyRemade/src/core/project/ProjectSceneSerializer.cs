@@ -261,6 +261,11 @@ public static class ProjectSceneSerializer
             AlbedoTexturePath = pm.ToProjectRelativePath(obj.AlbedoTexturePath),
             NormalTexturePath = pm.ToAssetReference(obj.NormalTexturePath),
             EmissionTexturePath = pm.ToAssetReference(obj.EmissionTexturePath),
+            SurfaceTexturePath = pm.ToAssetReference(obj.SurfaceTexturePath),
+            OcclusionTexturePath = obj.OcclusionTexturePath == null ? null : pm.ToAssetReference(obj.OcclusionTexturePath),
+            RoughnessTexturePath = obj.RoughnessTexturePath == null ? null : pm.ToAssetReference(obj.RoughnessTexturePath),
+            MetallicTexturePath = obj.MetallicTexturePath == null ? null : pm.ToAssetReference(obj.MetallicTexturePath),
+            HeightTexturePath = obj.HeightTexturePath == null ? null : pm.ToAssetReference(obj.HeightTexturePath),
             CameraTextureObjectId = obj.CameraTextureObjectId,
             TemporaryItemSheetPath = pm.ToProjectRelativePath(obj.TemporaryItemSheetPath),
             TemporaryItemSheetCacheKey = obj.TemporaryItemSheetCacheKey,
@@ -348,6 +353,10 @@ public static class ProjectSceneSerializer
             entry.MixColor = ToProjectVec4(obj.MaterialSettings.MixColor);
             entry.Metallic = obj.MaterialSettings.Metallic;
             entry.Roughness = obj.MaterialSettings.Roughness;
+            entry.PbrEnabled = obj.MaterialSettings.PbrEnabled;
+            entry.NormalStrength = obj.MaterialSettings.NormalStrength;
+            entry.OcclusionStrength = obj.MaterialSettings.OcclusionStrength;
+            entry.HeightScale = obj.MaterialSettings.HeightScale;
             entry.NormalEnabled = obj.MaterialSettings.NormalEnabled;
             entry.Transparency = obj.MaterialSettings.Transparency;
             entry.DoubleSided = obj.MaterialSettings.DoubleSided;
@@ -683,6 +692,11 @@ public static class ProjectSceneSerializer
         // Assign empty paths too so history can remove previously authored maps.
         obj.NormalTexturePath = ProjectManager.Instance.ResolveAssetPath(entry.NormalTexturePath ?? "");
         obj.EmissionTexturePath = ProjectManager.Instance.ResolveAssetPath(entry.EmissionTexturePath ?? "");
+        obj.SurfaceTexturePath = ProjectManager.Instance.ResolveAssetPath(entry.SurfaceTexturePath ?? "");
+        obj.OcclusionTexturePath = entry.OcclusionTexturePath == null ? null : ProjectManager.Instance.ResolveAssetPath(entry.OcclusionTexturePath);
+        obj.RoughnessTexturePath = entry.RoughnessTexturePath == null ? null : ProjectManager.Instance.ResolveAssetPath(entry.RoughnessTexturePath);
+        obj.MetallicTexturePath = entry.MetallicTexturePath == null ? null : ProjectManager.Instance.ResolveAssetPath(entry.MetallicTexturePath);
+        obj.HeightTexturePath = entry.HeightTexturePath == null ? null : ProjectManager.Instance.ResolveAssetPath(entry.HeightTexturePath);
         obj.CameraTextureObjectId = entry.CameraTextureObjectId ?? "";
 
         // Restore albedo texture path (actual texture loading happens after scene is loaded).
@@ -848,6 +862,10 @@ public static class ProjectSceneSerializer
             material.MixColor = ToVec4(entry.MixColor);
             material.Metallic = entry.Metallic;
             material.Roughness = entry.Roughness;
+            material.PbrEnabled = entry.PbrEnabled;
+            material.NormalStrength = Math.Clamp(entry.NormalStrength, 0f, 2f);
+            material.OcclusionStrength = Math.Clamp(entry.OcclusionStrength, 0f, 1f);
+            material.HeightScale = Math.Clamp(entry.HeightScale, 0f, 0.1f);
             material.NormalEnabled = entry.NormalEnabled;
             material.Transparency = entry.Transparency;
             material.DoubleSided = entry.DoubleSided;

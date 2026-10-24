@@ -113,7 +113,7 @@ public class ContentBrowser : UiPanel
                 ImportAsset(ProjectAssetType.Model, "glb,gltf,fbx,obj,dae,3ds,blend,ply,stl,x3d,mimodel,miobject");
 
             if (ImGui.MenuItem(Localization.Label("text.common.image", "Image")))
-                ImportAsset(ProjectAssetType.Image, "png,jpg,jpeg,bmp,tga,gif,webp,tiff");
+                ImportAsset(ProjectAssetType.Image, "png,jpg,jpeg,bmp,tga,gif,webp,tiff,hdr,exr");
 
             if (ImGui.MenuItem(Localization.Label("text.panel.content_browser.sound_2", "Sound")))
                 ImportAsset(ProjectAssetType.Sound, "wav,mp3,ogg,flac,m4a");
@@ -384,30 +384,7 @@ public class ContentBrowser : UiPanel
         if (Gl == null)
             return 0;
 
-        byte[] sourceBytes = File.ReadAllBytes(fullPath);
-        ImageResult image = ImageResult.FromMemory(sourceBytes, ColorComponents.RedGreenBlueAlpha);
-        float scale = Math.Min(
-            (float)ThumbnailPixelSize / image.Width,
-            (float)ThumbnailPixelSize / image.Height);
-        int width = Math.Max(1, (int)MathF.Round(image.Width * scale));
-        int height = Math.Max(1, (int)MathF.Round(image.Height * scale));
-        byte[] thumbnailPixels = new byte[width * height * 4];
-
-        for (int y = 0; y < height; y++)
-        {
-            int sourceY = Math.Min(image.Height - 1, (int)(y / scale));
-            for (int x = 0; x < width; x++)
-            {
-                int sourceX = Math.Min(image.Width - 1, (int)(x / scale));
-                int sourceOffset = (sourceY * image.Width + sourceX) * 4;
-                int destinationOffset = (y * width + x) * 4;
-                thumbnailPixels[destinationOffset] = image.Data[sourceOffset];
-                thumbnailPixels[destinationOffset + 1] = image.Data[sourceOffset + 1];
-                thumbnailPixels[destinationOffset + 2] = image.Data[sourceOffset + 2];
-                thumbnailPixels[destinationOffset + 3] = image.Data[sourceOffset + 3];
-            }
-        }
-
+        var (width, height, thumbnailPixels) = DecodeThumbnailPixels(fullPath);
         uint texture = Gl.GenTexture();
         Gl.BindTexture(GLEnum.Texture2D, texture);
         fixed (byte* pixels = thumbnailPixels)
@@ -419,6 +396,49 @@ public class ContentBrowser : UiPanel
         Gl.TexParameter(GLEnum.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
         Gl.BindTexture(GLEnum.Texture2D, 0);
         return texture;
+    }
+
+    private static (int Width, int Height, byte[] Data) DecodeThumbnailPixels(string fullPath)
+    {
+        byte[] sourceBytes = File.ReadAllBytes(fullPath);
+        int sourceWidth, sourceHeight;
+        byte[] sourcePixels;
+        bool flipRows = false;
+        if (Path.GetExtension(fullPath).Equals(".exr", StringComparison.OrdinalIgnoreCase))
+        {
+            (sourceWidth, sourceHeight, sourcePixels) = ExrTextureDecoder.Decode(sourceBytes);
+            // EXR bypasses stb, but must follow the same orientation as other thumbnails.
+            flipRows = (StbImage.stbi__vertically_flip_on_load_set != 0
+                ? StbImage.stbi__vertically_flip_on_load_local : StbImage.stbi__vertically_flip_on_load_global) != 0;
+        }
+        else
+        {
+            var image = ImageResult.FromMemory(sourceBytes, ColorComponents.RedGreenBlueAlpha);
+            (sourceWidth, sourceHeight, sourcePixels) = (image.Width, image.Height, image.Data);
+        }
+        float scale = Math.Min(
+            (float)ThumbnailPixelSize / sourceWidth,
+            (float)ThumbnailPixelSize / sourceHeight);
+        int width = Math.Max(1, (int)MathF.Round(sourceWidth * scale));
+        int height = Math.Max(1, (int)MathF.Round(sourceHeight * scale));
+        byte[] thumbnailPixels = new byte[width * height * 4];
+
+        for (int y = 0; y < height; y++)
+        {
+            int sourceY = Math.Min(sourceHeight - 1, (int)(y / scale));
+            if (flipRows) sourceY = sourceHeight - 1 - sourceY;
+            for (int x = 0; x < width; x++)
+            {
+                int sourceX = Math.Min(sourceWidth - 1, (int)(x / scale));
+                int sourceOffset = (sourceY * sourceWidth + sourceX) * 4;
+                int destinationOffset = (y * width + x) * 4;
+                thumbnailPixels[destinationOffset] = sourcePixels[sourceOffset];
+                thumbnailPixels[destinationOffset + 1] = sourcePixels[sourceOffset + 1];
+                thumbnailPixels[destinationOffset + 2] = sourcePixels[sourceOffset + 2];
+                thumbnailPixels[destinationOffset + 3] = sourcePixels[sourceOffset + 3];
+            }
+        }
+        return (width, height, thumbnailPixels);
     }
 
     private void ResetThumbnailCacheIfProjectChanged(string projectFolder)

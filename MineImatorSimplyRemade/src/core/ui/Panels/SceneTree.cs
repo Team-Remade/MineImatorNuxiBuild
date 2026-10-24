@@ -844,6 +844,11 @@ public class SceneTree : UiPanel
         dup.AlbedoTexturePath   = original.AlbedoTexturePath;
         dup.NormalTexturePath = original.NormalTexturePath;
         dup.EmissionTexturePath = original.EmissionTexturePath;
+        dup.SurfaceTexturePath = original.SurfaceTexturePath;
+        dup.OcclusionTexturePath = original.OcclusionTexturePath;
+        dup.RoughnessTexturePath = original.RoughnessTexturePath;
+        dup.MetallicTexturePath = original.MetallicTexturePath;
+        dup.HeightTexturePath = original.HeightTexturePath;
         dup.CameraTextureObjectId = original.CameraTextureObjectId;
         dup.PrimitiveCubeMapped = original.PrimitiveCubeMapped;
         dup.PrimitiveSphereSmooth = original.PrimitiveSphereSmooth;
@@ -913,6 +918,11 @@ public class SceneTree : UiPanel
             childDuplicate.EmissionResourcePackId = child.EmissionResourcePackId;
             childDuplicate.NormalTexturePath = child.NormalTexturePath;
             childDuplicate.EmissionTexturePath = child.EmissionTexturePath;
+            childDuplicate.SurfaceTexturePath = child.SurfaceTexturePath;
+            childDuplicate.OcclusionTexturePath = child.OcclusionTexturePath;
+            childDuplicate.RoughnessTexturePath = child.RoughnessTexturePath;
+            childDuplicate.MetallicTexturePath = child.MetallicTexturePath;
+            childDuplicate.HeightTexturePath = child.HeightTexturePath;
             CopyPropertyInheritanceSettings(child, childDuplicate, true);
             childDuplicate.CopyMaterialSettingsFrom(child);
         }

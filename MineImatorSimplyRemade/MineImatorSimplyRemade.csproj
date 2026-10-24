@@ -32,6 +32,7 @@
       <PackageReference Include="Hexa.NET.ImGui" Version="2.2.9" />
       <PackageReference Include="Hexa.NET.ImGui.Backends" Version="1.0.18" />
       <PackageReference Include="Hexa.NET.ImGui.Backends.GLFW" Version="1.0.18" />
+      <PackageReference Include="Magick.NET-Q16-HDRI-AnyCPU" Version="15.0.0" />
       <PackageReference Include="NativeFileDialogSharp" Version="0.5.0" />
       <PackageReference Include="OpenAL.Soft" Version="1.23.1" />
       <PackageReference Include="Sentry" Version="6.7.0" />
@@ -106,8 +107,8 @@
 
     <Target Name="RemoveDanglingDllsFromPublish" AfterTargets="_CopyResolvedFilesToPublishAlways;_CopyResolvedFilesToPublishPreserveNewest;Publish;PublishOnly;_PublishNoBuild;FileSystemPublish">
         <ItemGroup>
-            <PublishedDanglingDlls Include="$(PublishDir)*.dll" Exclude="$(PublishDir)$(TargetName).dll" Condition="'$(PublishAot)' != 'true'" />
-            <PublishedDanglingDlls Include="$(PublishDir)*.dll" Condition="'$(PublishAot)' == 'true'" />
+            <PublishedDanglingDlls Include="$(PublishDir)*.dll" Exclude="$(PublishDir)$(TargetName).dll;$(PublishDir)Magick.Native-*.dll" Condition="'$(PublishAot)' != 'true'" />
+            <PublishedDanglingDlls Include="$(PublishDir)*.dll" Exclude="$(PublishDir)Magick.Native-*.dll" Condition="'$(PublishAot)' == 'true'" />
         </ItemGroup>
         <Delete Files="@(PublishedDanglingDlls)" />
     </Target>

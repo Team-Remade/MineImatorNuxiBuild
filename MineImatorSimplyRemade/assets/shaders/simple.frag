@@ -16,6 +16,11 @@ uniform vec3  uEmissionColor;
 uniform float uEmissionEnergy;
 uniform bool  uEmissionIndirectOnly;
 uniform float uMetallic;
+uniform float uRoughness;
+uniform bool  uPbrEnabled;
+uniform float uNormalStrength;
+uniform float uOcclusionStrength;
+uniform float uHeightScale;
 uniform float uSSS;
 uniform vec3  uSSSRadius;
 uniform vec3  uSSSColor;
@@ -70,6 +75,8 @@ uniform sampler2D uNormalTexture;
 uniform bool      uUseNormalTexture;
 uniform sampler2D uEmissionTexture;
 uniform bool      uUseEmissionTexture;
+uniform sampler2D uSurfaceTexture;
+uniform bool      uUseSurfaceTexture;
 uniform sampler2D uAlphaMask;
 uniform bool      uUseAlphaMask;
 uniform bool      uIsTextAlphaMask;
@@ -95,6 +102,42 @@ uniform float uIndirectWorldStrength;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 GiAlbedo;
 layout(location = 2) out vec4 GiRadiance;
+
+// Match the display-encoded scene / linear GI convention used by indirect_denoise.frag.
+vec3 toLinear(vec3 color) { return pow(max(color, vec3(0.0)), vec3(2.2)); }
+vec3 toDisplay(vec3 color) { return pow(max(color, vec3(0.0)), vec3(1.0 / 2.2)); }
+
+vec3 safeDirection(vec3 direction, vec3 fallback)
+{
+    float lengthSquared = dot(direction, direction);
+    return lengthSquared > 1e-20 ? direction * inversesqrt(lengthSquared) : fallback;
+}
+
+vec3 pbrLighting(vec3 normal, vec3 view, vec3 light, vec3 albedo, vec3 diffuseTint,
+                 float roughness, float metallic, out vec3 diffuse)
+{
+    const float PI = 3.14159265359;
+    float nDotL = max(dot(normal, light), 0.0);
+    float nDotV = max(dot(normal, view), 0.0);
+    diffuse = vec3(0.0);
+    if (nDotL <= 0.0 || nDotV <= 0.0) return vec3(0.0);
+    vec3 halfVector = safeDirection(view + light, normal);
+    float nDotH = clamp(dot(normal, halfVector), 0.0, 1.0);
+    float vDotH = clamp(dot(view, halfVector), 0.0, 1.0);
+    vec3 f0 = mix(vec3(0.04), albedo, metallic);
+    vec3 fresnel = f0 + (1.0 - f0) * pow(1.0 - vDotH, 5.0);
+    float a = roughness * roughness;
+    float a2 = a * a;
+    // This form avoids cancellation at nDotH=1 with small roughness.
+    float denominator = (1.0 - nDotH * nDotH) + nDotH * nDotH * a2;
+    float distribution = a2 / max(PI * denominator * denominator, 1e-12);
+    // Height-correlated Smith GGX visibility, already divided by 4*NdotL*NdotV.
+    float smithV = nDotL * sqrt(nDotV * nDotV * (1.0 - a2) + a2);
+    float smithL = nDotV * sqrt(nDotL * nDotL * (1.0 - a2) + a2);
+    float visibility = 0.5 / max(smithV + smithL, 1e-6);
+    diffuse = (1.0 - fresnel) * (1.0 - metallic) * albedo * diffuseTint * (nDotL / PI);
+    return diffuse + distribution * visibility * fresnel * nDotL;
+}
 
 vec4 shadowBilinearWeights(vec2 fraction)
 {
@@ -281,7 +324,8 @@ vec3 subsurfaceLighting(vec3 transmission, vec3 norm, vec3 lightDir, vec3 lightC
     tint = mix(tint, vec3(lightLuma), clamp(highlightDesaturation * phase, 0.0, 1.0));
     float strength = 1.25 * max(uSSSStrength, 0.0) * max(uSSSHighlightStrength, 0.0)
                    * max(uSSSGlobalHighlightStrength, 0.0);
-    return tint * uSSSColor * transmission * backLighting * phase * strength;
+    vec3 sssColor = uPbrEnabled && !uIsUnlit && !uIsTextAlphaMask ? toLinear(uSSSColor) : uSSSColor;
+    return tint * sssColor * transmission * backLighting * phase * strength;
 }
 
 vec3 estimateDirectionalSubsurface(float sss)
@@ -361,9 +405,9 @@ vec3 estimatePointSubsurface(
     return transmission / max(weightSum, 0.0001);
 }
 
-vec3 mappedNormal(vec3 normal)
+bool materialFrame(vec3 normal, out mat3 frame)
 {
-    if (!uUseNormalTexture) return normal;
+    frame = mat3(1.0);
     vec3 dpdx = dFdx(vFragPos);
     vec3 dpdy = dFdy(vFragPos);
     vec2 duvdx = dFdx(vTexCoord);
@@ -371,17 +415,47 @@ vec3 mappedNormal(vec3 normal)
     float determinant = duvdx.x * duvdy.y - duvdx.y * duvdy.x;
     // Missing/collinear UVs cannot define a tangent frame.
     float uvScale = sqrt(dot(duvdx, duvdx) * dot(duvdy, duvdy));
-    if (abs(determinant) <= max(uvScale * 0.000001, 1e-20)) return normal;
+    if (abs(determinant) <= max(uvScale * 0.000001, 1e-20)) return false;
     vec3 tangent = (dpdx * duvdy.y - dpdy * duvdx.y) / determinant;
     vec3 bitangent = (dpdy * duvdx.x - dpdx * duvdy.x) / determinant;
     tangent -= normal * dot(normal, tangent);
-    if (dot(tangent, tangent) <= 1e-20 || dot(bitangent, bitangent) <= 1e-20) return normal;
+    if (dot(tangent, tangent) <= 1e-20 || dot(bitangent, bitangent) <= 1e-20) return false;
     tangent = normalize(tangent);
     float handedness = dot(cross(normal, tangent), bitangent);
-    if (abs(handedness) <= 1e-20) return normal;
+    if (abs(handedness) <= 1e-20) return false;
     bitangent = cross(normal, tangent) * sign(handedness);
-    vec3 sampleNormal = textureGrad(uNormalTexture, vTexCoord, duvdx, duvdy).rgb * 2.0 - 1.0;
-    vec3 mapped = mat3(tangent, bitangent, normal) * sampleNormal;
+    frame = mat3(tangent, bitangent, normal);
+    return true;
+}
+
+vec2 materialUv(vec3 normal, vec2 uvDx, vec2 uvDy)
+{
+    if (!uPbrEnabled || uIsUnlit || uIsTextAlphaMask || !uUseSurfaceTexture || uHeightScale == 0.0)
+        return vTexCoord;
+    mat3 frame;
+    if (!materialFrame(normal, frame)) return vTexCoord;
+    vec3 view = transpose(frame) * safeDirection(uCameraPosition - vFragPos, normal);
+    float height = textureGrad(uSurfaceTexture, vTexCoord, uvDx, uvDy).a - 0.5;
+    // Fade at grazing angles and bound the offset even for malformed/extreme input.
+    float grazingFade = smoothstep(0.05, 0.25, abs(view.z));
+    vec2 offset = view.xy / max(abs(view.z), 0.2) * height * clamp(uHeightScale, -0.1, 0.1) * grazingFade;
+    float offsetLength = length(offset);
+    offset *= min(1.0, 0.05 / max(offsetLength, 1e-6));
+    return vTexCoord - offset;
+}
+
+vec3 mappedNormal(vec3 normal, vec2 uv, vec2 uvDx, vec2 uvDy)
+{
+    if (!uUseNormalTexture) return normal;
+    mat3 frame;
+    if (!materialFrame(normal, frame)) return normal;
+    vec3 sampleNormal = textureGrad(uNormalTexture, uv, uvDx, uvDy).rgb * 2.0 - 1.0;
+    if (uNormalStrength <= 0.0) return normal;
+    if (uNormalStrength != 1.0) {
+        sampleNormal.xy *= min(uNormalStrength, 8.0);
+        sampleNormal.z = max(sampleNormal.z, 0.0001);
+    }
+    vec3 mapped = frame * sampleNormal;
     return dot(mapped, mapped) > 1e-20 ? normalize(mapped) : normal;
 }
 
@@ -412,19 +486,32 @@ void main() {
         return;
     }
 
-    vec3  baseColor = uAlbedo;
+    bool pbr = uPbrEnabled && !uIsUnlit && !uIsTextAlphaMask;
+    // Derivatives must be evaluated before the alpha discard, including for cutouts.
+    vec3 vertexNormal = pbr ? safeDirection(vNormal, vec3(0.0, 1.0, 0.0)) : normalize(vNormal);
+    if (!uIsUnlit && uBendEnabled && uBendSharp) {
+        vec3 flatNormal = cross(dFdx(vFragPos), dFdy(vFragPos));
+        flatNormal = pbr ? safeDirection(flatNormal, vertexNormal) : normalize(flatNormal);
+        if (dot(flatNormal, vertexNormal) < 0.0) flatNormal = -flatNormal;
+        vertexNormal = flatNormal;
+    }
+    vec2 uvDx = dFdx(vTexCoord);
+    vec2 uvDy = dFdy(vTexCoord);
+    vec2 uv = materialUv(gl_FrontFacing ? vertexNormal : -vertexNormal, uvDx, uvDy);
+    vec3  baseColor = pbr ? toLinear(uAlbedo) : uAlbedo;
     vec3  emissionMask = vec3(1.0);
     float alpha     = 1.0;
     float textFillWeight = 1.0;
 
     if (uUseTexture) {
-        vec4 texSample = texture(uTexture, vTexCoord);
+        vec4 texSample = pbr ? textureGrad(uTexture, uv, uvDx, uvDy) : texture(uTexture, vTexCoord);
         emissionMask = texSample.rgb;
-        baseColor = texSample.rgb * uAlbedo;
-        alpha     = texSample.a;
+        baseColor = pbr ? toLinear(texSample.rgb) * toLinear(uAlbedo) : texSample.rgb * uAlbedo;
+        // Parallax changes material shading only, not coverage, depth or silhouettes.
+        alpha     = pbr && uHeightScale != 0.0 ? texture(uTexture, vTexCoord).a : texSample.a;
     }
     if (uUseEmissionTexture)
-        emissionMask = texture(uEmissionTexture, vTexCoord).rgb;
+        emissionMask = pbr ? textureGrad(uEmissionTexture, uv, uvDx, uvDy).rgb : texture(uEmissionTexture, vTexCoord).rgb;
     if (uUseAlphaMask) {
         vec4 textMask = texture(uAlphaMask, vTexCoord);
         if (uIsTextAlphaMask && textMask.a > 0.0) {
@@ -436,38 +523,42 @@ void main() {
         alpha *= textMask.a;
     }
 
-    baseColor *= uBlendColor.rgb;
-    baseColor = mix(baseColor, uMixColor.rgb, clamp(uMixColor.a, 0.0, 1.0));
+    baseColor *= pbr ? toLinear(uBlendColor.rgb) : uBlendColor.rgb;
+    baseColor = mix(baseColor, pbr ? toLinear(uMixColor.rgb) : uMixColor.rgb, clamp(uMixColor.a, 0.0, 1.0));
+    if (pbr) baseColor = clamp(baseColor, 0.0, 1.0);
     alpha *= uAlpha * uBlendColor.a;
 
-    // Evaluate derivatives before alpha discard so cutout edges keep valid frames.
-    vec3 vertexNormal = normalize(vNormal);
-    if (!uIsUnlit) {
-        if (uBendEnabled && uBendSharp) {
-            vec3 flatNormal = normalize(cross(dFdx(vFragPos), dFdy(vFragPos)));
-            if (dot(flatNormal, vertexNormal) < 0.0) flatNormal = -flatNormal;
-            vertexNormal = flatNormal;
-        }
-        vertexNormal = mappedNormal(vertexNormal);
-    }
+    if (!uIsUnlit) vertexNormal = mappedNormal(vertexNormal, uv, uvDx, uvDy);
+
+    // With no map the scalar sliders still work; their defaults give roughness=1, metallic=0.
+    vec4 surface = pbr && uUseSurfaceTexture ? textureGrad(uSurfaceTexture, uv, uvDx, uvDy) : vec4(1.0, 1.0, 1.0, 0.5);
+    float roughness = clamp(uRoughness * surface.g, 0.045, 1.0);
+    float metallic = clamp(uMetallic * surface.b, 0.0, 1.0);
+    float occlusion = pbr ? mix(1.0, clamp(surface.r, 0.0, 1.0), clamp(uOcclusionStrength, 0.0, 1.0)) : 1.0;
 
     // Modelbench discards only completely transparent fragments. Even very low
     // non-zero alpha must survive so it can write depth for render-depth masks.
     if (alpha <= 0.0) discard;
 
     vec3 result = baseColor;
-    vec3 linearAlbedo = pow(max(baseColor, 0.0), vec3(2.2));
+    vec3 linearAlbedo = pbr ? baseColor : pow(max(baseColor, 0.0), vec3(2.2));
     vec3 bounceSource = vec3(0.0);
     float giVisibility = uIsUnlit ? 0.0 : 1.0 - clamp(uMetallic, 0.0, 1.0);
+    if (pbr) giVisibility = (1.0 - metallic) * occlusion;
 
     if (!uIsUnlit) {
     vec3 norm    = gl_FrontFacing ? vertexNormal : -vertexNormal;
-    vec3 sunDir  = normalize(uLightDir);
+    vec3 sunDir  = pbr ? safeDirection(uLightDir, norm) : normalize(uLightDir);
     float diff   = max(dot(norm, sunDir), 0.0);
     vec3 diffuse = diff * uLightColor;
     float sssAmount = uSSSEnabled ? max(uSSS, 0.0) : 0.0;
-    vec3 viewDir = normalize(vFragPos - uCameraPosition);
+    vec3 viewDir = pbr ? -safeDirection(uCameraPosition - vFragPos, norm) : normalize(vFragPos - uCameraPosition);
     vec3 sssDirectTint = mix(vec3(1.0), uSSSColor, clamp(sssAmount, 0.0, 1.0));
+    vec3 pbrView = safeDirection(uCameraPosition - vFragPos, norm);
+    if (pbr) {
+        sssDirectTint = mix(vec3(1.0), toLinear(uSSSColor), clamp(sssAmount, 0.0, 1.0));
+        viewDir = -pbrView;
+    }
 
     vec3 pointLightSum = vec3(0.0);
     vec3 pointBounceSum = vec3(0.0);
@@ -477,7 +568,7 @@ void main() {
         float dist      = length(toLight);
         float range     = uPointLightRange[i];
 
-        if (dist >= range) continue;
+        if (dist >= range || (pbr && range <= 0.0)) continue;
 
         float attenuation = clamp(1.0 - (dist / range), 0.0, 1.0);
         attenuation *= attenuation;
@@ -496,11 +587,18 @@ void main() {
             }
         }
 
-        vec3 lightDir  = normalize(toLight);
+        vec3 lightDir  = pbr ? safeDirection(toLight, norm) : normalize(toLight);
         float diffFact = max(dot(norm, lightDir), 0.0);
         float pointShadow = calculatePointShadow(uPointLightShadowIndex[i], vFragPos, uPointLightPos[i], range, norm, lightDir);
 
         vec3 pointDirect = uPointLightColor[i] * diffFact * attenuation * spot * uPointLightEnergy[i] * (1.0 - pointShadow);
+        vec3 pointDiffuse = vec3(0.0);
+        if (pbr) {
+            vec3 radiance = max(uPointLightColor[i], vec3(0.0)) * attenuation * spot
+                          * max(uPointLightEnergy[i], 0.0) * (1.0 - pointShadow);
+            pointDirect = pbrLighting(norm, pbrView, lightDir, linearAlbedo, sssDirectTint, roughness, metallic, pointDiffuse) * radiance;
+            pointDiffuse *= radiance;
+        }
 
         if (sssAmount > 0.0) {
             vec3 pointSubsurf = estimatePointSubsurface(
@@ -509,11 +607,16 @@ void main() {
                 range,
                 uPointLightShadowIndex[i],
                 sssAmount);
-            pointDirect += subsurfaceLighting(pointSubsurf, norm, lightDir, uPointLightColor[i], viewDir)
+            vec3 scatter = subsurfaceLighting(pointSubsurf, norm, lightDir, uPointLightColor[i], viewDir)
                          * attenuation * spot * max(uPointLightEnergy[i], 0.0);
+            if (pbr) {
+                scatter *= linearAlbedo * sssDirectTint * (1.0 - metallic);
+                pointDiffuse += scatter;
+            }
+            pointDirect += scatter;
         }
-        pointLightSum += pointDirect * sssDirectTint;
-        pointBounceSum += pointDirect * sssDirectTint * max(uPointLightIndirectEnergy[i], 0.0);
+        pointLightSum += pbr ? pointDirect : pointDirect * sssDirectTint;
+        pointBounceSum += (pbr ? pointDiffuse : pointDirect * sssDirectTint) * max(uPointLightIndirectEnergy[i], 0.0);
 
         if (uIndirectWorldEnabled) {
             float indirectEnergy = max(uPointLightIndirectEnergy[i], 0.0);
@@ -526,6 +629,8 @@ void main() {
     vec3 shadowLightDir = uMoonFillLightCastsShadows != 0 ? normalize(uMoonFillLightDir)
                         : uSunFillLightCastsShadows  != 0 ? normalize(uSunFillLightDir)
                         : sunDir;
+    if (pbr) shadowLightDir = uMoonFillLightCastsShadows != 0 ? safeDirection(uMoonFillLightDir, norm)
+                            : uSunFillLightCastsShadows != 0 ? safeDirection(uSunFillLightDir, norm) : sunDir;
     float shadow = calculateShadow(norm, shadowLightDir);
 
     if (uShadowDebugMode == 1) {
@@ -542,40 +647,62 @@ void main() {
     float moonVisibility = uMoonFillLightCastsShadows != 0 ? (1.0 - shadow) : 1.0;
     vec3 directionalLight = diffuse * mainVisibility + uSunFillLightColor * sunFillDiffuse * sunVisibility
                           + uMoonFillLightColor * moonFillDiffuse * moonVisibility;
+    vec3 directionalDiffuse = vec3(0.0);
+    if (pbr) {
+        vec3 lightDiffuse;
+        directionalLight = pbrLighting(norm, pbrView, sunDir, linearAlbedo, sssDirectTint, roughness, metallic, lightDiffuse)
+                         * max(uLightColor, vec3(0.0)) * mainVisibility;
+        directionalDiffuse += lightDiffuse * max(uLightColor, vec3(0.0)) * mainVisibility;
+        directionalLight += pbrLighting(norm, pbrView, safeDirection(uSunFillLightDir, norm), linearAlbedo, sssDirectTint, roughness, metallic, lightDiffuse)
+                          * max(uSunFillLightColor, vec3(0.0)) * sunVisibility;
+        directionalDiffuse += lightDiffuse * max(uSunFillLightColor, vec3(0.0)) * sunVisibility;
+        directionalLight += pbrLighting(norm, pbrView, safeDirection(uMoonFillLightDir, norm), linearAlbedo, sssDirectTint, roughness, metallic, lightDiffuse)
+                          * max(uMoonFillLightColor, vec3(0.0)) * moonVisibility;
+        directionalDiffuse += lightDiffuse * max(uMoonFillLightColor, vec3(0.0)) * moonVisibility;
+    }
 
     if (sssAmount > 0.0) {
         vec3 subsurf = estimateDirectionalSubsurface(sssAmount);
+        vec3 scatter = vec3(0.0);
         // There is one directional depth map. Never use it for a different light.
         if (uMoonFillLightCastsShadows != 0)
-            directionalLight += subsurfaceLighting(subsurf, norm, shadowLightDir, uMoonFillLightColor, viewDir);
+            scatter = subsurfaceLighting(subsurf, norm, shadowLightDir, uMoonFillLightColor, viewDir);
         else if (uSunFillLightCastsShadows != 0)
-            directionalLight += subsurfaceLighting(subsurf, norm, shadowLightDir, uSunFillLightColor, viewDir);
+            scatter = subsurfaceLighting(subsurf, norm, shadowLightDir, uSunFillLightColor, viewDir);
         else if (uMainLightCastsShadows != 0)
-            directionalLight += subsurfaceLighting(subsurf, norm, shadowLightDir, uLightColor, viewDir);
+            scatter = subsurfaceLighting(subsurf, norm, shadowLightDir, uLightColor, viewDir);
+        if (pbr) {
+            scatter *= linearAlbedo * sssDirectTint * (1.0 - metallic);
+            directionalDiffuse += scatter;
+        }
+        directionalLight += scatter;
     }
-    result = (uAmbient + directionalLight * sssDirectTint + pointLightSum) * baseColor;
+    result = pbr ? max(uAmbient, vec3(0.0)) * linearAlbedo * (1.0 - metallic) * occlusion + directionalLight + pointLightSum
+                 : (uAmbient + directionalLight * sssDirectTint + pointLightSum) * baseColor;
     // GI transports outgoing diffuse light, not ambient, fog or post-processing.
-    bounceSource = (directionalLight * sssDirectTint + pointBounceSum) * linearAlbedo * giVisibility;
+    bounceSource = pbr ? directionalDiffuse + pointBounceSum
+                      : (directionalLight * sssDirectTint + pointBounceSum) * linearAlbedo * giVisibility;
 
     if (uIndirectWorldEnabled) {
-        result += baseColor * pointIndirectSum * max(uIndirectWorldStrength, 0.0);
+        result += baseColor * pointIndirectSum * max(uIndirectWorldStrength, 0.0) * (pbr ? (1.0 - metallic) * occlusion : 1.0);
     }
     }
     if (uEmissionEnabled) {
         vec3 emission = (uEmissionColor * emissionMask) * max(uEmissionEnergy, 0.0);
+        if (pbr) emission = toLinear(uEmissionColor) * toLinear(emissionMask) * max(uEmissionEnergy, 0.0);
         if (!uIsUnlit && !uEmissionIndirectOnly) result += emission;
-        bounceSource += pow(max(uEmissionColor * emissionMask, 0.0), vec3(2.2)) * max(uEmissionEnergy, 0.0);
+        bounceSource += pbr ? emission : pow(max(uEmissionColor * emissionMask, 0.0), vec3(2.2)) * max(uEmissionEnergy, 0.0);
     }
     if (uFogEnabled) {
         float distancePixels = length(vFragPos - uCameraPosition) * 64.0;
         float distanceFog = smoothstep(max(uFogDistance - uFogFadeSize, 0.0), max(uFogDistance, 1.0), distancePixels);
-        result = mix(result, uFogColor, distanceFog);
+        result = mix(result, pbr ? toLinear(uFogColor) : uFogColor, distanceFog);
         giVisibility *= 1.0 - distanceFog;
         if (uHeightFogEnabled) {
             float worldHeightPixels = vFragPos.y * 64.0;
             float heightStart = uFogHeight + uHeightFogOffset;
             float heightFog = 1.0 - smoothstep(heightStart, heightStart + max(uHeightFogSize, 1.0), worldHeightPixels);
-            result = mix(result, uHeightFogColor, heightFog);
+            result = mix(result, pbr ? toLinear(uHeightFogColor) : uHeightFogColor, heightFog);
             giVisibility *= 1.0 - heightFog;
         }
     }
@@ -585,5 +712,6 @@ void main() {
         result = mix(uTextOutlineColor.rgb, result, textFillWeight);
     GiAlbedo = vec4(linearAlbedo, giVisibility * textFillWeight * alpha);
     GiRadiance = vec4(bounceSource * textFillWeight * alpha, alpha);
-    FragColor   = vec4(result, alpha);
+    // Leave HDR range intact; downstream scene effects own exposure/tone mapping.
+    FragColor   = vec4(pbr ? toDisplay(result) : result, alpha);
 }

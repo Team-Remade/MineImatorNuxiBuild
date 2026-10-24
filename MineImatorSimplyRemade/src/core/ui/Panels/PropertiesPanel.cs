@@ -23,6 +23,7 @@ public class PropertiesPanel : UiPanel
     private const string BackgroundModeStretch = "stretch";
     private const string BackgroundModeFit = "fit";
     private const string BackgroundModeOriginal = "original";
+    private string _pbrImportError = "";
 
     // ── Project tab state ─────────────────────────────────────────────────────
 
@@ -885,6 +886,11 @@ public class PropertiesPanel : UiPanel
             AlbedoTexturePath = source.AlbedoTexturePath,
             NormalTexturePath = source.NormalTexturePath,
             EmissionTexturePath = source.EmissionTexturePath,
+            SurfaceTexturePath = source.SurfaceTexturePath,
+            OcclusionTexturePath = source.OcclusionTexturePath,
+            RoughnessTexturePath = source.RoughnessTexturePath,
+            MetallicTexturePath = source.MetallicTexturePath,
+            HeightTexturePath = source.HeightTexturePath,
             NormalResourcePackId = source.NormalResourcePackId,
             EmissionResourcePackId = source.EmissionResourcePackId,
             CameraTextureObjectId = source.CameraTextureObjectId,
@@ -937,6 +943,10 @@ public class PropertiesPanel : UiPanel
             MixColor = new ProjectVec4 { X = source.MixColor.X, Y = source.MixColor.Y, Z = source.MixColor.Z, W = source.MixColor.W },
             Metallic = source.Metallic,
             Roughness = source.Roughness,
+            PbrEnabled = source.PbrEnabled,
+            NormalStrength = source.NormalStrength,
+            OcclusionStrength = source.OcclusionStrength,
+            HeightScale = source.HeightScale,
             NormalEnabled = source.NormalEnabled,
             Transparency = source.Transparency,
             DoubleSided = source.DoubleSided,
@@ -1524,6 +1534,7 @@ public class PropertiesPanel : UiPanel
 
     private void OnSelectionChanged()
     {
+        _pbrImportError = "";
         var sel = SelectionManager.Instance?.SelectedObjects;
         _currentObject = (sel != null && sel.Count > 0) ? sel[0] : null;
         
@@ -3690,7 +3701,7 @@ public class PropertiesPanel : UiPanel
 
                 if (ImGui.Button(Localization.Label("text.panel.properties.load_new_texture", "Load new texture...##AlbedoTexture"), new Vector2(-1, 0)))
                 {
-                    var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
+                    var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,hdr,exr");
                     if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
                     {
                         string resolvedPath = ResolveAlbedoTexturePathForProject(result.Path);
@@ -3802,6 +3813,8 @@ public class PropertiesPanel : UiPanel
                 }
                 RegisterPropertyContext("material.mix_percent");
             }
+
+            DrawPbrMaterialControls();
 
             // Metallic
             {
@@ -5209,7 +5222,7 @@ public class PropertiesPanel : UiPanel
 
         if (ImGui.Button(Localization.Label("text.panel.properties.load_new_texture", "Load new texture..."), new Vector2(-1, 0)))
         {
-            var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
+            var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,hdr,exr");
             if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
                 AssignAuxiliaryTexture(normal, ResolveAlbedoTexturePathForProject(result.Path));
         }
@@ -5224,9 +5237,24 @@ public class PropertiesPanel : UiPanel
     {
         if (!string.IsNullOrEmpty(path))
         {
-            if (Gl == null || _currentObject.LoadTexture(path, reload: true) == 0)
+            try
+            {
+                path = ProjectManager.Instance.ResolveAssetPath(path);
+                string name = Path.GetFileNameWithoutExtension(path);
+                bool directX = normal && (name.Contains("nor_dx", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("normaldx", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("normal_dx", StringComparison.OrdinalIgnoreCase));
+                path = ResolveAlbedoTexturePathForProject(PbrMaterialImporter.ImportTexture(path, color: !normal, directXNormal: directX));
+                if (Gl == null || _currentObject.LoadTexture(path, reload: true) == 0)
+                    throw new InvalidDataException($"Could not load material texture '{Path.GetFileName(path)}'.");
+                path = ProjectManager.Instance.ToProjectRelativePath(path);
+                _pbrImportError = "";
+            }
+            catch (Exception ex)
+            {
+                _pbrImportError = ex.Message;
                 return;
-            path = ProjectManager.Instance.ToProjectRelativePath(path);
+            }
         }
         EnsureMaterialSettings();
         _currentObject.SetExplicitMaterialSettings();
@@ -5249,8 +5277,212 @@ public class PropertiesPanel : UiPanel
                 if (settings.EmissionEnergy <= 0f) settings.EmissionEnergy = 1f;
             }
         }
+        _pbrImportError = "";
         _currentObject.PropagateMaterialSettingsToChildren();
         ProjectManager.Instance.SetDirty(true);
+    }
+
+    private void DrawPbrMaterialControls()
+    {
+        if (!SupportsAlbedoTexture(_currentObject)) return;
+        if (ImGui.Button(Localization.Label("text.panel.properties.import_pbr", "Import PBR texture set..."), new Vector2(-1, 0)))
+        {
+            var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,hdr,exr");
+            if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path))
+            {
+                try
+                {
+                    var imported = PbrMaterialImporter.Import(result.Path);
+                    string albedo = string.IsNullOrEmpty(imported.AlbedoPath) ? "" : ResolveAlbedoTexturePathForProject(imported.AlbedoPath);
+                    string normal = string.IsNullOrEmpty(imported.NormalPath) ? "" : ResolveAlbedoTexturePathForProject(imported.NormalPath);
+                    string emission = string.IsNullOrEmpty(imported.EmissionPath) ? "" : ResolveAlbedoTexturePathForProject(imported.EmissionPath);
+                    string surface = string.IsNullOrEmpty(imported.SurfacePath) ? "" : ResolveAlbedoTexturePathForProject(imported.SurfacePath);
+                    // Validate every GPU upload before replacing the current material.
+                    foreach (string path in new[] { albedo, normal, emission, surface })
+                        if (!string.IsNullOrEmpty(path) && _currentObject.LoadTexture(path, reload: true) == 0)
+                            throw new InvalidDataException($"Could not load material texture '{Path.GetFileName(path)}'.");
+
+                    EnsureMaterialSettings();
+                    _currentObject.SetExplicitMaterialSettings();
+                    if (!string.IsNullOrEmpty(albedo)) OnLoadAlbedoTextureForObject(_currentObject, albedo);
+                    _currentObject.NormalTexturePath = ProjectManager.Instance.ToProjectRelativePath(normal);
+                    _currentObject.EmissionTexturePath = ProjectManager.Instance.ToProjectRelativePath(emission);
+                    _currentObject.SurfaceTexturePath = ProjectManager.Instance.ToProjectRelativePath(surface);
+                    _currentObject.OcclusionTexturePath = RegisterSurfaceSource(imported.OcclusionPath);
+                    _currentObject.RoughnessTexturePath = RegisterSurfaceSource(imported.RoughnessPath);
+                    _currentObject.MetallicTexturePath = RegisterSurfaceSource(imported.MetallicPath);
+                    _currentObject.HeightTexturePath = RegisterSurfaceSource(imported.HeightPath);
+                    _currentObject.NormalResourcePackId = "";
+                    _currentObject.EmissionResourcePackId = "";
+                    var material = _currentObject.MaterialSettings;
+                    material.PbrEnabled = true;
+                    material.NormalEnabled = !string.IsNullOrEmpty(normal);
+                    material.NormalStrength = 1f;
+                    material.OcclusionStrength = 1f;
+                    material.HeightScale = imported.HasHeight ? 0.02f : 0f;
+                    material.Roughness = imported.HasRoughness ? 1f : 0.5f;
+                    material.Metallic = imported.HasMetallic ? 1f : 0f;
+                    material.EmissionEnabled = !string.IsNullOrEmpty(emission);
+                    material.EmissionColor = new vec4(1f);
+                    material.EmissionEnergy = 1f;
+                    material.AutoEmission = false;
+                    _currentObject.PropagateMaterialSettingsToChildren();
+                    ProjectManager.Instance.SetDirty(true);
+                    _pbrImportError = "";
+                }
+                catch (Exception ex)
+                {
+                    _pbrImportError = ex.Message;
+                    Console.Error.WriteLine($"PBR material import failed: {ex.Message}");
+                }
+            }
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(Localization.T("text.panel.properties.import_pbr_hint"));
+        if (!string.IsNullOrEmpty(_pbrImportError)) ImGui.TextWrapped(_pbrImportError);
+
+        var settings = _currentObject.MaterialSettings;
+        bool enabled = settings.PbrEnabled;
+        float normalStrength = settings.NormalStrength;
+        float occlusionStrength = settings.OcclusionStrength;
+        float heightScale = settings.HeightScale;
+        bool changed = ImGui.Checkbox(Localization.Label("text.panel.properties.pbr_enabled", "PBR shading"), ref enabled);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(Localization.T("text.panel.properties.pbr_hint"));
+        if (enabled)
+        {
+            if (ImGui.SliderFloat(Localization.Label("text.panel.properties.normal_strength", "Normal strength"), ref normalStrength, 0f, 2f))
+            {
+                changed = true;
+            }
+            if (ImGui.SliderFloat(Localization.Label("text.panel.properties.occlusion_strength", "Material AO"), ref occlusionStrength, 0f, 1f))
+            {
+                changed = true;
+            }
+            if (ImGui.SliderFloat(Localization.Label("text.panel.properties.height_scale", "Height / parallax"), ref heightScale, 0f, 0.1f, "%.3f"))
+            {
+                changed = true;
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(Localization.T("text.panel.properties.height_hint"));
+            string surfacePath = _currentObject.GetEffectiveSurfaceTexturePath();
+            if (!string.IsNullOrEmpty(surfacePath))
+            {
+                ImGui.TextWrapped(Localization.T("text.panel.properties.surface_texture") + ": " + Path.GetFileName(surfacePath));
+                ImGui.TextWrapped(Localization.T("text.panel.properties.surface_multiplier_hint"));
+                if (!string.IsNullOrEmpty(_currentObject.SurfaceTexturePath) &&
+                    ImGui.Button(Localization.Label("text.panel.properties.clear_surface", "Clear surface maps")))
+                {
+                    _currentObject.SurfaceTexturePath = "";
+                    _currentObject.OcclusionTexturePath = null;
+                    _currentObject.RoughnessTexturePath = null;
+                    _currentObject.MetallicTexturePath = null;
+                    _currentObject.HeightTexturePath = null;
+                    heightScale = 0f;
+                    changed = true;
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(Localization.T("text.panel.properties.surface_hint"));
+            }
+        }
+        if (changed)
+        {
+            _currentObject.SetExplicitMaterialSettings();
+            settings = _currentObject.MaterialSettings;
+            settings.PbrEnabled = enabled;
+            settings.NormalStrength = normalStrength;
+            settings.OcclusionStrength = occlusionStrength;
+            settings.HeightScale = heightScale;
+            _currentObject.PropagateMaterialSettingsToChildren();
+            ProjectManager.Instance.SetDirty(true);
+        }
+        ImGui.SeparatorText(Localization.T("text.panel.properties.individual_surface_maps"));
+        ImGui.TextWrapped(Localization.T("text.panel.properties.individual_surface_hint"));
+        for (int channel = 0; channel < 4; channel++) DrawSurfaceTextureSelector(channel);
+    }
+
+    private string? RegisterSurfaceSource(string? path) => string.IsNullOrEmpty(path) ? path
+        : ProjectManager.Instance.ToProjectRelativePath(ResolveAlbedoTexturePathForProject(path));
+
+    private void DrawSurfaceTextureSelector(int channel)
+    {
+        var source = _currentObject.GetEffectiveSurfaceTextureSource();
+        string? path = channel switch
+        {
+            0 => source?.OcclusionTexturePath,
+            1 => source?.RoughnessTexturePath,
+            2 => source?.MetallicTexturePath,
+            _ => source?.HeightTexturePath
+        };
+        string labelKey = channel switch
+        {
+            0 => "text.panel.properties.occlusion_texture",
+            1 => "text.panel.properties.roughness_texture",
+            2 => "text.panel.properties.metallic_texture",
+            _ => "text.panel.properties.height_texture"
+        };
+        bool hasMap = source != null && path != "";
+        string currentLabel = !hasMap ? Localization.T("text.panel.properties.none")
+            : path == null ? Localization.T("text.panel.properties.baked_surface_map") : Path.GetFileName(path);
+        ImGui.PushID("SurfaceMap" + channel);
+        ImGui.TextUnformatted(Localization.T(labelKey));
+        ImGui.TextWrapped(currentLabel);
+        if (ImGui.IsItemHovered() && !string.IsNullOrEmpty(path)) ImGui.SetTooltip(path);
+        float availableWidth = ImGui.GetContentRegionAvail().X;
+        float buttonWidth = hasMap ? Math.Max(1f, (availableWidth - ImGui.GetStyle().ItemSpacing.X) * 0.5f) : availableWidth;
+        if (ImGui.Button(Localization.Label("text.panel.properties.load_new_texture", "Load new texture..."), new Vector2(buttonWidth, 0)))
+        {
+            var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,hdr,exr");
+            if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path)) AssignSurfaceTexture(channel, result.Path);
+        }
+        if (hasMap)
+        {
+            ImGui.SameLine();
+            if (ImGui.Button(Localization.Label("text.panel.properties.clear_texture", "Clear texture"), new Vector2(buttonWidth, 0)))
+                AssignSurfaceTexture(channel, "");
+        }
+        ImGui.PopID();
+        ImGui.Spacing();
+    }
+
+    private void AssignSurfaceTexture(int channel, string path)
+    {
+        try
+        {
+            var source = _currentObject.GetEffectiveSurfaceTextureSource();
+            string existing = ProjectManager.Instance.ResolveAssetPath(source?.SurfaceTexturePath ?? "");
+            string packed = PbrMaterialImporter.SetSurfaceMap(existing, channel, path);
+            string surface = string.IsNullOrEmpty(packed) ? "" : ResolveAlbedoTexturePathForProject(packed);
+            if (!string.IsNullOrEmpty(surface) && (Gl == null || _currentObject.LoadTexture(surface, reload: true) == 0))
+                throw new InvalidDataException("Could not load the updated surface texture.");
+            string? assigned = RegisterSurfaceSource(path);
+            // A child gets a local copy of the packed channels and their source labels.
+            string? occlusion = source == null ? "" : source.OcclusionTexturePath;
+            string? roughness = source == null ? "" : source.RoughnessTexturePath;
+            string? metallic = source == null ? "" : source.MetallicTexturePath;
+            string? height = source == null ? "" : source.HeightTexturePath;
+            EnsureMaterialSettings();
+            _currentObject.SetExplicitMaterialSettings();
+            _currentObject.SurfaceTexturePath = ProjectManager.Instance.ToProjectRelativePath(surface);
+            _currentObject.OcclusionTexturePath = channel == 0 ? assigned : occlusion;
+            _currentObject.RoughnessTexturePath = channel == 1 ? assigned : roughness;
+            _currentObject.MetallicTexturePath = channel == 2 ? assigned : metallic;
+            _currentObject.HeightTexturePath = channel == 3 ? assigned : height;
+            var material = _currentObject.MaterialSettings;
+            if (!string.IsNullOrEmpty(path))
+            {
+                material.PbrEnabled = true;
+                if (channel == 1) material.Roughness = 1f;
+                if (channel == 2) material.Metallic = 1f;
+                if (channel == 3 && material.HeightScale <= 0f) material.HeightScale = 0.02f;
+            }
+            else if (channel == 3) material.HeightScale = 0f;
+            _currentObject.PropagateMaterialSettingsToChildren();
+            ProjectManager.Instance.SetDirty(true);
+            _pbrImportError = "";
+        }
+        catch (Exception ex)
+        {
+            _pbrImportError = ex.Message;
+            Console.Error.WriteLine($"PBR map assignment failed: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -5264,6 +5496,8 @@ public class PropertiesPanel : UiPanel
 
         try
         {
+            if (Path.GetExtension(filePath).ToLowerInvariant() is ".hdr" or ".exr")
+                filePath = ResolveAlbedoTexturePathForProject(PbrMaterialImporter.ImportTexture(filePath, color: true));
             uint tex = obj.LoadTexture(filePath, reload: true);
             if (tex == 0) return;
 
@@ -5287,9 +5521,11 @@ public class PropertiesPanel : UiPanel
             obj.AlbedoTexturePath = ProjectManager.Instance.ToProjectRelativePath(filePath);
             obj.CameraTextureObjectId = "";
             obj.RefreshInheritedMaterials();
+            _pbrImportError = "";
         }
         catch (Exception ex)
         {
+            _pbrImportError = ex.Message;
             Console.Error.WriteLine($"Failed to load albedo texture '{filePath}': {ex.Message}");
         }
     }

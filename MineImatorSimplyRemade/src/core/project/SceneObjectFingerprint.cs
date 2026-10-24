@@ -65,6 +65,11 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.AlbedoTexturePath);
         hash.Add(obj.NormalTexturePath);
         hash.Add(obj.EmissionTexturePath);
+        hash.Add(obj.SurfaceTexturePath);
+        hash.Add(obj.OcclusionTexturePath);
+        hash.Add(obj.RoughnessTexturePath);
+        hash.Add(obj.MetallicTexturePath);
+        hash.Add(obj.HeightTexturePath);
         hash.Add(obj.CameraTextureObjectId);
         hash.Add(obj.TemporaryItemSheetPath);
         hash.Add(obj.TemporaryItemSheetCacheKey);
@@ -159,6 +164,10 @@ internal static class SceneObjectFingerprint
             hash.Add(material.MixColor);
             hash.Add(material.Metallic);
             hash.Add(material.Roughness);
+            hash.Add(material.PbrEnabled);
+            hash.Add(material.NormalStrength);
+            hash.Add(material.OcclusionStrength);
+            hash.Add(material.HeightScale);
             hash.Add(material.NormalEnabled);
             hash.Add(material.Transparency);
             hash.Add(material.DoubleSided);
