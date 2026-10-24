@@ -9,6 +9,8 @@ uniform vec3  uAlbedo;
 uniform vec4  uBlendColor;
 uniform vec4  uMixColor;
 uniform float uAlpha;
+uniform bool  uAlphaClipEnabled;
+uniform float uAlphaClipThreshold;
 uniform bool  uBendEnabled;
 uniform bool  uBendSharp;
 uniform bool  uEmissionEnabled;
@@ -471,7 +473,7 @@ void main() {
             alpha *= texture(uAlphaMask, vTexCoord).a;
         }
         alpha *= uAlpha * uBlendColor.a;
-        if (alpha <= 0.0) discard;
+        if (alpha <= (uAlphaClipEnabled ? uAlphaClipThreshold : 0.0)) discard;
 
         vec3 n = normalize(vNormal);
         vec3 solidCol;
@@ -538,7 +540,7 @@ void main() {
 
     // Modelbench discards only completely transparent fragments. Even very low
     // non-zero alpha must survive so it can write depth for render-depth masks.
-    if (alpha <= 0.0) discard;
+    if (alpha <= (uAlphaClipEnabled ? uAlphaClipThreshold : 0.0)) discard;
 
     vec3 result = baseColor;
     vec3 linearAlbedo = pbr ? baseColor : pow(max(baseColor, 0.0), vec3(2.2));
@@ -713,5 +715,5 @@ void main() {
     GiAlbedo = vec4(linearAlbedo, giVisibility * textFillWeight * alpha);
     GiRadiance = vec4(bounceSource * textFillWeight * alpha, alpha);
     // Leave HDR range intact; downstream scene effects own exposure/tone mapping.
-    FragColor   = vec4(pbr ? toDisplay(result) : result, alpha);
+    FragColor   = vec4(pbr ? toDisplay(result) : result, uAlphaClipEnabled ? 1.0 : alpha);
 }

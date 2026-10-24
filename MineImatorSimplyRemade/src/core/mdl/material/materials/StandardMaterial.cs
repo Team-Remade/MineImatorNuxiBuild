@@ -1,5 +1,6 @@
 ﻿using System.Drawing;
 using GlmSharp;
+using MineImatorSimplyRemadeNuxi.core.objs;
 
 namespace MineImatorSimplyRemade.core.mdl.material.materials;
 
@@ -37,6 +38,8 @@ public class StandardMaterial : Material
     public uint NormalTexture = 0;
 
     public float Transparency;
+    public MaterialAlphaMode AlphaMode = MaterialAlphaMode.Blend;
+    public float AlphaClipThreshold = 0.5f;
 
     /// <summary>
     /// When true, adds emissive lighting to the final shaded result.

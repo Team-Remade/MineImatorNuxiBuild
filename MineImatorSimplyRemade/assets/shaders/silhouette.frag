@@ -4,6 +4,8 @@ in vec2 vTexCoord;
 
 uniform vec4  uBlendColor;
 uniform float uAlpha;
+uniform bool  uAlphaClipEnabled;
+uniform float uAlphaClipThreshold;
 uniform sampler2D uTexture;
 uniform bool  uUseTexture;
 uniform sampler2D uAlphaMask;
@@ -22,7 +24,7 @@ void main() {
     if (!uForceOpaque && uUseAlphaMask)
         alpha *= texture(uAlphaMask, vTexCoord).a;
 
-    if (alpha <= 0.0)
+    if (alpha <= (uAlphaClipEnabled ? uAlphaClipThreshold : 0.0))
         discard;
 
     // Write 1.0 wherever a selected object covers a pixel.

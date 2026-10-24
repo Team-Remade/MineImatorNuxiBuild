@@ -5,6 +5,8 @@ in vec2 vTexCoord;
 uniform vec3  uPickColor;
 uniform vec4  uBlendColor;
 uniform float uAlpha;
+uniform bool  uAlphaClipEnabled;
+uniform float uAlphaClipThreshold;
 uniform sampler2D uTexture;
 uniform bool  uUseTexture;
 uniform sampler2D uAlphaMask;
@@ -23,7 +25,7 @@ void main() {
     if (!uForceOpaque && uUseAlphaMask)
         alpha *= texture(uAlphaMask, vTexCoord).a;
 
-    if (alpha <= 0.0)
+    if (alpha <= (uAlphaClipEnabled ? uAlphaClipThreshold : 0.0))
         discard;
 
     FragColor = vec4(uPickColor, 1.0);

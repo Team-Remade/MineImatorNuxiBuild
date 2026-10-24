@@ -8,13 +8,15 @@ uniform float uFarPlane;
 uniform sampler2D uTexture;
 uniform bool  uUseTexture;
 uniform float uAlpha;
+uniform bool  uAlphaClipEnabled;
+uniform float uAlphaClipThreshold;
 
 void main() {
     float alpha = uAlpha;
     if (uUseTexture)
         alpha *= texture(uTexture, vTexCoord).a;
 
-    if (alpha < 0.01)
+    if (alpha <= (uAlphaClipEnabled ? uAlphaClipThreshold : 0.0))
         discard;
 
     float lightDistance = length(vWorldPos - uLightPos);

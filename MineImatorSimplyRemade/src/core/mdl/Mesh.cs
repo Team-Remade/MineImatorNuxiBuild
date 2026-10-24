@@ -5,6 +5,7 @@ using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.mdl.material;
 using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.mdl.mineImator;
+using MineImatorSimplyRemadeNuxi.core.objs;
 using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.core.mdl;
@@ -592,6 +593,18 @@ public class Mesh : IDisposable
             var mat = DefaultMaterial;
             mat.AlbedoColor = new vec4(mat.AlbedoColor.xyz, value);
         }
+    }
+
+    public MaterialAlphaMode AlphaMode
+    {
+        get => DefaultMaterial.AlphaMode;
+        set => DefaultMaterial.AlphaMode = value;
+    }
+
+    public float AlphaClipThreshold
+    {
+        get => DefaultMaterial.AlphaClipThreshold;
+        set => DefaultMaterial.AlphaClipThreshold = Math.Clamp(value, 0f, 1f);
     }
 
     public vec4 BlendColor
@@ -1286,6 +1299,8 @@ public class Mesh : IDisposable
         SetUniformVec4("uBlendColor", BlendColor);
         SetUniformVec4("uMixColor", MixColor);
         SetUniformFloat("uAlpha", Alpha);
+        SetUniformBool("uAlphaClipEnabled", AlphaMode == MaterialAlphaMode.Clip);
+        SetUniformFloat("uAlphaClipThreshold", AlphaClipThreshold);
         SetUniformBool("uEmissionEnabled", EmissionEnabled);
         SetUniformVec3("uEmissionColor", EmissionColor);
         SetUniformFloat("uEmissionEnergy", EmissionEnergy);
@@ -1585,6 +1600,8 @@ public class Mesh : IDisposable
         bool useAlphaMask = AlphaMaskTextureId != 0 && AlphaMaskTextureId != TextureId &&
                             TexCoords.Count == Vertices.Count;
         SetUniformFloat(shader, "uAlpha", Alpha);
+        SetUniformBool(shader, "uAlphaClipEnabled", AlphaMode == MaterialAlphaMode.Clip);
+        SetUniformFloat(shader, "uAlphaClipThreshold", AlphaClipThreshold);
         SetUniformBool(shader, "uUseTexture", useTexture);
         SetUniformBool(shader, "uUseAlphaMask", useAlphaMask);
         SetUniformVec2(shader, "uTexOffset", new vec2(0f, texOffsetV));
@@ -1658,6 +1675,8 @@ public class Mesh : IDisposable
 
         bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;
         SetUniformFloat(shader, "uAlpha", Alpha);
+        SetUniformBool(shader, "uAlphaClipEnabled", AlphaMode == MaterialAlphaMode.Clip);
+        SetUniformFloat(shader, "uAlphaClipThreshold", AlphaClipThreshold);
         SetUniformBool(shader, "uUseTexture", useTexture);
         SetUniformVec2(shader, "uTexOffset", new vec2(0f, texOffsetV));
         SetUniformFloat(shader, "uTexScaleV", texScaleV);
@@ -1938,6 +1957,8 @@ public class Mesh : IDisposable
         bool forceOpaque = PickOnly;
         SetUniformFloat(shader, "uAlpha", Alpha);
         SetUniformVec4(shader, "uBlendColor", BlendColor);
+        SetUniformBool(shader, "uAlphaClipEnabled", AlphaMode == MaterialAlphaMode.Clip);
+        SetUniformFloat(shader, "uAlphaClipThreshold", AlphaClipThreshold);
         SetUniformBool(shader, "uUseTexture", useTexture);
         bool useAlphaMask = AlphaMaskTextureId != 0 && AlphaMaskTextureId != TextureId &&
                             TexCoords.Count == Vertices.Count;

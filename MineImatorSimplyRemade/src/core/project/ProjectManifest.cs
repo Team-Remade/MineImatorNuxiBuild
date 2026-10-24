@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 namespace MineImatorSimplyRemade.core.project;
@@ -424,6 +425,8 @@ public class ProjectSceneObjectEntry
     public float HeightScale { get; set; } = 0f;
     public bool NormalEnabled { get; set; } = false;
     public float Transparency { get; set; } = 0f;
+    public MaterialAlphaMode AlphaMode { get; set; } = MaterialAlphaMode.Blend;
+    public float AlphaClipThreshold { get; set; } = 0.5f;
     public bool DoubleSided { get; set; } = false;
     public float TextureOffsetH { get; set; } = 0f;
     public float TextureOffsetV { get; set; } = 0f;

@@ -4,6 +4,7 @@ using System.Text;
 using GlmSharp;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.mineImator;
+using MineImatorSimplyRemadeNuxi.core.objs;
 using Silk.NET.OpenGL;
 using Veldrid;
 using Veldrid.SPIRV;
@@ -31,7 +32,7 @@ public sealed class VeldridSceneRenderer : IDisposable
     private readonly VeldridTexture _white;
     private readonly Sampler _pointSampler;
     private readonly Sampler _linearSampler;
-    private readonly Dictionary<(bool Wire, bool Overlay, FaceCullMode Cull), Pipeline> _pipelines = new();
+    private readonly Dictionary<(bool Wire, bool Overlay, FaceCullMode Cull, bool AlphaClip), Pipeline> _pipelines = new();
     private readonly Dictionary<uint, VeldridTexture> _textures = new();
     private readonly List<IDisposable> _frameResources = new();
     private VeldridFramebuffer? _target;
@@ -132,7 +133,7 @@ public sealed class VeldridSceneRenderer : IDisposable
                 float alpha = texel.a * mask.a * Albedo.a * Blend.a;
                 vec3 normal = length(vNormal) > 0.00001 ? normalize(vNormal) : vec3(0, 1, 0);
                 normal = mappedNormal(normal);
-                if (alpha <= 0.0) discard;
+                if (alpha <= (MapOptions.z > 0.5 ? MapOptions.w : 0.0)) discard;
                 if (!gl_FrontFacing) normal = -normal;
                 vec3 light = Ambient.rgb + LightColor.rgb * max(dot(normal, normalize(LightDirection.xyz)), 0.0);
                 vec3 emissionMask = MapOptions.y > 0.5
@@ -236,7 +237,8 @@ public sealed class VeldridSceneRenderer : IDisposable
             LightDirection = new vec4(1, 1, 1, 0),
             Options = new vec4(forceUnshaded || mesh.Unlit ? 1 : 0,
                 _device.IsDepthRangeZeroToOne ? 1 : 0, _device.IsClipSpaceYInverted ? -1 : 1, 0),
-            MapOptions = new vec4(useNormalTexture ? 1 : 0, useEmissionTexture ? 1 : 0, 0, 0)
+            MapOptions = new vec4(useNormalTexture ? 1 : 0, useEmissionTexture ? 1 : 0,
+                mesh.AlphaMode == MaterialAlphaMode.Clip ? 1 : 0, mesh.AlphaClipThreshold)
         };
         var uniform = _device.ResourceFactory.CreateBuffer(new BufferDescription(
             (uint)Marshal.SizeOf<DrawUniforms>(), BufferUsage.UniformBuffer));
@@ -247,12 +249,15 @@ public sealed class VeldridSceneRenderer : IDisposable
             emissionTexture.TextureView, mesh.BlurTexture ? _linearSampler : _pointSampler));
         _frameResources.Add(set);
         FaceCullMode cull = mesh.DoubleSided ? FaceCullMode.None : mesh.CullFrontFaces ? FaceCullMode.Front : FaceCullMode.Back;
-        var key = (_wireframe, mesh.DepthTestDisabled, cull);
+        bool alphaClip = mesh.AlphaMode == MaterialAlphaMode.Clip;
+        var key = (_wireframe, mesh.DepthTestDisabled, cull, alphaClip);
         if (!_pipelines.TryGetValue(key, out var pipeline))
         {
             pipeline = _device.ResourceFactory.CreateGraphicsPipeline(new GraphicsPipelineDescription
             {
-                BlendState = BlendStateDescription.SingleAlphaBlend,
+                BlendState = alphaClip
+                    ? BlendStateDescription.SingleOverrideBlend
+                    : BlendStateDescription.SingleAlphaBlend,
                 DepthStencilState = new DepthStencilStateDescription(!mesh.DepthTestDisabled,
                     !mesh.DepthTestDisabled, ComparisonKind.Less),
                 RasterizerState = new RasterizerStateDescription(cull,

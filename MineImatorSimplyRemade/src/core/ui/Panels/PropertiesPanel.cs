@@ -3837,6 +3837,36 @@ public class PropertiesPanel : UiPanel
                     RegisterPropertyContext("material.roughness");
                 }
 
+                // Alpha Mode
+                {
+                    int alphaMode = (int)(mat?.AlphaMode ?? MaterialAlphaMode.Blend);
+                    string[] alphaModes = [
+                        Localization.Label("text.panel.properties.alpha_blend", "Alpha Blend"),
+                        Localization.Label("text.panel.properties.alpha_clip", "Alpha Clip")
+                    ];
+                    if (ImGui.Combo(Localization.Label("text.panel.properties.alpha_mode", "Alpha Mode"), ref alphaMode,
+                            alphaModes, alphaModes.Length))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.AlphaMode = (MaterialAlphaMode)alphaMode;
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+
+                    if (alphaMode == (int)MaterialAlphaMode.Clip)
+                    {
+                        float threshold = mat?.AlphaClipThreshold ?? 0.5f;
+                        if (ImGui.SliderFloat(Localization.Label("text.panel.properties.alpha_clip_threshold", "Clip Threshold"),
+                                ref threshold, 0f, 1f))
+                        {
+                            EnsureMaterialSettings();
+                            _currentObject.MaterialSettings.AlphaClipThreshold = threshold;
+                            _currentObject.SetExplicitMaterialSettings();
+                            _currentObject.PropagateMaterialSettingsToChildren();
+                        }
+                    }
+                }
+
                 // Double Sided
                 {
                     bool doubleSided = mat?.DoubleSided ?? false;

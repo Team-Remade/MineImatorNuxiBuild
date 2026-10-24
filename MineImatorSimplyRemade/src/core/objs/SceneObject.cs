@@ -12,6 +12,12 @@ namespace MineImatorSimplyRemadeNuxi.core.objs;
 
 // ── MaterialSettings ──────────────────────────────────────────────────────────
 
+public enum MaterialAlphaMode
+{
+    Blend,
+    Clip
+}
+
 /// <summary>
 /// Per-object material overrides that can be inherited down the scene hierarchy.
 /// Mirrors the Godot MaterialSettings class from ExampleSceneObject.
@@ -38,6 +44,8 @@ public class MaterialSettings
 
     /// <summary>Alpha-transparency amount (0 = fully opaque, 1 = fully transparent).</summary>
     public float Transparency = 0f;
+    public MaterialAlphaMode AlphaMode = MaterialAlphaMode.Blend;
+    public float AlphaClipThreshold = 0.5f;
     public bool EmissionEnabled = false;
     public vec4 EmissionColor = new vec4(0f, 0f, 0f, 1f);
     public float EmissionEnergy = 1f;
@@ -88,6 +96,8 @@ public class MaterialSettings
             NormalEnabled = this.NormalEnabled,
             NormalTexture = this.NormalTexture,
             Transparency = this.Transparency,
+            AlphaMode = this.AlphaMode,
+            AlphaClipThreshold = this.AlphaClipThreshold,
             EmissionEnabled = this.EmissionEnabled,
             EmissionColor = this.EmissionColor,
             EmissionEnergy = this.EmissionEnergy,
@@ -953,6 +963,8 @@ public class SceneObject
             // Combine AlbedoColor.a with (1 - Transparency) so both routes
             // can control opacity: 0 Transparency = fully opaque.
             mesh.Alpha = mesh.BaseAlpha * settings.AlbedoColor.w * (1f - settings.Transparency);
+            mesh.AlphaMode = settings.AlphaMode;
+            mesh.AlphaClipThreshold = settings.AlphaClipThreshold;
             bool useAutoEmission = settings.AutoEmission && mesh.AutoEmissionLevel > 0;
             if (useAutoEmission)
             {
