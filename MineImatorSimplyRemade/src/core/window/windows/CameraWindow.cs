@@ -156,7 +156,7 @@ public class CameraWindow : Window
         _panel.DrawRuleOfThirdsToggle();
 
         ImGui.SameLine();
-        if (ImGui.Button(Localization.Label("text.window.camera.dock", "Dock")))
+        if (ViewportIcons.Button("vpDock", ViewportIcons.Dock, Localization.T("text.window.camera.dock")))
         {
             _panel.DockToInlineVisible();
             // Reset the camera viewport's GLFW references back to the main window
@@ -183,7 +183,7 @@ public class CameraWindow : Window
                 ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(0.90f, 0.95f, 0.90f, 1.0f));
             }
 
-            if (ImGui.Button(Localization.Label("text.common.overlays", "Overlays")))
+            if (ViewportIcons.Button("vpOverlays", ViewportIcons.Overlays, Localization.T("text.common.overlays")))
                 _panel.OverlaysEnabled = !_panel.OverlaysEnabled;
 
             ImGui.PopStyleColor(4);

@@ -818,6 +818,7 @@ public class Viewport : UiPanel
 
         // ── Bench button texture ──────────────────────────────────────────────
         _benchTexture = LoadEmbeddedTexture("bench");
+        ViewportIcons.Initialize(Gl);
 
         // ── Gizmo ─────────────────────────────────────────────────────────────
         // Initialise the gizmo now that the GL context is fully ready.
@@ -2437,8 +2438,8 @@ public class Viewport : UiPanel
                     ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(1.0f, 1.0f, 1.0f, 1.0f));
                 }
 
-                if (ImGui.Button(Localization.Label("text.common.overlays", "Overlays"),
-                        new Vector2(0, iconSize)))
+                if (ViewportIcons.Button("vpOverlays", ViewportIcons.Overlays,
+                        Localization.T("text.common.overlays"), iconSize))
                     OverlaysEnabled = !OverlaysEnabled;
 
                 ImGui.PopStyleColor(4);
@@ -2469,7 +2470,8 @@ public class Viewport : UiPanel
                     ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(1.0f, 1.0f, 1.0f, 1.0f));
                 }
 
-                if (ImGui.Button(Localization.Label("text.panel.viewport.particle_preview", "Particle Preview"), new Vector2(0, iconSize)))
+                if (ViewportIcons.Button("vpParticles", ViewportIcons.Particles,
+                        Localization.T("text.panel.viewport.particle_preview"), iconSize))
                     ParticlePreviewEnabled = !ParticlePreviewEnabled;
 
                 ImGui.PopStyleColor(4);
@@ -2498,7 +2500,8 @@ public class Viewport : UiPanel
                     ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(1.0f, 1.0f, 1.0f, 1.0f));
                 }
 
-                if (ImGui.Button(previewVisible ? Localization.Label("text.panel.viewport.hide_preview", "Hide Preview") : Localization.Label("text.panel.viewport.show_preview", "Show Preview"), new Vector2(0, iconSize)))
+                if (ViewportIcons.Button("vpPreview", ViewportIcons.Preview,
+                        Localization.T(previewVisible ? "text.panel.viewport.hide_preview" : "text.panel.viewport.show_preview"), iconSize))
                     PreviewViewport.ToggleInlineVisibility();
 
                 ImGui.PopStyleColor(4);
@@ -2932,12 +2935,12 @@ public class Viewport : UiPanel
             ImGui.PushStyleColor(ImGuiCol.Text,          Vector4.One);
         }
 
-        if (ImGui.Button(Localization.Label("text.panel.viewport.thirds", "Thirds"), new Vector2(0, height)))
+        if (ViewportIcons.Button("vpThirds", ViewportIcons.Thirds,
+                Localization.T("text.panel.viewport.thirds"), height,
+                Localization.T("text.panel.viewport.toggle_rule_of_thirds")))
             _ruleOfThirdsEnabled = !_ruleOfThirdsEnabled;
 
         ImGui.PopStyleColor(4);
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(Localization.T("text.panel.viewport.toggle_rule_of_thirds"));
     }
 
     public void RenderRuleOfThirdsOverlay(Vector2 imageMin, Vector2 imageSize)
@@ -6092,7 +6095,7 @@ public class Viewport : UiPanel
         DrawRuleOfThirdsToggle();
 
         ImGui.SameLine();
-        if (ImGui.Button(Localization.Label("text.panel.viewport.pop", "Pop")))
+        if (ViewportIcons.Button("vpPopOut", ViewportIcons.PopOut, Localization.T("text.panel.viewport.pop")))
         {
             Undocked = true;
             PopRequested?.Invoke();
@@ -6117,7 +6120,7 @@ public class Viewport : UiPanel
                 ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.90f, 0.95f, 0.90f, 1.0f));
             }
 
-            if (ImGui.Button(Localization.Label("text.common.overlays", "Overlays")))
+            if (ViewportIcons.Button("vpOverlays", ViewportIcons.Overlays, Localization.T("text.common.overlays")))
                 OverlaysEnabled = !OverlaysEnabled;
 
             ImGui.PopStyleColor(4);
