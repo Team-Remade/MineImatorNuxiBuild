@@ -3384,249 +3384,350 @@ public class PropertiesPanel : UiPanel
                                         string.Equals(_currentObject.SpawnCategory, "Scenery", StringComparison.Ordinal);
             bool supportsItemImage = string.Equals(_currentObject.SpawnCategory, "Items", StringComparison.Ordinal);
 
-            if (supportsItemImage)
+            if (SupportsAlbedoTexture(_currentObject))
             {
-                var atlasSource = GetObjectItemAtlasSource(_currentObject);
-                var localItemSheetKeys = atlasSource == ItemAtlasSource.LocalAtlas
-                    ? GetLocalItemSheetKeys(_currentObject).ToList()
-                    : null;
-
-                string currentKey = !string.IsNullOrWhiteSpace(_currentObject.ItemTileKey)
-                                    ? _currentObject.ItemTileKey
-                                    : ExtractItemTileKeyFromObjectType(_currentObject.ObjectType)
-                                    ?? (atlasSource == ItemAtlasSource.LocalAtlas
-                                        ? localItemSheetKeys?.FirstOrDefault().Key
-                                        : GetItemAtlasKeys(atlasSource).FirstOrDefault())
-                                    ?? "";
-
-                string atlasLabel = atlasSource switch
-                {
-                    ItemAtlasSource.BlockAtlas => "Block Atlas",
-                    ItemAtlasSource.LocalAtlas => "Local Atlas",
-                    _ => "Item Atlas"
-                };
-                if (ImGui.BeginCombo(Localization.Label("text.common.item_atlas", "Item Atlas"), Localization.DisplayText(atlasLabel)))
-                {
-                    bool useLocal = atlasSource == ItemAtlasSource.LocalAtlas;
-                    if (_currentObject.TemporaryItemSheetColumns > 0 && _currentObject.TemporaryItemSheetRows > 0 &&
-                        ImGui.Selectable(Localization.Label("text.panel.properties.local_atlas", "Local Atlas"), useLocal))
-                    {
-                        atlasSource = ItemAtlasSource.LocalAtlas;
-                        localItemSheetKeys = GetLocalItemSheetKeys(_currentObject).ToList();
-                        currentKey = localItemSheetKeys.FirstOrDefault().Key ?? currentKey;
-                    }
-
-                    bool useItem = atlasSource == ItemAtlasSource.ItemAtlas;
-                    if (ImGui.Selectable(Localization.Label("text.common.item_atlas", "Item Atlas"), useItem))
-                    {
-                        atlasSource = ItemAtlasSource.ItemAtlas;
-                        _currentObject.TextureType = "item";
-                        currentKey = GetItemAtlasKeys(atlasSource).FirstOrDefault() ?? currentKey;
-                    }
-
-                    bool useBlock = atlasSource == ItemAtlasSource.BlockAtlas;
-                    if (ImGui.Selectable(Localization.Label("text.common.block_atlas", "Block Atlas"), useBlock))
-                    {
-                        atlasSource = ItemAtlasSource.BlockAtlas;
-                        _currentObject.TextureType = "block";
-                        currentKey = GetItemAtlasKeys(atlasSource).FirstOrDefault() ?? currentKey;
-                    }
-
-                    ImGui.EndCombo();
-                }
-
-                ImGui.TextUnformatted(Localization.T("text.panel.properties.item_image"));
-                ImGui.SetNextItemWidth(-1);
-                if (ImGui.BeginCombo("##ItemImageKey", string.IsNullOrWhiteSpace(currentKey) ? Localization.T("text.panel.properties.none") : currentKey))
-                {
-                    if (atlasSource == ItemAtlasSource.LocalAtlas)
-                    {
-                        localItemSheetKeys ??= GetLocalItemSheetKeys(_currentObject).ToList();
-                        foreach (var entry in localItemSheetKeys)
-                        {
-                            bool selected = string.Equals(entry.Key, currentKey, StringComparison.Ordinal);
-                            string label = Localization.Format("text.panel.properties.column_row", entry.Column, entry.Row + 1) + $"###Column {entry.Column}, Row {entry.Row + 1}##{entry.Key}";
-                            if (ImGui.Selectable(label, selected))
-                            {
-                                _currentObject.TextureType = "local";
-                                if (SpawnMenu != null && SpawnMenu.ApplyTemporaryItemSheetSlotToSpawnedObject(_currentObject, entry.Column, entry.Row))
-                                {
-                                    ProjectManager.Instance.SetDirty(true);
-                                    currentKey = _currentObject.ItemTileKey;
-                                }
-                            }
-                            if (selected)
-                                ImGui.SetItemDefaultFocus();
-                        }
-                    }
-                    else
-                    {
-                        foreach (string key in GetItemAtlasKeys(atlasSource))
-                        {
-                            bool selected = string.Equals(key, currentKey, StringComparison.Ordinal);
-                            if (ImGui.Selectable(key, selected))
-                            {
-                                if (SpawnMenu != null && SpawnMenu.ApplyItemTextureToSpawnedObject(_currentObject, atlasSource, key))
-                                {
-                                    ProjectManager.Instance.SetDirty(true);
-                                    currentKey = key;
-                                }
-                            }
-                            if (selected)
-                                ImGui.SetItemDefaultFocus();
-                        }
-                    }
-
-                    ImGui.EndCombo();
-                }
-
-                if (ImGui.Button(Localization.Label("text.common.load_custom_image", "Load custom image...##ItemMaterialCustom"), new Vector2(-1, 0)))
-                {
-                    string? customKey = SpawnMenu?.ImportCustomItemImageFromDialogForProperties();
-                    if (!string.IsNullOrWhiteSpace(customKey) &&
-                        SpawnMenu != null &&
-                        SpawnMenu.ApplyItemTextureToSpawnedObject(_currentObject, ItemAtlasSource.ItemAtlas, customKey))
-                    {
-                        ProjectManager.Instance.SetDirty(true);
-                    }
-                }
-
-                if (_currentObject.TemporaryItemSheetColumns > 0 && _currentObject.TemporaryItemSheetRows > 0)
-                {
-                    ImGui.SeparatorText(Localization.T("text.panel.properties.item_sheet_slot"));
-
-                    int slotColumn = _currentObject.TemporaryItemSheetColumnIndex;
-                    int slotRow = _currentObject.TemporaryItemSheetRowIndex;
-                    bool slotChanged = false;
-
-                    ImGui.PushItemWidth(-ImGui.CalcTextSize(Localization.T("text.panel.properties.row")).X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
-
-                    if (InputIntEditor("Column##itemSlotColumn", ref slotColumn, 1, 4, 0, _currentObject.TemporaryItemSheetColumns - 1))
-                        slotChanged = true;
-                    if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
-                    {
-                        _ctxPropertyPath = "item.slot";
-                        _ctxMenuPos = ImGui.GetMousePos();
-                        _openPropContextMenu = true;
-                    }
-
-                    if (InputIntEditor("Row##itemSlotRow", ref slotRow, 1, 4, 0, _currentObject.TemporaryItemSheetRows - 1))
-                        slotChanged = true;
-                    if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
-                    {
-                        _ctxPropertyPath = "item.custom_slot";
-                        _ctxMenuPos = ImGui.GetMousePos();
-                        _openPropContextMenu = true;
-                    }
-
-                    ImGui.PopItemWidth();
-
-                    if (slotChanged)
-                        ApplyTemporaryItemSheetSlot(slotColumn, slotRow);
-                }
-
-                ImGui.Spacing();
+                DrawPbrMaterialImport();
+                RefreshLoadedTextures();
             }
+            mat = _currentObject.MaterialSettings;
 
-            if (supportsResourcePack)
+            if (!string.IsNullOrEmpty(_pbrImportError))
+                ImGui.TextWrapped(_pbrImportError);
+
+            if (ImGui.TreeNodeEx(Localization.Label("text.panel.properties.material_base_color_texture", "Base Color & Texture"),
+                ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen))
             {
-                string currentPackId = MinecraftDataLoader.NormalizeResourcePackId(_currentObject.ResourcePackId);
-                var packIds = MinecraftDataLoader.GetAvailableResourcePackIds().ToList();
-
-                int selectedIndex = 0;
-                if (!string.IsNullOrWhiteSpace(currentPackId))
+                if (supportsItemImage)
                 {
-                    int found = packIds.FindIndex(id => string.Equals(id, currentPackId, StringComparison.OrdinalIgnoreCase));
-                    if (found >= 0)
-                        selectedIndex = found + 1;
-                }
+                    var atlasSource = GetObjectItemAtlasSource(_currentObject);
+                    var localItemSheetKeys = atlasSource == ItemAtlasSource.LocalAtlas
+                        ? GetLocalItemSheetKeys(_currentObject).ToList()
+                        : null;
 
-                string selectedLabel = selectedIndex == 0 ? "Default" : packIds[selectedIndex - 1];
-                if (ImGui.BeginCombo(Localization.Label("text.panel.properties.resource_pack", "Resource Pack"), selectedLabel == "Default" ? Localization.T("text.common.default") : selectedLabel))
-                {
-                    bool isDefaultSelected = selectedIndex == 0;
-                    if (ImGui.Selectable(Localization.Label("text.common.default", "Default"), isDefaultSelected))
+                    string currentKey = !string.IsNullOrWhiteSpace(_currentObject.ItemTileKey)
+                                        ? _currentObject.ItemTileKey
+                                        : ExtractItemTileKeyFromObjectType(_currentObject.ObjectType)
+                                        ?? (atlasSource == ItemAtlasSource.LocalAtlas
+                                            ? localItemSheetKeys?.FirstOrDefault().Key
+                                            : GetItemAtlasKeys(atlasSource).FirstOrDefault())
+                                        ?? "";
+
+                    string atlasLabel = atlasSource switch
                     {
-                        if (SpawnMenu != null && SpawnMenu.ApplyResourcePackToSpawnedObject(_currentObject, ""))
+                        ItemAtlasSource.BlockAtlas => "Block Atlas",
+                        ItemAtlasSource.LocalAtlas => "Local Atlas",
+                        _ => "Item Atlas"
+                    };
+                    if (ImGui.BeginCombo(Localization.Label("text.common.item_atlas", "Item Atlas"), Localization.DisplayText(atlasLabel)))
+                    {
+                        bool useLocal = atlasSource == ItemAtlasSource.LocalAtlas;
+                        if (_currentObject.TemporaryItemSheetColumns > 0 && _currentObject.TemporaryItemSheetRows > 0 &&
+                            ImGui.Selectable(Localization.Label("text.panel.properties.local_atlas", "Local Atlas"), useLocal))
                         {
-                            _currentObject.ResourcePackId = "";
+                            atlasSource = ItemAtlasSource.LocalAtlas;
+                            localItemSheetKeys = GetLocalItemSheetKeys(_currentObject).ToList();
+                            currentKey = localItemSheetKeys.FirstOrDefault().Key ?? currentKey;
+                        }
+
+                        bool useItem = atlasSource == ItemAtlasSource.ItemAtlas;
+                        if (ImGui.Selectable(Localization.Label("text.common.item_atlas", "Item Atlas"), useItem))
+                        {
+                            atlasSource = ItemAtlasSource.ItemAtlas;
+                            _currentObject.TextureType = "item";
+                            currentKey = GetItemAtlasKeys(atlasSource).FirstOrDefault() ?? currentKey;
+                        }
+
+                        bool useBlock = atlasSource == ItemAtlasSource.BlockAtlas;
+                        if (ImGui.Selectable(Localization.Label("text.common.block_atlas", "Block Atlas"), useBlock))
+                        {
+                            atlasSource = ItemAtlasSource.BlockAtlas;
+                            _currentObject.TextureType = "block";
+                            currentKey = GetItemAtlasKeys(atlasSource).FirstOrDefault() ?? currentKey;
+                        }
+
+                        ImGui.EndCombo();
+                    }
+
+                    ImGui.TextUnformatted(Localization.T("text.panel.properties.item_image"));
+                    ImGui.SetNextItemWidth(-1);
+                    if (ImGui.BeginCombo("##ItemImageKey", string.IsNullOrWhiteSpace(currentKey) ? Localization.T("text.panel.properties.none") : currentKey))
+                    {
+                        if (atlasSource == ItemAtlasSource.LocalAtlas)
+                        {
+                            localItemSheetKeys ??= GetLocalItemSheetKeys(_currentObject).ToList();
+                            foreach (var entry in localItemSheetKeys)
+                            {
+                                bool selected = string.Equals(entry.Key, currentKey, StringComparison.Ordinal);
+                                string label = Localization.Format("text.panel.properties.column_row", entry.Column, entry.Row + 1) + $"###Column {entry.Column}, Row {entry.Row + 1}##{entry.Key}";
+                                if (ImGui.Selectable(label, selected))
+                                {
+                                    _currentObject.TextureType = "local";
+                                    if (SpawnMenu != null && SpawnMenu.ApplyTemporaryItemSheetSlotToSpawnedObject(_currentObject, entry.Column, entry.Row))
+                                    {
+                                        ProjectManager.Instance.SetDirty(true);
+                                        currentKey = _currentObject.ItemTileKey;
+                                    }
+                                }
+                                if (selected)
+                                    ImGui.SetItemDefaultFocus();
+                            }
+                        }
+                        else
+                        {
+                            foreach (string key in GetItemAtlasKeys(atlasSource))
+                            {
+                                bool selected = string.Equals(key, currentKey, StringComparison.Ordinal);
+                                if (ImGui.Selectable(key, selected))
+                                {
+                                    if (SpawnMenu != null && SpawnMenu.ApplyItemTextureToSpawnedObject(_currentObject, atlasSource, key))
+                                    {
+                                        ProjectManager.Instance.SetDirty(true);
+                                        currentKey = key;
+                                    }
+                                }
+                                if (selected)
+                                    ImGui.SetItemDefaultFocus();
+                            }
+                        }
+
+                        ImGui.EndCombo();
+                    }
+
+                    if (ImGui.Button(Localization.Label("text.common.load_custom_image", "Load custom image...##ItemMaterialCustom"), new Vector2(-1, 0)))
+                    {
+                        string? customKey = SpawnMenu?.ImportCustomItemImageFromDialogForProperties();
+                        if (!string.IsNullOrWhiteSpace(customKey) &&
+                            SpawnMenu != null &&
+                            SpawnMenu.ApplyItemTextureToSpawnedObject(_currentObject, ItemAtlasSource.ItemAtlas, customKey))
+                        {
                             ProjectManager.Instance.SetDirty(true);
                         }
                     }
-                    if (isDefaultSelected)
-                        ImGui.SetItemDefaultFocus();
 
-                    for (int i = 0; i < packIds.Count; i++)
+                    if (_currentObject.TemporaryItemSheetColumns > 0 && _currentObject.TemporaryItemSheetRows > 0)
                     {
-                        string id = packIds[i];
-                        bool isSelected = selectedIndex == (i + 1);
-                        if (ImGui.Selectable(id, isSelected))
+                        ImGui.SeparatorText(Localization.T("text.panel.properties.item_sheet_slot"));
+
+                        int slotColumn = _currentObject.TemporaryItemSheetColumnIndex;
+                        int slotRow = _currentObject.TemporaryItemSheetRowIndex;
+                        bool slotChanged = false;
+
+                        ImGui.PushItemWidth(-ImGui.CalcTextSize(Localization.T("text.panel.properties.row")).X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
+
+                        if (InputIntEditor("Column##itemSlotColumn", ref slotColumn, 1, 4, 0, _currentObject.TemporaryItemSheetColumns - 1))
+                            slotChanged = true;
+                        if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
                         {
-                            if (SpawnMenu != null && SpawnMenu.ApplyResourcePackToSpawnedObject(_currentObject, id))
+                            _ctxPropertyPath = "item.slot";
+                            _ctxMenuPos = ImGui.GetMousePos();
+                            _openPropContextMenu = true;
+                        }
+
+                        if (InputIntEditor("Row##itemSlotRow", ref slotRow, 1, 4, 0, _currentObject.TemporaryItemSheetRows - 1))
+                            slotChanged = true;
+                        if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                        {
+                            _ctxPropertyPath = "item.custom_slot";
+                            _ctxMenuPos = ImGui.GetMousePos();
+                            _openPropContextMenu = true;
+                        }
+
+                        ImGui.PopItemWidth();
+
+                        if (slotChanged)
+                            ApplyTemporaryItemSheetSlot(slotColumn, slotRow);
+                    }
+
+                    ImGui.Spacing();
+                }
+
+                if (supportsResourcePack)
+                {
+                    string currentPackId = MinecraftDataLoader.NormalizeResourcePackId(_currentObject.ResourcePackId);
+                    var packIds = MinecraftDataLoader.GetAvailableResourcePackIds().ToList();
+
+                    int selectedIndex = 0;
+                    if (!string.IsNullOrWhiteSpace(currentPackId))
+                    {
+                        int found = packIds.FindIndex(id => string.Equals(id, currentPackId, StringComparison.OrdinalIgnoreCase));
+                        if (found >= 0)
+                            selectedIndex = found + 1;
+                    }
+
+                    string selectedLabel = selectedIndex == 0 ? "Default" : packIds[selectedIndex - 1];
+                    if (ImGui.BeginCombo(Localization.Label("text.panel.properties.resource_pack", "Resource Pack"), selectedLabel == "Default" ? Localization.T("text.common.default") : selectedLabel))
+                    {
+                        bool isDefaultSelected = selectedIndex == 0;
+                        if (ImGui.Selectable(Localization.Label("text.common.default", "Default"), isDefaultSelected))
+                        {
+                            if (SpawnMenu != null && SpawnMenu.ApplyResourcePackToSpawnedObject(_currentObject, ""))
                             {
-                                _currentObject.ResourcePackId = id;
+                                _currentObject.ResourcePackId = "";
                                 ProjectManager.Instance.SetDirty(true);
                             }
                         }
-
-                        if (isSelected)
+                        if (isDefaultSelected)
                             ImGui.SetItemDefaultFocus();
+
+                        for (int i = 0; i < packIds.Count; i++)
+                        {
+                            string id = packIds[i];
+                            bool isSelected = selectedIndex == (i + 1);
+                            if (ImGui.Selectable(id, isSelected))
+                            {
+                                if (SpawnMenu != null && SpawnMenu.ApplyResourcePackToSpawnedObject(_currentObject, id))
+                                {
+                                    _currentObject.ResourcePackId = id;
+                                    ProjectManager.Instance.SetDirty(true);
+                                }
+                            }
+
+                            if (isSelected)
+                                ImGui.SetItemDefaultFocus();
+                        }
+
+                        ImGui.EndCombo();
                     }
 
-                    ImGui.EndCombo();
+                    ImGui.Spacing();
                 }
 
-                ImGui.Spacing();
-            }
+                // Albedo texture (for renderable geometry)
+                if (SupportsAlbedoTexture(_currentObject))
+                {
+                    ImGui.TextUnformatted(Localization.T("text.panel.properties.albedo_texture"));
 
-            // Albedo texture (for renderable geometry)
-            if (SupportsAlbedoTexture(_currentObject))
-            {
-                // Refresh texture cache from scene
-                RefreshLoadedTextures();
-                
-                ImGui.TextUnformatted(Localization.T("text.panel.properties.albedo_texture"));
-                
-                uint currentTextureId = GetDisplayedAlbedoTextureId(_currentObject);
+                    uint currentTextureId = GetDisplayedAlbedoTextureId(_currentObject);
 
-                // Build list of available textures for dropdown
-                string currentLabel = Localization.T("text.panel.properties.none");
-                var cameraTextures = Viewport?.GetSpawnedCamerasPublic() ?? [];
-                var selectedCameraTexture = cameraTextures.FirstOrDefault(camera =>
-                    string.Equals(camera.ObjectId, _currentObject.CameraTextureObjectId, StringComparison.Ordinal));
-                if (selectedCameraTexture != null)
-                {
-                    currentLabel = selectedCameraTexture.Name;
-                }
-                else if (!string.IsNullOrWhiteSpace(_currentObject.AlbedoTexturePath))
-                {
-                    string fullPath = ProjectManager.Instance.ResolveAssetPath(_currentObject.AlbedoTexturePath);
-                    currentLabel = Path.GetFileName(fullPath);
-                }
-                else if (currentTextureId != 0)
-                {
-                    string? texturePath = MineImatorLoader.Instance.GetTexturePath(currentTextureId);
-                    if (texturePath == null) _loadedTexturePathCache.TryGetValue(currentTextureId, out texturePath);
-                    currentLabel = Path.GetFileName(texturePath ?? $"Texture_{currentTextureId}");
-                }
-
-                // Texture dropdown
-                ImGui.SetNextItemWidth(-1);
-                if (ImGui.BeginCombo("##AlbedoTextureCombo", currentLabel))
-                {
-                    // "None" option
-                    bool hasAssignedTexture = selectedCameraTexture != null ||
-                                              currentTextureId != 0 ||
-                                              !string.IsNullOrWhiteSpace(_currentObject.AlbedoTexturePath);
-                    if (ImGui.Selectable(Localization.Label("text.panel.properties.none", "(none)"), !hasAssignedTexture))
+                    // Build list of available textures for dropdown
+                    string currentLabel = Localization.T("text.panel.properties.none");
+                    var cameraTextures = Viewport?.GetSpawnedCamerasPublic() ?? [];
+                    var selectedCameraTexture = cameraTextures.FirstOrDefault(camera =>
+                        string.Equals(camera.ObjectId, _currentObject.CameraTextureObjectId, StringComparison.Ordinal));
+                    if (selectedCameraTexture != null)
                     {
-                        // Clear texture from all meshes
-                        foreach (var mesh in _currentObject.Visuals)
+                        currentLabel = selectedCameraTexture.Name;
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_currentObject.AlbedoTexturePath))
+                    {
+                        string fullPath = ProjectManager.Instance.ResolveAssetPath(_currentObject.AlbedoTexturePath);
+                        currentLabel = Path.GetFileName(fullPath);
+                    }
+                    else if (currentTextureId != 0)
+                    {
+                        string? texturePath = MineImatorLoader.Instance.GetTexturePath(currentTextureId);
+                        if (texturePath == null) _loadedTexturePathCache.TryGetValue(currentTextureId, out texturePath);
+                        currentLabel = Path.GetFileName(texturePath ?? $"Texture_{currentTextureId}");
+                    }
+
+                    // Texture dropdown
+                    ImGui.SetNextItemWidth(-1);
+                    if (ImGui.BeginCombo("##AlbedoTextureCombo", currentLabel))
+                    {
+                        // "None" option
+                        bool hasAssignedTexture = selectedCameraTexture != null ||
+                                                  currentTextureId != 0 ||
+                                                  !string.IsNullOrWhiteSpace(_currentObject.AlbedoTexturePath);
+                        if (ImGui.Selectable(Localization.Label("text.panel.properties.none", "(none)"), !hasAssignedTexture))
                         {
-                            if (mesh.TextureId != 0)
+                            // Clear texture from all meshes
+                            foreach (var mesh in _currentObject.Visuals)
                             {
-                                mesh.TextureId = 0;
+                                if (mesh.TextureId != 0)
+                                {
+                                    mesh.TextureId = 0;
+                                }
                             }
+                            _currentObject.AlbedoTexturePath = "";
+                            _currentObject.CameraTextureObjectId = "";
+                            _currentObject.RefreshInheritedMaterials();
+                            ProjectManager.Instance.SetDirty(true);
+                        }
+
+                        // Camera views are named exactly like their scene-tree objects.
+                        foreach (var camera in cameraTextures)
+                        {
+                            bool selected = ReferenceEquals(camera, selectedCameraTexture);
+                            if (ImGui.Selectable(camera.Name, selected))
+                            {
+                                _currentObject.CameraTextureObjectId = camera.ObjectId;
+                                _currentObject.AlbedoTexturePath = "";
+                                ProjectManager.Instance.SetDirty(true);
+                            }
+                            if (selected) ImGui.SetItemDefaultFocus();
+                        }
+
+                        if (cameraTextures.Count > 0)
+                            ImGui.Separator();
+
+                        // Show all loaded/imported textures as options
+                        foreach (var (texId, path) in _loadedTexturePathCache)
+                        {
+                            if (texId == 0) continue;
+                            string label = Path.GetFileName(path);
+                            bool selected = (currentTextureId == texId);
+                            if (ImGui.Selectable(label, selected))
+                            {
+                                _currentObject.CameraTextureObjectId = "";
+                                // Check if this is an actual loaded texture or just an imported file
+                                bool isLoadedTexture = false;
+                                foreach (var mesh in _currentObject.Visuals)
+                                {
+                                    if (mesh.TextureId == texId)
+                                    {
+                                        isLoadedTexture = true;
+                                        break;
+                                    }
+                                }
+
+                                if (isLoadedTexture)
+                                {
+                                    // Already loaded, just set it
+                                    foreach (var mesh in _currentObject.Visuals)
+                                    {
+                                        mesh.TextureId = texId;
+                                    }
+                                    if (!string.IsNullOrEmpty(path))
+                                    {
+                                        _currentObject.AlbedoTexturePath = ProjectManager.Instance.ToProjectRelativePath(path);
+                                    }
+                                }
+                                else
+                                {
+                                    // File hasn't been loaded yet, load it now
+                                    if (File.Exists(path))
+                                    {
+                                        OnLoadAlbedoTextureForObject(_currentObject, path);
+                                    }
+                                }
+                                ProjectManager.Instance.SetDirty(true);
+                            }
+                            if (selected)
+                                ImGui.SetItemDefaultFocus();
+                        }
+
+                        ImGui.EndCombo();
+                    }
+
+                    if (ImGui.Button(Localization.Label("text.panel.properties.load_new_texture", "Load new texture...##AlbedoTexture"), new Vector2(-1, 0)))
+                    {
+                        var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,hdr,exr");
+                        if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
+                        {
+                            string resolvedPath = ResolveAlbedoTexturePathForProject(result.Path);
+                            OnLoadAlbedoTextureForObject(_currentObject, resolvedPath);
+                            _currentObject.CameraTextureObjectId = "";
+                            ProjectManager.Instance.SetDirty(true);
+                        }
+                    }
+
+                    if ((currentTextureId != 0 || !string.IsNullOrEmpty(_currentObject.AlbedoTexturePath) ||
+                         !string.IsNullOrEmpty(_currentObject.CameraTextureObjectId)) &&
+                        ImGui.Button(Localization.Label("text.panel.properties.clear_texture", "Clear texture##AlbedoTextureClear"), new Vector2(-1, 0)))
+                    {
+                        foreach (var mesh in _currentObject.Visuals.Where(mesh => mesh.TextureId != 0))
+                        {
+                            mesh.TextureId = 0;
                         }
                         _currentObject.AlbedoTexturePath = "";
                         _currentObject.CameraTextureObjectId = "";
@@ -3634,331 +3735,282 @@ public class PropertiesPanel : UiPanel
                         ProjectManager.Instance.SetDirty(true);
                     }
 
-                    // Camera views are named exactly like their scene-tree objects.
-                    foreach (var camera in cameraTextures)
+                    ImGui.Spacing();
+                }
+
+                // Alpha – skip for BoneSceneObject
+                if (_currentObject is not BoneSceneObject)
+                {
+                    float alpha = mat?.AlbedoColor.a ?? 1f;
+                    ImGui.SetNextItemWidth(-60f);
+                    if (ImGui.SliderFloat(Localization.Label("text.panel.properties.material_opacity", "Alpha"), ref alpha, 0f, 1f))
                     {
-                        bool selected = ReferenceEquals(camera, selectedCameraTexture);
-                        if (ImGui.Selectable(camera.Name, selected))
-                        {
-                            _currentObject.CameraTextureObjectId = camera.ObjectId;
-                            _currentObject.AlbedoTexturePath = "";
-                            ProjectManager.Instance.SetDirty(true);
-                        }
-                        if (selected) ImGui.SetItemDefaultFocus();
+                        EnsureMaterialSettings();
+                        var c = _currentObject.MaterialSettings.AlbedoColor;
+                        _currentObject.MaterialSettings.AlbedoColor = new vec4(c.r, c.g, c.b, alpha);
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                        Timeline?.RecordAutoKeyframe(_currentObject, "material.alpha");
                     }
-
-                    if (cameraTextures.Count > 0)
-                        ImGui.Separator();
-
-                    // Show all loaded/imported textures as options
-                    foreach (var (texId, path) in _loadedTexturePathCache)
+                    if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
                     {
-                        if (texId == 0) continue;
-                        string label = Path.GetFileName(path);
-                        bool selected = (currentTextureId == texId);
-                        if (ImGui.Selectable(label, selected))
+                        _ctxPropertyPath = "material.alpha";
+                        _ctxMenuPos = ImGui.GetMousePos();
+                        _openPropContextMenu = true;
+                    }
+                    ImGui.SameLine();
+                    ImGui.TextUnformatted(alpha.ToString("F2"));
+                }
+
+                // Albedo color
+                {
+                    vec4 ac = mat?.AlbedoColor ?? new vec4(1f, 1f, 1f, 1f);
+                    var vec4 = new Vector4(ac.r, ac.g, ac.b, ac.a);
+                    if (ImGui.ColorEdit4(Localization.Label("text.panel.properties.material_base_color", "Albedo"), ref vec4, ImGuiColorEditFlags.NoInputs))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.AlbedoColor = new vec4(vec4.X, vec4.Y, vec4.Z, vec4.W);
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+                    RegisterPropertyContext("material.albedo", () => materialObject.MaterialSettings.AlbedoColor, value =>
+                    {
+                        materialObject.SetExplicitMaterialSettings();
+                        var color = (vec4)value;
+                        materialObject.MaterialSettings.AlbedoColor = new vec4(
+                            Math.Clamp(color.x, 0f, 1f), Math.Clamp(color.y, 0f, 1f),
+                            Math.Clamp(color.z, 0f, 1f), Math.Clamp(color.w, 0f, 1f));
+                        materialObject.SetExplicitMaterialSettings();
+                        materialObject.PropagateMaterialSettingsToChildren();
+                    }, new vec4(1f, 1f, 1f, 1f));
+                }
+
+                // Mine-imator-style multiplicative blend colour.
+                {
+                    vec4 bc = mat?.BlendColor ?? new vec4(1f, 1f, 1f, 1f);
+                    var color = new Vector3(bc.r, bc.g, bc.b);
+                    if (ImGui.ColorEdit3(Localization.Label("text.panel.properties.blend_color", "Blend Color"), ref color, ImGuiColorEditFlags.NoInputs))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.BlendColor = new vec4(color.X, color.Y, color.Z, 1f);
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+                    RegisterPropertyContext("material.blend.r", "material.blend.g", "material.blend.b");
+                }
+
+                // Mix colour uses its alpha channel as the interpolation amount.
+                {
+                    vec4 mc = mat?.MixColor ?? new vec4(0f, 0f, 0f, 0f);
+                    var color = new Vector3(mc.r, mc.g, mc.b);
+                    if (ImGui.ColorEdit3(Localization.Label("text.panel.properties.mix_color", "Mix Color"), ref color, ImGuiColorEditFlags.NoInputs))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.MixColor = new vec4(color.X, color.Y, color.Z, mc.a);
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+                    RegisterPropertyContext("material.mix.r", "material.mix.g", "material.mix.b");
+
+                    float mixAmount = mc.a;
+                    if (ImGui.SliderFloat(Localization.Label("text.panel.properties.mix_amount", "Mix Amount"), ref mixAmount, 0f, 1f))
+                    {
+                        EnsureMaterialSettings();
+                        var c = _currentObject.MaterialSettings.MixColor;
+                        _currentObject.MaterialSettings.MixColor = new vec4(c.r, c.g, c.b, mixAmount);
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+                    RegisterPropertyContext("material.mix_percent");
+                }
+
+                ImGui.TreePop();
+            }
+
+            if (ImGui.TreeNodeEx(Localization.Label("text.panel.properties.material_surface", "Surface"),
+                ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                // Metallic
+                {
+                    float metallic = mat?.Metallic ?? 0f;
+                    if (ImGui.SliderFloat(Localization.Label("text.panel.properties.metallic", "Metallic"), ref metallic, 0f, 1f))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.Metallic = metallic;
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+                    RegisterPropertyContext("material.metallic");
+                }
+
+                // Roughness
+                {
+                    float roughness = mat?.Roughness ?? 0.5f;
+                    if (ImGui.SliderFloat(Localization.Label("text.panel.properties.roughness", "Roughness"), ref roughness, 0f, 1f))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.Roughness = roughness;
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+                    RegisterPropertyContext("material.roughness");
+                }
+
+                // Double Sided
+                {
+                    bool doubleSided = mat?.DoubleSided ?? false;
+                    if (ImGui.Checkbox(Localization.Label("text.panel.properties.double_sided", "Double Sided"), ref doubleSided))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.DoubleSided = doubleSided;
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+                    RegisterPropertyContext("material.double_sided", () => materialObject.MaterialSettings.DoubleSided, value =>
+                    {
+                        materialObject.SetExplicitMaterialSettings();
+                        materialObject.MaterialSettings.DoubleSided = (bool)value;
+                        materialObject.SetExplicitMaterialSettings();
+                        materialObject.PropagateMaterialSettingsToChildren();
+                    }, false);
+                }
+
+                ImGui.TreePop();
+            }
+
+            if (SupportsAlbedoTexture(_currentObject) &&
+                ImGui.TreeNodeEx(Localization.Label("text.panel.properties.material_surface_maps", "Surface Maps"), ImGuiTreeNodeFlags.SpanAvailWidth))
+            {
+                DrawPbrSurfaceControls();
+                ImGui.TreePop();
+            }
+
+            if (ImGui.TreeNodeEx(Localization.Label("text.common.emission", "Material Emission"), ImGuiTreeNodeFlags.SpanAvailWidth))
+            {
+                // Emission enabled
+                {
+                    bool emissionEnabled = mat?.EmissionEnabled ?? false;
+                    if (ImGui.Checkbox(Localization.Label("text.panel.properties.material_emission_enabled", "Emission"), ref emissionEnabled))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.EmissionEnabled = emissionEnabled;
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+                    RegisterPropertyContext("material.emission_enabled", () => materialObject.MaterialSettings.EmissionEnabled, value =>
+                    {
+                        materialObject.SetExplicitMaterialSettings();
+                        materialObject.MaterialSettings.EmissionEnabled = (bool)value;
+                        materialObject.SetExplicitMaterialSettings();
+                        materialObject.PropagateMaterialSettingsToChildren();
+                    }, false);
+                }
+
+                // Auto emission from Minecraft block metadata (schema/block imports)
+                {
+                    bool autoEmission = mat?.AutoEmission ?? true;
+                    if (ImGui.Checkbox(Localization.Label("text.panel.properties.auto_emission", "Auto Emission"), ref autoEmission))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.AutoEmission = autoEmission;
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+
+                        // Rebuild spawned Minecraft-derived meshes so merged schematic
+                        // buckets and per-mesh auto-emission levels are refreshed.
+                        if (SpawnMenu != null)
                         {
-                            _currentObject.CameraTextureObjectId = "";
-                            // Check if this is an actual loaded texture or just an imported file
-                            bool isLoadedTexture = false;
-                            foreach (var mesh in _currentObject.Visuals)
+                            if (string.Equals(_currentObject.SpawnCategory, "Blocks", StringComparison.Ordinal))
                             {
-                                if (mesh.TextureId == texId)
-                                {
-                                    isLoadedTexture = true;
-                                    break;
-                                }
+                                SpawnMenu.RebuildBlockMeshes(_currentObject);
                             }
-
-                            if (isLoadedTexture)
+                            else if (string.Equals(_currentObject.SpawnCategory, "Scenery", StringComparison.Ordinal) &&
+                                     !string.IsNullOrWhiteSpace(_currentObject.SourceAssetPath))
                             {
-                                // Already loaded, just set it
-                                foreach (var mesh in _currentObject.Visuals)
-                                {
-                                    mesh.TextureId = texId;
-                                }
-                                if (!string.IsNullOrEmpty(path))
-                                {
-                                    _currentObject.AlbedoTexturePath = ProjectManager.Instance.ToProjectRelativePath(path);
-                                }
+                                SpawnMenu.ApplyResourcePackToSpawnedObject(_currentObject, _currentObject.ResourcePackId);
                             }
-                            else
-                            {
-                                // File hasn't been loaded yet, load it now
-                                if (File.Exists(path))
-                                {
-                                    OnLoadAlbedoTextureForObject(_currentObject, path);
-                                }
-                            }
-                            ProjectManager.Instance.SetDirty(true);
                         }
-                        if (selected)
-                            ImGui.SetItemDefaultFocus();
                     }
-
-                    ImGui.EndCombo();
-                }
-
-                if (ImGui.Button(Localization.Label("text.panel.properties.load_new_texture", "Load new texture...##AlbedoTexture"), new Vector2(-1, 0)))
-                {
-                    var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,hdr,exr");
-                    if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
+                    RegisterPropertyContext("material.auto_emission", () => materialObject.MaterialSettings.AutoEmission, value =>
                     {
-                        string resolvedPath = ResolveAlbedoTexturePathForProject(result.Path);
-                        OnLoadAlbedoTextureForObject(_currentObject, resolvedPath);
-                        _currentObject.CameraTextureObjectId = "";
-                        ProjectManager.Instance.SetDirty(true);
-                    }
-                }
-
-                if ((currentTextureId != 0 || !string.IsNullOrEmpty(_currentObject.AlbedoTexturePath) ||
-                     !string.IsNullOrEmpty(_currentObject.CameraTextureObjectId)) &&
-                    ImGui.Button(Localization.Label("text.panel.properties.clear_texture", "Clear texture##AlbedoTextureClear"), new Vector2(-1, 0)))
-                {
-                    foreach (var mesh in _currentObject.Visuals.Where(mesh => mesh.TextureId != 0))
-                    {
-                        mesh.TextureId = 0;
-                    }
-                    _currentObject.AlbedoTexturePath = "";
-                    _currentObject.CameraTextureObjectId = "";
-                    _currentObject.RefreshInheritedMaterials();
-                    ProjectManager.Instance.SetDirty(true);
-                }
-
-                ImGui.Spacing();
-            }
-
-            // Alpha – skip for BoneSceneObject
-            if (_currentObject is not BoneSceneObject)
-            {
-                float alpha = mat?.AlbedoColor.a ?? 1f;
-                ImGui.SetNextItemWidth(-60f);
-                if (ImGui.SliderFloat(Localization.Label("text.common.alpha", "Alpha"), ref alpha, 0f, 1f))
-                {
-                    EnsureMaterialSettings();
-                    var c = _currentObject.MaterialSettings.AlbedoColor;
-                    _currentObject.MaterialSettings.AlbedoColor = new vec4(c.r, c.g, c.b, alpha);
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
-                    Timeline?.RecordAutoKeyframe(_currentObject, "material.alpha");
-                }
-                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
-                {
-                    _ctxPropertyPath = "material.alpha";
-                    _ctxMenuPos = ImGui.GetMousePos();
-                    _openPropContextMenu = true;
-                }
-                ImGui.SameLine();
-                ImGui.TextUnformatted(alpha.ToString("F2"));
-            }
-
-            // Albedo color
-            {
-                vec4 ac = mat?.AlbedoColor ?? new vec4(1f, 1f, 1f, 1f);
-                var vec4 = new Vector4(ac.r, ac.g, ac.b, ac.a);
-                if (ImGui.ColorEdit4(Localization.Label("text.common.albedo", "Albedo"), ref vec4, ImGuiColorEditFlags.NoInputs))
-                {
-                    EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.AlbedoColor = new vec4(vec4.X, vec4.Y, vec4.Z, vec4.W);
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
-                }
-                RegisterPropertyContext("material.albedo", () => materialObject.MaterialSettings.AlbedoColor, value =>
-                {
-                    materialObject.SetExplicitMaterialSettings();
-                    var color = (vec4)value;
-                    materialObject.MaterialSettings.AlbedoColor = new vec4(
-                        Math.Clamp(color.x, 0f, 1f), Math.Clamp(color.y, 0f, 1f),
-                        Math.Clamp(color.z, 0f, 1f), Math.Clamp(color.w, 0f, 1f));
-                    materialObject.SetExplicitMaterialSettings();
-                    materialObject.PropagateMaterialSettingsToChildren();
-                }, new vec4(1f, 1f, 1f, 1f));
-            }
-
-            // Mine-imator-style multiplicative blend colour.
-            {
-                vec4 bc = mat?.BlendColor ?? new vec4(1f, 1f, 1f, 1f);
-                var color = new Vector3(bc.r, bc.g, bc.b);
-                if (ImGui.ColorEdit3(Localization.Label("text.panel.properties.blend_color", "Blend Color"), ref color, ImGuiColorEditFlags.NoInputs))
-                {
-                    EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.BlendColor = new vec4(color.X, color.Y, color.Z, 1f);
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
-                }
-                RegisterPropertyContext("material.blend.r", "material.blend.g", "material.blend.b");
-            }
-
-            // Mix colour uses its alpha channel as the interpolation amount.
-            {
-                vec4 mc = mat?.MixColor ?? new vec4(0f, 0f, 0f, 0f);
-                var color = new Vector3(mc.r, mc.g, mc.b);
-                if (ImGui.ColorEdit3(Localization.Label("text.panel.properties.mix_color", "Mix Color"), ref color, ImGuiColorEditFlags.NoInputs))
-                {
-                    EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.MixColor = new vec4(color.X, color.Y, color.Z, mc.a);
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
-                }
-                RegisterPropertyContext("material.mix.r", "material.mix.g", "material.mix.b");
-
-                float mixAmount = mc.a;
-                if (ImGui.SliderFloat(Localization.Label("text.panel.properties.mix_amount", "Mix Amount"), ref mixAmount, 0f, 1f))
-                {
-                    EnsureMaterialSettings();
-                    var c = _currentObject.MaterialSettings.MixColor;
-                    _currentObject.MaterialSettings.MixColor = new vec4(c.r, c.g, c.b, mixAmount);
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
-                }
-                RegisterPropertyContext("material.mix_percent");
-            }
-
-            DrawPbrMaterialControls();
-
-            // Metallic
-            {
-                float metallic = mat?.Metallic ?? 0f;
-                if (ImGui.SliderFloat(Localization.Label("text.panel.properties.metallic", "Metallic"), ref metallic, 0f, 1f))
-                {
-                    EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.Metallic = metallic;
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
-                }
-                RegisterPropertyContext("material.metallic");
-            }
-
-            // Roughness
-            {
-                float roughness = mat?.Roughness ?? 0.5f;
-                if (ImGui.SliderFloat(Localization.Label("text.panel.properties.roughness", "Roughness"), ref roughness, 0f, 1f))
-                {
-                    EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.Roughness = roughness;
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
-                }
-                RegisterPropertyContext("material.roughness");
-            }
-
-            // Emission enabled
-            {
-                bool emissionEnabled = mat?.EmissionEnabled ?? false;
-                if (ImGui.Checkbox(Localization.Label("text.common.emission", "Emission"), ref emissionEnabled))
-                {
-                    EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.EmissionEnabled = emissionEnabled;
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
-                }
-                RegisterPropertyContext("material.emission_enabled", () => materialObject.MaterialSettings.EmissionEnabled, value =>
-                {
-                    materialObject.SetExplicitMaterialSettings();
-                    materialObject.MaterialSettings.EmissionEnabled = (bool)value;
-                    materialObject.SetExplicitMaterialSettings();
-                    materialObject.PropagateMaterialSettingsToChildren();
-                }, false);
-            }
-
-            // Auto emission from Minecraft block metadata (schema/block imports)
-            {
-                bool autoEmission = mat?.AutoEmission ?? true;
-                if (ImGui.Checkbox(Localization.Label("text.panel.properties.auto_emission", "Auto Emission"), ref autoEmission))
-                {
-                    EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.AutoEmission = autoEmission;
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
-
-                    // Rebuild spawned Minecraft-derived meshes so merged schematic
-                    // buckets and per-mesh auto-emission levels are refreshed.
-                    if (SpawnMenu != null)
-                    {
-                        if (string.Equals(_currentObject.SpawnCategory, "Blocks", StringComparison.Ordinal))
+                        materialObject.SetExplicitMaterialSettings();
+                        materialObject.MaterialSettings.AutoEmission = (bool)value;
+                        materialObject.SetExplicitMaterialSettings();
+                        materialObject.PropagateMaterialSettingsToChildren();
+                        if (SpawnMenu != null)
                         {
-                            SpawnMenu.RebuildBlockMeshes(_currentObject);
+                            if (string.Equals(materialObject.SpawnCategory, "Blocks", StringComparison.Ordinal))
+                                SpawnMenu.RebuildBlockMeshes(materialObject);
+                            else if (string.Equals(materialObject.SpawnCategory, "Scenery", StringComparison.Ordinal) &&
+                                     !string.IsNullOrWhiteSpace(materialObject.SourceAssetPath))
+                                SpawnMenu.ApplyResourcePackToSpawnedObject(materialObject, materialObject.ResourcePackId);
                         }
-                        else if (string.Equals(_currentObject.SpawnCategory, "Scenery", StringComparison.Ordinal) &&
-                                 !string.IsNullOrWhiteSpace(_currentObject.SourceAssetPath))
-                        {
-                            SpawnMenu.ApplyResourcePackToSpawnedObject(_currentObject, _currentObject.ResourcePackId);
-                        }
-                    }
+                    }, true);
                 }
-                RegisterPropertyContext("material.auto_emission", () => materialObject.MaterialSettings.AutoEmission, value =>
+
+                // Emission color (no alpha)
+                if (mat?.EmissionEnabled == true)
                 {
-                    materialObject.SetExplicitMaterialSettings();
-                    materialObject.MaterialSettings.AutoEmission = (bool)value;
-                    materialObject.SetExplicitMaterialSettings();
-                    materialObject.PropagateMaterialSettingsToChildren();
-                    if (SpawnMenu != null)
+                    vec4 ec = mat?.EmissionColor ?? new vec4(0f, 0f, 0f, 1f);
+                    var vec3 = new Vector3(ec.r, ec.g, ec.b);
+                    if (ImGui.ColorEdit3(Localization.Label("text.panel.properties.emission_color", "Emission Color"), ref vec3, ImGuiColorEditFlags.NoInputs))
                     {
-                        if (string.Equals(materialObject.SpawnCategory, "Blocks", StringComparison.Ordinal))
-                            SpawnMenu.RebuildBlockMeshes(materialObject);
-                        else if (string.Equals(materialObject.SpawnCategory, "Scenery", StringComparison.Ordinal) &&
-                                 !string.IsNullOrWhiteSpace(materialObject.SourceAssetPath))
-                            SpawnMenu.ApplyResourcePackToSpawnedObject(materialObject, materialObject.ResourcePackId);
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.EmissionColor = new vec4(vec3.X, vec3.Y, vec3.Z, 1f);
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
                     }
-                }, true);
-            }
-
-            // Emission color (no alpha)
-            if (mat?.EmissionEnabled == true)
-            {
-                vec4 ec = mat?.EmissionColor ?? new vec4(0f, 0f, 0f, 1f);
-                var vec3 = new Vector3(ec.r, ec.g, ec.b);
-                if (ImGui.ColorEdit3(Localization.Label("text.panel.properties.emission_color", "Emission Color"), ref vec3, ImGuiColorEditFlags.NoInputs))
-                {
-                    EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.EmissionColor = new vec4(vec3.X, vec3.Y, vec3.Z, 1f);
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
+                    RegisterPropertyContext("material.glow.r", "material.glow.g", "material.glow.b");
                 }
-                RegisterPropertyContext("material.glow.r", "material.glow.g", "material.glow.b");
-            }
 
-            // Emission energy
-            if (mat?.EmissionEnabled == true)
-            {
-                float emEnergy = mat?.EmissionEnergy ?? 1f;
-                if (ImGui.SliderFloat(Localization.Label("text.panel.properties.emission_energy", "Emission Energy"), ref emEnergy, 0f, 10f))
+                // Emission energy
+                if (mat?.EmissionEnabled == true)
                 {
-                    EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.EmissionEnergy = emEnergy;
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
+                    float emEnergy = mat?.EmissionEnergy ?? 1f;
+                    if (ImGui.SliderFloat(Localization.Label("text.panel.properties.emission_energy", "Emission Energy"), ref emEnergy, 0f, 10f))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.EmissionEnergy = emEnergy;
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+                    RegisterPropertyContext("material.emission_energy", () => materialObject.MaterialSettings.EmissionEnergy, value =>
+                    {
+                        materialObject.SetExplicitMaterialSettings();
+                        materialObject.MaterialSettings.EmissionEnergy = Math.Clamp((float)value, 0f, 10f);
+                        materialObject.SetExplicitMaterialSettings();
+                        materialObject.PropagateMaterialSettingsToChildren();
+                    }, 1f);
                 }
-                RegisterPropertyContext("material.emission_energy", () => materialObject.MaterialSettings.EmissionEnergy, value =>
-                {
-                    materialObject.SetExplicitMaterialSettings();
-                    materialObject.MaterialSettings.EmissionEnergy = Math.Clamp((float)value, 0f, 10f);
-                    materialObject.SetExplicitMaterialSettings();
-                    materialObject.PropagateMaterialSettingsToChildren();
-                }, 1f);
-            }
 
-            // Emission indirect-only toggle
-            if (mat?.EmissionEnabled == true || (mat?.AutoEmission ?? true))
-            {
-                bool emissionIndirectOnly = mat?.EmissionIndirectOnly ?? false;
-                if (ImGui.Checkbox(Localization.Label("text.panel.properties.emission_indirect_only", "Emission Indirect Only"), ref emissionIndirectOnly))
+                // Emission indirect-only toggle
+                if (mat?.EmissionEnabled == true || (mat?.AutoEmission ?? true))
                 {
-                    EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.EmissionIndirectOnly = emissionIndirectOnly;
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
+                    bool emissionIndirectOnly = mat?.EmissionIndirectOnly ?? false;
+                    if (ImGui.Checkbox(Localization.Label("text.panel.properties.emission_indirect_only", "Emission Indirect Only"), ref emissionIndirectOnly))
+                    {
+                        EnsureMaterialSettings();
+                        _currentObject.MaterialSettings.EmissionIndirectOnly = emissionIndirectOnly;
+                        _currentObject.SetExplicitMaterialSettings();
+                        _currentObject.PropagateMaterialSettingsToChildren();
+                    }
+                    RegisterPropertyContext("material.emission_indirect_only", () => materialObject.MaterialSettings.EmissionIndirectOnly, value =>
+                    {
+                        materialObject.SetExplicitMaterialSettings();
+                        materialObject.MaterialSettings.EmissionIndirectOnly = (bool)value;
+                        materialObject.SetExplicitMaterialSettings();
+                        materialObject.PropagateMaterialSettingsToChildren();
+                    }, false);
                 }
-                RegisterPropertyContext("material.emission_indirect_only", () => materialObject.MaterialSettings.EmissionIndirectOnly, value =>
-                {
-                    materialObject.SetExplicitMaterialSettings();
-                    materialObject.MaterialSettings.EmissionIndirectOnly = (bool)value;
-                    materialObject.SetExplicitMaterialSettings();
-                    materialObject.PropagateMaterialSettingsToChildren();
-                }, false);
+
+                if (SupportsAlbedoTexture(_currentObject))
+                    DrawAuxiliaryTextureSelector(false);
+
+                ImGui.TreePop();
             }
 
             // Subsurface scattering controls (inspired by Mine-imator high-light shaders).
+            if (ImGui.TreeNodeEx(Localization.Label("text.panel.properties.material_subsurface_scattering", "Subsurface Scattering"), ImGuiTreeNodeFlags.SpanAvailWidth))
             {
                 float sss = mat?.Subsurface ?? 0f;
                 if (ImGui.DragFloat(Localization.Label("text.panel.properties.subsurface", "Subsurface"), ref sss, 0.1f, 0f, float.MaxValue, "%.2f px"))
@@ -4026,34 +4078,11 @@ public class PropertiesPanel : UiPanel
                     materialObject.SetExplicitMaterialSettings();
                     materialObject.PropagateMaterialSettingsToChildren();
                 }, 0.6f);
-            }
-
-            if (SupportsAlbedoTexture(_currentObject))
-            {
-                DrawAuxiliaryTextureSelector(true);
-                DrawAuxiliaryTextureSelector(false);
-            }
-
-            // Double Sided
-            {
-                bool doubleSided = mat?.DoubleSided ?? false;
-                if (ImGui.Checkbox(Localization.Label("text.panel.properties.double_sided", "Double Sided"), ref doubleSided))
-                {
-                    EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.DoubleSided = doubleSided;
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
-                }
-                RegisterPropertyContext("material.double_sided", () => materialObject.MaterialSettings.DoubleSided, value =>
-                {
-                    materialObject.SetExplicitMaterialSettings();
-                    materialObject.MaterialSettings.DoubleSided = (bool)value;
-                    materialObject.SetExplicitMaterialSettings();
-                    materialObject.PropagateMaterialSettingsToChildren();
-                }, false);
+                ImGui.TreePop();
             }
 
             // Texture UV transform
+            if (ImGui.TreeNodeEx(Localization.Label("text.panel.properties.material_texture_mapping", "Texture Mapping"), ImGuiTreeNodeFlags.SpanAvailWidth))
             {
                 vec2 uvOffset = mat?.TextureOffset ?? vec2.Zero;
                 var offset = new Vector2(uvOffset.x, uvOffset.y);
@@ -4123,6 +4152,7 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                ImGui.TreePop();
             }
 
         }
@@ -5282,7 +5312,7 @@ public class PropertiesPanel : UiPanel
         ProjectManager.Instance.SetDirty(true);
     }
 
-    private void DrawPbrMaterialControls()
+    private void DrawPbrMaterialImport()
     {
         if (!SupportsAlbedoTexture(_currentObject)) return;
         if (ImGui.Button(Localization.Label("text.panel.properties.import_pbr", "Import PBR texture set..."), new Vector2(-1, 0)))
@@ -5339,35 +5369,58 @@ public class PropertiesPanel : UiPanel
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(Localization.T("text.panel.properties.import_pbr_hint"));
-        if (!string.IsNullOrEmpty(_pbrImportError)) ImGui.TextWrapped(_pbrImportError);
+        ImGui.Spacing();
+    }
 
+    private void DrawPbrSurfaceControls()
+    {
         var settings = _currentObject.MaterialSettings;
         bool enabled = settings.PbrEnabled;
         float normalStrength = settings.NormalStrength;
         float occlusionStrength = settings.OcclusionStrength;
         float heightScale = settings.HeightScale;
-        bool changed = ImGui.Checkbox(Localization.Label("text.panel.properties.pbr_enabled", "PBR shading"), ref enabled);
+        bool pbrChanged = ImGui.Checkbox(Localization.Label("text.panel.properties.pbr_enabled", "PBR shading"), ref enabled);
+        RegisterPropertyContext("material.pbr_enabled");
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(Localization.T("text.panel.properties.pbr_hint"));
+        bool normalChanged = false;
+        bool occlusionChanged = false;
+        bool heightChanged = false;
+        bool changed = pbrChanged;
+        ImGui.Spacing();
+
+        DrawAuxiliaryTextureSelector(true);
         if (enabled)
         {
-            if (ImGui.SliderFloat(Localization.Label("text.panel.properties.normal_strength", "Normal strength"), ref normalStrength, 0f, 2f))
-            {
-                changed = true;
-            }
-            if (ImGui.SliderFloat(Localization.Label("text.panel.properties.occlusion_strength", "Material AO"), ref occlusionStrength, 0f, 1f))
-            {
-                changed = true;
-            }
-            if (ImGui.SliderFloat(Localization.Label("text.panel.properties.height_scale", "Height / parallax"), ref heightScale, 0f, 0.1f, "%.3f"))
-            {
-                changed = true;
-            }
+            normalChanged = ImGui.SliderFloat(Localization.Label("text.panel.properties.normal_strength", "Normal strength"), ref normalStrength, 0f, 2f);
+            changed |= normalChanged;
+            RegisterPropertyContext("material.normal_strength");
+        }
+
+        ImGui.Separator();
+        ImGui.TextWrapped(Localization.T("text.panel.properties.individual_surface_hint"));
+        ImGui.TextWrapped(Localization.T("text.panel.properties.surface_multiplier_hint"));
+        DrawSurfaceTextureSelector(1);
+        DrawSurfaceTextureSelector(2);
+        DrawSurfaceTextureSelector(0);
+        if (enabled)
+        {
+            occlusionChanged = ImGui.SliderFloat(Localization.Label("text.panel.properties.occlusion_strength", "Material AO"), ref occlusionStrength, 0f, 1f);
+            changed |= occlusionChanged;
+            RegisterPropertyContext("material.occlusion_strength");
+        }
+
+        DrawSurfaceTextureSelector(3);
+        if (enabled)
+        {
+            heightChanged = ImGui.SliderFloat(Localization.Label("text.panel.properties.height_scale", "Height / parallax"), ref heightScale, 0f, 0.1f, "%.3f");
+            changed |= heightChanged;
+            RegisterPropertyContext("material.height_scale");
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(Localization.T("text.panel.properties.height_hint"));
             string surfacePath = _currentObject.GetEffectiveSurfaceTexturePath();
             if (!string.IsNullOrEmpty(surfacePath))
             {
+                ImGui.Separator();
                 ImGui.TextWrapped(Localization.T("text.panel.properties.surface_texture") + ": " + Path.GetFileName(surfacePath));
-                ImGui.TextWrapped(Localization.T("text.panel.properties.surface_multiplier_hint"));
                 if (!string.IsNullOrEmpty(_currentObject.SurfaceTexturePath) &&
                     ImGui.Button(Localization.Label("text.panel.properties.clear_surface", "Clear surface maps")))
                 {
@@ -5377,6 +5430,7 @@ public class PropertiesPanel : UiPanel
                     _currentObject.MetallicTexturePath = null;
                     _currentObject.HeightTexturePath = null;
                     heightScale = 0f;
+                    heightChanged = true;
                     changed = true;
                 }
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip(Localization.T("text.panel.properties.surface_hint"));
@@ -5391,11 +5445,12 @@ public class PropertiesPanel : UiPanel
             settings.OcclusionStrength = occlusionStrength;
             settings.HeightScale = heightScale;
             _currentObject.PropagateMaterialSettingsToChildren();
+            if (pbrChanged) Timeline?.RecordAutoKeyframe(_currentObject, "material.pbr_enabled");
+            if (normalChanged) Timeline?.RecordAutoKeyframe(_currentObject, "material.normal_strength");
+            if (occlusionChanged) Timeline?.RecordAutoKeyframe(_currentObject, "material.occlusion_strength");
+            if (heightChanged) Timeline?.RecordAutoKeyframe(_currentObject, "material.height_scale");
             ProjectManager.Instance.SetDirty(true);
         }
-        ImGui.SeparatorText(Localization.T("text.panel.properties.individual_surface_maps"));
-        ImGui.TextWrapped(Localization.T("text.panel.properties.individual_surface_hint"));
-        for (int channel = 0; channel < 4; channel++) DrawSurfaceTextureSelector(channel);
     }
 
     private string? RegisterSurfaceSource(string? path) => string.IsNullOrEmpty(path) ? path

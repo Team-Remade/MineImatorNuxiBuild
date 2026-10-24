@@ -125,6 +125,10 @@ public class Timeline : UiPanel
     {
         ("Metallic", "material.metallic"),
         ("Roughness", "material.roughness"),
+        ("PBR shading", "material.pbr_enabled"),
+        ("Normal strength", "material.normal_strength"),
+        ("Material AO", "material.occlusion_strength"),
+        ("Height / parallax", "material.height_scale"),
         ("Emissive", "material.emissive"),
         ("Subsurface", "material.subsurface"),
         ("Mix Amount", "material.mix_percent"),
@@ -2689,7 +2693,7 @@ public class Timeline : UiPanel
         // Between two keyframes — interpolate.
         // Discrete state-like properties and "instant" interpolation use the
         // previous keyframe's value with no blending.
-        if (path == "visible" || path == "camera.active" || path == "item.slot" || path == "item.custom_slot" ||
+        if (path == "visible" || path == "camera.active" || path == "material.pbr_enabled" || path == "item.slot" || path == "item.custom_slot" ||
             path == "text.horizontal_alignment" || path == "text.vertical_alignment" ||
             path == "text.antialiasing" || path == "text.outline_enabled" ||
             path == "particle.emitting" || path == "particle.one_shot" || path == "particle.amount" ||
@@ -2913,6 +2917,10 @@ public class Timeline : UiPanel
                         "alpha" => obj.MaterialSettings?.AlbedoColor.w ?? 1f,
                         "metallic" => obj.MaterialSettings?.Metallic ?? 0f,
                         "roughness" => obj.MaterialSettings?.Roughness ?? (obj.UsePropertyInheritance ? 1f : 0.5f),
+                        "pbr_enabled" => (object)(obj.MaterialSettings?.PbrEnabled ?? false),
+                        "normal_strength" => obj.MaterialSettings?.NormalStrength ?? 1f,
+                        "occlusion_strength" => obj.MaterialSettings?.OcclusionStrength ?? 1f,
+                        "height_scale" => obj.MaterialSettings?.HeightScale ?? 0f,
                         "emissive" => obj.MaterialSettings?.EmissionEnabled == true ? obj.MaterialSettings.EmissionEnergy : 0f,
                         "subsurface" => obj.MaterialSettings?.Subsurface ?? 0f,
                         "mix_percent" => obj.MaterialSettings?.MixColor.w ?? 0f,
@@ -3180,6 +3188,10 @@ public class Timeline : UiPanel
                     case "alpha": material.AlbedoColor.w = Math.Clamp(value, 0f, 1f); break;
                     case "metallic": material.Metallic = Math.Clamp(value, 0f, 1f); break;
                     case "roughness": material.Roughness = Math.Clamp(value, 0f, 1f); break;
+                    case "pbr_enabled": material.PbrEnabled = value >= 0.5f; break;
+                    case "normal_strength": material.NormalStrength = Math.Clamp(value, 0f, 2f); break;
+                    case "occlusion_strength": material.OcclusionStrength = Math.Clamp(value, 0f, 1f); break;
+                    case "height_scale": material.HeightScale = Math.Clamp(value, 0f, 0.1f); break;
                     case "emissive":
                         material.EmissionEnergy = Math.Max(value, 0f);
                         material.EmissionEnabled = material.EmissionEnergy != 0f;
