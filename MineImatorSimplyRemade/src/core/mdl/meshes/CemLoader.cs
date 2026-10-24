@@ -50,7 +50,7 @@ public static class CemLoader
         JsonObject root;
         try
         {
-            var parsed = JsonNode.Parse(File.ReadAllText(cemPath))?.AsObject();
+            var parsed = JsonNode.Parse(File.ReadAllText(cemPath), documentOptions: AppJsonContext.DocumentOptions)?.AsObject();
             root = parsed ?? throw new Exception("Root is not a JSON object");
         }
         catch (Exception ex)

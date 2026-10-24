@@ -177,7 +177,7 @@ public static class AssimpModelLoader
                 json = SysFile.ReadAllText(filePath);
             }
 
-            var root = JsonNode.Parse(json)?.AsObject();
+            var root = JsonNode.Parse(json, documentOptions: AppJsonContext.DocumentOptions)?.AsObject();
             if (root == null) return;
 
             // nodes array: index → name
@@ -773,7 +773,7 @@ public static class AssimpModelLoader
                 // .gltf files reference an external .bin; resolve it relative
                 // to the .gltf path.
                 string? binUri = null;
-                var rootNode = JsonNode.Parse(json)?.AsObject();
+                var rootNode = JsonNode.Parse(json, documentOptions: AppJsonContext.DocumentOptions)?.AsObject();
                 if (rootNode != null && rootNode["buffers"] is JsonArray buffers && buffers.Count > 0)
                 {
                     binUri = buffers[0]?["uri"]?.GetValue<string>();
@@ -788,7 +788,7 @@ public static class AssimpModelLoader
                 }
             }
 
-            var root = JsonNode.Parse(json)?.AsObject();
+            var root = JsonNode.Parse(json, documentOptions: AppJsonContext.DocumentOptions)?.AsObject();
             if (root == null) return null;
 
             var meshesArr = root["meshes"] as JsonArray;

@@ -54,8 +54,8 @@ internal sealed class SceneHistoryAction
 
     public static SceneHistoryAction? Create(string beforeJson, string afterJson)
     {
-        JsonNode? before = JsonNode.Parse(beforeJson);
-        JsonNode? after = JsonNode.Parse(afterJson);
+        JsonNode? before = JsonNode.Parse(beforeJson, documentOptions: AppJsonContext.DocumentOptions);
+        JsonNode? after = JsonNode.Parse(afterJson, documentOptions: AppJsonContext.DocumentOptions);
         if (before == null || after == null)
             return null;
 
@@ -68,14 +68,15 @@ internal sealed class SceneHistoryAction
 
     public string Apply(string currentJson, bool undo)
     {
-        JsonNode root = JsonNode.Parse(currentJson) ?? throw new JsonException("Scene history state is empty.");
+        JsonNode root = JsonNode.Parse(currentJson, documentOptions: AppJsonContext.DocumentOptions)
+            ?? throw new JsonException("Scene history state is empty.");
         foreach (Change change in _changes)
             root = ApplyChange(
                 root,
                 change.Path,
                 undo ? change.Before : change.After,
                 undo ? change.BeforeExists : change.AfterExists);
-        return root.ToJsonString();
+        return root.ToJsonString(AppJsonContext.Default.Options);
     }
 
     public bool TryGetAffectedSceneRootIndices(out int[] rootIndices)

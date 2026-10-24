@@ -260,11 +260,24 @@ public sealed class ProjectManager
             throw new InvalidOperationException("No project is currently open.");
 
         Manifest.LastSavedUtc = DateTime.UtcNow.ToString("o");
-        var writerOptions = new JsonWriterOptions { Indented = true };
-        using var stream = File.Create(ProjectFilePath);
-        using var writer = new Utf8JsonWriter(stream, writerOptions);
-        JsonSerializer.Serialize(writer, Manifest, AppJsonContext.Default.ProjectManifest);
-        writer.Flush();
+        var writerOptions = new JsonWriterOptions { Indented = true, MaxDepth = AppJsonContext.MaxDepth };
+        string temporaryPath = ProjectFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            // Replace the last good save only after serialization has completed successfully.
+            using (var stream = File.Create(temporaryPath))
+            using (var writer = new Utf8JsonWriter(stream, writerOptions))
+            {
+                JsonSerializer.Serialize(writer, Manifest, AppJsonContext.Default.ProjectManifest);
+                writer.Flush();
+            }
+            File.Move(temporaryPath, ProjectFilePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
+        }
         SetDirty(false);
     }
 

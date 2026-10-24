@@ -109,7 +109,7 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
             var block = new WorldSpecialBlock(item["name"]!.GetValue<string>(), properties,
                 item["model"]!.GetValue<string>(), null, [],
                 ReadVector(item["position"]), ReadVector(item["rotation"]), vec3.Zero);
-            var textureKeys = JsonNode.Parse(File.ReadAllText(path))?["minecraft_texture_keys"] as JsonObject;
+            var textureKeys = JsonNode.Parse(File.ReadAllText(path), documentOptions: AppJsonContext.DocumentOptions)?["minecraft_texture_keys"] as JsonObject;
             var scene = Create(block, path);
             try { Flatten(scene, textureKeys); }
             finally { DisposeScene(scene); }
@@ -149,7 +149,7 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
         var entry = CharacterRegistry.Props.Concat(CharacterRegistry.Characters)
             .FirstOrDefault(e => e.Name == block.Model && Path.GetExtension(e.FilePath) == ".mimodel") ??
             throw new InvalidDataException($"The {block.Model} model is not installed. Install the Minecraft model catalog before importing this block.");
-        var document = JsonNode.Parse(File.ReadAllText(entry.FilePath)) as JsonObject ??
+        var document = JsonNode.Parse(File.ReadAllText(entry.FilePath), documentOptions: AppJsonContext.DocumentOptions) as JsonObject ??
             throw new InvalidDataException($"Invalid model file for {block.Name}.");
         string sourceDirectory = Path.GetDirectoryName(entry.FilePath)!;
         string? baseTexture = document["texture"]?.GetValue<string>();
@@ -233,7 +233,7 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
         Snapshot(document);
         document["minecraft_texture_keys"] = textureKeys;
         string snapshot = Path.Combine(snapshotDirectory, block.Model + ".mimodel");
-        File.WriteAllText(snapshot, document.ToJsonString());
+        File.WriteAllText(snapshot, document.ToJsonString(AppJsonContext.Default.Options));
         if (!addToProject)
         {
             _models.Add(key, snapshot);

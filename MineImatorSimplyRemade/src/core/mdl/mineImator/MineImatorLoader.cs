@@ -306,7 +306,7 @@ public class MineImatorLoader
             }
 
             string json = File.ReadAllText(modelPath);
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json, AppJsonContext.DocumentOptions);
             if (!ValidateModelRoot(doc.RootElement, modelPath))
                 return null;
 

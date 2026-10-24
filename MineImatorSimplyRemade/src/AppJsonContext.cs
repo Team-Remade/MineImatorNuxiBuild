@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl.mineImator;
@@ -15,6 +16,9 @@ namespace MineImatorSimplyRemade;
 /// IL2026 warnings.
 /// </summary>
 [JsonSourceGenerationOptions(
+    MaxDepth = AppJsonContext.MaxDepth,
+    // Generated fast-path writers recurse with large stack frames for scene entries.
+    GenerationMode = JsonSourceGenerationMode.Metadata,
     PropertyNameCaseInsensitive = true,
     // MiObject / MiModel files use numbers stored as JSON strings in some fields;
     // the individual properties already carry [JsonNumberHandling] attributes, so
@@ -35,4 +39,7 @@ namespace MineImatorSimplyRemade;
 [JsonSerializable(typeof(List<UpdateChecker.GitHubRelease>))]
 internal partial class AppJsonContext : JsonSerializerContext
 {
+    // Each scene/model hierarchy level adds both an object and a children array.
+    internal const int MaxDepth = 1024;
+    internal static JsonDocumentOptions DocumentOptions => new() { MaxDepth = MaxDepth };
 }
