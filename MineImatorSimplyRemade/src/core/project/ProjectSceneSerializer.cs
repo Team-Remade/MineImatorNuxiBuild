@@ -25,7 +25,7 @@ public static class ProjectSceneSerializer
     {
         (SceneObject Object, ProjectSceneObjectEntry Entry)[] stateArray = states.ToArray();
         foreach ((SceneObject obj, ProjectSceneObjectEntry entry) in stateArray)
-            ApplyEntryToObject(obj, entry);
+            ApplyEntryToObject(obj, entry, propertiesPanel?.SpawnMenu);
         propertiesPanel?.LoadPendingAlbedoTextures(stateArray.Select(state => state.Object));
     }
 
@@ -59,7 +59,7 @@ public static class ProjectSceneSerializer
         }
 
         foreach (int rootIndex in rootIndices)
-            ApplyEntryToHierarchy(viewport.SceneObjects[rootIndex], manifest.SceneObjects[rootIndex]);
+            ApplyEntryToHierarchy(viewport.SceneObjects[rootIndex], manifest.SceneObjects[rootIndex], propertiesPanel?.SpawnMenu);
 
         propertiesPanel?.LoadPendingAlbedoTextures(viewport.SceneObjects);
         return true;
@@ -91,7 +91,7 @@ public static class ProjectSceneSerializer
         }
 
         foreach ((SceneObject target, ProjectSceneObjectEntry entry) in targets)
-            ApplyEntryToObject(target, entry);
+            ApplyEntryToObject(target, entry, propertiesPanel?.SpawnMenu);
 
         propertiesPanel?.LoadPendingAlbedoTextures(targets.Select(target => target.Object));
         return true;
@@ -111,11 +111,11 @@ public static class ProjectSceneSerializer
         return true;
     }
 
-    private static void ApplyEntryToHierarchy(SceneObject obj, ProjectSceneObjectEntry entry)
+    private static void ApplyEntryToHierarchy(SceneObject obj, ProjectSceneObjectEntry entry, SpawnMenu? spawnMenu)
     {
-        ApplyEntryToObject(obj, entry);
+        ApplyEntryToObject(obj, entry, spawnMenu);
         for (int index = 0; index < obj.Children.Count; index++)
-            ApplyEntryToHierarchy(obj.Children[index], entry.Children[index]);
+            ApplyEntryToHierarchy(obj.Children[index], entry.Children[index], spawnMenu);
     }
 
     public static void WriteSceneToManifest(ProjectManifest manifest, Viewport viewport, Timeline? timeline = null, PropertiesPanel? propertiesPanel = null)
@@ -254,7 +254,7 @@ public static class ProjectSceneSerializer
             SpawnCategory = obj.SpawnCategory,
             BlockVariant = obj.BlockVariant,
             TextureType = obj.TextureType,
-            ResourcePackId = obj.ResourcePackId,
+            ResourcePackId = MinecraftDataLoader.NormalizeResourcePackStack(obj.ResourcePackId),
             NormalResourcePackId = obj.NormalResourcePackId,
             EmissionResourcePackId = obj.EmissionResourcePackId,
             SourceAssetPath = pm.ToAssetReference(obj.SourceAssetPath),
@@ -494,7 +494,7 @@ public static class ProjectSceneSerializer
         // Apply serialized state after parent linkage so inherited bend can
         // resolve against the correct parent during SetBendAngle regeneration.
         RebaseBonePositionKeyframes(obj, entry, parentOriginDelta);
-        ApplyEntryToObject(obj, entry);
+        ApplyEntryToObject(obj, entry, spawnMenu);
 
         RestoreChildren(entry, obj, viewport, spawnMenu, originDelta);
 
@@ -514,7 +514,7 @@ public static class ProjectSceneSerializer
                 usedChildren.Add(existingChild);
                 vec3 childOriginDelta = UpgradeBlockMeshOrigin(childEntry);
                 RebaseBonePositionKeyframes(existingChild, childEntry, originDelta);
-                ApplyEntryToObject(existingChild, childEntry);
+                ApplyEntryToObject(existingChild, childEntry, spawnMenu);
                 RestoreChildren(childEntry, existingChild, viewport, spawnMenu, childOriginDelta);
                 continue;
             }
@@ -566,7 +566,7 @@ public static class ProjectSceneSerializer
 
         if (entry.SpawnCategory == "Blocks")
         {
-            var variants = BlockRegistry.GetVariants(entry.ObjectType);
+            var variants = BlockRegistry.GetVariants(entry.ObjectType, entry.ResourcePackId);
             var variant = variants.FirstOrDefault(v => v.VariantKey == entry.BlockVariant)
                           ?? variants.FirstOrDefault();
             if (variant == null) return null;
@@ -669,8 +669,12 @@ public static class ProjectSceneSerializer
         return obj;
     }
 
-    private static void ApplyEntryToObject(SceneObject obj, ProjectSceneObjectEntry entry)
+    private static void ApplyEntryToObject(SceneObject obj, ProjectSceneObjectEntry entry, SpawnMenu? spawnMenu)
     {
+        string resourcePackStack = MinecraftDataLoader.NormalizeResourcePackStack(entry.ResourcePackId);
+        bool resourcePackChanged = !string.Equals(
+            MinecraftDataLoader.NormalizeResourcePackStack(obj.ResourcePackId), resourcePackStack, StringComparison.Ordinal);
+
         // Keep scene UUIDs stable across project reloads. Pick-colour IDs remain
         // the fresh values assigned by the spawn pipeline and are independent.
         if (!string.IsNullOrWhiteSpace(entry.ObjectId))
@@ -684,7 +688,7 @@ public static class ProjectSceneSerializer
         obj.SpawnCategory = entry.SpawnCategory;
         obj.BlockVariant = entry.BlockVariant;
         obj.TextureType = entry.TextureType;
-        obj.ResourcePackId = entry.ResourcePackId;
+        obj.ResourcePackId = resourcePackStack;
         obj.NormalResourcePackId = entry.NormalResourcePackId ?? "";
         obj.EmissionResourcePackId = entry.EmissionResourcePackId ?? "";
         obj.SourceAssetPath = ResolveSourcePath(entry);
@@ -896,6 +900,11 @@ public static class ProjectSceneSerializer
             obj.RestoreInheritedMaterialSettings();
         }
 
+        // History applies authored state in place. Only a changed stack needs new
+        // Minecraft meshes; the existing replacement path leaves children and transforms intact.
+        if (resourcePackChanged)
+            spawnMenu?.ApplyResourcePackToSpawnedObject(obj, resourcePackStack);
+
         obj.Keyframes = DeserializeKeyframes(entry.Keyframes);
         ApplyShapeKeyWeights(obj, entry.ShapeKeyWeights);
 
@@ -1025,7 +1034,7 @@ public static class ProjectSceneSerializer
         if (entry.BlockMeshOriginVersion != 0 || entry.SpawnCategory != "Blocks")
             return vec3.Zero;
 
-        var variants = BlockRegistry.GetVariants(entry.ObjectType);
+        var variants = BlockRegistry.GetVariants(entry.ObjectType, entry.ResourcePackId);
         var variant = variants.FirstOrDefault(v => v.VariantKey == entry.BlockVariant)
                       ?? variants.FirstOrDefault();
         // CEM ignores tiling, unlike JSON models and fallback cubes.

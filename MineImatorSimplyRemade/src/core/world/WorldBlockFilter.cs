@@ -47,7 +47,7 @@ internal sealed class WorldBlockFilter
         int bracket = unnamespaced.IndexOf('[');
         if (bracket >= 0)
             unnamespaced = unnamespaced[..bracket];
-        return unnamespaced.Trim();
+        return BlockRegistry.NormalizeBlockName(unnamespaced.Trim());
     }
 
     public static string GetBlockNameFromState(string state)

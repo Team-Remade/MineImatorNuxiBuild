@@ -16,7 +16,7 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
     private readonly string _temporaryDirectory = Path.Combine(Path.GetTempPath(), $"nuxi-world-blocks-{Guid.NewGuid():N}");
     private readonly Dictionary<string, string> _models = new(StringComparer.Ordinal);
     private string? _embeddedDirectory;
-    private Dictionary<string, byte[]>? _packTextures;
+    private Dictionary<string, (byte[] Data, string Provider, int Priority)>? _packTextures;
     private Dictionary<string, byte[]>? _packMetadata;
 
     public SceneObject Create(WorldSpecialBlock block, string? embeddedModelPath = null)
@@ -26,7 +26,7 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
         {
             if (block.Model == null)
             {
-                var variant = SpawnMenu.PickBestVariantForProperties(BlockRegistry.GetVariants(block.Name),
+                var variant = SpawnMenu.PickBestVariantForProperties(BlockRegistry.GetVariants(block.Name, resourcePack),
                     block.Properties, null) ?? throw new InvalidDataException($"No block model is installed for {block.Name}.");
                 root = spawnMenu.CreateBlockObject(block.Name, variant, resourcePack) ??
                     throw new InvalidDataException($"Could not create {block.Name}.");
@@ -44,7 +44,7 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
                     throw new InvalidDataException($"The animatable model for {block.Name} has no parts.");
                 root.SourceAssetPath = modelPath;
                 root.SpawnCategory = "Props";
-                root.ResourcePackId = resourcePack;
+                root.ResourcePackId = MinecraftDataLoader.NormalizeResourcePackStack(resourcePack);
                 root.SetLocalPosition(block.Position);
                 root.SetLocalRotation(block.Rotation * (MathF.PI / 180));
                 ApplyPose(root, block);
@@ -260,15 +260,45 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
 
     private byte[]? PackFile(string source, bool metadata)
     {
-        if (string.IsNullOrEmpty(resourcePack)) return null;
-        Dictionary<string, byte[]> ReadFiles(string suffix) =>
-            MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/", suffix)
-                .Where(f => MinecraftDataLoader.GetResourcePackId(f.PackName) == resourcePack)
-                .GroupBy(f => f.RelativePath.Replace('\\', '/'), StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => g.Last().Data, StringComparer.OrdinalIgnoreCase);
-        var files = metadata ? _packMetadata ??= ReadFiles(".png.mcmeta") : _packTextures ??= ReadFiles(".png");
+        var stack = MinecraftDataLoader.GetResourcePackStack(resourcePack);
+        if (stack.Count == 0) return null;
+        if (_packTextures == null)
+        {
+            _packTextures = new(StringComparer.OrdinalIgnoreCase);
+            _packMetadata = new(StringComparer.OrdinalIgnoreCase);
+            var priorities = stack.Select((id, index) => (id, index))
+                .ToDictionary(p => p.id, p => p.index, StringComparer.OrdinalIgnoreCase);
+
+            // Container indices distinguish same-name packs in different roots. Scan
+            // both suffixes against the same container order so metadata cannot leak.
+            IEnumerable<(MinecraftDataLoader.ResourcePackFile File, string Provider)> ReadFiles(string suffix)
+            {
+                string provider = "";
+                foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets/minecraft/textures/", suffix,
+                             (root, _, index, _) => provider = root + "/" + index))
+                    yield return (file, provider);
+            }
+
+            foreach (var (file, provider) in ReadFiles(".png"))
+            {
+                if (!priorities.TryGetValue(MinecraftDataLoader.GetResourcePackId(file.PackName), out int priority))
+                    continue;
+                string path = file.RelativePath.Replace('\\', '/');
+                // Earlier stack entries win; the last matching container wins within an ID.
+                if (!_packTextures.TryGetValue(path, out var previous) || priority <= previous.Priority)
+                    _packTextures[path] = (file.Data, provider, priority);
+            }
+            foreach (var (file, provider) in ReadFiles(".png.mcmeta"))
+            {
+                string path = file.RelativePath.Replace('\\', '/');
+                if (_packTextures.TryGetValue(path[..^7], out var texture) && texture.Provider == provider)
+                    _packMetadata[path] = file.Data;
+            }
+        }
         string relative = Path.GetRelativePath(MinecraftDataLoader.GetVersionRoot(), source).Replace('\\', '/');
-        return files.GetValueOrDefault("assets/minecraft/" + relative);
+        string key = "assets/minecraft/" + relative;
+        return metadata ? _packMetadata!.GetValueOrDefault(key) :
+            _packTextures.TryGetValue(key, out var selected) ? selected.Data : null;
     }
 
     private static void ApplyPose(SceneObject root, WorldSpecialBlock block)

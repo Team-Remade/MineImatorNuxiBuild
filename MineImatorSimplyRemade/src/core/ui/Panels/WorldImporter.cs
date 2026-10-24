@@ -246,13 +246,10 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         UiText.Wrapped(Localization.T("text.panel.world_importer.world_files_are_read_only_close_the_world_in_minecraft_before_browsing"));
         ImGui.BeginDisabled(Busy);
         if (ImGui.Button(Localization.Label("text.panel.world_importer.refresh_save_list", "Refresh save list"))) Refresh();
-        if (ImGui.BeginCombo(Localization.Label("text.panel.world_importer.resource_pack", "Resource pack"), string.IsNullOrEmpty(_resourcePack) ? Localization.T("text.common.default") : _resourcePack))
-        {
-            if (ImGui.Selectable(Localization.Label("text.common.default", "Default"), _resourcePack.Length == 0)) SetResourcePack("");
-            foreach (string id in MinecraftDataLoader.GetAvailableStandaloneResourcePackIds())
-                if (ImGui.Selectable(id, _resourcePack == id)) SetResourcePack(id);
-            ImGui.EndCombo();
-        }
+        string resourcePackSelection = _resourcePack;
+        if (ResourcePackStackSelector.Render("worldImportResourcePacks", ref resourcePackSelection,
+                Localization.T("text.panel.world_importer.resource_pack")))
+            SetResourcePack(resourcePackSelection);
         ImGui.EndDisabled();
         float speed = _flightInput.FreeFlySpeed;
         if (ImGui.SliderFloat(Localization.Label("text.panel.world_importer.fly_speed_blocks_s", "Fly speed (blocks/s)"), ref speed, 0.1f, 500))
@@ -1262,6 +1259,8 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
 
     private void SetResourcePack(string id)
     {
+        id = MinecraftDataLoader.NormalizeResourcePackStack(id);
+        if (string.Equals(_resourcePack, id, StringComparison.Ordinal)) return;
         string previous = _resourcePack;
         _resourcePack = id;
         TryAction(() =>

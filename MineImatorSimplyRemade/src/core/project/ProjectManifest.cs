@@ -307,6 +307,7 @@ public class ProjectSceneObjectEntry
     public string SpawnCategory { get; set; } = "";
     public string BlockVariant { get; set; } = "";
     public string TextureType { get; set; } = "item";
+    // Semicolon-separated pack stack, highest priority first. Single-ID saves need no migration.
     public string ResourcePackId { get; set; } = "";
     public string NormalResourcePackId { get; set; } = "";
     public string EmissionResourcePackId { get; set; } = "";

@@ -3562,50 +3562,12 @@ public class PropertiesPanel : UiPanel
 
                 if (supportsResourcePack)
                 {
-                    string currentPackId = MinecraftDataLoader.NormalizeResourcePackId(_currentObject.ResourcePackId);
+                    string candidateSelection = MinecraftDataLoader.NormalizeResourcePackStack(_currentObject.ResourcePackId);
                     var packIds = MinecraftDataLoader.GetAvailableResourcePackIds().ToList();
-
-                    int selectedIndex = 0;
-                    if (!string.IsNullOrWhiteSpace(currentPackId))
+                    if (ResourcePackStackSelector.Render("ObjectResourcePacks", ref candidateSelection, "Resource Packs:", packIds) &&
+                        SpawnMenu != null && SpawnMenu.ApplyResourcePackToSpawnedObject(_currentObject, candidateSelection))
                     {
-                        int found = packIds.FindIndex(id => string.Equals(id, currentPackId, StringComparison.OrdinalIgnoreCase));
-                        if (found >= 0)
-                            selectedIndex = found + 1;
-                    }
-
-                    string selectedLabel = selectedIndex == 0 ? "Default" : packIds[selectedIndex - 1];
-                    if (ImGui.BeginCombo(Localization.Label("text.panel.properties.resource_pack", "Resource Pack"), selectedLabel == "Default" ? Localization.T("text.common.default") : selectedLabel))
-                    {
-                        bool isDefaultSelected = selectedIndex == 0;
-                        if (ImGui.Selectable(Localization.Label("text.common.default", "Default"), isDefaultSelected))
-                        {
-                            if (SpawnMenu != null && SpawnMenu.ApplyResourcePackToSpawnedObject(_currentObject, ""))
-                            {
-                                _currentObject.ResourcePackId = "";
-                                ProjectManager.Instance.SetDirty(true);
-                            }
-                        }
-                        if (isDefaultSelected)
-                            ImGui.SetItemDefaultFocus();
-
-                        for (int i = 0; i < packIds.Count; i++)
-                        {
-                            string id = packIds[i];
-                            bool isSelected = selectedIndex == (i + 1);
-                            if (ImGui.Selectable(id, isSelected))
-                            {
-                                if (SpawnMenu != null && SpawnMenu.ApplyResourcePackToSpawnedObject(_currentObject, id))
-                                {
-                                    _currentObject.ResourcePackId = id;
-                                    ProjectManager.Instance.SetDirty(true);
-                                }
-                            }
-
-                            if (isSelected)
-                                ImGui.SetItemDefaultFocus();
-                        }
-
-                        ImGui.EndCombo();
+                        ProjectManager.Instance.SetDirty(true);
                     }
 
                     ImGui.Spacing();

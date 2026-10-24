@@ -1697,6 +1697,7 @@ public class MainWindow : Window
                 case ResourcePackImportStage.RefreshUi:
                     _resourcePackImportStatus = Localization.T("text.window.main.refreshing_spawn_menu_options");
                     _resourcePackImportDetail = Localization.T("text.window.main.syncing_source_selectors");
+                    CtmAtlas.Initialize(GL);
                     _spawnMenu?.RefreshExternalAssetOptions();
                     _resourcePackImportProgress = 1f;
                     _resourcePackImportStage = ResourcePackImportStage.Complete;
@@ -2364,6 +2365,7 @@ public class MainWindow : Window
         BlockRegistry.Initialize();
         TerrainAtlas.Initialize(GL);
         ItemsAtlas.Initialize(GL);
+        CtmAtlas.Initialize(GL);
         _spawnMenu?.RefreshExternalAssetOptions();
     }
 

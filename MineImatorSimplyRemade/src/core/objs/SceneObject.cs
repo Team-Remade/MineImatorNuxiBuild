@@ -170,6 +170,8 @@ public class SceneObject
     public string BlockVariant = "";
     public string TextureType = "item";
     public string ItemTileKey = "";
+    // Canonical semicolon-separated pack IDs, highest priority first; empty uses defaults.
+    // A legacy single pack ID is already a valid stack.
     public string ResourcePackId = "";
     public string TemporaryItemSheetPath = "";
     public string TemporaryItemSheetCacheKey = "";

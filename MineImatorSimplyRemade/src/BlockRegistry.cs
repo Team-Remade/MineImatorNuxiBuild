@@ -155,23 +155,27 @@ public static class BlockRegistry
     /// <summary>Block name → list of variant entries.</summary>
     private static readonly Dictionary<string, List<BlockVariantEntry>> _variants = new();
 
+    private static readonly Dictionary<(string PackId, string BlockName), List<BlockVariantEntry>> _externalVariants = new();
+
     /// <summary>
     /// Block name → source container id (resource pack / java mod id).
     /// Empty string means vanilla/version-root data.
     /// </summary>
     private static readonly Dictionary<string, string> _blockSourceIds = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Raw parsed model JSON cache (model path → JsonObject).</summary>
-    private static readonly Dictionary<string, JsonObject?> _rawModelCache = new();
+    /// <summary>Raw parsed model JSON cache, scoped to the selected pack and block source.</summary>
+    private static readonly Dictionary<(string PackId, string SourceId, string ModelPath), JsonObject?> _rawModelCache = new();
 
     /// <summary>
-    /// External (non-vanilla) model JSON indexed by normalized model path
-    /// (e.g. "biomesoplenty:block/algal_end_stone").
+    /// External model JSON indexed by pack and normalized model path.
     /// </summary>
-    private static readonly Dictionary<string, JsonObject> _externalModels = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<(string PackId, string ModelPath), JsonObject> _externalModels = new();
 
-    /// <summary>Resolved model cache (model path → resolved).</summary>
-    private static readonly Dictionary<string, ResolvedBlockModel> _resolvedCache = new();
+    // Namespaced mod dependencies remain available without enabling standalone pack overrides.
+    private static readonly Dictionary<string, JsonObject> _modModels = new();
+
+    /// <summary>Resolved model cache, scoped to the selected pack and block source.</summary>
+    private static readonly Dictionary<(string PackId, string SourceId, string ModelPath), ResolvedBlockModel> _resolvedCache = new();
 
     // ── Initialization ────────────────────────────────────────────────────────
 
@@ -184,10 +188,12 @@ public static class BlockRegistry
     {
         _blocks.Clear();
         _variants.Clear();
+        _externalVariants.Clear();
         _blockSourceIds.Clear();
         _rawModelCache.Clear();
         _resolvedCache.Clear();
         _externalModels.Clear();
+        _modModels.Clear();
 
         progress?.Invoke(0f, "Locating Minecraft version data...");
 
@@ -242,7 +248,7 @@ public static class BlockRegistry
 
         LoadExternalAssets((value, detail) => progress?.Invoke(0.70f + value * 0.30f, detail));
 
-        _blocks.AddRange(_variants.Keys.OrderBy(k => k));
+        _blocks.AddRange(_blockSourceIds.Keys.OrderBy(k => k));
         Console.WriteLine($"Loaded {_blocks.Count} blocks.");
         progress?.Invoke(1f, $"Loaded {_blocks.Count} block entries");
     }
@@ -289,6 +295,8 @@ public static class BlockRegistry
             if (root == null)
                 continue;
 
+            string packId = MinecraftDataLoader.GetResourcePackId(file.PackName);
+
             if (string.Equals(category, "blockstates", StringComparison.OrdinalIgnoreCase) && parts.Length == 4)
             {
                 string blockName = Path.GetFileNameWithoutExtension(parts[3]);
@@ -301,9 +309,16 @@ public static class BlockRegistry
 
                 try
                 {
-                    ParseBlockstate(key, root);
-                    if (_variants.ContainsKey(key))
-                        _blockSourceIds[key] = MinecraftDataLoader.GetResourcePackId(file.PackName);
+                    ParseBlockstate(key, root, packId);
+                    if (_externalVariants.ContainsKey((packId, key)))
+                    {
+                        string sourceKey = NormalizeBlockName(key);
+                        // Overrides must not change a block's default asset source.
+                        if (file.IsJavaMod && !_variants.ContainsKey(sourceKey))
+                            _blockSourceIds[sourceKey] = packId;
+                        else
+                            _blockSourceIds.TryAdd(sourceKey, packId);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -324,7 +339,9 @@ public static class BlockRegistry
                     ? modelPath
                     : $"{assetNamespace}:{modelPath}";
 
-                _externalModels[key] = root;
+                _externalModels[(packId, key.ToLowerInvariant())] = root;
+                if (file.IsJavaMod && key.Contains(':'))
+                    _modModels[key.ToLowerInvariant()] = root;
             }
 
             if (totalContainers > 0)
@@ -339,33 +356,55 @@ public static class BlockRegistry
 
     // ── Public query API ──────────────────────────────────────────────────────
 
-    /// <summary>Returns the variant list for a block, or an empty list.</summary>
-    public static IReadOnlyList<BlockVariantEntry> GetVariants(string blockName)
+    /// <summary>Returns variants from the selected pack, falling back to the block's original source.</summary>
+    public static IReadOnlyList<BlockVariantEntry> GetVariants(string blockName, string resourcePackId = "")
     {
+        blockName = NormalizeBlockName(blockName);
+        foreach (string packId in MinecraftDataLoader.GetResourcePackStack(resourcePackId))
+            if (_externalVariants.TryGetValue((packId, blockName), out var selected) ||
+                (blockName == "short_grass" && _externalVariants.TryGetValue((packId, "grass"), out selected)))
+                return selected;
+
+        string sourceId = GetBlockSourceId(blockName);
+        if (_externalVariants.TryGetValue((sourceId, blockName), out var original))
+            return original;
+
         return _variants.TryGetValue(blockName, out var list) ? list : Array.Empty<BlockVariantEntry>();
     }
 
     public static string GetBlockSourceId(string blockName)
     {
-        return _blockSourceIds.TryGetValue(blockName, out string? id)
+        return _blockSourceIds.TryGetValue(NormalizeBlockName(blockName), out string? id)
             ? id
             : "";
+    }
+
+    /// <summary>Upgrades old Java block IDs without changing other namespaces or raw Bedrock IDs.</summary>
+    public static string NormalizeBlockName(string blockName)
+    {
+        if (blockName.StartsWith("minecraft:", StringComparison.OrdinalIgnoreCase))
+            blockName = blockName["minecraft:".Length..];
+        return blockName == "grass" && _variants.ContainsKey("short_grass") ? "short_grass" : blockName;
     }
 
     /// <summary>
     /// Resolves a model path (e.g. "minecraft:block/grass_block") to a
     /// <see cref="ResolvedBlockModel"/> by walking the parent chain.
+    /// The selected pack overlays the block's original source and bundled models throughout the chain.
     /// Returns null if the model cannot be found.
     /// </summary>
-    public static ResolvedBlockModel? ResolveModel(string modelPath)
+    public static ResolvedBlockModel? ResolveModel(string modelPath, string resourcePackId = "", string blockName = "")
     {
-        string normalized = NormalizeModelPath(modelPath);
-        if (_resolvedCache.TryGetValue(normalized, out var cached))
+        string normalized = NormalizeModelPath(modelPath).ToLowerInvariant();
+        string packId = MinecraftDataLoader.NormalizeResourcePackStack(resourcePackId);
+        string sourceId = GetBlockSourceId(blockName);
+        var key = (packId, sourceId, normalized);
+        if (_resolvedCache.TryGetValue(key, out var cached))
             return cached;
 
-        var resolved = BuildResolvedModel(normalized, new HashSet<string>());
+        var resolved = BuildResolvedModel(normalized, new HashSet<string>(), packId, sourceId);
         if (resolved != null)
-            _resolvedCache[normalized] = resolved;
+            _resolvedCache[key] = resolved;
         return resolved;
     }
 
@@ -590,7 +629,7 @@ public static class BlockRegistry
         ParseBlockstate(blockName, root);
     }
 
-    private static void ParseBlockstate(string blockName, JsonObject root)
+    private static void ParseBlockstate(string blockName, JsonObject root, string packId = "")
     {
 
         var variantList = new List<BlockVariantEntry>();
@@ -680,7 +719,12 @@ public static class BlockRegistry
         var compressed = CompressTwoBlockVariants(variantList);
 
         if (compressed.Count > 0)
-            _variants[blockName] = compressed;
+        {
+            if (string.IsNullOrEmpty(packId))
+                _variants[blockName] = compressed;
+            else
+                _externalVariants[(packId, blockName)] = compressed;
+        }
     }
 
     /// <summary>
@@ -799,7 +843,7 @@ public static class BlockRegistry
 
     // ── Model resolution ──────────────────────────────────────────────────────
 
-    private static ResolvedBlockModel? BuildResolvedModel(string modelPath, HashSet<string> visited)
+    private static ResolvedBlockModel? BuildResolvedModel(string modelPath, HashSet<string> visited, string packId, string sourceId)
     {
         if (!visited.Add(modelPath))
         {
@@ -807,7 +851,7 @@ public static class BlockRegistry
             return null;
         }
 
-        JsonObject? raw = LoadRawModel(modelPath);
+        JsonObject? raw = LoadRawModel(modelPath, packId, sourceId);
         if (raw == null) return null;
 
         // Recursively resolve parent first
@@ -815,10 +859,10 @@ public static class BlockRegistry
         if (raw["parent"] is JsonValue parentToken &&
             parentToken.TryGetValue(out string? parentValue))
         {
-            string parentPath = NormalizeModelPath(parentValue ?? "");
+            string parentPath = NormalizeModelPath(parentValue ?? "").ToLowerInvariant();
             // Skip the built-in "builtin/generated" or "builtin/entity" parents
             if (!parentPath.StartsWith("builtin/") && !parentPath.Contains("builtin/"))
-                parentResolved = BuildResolvedModel(parentPath, visited);
+                parentResolved = BuildResolvedModel(parentPath, visited, packId, sourceId);
         }
 
         // Start from parent (or empty) then overlay this model's data
@@ -979,21 +1023,34 @@ public static class BlockRegistry
         return result;
     }
 
-    private static JsonObject? LoadRawModel(string normalizedPath)
+    private static JsonObject? LoadRawModel(string normalizedPath, string packId, string sourceId)
     {
-        if (_rawModelCache.TryGetValue(normalizedPath, out var cached))
+        var key = (packId, sourceId, normalizedPath);
+        if (_rawModelCache.TryGetValue(key, out var cached))
             return cached;
 
-        if (_externalModels.TryGetValue(normalizedPath, out JsonObject? external))
+        foreach (string selectedId in MinecraftDataLoader.GetResourcePackStack(packId))
         {
-            _rawModelCache[normalizedPath] = external;
+            if (!_externalModels.TryGetValue((selectedId, normalizedPath), out var selected) &&
+                !(normalizedPath == "block/short_grass" &&
+                  _externalModels.TryGetValue((selectedId, "block/grass"), out selected)))
+                continue;
+            _rawModelCache[key] = selected;
+            return selected;
+        }
+
+        if (_externalModels.TryGetValue((sourceId, normalizedPath), out JsonObject? external) ||
+            (normalizedPath == "block/short_grass" && _externalModels.TryGetValue((sourceId, "block/grass"), out external)) ||
+            _modModels.TryGetValue(normalizedPath, out external))
+        {
+            _rawModelCache[key] = external;
             return external;
         }
 
         // Any remaining namespaced path is non-vanilla and was not found in external assets.
         if (normalizedPath.Contains(':'))
         {
-            _rawModelCache[normalizedPath] = null;
+            _rawModelCache[key] = null;
             return null;
         }
 
@@ -1020,7 +1077,7 @@ public static class BlockRegistry
             }
         }
 
-        _rawModelCache[normalizedPath] = result;
+        _rawModelCache[key] = result;
         return result;
     }
 

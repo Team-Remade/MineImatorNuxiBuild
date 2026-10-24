@@ -108,18 +108,25 @@ public static class CemLoader
     {
         if (string.IsNullOrEmpty(texturePath)) return 0;
 
-        // JEM texture paths look like "textures/block/classic_chest.png"
-        // Try the key in TerrainAtlas first (key = filename without extension)
-        string key = Path.GetFileNameWithoutExtension(texturePath);
-        string normalizedPackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
-        if (!string.IsNullOrWhiteSpace(normalizedPackId))
+        // Keep entity subdirectories: beds and banners can share the same filename.
+        string path = texturePath.Replace('\\', '/');
+        string assetNamespace = "";
+        int colon = path.IndexOf(':');
+        if (colon >= 0)
         {
-            string namespacedKey = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(normalizedPackId, key);
-            if (TerrainAtlas.Textures.TryGetValue(namespacedKey, out uint packAtlasId))
-                return packAtlasId;
+            assetNamespace = path[..(colon + 1)];
+            path = path[(colon + 1)..];
         }
+        if (path.StartsWith("textures/")) path = path["textures/".Length..];
+        if (path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) path = path[..^4];
+        string key = BlockRegistry.ResolveTextureKey(new ResolvedBlockModel(), assetNamespace + path) ?? path;
+        string resolvedKey = TerrainAtlas.ResolveTextureKey(key, resourcePackId);
+        if (TerrainAtlas.Textures.TryGetValue(resolvedKey, out uint atlasId))
+            return atlasId;
 
-        if (TerrainAtlas.Textures.TryGetValue(key, out uint atlasId))
+        // Older bundled CEM textures were indexed by filename only.
+        string legacyKey = TerrainAtlas.ResolveTextureKey(Path.GetFileNameWithoutExtension(texturePath), resourcePackId);
+        if (TerrainAtlas.Textures.TryGetValue(legacyKey, out atlasId))
             return atlasId;
 
         // Fall back: load the file directly relative to versionRoot

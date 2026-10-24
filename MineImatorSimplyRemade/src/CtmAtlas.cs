@@ -7,19 +7,25 @@ public static class CtmAtlas
 {
     private static GL? _gl;
     private static readonly Dictionary<uint, string> _textureKeys = new();
+    private static readonly Dictionary<(string Pack, string Path), uint> _textureHandles = new();
+    private static readonly Dictionary<(string Pack, string Path), uint> _tileTextures = new();
 
     public static string? GetTextureKey(uint texture) => _textureKeys.GetValueOrDefault(texture);
-    private static readonly Dictionary<string, CtmProperties> _rulesByBlockName = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<string, CtmProperties> _rulesByTextureKey = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<string, List<CtmProperties>> _rulesByPack = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<(string Pack, string Key), List<CtmProperties>> _rulesByBlockName = new();
+    private static readonly Dictionary<(string Pack, string Key), List<CtmProperties>> _rulesByTextureKey = new();
 
     public static void Initialize(GL gl)
     {
+        // Existing meshes retain these handles. Reuse them on reload until the GL context closes.
+        if (!ReferenceEquals(_gl, gl))
+        {
+            _textureHandles.Clear();
+            _textureKeys.Clear();
+        }
         _gl = gl;
-        _textureKeys.Clear();
+        _tileTextures.Clear();
         _rulesByBlockName.Clear();
         _rulesByTextureKey.Clear();
-        _rulesByPack.Clear();
         LoadCtmFromResourcePacks();
     }
 
@@ -48,47 +54,63 @@ public static class CtmAtlas
             }
         }
 
+        LoadTileTextures(allRules);
         foreach (var props in allRules)
         {
-            LoadTileTextures(props);
-
-            string key = $"{props.PackId}:{props.PropertiesPath}";
-            if (!_rulesByPack.ContainsKey(key))
-                _rulesByPack[key] = new List<CtmProperties>();
-            _rulesByPack[key].Add(props);
-
             foreach (var normalized in props.MatchBlocks.Select(NormalizeBlockName).Where(normalized => !string.IsNullOrEmpty(normalized)))
             {
-                _rulesByBlockName[normalized] = props;
+                var key = (props.PackId, normalized);
+                if (!_rulesByBlockName.TryGetValue(key, out var rules))
+                    _rulesByBlockName[key] = rules = new();
+                rules.Add(props);
             }
 
             foreach (var normalized in props.MatchTiles.Select(NormalizeTextureKey).Where(normalized => !string.IsNullOrEmpty(normalized)))
             {
-                _rulesByTextureKey[normalized] = props;
+                var key = (props.PackId, normalized);
+                if (!_rulesByTextureKey.TryGetValue(key, out var rules))
+                    _rulesByTextureKey[key] = rules = new();
+                rules.Add(props);
             }
         }
     }
 
-    private static void LoadTileTextures(CtmProperties props)
+    private static void LoadTileTextures(List<CtmProperties> rules)
     {
-        if (_gl == null || props.Tiles.Count == 0) return;
+        if (_gl == null) return;
 
-        foreach (int tileIndex in props.Tiles)
+        var paths = rules.SelectMany(rule => rule.Tiles.Select(tile =>
+            $"{rule.Directory.Replace('\\', '/')}/{tile}.png".ToLowerInvariant())).ToHashSet();
+        var files = new Dictionary<(string Pack, string Path), byte[]>();
+        foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png"))
         {
-            string tileFileName = $"{tileIndex}.png";
-            string dir = props.Directory.Replace('\\', '/');
-            string expectedPath = $"{dir}/{tileFileName}";
+            string path = file.RelativePath.Replace('\\', '/').ToLowerInvariant();
+            if (paths.Contains(path))
+                files[(MinecraftDataLoader.GetResourcePackId(file.PackName), path)] = file.Data;
+        }
 
-            uint texId = (from file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png") where file.RelativePath.Equals(expectedPath, StringComparison.OrdinalIgnoreCase) let filePackId = MinecraftDataLoader.GetResourcePackId(file.PackName) where filePackId.Equals(props.PackId, StringComparison.OrdinalIgnoreCase) select LoadTextureFromBytes(file.Data)).FirstOrDefault();
-
-            props.TileTextureIds.Add(texId);
-            if (texId != 0)
-                _textureKeys[texId] = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(props.PackId,
-                    expectedPath[..^4]);
+        foreach (var (key, data) in files)
+        {
+            _textureHandles.TryGetValue(key, out uint existing);
+            uint texture = LoadTextureFromBytes(data, existing);
+            if (texture == 0) continue;
+            _textureHandles[key] = texture;
+            _tileTextures[key] = texture;
+            _textureKeys[texture] = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(key.Pack, key.Path[..^4]);
         }
     }
 
-    private static uint LoadTextureFromBytes(byte[] data)
+    public static uint ResolveTileTexture(CtmProperties rule, int tileIndex, string resourcePackId, string blockName = "")
+    {
+        if (tileIndex < 0 || tileIndex >= rule.Tiles.Count) return 0;
+        string path = $"{rule.Directory.Replace('\\', '/')}/{rule.Tiles[tileIndex]}.png".ToLowerInvariant();
+        foreach (string pack in MinecraftDataLoader.GetResourcePackStack(resourcePackId))
+            if (_tileTextures.TryGetValue((pack, path), out uint selected)) return selected;
+        string source = BlockRegistry.GetBlockSourceId(blockName);
+        return _tileTextures.GetValueOrDefault((source, path));
+    }
+
+    private static uint LoadTextureFromBytes(byte[] data, uint existing = 0)
     {
         if (_gl == null) return 0;
 
@@ -96,7 +118,7 @@ public static class CtmAtlas
         {
             var img = ImageResult.FromMemory(data, ColorComponents.RedGreenBlueAlpha);
 
-            uint texId = _gl.GenTexture();
+            uint texId = existing == 0 ? _gl.GenTexture() : existing;
             _gl.BindTexture(GLEnum.Texture2D, texId);
 
             unsafe
@@ -124,20 +146,28 @@ public static class CtmAtlas
         }
     }
 
-    public static CtmProperties? FindRule(string blockName, string textureKey)
+    public static CtmProperties? FindRule(string blockName, string textureKey, string resourcePackId = "",
+        Func<CtmProperties, bool>? matches = null)
     {
-        if (!string.IsNullOrEmpty(blockName))
+        string normalizedBlock = NormalizeBlockName(blockName);
+        string normalizedTex = NormalizeTextureKey(textureKey);
+        string selectedTex = NormalizeTextureKey(TerrainAtlas.ResolveTextureKey(textureKey, resourcePackId, blockName));
+        string sourceId = BlockRegistry.GetBlockSourceId(blockName);
+        var packs = MinecraftDataLoader.GetResourcePackStack(resourcePackId);
+        for (int i = 0; i <= packs.Count; i++)
         {
-            string normalizedBlock = NormalizeBlockName(blockName);
-            if (_rulesByBlockName.TryGetValue(normalizedBlock, out var rule))
-                return rule;
-        }
+            string packId = i < packs.Count ? packs[i] : sourceId;
+            if (packId.Length == 0) continue;
+            if (_rulesByBlockName.TryGetValue((packId, normalizedBlock), out var blockRules))
+                for (int j = blockRules.Count - 1; j >= 0; j--)
+                    if (matches == null || matches(blockRules[j])) return blockRules[j];
 
-        if (!string.IsNullOrEmpty(textureKey))
-        {
-            string normalizedTex = NormalizeTextureKey(textureKey);
-            if (_rulesByTextureKey.TryGetValue(normalizedTex, out var rule))
-                return rule;
+            if (_rulesByTextureKey.TryGetValue((packId, selectedTex), out var textureRules))
+                for (int j = textureRules.Count - 1; j >= 0; j--)
+                    if (matches == null || matches(textureRules[j])) return textureRules[j];
+            if (selectedTex != normalizedTex && _rulesByTextureKey.TryGetValue((packId, normalizedTex), out textureRules))
+                for (int j = textureRules.Count - 1; j >= 0; j--)
+                    if (matches == null || matches(textureRules[j])) return textureRules[j];
         }
 
         return null;
@@ -147,15 +177,18 @@ public static class CtmAtlas
     {
         if (string.IsNullOrWhiteSpace(name)) return "";
         name = name.Trim().ToLowerInvariant();
-        if (name.Contains(':'))
-            name = name[(name.IndexOf(':') + 1)..];
-        return name;
+        return BlockRegistry.NormalizeBlockName(name);
     }
 
     private static string NormalizeTextureKey(string key)
     {
         if (string.IsNullOrWhiteSpace(key)) return "";
         key = key.Trim().ToLowerInvariant();
+        if (key.StartsWith("resourcepack:"))
+        {
+            int separator = key.IndexOf(':', "resourcepack:".Length);
+            if (separator >= 0) key = key[(separator + 1)..];
+        }
         if (key.StartsWith("minecraft:"))
             key = key["minecraft:".Length..];
         if (key.StartsWith("block/"))

@@ -64,12 +64,17 @@ public static class TerrainAtlas
 
     public static string ResolveTextureKey(string baseTextureKey, string resourcePackId, string blockName = "")
     {
-        string packId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
-        if (!string.IsNullOrEmpty(packId))
+        foreach (string packId in MinecraftDataLoader.GetResourcePackStack(resourcePackId))
         {
             string overrideKey = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(packId, baseTextureKey);
             if (Textures.ContainsKey(overrideKey))
                 return overrideKey;
+            if (baseTextureKey == "short_grass")
+            {
+                string legacyKey = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(packId, "grass");
+                if (Textures.ContainsKey(legacyKey))
+                    return legacyKey;
+            }
         }
 
         // Resource packs may override only some textures; retain the originating mod as fallback.

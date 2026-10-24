@@ -17,31 +17,20 @@ public static class CtmResolver
                                            int tileX, int tileY, int tileZ,
                                            string resourcePackId)
     {
-        var rule = CtmAtlas.FindRule(blockName, textureKey);
+        var rule = CtmAtlas.FindRule(blockName, textureKey, resourcePackId, rule => FaceMatchesRule(faceName, rule));
         if (rule == null)
-        {
-            return null;
-        }
-
-        if (!string.IsNullOrEmpty(resourcePackId) &&
-            !rule.PackId.Equals(MinecraftDataLoader.NormalizeResourcePackId(resourcePackId), StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        if (!FaceMatchesRule(faceName, rule))
         {
             return null;
         }
 
         int tileIndex = ComputeTileIndex(rule, faceName, tx, ty, tz, tileX, tileY, tileZ);
 
-        if (tileIndex < 0 || tileIndex >= rule.TileTextureIds.Count)
+        if (tileIndex < 0 || tileIndex >= rule.Tiles.Count)
         {
             tileIndex = 0;
         }
 
-        uint texId = tileIndex < rule.TileTextureIds.Count ? rule.TileTextureIds[tileIndex] : 0;
+        uint texId = CtmAtlas.ResolveTileTexture(rule, tileIndex, resourcePackId, blockName);
         if (texId == 0)
         {
             return null;

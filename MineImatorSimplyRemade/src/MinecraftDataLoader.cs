@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Collections.Concurrent;
 using System.Text;
 
 namespace MineImatorSimplyRemade;
@@ -12,12 +13,14 @@ public static class MinecraftDataLoader
 {
     private const string ResourcePackKeyPrefix = "resourcepack";
     private static string _projectRoot = "";
+    private static readonly ConcurrentDictionary<string, string[]> _resourcePackStacks = new();
 
     public delegate void AssetContainerScanCallback(string rootRelativePath, string containerName, int currentContainer, int totalContainers);
 
     public sealed class ResourcePackFile
     {
         public string PackName { get; init; } = "";
+        public bool IsJavaMod { get; internal set; }
         public string RelativePath { get; init; } = "";
         public byte[] Data { get; init; } = Array.Empty<byte>();
     }
@@ -74,9 +77,12 @@ public static class MinecraftDataLoader
                      Path.Combine("mods", "javamods"),
                      normalizedPrefix,
                      normalizedSuffix,
-                 new[] { ".jar", ".zip" },
-                 scanProgress))
+                  new[] { ".jar", ".zip" },
+                  scanProgress))
+        {
+            file.IsJavaMod = true;
             yield return file;
+        }
     }
 
     private static IEnumerable<ResourcePackFile> EnumerateAssetContainers(
@@ -293,6 +299,19 @@ public static class MinecraftDataLoader
 
         return sb.ToString();
     }
+
+    /// <summary>Ordered pack IDs, highest priority first. A single ID remains a valid selection.</summary>
+    public static IReadOnlyList<string> GetResourcePackStack(string? selection) =>
+        _resourcePackStacks.GetOrAdd(selection ?? "", static value => value
+            .Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .Select(NormalizeResourcePackId)
+            .Where(id => id.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray());
+
+    /// <summary>Serializes a pack stack in the existing resource-pack selection field.</summary>
+    public static string NormalizeResourcePackStack(string? selection) =>
+        string.Join(';', GetResourcePackStack(selection));
 
     public static bool TryParseTextureAssetPath(
         string relativePath,

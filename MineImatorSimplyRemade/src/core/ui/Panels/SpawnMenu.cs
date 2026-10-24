@@ -128,7 +128,7 @@ public class SpawnMenu : UiPanel
     private string _blockSearchQuery  = "";
 
     /// <summary>
-    /// Selected resourcepack ID for block/schematic spawning.
+    /// Selected resource pack stack for block/schematic spawning, highest priority first.
     /// Empty means default (base game textures).
     /// </summary>
     private string _spawnResourcePackId = "";
@@ -313,9 +313,9 @@ public class SpawnMenu : UiPanel
         foreach (string id in MinecraftDataLoader.GetAvailableResourcePackIds())
             _availableItemSourceIds.Add(id);
 
-        _spawnResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(_spawnResourcePackId);
-        if (!_availableResourcePackIds.Contains(_spawnResourcePackId, StringComparer.OrdinalIgnoreCase))
-            _spawnResourcePackId = "";
+        _spawnResourcePackId = MinecraftDataLoader.NormalizeResourcePackStack(string.Join(';',
+            MinecraftDataLoader.GetResourcePackStack(_spawnResourcePackId)
+                .Where(id => _availableResourcePackIds.Contains(id, StringComparer.OrdinalIgnoreCase))));
 
         _spawnBlockSourceId = MinecraftDataLoader.NormalizeResourcePackId(_spawnBlockSourceId);
         if (!_availableSourceModIds.Contains(_spawnBlockSourceId, StringComparer.OrdinalIgnoreCase))
@@ -324,6 +324,14 @@ public class SpawnMenu : UiPanel
         _spawnItemSourceId = MinecraftDataLoader.NormalizeResourcePackId(_spawnItemSourceId);
         if (!_availableItemSourceIds.Contains(_spawnItemSourceId, StringComparer.OrdinalIgnoreCase))
             _spawnItemSourceId = "";
+
+        if (_selectedCategory == "Blocks" && _selectedObjectIndex >= 0 &&
+            _selectedObjectIndex < BlockRegistry.Blocks.Count)
+        {
+            OnBlockSelected(BlockRegistry.Blocks[_selectedObjectIndex]);
+            if (_selectedVariantIndex >= _currentVariants.Count)
+                _selectedVariantIndex = -1;
+        }
     }
 
     private bool RenderResourcePackSelector(
@@ -549,14 +557,14 @@ public class SpawnMenu : UiPanel
                         _selectedObjectIndex >= BlockRegistry.Blocks.Count ? "" :
                         $"block:{BlockRegistry.Blocks[_selectedObjectIndex]}:" +
                         $"{(_selectedVariantIndex >= 0 ? _selectedVariantIndex : 0)}:" +
-                        $"rp:{GetEffectiveBlockTextureSourceId()}",
+                        $"rp:{MinecraftDataLoader.NormalizeResourcePackStack(_spawnResourcePackId)}",
             "Characters" or "Equipment" or "Props" => _selectedObjectIndex < 0 ||
                             _selectedObjectIndex >= SelectedModelCatalog.Count ? "" :
                             $"char:{SelectedModelCatalog[_selectedObjectIndex].FilePath}" +
                             $":{_selectedCharTextureIndex}",
             _ => _selectedObjectIndex < 0 ? "" :
                   $"std:{_selectedCategory}:{GetFilteredObjects().ElementAtOrDefault(_selectedObjectIndex) ?? ""}:" +
-                  $"rp:{(_selectedCategory == "Scenery" ? MinecraftDataLoader.NormalizeResourcePackId(_spawnResourcePackId) : "")}" 
+                  $"rp:{(_selectedCategory == "Scenery" ? MinecraftDataLoader.NormalizeResourcePackStack(_spawnResourcePackId) : "")}"
         };
     }
 
@@ -629,7 +637,7 @@ public class SpawnMenu : UiPanel
 
                 string blockName = BlockRegistry.Blocks[_selectedObjectIndex];
                 int variantIdx   = _selectedVariantIndex >= 0 ? _selectedVariantIndex : 0;
-                var variants     = BlockRegistry.GetVariants(blockName);
+                var variants     = BlockRegistry.GetVariants(blockName, _spawnResourcePackId);
                 if (variants.Count == 0) return new List<Mesh>();
                 if (variantIdx >= variants.Count) variantIdx = 0;
 
@@ -785,7 +793,7 @@ public class SpawnMenu : UiPanel
 
         ResolvedBlockModel? resolved = null;
         if (!string.IsNullOrEmpty(variant.ModelPath))
-            resolved = BlockRegistry.ResolveModel(variant.ModelPath);
+            resolved = BlockRegistry.ResolveModel(variant.ModelPath, _spawnResourcePackId, blockName);
 
         List<Mesh> built;
         if (!string.IsNullOrEmpty(variant.CemPath))
@@ -1026,10 +1034,10 @@ public class SpawnMenu : UiPanel
 
             if (_selectedCategory == "Scenery")
             {
-                RenderResourcePackSelector(
+                ResourcePackStackSelector.Render(
                     "Scenery",
                     ref _spawnResourcePackId,
-                    "Resource Pack:",
+                    "Resource Packs:",
                     _availableSceneryResourcePackIds);
                 ImGui.Spacing();
                 ImGui.Separator();
@@ -1553,7 +1561,13 @@ public class SpawnMenu : UiPanel
         UiText.Disabled(Localization.T("text.panel.spawn.variants"));
         ImGui.Separator();
 
-        RenderResourcePackSelector("BlocksResourcePack", ref _spawnResourcePackId, "Resource Pack:");
+        if (ResourcePackStackSelector.Render("BlocksResourcePack", ref _spawnResourcePackId, "Resource Packs:", _availableResourcePackIds))
+        {
+            _selectedVariantIndex = -1;
+            _currentVariants.Clear();
+            if (_selectedObjectIndex >= 0 && _selectedObjectIndex < BlockRegistry.Blocks.Count)
+                OnBlockSelected(BlockRegistry.Blocks[_selectedObjectIndex]);
+        }
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -1597,7 +1611,7 @@ public class SpawnMenu : UiPanel
         {
             string blockName = BlockRegistry.Blocks[_selectedObjectIndex];
             int variantIdx   = _selectedVariantIndex >= 0 ? _selectedVariantIndex : 0;
-            var variants     = BlockRegistry.GetVariants(blockName);
+            var variants     = BlockRegistry.GetVariants(blockName, _spawnResourcePackId);
 
             if (variants.Count > 0 && variantIdx < variants.Count)
             {
@@ -2108,7 +2122,7 @@ public class SpawnMenu : UiPanel
             var blockList = BlockRegistry.Blocks;
             return _selectedObjectIndex >= 0 &&
                    _selectedObjectIndex < blockList.Count &&
-                   BlockRegistry.GetVariants(blockList[_selectedObjectIndex]).Count > 0;
+                   BlockRegistry.GetVariants(blockList[_selectedObjectIndex], _spawnResourcePackId).Count > 0;
         }
 
         if (IsModelCatalogCategory)
@@ -2189,7 +2203,7 @@ public class SpawnMenu : UiPanel
     private void OnBlockSelected(string blockName)
     {
         _currentVariants.Clear();
-        var variants = BlockRegistry.GetVariants(blockName);
+        var variants = BlockRegistry.GetVariants(blockName, _spawnResourcePackId);
         foreach (var v in variants)
             _currentVariants.Add(v.VariantKey);
     }
@@ -2684,7 +2698,7 @@ public class SpawnMenu : UiPanel
 
         _lastSchematicLoadError = null;
 
-        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
+        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackStack(resourcePackId);
         string previousResourcePackId = _spawnResourcePackId;
         _spawnResourcePackId = normalizedResourcePackId;
 
@@ -3074,7 +3088,7 @@ public class SpawnMenu : UiPanel
     {
         info = null;
 
-        var largeVariant = BlockRegistry.GetVariants(blockName)
+        var largeVariant = BlockRegistry.GetVariants(blockName, _spawnResourcePackId)
             .FirstOrDefault(v => string.Equals(v.VariantKey, "large", StringComparison.OrdinalIgnoreCase));
         if (largeVariant == null)
             return false;
@@ -3291,19 +3305,19 @@ public class SpawnMenu : UiPanel
         return (byte)Math.Clamp(maxLevel, 0, 15);
     }
 
-    private byte ComputeAutoEmissionLevel(string blockName, BlockVariantEntry variant)
+    private byte ComputeAutoEmissionLevel(string blockName, BlockVariantEntry variant, string resourcePackId)
     {
         byte maxLevel = GetFallbackAutoEmissionLevel(blockName);
 
         if (!string.IsNullOrEmpty(variant.ModelPath))
         {
-            var resolved = BlockRegistry.ResolveModel(variant.ModelPath);
+            var resolved = BlockRegistry.ResolveModel(variant.ModelPath, resourcePackId, blockName);
             maxLevel = Math.Max(maxLevel, GetModelEmissionLevel(resolved));
         }
 
         if (variant.TopHalf != null && !string.IsNullOrEmpty(variant.TopHalf.ModelPath))
         {
-            var topResolved = BlockRegistry.ResolveModel(variant.TopHalf.ModelPath);
+            var topResolved = BlockRegistry.ResolveModel(variant.TopHalf.ModelPath, resourcePackId, blockName);
             maxLevel = Math.Max(maxLevel, GetModelEmissionLevel(topResolved));
         }
 
@@ -3345,7 +3359,7 @@ public class SpawnMenu : UiPanel
                     continue;
                 }
 
-                var variant = PickBestVariantForProperties(BlockRegistry.GetVariants(blockName), props, null);
+                var variant = PickBestVariantForProperties(BlockRegistry.GetVariants(blockName, _spawnResourcePackId), props, null);
                 if (variant == null)
                 {
                     idToInfo[paletteId] = null;
@@ -3444,7 +3458,7 @@ public class SpawnMenu : UiPanel
                 Dictionary<string, string>? doorProps =
                     TryParseVariantHintProperties(doorHint, out var parsedDoorProps) ? parsedDoorProps : null;
 
-                var doorVariant = PickBestVariantForProperties(BlockRegistry.GetVariants(doorName), doorProps, doorHint);
+                var doorVariant = PickBestVariantForProperties(BlockRegistry.GetVariants(doorName, _spawnResourcePackId), doorProps, doorHint);
                 outVoxels[i] = doorVariant == null
                     ? null
                     : GetOrCreateVariantRenderInfo(doorName, doorVariant, variantCache);
@@ -3482,7 +3496,7 @@ public class SpawnMenu : UiPanel
                 Dictionary<string, string>? props =
                     TryParseVariantHintProperties(variantHint, out var parsedProps) ? parsedProps : null;
 
-                var variant = PickBestVariantForProperties(BlockRegistry.GetVariants(blockName), props, variantHint);
+                var variant = PickBestVariantForProperties(BlockRegistry.GetVariants(blockName, _spawnResourcePackId), props, variantHint);
                 if (variant == null)
                 {
                     legacyCache[legacyKey] = null;
@@ -3512,7 +3526,7 @@ public class SpawnMenu : UiPanel
         if (cache.TryGetValue(cacheKey, out var existing))
             return existing;
 
-        var variants = BlockRegistry.GetVariants(blockName);
+        var variants = BlockRegistry.GetVariants(blockName, _spawnResourcePackId);
         if (variants.Count == 0)
             return null;
 
@@ -3557,9 +3571,9 @@ public class SpawnMenu : UiPanel
             Templates = BuildVariantTemplates(parts, blockName)
         };
 
-        byte emissionLevel = ComputeAutoEmissionLevel(blockName, post);
+        byte emissionLevel = ComputeAutoEmissionLevel(blockName, post, _spawnResourcePackId);
         foreach (var part in parts)
-            emissionLevel = Math.Max(emissionLevel, ComputeAutoEmissionLevel(blockName, part));
+            emissionLevel = Math.Max(emissionLevel, ComputeAutoEmissionLevel(blockName, part, _spawnResourcePackId));
         info.AutoEmissionLevel = emissionLevel;
 
         cache[cacheKey] = info;
@@ -3581,7 +3595,7 @@ public class SpawnMenu : UiPanel
             Variant = variant
         };
 
-        info.AutoEmissionLevel = ComputeAutoEmissionLevel(blockName, variant);
+        info.AutoEmissionLevel = ComputeAutoEmissionLevel(blockName, variant, _spawnResourcePackId);
 
         info.CubeFaces = TryBuildCullableCubeFaces(variant, blockName);
         info.IsCullableCube = info.CubeFaces != null;
@@ -3607,7 +3621,7 @@ public class SpawnMenu : UiPanel
         if (string.IsNullOrEmpty(variant.ModelPath))
             return null;
 
-        var resolved = BlockRegistry.ResolveModel(variant.ModelPath);
+        var resolved = BlockRegistry.ResolveModel(variant.ModelPath, _spawnResourcePackId, blockName);
         if (resolved == null || resolved.Elements.Count == 0)
             return null;
 
@@ -3816,6 +3830,7 @@ public class SpawnMenu : UiPanel
         // The registry uses bare names for vanilla blocks and namespaced IDs for mods.
         if (blockName.StartsWith("minecraft:", StringComparison.OrdinalIgnoreCase))
             blockName = blockName["minecraft:".Length..];
+        blockName = BlockRegistry.NormalizeBlockName(blockName);
         if (string.IsNullOrEmpty(blockName)) return false;
 
         if (bracket < 0) return true;
@@ -4458,7 +4473,7 @@ public class SpawnMenu : UiPanel
             case 31:
                 blockName = (blockData & 0x3) switch
                 {
-                    1 => "grass",
+                    1 => BlockRegistry.NormalizeBlockName("grass"),
                     2 => "fern",
                     _ => "dead_bush"
                 };
@@ -5026,18 +5041,18 @@ public class SpawnMenu : UiPanel
 
         // Default to first variant if none explicitly selected
         int variantIndex = _selectedVariantIndex >= 0 ? _selectedVariantIndex : 0;
-        var variants = BlockRegistry.GetVariants(blockName);
+        var variants = BlockRegistry.GetVariants(blockName, _spawnResourcePackId);
         if (variants.Count == 0) return;
         if (variantIndex >= variants.Count) variantIndex = 0;
 
         var variant = variants[variantIndex];
-        SpawnBlockObject(blockName, variant, GetEffectiveBlockTextureSourceId());
+        SpawnBlockObject(blockName, variant, _spawnResourcePackId);
         _isOpen = false;
     }
 
     private string GetEffectiveBlockTextureSourceId(string blockName = "")
     {
-        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(_spawnResourcePackId);
+        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackStack(_spawnResourcePackId);
         if (!string.IsNullOrWhiteSpace(normalizedResourcePackId))
             return normalizedResourcePackId;
 
@@ -5625,7 +5640,8 @@ public class SpawnMenu : UiPanel
     {
         if (Viewport == null || Gl == null) return null;
 
-        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
+        blockName = BlockRegistry.NormalizeBlockName(blockName);
+        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackStack(resourcePackId);
 
         int nextNum     = GetNextAvailableObjectNumber(blockName);
         string fullName = nextNum > 1 ? $"{blockName}{nextNum}" : blockName;
@@ -5681,9 +5697,9 @@ public class SpawnMenu : UiPanel
         if (!string.Equals(target.SpawnCategory, "Blocks", StringComparison.Ordinal))
             return false;
 
-        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(target.ResourcePackId);
+        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackStack(target.ResourcePackId);
 
-        var variants = BlockRegistry.GetVariants(target.ObjectType);
+        var variants = BlockRegistry.GetVariants(target.ObjectType, normalizedResourcePackId);
         var variant = variants.FirstOrDefault(v => string.Equals(v.VariantKey, target.BlockVariant, StringComparison.Ordinal))
                       ?? variants.FirstOrDefault();
         if (variant == null)
@@ -5701,11 +5717,11 @@ public class SpawnMenu : UiPanel
         if (target == null || Viewport == null)
             return false;
 
-        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
+        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackStack(resourcePackId);
 
         if (string.Equals(target.SpawnCategory, "Blocks", StringComparison.Ordinal))
         {
-            var variants = BlockRegistry.GetVariants(target.ObjectType);
+            var variants = BlockRegistry.GetVariants(target.ObjectType, normalizedResourcePackId);
             var variant = variants.FirstOrDefault(v => string.Equals(v.VariantKey, target.BlockVariant, StringComparison.Ordinal))
                           ?? variants.FirstOrDefault();
             if (variant == null)
@@ -5828,6 +5844,12 @@ public class SpawnMenu : UiPanel
 
     private bool ReplaceObjectMeshesFromTempSpawn(SceneObject target, SceneObject temp, string normalizedResourcePackId)
     {
+        if (temp.Visuals.Count == 0)
+        {
+            Viewport?.SceneObjects.Remove(temp);
+            return false;
+        }
+
         foreach (Mesh mesh in target.Visuals.ToList())
         {
             target.RemoveMesh(mesh);
@@ -5858,7 +5880,7 @@ public class SpawnMenu : UiPanel
     {
         ResolvedBlockModel? resolved = null;
         if (!string.IsNullOrEmpty(variant.ModelPath))
-            resolved = BlockRegistry.ResolveModel(variant.ModelPath);
+            resolved = BlockRegistry.ResolveModel(variant.ModelPath, resourcePackId, obj.ObjectType);
 
         List<Mesh> meshes;
         if (!string.IsNullOrEmpty(variant.CemPath))
@@ -5886,7 +5908,7 @@ public class SpawnMenu : UiPanel
             }
         }
 
-        byte autoEmissionLevel = ComputeAutoEmissionLevel(obj.ObjectType, variant);
+        byte autoEmissionLevel = ComputeAutoEmissionLevel(obj.ObjectType, variant, resourcePackId);
         foreach (var mesh in meshes)
             mesh.AutoEmissionLevel = autoEmissionLevel;
 
