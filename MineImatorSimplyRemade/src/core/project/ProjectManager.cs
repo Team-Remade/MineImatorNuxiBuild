@@ -114,6 +114,8 @@ public sealed class ProjectManager
             {
                 node.SourceAssetPath = Remap(node.SourceAssetPath);
                 node.TextureOverridePath = Remap(node.TextureOverridePath);
+                node.NormalTexturePath = Remap(node.NormalTexturePath);
+                node.EmissionTexturePath = Remap(node.EmissionTexturePath);
                 RemapNodes(node.Children);
             }
         }

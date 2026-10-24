@@ -55,7 +55,7 @@ public class MineImatorLoader
 
     // ── Texture cache (path → GL texture handle) ──────────────────────────────
 
-    private readonly Dictionary<(string key, bool makeSquare), uint> _textureCache = new();
+    private readonly Dictionary<(string key, bool makeSquare, bool flipVertically), uint> _textureCache = new();
 
     // ═════════════════════════════════════════════════════════════════════════
     //  Public API
@@ -1034,7 +1034,7 @@ public class MineImatorLoader
             return 0;
 
         string cacheKey = $"rgba:{width}x{height}:{Convert.ToBase64String(rgbaPixels)}";
-        if (_textureCache.TryGetValue((cacheKey, false), out uint cached))
+        if (_textureCache.TryGetValue((cacheKey, false, false), out uint cached))
             return cached;
 
         uint tex = _gl.GenTexture();
@@ -1052,7 +1052,7 @@ public class MineImatorLoader
         _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.ClampToEdge);
         _gl.BindTexture(GLEnum.Texture2D, 0);
 
-        _textureCache[(cacheKey, false)] = tex;
+        _textureCache[(cacheKey, false, false)] = tex;
         return tex;
     }
 
@@ -1691,10 +1691,19 @@ public class MineImatorLoader
         }
     }
 
-    public uint LoadTextureFromFile(string path, bool makeSquare = false)
+    public string? GetTexturePath(uint textureId)
     {
-        var cacheKey = (path, makeSquare);
-        if (_textureCache.TryGetValue(cacheKey, out uint cached)) return cached;
+        if (textureId == 0) return null;
+        foreach (var (key, texture) in _textureCache)
+            if (texture == textureId && !key.key.StartsWith("rgba:", StringComparison.Ordinal))
+                return key.key;
+        return null;
+    }
+
+    public uint LoadTextureFromFile(string path, bool makeSquare = false, bool flipVertically = false, bool reload = false)
+    {
+        var cacheKey = (path, makeSquare, flipVertically);
+        if (_textureCache.TryGetValue(cacheKey, out uint cached) && !reload) return cached;
         if (_gl == null || !File.Exists(path)) return 0;
 
         try
@@ -1706,6 +1715,19 @@ public class MineImatorLoader
             int contentWidth = width;
             int contentHeight = height;
             byte[] pixels = img.Data;
+            if (flipVertically)
+            {
+                int stride = checked(width * 4);
+                var row = new byte[stride];
+                for (int y = 0; y < height / 2; y++)
+                {
+                    int top = y * stride;
+                    int bottom = (height - 1 - y) * stride;
+                    System.Buffer.BlockCopy(pixels, top, row, 0, stride);
+                    System.Buffer.BlockCopy(pixels, bottom, pixels, top, stride);
+                    System.Buffer.BlockCopy(row, 0, pixels, bottom, stride);
+                }
+            }
             var animation = File.Exists(path + ".mcmeta")
                 ? TerrainAtlas.ParseMcMetaFromText(File.ReadAllText(path + ".mcmeta"), width, height)
                 : null;
@@ -1719,7 +1741,7 @@ public class MineImatorLoader
                 width = height = size;
             }
 
-            uint tex = _gl.GenTexture();
+            uint tex = cached != 0 ? cached : _gl.GenTexture();
             _gl.BindTexture(GLEnum.Texture2D, tex);
             unsafe
             {
@@ -1728,8 +1750,8 @@ public class MineImatorLoader
                         0, GLEnum.Rgba, GLEnum.UnsignedByte, p);
             }
 
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)GLEnum.Nearest);
-            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)GLEnum.Nearest);
+            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)(flipVertically ? GLEnum.Linear : GLEnum.Nearest));
+            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)(flipVertically ? GLEnum.Linear : GLEnum.Nearest));
             _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)GLEnum.Repeat);
             _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.Repeat);
             _gl.BindTexture(GLEnum.Texture2D, 0);

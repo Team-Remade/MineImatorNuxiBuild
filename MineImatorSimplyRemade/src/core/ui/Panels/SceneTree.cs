@@ -838,8 +838,12 @@ public class SceneTree : UiPanel
         dup.BlockVariant    = original.BlockVariant;
         dup.TextureType     = original.TextureType;
         dup.ResourcePackId  = original.ResourcePackId;
+        dup.NormalResourcePackId = original.NormalResourcePackId;
+        dup.EmissionResourcePackId = original.EmissionResourcePackId;
         dup.SourceAssetPath = original.SourceAssetPath;
         dup.AlbedoTexturePath   = original.AlbedoTexturePath;
+        dup.NormalTexturePath = original.NormalTexturePath;
+        dup.EmissionTexturePath = original.EmissionTexturePath;
         dup.CameraTextureObjectId = original.CameraTextureObjectId;
         dup.PrimitiveCubeMapped = original.PrimitiveCubeMapped;
         dup.PrimitiveSphereSmooth = original.PrimitiveSphereSmooth;
@@ -905,7 +909,12 @@ public class SceneTree : UiPanel
             if (childDuplicate == null) continue;
 
             usedChildren.Add(childDuplicate);
+            childDuplicate.NormalResourcePackId = child.NormalResourcePackId;
+            childDuplicate.EmissionResourcePackId = child.EmissionResourcePackId;
+            childDuplicate.NormalTexturePath = child.NormalTexturePath;
+            childDuplicate.EmissionTexturePath = child.EmissionTexturePath;
             CopyPropertyInheritanceSettings(child, childDuplicate, true);
+            childDuplicate.CopyMaterialSettingsFrom(child);
         }
     }
 

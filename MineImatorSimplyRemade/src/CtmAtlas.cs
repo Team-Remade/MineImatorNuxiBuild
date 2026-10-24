@@ -6,6 +6,9 @@ namespace MineImatorSimplyRemade;
 public static class CtmAtlas
 {
     private static GL? _gl;
+    private static readonly Dictionary<uint, string> _textureKeys = new();
+
+    public static string? GetTextureKey(uint texture) => _textureKeys.GetValueOrDefault(texture);
     private static readonly Dictionary<string, CtmProperties> _rulesByBlockName = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, CtmProperties> _rulesByTextureKey = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, List<CtmProperties>> _rulesByPack = new(StringComparer.OrdinalIgnoreCase);
@@ -13,6 +16,7 @@ public static class CtmAtlas
     public static void Initialize(GL gl)
     {
         _gl = gl;
+        _textureKeys.Clear();
         _rulesByBlockName.Clear();
         _rulesByTextureKey.Clear();
         _rulesByPack.Clear();
@@ -78,6 +82,9 @@ public static class CtmAtlas
             uint texId = (from file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png") where file.RelativePath.Equals(expectedPath, StringComparison.OrdinalIgnoreCase) let filePackId = MinecraftDataLoader.GetResourcePackId(file.PackName) where filePackId.Equals(props.PackId, StringComparison.OrdinalIgnoreCase) select LoadTextureFromBytes(file.Data)).FirstOrDefault();
 
             props.TileTextureIds.Add(texId);
+            if (texId != 0)
+                _textureKeys[texId] = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(props.PackId,
+                    expectedPath[..^4]);
         }
     }
 

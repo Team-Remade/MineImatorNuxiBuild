@@ -616,6 +616,8 @@ public class SpawnMenu : UiPanel
                     Gl, tileTexId, tilePixels,
                     is3D: _item3DMode, tileSize: tileSize, tileWidth: tileWidth, tileHeight: tileHeight,
                     extrudeDepth: 1f / 16f);
+                mesh.MinecraftTextureKey = _selectedTileKey;
+                mesh.MinecraftItemTexture = _itemAtlasSource == ItemAtlasSource.ItemAtlas;
                 return new List<Mesh> { mesh };
             }
 
@@ -787,18 +789,38 @@ public class SpawnMenu : UiPanel
 
         List<Mesh> built;
         if (!string.IsNullOrEmpty(variant.CemPath))
+        {
             built = CemLoader.Load(Gl, variant.CemPath, BlockRegistry.VersionRoot, textureSourceId);
+            PreserveAtlasTextureKeys(built);
+        }
         else if (resolved != null)
             built = MinecraftModelMesh.Build(Gl, resolved, variant.RotationX, variant.RotationY, textureSourceId, blockName);
         else
             built = new List<Mesh>
             {
-                MinecraftModelMesh.BuildTexturedFallbackCube(Gl, null, blockNameHint: "", resourcePackId: textureSourceId)
+                MinecraftModelMesh.BuildTexturedFallbackCube(Gl, null, blockNameHint: blockName, resourcePackId: textureSourceId)
             };
 
         ApplyVariantRotationToCemMeshes(built, variant);
 
         meshes.AddRange(built);
+    }
+
+    private static void PreserveAtlasTextureKeys(List<Mesh> meshes)
+    {
+        // CEM only exposes handles. Recover known atlas identities once per build,
+        // never while appending vertices, and leave ambiguous handles unidentified.
+        var keysByTexture = new Dictionary<uint, string>();
+        foreach (var (key, textureId) in TerrainAtlas.Textures)
+        {
+            if (textureId == 0) continue;
+            if (!keysByTexture.TryAdd(textureId, key))
+                keysByTexture[textureId] = "";
+        }
+
+        foreach (var mesh in meshes)
+            if (mesh.MinecraftTextureKey.Length == 0 && keysByTexture.TryGetValue(mesh.TextureId, out string? key))
+                mesh.MinecraftTextureKey = key;
     }
 
     private static void ApplyVariantRotationToCemMeshes(List<Mesh> meshes, BlockVariantEntry variant)
@@ -2768,7 +2790,8 @@ public class SpawnMenu : UiPanel
 
                             foreach (var template in largePlacement.Info.Templates)
                             {
-                                var acc = GetOrCreateAccumulator(merged, template.TextureId, largePlacement.Info.AutoEmissionLevel, template.Tint);
+                                var acc = GetOrCreateAccumulator(merged, template.TextureId, largePlacement.Info.AutoEmissionLevel, template.Tint,
+                                    template.MinecraftTextureKey, template.MinecraftItemTexture);
                                 AppendTemplate(acc, template, largePlacement.Px, largePlacement.Py, largePlacement.Pz);
                             }
 
@@ -2831,7 +2854,8 @@ public class SpawnMenu : UiPanel
 
                         foreach (var template in info.Templates)
                         {
-                            var acc = GetOrCreateAccumulator(merged, template.TextureId, info.AutoEmissionLevel, template.Tint);
+                            var acc = GetOrCreateAccumulator(merged, template.TextureId, info.AutoEmissionLevel, template.Tint,
+                                template.MinecraftTextureKey, template.MinecraftItemTexture);
                             AppendTemplate(acc, template, px, py, pz);
                         }
                     }
@@ -2845,10 +2869,8 @@ public class SpawnMenu : UiPanel
                 return null;
             }
 
-            // Reverse lookup so every merged mesh (not just liquids) can be classified as
-            // alpha-blend vs cutout/opaque from its texture id alone — see Mesh.IsTranslucent.
-            // Built once here rather than per-mesh since TerrainAtlas.Textures has no
-            // texture-id -> key index of its own.
+            // Classify the actual diffuse handle, which may be a fallback from
+            // a different logical key (for example a missing fluid flow texture).
             var texIdToKey = new Dictionary<uint, string>();
             foreach (var kv in TerrainAtlas.Textures)
                 texIdToKey[kv.Value] = kv.Key;
@@ -2864,6 +2886,8 @@ public class SpawnMenu : UiPanel
                 var mesh = new Mesh(Gl)
                 {
                     TextureId = textureId,
+                    MinecraftTextureKey = kv.Key.MinecraftTextureKey,
+                    MinecraftItemTexture = kv.Key.MinecraftItemTexture,
                     BaseTint = kv.Key.Tint,
                     Albedo = kv.Key.Tint,
                     AnimationKey = TerrainAtlas.GetAnimationKey(textureId),
@@ -3092,25 +3116,34 @@ public class SpawnMenu : UiPanel
         public readonly uint TextureId;
         public readonly byte AutoEmissionLevel;
         public readonly vec3 Tint;
+        public readonly string MinecraftTextureKey;
+        public readonly bool MinecraftItemTexture;
 
-        public MeshBatchKey(uint textureId, byte autoEmissionLevel, vec3 tint)
+        public MeshBatchKey(uint textureId, byte autoEmissionLevel, vec3 tint,
+                            string minecraftTextureKey, bool minecraftItemTexture)
         {
             TextureId = textureId;
             AutoEmissionLevel = autoEmissionLevel;
             Tint = tint;
+            MinecraftTextureKey = minecraftTextureKey;
+            MinecraftItemTexture = minecraftItemTexture;
         }
 
         public bool Equals(MeshBatchKey other) =>
-            TextureId == other.TextureId && AutoEmissionLevel == other.AutoEmissionLevel && Tint == other.Tint;
+            TextureId == other.TextureId && AutoEmissionLevel == other.AutoEmissionLevel && Tint == other.Tint &&
+            MinecraftTextureKey == other.MinecraftTextureKey && MinecraftItemTexture == other.MinecraftItemTexture;
 
         public override bool Equals(object? obj) => obj is MeshBatchKey other && Equals(other);
 
-        public override int GetHashCode() => HashCode.Combine(TextureId, AutoEmissionLevel, Tint);
+        public override int GetHashCode() => HashCode.Combine(TextureId, AutoEmissionLevel, Tint,
+            MinecraftTextureKey, MinecraftItemTexture);
     }
 
     private sealed class MeshTemplate
     {
         public uint TextureId;
+        public string MinecraftTextureKey = "";
+        public bool MinecraftItemTexture;
         public vec3 Tint = new(1f);
         public vec3[] Vertices = Array.Empty<vec3>();
         public vec3[] Normals = Array.Empty<vec3>();
@@ -3120,6 +3153,7 @@ public class SpawnMenu : UiPanel
     private sealed class CubeFaceInfo
     {
         public required uint TextureId;
+        public required string MinecraftTextureKey;
         public vec3 Tint = new(1f);
         public required vec2[] Uv; // TL, TR, BR, BL
     }
@@ -3591,6 +3625,7 @@ public class SpawnMenu : UiPanel
             return new CubeFaceInfo
             {
                 TextureId = texId,
+                MinecraftTextureKey = resolvedTexKey,
                 Uv = uv,
                 Tint = MinecraftModelMesh.GetFaceTint(blockName, face, texKey, resolvedTexKey)
             };
@@ -3719,6 +3754,8 @@ public class SpawnMenu : UiPanel
             templates.Add(new MeshTemplate
             {
                 TextureId = mesh.TextureId,
+                MinecraftTextureKey = mesh.MinecraftTextureKey,
+                MinecraftItemTexture = mesh.MinecraftItemTexture,
                 Tint = mesh.Albedo,
                 // Schematic placement uses voxel centers; generators use native block coordinates.
                 Vertices = mesh.Vertices.Select(vertex => vertex - new vec3(0.5f)).ToArray(),
@@ -3912,9 +3949,11 @@ public class SpawnMenu : UiPanel
         Dictionary<MeshBatchKey, MeshAccumulator> merged,
         uint textureId,
         byte autoEmissionLevel,
-        vec3 tint)
+        vec3 tint,
+        string minecraftTextureKey,
+        bool minecraftItemTexture = false)
     {
-        var key = new MeshBatchKey(textureId, autoEmissionLevel, tint);
+        var key = new MeshBatchKey(textureId, autoEmissionLevel, tint, minecraftTextureKey, minecraftItemTexture);
         if (!merged.TryGetValue(key, out var acc))
         {
             acc = new MeshAccumulator();
@@ -4013,7 +4052,7 @@ public class SpawnMenu : UiPanel
         string faceName,
         byte autoEmissionLevel)
     {
-        var acc = GetOrCreateAccumulator(merged, face.TextureId, autoEmissionLevel, face.Tint);
+        var acc = GetOrCreateAccumulator(merged, face.TextureId, autoEmissionLevel, face.Tint, face.MinecraftTextureKey);
 
         vec3 v0;
         vec3 v1;
@@ -4245,8 +4284,8 @@ public class SpawnMenu : UiPanel
 
         vec3 tint = MinecraftModelMesh.TryGetDefaultBlockTint(blockName, out var waterTint)
             ? waterTint : new vec3(1f);
-        var stillAcc = GetOrCreateAccumulator(merged, stillTex, autoEmissionLevel, tint);
-        var flowAcc = GetOrCreateAccumulator(merged, flowTex, autoEmissionLevel, tint);
+        var stillAcc = GetOrCreateAccumulator(merged, stillTex, autoEmissionLevel, tint, stillKey);
+        var flowAcc = GetOrCreateAccumulator(merged, flowTex, autoEmissionLevel, tint, flowKey);
 
         bool falling = level >= 8;
         float myHeight = LiquidLevelHeight(level);
@@ -5159,6 +5198,8 @@ public class SpawnMenu : UiPanel
             tileWidth: tileWidth,
             tileHeight: tileHeight,
             extrudeDepth: 1f / 16f);
+        mesh.MinecraftTextureKey = tileKey;
+        mesh.MinecraftItemTexture = atlasSource == ItemAtlasSource.ItemAtlas;
 
         obj.AddMesh(mesh);
         Viewport.SceneObjects.Add(obj);
@@ -5821,7 +5862,10 @@ public class SpawnMenu : UiPanel
 
         List<Mesh> meshes;
         if (!string.IsNullOrEmpty(variant.CemPath))
+        {
             meshes = CemLoader.Load(Gl!, variant.CemPath, BlockRegistry.VersionRoot, resourcePackId);
+            PreserveAtlasTextureKeys(meshes);
+        }
         else if (resolved != null)
             meshes = MinecraftModelMesh.Build(Gl!, resolved, variant.RotationX, variant.RotationY, resourcePackId,
                                               obj.ObjectType,

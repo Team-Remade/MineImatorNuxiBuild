@@ -373,6 +373,7 @@ public static class ItemsAtlas
                      progress?.Invoke(0.25f + ratio * 0.35f, $"Scanning item overrides {current}/{total}: {containerName}");
                  }))
         {
+            if (MinecraftDataLoader.IsMaterialTexturePath(file.RelativePath)) continue;
             ImageResult img;
             try
             {
@@ -405,6 +406,7 @@ public static class ItemsAtlas
                      progress?.Invoke(0.60f + ratio * 0.40f, $"Scanning mod item textures {current}/{total}: {containerName}");
                  }))
         {
+            if (MinecraftDataLoader.IsMaterialTexturePath(file.RelativePath)) continue;
             if (!MinecraftDataLoader.TryParseTextureAssetPath(file.RelativePath, out string assetNamespace, out string category, out string textureKey))
                 continue;
 

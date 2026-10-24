@@ -17,7 +17,7 @@ namespace MineImatorSimplyRemade.core.graphics;
 /// and upload the completed image; the caller owns both devices and presentation.
 /// Call on the thread with the source/destination OpenGL context current.
 /// Lighting is intentionally limited to ambient, directional diffuse and emission.
-/// Shadows, fog, normal maps, SSS, mipmaps and postprocessing are not implemented.
+/// Shadows, fog, SSS, mipmaps and postprocessing are not implemented.
 /// Alpha-mask opacity is supported, but independent text outline colors are not.
 /// Animated spritesheets share a renderer-local animation clock.
 /// </summary>
@@ -44,8 +44,8 @@ public sealed class VeldridSceneRenderer : IDisposable
     [StructLayout(LayoutKind.Sequential)]
     private struct DrawUniforms
     {
-        public mat4 Mvp, NormalMatrix;
-        public vec4 Albedo, Blend, Mix, Emission, Ambient, LightColor, LightDirection, Options;
+        public mat4 Mvp, NormalMatrix, Model;
+        public vec4 Albedo, Blend, Mix, Emission, Ambient, LightColor, LightDirection, Options, MapOptions;
     }
 
     public VeldridSceneRenderer(GraphicsDevice device, GL gl)
@@ -58,11 +58,14 @@ public sealed class VeldridSceneRenderer : IDisposable
             new ResourceLayoutElementDescription("DrawData", ResourceKind.UniformBuffer, ShaderStages.Vertex | ShaderStages.Fragment),
             new ResourceLayoutElementDescription("AlbedoTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
             new ResourceLayoutElementDescription("AlphaTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("NormalTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("EmissionTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
             new ResourceLayoutElementDescription("SurfaceSampler", ResourceKind.Sampler, ShaderStages.Fragment)));
         const string uniforms = """
             layout(set = 0, binding = 0) uniform DrawData {
                 mat4 Mvp;
                 mat4 NormalMatrix;
+                mat4 Model;
                 vec4 Albedo;
                 vec4 Blend;
                 vec4 Mix;
@@ -71,6 +74,7 @@ public sealed class VeldridSceneRenderer : IDisposable
                 vec4 LightColor;
                 vec4 LightDirection;
                 vec4 Options;
+                vec4 MapOptions;
             };
             """;
         string vertex = "#version 450\n" + uniforms + """
@@ -79,6 +83,7 @@ public sealed class VeldridSceneRenderer : IDisposable
             layout(location = 2) in vec2 TexCoord;
             layout(location = 0) out vec3 vNormal;
             layout(location = 1) out vec2 vUv;
+            layout(location = 2) out vec3 vWorldPosition;
             void main() {
                 gl_Position = Mvp * vec4(Position, 1.0);
                 if (Options.y > 0.5) gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;
@@ -86,25 +91,53 @@ public sealed class VeldridSceneRenderer : IDisposable
                 vNormal = mat3(NormalMatrix) * Normal;
                 vNormal = length(vNormal) > 0.00001 ? normalize(vNormal) : vec3(0, 1, 0);
                 vUv = TexCoord;
+                vWorldPosition = (Model * vec4(Position, 1.0)).xyz;
             }
             """;
         string fragment = "#version 450\n" + uniforms + """
             layout(set = 0, binding = 1) uniform texture2D AlbedoTexture;
             layout(set = 0, binding = 2) uniform texture2D AlphaTexture;
-            layout(set = 0, binding = 3) uniform sampler SurfaceSampler;
+            layout(set = 0, binding = 3) uniform texture2D NormalTexture;
+            layout(set = 0, binding = 4) uniform texture2D EmissionTexture;
+            layout(set = 0, binding = 5) uniform sampler SurfaceSampler;
             layout(location = 0) in vec3 vNormal;
             layout(location = 1) in vec2 vUv;
+            layout(location = 2) in vec3 vWorldPosition;
             layout(location = 0) out vec4 Color;
+            vec3 mappedNormal(vec3 normal) {
+                if (MapOptions.x < 0.5) return normal;
+                vec3 dpdx = dFdx(vWorldPosition);
+                vec3 dpdy = dFdy(vWorldPosition);
+                vec2 duvdx = dFdx(vUv);
+                vec2 duvdy = dFdy(vUv);
+                float determinant = duvdx.x * duvdy.y - duvdx.y * duvdy.x;
+                float uvScale = sqrt(dot(duvdx, duvdx) * dot(duvdy, duvdy));
+                if (abs(determinant) <= max(uvScale * 0.000001, 1e-20)) return normal;
+                vec3 tangent = (dpdx * duvdy.y - dpdy * duvdx.y) / determinant;
+                vec3 bitangent = (dpdy * duvdx.x - dpdx * duvdy.x) / determinant;
+                tangent -= normal * dot(normal, tangent);
+                if (dot(tangent, tangent) <= 1e-20 || dot(bitangent, bitangent) <= 1e-20) return normal;
+                tangent = normalize(tangent);
+                float handedness = dot(cross(normal, tangent), bitangent);
+                if (abs(handedness) <= 1e-20) return normal;
+                bitangent = cross(normal, tangent) * sign(handedness);
+                vec3 sampleNormal = textureGrad(sampler2D(NormalTexture, SurfaceSampler), vUv, duvdx, duvdy).rgb * 2.0 - 1.0;
+                vec3 mapped = mat3(tangent, bitangent, normal) * sampleNormal;
+                return dot(mapped, mapped) > 1e-20 ? normalize(mapped) : normal;
+            }
             void main() {
                 vec4 texel = texture(sampler2D(AlbedoTexture, SurfaceSampler), vUv);
                 vec4 mask = texture(sampler2D(AlphaTexture, SurfaceSampler), vUv);
                 vec3 base = mix(texel.rgb * Albedo.rgb * Blend.rgb, Mix.rgb, clamp(Mix.a, 0.0, 1.0));
                 float alpha = texel.a * mask.a * Albedo.a * Blend.a;
-                if (alpha <= 0.0) discard;
                 vec3 normal = length(vNormal) > 0.00001 ? normalize(vNormal) : vec3(0, 1, 0);
+                normal = mappedNormal(normal);
+                if (alpha <= 0.0) discard;
                 if (!gl_FrontFacing) normal = -normal;
                 vec3 light = Ambient.rgb + LightColor.rgb * max(dot(normal, normalize(LightDirection.xyz)), 0.0);
-                vec3 result = Options.x > 0.5 ? base : base * light + Emission.rgb * texel.rgb;
+                vec3 emissionMask = MapOptions.y > 0.5
+                    ? texture(sampler2D(EmissionTexture, SurfaceSampler), vUv).rgb : texel.rgb;
+                vec3 result = Options.x > 0.5 ? base : base * light + Emission.rgb * emissionMask;
                 Color = vec4(result, alpha);
             }
             """;
@@ -184,26 +217,34 @@ public sealed class VeldridSceneRenderer : IDisposable
         bool hasUvs = mesh.TexCoords.Count == vertices.Length;
         var texture = hasUvs ? ImportTexture(mesh.TextureId) : _white;
         var mask = hasUvs ? ImportTexture(mesh.AlphaMaskTextureId) : _white;
+        bool useNormalTexture = hasUvs && mesh.NormalEnabled && mesh.NormalTexture != 0;
+        bool useEmissionTexture = hasUvs && mesh.EmissionTexture != 0;
+        var normalTexture = useNormalTexture ? ImportTexture(mesh.NormalTexture) : _white;
+        var emissionTexture = useEmissionTexture ? ImportTexture(mesh.EmissionTexture) : _white;
         var data = new DrawUniforms
         {
             Mvp = _viewProjection * model,
             NormalMatrix = MathF.Abs(model.Determinant) > 1e-12f ? model.Inverse.Transposed : mat4.Identity,
+            Model = model,
             Albedo = new vec4(mesh.Albedo, mesh.Alpha),
             Blend = mesh.BlendColor,
             Mix = mesh.MixColor,
-            Emission = new vec4(mesh.EmissionEnabled ? mesh.EmissionColor * mesh.EmissionEnergy : vec3.Zero, 0),
+            Emission = new vec4(mesh.EmissionEnabled && !mesh.EmissionIndirectOnly
+                ? mesh.EmissionColor * Math.Max(mesh.EmissionEnergy, 0f) : vec3.Zero, 0),
             Ambient = new vec4(Mesh.GlobalAmbientColor * Mesh.GlobalAmbientStrength, 0),
             LightColor = new vec4(Mesh.GlobalFillLightColor * Mesh.GlobalFillLightStrength, 0),
             LightDirection = new vec4(1, 1, 1, 0),
             Options = new vec4(forceUnshaded || mesh.Unlit ? 1 : 0,
-                _device.IsDepthRangeZeroToOne ? 1 : 0, _device.IsClipSpaceYInverted ? -1 : 1, 0)
+                _device.IsDepthRangeZeroToOne ? 1 : 0, _device.IsClipSpaceYInverted ? -1 : 1, 0),
+            MapOptions = new vec4(useNormalTexture ? 1 : 0, useEmissionTexture ? 1 : 0, 0, 0)
         };
         var uniform = _device.ResourceFactory.CreateBuffer(new BufferDescription(
             (uint)Marshal.SizeOf<DrawUniforms>(), BufferUsage.UniformBuffer));
         _frameResources.Add(uniform);
         _device.UpdateBuffer(uniform, 0, ref data);
         var set = _device.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
-            _layout, uniform, texture.TextureView, mask.TextureView, mesh.BlurTexture ? _linearSampler : _pointSampler));
+            _layout, uniform, texture.TextureView, mask.TextureView, normalTexture.TextureView,
+            emissionTexture.TextureView, mesh.BlurTexture ? _linearSampler : _pointSampler));
         _frameResources.Add(set);
         FaceCullMode cull = mesh.DoubleSided ? FaceCullMode.None : mesh.CullFrontFaces ? FaceCullMode.Front : FaceCullMode.Back;
         var key = (_wireframe, mesh.DepthTestDisabled, cull);

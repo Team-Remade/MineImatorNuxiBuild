@@ -1,4 +1,5 @@
 ﻿using GlmSharp;
+using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.material.materials;
@@ -228,9 +229,16 @@ public class SceneObject
     /// Empty means no custom albedo texture.
     /// </summary>
     public string AlbedoTexturePath = "";
+    public string NormalTexturePath = "";
+    public string EmissionTexturePath = "";
+    public string NormalResourcePackId = "";
+    public string EmissionResourcePackId = "";
 
     /// <summary>Object id of the scene camera used as this object's live albedo texture.</summary>
     public string CameraTextureObjectId = "";
+
+    /// <summary>Runtime camera feed shared with inheriting meshes, including meshless model roots.</summary>
+    public uint CameraTextureId { get; set; }
 
     /// <summary>
     /// Primitive-cube UV mode. False = each face fills the whole texture;
@@ -768,6 +776,7 @@ public class SceneObject
     {
         if (this is MiBoneSceneObject poseBone) poseBone.RefreshInheritedPoseBend();
         if (UsePropertyInheritance || _inheritedTextures.Count > 0) ApplyMaterialSettingsToMeshes();
+        else ApplyAuxiliaryTextures();
         foreach (var child in _children)
             child.RefreshInheritedMaterials();
     }
@@ -787,6 +796,61 @@ public class SceneObject
         }
     }
 
+    public string GetEffectiveAuxiliaryTexturePath(bool normal)
+    {
+        var source = GetAuxiliaryTextureSource(normal);
+        return source == null ? "" : normal ? source.NormalTexturePath : source.EmissionTexturePath;
+    }
+
+    public string GetEffectiveAuxiliaryResourcePackId(bool normal)
+    {
+        var source = GetAuxiliaryTextureSource(normal);
+        return source == null ? "" : normal ? source.NormalResourcePackId : source.EmissionResourcePackId;
+    }
+
+    private SceneObject? GetAuxiliaryTextureSource(bool normal)
+    {
+        for (SceneObject current = this; ; current = current.Parent)
+        {
+            if (!string.IsNullOrEmpty(normal ? current.NormalTexturePath : current.EmissionTexturePath) ||
+                !string.IsNullOrEmpty(normal ? current.NormalResourcePackId : current.EmissionResourcePackId))
+                return current;
+            if (!UsePropertyInheritance || !current.InheritTexture || current.Parent == null) return null;
+        }
+    }
+
+    /// <summary>Loads all material slots with the same orientation and padding as this object's diffuse texture.</summary>
+    public uint LoadTexture(string path, bool reload = false)
+    {
+        if (string.IsNullOrEmpty(path)) return 0;
+        path = ProjectManager.Instance?.ResolveAssetPath(path) ?? path;
+        bool modelTexture = this is CharacterSceneObject or MiBoneSceneObject;
+        bool minecraftTexture = SpawnCategory is "Blocks" or "Items" or "Scenery";
+        return MineImatorLoader.Instance.LoadTextureFromFile(path,
+            makeSquare: modelTexture, flipVertically: !modelTexture && !minecraftTexture, reload: reload);
+    }
+
+    private void ApplyAuxiliaryTextures()
+    {
+        var normalSource = GetAuxiliaryTextureSource(true);
+        var emissionSource = GetAuxiliaryTextureSource(false);
+        uint normalTexture = normalSource?.LoadTexture(normalSource.NormalTexturePath) ?? 0;
+        uint emissionTexture = emissionSource?.LoadTexture(emissionSource.EmissionTexturePath) ?? 0;
+        foreach (var mesh in Visuals)
+        {
+            if (mesh.PickOnly) continue;
+            mesh.NormalTexture = normalSource != null && !string.IsNullOrEmpty(normalSource.NormalResourcePackId)
+                ? ResourcePackMaterialTextures.GetTexture(normalSource.NormalResourcePackId,
+                    mesh.MinecraftTextureKey, mesh.MinecraftItemTexture, true, mesh.TextureId)
+                : normalTexture;
+            mesh.NormalEnabled = mesh.NormalTexture != 0 && (normalSource?._materialSettings?.NormalEnabled ?? true);
+            mesh.EmissionTexture = emissionSource != null && !string.IsNullOrEmpty(emissionSource.EmissionResourcePackId)
+                ? ResourcePackMaterialTextures.GetTexture(emissionSource.EmissionResourcePackId,
+                    mesh.MinecraftTextureKey, mesh.MinecraftItemTexture, false, mesh.TextureId)
+                : emissionTexture;
+        }
+    }
+
     private readonly Dictionary<Mesh, (uint Local, uint Applied)> _inheritedTextures = new();
 
     private void ApplyInheritedTexture()
@@ -795,14 +859,14 @@ public class SceneObject
         uint? inherited = source != null && source != this
             ? source.Visuals.FirstOrDefault(mesh => !mesh.PickOnly)?.TextureId
             : null;
+        if (source != null && !string.IsNullOrEmpty(source.CameraTextureObjectId) && source.CameraTextureId != 0)
+            inherited = source.CameraTextureId;
         if (source != null && !inherited.HasValue &&
             string.IsNullOrEmpty(source.CameraTextureObjectId))
         {
             string path = !string.IsNullOrEmpty(source.AlbedoTexturePath)
                 ? source.AlbedoTexturePath : source.TextureOverridePath;
-            path = ProjectManager.Instance?.ResolveAssetPath(path) ?? path;
-            uint loaded = MineImatorLoader.Instance.LoadTextureFromFile(path,
-                makeSquare: source is CharacterSceneObject or MiBoneSceneObject);
+            uint loaded = source.LoadTexture(path);
             if (loaded != 0) inherited = loaded;
         }
         foreach (var mesh in Visuals)
@@ -827,6 +891,7 @@ public class SceneObject
     public void ApplyMaterialSettingsToMeshes()
     {
         ApplyInheritedTexture();
+        ApplyAuxiliaryTextures();
         var settings = UsePropertyInheritance ? GetEffectiveMaterialSettings() : _materialSettings;
         if (settings == null) return;
 
@@ -884,8 +949,6 @@ public class SceneObject
                 if (UsePropertyInheritance)
                 {
                     material.Roughness = settings.Roughness;
-                    material.NormalEnabled = settings.NormalEnabled;
-                    material.NormalTexture = settings.NormalTexture;
                 }
             }
         }

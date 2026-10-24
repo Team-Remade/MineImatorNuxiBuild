@@ -4458,6 +4458,7 @@ public class Viewport : UiPanel
                 MathF.Max(mesh.EmissionColor.x, 0f),
                 MathF.Max(mesh.EmissionColor.y, 0f),
                 MathF.Max(mesh.EmissionColor.z, 0f));
+            emissionColor *= ResourcePackMaterialTextures.GetEmissionAverage(mesh.EmissionTexture);
 
             float colorLuma = MathF.Max(emissionColor.x, MathF.Max(emissionColor.y, emissionColor.z));
             if (emissionEnergy <= 0.0001f || colorLuma <= 0.0001f)
@@ -6288,8 +6289,13 @@ public class Viewport : UiPanel
         // avoiding recursive read/write feedback when cameras see screens.
         foreach (var obj in objects)
         {
-            if (!cameras.ContainsKey(obj.CameraTextureObjectId)) continue;
+            if (!cameras.ContainsKey(obj.CameraTextureObjectId))
+            {
+                obj.CameraTextureId = 0;
+                continue;
+            }
             uint texture = GetOrCreateCameraFeedTexture(obj.CameraTextureObjectId);
+            obj.CameraTextureId = texture;
             foreach (var mesh in obj.Visuals)
                 mesh.TextureId = texture;
         }

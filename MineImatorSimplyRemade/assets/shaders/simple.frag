@@ -66,6 +66,10 @@ layout(std140) uniform SceneData {
 
 uniform sampler2D uTexture;
 uniform bool      uUseTexture;
+uniform sampler2D uNormalTexture;
+uniform bool      uUseNormalTexture;
+uniform sampler2D uEmissionTexture;
+uniform bool      uUseEmissionTexture;
 uniform sampler2D uAlphaMask;
 uniform bool      uUseAlphaMask;
 uniform bool      uIsTextAlphaMask;
@@ -357,6 +361,30 @@ vec3 estimatePointSubsurface(
     return transmission / max(weightSum, 0.0001);
 }
 
+vec3 mappedNormal(vec3 normal)
+{
+    if (!uUseNormalTexture) return normal;
+    vec3 dpdx = dFdx(vFragPos);
+    vec3 dpdy = dFdy(vFragPos);
+    vec2 duvdx = dFdx(vTexCoord);
+    vec2 duvdy = dFdy(vTexCoord);
+    float determinant = duvdx.x * duvdy.y - duvdx.y * duvdy.x;
+    // Missing/collinear UVs cannot define a tangent frame.
+    float uvScale = sqrt(dot(duvdx, duvdx) * dot(duvdy, duvdy));
+    if (abs(determinant) <= max(uvScale * 0.000001, 1e-20)) return normal;
+    vec3 tangent = (dpdx * duvdy.y - dpdy * duvdx.y) / determinant;
+    vec3 bitangent = (dpdy * duvdx.x - dpdx * duvdy.x) / determinant;
+    tangent -= normal * dot(normal, tangent);
+    if (dot(tangent, tangent) <= 1e-20 || dot(bitangent, bitangent) <= 1e-20) return normal;
+    tangent = normalize(tangent);
+    float handedness = dot(cross(normal, tangent), bitangent);
+    if (abs(handedness) <= 1e-20) return normal;
+    bitangent = cross(normal, tangent) * sign(handedness);
+    vec3 sampleNormal = textureGrad(uNormalTexture, vTexCoord, duvdx, duvdy).rgb * 2.0 - 1.0;
+    vec3 mapped = mat3(tangent, bitangent, normal) * sampleNormal;
+    return dot(mapped, mapped) > 1e-20 ? normalize(mapped) : normal;
+}
+
 void main() {
     GiAlbedo = vec4(0.0);
     GiRadiance = vec4(0.0);
@@ -395,6 +423,8 @@ void main() {
         baseColor = texSample.rgb * uAlbedo;
         alpha     = texSample.a;
     }
+    if (uUseEmissionTexture)
+        emissionMask = texture(uEmissionTexture, vTexCoord).rgb;
     if (uUseAlphaMask) {
         vec4 textMask = texture(uAlphaMask, vTexCoord);
         if (uIsTextAlphaMask && textMask.a > 0.0) {
@@ -410,6 +440,17 @@ void main() {
     baseColor = mix(baseColor, uMixColor.rgb, clamp(uMixColor.a, 0.0, 1.0));
     alpha *= uAlpha * uBlendColor.a;
 
+    // Evaluate derivatives before alpha discard so cutout edges keep valid frames.
+    vec3 vertexNormal = normalize(vNormal);
+    if (!uIsUnlit) {
+        if (uBendEnabled && uBendSharp) {
+            vec3 flatNormal = normalize(cross(dFdx(vFragPos), dFdy(vFragPos)));
+            if (dot(flatNormal, vertexNormal) < 0.0) flatNormal = -flatNormal;
+            vertexNormal = flatNormal;
+        }
+        vertexNormal = mappedNormal(vertexNormal);
+    }
+
     // Modelbench discards only completely transparent fragments. Even very low
     // non-zero alpha must survive so it can write depth for render-depth masks.
     if (alpha <= 0.0) discard;
@@ -420,12 +461,6 @@ void main() {
     float giVisibility = uIsUnlit ? 0.0 : 1.0 - clamp(uMetallic, 0.0, 1.0);
 
     if (!uIsUnlit) {
-    vec3 vertexNormal = normalize(vNormal);
-    if (uBendEnabled && uBendSharp) {
-        vec3 flatNormal = normalize(cross(dFdx(vFragPos), dFdy(vFragPos)));
-        if (dot(flatNormal, vertexNormal) < 0.0) flatNormal = -flatNormal;
-        vertexNormal = flatNormal;
-    }
     vec3 norm    = gl_FrontFacing ? vertexNormal : -vertexNormal;
     vec3 sunDir  = normalize(uLightDir);
     float diff   = max(dot(norm, sunDir), 0.0);

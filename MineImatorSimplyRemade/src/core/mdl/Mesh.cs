@@ -120,6 +120,12 @@ public class Mesh : IDisposable
     /// </summary>
     public string AnimationKey = "";
 
+    /// <summary>Logical atlas key used to resolve independently selected Minecraft material maps.</summary>
+    public string MinecraftTextureKey = "";
+
+    /// <summary>Whether the logical texture key belongs to ItemsAtlas rather than TerrainAtlas.</summary>
+    public bool MinecraftItemTexture = false;
+
     /// <summary>Accumulated real-time seconds since the animation started.</summary>
     private double _animTime = 0.0;
 
@@ -465,6 +471,24 @@ public class Mesh : IDisposable
         set => DefaultMaterial.AlbedoTexture = value;
     }
 
+    public uint NormalTexture
+    {
+        get => DefaultMaterial.NormalTexture;
+        set => DefaultMaterial.NormalTexture = value;
+    }
+
+    public bool NormalEnabled
+    {
+        get => DefaultMaterial.NormalEnabled;
+        set => DefaultMaterial.NormalEnabled = value;
+    }
+
+    public uint EmissionTexture
+    {
+        get => DefaultMaterial.EmissionTexture;
+        set => DefaultMaterial.EmissionTexture = value;
+    }
+
     /// <summary>Optional independent alpha mask (used by textured flat text).</summary>
     public uint AlphaMaskTextureId { get; set; }
     public bool IsTextAlphaMask { get; set; }
@@ -714,6 +738,8 @@ public class Mesh : IDisposable
         clone.Indices = Indices != null ? (uint[])Indices.Clone() : null;
 
         clone.AnimationKey        = AnimationKey;
+        clone.MinecraftTextureKey = MinecraftTextureKey;
+        clone.MinecraftItemTexture = MinecraftItemTexture;
         clone.BaseTint            = BaseTint;
         clone.BaseAlpha           = BaseAlpha;
         clone.BaseBlendColor      = BaseBlendColor;
@@ -752,6 +778,7 @@ public class Mesh : IDisposable
         dstMat.NormalTexture             = srcMat.NormalTexture;
         dstMat.Transparency              = srcMat.Transparency;
         dstMat.EmissionEnabled           = srcMat.EmissionEnabled;
+        dstMat.EmissionTexture           = srcMat.EmissionTexture;
         dstMat.Emission                  = srcMat.Emission;
         dstMat.EmissionEnergyMultiplier  = srcMat.EmissionEnergyMultiplier;
         dstMat.Subsurface                = srcMat.Subsurface;
@@ -1291,19 +1318,36 @@ public class Mesh : IDisposable
         // Texture binding
         bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;
         bool useAlphaMask = AlphaMaskTextureId != 0 && TexCoords.Count == Vertices.Count;
+        bool useNormalTexture = NormalEnabled && NormalTexture != 0 && TexCoords.Count == Vertices.Count;
+        bool useEmissionTexture = EmissionTexture != 0 && TexCoords.Count == Vertices.Count;
         SetUniformBool("uUseTexture", useTexture);
         SetUniformBool("uUseAlphaMask", useAlphaMask);
+        SetUniformBool("uUseNormalTexture", useNormalTexture);
+        SetUniformBool("uUseEmissionTexture", useEmissionTexture);
+        SetUniformInt("uNormalTexture", 10);
+        SetUniformInt("uEmissionTexture", 11);
         SetUniformBool("uIsTextAlphaMask", IsTextAlphaMask);
         SetUniformVec4("uTextOutlineColor", TextMaskOutlineColor);
         if (useTexture)
         {
-            _gl.ActiveTexture(GLEnum.Texture0);
-            _gl.BindTexture(GLEnum.Texture2D, TextureId);
+            BindSurfaceTexture(TextureId, GLEnum.Texture0);
+            SetUniformInt("uTexture", 0);
+        }
+        if (useNormalTexture)
+            BindSurfaceTexture(NormalTexture, GLEnum.Texture10);
+        if (useEmissionTexture)
+            BindSurfaceTexture(EmissionTexture, GLEnum.Texture11);
+        _gl.ActiveTexture(GLEnum.Texture0);
+
+        void BindSurfaceTexture(uint texture, GLEnum unit)
+        {
+            _gl.ActiveTexture(unit);
+            _gl.BindTexture(GLEnum.Texture2D, texture);
             if (TextureMipmaps)
             {
                 // The batch owns this set and clears it before the next pass, so
                 // shared textures generate once without retaining stale dynamic content.
-                if (preparedMipmaps == null || preparedMipmaps.Add(TextureId))
+                if (preparedMipmaps == null || preparedMipmaps.Add(texture))
                     _gl.GenerateMipmap(GLEnum.Texture2D);
                 _gl.TexParameter(
                     GLEnum.Texture2D,
@@ -1322,7 +1366,6 @@ public class Mesh : IDisposable
                 GLEnum.Texture2D,
                 GLEnum.TextureMagFilter,
                 (int)(BlurTexture ? TextureMagFilter.Linear : TextureMagFilter.Nearest));
-            SetUniformInt("uTexture", 0);
         }
         if (useAlphaMask)
         {
@@ -1382,6 +1425,18 @@ public class Mesh : IDisposable
         }
 
         RestoreFaceCulling();
+
+        if (useNormalTexture)
+        {
+            _gl.ActiveTexture(GLEnum.Texture10);
+            _gl.BindTexture(GLEnum.Texture2D, 0);
+        }
+        if (useEmissionTexture)
+        {
+            _gl.ActiveTexture(GLEnum.Texture11);
+            _gl.BindTexture(GLEnum.Texture2D, 0);
+        }
+        _gl.ActiveTexture(GLEnum.Texture0);
 
         if (useTexture)
         {

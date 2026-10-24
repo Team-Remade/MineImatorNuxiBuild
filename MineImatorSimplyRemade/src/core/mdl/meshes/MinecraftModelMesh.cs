@@ -341,6 +341,7 @@ public static class MinecraftModelMesh
             mesh.Normals.AddRange(norms);
             mesh.TexCoords.AddRange(uvs);
             mesh.TextureId   = texId;
+            mesh.MinecraftTextureKey = CtmAtlas.GetTextureKey(texId) ?? texKey;
             mesh.DoubleSided = false;
             if (tintKind != BiomeTintKind.None)
             {
@@ -439,19 +440,21 @@ public static class MinecraftModelMesh
         tileY = ClampTileCount(tileY);
         tileZ = ClampTileCount(tileZ);
 
-        uint texId = PickFallbackTexture(model, blockNameHint, resourcePackId);
+        uint texId = PickFallbackTexture(model, blockNameHint, resourcePackId, out string textureKey);
         if (texId == 0)
-            return BuildTiledUntexturedCube(gl, tileX, tileY, tileZ);
+        {
+            var untextured = BuildTiledUntexturedCube(gl, tileX, tileY, tileZ);
+            untextured.MinecraftTextureKey = textureKey;
+            return untextured;
+        }
 
         var mesh = new Mesh(gl);
         mesh.TextureId = texId;
+        mesh.MinecraftTextureKey = textureKey;
         mesh.AnimationKey = TerrainAtlas.GetAnimationKey(texId);
         mesh.DoubleSided = false;
 
-        // Rare fallback path — a linear reverse lookup is fine here (see Mesh.IsTranslucent).
-        string? texKeyForTranslucency = TerrainAtlas.Textures.FirstOrDefault(kv => kv.Value == texId).Key;
-        if (texKeyForTranslucency != null)
-            mesh.IsTranslucent = TerrainAtlas.IsTextureTranslucent(texKeyForTranslucency);
+        mesh.IsTranslucent = TerrainAtlas.IsTextureTranslucent(textureKey);
 
         var uvCorners = new vec2[]
         {
@@ -518,9 +521,11 @@ public static class MinecraftModelMesh
             }
     }
 
-    private static uint PickFallbackTexture(ResolvedBlockModel? model, string? blockNameHint, string resourcePackId)
+    private static uint PickFallbackTexture(ResolvedBlockModel? model, string? blockNameHint, string resourcePackId,
+                                            out string textureKey)
     {
         uint texId = 0;
+        textureKey = "";
 
         if (model != null)
         {
@@ -534,9 +539,11 @@ public static class MinecraftModelMesh
                     if (key != null)
                     {
                         string resolvedKey = TerrainAtlas.ResolveTextureKey(key, resourcePackId, blockNameHint ?? "");
+                        if (textureKey.Length == 0) textureKey = resolvedKey;
                         if (TerrainAtlas.Textures.TryGetValue(resolvedKey, out uint t))
                         {
                             texId = t;
+                            textureKey = resolvedKey;
                             break;
                         }
                     }
@@ -548,9 +555,11 @@ public static class MinecraftModelMesh
             {
                 foreach (var resolvedKey in model.Textures.Select(kvp => BlockRegistry.ResolveTextureKey(model, "#" + kvp.Key)).OfType<string>().Select(key => TerrainAtlas.ResolveTextureKey(key, resourcePackId, blockNameHint ?? "")))
                 {
+                    if (textureKey.Length == 0) textureKey = resolvedKey;
                     if (TerrainAtlas.Textures.TryGetValue(resolvedKey, out uint t))
                     {
                         texId = t;
+                        textureKey = resolvedKey;
                         break;
                     }
                 }
@@ -570,10 +579,17 @@ public static class MinecraftModelMesh
             foreach (string candidate in candidates)
             {
                 string resolvedCandidate = TerrainAtlas.ResolveTextureKey(candidate, resourcePackId, blockNameHint);
-                if (TerrainAtlas.Textures.TryGetValue(resolvedCandidate, out uint t) ||
-                    TerrainAtlas.Textures.TryGetValue(candidate, out t))
+                if (textureKey.Length == 0) textureKey = resolvedCandidate;
+                if (TerrainAtlas.Textures.TryGetValue(resolvedCandidate, out uint t))
                 {
                     texId = t;
+                    textureKey = resolvedCandidate;
+                    break;
+                }
+                if (TerrainAtlas.Textures.TryGetValue(candidate, out t))
+                {
+                    texId = t;
+                    textureKey = candidate;
                     break;
                 }
             }
@@ -698,7 +714,7 @@ public static class MinecraftModelMesh
             bool hasFaceTint = TryGetFaceBiomeTint(blockName, face, texKey, resolvedTexKey, out BiomeTintKind tintKind, out vec3 faceTint);
 
             string groupKey = ctmTile != null
-                ? $"ctm:{ctmTile.TextureId}:{ctmTile.TileIndex}:{(hasFaceTint ? tintKind.ToString() : "none")}"
+                ? $"ctm:{ctmTile.TextureId}:{ctmTile.TileIndex}:{resolvedTexKey}:{(hasFaceTint ? tintKind.ToString() : "none")}"
                 : $"{resolvedTexKey}:{(hasFaceTint ? tintKind.ToString() : "none")}";
             if (!groups.TryGetValue(groupKey, out var group))
             {

@@ -883,6 +883,10 @@ public class PropertiesPanel : UiPanel
             ResourcePackId = source.ResourcePackId,
             SourceAssetPath = source.SourceAssetPath,
             AlbedoTexturePath = source.AlbedoTexturePath,
+            NormalTexturePath = source.NormalTexturePath,
+            EmissionTexturePath = source.EmissionTexturePath,
+            NormalResourcePackId = source.NormalResourcePackId,
+            EmissionResourcePackId = source.EmissionResourcePackId,
             CameraTextureObjectId = source.CameraTextureObjectId,
             TextureOverridePath = source.TextureOverridePath,
             TileX = source.TileX,
@@ -933,6 +937,7 @@ public class PropertiesPanel : UiPanel
             MixColor = new ProjectVec4 { X = source.MixColor.X, Y = source.MixColor.Y, Z = source.MixColor.Z, W = source.MixColor.W },
             Metallic = source.Metallic,
             Roughness = source.Roughness,
+            NormalEnabled = source.NormalEnabled,
             Transparency = source.Transparency,
             DoubleSided = source.DoubleSided,
             TextureOffsetH = source.TextureOffsetH,
@@ -3571,16 +3576,7 @@ public class PropertiesPanel : UiPanel
                 
                 ImGui.TextUnformatted(Localization.T("text.panel.properties.albedo_texture"));
                 
-                // Show current texture if any mesh has one
-                uint currentTextureId = 0;
-                foreach (var mesh in _currentObject.Visuals)
-                {
-                    if (mesh.TextureId != 0)
-                    {
-                        currentTextureId = mesh.TextureId;
-                        break;
-                    }
-                }
+                uint currentTextureId = GetDisplayedAlbedoTextureId(_currentObject);
 
                 // Build list of available textures for dropdown
                 string currentLabel = Localization.T("text.panel.properties.none");
@@ -3596,9 +3592,11 @@ public class PropertiesPanel : UiPanel
                     string fullPath = ProjectManager.Instance.ResolveAssetPath(_currentObject.AlbedoTexturePath);
                     currentLabel = Path.GetFileName(fullPath);
                 }
-                else if (currentTextureId != 0 && _loadedTexturePathCache.TryGetValue(currentTextureId, out string? cachedPath))
+                else if (currentTextureId != 0)
                 {
-                    currentLabel = Path.GetFileName(cachedPath);
+                    string? texturePath = MineImatorLoader.Instance.GetTexturePath(currentTextureId);
+                    if (texturePath == null) _loadedTexturePathCache.TryGetValue(currentTextureId, out texturePath);
+                    currentLabel = Path.GetFileName(texturePath ?? $"Texture_{currentTextureId}");
                 }
 
                 // Texture dropdown
@@ -3621,6 +3619,7 @@ public class PropertiesPanel : UiPanel
                         }
                         _currentObject.AlbedoTexturePath = "";
                         _currentObject.CameraTextureObjectId = "";
+                        _currentObject.RefreshInheritedMaterials();
                         ProjectManager.Instance.SetDirty(true);
                     }
 
@@ -3701,7 +3700,9 @@ public class PropertiesPanel : UiPanel
                     }
                 }
 
-                if (currentTextureId != 0 && ImGui.Button(Localization.Label("text.panel.properties.clear_texture", "Clear texture##AlbedoTextureClear"), new Vector2(-1, 0)))
+                if ((currentTextureId != 0 || !string.IsNullOrEmpty(_currentObject.AlbedoTexturePath) ||
+                     !string.IsNullOrEmpty(_currentObject.CameraTextureObjectId)) &&
+                    ImGui.Button(Localization.Label("text.panel.properties.clear_texture", "Clear texture##AlbedoTextureClear"), new Vector2(-1, 0)))
                 {
                     foreach (var mesh in _currentObject.Visuals.Where(mesh => mesh.TextureId != 0))
                     {
@@ -3709,6 +3710,7 @@ public class PropertiesPanel : UiPanel
                     }
                     _currentObject.AlbedoTexturePath = "";
                     _currentObject.CameraTextureObjectId = "";
+                    _currentObject.RefreshInheritedMaterials();
                     ProjectManager.Instance.SetDirty(true);
                 }
 
@@ -4013,24 +4015,10 @@ public class PropertiesPanel : UiPanel
                 }, 0.6f);
             }
 
-            // Normal map (display only; file picking not yet implemented)
+            if (SupportsAlbedoTexture(_currentObject))
             {
-                string normalName = (mat?.NormalTexture != 0) ? Localization.T("text.panel.properties.texture") : Localization.T("text.common.none");
-                ImGui.TextUnformatted(Localization.Format("text.panel.properties.normal", normalName));
-                // TODO: open NativeFileDialog to pick a normal-map texture file
-                if (ImGui.Button(Localization.Label("text.panel.properties.browse", "Browse##normalBrowse")))
-                {
-                    // TODO: implement normal map file picker
-                }
-                ImGui.SameLine();
-                if (ImGui.Button(Localization.Label("text.common.clear", "Clear##normalClear")) && mat != null)
-                {
-                    EnsureMaterialSettings();
-                    _currentObject.MaterialSettings.NormalTexture = 0;
-                    _currentObject.MaterialSettings.NormalEnabled  = false;
-                    _currentObject.SetExplicitMaterialSettings();
-                    _currentObject.PropagateMaterialSettingsToChildren();
-                }
+                DrawAuxiliaryTextureSelector(true);
+                DrawAuxiliaryTextureSelector(false);
             }
 
             // Double Sided
@@ -5061,6 +5049,13 @@ public class PropertiesPanel : UiPanel
         if (Viewport?.SceneObjects == null || !ProjectManager.Instance.HasProject)
             return;
 
+        foreach (var asset in ProjectManager.Instance.GetProjectAssets().Where(asset => asset.AssetType == ProjectAssetType.Image))
+        {
+            string path = ProjectManager.Instance.GetAssetFullPath(asset);
+            uint id = (uint)path.GetHashCode() & 0x7FFFFFFF;
+            if (id != 0 && File.Exists(path)) _loadedTexturePathCache[id] = path;
+        }
+
         // First, scan for imported texture files in the project images folder
         string texturesFolder = Path.Combine(ProjectManager.Instance.ProjectFolder, "images");
         if (Directory.Exists(texturesFolder))
@@ -5074,7 +5069,7 @@ public class PropertiesPanel : UiPanel
                     string relativePath = Path.GetRelativePath(ProjectManager.Instance.ProjectFolder, filePath);
                     // Create a stable "fake" ID based on the filename hash
                     uint fakeId = (uint)relativePath.GetHashCode() & 0x7FFFFFFF; // Ensure positive
-                    if (fakeId != 0) // Avoid ID 0 which means "no texture"
+                    if (fakeId != 0 && !_loadedTexturePathCache.Values.Contains(filePath, StringComparer.OrdinalIgnoreCase))
                     {
                         _loadedTexturePathCache[fakeId] = filePath;
                     }
@@ -5092,7 +5087,26 @@ public class PropertiesPanel : UiPanel
     }
 
     private static bool SupportsAlbedoTexture(SceneObject obj)
-        => obj.Visuals.Any(mesh => !mesh.PickOnly);
+        => obj is CharacterSceneObject || obj.Visuals.Any(mesh => !mesh.PickOnly) ||
+           obj.Children.Any(child => child.UsePropertyInheritance && child.InheritTexture && SupportsAlbedoTexture(child));
+
+    private static uint GetDisplayedAlbedoTextureId(SceneObject obj)
+    {
+        bool hasVisuals = false;
+        foreach (var mesh in obj.Visuals)
+        {
+            if (mesh.PickOnly) continue;
+            hasVisuals = true;
+            if (mesh.TextureId != 0) return mesh.TextureId;
+        }
+        if (!hasVisuals)
+            foreach (var child in obj.Children)
+            {
+                uint texture = GetDisplayedAlbedoTextureId(child);
+                if (texture != 0) return texture;
+            }
+        return 0;
+    }
 
     private void ScanGeometryObjectForTextures(SceneObject obj)
     {
@@ -5104,9 +5118,10 @@ public class PropertiesPanel : UiPanel
             foreach (var mesh in obj.Visuals.Where(mesh => mesh.TextureId != 0 && !_loadedTexturePathCache.ContainsKey(mesh.TextureId)))
             {
                 // Map the real texture ID to its path
-                if (!string.IsNullOrEmpty(obj.AlbedoTexturePath))
+                string? loadedPath = MineImatorLoader.Instance.GetTexturePath(mesh.TextureId);
+                if (!string.IsNullOrEmpty(loadedPath) || !string.IsNullOrEmpty(obj.AlbedoTexturePath))
                 {
-                    string fullPath = ProjectManager.Instance.ResolveAssetPath(obj.AlbedoTexturePath);
+                    string fullPath = loadedPath ?? ProjectManager.Instance.ResolveAssetPath(obj.AlbedoTexturePath);
 
                     // Replace any existing fake/import entry that points to the same file
                     // so this texture appears only once in the dropdown.
@@ -5141,41 +5156,116 @@ public class PropertiesPanel : UiPanel
         }
     }
 
+    private void DrawAuxiliaryTextureSelector(bool normal)
+    {
+        string slot = normal ? "Normal" : "Emission";
+        string ownPath = normal ? _currentObject.NormalTexturePath : _currentObject.EmissionTexturePath;
+        string ownPack = normal ? _currentObject.NormalResourcePackId : _currentObject.EmissionResourcePackId;
+        string effectivePath = _currentObject.GetEffectiveAuxiliaryTexturePath(normal);
+        string effectivePack = _currentObject.GetEffectiveAuxiliaryResourcePackId(normal);
+        string currentLabel = !string.IsNullOrEmpty(effectivePack) ? effectivePack : string.IsNullOrEmpty(effectivePath)
+            ? Localization.T("text.panel.properties.none")
+            : Path.GetFileName(effectivePath);
+
+        ImGui.PushID(slot + "Texture");
+        ImGui.TextUnformatted(Localization.T(normal
+            ? "text.panel.properties.normal_texture"
+            : "text.panel.properties.emission_texture"));
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.BeginCombo("##TextureCombo", currentLabel))
+        {
+            if (ImGui.Selectable(Localization.T("text.panel.properties.none"), string.IsNullOrEmpty(ownPath) && string.IsNullOrEmpty(ownPack)))
+                AssignAuxiliaryTexture(normal, "");
+
+            if (_currentObject.SpawnCategory is "Blocks" or "Items" or "Scenery")
+            {
+                ImGui.SeparatorText(Localization.T("text.panel.properties.resource_pack"));
+                foreach (string packId in MinecraftDataLoader.GetAvailableResourcePackIds())
+                {
+                    bool selected = string.Equals(effectivePack, packId, StringComparison.OrdinalIgnoreCase);
+                    if (ImGui.Selectable(packId + "##pack", selected))
+                        AssignAuxiliaryTexture(normal, "", packId);
+                    if (selected) ImGui.SetItemDefaultFocus();
+                }
+                ImGui.Separator();
+            }
+
+            var paths = _loadedTexturePathCache.Values
+                .Concat(ProjectManager.Instance.GetProjectAssets()
+                    .Where(asset => asset.AssetType == ProjectAssetType.Image)
+                    .Select(asset => ProjectManager.Instance.GetAssetFullPath(asset)))
+                .Where(File.Exists)
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+            foreach (string path in paths)
+            {
+                bool selected = string.Equals(ProjectManager.Instance.ResolveAssetPath(effectivePath),
+                    path, StringComparison.OrdinalIgnoreCase);
+                if (ImGui.Selectable(Path.GetFileName(path) + "##" + path, selected))
+                    AssignAuxiliaryTexture(normal, path);
+                if (selected) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+
+        if (ImGui.Button(Localization.Label("text.panel.properties.load_new_texture", "Load new texture..."), new Vector2(-1, 0)))
+        {
+            var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
+            if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
+                AssignAuxiliaryTexture(normal, ResolveAlbedoTexturePathForProject(result.Path));
+        }
+        if ((!string.IsNullOrEmpty(ownPath) || !string.IsNullOrEmpty(ownPack)) &&
+            ImGui.Button(Localization.Label("text.panel.properties.clear_texture", "Clear texture"), new Vector2(-1, 0)))
+            AssignAuxiliaryTexture(normal, "");
+        ImGui.PopID();
+        ImGui.Spacing();
+    }
+
+    private void AssignAuxiliaryTexture(bool normal, string path, string resourcePackId = "")
+    {
+        if (!string.IsNullOrEmpty(path))
+        {
+            if (Gl == null || _currentObject.LoadTexture(path, reload: true) == 0)
+                return;
+            path = ProjectManager.Instance.ToProjectRelativePath(path);
+        }
+        EnsureMaterialSettings();
+        _currentObject.SetExplicitMaterialSettings();
+        if (normal)
+        {
+            _currentObject.NormalTexturePath = path;
+            _currentObject.NormalResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
+            _currentObject.MaterialSettings.NormalEnabled = !string.IsNullOrEmpty(path) || !string.IsNullOrEmpty(resourcePackId);
+        }
+        else
+        {
+            _currentObject.EmissionTexturePath = path;
+            _currentObject.EmissionResourcePackId = MinecraftDataLoader.NormalizeResourcePackId(resourcePackId);
+            if (!string.IsNullOrEmpty(path) || !string.IsNullOrEmpty(resourcePackId))
+            {
+                var settings = _currentObject.MaterialSettings;
+                settings.EmissionEnabled = true;
+                if (settings.EmissionColor.x == 0f && settings.EmissionColor.y == 0f && settings.EmissionColor.z == 0f)
+                    settings.EmissionColor = new vec4(1f);
+                if (settings.EmissionEnergy <= 0f) settings.EmissionEnergy = 1f;
+            }
+        }
+        _currentObject.PropagateMaterialSettingsToChildren();
+        ProjectManager.Instance.SetDirty(true);
+    }
+
     /// <summary>
     /// Loads a texture from file and applies it as the albedo texture to all meshes in the current object.
     /// Supports PNG, JPG, BMP, TGA, GIF, WebP, and TIFF formats with RGBA color components.
     /// </summary>
-    private unsafe void OnLoadAlbedoTextureForObject(SceneObject obj, string filePath)
+    private void OnLoadAlbedoTextureForObject(SceneObject obj, string filePath)
     {
         if (obj == null || Gl == null || !File.Exists(filePath))
             return;
 
         try
         {
-            // Flip image vertically on load for OpenGL Y-axis convention
-            StbImage.stbi_set_flip_vertically_on_load(1);
-            
-            var bytes = File.ReadAllBytes(filePath);
-            ImageResult img = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
-            
-            // Reset to default behavior
-            StbImage.stbi_set_flip_vertically_on_load(0);
-
-            uint tex = Gl.GenTexture();
-            Gl.BindTexture(GLEnum.Texture2D, tex);
-
-            fixed (byte* p = img.Data)
-                Gl.TexImage2D(GLEnum.Texture2D, 0, (int)GLEnum.Rgba,
-                    (uint)img.Width, (uint)img.Height,
-                    0, GLEnum.Rgba, GLEnum.UnsignedByte, p);
-
-            // Use linear filtering for better image quality
-            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
-            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
-            // Allow wrapping for tileable textures
-            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.Repeat);
-            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.Repeat);
-            Gl.BindTexture(GLEnum.Texture2D, 0);
+            uint tex = obj.LoadTexture(filePath, reload: true);
+            if (tex == 0) return;
 
             // Apply to all meshes
             foreach (var mesh in obj.Visuals)
@@ -5195,6 +5285,8 @@ public class PropertiesPanel : UiPanel
 
             // Store the relative path for persistence
             obj.AlbedoTexturePath = ProjectManager.Instance.ToProjectRelativePath(filePath);
+            obj.CameraTextureObjectId = "";
+            obj.RefreshInheritedMaterials();
         }
         catch (Exception ex)
         {

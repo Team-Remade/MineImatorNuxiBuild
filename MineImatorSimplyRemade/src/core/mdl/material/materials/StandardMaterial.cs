@@ -26,8 +26,6 @@ public class StandardMaterial : Material
     /// <summary>
     /// OpenGL texture handle for the normal map (0 = no normal map).
     /// Loaded from an external image file and uploaded to the GPU as a Texture2D.
-    /// Currently stored and propagated through the hierarchy; a normal-map shader
-    /// stage will consume it once the rendering pipeline supports it.
     /// </summary>
     public uint NormalTexture = 0;
 
@@ -37,6 +35,9 @@ public class StandardMaterial : Material
     /// When true, adds emissive lighting to the final shaded result.
     /// </summary>
     public bool EmissionEnabled;
+
+    /// <summary>Optional RGB emission mask (0 = use the diffuse texture or white).</summary>
+    public uint EmissionTexture = 0;
 
     /// <summary>
     /// Emissive colour added in the fragment shader when <see cref="EmissionEnabled"/> is true.

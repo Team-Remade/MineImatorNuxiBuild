@@ -215,6 +215,11 @@ public static class MinecraftDataLoader
         }
     }
 
+    public static bool IsMaterialTexturePath(string path)
+        => path.EndsWith("_n.png", StringComparison.OrdinalIgnoreCase) ||
+           path.EndsWith("_s.png", StringComparison.OrdinalIgnoreCase) ||
+           path.EndsWith("_e.png", StringComparison.OrdinalIgnoreCase);
+
     public static string DecodeUtf8(byte[] data)
     {
         return Encoding.UTF8.GetString(data);

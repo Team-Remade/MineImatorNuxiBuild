@@ -308,8 +308,12 @@ public class ProjectSceneObjectEntry
     public string BlockVariant { get; set; } = "";
     public string TextureType { get; set; } = "item";
     public string ResourcePackId { get; set; } = "";
+    public string NormalResourcePackId { get; set; } = "";
+    public string EmissionResourcePackId { get; set; } = "";
     public string SourceAssetPath { get; set; } = "";
     public string AlbedoTexturePath { get; set; } = "";
+    public string NormalTexturePath { get; set; } = "";
+    public string EmissionTexturePath { get; set; } = "";
     public string CameraTextureObjectId { get; set; } = "";
     public string TemporaryItemSheetPath { get; set; } = "";
     public string TemporaryItemSheetCacheKey { get; set; } = "";
@@ -407,6 +411,7 @@ public class ProjectSceneObjectEntry
     public ProjectVec4 MixColor { get; set; } = new() { X = 0f, Y = 0f, Z = 0f, W = 0f };
     public float Metallic { get; set; } = 0f;
     public float Roughness { get; set; } = 0.5f;
+    public bool NormalEnabled { get; set; } = false;
     public float Transparency { get; set; } = 0f;
     public bool DoubleSided { get; set; } = false;
     public float TextureOffsetH { get; set; } = 0f;

@@ -102,6 +102,7 @@ public static class TerrainAtlas
     {
         _gl = gl;
         LoadTextures(progress);
+        ResourcePackMaterialTextures.Initialize(gl);
     }
 
     /// <summary>
@@ -263,7 +264,7 @@ public static class TerrainAtlas
                      progress?.Invoke(ratio * 0.20f, $"Scanning animation metadata {current}/{total}: {containerName}");
                  }))
         {
-            mcmetaByPath.TryAdd(file.RelativePath, MinecraftDataLoader.DecodeUtf8(file.Data));
+            mcmetaByPath[MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, file.RelativePath)] = MinecraftDataLoader.DecodeUtf8(file.Data);
         }
 
         // Add block textures using namespaced keys so default keys stay intact.
@@ -273,7 +274,8 @@ public static class TerrainAtlas
                      progress?.Invoke(0.20f + ratio * 0.30f, $"Scanning block overrides {current}/{total}: {containerName}");
                  }))
         {
-            string baseKey = Path.GetFileNameWithoutExtension(file.RelativePath);
+            if (MinecraftDataLoader.IsMaterialTexturePath(file.RelativePath)) continue;
+            if (!MinecraftDataLoader.TryParseTextureAssetPath(file.RelativePath, out _, out _, out string baseKey)) continue;
             if (string.IsNullOrWhiteSpace(baseKey)) continue;
 
             string key = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, baseKey);
@@ -290,7 +292,7 @@ public static class TerrainAtlas
             }
 
             string mcmetaPath = file.RelativePath + ".mcmeta";
-            bool hasAnim = mcmetaByPath.TryGetValue(mcmetaPath, out string? animText);
+            bool hasAnim = mcmetaByPath.TryGetValue(MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, mcmetaPath), out string? animText);
 
             UpsertTexture(key, img.Data, img.Width, img.Height, hasAnim);
 
@@ -315,6 +317,7 @@ public static class TerrainAtlas
                      progress?.Invoke(0.50f + ratio * 0.20f, $"Scanning entity overrides {current}/{total}: {containerName}");
                  }))
         {
+            if (MinecraftDataLoader.IsMaterialTexturePath(file.RelativePath)) continue;
             string baseRelative = file.RelativePath
                 .Replace("assets/minecraft/textures/", "", StringComparison.OrdinalIgnoreCase)
                 .Replace(".png", "", StringComparison.OrdinalIgnoreCase)
@@ -337,7 +340,7 @@ public static class TerrainAtlas
             }
 
             string mcmetaPath = file.RelativePath + ".mcmeta";
-            bool hasAnim = mcmetaByPath.TryGetValue(mcmetaPath, out string? animText);
+            bool hasAnim = mcmetaByPath.TryGetValue(MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, mcmetaPath), out string? animText);
 
             UpsertTexture(relative, img.Data, img.Width, img.Height, hasAnim);
 
@@ -362,6 +365,7 @@ public static class TerrainAtlas
                      progress?.Invoke(0.70f + ratio * 0.30f, $"Scanning namespaced textures {current}/{total}: {containerName}");
                  }))
         {
+            if (MinecraftDataLoader.IsMaterialTexturePath(file.RelativePath)) continue;
             if (!MinecraftDataLoader.TryParseTextureAssetPath(file.RelativePath, out string assetNamespace, out string category, out string textureKey))
                 continue;
 
@@ -386,7 +390,7 @@ public static class TerrainAtlas
             }
 
             string mcmetaPath = file.RelativePath + ".mcmeta";
-            bool hasAnim = mcmetaByPath.TryGetValue(mcmetaPath, out string? animText);
+            bool hasAnim = mcmetaByPath.TryGetValue(MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, mcmetaPath), out string? animText);
 
             UpsertTexture(key, img.Data, img.Width, img.Height, hasAnim);
 

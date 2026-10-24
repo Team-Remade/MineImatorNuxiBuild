@@ -109,8 +109,9 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
             var block = new WorldSpecialBlock(item["name"]!.GetValue<string>(), properties,
                 item["model"]!.GetValue<string>(), null, [],
                 ReadVector(item["position"]), ReadVector(item["rotation"]), vec3.Zero);
+            var textureKeys = JsonNode.Parse(File.ReadAllText(path))?["minecraft_texture_keys"] as JsonObject;
             var scene = Create(block, path);
-            try { Flatten(scene); }
+            try { Flatten(scene, textureKeys); }
             finally { DisposeScene(scene); }
         }
 
@@ -118,13 +119,16 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
             ? new vec3(array[0]!.GetValue<float>(), array[1]!.GetValue<float>(), array[2]!.GetValue<float>())
             : throw new InvalidDataException("Invalid embedded scenery model transform.");
 
-        void Flatten(SceneObject node)
+        void Flatten(SceneObject node, JsonObject? textureKeys)
         {
             // Bake the complete posed hierarchy, including pivots and parent transforms.
             var transform = node.GetWorldMatrix();
             var normalTransform = transform.Inverse.Transposed;
             foreach (var mesh in node.Visuals.ToArray())
             {
+                string file = Path.GetFileName(MineImatorLoader.Instance.GetTexturePath(mesh.TextureId) ?? "");
+                if (textureKeys?[file] is JsonValue key && key.TryGetValue<string>(out string? textureKey))
+                    mesh.MinecraftTextureKey = textureKey;
                 for (int i = 0; i < mesh.Vertices.Count; i++)
                     mesh.Vertices[i] = (transform * new vec4(mesh.Vertices[i], 1)).xyz;
                 for (int i = 0; i < mesh.Normals.Count; i++)
@@ -134,7 +138,7 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
                 destination.AddMesh(mesh);
                 node.Visuals.Remove(mesh);
             }
-            foreach (var child in node.Children) Flatten(child);
+            foreach (var child in node.Children) Flatten(child, textureKeys);
         }
     }
 
@@ -153,6 +157,7 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
         string snapshotDirectory = Path.Combine(_temporaryDirectory, _models.Count.ToString());
         Directory.CreateDirectory(snapshotDirectory);
         var textures = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var textureKeys = new JsonObject();
 
         void Snapshot(JsonNode node)
         {
@@ -213,6 +218,9 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
             else if (packed == null && File.Exists(source + ".mcmeta"))
                 File.Copy(source + ".mcmeta", destination + ".mcmeta");
             textures.Add(source, localName);
+            string relative = Path.GetRelativePath(MinecraftDataLoader.GetVersionRoot(), source).Replace('\\', '/');
+            if (relative.StartsWith("textures/", StringComparison.OrdinalIgnoreCase))
+                textureKeys[localName] = "assets/minecraft/" + relative[..^4];
             return localName;
         }
 
@@ -223,6 +231,7 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
                 shapes.RemoveAt(1);
         }
         Snapshot(document);
+        document["minecraft_texture_keys"] = textureKeys;
         string snapshot = Path.Combine(snapshotDirectory, block.Model + ".mimodel");
         File.WriteAllText(snapshot, document.ToJsonString());
         if (!addToProject)

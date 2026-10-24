@@ -255,8 +255,12 @@ public static class ProjectSceneSerializer
             BlockVariant = obj.BlockVariant,
             TextureType = obj.TextureType,
             ResourcePackId = obj.ResourcePackId,
+            NormalResourcePackId = obj.NormalResourcePackId,
+            EmissionResourcePackId = obj.EmissionResourcePackId,
             SourceAssetPath = pm.ToAssetReference(obj.SourceAssetPath),
             AlbedoTexturePath = pm.ToProjectRelativePath(obj.AlbedoTexturePath),
+            NormalTexturePath = pm.ToAssetReference(obj.NormalTexturePath),
+            EmissionTexturePath = pm.ToAssetReference(obj.EmissionTexturePath),
             CameraTextureObjectId = obj.CameraTextureObjectId,
             TemporaryItemSheetPath = pm.ToProjectRelativePath(obj.TemporaryItemSheetPath),
             TemporaryItemSheetCacheKey = obj.TemporaryItemSheetCacheKey,
@@ -344,6 +348,7 @@ public static class ProjectSceneSerializer
             entry.MixColor = ToProjectVec4(obj.MaterialSettings.MixColor);
             entry.Metallic = obj.MaterialSettings.Metallic;
             entry.Roughness = obj.MaterialSettings.Roughness;
+            entry.NormalEnabled = obj.MaterialSettings.NormalEnabled;
             entry.Transparency = obj.MaterialSettings.Transparency;
             entry.DoubleSided = obj.MaterialSettings.DoubleSided;
             entry.TextureOffsetH = obj.MaterialSettings.TextureOffset.x;
@@ -671,8 +676,13 @@ public static class ProjectSceneSerializer
         obj.BlockVariant = entry.BlockVariant;
         obj.TextureType = entry.TextureType;
         obj.ResourcePackId = entry.ResourcePackId;
+        obj.NormalResourcePackId = entry.NormalResourcePackId ?? "";
+        obj.EmissionResourcePackId = entry.EmissionResourcePackId ?? "";
         obj.SourceAssetPath = ResolveSourcePath(entry);
         obj.TextureOverridePath = ResolveTextureOverridePath(entry.TextureOverridePath);
+        // Assign empty paths too so history can remove previously authored maps.
+        obj.NormalTexturePath = ProjectManager.Instance.ResolveAssetPath(entry.NormalTexturePath ?? "");
+        obj.EmissionTexturePath = ProjectManager.Instance.ResolveAssetPath(entry.EmissionTexturePath ?? "");
         obj.CameraTextureObjectId = entry.CameraTextureObjectId ?? "";
 
         // Restore albedo texture path (actual texture loading happens after scene is loaded).
@@ -838,6 +848,7 @@ public static class ProjectSceneSerializer
             material.MixColor = ToVec4(entry.MixColor);
             material.Metallic = entry.Metallic;
             material.Roughness = entry.Roughness;
+            material.NormalEnabled = entry.NormalEnabled;
             material.Transparency = entry.Transparency;
             material.DoubleSided = entry.DoubleSided;
             material.TextureOffset = new vec2(entry.TextureOffsetH, entry.TextureOffsetV);
