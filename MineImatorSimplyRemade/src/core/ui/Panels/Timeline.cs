@@ -301,6 +301,10 @@ public class Timeline : UiPanel
 
     public void ImportProjectState(ProjectTimelineState? state)
     {
+        // The scene snapshot already contains the saved pose, including unkeyed
+        // edits. Restore tracks without evaluating them until the user seeks or plays.
+        _isPlaying = false;
+        PauseAllAudio();
         _groupExpanded.Clear();
         RefreshFromScene();
 
@@ -316,7 +320,6 @@ public class Timeline : UiPanel
             _playbackRegionEnd = null;
             _currentFrame = 0;
             _frameAccumulator = 0.0;
-            ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
             return;
         }
 
@@ -341,7 +344,6 @@ public class Timeline : UiPanel
                     Color = new Vector4(marker.Red, marker.Green, marker.Blue, marker.Alpha) });
         _currentFrame = Math.Max(0, state.CurrentFrame);
         _frameAccumulator = 0.0;
-        ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
     }
 
     /// <summary>
