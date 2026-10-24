@@ -297,7 +297,8 @@ public class Timeline : UiPanel
 
     public void ImportProjectState(ProjectTimelineState? state)
     {
-        OnSelectionChanged();
+        _groupExpanded.Clear();
+        RefreshFromScene();
 
         if (state == null)
         {
@@ -347,7 +348,7 @@ public class Timeline : UiPanel
     {
         Instance = this;
         if (SelectionManager.Instance != null)
-            SelectionManager.Instance.SelectionChanged += OnSelectionChanged;
+            SelectionManager.Instance.SelectionChanged += RefreshFromScene;
         TimelineIcons.Initialize(Gl);
     }
 
@@ -2859,7 +2860,7 @@ public class Timeline : UiPanel
 
     // ── Get / set property values ─────────────────────────────────────────────
 
-    private object GetPropertyValue(SceneObject obj, string path)
+    internal object GetPropertyValue(SceneObject obj, string path)
     {
         if (path == "visible") return obj.ObjectVisible ? 1f : 0f;
         if (path == "material.texture") return obj.AlbedoTexturePath;
@@ -3135,7 +3136,7 @@ public class Timeline : UiPanel
         return (angles - previous).LengthSqr <= (alternative - previous).LengthSqr ? angles : alternative;
     }
 
-    private void SetPropertyValue(SceneObject obj, string path, object rawValue)
+    internal void SetPropertyValue(SceneObject obj, string path, object rawValue)
     {
         if (path == "material.texture")
         {
@@ -3566,10 +3567,12 @@ public class Timeline : UiPanel
 
     // ── Selection changed → rebuild display rows ──────────────────────────────
 
-    private void OnSelectionChanged()
+    public void RefreshFromScene()
     {
         _displayRows.Clear();
         _propertyKeyframes.Clear();
+        _selectedKeyframes.Clear();
+        _keyframeOwners.Clear();
 
         var selected = SelectionManager.Instance?.SelectedObjects;
         if (selected != null)
@@ -3902,17 +3905,9 @@ public class Timeline : UiPanel
             }
         }
 
+        // Groups can temporarily disappear during selection changes or undo/redo.
+        // Keep their expansion state until another project is loaded.
         _displayRows = newRows;
-
-        // Keep expanded/collapsed state for groups that still exist after the
-        // rebuild, while discarding stale entries from removed rows/objects.
-        var validGroupKeys = _displayRows
-            .Where(r => r.IsGroupHeader)
-            .Select(r => $"{r.Object.ObjectId}.{r.PropertyPath}")
-            .ToHashSet(StringComparer.Ordinal);
-
-        foreach (var staleKey in _groupExpanded.Keys.Where(k => !validGroupKeys.Contains(k)).ToList())
-            _groupExpanded.Remove(staleKey);
     }
 
     private void AddObjectRows(SceneObject obj)

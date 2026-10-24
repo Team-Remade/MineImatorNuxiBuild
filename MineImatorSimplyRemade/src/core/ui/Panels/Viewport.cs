@@ -354,6 +354,8 @@ public class Viewport : UiPanel
     /// </summary>
     public bool OverlaysEnabled { get; set; } = true;
 
+    private bool _ruleOfThirdsEnabled;
+
     /// <summary>
     /// Enables manual particle preview while paused. When enabled, only
     /// user-selected particle spawners are simulated.
@@ -2442,6 +2444,10 @@ public class Viewport : UiPanel
                 ImGui.PopStyleColor(4);
             }
 
+            ImGui.SameLine();
+            ImGui.SetCursorPosY(itemY);
+            DrawRuleOfThirdsToggle(iconSize);
+
             // Particle preview toggle — only affects paused manual simulation.
             {
                 ImGui.SameLine();
@@ -2883,6 +2889,8 @@ public class Viewport : UiPanel
             new Vector2(0, 1),
             new Vector2(1, 0));
 
+        RenderRuleOfThirdsOverlay(imageMin, imageSize);
+
         // ── Gizmo overlay (rotation arc drawn on the ImGui draw list) ─────────
         if (OverlaysEnabled)
             Gizmo?.RenderOverlay(Camera, imageMin, size);
@@ -2904,6 +2912,59 @@ public class Viewport : UiPanel
 
         ImGui.EndChild();
         ImGui.End();
+    }
+
+    public void DrawRuleOfThirdsToggle(float height = 0f)
+    {
+        if (!_ruleOfThirdsEnabled)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Button,        new Vector4(0.20f, 0.20f, 0.20f, 1.0f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.30f, 0.30f, 0.30f, 1.0f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive,  new Vector4(0.40f, 0.40f, 0.40f, 1.0f));
+            ImGui.PushStyleColor(ImGuiCol.Text,          new Vector4(0.60f, 0.60f, 0.60f, 1.0f));
+        }
+        else
+        {
+            var accentColor = GetAccentColorFromPreferences();
+            ImGui.PushStyleColor(ImGuiCol.Button,        accentColor with { W = 0.6f });
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, accentColor with { W = 0.8f });
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive,  accentColor);
+            ImGui.PushStyleColor(ImGuiCol.Text,          Vector4.One);
+        }
+
+        if (ImGui.Button(Localization.Label("text.panel.viewport.thirds", "Thirds"), new Vector2(0, height)))
+            _ruleOfThirdsEnabled = !_ruleOfThirdsEnabled;
+
+        ImGui.PopStyleColor(4);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(Localization.T("text.panel.viewport.toggle_rule_of_thirds"));
+    }
+
+    public void RenderRuleOfThirdsOverlay(Vector2 imageMin, Vector2 imageSize)
+    {
+        if (!_ruleOfThirdsEnabled)
+            return;
+
+        var drawList = ImGui.GetWindowDrawList();
+        var imageMax = imageMin + imageSize;
+        uint shadowColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.65f));
+        uint guideColor = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.7f));
+        drawList.PushClipRect(imageMin, imageMax, true);
+        for (int i = 1; i <= 2; i++)
+        {
+            float x = imageMin.X + imageSize.X * i / 3f;
+            float y = imageMin.Y + imageSize.Y * i / 3f;
+            var top = new Vector2(x, imageMin.Y);
+            var bottom = new Vector2(x, imageMax.Y);
+            var left = new Vector2(imageMin.X, y);
+            var right = new Vector2(imageMax.X, y);
+            // Dark backing keeps the guide visible against bright scenes.
+            drawList.AddLine(top, bottom, shadowColor, 3f * UiTheme.Scale);
+            drawList.AddLine(left, right, shadowColor, 3f * UiTheme.Scale);
+            drawList.AddLine(top, bottom, guideColor, UiTheme.Scale);
+            drawList.AddLine(left, right, guideColor, UiTheme.Scale);
+        }
+        drawList.PopClipRect();
     }
 
     private void RenderVeldridScene(
@@ -6027,6 +6088,9 @@ public class Viewport : UiPanel
         var (activeCam, sceneObj) = DrawCameraDropdown(spawned);
 
         ImGui.SameLine();
+        DrawRuleOfThirdsToggle();
+
+        ImGui.SameLine();
         if (ImGui.Button(Localization.Label("text.panel.viewport.pop", "Pop")))
         {
             Undocked = true;
@@ -6090,6 +6154,8 @@ public class Viewport : UiPanel
                 drawSize,
                 new Vector2(0, 1),
                 new Vector2(1, 0));
+
+            RenderRuleOfThirdsOverlay(previewImageMin, previewImageSize);
 
             // Gizmo rotation-arc overlay (drawn on the ImGui draw list so it
             // sits on top of the rendered preview image, using the screen

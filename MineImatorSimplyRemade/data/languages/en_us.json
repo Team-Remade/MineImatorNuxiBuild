@@ -699,6 +699,8 @@
     "text.panel.viewport.rendered": "Rendered",
     "text.panel.viewport.rendered_f5": "Rendered {0} (F5)",
     "text.panel.viewport.shaded": "Shaded",
+    "text.panel.viewport.thirds": "Thirds",
+    "text.panel.viewport.toggle_rule_of_thirds": "Toggle rule-of-thirds guide",
     "text.panel.viewport.shadow": "Shadow",
     "text.panel.viewport.shadow_debug_ctrl_f6": "Shadow Debug (Ctrl+F6)",
     "text.panel.viewport.shadow_debug_off_ctrl_f6": "Shadow Debug Off (Ctrl+F6)",

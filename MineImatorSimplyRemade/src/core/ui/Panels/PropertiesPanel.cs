@@ -294,7 +294,6 @@ public class PropertiesPanel : UiPanel
 
     // Scale link toggle
     private bool _linkScale = true;
-    private int _cameraEffectToAddIndex;
     private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field" };
     private static readonly string[] CameraShakeModeOptions = { "Rotational", "Positional", "Both" };
 
@@ -1600,6 +1599,11 @@ public class PropertiesPanel : UiPanel
             if (_openPropContextMenu)
             {
                 _openPropContextMenu = false;
+                _propertyContextObject = _currentObject;
+                if (_propertyContextPaths?.FirstOrDefault() != _ctxPropertyPath)
+                    _propertyContextPaths = null;
+                if (_propertyContextBinding?.Path != _ctxPropertyPath)
+                    _propertyContextBinding = null;
                 ImGui.OpenPopup("##prop_keyframe_ctx");
             }
             RenderPropertyContextMenu();
@@ -1878,52 +1882,55 @@ public class PropertiesPanel : UiPanel
                 }
                 RegisterBackgroundKeyframeContext(nameof(FloorVisible));
 
-                bool floorChanged = false;
-                string floorAtlasLabel = NormalizeFloorAtlas(FloorTextureAtlas) == "item" ? "Item Atlas" : "Block Atlas";
-                bool floorAtlasOpen = ImGui.BeginCombo(Localization.Label("text.panel.properties.floor_atlas", "Floor Atlas"), Localization.DisplayText(floorAtlasLabel));
-                RegisterBackgroundKeyframeContext(nameof(FloorTextureAtlas));
-                if (floorAtlasOpen)
+                if (FloorVisible)
                 {
-                    bool useBlock = NormalizeFloorAtlas(FloorTextureAtlas) == "block";
-                    if (ImGui.Selectable(Localization.Label("text.common.block_atlas", "Block Atlas"), useBlock))
+                    bool floorChanged = false;
+                    string floorAtlasLabel = NormalizeFloorAtlas(FloorTextureAtlas) == "item" ? "Item Atlas" : "Block Atlas";
+                    bool floorAtlasOpen = ImGui.BeginCombo(Localization.Label("text.panel.properties.floor_atlas", "Floor Atlas"), Localization.DisplayText(floorAtlasLabel));
+                    RegisterBackgroundKeyframeContext(nameof(FloorTextureAtlas));
+                    if (floorAtlasOpen)
                     {
-                        FloorTextureAtlas = "block";
-                        floorChanged = true;
-                    }
-
-                    bool useItem = NormalizeFloorAtlas(FloorTextureAtlas) == "item";
-                    if (ImGui.Selectable(Localization.Label("text.common.item_atlas", "Item Atlas"), useItem))
-                    {
-                        FloorTextureAtlas = "item";
-                        floorChanged = true;
-                    }
-
-                    ImGui.EndCombo();
-                }
-
-                ImGui.TextUnformatted(Localization.T("text.panel.properties.floor_tile"));
-                ImGui.SetNextItemWidth(-1);
-                bool floorTileOpen = ImGui.BeginCombo("##FloorTile", FloorTileKey);
-                RegisterBackgroundKeyframeContext(nameof(FloorTileKey));
-                if (floorTileOpen)
-                {
-                    foreach (string key in GetFloorAtlasKeys())
-                    {
-                        bool selected = string.Equals(key, FloorTileKey, StringComparison.Ordinal);
-                        if (ImGui.Selectable(key, selected))
+                        bool useBlock = NormalizeFloorAtlas(FloorTextureAtlas) == "block";
+                        if (ImGui.Selectable(Localization.Label("text.common.block_atlas", "Block Atlas"), useBlock))
                         {
-                            FloorTileKey = key;
+                            FloorTextureAtlas = "block";
                             floorChanged = true;
                         }
-                    }
-                    ImGui.EndCombo();
-                }
 
-                if (floorChanged)
-                {
-                    ApplyFloorSettingsToViewport();
-                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
-                    ProjectManager.Instance.SetDirty(true);
+                        bool useItem = NormalizeFloorAtlas(FloorTextureAtlas) == "item";
+                        if (ImGui.Selectable(Localization.Label("text.common.item_atlas", "Item Atlas"), useItem))
+                        {
+                            FloorTextureAtlas = "item";
+                            floorChanged = true;
+                        }
+
+                        ImGui.EndCombo();
+                    }
+
+                    ImGui.TextUnformatted(Localization.T("text.panel.properties.floor_tile"));
+                    ImGui.SetNextItemWidth(-1);
+                    bool floorTileOpen = ImGui.BeginCombo("##FloorTile", FloorTileKey);
+                    RegisterBackgroundKeyframeContext(nameof(FloorTileKey));
+                    if (floorTileOpen)
+                    {
+                        foreach (string key in GetFloorAtlasKeys())
+                        {
+                            bool selected = string.Equals(key, FloorTileKey, StringComparison.Ordinal);
+                            if (ImGui.Selectable(key, selected))
+                            {
+                                FloorTileKey = key;
+                                floorChanged = true;
+                            }
+                        }
+                        ImGui.EndCombo();
+                    }
+
+                    if (floorChanged)
+                    {
+                        ApplyFloorSettingsToViewport();
+                        WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                        ProjectManager.Instance.SetDirty(true);
+                    }
                 }
 
                 ImGui.Spacing();
@@ -2053,15 +2060,6 @@ public class PropertiesPanel : UiPanel
                     backgroundChanged = true;
                 }
                 RegisterBackgroundKeyframeContext(nameof(BackgroundOffset) + ".1");
-
-                if (ImGui.Button(Localization.Label("text.panel.properties.reset_transform", "Reset Transform##backgroundResetTransform")))
-                {
-                    BackgroundScale = 1f;
-                    BackgroundRotationDegrees = 0f;
-                    BackgroundOffset[0] = 0f;
-                    BackgroundOffset[1] = 0f;
-                    backgroundChanged = true;
-                }
 
                 ImGui.Spacing();
                 ImGui.TextUnformatted(Localization.T("text.panel.properties.ambient_light"));
@@ -2596,8 +2594,6 @@ public class PropertiesPanel : UiPanel
             }
             ImGui.PopItemWidth();
 
-            if (ImGui.Button(Localization.Label("text.panel.properties.reset", "Reset##posReset")))
-                ApplyPosition(vec3.Zero);
         }
 
         // ── Rotation ──────────────────────────────────────────────────────────
@@ -2663,8 +2659,6 @@ public class PropertiesPanel : UiPanel
             }
             ImGui.PopItemWidth();
 
-            if (ImGui.Button(Localization.Label("text.panel.properties.reset", "Reset##rotReset")))
-                ApplyRotation(vec3.Zero);
         }
 
         // ── Scale ─────────────────────────────────────────────────────────────
@@ -2745,8 +2739,6 @@ public class PropertiesPanel : UiPanel
             }
             ImGui.PopItemWidth();
 
-            if (ImGui.Button(Localization.Label("text.panel.properties.reset", "Reset##scaleReset")))
-                ApplyScale(vec3.Ones);
         }
 
         // ── Bend ──────────────────────────────────────────────────────────────
@@ -2807,8 +2799,6 @@ public class PropertiesPanel : UiPanel
             }
             ImGui.PopItemWidth();
 
-            if (ImGui.Button(Localization.Label("text.panel.properties.reset", "Reset##bendReset")))
-                ApplyBend(bendBone, vec3.Zero, "bend.x", "bend.y", "bend.z");
         }
 
         // ── Block Tiling ───────────────────────────────────────────────────────
@@ -2861,8 +2851,6 @@ public class PropertiesPanel : UiPanel
             ImGui.Spacing();
             UiText.Disabled(Localization.Format("text.panel.properties.total_blocks", _currentObject.GetEffectiveTileX() * _currentObject.GetEffectiveTileY() * _currentObject.GetEffectiveTileZ()));
 
-            if (ImGui.Button(Localization.Label("text.panel.properties.reset", "Reset##tileReset")))
-                ApplyBlockTiling(1, 1, 1);
         }
 
         if (string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) &&
@@ -3319,17 +3307,16 @@ public class PropertiesPanel : UiPanel
             ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
             if (InputFloatEditor("X##pivX", ref pivX, 0.1f, float.MinValue, float.MaxValue))
                 ApplyPivotOffset(new vec3(pivX / 16f, pivY / 16f, pivZ / 16f));
+            RegisterPropertyContext("pivot.x");
 
             if (InputFloatEditor("Y##pivY", ref pivY, 0.1f, float.MinValue, float.MaxValue))
                 ApplyPivotOffset(new vec3(pivX / 16f, pivY / 16f, pivZ / 16f));
+            RegisterPropertyContext("pivot.y");
 
             if (InputFloatEditor("Z##pivZ", ref pivZ, 0.1f, float.MinValue, float.MaxValue))
                 ApplyPivotOffset(new vec3(pivX / 16f, pivY / 16f, pivZ / 16f));
+            RegisterPropertyContext("pivot.z");
             ImGui.PopItemWidth();
-
-            if (ImGui.Button(Localization.Label("text.panel.properties.reset", "Reset##pivReset")))
-                ApplyToSelectedObjects(obj => obj.PivotOffset = obj.SpawnCategory == "Blocks"
-                    ? new vec3(-0.5f, 0f, -0.5f) : vec3.Zero);
         }
 
         if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.property_inheritance", "Property Inheritance")))
@@ -3375,6 +3362,7 @@ public class PropertiesPanel : UiPanel
             // Ensure MaterialSettings exists when we need to write
             EnsureMaterialSettings();
             var mat = _currentObject.MaterialSettings;
+            var materialObject = _currentObject;
 
             bool supportsResourcePack = string.Equals(_currentObject.SpawnCategory, "Blocks", StringComparison.Ordinal) ||
                                         string.Equals(_currentObject.SpawnCategory, "Scenery", StringComparison.Ordinal);
@@ -3762,6 +3750,16 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.albedo", () => materialObject.MaterialSettings.AlbedoColor, value =>
+                {
+                    materialObject.SetExplicitMaterialSettings();
+                    var color = (vec4)value;
+                    materialObject.MaterialSettings.AlbedoColor = new vec4(
+                        Math.Clamp(color.x, 0f, 1f), Math.Clamp(color.y, 0f, 1f),
+                        Math.Clamp(color.z, 0f, 1f), Math.Clamp(color.w, 0f, 1f));
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.PropagateMaterialSettingsToChildren();
+                }, new vec4(1f, 1f, 1f, 1f));
             }
 
             // Mine-imator-style multiplicative blend colour.
@@ -3775,6 +3773,7 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.blend.r", "material.blend.g", "material.blend.b");
             }
 
             // Mix colour uses its alpha channel as the interpolation amount.
@@ -3788,6 +3787,7 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.mix.r", "material.mix.g", "material.mix.b");
 
                 float mixAmount = mc.a;
                 if (ImGui.SliderFloat(Localization.Label("text.panel.properties.mix_amount", "Mix Amount"), ref mixAmount, 0f, 1f))
@@ -3798,6 +3798,7 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.mix_percent");
             }
 
             // Metallic
@@ -3810,6 +3811,7 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.metallic");
             }
 
             // Roughness
@@ -3822,6 +3824,7 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.roughness");
             }
 
             // Emission enabled
@@ -3834,6 +3837,13 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.emission_enabled", () => materialObject.MaterialSettings.EmissionEnabled, value =>
+                {
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.MaterialSettings.EmissionEnabled = (bool)value;
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.PropagateMaterialSettingsToChildren();
+                }, false);
             }
 
             // Auto emission from Minecraft block metadata (schema/block imports)
@@ -3861,9 +3871,25 @@ public class PropertiesPanel : UiPanel
                         }
                     }
                 }
+                RegisterPropertyContext("material.auto_emission", () => materialObject.MaterialSettings.AutoEmission, value =>
+                {
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.MaterialSettings.AutoEmission = (bool)value;
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.PropagateMaterialSettingsToChildren();
+                    if (SpawnMenu != null)
+                    {
+                        if (string.Equals(materialObject.SpawnCategory, "Blocks", StringComparison.Ordinal))
+                            SpawnMenu.RebuildBlockMeshes(materialObject);
+                        else if (string.Equals(materialObject.SpawnCategory, "Scenery", StringComparison.Ordinal) &&
+                                 !string.IsNullOrWhiteSpace(materialObject.SourceAssetPath))
+                            SpawnMenu.ApplyResourcePackToSpawnedObject(materialObject, materialObject.ResourcePackId);
+                    }
+                }, true);
             }
 
             // Emission color (no alpha)
+            if (mat?.EmissionEnabled == true)
             {
                 vec4 ec = mat?.EmissionColor ?? new vec4(0f, 0f, 0f, 1f);
                 var vec3 = new Vector3(ec.r, ec.g, ec.b);
@@ -3874,9 +3900,11 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.glow.r", "material.glow.g", "material.glow.b");
             }
 
             // Emission energy
+            if (mat?.EmissionEnabled == true)
             {
                 float emEnergy = mat?.EmissionEnergy ?? 1f;
                 if (ImGui.SliderFloat(Localization.Label("text.panel.properties.emission_energy", "Emission Energy"), ref emEnergy, 0f, 10f))
@@ -3886,9 +3914,17 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.emission_energy", () => materialObject.MaterialSettings.EmissionEnergy, value =>
+                {
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.MaterialSettings.EmissionEnergy = Math.Clamp((float)value, 0f, 10f);
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.PropagateMaterialSettingsToChildren();
+                }, 1f);
             }
 
             // Emission indirect-only toggle
+            if (mat?.EmissionEnabled == true || (mat?.AutoEmission ?? true))
             {
                 bool emissionIndirectOnly = mat?.EmissionIndirectOnly ?? false;
                 if (ImGui.Checkbox(Localization.Label("text.panel.properties.emission_indirect_only", "Emission Indirect Only"), ref emissionIndirectOnly))
@@ -3898,6 +3934,13 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.emission_indirect_only", () => materialObject.MaterialSettings.EmissionIndirectOnly, value =>
+                {
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.MaterialSettings.EmissionIndirectOnly = (bool)value;
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.PropagateMaterialSettingsToChildren();
+                }, false);
             }
 
             // Subsurface scattering controls (inspired by Mine-imator high-light shaders).
@@ -3910,6 +3953,7 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.subsurface");
 
                 vec3 sssRadius = mat?.SubsurfaceRadius ?? vec3.Ones;
                 var sssRadiusVec = new Vector3(sssRadius.x, sssRadius.y, sssRadius.z);
@@ -3923,6 +3967,7 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.subsurface_radius.r", "material.subsurface_radius.g", "material.subsurface_radius.b");
 
                 vec4 sssColor = mat?.SubsurfaceColor ?? new vec4(1f, 1f, 1f, 1f);
                 var sssColorVec = new Vector3(sssColor.r, sssColor.g, sssColor.b);
@@ -3933,6 +3978,7 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.subsurface_color.r", "material.subsurface_color.g", "material.subsurface_color.b");
 
                 float sssHighlight = mat?.SubsurfaceHighlight ?? 0.35f;
                 if (ImGui.SliderFloat(Localization.Label("text.panel.properties.subsurface_highlight", "Subsurface Highlight"), ref sssHighlight, -0.95f, 0.95f))
@@ -3942,6 +3988,13 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.subsurface_highlight", () => materialObject.MaterialSettings.SubsurfaceHighlight, value =>
+                {
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.MaterialSettings.SubsurfaceHighlight = Math.Clamp((float)value, -0.95f, 0.95f);
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.PropagateMaterialSettingsToChildren();
+                }, 0.35f);
 
                 float sssHighlightStrength = mat?.SubsurfaceHighlightStrength ?? 0.6f;
                 if (ImGui.SliderFloat(Localization.Label("text.panel.properties.subsurface_highlight_strength", "Subsurface Highlight Strength"), ref sssHighlightStrength, 0f, 4f))
@@ -3951,6 +4004,13 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.subsurface_highlight_strength", () => materialObject.MaterialSettings.SubsurfaceHighlightStrength, value =>
+                {
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.MaterialSettings.SubsurfaceHighlightStrength = Math.Clamp((float)value, 0f, 4f);
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.PropagateMaterialSettingsToChildren();
+                }, 0.6f);
             }
 
             // Normal map (display only; file picking not yet implemented)
@@ -3983,6 +4043,13 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.double_sided", () => materialObject.MaterialSettings.DoubleSided, value =>
+                {
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.MaterialSettings.DoubleSided = (bool)value;
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.PropagateMaterialSettingsToChildren();
+                }, false);
             }
 
             // Texture UV transform
@@ -3996,6 +4063,13 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.texture_offset", () => materialObject.MaterialSettings.TextureOffset, value =>
+                {
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.MaterialSettings.TextureOffset = (vec2)value;
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.PropagateMaterialSettingsToChildren();
+                }, vec2.Zero);
 
                 vec2 uvRepeat = mat?.TextureRepeat ?? new vec2(1f, 1f);
                 var repeat = new Vector2(uvRepeat.x, uvRepeat.y);
@@ -4006,6 +4080,15 @@ public class PropertiesPanel : UiPanel
                     _currentObject.SetExplicitMaterialSettings();
                     _currentObject.PropagateMaterialSettingsToChildren();
                 }
+                RegisterPropertyContext("material.texture_repeat", () => materialObject.MaterialSettings.TextureRepeat, value =>
+                {
+                    var textureRepeat = (vec2)value;
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.MaterialSettings.TextureRepeat = new vec2(
+                        Math.Clamp(textureRepeat.x, 0.0001f, 256f), Math.Clamp(textureRepeat.y, 0.0001f, 256f));
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.PropagateMaterialSettingsToChildren();
+                }, new vec2(1f, 1f));
 
                 bvec2 uvMirror = mat?.TextureMirror ?? new bvec2(false, false);
                 bool mirrorH = uvMirror.x;
@@ -4014,9 +4097,23 @@ public class PropertiesPanel : UiPanel
 
                 if (ImGui.Checkbox(Localization.Label("text.panel.properties.texture_mirror_h", "Texture Mirror H"), ref mirrorH))
                     mirrorChanged = true;
+                RegisterPropertyContext("material.texture_mirror_h", () => materialObject.MaterialSettings.TextureMirror.x, value =>
+                {
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.MaterialSettings.TextureMirror = new bvec2((bool)value, materialObject.MaterialSettings.TextureMirror.y);
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.PropagateMaterialSettingsToChildren();
+                }, false);
 
                 if (ImGui.Checkbox(Localization.Label("text.panel.properties.texture_mirror_v", "Texture Mirror V"), ref mirrorV))
                     mirrorChanged = true;
+                RegisterPropertyContext("material.texture_mirror_v", () => materialObject.MaterialSettings.TextureMirror.y, value =>
+                {
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.MaterialSettings.TextureMirror = new bvec2(materialObject.MaterialSettings.TextureMirror.x, (bool)value);
+                    materialObject.SetExplicitMaterialSettings();
+                    materialObject.PropagateMaterialSettingsToChildren();
+                }, false);
 
                 if (mirrorChanged)
                 {
@@ -4027,36 +4124,6 @@ public class PropertiesPanel : UiPanel
                 }
             }
 
-            ImGui.Spacing();
-
-            // Reset material
-            if (ImGui.Button(Localization.Label("text.panel.properties.reset_material", "Reset Material")))
-            {
-                EnsureMaterialSettings();
-                var m = _currentObject.MaterialSettings;
-                m.AlbedoColor     = new vec4(1f, 1f, 1f, 1f);
-                m.BlendColor      = new vec4(1f, 1f, 1f, 1f);
-                m.MixColor        = new vec4(0f, 0f, 0f, 0f);
-                m.Metallic        = 0f;
-                m.Roughness       = 0.5f;
-                m.EmissionEnabled = false;
-                m.EmissionEnergy  = 1f;
-                m.Subsurface      = 0f;
-                m.SubsurfaceRadius = vec3.Ones;
-                m.SubsurfaceColor = new vec4(1f, 1f, 1f, 1f);
-                m.SubsurfaceHighlight = 0.35f;
-                m.SubsurfaceHighlightStrength = 0.6f;
-                m.EmissionIndirectOnly = false;
-                m.AutoEmission = true;
-                m.NormalTexture   = 0;
-                m.NormalEnabled   = false;
-                m.DoubleSided     = false;
-                m.TextureOffset   = vec2.Zero;
-                m.TextureRepeat   = new vec2(1f, 1f);
-                m.TextureMirror   = new bvec2(false, false);
-                _currentObject.SetExplicitMaterialSettings();
-                _currentObject.PropagateMaterialSettingsToChildren();
-            }
         }
 
         // ── Shape Keys ────────────────────────────────────────────────────────
@@ -4079,6 +4146,7 @@ public class PropertiesPanel : UiPanel
                         light.Type = (LightType)currentType;
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.type");
                     }
+                    RegisterPropertyContext("light.type", () => light.Type, value => light.Type = (LightType)value, LightType.Point);
                 }
 
                 // Color
@@ -4092,6 +4160,7 @@ public class PropertiesPanel : UiPanel
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.color.g");
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.color.b");
                     }
+                    RegisterPropertyContext("light.color.r", "light.color.g", "light.color.b");
                 }
 
                 // Energy
@@ -4163,6 +4232,8 @@ public class PropertiesPanel : UiPanel
                     bool shadow = light.LightShadowEnabled;
                     if (ImGui.Checkbox(Localization.Label("text.panel.properties.cast_shadows", "Cast Shadows##lightShadow"), ref shadow))
                         light.LightShadowEnabled = shadow;
+                    RegisterPropertyContext("light.shadow_enabled", () => light.LightShadowEnabled,
+                        value => light.LightShadowEnabled = (bool)value, true);
                 }
 
                 // Spot-only properties
@@ -4175,6 +4246,7 @@ public class PropertiesPanel : UiPanel
                         light.LightSpotBlend = Math.Min(light.LightSpotBlend, angle * 0.5f);
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.spot_angle");
                     }
+                    RegisterPropertyContext("light.spot_angle");
 
                     float blend = light.LightSpotBlend;
                     float maxBlend = Math.Max(0f, light.LightSpotAngle * 0.5f);
@@ -4183,22 +4255,7 @@ public class PropertiesPanel : UiPanel
                         light.LightSpotBlend = blend;
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.spot_blend");
                     }
-                }
-
-                ImGui.Spacing();
-
-                // Reset light
-                if (ImGui.Button(Localization.Label("text.panel.properties.reset_light", "Reset Light")))
-                {
-                    light.Type               = LightType.Point;
-                    light.LightEnergy         = 1f;
-                    light.LightRange          = 5f;
-                    light.LightIndirectEnergy = 1f;
-                    light.LightSpecular       = 0.5f;
-                    light.LightShadowEnabled  = true;
-                    light.LightColor          = new vec4(1f, 1f, 1f, 1f);
-                    light.LightSpotAngle      = 45f;
-                    light.LightSpotBlend      = 5f;
+                    RegisterPropertyContext("light.spot_blend");
                 }
             }
         }
@@ -4208,40 +4265,47 @@ public class PropertiesPanel : UiPanel
         {
             if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.effects", "Effects")))
             {
-                if (_cameraEffectToAddIndex < 0 || _cameraEffectToAddIndex >= CameraEffectAddOptions.Length)
-                    _cameraEffectToAddIndex = 0;
+                float addButtonSize = ImGui.GetFrameHeight();
+                ImGui.SetCursorPosX(ImGui.GetCursorPosX() + MathF.Max(0f, ImGui.GetContentRegionAvail().X - addButtonSize));
+                if (ImGui.Button("+##cameraEffectAddButton", new Vector2(addButtonSize)))
+                    ImGui.OpenPopup("##cameraEffectAddMenu");
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(Localization.T("text.panel.properties.add_effect"));
 
-                ImGui.TextUnformatted(Localization.T("text.panel.properties.effect_type"));
-                ImGui.SetNextItemWidth(-1f);
-                if (ImGui.BeginCombo("##cameraEffectAddCombo", Localization.DisplayText(CameraEffectAddOptions[_cameraEffectToAddIndex])))
+                if (ImGui.BeginPopup("##cameraEffectAddMenu"))
                 {
                     for (int i = 0; i < CameraEffectAddOptions.Length; i++)
                     {
-                        bool selected = i == _cameraEffectToAddIndex;
-                        if (ImGui.Selectable(Localization.DisplayLabel(CameraEffectAddOptions[i]), selected))
-                            _cameraEffectToAddIndex = i;
-                        if (selected)
-                            ImGui.SetItemDefaultFocus();
+                        if (ImGui.MenuItem(Localization.DisplayLabel(CameraEffectAddOptions[i])))
+                        {
+                            cameraObject.AddEffect((CameraEffectType)i);
+                            ProjectManager.Instance.SetDirty(true);
+                        }
                     }
-                    ImGui.EndCombo();
+                    ImGui.EndPopup();
                 }
 
-                if (ImGui.Button(Localization.Label("text.panel.properties.add_effect", "Add Effect +##cameraEffectAddButton"), new Vector2(-1f, 0f)))
-                {
-                    cameraObject.AddEffect((CameraEffectType)_cameraEffectToAddIndex);
-                    ProjectManager.Instance.SetDirty(true);
-                }
-
-                if (cameraObject.Effects.Count == 0)
+                ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 6f * UiTheme.Scale);
+                ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(10f, 8f) * UiTheme.Scale);
+                bool effectsVisible = ImGui.BeginChild("##cameraEffectList", Vector2.Zero,
+                    ImGuiChildFlags.Borders | ImGuiChildFlags.AutoResizeY | ImGuiChildFlags.AlwaysAutoResize | ImGuiChildFlags.AlwaysUseWindowPadding);
+                if (effectsVisible && cameraObject.Effects.Count == 0)
                 {
                     UiText.Disabled(Localization.T("text.panel.properties.no_effects_added"));
                 }
-                else
+                else if (effectsVisible)
                 {
                     int removeIndex = -1;
 
                     for (int i = 0; i < cameraObject.Effects.Count; i++)
                     {
+                        if (i > 0)
+                        {
+                            ImGui.Spacing();
+                            ImGui.Separator();
+                            ImGui.Spacing();
+                        }
+
                         var effect = cameraObject.Effects[i];
                         string title = effect.Type switch
                         {
@@ -4310,27 +4374,6 @@ public class PropertiesPanel : UiPanel
                                     changed = true;
                                 }
 
-                                if (ImGui.Button(Localization.T("text.panel.properties.reset") + $"###Reset##cameraShakeReset{i}"))
-                                {
-                                    effect.Shake.Mode = CameraShakeMode.Both;
-                                    effect.Shake.Trauma = 1f;
-                                    effect.Shake.Strength = new vec3(0.03f, 0.03f, 0.03f);
-                                    effect.Shake.Speed = new vec3(3f, 3.5f, 2.5f);
-                                    effect.Shake.Offset = vec3.Zero;
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.mode");
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.trauma");
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.strength.x");
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.strength.y");
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.strength.z");
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.speed.x");
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.speed.y");
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.speed.z");
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.offset.x");
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.offset.y");
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.offset.z");
-                                    changed = true;
-                                }
-
                                 if (changed)
                                     ProjectManager.Instance.SetDirty(true);
                             }
@@ -4377,14 +4420,6 @@ public class PropertiesPanel : UiPanel
                                     _ctxMenuPos = ImGui.GetMousePos();
                                     _openPropContextMenu = true;
                                 }
-                                if (ImGui.Button(Localization.T("text.panel.properties.reset") + $"###Reset##filmGrainReset{i}"))
-                                {
-                                    effect.FilmGrain = new FilmGrainSettings();
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.strength");
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.saturation");
-                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.size");
-                                    changed = true;
-                                }
                                 if (changed) ProjectManager.Instance.SetDirty(true);
                             }
 
@@ -4409,7 +4444,27 @@ public class PropertiesPanel : UiPanel
 
                                 foreach (var control in DepthOfFieldSettings.Controls)
                                 {
+                                    if (!effect.DepthOfField.ColorFringe &&
+                                        control.Key is "red_angle" or "green_angle" or "blue_angle" or "red_offset" or "green_offset" or "blue_offset")
+                                        continue;
+
                                     float value = effect.DepthOfField.GetValue(control.Key);
+                                    Vector4? channelColor = control.Key switch
+                                    {
+                                        "red_angle" or "red_offset" => new Vector4(0.90f, 0.25f, 0.25f, 1f),
+                                        "green_angle" or "green_offset" => new Vector4(0.20f, 0.75f, 0.35f, 1f),
+                                        "blue_angle" or "blue_offset" => new Vector4(0.25f, 0.50f, 0.95f, 1f),
+                                        _ => null
+                                    };
+                                    if (channelColor is Vector4 tint)
+                                    {
+                                        var colors = ImGui.GetStyle().Colors;
+                                        ImGui.PushStyleColor(ImGuiCol.FrameBg, Vector4.Lerp(colors[(int)ImGuiCol.FrameBg], tint, 0.25f));
+                                        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, Vector4.Lerp(colors[(int)ImGuiCol.FrameBgHovered], tint, 0.35f));
+                                        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, Vector4.Lerp(colors[(int)ImGuiCol.FrameBgActive], tint, 0.45f));
+                                        ImGui.PushStyleColor(ImGuiCol.SliderGrab, tint);
+                                        ImGui.PushStyleColor(ImGuiCol.SliderGrabActive, Vector4.Lerp(tint, Vector4.One, 0.20f));
+                                    }
                                     bool changed;
                                     if (control.Key == "color_fringe")
                                     {
@@ -4421,6 +4476,9 @@ public class PropertiesPanel : UiPanel
                                         changed = ImGui.DragFloat(Localization.DisplayLabel(control.Label), ref value, 0.05f, control.Min, control.Max, "%.3f", ImGuiSliderFlags.AlwaysClamp);
                                     else
                                         changed = ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value, control.Min, control.Max, "%.2f", ImGuiSliderFlags.AlwaysClamp);
+
+                                    if (channelColor.HasValue)
+                                        ImGui.PopStyleColor(5);
 
                                     if (changed)
                                     {
@@ -4435,13 +4493,6 @@ public class PropertiesPanel : UiPanel
                                         _openPropContextMenu = true;
                                     }
                                 }
-                                if (ImGui.Button(Localization.Label("text.panel.properties.reset_depth_of_field", "Reset Depth of Field")))
-                                {
-                                    effect.DepthOfField = new DepthOfFieldSettings();
-                                    foreach (var control in DepthOfFieldSettings.Controls)
-                                        Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.{control.Key}");
-                                    ProjectManager.Instance.SetDirty(true);
-                                }
                                 ImGui.PopID();
                             }
 
@@ -4455,6 +4506,8 @@ public class PropertiesPanel : UiPanel
                         ProjectManager.Instance.SetDirty(true);
                     }
                 }
+                ImGui.EndChild();
+                ImGui.PopStyleVar(2);
             }
         }
 
@@ -5169,8 +5222,7 @@ public class PropertiesPanel : UiPanel
     /// <summary>
     /// Draws a scrollable list of every shape key on every mesh that belongs
     /// to <paramref name="obj"/> or its descendants.  Each key gets a slider
-    /// in the range [-1, 1] (default 0); a "Reset All" button at the bottom
-    /// snaps every weight back to 0.
+    /// in the range [-1, 1] (default 0).
     /// </summary>
     private void RenderShapeKeysSection(SceneObject obj)
     {
@@ -5184,13 +5236,6 @@ public class PropertiesPanel : UiPanel
         // Search box — filters the list below by shape key name (case-insensitive).
         ImGui.SetNextItemWidth(-1f);
         ImGui.InputTextWithHint("##shapekeySearch", Localization.T("text.panel.properties.search_shape_keys"), ref _shapeKeySearch, 128);
-        ImGui.Spacing();
-
-        if (ImGui.Button(Localization.Label("text.panel.properties.reset_all_shape_keys", "Reset All Shape Keys##shapekeyResetAll")))
-        {
-            foreach (var m in meshes) m.ResetShapeKeys();
-            ProjectManager.Instance.SetDirty(true);
-        }
         ImGui.Spacing();
 
         // Scrollable child region keeps the section from blowing up the
@@ -5226,7 +5271,7 @@ public class PropertiesPanel : UiPanel
                     string path  = $"shapekey.{meshIndex}.{i}";
                     string label = $"{sk.Name}##mesh{meshIndex}_key{i}";
 
-                    ImGui.SetNextItemWidth(-60f);
+                    ImGui.SetNextItemWidth(-1f);
                     if (ImGui.SliderFloat(label, ref weight, -1f, 1f, "%.2f"))
                     {
                         mesh.SetShapeKeyWeight(i, weight);
@@ -5238,13 +5283,6 @@ public class PropertiesPanel : UiPanel
                         _ctxPropertyPath = path;
                         _ctxMenuPos = ImGui.GetMousePos();
                         _openPropContextMenu = true;
-                    }
-                    ImGui.SameLine();
-                    if (ImGui.SmallButton($"0##reset{meshIndex}_{i}"))
-                    {
-                        mesh.SetShapeKeyWeight(i, 0f);
-                        ProjectManager.Instance.SetDirty(true);
-                        Timeline?.RecordAutoKeyframe(obj, path);
                     }
                 }
                 meshIndex++;
@@ -5258,21 +5296,331 @@ public class PropertiesPanel : UiPanel
 
     // ── Property context menu ─────────────────────────────────────────────────
 
+    private sealed record PropertyContextBinding(string Path, Func<object> Get, Action<object> Set, object Default);
+    private PropertyContextBinding? _propertyContextBinding;
+    private string[]? _propertyContextPaths;
+    private SceneObject? _propertyContextObject;
+
+    private void RegisterPropertyContext(params string[] paths)
+    {
+        if (!ImGui.IsItemClicked(ImGuiMouseButton.Right) || paths.Length == 0) return;
+        _ctxPropertyPath = paths[0];
+        _propertyContextPaths = paths;
+        _propertyContextBinding = null;
+        _ctxMenuPos = ImGui.GetMousePos();
+        _openPropContextMenu = true;
+    }
+
+    private void RegisterPropertyContext(string path, Func<object> getValue, Action<object> setValue, object defaultValue)
+    {
+        if (!ImGui.IsItemClicked(ImGuiMouseButton.Right)) return;
+        RegisterPropertyContext(path);
+        _propertyContextBinding = new(path, getValue, setValue, defaultValue);
+    }
+
+    private string[] GetContextPropertyGroup(string path)
+    {
+        if (_propertyContextPaths is { Length: > 1 } && _propertyContextPaths[0] == path)
+            return _propertyContextPaths;
+        int dot = path.LastIndexOf('.');
+        if (dot < 0) return [path];
+        string prefix = path[..dot];
+        string component = path[(dot + 1)..];
+        if (path.StartsWith("background:", StringComparison.Ordinal))
+        {
+            if (int.TryParse(component, out _) && GetBackgroundPropertyValue(prefix[11..]) is float[] array)
+                return Enumerable.Range(0, array.Length).Select(i => $"{prefix}.{i}").ToArray();
+        }
+        else if (component is "x" or "y" or "z")
+            return [$"{prefix}.x", $"{prefix}.y", $"{prefix}.z"];
+        else if (component is "r" or "g" or "b" or "a")
+            return component == "a" || prefix == "text.outline"
+                ? [$"{prefix}.r", $"{prefix}.g", $"{prefix}.b", $"{prefix}.a"]
+                : [$"{prefix}.r", $"{prefix}.g", $"{prefix}.b"];
+        return [path];
+    }
+
+    private object GetContextPropertyValue(string path, bool defaultValue = false)
+    {
+        if (path.StartsWith("background:", StringComparison.Ordinal))
+            return (defaultValue ? new PropertiesPanel() : this).GetBackgroundPropertyValue(path[11..])!;
+        var obj = _currentObject!;
+        int axis = path.EndsWith(".y", StringComparison.Ordinal) ? 1 : path.EndsWith(".z", StringComparison.Ordinal) ? 2 : 0;
+        if (path.StartsWith("pivot.", StringComparison.Ordinal))
+            return defaultValue ? (obj.SpawnCategory == "Blocks" && axis != 1 ? 8f : 0f) : GetEditablePivotOffset(obj)[axis] * 16f;
+        if (path.StartsWith("tile.", StringComparison.Ordinal))
+            return defaultValue ? 1f : (float)(axis == 0 ? obj.GetEffectiveTileX() : axis == 1 ? obj.GetEffectiveTileY() : obj.GetEffectiveTileZ());
+        if (defaultValue && (path.StartsWith("bend.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal)))
+            return 0f;
+        if (defaultValue)
+        {
+            // Detached defaults preserve the model's base pose and never touch scene resources.
+            SceneObject defaults = obj is CameraSceneObject ? new CameraSceneObject()
+                : obj is LightSceneObject ? new LightSceneObject()
+                : obj is ParticleSpawnerSceneObject ? new ParticleSpawnerSceneObject() : new SceneObject();
+            defaults.MaterialSettings = new MaterialSettings();
+            if (defaults is CameraSceneObject defaultCamera && obj is CameraSceneObject sourceCamera)
+                foreach (var effect in sourceCamera.Effects)
+                    defaultCamera.Effects.Add(new CameraEffect { Type = effect.Type });
+            return Timeline!.GetPropertyValue(defaults, path);
+        }
+        object value = Timeline!.GetPropertyValue(obj, path);
+        return path.StartsWith("position.", StringComparison.Ordinal) ? Convert.ToSingle(value, CultureInfo.InvariantCulture) * 16f : value;
+    }
+
+    private void SetContextPropertyValue(string path, object value, bool recordKeyframe = true, bool resetValue = false)
+    {
+        if (path.StartsWith("background:", StringComparison.Ordinal))
+        {
+            string backgroundPath = path[11..];
+            if (value is float[] array)
+                for (int i = 0; i < array.Length; i++)
+                    SetContextPropertyValue($"{path}.{i}", array[i]);
+            else
+            {
+                if (value is float number)
+                    value = backgroundPath switch
+                    {
+                        nameof(BackgroundScale) => Math.Clamp(number, 0.01f, 20f),
+                        nameof(BackgroundRotationDegrees) => Math.Clamp(number, -360f, 360f),
+                        "BackgroundOffset.0" or "BackgroundOffset.1" => Math.Clamp(number, -3f, 3f),
+                        _ => number
+                    };
+                SetBackgroundPropertyValue(backgroundPath, Convert.ToString(value, CultureInfo.InvariantCulture) ?? "", value is not float);
+            }
+            ApplyFloorSettingsToViewport();
+            ApplyBackgroundSettingsToViewport();
+            ApplyAmbientSettingsToRenderer();
+            WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+            return;
+        }
+        if (_currentObject == null || Timeline == null) return;
+        int axis = path.EndsWith(".y", StringComparison.Ordinal) ? 1 : path.EndsWith(".z", StringComparison.Ordinal) ? 2 : 0;
+        foreach (var obj in GetSelectedObjectsForEdit())
+        {
+            // Indexed effect/mesh paths are local to the object that opened the menu.
+            if (obj != _currentObject && (path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal)))
+                continue;
+            if (path.StartsWith("pivot.", StringComparison.Ordinal))
+            {
+                var pivot = GetEditablePivotOffset(obj);
+                pivot[axis] = resetValue ? (obj.SpawnCategory == "Blocks" && axis != 1 ? 0.5f : 0f)
+                    : Convert.ToSingle(value, CultureInfo.InvariantCulture) / 16f;
+                obj.PivotOffset = obj.SpawnCategory == "Blocks" ? -pivot : pivot;
+            }
+            else if (path.StartsWith("tile.", StringComparison.Ordinal))
+            {
+                if (obj.SpawnCategory != "Blocks") continue;
+                int count = (int)Math.Clamp(MathF.Round(Convert.ToSingle(value, CultureInfo.InvariantCulture)), 1f, SceneObject.MaxTilesPerAxis);
+                if (axis == 0) obj.TileX = count; else if (axis == 1) obj.TileY = count; else obj.TileZ = count;
+                SpawnMenu?.RebuildBlockMeshes(obj);
+            }
+            else
+            {
+                object stored = value;
+                if (path.StartsWith("position.", StringComparison.Ordinal))
+                    stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / 16f;
+                else if (path.StartsWith("scale.", StringComparison.Ordinal))
+                    stored = MathF.Max(0.001f, Convert.ToSingle(value, CultureInfo.InvariantCulture));
+                else if (value is not string)
+                {
+                    float number = Convert.ToSingle(value, CultureInfo.InvariantCulture);
+                    stored = path switch
+                    {
+                        "light.energy" => Math.Clamp(number, 0f, 100f),
+                        "light.range" => Math.Clamp(number, 0.01f, 500f),
+                        "light.indirect_energy" => Math.Clamp(number, 0f, 16f),
+                        "light.specular" => Math.Clamp(number, 0f, 1f),
+                        "light.spot_angle" => Math.Clamp(number, 1f, 170f),
+                        "light.spot_blend" when obj is LightSceneObject light => Math.Clamp(number, 0f, MathF.Max(0f, light.LightSpotAngle * 0.5f)),
+                        _ when path.StartsWith("light.color.", StringComparison.Ordinal) => Math.Clamp(number, 0f, 1f),
+                        _ when path.StartsWith("shapekey.", StringComparison.Ordinal) => Math.Clamp(number, -1f, 1f),
+                        _ => number
+                    };
+                    if (path.StartsWith("camera.effect.", StringComparison.Ordinal))
+                    {
+                        string[] parts = path.Split('.');
+                        if (parts[3] == "depth_of_field")
+                        {
+                            var control = DepthOfFieldSettings.Controls.First(c => c.Key == parts[4]);
+                            stored = Math.Clamp(number, control.Min, control.Max);
+                        }
+                        else if (parts[3] == "film_grain")
+                            stored = parts[4] == "size" ? Math.Clamp(number, 0.25f, 8f) : Math.Clamp(number, 0f, 1f);
+                        else if (parts[3] == "shake")
+                            stored = parts[4] switch
+                            {
+                                "trauma" => Math.Clamp(number, 0f, 5f),
+                                "strength" => Math.Clamp(number, -100f, 100f),
+                                "speed" => Math.Clamp(number, -200f, 200f),
+                                "offset" => Math.Clamp(number, -1000f, 1000f),
+                                _ => number
+                            };
+                    }
+                }
+                Timeline.SetPropertyValue(obj, path, stored);
+                if (path == "light.spot_angle" && obj is LightSceneObject spot)
+                    spot.LightSpotBlend = MathF.Min(spot.LightSpotBlend, spot.LightSpotAngle * 0.5f);
+                if (obj is ParticleSpawnerSceneObject particle && path.StartsWith("particle.", StringComparison.Ordinal))
+                    particle.ResetRuntime();
+            }
+            if (recordKeyframe) RecordContextPropertyKeyframes(obj, [path]);
+        }
+    }
+
+    private void RecordContextPropertyKeyframes(SceneObject obj, string[] paths)
+    {
+        // Imported rotation channels are coupled, so capture them only after the entire edit.
+        if (paths.Any(path => path.StartsWith("rotation.", StringComparison.Ordinal)))
+            foreach (string axis in new[] { "x", "y", "z" })
+                Timeline?.RecordAutoKeyframe(obj, $"rotation.{axis}");
+        foreach (string path in paths)
+        {
+            if (path.StartsWith("background:", StringComparison.Ordinal) || path.StartsWith("rotation.", StringComparison.Ordinal) ||
+                path.StartsWith("pivot.", StringComparison.Ordinal) || path.StartsWith("tile.", StringComparison.Ordinal)) continue;
+            if (obj != _currentObject && (path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal))) continue;
+            Timeline?.RecordAutoKeyframe(obj, path);
+            if (path == "light.spot_angle") Timeline?.RecordAutoKeyframe(obj, "light.spot_blend");
+        }
+    }
+
+    private void ApplyContextPropertyValues(string[] paths, object[] values, bool resetValue = false)
+    {
+        for (int i = 0; i < paths.Length; i++)
+            SetContextPropertyValue(paths[i], values[i], false, resetValue);
+        foreach (var obj in GetSelectedObjectsForEdit())
+            RecordContextPropertyKeyframes(obj, paths);
+    }
+
+    private static object[] GetPropertyComponents(object value) => value switch
+    {
+        vec2 v => [v.x, v.y],
+        vec3 v => [v.x, v.y, v.z],
+        vec4 v => [v.x, v.y, v.z, v.w],
+        bvec2 v => [v.x, v.y],
+        float[] v => v.Cast<object>().ToArray(),
+        _ => [value]
+    };
+
+    private static object JoinPropertyComponents(object original, object[] values) => original switch
+    {
+        vec2 => new vec2((float)values[0], (float)values[1]),
+        vec3 => new vec3((float)values[0], (float)values[1], (float)values[2]),
+        vec4 => new vec4((float)values[0], (float)values[1], (float)values[2], (float)values[3]),
+        bvec2 => new bvec2((bool)values[0], (bool)values[1]),
+        float[] => values.Cast<float>().ToArray(),
+        _ => values[0]
+    };
+
+    private static bool TryParsePropertyClipboard(string? text, object[] current, out object[] values)
+    {
+        values = new object[current.Length];
+        if (text == null) return false;
+        string[] tokens = current.Length == 1 && current[0] is string ? [text]
+            : text.Split([',', ';', '\t', '\r', '\n', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length != current.Length && tokens.Length != 1) return false;
+        for (int i = 0; i < current.Length; i++)
+        {
+            string token = tokens[tokens.Length == 1 ? 0 : i];
+            if (current[i] is string) values[i] = token;
+            else if (current[i] is bool)
+            {
+                if (!bool.TryParse(token, out bool boolean)) return false;
+                values[i] = boolean;
+            }
+            else if (float.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out float number) && float.IsFinite(number))
+            {
+                Type type = current[i].GetType();
+                if (type.IsEnum)
+                {
+                    if (!Enum.IsDefined(type, (int)number) || number != MathF.Truncate(number)) return false;
+                    values[i] = Enum.ToObject(type, (int)number);
+                }
+                else if (current[i] is int)
+                {
+                    if (number < int.MinValue || number >= 2147483648f) return false;
+                    values[i] = (int)MathF.Round(number);
+                }
+                else values[i] = number;
+            }
+            else return false;
+        }
+        return true;
+    }
+
+    private unsafe void RenderPropertyValueActions(string[] paths, PropertyContextBinding? binding = null)
+    {
+        object? aggregate = binding?.Get();
+        object[] current = binding != null ? GetPropertyComponents(aggregate!)
+            : paths.Select(path => GetContextPropertyValue(path)).ToArray();
+        object[] defaults = binding != null ? GetPropertyComponents(binding.Default)
+            : paths.Select(path => GetContextPropertyValue(path, true)).ToArray();
+        // Array/color widgets use a single path but still edit all their components together.
+        if (binding == null && current.Length == 1 && current[0] is float[])
+        {
+            aggregate = current[0];
+            current = GetPropertyComponents(current[0]);
+            defaults = GetPropertyComponents(defaults[0]);
+        }
+        void Apply(object[] values, bool resetValue = false)
+        {
+            if (binding != null) binding.Set(JoinPropertyComponents(aggregate!, values));
+            else if (aggregate != null) SetContextPropertyValue(paths[0], JoinPropertyComponents(aggregate, values));
+            else ApplyContextPropertyValues(paths, values, resetValue);
+            ProjectManager.Instance.SetDirty(true);
+        }
+        void Copy()
+        {
+            ImGui.SetClipboardText(string.Join(", ", current.Select(value => value is Enum
+                ? Convert.ToInt32(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture)
+                : Convert.ToString(value, CultureInfo.InvariantCulture))));
+        }
+        // The native clipboard can return null when no text is available.
+        byte* clipboardPointer = ImGui.GetClipboardText();
+        string? clipboardText = clipboardPointer == null ? null
+            : System.Runtime.InteropServices.Marshal.PtrToStringUTF8((nint)clipboardPointer);
+        bool canPaste = TryParsePropertyClipboard(clipboardText, current, out var pasted);
+        if (ImGui.MenuItem("Copy")) Copy();
+        if (ImGui.MenuItem("Cut")) { Copy(); Apply(defaults, true); }
+        if (ImGui.MenuItem("Paste", "", false, canPaste)) Apply(pasted);
+        if (ImGui.MenuItem("Reset Value")) Apply(defaults, true);
+    }
+
     private void RenderPropertyContextMenu()
     {
         if (!ImGui.BeginPopup("##prop_keyframe_ctx")) return;
         if (_ctxPropertyPath == null) { ImGui.EndPopup(); return; }
+        if (!_ctxPropertyPath.StartsWith("background:", StringComparison.Ordinal) && _currentObject != _propertyContextObject)
+        {
+            ImGui.CloseCurrentPopup();
+            ImGui.EndPopup();
+            return;
+        }
 
-        UiText.Disabled(Localization.T("text.panel.properties.keyframe"));
+        var binding = _propertyContextBinding?.Path == _ctxPropertyPath ? _propertyContextBinding : null;
+        string[] group = GetContextPropertyGroup(_ctxPropertyPath);
+        bool canEdit = binding != null || _ctxPropertyPath.StartsWith("background:", StringComparison.Ordinal) || (_currentObject != null && Timeline != null);
+        if (canEdit)
+        {
+            RenderPropertyValueActions(_propertyContextPaths?.FirstOrDefault() == _ctxPropertyPath ? _propertyContextPaths : [_ctxPropertyPath], binding);
+            if (binding == null && group.Length > 1 && !(_propertyContextPaths?.Length > 1 && _propertyContextPaths[0] == _ctxPropertyPath) && ImGui.BeginMenu("All Values"))
+            {
+                RenderPropertyValueActions(group);
+                ImGui.EndMenu();
+            }
+        }
         ImGui.Separator();
 
+        ImGui.BeginDisabled(binding != null || _ctxPropertyPath.StartsWith("pivot.", StringComparison.Ordinal) || _ctxPropertyPath.StartsWith("tile.", StringComparison.Ordinal));
         if (ImGui.MenuItem(Localization.Label("text.panel.properties.add_keyframe_at_current_frame", "Add Keyframe at Current Frame")))
         {
             if (_ctxPropertyPath.StartsWith("background:", StringComparison.Ordinal))
                 AddBackgroundKeyframeGroup(_ctxPropertyPath[11..], Timeline?.CurrentFrame ?? 0);
             else if (_currentObject != null)
-                Timeline?.AddKeyframeForProperty(_currentObject, _ctxPropertyPath, Timeline?.CurrentFrame ?? 0);
+                foreach (string path in _propertyContextPaths?.FirstOrDefault() == _ctxPropertyPath ? _propertyContextPaths : [_ctxPropertyPath])
+                    Timeline?.AddKeyframeForProperty(_currentObject, path, Timeline?.CurrentFrame ?? 0);
         }
+        ImGui.EndDisabled();
 
         ImGui.EndPopup();
     }

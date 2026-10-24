@@ -2450,6 +2450,7 @@ public class MainWindow : Window
         SceneHistoryAction action = _undoActions[^1];
         if (action.Apply(_mainViewport, _propertiesPanel, undo: true))
         {
+            _timeline?.RefreshFromScene();
             _undoActions.RemoveAt(_undoActions.Count - 1);
             PushHistoryAction(_redoActions, action);
             CaptureSelectedObjectBaselines(_historyObjectBaselines);
@@ -2468,6 +2469,7 @@ public class MainWindow : Window
         SceneHistoryAction action = _redoActions[^1];
         if (action.Apply(_mainViewport, _propertiesPanel, undo: false))
         {
+            _timeline?.RefreshFromScene();
             _redoActions.RemoveAt(_redoActions.Count - 1);
             PushHistoryAction(_undoActions, action);
             CaptureSelectedObjectBaselines(_historyObjectBaselines);

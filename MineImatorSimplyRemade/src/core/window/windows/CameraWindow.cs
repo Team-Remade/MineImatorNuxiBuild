@@ -153,6 +153,9 @@ public class CameraWindow : Window
         _panel.DrawCameraDropdownPublic(spawned); // real combo box UI, mirrors the inline preview header
 
         ImGui.SameLine();
+        _panel.DrawRuleOfThirdsToggle();
+
+        ImGui.SameLine();
         if (ImGui.Button(Localization.Label("text.window.camera.dock", "Dock")))
         {
             _panel.DockToInlineVisible();
@@ -217,6 +220,8 @@ public class CameraWindow : Window
                 drawSize,
                 new Vector2(0, 1),
                 new Vector2(1, 0));
+
+            _panel.RenderRuleOfThirdsOverlay(imageMin, imageSize);
 
             // Gizmo rotation-arc overlay for the undocked window.
             if (_panel.OverlaysEnabled)
