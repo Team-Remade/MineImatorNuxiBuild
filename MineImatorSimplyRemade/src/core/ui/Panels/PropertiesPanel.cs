@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using GlmSharp;
@@ -1645,6 +1646,24 @@ public class PropertiesPanel : UiPanel
                 WriteProjectSettingsToManifest(projectManager.Manifest);
                 projectManager.SetDirty(true);
             }
+
+            ImGui.BeginDisabled(!projectManager.HasProject);
+            if (ImGui.Button(Localization.Label("text.panel.properties.open_project_folder", "Open Project Folder")))
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = projectManager.ProjectFolder,
+                        UseShellExecute = true
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Could not open project folder: {ex.Message}");
+                }
+            }
+            ImGui.EndDisabled();
 
             ImGui.Spacing();
             ImGui.TextUnformatted(Localization.T("text.panel.properties.resolution"));

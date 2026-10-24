@@ -447,6 +447,7 @@
     "text.panel.properties.presets": "Presets:",
     "text.panel.properties.project": "Project",
     "text.panel.properties.project_name": "Project Name:",
+    "text.panel.properties.open_project_folder": "Open Project Folder",
     "text.panel.properties.project_properties": "Project Properties",
     "text.panel.properties.project_settings": "Project Settings",
     "text.panel.properties.property_inheritance": "Property Inheritance",
