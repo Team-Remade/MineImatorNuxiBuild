@@ -13,6 +13,23 @@ public sealed class ProjectManager
     private static readonly Lazy<ProjectManager> _lazy = new(() => new ProjectManager());
     public static ProjectManager Instance => _lazy.Value;
 
+    public const string ModelImportFilter = "glb,gltf,fbx,obj,dae,3ds,ply,stl,x3d,mimodel,miobject";
+    public const string ImageImportFilter = "png,jpg,jpeg,bmp,tga,gif,webp,tiff,hdr,exr";
+    public const string SoundImportFilter = "wav,mp3,ogg,flac,m4a";
+    public const string AssetImportFilter = ModelImportFilter + "," + ImageImportFilter + "," + SoundImportFilter;
+
+    public static ProjectAssetType DetectImportAssetType(string path)
+    {
+        string extension = Path.GetExtension(path).TrimStart('.');
+        if (ModelImportFilter.Split(',').Contains(extension, StringComparer.OrdinalIgnoreCase))
+            return ProjectAssetType.Model;
+        if (ImageImportFilter.Split(',').Contains(extension, StringComparer.OrdinalIgnoreCase))
+            return ProjectAssetType.Image;
+        if (SoundImportFilter.Split(',').Contains(extension, StringComparer.OrdinalIgnoreCase))
+            return ProjectAssetType.Sound;
+        return ProjectAssetType.Other;
+    }
+
     private const string ProjectFileExtension = ".nxProj";
     private const int MaxRecentProjects = 100;
     private ProjectManager() { }
@@ -363,6 +380,9 @@ public sealed class ProjectManager
         string fullSourcePath = ResolveAssetPath(sourcePath);
         if (string.IsNullOrWhiteSpace(fullSourcePath) || !File.Exists(fullSourcePath))
             throw new FileNotFoundException("Source asset not found.", sourcePath);
+
+        if (string.Equals(Path.GetExtension(fullSourcePath), ".blend", StringComparison.OrdinalIgnoreCase))
+            throw new NotSupportedException("Blender files are not supported for import. Export the model to a supported format first.");
 
         string displayName = Path.GetFileName(fullSourcePath);
 

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Hexa.NET.ImGui;
@@ -101,6 +102,8 @@ public class MainWindow : Window
     private readonly PerformancePanel _performancePanel = new();
     public PerformanceMetricsOverlay MetricsOverlay { get; } = new();
     private readonly ProjectManager _projectManager = ProjectManager.Instance;
+    private readonly Queue<string> _droppedFiles = new();
+    private GlfwCallbacks.DropCallback? _fileDropCallback;
     private readonly Dictionary<string, uint> _thumbnailTextures = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _homeSplashPool = new();
     private readonly List<SplashTextSegment> _homeSplashSegments = new();
@@ -480,6 +483,8 @@ public class MainWindow : Window
 
     protected override void RenderUi()
     {
+        UpdateFileDropCallbacks();
+        ImportDroppedFiles();
         SyncPreviewViewportPreferenceState();
 
         if (_mainViewport != null)
@@ -594,6 +599,8 @@ public class MainWindow : Window
 
     public override unsafe void Dispose()
     {
+        UpdateFileDropCallbacks(clear: true);
+        _droppedFiles.Clear();
         ShutdownWorldImporter();
         ShutdownViewportFramebuffers();
         base.Dispose();
@@ -2246,11 +2253,87 @@ public class MainWindow : Window
             return;
         }
 
-        var result = Dialog.FileOpen("glb,gltf,fbx,obj,dae,3ds,blend,ply,stl,x3d,mimodel,miobject,png,jpg,jpeg,bmp,tga,gif,webp,tiff,wav,mp3,ogg,flac,m4a");
+        var result = Dialog.FileOpen(ProjectManager.AssetImportFilter);
         if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
             return;
 
-        _projectManager.AddAsset(result.Path, DetectAssetType(result.Path));
+        ImportAssetFromPath(result.Path);
+    }
+
+    private unsafe void UpdateFileDropCallbacks(bool clear = false)
+    {
+        if (ImGuiContext.Handle == null)
+            return;
+
+        SetContextCurrent();
+        _fileDropCallback ??= OnFilesDropped;
+        // Include detached editor panels, whose GLFW windows are owned by ImGui.
+        var viewports = ImGui.GetPlatformIO().Viewports;
+        for (int i = 0; i < viewports.Size; i++)
+        {
+            var handle = (WindowHandle*)viewports[i].PlatformHandle;
+            if (handle != null)
+                Glfw.SetDropCallback(handle, clear ? null : _fileDropCallback);
+        }
+    }
+
+    private unsafe void OnFilesDropped(WindowHandle* window, int count, nint paths)
+    {
+        // GLFW owns these UTF-8 strings only until this callback returns.
+        for (int i = 0; i < count; i++)
+        {
+            string? path = Marshal.PtrToStringUTF8(((nint*)paths)[i]);
+            if (!string.IsNullOrWhiteSpace(path))
+                _droppedFiles.Enqueue(path);
+        }
+    }
+
+    private void ImportDroppedFiles()
+    {
+        if (_droppedFiles.Count == 0)
+            return;
+
+        if (!_projectManager.HasProject)
+        {
+            _droppedFiles.Clear();
+            OpenNewProjectPopup();
+            ShowErrorToast(Localization.T("text.window.main.open_project_before_import"));
+            return;
+        }
+
+        int imported = 0;
+        bool failed = false;
+        while (_droppedFiles.TryDequeue(out string? path))
+        {
+            if (ImportAssetFromPath(path))
+                imported++;
+            else
+                failed = true;
+        }
+
+        if (!failed)
+            ShowSuccessToast(Localization.Format("text.window.main.imported_assets", imported));
+    }
+
+    private bool ImportAssetFromPath(string path)
+    {
+        try
+        {
+            ProjectAssetType type = ProjectManager.DetectImportAssetType(path);
+            if (type == ProjectAssetType.Other || !File.Exists(path))
+            {
+                ShowErrorToast(Localization.Format("text.window.main.unsupported_import_file", Path.GetFileName(path)));
+                return false;
+            }
+
+            _projectManager.AddAsset(path, type);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ShowErrorToast(Localization.Format("text.window.main.asset_import_failed", Path.GetFileName(path), ex.Message));
+            return false;
+        }
     }
 
     private void ImportResourcePackArchiveFromDialog()
@@ -2304,19 +2387,6 @@ public class MainWindow : Window
         _resourcePackImportActive = true;
         _resourcePackImportStage = ResourcePackImportStage.CopyPack;
         _openResourcePackImportPopup = true;
-    }
-
-    private static ProjectAssetType DetectAssetType(string path)
-    {
-        string ext = Path.GetExtension(path).ToLowerInvariant();
-        return ext switch
-        {
-            ".glb" or ".gltf" or ".fbx" or ".obj" or ".dae" or ".3ds" or ".blend" or ".ply" or ".stl" or ".x3d"
-                or ".mimodel" or ".miobject" => ProjectAssetType.Model,
-            ".png" or ".jpg" or ".jpeg" or ".bmp" or ".tga" or ".gif" or ".webp" or ".tiff" => ProjectAssetType.Image,
-            ".wav" or ".mp3" or ".ogg" or ".flac" or ".m4a" => ProjectAssetType.Sound,
-            _ => ProjectAssetType.Other
-        };
     }
 
     private void SaveProjectWithScene()

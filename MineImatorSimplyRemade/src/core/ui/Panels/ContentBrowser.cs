@@ -110,13 +110,13 @@ public class ContentBrowser : UiPanel
         if (ImGui.BeginPopup("##importAssetPopup"))
         {
             if (ImGui.MenuItem(Localization.Label("text.common.model", "Model")))
-                ImportAsset(ProjectAssetType.Model, "glb,gltf,fbx,obj,dae,3ds,blend,ply,stl,x3d,mimodel,miobject");
+                ImportAsset(ProjectAssetType.Model, ProjectManager.ModelImportFilter);
 
             if (ImGui.MenuItem(Localization.Label("text.common.image", "Image")))
-                ImportAsset(ProjectAssetType.Image, "png,jpg,jpeg,bmp,tga,gif,webp,tiff,hdr,exr");
+                ImportAsset(ProjectAssetType.Image, ProjectManager.ImageImportFilter);
 
             if (ImGui.MenuItem(Localization.Label("text.panel.content_browser.sound_2", "Sound")))
-                ImportAsset(ProjectAssetType.Sound, "wav,mp3,ogg,flac,m4a");
+                ImportAsset(ProjectAssetType.Sound, ProjectManager.SoundImportFilter);
 
             ImGui.Separator();
 
@@ -500,7 +500,8 @@ public class ContentBrowser : UiPanel
     private void ImportAsset(ProjectAssetType assetType, string filter)
     {
         var result = Dialog.FileOpen(filter);
-        if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
+        if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path) ||
+            ProjectManager.DetectImportAssetType(result.Path) != assetType)
             return;
 
         var entry = ProjectManager.Instance.AddAsset(result.Path, assetType);

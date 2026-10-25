@@ -2229,9 +2229,10 @@ public class SpawnMenu : UiPanel
         if (Viewport == null || Gl == null) return;
 
         var result = Dialog.FileOpen(
-            "glb,gltf,fbx,obj,dae,3ds,blend,ply,stl,x3d,mimodel,miobject");
+            core.project.ProjectManager.ModelImportFilter);
 
-        if (result.IsOk && !string.IsNullOrEmpty(result.Path))
+        if (result.IsOk && !string.IsNullOrEmpty(result.Path) &&
+            core.project.ProjectManager.DetectImportAssetType(result.Path) == ProjectAssetType.Model)
             SpawnCustomModelFromPath(result.Path);
     }
 
