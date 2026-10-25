@@ -69,7 +69,7 @@ public static class AssimpModelLoader
             (uint)Silk.NET.Assimp.PostProcessSteps.Triangulate           |
             (uint)Silk.NET.Assimp.PostProcessSteps.GenerateSmoothNormals |
             (uint)Silk.NET.Assimp.PostProcessSteps.LimitBoneWeights      |
-            // GLTF/Blender UV V=0 is at the top; OpenGL expects V=0 at bottom.
+            // Match Assimp's UV convention to unflipped, top-first image rows.
             (uint)Silk.NET.Assimp.PostProcessSteps.FlipUVs;
 
         if (!isGltf)
@@ -277,7 +277,11 @@ public static class AssimpModelLoader
             fixed (byte* dst = compressed)
                 System.Buffer.MemoryCopy(tex->PcData, dst, len, len);
             ImageResult img;
-            try { img = ImageResult.FromMemory(compressed, ColorComponents.RedGreenBlueAlpha); }
+            try
+            {
+                StbImage.stbi_set_flip_vertically_on_load(0);
+                img = ImageResult.FromMemory(compressed, ColorComponents.RedGreenBlueAlpha);
+            }
             catch { return 0; }
             pixels = img.Data; width = img.Width; height = img.Height;
         }
@@ -306,6 +310,7 @@ public static class AssimpModelLoader
         try
         {
             using var stream = SysFile.OpenRead(path);
+            StbImage.stbi_set_flip_vertically_on_load(0);
             var img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
             return UploadRgbaPixels(gl, img.Data, img.Width, img.Height, nearest);
         }

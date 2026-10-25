@@ -661,9 +661,11 @@ public sealed class ProjectManager
         string fullSourcePath = Path.GetFullPath(sourcePath);
         string sourceRoot = Path.GetDirectoryName(fullSourcePath) ?? string.Empty;
 
-        var collected = CollectModelDependencyFiles(fullSourcePath);
-        foreach (string dep in collected)
-            CopyDependencyFileIntoFolder(dep, sourceRoot, modelFolder);
+        if (string.Equals(Path.GetExtension(fullSourcePath), ".obj", StringComparison.OrdinalIgnoreCase))
+            CopyObjDependencyTree(fullSourcePath, modelFolder);
+        else
+            foreach (string dep in CollectModelDependencyFiles(fullSourcePath))
+                CopyDependencyFileIntoFolder(dep, sourceRoot, modelFolder);
 
         // Keep legacy behaviour: include direct sibling textures even when they are
         // not explicitly referenced in JSON.
@@ -675,6 +677,159 @@ public sealed class ProjectManager
                 CopyDependencyFileIntoFolder(textureFile, sourceRoot, modelFolder);
             }
         }
+    }
+
+    private static void CopyObjDependencyTree(string sourcePath, string modelFolder)
+    {
+        string sourceRoot = Path.GetDirectoryName(sourcePath)!;
+        string externalFolder = "_obj_dependencies";
+        while (Directory.Exists(Path.Combine(sourceRoot, externalFolder)) || File.Exists(Path.Combine(sourceRoot, externalFolder)))
+            externalFolder += "_";
+
+        var targets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var pending = new Queue<string>();
+
+        string TargetFor(string source)
+        {
+            if (targets.TryGetValue(source, out string? target))
+                return target;
+
+            string relative = Path.GetRelativePath(sourceRoot, source);
+            if (!IsPathUnderDirectory(source, sourceRoot))
+            {
+                // External files must not escape the isolated model folder or collide by basename.
+                string directoryHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(Path.GetDirectoryName(source)!)));
+                relative = Path.Combine(externalFolder, directoryHash, Path.GetFileName(source));
+            }
+            target = Path.Combine(modelFolder, relative);
+            targets.Add(source, target);
+            pending.Enqueue(source);
+            return target;
+        }
+
+        TargetFor(sourcePath);
+        while (pending.Count > 0)
+        {
+            string source = pending.Dequeue();
+            if (!File.Exists(source))
+                continue;
+            string target = targets[source];
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            if (!File.Exists(target))
+                File.Copy(source, target);
+            if (IsTextureFile(source) && File.Exists(source + ".mcmeta"))
+                TargetFor(source + ".mcmeta");
+
+            string extension = Path.GetExtension(source);
+            bool isObj = extension.Equals(".obj", StringComparison.OrdinalIgnoreCase);
+            if (!isObj && !extension.Equals(".mtl", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            string original = File.ReadAllText(source);
+            string[] lines = original.Split('\n');
+            for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
+            {
+                string line = lines[lineIndex];
+                var tokens = TokenizeObjDependencyLine(line);
+                if (tokens.Count < 2)
+                    continue;
+                string directive = tokens[0].Value.ToLowerInvariant();
+                if (isObj ? directive != "mtllib" :
+                    !(directive.StartsWith("map_", StringComparison.Ordinal) || directive is "bump" or "disp" or "decal" or "refl" or "norm"))
+                    continue;
+
+                int first = isObj ? 1 : FindMtlTexturePath(tokens);
+                if (first < 0 || first >= tokens.Count)
+                    continue;
+                var replacements = new List<(int Start, int Length, string Value)>();
+                while (first < tokens.Count)
+                {
+                    int last = tokens.Count - 1;
+                    string reference = string.Join(" ", tokens.Skip(first).Select(t => t.Value));
+                    // An existing full name wins over splitting an unquoted name containing spaces.
+                    if (isObj)
+                    {
+                        while (last > first && ResolveDependencyPath(Path.GetDirectoryName(source)!, reference) == null)
+                        {
+                            last--;
+                            reference = string.Join(" ", tokens.Skip(first).Take(last - first + 1).Select(t => t.Value));
+                        }
+                    }
+                    try
+                    {
+                        string dependency = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, reference.Replace('\\', '/')));
+                        string dependencyTarget = TargetFor(dependency);
+                        string rewritten = Path.GetRelativePath(Path.GetDirectoryName(target)!, dependencyTarget).Replace('\\', '/');
+                        if (rewritten != reference.Replace('\\', '/'))
+                        {
+                            if (rewritten.Any(char.IsWhiteSpace) || rewritten.Contains('#'))
+                                rewritten = "\"" + rewritten + "\"";
+                            replacements.Add((tokens[first].Start, tokens[last].End - tokens[first].Start, rewritten));
+                        }
+                    }
+                    catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+                    {
+                        // Ignore malformed references just as the other dependency collectors do.
+                    }
+                    first = last + 1;
+                }
+                foreach (var replacement in replacements.AsEnumerable().Reverse())
+                    line = line.Remove(replacement.Start, replacement.Length).Insert(replacement.Start, replacement.Value);
+                lines[lineIndex] = line;
+            }
+
+            string rewrittenText = string.Join("\n", lines);
+            // Repair original copies, but never replace an independently edited project asset.
+            if (rewrittenText != original && File.ReadAllText(target) == original)
+                File.WriteAllText(target, rewrittenText);
+        }
+    }
+
+    private static List<(string Value, int Start, int End)> TokenizeObjDependencyLine(string line)
+    {
+        var tokens = new List<(string Value, int Start, int End)>();
+        for (int i = 0; i < line.Length;)
+        {
+            if (char.IsWhiteSpace(line[i])) { i++; continue; }
+            if (line[i] == '#') break;
+            int start = i;
+            char quote = '\0';
+            var value = new System.Text.StringBuilder();
+            while (i < line.Length)
+            {
+                char c = line[i];
+                if (quote == '\0' && (char.IsWhiteSpace(c) || c == '#')) break;
+                if (c == quote) quote = '\0';
+                else if (quote == '\0' && i == start && c is '\"' or '\'') quote = c;
+                else value.Append(c);
+                i++;
+            }
+            tokens.Add((value.ToString(), start, i));
+        }
+        return tokens;
+    }
+
+    private static int FindMtlTexturePath(List<(string Value, int Start, int End)> tokens)
+    {
+        int i = 1;
+        while (i < tokens.Count && tokens[i].Value.StartsWith('-'))
+        {
+            string option = tokens[i++].Value.ToLowerInvariant();
+            if (option is "-o" or "-s" or "-t")
+            {
+                int count = 0;
+                while (i < tokens.Count && count < 3 && double.TryParse(tokens[i].Value,
+                           System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+                { i++; count++; }
+                if (count == 0) return -1;
+            }
+            else if (option == "-mm") i += 2;
+            else if (option is "-blendu" or "-blendv" or "-boost" or "-bm" or "-cc" or "-clamp" or
+                     "-imfchan" or "-texres" or "-type" or "-colorspace") i++;
+            else return -1;
+        }
+        return i;
     }
 
     private static HashSet<string> CollectModelDependencyFiles(string rootFile)

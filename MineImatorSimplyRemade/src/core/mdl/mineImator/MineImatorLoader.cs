@@ -1715,6 +1715,8 @@ public class MineImatorLoader
                 (width, height, pixels) = ExrTextureDecoder.Decode(bytes);
             else
             {
+                // Apply orientation below rather than inheriting stb's previous caller's setting.
+                StbImage.stbi_set_flip_vertically_on_load(0);
                 ImageResult img = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
                 (width, height, pixels) = (img.Width, img.Height, img.Data);
             }

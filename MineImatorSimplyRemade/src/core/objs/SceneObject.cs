@@ -868,8 +868,10 @@ public class SceneObject
         path = ProjectManager.Instance?.ResolveAssetPath(path) ?? path;
         bool modelTexture = this is CharacterSceneObject or MiBoneSceneObject;
         bool minecraftTexture = SpawnCategory is "Blocks" or "Items" or "Scenery";
+        // Assimp already flips UVs to match top-first image rows.
+        bool importedTexture = SpawnCategory == "Custom Models";
         return MineImatorLoader.Instance.LoadTextureFromFile(path,
-            makeSquare: modelTexture, flipVertically: !modelTexture && !minecraftTexture, reload: reload);
+            makeSquare: modelTexture, flipVertically: !modelTexture && !minecraftTexture && !importedTexture, reload: reload);
     }
 
     private void ApplyAuxiliaryTextures()
