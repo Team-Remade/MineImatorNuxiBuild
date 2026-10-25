@@ -1024,6 +1024,23 @@ public class SceneTree : UiPanel
 
     private void ReparentObject(SceneObject obj, SceneObject newParent)
     {
+        var equipment = obj as CharacterSceneObject;
+        var equipmentParent = newParent as CharacterSceneObject
+            ?? (newParent as MiBoneSceneObject)?.ModelOwner;
+        bool equip = equipment != null && equipmentParent != null &&
+            string.Equals(obj.SpawnCategory, "Equipment", StringComparison.Ordinal) &&
+            equipment.BoneObjects.Values.OfType<MiBoneSceneObject>().Any(part =>
+                !string.IsNullOrEmpty(part.BoneName) &&
+                equipmentParent.BoneObjects.Values.OfType<MiBoneSceneObject>().Any(target =>
+                    string.Equals(part.BoneName, target.BoneName, StringComparison.Ordinal)));
+
+        // A complete armor model follows the character root, even when dropped on a limb.
+        if (equip)
+            newParent = equipmentParent;
+
+        if (newParent == obj || (newParent != null && newParent.IsDescendantOf(obj)))
+            return;
+
         if (obj.Parent != null)
             obj.Parent.RemoveChild(obj);
         else
@@ -1033,6 +1050,15 @@ public class SceneTree : UiPanel
             newParent.AddChild(obj);
         else
             Viewport?.SceneObjects.Add(obj);
+
+        if (equip)
+        {
+            obj.SetLocalPosition(GlmSharp.vec3.Zero);
+            obj.SetLocalRotation(GlmSharp.vec3.Zero);
+            obj.SetLocalScale(GlmSharp.vec3.Ones);
+            obj.InheritPose = true;
+        }
+        MineImatorSimplyRemade.core.project.ProjectManager.Instance.SetDirty(true);
         SelectionManager.Instance?.SyncGizmoSelection();
     }
 

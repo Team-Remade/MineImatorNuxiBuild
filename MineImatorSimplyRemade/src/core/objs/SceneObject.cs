@@ -437,7 +437,18 @@ public class SceneObject
     public bool InheritSubsurface = true;
     public bool InheritGlowColor = true;
     public bool InheritSelect = false;
-    public bool InheritPose = false;
+
+    private bool _inheritPose;
+    public bool InheritPose
+    {
+        get => _inheritPose;
+        set
+        {
+            if (_inheritPose == value) return;
+            _inheritPose = value;
+            InvalidateRenderEvaluation();
+        }
+    }
 
     private bool _usePropertyInheritance;
 

@@ -73,7 +73,7 @@ public class MiBoneSceneObject : BoneSceneObject
     {
         var source = FindInheritedPoseBone();
         if (source == null) return mat4.Identity;
-        return mat4.Translate(source.OffsetPosition) * mat4.Scale(source.Scale)
+        return mat4.Translate(source.OffsetPosition) * mat4.Scale(source.OffsetScale)
             * (source._basePoseRotationInverse * source.GetLocalRotationMatrix());
     }
 
@@ -315,7 +315,7 @@ public class MiBoneSceneObject : BoneSceneObject
 
         var bp = BendParameters.Value;
         return bp.InheritBend
-            ? GetEffectiveEditableBendAngle()
+            ? GetEffectiveEditableBendAngle(includePose: false)
             : StoredToEditable(bp.Angle, bp);
     }
 
@@ -340,7 +340,7 @@ public class MiBoneSceneObject : BoneSceneObject
         vec3 localEditable = editableAngle;
         MiBoneSceneObject? parentBone = FindParentBendBone();
         if (bp.InheritBend && parentBone != null)
-            localEditable -= parentBone.GetEffectiveEditableBendAngle();
+            localEditable -= parentBone.GetEffectiveEditableBendAngle(includePose: false);
 
         vec3 stored = EditableToStored(localEditable, bp);
 
@@ -426,7 +426,7 @@ public class MiBoneSceneObject : BoneSceneObject
         return EditableToStored(editable, bp);
     }
 
-    private vec3 GetEffectiveEditableBendAngle()
+    private vec3 GetEffectiveEditableBendAngle(bool includePose = true)
     {
         if (!BendParameters.HasValue) return vec3.Zero;
 
@@ -435,8 +435,9 @@ public class MiBoneSceneObject : BoneSceneObject
 
         MiBoneSceneObject? parentBone = FindParentBendBone();
         if (bp.InheritBend && parentBone != null)
-            editable += parentBone.GetEffectiveEditableBendAngle();
-        if (FindInheritedPoseBone() is { } poseBone)
+            editable += parentBone.GetEffectiveEditableBendAngle(includePose);
+        // Inherited poses are evaluated, never written into the armor's own channels.
+        if (includePose && FindInheritedPoseBone() is { } poseBone)
             editable += poseBone.GetEffectiveEditableBendAngle();
 
         if (!bp.AxisX) editable.x = 0f;

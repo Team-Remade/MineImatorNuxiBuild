@@ -5158,7 +5158,12 @@ public class SpawnMenu : UiPanel
             }
         }
 
-        SpawnCustomModelFromPath(ResolveCharacterModelPath(entry), textureOverride);
+        var model = SpawnCustomModelFromPath(ResolveCharacterModelPath(entry), textureOverride);
+        if (model != null)
+        {
+            model.SpawnCategory = _selectedCategory;
+            model.InheritPose = string.Equals(_selectedCategory, "Equipment", StringComparison.Ordinal);
+        }
         _isOpen = false;
     }
 

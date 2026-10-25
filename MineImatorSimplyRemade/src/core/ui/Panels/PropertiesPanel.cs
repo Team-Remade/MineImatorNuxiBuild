@@ -3418,8 +3418,22 @@ public class PropertiesPanel : UiPanel
                 _currentObject.InheritGlowColor, (obj, value) => obj.InheritGlowColor = value);
             InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_select", "Inherit Selection"),
                 _currentObject.InheritSelect, (obj, value) => obj.InheritSelect = value, material: false);
-            InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_pose", "Inherit Pose"),
-                _currentObject.InheritPose, (obj, value) => obj.InheritPose = value, material: false);
+            if (_currentObject is CharacterSceneObject poseModel &&
+                poseModel.BoneObjects.Values.Any(bone => bone is MiBoneSceneObject))
+            {
+                InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_pose", "Inherit Pose"),
+                    poseModel.InheritPose, (obj, value) =>
+                    {
+                        if (obj is CharacterSceneObject model &&
+                            model.BoneObjects.Values.Any(bone => bone is MiBoneSceneObject))
+                            model.InheritPose = value;
+                    }, material: false);
+                if (ImGui.IsItemHovered())
+                    UiText.Tooltip(Localization.T("text.panel.properties.inherit_pose_help"));
+                if (poseModel.Parent is not CharacterSceneObject parentModel ||
+                    !parentModel.BoneObjects.Values.Any(bone => bone is MiBoneSceneObject))
+                    ImGui.TextWrapped(Localization.T("text.panel.properties.inherit_pose_parent_hint"));
+            }
         }
 
         // ── Material ──────────────────────────────────────────────────────────

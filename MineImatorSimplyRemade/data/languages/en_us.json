@@ -359,6 +359,8 @@
     "text.panel.properties.inherit_glow_color": "Inherit Glow Color",
     "text.panel.properties.inherit_pivot": "Inherit Pivot",
     "text.panel.properties.inherit_pose": "Inherit Pose",
+    "text.panel.properties.inherit_pose_help": "Follow the parent model's pose and bends using matching part names. The armor keeps its own model shape and animation offsets.",
+    "text.panel.properties.inherit_pose_parent_hint": "Parent this model to a character or model root to inherit its pose. Drag equipment onto the character in the scene tree to equip it.",
     "text.panel.properties.inherit_position": "Inherit Position",
     "text.panel.properties.inherit_rotation": "Inherit Rotation",
     "text.panel.properties.inherit_scale": "Inherit Scale",
