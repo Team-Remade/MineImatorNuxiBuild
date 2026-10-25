@@ -11,7 +11,7 @@ public sealed class SphereMesh : Mesh
     public int Rings { get; private set; }
     public bool SmoothShading { get; private set; }
 
-    public SphereMesh(GL gl, float radius = 0.5f, int segments = 32, int rings = 16,
+    public SphereMesh(GL gl, float radius = 0.5f, int segments = 32, int rings = 30,
                       bool smoothShading = true) : base(gl)
     {
         if (radius <= 0f)
@@ -33,7 +33,7 @@ public sealed class SphereMesh : Mesh
     public void SetGeometry(int segments, int rings, bool smoothShading)
     {
         segments = Math.Clamp(segments, 3, 256);
-        rings = Math.Clamp(rings, 2, 128);
+        rings = Math.Clamp(rings, 2, 254);
         if (Segments == segments && Rings == rings && SmoothShading == smoothShading)
             return;
 
@@ -48,119 +48,65 @@ public sealed class SphereMesh : Mesh
         Upload();
     }
 
-    protected override void GenerateVertices()
+    private SphereMesh(GL gl, SphereMesh source) : base(gl)
     {
-        // Use one vertex at each pole. Duplicating a zero-width pole row can
-        // produce cracks at the cap on some drivers because every other
-        // triangle in that row is degenerate.
-        Vertices.Add(new vec3(0f, Radius, 0f));
-        Normals.Add(new vec3(0f, 1f, 0f));
-        TexCoords.Add(new vec2(0.5f, 1f));
-
-        // Interior rings duplicate only the longitude seam, allowing U to run
-        // cleanly from 0 to 1 without splitting the actual sphere geometry.
-        for (int ring = 1; ring < Rings; ring++)
-        {
-            float v = (float)ring / Rings;
-            float latitude = v * MathF.PI;
-            float sinLatitude = MathF.Sin(latitude);
-            float cosLatitude = MathF.Cos(latitude);
-
-            for (int segment = 0; segment <= Segments; segment++)
-            {
-                float u = (float)segment / Segments;
-                float longitude = u * MathF.Tau;
-
-                var normal = new vec3(
-                    sinLatitude * MathF.Cos(longitude),
-                    cosLatitude,
-                    sinLatitude * MathF.Sin(longitude));
-
-                Vertices.Add(normal * Radius);
-                Normals.Add(normal);
-                TexCoords.Add(new vec2(u, 1f - v));
-            }
-        }
-
-        uint bottomPole = (uint)Vertices.Count;
-        Vertices.Add(new vec3(0f, -Radius, 0f));
-        Normals.Add(new vec3(0f, -1f, 0f));
-        TexCoords.Add(new vec2(0.5f, 0f));
-
-        var indices = new List<uint>(Segments * (Rings - 1) * 6);
-        int stride = Segments + 1;
-
-        // Top cap.
-        for (int segment = 0; segment < Segments; segment++)
-        {
-            indices.Add(0);
-            indices.Add((uint)(segment + 2));
-            indices.Add((uint)(segment + 1));
-        }
-
-        // Quads between the interior latitude rings.
-        for (int ring = 0; ring < Rings - 2; ring++)
-        {
-            uint upper = (uint)(1 + ring * stride);
-            uint lower = upper + (uint)stride;
-            for (int segment = 0; segment < Segments; segment++)
-            {
-                uint topLeft = upper + (uint)segment;
-                uint topRight = topLeft + 1;
-                uint bottomLeft = lower + (uint)segment;
-                uint bottomRight = bottomLeft + 1;
-
-                indices.Add(topLeft);
-                indices.Add(bottomRight);
-                indices.Add(bottomLeft);
-                indices.Add(topLeft);
-                indices.Add(topRight);
-                indices.Add(bottomRight);
-            }
-        }
-
-        // Bottom cap.
-        uint lastRing = (uint)(1 + (Rings - 2) * stride);
-        for (int segment = 0; segment < Segments; segment++)
-        {
-            indices.Add(lastRing + (uint)segment);
-            indices.Add(lastRing + (uint)segment + 1);
-            indices.Add(bottomPole);
-        }
-
-        Indices = indices.ToArray();
-
-        if (!SmoothShading)
-            ConvertToFlatShading();
+        Radius = source.Radius;
+        Segments = source.Segments;
+        Rings = source.Rings;
+        SmoothShading = source.SmoothShading;
     }
 
-    private void ConvertToFlatShading()
+    protected override Mesh CreateCloneGeometry(GL gl) => new SphereMesh(gl, this);
+
+    protected override void GenerateVertices()
     {
-        if (Indices == null) return;
-
-        var flatVertices = new List<vec3>(Indices.Length);
-        var flatNormals = new List<vec3>(Indices.Length);
-        var flatUvs = new List<vec2>(Indices.Length);
-
-        for (int i = 0; i < Indices.Length; i += 3)
+        // Reference Z-axial coordinates become app Y-up via (x,z,-y).
+        vec3 Normal(int segment, int ring)
         {
-            uint i0 = Indices[i];
-            uint i1 = Indices[i + 1];
-            uint i2 = Indices[i + 2];
-            vec3 normal = vec3.Cross(Vertices[(int)i1] - Vertices[(int)i0],
-                                     Vertices[(int)i2] - Vertices[(int)i0]).Normalized;
-            uint[] triangle = [i0, i1, i2];
-            foreach (uint index in triangle)
-            {
-                flatVertices.Add(Vertices[(int)index]);
-                flatNormals.Add(normal);
-                flatUvs.Add(TexCoords[(int)index]);
-            }
+            if (ring == 0) return new vec3(0f, -1f, 0f);
+            if (ring == Rings) return new vec3(0f, 1f, 0f);
+            float longitude = segment == Segments ? 0f : MathF.Tau * segment / Segments;
+            float latitude = MathF.PI * ring / Rings;
+            float radial = MathF.Sin(latitude);
+            return new vec3(MathF.Sin(longitude) * radial, -MathF.Cos(latitude),
+                            MathF.Cos(longitude) * radial);
         }
 
-        Vertices.Clear(); Vertices.AddRange(flatVertices);
-        Normals.Clear(); Normals.AddRange(flatNormals);
-        TexCoords.Clear(); TexCoords.AddRange(flatUvs);
+        void Add(vec3 radialNormal, float u, vec3 flatNormal)
+        {
+            Vertices.Add(radialNormal * Radius);
+            Normals.Add(SmoothShading ? radialNormal : flatNormal);
+            // Reference U has a quarter turn; V follows height, not latitude angle.
+            TexCoords.Add(new vec2(1.25f - u, (1f + radialNormal.y) * 0.5f));
+        }
+
+        for (int segment = 0; segment < Segments; segment++)
+        {
+            float u0 = (float)segment / Segments;
+            float u1 = (float)(segment + 1) / Segments;
+            for (int ring = 0; ring < Rings; ring++)
+            {
+                vec3 n1 = Normal(segment, ring);
+                vec3 n2 = Normal(segment, ring + 1);
+                vec3 n3 = Normal(segment + 1, ring);
+                vec3 n4 = Normal(segment + 1, ring + 1);
+                vec3 flatNormal = (n1 + n2 + n3 + n4).Normalized;
+
+                // Pole UVs stay local to each wedge; omit zero-area pole triangles.
+                if (ring > 0)
+                {
+                    Add(n1, u0, flatNormal);
+                    Add(n3, u1, flatNormal);
+                    Add(n4, u1, flatNormal);
+                }
+                if (ring + 1 < Rings)
+                {
+                    Add(n1, u0, flatNormal);
+                    Add(n4, u1, flatNormal);
+                    Add(n2, u0, flatNormal);
+                }
+            }
+        }
         Indices = null;
     }
 }

@@ -854,6 +854,10 @@ public class SceneTree : UiPanel
         dup.PrimitiveSphereSmooth = original.PrimitiveSphereSmooth;
         dup.PrimitiveSphereSegments = original.PrimitiveSphereSegments;
         dup.PrimitiveSphereRings = original.PrimitiveSphereRings;
+        dup.PrimitiveRadialSegments = original.PrimitiveRadialSegments;
+        dup.PrimitiveRadialSmooth = original.PrimitiveRadialSmooth;
+        dup.PrimitiveRadialClosed = original.PrimitiveRadialClosed;
+        dup.PrimitiveRadialMapped = original.PrimitiveRadialMapped;
         dup.PrimitivePlaneFaceCamera = original.PrimitivePlaneFaceCamera;
         dup.TextMeshFontPath = original.TextMeshFontPath;
         dup.TextMeshBaseString = original.TextMeshBaseString;

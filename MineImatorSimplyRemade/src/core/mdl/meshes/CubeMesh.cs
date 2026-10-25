@@ -6,6 +6,7 @@ namespace MineImatorSimplyRemade.core.mdl.meshes;
 public class CubeMesh : Mesh
 {
     public bool Mapped { get; private set; }
+    private bvec2 _mappedMirrors;
 
     public CubeMesh(GL gl, bool mapped = false) : base(gl)
     {
@@ -19,6 +20,14 @@ public class CubeMesh : Mesh
     {
     }
 
+    private CubeMesh(GL gl, CubeMesh source) : base(gl)
+    {
+        Mapped = source.Mapped;
+        _mappedMirrors = source._mappedMirrors;
+    }
+
+    protected override Mesh CreateCloneGeometry(GL gl) => new CubeMesh(gl, this);
+
     public void SetMapped(bool mapped)
     {
         if (Mapped == mapped)
@@ -29,29 +38,45 @@ public class CubeMesh : Mesh
         Upload();
     }
 
+    public void SetMappedMirrors(bvec2 mirrors)
+    {
+        if (_mappedMirrors.x == mirrors.x && _mappedMirrors.y == mirrors.y)
+            return;
+
+        _mappedMirrors = mirrors;
+        if (!Mapped) return;
+        BuildTexCoords();
+        Upload();
+    }
+
     private void BuildTexCoords()
     {
         TexCoords.Clear();
 
         if (!Mapped)
         {
-            for (int i = 0; i < 6; i++)
-                AddFaceUv(0f, 0f, 1f, 1f);
+            for (int face = 0; face < 6; face++)
+            {
+                if (face == 2 || face == 3)
+                    AddFaceUv(0f, 1f, 1f, 0f);
+                else
+                    AddFaceUv(1f, 0f, 0f, 1f);
+            }
             return;
         }
 
-        // 3x2 unwrap layout matching the cubemap example:
-        // row 0: Front | Left | Right
-        // row 1: Back  | Top  | Bottom
-        AddFaceUvForCell(0, 0); // front
-        AddFaceUvForCell(0, 1); // back
-        AddFaceUvForCell(1, 1); // top
-        AddFaceUvForCell(2, 1); // bottom
+        // Reference atlas after (x,z,-y) conversion; rows are texture top to bottom:
+        // -Z | -X | +X
+        // +Z | +Y | -Y
+        AddFaceUvForCell(0, 1); // front
+        AddFaceUvForCell(0, 0); // back
+        AddFaceUvForCell(1, 1, true); // top
+        AddFaceUvForCell(2, 1, true); // bottom
         AddFaceUvForCell(2, 0); // right
         AddFaceUvForCell(1, 0); // left
     }
 
-    private void AddFaceUvForCell(int column, int rowFromTop)
+    private void AddFaceUvForCell(int column, int rowFromTop, bool flipVertical = false)
     {
         const float cellWidth = 1f / 3f;
         const float cellHeight = 1f / 2f;
@@ -62,7 +87,13 @@ public class CubeMesh : Mesh
         float vTop = 1f - rowFromTop * cellHeight;
         float vBottom = vTop - cellHeight;
 
-        AddFaceUv(u0, vBottom, u1, vTop);
+        if (_mappedMirrors.x) (u0, u1) = (u1, u0);
+        if (_mappedMirrors.y) (vTop, vBottom) = (vBottom, vTop);
+
+        if (flipVertical)
+            AddFaceUv(u0, vTop, u1, vBottom);
+        else
+            AddFaceUv(u1, vBottom, u0, vTop);
     }
 
     private void AddFaceUv(float uMin, float vMin, float uMax, float vMax)

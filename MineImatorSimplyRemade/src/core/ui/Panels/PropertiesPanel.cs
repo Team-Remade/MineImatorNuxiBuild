@@ -1052,6 +1052,10 @@ public class PropertiesPanel : UiPanel
             PrimitiveSphereSmooth = source.PrimitiveSphereSmooth,
             PrimitiveSphereSegments = source.PrimitiveSphereSegments,
             PrimitiveSphereRings = source.PrimitiveSphereRings,
+            PrimitiveRadialSegments = source.PrimitiveRadialSegments,
+            PrimitiveRadialSmooth = source.PrimitiveRadialSmooth,
+            PrimitiveRadialClosed = source.PrimitiveRadialClosed,
+            PrimitiveRadialMapped = source.PrimitiveRadialMapped,
             TextMeshFontPath = source.TextMeshFontPath,
             TextMeshBaseString = source.TextMeshBaseString,
             TextMeshStringOverride = source.TextMeshStringOverride,
@@ -2939,16 +2943,48 @@ public class PropertiesPanel : UiPanel
             int rings = _currentObject.PrimitiveSphereRings;
             bool changed = ImGui.Checkbox(Localization.Label("text.common.smooth_shading", "Smooth Shading##sphereSmooth"), ref smooth);
             changed |= ImGui.DragInt(Localization.Label("text.common.segments", "Segments##sphereSegments"), ref segments, 1f, 3, 256);
-            changed |= ImGui.DragInt(Localization.Label("text.common.rings", "Rings##sphereRings"), ref rings, 1f, 2, 128);
+            changed |= ImGui.DragInt(Localization.Label("text.common.rings", "Rings##sphereRings"), ref rings, 1f, 2, 254);
 
             if (changed)
             {
                 segments = Math.Clamp(segments, 3, 256);
-                rings = Math.Clamp(rings, 2, 128);
+                rings = Math.Clamp(rings, 2, 254);
                 _currentObject.PrimitiveSphereSmooth = smooth;
                 _currentObject.PrimitiveSphereSegments = segments;
                 _currentObject.PrimitiveSphereRings = rings;
                 _currentObject.Visuals.OfType<SphereMesh>().FirstOrDefault()?.SetGeometry(segments, rings, smooth);
+                ProjectManager.Instance.SetDirty(true);
+            }
+        }
+
+        if (string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) &&
+            (string.Equals(_currentObject.ObjectType, "Cylinder", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(_currentObject.ObjectType, "Cone", StringComparison.OrdinalIgnoreCase)) &&
+            ImGui.CollapsingHeader(Localization.DisplayLabel(_currentObject.ObjectType + "##radialGeometry")))
+        {
+            int segments = _currentObject.PrimitiveRadialSegments;
+            bool smooth = _currentObject.PrimitiveRadialSmooth;
+            bool closed = _currentObject.PrimitiveRadialClosed;
+            bool mapped = _currentObject.PrimitiveRadialMapped;
+            bool changed = ImGui.DragInt(Localization.DisplayLabel("Detail##radialSegments"), ref segments, 1f, 3, 256);
+            changed |= ImGui.Checkbox(Localization.Label("text.common.smooth_shading", "Smooth Shading##radialSmooth"), ref smooth);
+            changed |= ImGui.Checkbox(Localization.DisplayLabel("Closed##radialClosed"), ref closed);
+            bool mappedChanged = ImGui.Checkbox(Localization.Label("text.panel.properties.mapped_uvs", "Mapped UVs##radialMapped"), ref mapped);
+            changed |= mappedChanged;
+            if (changed)
+            {
+                segments = Math.Clamp(segments, 3, 256);
+                _currentObject.PrimitiveRadialSegments = segments;
+                _currentObject.PrimitiveRadialSmooth = smooth;
+                _currentObject.PrimitiveRadialClosed = closed;
+                _currentObject.PrimitiveRadialMapped = mapped;
+                if (mappedChanged)
+                {
+                    _currentObject.Visuals.OfType<CylinderMesh>().FirstOrDefault()?.SetMapped(mapped);
+                    _currentObject.Visuals.OfType<ConeMesh>().FirstOrDefault()?.SetMapped(mapped);
+                }
+                _currentObject.Visuals.OfType<CylinderMesh>().FirstOrDefault()?.SetGeometry(segments, smooth, closed);
+                _currentObject.Visuals.OfType<ConeMesh>().FirstOrDefault()?.SetGeometry(segments, smooth, closed);
                 ProjectManager.Instance.SetDirty(true);
             }
         }

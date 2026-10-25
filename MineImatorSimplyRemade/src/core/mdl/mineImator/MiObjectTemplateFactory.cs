@@ -30,23 +30,35 @@ public static class MiObjectTemplateFactory
             obj = CreateBlock(gl, template.Block);
             settings = template.Block;
         }
-        else if (type is "cube" or "sphere" or "surface")
+        else if (type is "cube" or "sphere" or "surface" or "cone" or "cylinder")
         {
             settings = template.Shape;
-            int detail = Math.Clamp((int)Number(settings, "detail", 32), 4, 128);
+            int detail = Math.Clamp((int)Number(settings, "detail", 32), type == "sphere" ? 4 : 3, 256);
             obj = new SceneObject
             {
-                ObjectType = type == "surface" ? "Plane" : type == "cube" ? "Cube" : "Sphere",
+                ObjectType = type switch
+                {
+                    "surface" => "Plane",
+                    "cube" => "Cube",
+                    "sphere" => "Sphere",
+                    "cone" => "Cone",
+                    _ => "Cylinder"
+                },
                 SpawnCategory = "Primitives",
                 PivotOffset = new vec3(0f, 0.5f, 0f),
                 PrimitiveCubeMapped = Bool(settings, "tex_mapped"),
                 PrimitiveSphereSegments = detail,
                 PrimitiveSphereRings = detail - 2,
                 PrimitiveSphereSmooth = Bool(settings, "smooth", true),
+                PrimitiveRadialSegments = detail,
+                PrimitiveRadialSmooth = Bool(settings, "smooth", true),
+                PrimitiveRadialClosed = Bool(settings, "closed", true),
+                PrimitiveRadialMapped = Bool(settings, "tex_mapped"),
                 PrimitivePlaneFaceCamera = Bool(settings, "face_camera"),
                 InvertFaces = Bool(settings, "invert")
             };
             obj.SetExplicitMaterialSettings();
+            obj.MaterialSettings.DoubleSided = type == "surface";
             obj.MaterialSettings.TextureOffset = new vec2(Number(settings, "tex_hoffset", 0),
                 Number(settings, "tex_voffset", 0));
             obj.MaterialSettings.TextureRepeat = new vec2(Number(settings, "tex_hrepeat", 1),
@@ -59,6 +71,8 @@ public static class MiObjectTemplateFactory
                 {
                     "cube" => new CubeMesh(gl, obj.PrimitiveCubeMapped),
                     "sphere" => new SphereMesh(gl, 0.5f, detail, detail - 2, obj.PrimitiveSphereSmooth),
+                    "cone" => new ConeMesh(gl, detail, obj.PrimitiveRadialSmooth, obj.PrimitiveRadialClosed, obj.PrimitiveRadialMapped),
+                    "cylinder" => new CylinderMesh(gl, detail, obj.PrimitiveRadialSmooth, obj.PrimitiveRadialClosed, obj.PrimitiveRadialMapped),
                     _ => new PlaneMesh(gl, 1f, 1f, PlaneOrientation.XY)
                 };
                 obj.AddMesh(mesh);

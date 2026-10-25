@@ -188,7 +188,11 @@ public class SpawnMenu : UiPanel
     private bool _selectedPrimitiveCubeMapped = false;
     private bool _selectedPrimitiveSphereSmooth = true;
     private int _selectedPrimitiveSphereSegments = 32;
-    private int _selectedPrimitiveSphereRings = 16;
+    private int _selectedPrimitiveSphereRings = 30;
+    private int _selectedPrimitiveRadialSegments = 32;
+    private bool _selectedPrimitiveRadialSmooth = true;
+    private bool _selectedPrimitiveRadialClosed = true;
+    private bool _selectedPrimitiveRadialMapped = false;
 
     /// <summary>
     /// OpenGL texture ID for the currently selected primitive texture.
@@ -230,7 +234,7 @@ public class SpawnMenu : UiPanel
             {
                 "Primitives", new List<string>
                 {
-                    "Empty", "Cube", "Sphere", "Cylinder", "Cone", "Torus", "Plane", "Capsule", "Text Mesh"
+                    "Empty", "Cube", "Sphere", "Cylinder", "Cone", "Plane", "Text Mesh"
                 }
             },
             // Items renders its own custom UI in the objects/variants columns.
@@ -562,6 +566,12 @@ public class SpawnMenu : UiPanel
                             _selectedObjectIndex >= SelectedModelCatalog.Count ? "" :
                             $"char:{SelectedModelCatalog[_selectedObjectIndex].FilePath}" +
                             $":{_selectedCharTextureIndex}",
+            "Primitives" => _selectedObjectIndex < 0 ? "" :
+                            $"primitive:{GetFilteredObjects().ElementAtOrDefault(_selectedObjectIndex) ?? ""}:" +
+                            $"{_selectedPrimitivePlaneOrientation}:{_selectedPrimitiveCubeMapped}:" +
+                            $"{_selectedPrimitiveSphereSegments}:{_selectedPrimitiveSphereRings}:{_selectedPrimitiveSphereSmooth}:" +
+                            $"{_selectedPrimitiveRadialSegments}:{_selectedPrimitiveRadialSmooth}:{_selectedPrimitiveRadialClosed}:{_selectedPrimitiveRadialMapped}:" +
+                            $"{_selectedPrimitiveTextureId}:{_selectedPrimitiveTexturePath}",
             _ => _selectedObjectIndex < 0 ? "" :
                   $"std:{_selectedCategory}:{GetFilteredObjects().ElementAtOrDefault(_selectedObjectIndex) ?? ""}:" +
                   $"rp:{(_selectedCategory == "Scenery" ? MinecraftDataLoader.NormalizeResourcePackStack(_spawnResourcePackId) : "")}"
@@ -672,14 +682,33 @@ public class SpawnMenu : UiPanel
 
                 string name = filtered[_selectedObjectIndex];
                 if (name == "Empty") return new List<Mesh>();
+                if (name == "Text Mesh")
+                {
+                    var text = new SceneObject { ObjectType = name, SpawnCategory = "Primitives" };
+                    TextMeshFactory.Rebuild(text, Gl);
+                    return text.Visuals.ToList();
+                }
 
-                if (name == "Cube")   return new List<Mesh> { new CubeMesh(Gl, _selectedPrimitiveCubeMapped) };
-                if (name == "Sphere") return new List<Mesh> { new SphereMesh(Gl, 0.5f,
-                    _selectedPrimitiveSphereSegments, _selectedPrimitiveSphereRings, _selectedPrimitiveSphereSmooth) };
-                if (name == "Plane")  return new List<Mesh> { new PlaneMesh(Gl, 1f, 1f, _selectedPrimitivePlaneOrientation) };
-
-                // For shapes not yet implemented, show a cube placeholder
-                return new List<Mesh> { new CubeMesh(Gl) };
+                Mesh mesh = name switch
+                {
+                    "Cube" => new CubeMesh(Gl, _selectedPrimitiveCubeMapped),
+                    "Sphere" => new SphereMesh(Gl, 0.5f, _selectedPrimitiveSphereSegments,
+                        _selectedPrimitiveSphereRings, _selectedPrimitiveSphereSmooth),
+                    "Cylinder" => new CylinderMesh(Gl, _selectedPrimitiveRadialSegments,
+                        _selectedPrimitiveRadialSmooth, _selectedPrimitiveRadialClosed, _selectedPrimitiveRadialMapped),
+                    "Cone" => new ConeMesh(Gl, _selectedPrimitiveRadialSegments,
+                        _selectedPrimitiveRadialSmooth, _selectedPrimitiveRadialClosed, _selectedPrimitiveRadialMapped),
+                    "Plane" => new PlaneMesh(Gl, 1f, 1f, _selectedPrimitivePlaneOrientation),
+                    _ => throw new InvalidOperationException($"Unsupported primitive: {name}")
+                };
+                mesh.DoubleSided = name == "Plane";
+                if ((name is "Cube" or "Sphere" or "Cylinder" or "Cone" or "Plane") && _selectedPrimitiveTextureId != 0)
+                {
+                    mesh.TextureId = _selectedPrimitiveTextureId;
+                    if (mesh.GetSurfaceCount() > 0 && mesh.SurfaceGetMaterial(0) is StandardMaterial material)
+                        material.AlbedoColor = new vec4(1f, 1f, 1f, 1f);
+                }
+                return new List<Mesh> { mesh };
             }
 
             case "Characters":
@@ -1008,7 +1037,7 @@ public class SpawnMenu : UiPanel
                     string objectLabel = filtered[i] + "##obj" + i;
                     if (_selectedCategory != "Custom Models" || filtered[i] == "Load...")
                         objectLabel = Localization.DisplayLabel(objectLabel);
-                    if (ImGui.Selectable(objectLabel, sel))
+                    if (ImGui.Selectable(objectLabel, sel) && (!sel || _selectedCategory != "Primitives"))
                     {
                         _selectedObjectIndex  = i;
                         _selectedVariantIndex = -1;
@@ -1054,27 +1083,41 @@ public class SpawnMenu : UiPanel
                 UiText.Disabled(Localization.T("text.panel.spawn.sphere_geometry"));
                 bool changed = ImGui.Checkbox(Localization.Label("text.common.smooth_shading", "Smooth Shading##sphereSmoothSpawn"), ref _selectedPrimitiveSphereSmooth);
                 changed |= ImGui.DragInt(Localization.Label("text.common.segments", "Segments##sphereSegmentsSpawn"), ref _selectedPrimitiveSphereSegments, 1f, 3, 256);
-                changed |= ImGui.DragInt(Localization.Label("text.common.rings", "Rings##sphereRingsSpawn"), ref _selectedPrimitiveSphereRings, 1f, 2, 128);
+                changed |= ImGui.DragInt(Localization.Label("text.common.rings", "Rings##sphereRingsSpawn"), ref _selectedPrimitiveSphereRings, 1f, 2, 254);
                 _selectedPrimitiveSphereSegments = Math.Clamp(_selectedPrimitiveSphereSegments, 3, 256);
-                _selectedPrimitiveSphereRings = Math.Clamp(_selectedPrimitiveSphereRings, 2, 128);
+                _selectedPrimitiveSphereRings = Math.Clamp(_selectedPrimitiveSphereRings, 2, 254);
                 if (changed) _previewKey = "";
                 ImGui.Spacing();
             }
 
             bool isPrimitiveWithTexture = _selectedCategory == "Primitives" &&
                 _selectedObjectIndex >= 0 && _selectedObjectIndex < filteredObjects.Count &&
-                (filteredObjects[_selectedObjectIndex] == "Plane" || filteredObjects[_selectedObjectIndex] == "Cube");
+                (filteredObjects[_selectedObjectIndex] is "Plane" or "Cube" or "Sphere" or "Cylinder" or "Cone");
 
             if (isPrimitiveWithTexture)
             {
                 string primitiveName = filteredObjects[_selectedObjectIndex];
+                if (primitiveName is "Cylinder" or "Cone")
+                {
+                    UiText.Disabled(Localization.DisplayText(primitiveName));
+                    bool changed = ImGui.DragInt(Localization.DisplayLabel("Detail##radialSegmentsSpawn"), ref _selectedPrimitiveRadialSegments, 1f, 3, 256);
+                    changed |= ImGui.Checkbox(Localization.Label("text.common.smooth_shading", "Smooth Shading##radialSmoothSpawn"), ref _selectedPrimitiveRadialSmooth);
+                    changed |= ImGui.Checkbox(Localization.DisplayLabel("Closed##radialClosedSpawn"), ref _selectedPrimitiveRadialClosed);
+                    changed |= ImGui.Checkbox(Localization.Label("text.panel.spawn.mapped", "Mapped##radialMappedSpawn"), ref _selectedPrimitiveRadialMapped);
+                    _selectedPrimitiveRadialSegments = Math.Clamp(_selectedPrimitiveRadialSegments, 3, 256);
+                    if (changed) _previewKey = "";
+                    ImGui.Spacing();
+                }
                 if (primitiveName == "Plane")
                 {
                     UiText.Disabled(Localization.T("text.common.orientation"));
                     string[] orientationOptions = { "XY", "XZ" };
                     int orientationIndex = _selectedPrimitivePlaneOrientation == PlaneOrientation.XZ ? 1 : 0;
                     if (ImGui.Combo("##planeOrientation", ref orientationIndex, orientationOptions, orientationOptions.Length))
+                    {
                         _selectedPrimitivePlaneOrientation = orientationIndex == 1 ? PlaneOrientation.XZ : PlaneOrientation.XY;
+                        _previewKey = "";
+                    }
 
                     ImGui.Spacing();
                 }
@@ -1120,6 +1163,7 @@ public class SpawnMenu : UiPanel
                         // Load new texture
                         _selectedPrimitiveTexturePath = result.Path;
                         _selectedPrimitiveTextureId = LoadPrimitiveTextureFromFile(result.Path);
+                        _previewKey = "";
 
                         if (_selectedPrimitiveTextureId != 0)
                         {
@@ -1140,6 +1184,7 @@ public class SpawnMenu : UiPanel
                     _selectedPrimitiveTextureId = 0;
                     _selectedPrimitiveTexturePath = "";
                     _selectedVariantIndex = 0;
+                    _previewKey = "";
                 }
 
                 ImGui.Separator();
@@ -2172,7 +2217,7 @@ public class SpawnMenu : UiPanel
         }
 
         // Handle textured primitive selection: add texture option to variants
-        if (_selectedCategory == "Primitives" && (objectName == "Plane" || objectName == "Cube"))
+        if (_selectedCategory == "Primitives" && (objectName is "Plane" or "Cube" or "Sphere" or "Cylinder" or "Cone"))
         {
             _currentVariants.Clear();
             _currentVariants.Add("None");
@@ -5131,15 +5176,18 @@ public class SpawnMenu : UiPanel
             default:
                 // Primitives and any future categories that use SceneObject
                 // For textured primitives, pass the selected texture
-                if (_selectedCategory == "Primitives" && (objectName == "Plane" || objectName == "Cube"))
+                if (_selectedCategory == "Primitives" && (objectName is "Plane" or "Cube" or "Sphere" or "Cylinder" or "Cone"))
                 {
                     string texturePath = "";
                     if (_selectedPrimitiveTextureId != 0 && !string.IsNullOrEmpty(_selectedPrimitiveTexturePath))
                     {
                         texturePath = CopyTextureToProject(_selectedPrimitiveTexturePath);
                     }
-                    SpawnPrimitiveObject(objectName, fullName, _selectedPrimitiveTextureId, texturePath,
-                                         _selectedPrimitivePlaneOrientation, _selectedPrimitiveCubeMapped);
+                    SpawnPrimitiveObject(objectName, fullName, 0, texturePath,
+                        _selectedPrimitivePlaneOrientation, _selectedPrimitiveCubeMapped,
+                        _selectedPrimitiveSphereSmooth, _selectedPrimitiveSphereSegments, _selectedPrimitiveSphereRings,
+                        _selectedPrimitiveRadialSegments, _selectedPrimitiveRadialSmooth, _selectedPrimitiveRadialClosed,
+                        _selectedPrimitiveRadialMapped);
                 }
                 else
                 {
@@ -5442,7 +5490,6 @@ public class SpawnMenu : UiPanel
 
     private static void SaveCubeUvMapGuide()
     {
-        const string embeddedName = "MineImatorSimplyRemade.assets.img.map.cube.png";
         const string defaultFileName = "cube-uv-map.png";
 
         string defaultPath = Path.Combine(
@@ -5459,20 +5506,30 @@ public class SpawnMenu : UiPanel
 
         try
         {
-            var asm = Assembly.GetExecutingAssembly();
-            using Stream? sourceStream = asm.GetManifestResourceStream(embeddedName);
-            if (sourceStream == null)
-            {
-                Console.Error.WriteLine($"Cube UV map resource not found: {embeddedName}");
-                return;
-            }
-
             string? outputDir = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrWhiteSpace(outputDir))
                 Directory.CreateDirectory(outputDir);
 
-            using var output = File.Create(outputPath);
-            sourceStream.CopyTo(output);
+            // Axis labels avoid front/back ambiguity after converting the
+            // reference atlas from Z-up to the editor's Y-up coordinates.
+            const string guide = """
+                <svg xmlns="http://www.w3.org/2000/svg" width="384" height="256" viewBox="0 0 384 256">
+                  <path fill="#ffb3b3" d="M0 0h128v128H0z"/>
+                  <path fill="#b3b3ff" d="M128 0h128v128H128z"/>
+                  <path fill="#ffffb3" d="M256 0h128v128H256z"/>
+                  <path fill="#b3ffb3" d="M0 128h128v128H0z"/>
+                  <path fill="#b3ffff" d="M128 128h128v128H128z"/>
+                  <path fill="#ffb3ff" d="M256 128h128v128H256z"/>
+                  <g fill="black" font-family="Arial" font-size="18" text-anchor="middle">
+                    <text x="64" y="56">-Z</text><text x="192" y="56">-X</text><text x="320" y="56">+X</text>
+                    <text x="64" y="184">+Z</text><text x="192" y="184">+Y</text><text x="320" y="184">-Y</text>
+                    <text x="64" y="82">Back</text><text x="192" y="82">Left</text><text x="320" y="82">Right</text>
+                    <text x="64" y="210">Front</text><text x="192" y="210">Top</text><text x="320" y="210">Bottom</text>
+                  </g>
+                </svg>
+                """;
+            using var image = new ImageMagick.MagickImage(System.Text.Encoding.UTF8.GetBytes(guide));
+            image.Write(outputPath, ImageMagick.MagickFormat.Png);
         }
         catch (Exception ex)
         {
@@ -5536,7 +5593,9 @@ public class SpawnMenu : UiPanel
     public SceneObject? SpawnPrimitiveObject(string primitiveType, string objectName, uint textureId = 0,
                                              string texturePath = "", PlaneOrientation planeOrientation = PlaneOrientation.XY,
                                              bool cubeMapped = false, bool sphereSmooth = true,
-                                             int sphereSegments = 32, int sphereRings = 16)
+                                             int sphereSegments = 32, int sphereRings = 30,
+                                             int radialSegments = 32, bool radialSmooth = true, bool radialClosed = true,
+                                             bool radialMapped = false)
     {
         if (Viewport == null) return null;
 
@@ -5551,11 +5610,24 @@ public class SpawnMenu : UiPanel
             PrimitiveCubeMapped = cubeMapped,
             PrimitiveSphereSmooth = sphereSmooth,
             PrimitiveSphereSegments = Math.Clamp(sphereSegments, 3, 256),
-            PrimitiveSphereRings = Math.Clamp(sphereRings, 2, 128)
+            PrimitiveSphereRings = Math.Clamp(sphereRings, 2, 254),
+            PrimitiveRadialSegments = Math.Clamp(radialSegments, 3, 256),
+            PrimitiveRadialSmooth = radialSmooth,
+            PrimitiveRadialClosed = radialClosed,
+            PrimitiveRadialMapped = radialMapped
         };
         obj.AssignObjectId();
 
         // Create mesh geometry for supported primitive types.
+        // Use the scene texture cache, never the menu's disposable preview handle.
+        if (Gl != null && textureId == 0 && !string.IsNullOrEmpty(texturePath))
+            textureId = obj.LoadTexture(texturePath);
+
+        if (primitiveType == "Plane")
+        {
+            obj.SetExplicitMaterialSettings();
+            obj.MaterialSettings.DoubleSided = true;
+        }
         if (primitiveType == "Plane" && Gl != null)
         {
             // 1-unit × 1-unit plane using the selected orientation.
@@ -5565,8 +5637,6 @@ public class SpawnMenu : UiPanel
             if (textureId != 0)
             {
                 mesh.TextureId = textureId;
-                // Enable backface culling for proper rendering
-                mesh.DoubleSided = false;
                 
                 // Configure material for transparency
                 if (mesh.GetSurfaceCount() > 0)
@@ -5575,7 +5645,7 @@ public class SpawnMenu : UiPanel
                     if (material is StandardMaterial stdMat)
                     {
                         stdMat.AlbedoColor = new vec4(1f, 1f, 1f, 1f); // White for full color pass-through
-                        stdMat.DoubleSided = false;
+                        stdMat.DoubleSided = true;
                     }
                 }
             }
@@ -5616,8 +5686,25 @@ public class SpawnMenu : UiPanel
             obj.AddMesh(mesh);
         }
 
+        if ((primitiveType is "Cylinder" or "Cone") && Gl != null)
+        {
+            Mesh mesh = primitiveType == "Cylinder"
+                ? new CylinderMesh(Gl, obj.PrimitiveRadialSegments, obj.PrimitiveRadialSmooth, obj.PrimitiveRadialClosed, obj.PrimitiveRadialMapped)
+                : new ConeMesh(Gl, obj.PrimitiveRadialSegments, obj.PrimitiveRadialSmooth, obj.PrimitiveRadialClosed, obj.PrimitiveRadialMapped);
+            if (textureId != 0)
+            {
+                mesh.TextureId = textureId;
+                if (mesh.GetSurfaceCount() > 0 && mesh.SurfaceGetMaterial(0) is StandardMaterial material)
+                    material.AlbedoColor = new vec4(1f, 1f, 1f, 1f);
+            }
+            obj.AddMesh(mesh);
+        }
+
         if (primitiveType == "Text Mesh" && Gl != null)
             TextMeshFactory.Rebuild(obj, Gl);
+
+        if (primitiveType == "Plane")
+            obj.ApplyMaterialSettingsToMeshes();
 
         Viewport.SceneObjects.Add(obj);
         return obj;

@@ -566,7 +566,10 @@ public class Viewport : UiPanel
 
         // Keep the quad reasonably sized to avoid visible interpolation artifacts
         // on very large two-triangle planes; recentering still makes it feel infinite.
-        _groundPlane = new PlaneMesh(Gl, 512f, 512f, PlaneOrientation.XZ);
+        _groundPlane = new PlaneMesh(Gl, 512f, 512f, PlaneOrientation.XZ)
+        {
+            TextureRepeat = new vec2(512f, 512f)
+        };
 
         SetGroundPlaneTexture("block", "grass_block_top");
     }
@@ -5064,6 +5067,9 @@ public class Viewport : UiPanel
             obj.Visuals.Count == 0)
             return world;
 
+        // The billboard is rebuilt around the logical pivot, not the already
+        // offset mesh center; applying PivotOffset twice shifts the plane.
+        world = obj.GetWorldMatrixNoPivot();
         vec3 worldPos = new vec3(world.m30, world.m31, world.m32);
         vec3 toCamera = cameraPos - worldPos;
         if (toCamera.LengthSqr <= 1e-10f)
@@ -5076,7 +5082,9 @@ public class Viewport : UiPanel
 
         vec3 right = vec3.Cross(upRef, forward).Normalized;
         vec3 up = vec3.Cross(forward, right).Normalized;
-        vec3 back = -forward;
+        bool horizontalPlane = obj.Visuals.OfType<PlaneMesh>().FirstOrDefault()?.Orientation == PlaneOrientation.XZ;
+        vec3 localY = horizontalPlane ? forward : up;
+        vec3 localZ = horizontalPlane ? -up : forward;
 
         vec3 row0 = new vec3(world.m00, world.m01, world.m02);
         vec3 row1 = new vec3(world.m10, world.m11, world.m12);
@@ -5088,8 +5096,8 @@ public class Viewport : UiPanel
 
         mat4 rotation = mat4.Identity;
         rotation.m00 = right.x; rotation.m01 = right.y; rotation.m02 = right.z;
-        rotation.m10 = up.x;    rotation.m11 = up.y;    rotation.m12 = up.z;
-        rotation.m20 = back.x;  rotation.m21 = back.y;  rotation.m22 = back.z;
+        rotation.m10 = localY.x; rotation.m11 = localY.y; rotation.m12 = localY.z;
+        rotation.m20 = localZ.x; rotation.m21 = localZ.y; rotation.m22 = localZ.z;
 
         mat4 translation = mat4.Translate(worldPos);
         mat4 scaling = mat4.Scale(scale);

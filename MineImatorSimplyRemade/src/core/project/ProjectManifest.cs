@@ -358,6 +358,10 @@ public class ProjectSceneObjectEntry
     public bool PrimitiveSphereSmooth { get; set; } = true;
     public int PrimitiveSphereSegments { get; set; } = 32;
     public int PrimitiveSphereRings { get; set; } = 16;
+    public int PrimitiveRadialSegments { get; set; } = 32;
+    public bool PrimitiveRadialSmooth { get; set; } = true;
+    public bool PrimitiveRadialClosed { get; set; } = true;
+    public bool PrimitiveRadialMapped { get; set; } = false;
     public string TextMeshFontPath { get; set; } = "minecraftia";
     public string TextMeshBaseString { get; set; } = "Text";
     public string TextMeshStringOverride { get; set; } = "";

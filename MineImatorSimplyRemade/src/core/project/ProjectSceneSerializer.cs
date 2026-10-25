@@ -330,6 +330,10 @@ public static class ProjectSceneSerializer
             PrimitiveSphereSmooth = obj.PrimitiveSphereSmooth,
             PrimitiveSphereSegments = obj.PrimitiveSphereSegments,
             PrimitiveSphereRings = obj.PrimitiveSphereRings,
+            PrimitiveRadialSegments = obj.PrimitiveRadialSegments,
+            PrimitiveRadialSmooth = obj.PrimitiveRadialSmooth,
+            PrimitiveRadialClosed = obj.PrimitiveRadialClosed,
+            PrimitiveRadialMapped = obj.PrimitiveRadialMapped,
             TextMeshFontPath = obj.TextMeshFontPath,
             TextMeshBaseString = obj.TextMeshBaseString,
             TextMeshStringOverride = obj.TextMeshStringOverride,
@@ -584,7 +588,8 @@ public static class ProjectSceneSerializer
 
         if (entry.SpawnCategory == "Primitives")
             return spawnMenu.SpawnPrimitiveObject(entry.ObjectType, entry.Name, 0, "", entry.PrimitivePlaneOrientation,
-                entry.PrimitiveCubeMapped, entry.PrimitiveSphereSmooth, entry.PrimitiveSphereSegments, entry.PrimitiveSphereRings);
+                entry.PrimitiveCubeMapped, entry.PrimitiveSphereSmooth, entry.PrimitiveSphereSegments, entry.PrimitiveSphereRings,
+                entry.PrimitiveRadialSegments, entry.PrimitiveRadialSmooth, entry.PrimitiveRadialClosed, entry.PrimitiveRadialMapped);
 
         if (entry.SpawnCategory == "Particle Spawners")
             return spawnMenu.SpawnParticleSpawnerObject(entry.Name, entry.ParticleLibraryEntryId, entry.ParticleLibraryDisplayName);
@@ -836,9 +841,25 @@ public static class ProjectSceneSerializer
         {
             obj.PrimitiveSphereSmooth = entry.PrimitiveSphereSmooth;
             obj.PrimitiveSphereSegments = Math.Clamp(entry.PrimitiveSphereSegments, 3, 256);
-            obj.PrimitiveSphereRings = Math.Clamp(entry.PrimitiveSphereRings, 2, 128);
+            obj.PrimitiveSphereRings = Math.Clamp(entry.PrimitiveSphereRings, 2, 254);
             obj.Visuals.OfType<SphereMesh>().FirstOrDefault()?.SetGeometry(
                 obj.PrimitiveSphereSegments, obj.PrimitiveSphereRings, obj.PrimitiveSphereSmooth);
+        }
+
+        if (obj.SpawnCategory == "Primitives" && obj.ObjectType is "Cone" or "Cylinder")
+        {
+            obj.PrimitiveRadialSegments = Math.Clamp(entry.PrimitiveRadialSegments, 3, 256);
+            obj.PrimitiveRadialSmooth = entry.PrimitiveRadialSmooth;
+            obj.PrimitiveRadialClosed = entry.PrimitiveRadialClosed;
+            obj.PrimitiveRadialMapped = entry.PrimitiveRadialMapped;
+            foreach (var mesh in obj.Visuals)
+            {
+                if (mesh is RadialMesh radial)
+                {
+                    radial.SetGeometry(obj.PrimitiveRadialSegments, obj.PrimitiveRadialSmooth, obj.PrimitiveRadialClosed);
+                    radial.SetMapped(obj.PrimitiveRadialMapped);
+                }
+            }
         }
 
         if (obj.SpawnCategory == "Primitives" && obj.ObjectType == "Text Mesh")

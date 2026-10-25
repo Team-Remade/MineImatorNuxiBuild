@@ -276,6 +276,10 @@ public class SceneObject
     public bool PrimitiveSphereSmooth = true;
     public int PrimitiveSphereSegments = 32;
     public int PrimitiveSphereRings = 16;
+    public int PrimitiveRadialSegments = 32;
+    public bool PrimitiveRadialSmooth = true;
+    public bool PrimitiveRadialClosed = true;
+    public bool PrimitiveRadialMapped = false;
 
     /// <summary>
     /// Primitive-plane option. When true, the plane rotates at render-time so it faces the active camera.
@@ -959,9 +963,21 @@ public class SceneObject
                     Math.Clamp(mesh.BaseMixColor.w + settings.MixColor.w, 0f, 1f))
                 : settings.MixColor;
             mesh.DoubleSided = settings.DoubleSided;
-            mesh.TextureOffset = settings.TextureOffset;
-            mesh.TextureRepeat = settings.TextureRepeat;
-            mesh.TextureMirror = settings.TextureMirror;
+            bool mappedAtlas = false;
+            if (mesh is CubeMesh cube)
+            {
+                cube.SetMappedMirrors(settings.TextureMirror);
+                mappedAtlas = cube.Mapped;
+            }
+            else if (mesh is RadialMesh radial)
+            {
+                radial.SetMappedMirrors(settings.TextureMirror);
+                mappedAtlas = radial.Mapped;
+            }
+            // Mapped primitives transform UVs within each atlas cell, not across the atlas.
+            mesh.TextureOffset = mappedAtlas ? new vec2(0f) : settings.TextureOffset;
+            mesh.TextureRepeat = mappedAtlas ? new vec2(1f) : settings.TextureRepeat;
+            mesh.TextureMirror = mappedAtlas ? new bvec2(false) : settings.TextureMirror;
             // Combine AlbedoColor.a with (1 - Transparency) so both routes
             // can control opacity: 0 Transparency = fully opaque.
             mesh.Alpha = mesh.BaseAlpha * settings.AlbedoColor.w * (1f - settings.Transparency);

@@ -779,7 +779,7 @@ public class Mesh : IDisposable
     /// </summary>
     public Mesh Clone()
     {
-        var clone = new Mesh(_gl);
+        var clone = CreateCloneGeometry(_gl);
 
         clone.Vertices.AddRange(Vertices);
         clone.Normals.AddRange(Normals);
@@ -858,6 +858,9 @@ public class Mesh : IDisposable
 
         return clone;
     }
+
+    /// <summary>Creates an empty clone retaining derived geometry settings, without uploading.</summary>
+    protected virtual Mesh CreateCloneGeometry(GL gl) => new Mesh(gl);
 
     protected virtual void GenerateVertices()
     {

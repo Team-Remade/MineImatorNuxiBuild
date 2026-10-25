@@ -142,6 +142,10 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.PrimitiveSphereSmooth);
         hash.Add(obj.PrimitiveSphereSegments);
         hash.Add(obj.PrimitiveSphereRings);
+        hash.Add(obj.PrimitiveRadialSegments);
+        hash.Add(obj.PrimitiveRadialSmooth);
+        hash.Add(obj.PrimitiveRadialClosed);
+        hash.Add(obj.PrimitiveRadialMapped);
         hash.Add(obj.TextMeshFontPath);
         hash.Add(obj.TextMeshBaseString);
         hash.Add(obj.TextMeshStringOverride);
