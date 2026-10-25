@@ -108,6 +108,11 @@ public class SceneTree : UiPanel
             !ImGui.GetIO().WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F2))
             BeginRename(_selectedObject);
 
+        if (ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows) &&
+            !ImGui.GetIO().WantTextInput && !ImGui.IsAnyItemActive() && _draggingObject == null &&
+            ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.F, false))
+            GroupSelectedObjects();
+
         ImGui.SetNextItemWidth(-1);
         ImGui.InputTextWithHint("##sceneTreeSearch", Localization.T("text.panel.scene_tree.search_scene_objects"), ref _searchQuery, 128);
         ImGui.Separator();
@@ -283,6 +288,51 @@ public class SceneTree : UiPanel
         {
             SelectObject(duplicates[0]);
         }
+    }
+
+    /// <summary>Groups the selected hierarchy roots beneath a new empty object.</summary>
+    public void GroupSelectedObjects()
+    {
+        var selectedObjects = SelectionManager.Instance?.SelectedObjects.ToList()
+            ?? (_selectedObject != null ? new List<SceneObject> { _selectedObject } : new List<SceneObject>());
+        if (Viewport == null || selectedObjects.Count == 0)
+            return;
+
+        // Keep selected descendants in their existing hierarchy rather than flattening them.
+        var roots = selectedObjects
+            .Where(obj => !selectedObjects.Any(other => other != obj && obj.IsDescendantOf(other)))
+            .ToList();
+        if (roots.Count == 0)
+            return;
+
+        var parent = roots[0].Parent;
+        if (roots.Any(obj => obj.Parent != parent))
+            parent = null;
+
+        int nameNumber = GetNextAvailableNameNumber("Empty");
+        var group = new SceneObject
+        {
+            Name = nameNumber == 1 ? "Empty" : $"Empty{nameNumber}",
+            ObjectType = "Empty",
+            SpawnCategory = "Primitives",
+            PivotOffset = GlmSharp.vec3.Zero,
+            ScaleResize = false
+        };
+        group.AssignObjectId();
+
+        if (parent != null)
+            parent.AddChild(group);
+        else
+        {
+            int index = Viewport.SceneObjects.IndexOf(roots[0]);
+            Viewport.SceneObjects.Insert(index >= 0 ? index : Viewport.SceneObjects.Count, group);
+        }
+
+        foreach (var obj in roots)
+            ReparentObject(obj, group);
+
+        SetSelection(group);
+        MineImatorSimplyRemade.core.project.ProjectManager.Instance.SetDirty(true);
     }
 
     /// <summary>Deletes every selected object using the same logic as the context menu.</summary>
