@@ -127,6 +127,7 @@ public class MainWindow : Window
     private int _renderPopupBitrateKbps = 12000;
     private bool _renderPopupHighQuality = true;
     private bool _renderPopupShowHiddenObjects;
+    private bool _renderPopupAnimationPoseAcknowledged;
     private string _renderPopupImageFormat = "png";
     private string _renderPopupVideoFormat = "mp4";
     private string _renderPopupPreset = "1080P";
@@ -1398,6 +1399,9 @@ public class MainWindow : Window
             _renderPopupShowHiddenObjects = _propertiesPanel.GetRenderShowHiddenObjects();
         }
 
+        _renderPopupAnimationPoseAcknowledged = false;
+        if (_renderPopupMode == RenderMode.Image && _timeline?.IsPlaying == true)
+            _timeline.TogglePlayPause();
         _openRenderPopup = true;
     }
 
@@ -1441,6 +1445,9 @@ public class MainWindow : Window
             if (ImGui.Selectable(Localization.Label("text.common.image", "Image"), imageSelected))
             {
                 _renderPopupMode = RenderMode.Image;
+                _renderPopupAnimationPoseAcknowledged = false;
+                if (_timeline?.IsPlaying == true)
+                    _timeline.TogglePlayPause();
                 settingsChanged = true;
             }
 
@@ -1448,6 +1455,7 @@ public class MainWindow : Window
             if (ImGui.Selectable(Localization.Label("text.window.main.video", "Video"), videoSelected))
             {
                 _renderPopupMode = RenderMode.Video;
+                _renderPopupAnimationPoseAcknowledged = false;
                 settingsChanged = true;
             }
 
@@ -1625,10 +1633,30 @@ public class MainWindow : Window
         if (settingsChanged)
             ApplyRenderPopupToProjectSettings();
 
+        ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + 360f * UiTheme.Scale);
+        if (_renderPopupMode == RenderMode.Image)
+        {
+            UiText.Wrapped(Localization.T("text.window.main.image_render_current_pose_hint"));
+        }
+        else
+        {
+            UiText.Wrapped(Localization.T("text.window.main.animation_render_pose_warning"));
+            ImGui.BeginDisabled(_timeline == null);
+            if (ImGui.Button(Localization.Label("text.panel.timeline.key_changed_properties", "Key Changed Properties")))
+                _timeline?.KeyChangedPropertiesAtCurrentFrame();
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered())
+                UiText.Tooltip(Localization.T("text.panel.timeline.key_changed_properties_hint"));
+            ImGui.Checkbox(Localization.Label("text.window.main.animation_render_pose_acknowledgement", "I understand that unkeyed pose values may be lost."), ref _renderPopupAnimationPoseAcknowledged);
+        }
+        ImGui.PopTextWrapPos();
+
+        ImGui.BeginDisabled(_renderPopupMode == RenderMode.Video && !_renderPopupAnimationPoseAcknowledged);
         if (ImGui.Button(Localization.Label("text.window.main.start_render", "Start Render"), new Vector2(140 * UiTheme.Scale, 0)))
         {
             StartRenderJob();
         }
+        ImGui.EndDisabled();
 
         if (controlsDisabled)
             ImGui.EndDisabled();
@@ -1852,6 +1880,13 @@ public class MainWindow : Window
         if (_renderJobActive)
             return;
 
+        if (_renderPopupMode == RenderMode.Video && !_renderPopupAnimationPoseAcknowledged)
+            return;
+
+        // Pause without evaluating keyframes so capture keeps the current, possibly unkeyed pose.
+        if (_renderPopupMode == RenderMode.Image && _timeline?.IsPlaying == true)
+            _timeline.TogglePlayPause();
+
         int width = Math.Max(1, _renderPopupWidth);
         int height = Math.Max(1, _renderPopupHeight);
 
@@ -1903,8 +1938,8 @@ public class MainWindow : Window
         try
         {
             IsAnimationRenderExportActive = false;
-            _renderExporter = new RenderExporter(_cameraViewport);
             _renderJobMode = _renderPopupMode;
+            _renderExporter = new RenderExporter(_cameraViewport);
             _renderJobActive = true;
             _renderJobFinished = false;
             _renderJobStatus = Localization.T("text.window.main.starting_render");
@@ -1919,6 +1954,7 @@ public class MainWindow : Window
 
             if (_renderJobMode == RenderMode.Video)
             {
+                _renderPopupAnimationPoseAcknowledged = false;
                 IsAnimationRenderExportActive = true;
                 if (_timeline == null)
                     throw new InvalidOperationException(Localization.T("text.window.main.timeline_is_not_initialized"));
@@ -1943,7 +1979,6 @@ public class MainWindow : Window
             }
             else
             {
-                _renderTimelineRestoreFrame = _timeline?.CurrentFrame ?? 0;
                 _renderFrameTotal = 1;
                 _renderTempFramesDir = "";
                 _renderEncodeTask = null;
@@ -2058,7 +2093,7 @@ public class MainWindow : Window
     private void CompleteRenderJobSuccess()
     {
         IsAnimationRenderExportActive = false;
-        if (_timeline != null)
+        if (_renderJobMode == RenderMode.Video && _timeline != null)
             _timeline.SetCurrentFrame(_renderTimelineRestoreFrame);
 
         _renderEncodeTask = null;
@@ -2074,7 +2109,7 @@ public class MainWindow : Window
     private void CancelRenderJob(string message)
     {
         IsAnimationRenderExportActive = false;
-        if (_timeline != null)
+        if (_renderJobMode == RenderMode.Video && _timeline != null)
             _timeline.SetCurrentFrame(_renderTimelineRestoreFrame);
 
         _renderEncodeTask = null;

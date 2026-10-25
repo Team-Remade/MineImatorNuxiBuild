@@ -149,6 +149,19 @@ public class Timeline : UiPanel
                 new[] { $"{channel.Path}.r", $"{channel.Path}.g", $"{channel.Path}.b" }))
             .Append("material.alpha"), StringComparer.Ordinal);
 
+    private static readonly (string Label, string Path)[] TextChannels =
+    {
+        ("Font", "text.font"),
+        ("Horizontal Alignment", "text.horizontal_alignment"),
+        ("Vertical Alignment", "text.vertical_alignment"),
+        ("Antialiasing", "text.antialiasing"),
+        ("Font Size", "text.font_size"),
+        ("Outline", "text.outline_enabled"),
+        ("Outline Thickness", "text.outline_thickness"),
+        ("R", "text.outline.r"), ("G", "text.outline.g"),
+        ("B", "text.outline.b"), ("A", "text.outline.a"),
+    };
+
     // ── Selection ─────────────────────────────────────────────────────────────
 
     private readonly List<TimelineKeyframe>                                        _selectedKeyframes = new();
@@ -614,6 +627,12 @@ public class Timeline : UiPanel
         }
         if (ImGui.IsItemHovered())
             UiText.Tooltip(_autoKeyframe ? Localization.T("text.panel.timeline.auto_keyframing_on") : Localization.T("text.panel.timeline.auto_keyframing_off"));
+
+        ImGui.SameLine();
+        if (ImGui.Button(Localization.Label("text.panel.timeline.key_changed_properties", "Key Changed Properties")))
+            KeyChangedPropertiesAtCurrentFrame();
+        if (ImGui.IsItemHovered())
+            UiText.Tooltip(Localization.T("text.panel.timeline.key_changed_properties_hint"));
 
         ImGui.TextUnformatted(Localization.T("text.panel.timeline.fps"));
         ImGui.SameLine();
@@ -2274,6 +2293,12 @@ public class Timeline : UiPanel
         UiText.Disabled(Localization.T("text.panel.timeline.add_keyframe"));
         ImGui.Separator();
 
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.key_changed_properties", "Key Changed Properties")))
+            KeyChangedPropertiesAtCurrentFrame(CollectAllObjects(new[] { _ctxAddKeyframeObj }));
+        if (ImGui.IsItemHovered())
+            UiText.Tooltip(Localization.T("text.panel.timeline.key_changed_properties_hint"));
+        ImGui.Separator();
+
         bool canRotate = !(_ctxAddKeyframeObj is LightSceneObject);
         bool canScale = !(_ctxAddKeyframeObj is CameraSceneObject) && !(_ctxAddKeyframeObj is LightSceneObject);
 
@@ -2414,7 +2439,13 @@ public class Timeline : UiPanel
         if (propertyPath.StartsWith("rotation.", StringComparison.Ordinal) &&
             obj.Keyframes.Keys.Any(p => p.StartsWith("mirotation.", StringComparison.Ordinal)))
             propertyPath = "mirotation." + propertyPath["rotation.".Length..];
-        string key   = $"{obj.ObjectId}.{propertyPath}";
+        StoreKeyframeValue(obj, propertyPath, frame, GetRecordedKeyframeValue(obj, propertyPath, frame));
+        RecalculateTimelineLength();
+        RebuildDisplayRows();
+    }
+
+    private object GetRecordedKeyframeValue(SceneObject obj, string propertyPath, int frame)
+    {
         object value = GetPropertyValue(obj, propertyPath);
         if (propertyPath.StartsWith("mirotation.", StringComparison.Ordinal))
         {
@@ -2431,6 +2462,14 @@ public class Timeline : UiPanel
             value = propertyPath.EndsWith(".x", StringComparison.Ordinal) ? recorded.x
                 : propertyPath.EndsWith(".y", StringComparison.Ordinal) ? recorded.y : recorded.z;
         }
+        return value;
+    }
+
+    private void StoreKeyframeValue(SceneObject obj, string propertyPath, int frame, object value)
+    {
+        string key = $"{obj.ObjectId}.{propertyPath}";
+        if (!_propertyKeyframes.ContainsKey(key))
+            LoadKeyframesFromObject(obj, propertyPath);
         if (!_propertyKeyframes.ContainsKey(key))
             _propertyKeyframes[key] = new List<TimelineKeyframe>();
 
@@ -2440,8 +2479,66 @@ public class Timeline : UiPanel
         else { list.Add(new TimelineKeyframe { Frame = frame, Value = value }); list.Sort((a, b) => a.Frame.CompareTo(b.Frame)); }
 
         SaveKeyframesToObject(obj, propertyPath);
-        RecalculateTimelineLength();
-        RebuildDisplayRows();
+    }
+
+    public int KeyChangedPropertiesAtCurrentFrame() =>
+        KeyChangedPropertiesAtCurrentFrame(Viewport == null
+            ? Enumerable.Empty<SceneObject>() : CollectAllObjects(Viewport.SceneObjects));
+
+    private int KeyChangedPropertiesAtCurrentFrame(IEnumerable<SceneObject> objects)
+    {
+        if (_isPlaying)
+            TogglePlayPause();
+
+        // Sample everything before writing keys, especially coupled MI rotation axes.
+        var changed = new List<(SceneObject obj, string path, object value)>();
+        foreach (var obj in objects.Distinct())
+        {
+            SceneObject defaults = obj is CameraSceneObject ? new CameraSceneObject()
+                : obj is LightSceneObject ? new LightSceneObject()
+                : obj is ParticleSpawnerSceneObject ? new ParticleSpawnerSceneObject() : new SceneObject();
+            defaults.UsePropertyInheritance = obj.UsePropertyInheritance;
+            if (defaults is CameraSceneObject defaultCamera && obj is CameraSceneObject camera)
+                foreach (var effect in camera.Effects)
+                    defaultCamera.Effects.Add(new CameraEffect { Type = effect.Type });
+
+            bool usesMiRotation = obj.Keyframes.Keys.Any(p => p.StartsWith("mirotation.", StringComparison.Ordinal));
+            foreach (string path in GetKeyframePropertyPaths(obj).Distinct())
+            {
+                if (path.StartsWith(usesMiRotation ? "rotation." : "mirotation.", StringComparison.Ordinal))
+                    continue;
+                if (!_propertyKeyframes.ContainsKey($"{obj.ObjectId}.{path}"))
+                    LoadKeyframesFromObject(obj, path);
+                // Include edits back to defaults when an existing track would overwrite them.
+                object baseline = _propertyKeyframes.TryGetValue($"{obj.ObjectId}.{path}", out var track) && track.Count > 0
+                    ? InterpolateKeyframes(track, path, _currentFrame, true) ?? GetPropertyValue(defaults, path)
+                    : GetPropertyValue(defaults, path);
+                object value = GetRecordedKeyframeValue(obj, path, _currentFrame);
+                bool equal;
+                if (TryConvertKeyframeValue(value, out float current) && TryConvertKeyframeValue(baseline, out float initial))
+                {
+                    // Degree/radian round trips lose precision on multi-turn rotations.
+                    float tolerance = path.StartsWith("rotation.", StringComparison.Ordinal)
+                        ? MathF.Max(0.00001f, MathF.Max(MathF.Abs(current), MathF.Abs(initial)) * 0.0000005f)
+                        : 0.00001f;
+                    equal = MathF.Abs(current - initial) <= tolerance;
+                }
+                else
+                    equal = Equals(value, baseline is JsonElement json && json.ValueKind == JsonValueKind.String ? json.GetString() : baseline);
+                if (!equal)
+                    changed.Add((obj, path, value));
+            }
+        }
+
+        foreach (var (obj, path, value) in changed)
+            StoreKeyframeValue(obj, path, _currentFrame, value);
+        if (changed.Count > 0)
+        {
+            RecalculateTimelineLength();
+            RebuildDisplayRows();
+            ProjectManager.Instance.SetDirty(true);
+        }
+        return changed.Count;
     }
 
     public void RemoveKeyframeForProperty(SceneObject obj, string propertyPath, int frame)
@@ -2493,6 +2590,23 @@ public class Timeline : UiPanel
 
     public void LoadKeyframesForAllObjects(IEnumerable<SceneObject> objects)
     {
+        foreach (var obj in objects)
+        {
+            if (obj == null || obj.Keyframes.Count == 0) continue;
+            foreach (var path in GetKeyframePropertyPaths(obj))
+                if (obj.Keyframes.TryGetValue(path, out var track) && track.Count > 0)
+                    LoadKeyframesFromObject(obj, path);
+
+            if (obj is CameraSceneObject)
+                foreach (var path in obj.Keyframes.Keys.Where(k => k.StartsWith("camera.effect.", StringComparison.Ordinal)))
+                    if (obj.Keyframes[path].Count > 0)
+                        LoadKeyframesFromObject(obj, path);
+        }
+        RecalculateTimelineLength();
+    }
+
+    private static IEnumerable<string> GetKeyframePropertyPaths(SceneObject obj)
+    {
         string[] standardPaths =
         {
             "visible", "material.alpha", "material.texture",
@@ -2536,52 +2650,33 @@ public class Timeline : UiPanel
             "particle.angular_velocity_max.x", "particle.angular_velocity_max.y", "particle.angular_velocity_max.z",
         };
 
-        foreach (var obj in objects)
+        IEnumerable<string> paths = obj is LightSceneObject   ? standardPaths.Concat(lightPaths)
+                                  : obj is CameraSceneObject  ? standardPaths.Concat(cameraPaths)
+                                  : standardPaths;
+        paths = paths.Concat(MaterialPropertyPaths);
+        if (obj is MiBoneSceneObject)
+            paths = paths.Concat(new[] { "bend.x", "bend.y", "bend.z" });
+        if (obj is CameraSceneObject cameraObj)
+            paths = paths.Concat(GetCameraEffectPropertyPaths(cameraObj));
+        if (obj is ParticleSpawnerSceneObject)
+            paths = paths.Concat(particleScalarPaths).Concat(particleVectorPaths);
+        if (obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
+            paths = paths.Concat(itemPaths);
+        if (string.Equals(obj.ObjectType, "Text Mesh", StringComparison.OrdinalIgnoreCase))
+            paths = paths.Concat(TextChannels.Select(channel => channel.Path));
+        foreach (var path in paths)
+            yield return path;
+
+        // Shape keys depend on the object's mesh/morph-target layout.
+        var shapeKeyMeshes = obj.GetMeshInstancesRecursively();
+        for (int m = 0; m < shapeKeyMeshes.Count; m++)
         {
-            if (obj == null || obj.Keyframes.Count == 0) continue;
-            IEnumerable<string> paths = obj is LightSceneObject   ? standardPaths.Concat(lightPaths)
-                                      : obj is CameraSceneObject  ? standardPaths.Concat(cameraPaths)
-                                      : standardPaths;
-            paths = paths.Concat(MaterialPropertyPaths);
-            if (obj is MiBoneSceneObject)
-                paths = paths.Concat(new[] { "bend.x", "bend.y", "bend.z" });
-            if (obj is CameraSceneObject cameraObj)
-                paths = paths.Concat(GetCameraEffectPropertyPaths(cameraObj));
-            if (obj is ParticleSpawnerSceneObject)
-                paths = paths.Concat(particleScalarPaths).Concat(particleVectorPaths);
-            if (obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
-                paths = paths.Concat(itemPaths);
-            foreach (var path in paths)
-                if (obj.Keyframes.ContainsKey(path) && obj.Keyframes[path].Count > 0)
-                    LoadKeyframesFromObject(obj, path);
-
-            if (obj is CameraSceneObject)
+            if (!shapeKeyMeshes[m].HasShapeKeys) continue;
+            for (int k = 0; k < shapeKeyMeshes[m].ShapeKeys.Count; k++)
             {
-                foreach (var path in obj.Keyframes.Keys
-                             .Where(k => k.StartsWith("camera.effect.", StringComparison.Ordinal)))
-                {
-                    if (obj.Keyframes[path].Count > 0)
-                        LoadKeyframesFromObject(obj, path);
-                }
-            }
-
-            // Shape keys use dynamic "shapekey.<meshIndex>.<keyIndex>" paths that
-            // depend on the object's mesh/morph-target layout, so they can't be
-            // enumerated from a static list like the properties above.
-            var shapeKeyMeshes = obj.GetMeshInstancesRecursively();
-            for (int m = 0; m < shapeKeyMeshes.Count; m++)
-            {
-                if (!shapeKeyMeshes[m].HasShapeKeys) continue;
-                for (int k = 0; k < shapeKeyMeshes[m].ShapeKeys.Count; k++)
-                {
-                    string skPath = $"shapekey.{m}.{k}";
-                    if (obj.Keyframes.ContainsKey(skPath) && obj.Keyframes[skPath].Count > 0)
-                        LoadKeyframesFromObject(obj, skPath);
-                }
+                yield return $"shapekey.{m}.{k}";
             }
         }
-
-        RecalculateTimelineLength();
     }
 
     private static IEnumerable<string> GetCameraEffectPropertyPaths(CameraSceneObject cam)
@@ -3704,6 +3799,21 @@ public class Timeline : UiPanel
                 if (propsWithKeyframes.Contains(path))
                     newRows.Add(MakeSingle(obj, label, path));
 
+            if (string.Equals(obj.ObjectType, "Text Mesh", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var (label, path) in TextChannels.Where(c => !c.Path.StartsWith("text.outline.", StringComparison.Ordinal)))
+                    if (propsWithKeyframes.Contains(path))
+                        newRows.Add(MakeSingle(obj, label, path));
+                string[] outlinePaths = ["text.outline.r", "text.outline.g", "text.outline.b", "text.outline.a"];
+                if (outlinePaths.Any(propsWithKeyframes.Contains))
+                {
+                    newRows.Add(MakeGroup(obj, "Outline Color", outlinePaths, "text.outline"));
+                    foreach (var (label, path) in TextChannels.Where(c => outlinePaths.Contains(c.Path)))
+                        if (propsWithKeyframes.Contains(path))
+                            newRows.Add(MakeSingle(obj, label, path, 1));
+                }
+            }
+
             foreach (var (label, basePath) in MaterialVectorChannels)
             {
                 string[] paths = { $"{basePath}.r", $"{basePath}.g", $"{basePath}.b" };
@@ -3746,6 +3856,8 @@ public class Timeline : UiPanel
                     (label: "Light Range",     path: "light.range", parent: "", indent: 0),
                     (label: "Indirect Energy", path: "light.indirect_energy", parent: "", indent: 0),
                     (label: "Specular",        path: "light.specular", parent: "", indent: 0),
+                    (label: "Spot Angle",      path: "light.spot_angle", parent: "", indent: 0),
+                    (label: "Spot Blend",      path: "light.spot_blend", parent: "", indent: 0),
                     (label: "Light Color",     path: "light.color", parent: "", indent: 0),
                     (label: "R",               path: "light.color.r", parent: "light.color", indent: 1),
                     (label: "G",               path: "light.color.g", parent: "light.color", indent: 1),
