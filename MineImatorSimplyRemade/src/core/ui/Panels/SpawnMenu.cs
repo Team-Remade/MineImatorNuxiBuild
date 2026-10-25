@@ -2782,6 +2782,8 @@ public class SpawnMenu : UiPanel
                     schematic.Palette,
                     schematic.PaletteIndices,
                     total,
+                    width,
+                    length,
                     availableBlocks,
                     variantCache,
                     voxelInfos,
@@ -3384,6 +3386,8 @@ public class SpawnMenu : UiPanel
         Dictionary<int, string> paletteLookup,
         int[] paletteIndices,
         int total,
+        int width,
+        int length,
         HashSet<string> availableBlocks,
         Dictionary<string, VariantRenderInfo> variantCache,
         VariantRenderInfo?[] outVoxels,
@@ -3391,6 +3395,7 @@ public class SpawnMenu : UiPanel
     {
         var idToInfo = new Dictionary<int, VariantRenderInfo?>();
         var idToLevel = new Dictionary<int, int>();
+        var fencesWithoutConnections = new Dictionary<int, Dictionary<string, string>>();
         for (int i = 0; i < total; i++)
         {
             int paletteId = paletteIndices[i];
@@ -3405,14 +3410,14 @@ public class SpawnMenu : UiPanel
                     continue;
                 }
 
-                var variant = PickBestVariantForProperties(BlockRegistry.GetVariants(blockName, _spawnResourcePackId), props, null);
-                if (variant == null)
+                if (blockName.EndsWith("_fence", StringComparison.OrdinalIgnoreCase))
                 {
-                    idToInfo[paletteId] = null;
-                    continue;
+                    if (!props.ContainsKey("north") || !props.ContainsKey("east") ||
+                        !props.ContainsKey("south") || !props.ContainsKey("west"))
+                        fencesWithoutConnections[paletteId] = props;
                 }
 
-                info = GetOrCreateVariantRenderInfo(blockName, variant, variantCache);
+                info = GetOrCreateBlockStateRenderInfo(blockName, props, variantCache);
                 idToInfo[paletteId] = info;
 
                 // Fluid "level" state (0-7 flowing amount, 8-15 falling) — carried separately
@@ -3432,6 +3437,46 @@ public class SpawnMenu : UiPanel
                 outLiquidLevels[i] = level;
         }
 
+        // Bedrock stores fence connections implicitly. Resolve them only after all
+        // neighbours have render info, without overriding explicit Java states.
+        if (fencesWithoutConnections.Count == 0) return;
+        for (int i = 0; i < total; i++)
+        {
+            if (!fencesWithoutConnections.TryGetValue(paletteIndices[i], out var originalProps) ||
+                outVoxels[i] is not { } fence)
+                continue;
+
+            int x = i % width;
+            int z = i / width % length;
+            var props = new Dictionary<string, string>(originalProps, StringComparer.OrdinalIgnoreCase);
+
+            void AddConnection(string direction, int neighborIndex, bool inBounds)
+            {
+                if (props.ContainsKey(direction)) return;
+                bool connects = false;
+                if (inBounds && outVoxels[neighborIndex] is { } neighbor)
+                {
+                    if (neighbor.BlockName.EndsWith("_fence", StringComparison.OrdinalIgnoreCase))
+                        connects = (fence.BlockName == "nether_brick_fence") == (neighbor.BlockName == "nether_brick_fence");
+                    else if (neighbor.BlockName.EndsWith("_fence_gate", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var gateProps = ParseVariantKeyProperties(neighbor.Variant.VariantKey);
+                        if (gateProps.TryGetValue("facing", out string? facing))
+                            connects = (direction is "east" or "west") == (facing is "north" or "south");
+                    }
+                    else
+                        connects = neighbor.IsOpaque && neighbor.CubeFaces is { } faces &&
+                            faces.Min == new vec3(-0.5f) && faces.Max == new vec3(0.5f);
+                }
+                props[direction] = connects ? "true" : "false";
+            }
+
+            AddConnection("north", i - width, z > 0);
+            AddConnection("east", i + 1, x + 1 < width);
+            AddConnection("south", i + width, z + 1 < length);
+            AddConnection("west", i - 1, x > 0);
+            outVoxels[i] = GetOrCreateBlockStateRenderInfo(fence.BlockName, props, variantCache);
+        }
     }
 
     private void LoadLegacyBlocks(
@@ -3481,15 +3526,7 @@ public class SpawnMenu : UiPanel
                         length,
                         out var doorName,
                         out var doorHint,
-                        out bool isUpperHalf))
-                {
-                    outVoxels[i] = null;
-                    continue;
-                }
-
-                // Door variants are compressed into a single two-block mesh in BlockRegistry.
-                // Spawn only from the lower half to avoid duplicate full-door geometry.
-                if (isUpperHalf)
+                        out _))
                 {
                     outVoxels[i] = null;
                     continue;
@@ -3504,7 +3541,7 @@ public class SpawnMenu : UiPanel
                 Dictionary<string, string>? doorProps =
                     TryParseVariantHintProperties(doorHint, out var parsedDoorProps) ? parsedDoorProps : null;
 
-                var doorVariant = PickBestVariantForProperties(BlockRegistry.GetVariants(doorName, _spawnResourcePackId), doorProps, doorHint);
+                var doorVariant = PickBestVariantForProperties(BlockRegistry.GetImportVariants(doorName, _spawnResourcePackId), doorProps, doorHint);
                 outVoxels[i] = doorVariant == null
                     ? null
                     : GetOrCreateVariantRenderInfo(doorName, doorVariant, variantCache);
@@ -3523,7 +3560,7 @@ public class SpawnMenu : UiPanel
                 Dictionary<string, string>? fenceProps =
                     TryParseVariantHintProperties(fenceHint, out var parsedFenceProps) ? parsedFenceProps : null;
 
-                outVoxels[i] = GetOrCreateFenceRenderInfo(fenceBlockName, fenceProps, variantCache);
+                outVoxels[i] = GetOrCreateBlockStateRenderInfo(fenceBlockName, fenceProps, variantCache);
                 continue;
             }
 
@@ -3542,7 +3579,7 @@ public class SpawnMenu : UiPanel
                 Dictionary<string, string>? props =
                     TryParseVariantHintProperties(variantHint, out var parsedProps) ? parsedProps : null;
 
-                var variant = PickBestVariantForProperties(BlockRegistry.GetVariants(blockName, _spawnResourcePackId), props, variantHint);
+                var variant = PickBestVariantForProperties(BlockRegistry.GetImportVariants(blockName, _spawnResourcePackId), props, variantHint);
                 if (variant == null)
                 {
                     legacyCache[legacyKey] = null;
@@ -3558,66 +3595,36 @@ public class SpawnMenu : UiPanel
 
     }
 
-    private VariantRenderInfo? GetOrCreateFenceRenderInfo(
+    private VariantRenderInfo? GetOrCreateBlockStateRenderInfo(
         string blockName,
         Dictionary<string, string>? props,
         Dictionary<string, VariantRenderInfo> cache)
     {
-        bool north = props != null && props.TryGetValue("north", out string? n) && string.Equals(n, "true", StringComparison.OrdinalIgnoreCase);
-        bool east = props != null && props.TryGetValue("east", out string? e) && string.Equals(e, "true", StringComparison.OrdinalIgnoreCase);
-        bool south = props != null && props.TryGetValue("south", out string? s) && string.Equals(s, "true", StringComparison.OrdinalIgnoreCase);
-        bool west = props != null && props.TryGetValue("west", out string? w) && string.Equals(w, "true", StringComparison.OrdinalIgnoreCase);
-
-        string cacheKey = $"fence|{blockName}|n={(north ? 1 : 0)}|e={(east ? 1 : 0)}|s={(south ? 1 : 0)}|w={(west ? 1 : 0)}";
+        string stateKey = props == null ? "" : string.Join(",", props.OrderBy(p => p.Key).Select(p => $"{p.Key}={p.Value}"));
+        string cacheKey = $"multipart|{blockName}|{stateKey}";
         if (cache.TryGetValue(cacheKey, out var existing))
             return existing;
 
-        var variants = BlockRegistry.GetVariants(blockName, _spawnResourcePackId);
-        if (variants.Count == 0)
-            return null;
-
-        bool IsPost(BlockVariantEntry v) =>
-            !string.IsNullOrEmpty(v.ModelPath) && v.ModelPath.Contains("_fence_post", StringComparison.OrdinalIgnoreCase);
-
-        bool IsSideWithY(BlockVariantEntry v, int y) =>
-            !string.IsNullOrEmpty(v.ModelPath) &&
-            v.ModelPath.Contains("_fence_side", StringComparison.OrdinalIgnoreCase) &&
-            v.RotationY == y;
-
-        var post = variants.FirstOrDefault(IsPost) ?? variants[0];
-
-        var parts = new List<BlockVariantEntry> { post };
-        if (north)
+        var parts = BlockRegistry.GetMultipartVariants(blockName, props, _spawnResourcePackId);
+        if (parts == null)
         {
-            var part = variants.FirstOrDefault(v => IsSideWithY(v, 0));
-            if (part != null) parts.Add(part);
+            var variant = PickBestVariantForProperties(BlockRegistry.GetImportVariants(blockName, _spawnResourcePackId), props, null);
+            return variant == null ? null : GetOrCreateVariantRenderInfo(blockName, variant, cache);
         }
-        if (east)
-        {
-            var part = variants.FirstOrDefault(v => IsSideWithY(v, 270));
-            if (part != null) parts.Add(part);
-        }
-        if (south)
-        {
-            var part = variants.FirstOrDefault(v => IsSideWithY(v, 180));
-            if (part != null) parts.Add(part);
-        }
-        if (west)
-        {
-            var part = variants.FirstOrDefault(v => IsSideWithY(v, 90));
-            if (part != null) parts.Add(part);
-        }
+        if (parts.Count == 0) return null;
+
+        var firstPart = parts[0];
 
         var info = new VariantRenderInfo
         {
             BlockName = blockName,
-            Variant = post,
+            Variant = firstPart,
             IsCullableCube = false,
             CubeFaces = null,
             Templates = BuildVariantTemplates(parts, blockName)
         };
 
-        byte emissionLevel = ComputeAutoEmissionLevel(blockName, post, _spawnResourcePackId);
+        byte emissionLevel = 0;
         foreach (var part in parts)
             emissionLevel = Math.Max(emissionLevel, ComputeAutoEmissionLevel(blockName, part, _spawnResourcePackId));
         info.AutoEmissionLevel = emissionLevel;
@@ -3661,7 +3668,7 @@ public class SpawnMenu : UiPanel
 
     private CubeFaceSet? TryBuildCullableCubeFaces(BlockVariantEntry variant, string blockName)
     {
-        if (!string.IsNullOrEmpty(variant.CemPath) || variant.TopHalf != null)
+        if (!string.IsNullOrEmpty(variant.CemPath) || variant.TopHalf != null || variant.RotationX != 0)
             return null;
 
         if (string.IsNullOrEmpty(variant.ModelPath))
@@ -3750,12 +3757,17 @@ public class SpawnMenu : UiPanel
             set.South = oldWest;
             set.West = oldNorth;
 
+            foreach (var face in set.Up)
+                face.Uv = [face.Uv[3], face.Uv[0], face.Uv[1], face.Uv[2]];
+            foreach (var face in set.Down)
+                face.Uv = [face.Uv[1], face.Uv[2], face.Uv[3], face.Uv[0]];
+
             float oldMinX = set.Min.x;
             float oldMaxX = set.Max.x;
             float oldMinZ = set.Min.z;
             float oldMaxZ = set.Max.z;
-            set.Min = new vec3(-oldMaxZ, set.Min.y, oldMinX);
-            set.Max = new vec3(-oldMinZ, set.Max.y, oldMaxX);
+            set.Min = new vec3(oldMinZ, set.Min.y, -oldMaxX);
+            set.Max = new vec3(oldMaxZ, set.Max.y, -oldMinX);
         }
     }
 
@@ -3954,7 +3966,7 @@ public class SpawnMenu : UiPanel
 
         foreach (var variant in variants)
         {
-            var props = ParseVariantKeyProperties(variant.VariantKey);
+            var props = ParseVariantKeyProperties(variant.StateKey ?? variant.VariantKey);
             if (props.Count == 0)
             {
                 if (best == null)

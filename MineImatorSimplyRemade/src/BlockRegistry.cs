@@ -17,6 +17,9 @@ public class BlockVariantEntry
     /// <summary>Display name for the UI (e.g. "axis=y" or "snowy=false").</summary>
     public string VariantKey { get; init; } = "";
 
+    /// <summary>Original blockstate key, without UI alternative labels.</summary>
+    public string? StateKey { get; init; }
+
     /// <summary>Fully-resolved model path, e.g. "minecraft:block/oak_log".</summary>
     public string ModelPath { get; init; } = "";
 
@@ -157,6 +160,11 @@ public static class BlockRegistry
 
     private static readonly Dictionary<(string PackId, string BlockName), List<BlockVariantEntry>> _externalVariants = new();
 
+    // Keyed by the source variant list so multipart rules follow resource-pack selection.
+    private static readonly Dictionary<IReadOnlyList<BlockVariantEntry>, List<(JsonObject? When, BlockVariantEntry Variant)>> _multipartParts = new();
+
+    private static readonly Dictionary<IReadOnlyList<BlockVariantEntry>, IReadOnlyList<BlockVariantEntry>> _importVariants = new();
+
     /// <summary>
     /// Block name → source container id (resource pack / java mod id).
     /// Empty string means vanilla/version-root data.
@@ -189,6 +197,8 @@ public static class BlockRegistry
         _blocks.Clear();
         _variants.Clear();
         _externalVariants.Clear();
+        _multipartParts.Clear();
+        _importVariants.Clear();
         _blockSourceIds.Clear();
         _rawModelCache.Clear();
         _resolvedCache.Clear();
@@ -377,6 +387,51 @@ public static class BlockRegistry
         return _blockSourceIds.TryGetValue(NormalizeBlockName(blockName), out string? id)
             ? id
             : "";
+    }
+
+    internal static IReadOnlyList<BlockVariantEntry>? GetMultipartVariants(
+        string blockName, IReadOnlyDictionary<string, string>? properties, string resourcePackId = "")
+    {
+        var variants = GetVariants(blockName, resourcePackId);
+        if (!_multipartParts.TryGetValue(variants, out var parts))
+            return null;
+
+        return parts.Where(part => MatchesMultipartCondition(part.When, properties))
+            .Select(part => part.Variant).ToArray();
+    }
+
+    /// <summary>Per-voxel variants before browser-only bed replacement and half compression.</summary>
+    internal static IReadOnlyList<BlockVariantEntry> GetImportVariants(string blockName, string resourcePackId = "")
+    {
+        var variants = GetVariants(blockName, resourcePackId);
+        return _importVariants.TryGetValue(variants, out var imported) ? imported : variants;
+    }
+
+    private static bool MatchesMultipartCondition(JsonObject? condition, IReadOnlyDictionary<string, string>? properties)
+    {
+        if (condition == null) return true;
+
+        foreach (var property in condition)
+        {
+            if (property.Key is "OR" or "AND" && property.Value is JsonArray children)
+            {
+                bool Matches(JsonNode? child) => child is JsonObject obj && MatchesMultipartCondition(obj, properties);
+                if (property.Key == "OR" ? !children.Any(Matches) : !children.All(Matches))
+                    return false;
+                continue;
+            }
+
+            if (properties == null || !properties.TryGetValue(property.Key, out string? value))
+                return false;
+
+            string expected = property.Value?.GetValue<string>() ?? "";
+            bool negated = expected.StartsWith('!');
+            if (negated) expected = expected[1..];
+            bool matches = expected.Split('|').Contains(value, StringComparer.OrdinalIgnoreCase);
+            if (matches == negated) return false;
+        }
+
+        return true;
     }
 
     /// <summary>Upgrades old Java block IDs without changing other namespaces or raw Bedrock IDs.</summary>
@@ -633,6 +688,7 @@ public static class BlockRegistry
     {
 
         var variantList = new List<BlockVariantEntry>();
+        List<(JsonObject? When, BlockVariantEntry Variant)>? multipartParts = null;
 
         if (root["variants"] is JsonObject variantsObj)
         {
@@ -645,6 +701,7 @@ public static class BlockRegistry
         }
         else if (root["multipart"] is JsonArray multipartArr)
         {
+            multipartParts = new();
             // Multipart blockstates (fences, glass panes, walls, redstone, etc.)
             // Each part has an "apply" field with a model (and optional rotation).
             // We collect all unique model+rotation combinations as individual variants
@@ -661,6 +718,7 @@ public static class BlockRegistry
                     ? applyArr.OfType<JsonObject>()
                     : applyToken is JsonObject applyObj ? new[] { applyObj } : Enumerable.Empty<JsonObject>();
 
+                bool firstApply = true;
                 foreach (JsonObject apply in applies)
                 {
                     string model = apply["model"]?.GetValue<string>() ?? "";
@@ -673,7 +731,6 @@ public static class BlockRegistry
                     string modelShort = model.Contains(':') ? model[(model.IndexOf(':') + 1)..] : model;
                     if (modelShort.StartsWith("block/")) modelShort = modelShort["block/".Length..];
                     string dedupeKey = $"{model}|{rx}|{ry}";
-                    if (!seen.Add(dedupeKey)) continue;
 
                     string variantKey = modelShort;
                     if (rx != 0 || ry != 0)
@@ -681,14 +738,33 @@ public static class BlockRegistry
 
                     string cemPath = GetCemPath(NormalizeModelPath(model));
 
-                    variantList.Add(new BlockVariantEntry
+                    var entry = new BlockVariantEntry
                     {
                         VariantKey = variantKey,
                         ModelPath  = model,
                         RotationX  = rx,
                         RotationY  = ry,
                         CemPath    = cemPath ?? ""
-                    });
+                    };
+
+                    // An apply array contains alternatives, not simultaneous geometry.
+                    // Keep one deterministic choice per part for imported terrain.
+                    if (firstApply)
+                    {
+                        // Minecraft's clockwise Y rotation is opposite to the
+                        // model mesher's right-handed Y rotation.
+                        multipartParts.Add((partObj["when"] as JsonObject, new BlockVariantEntry
+                        {
+                            VariantKey = variantKey,
+                            ModelPath = model,
+                            RotationX = rx,
+                            RotationY = (360 - ry) % 360,
+                            CemPath = cemPath ?? ""
+                        }));
+                        firstApply = false;
+                    }
+                    if (seen.Add(dedupeKey))
+                        variantList.Add(entry);
                 }
             }
 
@@ -705,6 +781,8 @@ public static class BlockRegistry
             }
         }
 
+        var importVariants = variantList.ToList();
+
         // Merge (or replace) extra variants registered for this block.
         // These only apply to vanilla block keys.
         if (!blockName.Contains(':') && _extraVariants.TryGetValue(blockName, out var extras))
@@ -712,7 +790,10 @@ public static class BlockRegistry
             if (_replaceVariants.Contains(blockName))
                 variantList = extras.ToList();
             else
+            {
                 variantList.AddRange(extras);
+                importVariants.AddRange(extras.Where(v => v.TopHalf == null));
+            }
         }
 
         // Compress two-block-tall variants (doors): pair lower+upper halves
@@ -720,6 +801,20 @@ public static class BlockRegistry
 
         if (compressed.Count > 0)
         {
+            if (multipartParts != null)
+                _multipartParts[compressed] = multipartParts;
+            else
+                _importVariants[compressed] = importVariants.Select(v => new BlockVariantEntry
+                {
+                    VariantKey = v.VariantKey,
+                    StateKey = v.StateKey,
+                    ModelPath = v.ModelPath,
+                    RotationX = v.RotationX,
+                    // Match the mesher convention, as for multipart imports above.
+                    RotationY = (360 - v.RotationY) % 360,
+                    CemPath = v.CemPath
+                }).ToArray();
+
             if (string.IsNullOrEmpty(packId))
                 _variants[blockName] = compressed;
             else
@@ -772,6 +867,7 @@ public static class BlockRegistry
             result.Add(new BlockVariantEntry
             {
                 VariantKey  = baseKey,   // display name without half=
+                StateKey    = StripHalfProperty(lower.StateKey ?? lower.VariantKey),
                 ModelPath   = lower.ModelPath,
                 RotationX   = lower.RotationX,
                 RotationY   = lower.RotationY,
@@ -812,18 +908,18 @@ public static class BlockRegistry
                 if (arr[i] is JsonObject obj)
                 {
                     string suffix = arr.Count > 1 ? $" [{i}]" : "";
-                    list.Add(ParseVariantObject(variantKey.Length > 0 ? variantKey + suffix : $"default{suffix}", obj));
+                    list.Add(ParseVariantObject(variantKey.Length > 0 ? variantKey + suffix : $"default{suffix}", obj, variantKey));
                 }
             }
         }
         else if (token is JsonObject obj)
         {
             string displayKey = variantKey.Length > 0 ? variantKey : "default";
-            list.Add(ParseVariantObject(displayKey, obj));
+            list.Add(ParseVariantObject(displayKey, obj, variantKey));
         }
     }
 
-    private static BlockVariantEntry ParseVariantObject(string key, JsonObject obj)
+    private static BlockVariantEntry ParseVariantObject(string key, JsonObject obj, string stateKey)
     {
         string model = obj["model"]?.GetValue<string>() ?? "";
         int    rx    = obj["x"]?.GetValue<int>() ?? 0;
@@ -834,6 +930,7 @@ public static class BlockRegistry
         return new BlockVariantEntry
         {
             VariantKey = key,
+            StateKey   = stateKey,
             ModelPath  = model,
             RotationX  = rx,
             RotationY  = ry,
