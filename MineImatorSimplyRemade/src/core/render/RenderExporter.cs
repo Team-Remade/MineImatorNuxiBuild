@@ -180,7 +180,9 @@ public sealed class RenderExporter
         int bitrateKbps,
         string videoFormat,
         string outputPath,
-        Timeline? timeline = null)
+        Timeline? timeline,
+        int startFrame,
+        int totalFrames)
     {
         EnsureFfmpegReady();
 
@@ -199,7 +201,7 @@ public sealed class RenderExporter
             "-i", pattern
         ];
 
-        string? audioFile = BuildTimelineAudioFile(timeline, fps, finalPath);
+        string? audioFile = BuildTimelineAudioFile(timeline, fps, finalPath, startFrame, totalFrames);
         if (audioFile != null)
         {
             args.AddRange(["-i", audioFile]);
@@ -225,7 +227,7 @@ public sealed class RenderExporter
         return process.ExitCode != 0 ? throw new InvalidOperationException($"ffmpeg failed with code {process.ExitCode}: {stderr}") : finalPath;
     }
 
-    private static string? BuildTimelineAudioFile(Timeline? timeline, int fps, string outputVideoPath)
+    private static string? BuildTimelineAudioFile(Timeline? timeline, int fps, string outputVideoPath, int startFrame, int totalFrames)
     {
         if (timeline == null) return null;
         var tracks = timeline.AudioTracks;
@@ -235,7 +237,7 @@ public sealed class RenderExporter
             Path.GetDirectoryName(outputVideoPath) ?? ".",
             $"_audio_{Guid.NewGuid():N}.wav");
 
-        bool anyAudio = AudioRenderMixer.RenderTimelineAudioToWav(tracks, fps, timeline.MaxFrames + 1, tempAudio);
+        bool anyAudio = AudioRenderMixer.RenderTimelineAudioToWav(tracks, fps, startFrame, totalFrames, tempAudio);
         return anyAudio ? tempAudio : null;
     }
 
@@ -259,11 +261,12 @@ public sealed class RenderExporter
         Directory.CreateDirectory(Path.GetDirectoryName(finalPath) ?? ".");
 
         int originalFrame = timeline.CurrentFrame;
+        var range = timeline.GetAnimationExportRange();
 
         try
         {
             using VideoExportSession session = CreateVideoSession(width, height, fps, bitrate, format, finalPath);
-            for (int frame = 0; frame <= timeline.MaxFrames; frame++)
+            for (int frame = range.StartFrame; frame <= range.EndFrame; frame++)
             {
                 timeline.SetCurrentFrame(frame);
                 if (!_cameraViewport.CaptureCurrentViewRgb((uint)width, (uint)height, highQuality, out byte[] rgbFrame, showHiddenObjects: showHiddenObjects))

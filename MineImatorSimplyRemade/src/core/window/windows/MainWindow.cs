@@ -134,6 +134,7 @@ public class MainWindow : Window
     private string _renderJobStatus = "";
     private string _renderJobOutputPath = "";
     private int _renderFrameCurrent;
+    private int _renderFrameStart;
     private int _renderFrameTotal = 1;
     private int _renderJobWidth;
     private int _renderJobHeight;
@@ -1916,8 +1917,10 @@ public class MainWindow : Window
                     throw new InvalidOperationException(Localization.T("text.window.main.timeline_is_not_initialized"));
 
                 _renderTimelineRestoreFrame = _timeline.CurrentFrame;
-                _renderFrameTotal = _timeline.MaxFrames + 1;
-                _timeline.SetCurrentFrameForRender(0);
+                var range = _timeline.GetAnimationExportRange();
+                _renderFrameStart = range.StartFrame;
+                _renderFrameTotal = range.EndFrame - range.StartFrame + 1;
+                _timeline.SetCurrentFrameForRender(_renderFrameStart);
                 _renderVideoWarmupFrame = true;
                 _renderTempFramesDir = "";
                 if (isPngSequence)
@@ -1980,15 +1983,16 @@ public class MainWindow : Window
             if (_renderVideoWarmupFrame)
             {
                 _renderVideoWarmupFrame = false;
-                _renderJobStatus = Localization.T("text.window.main.preparing_frame_0");
+                _renderJobStatus = Localization.Format("text.window.main.preparing_frame", _renderFrameStart);
                 return;
             }
 
             if (_renderFrameCurrent < _renderFrameTotal)
             {
-                _timeline.SetCurrentFrameForRender(_renderFrameCurrent);
+                int timelineFrame = _renderFrameStart + _renderFrameCurrent;
+                _timeline.SetCurrentFrameForRender(timelineFrame);
                 if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame, showHiddenObjects: _renderJobShowHiddenObjects))
-                    throw new InvalidOperationException(Localization.Format("text.window.main.failed_to_capture_frame", _renderFrameCurrent));
+                    throw new InvalidOperationException(Localization.Format("text.window.main.failed_to_capture_frame", timelineFrame));
 
                 UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight);
 
@@ -2022,7 +2026,9 @@ public class MainWindow : Window
                 int fps = _renderPopupFramerate;
                 int bitrate = _renderPopupBitrateKbps;
                 string format = _renderPopupVideoFormat;
-                _renderEncodeTask = Task.Run(() => RenderExporter.EncodePpmSequenceToVideo(tempDir, fps, bitrate, format, outputPath, _timeline));
+                int startFrame = _renderFrameStart;
+                int totalFrames = _renderFrameTotal;
+                _renderEncodeTask = Task.Run(() => RenderExporter.EncodePpmSequenceToVideo(tempDir, fps, bitrate, format, outputPath, _timeline, startFrame, totalFrames));
             }
 
             if (_renderEncodeTask != null)

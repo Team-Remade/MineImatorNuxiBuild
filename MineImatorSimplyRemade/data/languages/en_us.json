@@ -928,7 +928,7 @@
     "text.window.main.output_type": "Output Type",
     "text.window.main.panels_initialized": "Panels initialized",
     "text.window.main.please_wait_while_assets_are_reloaded": "Please wait while assets are reloaded...",
-    "text.window.main.preparing_frame_0": "Preparing frame 0...",
+    "text.window.main.preparing_frame": "Preparing frame {0}...",
     "text.window.main.preparing_import": "Preparing import...",
     "text.window.main.preparing_runtime": "Preparing runtime",
     "text.window.main.preview": "Preview:",

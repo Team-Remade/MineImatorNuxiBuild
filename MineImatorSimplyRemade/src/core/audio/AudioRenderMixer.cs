@@ -23,6 +23,7 @@ public static class AudioRenderMixer
     public static bool RenderTimelineAudioToWav(
         IEnumerable<TimelineAudioTrack> tracks,
         float frameRate,
+        int startFrame,
         int totalFrames,
         string outputPath)
     {
@@ -35,6 +36,7 @@ public static class AudioRenderMixer
         float durationSeconds = totalFrames / frameRate;
         int totalOutputSamples = (int)(durationSeconds * SampleRate);
         if (totalOutputSamples <= 0) return false;
+        int exportStartSample = (int)(startFrame / (double)frameRate * SampleRate);
 
         // Interleaved stereo float buffer.
         var mixBuffer = new float[totalOutputSamples * Channels];
@@ -46,7 +48,7 @@ public static class AudioRenderMixer
             var entry = track.ManifestEntry;
 
             float startSeconds = entry.StartFrame / frameRate + entry.SourceOffsetSeconds;
-            int startOutputSample = (int)(startSeconds * SampleRate);
+            int startOutputSample = (int)(startSeconds * SampleRate) - exportStartSample;
             if (startOutputSample >= totalOutputSamples) continue;
 
             int clipTotalSamples = clip.PcmData.Length / (BitsPerSample / 8 * Channels) * Channels;

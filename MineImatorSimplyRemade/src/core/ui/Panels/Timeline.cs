@@ -237,6 +237,14 @@ public class Timeline : UiPanel
     public Vector2 WindowPos { get; private set; }
     public Vector2 WindowSize { get; private set; }
 
+    public (int StartFrame, int EndFrame) GetAnimationExportRange()
+    {
+        if (_playbackRegionStart is int start && _playbackRegionEnd is int end && start >= 0 && end > start)
+            return (start, end);
+
+        return (0, _maxFrames);
+    }
+
     public void SetFrameRate(float frameRate)
     {
         float clamped = Math.Clamp(frameRate, 1f, 120f);
