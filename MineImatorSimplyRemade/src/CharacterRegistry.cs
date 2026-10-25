@@ -15,9 +15,12 @@ public class CharacterTextureVariant
 
     /// <summary>
     /// Absolute path to the texture PNG on disk.
-    /// Empty string when <see cref="IsCustom"/> is <c>true</c> (path is chosen at runtime).
+    /// Empty for model-only variants or when <see cref="IsCustom"/> is <c>true</c>.
     /// </summary>
     public string FilePath { get; init; } = "";
+
+    /// <summary>Optional complete model variant for equipment with multiple textures.</summary>
+    public string ModelPath { get; init; } = "";
 
     /// <summary>
     /// When <c>true</c> this variant has no fixed file; the user picks one via a
@@ -46,6 +49,9 @@ internal class TexturesNuxVariantEntry
 
     [JsonPropertyName("file")]
     public string File { get; set; } = "";
+
+    [JsonPropertyName("model")]
+    public string Model { get; set; } = "";
 
     /// <summary>
     /// When <c>true</c> the variant has no fixed file; the user picks one at
@@ -198,6 +204,7 @@ public static class CharacterRegistry
     /// </summary>
     private static void ScanCharactersDirectory(string charDir, List<CharacterEntry> entries)
     {
+        var variantModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (string filePath in Directory.EnumerateFiles(
                      charDir, "*", SearchOption.AllDirectories))
         {
@@ -215,6 +222,9 @@ public static class CharacterRegistry
 
             // Try to load texture variants from a sibling textures.nux manifest.
             var variants = LoadTextureVariants(modelDir);
+            foreach (var variant in variants.Skip(1))
+                if (!string.IsNullOrEmpty(variant.ModelPath))
+                    variantModels.Add(Path.GetFullPath(variant.ModelPath));
 
             entries.Add(new CharacterEntry
             {
@@ -224,6 +234,9 @@ public static class CharacterRegistry
                 TextureVariants = variants
             });
         }
+
+        // Baked variants belong in their parent's dropdown, not in the model catalog.
+        entries.RemoveAll(entry => variantModels.Contains(Path.GetFullPath(entry.FilePath)));
     }
 
     /// <summary>
@@ -262,20 +275,28 @@ public static class CharacterRegistry
                     continue;
                 }
 
-                if (string.IsNullOrWhiteSpace(entry.File)) continue;
-                string texPath = Path.Combine(modelDir, entry.File);
-                if (!File.Exists(texPath))
+                if (string.IsNullOrWhiteSpace(entry.File) && string.IsNullOrWhiteSpace(entry.Model))
+                    continue;
+                string texPath = string.IsNullOrWhiteSpace(entry.File)
+                    ? "" : Path.GetFullPath(Path.Combine(modelDir, entry.File));
+                string modelPath = string.IsNullOrWhiteSpace(entry.Model)
+                    ? "" : Path.GetFullPath(Path.Combine(modelDir, entry.Model));
+                if ((!string.IsNullOrEmpty(texPath) && !File.Exists(texPath)) ||
+                    (!string.IsNullOrEmpty(modelPath) &&
+                     (!File.Exists(modelPath) || !SupportedExtensions.Contains(Path.GetExtension(modelPath)))))
                 {
                     Console.WriteLine(
                         $"textures.nux variant '{entry.Name}' " +
-                        $"references missing file: {texPath}");
+                        $"references a missing or unsupported file: {texPath} {modelPath}");
                     continue;
                 }
 
                 result.Add(new CharacterTextureVariant
                 {
-                    Name     = string.IsNullOrWhiteSpace(entry.Name) ? entry.File : entry.Name,
-                    FilePath = texPath
+                    Name     = string.IsNullOrWhiteSpace(entry.Name)
+                        ? (string.IsNullOrEmpty(entry.Model) ? entry.File : entry.Model) : entry.Name,
+                    FilePath = texPath,
+                    ModelPath = modelPath
                 });
             }
 

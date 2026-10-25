@@ -3,7 +3,31 @@
   "variants": [
     {
       "name": "Default",
-      "file": "..\\..\\..\\textures\\entity\\equipment\\humanoid_baby\\iron.png"
+      "model": "armor_baby.mimodel"
+    },
+    {
+      "name": "Leather",
+      "model": "armor_baby_leather.mimodel"
+    },
+    {
+      "name": "Chainmail",
+      "model": "armor_baby_chainmail.mimodel"
+    },
+    {
+      "name": "Copper",
+      "model": "armor_baby_copper.mimodel"
+    },
+    {
+      "name": "Gold",
+      "model": "armor_baby_gold.mimodel"
+    },
+    {
+      "name": "Diamond",
+      "model": "armor_baby_diamond.mimodel"
+    },
+    {
+      "name": "Netherite",
+      "model": "armor_baby_netherite.mimodel"
     },
     {
       "name": "Custom",

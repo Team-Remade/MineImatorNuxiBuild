@@ -6,7 +6,25 @@ import tempfile
 import unittest
 from zipfile import ZipFile
 
-from import_characters import import_assets
+from import_characters import import_assets, nodes
+
+
+MATERIALS = ("leather", "chainmail", "copper", "iron", "gold", "diamond", "netherite")
+
+
+def armor_metadata():
+    states = {"variant": [{"value": "armor"},
+                          {"value": "armor_baby", "file": "armor_baby.mimodel"}]}
+    for piece in ("helmet", "chestplate", "leggings", "boots"):
+        folder = "humanoid_leggings" if piece == "leggings" else "humanoid"
+        states[piece] = [{"value": "none", "shape_hide": [piece, piece + "_baby"]}] + [
+            {"value": material, "shape_texture": {
+                piece: f"entity/equipment/{folder}/{material}",
+                piece + "_baby": f"entity/equipment/humanoid_baby/{material}",
+            }} for material in MATERIALS + (("turtle_scute",) if piece == "helmet" else ())
+        ]
+    return {"name": "armor", "file": "armor.mimodel", "states": states,
+            "default_state": "variant=armor,helmet=iron,chestplate=iron,leggings=iron,boots=iron"}
 
 
 class ImportAssetsTests(unittest.TestCase):
@@ -114,6 +132,115 @@ class ImportAssetsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Invalid archive animation path"):
             self.run_import()
         self.assertFalse(self.version.exists())
+
+    def add_armor(self, missing_texture=None, model_type="special_block"):
+        metadata = json.loads(self.metadata.read_text())
+        # Source .midata files group equipment metadata under special_blocks.
+        metadata["special_blocks"].extend(metadata.pop("equipment"))
+        metadata["special_blocks"].append(armor_metadata())
+        self.metadata.write_text(json.dumps(metadata), encoding="utf-8")
+        with ZipFile(self.archive, "a") as archive:
+            for name in ("armor", "armor_baby"):
+                folder = "humanoid_baby" if name.endswith("_baby") else "humanoid"
+                suffix = "_baby" if name.endswith("_baby") else ""
+                archive.writestr(f"assets/minecraft/models/{model_type}/{name}.mimodel", json.dumps({
+                    "name": name, "texture": f"entity/equipment/{folder}/iron",
+                    "parts": [{"name": "body", "shapes": [
+                        {"description": piece + suffix, "from": [0, 0, 0], "to": [1, 2, 3]}
+                        for piece in ("helmet", "chestplate", "leggings", "boots")
+                    ]}],
+                }))
+            for folder in ("humanoid", "humanoid_leggings", "humanoid_baby"):
+                for material in MATERIALS:
+                    reference = f"entity/equipment/{folder}/{material}"
+                    if reference != missing_texture:
+                        archive.writestr(f"assets/minecraft/textures/{reference}.png", b"texture")
+
+    def test_armor_imports_synchronized_material_models_and_preserves_geometry(self):
+        self.add_armor()
+        self.run_import()
+        for name in ("armor", "armor_baby"):
+            directory = self.version / "equipment" / "vanilla" / name
+            self.assert_material_models(directory, name)
+        before = self.snapshot()
+        self.run_import(check=True, replace_existing=True)
+        self.assertEqual(self.snapshot(), before)
+        self.run_import()
+        self.assertEqual(self.snapshot(), before)
+        self.assertFalse((self.version / "props" / "vanilla" / "armor").exists())
+
+    def test_armor_equipment_archive_layout_is_also_supported(self):
+        self.add_armor(model_type="equipment")
+        self.run_import()
+        for name in ("armor", "armor_baby"):
+            self.assert_material_models(self.version / "equipment" / "vanilla" / name, name)
+
+    def test_armor_metadata_in_special_blocks_with_equipment_catalog(self):
+        self.add_armor()
+        metadata = json.loads(self.metadata.read_text())
+        metadata["equipment"] = []
+        self.metadata.write_text(json.dumps(metadata), encoding="utf-8")
+        self.run_import()
+        for name in ("armor", "armor_baby"):
+            self.assert_material_models(self.version / "equipment" / "vanilla" / name, name)
+
+    def test_armor_variant_models_are_preserved_checked_and_replaced(self):
+        self.add_armor()
+        self.run_import()
+        model = self.version / "equipment" / "vanilla" / "armor" / "armor_diamond.mimodel"
+        original = model.read_bytes()
+        model.write_bytes(b"custom variant")
+        self.run_import()
+        self.assertEqual(model.read_bytes(), b"custom variant")
+        with self.assertRaisesRegex(ValueError, "Missing or outdated"):
+            self.run_import(check=True, replace_existing=True)
+        self.assertEqual(model.read_bytes(), b"custom variant")
+        self.run_import(replace_existing=True)
+        self.assertEqual(model.read_bytes(), original)
+
+    def assert_material_models(self, directory, name):
+        manifest = json.loads((directory / "textures.nux").read_text())
+        self.assertEqual([variant["name"] for variant in manifest["variants"]],
+                         ["Default", "Leather", "Chainmail", "Copper", "Gold", "Diamond", "Netherite", "Custom"])
+        self.assertEqual(manifest["variants"][-1], {"name": "Custom", "custom": True})
+        baseline = json.loads((directory / f"{name}.mimodel").read_text())
+        self.assertEqual(manifest["default"], baseline["texture"])
+        for variant in manifest["variants"][:-1]:
+            self.assertNotIn("file", variant)
+            model = json.loads((directory / variant["model"]).read_text())
+            self.assertEqual(model["name"], name)
+            material = "iron" if variant["name"] == "Default" else variant["name"].lower()
+            root_folder = "humanoid_baby" if name.endswith("_baby") else "humanoid"
+            self.assertEqual(Path(model["texture"].replace("\\", "/")).parts[-2:],
+                             (root_folder, material + ".png"))
+            for node in nodes(model):
+                if "texture" not in node:
+                    continue
+                reference = Path(node["texture"].replace("\\", "/"))
+                self.assertTrue((directory / reference).is_file(), str(reference))
+                folder = ("humanoid_baby" if name.endswith("_baby") else
+                          "humanoid_leggings" if node.get("description") == "leggings" else "humanoid")
+                self.assertEqual(reference.parts[-2:], (folder, material + ".png"))
+            geometry = json.loads(json.dumps(model))
+            original_geometry = json.loads(json.dumps(baseline))
+            for candidate in (geometry, original_geometry):
+                for node in nodes(candidate):
+                    node.pop("texture", None)
+            self.assertEqual(geometry, original_geometry)
+        self.assertEqual(len(list(directory.glob("*.mimodel"))), 7)
+
+    def test_missing_armor_variant_texture_does_not_write_partial_set(self):
+        self.add_armor(missing_texture="entity/equipment/humanoid_leggings/diamond")
+        self.run_import()
+        self.assertFalse((self.version / "equipment" / "vanilla" / "armor").exists())
+        self.assertTrue((self.version / "source_models" / "equipment_armor.mimodel").is_file())
+        self.assertTrue((self.version / "equipment" / "vanilla" / "armor_baby" / "textures.nux").is_file())
+
+    def test_shipped_armor_materials_have_existing_textures_and_unchanged_geometry(self):
+        root = Path(__file__).resolve().parents[2] / "data" / "minecraft" / "versions" / "26.3"
+        for name in ("armor", "armor_baby"):
+            with self.subTest(name=name):
+                self.assert_material_models(root / "equipment" / "vanilla" / name, name)
 
 
 if __name__ == "__main__":

@@ -722,7 +722,8 @@ public class SpawnMenu : UiPanel
                 var entry = SelectedModelCatalog[_selectedObjectIndex];
                 if (string.IsNullOrEmpty(entry.FilePath)) return new List<Mesh>();
 
-                string ext = Path.GetExtension(entry.FilePath).ToLowerInvariant();
+                string modelPath = ResolveCharacterModelPath(entry);
+                string ext = Path.GetExtension(modelPath).ToLowerInvariant();
 
                 SceneObject? character;
 
@@ -732,7 +733,7 @@ public class SpawnMenu : UiPanel
                     string? textureOverridePath = ResolveCharacterTextureOverride(entry);
 
                     var loader = MineImatorLoader.Instance;
-                    var model  = loader.LoadModel(entry.FilePath);
+                    var model  = loader.LoadModel(modelPath);
                     if (model == null) return new List<Mesh>();
 
                     var miChar = loader.CreateCharacterFromModel(model);
@@ -752,7 +753,7 @@ public class SpawnMenu : UiPanel
                 {
                     // Binary / standard 3-D format (.glb, .gltf, .fbx, .obj, …) — use Assimp.
                     if (Gl == null) return new List<Mesh>();
-                    character = AssimpModelLoader.Load(Gl, entry.FilePath);
+                    character = AssimpModelLoader.Load(Gl, modelPath);
                     if (character == null) return new List<Mesh>();
 
                     // Apply the selected texture variant, same as the .mimodel branch above —
@@ -777,6 +778,14 @@ public class SpawnMenu : UiPanel
             default:
                 return new List<Mesh>();
         }
+    }
+
+    private string ResolveCharacterModelPath(CharacterEntry entry)
+    {
+        int index = _selectedCharTextureIndex >= 0 && _selectedCharTextureIndex < entry.TextureVariants.Count
+            ? _selectedCharTextureIndex : 0;
+        return entry.TextureVariants.Count > 0 && !string.IsNullOrEmpty(entry.TextureVariants[index].ModelPath)
+            ? entry.TextureVariants[index].ModelPath : entry.FilePath;
     }
 
     /// <summary>
@@ -5149,7 +5158,7 @@ public class SpawnMenu : UiPanel
             }
         }
 
-        SpawnCustomModelFromPath(entry.FilePath, textureOverride);
+        SpawnCustomModelFromPath(ResolveCharacterModelPath(entry), textureOverride);
         _isOpen = false;
     }
 

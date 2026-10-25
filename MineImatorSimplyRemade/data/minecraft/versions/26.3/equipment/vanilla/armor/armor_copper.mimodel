@@ -1,0 +1,645 @@
+{
+  "name": "armor",
+  "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png",
+  "texture_size": [
+    64,
+    32
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "position": [
+        0,
+        12,
+        0
+      ],
+      "bend": {
+        "offset": 6,
+        "end_offset": 6,
+        "size": 10,
+        "part": "upper",
+        "axis": [
+          "x",
+          "y",
+          "z"
+        ]
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "description": "chestplate",
+          "from": [
+            -4,
+            -6,
+            -2
+          ],
+          "to": [
+            4,
+            6,
+            2
+          ],
+          "uv": [
+            20,
+            20
+          ],
+          "inflate": 1,
+          "position": [
+            0,
+            6,
+            0
+          ],
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+        },
+        {
+          "type": "block",
+          "description": "chestplate",
+          "from": [
+            -4,
+            -6,
+            -2
+          ],
+          "to": [
+            4,
+            6,
+            2
+          ],
+          "uv": [
+            20,
+            20
+          ],
+          "inflate": 1,
+          "position": [
+            0,
+            6,
+            0
+          ],
+          "invert": true,
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+        },
+        {
+          "type": "block",
+          "description": "leggings",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid_leggings\\copper.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "from": [
+            -4,
+            -6,
+            -2
+          ],
+          "to": [
+            4,
+            6,
+            2
+          ],
+          "uv": [
+            20,
+            20
+          ],
+          "inflate": 0.5,
+          "position": [
+            0,
+            6,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "description": "leggings",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid_leggings\\copper.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "from": [
+            -4,
+            -6,
+            -2
+          ],
+          "to": [
+            4,
+            6,
+            2
+          ],
+          "uv": [
+            20,
+            20
+          ],
+          "inflate": 0.5,
+          "position": [
+            0,
+            6,
+            0
+          ],
+          "invert": true
+        }
+      ],
+      "parts": [
+        {
+          "name": "head",
+          "position": [
+            0,
+            12,
+            0
+          ],
+          "shapes": [
+            {
+              "type": "block",
+              "description": "helmet",
+              "from": [
+                -4,
+                0,
+                -4
+              ],
+              "to": [
+                4,
+                8,
+                4
+              ],
+              "uv": [
+                8,
+                8
+              ],
+              "inflate": 1,
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+            },
+            {
+              "type": "block",
+              "description": "helmet",
+              "from": [
+                -4,
+                0,
+                -4
+              ],
+              "to": [
+                4,
+                8,
+                4
+              ],
+              "uv": [
+                8,
+                8
+              ],
+              "inflate": 1,
+              "invert": true,
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+            }
+          ],
+          "parts": [
+            {
+              "name": "hat",
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "shapes": [
+                {
+                  "type": "block",
+                  "description": "helmet",
+                  "from": [
+                    -4,
+                    0,
+                    -4
+                  ],
+                  "to": [
+                    4,
+                    8,
+                    4
+                  ],
+                  "uv": [
+                    40,
+                    8
+                  ],
+                  "inflate": 1.5,
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+                },
+                {
+                  "type": "block",
+                  "description": "helmet",
+                  "from": [
+                    -4,
+                    0,
+                    -4
+                  ],
+                  "to": [
+                    4,
+                    8,
+                    4
+                  ],
+                  "uv": [
+                    40,
+                    8
+                  ],
+                  "inflate": 1.5,
+                  "invert": true,
+                  "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_arm",
+          "position": [
+            -6,
+            10,
+            0
+          ],
+          "bend": {
+            "offset": -4,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "description": "chestplate",
+              "from": [
+                -2,
+                -6,
+                -2
+              ],
+              "to": [
+                2,
+                6,
+                2
+              ],
+              "uv": [
+                44,
+                20
+              ],
+              "inflate": 0.99,
+              "position": [
+                0,
+                -4,
+                0
+              ],
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+            },
+            {
+              "type": "block",
+              "description": "chestplate",
+              "from": [
+                -2,
+                -6,
+                -2
+              ],
+              "to": [
+                2,
+                6,
+                2
+              ],
+              "uv": [
+                44,
+                20
+              ],
+              "inflate": 0.99,
+              "position": [
+                0,
+                -4,
+                0
+              ],
+              "invert": true,
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+            }
+          ]
+        },
+        {
+          "name": "left_arm",
+          "position": [
+            6,
+            10,
+            0
+          ],
+          "bend": {
+            "offset": -4,
+            "end_offset": 6,
+            "part": "lower",
+            "axis": "x",
+            "direction_min": 0,
+            "invert": true
+          },
+          "shapes": [
+            {
+              "type": "block",
+              "description": "chestplate",
+              "from": [
+                -2,
+                -6,
+                -2
+              ],
+              "to": [
+                2,
+                6,
+                2
+              ],
+              "uv": [
+                44,
+                20
+              ],
+              "inflate": 0.99,
+              "position": [
+                0,
+                -4,
+                0
+              ],
+              "texture_mirror": true,
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+            },
+            {
+              "type": "block",
+              "description": "chestplate",
+              "from": [
+                -2,
+                -6,
+                -2
+              ],
+              "to": [
+                2,
+                6,
+                2
+              ],
+              "uv": [
+                44,
+                20
+              ],
+              "inflate": 0.99,
+              "position": [
+                0,
+                -4,
+                0
+              ],
+              "texture_mirror": true,
+              "invert": true,
+              "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "right_leg",
+      "position": [
+        -2,
+        12,
+        0
+      ],
+      "bend": {
+        "offset": -6,
+        "end_offset": 6,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "description": "leggings",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid_leggings\\copper.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "from": [
+            -2,
+            -6,
+            -2
+          ],
+          "to": [
+            2,
+            6,
+            2
+          ],
+          "uv": [
+            4,
+            20
+          ],
+          "inflate": 0.49,
+          "position": [
+            0,
+            -6,
+            0
+          ]
+        },
+        {
+          "type": "block",
+          "description": "leggings",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid_leggings\\copper.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "from": [
+            -2,
+            -6,
+            -2
+          ],
+          "to": [
+            2,
+            6,
+            2
+          ],
+          "uv": [
+            4,
+            20
+          ],
+          "inflate": 0.49,
+          "position": [
+            0,
+            -6,
+            0
+          ],
+          "invert": true
+        },
+        {
+          "type": "block",
+          "description": "boots",
+          "from": [
+            -2,
+            -6,
+            -2
+          ],
+          "to": [
+            2,
+            6,
+            2
+          ],
+          "uv": [
+            4,
+            20
+          ],
+          "inflate": 0.9,
+          "position": [
+            0,
+            -6,
+            0
+          ],
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+        },
+        {
+          "type": "block",
+          "description": "boots",
+          "from": [
+            -2,
+            -6,
+            -2
+          ],
+          "to": [
+            2,
+            6,
+            2
+          ],
+          "uv": [
+            4,
+            20
+          ],
+          "inflate": 0.9,
+          "position": [
+            0,
+            -6,
+            0
+          ],
+          "invert": true,
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+        }
+      ]
+    },
+    {
+      "name": "left_leg",
+      "position": [
+        2,
+        12,
+        0
+      ],
+      "bend": {
+        "offset": -6,
+        "end_offset": 6,
+        "part": "lower",
+        "axis": "x",
+        "direction_min": 0
+      },
+      "shapes": [
+        {
+          "type": "block",
+          "description": "leggings",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid_leggings\\copper.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "from": [
+            -2,
+            -6,
+            -2
+          ],
+          "to": [
+            2,
+            6,
+            2
+          ],
+          "uv": [
+            4,
+            20
+          ],
+          "inflate": 0.49,
+          "position": [
+            0,
+            -6,
+            0
+          ],
+          "texture_mirror": true
+        },
+        {
+          "type": "block",
+          "description": "leggings",
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid_leggings\\copper.png",
+          "texture_size": [
+            64,
+            32
+          ],
+          "from": [
+            -2,
+            -6,
+            -2
+          ],
+          "to": [
+            2,
+            6,
+            2
+          ],
+          "uv": [
+            4,
+            20
+          ],
+          "inflate": 0.49,
+          "position": [
+            0,
+            -6,
+            0
+          ],
+          "texture_mirror": true,
+          "invert": true
+        },
+        {
+          "type": "block",
+          "description": "boots",
+          "from": [
+            -2,
+            -6,
+            -2
+          ],
+          "to": [
+            2,
+            6,
+            2
+          ],
+          "uv": [
+            4,
+            20
+          ],
+          "inflate": 0.9,
+          "position": [
+            0,
+            -6,
+            0
+          ],
+          "texture_mirror": true,
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+        },
+        {
+          "type": "block",
+          "description": "boots",
+          "from": [
+            -2,
+            -6,
+            -2
+          ],
+          "to": [
+            2,
+            6,
+            2
+          ],
+          "uv": [
+            4,
+            20
+          ],
+          "inflate": 0.9,
+          "position": [
+            0,
+            -6,
+            0
+          ],
+          "texture_mirror": true,
+          "invert": true,
+          "texture": "..\\..\\..\\textures\\entity\\equipment\\humanoid\\copper.png"
+        }
+      ]
+    }
+  ]
+}
