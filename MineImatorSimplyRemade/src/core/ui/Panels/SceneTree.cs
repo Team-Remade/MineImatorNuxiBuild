@@ -885,6 +885,7 @@ public class SceneTree : UiPanel
         CopyPropertyInheritanceSettings(original, dup, original is CharacterSceneObject);
         dup.ScaleResize         = original.ScaleResize;
         dup.LockBend            = original.LockBend;
+        dup.LockToBentHalf      = original is MiBoneSceneObject ? original.LockBend > 0f : original.LockToBentHalf;
         dup.CastShadow          = original.CastShadow;
         dup.BlurTexture         = original.BlurTexture;
         dup.TextureMipmaps      = original.TextureMipmaps;

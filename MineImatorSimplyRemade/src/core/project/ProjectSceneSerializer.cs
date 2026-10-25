@@ -295,6 +295,8 @@ public static class ProjectSceneSerializer
             InheritPose = obj.InheritPose,
             ScaleResize = obj.ScaleResize,
             LockBend = obj.LockBend,
+            // Preserve attachment if an internal part is restored as a regular library/fallback object.
+            LockToBentHalf = obj is MiBoneSceneObject ? obj.LockBend > 0f : obj.LockToBentHalf,
             InheritBend = obj is MiBoneSceneObject bendSource ? bendSource.BendParameters?.InheritBend : null,
             InheritPivotOffset = obj.InheritPivotOffset,
             PivotOffsetInheritsModelOrigin = obj.PivotOffsetInheritsModelOrigin,
@@ -755,6 +757,7 @@ public static class ProjectSceneSerializer
             else
                 obj.LockBend = entry.LockBend.Value;
         }
+        obj.LockToBentHalf = entry.LockToBentHalf ?? (entry.LockBend ?? 1f) > 0f;
         obj.PivotOffsetInheritsModelOrigin = entry.PivotOffsetInheritsModelOrigin;
         obj.InheritPivotOffset = entry.InheritPivotOffset;
         obj.InheritVisibility = entry.InheritVisibility;

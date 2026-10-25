@@ -922,6 +922,7 @@ public class PropertiesPanel : UiPanel
             InheritPose = source.InheritPose,
             ScaleResize = source.ScaleResize,
             LockBend = source.LockBend,
+            LockToBentHalf = source.LockToBentHalf,
             InheritBend = source.InheritBend,
             InheritPivotOffset = source.InheritPivotOffset,
             PivotOffsetInheritsModelOrigin = source.PivotOffsetInheritsModelOrigin,
@@ -3402,6 +3403,24 @@ public class PropertiesPanel : UiPanel
                     }
                 });
                 ProjectManager.Instance.SetDirty(true);
+            }
+
+            if (_currentObject.Parent is MiBoneSceneObject { BendParameters: not null })
+            {
+                bool internalPart = _currentObject is MiBoneSceneObject;
+                ImGui.BeginDisabled(internalPart);
+                InheritanceCheckbox(Localization.Label("text.panel.properties.lock_to_bent_half", "Lock to Bent Half"),
+                    internalPart ? _currentObject.LockBend > 0f : _currentObject.LockToBentHalf,
+                    (obj, value) =>
+                    {
+                        if (obj is not MiBoneSceneObject)
+                            obj.LockToBentHalf = value;
+                    }, material: false);
+                ImGui.EndDisabled();
+                if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                    UiText.Tooltip(Localization.T(internalPart
+                        ? "text.panel.properties.lock_to_bent_half_model_help"
+                        : "text.panel.properties.lock_to_bent_half_help"));
             }
 
             InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_alpha", "Inherit Alpha"),

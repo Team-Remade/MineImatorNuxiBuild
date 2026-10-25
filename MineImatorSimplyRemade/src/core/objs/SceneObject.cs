@@ -414,10 +414,24 @@ public class SceneObject
     // ── Bend ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// When &gt; 0 this object follows the parent bone's bent-half transform.
-    /// Set by the importer for parts that should bend with their parent.
+    /// Model-import lock_bend metadata for internal parts. Kept separate from
+    /// the editor attachment setting and retained for older project files.
     /// </summary>
     public float LockBend = 1f;
+
+    private bool _lockToBentHalf = true;
+
+    /// <summary>Attach to the parent's bent-half origin, independently of imported part metadata.</summary>
+    public bool LockToBentHalf
+    {
+        get => _lockToBentHalf;
+        set
+        {
+            if (_lockToBentHalf == value) return;
+            _lockToBentHalf = value;
+            InvalidateRenderEvaluation();
+        }
+    }
 
     // ── Inheritance flags ─────────────────────────────────────────────────────
 
@@ -1507,7 +1521,10 @@ public class SceneObject
             parentWorld *= mat4.Translate(PivotOffsetInheritsModelOrigin ? offset : -offset);
         }
 
-        if (LockBend > 0f && Parent is MiBoneSceneObject bendAncestor)
+        // Internal model parts retain their authored attachment and rebased positions.
+        // Editor objects instead choose the bent-origin frame with their own flag.
+        bool followBentHalf = this is MiBoneSceneObject ? LockBend > 0f : LockToBentHalf;
+        if (followBentHalf && Parent is MiBoneSceneObject bendAncestor)
         {
             parentWorld *= bendAncestor.GetBentHalfTransform(vec3.Zero);
         }

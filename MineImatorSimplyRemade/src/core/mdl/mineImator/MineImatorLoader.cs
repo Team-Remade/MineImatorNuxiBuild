@@ -1206,7 +1206,7 @@ public class MineImatorLoader
         }
 
         if (includeHierarchySettings && timeline.LockBend.HasValue)
-            obj.LockBend = Math.Clamp(timeline.LockBend.Value, 0f, 1f);
+            obj.LockToBentHalf = timeline.LockBend.Value > 0f;
 
         if (includeHierarchySettings)
             obj.ScaleResize = timeline.ScaleResize ?? !string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase);

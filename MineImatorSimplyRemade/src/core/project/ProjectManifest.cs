@@ -397,6 +397,8 @@ public class ProjectSceneObjectEntry
     public bool InheritPose { get; set; } = false;
     public bool ScaleResize { get; set; } = false;
     public float? LockBend { get; set; }
+    // Null migrates the attachment choice stored in LockBend by older native projects.
+    public bool? LockToBentHalf { get; set; }
     public bool? InheritBend { get; set; }
     public bool InheritPivotOffset { get; set; } = false;
     public bool PivotOffsetInheritsModelOrigin { get; set; } = true;
