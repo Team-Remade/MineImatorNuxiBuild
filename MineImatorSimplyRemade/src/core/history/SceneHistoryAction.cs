@@ -2,7 +2,9 @@
 using System.Text.Json.Nodes;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui.Panels;
+using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
+using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 namespace MineImatorSimplyRemade.core.history;
 
@@ -11,6 +13,11 @@ internal sealed class SceneHistoryAction
     private readonly IReadOnlyList<Change> _changes;
     private readonly IReadOnlyList<SceneObjectChange>? _sceneObjectChanges;
     private readonly IReadOnlyList<DirectObjectChange>? _directObjectChanges;
+    private readonly IReadOnlyList<HierarchyChange> _hierarchyChanges = [];
+    private readonly SceneObject[] _beforeSelection = [];
+    private readonly SceneObject[] _afterSelection = [];
+    private readonly ParticleSpawnerSceneObject[] _removedOnUndo = [];
+    private readonly ParticleSpawnerSceneObject[] _removedOnRedo = [];
 
     private SceneHistoryAction(IReadOnlyList<Change> changes, IReadOnlyList<SceneObjectChange>? sceneObjectChanges)
     {
@@ -18,21 +25,48 @@ internal sealed class SceneHistoryAction
         _sceneObjectChanges = sceneObjectChanges;
     }
 
-    private SceneHistoryAction(IReadOnlyList<DirectObjectChange> directObjectChanges)
+    private SceneHistoryAction(
+        IReadOnlyList<DirectObjectChange> directObjectChanges,
+        IReadOnlyList<HierarchyChange> hierarchyChanges,
+        HierarchyState beforeHierarchy,
+        HierarchyState afterHierarchy)
     {
         _changes = [];
         _directObjectChanges = directObjectChanges;
+        _hierarchyChanges = hierarchyChanges;
+        if (hierarchyChanges.Count > 0)
+        {
+            _beforeSelection = beforeHierarchy.Selection.Where(beforeHierarchy.Children.ContainsKey).ToArray();
+            _afterSelection = afterHierarchy.Selection.Where(afterHierarchy.Children.ContainsKey).ToArray();
+            _removedOnUndo = afterHierarchy.Children.Keys.Except(beforeHierarchy.Children.Keys).OfType<ParticleSpawnerSceneObject>().ToArray();
+            _removedOnRedo = beforeHierarchy.Children.Keys.Except(afterHierarchy.Children.Keys).OfType<ParticleSpawnerSceneObject>().ToArray();
+        }
     }
 
     public static SceneHistoryAction? Create(
-        IEnumerable<(SceneObject Object, ProjectSceneObjectEntry Before, ProjectSceneObjectEntry After)> changes)
+        IEnumerable<(SceneObject Object, ProjectSceneObjectEntry Before, ProjectSceneObjectEntry After)> changes,
+        HierarchyState beforeHierarchy,
+        HierarchyState afterHierarchy)
     {
         DirectObjectChange[] directChanges = changes
             .Where(change => !JsonSerializer.Serialize(change.Before, AppJsonContext.Default.ProjectSceneObjectEntry)
                 .Equals(JsonSerializer.Serialize(change.After, AppJsonContext.Default.ProjectSceneObjectEntry), StringComparison.Ordinal))
             .Select(change => new DirectObjectChange(change.Object, change.Before, change.After))
             .ToArray();
-        return directChanges.Length == 0 ? null : new SceneHistoryAction(directChanges);
+        var hierarchyChanges = new List<HierarchyChange>();
+        if (!beforeHierarchy.Roots.SequenceEqual(afterHierarchy.Roots))
+            hierarchyChanges.Add(new HierarchyChange(null, beforeHierarchy.Roots, afterHierarchy.Roots));
+        foreach (SceneObject parent in beforeHierarchy.Children.Keys.Union(afterHierarchy.Children.Keys))
+        {
+            SceneObject[] before = beforeHierarchy.Children.GetValueOrDefault(parent) ?? [];
+            SceneObject[] after = afterHierarchy.Children.GetValueOrDefault(parent) ?? [];
+            if (!before.SequenceEqual(after))
+                hierarchyChanges.Add(new HierarchyChange(parent, before, after));
+        }
+
+        return directChanges.Length == 0 && hierarchyChanges.Count == 0
+            ? null
+            : new SceneHistoryAction(directChanges, hierarchyChanges, beforeHierarchy, afterHierarchy);
     }
 
     public bool Apply(Viewport viewport, PropertiesPanel? propertiesPanel, bool undo)
@@ -46,11 +80,76 @@ internal sealed class SceneHistoryAction
                 return false;
         }
 
+        if (_hierarchyChanges.Count > 0)
+        {
+            foreach (ParticleSpawnerSceneObject spawner in undo ? _removedOnUndo : _removedOnRedo)
+                spawner.ResetRuntime();
+            SelectionManager.Instance?.ClearSelection();
+            // Detach all changed lists before attaching any, so cross-parent moves
+            // cannot remove a child that has already been restored elsewhere.
+            foreach (HierarchyChange change in _hierarchyChanges)
+            {
+                if (change.Parent == null)
+                    viewport.SceneObjects.RemoveAll(obj => !obj.IsRuntimeTransient);
+                else
+                    foreach (SceneObject child in change.Parent.Children.Where(obj => !obj.IsRuntimeTransient).ToArray())
+                        change.Parent.RemoveChild(child);
+            }
+            foreach (HierarchyChange change in _hierarchyChanges)
+            {
+                foreach (SceneObject child in undo ? change.Before : change.After)
+                {
+                    if (change.Parent == null)
+                    {
+                        child.Parent?.RemoveChild(child);
+                        viewport.SceneObjects.Add(child);
+                    }
+                    else
+                        change.Parent.AddChild(child);
+                }
+            }
+        }
+
         ProjectSceneSerializer.ApplyObjectStates(
             propertiesPanel,
             _directObjectChanges.Select(change => (change.Object, undo ? change.Before : change.After)));
+        if (_hierarchyChanges.Count > 0 && SelectionManager.Instance is { } selection)
+        {
+            SceneObject[] targetSelection = undo ? _beforeSelection : _afterSelection;
+            foreach (SceneObject obj in targetSelection)
+                selection.SelectObject(obj);
+            foreach (SceneObject obj in selection.SelectedObjects.Except(targetSelection).ToArray())
+                selection.DeselectObject(obj);
+        }
         return true;
     }
+
+    internal sealed class HierarchyState
+    {
+        public SceneObject[] Roots { get; }
+        public Dictionary<SceneObject, SceneObject[]> Children { get; } = new();
+        public SceneObject[] Selection { get; }
+
+        public HierarchyState(Viewport viewport)
+        {
+            Roots = viewport.SceneObjects.Where(obj => !obj.IsRuntimeTransient).ToArray();
+            Selection = SelectionManager.Instance?.SelectedObjects.ToArray() ?? [];
+            foreach (SceneObject root in Roots)
+                CaptureChildren(root);
+        }
+
+        private void CaptureChildren(SceneObject obj)
+        {
+            if (Children.ContainsKey(obj))
+                return;
+            SceneObject[] children = obj.Children.Where(child => !child.IsRuntimeTransient).ToArray();
+            Children.Add(obj, children);
+            foreach (SceneObject child in children)
+                CaptureChildren(child);
+        }
+    }
+
+    private sealed record HierarchyChange(SceneObject? Parent, SceneObject[] Before, SceneObject[] After);
 
     public static SceneHistoryAction? Create(string beforeJson, string afterJson)
     {

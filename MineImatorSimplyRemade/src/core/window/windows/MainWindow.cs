@@ -220,6 +220,7 @@ public class MainWindow : Window
 
     private readonly Dictionary<SceneObject, ProjectSceneObjectEntry> _historyObjectBaselines = new();
     private readonly Dictionary<SceneObject, ProjectSceneObjectEntry> _activeHistoryObjectBaselines = new();
+    private SceneHistoryAction.HierarchyState? _historyHierarchyBaseline;
     private bool _historyInteractionActive;
 
     private readonly UiPanel[] _panels =
@@ -2488,6 +2489,7 @@ public class MainWindow : Window
         _activeHistoryObjectBaselines.Clear();
         _historyInteractionActive = false;
         CaptureSelectedObjectBaselines(_historyObjectBaselines);
+        _historyHierarchyBaseline = _mainViewport == null ? null : new SceneHistoryAction.HierarchyState(_mainViewport);
     }
 
     private void CaptureSelectedObjectBaselines(Dictionary<SceneObject, ProjectSceneObjectEntry> destination)
@@ -2538,9 +2540,12 @@ public class MainWindow : Window
             ? _activeHistoryObjectBaselines
             : _historyObjectBaselines;
         _historyInteractionActive = false;
+        var currentHierarchy = new SceneHistoryAction.HierarchyState(_mainViewport);
         SceneHistoryAction? action = SceneHistoryAction.Create(currentStates
             .Where(pair => beforeStates.ContainsKey(pair.Key))
-            .Select(pair => (pair.Key, beforeStates[pair.Key], pair.Value)));
+            .Select(pair => (pair.Key, beforeStates[pair.Key], pair.Value)),
+            _historyHierarchyBaseline ?? currentHierarchy,
+            currentHierarchy);
         if (action != null)
         {
             PushHistoryAction(_undoActions, action);
@@ -2550,6 +2555,7 @@ public class MainWindow : Window
         }
 
         _activeHistoryObjectBaselines.Clear();
+        _historyHierarchyBaseline = currentHierarchy;
         _historyObjectBaselines.Clear();
         foreach ((SceneObject obj, ProjectSceneObjectEntry state) in currentStates)
             _historyObjectBaselines[obj] = state;
@@ -2567,6 +2573,7 @@ public class MainWindow : Window
             _undoActions.RemoveAt(_undoActions.Count - 1);
             PushHistoryAction(_redoActions, action);
             CaptureSelectedObjectBaselines(_historyObjectBaselines);
+            _historyHierarchyBaseline = new SceneHistoryAction.HierarchyState(_mainViewport);
             _activeHistoryObjectBaselines.Clear();
             _historyInteractionActive = false;
             _projectManager.SetDirty(true);
@@ -2586,6 +2593,7 @@ public class MainWindow : Window
             _redoActions.RemoveAt(_redoActions.Count - 1);
             PushHistoryAction(_undoActions, action);
             CaptureSelectedObjectBaselines(_historyObjectBaselines);
+            _historyHierarchyBaseline = new SceneHistoryAction.HierarchyState(_mainViewport);
             _activeHistoryObjectBaselines.Clear();
             _historyInteractionActive = false;
             _projectManager.SetDirty(true);
