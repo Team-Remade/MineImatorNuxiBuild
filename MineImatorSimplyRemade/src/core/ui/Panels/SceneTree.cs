@@ -41,7 +41,8 @@ public class SceneTree : UiPanel
     private SceneObject _lastClickedObject;
     private SceneObject _selectionToReveal;
     private SceneObject _renamingObject;
-    private string      _renameBuffer = "";
+    private readonly ObjectNameEditor _nameEditor = new();
+    private bool _renameFocusPending;
     private string      _searchQuery = "";
     private HashSet<SceneObject>? _filteredVisibleSet;
 
@@ -52,8 +53,6 @@ public class SceneTree : UiPanel
     // Drag-and-drop state
     private SceneObject _draggingObject;
 
-    // Running ID counter reset each frame
-    private int _nodeIdCounter;
     private readonly List<List<SceneObject>> _childSnapshotsByDepth = [];
     private uint _lockedIcon;
     private uint _unlockedIcon;
@@ -103,9 +102,11 @@ public class SceneTree : UiPanel
         if (_hiddenIcon == 0)
             _hiddenIcon = SvgLoader.LoadTexture(Gl, "MineImatorSimplyRemade.assets.img.button.mdi--eye-off-outline.svg");
 
-        // Reset per-frame id counter
-        _nodeIdCounter  = 0;
         _openContextMenu = false;
+
+        if (_selectedObject != null && ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) &&
+            !ImGui.GetIO().WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F2))
+            BeginRename(_selectedObject);
 
         ImGui.SetNextItemWidth(-1);
         ImGui.InputTextWithHint("##sceneTreeSearch", Localization.T("text.panel.scene_tree.search_scene_objects"), ref _searchQuery, 128);
@@ -176,6 +177,10 @@ public class SceneTree : UiPanel
                 UiText.Disabled(_contextMenuTarget.GetDisplayName());
                 ImGui.Separator();
 
+                if (ImGui.MenuItem(Localization.Label("text.common.rename", "Rename"), "F2"))
+                    BeginRename(_contextMenuTarget);
+                ImGui.Separator();
+
                 if (ImGui.MenuItem(Localization.Label("text.menu.hide", "Hide")))
                     SetSelectedObjectsHidden(true);
                 if (ImGui.MenuItem(Localization.Label("text.common.show", "Show")))
@@ -218,6 +223,8 @@ public class SceneTree : UiPanel
         if (_draggingObject != null && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
             _draggingObject = null;
 
+        if (_nameEditor.CommitIfHidden())
+            _renamingObject = null;
         ImGui.End();
     }
 
@@ -324,7 +331,6 @@ public class SceneTree : UiPanel
         ImGui.TableSetColumnIndex(0);
         ImGui.AlignTextToFramePadding();
 
-        int nodeId    = ++_nodeIdCounter;
         bool hasChildren = HasVisibleChildren(obj.Children, visibilityFilter);
         bool isSelected  = SelectionManager.Instance != null
             ? SelectionManager.Instance.IsSelected(obj)
@@ -338,7 +344,7 @@ public class SceneTree : UiPanel
         if (!hasChildren) flags |= ImGuiTreeNodeFlags.Leaf;
         if (isSelected)   flags |= ImGuiTreeNodeFlags.Selected;
 
-        ImGui.PushID(nodeId);
+        ImGui.PushID(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj));
 
         // A viewport pick can select an item whose branch is collapsed. Open
         // every ancestor on the way to it before rendering the node so the
@@ -353,30 +359,28 @@ public class SceneTree : UiPanel
 
         if (isRenaming)
         {
-            nodeOpen = ImGui.TreeNodeEx("##renaming", flags);
+            nodeOpen = ImGui.TreeNodeEx("###node", flags);
             ImGui.SameLine();
             ImGui.SetNextItemWidth(-1);
-            ImGui.SetKeyboardFocusHere();
-            if (ImGui.InputText("##rename_input", ref _renameBuffer, 128,
-                    ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.AutoSelectAll) || !ImGui.IsItemActive() && !ImGui.IsItemFocused())
-            {
-                CommitRename(obj);
-            }
+            if (_nameEditor.Render(obj, "##rename_input", _renameFocusPending))
+                _renamingObject = null;
+            _renameFocusPending = false;
         }
         else
         {
-            nodeOpen = ImGui.TreeNodeEx(obj.GetDisplayName() + "##node", flags);
+            nodeOpen = ImGui.TreeNodeEx(obj.GetDisplayName() + "###node", flags);
         }
 
         if (_selectionToReveal == obj)
             ImGui.SetScrollHereY(0.5f);
 
         // Single click → select (multi-select with Ctrl/Shift)
-        if (ImGui.IsItemClicked(ImGuiMouseButton.Left) && !ImGui.IsItemToggledOpen())
+        if (!isRenaming && ImGui.IsItemClicked(ImGuiMouseButton.Left) && !ImGui.IsItemToggledOpen())
             HandleClick(obj);
 
         // Double click → begin inline rename
-        if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+        if (!isRenaming && ImGui.IsItemHovered() && !ImGui.IsItemToggledOpen() &&
+            ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
             BeginRename(obj);
 
         // Right click → context menu (don't clear multi-selection)
@@ -586,6 +590,12 @@ public class SceneTree : UiPanel
 
     private void OnSelectionChanged()
     {
+        if (_renamingObject != null && SelectionManager.Instance?.IsSelected(_renamingObject) != true)
+        {
+            _nameEditor.Commit();
+            _renamingObject = null;
+        }
+
         _selectedObject = SelectionManager.Instance?.SelectedObjects.Count > 0
             ? SelectionManager.Instance.SelectedObjects[0]
             : null;
@@ -650,17 +660,16 @@ public class SceneTree : UiPanel
 
     private void BeginRename(SceneObject obj)
     {
-        _renamingObject = obj;
-        _renameBuffer   = obj.GetDisplayName();
-    }
+        if (obj.HideInSceneTree)
+            return;
 
-    private void CommitRename(SceneObject obj)
-    {
-        var trimmed = _renameBuffer.Trim();
-        if (!string.IsNullOrEmpty(trimmed))
-            obj.Name = trimmed;
-        _renamingObject = null;
-        _renameBuffer   = "";
+        if (_filteredVisibleSet != null && !_filteredVisibleSet.Contains(obj))
+            _searchQuery = "";
+
+        _nameEditor.Commit();
+        _renamingObject = obj;
+        _selectionToReveal = obj;
+        _renameFocusPending = true;
     }
 
     // ── Duplicate ───────────────────────────────────────────────────────────

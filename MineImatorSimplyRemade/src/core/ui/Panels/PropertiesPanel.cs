@@ -293,6 +293,7 @@ public class PropertiesPanel : UiPanel
     // ── Object tab state ──────────────────────────────────────────────────────
 
     private SceneObject _currentObject;
+    private readonly ObjectNameEditor _nameEditor = new();
 
     // Scale link toggle
     private bool _linkScale = true;
@@ -1539,6 +1540,7 @@ public class PropertiesPanel : UiPanel
 
     private void OnSelectionChanged()
     {
+        _nameEditor.Commit();
         _pbrImportError = "";
         var sel = SelectionManager.Instance?.SelectedObjects;
         _currentObject = (sel != null && sel.Count > 0) ? sel[0] : null;
@@ -1629,6 +1631,7 @@ public class PropertiesPanel : UiPanel
             }
             RenderPropertyContextMenu();
         }
+        _nameEditor.CommitIfHidden();
         ImGui.End();
     }
     
@@ -2551,16 +2554,9 @@ public class PropertiesPanel : UiPanel
             return;
         }
 
-        // Centered bold name label
-        {
-            float windowWidth = ImGui.GetWindowWidth();
-            string displayName = _currentObject.GetDisplayName();
-            ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 1f, 0.6f, 1f));
-            float textWidth = ImGui.CalcTextSize(displayName).X;
-            ImGui.SetCursorPosX((windowWidth - textWidth) * 0.5f);
-            ImGui.TextUnformatted(displayName);
-            ImGui.PopStyleColor();
-        }
+        ImGui.TextUnformatted(Localization.Label("text.common.name", "Name"));
+        ImGui.SetNextItemWidth(-1);
+        _nameEditor.Render(_currentObject, "##objectName");
 
         ImGui.Separator();
 

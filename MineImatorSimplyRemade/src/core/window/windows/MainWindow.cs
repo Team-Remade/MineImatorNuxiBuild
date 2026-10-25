@@ -2541,9 +2541,11 @@ public class MainWindow : Window
             : _historyObjectBaselines;
         _historyInteractionActive = false;
         var currentHierarchy = new SceneHistoryAction.HierarchyState(_mainViewport);
-        SceneHistoryAction? action = SceneHistoryAction.Create(currentStates
-            .Where(pair => beforeStates.ContainsKey(pair.Key))
-            .Select(pair => (pair.Key, beforeStates[pair.Key], pair.Value)),
+        // Clicking away can commit an editor and deselect its object in the same frame.
+        SceneHistoryAction? action = SceneHistoryAction.Create(beforeStates
+            .Select(pair => (pair.Key, pair.Value, currentStates.TryGetValue(pair.Key, out var state)
+                ? state
+                : ProjectSceneSerializer.CaptureObjectState(pair.Key))),
             _historyHierarchyBaseline ?? currentHierarchy,
             currentHierarchy);
         if (action != null)
