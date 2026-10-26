@@ -13,7 +13,7 @@ public sealed class PerformanceMetricsOverlay
     private double _peakMs;
     private long _allocatedBytes;
     private readonly int[] _initialGc = new int[3];
-    private string _text = "Performance (F12)\nCollecting metrics...";
+    private string _text = "Collecting metrics...";
 
     public void ToggleVisibility()
     {
@@ -25,7 +25,7 @@ public sealed class PerformanceMetricsOverlay
         _allocatedBytes = GC.GetTotalAllocatedBytes(false);
         for (int generation = 0; generation < _initialGc.Length; generation++)
             _initialGc[generation] = GC.CollectionCount(generation);
-        _text = "Performance (F12)\nCollecting metrics...";
+        _text = "Collecting metrics...";
     }
 
     // Sample the whole app loop, including both windows and the FPS limiter,
@@ -44,8 +44,7 @@ public sealed class PerformanceMetricsOverlay
         long allocated = GC.GetTotalAllocatedBytes(false);
         double allocationRate = Math.Max(0, allocated - _allocatedBytes) / mib / (_elapsedMs / 1000);
         string cap = targetFps > 0 ? $"{targetFps} FPS" : "Unlimited";
-        _text = $"Performance (F12)\n" +
-                $"FPS: {_frames * 1000 / _elapsedMs:F1}\n" +
+        _text = $"FPS: {_frames * 1000 / _elapsedMs:F1}\n" +
                 $"Frame: {_elapsedMs / _frames:F2} ms | Peak: {_peakMs:F2} ms\n" +
                 $"Work + swap: {_workMs / _frames:F2} ms\n" +
                 $"RAM: {Environment.WorkingSet / mib:F0} MiB | Managed: {GC.GetTotalMemory(false) / mib:F0} MiB\n" +
@@ -64,13 +63,14 @@ public sealed class PerformanceMetricsOverlay
 
         var viewport = ImGui.GetMainViewport();
         var padding = ImGui.GetStyle().WindowPadding;
-        var size = ImGui.CalcTextSize(_text) + padding * 2;
+        string text = Localization.Format("text.performance_metrics.header_binding", Keybinds.DisplayLabel("metrics")) + "\n" + _text;
+        var size = ImGui.CalcTextSize(text) + padding * 2;
         var position = viewport.WorkPos + new Vector2(Math.Max(0, viewport.WorkSize.X - size.X - padding.X), padding.Y);
         var drawList = ImGui.GetForegroundDrawList();
         drawList.AddRectFilled(position, position + size,
             ImGui.ColorConvertFloat4ToU32(new Vector4(0.05f, 0.05f, 0.05f, 0.86f)), 6f);
         drawList.AddRect(position, position + size,
             ImGui.ColorConvertFloat4ToU32(new Vector4(0.45f, 0.75f, 0.95f, 0.95f)), 6f);
-        drawList.AddText(position + padding, ImGui.ColorConvertFloat4ToU32(Vector4.One), _text);
+        drawList.AddText(position + padding, ImGui.ColorConvertFloat4ToU32(Vector4.One), text);
     }
 }

@@ -98,7 +98,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             if (!_open) Close();
             return;
         }
-        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && ImGui.IsKeyPressed(ImGuiKey.Escape))
+        if (!Keybinds.IsCapturing && ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && ImGui.IsKeyPressed(ImGuiKey.Escape))
         {
             if (_selectionResize is { } resize)
             {
@@ -437,7 +437,11 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             ImGui.TextUnformatted(Localization.Format("text.panel.world_importer.x_y_z_blocks_s_192_x_192_blocks_cached_tiles",
                 Dimension.Name, eye.x, eye.y, eye.z, _flightInput.FreeFlySpeed, _tiles.Count));
         }
-        UiText.Wrapped(Localization.T("text.panel.world_importer.rmb_wasd_fly_q_e_down_up_space_faster_shift_slower_wheel_speed_lmb_resize_face"));
+        UiText.Wrapped(Localization.Format("text.panel.world_importer.flight_controls_bindings",
+            Keybinds.DisplayLabel("flyForward"), Keybinds.DisplayLabel("flyBackward"),
+            Keybinds.DisplayLabel("flyLeft"), Keybinds.DisplayLabel("flyRight"),
+            Keybinds.DisplayLabel("flyUp"), Keybinds.DisplayLabel("flyDown"),
+            Keybinds.DisplayLabel("flyFaster"), Keybinds.DisplayLabel("flySlower")));
         if (_error != null) UiText.Wrapped(Localization.Format("text.common.error", Localization.DisplayText(_error)));
         if (_notice != null) UiText.Wrapped(Localization.DisplayText(_notice));
     }
@@ -797,19 +801,19 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         var io = ImGui.GetIO();
         bool focused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
         if (!focused ||
-            !ImGui.IsMouseDown(ImGuiMouseButton.Right) || io.WantTextInput || !_cameraInitialized)
+            !ImGui.IsMouseDown(ImGuiMouseButton.Right) || io.WantTextInput || Keybinds.IsCapturing || !_cameraInitialized)
             StopFlying();
-        if (!focused || io.WantTextInput || GlfwApi == null || !_cameraInitialized) return;
+        if (!focused || io.WantTextInput || Keybinds.IsCapturing || GlfwApi == null || !_cameraInitialized) return;
         var handle = (WindowHandle*)ImGui.GetWindowViewport().PlatformHandle;
         if (handle == null) return;
         if (_flightInput.IsFreeFlyActive && _flightWindow != handle) StopFlying();
         _flightWindow = handle;
         _flightInput.ProcessFreeFlyInput(_camera, GlfwApi, handle, _viewportPosition, _viewportSize, io.MousePos,
             hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Right), ImGui.IsMouseReleased(ImGuiMouseButton.Right),
-            ImGui.IsKeyDown(ImGuiKey.W), ImGui.IsKeyDown(ImGuiKey.S),
-            ImGui.IsKeyDown(ImGuiKey.A), ImGui.IsKeyDown(ImGuiKey.D),
-            ImGui.IsKeyDown(ImGuiKey.E), ImGui.IsKeyDown(ImGuiKey.Q),
-            ImGui.IsKeyDown(ImGuiKey.Space), ImGui.IsKeyDown(ImGuiKey.ModShift), false,
+            Keybinds.Down("flyForward"), Keybinds.Down("flyBackward"),
+            Keybinds.Down("flyLeft"), Keybinds.Down("flyRight"),
+            Keybinds.Down("flyUp"), Keybinds.Down("flyDown"),
+            Keybinds.Down("flyFaster"), Keybinds.Down("flySlower"), false,
             io.MouseWheel, Math.Min(io.DeltaTime, 0.1f), hovered);
         var eye = _camera.Position + _worldOrigin;
         var clamped = new vec3(Math.Clamp(eye.x, -29_999_968, 29_999_968),

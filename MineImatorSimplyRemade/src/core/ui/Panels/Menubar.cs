@@ -17,6 +17,12 @@ public class Menubar : UiPanel
     public Action? SaveProjectAsRequested { get; set; }
     public Action? UndoRequested { get; set; }
     public Action? RedoRequested { get; set; }
+    public Action? CutRequested { get; set; }
+    public Action? CopyRequested { get; set; }
+    public Action? PasteRequested { get; set; }
+    public Action? SelectAllRequested { get; set; }
+    public Func<bool>? CanCutOrCopy { get; set; }
+    public Func<bool>? CanPaste { get; set; }
     public Action? DuplicateRequested { get; set; }
     public Action? DeleteRequested { get; set; }
     public Action? HideRequested { get; set; }
@@ -44,11 +50,11 @@ public class Menubar : UiPanel
         {
             if (ImGui.BeginMenu(Localization.Label("text.menu.file", "File")))
             {
-                if (ImGui.MenuItem(Localization.Label("text.common.new_project", "New Project"), "Ctrl+N"))
+                if (ImGui.MenuItem(Localization.Label("text.common.new_project", "New Project"), Keybinds.Label("newProject")))
                 {
                     NewProjectRequested?.Invoke();
                 }
-                if (ImGui.MenuItem(Localization.Label("text.menu.open_project", "Open Project"), "Ctrl+O"))
+                if (ImGui.MenuItem(Localization.Label("text.menu.open_project", "Open Project"), Keybinds.Label("openProject")))
                 {
                     OpenProjectRequested?.Invoke();
                 }
@@ -57,16 +63,16 @@ public class Menubar : UiPanel
                     OpenRecentRequested?.Invoke();
                 }
                 ImGui.Separator();
-                if (ImGui.MenuItem(Localization.Label("text.menu.save_project", "Save Project"), "Ctrl+S"))
+                if (ImGui.MenuItem(Localization.Label("text.menu.save_project", "Save Project"), Keybinds.Label("saveProject")))
                 {
                     SaveProjectRequested?.Invoke();
                 }
-                if (ImGui.MenuItem(Localization.Label("text.menu.save_as", "Save As"), "Ctrl+Shift+S"))
+                if (ImGui.MenuItem(Localization.Label("text.menu.save_as", "Save As"), Keybinds.Label("saveProjectAs")))
                 {
                     SaveProjectAsRequested?.Invoke();
                 }
                 ImGui.Separator();
-                if (ImGui.MenuItem(Localization.Label("text.common.import_asset", "Import Asset")))
+                if (ImGui.MenuItem(Localization.Label("text.common.import_asset", "Import Asset"), Keybinds.Label("importAsset")))
                 {
                     ImportAssetRequested?.Invoke();
                 }
@@ -92,49 +98,53 @@ public class Menubar : UiPanel
 
             if (ImGui.BeginMenu(Localization.Label("text.menu.edit", "Edit")))
             {
-                if (ImGui.MenuItem(Localization.Label("text.menu.undo", "Undo"), "Ctrl+Z"))
+                if (ImGui.MenuItem(Localization.Label("text.menu.undo", "Undo"), Keybinds.Label("undo")))
                 {
                     UndoRequested?.Invoke();
                 }
-                if (ImGui.MenuItem(Localization.Label("text.menu.redo", "Redo"), "Ctrl+Y"))
+                if (ImGui.MenuItem(Localization.Label("text.menu.redo", "Redo"), Keybinds.Label("redo")))
                 {
                     RedoRequested?.Invoke();
                 }
                 ImGui.Separator();
-                if (ImGui.MenuItem(Localization.Label("text.menu.cut", "Cut")))
+                if (ImGui.MenuItem(Localization.Label("text.menu.cut", "Cut"), Keybinds.Label("cut"), false, CanCutOrCopy?.Invoke() == true))
                 {
+                    CutRequested?.Invoke();
                 }
-                if (ImGui.MenuItem(Localization.Label("text.menu.copy", "Copy")))
+                if (ImGui.MenuItem(Localization.Label("text.menu.copy", "Copy"), Keybinds.Label("copy"), false, CanCutOrCopy?.Invoke() == true))
                 {
+                    CopyRequested?.Invoke();
                 }
-                if (ImGui.MenuItem(Localization.Label("text.menu.paste", "Paste")))
+                if (ImGui.MenuItem(Localization.Label("text.menu.paste", "Paste"), Keybinds.Label("paste"), false, CanPaste?.Invoke() == true))
                 {
+                    PasteRequested?.Invoke();
                 }
                 ImGui.Separator();
-                if (ImGui.MenuItem(Localization.Label("text.menu.select_all", "Select All")))
+                if (ImGui.MenuItem(Localization.Label("text.menu.select_all", "Select All"), Keybinds.Label("selectAll")))
                 {
+                    SelectAllRequested?.Invoke();
                 }
                 ImGui.Separator();
-                if (ImGui.MenuItem(Localization.Label("text.common.duplicate", "Duplicate"), "Ctrl+D"))
+                if (ImGui.MenuItem(Localization.Label("text.common.duplicate", "Duplicate"), Keybinds.Label("duplicate")))
                 {
                     DuplicateRequested?.Invoke();
                 }
-                if (ImGui.MenuItem(Localization.Label("text.common.delete", "Delete"), "Del"))
+                if (ImGui.MenuItem(Localization.Label("text.common.delete", "Delete"), Keybinds.Label("delete")))
                 {
                     DeleteRequested?.Invoke();
                 }
                 ImGui.Separator();
-                if (ImGui.MenuItem(Localization.Label("text.menu.hide", "Hide")))
+                if (ImGui.MenuItem(Localization.Label("text.menu.hide", "Hide"), Keybinds.Label("hide")))
                 {
                     HideRequested?.Invoke();
                 }
 
-                if (ImGui.MenuItem(Localization.Label("text.common.show", "Show")))
+                if (ImGui.MenuItem(Localization.Label("text.common.show", "Show"), Keybinds.Label("show")))
                 {
                     ShowRequested?.Invoke();
                 }
                 ImGui.Separator();
-                if (ImGui.MenuItem(Localization.Label("text.common.preferences", "Preferences")))
+                if (ImGui.MenuItem(Localization.Label("text.common.preferences", "Preferences"), Keybinds.Label("preferences")))
                 {
                     PreferencesRequested?.Invoke();
                 }
@@ -143,11 +153,11 @@ public class Menubar : UiPanel
 
             if (ImGui.BeginMenu(Localization.Label("text.common.render", "Render")))
             {
-                if (ImGui.MenuItem(Localization.Label("text.menu.render_image", "Render Image"), "F7"))
+                if (ImGui.MenuItem(Localization.Label("text.menu.render_image", "Render Image"), Keybinds.Label("renderImage")))
                 {
                     RenderRequested?.Invoke(RenderRequestKind.Image);
                 }
-                if (ImGui.MenuItem(Localization.Label("text.menu.render_animation", "Render Animation"), "F8"))
+                if (ImGui.MenuItem(Localization.Label("text.menu.render_animation", "Render Animation"), Keybinds.Label("renderAnimation")))
                 {
                     RenderRequested?.Invoke(RenderRequestKind.Video);
                 }
@@ -156,7 +166,7 @@ public class Menubar : UiPanel
 
             if (ImGui.BeginMenu(Localization.Label("text.menu.view", "View")))
             {
-                if (ImGui.MenuItem("Rendering Debug / Benchmark", "F11"))
+                if (ImGui.MenuItem("Rendering Debug / Benchmark", Keybinds.Label("renderingDebug")))
                     PerformanceRequested?.Invoke();
                 ImGui.Separator();
                 if (ImGui.MenuItem(Localization.Label("text.menu.reset_layout", "Reset Layout")))

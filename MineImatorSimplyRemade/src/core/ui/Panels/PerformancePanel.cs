@@ -44,7 +44,8 @@ public sealed class PerformancePanel : UiPanel
         }
 
         var profiler = FrameProfiler.Shared;
-        ImGui.TextUnformatted("F11: toggle rendering debug view");
+        ImGui.TextUnformatted(Localization.Format("text.panel.performance.toggle_rendering_debug_binding",
+            Keybinds.DisplayLabel("renderingDebug")));
         bool enabled = profiler.Enabled;
         if (ImGui.Checkbox("Enable CPU profiling", ref enabled))
             profiler.Enabled = enabled;

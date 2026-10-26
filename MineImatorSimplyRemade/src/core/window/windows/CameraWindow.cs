@@ -131,6 +131,10 @@ public class CameraWindow : Window
         CameraSceneObject? sceneObj,
         uint sceneW, uint sceneH)
     {
+        if (!ImGui.IsMouseDown(ImGuiMouseButton.Right) || ImGui.GetIO().AppFocusLost ||
+            ImGui.GetIO().WantTextInput || Keybinds.IsCapturing)
+            _panel?.StopFreeFly();
+
         // Handle keyboard shortcuts specific to this undocked window
         HandleCameraWindowKeyboardShortcuts();
 
@@ -236,7 +240,7 @@ public class CameraWindow : Window
     }
 
     /// <summary>
-    /// Handles keyboard shortcuts (F5, F6, F11, F12) in the undocked camera window.
+    /// Handles the configured preview/debug shortcuts in the undocked camera window.
     /// This ensures that when the camera window is in focus in its own native window,
     /// keyboard shortcuts are processed by this window's ImGui context instead of 
     /// being lost to the main window's context.
@@ -248,32 +252,20 @@ public class CameraWindow : Window
         if (_panel == null)
             return;
 
-        ImGuiIOPtr io = ImGui.GetIO();
-
         if (!_keyboardShortcutsArmed)
         {
-            if (!ImGui.IsKeyDown(ImGuiKey.F5) && !ImGui.IsKeyDown(ImGuiKey.F6) &&
-                !ImGui.IsKeyDown(ImGuiKey.F11) && !ImGui.IsKeyDown(ImGuiKey.F12))
+            if (Keybinds.AllReleased("highQualityPreview", "shadowDebug", "renderingDebug", "metrics"))
                 _keyboardShortcutsArmed = true;
             return;
         }
 
-        switch (io.WantTextInput)
-        {
-            case false when ImGui.IsKeyPressed(ImGuiKey.F12, false):
-                MetricsOverlay?.ToggleVisibility();
-                return;
-            case false when ImGui.IsKeyPressed(ImGuiKey.F11, false):
-                RenderingDebugRequested?.Invoke();
-                return;
-            // F5: Toggle high-quality preview (shadows) for the camera viewport
-            case false when ImGui.IsKeyPressed(ImGuiKey.F5, false):
-                _panel.ToggleHighQualityPreview();
-                return;
-            // F6: Toggle shadow debug mode
-            case false when io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.F6, false):
-                _panel.ToggleShadowDebugMode();
-                return;
-        }
+        if (Keybinds.Pressed("metrics"))
+            MetricsOverlay?.ToggleVisibility();
+        else if (Keybinds.Pressed("renderingDebug"))
+            RenderingDebugRequested?.Invoke();
+        else if (Keybinds.Pressed("highQualityPreview"))
+            _panel.ToggleHighQualityPreview();
+        else if (Keybinds.Pressed("shadowDebug"))
+            _panel.ToggleShadowDebugMode();
     }
 }

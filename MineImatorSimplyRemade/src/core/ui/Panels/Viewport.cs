@@ -450,7 +450,17 @@ public class Viewport : UiPanel
     public uint ColorTexture => _previewColorTex;
 
     /// <summary>True while a GLFW CameraWindow owns the rendering.</summary>
-    public bool Undocked { get; set; }
+    private bool _undocked;
+    public bool Undocked
+    {
+        get => _undocked;
+        set
+        {
+            if (_undocked != value)
+                StopFreeFly();
+            _undocked = value;
+        }
+    }
 
     /// <summary>
     /// Raised when the user clicks "Pop".  The subscriber (MainWindow / main.cs)
@@ -2319,6 +2329,12 @@ public class Viewport : UiPanel
 
     public override unsafe void Render()
     {
+        if (!ImGui.IsMouseDown(ImGuiMouseButton.Right) || ImGui.GetIO().AppFocusLost ||
+            ImGui.GetIO().WantTextInput || Keybinds.IsCapturing)
+            _input.StopFreeFly();
+        if (PreviewViewport is { IsVisible: false } preview)
+            preview.StopFreeFly();
+
         // Gizmo interaction needs the current solved pose; input changes are solved again below.
         InverseKinematicsSolver.Evaluate(SceneObjects);
         // Outer window uses the default window padding so the tab bar, borders,
@@ -2512,19 +2528,23 @@ public class Viewport : UiPanel
                 ImGui.PopStyleColor(4);
             }
 
-            bool previewF5Target = PreviewViewport?.IsVisible ?? false;
-            bool f5Rendered = previewF5Target
+            bool previewRenderTarget = PreviewViewport?.IsVisible ?? false;
+            bool targetRendered = previewRenderTarget
                 ? PreviewViewport!.HighQualityPreviewEnabled
                 : HighQualityPreviewEnabled;
-            string f5TargetLabel = previewF5Target ? Localization.T("text.common.preview") : Localization.T("text.common.main");
+            string renderTargetLabel = previewRenderTarget ? Localization.T("text.common.preview") : Localization.T("text.common.main");
 
             ImGui.SameLine();
             ImGui.SetCursorPosY(itemY + 4f * UiTheme.Scale);
-            UiText.Disabled(f5Rendered ? Localization.Format("text.panel.viewport.rendered_f5", f5TargetLabel) : Localization.Format("text.panel.viewport.unrendered_f5", f5TargetLabel));
+            UiText.Disabled(Localization.Format(targetRendered
+                ? "text.panel.viewport.rendered_binding" : "text.panel.viewport.unrendered_binding",
+                renderTargetLabel, Keybinds.DisplayLabel("highQualityPreview")));
 
             ImGui.SameLine();
             ImGui.SetCursorPosY(itemY + 4f * UiTheme.Scale);
-            UiText.Disabled(ShadowDebugEnabled ? Localization.T("text.panel.viewport.shadow_debug_ctrl_f6") : Localization.T("text.panel.viewport.shadow_debug_off_ctrl_f6"));
+            UiText.Disabled(Localization.Format(ShadowDebugEnabled
+                ? "text.panel.viewport.shadow_debug_binding" : "text.panel.viewport.shadow_debug_off_binding",
+                Keybinds.DisplayLabel("shadowDebug")));
 
             // Render mode selector (header, top-right).
             float renderModeWidth = 176f * UiTheme.Scale;
@@ -5259,10 +5279,17 @@ public class Viewport : UiPanel
 
     // ── Preview viewport support ───────────────────────────────────────────────
 
+    internal void StopFreeFly()
+    {
+        _input.StopFreeFly();
+        _previewInput.StopFreeFly();
+    }
+
     public void ToggleInlineVisibility()
     {
         if (IsPreviewViewport)
         {
+            StopFreeFly();
             if (Undocked)
             {
                 Undocked = false;
@@ -5285,6 +5312,8 @@ public class Viewport : UiPanel
     {
         if (!IsPreviewViewport)
             return;
+
+        StopFreeFly();
 
         if (undocked)
         {
@@ -6653,6 +6682,10 @@ public class Viewport : UiPanel
 
     public unsafe void HandleFreeFlyPublic(Camera cam, CameraSceneObject? sceneObj, bool hovered, Vector2 imageMin, Vector2 imageSize)
     {
+        var io = ImGui.GetIO();
+        bool keyboardBlocked = io.WantTextInput || io.AppFocusLost || Keybinds.IsCapturing;
+        if (keyboardBlocked || !ImGui.IsMouseDown(ImGuiMouseButton.Right))
+            _previewInput.StopFreeFly();
         if (HandleDepthOfFieldFocusInput(sceneObj, hovered, imageMin, imageSize))
         {
             _previewInput.ClearPendingPick();
@@ -6669,7 +6702,6 @@ public class Viewport : UiPanel
         if (!_previewInput.IsFreeFlyActive && !_previewInput.HasLeftPressCapture && !hovered &&
             !_previewInput.IsDragging && !_previewInput.IsPanning && !_previewInput.IsGizmoDragging) return;
 
-        var io = ImGui.GetIO();
         Vector2 mousePos = new Vector2(io.MousePos.X, io.MousePos.Y);
 
         // Gather full input state for undocked window (same as main viewport)
@@ -6677,22 +6709,22 @@ public class Viewport : UiPanel
         bool mouseDown_Right = ImGui.IsMouseDown(ImGuiMouseButton.Right);
         bool mouseDown_Middle = ImGui.IsMouseDown(ImGuiMouseButton.Middle);
         bool mouseClicked_Left = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
-        bool mouseClicked_Right = ImGui.IsMouseClicked(ImGuiMouseButton.Right);
+        bool mouseClicked_Right = !keyboardBlocked && ImGui.IsMouseClicked(ImGuiMouseButton.Right);
         bool mouseReleased_Left = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
         bool mouseReleased_Right = ImGui.IsMouseReleased(ImGuiMouseButton.Right);
         float mouseWheel = io.MouseWheel;
 
-        bool keyDown_W = ImGui.IsKeyDown(ImGuiKey.W);
-        bool keyDown_S = ImGui.IsKeyDown(ImGuiKey.S);
-        bool keyDown_A = ImGui.IsKeyDown(ImGuiKey.A);
-        bool keyDown_D = ImGui.IsKeyDown(ImGuiKey.D);
-        bool keyDown_E = ImGui.IsKeyDown(ImGuiKey.E);
-        bool keyDown_Q = ImGui.IsKeyDown(ImGuiKey.Q);
-        bool keyDown_Space = ImGui.IsKeyDown(ImGuiKey.Space);
-        bool keyDown_Shift = ImGui.IsKeyDown(ImGuiKey.ModShift);
+        bool flyForward = Keybinds.Down("flyForward");
+        bool flyBackward = Keybinds.Down("flyBackward");
+        bool flyLeft = Keybinds.Down("flyLeft");
+        bool flyRight = Keybinds.Down("flyRight");
+        bool flyUp = Keybinds.Down("flyUp");
+        bool flyDown = Keybinds.Down("flyDown");
+        bool flyFaster = Keybinds.Down("flyFaster");
+        bool flySlower = Keybinds.Down("flySlower");
 
-        bool keyPressed_G = ImGui.IsKeyPressed(ImGuiKey.G);
-        bool keyPressed_R = ImGui.IsKeyPressed(ImGuiKey.R, false);
+        bool toggleGizmoSpace = Keybinds.Pressed("toggleGizmoSpace");
+        bool resetFlyCamera = Keybinds.Pressed("resetFlyCamera");
 
         // Process full input (orbit, pan, zoom, free-fly, gizmo) through the
         // centralized input handler. The gizmo is shared with the main viewport
@@ -6713,10 +6745,10 @@ public class Viewport : UiPanel
             mouseReleased_Left,
             mouseReleased_Right,
             mouseWheel,
-            keyDown_W, keyDown_S, keyDown_A, keyDown_D,
-            keyDown_E, keyDown_Q, keyDown_Space, keyDown_Shift,
-            keyPressed_G,
-            keyPressed_R,
+            flyForward, flyBackward, flyLeft, flyRight,
+            flyUp, flyDown, flyFaster, flySlower,
+            toggleGizmoSpace,
+            resetFlyCamera,
             io.DeltaTime,
             hovered,
             io.KeyCtrl,
@@ -6851,6 +6883,10 @@ public class Viewport : UiPanel
 
     private unsafe void HandleCameraInput(Vector2 imageMin, Vector2 imageSize, Camera camera, CameraSceneObject? sceneObj)
     {
+        var io = ImGui.GetIO();
+        bool keyboardBlocked = io.WantTextInput || io.AppFocusLost || Keybinds.IsCapturing;
+        if (keyboardBlocked || !ImGui.IsMouseDown(ImGuiMouseButton.Right))
+            _input.StopFreeFly();
         if (HandleDepthOfFieldFocusInput(sceneObj, ImGui.IsWindowHovered(), imageMin, imageSize))
         {
             _input.ClearPendingPick();
@@ -6868,8 +6904,6 @@ public class Viewport : UiPanel
         if (!_input.IsFreeFlyActive && !_input.HasLeftPressCapture && !windowHovered &&
             !_input.IsDragging && !_input.IsPanning && !_input.IsGizmoDragging) return;
 
-        var io = ImGui.GetIO();
-
         // While free-fly is active, tell ImGui this window owns the mouse so
         // other panels and widgets do not receive hover/click events.
         if (_input.IsFreeFlyActive)
@@ -6882,22 +6916,22 @@ public class Viewport : UiPanel
         bool mouseDown_Right = ImGui.IsMouseDown(ImGuiMouseButton.Right);
         bool mouseDown_Middle = ImGui.IsMouseDown(ImGuiMouseButton.Middle);
         bool mouseClicked_Left = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
-        bool mouseClicked_Right = ImGui.IsMouseClicked(ImGuiMouseButton.Right);
+        bool mouseClicked_Right = !keyboardBlocked && ImGui.IsMouseClicked(ImGuiMouseButton.Right);
         bool mouseReleased_Left = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
         bool mouseReleased_Right = ImGui.IsMouseReleased(ImGuiMouseButton.Right);
         float mouseWheel = io.MouseWheel;
 
-        bool keyDown_W = ImGui.IsKeyDown(ImGuiKey.W);
-        bool keyDown_S = ImGui.IsKeyDown(ImGuiKey.S);
-        bool keyDown_A = ImGui.IsKeyDown(ImGuiKey.A);
-        bool keyDown_D = ImGui.IsKeyDown(ImGuiKey.D);
-        bool keyDown_E = ImGui.IsKeyDown(ImGuiKey.E);
-        bool keyDown_Q = ImGui.IsKeyDown(ImGuiKey.Q);
-        bool keyDown_Space = ImGui.IsKeyDown(ImGuiKey.Space);
-        bool keyDown_Shift = ImGui.IsKeyDown(ImGuiKey.ModShift);
+        bool flyForward = Keybinds.Down("flyForward");
+        bool flyBackward = Keybinds.Down("flyBackward");
+        bool flyLeft = Keybinds.Down("flyLeft");
+        bool flyRight = Keybinds.Down("flyRight");
+        bool flyUp = Keybinds.Down("flyUp");
+        bool flyDown = Keybinds.Down("flyDown");
+        bool flyFaster = Keybinds.Down("flyFaster");
+        bool flySlower = Keybinds.Down("flySlower");
 
-        bool keyPressed_G = ImGui.IsKeyPressed(ImGuiKey.G);
-        bool keyPressed_R = ImGui.IsKeyPressed(ImGuiKey.R, false);
+        bool toggleGizmoSpace = Keybinds.Pressed("toggleGizmoSpace");
+        bool resetFlyCamera = Keybinds.Pressed("resetFlyCamera");
 
         // Process input through the centralized input handler
         _input.ProcessInput(
@@ -6916,9 +6950,9 @@ public class Viewport : UiPanel
             mouseReleased_Left,
             mouseReleased_Right,
             mouseWheel,
-            keyDown_W, keyDown_S, keyDown_A, keyDown_D,
-            keyDown_E, keyDown_Q, keyDown_Space, keyDown_Shift,
-            keyPressed_G, keyPressed_R,
+            flyForward, flyBackward, flyLeft, flyRight,
+            flyUp, flyDown, flyFaster, flySlower,
+            toggleGizmoSpace, resetFlyCamera,
             io.DeltaTime,
             windowHovered,
             io.KeyCtrl,

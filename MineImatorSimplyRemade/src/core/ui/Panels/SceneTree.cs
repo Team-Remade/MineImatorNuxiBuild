@@ -105,12 +105,12 @@ public class SceneTree : UiPanel
         _openContextMenu = false;
 
         if (_selectedObject != null && ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) &&
-            !ImGui.GetIO().WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F2))
+            Keybinds.Pressed("rename"))
             BeginRename(_selectedObject);
 
         if (ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows) &&
             !ImGui.GetIO().WantTextInput && !ImGui.IsAnyItemActive() && _draggingObject == null &&
-            ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.F, false))
+            Keybinds.Pressed("group"))
             GroupSelectedObjects();
 
         ImGui.SetNextItemWidth(-1);
@@ -182,17 +182,17 @@ public class SceneTree : UiPanel
                 UiText.Disabled(_contextMenuTarget.GetDisplayName());
                 ImGui.Separator();
 
-                if (ImGui.MenuItem(Localization.Label("text.common.rename", "Rename"), "F2"))
+                if (ImGui.MenuItem(Localization.Label("text.common.rename", "Rename"), Keybinds.Label("rename")))
                     BeginRename(_contextMenuTarget);
                 ImGui.Separator();
 
-                if (ImGui.MenuItem(Localization.Label("text.menu.hide", "Hide")))
+                if (ImGui.MenuItem(Localization.Label("text.menu.hide", "Hide"), Keybinds.Label("hide")))
                     SetSelectedObjectsHidden(true);
-                if (ImGui.MenuItem(Localization.Label("text.common.show", "Show")))
+                if (ImGui.MenuItem(Localization.Label("text.common.show", "Show"), Keybinds.Label("show")))
                     SetSelectedObjectsHidden(false);
                 ImGui.Separator();
 
-                if (ImGui.MenuItem(Localization.Label("text.common.duplicate", "Duplicate")))
+                if (ImGui.MenuItem(Localization.Label("text.common.duplicate", "Duplicate"), Keybinds.Label("duplicate")))
                 {
                     DuplicateObject(_contextMenuTarget);
                     _contextMenuTarget = null;
@@ -215,7 +215,7 @@ public class SceneTree : UiPanel
                     }
                 }
 
-                if (ImGui.MenuItem(Localization.Label("text.common.delete", "Delete")))
+                if (ImGui.MenuItem(Localization.Label("text.common.delete", "Delete"), Keybinds.Label("delete")))
                 {
                     DeleteObject(_contextMenuTarget);
                     _contextMenuTarget = null;
@@ -250,6 +250,14 @@ public class SceneTree : UiPanel
 
     /// <summary>No-op — tree is rebuilt every frame.</summary>
     public void RefreshObject(SceneObject obj) { }
+
+    public void SelectAllObjects()
+    {
+        if (Viewport == null || SelectionManager.Instance == null) return;
+        SelectionManager.Instance.ClearSelection();
+        foreach (var obj in FlattenVisibleTree(_filteredVisibleSet))
+            SelectionManager.Instance.SelectObject(obj);
+    }
 
     /// <summary>Duplicates every selected object using the same logic as the context menu.</summary>
     public void DuplicateSelectedObjects()

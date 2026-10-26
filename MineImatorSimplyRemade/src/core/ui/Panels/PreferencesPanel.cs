@@ -212,10 +212,14 @@ public class PreferencesPanel : UiPanel
         }
 
         if (!_windowOpen)
+        {
+            Keybinds.CancelCapture();
             return;
+        }
 
         if (!ImGui.Begin(Localization.Label("text.common.preferences", "Preferences"), ref _windowOpen))
         {
+            Keybinds.CancelCapture();
             ImGui.End();
             return;
         }
@@ -493,6 +497,7 @@ public class PreferencesPanel : UiPanel
         }
 
         ImGui.Spacing();
+        preferencesChanged |= Keybinds.RenderPreferences();
         ImGui.Separator();
         ImGui.Spacing();
 
@@ -533,7 +538,8 @@ public class PreferencesPanel : UiPanel
             PreviewViewportUndocked = PreviewViewportUndocked,
             ZIsUp = ZIsUp,
             HideMineImatorBoneDisplayShapes = HideMineImatorBoneDisplayShapes,
-            HideRegularAssetBoneDisplayShapes = HideRegularAssetBoneDisplayShapes
+            HideRegularAssetBoneDisplayShapes = HideRegularAssetBoneDisplayShapes,
+            KeybindOverrides = Keybinds.Overrides
         };
 
         SavePreferencesState(state);
@@ -551,6 +557,7 @@ public class PreferencesPanel : UiPanel
     public bool LoadPreferences()
     {
         var state = LoadPreferencesState();
+        Keybinds.LoadOverrides(state?.KeybindOverrides);
         if (state == null)
             return false;
 
@@ -596,6 +603,7 @@ public class PreferencesPanel : UiPanel
         ZIsUp = defaults.ZIsUp;
         HideMineImatorBoneDisplayShapes = defaults.HideMineImatorBoneDisplayShapes;
         HideRegularAssetBoneDisplayShapes = defaults.HideRegularAssetBoneDisplayShapes;
+        Keybinds.Reset();
 
         // Re-apply styling and notify listeners so secondary windows stay in sync.
         ApplyTheme(Theme);
@@ -713,4 +721,5 @@ public class PreferencesState
     public bool ZIsUp { get; set; } = false;
     public bool HideMineImatorBoneDisplayShapes { get; set; } = true;
     public bool HideRegularAssetBoneDisplayShapes { get; set; } = false;
+    public Dictionary<string, string>? KeybindOverrides { get; set; }
 }

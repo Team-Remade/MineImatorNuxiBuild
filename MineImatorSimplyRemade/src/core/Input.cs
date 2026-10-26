@@ -17,6 +17,8 @@ public class Input
     // ── Free-fly state ──────────────────────────────────────────────────────
 
     private bool  _freeFlyActive;
+    private static int _activeFreeFlyCount;
+    public static bool IsAnyFreeFlyActive => _activeFreeFlyCount > 0;
     private float _freeFlySpeed = 5f;
     private double _lastMouseX = double.NaN;
     private double _lastMouseY = double.NaN;
@@ -472,6 +474,8 @@ public class Input
         // Detect right-click to enter free-fly mode
         if (mouseClicked_Right && windowHovered && mouseInViewportBounds)
         {
+            if (!_freeFlyActive)
+                _activeFreeFlyCount++;
             _freeFlyActive = true;
             if (glfw != null)
             {
@@ -547,10 +551,14 @@ public class Input
     {
         if (_freeFlyActive && glfw != null && glfwWindow != null)
             glfw.SetInputMode(glfwWindow, CursorStateAttribute.Cursor, CursorModeValue.CursorNormal);
+        if (_freeFlyActive)
+            _activeFreeFlyCount--;
         _freeFlyActive = false;
         _lastMouseX = double.NaN;
         _lastMouseY = double.NaN;
     }
+
+    internal unsafe void StopFreeFly() => StopFreeFly(_glfw, _glfwWindow);
 
     // ── Mouse wrap helpers ─────────────────────────────────────────────────
 

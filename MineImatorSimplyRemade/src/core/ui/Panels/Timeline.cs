@@ -249,6 +249,23 @@ public class Timeline : UiPanel
     public bool  IsWindowHovered { get; private set; }
     public Vector2 WindowPos { get; private set; }
     public Vector2 WindowSize { get; private set; }
+    public bool HasEditFocus { get; private set; }
+    public bool HasSelectedKeyframes => _selectedKeyframes.Count > 0;
+    public bool HasClipboardKeyframes => _keyframeClipboard.Count > 0;
+
+    public void SelectAllKeyframes() => SelectKeyframes(_ => true);
+    public void PasteAtCurrentFrame()
+    {
+        if (HasClipboardKeyframes)
+            PasteKeyframes(_currentFrame);
+    }
+
+    public void CutSelectedKeyframes()
+    {
+        if (!HasSelectedKeyframes) return;
+        CopySelectedKeyframes();
+        DeleteSelectedKeyframes();
+    }
 
     public (int StartFrame, int EndFrame) GetAnimationExportRange()
     {
@@ -390,15 +407,31 @@ public class Timeline : UiPanel
         if (!ImGui.Begin(Localization.Label("text.common.timeline", "Timeline")))
         {
             IsWindowHovered = false;
+            HasEditFocus = false;
             WindowPos = Vector2.Zero;
             WindowSize = Vector2.Zero;
             ImGui.End();
             return;
         }
 
-        IsWindowHovered = ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup);
+        IsWindowHovered = ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows);
         WindowPos = ImGui.GetWindowPos();
         WindowSize = ImGui.GetWindowSize();
+
+        // Keep the editing target while a menu is open so menu commands use the same scope.
+        if (!ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel))
+            HasEditFocus = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
+        if (HasEditFocus && !Input.IsAnyFreeFlyActive && !ImGui.IsAnyItemActive())
+        {
+            if (Keybinds.Pressed("cut")) CutSelectedKeyframes();
+            else if (Keybinds.Pressed("copy") && HasSelectedKeyframes) CopySelectedKeyframes();
+            else if (Keybinds.Pressed("paste")) PasteAtCurrentFrame();
+            else if (Keybinds.Pressed("selectAll")) SelectAllKeyframes();
+            else if (Keybinds.Pressed("stepBackward")) StepBackward();
+            else if (Keybinds.Pressed("stepForward")) StepForward();
+            else if (Keybinds.Pressed("jumpToStart")) JumpToStart();
+            else if (Keybinds.Pressed("jumpToEnd")) JumpToLastKeyframe();
+        }
 
         HandleTimelineZoomShortcut();
 
@@ -2083,9 +2116,9 @@ public class Timeline : UiPanel
         ImGui.Separator();
 
         bool hasSelection = _selectedKeyframes.Count > 0;
-        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.cut_keyframes", "Cut Keyframes"), "Ctrl+X", false, hasSelection)) { CopySelectedKeyframes(); DeleteSelectedKeyframes(); }
-        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.copy_keyframes", "Copy Keyframes"), "Ctrl+C", false, hasSelection)) CopySelectedKeyframes();
-        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.paste_keyframes", "Paste Keyframes"), "Ctrl+V", false, _keyframeClipboard.Count > 0)) PasteKeyframes(_contextFrame);
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.cut_keyframes", "Cut Keyframes"), Keybinds.Label("cut"), false, hasSelection)) CutSelectedKeyframes();
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.copy_keyframes", "Copy Keyframes"), Keybinds.Label("copy"), false, hasSelection)) CopySelectedKeyframes();
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.paste_keyframes", "Paste Keyframes"), Keybinds.Label("paste"), false, _keyframeClipboard.Count > 0)) PasteKeyframes(_contextFrame);
         if (ImGui.MenuItem(Localization.Label("text.panel.timeline.scale_selected_keyframe_speed_2", "Scale Selected Keyframe Speed..."), "", false, _selectedKeyframes.Count > 1))
         {
             _speedScaleSlowDown = true;
@@ -2163,7 +2196,7 @@ public class Timeline : UiPanel
             ImGui.Separator();
         }
 
-        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.delete_keyframe_s", "Delete Keyframe(s)"), "Delete", false, hasSelection))
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.delete_keyframe_s", "Delete Keyframe(s)"), Keybinds.Label("delete"), false, hasSelection))
             DeleteSelectedKeyframes();
 
         ImGui.EndPopup();
@@ -2211,7 +2244,7 @@ public class Timeline : UiPanel
         SelectKeyframes(k => k.Frame == frame);
     }
 
-    private void CopySelectedKeyframes()
+    public void CopySelectedKeyframes()
     {
         _keyframeClipboard.Clear();
         if (_selectedKeyframes.Count == 0) return;

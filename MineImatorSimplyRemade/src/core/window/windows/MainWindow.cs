@@ -256,8 +256,26 @@ public class MainWindow : Window
         _menubar.SaveProjectAsRequested = OpenSaveAsPopup;
         _menubar.UndoRequested = PerformUndo;
         _menubar.RedoRequested = PerformRedo;
+        _menubar.CutRequested = () => _timeline?.CutSelectedKeyframes();
+        _menubar.CopyRequested = () => _timeline?.CopySelectedKeyframes();
+        _menubar.PasteRequested = () => _timeline?.PasteAtCurrentFrame();
+        _menubar.SelectAllRequested = () =>
+        {
+            if (_timeline?.HasEditFocus == true)
+                _timeline.SelectAllKeyframes();
+            else
+                _sceneTree?.SelectAllObjects();
+        };
+        _menubar.CanCutOrCopy = () => _timeline?.HasEditFocus == true && _timeline.HasSelectedKeyframes;
+        _menubar.CanPaste = () => _timeline?.HasEditFocus == true && _timeline.HasClipboardKeyframes;
         _menubar.DuplicateRequested = () => _sceneTree?.DuplicateSelectedObjects();
-        _menubar.DeleteRequested = () => _sceneTree?.DeleteSelectedObjects();
+        _menubar.DeleteRequested = () =>
+        {
+            if (_timeline?.HasEditFocus == true)
+                _timeline.DeleteSelectedKeyframes();
+            else
+                _sceneTree?.DeleteSelectedObjects();
+        };
         _menubar.HideRequested = () => _sceneTree?.SetSelectedObjectsHidden(true);
         _menubar.ShowRequested = () => _sceneTree?.SetSelectedObjectsHidden(false);
         _menubar.ImportAssetRequested = ImportAssetFromDialog;
@@ -492,7 +510,6 @@ public class MainWindow : Window
         if (_mainViewport != null)
             _mainViewport.SuppressInlinePreviewViewport = _showProjectHome;
 
-        HandleKeyboardShortcuts();
         ProcessPendingSaveAction();
         RefreshWindowTitle();
         AdvanceRenderJob();
@@ -550,6 +567,8 @@ public class MainWindow : Window
             });
             panel.Render();
         }
+
+        HandleKeyboardShortcuts();
 
         using (FrameProfiler.Shared.Measure(ProfileStage.OtherPanels))
         {
@@ -674,33 +693,30 @@ public class MainWindow : Window
     private void HandleKeyboardShortcuts()
     {
         if (_worldImporter?.IsOpen == true) return;
-        ImGuiIOPtr io = ImGui.GetIO();
 
-        // Ignore function keys inherited from the IDE/launcher while the app
+        // Ignore shortcut keys inherited from the IDE/launcher while the app
         // window is opening. Shortcuts become active after all of them have
         // been observed released for at least one frame.
         if (!_keyboardShortcutsArmed)
         {
-            if (!ImGui.IsKeyDown(ImGuiKey.F5) && !ImGui.IsKeyDown(ImGuiKey.F6) &&
-                !ImGui.IsKeyDown(ImGuiKey.F7) && !ImGui.IsKeyDown(ImGuiKey.F8) &&
-                !ImGui.IsKeyDown(ImGuiKey.F11) && !ImGui.IsKeyDown(ImGuiKey.F12))
+            if (Keybinds.AllReleased("highQualityPreview", "shadowDebug", "renderImage", "renderAnimation", "renderingDebug", "metrics"))
                 _keyboardShortcutsArmed = true;
             return;
         }
 
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F12, false))
+        if (Keybinds.Pressed("metrics"))
         {
             MetricsOverlay.ToggleVisibility();
             return;
         }
 
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F11, false))
+        if (Keybinds.Pressed("renderingDebug"))
         {
             ToggleRenderingDebug();
             return;
         }
 
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F5, false))
+        if (Keybinds.Pressed("highQualityPreview"))
         {
             if (_cameraViewport?.IsVisible == true)
                 _cameraViewport.ToggleHighQualityPreview();
@@ -709,38 +725,27 @@ public class MainWindow : Window
             return;
         }
 
-        if (!io.WantTextInput && io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.F6, false))
+        if (Keybinds.Pressed("shadowDebug"))
         {
             _mainViewport?.ToggleShadowDebugMode();
             return;
         }
 
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F7, false))
+        if (Keybinds.Pressed("renderImage"))
         {
             OpenRenderPopup(Menubar.RenderRequestKind.Image);
             return;
         }
 
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.F8, false))
+        if (Keybinds.Pressed("renderAnimation"))
         {
             OpenRenderPopup(Menubar.RenderRequestKind.Video);
             return;
         }
 
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.Delete, false))
+        if (Keybinds.Pressed("delete"))
         {
-            // Check if Timeline window is hovered to decide whether to delete keyframes or objects
-            bool timelineHovered = false;
-            if (_timeline != null && _timeline.WindowSize.X > 0 && _timeline.WindowSize.Y > 0)
-            {
-                var mousePos = ImGui.GetMousePos();
-                var winPos = _timeline.WindowPos;
-                var winSize = _timeline.WindowSize;
-                timelineHovered = mousePos.X >= winPos.X && mousePos.X < winPos.X + winSize.X &&
-                                 mousePos.Y >= winPos.Y && mousePos.Y < winPos.Y + winSize.Y;
-            }
-
-            if (timelineHovered)
+            if (_timeline?.IsWindowHovered == true || _timeline?.HasEditFocus == true)
             {
                 _timeline?.DeleteSelectedKeyframes();
             }
@@ -751,67 +756,63 @@ public class MainWindow : Window
             return;
         }
 
-        if (!io.WantTextInput && ImGui.IsKeyPressed(ImGuiKey.Space, false))
+        if (Keybinds.Pressed("playPause"))
         {
-            if (_timeline != null && _timeline.WindowSize.X > 0 && _timeline.WindowSize.Y > 0)
+            if (_timeline != null && (_timeline.IsWindowHovered || _timeline.HasEditFocus))
             {
-                var mousePos = ImGui.GetMousePos();
-                var winPos = _timeline.WindowPos;
-                var winSize = _timeline.WindowSize;
-                bool timelineHovered = mousePos.X >= winPos.X && mousePos.X < winPos.X + winSize.X &&
-                                       mousePos.Y >= winPos.Y && mousePos.Y < winPos.Y + winSize.Y;
-                if (timelineHovered)
-                {
-                    _timeline.TogglePlayPause();
-                    return;
-                }
+                _timeline.TogglePlayPause();
+                return;
             }
         }
 
-        if (!io.KeyCtrl || io.WantTextInput)
-            return;
-
-        if (ImGui.IsKeyPressed(ImGuiKey.N))
+        if (Keybinds.Pressed("newProject"))
         {
             OpenNewProjectPopup();
             return;
         }
 
-        if (ImGui.IsKeyPressed(ImGuiKey.O))
+        if (Keybinds.Pressed("openProject"))
         {
             OpenProjectFromDialog();
             return;
         }
 
-        if (ImGui.IsKeyPressed(ImGuiKey.D))
+        if (Keybinds.Pressed("duplicate"))
         {
             _sceneTree?.DuplicateSelectedObjects();
             return;
         }
 
-        if (ImGui.IsKeyPressed(ImGuiKey.Z))
+        if (Keybinds.Pressed("undo"))
         {
-            if (io.KeyShift)
-                PerformRedo();
-            else
-                PerformUndo();
+            PerformUndo();
             return;
         }
 
-        if (ImGui.IsKeyPressed(ImGuiKey.Y))
+        if (Keybinds.Pressed("redo") || Keybinds.Pressed("redoAlternate"))
         {
             PerformRedo();
             return;
         }
 
-        if (io.KeyShift && ImGui.IsKeyPressed(ImGuiKey.S))
+        if (Keybinds.Pressed("saveProjectAs"))
         {
             OpenSaveAsPopup();
             return;
         }
 
-        if (ImGui.IsKeyPressed(ImGuiKey.S))
+        if (Keybinds.Pressed("saveProject"))
             RequestSaveProject();
+        else if (Keybinds.Pressed("preferences"))
+            _preferencesPanel?.ToggleVisibility();
+        else if (Keybinds.Pressed("importAsset"))
+            ImportAssetFromDialog();
+        else if (Keybinds.Pressed("hide"))
+            _sceneTree?.SetSelectedObjectsHidden(true);
+        else if (Keybinds.Pressed("show"))
+            _sceneTree?.SetSelectedObjectsHidden(false);
+        else if (_timeline?.HasEditFocus != true && Keybinds.Pressed("selectAll"))
+            _sceneTree?.SelectAllObjects();
     }
 
     private void ProcessPendingSaveAction()
