@@ -81,6 +81,20 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.Position);
         hash.Add(obj.Rotation);
         hash.Add(obj.Scale);
+        hash.Add(obj.CopyConstraints.Count);
+        foreach (var constraint in obj.CopyConstraints)
+        {
+            hash.Add(constraint.Enabled);
+            hash.Add((int)constraint.Type);
+            hash.Add(constraint.TargetObjectId);
+            hash.Add(constraint.Offset);
+            hash.Add(constraint.AxisX);
+            hash.Add(constraint.AxisY);
+            hash.Add(constraint.AxisZ);
+            hash.Add(constraint.Blend);
+            hash.Add(constraint.BentHalf);
+            hash.Add(constraint.Rotate);
+        }
         hash.Add(obj is BoneSceneObject);
         if (obj is BoneSceneObject bone)
         {

@@ -1025,6 +1025,9 @@ public class SceneTree : UiPanel
         duplicate.InheritGlowColor = original.InheritGlowColor;
         duplicate.InheritSelect = original.InheritSelect;
         duplicate.InheritPose = original.InheritPose;
+        duplicate.CopyConstraints.Clear();
+        foreach (var constraint in original.CopyConstraints)
+            duplicate.CopyConstraints.Add(constraint.Clone());
         duplicate.Keyframes = original.Keyframes.ToDictionary(pair => pair.Key, pair => pair.Value.Select(key => new ObjectKeyframe
         {
             Frame = key.Frame,

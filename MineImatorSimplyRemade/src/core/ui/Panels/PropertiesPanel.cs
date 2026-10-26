@@ -15,6 +15,7 @@ using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using NativeFileDialogSharp;
 using Silk.NET.OpenGL;
 using StbImageSharp;
+using TimelinePanel = MineImatorSimplyRemade.core.ui.Panels.Timeline;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
@@ -907,6 +908,16 @@ public class PropertiesPanel : UiPanel
                     }).ToList()
                 }
             }).ToList(),
+            CopyConstraints = source.CopyConstraints?.Select(constraint => new ProjectCopyConstraintEntry
+            {
+                Enabled = constraint.Enabled, Type = constraint.Type, TargetObjectId = constraint.TargetObjectId,
+                Offset = constraint.Offset == null ? null : new ProjectVec3
+                {
+                    X = constraint.Offset.X, Y = constraint.Offset.Y, Z = constraint.Offset.Z
+                },
+                AxisX = constraint.AxisX, AxisY = constraint.AxisY, AxisZ = constraint.AxisZ,
+                Blend = constraint.Blend, BentHalf = constraint.BentHalf, Rotate = constraint.Rotate
+            }).ToList(),
             SpawnCategory = source.SpawnCategory,
             BlockVariant = source.BlockVariant,
             TextureType = source.TextureType,
@@ -1456,18 +1467,47 @@ public class PropertiesPanel : UiPanel
             EnsureSceneLibrarySourceIdsRecursive(obj.Children[i]);
     }
 
-    private void DrawBoneConstraints(BoneSceneObject bone)
+    private void CaptureCopyConstraintOffset(SceneObject owner, CopyConstraint constraint, string prefix)
+    {
+        SceneObject? FindTarget(SceneObject obj)
+        {
+            if (obj == owner) return null;
+            if (obj.ObjectId == constraint.TargetObjectId) return obj;
+            foreach (var child in obj.Children)
+                if (FindTarget(child) is { } found) return found;
+            return null;
+        }
+        if (Viewport == null || string.IsNullOrEmpty(constraint.TargetObjectId)) return;
+        foreach (var root in Viewport.SceneObjects)
+            if (FindTarget(root) is { } target)
+            {
+                CopyConstraintSolver.CaptureOffset(owner, constraint, target);
+                foreach (string axis in new[] { "x", "y", "z" })
+                    Timeline?.RecordAutoKeyframe(owner, $"{prefix}.offset.{axis}");
+                break;
+            }
+    }
+
+    private void DrawConstraints(SceneObject owner)
     {
         if (!ImGui.CollapsingHeader(Localization.DisplayLabel("Constraints"))) return;
-
+        ImGui.PushID("constraints");
         float buttonSize = ImGui.GetFrameHeight();
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + MathF.Max(0f, ImGui.GetContentRegionAvail().X - buttonSize));
-        if (ImGui.Button("+##boneConstraintAdd", new Vector2(buttonSize)))
-            ImGui.OpenPopup("##boneConstraintAddMenu");
+        if (ImGui.Button("+##add", new Vector2(buttonSize))) ImGui.OpenPopup("##addMenu");
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(Localization.DisplayText("Add Constraint"));
-        if (ImGui.BeginPopup("##boneConstraintAddMenu"))
+        if (ImGui.BeginPopup("##addMenu"))
         {
-            if (ImGui.MenuItem(Localization.DisplayLabel("Inverse Kinematics")))
+            foreach (var type in Enum.GetValues<CopyConstraintType>())
+                if (ImGui.MenuItem(Localization.DisplayLabel(TimelinePanel.GetCopyConstraintLabel(type))))
+                {
+                    owner.CopyConstraints.Add(new CopyConstraint
+                    {
+                        Type = type, Offset = type == CopyConstraintType.Scale ? vec3.Ones : vec3.Zero
+                    });
+                    ProjectManager.Instance.SetDirty(true);
+                }
+            if (owner is BoneSceneObject bone && ImGui.MenuItem(Localization.DisplayLabel("Inverse Kinematics")))
             {
                 bone.Constraints.Add(new BoneConstraint());
                 ProjectManager.Instance.SetDirty(true);
@@ -1475,14 +1515,160 @@ public class PropertiesPanel : UiPanel
             ImGui.EndPopup();
         }
 
+        var objects = new List<SceneObject>();
+        void Collect(SceneObject obj)
+        {
+            // A target cannot depend on the constrained object's evaluated transform.
+            if (obj == owner) return;
+            objects.Add(obj);
+            foreach (var child in obj.Children) Collect(child);
+        }
+        if (Viewport != null)
+            foreach (var root in Viewport.SceneObjects) Collect(root);
+
         ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 6f * UiTheme.Scale);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(10f, 8f) * UiTheme.Scale);
-        bool visible = ImGui.BeginChild("##boneConstraintList", Vector2.Zero,
+        bool visible = ImGui.BeginChild("##list", Vector2.Zero,
             ImGuiChildFlags.Borders | ImGuiChildFlags.AutoResizeY | ImGuiChildFlags.AlwaysAutoResize | ImGuiChildFlags.AlwaysUseWindowPadding);
         int removeIndex = -1;
-        if (visible && bone.Constraints.Count == 0)
+        if (visible && owner.CopyConstraints.Count == 0 &&
+            (owner is not BoneSceneObject emptyBone || emptyBone.Constraints.Count == 0))
             UiText.Disabled(Localization.DisplayText("No constraints added."));
         if (visible)
+            for (int i = 0; i < owner.CopyConstraints.Count; i++)
+            {
+                var constraint = owner.CopyConstraints[i];
+                string prefix = $"copy_constraint.{i}";
+                ImGui.PushID(i);
+                if (i > 0) ImGui.Separator();
+                if (ImGui.TreeNodeEx(Localization.DisplayLabel(TimelinePanel.GetCopyConstraintLabel(constraint.Type)), ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton(Localization.DisplayLabel("Remove"))) removeIndex = i;
+                    void Changed(string channel, bool recapture = false)
+                    {
+                        // Settings are assigned first; the evaluated owner pose is unchanged until the next solver pass.
+                        if (recapture) CaptureCopyConstraintOffset(owner, constraint, prefix);
+                        Timeline?.RecordAutoKeyframe(owner, $"{prefix}.{channel}");
+                        ProjectManager.Instance.SetDirty(true);
+                    }
+                    bool enabled = constraint.Enabled;
+                    if (ImGui.Checkbox(Localization.DisplayLabel("Enabled"), ref enabled))
+                    {
+                        constraint.Enabled = enabled;
+                        Changed("enabled", enabled);
+                    }
+                    RegisterPropertyContext($"{prefix}.enabled");
+                    var target = objects.FirstOrDefault(obj => obj.ObjectId == constraint.TargetObjectId);
+                    string preview = string.IsNullOrEmpty(constraint.TargetObjectId) ? Localization.T("text.common.none")
+                        : target?.Name ?? Localization.DisplayText("Missing object");
+                    if (ImGui.BeginCombo(Localization.DisplayLabel("Target Object"), preview))
+                    {
+                        if (ImGui.Selectable(Localization.Label("text.common.none", "None"), string.IsNullOrEmpty(constraint.TargetObjectId)))
+                        {
+                            constraint.TargetObjectId = "";
+                            Changed("target");
+                        }
+                        foreach (var candidate in objects)
+                            if (ImGui.Selectable($"{candidate.Name}##{candidate.ObjectId}", candidate.ObjectId == constraint.TargetObjectId))
+                            {
+                                constraint.TargetObjectId = candidate.ObjectId;
+                                Changed("target", true);
+                            }
+                        ImGui.EndCombo();
+                    }
+                    RegisterPropertyContext($"{prefix}.target");
+                    target = objects.FirstOrDefault(obj => obj.ObjectId == constraint.TargetObjectId);
+                    if (constraint.Type != CopyConstraintType.Scale && target is MiBoneSceneObject)
+                    {
+                        bool bentHalf = constraint.BentHalf;
+                        if (ImGui.Checkbox(Localization.DisplayLabel("Bent Half"), ref bentHalf))
+                        {
+                            constraint.BentHalf = bentHalf;
+                            Changed("bent_half", true);
+                        }
+                        RegisterPropertyContext($"{prefix}.bent_half");
+                    }
+                    if (constraint.Type == CopyConstraintType.Position)
+                    {
+                        bool rotate = constraint.Rotate;
+                        if (ImGui.Checkbox(Localization.DisplayLabel("Rotate"), ref rotate))
+                        {
+                            constraint.Rotate = rotate;
+                            Changed("rotate", true);
+                        }
+                        RegisterPropertyContext($"{prefix}.rotate");
+                    }
+                    float factor = constraint.Type == CopyConstraintType.Position ? 16f
+                        : constraint.Type == CopyConstraintType.Rotation ? 180f / MathF.PI : 1f;
+                    var offset = new Vector3(constraint.Offset.x, constraint.Offset.y, constraint.Offset.z) * factor;
+                    string offsetLabel = constraint.Type == CopyConstraintType.Position ? "Offset (pixels)"
+                        : constraint.Type == CopyConstraintType.Rotation ? "Offset (degrees)" : "Offset";
+                    if (ImGui.DragFloat3(Localization.DisplayLabel(offsetLabel), ref offset, 0.1f))
+                    {
+                        constraint.Offset = new vec3(offset.X, offset.Y, offset.Z) / factor;
+                        foreach (string axis in new[] { "x", "y", "z" }) Changed($"offset.{axis}");
+                    }
+                    RegisterPropertyContext($"{prefix}.offset.x", $"{prefix}.offset.y", $"{prefix}.offset.z");
+                    for (int axis = 0; axis < 3; axis++)
+                    {
+                        string component = axis == 0 ? "x" : axis == 1 ? "y" : "z";
+                        bool active = axis == 0 ? constraint.AxisX : axis == 1 ? constraint.AxisY : constraint.AxisZ;
+                        if (axis > 0) ImGui.SameLine();
+                        if (ImGui.Checkbox(Localization.DisplayLabel(axis == 0 ? "Axis X" : axis == 1 ? "Axis Y" : "Axis Z"), ref active))
+                        {
+                            if (axis == 0) constraint.AxisX = active;
+                            else if (axis == 1) constraint.AxisY = active;
+                            else constraint.AxisZ = active;
+                            Changed($"axis.{component}");
+                        }
+                        RegisterPropertyContext($"{prefix}.axis.{component}");
+                    }
+                    float blend = constraint.Blend;
+                    if (ImGui.SliderFloat(Localization.DisplayLabel("Blend"), ref blend, 0f, 1f))
+                    {
+                        constraint.Blend = blend;
+                        Changed("blend");
+                    }
+                    RegisterPropertyContext($"{prefix}.blend");
+                    if (string.IsNullOrEmpty(constraint.TargetObjectId))
+                        UiText.Disabled(Localization.DisplayText("Select a target object to activate this constraint."));
+                    else if (target == null)
+                        UiText.Wrapped(Localization.DisplayText("Target is missing or is this object or one of its descendants."));
+                    ImGui.TreePop();
+                }
+                ImGui.PopID();
+            }
+        if (removeIndex >= 0)
+        {
+            owner.CopyConstraints.RemoveAt(removeIndex);
+            var shiftedTracks = owner.Keyframes.Where(pair => pair.Key.StartsWith("copy_constraint.", StringComparison.Ordinal))
+                .Select(pair => (pair.Key, pair.Value, Parts: pair.Key.Split('.')))
+                .Where(track => track.Parts.Length >= 3 && int.TryParse(track.Parts[1], out int index) && index >= removeIndex).ToArray();
+            foreach (var track in shiftedTracks) owner.Keyframes.Remove(track.Key);
+            foreach (var track in shiftedTracks)
+            {
+                int index = int.Parse(track.Parts[1], CultureInfo.InvariantCulture);
+                if (index > removeIndex)
+                    owner.Keyframes[$"copy_constraint.{index - 1}.{string.Join('.', track.Parts.Skip(2))}"] = track.Value;
+            }
+            Timeline?.RefreshFromScene();
+            ProjectManager.Instance.SetDirty(true);
+        }
+        if (visible && owner is BoneSceneObject constraintBone && constraintBone.Constraints.Count > 0)
+        {
+            if (owner.CopyConstraints.Count > 0) ImGui.Separator();
+            DrawBoneConstraints(constraintBone);
+        }
+        ImGui.EndChild();
+        ImGui.PopStyleVar(2);
+        ImGui.PopID();
+    }
+
+    private void DrawBoneConstraints(BoneSceneObject bone)
+    {
+        ImGui.PushID("boneConstraints");
+        int removeIndex = -1;
         {
             var objects = new List<SceneObject>();
             void Collect(SceneObject obj)
@@ -1695,8 +1881,7 @@ public class PropertiesPanel : UiPanel
             Timeline?.RefreshFromScene();
             ProjectManager.Instance.SetDirty(true);
         }
-        ImGui.EndChild();
-        ImGui.PopStyleVar(2);
+        ImGui.PopID();
     }
 
     private void RemoveSceneObjectsFromLibrary(string libraryEntryId)
@@ -4637,8 +4822,7 @@ public class PropertiesPanel : UiPanel
             }
         }
 
-        if (_currentObject is BoneSceneObject constraintBone)
-            DrawBoneConstraints(constraintBone);
+        DrawConstraints(_currentObject);
 
         // ── Effects (shown only for CameraSceneObject) ────────────────────────
         if (_currentObject is CameraSceneObject cameraObject)
@@ -6084,6 +6268,22 @@ public class PropertiesPanel : UiPanel
             return defaultValue ? 1f : (float)(axis == 0 ? obj.GetEffectiveTileX() : axis == 1 ? obj.GetEffectiveTileY() : obj.GetEffectiveTileZ());
         if (defaultValue && (path.StartsWith("bend.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal)))
             return 0f;
+        if (TimelinePanel.TryGetCopyConstraint(obj, path, out var copy, out string copyChannel))
+        {
+            float factor = copy.Type == CopyConstraintType.Position ? 16f
+                : copy.Type == CopyConstraintType.Rotation ? 180f / MathF.PI : 1f;
+            if (defaultValue)
+                return copyChannel switch
+                {
+                    "target" => "",
+                    "enabled" or "axis.x" or "axis.y" or "axis.z" or "blend" => 1f,
+                    _ when copyChannel.StartsWith("offset.", StringComparison.Ordinal) && copy.Type == CopyConstraintType.Scale => 1f,
+                    _ => 0f
+                };
+            object current = Timeline!.GetPropertyValue(obj, path);
+            return copyChannel.StartsWith("offset.", StringComparison.Ordinal)
+                ? Convert.ToSingle(current, CultureInfo.InvariantCulture) * factor : current;
+        }
         if (defaultValue && path.StartsWith("constraint.", StringComparison.Ordinal))
             return path.Split('.').Last() switch
             {
@@ -6143,7 +6343,7 @@ public class PropertiesPanel : UiPanel
         foreach (var obj in GetSelectedObjectsForEdit())
         {
             // Indexed effect/mesh paths are local to the object that opened the menu.
-            if (obj != _currentObject && (path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("constraint.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal)))
+            if (obj != _currentObject && (path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("constraint.", StringComparison.Ordinal) || path.StartsWith("copy_constraint.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal)))
                 continue;
             if (path.StartsWith("pivot.", StringComparison.Ordinal))
             {
@@ -6162,7 +6362,14 @@ public class PropertiesPanel : UiPanel
             else
             {
                 object stored = value;
-                if (path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal))
+                bool isCopyConstraint = TimelinePanel.TryGetCopyConstraint(obj, path, out var copy, out string copyChannel);
+                if (isCopyConstraint && copyChannel.StartsWith("offset.", StringComparison.Ordinal))
+                {
+                    float factor = copy.Type == CopyConstraintType.Position ? 16f
+                        : copy.Type == CopyConstraintType.Rotation ? 180f / MathF.PI : 1f;
+                    stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / factor;
+                }
+                else if (path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal))
                     stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / 16f;
                 else if (path.StartsWith("scale.", StringComparison.Ordinal))
                     stored = MathF.Max(0.001f, Convert.ToSingle(value, CultureInfo.InvariantCulture));
@@ -6203,6 +6410,8 @@ public class PropertiesPanel : UiPanel
                     }
                 }
                 Timeline.SetPropertyValue(obj, path, stored);
+                if (isCopyConstraint && (copyChannel is "target" or "bent_half" or "rotate" || copyChannel == "enabled" && copy.Enabled))
+                    CaptureCopyConstraintOffset(obj, copy, path[..path.LastIndexOf('.')]);
                 if (path == "light.spot_angle" && obj is LightSceneObject spot)
                     spot.LightSpotBlend = MathF.Min(spot.LightSpotBlend, spot.LightSpotAngle * 0.5f);
                 if (obj is ParticleSpawnerSceneObject particle && path.StartsWith("particle.", StringComparison.Ordinal))
@@ -6222,7 +6431,7 @@ public class PropertiesPanel : UiPanel
         {
             if (path.StartsWith("background:", StringComparison.Ordinal) || path.StartsWith("rotation.", StringComparison.Ordinal) ||
                 path.StartsWith("pivot.", StringComparison.Ordinal) || path.StartsWith("tile.", StringComparison.Ordinal)) continue;
-            if (obj != _currentObject && (path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("constraint.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal))) continue;
+            if (obj != _currentObject && (path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("constraint.", StringComparison.Ordinal) || path.StartsWith("copy_constraint.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal))) continue;
             Timeline?.RecordAutoKeyframe(obj, path);
             if (path == "light.spot_angle") Timeline?.RecordAutoKeyframe(obj, "light.spot_blend");
         }

@@ -206,12 +206,15 @@ public class CameraSceneObject : SceneObject
     /// </summary>
     public void SyncCameraToTransform()
     {
-        float yaw   =  Rotation.y;
-        float pitch = -Rotation.x; // negated: mesh RotateX and camera pitch are opposite sign
+        var world = GetWorldMatrixNoPivot();
+        var rotation = MineImatorSimplyRemade.core.mdl.mineImator.MineImatorLoader.MatrixToEulerRzRyRx(
+            CopyConstraintSolver.Rotation(world));
+        float yaw   =  rotation.y;
+        float pitch = -rotation.x;
 
         ViewCamera.Yaw      = yaw;
         ViewCamera.Pitch    = pitch;
-        ViewCamera.Roll     = Rotation.z;
+        ViewCamera.Roll     = rotation.z;
         ViewCamera.Distance = 0.001f; // near-zero so eye ≈ Position
 
         // eye = Target + OffsetFromTarget()  →  Target = eye − OffsetFromTarget()
@@ -222,7 +225,7 @@ public class CameraSceneObject : SceneObject
             MathF.Sin(pitch),
             cosP * MathF.Cos(yaw)) * ViewCamera.Distance;
 
-        ViewCamera.Target = Position - offset + PivotOffset;
+        ViewCamera.Target = new GlmSharp.vec3(world.m30, world.m31, world.m32) - offset + PivotOffset;
     }
 
     /// <summary>

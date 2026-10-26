@@ -38,6 +38,15 @@ public static class InverseKinematicsSolver
             foreach (var child in obj.Children) pending.Push(child);
         }
 
+        foreach (var obj in objects)
+        {
+            obj.SetEvaluatedCopyTransform(null, vec3.Ones);
+            foreach (var constraint in obj.CopyConstraints)
+            {
+                constraint.EvaluatedInput = null;
+                constraint.EvaluatedOutput = null;
+            }
+        }
         var bones = objects.OfType<BoneSceneObject>().ToList();
         foreach (var bone in bones) bone.ResetInverseKinematics();
         // Ambiguous IDs must not silently resolve to an arbitrary target.
@@ -62,26 +71,11 @@ public static class InverseKinematicsSolver
         }
 
         // Evaluate target dependencies first; cycles are skipped instead of feeding back frame-to-frame.
-        var states = new Dictionary<Job, int>();
-        foreach (var job in jobs) Visit(job, jobs, states);
+        CopyConstraintSolver.Evaluate(objects, ids, jobs.Select(job =>
+            new CopyConstraintSolver.EvaluationJob(job.Owner, job.Chain.Cast<SceneObject>().ToArray(),
+                job.Pole == null ? new[] { job.Target } : new[] { job.Target, job.Pole }, () => Solve(job))).ToList());
         foreach (var bone in bones.OfType<MiBoneSceneObject>())
             if (SafeHierarchy(bone)) bone.RefreshInverseKinematicsVisuals();
-    }
-
-    private static bool Visit(Job job, List<Job> jobs, Dictionary<Job, int> states)
-    {
-        if (states.TryGetValue(job, out int state)) return state == 2;
-        states[job] = 1;
-        bool valid = true;
-        foreach (var dependency in jobs)
-        {
-            if (dependency == job || !dependency.Chain.Any(bone => IsWithin(job.Target, bone) ||
-                    (job.Pole != null && IsWithin(job.Pole, bone)))) continue;
-            if (!Visit(dependency, jobs, states)) valid = false;
-        }
-        states[job] = valid ? 2 : 3;
-        if (valid) Solve(job);
-        return valid;
     }
 
     private static bool SafeHierarchy(SceneObject obj)

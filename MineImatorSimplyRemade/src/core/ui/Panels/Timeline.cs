@@ -1519,6 +1519,10 @@ public class Timeline : UiPanel
             return row.Label;
 
         string[] parts = row.PropertyPath.Split('.');
+        if (parts.Length == 2 && parts[0] == "copy_constraint" && int.TryParse(parts[1], out int copyIndex) &&
+            copyIndex >= 0 && copyIndex < row.Object.CopyConstraints.Count)
+            return Localization.Format("text.panel.timeline.copy_constraint", copyIndex + 1,
+                Localization.DisplayText(GetCopyConstraintLabel(row.Object.CopyConstraints[copyIndex].Type)));
         if (row.Object is BoneSceneObject bone && parts[0] == "constraint")
         {
             if (parts.Length == 2 && int.TryParse(parts[1], out int constraintIndex))
@@ -2511,6 +2515,12 @@ public class Timeline : UiPanel
                 : obj is ParticleSpawnerSceneObject ? new ParticleSpawnerSceneObject()
                 : obj is BoneSceneObject ? new BoneSceneObject() : new SceneObject();
             defaults.UsePropertyInheritance = obj.UsePropertyInheritance;
+            foreach (var constraint in obj.CopyConstraints)
+                defaults.CopyConstraints.Add(new CopyConstraint
+                {
+                    Type = constraint.Type,
+                    Offset = constraint.Type == CopyConstraintType.Scale ? vec3.Ones : vec3.Zero
+                });
             if (defaults is CameraSceneObject defaultCamera && obj is CameraSceneObject camera)
                 foreach (var effect in camera.Effects)
                     defaultCamera.Effects.Add(new CameraEffect { Type = effect.Type });
@@ -2670,6 +2680,7 @@ public class Timeline : UiPanel
                                   : obj is CameraSceneObject  ? standardPaths.Concat(cameraPaths)
                                   : standardPaths;
         paths = paths.Concat(MaterialPropertyPaths);
+        paths = paths.Concat(obj.CopyConstraints.SelectMany((_, index) => GetCopyConstraintPropertyPaths(index)));
         if (obj is MiBoneSceneObject)
             paths = paths.Concat(new[] { "bend.x", "bend.y", "bend.z" });
         if (obj is BoneSceneObject bone)
@@ -2828,6 +2839,8 @@ public class Timeline : UiPanel
             path.EndsWith(".mode", StringComparison.Ordinal) || path == "bone.end_enabled" ||
             (path.StartsWith("constraint.", StringComparison.Ordinal) &&
                 !(path.EndsWith(".pole_angle", StringComparison.Ordinal) || path.EndsWith(".influence", StringComparison.Ordinal))) ||
+            (path.StartsWith("copy_constraint.", StringComparison.Ordinal) &&
+                !path.Contains(".offset.", StringComparison.Ordinal) && !path.EndsWith(".blend", StringComparison.Ordinal)) ||
             prev.InterpolationType == "instant")
             return TryConvertKeyframeValue(prev.Value, out float prevInstant) ? prevInstant : null;
 
@@ -2995,8 +3008,42 @@ public class Timeline : UiPanel
     // ── Get / set property values ─────────────────────────────────────────────
 
     private static bool IsIkReferencePath(string path) =>
-        path.StartsWith("constraint.", StringComparison.Ordinal) &&
-        (path.EndsWith(".ik.target", StringComparison.Ordinal) || path.EndsWith(".ik.pole", StringComparison.Ordinal));
+        (path.StartsWith("constraint.", StringComparison.Ordinal) &&
+            (path.EndsWith(".ik.target", StringComparison.Ordinal) || path.EndsWith(".ik.pole", StringComparison.Ordinal))) ||
+        (path.StartsWith("copy_constraint.", StringComparison.Ordinal) && path.EndsWith(".target", StringComparison.Ordinal));
+
+    private static readonly (string Channel, string Label)[] CopyConstraintChannels =
+    [
+        ("enabled", "Enabled"), ("target", "Target Object"),
+        ("offset.x", "Offset X"), ("offset.y", "Offset Y"), ("offset.z", "Offset Z"),
+        ("axis.x", "Axis X"), ("axis.y", "Axis Y"), ("axis.z", "Axis Z"),
+        ("blend", "Blend"), ("bent_half", "Bent Half"), ("rotate", "Rotate")
+    ];
+
+    internal static string GetCopyConstraintLabel(CopyConstraintType type) => type switch
+    {
+        CopyConstraintType.Position => "Copy Position",
+        CopyConstraintType.Rotation => "Copy Rotation",
+        _ => "Copy Scale"
+    };
+
+    private static IEnumerable<string> GetCopyConstraintPropertyPaths(int index) =>
+        CopyConstraintChannels.Select(channel => $"copy_constraint.{index}.{channel.Channel}");
+
+    internal static bool TryGetCopyConstraint(SceneObject obj, string path, out CopyConstraint constraint, out string channel)
+    {
+        constraint = null!;
+        channel = "";
+        if (!path.StartsWith("copy_constraint.", StringComparison.Ordinal)) return false;
+        string[] parts = path.Split('.');
+        if (parts.Length < 3 || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int index) ||
+            index < 0 || index >= obj.CopyConstraints.Count) return false;
+        string parsedChannel = string.Join('.', parts.Skip(2));
+        if (!CopyConstraintChannels.Any(entry => entry.Channel == parsedChannel)) return false;
+        channel = parsedChannel;
+        constraint = obj.CopyConstraints[index];
+        return true;
+    }
 
     private static IEnumerable<string> GetIkPropertyPaths(BoneSceneObject bone, int index)
     {
@@ -3043,6 +3090,16 @@ public class Timeline : UiPanel
 
     internal object GetPropertyValue(SceneObject obj, string path)
     {
+        if (TryGetCopyConstraint(obj, path, out var copy, out string copyChannel))
+            return copyChannel switch
+            {
+                "enabled" => copy.Enabled ? 1f : 0f,
+                "target" => copy.TargetObjectId,
+                "offset.x" => copy.Offset.x, "offset.y" => copy.Offset.y, "offset.z" => copy.Offset.z,
+                "axis.x" => copy.AxisX ? 1f : 0f, "axis.y" => copy.AxisY ? 1f : 0f, "axis.z" => copy.AxisZ ? 1f : 0f,
+                "blend" => copy.Blend, "bent_half" => copy.BentHalf ? 1f : 0f, "rotate" => copy.Rotate ? 1f : 0f,
+                _ => 0f
+            };
         if (path == "visible") return obj.ObjectVisible ? 1f : 0f;
         if (path == "material.texture") return obj.AlbedoTexturePath;
         if (path == "text.font") return obj.TextMeshFontPath;
@@ -3354,6 +3411,31 @@ public class Timeline : UiPanel
 
     internal void SetPropertyValue(SceneObject obj, string path, object rawValue)
     {
+        if (TryGetCopyConstraint(obj, path, out var copy, out string copyChannel))
+        {
+            if (copyChannel == "target")
+                copy.TargetObjectId = rawValue is JsonElement reference && reference.ValueKind == JsonValueKind.String
+                    ? reference.GetString() ?? "" : Convert.ToString(rawValue, CultureInfo.InvariantCulture) ?? "";
+            else if (TryConvertKeyframeValue(rawValue, out float copyValue) && float.IsFinite(copyValue))
+            {
+                switch (copyChannel)
+                {
+                    case "enabled": copy.Enabled = copyValue >= 0.5f; break;
+                    case "axis.x": copy.AxisX = copyValue >= 0.5f; break;
+                    case "axis.y": copy.AxisY = copyValue >= 0.5f; break;
+                    case "axis.z": copy.AxisZ = copyValue >= 0.5f; break;
+                    case "blend": copy.Blend = Math.Clamp(copyValue, 0f, 1f); break;
+                    case "bent_half": copy.BentHalf = copyValue >= 0.5f; break;
+                    case "rotate": copy.Rotate = copyValue >= 0.5f; break;
+                    case "offset.x": case "offset.y": case "offset.z":
+                        var offset = copy.Offset;
+                        offset[copyChannel[^1] == 'x' ? 0 : copyChannel[^1] == 'y' ? 1 : 2] = copyValue;
+                        copy.Offset = offset;
+                        break;
+                }
+            }
+            return;
+        }
         if (TryGetIkSettings(obj, path, out var ik, out string ikChannel))
         {
             if (ikChannel is "target" or "pole")
@@ -3999,6 +4081,18 @@ public class Timeline : UiPanel
                 {
                     if (propsWithKeyframes.Contains(path))
                         newRows.Add(MakeSingle(obj, label, path, indent));
+                }
+            }
+
+            for (int i = 0; i < obj.CopyConstraints.Count; i++)
+            {
+                string[] paths = GetCopyConstraintPropertyPaths(i).ToArray();
+                if (!paths.Any(propsWithKeyframes.Contains)) continue;
+                newRows.Add(MakeGroup(obj, GetCopyConstraintLabel(obj.CopyConstraints[i].Type), paths, $"copy_constraint.{i}"));
+                foreach (var (channel, label) in CopyConstraintChannels)
+                {
+                    string path = $"copy_constraint.{i}.{channel}";
+                    if (propsWithKeyframes.Contains(path)) newRows.Add(MakeSingle(obj, label, path, 1));
                 }
             }
 

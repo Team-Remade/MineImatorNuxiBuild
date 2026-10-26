@@ -1419,7 +1419,34 @@ public class SceneObject
         return includePivot ? world : logicalWorld;
     }
 
-    private mat4 ComputeWorldMatrixNoPivot() => ComputeWorldMatrixNoPivot(false, out _, out _, out _);
+    public List<CopyConstraint> CopyConstraints { get; set; } = new();
+    private mat4? _evaluatedCopyTransform;
+    private vec3 _evaluatedCopyLocalScale = vec3.Ones;
+    private vec3 CopyConstraintLocalScale => _evaluatedCopyTransform.HasValue ? _evaluatedCopyLocalScale : Scale;
+
+    internal vec3 GetCopyConstraintScale()
+    {
+        vec3 signs = CopyConstraintLocalScale;
+        if (InheritScale && Parent != null) signs *= Parent.GetCopyConstraintScale();
+        vec3 magnitude = CopyConstraintSolver.BasisScale(GetWorldMatrixNoPivot());
+        return magnitude * new vec3(signs.x < 0f ? -1f : 1f, signs.y < 0f ? -1f : 1f, signs.z < 0f ? -1f : 1f);
+    }
+
+    internal void SetEvaluatedCopyTransform(mat4? world, vec3 scale, vec3? worldScale = null)
+    {
+        _evaluatedCopyLocalScale = Scale * scale;
+        if (worldScale is { } evaluatedScale)
+        {
+            vec3 parentScale = InheritScale && Parent != null ? Parent.GetCopyConstraintScale() : vec3.Ones;
+            for (int axis = 0; axis < 3; axis++)
+                if (MathF.Abs(Scale[axis]) <= 1e-8f && MathF.Abs(parentScale[axis]) > 1e-8f)
+                    _evaluatedCopyLocalScale[axis] = evaluatedScale[axis] / parentScale[axis];
+        }
+        _evaluatedCopyTransform = world;
+        InvalidateRenderEvaluation();
+    }
+
+    private mat4 ComputeWorldMatrixNoPivot() => _evaluatedCopyTransform ?? ComputeWorldMatrixNoPivot(false, out _, out _, out _);
 
     internal mat4 GetWorldRotationEditFrame(out mat4 rotationPrefix, out mat4 authoredRotation, out mat4 rotationSuffix) =>
         ComputeWorldMatrixNoPivot(true, out rotationPrefix, out authoredRotation, out rotationSuffix);
@@ -1457,7 +1484,7 @@ public class SceneObject
             if (InheritScale)
             {
                 for (SceneObject current = this; current.InheritScale && current.Parent != null; current = current.Parent)
-                    scale *= current.Parent.Scale;
+                    scale *= current.Parent.CopyConstraintLocalScale;
             }
             basis = parentWorld * rotation * mat4.Scale(scale);
             if (captureRotationFrame)

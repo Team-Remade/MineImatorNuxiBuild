@@ -384,6 +384,8 @@ public class ProjectSceneObjectEntry
     public ProjectVec3? BoneEndOffset { get; set; }
     // Null retains imported defaults for legacy saves; an empty list explicitly clears them.
     public List<ProjectBoneConstraintEntry>? BoneConstraints { get; set; }
+    // Null retains imported defaults for legacy saves; an empty list explicitly clears them.
+    public List<ProjectCopyConstraintEntry>? CopyConstraints { get; set; }
     public ProjectVec3 PivotOffset { get; set; } = new() { X = 0f, Y = 0.5f, Z = 0f };
 
     public bool InheritPosition { get; set; } = true;
@@ -520,6 +522,20 @@ public class ProjectSceneObjectEntry
     public List<ProjectShapeKeyWeightEntry> ShapeKeyWeights { get; set; } = new();
 
     public List<ProjectSceneObjectEntry> Children { get; set; } = new();
+}
+
+public class ProjectCopyConstraintEntry
+{
+    public bool Enabled { get; set; } = true;
+    public CopyConstraintType Type { get; set; } = CopyConstraintType.Position;
+    public string TargetObjectId { get; set; } = "";
+    public ProjectVec3 Offset { get; set; } = new();
+    public bool AxisX { get; set; } = true;
+    public bool AxisY { get; set; } = true;
+    public bool AxisZ { get; set; } = true;
+    public float Blend { get; set; } = 1f;
+    public bool BentHalf { get; set; } = false;
+    public bool Rotate { get; set; } = false;
 }
 
 public class ProjectBoneConstraintEntry

@@ -17,13 +17,15 @@ public static class ProjectSceneSerializer
     private sealed class ImportedIkRestoreState
     {
         private readonly Dictionary<string, string> _objectIds = new(StringComparer.Ordinal);
-        private readonly List<(SceneObject Object, BoneConstraint[] Constraints,
+        private readonly List<(SceneObject Object, BoneConstraint[] Constraints, CopyConstraint[] CopyConstraints,
             Dictionary<string, List<ObjectKeyframe>> Tracks)> _imported = new();
 
         public void CaptureHierarchy(SceneObject obj)
         {
             _imported.Add((obj, obj is BoneSceneObject bone ? bone.Constraints.ToArray() : Array.Empty<BoneConstraint>(),
-                obj.Keyframes.Where(pair => pair.Key.StartsWith("constraint.", StringComparison.Ordinal))
+                obj.CopyConstraints.ToArray(),
+                obj.Keyframes.Where(pair => pair.Key.StartsWith("constraint.", StringComparison.Ordinal) ||
+                        pair.Key.StartsWith("copy_constraint.", StringComparison.Ordinal))
                     .ToDictionary(pair => pair.Key, pair => pair.Value)));
             foreach (var child in obj.Children)
                 CaptureHierarchy(child);
@@ -44,6 +46,11 @@ public static class ProjectSceneSerializer
                     foreach (var constraint in imported.Constraints)
                         if (bone.Constraints.Contains(constraint))
                             RemapInverseKinematicsReferences(constraint.InverseKinematics, _objectIds);
+                foreach (var constraint in imported.CopyConstraints)
+                    if (imported.Object.CopyConstraints.Contains(constraint) &&
+                        !string.IsNullOrEmpty(constraint.TargetObjectId) &&
+                        _objectIds.TryGetValue(constraint.TargetObjectId, out string? targetId))
+                        constraint.TargetObjectId = targetId;
                 foreach (var pair in imported.Tracks)
                     if (imported.Object.Keyframes.TryGetValue(pair.Key, out var current) && ReferenceEquals(current, pair.Value))
                         RemapConstraintTrackReferences(pair.Key, current, _objectIds);
@@ -336,6 +343,7 @@ public static class ProjectSceneSerializer
             Position = ToProjectVec3(obj.Position),
             Rotation = ToProjectVec3(obj.Rotation),
             Scale = ToProjectVec3(obj.Scale),
+            CopyConstraints = obj.CopyConstraints.Select(SerializeCopyConstraint).ToList(),
             BendAngle = obj is MiBoneSceneObject bendBone && bendBone.BendParameters is { } bend
                 ? ToProjectVec3(bend.Angle)
                 : null,
@@ -797,6 +805,13 @@ public static class ProjectSceneSerializer
         obj.SetLocalPosition(ToVec3(entry.Position));
         obj.SetLocalRotation(ToVec3(entry.Rotation));
         obj.SetLocalScale(ToVec3(entry.Scale));
+        if (entry.CopyConstraints != null)
+        {
+            obj.CopyConstraints.Clear();
+            foreach (var constraint in entry.CopyConstraints)
+                if (constraint != null)
+                    obj.CopyConstraints.Add(DeserializeCopyConstraint(constraint));
+        }
         if (obj is BoneSceneObject bone)
         {
             if (entry.BoneName != null)
@@ -1021,10 +1036,12 @@ public static class ProjectSceneSerializer
             spawnMenu?.ApplyResourcePackToSpawnedObject(obj, resourcePackStack);
 
         var keyframes = DeserializeKeyframes(entry.Keyframes);
-        if (obj is BoneSceneObject && entry.BoneConstraints == null)
-            foreach (var pair in obj.Keyframes)
-                if (pair.Key.StartsWith("constraint.", StringComparison.Ordinal) && !entry.Keyframes.ContainsKey(pair.Key))
-                    keyframes[pair.Key] = pair.Value;
+        foreach (var pair in obj.Keyframes)
+            if (((obj is BoneSceneObject && entry.BoneConstraints == null &&
+                    pair.Key.StartsWith("constraint.", StringComparison.Ordinal)) ||
+                 (entry.CopyConstraints == null && pair.Key.StartsWith("copy_constraint.", StringComparison.Ordinal))) &&
+                entry.Keyframes?.ContainsKey(pair.Key) != true)
+                keyframes[pair.Key] = pair.Value;
         obj.Keyframes = keyframes;
         ApplyShapeKeyWeights(obj, entry.ShapeKeyWeights);
 
@@ -1098,6 +1115,41 @@ public static class ProjectSceneSerializer
         return new ProjectVec4 { X = value.x, Y = value.y, Z = value.z, W = value.w };
     }
 
+    private static ProjectCopyConstraintEntry SerializeCopyConstraint(CopyConstraint constraint)
+    {
+        return new ProjectCopyConstraintEntry
+        {
+            Enabled = constraint.Enabled,
+            Type = constraint.Type,
+            TargetObjectId = constraint.TargetObjectId,
+            Offset = ToProjectVec3(constraint.Offset),
+            AxisX = constraint.AxisX,
+            AxisY = constraint.AxisY,
+            AxisZ = constraint.AxisZ,
+            Blend = constraint.Blend,
+            BentHalf = constraint.BentHalf,
+            Rotate = constraint.Rotate
+        };
+    }
+
+    private static CopyConstraint DeserializeCopyConstraint(ProjectCopyConstraintEntry constraint)
+    {
+        return new CopyConstraint
+        {
+            Enabled = constraint.Enabled,
+            Type = constraint.Type,
+            TargetObjectId = constraint.TargetObjectId ?? "",
+            Offset = constraint.Offset != null ? ToVec3(constraint.Offset)
+                : constraint.Type == CopyConstraintType.Scale ? vec3.Ones : vec3.Zero,
+            AxisX = constraint.AxisX,
+            AxisY = constraint.AxisY,
+            AxisZ = constraint.AxisZ,
+            Blend = constraint.Blend,
+            BentHalf = constraint.BentHalf,
+            Rotate = constraint.Rotate
+        };
+    }
+
     private static ProjectBoneConstraintEntry SerializeBoneConstraint(BoneConstraint constraint)
     {
         var ik = constraint.InverseKinematics;
@@ -1156,6 +1208,10 @@ public static class ProjectSceneSerializer
             obj.CameraTextureObjectId = cameraId;
         foreach (var pair in obj.Keyframes)
             RemapConstraintTrackReferences(pair.Key, pair.Value, objectIds);
+        foreach (var constraint in obj.CopyConstraints)
+            if (!string.IsNullOrEmpty(constraint.TargetObjectId) &&
+                objectIds.TryGetValue(constraint.TargetObjectId, out string? targetId))
+                constraint.TargetObjectId = targetId;
 
         if (obj is not BoneSceneObject bone)
             return;
@@ -1177,8 +1233,11 @@ public static class ProjectSceneSerializer
     private static void RemapConstraintTrackReferences(string key, List<ObjectKeyframe> track,
         IReadOnlyDictionary<string, string> objectIds)
     {
-        if (!key.StartsWith("constraint.", StringComparison.Ordinal) ||
-            !(key.EndsWith(".ik.target", StringComparison.Ordinal) || key.EndsWith(".ik.pole", StringComparison.Ordinal)))
+        bool isIkReference = key.StartsWith("constraint.", StringComparison.Ordinal) &&
+            (key.EndsWith(".ik.target", StringComparison.Ordinal) || key.EndsWith(".ik.pole", StringComparison.Ordinal));
+        bool isCopyReference = key.StartsWith("copy_constraint.", StringComparison.Ordinal) &&
+            key.EndsWith(".target", StringComparison.Ordinal);
+        if ((!isIkReference && !isCopyReference) || track == null)
             return;
         foreach (var keyframe in track)
         {
@@ -1332,9 +1391,12 @@ public static class ProjectSceneSerializer
         return result;
     }
 
-    private static Dictionary<string, List<ObjectKeyframe>> DeserializeKeyframes(Dictionary<string, List<ProjectKeyframeEntry>> source)
+    private static Dictionary<string, List<ObjectKeyframe>> DeserializeKeyframes(Dictionary<string, List<ProjectKeyframeEntry>>? source)
     {
         var result = new Dictionary<string, List<ObjectKeyframe>>();
+
+        if (source == null)
+            return result;
 
         foreach (var pair in source)
         {
