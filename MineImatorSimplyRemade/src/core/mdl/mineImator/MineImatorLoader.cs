@@ -270,6 +270,10 @@ public class MineImatorLoader
         ApplyBodypartTimelines(miObject, sceneObjectsByTimelineId, changedBends);
         foreach (var timeline in miObject.Timelines ?? [])
             if (!string.IsNullOrEmpty(timeline.Id) &&
+                sceneObjectsByTimelineId.TryGetValue(timeline.Id, out var obj) && obj is MiBoneSceneObject bone)
+                ImportTimelineInverseKinematics(bone, timeline, sceneObjectsByTimelineId);
+        foreach (var timeline in miObject.Timelines ?? [])
+            if (!string.IsNullOrEmpty(timeline.Id) &&
                 sceneObjectsByTimelineId.TryGetValue(timeline.Id, out var obj))
                 ImportTimelineKeyframes(obj, timeline, resourceDict, miObject.DirectoryPath);
 
@@ -382,6 +386,7 @@ public class MineImatorLoader
 
             float lockBend = part.LockBend ?? 1f;
             miBone?.SetBendParameters(bendParams, lockBend);
+            boneObject.EndOffset = bendParams is { } bend ? BendHelper.GetEndOffset(bend) : null;
 
             // Mine-imator applies inherit_bend to the default pose immediately.
             // Previously it was only applied after the parent was edited and the
@@ -914,6 +919,79 @@ public class MineImatorLoader
             obj.Keyframes["item.slot"] = itemSlotKeyframes.OrderBy(kf => kf.Frame).ToList();
         if (customSlotKeyframes.Count > 0)
             obj.Keyframes["item.custom_slot"] = customSlotKeyframes.OrderBy(kf => kf.Frame).ToList();
+    }
+
+    private static void ImportTimelineInverseKinematics(MiBoneSceneObject bone, MiTimeline timeline,
+        IReadOnlyDictionary<string, SceneObject> objectsByTimelineId)
+    {
+        if (bone.BendParameters is not { SupportsLegacyIk: true })
+            return;
+
+        var frames = (timeline.Keyframes ?? [])
+            .Select(pair => (Frame: int.TryParse(pair.Key, NumberStyles.Integer, CultureInfo.InvariantCulture,
+                out int frame) ? frame : -1, Key: pair.Value))
+            .Where(pair => pair.Frame >= 0 && pair.Key != null)
+            .OrderBy(pair => pair.Frame).ToList();
+        JsonElement DefaultReference(string channel) =>
+            timeline.DefaultValues?.Values.TryGetValue(channel, out var value) == true ? value : default;
+        float Default(string channel, float fallback) =>
+            timeline.DefaultValues != null && timeline.DefaultValues.TryGetValue(channel, out float value) &&
+            float.IsFinite(value) ? value : fallback;
+        string ResolveReference(JsonElement reference)
+        {
+            string id = reference.ValueKind == JsonValueKind.String ? reference.GetString() ?? "" :
+                reference.ValueKind == JsonValueKind.Number ? reference.ToString() : "";
+            return objectsByTimelineId.TryGetValue(id, out var target) ? target.ObjectId : "";
+        }
+        JsonElement Reference(JsonElement value, string channel) =>
+            value.ValueKind == JsonValueKind.Undefined ? DefaultReference(channel) : value;
+
+        JsonElement defaultTarget = DefaultReference("IK_TARGET");
+        if (string.IsNullOrEmpty(ResolveReference(defaultTarget)) &&
+            !frames.Any(frame => !string.IsNullOrEmpty(ResolveReference(frame.Key.IkTarget))))
+            return;
+
+        int index = bone.Constraints.Count;
+        var settings = new InverseKinematicsSettings
+        {
+            ChainLength = 1,
+            Bones = [new IkBoneSettings { BoneObjectId = bone.ObjectId, AllowRotation = true, AllowBend = true }]
+        };
+        bone.Constraints.Add(new BoneConstraint
+        {
+            Enabled = true,
+            Type = BoneConstraintType.InverseKinematics,
+            InverseKinematics = settings
+        });
+
+        var first = GetFirstTimelineKeyframe(timeline);
+        settings.TargetObjectId = ResolveReference(Reference(first?.IkTarget ?? default, "IK_TARGET"));
+        settings.PoleObjectId = ResolveReference(Reference(first?.IkTargetAngle ?? default, "IK_TARGET_ANGLE"));
+        settings.PoleAngle = first?.IkAngleOffset ?? Default("IK_ANGLE_OFFSET", 0f);
+        settings.Influence = Math.Clamp(first?.IkBlend ?? Default("IK_BLEND", 1f), 0f, 1f);
+
+        foreach (var (frame, key) in frames)
+        {
+            string transition = key.Transition;
+            if (transition == null && timeline.DefaultValues != null)
+                timeline.DefaultValues.TryGetString("TRANSITION", out transition);
+            transition = string.IsNullOrEmpty(transition) ? "linear" : transition;
+            if (transition == "bezier")
+                transition = string.Create(CultureInfo.InvariantCulture,
+                    $"bezier:{key.EaseInX ?? Default("EASE_IN_X", 1f)},{key.EaseInY ?? Default("EASE_IN_Y", 0f)},{key.EaseOutX ?? Default("EASE_OUT_X", 0f)},{key.EaseOutY ?? Default("EASE_OUT_Y", 1f)}");
+            Add("target", ResolveReference(Reference(key.IkTarget, "IK_TARGET")), "instant");
+            Add("pole", ResolveReference(Reference(key.IkTargetAngle, "IK_TARGET_ANGLE")), "instant");
+            Add("pole_angle", key.IkAngleOffset ?? Default("IK_ANGLE_OFFSET", 0f), transition);
+            Add("influence", Math.Clamp(key.IkBlend ?? Default("IK_BLEND", 1f), 0f, 1f), transition);
+
+            void Add(string channel, object value, string interpolation)
+            {
+                string path = $"constraint.{index}.ik.{channel}";
+                if (!bone.Keyframes.TryGetValue(path, out var track))
+                    bone.Keyframes[path] = track = [];
+                track.Add(new ObjectKeyframe { Frame = frame, Value = value, InterpolationType = interpolation });
+            }
+        }
     }
 
     private static void ImportTimelineKeyframes(SceneObject obj, MiTimeline timeline,
@@ -3930,6 +4008,10 @@ public class MiKeyframe
     [JsonPropertyName("BEND_ANGLE_X")] public float? BendAngleX { get; set; }
     [JsonPropertyName("BEND_ANGLE_Y")] public float? BendAngleY { get; set; }
     [JsonPropertyName("BEND_ANGLE_Z")] public float? BendAngleZ { get; set; }
+    [JsonPropertyName("IK_TARGET")] public JsonElement IkTarget { get; set; }
+    [JsonPropertyName("IK_TARGET_ANGLE")] public JsonElement IkTargetAngle { get; set; }
+    [JsonPropertyName("IK_ANGLE_OFFSET")] public float? IkAngleOffset { get; set; }
+    [JsonPropertyName("IK_BLEND")] public float? IkBlend { get; set; }
     [JsonPropertyName("VISIBLE")]
     [JsonConverter(typeof(MiNullableBoolConverter))]
     public bool? Visible { get; set; }

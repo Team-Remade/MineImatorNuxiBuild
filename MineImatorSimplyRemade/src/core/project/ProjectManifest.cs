@@ -380,6 +380,10 @@ public class ProjectSceneObjectEntry
     public ProjectVec3 Rotation { get; set; } = new();
     public ProjectVec3 Scale { get; set; } = new() { X = 1f, Y = 1f, Z = 1f };
     public ProjectVec3? BendAngle { get; set; }
+    public string? BoneName { get; set; }
+    public ProjectVec3? BoneEndOffset { get; set; }
+    // Null retains imported defaults for legacy saves; an empty list explicitly clears them.
+    public List<ProjectBoneConstraintEntry>? BoneConstraints { get; set; }
     public ProjectVec3 PivotOffset { get; set; } = new() { X = 0f, Y = 0.5f, Z = 0f };
 
     public bool InheritPosition { get; set; } = true;
@@ -516,6 +520,32 @@ public class ProjectSceneObjectEntry
     public List<ProjectShapeKeyWeightEntry> ShapeKeyWeights { get; set; } = new();
 
     public List<ProjectSceneObjectEntry> Children { get; set; } = new();
+}
+
+public class ProjectBoneConstraintEntry
+{
+    public bool Enabled { get; set; } = true;
+    public BoneConstraintType Type { get; set; } = BoneConstraintType.InverseKinematics;
+    public ProjectInverseKinematicsSettings InverseKinematics { get; set; } = new();
+}
+
+public class ProjectInverseKinematicsSettings
+{
+    public string TargetObjectId { get; set; } = "";
+    public string PoleObjectId { get; set; } = "";
+    public int ChainLength { get; set; } = 2;
+    public int Iterations { get; set; } = 32;
+    public float PoleAngle { get; set; }
+    public float Influence { get; set; } = 1f;
+    public bool LockOrientation { get; set; } = false;
+    public List<ProjectIkBoneSettings> Bones { get; set; } = new();
+}
+
+public class ProjectIkBoneSettings
+{
+    public string BoneObjectId { get; set; } = "";
+    public bool AllowRotation { get; set; } = true;
+    public bool AllowBend { get; set; } = true;
 }
 
 public class ProjectCameraEffectEntry

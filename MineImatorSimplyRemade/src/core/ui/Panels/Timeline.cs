@@ -1519,6 +1519,14 @@ public class Timeline : UiPanel
             return row.Label;
 
         string[] parts = row.PropertyPath.Split('.');
+        if (row.Object is BoneSceneObject bone && parts[0] == "constraint")
+        {
+            if (parts.Length == 2 && int.TryParse(parts[1], out int constraintIndex))
+                return Localization.Format("text.panel.timeline.constraint_inverse_kinematics", constraintIndex + 1);
+            if (parts.Length == 6 && GetIkParticipationBone(bone, string.Join('.', parts.Skip(3))) is { } chainBone)
+                return Localization.Format("text.panel.timeline.ik_bone_participation", chainBone.Name,
+                    Localization.DisplayText(parts[5] == "rotate" ? "Rotate" : "Bend"));
+        }
         if (row.Object is CameraSceneObject camera && parts.Length == 3 && parts[0] == "camera" && parts[1] == "effect" &&
             int.TryParse(parts[2], out int index) && index >= 0 && index < camera.Effects.Count)
             return camera.Effects[index].Type switch
@@ -2440,6 +2448,10 @@ public class Timeline : UiPanel
             obj.Keyframes.Keys.Any(p => p.StartsWith("mirotation.", StringComparison.Ordinal)))
             propertyPath = "mirotation." + propertyPath["rotation.".Length..];
         StoreKeyframeValue(obj, propertyPath, frame, GetRecordedKeyframeValue(obj, propertyPath, frame));
+        // A nullable endpoint loses its coordinates when disabled, so key its enabled pose as well.
+        if (propertyPath == "bone.end_enabled" && obj is BoneSceneObject { EndOffset: not null })
+            foreach (string axis in new[] { "x", "y", "z" })
+                StoreKeyframeValue(obj, $"bone.end.{axis}", frame, GetPropertyValue(obj, $"bone.end.{axis}"));
         RecalculateTimelineLength();
         RebuildDisplayRows();
     }
@@ -2496,11 +2508,15 @@ public class Timeline : UiPanel
         {
             SceneObject defaults = obj is CameraSceneObject ? new CameraSceneObject()
                 : obj is LightSceneObject ? new LightSceneObject()
-                : obj is ParticleSpawnerSceneObject ? new ParticleSpawnerSceneObject() : new SceneObject();
+                : obj is ParticleSpawnerSceneObject ? new ParticleSpawnerSceneObject()
+                : obj is BoneSceneObject ? new BoneSceneObject() : new SceneObject();
             defaults.UsePropertyInheritance = obj.UsePropertyInheritance;
             if (defaults is CameraSceneObject defaultCamera && obj is CameraSceneObject camera)
                 foreach (var effect in camera.Effects)
                     defaultCamera.Effects.Add(new CameraEffect { Type = effect.Type });
+            if (defaults is BoneSceneObject defaultBone && obj is BoneSceneObject sourceBone)
+                foreach (var constraint in sourceBone.Constraints)
+                    defaultBone.Constraints.Add(new BoneConstraint { Type = constraint.Type });
 
             bool usesMiRotation = obj.Keyframes.Keys.Any(p => p.StartsWith("mirotation.", StringComparison.Ordinal));
             foreach (string path in GetKeyframePropertyPaths(obj).Distinct())
@@ -2656,6 +2672,11 @@ public class Timeline : UiPanel
         paths = paths.Concat(MaterialPropertyPaths);
         if (obj is MiBoneSceneObject)
             paths = paths.Concat(new[] { "bend.x", "bend.y", "bend.z" });
+        if (obj is BoneSceneObject bone)
+            paths = paths.Concat(new[] { "bone.end_enabled", "bone.end.x", "bone.end.y", "bone.end.z" })
+                .Concat(bone.Constraints.SelectMany((constraint, index) =>
+                    constraint.Type == BoneConstraintType.InverseKinematics
+                        ? GetIkPropertyPaths(bone, index) : Array.Empty<string>()));
         if (obj is CameraSceneObject cameraObj)
             paths = paths.Concat(GetCameraEffectPropertyPaths(cameraObj));
         if (obj is ParticleSpawnerSceneObject)
@@ -2726,7 +2747,8 @@ public class Timeline : UiPanel
     private void ApplyKeyframesAtCurrentFrame(bool holdFirstKeyframeBeforeStart)
     {
         var rotatedObjects = new HashSet<string>();
-        foreach (var kvp in _propertyKeyframes)
+        // Enable the optional endpoint before applying its animated components.
+        foreach (var kvp in _propertyKeyframes.OrderBy(pair => pair.Key.EndsWith(".bone.end_enabled", StringComparison.Ordinal) ? 0 : 1))
         {
             var keyframes = kvp.Value;
             if (keyframes.Count == 0) continue;
@@ -2786,12 +2808,12 @@ public class Timeline : UiPanel
         if (prev == null)
         {
             if (holdFirstKeyframeBeforeStart && next != null)
-                return path is "text.font" or "material.texture" ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
+                return path is "text.font" or "material.texture" || IsIkReferencePath(path) ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
             return null;
         }
 
         // At or after the last keyframe, or exactly on a keyframe.
-        if (path is "text.font" or "material.texture") return prev.Value;
+        if (path is "text.font" or "material.texture" || IsIkReferencePath(path)) return prev.Value;
         if (next == null || prev.Frame == frame)
             return TryConvertKeyframeValue(prev.Value, out float prevDirect) ? prevDirect : null;
 
@@ -2803,7 +2825,10 @@ public class Timeline : UiPanel
             path == "text.antialiasing" || path == "text.outline_enabled" ||
             path == "particle.emitting" || path == "particle.one_shot" || path == "particle.amount" ||
             path == "particle.emission_shape" || path == "particle.directional_emission" || path == "particle.top_level_particles" ||
-            path.EndsWith(".mode", StringComparison.Ordinal) || prev.InterpolationType == "instant")
+            path.EndsWith(".mode", StringComparison.Ordinal) || path == "bone.end_enabled" ||
+            (path.StartsWith("constraint.", StringComparison.Ordinal) &&
+                !(path.EndsWith(".pole_angle", StringComparison.Ordinal) || path.EndsWith(".influence", StringComparison.Ordinal))) ||
+            prev.InterpolationType == "instant")
             return TryConvertKeyframeValue(prev.Value, out float prevInstant) ? prevInstant : null;
 
         if (!TryConvertKeyframeValue(prev.Value, out float pv) || !TryConvertKeyframeValue(next.Value, out float nv))
@@ -2969,11 +2994,89 @@ public class Timeline : UiPanel
 
     // ── Get / set property values ─────────────────────────────────────────────
 
+    private static bool IsIkReferencePath(string path) =>
+        path.StartsWith("constraint.", StringComparison.Ordinal) &&
+        (path.EndsWith(".ik.target", StringComparison.Ordinal) || path.EndsWith(".ik.pole", StringComparison.Ordinal));
+
+    private static IEnumerable<string> GetIkPropertyPaths(BoneSceneObject bone, int index)
+    {
+        string prefix = $"constraint.{index}.ik";
+        foreach (string channel in new[] { "enabled", "target", "pole", "lock_orientation", "chain_length", "influence", "pole_angle", "iterations" })
+            yield return $"{prefix}.{channel}";
+        // Ancestor depth keeps tracks stable when participation entries are created or the chain length changes.
+        int depth = 0;
+        for (SceneObject? current = bone; current is BoneSceneObject chainBone && depth < 256; current = current.Parent, depth++)
+        {
+            yield return $"{prefix}.bone.{depth}.rotate";
+            if (chainBone is MiBoneSceneObject miBone && miBone.BendParameters.HasValue)
+                yield return $"{prefix}.bone.{depth}.bend";
+        }
+    }
+
+    private static BoneSceneObject? GetIkParticipationBone(SceneObject obj, string channel)
+    {
+        string[] parts = channel.Split('.');
+        if (parts.Length != 3 || parts[0] != "bone" || parts[2] is not ("rotate" or "bend") ||
+            !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int depth) || depth < 0 || depth >= 256)
+            return null;
+        SceneObject? current = obj;
+        while (depth-- > 0 && current is BoneSceneObject) current = current.Parent;
+        return current as BoneSceneObject;
+    }
+
+    private static bool TryGetIkSettings(SceneObject obj, string path,
+        out InverseKinematicsSettings settings, out string channel)
+    {
+        settings = null;
+        channel = "";
+        if (obj is not BoneSceneObject bone || !path.StartsWith("constraint.", StringComparison.Ordinal)) return false;
+        string[] parts = path.Split('.');
+        if (parts.Length < 4 || parts[2] != "ik" ||
+            !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int index) ||
+            index < 0 || index >= bone.Constraints.Count ||
+            bone.Constraints[index].Type != BoneConstraintType.InverseKinematics)
+            return false;
+        settings = bone.Constraints[index].InverseKinematics;
+        channel = string.Join('.', parts.Skip(3));
+        return settings != null;
+    }
+
     internal object GetPropertyValue(SceneObject obj, string path)
     {
         if (path == "visible") return obj.ObjectVisible ? 1f : 0f;
         if (path == "material.texture") return obj.AlbedoTexturePath;
         if (path == "text.font") return obj.TextMeshFontPath;
+        if (obj is BoneSceneObject endpointBone)
+        {
+            if (path == "bone.end_enabled") return endpointBone.EndOffset.HasValue ? 1f : 0f;
+            if (path.StartsWith("bone.end.", StringComparison.Ordinal))
+            {
+                vec3 end = endpointBone.EndOffset ?? new vec3(0f, 1f, 0f);
+                return path switch { "bone.end.x" => end.x, "bone.end.y" => end.y, "bone.end.z" => end.z, _ => 0f };
+            }
+        }
+        if (TryGetIkSettings(obj, path, out var ik, out string ikChannel))
+        {
+            if (ikChannel.StartsWith("bone.", StringComparison.Ordinal))
+            {
+                var chainBone = GetIkParticipationBone(obj, ikChannel);
+                var participation = chainBone == null ? null : ik.GetBoneSettings(chainBone.ObjectId);
+                return (ikChannel.EndsWith(".rotate", StringComparison.Ordinal)
+                    ? participation?.AllowRotation ?? true : participation?.AllowBend ?? true) ? 1f : 0f;
+            }
+            return ikChannel switch
+            {
+                "enabled" => ((BoneSceneObject)obj).Constraints[int.Parse(path.Split('.')[1], CultureInfo.InvariantCulture)].Enabled ? 1f : 0f,
+                "target" => ik.TargetObjectId,
+                "pole" => ik.PoleObjectId,
+                "lock_orientation" => ik.LockOrientation ? 1f : 0f,
+                "chain_length" => (float)ik.ChainLength,
+                "iterations" => (float)ik.Iterations,
+                "pole_angle" => ik.PoleAngle,
+                "influence" => ik.Influence,
+                _ => 0f,
+            };
+        }
 
         var parts = path.Split('.');
         if (parts.Length == 2)
@@ -3251,6 +3354,37 @@ public class Timeline : UiPanel
 
     internal void SetPropertyValue(SceneObject obj, string path, object rawValue)
     {
+        if (TryGetIkSettings(obj, path, out var ik, out string ikChannel))
+        {
+            if (ikChannel is "target" or "pole")
+            {
+                string reference = rawValue is JsonElement jsonReference && jsonReference.ValueKind == JsonValueKind.String
+                    ? jsonReference.GetString() ?? "" : Convert.ToString(rawValue, CultureInfo.InvariantCulture) ?? "";
+                if (ikChannel == "target") ik.TargetObjectId = reference;
+                else ik.PoleObjectId = reference;
+            }
+            else if (TryConvertKeyframeValue(rawValue, out float ikValue) && float.IsFinite(ikValue))
+            {
+                if (ikChannel == "pole_angle") ik.PoleAngle = ikValue;
+                else if (ikChannel == "influence") ik.Influence = Math.Clamp(ikValue, 0f, 1f);
+                else if (ikChannel == "enabled") ((BoneSceneObject)obj).Constraints[int.Parse(path.Split('.')[1], CultureInfo.InvariantCulture)].Enabled = ikValue >= 0.5f;
+                else if (ikChannel == "lock_orientation") ik.LockOrientation = ikValue >= 0.5f;
+                else if (ikChannel == "chain_length") ik.ChainLength = (int)Math.Clamp(MathF.Round(ikValue), 1f, 256f);
+                else if (ikChannel == "iterations") ik.Iterations = (int)Math.Clamp(MathF.Round(ikValue), 1f, 256f);
+                else if (GetIkParticipationBone(obj, ikChannel) is { } chainBone)
+                {
+                    var participation = ik.GetBoneSettings(chainBone.ObjectId);
+                    if (participation == null)
+                    {
+                        participation = new IkBoneSettings { BoneObjectId = chainBone.ObjectId };
+                        ik.Bones.Add(participation);
+                    }
+                    if (ikChannel.EndsWith(".rotate", StringComparison.Ordinal)) participation.AllowRotation = ikValue >= 0.5f;
+                    else participation.AllowBend = ikValue >= 0.5f;
+                }
+            }
+            return;
+        }
         if (path == "material.texture")
         {
             string texture = rawValue is JsonElement jsonTexture && jsonTexture.ValueKind == JsonValueKind.String
@@ -3271,6 +3405,27 @@ public class Timeline : UiPanel
             return;
         }
         if (!TryConvertKeyframeValue(rawValue, out float value)) return;
+        if (obj is BoneSceneObject endpointBone && float.IsFinite(value))
+        {
+            if (path == "bone.end_enabled")
+            {
+                endpointBone.EndOffset = value >= 0.5f ? endpointBone.EndOffset ?? new vec3(0f, 1f, 0f) : null;
+                return;
+            }
+            if (path.StartsWith("bone.end.", StringComparison.Ordinal))
+            {
+                bool animatedToggle = endpointBone.Keyframes.ContainsKey("bone.end_enabled");
+                if (!animatedToggle || endpointBone.EndOffset.HasValue)
+                {
+                    vec3 end = endpointBone.EndOffset ?? new vec3(0f, 1f, 0f);
+                    if (path == "bone.end.x") end.x = value;
+                    else if (path == "bone.end.y") end.y = value;
+                    else if (path == "bone.end.z") end.z = value;
+                    endpointBone.EndOffset = end;
+                }
+                return;
+            }
+        }
         if (path == "visible") { obj.ObjectVisible = value >= 0.5f; return; }
 
         var parts = path.Split('.');
@@ -3844,6 +3999,40 @@ public class Timeline : UiPanel
                 {
                     if (propsWithKeyframes.Contains(path))
                         newRows.Add(MakeSingle(obj, label, path, indent));
+                }
+            }
+
+            if (obj is BoneSceneObject constraintBone)
+            {
+                for (int i = 0; i < constraintBone.Constraints.Count; i++)
+                {
+                    if (constraintBone.Constraints[i].Type != BoneConstraintType.InverseKinematics) continue;
+                    string prefix = $"constraint.{i}.ik";
+                    string[] paths = GetIkPropertyPaths(constraintBone, i).ToArray();
+                    if (!paths.Any(propsWithKeyframes.Contains)) continue;
+                    newRows.Add(MakeGroup(obj, "Inverse Kinematics", paths, $"constraint.{i}"));
+                    for (int channel = 0; channel < paths.Length; channel++)
+                        if (propsWithKeyframes.Contains(paths[channel]))
+                        {
+                            string label = paths[channel][(prefix.Length + 1)..] switch
+                            {
+                                "enabled" => "Enabled", "target" => "Target Object", "pole" => "Pole Object",
+                                "lock_orientation" => "Lock Orientation", "chain_length" => "Chain Length",
+                                "pole_angle" => "Pole Angle", "influence" => "Influence", "iterations" => "Iterations",
+                                _ => "Chain Participation"
+                            };
+                            newRows.Add(MakeSingle(obj, label, paths[channel], 1));
+                        }
+                }
+                if (propsWithKeyframes.Contains("bone.end_enabled"))
+                    newRows.Add(MakeSingle(obj, "Custom Bone End", "bone.end_enabled", 0));
+                string[] endPaths = ["bone.end.x", "bone.end.y", "bone.end.z"];
+                if (endPaths.Any(propsWithKeyframes.Contains))
+                {
+                    newRows.Add(MakeGroup(obj, "End Offset", endPaths, "bone.end"));
+                    for (int axis = 0; axis < endPaths.Length; axis++)
+                        if (propsWithKeyframes.Contains(endPaths[axis]))
+                            newRows.Add(MakeSingle(obj, axis == 0 ? "X" : axis == 1 ? "Y" : "Z", endPaths[axis], 1));
                 }
             }
 

@@ -1,5 +1,6 @@
 ﻿using GlmSharp;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -16,6 +17,88 @@ namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 /// </summary>
 public class BoneSceneObject : SceneObject
 {
+    /// <summary>Optional unbent endpoint in bone-local coordinates. Null targets the bone origin.</summary>
+    public vec3? EndOffset { get; set; }
+
+    public List<BoneConstraint> Constraints { get; set; } = new();
+
+    internal mat4 EvaluatedIkRotation { get; private set; } = mat4.Identity;
+    private mat4? _evaluatedIkWorldRotation;
+    private mat4 _ikRotationEditAuthored = mat4.Identity;
+    private mat4 _ikRotationEditPrefix = mat4.Identity;
+    private mat4 _ikRotationEditSuffix = mat4.Identity;
+
+    internal void SetEvaluatedIkRotation(mat4 rotation)
+    {
+        EvaluatedIkRotation = rotation;
+        InvalidateRenderEvaluation();
+    }
+
+    internal virtual void ResetInverseKinematics()
+    {
+        _evaluatedIkWorldRotation = null;
+        SetEvaluatedIkRotation(mat4.Identity);
+    }
+
+    internal void PreserveInverseKinematicsWorldRotation(mat4 reference)
+    {
+        _evaluatedIkWorldRotation = reference;
+        InvalidateRenderEvaluation();
+    }
+
+    internal mat4 CaptureInverseKinematicsWorldRotation() =>
+        GetWorldRotationEditFrame(out _ikRotationEditPrefix, out _ikRotationEditAuthored, out _ikRotationEditSuffix);
+
+    internal bool TryGetInverseKinematicsRotationEditFrame(out mat4 referenceWorld, out mat4 authoredRotation,
+        out mat4 rotationPrefix, out mat4 rotationSuffix)
+    {
+        referenceWorld = _evaluatedIkWorldRotation ?? mat4.Identity;
+        authoredRotation = _ikRotationEditAuthored;
+        rotationPrefix = _ikRotationEditPrefix;
+        rotationSuffix = _ikRotationEditSuffix;
+        return _evaluatedIkWorldRotation.HasValue;
+    }
+
+    internal mat4 ApplyInverseKinematicsWorldRotation(mat4 world)
+    {
+        if (_evaluatedIkWorldRotation is not { } reference) return world;
+        static vec3 BasisScale(mat4 matrix) => new(
+            new vec3(matrix.m00, matrix.m01, matrix.m02).Length,
+            new vec3(matrix.m10, matrix.m11, matrix.m12).Length,
+            new vec3(matrix.m20, matrix.m21, matrix.m22).Length);
+        vec3 referenceScale = BasisScale(reference), scale = BasisScale(world);
+        if (!(referenceScale.x > 1e-8f && referenceScale.y > 1e-8f && referenceScale.z > 1e-8f) ||
+            !float.IsFinite(referenceScale.x + referenceScale.y + referenceScale.z) ||
+            !float.IsFinite(scale.x + scale.y + scale.z)) return world;
+
+        // Hold the pre-IK basis directions, but keep the solved position and live scale.
+        mat4 result = reference * mat4.Scale(scale / referenceScale);
+        result.m30 = world.m30; result.m31 = world.m31; result.m32 = world.m32;
+        return result;
+    }
+
+    protected override void GetTimelineTransform(out mat4 modelTransform, out vec3 position, out mat4 rotation)
+    {
+        base.GetTimelineTransform(out modelTransform, out position, out rotation);
+        rotation *= EvaluatedIkRotation;
+    }
+
+    /// <summary>Evaluated endpoint, including a Mine-imator bone's internal bend joint.</summary>
+    public vec3 GetEndWorldPosition()
+    {
+        vec3 endpoint = EndOffset ?? vec3.Zero;
+        if (EndOffset.HasValue && this is MiBoneSceneObject mi && mi.GetEffectiveBendParameters() is { } bend)
+            endpoint = TransformPoint(BendHelper.GetPartBendMatrix(bend, BendHelper.GetBendVector(bend.Angle, 1f)),
+                endpoint - BendHelper.GetBendPivot(bend, vec3.Zero));
+        return TransformPoint(GetWorldMatrixNoPivot(), endpoint);
+    }
+
+    internal static vec3 TransformPoint(mat4 matrix, vec3 point)
+    {
+        vec4 result = matrix * new vec4(point, 1f);
+        return new vec3(result.x, result.y, result.z);
+    }
+
     // ── Identity ──────────────────────────────────────────────────────────────
 
     /// <summary>

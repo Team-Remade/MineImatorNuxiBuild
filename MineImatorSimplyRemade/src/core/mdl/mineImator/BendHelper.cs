@@ -40,6 +40,12 @@ public struct BendParams
     /// <summary>Bend pivot offset in pixels along the bend axis</summary>
     public float BendOffset;
 
+    /// <summary>Authored distance from the bend joint to its endpoint, in pixels; model/part scale is not baked into this value.</summary>
+    public float? EndOffset;
+
+    /// <summary>Legacy IK eligibility before model scale is baked into the distances.</summary>
+    public bool SupportsLegacyIk;
+
     /// <summary>Bend region size in pixels (default 4)</summary>
     public float BendSize;
 
@@ -208,6 +214,7 @@ public static class BendHelper
 
         // Parse offset/size/detail (in pixels)
         float offset = bend.Offset ?? 0.0f;
+        float? endOffset = bend.EndOffset;
         bool explicitBendSize = bend.Size.HasValue;
         float? detail = bend.Detail;
 
@@ -219,6 +226,8 @@ public static class BendHelper
         float defaultBendSize = (effectiveStyle == BendStyle.Realistic) ? 4.0f : 1.0f;
         float size = bend.Size ?? defaultBendSize;
 
+        // Mine-imator scales the pivot and custom size, but end_offset is
+        // already an authored IK distance and must remain unscaled.
         // Scale offset and authored custom sizes by part scale (matching
         // Modelbench's el_update_part.gml). An omitted bend size stays an
         // implicit render-style default (1 sharp / 4 smooth) and must not be
@@ -247,6 +256,8 @@ public static class BendHelper
         {
             Angle           = angle,
             BendOffset      = offset,
+            EndOffset       = endOffset,
+            SupportsLegacyIk = bend.EndOffset > 0f && part == BendPart.Lower && axisX && !axisY && !axisZ,
             BendSize        = size,
             ExplicitBendSize = explicitBendSize,
             Detail          = detail,
@@ -349,6 +360,22 @@ public static class BendHelper
                 break;
         }
         return pivotPos;
+    }
+
+    public static vec3? GetEndOffset(BendParams bend)
+    {
+        if (bend.EndOffset is not { } distance || !float.IsFinite(distance)) return null;
+        vec3 direction = bend.Part switch
+        {
+            BendPart.Upper => new vec3(0, 1, 0),
+            BendPart.Lower => new vec3(0, -1, 0),
+            BendPart.Right => new vec3(1, 0, 0),
+            BendPart.Left => new vec3(-1, 0, 0),
+            BendPart.Front => new vec3(0, 0, 1),
+            _ => new vec3(0, 0, -1),
+        };
+        // end_offset starts at the bend joint, not at the part origin.
+        return GetBendPivot(bend, vec3.Zero) + direction * (distance / 16f);
     }
 
     // ── Easing functions ──────────────────────────────────────────────────────

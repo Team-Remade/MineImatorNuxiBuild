@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl.mineImator;
+using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -24,7 +25,6 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 /// Not yet implemented
 /// ────────────────────
 ///  • Per-type object icons
-///  • Keyframe deep-copy on Duplicate
 /// </summary>
 public class SceneTree : UiPanel
 {
@@ -268,15 +268,19 @@ public class SceneTree : UiPanel
             return;
 
         var duplicates = new List<SceneObject>(duplicateRoots.Count);
+        var objectIds = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var original in duplicateRoots)
         {
-            var duplicate = DuplicateObject(original, selectDuplicate: false);
+            var duplicate = DuplicateObject(original, selectDuplicate: false, objectIds: objectIds);
             if (duplicate != null)
                 duplicates.Add(duplicate);
         }
 
         if (duplicates.Count == 0)
             return;
+
+        foreach (var duplicate in duplicates)
+            RemapDuplicateReferences(duplicate, objectIds);
 
         if (SelectionManager.Instance != null)
         {
@@ -724,15 +728,21 @@ public class SceneTree : UiPanel
 
     // ── Duplicate ───────────────────────────────────────────────────────────
 
-    private SceneObject DuplicateObject(SceneObject original, bool selectDuplicate = true)
+    private SceneObject DuplicateObject(SceneObject original, bool selectDuplicate = true,
+        Dictionary<string, string>? objectIds = null)
     {
-        var duplicate = CreateSceneObjectDuplicate(original);
+        bool remapReferences = objectIds == null;
+        objectIds ??= new Dictionary<string, string>(StringComparer.Ordinal);
+        var duplicate = CreateSceneObjectDuplicate(original, objectIds);
         if (duplicate == null) return null;
 
         // Mine-imator characters are rebuilt by their loader, including their
         // complete bone hierarchy and mesh regeneration state.
         if (original is not CharacterSceneObject)
-            DuplicateChildrenRecursive(original, duplicate);
+            DuplicateChildrenRecursive(original, duplicate, objectIds);
+
+        if (remapReferences)
+            RemapDuplicateReferences(duplicate, objectIds);
 
         if (original.Parent != null)
             original.Parent.AddChild(duplicate);
@@ -755,22 +765,25 @@ public class SceneTree : UiPanel
         return duplicate;
     }
 
-    private void DuplicateChildrenRecursive(SceneObject original, SceneObject duplicateParent)
+    private void DuplicateChildrenRecursive(SceneObject original, SceneObject duplicateParent,
+        Dictionary<string, string> objectIds)
     {
         foreach (var child in original.Children)
         {
-            if (child is CharacterSceneObject || child.IsRuntimeTransient) continue;
+            if (child.IsRuntimeTransient) continue;
 
-            var childDup = CreateSceneObjectDuplicate(child);
+            var childDup = CreateSceneObjectDuplicate(child, objectIds);
             if (childDup == null) continue;
 
             duplicateParent.AddChild(childDup);
-            DuplicateChildrenRecursive(child, childDup);
+            UpdateDuplicatedBoneOwner(childDup);
+            if (child is not CharacterSceneObject)
+                DuplicateChildrenRecursive(child, childDup, objectIds);
         }
     }
 
     /// <summary>Shallow-copies a SceneObject without copying its children.</summary>
-    private SceneObject CreateSceneObjectDuplicate(SceneObject original)
+    private SceneObject CreateSceneObjectDuplicate(SceneObject original, Dictionary<string, string> objectIds)
     {
         SceneObject dup;
 
@@ -850,6 +863,14 @@ public class SceneTree : UiPanel
                 ((CameraSceneObject)dup).RefreshActiveMesh();
                 break;
 
+            case MiBoneSceneObject mineImatorBone:
+                dup = new MiBoneSceneObject { ModelOwner = mineImatorBone.ModelOwner };
+                break;
+
+            case BoneSceneObject:
+                dup = new BoneSceneObject();
+                break;
+
             default:
                 dup = new SceneObject();
                 break;
@@ -860,6 +881,9 @@ public class SceneTree : UiPanel
         // pass treats as "nothing" — the object would render correctly but
         // could never be selected again by clicking on it.
         dup.AssignObjectId();
+        if (!string.IsNullOrEmpty(original.ObjectId))
+            objectIds[original.ObjectId] = dup.ObjectId;
+        CopyBoneMetadata(original, dup);
 
         var baseName = GetBaseName(original.GetDisplayName());
         int nextNum  = GetNextAvailableNameNumber(baseName);
@@ -882,7 +906,7 @@ public class SceneTree : UiPanel
         dup.InheritPosition     = original.InheritPosition;
         dup.InheritRotation     = original.InheritRotation;
         dup.InheritScale        = original.InheritScale;
-        CopyPropertyInheritanceSettings(original, dup, original is CharacterSceneObject);
+        CopyPropertyInheritanceSettings(original, dup, original is CharacterSceneObject, objectIds);
         dup.ScaleResize         = original.ScaleResize;
         dup.LockBend            = original.LockBend;
         dup.LockToBentHalf      = original is MiBoneSceneObject ? original.LockBend > 0f : original.LockToBentHalf;
@@ -942,8 +966,13 @@ public class SceneTree : UiPanel
         // both, and the duplicate's material settings were lost the moment
         // any Properties-panel edit lazily created a fresh default
         // MaterialSettings and stomped the shared mesh.
-        foreach (var mesh in original.Visuals)
-            dup.AddMesh(mesh.Clone());
+        if (original is not MiBoneSceneObject)
+            foreach (var mesh in original.Visuals)
+                dup.AddMesh(mesh.Clone());
+
+        if (dup is MiBoneSceneObject miDuplicate && miDuplicate.IndicatorMesh == null &&
+            original is MiBoneSceneObject { IndicatorMesh: not null } && Gl != null)
+            miDuplicate.CreateIndicator(Gl);
 
         // Preserve the exact material state (own explicit settings, or
         // inherited-from-parent) instead of leaving it null/default.
@@ -952,7 +981,40 @@ public class SceneTree : UiPanel
         return dup;
     }
 
-    private static void CopyPropertyInheritanceSettings(SceneObject original, SceneObject duplicate, bool copyChildren)
+    private static void CopyBoneMetadata(SceneObject original, SceneObject duplicate)
+    {
+        if (original is not BoneSceneObject source || duplicate is not BoneSceneObject target)
+            return;
+
+        if (source is MiBoneSceneObject miSource && target is MiBoneSceneObject miTarget)
+            miTarget.CopyConstructionStateFrom(miSource);
+        target.BoneName = source.BoneName;
+        target.EndOffset = source.EndOffset;
+        target.Constraints.Clear();
+        foreach (var constraint in source.Constraints)
+            target.Constraints.Add(constraint.Clone());
+    }
+
+    private static void RemapDuplicateReferences(SceneObject duplicate, IReadOnlyDictionary<string, string> objectIds)
+    {
+        ProjectSceneSerializer.RemapObjectReferences(duplicate, objectIds);
+        foreach (var child in duplicate.Children)
+            RemapDuplicateReferences(child, objectIds);
+    }
+
+    private static void UpdateDuplicatedBoneOwner(SceneObject duplicate)
+    {
+        if (duplicate is not MiBoneSceneObject bone) return;
+        for (var ancestor = duplicate.Parent; ancestor != null; ancestor = ancestor.Parent)
+            if (ancestor is CharacterSceneObject character)
+            {
+                bone.ModelOwner = character;
+                break;
+            }
+    }
+
+    private void CopyPropertyInheritanceSettings(SceneObject original, SceneObject duplicate, bool copyChildren,
+        Dictionary<string, string> objectIds)
     {
         duplicate.UsePropertyInheritance = original.UsePropertyInheritance;
         duplicate.InheritAlpha = original.InheritAlpha;
@@ -963,6 +1025,12 @@ public class SceneTree : UiPanel
         duplicate.InheritGlowColor = original.InheritGlowColor;
         duplicate.InheritSelect = original.InheritSelect;
         duplicate.InheritPose = original.InheritPose;
+        duplicate.Keyframes = original.Keyframes.ToDictionary(pair => pair.Key, pair => pair.Value.Select(key => new ObjectKeyframe
+        {
+            Frame = key.Frame,
+            Value = key.Value,
+            InterpolationType = key.InterpolationType
+        }).ToList());
 
         if (!copyChildren) return;
 
@@ -975,9 +1043,23 @@ public class SceneTree : UiPanel
                 (candidate is BoneSceneObject candidateBone && child is BoneSceneObject childBone
                     ? candidateBone.BoneName == childBone.BoneName
                     : candidate.Name == child.Name));
-            if (childDuplicate == null) continue;
+            if (childDuplicate == null)
+            {
+                if (child.IsRuntimeTransient) continue;
+                childDuplicate = CreateSceneObjectDuplicate(child, objectIds);
+                if (childDuplicate == null) continue;
+                duplicate.AddChild(childDuplicate);
+                UpdateDuplicatedBoneOwner(childDuplicate);
+                if (child is not CharacterSceneObject)
+                    DuplicateChildrenRecursive(child, childDuplicate, objectIds);
+                usedChildren.Add(childDuplicate);
+                continue;
+            }
 
             usedChildren.Add(childDuplicate);
+            if (!string.IsNullOrEmpty(child.ObjectId))
+                objectIds[child.ObjectId] = childDuplicate.ObjectId;
+            CopyBoneMetadata(child, childDuplicate);
             childDuplicate.NormalResourcePackId = child.NormalResourcePackId;
             childDuplicate.EmissionResourcePackId = child.EmissionResourcePackId;
             childDuplicate.NormalTexturePath = child.NormalTexturePath;
@@ -987,7 +1069,7 @@ public class SceneTree : UiPanel
             childDuplicate.RoughnessTexturePath = child.RoughnessTexturePath;
             childDuplicate.MetallicTexturePath = child.MetallicTexturePath;
             childDuplicate.HeightTexturePath = child.HeightTexturePath;
-            CopyPropertyInheritanceSettings(child, childDuplicate, true);
+            CopyPropertyInheritanceSettings(child, childDuplicate, true, objectIds);
             childDuplicate.CopyMaterialSettingsFrom(child);
         }
     }

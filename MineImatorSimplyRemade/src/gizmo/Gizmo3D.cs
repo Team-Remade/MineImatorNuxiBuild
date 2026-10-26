@@ -404,6 +404,7 @@ public class Gizmo3D : IDisposable
         public Transform3D TargetOriginal;
         public Transform3D TargetGlobal;
         public vec3 BendOriginal;
+        public LockedRotationEdit? LockedRotation;
     }
 
     private readonly List<SelectedItem> _selections = new();
@@ -1402,6 +1403,7 @@ public class Gizmo3D : IDisposable
             var item = _selections[i];
             item.TargetGlobal   = GetWorldTransform(item.Object);
             item.TargetOriginal = GetLocalTransform(item.Object);
+            item.LockedRotation = CaptureLockedRotationEdit(item.Object);
             item.BendOriginal = item.Object is MiBoneSceneObject bone && bone.BendParameters is { }
                 ? bone.GetEditableBendAngle()
                 : vec3.Zero;
@@ -1730,6 +1732,13 @@ public class Gizmo3D : IDisposable
                 }
                 case TransformMode.Rotate:
                 {
+                    if (item.LockedRotation is { } lockedRotation)
+                    {
+                        ApplyLockedRotationEdit(obj, lockedRotation, item.TargetGlobal.Basis,
+                            motion, snap, localCoords);
+                        break;
+                    }
+
                     mat4 rotBasis = newTransform.Basis;
 
                     // When rotating in world/view space (not local), ComputeTransform's
@@ -1910,8 +1919,85 @@ public class Gizmo3D : IDisposable
     // SceneObject transform helpers
     // ─────────────────────────────────────────────────────────────────────────
 
+    internal readonly record struct LockedRotationEdit(mat4 AuthoredRotation, mat4 Prefix);
+
+    internal static LockedRotationEdit? CaptureLockedRotationEdit(SceneObject obj)
+    {
+        if (obj is not BoneSceneObject bone ||
+            !bone.TryGetInverseKinematicsRotationEditFrame(out _, out mat4 authored,
+                out mat4 prefix, out _))
+            return null;
+
+        // Capture once per drag. Subsequent evaluations can move the solved parent,
+        // but the authored rotation still belongs to the original pre-IK frame.
+        return new LockedRotationEdit(authored, prefix);
+    }
+
+    internal static void ApplyLockedRotationEdit(SceneObject obj, LockedRotationEdit original,
+        mat4 displayedBasis, vec3 axis, float angle, bool local)
+    {
+        if (!float.IsFinite(angle)) return;
+        mat4 authored = original.AuthoredRotation;
+        if (angle != 0f)
+        {
+            vec3 worldAxis = local ? GizmoMath.BasisTransform(displayedBasis, axis) : axis;
+            float length = worldAxis.Length;
+            if (!(length > 1e-8f) || !float.IsFinite(length)) return;
+
+            mat4 delta = GizmoMath.AxisAngle(worldAxis / length, angle);
+            authored = original.Prefix.Inverse * delta * original.Prefix * original.AuthoredRotation;
+            if (!TryOrthonormalizeRotation(authored, out authored)) return;
+        }
+
+        // MI edits are offsets from an exact model rest matrix, not total local Euler angles.
+        if (obj is MiBoneSceneObject miBone)
+            miBone.SetOffsetRotationMatrix(authored);
+        else
+            obj.SetLocalRotationMatrix(authored, GizmoMath.MatrixToEulerYXZ(authored));
+    }
+
+    private static bool TryOrthonormalizeRotation(mat4 matrix, out mat4 rotation)
+    {
+        rotation = mat4.Identity;
+        vec3 x = new(matrix.m00, matrix.m01, matrix.m02);
+        vec3 y = new(matrix.m10, matrix.m11, matrix.m12);
+        float xLength = x.Length;
+        if (!(xLength > 1e-8f) || !float.IsFinite(xLength)) return false;
+        x /= xLength;
+        y -= x * vec3.Dot(x, y);
+        float yLength = y.Length;
+        if (!(yLength > 1e-8f) || !float.IsFinite(yLength)) return false;
+        y /= yLength;
+        vec3 z = vec3.Cross(x, y);
+        rotation.m00 = x.x; rotation.m01 = x.y; rotation.m02 = x.z;
+        rotation.m10 = y.x; rotation.m11 = y.y; rotation.m12 = y.z;
+        rotation.m20 = z.x; rotation.m21 = z.y; rotation.m22 = z.z;
+        return true;
+    }
+
     private static Transform3D GetWorldTransform(SceneObject obj)
     {
+        if (obj is BoneSceneObject lockedBone &&
+            lockedBone.TryGetInverseKinematicsRotationEditFrame(out mat4 reference, out _, out _, out _))
+        {
+            mat4 evaluated = obj.GetWorldMatrixNoPivot();
+            mat4 basis = mat4.Identity;
+            for (int i = 0; i < 3; i++)
+            {
+                vec3 column = new(evaluated[i, 0], evaluated[i, 1], evaluated[i, 2]);
+                float length = column.Length;
+                if (!(length > 1e-8f) || !float.IsFinite(length))
+                {
+                    column = new vec3(reference[i, 0], reference[i, 1], reference[i, 2]);
+                    length = column.Length;
+                }
+                if (!(length > 1e-8f) || !float.IsFinite(length)) continue;
+                for (int j = 0; j < 3; j++) basis[i, j] = column[j] / length;
+            }
+            return new Transform3D(basis,
+                new vec3(evaluated.m30, evaluated.m31, evaluated.m32));
+        }
+
         vec3 worldOrigin = obj.GetWorldPosition();
 
         // Build a pure-rotation basis (no scale) so gizmo axes are always unit-length

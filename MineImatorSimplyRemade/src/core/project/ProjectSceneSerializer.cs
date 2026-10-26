@@ -14,6 +14,43 @@ namespace MineImatorSimplyRemade.core.project;
 
 public static class ProjectSceneSerializer
 {
+    private sealed class ImportedIkRestoreState
+    {
+        private readonly Dictionary<string, string> _objectIds = new(StringComparer.Ordinal);
+        private readonly List<(SceneObject Object, BoneConstraint[] Constraints,
+            Dictionary<string, List<ObjectKeyframe>> Tracks)> _imported = new();
+
+        public void CaptureHierarchy(SceneObject obj)
+        {
+            _imported.Add((obj, obj is BoneSceneObject bone ? bone.Constraints.ToArray() : Array.Empty<BoneConstraint>(),
+                obj.Keyframes.Where(pair => pair.Key.StartsWith("constraint.", StringComparison.Ordinal))
+                    .ToDictionary(pair => pair.Key, pair => pair.Value)));
+            foreach (var child in obj.Children)
+                CaptureHierarchy(child);
+        }
+
+        public void RecordObjectId(SceneObject obj, ProjectSceneObjectEntry entry)
+        {
+            if (!string.IsNullOrEmpty(obj.ObjectId) && !string.IsNullOrWhiteSpace(entry.ObjectId))
+                _objectIds[obj.ObjectId] = entry.ObjectId;
+        }
+
+        public void RemapReferences()
+        {
+            // Saved constraints/tracks are new instances and already contain saved IDs.
+            foreach (var imported in _imported)
+            {
+                if (imported.Object is BoneSceneObject bone)
+                    foreach (var constraint in imported.Constraints)
+                        if (bone.Constraints.Contains(constraint))
+                            RemapInverseKinematicsReferences(constraint.InverseKinematics, _objectIds);
+                foreach (var pair in imported.Tracks)
+                    if (imported.Object.Keyframes.TryGetValue(pair.Key, out var current) && ReferenceEquals(current, pair.Value))
+                        RemapConstraintTrackReferences(pair.Key, current, _objectIds);
+            }
+        }
+    }
+
     internal static ProjectSceneObjectEntry CaptureObjectState(SceneObject obj)
     {
         return SerializeNode(obj, includeChildren: false, out _);
@@ -32,7 +69,6 @@ public static class ProjectSceneSerializer
     public static ProjectSceneObjectEntry SerializeObjectForLibrary(SceneObject obj)
     {
         var entry = SerializeNode(obj);
-        ClearObjectIds(entry);
         return entry;
     }
 
@@ -41,7 +77,28 @@ public static class ProjectSceneSerializer
         if (entry == null || viewport == null || spawnMenu == null)
             return null;
 
-        return RestoreNode(entry, viewport, spawnMenu, parent);
+        SceneObject obj = RestoreNode(entry, viewport, spawnMenu, parent);
+        var objectIds = new Dictionary<string, string>(StringComparer.Ordinal);
+        AssignFreshIds(obj);
+        RemapReferences(obj);
+        return obj;
+
+        void AssignFreshIds(SceneObject node)
+        {
+            string oldId = node.ObjectId;
+            node.ObjectId = Guid.NewGuid().ToString("N");
+            if (!string.IsNullOrEmpty(oldId))
+                objectIds[oldId] = node.ObjectId;
+            foreach (var child in node.Children)
+                AssignFreshIds(child);
+        }
+
+        void RemapReferences(SceneObject node)
+        {
+            RemapObjectReferences(node, objectIds);
+            foreach (var child in node.Children)
+                RemapReferences(child);
+        }
     }
 
     public static bool TryApplySceneObjectRoots(
@@ -166,8 +223,10 @@ public static class ProjectSceneSerializer
 
         ClearScene(viewport);
 
+        var importedIkState = new ImportedIkRestoreState();
         foreach (var root in manifest.SceneObjects)
-            RestoreNode(root, viewport, spawnMenu, parent: null);
+            RestoreNode(root, viewport, spawnMenu, parent: null, importedIkState: importedIkState);
+        importedIkState.RemapReferences();
 
         // Restore albedo textures that were saved with a path but not yet loaded onto the GPU
         propertiesPanel?.LoadPendingAlbedoTextures(viewport.SceneObjects);
@@ -430,6 +489,13 @@ public static class ProjectSceneSerializer
             entry.ParticleTopLevelParticles = particleSpawner.TopLevelParticles;
         }
 
+        if (obj is BoneSceneObject bone)
+        {
+            entry.BoneName = bone.BoneName;
+            entry.BoneEndOffset = bone.EndOffset is { } endOffset ? ToProjectVec3(endOffset) : null;
+            entry.BoneConstraints = bone.Constraints.Select(SerializeBoneConstraint).ToList();
+        }
+
         if (obj is CameraSceneObject camera)
         {
             entry.CameraFov = camera.Fov;
@@ -488,10 +554,14 @@ public static class ProjectSceneSerializer
         Viewport viewport,
         SpawnMenu spawnMenu,
         SceneObject? parent,
-        vec3 parentOriginDelta = default)
+        vec3 parentOriginDelta = default,
+        ImportedIkRestoreState? importedIkState = null)
     {
+        bool completeImportedState = importedIkState == null;
+        importedIkState ??= new ImportedIkRestoreState();
         vec3 originDelta = UpgradeBlockMeshOrigin(entry);
         SceneObject obj = CreateSpawnedObject(entry, spawnMenu) ?? CreateFallbackObject(entry, viewport);
+        importedIkState.CaptureHierarchy(obj);
 
         if (parent != null)
         {
@@ -502,15 +572,18 @@ public static class ProjectSceneSerializer
         // Apply serialized state after parent linkage so inherited bend can
         // resolve against the correct parent during SetBendAngle regeneration.
         RebaseBonePositionKeyframes(obj, entry, parentOriginDelta);
+        importedIkState.RecordObjectId(obj, entry);
         ApplyEntryToObject(obj, entry, spawnMenu);
 
-        RestoreChildren(entry, obj, viewport, spawnMenu, originDelta);
+        RestoreChildren(entry, obj, viewport, spawnMenu, originDelta, importedIkState);
+        if (completeImportedState)
+            importedIkState.RemapReferences();
 
         return obj;
     }
 
     private static void RestoreChildren(ProjectSceneObjectEntry entry, SceneObject obj, Viewport viewport, SpawnMenu spawnMenu,
-        vec3 originDelta)
+        vec3 originDelta, ImportedIkRestoreState importedIkState)
     {
         var usedChildren = new HashSet<SceneObject>();
 
@@ -522,12 +595,13 @@ public static class ProjectSceneSerializer
                 usedChildren.Add(existingChild);
                 vec3 childOriginDelta = UpgradeBlockMeshOrigin(childEntry);
                 RebaseBonePositionKeyframes(existingChild, childEntry, originDelta);
+                importedIkState.RecordObjectId(existingChild, childEntry);
                 ApplyEntryToObject(existingChild, childEntry, spawnMenu);
-                RestoreChildren(childEntry, existingChild, viewport, spawnMenu, childOriginDelta);
+                RestoreChildren(childEntry, existingChild, viewport, spawnMenu, childOriginDelta, importedIkState);
                 continue;
             }
 
-            usedChildren.Add(RestoreNode(childEntry, viewport, spawnMenu, obj, originDelta));
+            usedChildren.Add(RestoreNode(childEntry, viewport, spawnMenu, obj, originDelta, importedIkState));
         }
     }
 
@@ -666,12 +740,12 @@ public static class ProjectSceneSerializer
 
     private static SceneObject CreateFallbackObject(ProjectSceneObjectEntry entry, Viewport viewport)
     {
-        var obj = new SceneObject
-        {
-            Name = entry.Name,
-            ObjectType = string.IsNullOrWhiteSpace(entry.ObjectType) ? "Object" : entry.ObjectType,
-            SpawnCategory = entry.SpawnCategory
-        };
+        SceneObject obj = entry.BoneName != null || entry.BoneConstraints != null
+            ? new BoneSceneObject()
+            : new SceneObject();
+        obj.Name = entry.Name;
+        obj.ObjectType = string.IsNullOrWhiteSpace(entry.ObjectType) ? "Object" : entry.ObjectType;
+        obj.SpawnCategory = entry.SpawnCategory;
 
         obj.AssignObjectId();
         viewport.SceneObjects.Add(obj);
@@ -723,6 +797,18 @@ public static class ProjectSceneSerializer
         obj.SetLocalPosition(ToVec3(entry.Position));
         obj.SetLocalRotation(ToVec3(entry.Rotation));
         obj.SetLocalScale(ToVec3(entry.Scale));
+        if (obj is BoneSceneObject bone)
+        {
+            if (entry.BoneName != null)
+                bone.BoneName = entry.BoneName;
+            if (entry.BoneConstraints != null)
+            {
+                bone.EndOffset = entry.BoneEndOffset != null ? ToVec3(entry.BoneEndOffset) : null;
+                bone.Constraints.Clear();
+                foreach (var constraint in entry.BoneConstraints)
+                    bone.Constraints.Add(DeserializeBoneConstraint(constraint));
+            }
+        }
         if (obj is MiBoneSceneObject bendBone)
         {
             if (entry.InheritBend.HasValue && bendBone.BendParameters is { } bend)
@@ -934,7 +1020,12 @@ public static class ProjectSceneSerializer
         if (resourcePackChanged)
             spawnMenu?.ApplyResourcePackToSpawnedObject(obj, resourcePackStack);
 
-        obj.Keyframes = DeserializeKeyframes(entry.Keyframes);
+        var keyframes = DeserializeKeyframes(entry.Keyframes);
+        if (obj is BoneSceneObject && entry.BoneConstraints == null)
+            foreach (var pair in obj.Keyframes)
+                if (pair.Key.StartsWith("constraint.", StringComparison.Ordinal) && !entry.Keyframes.ContainsKey(pair.Key))
+                    keyframes[pair.Key] = pair.Value;
+        obj.Keyframes = keyframes;
         ApplyShapeKeyWeights(obj, entry.ShapeKeyWeights);
 
         if (obj is CameraSceneObject camera)
@@ -1005,6 +1096,98 @@ public static class ProjectSceneSerializer
     private static ProjectVec4 ToProjectVec4(vec4 value)
     {
         return new ProjectVec4 { X = value.x, Y = value.y, Z = value.z, W = value.w };
+    }
+
+    private static ProjectBoneConstraintEntry SerializeBoneConstraint(BoneConstraint constraint)
+    {
+        var ik = constraint.InverseKinematics;
+        return new ProjectBoneConstraintEntry
+        {
+            Enabled = constraint.Enabled,
+            Type = constraint.Type,
+            InverseKinematics = new ProjectInverseKinematicsSettings
+            {
+                TargetObjectId = ik.TargetObjectId,
+                PoleObjectId = ik.PoleObjectId,
+                ChainLength = ik.ChainLength,
+                Iterations = ik.Iterations,
+                PoleAngle = ik.PoleAngle,
+                Influence = ik.Influence,
+                LockOrientation = ik.LockOrientation,
+                Bones = ik.Bones.Select(bone => new ProjectIkBoneSettings
+                {
+                    BoneObjectId = bone.BoneObjectId,
+                    AllowRotation = bone.AllowRotation,
+                    AllowBend = bone.AllowBend
+                }).ToList()
+            }
+        };
+    }
+
+    private static BoneConstraint DeserializeBoneConstraint(ProjectBoneConstraintEntry constraint)
+    {
+        var ik = constraint.InverseKinematics ?? new ProjectInverseKinematicsSettings();
+        return new BoneConstraint
+        {
+            Enabled = constraint.Enabled,
+            Type = constraint.Type,
+            InverseKinematics = new InverseKinematicsSettings
+            {
+                TargetObjectId = ik.TargetObjectId ?? "",
+                PoleObjectId = ik.PoleObjectId ?? "",
+                ChainLength = ik.ChainLength,
+                Iterations = ik.Iterations,
+                PoleAngle = ik.PoleAngle,
+                Influence = ik.Influence,
+                LockOrientation = ik.LockOrientation,
+                Bones = (ik.Bones ?? new()).Select(bone => new IkBoneSettings
+                {
+                    BoneObjectId = bone.BoneObjectId ?? "",
+                    AllowRotation = bone.AllowRotation,
+                    AllowBend = bone.AllowBend
+                }).ToList()
+            }
+        };
+    }
+
+    internal static void RemapObjectReferences(SceneObject obj, IReadOnlyDictionary<string, string> objectIds)
+    {
+        if (objectIds.TryGetValue(obj.CameraTextureObjectId, out string? cameraId))
+            obj.CameraTextureObjectId = cameraId;
+        foreach (var pair in obj.Keyframes)
+            RemapConstraintTrackReferences(pair.Key, pair.Value, objectIds);
+
+        if (obj is not BoneSceneObject bone)
+            return;
+        foreach (var constraint in bone.Constraints)
+            RemapInverseKinematicsReferences(constraint.InverseKinematics, objectIds);
+    }
+
+    private static void RemapInverseKinematicsReferences(InverseKinematicsSettings ik, IReadOnlyDictionary<string, string> objectIds)
+    {
+        if (objectIds.TryGetValue(ik.TargetObjectId, out string? targetId))
+            ik.TargetObjectId = targetId;
+        if (objectIds.TryGetValue(ik.PoleObjectId, out string? poleId))
+            ik.PoleObjectId = poleId;
+        foreach (var settings in ik.Bones)
+            if (objectIds.TryGetValue(settings.BoneObjectId, out string? boneId))
+                settings.BoneObjectId = boneId;
+    }
+
+    private static void RemapConstraintTrackReferences(string key, List<ObjectKeyframe> track,
+        IReadOnlyDictionary<string, string> objectIds)
+    {
+        if (!key.StartsWith("constraint.", StringComparison.Ordinal) ||
+            !(key.EndsWith(".ik.target", StringComparison.Ordinal) || key.EndsWith(".ik.pole", StringComparison.Ordinal)))
+            return;
+        foreach (var keyframe in track)
+        {
+            string? id = keyframe.Value is JsonElement { ValueKind: JsonValueKind.String } json
+                ? json.GetString()
+                : keyframe.Value as string;
+            if (id != null && objectIds.TryGetValue(id, out string? replacement))
+                keyframe.Value = replacement;
+        }
     }
 
     private static ProjectCameraEffectEntry SerializeCameraEffect(CameraEffect effect)
@@ -1311,7 +1494,6 @@ public static class ProjectSceneSerializer
                 continue;
 
             var libraryEntry = SerializeNode(root);
-            ClearObjectIds(libraryEntry);
             libraryEntry.LibraryEntryId = sourceId;
             libraryEntry.LibrarySourceId = sourceId;
             if (string.IsNullOrWhiteSpace(libraryEntry.Name))
@@ -1320,13 +1502,6 @@ public static class ProjectSceneSerializer
             manifest.ObjectLibrary.Add(libraryEntry);
         }
 
-    }
-
-    private static void ClearObjectIds(ProjectSceneObjectEntry entry)
-    {
-        entry.ObjectId = "";
-        foreach (var child in entry.Children)
-            ClearObjectIds(child);
     }
 
     private static bool ContainsLibraryEntryId(IEnumerable<ProjectSceneObjectEntry> nodes, string libraryEntryId)

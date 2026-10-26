@@ -878,8 +878,35 @@ public class PropertiesPanel : UiPanel
         {
             LibraryEntryId = source.LibraryEntryId,
             LibrarySourceId = source.LibrarySourceId,
+            ObjectId = source.ObjectId,
             Name = source.Name,
             ObjectType = source.ObjectType,
+            BoneName = source.BoneName,
+            BoneEndOffset = source.BoneEndOffset == null ? null : new ProjectVec3
+            {
+                X = source.BoneEndOffset.X, Y = source.BoneEndOffset.Y, Z = source.BoneEndOffset.Z
+            },
+            BoneConstraints = source.BoneConstraints?.Select(constraint => new ProjectBoneConstraintEntry
+            {
+                Enabled = constraint.Enabled,
+                Type = constraint.Type,
+                InverseKinematics = new ProjectInverseKinematicsSettings
+                {
+                    TargetObjectId = constraint.InverseKinematics.TargetObjectId,
+                    PoleObjectId = constraint.InverseKinematics.PoleObjectId,
+                    ChainLength = constraint.InverseKinematics.ChainLength,
+                    Iterations = constraint.InverseKinematics.Iterations,
+                    PoleAngle = constraint.InverseKinematics.PoleAngle,
+                    Influence = constraint.InverseKinematics.Influence,
+                    LockOrientation = constraint.InverseKinematics.LockOrientation,
+                    Bones = constraint.InverseKinematics.Bones.Select(participation => new ProjectIkBoneSettings
+                    {
+                        BoneObjectId = participation.BoneObjectId,
+                        AllowRotation = participation.AllowRotation,
+                        AllowBend = participation.AllowBend
+                    }).ToList()
+                }
+            }).ToList(),
             SpawnCategory = source.SpawnCategory,
             BlockVariant = source.BlockVariant,
             TextureType = source.TextureType,
@@ -1427,6 +1454,249 @@ public class PropertiesPanel : UiPanel
 
         for (int i = 0; i < obj.Children.Count; i++)
             EnsureSceneLibrarySourceIdsRecursive(obj.Children[i]);
+    }
+
+    private void DrawBoneConstraints(BoneSceneObject bone)
+    {
+        if (!ImGui.CollapsingHeader(Localization.DisplayLabel("Constraints"))) return;
+
+        float buttonSize = ImGui.GetFrameHeight();
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + MathF.Max(0f, ImGui.GetContentRegionAvail().X - buttonSize));
+        if (ImGui.Button("+##boneConstraintAdd", new Vector2(buttonSize)))
+            ImGui.OpenPopup("##boneConstraintAddMenu");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(Localization.DisplayText("Add Constraint"));
+        if (ImGui.BeginPopup("##boneConstraintAddMenu"))
+        {
+            if (ImGui.MenuItem(Localization.DisplayLabel("Inverse Kinematics")))
+            {
+                bone.Constraints.Add(new BoneConstraint());
+                ProjectManager.Instance.SetDirty(true);
+            }
+            ImGui.EndPopup();
+        }
+
+        ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 6f * UiTheme.Scale);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(10f, 8f) * UiTheme.Scale);
+        bool visible = ImGui.BeginChild("##boneConstraintList", Vector2.Zero,
+            ImGuiChildFlags.Borders | ImGuiChildFlags.AutoResizeY | ImGuiChildFlags.AlwaysAutoResize | ImGuiChildFlags.AlwaysUseWindowPadding);
+        int removeIndex = -1;
+        if (visible && bone.Constraints.Count == 0)
+            UiText.Disabled(Localization.DisplayText("No constraints added."));
+        if (visible)
+        {
+            var objects = new List<SceneObject>();
+            void Collect(SceneObject obj)
+            {
+                objects.Add(obj);
+                foreach (var child in obj.Children) Collect(child);
+            }
+            if (Viewport != null)
+                foreach (var root in Viewport.SceneObjects) Collect(root);
+
+            for (int i = 0; i < bone.Constraints.Count; i++)
+            {
+                var constraint = bone.Constraints[i];
+                ImGui.PushID(i);
+                if (i > 0) ImGui.Separator();
+                if (ImGui.TreeNodeEx(Localization.DisplayLabel("Inverse Kinematics##constraint"), ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton(Localization.DisplayLabel("Remove"))) removeIndex = i;
+                    bool enabled = constraint.Enabled;
+                    bool changed = ImGui.Checkbox(Localization.DisplayLabel("Enabled"), ref enabled);
+                    constraint.Enabled = enabled;
+                    if (changed) Timeline?.RecordAutoKeyframe(bone, $"constraint.{i}.ik.enabled");
+                    RegisterPropertyContext($"constraint.{i}.ik.enabled");
+                    var ik = constraint.InverseKinematics;
+                    var chain = new List<BoneSceneObject>();
+                    for (SceneObject? current = bone; current is BoneSceneObject chainBone && chain.Count < Math.Clamp(ik.ChainLength, 1, 256); current = current.Parent)
+                        chain.Add(chainBone);
+
+                    bool IsDrivenObject(SceneObject candidate)
+                    {
+                        for (SceneObject? current = candidate; current != null; current = current.Parent)
+                            if (current is BoneSceneObject currentBone && chain.Contains(currentBone)) return true;
+                        return false;
+                    }
+
+                    bool ObjectSelector(string label, ref string objectId)
+                    {
+                        string selectedId = objectId;
+                        string preview = string.IsNullOrEmpty(selectedId) ? Localization.T("text.common.none") :
+                            objects.FirstOrDefault(obj => obj.ObjectId == selectedId)?.Name ?? Localization.DisplayText("Missing object");
+                        bool selectionChanged = false;
+                        if (ImGui.BeginCombo(Localization.DisplayLabel(label), preview))
+                        {
+                            if (ImGui.Selectable(Localization.Label("text.common.none", "None"), string.IsNullOrEmpty(selectedId)))
+                            {
+                                objectId = "";
+                                selectionChanged = true;
+                            }
+                            foreach (var candidate in objects)
+                            {
+                                if (IsDrivenObject(candidate)) continue;
+                                if (ImGui.Selectable($"{candidate.Name}##{candidate.ObjectId}", candidate.ObjectId == selectedId))
+                                {
+                                    objectId = candidate.ObjectId;
+                                    selectionChanged = true;
+                                }
+                            }
+                            ImGui.EndCombo();
+                        }
+                        return selectionChanged;
+                    }
+
+                    string targetId = ik.TargetObjectId;
+                    string poleId = ik.PoleObjectId;
+                    if (ObjectSelector("Target Object", ref targetId))
+                    {
+                        ik.TargetObjectId = targetId;
+                        Timeline?.RecordAutoKeyframe(bone, $"constraint.{i}.ik.target");
+                        changed = true;
+                    }
+                    RegisterPropertyContext($"constraint.{i}.ik.target");
+                    if (ObjectSelector("Pole Object", ref poleId))
+                    {
+                        ik.PoleObjectId = poleId;
+                        Timeline?.RecordAutoKeyframe(bone, $"constraint.{i}.ik.pole");
+                        changed = true;
+                    }
+                    RegisterPropertyContext($"constraint.{i}.ik.pole");
+                    bool lockOrientation = ik.LockOrientation;
+                    if (ImGui.Checkbox(Localization.DisplayLabel("Lock Orientation"), ref lockOrientation))
+                    {
+                        ik.LockOrientation = lockOrientation;
+                        Timeline?.RecordAutoKeyframe(bone, $"constraint.{i}.ik.lock_orientation");
+                        changed = true;
+                    }
+                    RegisterPropertyContext($"constraint.{i}.ik.lock_orientation");
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip(Localization.DisplayText("Hold this bone's animated world orientation while the chain moves it. Its origin stays attached to its parent and Bend remains independent."));
+                    int chainLength = ik.ChainLength;
+                    if (ImGui.InputInt(Localization.DisplayLabel("Chain Length"), ref chainLength))
+                    {
+                        ik.ChainLength = Math.Clamp(chainLength, 1, 256);
+                        Timeline?.RecordAutoKeyframe(bone, $"constraint.{i}.ik.chain_length");
+                        changed = true;
+                    }
+                    RegisterPropertyContext($"constraint.{i}.ik.chain_length");
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip(Localization.DisplayText("Number of bones including this bone, walking up through bone parents. Bendable model parts include their internal joint."));
+                    float influence = ik.Influence;
+                    if (ImGui.SliderFloat(Localization.DisplayLabel("Influence"), ref influence, 0f, 1f))
+                    {
+                        ik.Influence = influence;
+                        Timeline?.RecordAutoKeyframe(bone, $"constraint.{i}.ik.influence");
+                        changed = true;
+                    }
+                    RegisterPropertyContext($"constraint.{i}.ik.influence");
+                    float poleAngle = ik.PoleAngle;
+                    if (ImGui.DragFloat(Localization.DisplayLabel("Pole Angle"), ref poleAngle, 0.5f, -360f, 360f, Localization.T("text.panel.properties.ik_angle_format")))
+                    {
+                        ik.PoleAngle = poleAngle;
+                        Timeline?.RecordAutoKeyframe(bone, $"constraint.{i}.ik.pole_angle");
+                        changed = true;
+                    }
+                    RegisterPropertyContext($"constraint.{i}.ik.pole_angle");
+                    int iterations = ik.Iterations;
+                    if (ImGui.InputInt(Localization.DisplayLabel("Iterations"), ref iterations))
+                    {
+                        ik.Iterations = Math.Clamp(iterations, 1, 256);
+                        Timeline?.RecordAutoKeyframe(bone, $"constraint.{i}.ik.iterations");
+                        changed = true;
+                    }
+                    RegisterPropertyContext($"constraint.{i}.ik.iterations");
+                    UiText.Disabled(Localization.DisplayText("Chain Participation"));
+                    for (int depth = 0; depth < chain.Count; depth++)
+                    {
+                        var chainBone = chain[depth];
+                        ImGui.PushID(chainBone.ObjectId);
+                        UiText.Wrapped(chainBone.Name);
+                        var participation = ik.Bones.FirstOrDefault(entry => entry.BoneObjectId == chainBone.ObjectId);
+                        bool rotate = participation?.AllowRotation ?? true;
+                        bool bend = participation?.AllowBend ?? true;
+                        bool rotationChanged = ImGui.Checkbox(Localization.DisplayLabel("Rotate"), ref rotate);
+                        RegisterPropertyContext($"constraint.{i}.ik.bone.{depth}.rotate");
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip(Localization.DisplayText("Allow the IK solver to rotate this bone locally. Turning this off still follows parent rotation; use Lock Orientation to hold the constrained bone's world orientation."));
+                        bool bendChanged = false;
+                        if (chainBone is MiBoneSceneObject miBone && miBone.BendParameters.HasValue)
+                        {
+                            ImGui.SameLine();
+                            bendChanged = ImGui.Checkbox(Localization.DisplayLabel("Bend"), ref bend);
+                            RegisterPropertyContext($"constraint.{i}.ik.bone.{depth}.bend");
+                        }
+                        if (rotationChanged || bendChanged)
+                        {
+                            if (participation == null)
+                            {
+                                participation = new IkBoneSettings { BoneObjectId = chainBone.ObjectId };
+                                ik.Bones.Add(participation);
+                            }
+                            participation.AllowRotation = rotate;
+                            participation.AllowBend = bend;
+                            if (rotationChanged) Timeline?.RecordAutoKeyframe(bone, $"constraint.{i}.ik.bone.{depth}.rotate");
+                            if (bendChanged) Timeline?.RecordAutoKeyframe(bone, $"constraint.{i}.ik.bone.{depth}.bend");
+                            changed = true;
+                        }
+                        ImGui.PopID();
+                    }
+                    if (string.IsNullOrEmpty(ik.TargetObjectId))
+                        UiText.Disabled(Localization.DisplayText("Select a target object to activate IK."));
+                    else if (objects.FirstOrDefault(obj => obj.ObjectId == ik.TargetObjectId) is not { } target || IsDrivenObject(target))
+                        UiText.Wrapped(Localization.DisplayText("Target is missing or belongs to the driven chain."));
+                    if (changed) ProjectManager.Instance.SetDirty(true);
+                    ImGui.TreePop();
+                }
+                ImGui.PopID();
+            }
+            if (bone.Constraints.Count > 0)
+            {
+                ImGui.Separator();
+                bool customEnd = bone.EndOffset.HasValue;
+                if (ImGui.Checkbox(Localization.DisplayLabel("Custom Bone End"), ref customEnd))
+                {
+                    bone.EndOffset = customEnd ? new vec3(0f, 1f, 0f) : null;
+                    Timeline?.RecordAutoKeyframe(bone, "bone.end_enabled");
+                    ProjectManager.Instance.SetDirty(true);
+                }
+                RegisterPropertyContext("bone.end_enabled");
+                if (bone.EndOffset is vec3 end)
+                {
+                    var value = new Vector3(end.x, end.y, end.z) * 16f;
+                    if (ImGui.DragFloat3(Localization.DisplayLabel("End Offset"), ref value, 0.1f))
+                    {
+                        bone.EndOffset = new vec3(value.X, value.Y, value.Z) / 16f;
+                        foreach (string axis in new[] { "x", "y", "z" })
+                            Timeline?.RecordAutoKeyframe(bone, $"bone.end.{axis}");
+                        ProjectManager.Instance.SetDirty(true);
+                    }
+                    RegisterPropertyContext("bone.end.x", "bone.end.y", "bone.end.z");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(Localization.DisplayText("Bone-local endpoint in model pixels (16 per world unit). Imported end_offset is mapped here. Disable to target this bone's origin."));
+            }
+        }
+        if (removeIndex >= 0)
+        {
+            bone.Constraints.RemoveAt(removeIndex);
+            var shiftedTracks = bone.Keyframes.Where(pair => pair.Key.StartsWith("constraint.", StringComparison.Ordinal))
+                .Select(pair => (pair.Key, pair.Value, Parts: pair.Key.Split('.')))
+                .Where(track => track.Parts.Length >= 3 && int.TryParse(track.Parts[1], out int index) && index >= removeIndex)
+                .ToArray();
+            foreach (var track in shiftedTracks)
+                bone.Keyframes.Remove(track.Key);
+            foreach (var track in shiftedTracks)
+            {
+                int index = int.Parse(track.Parts[1], CultureInfo.InvariantCulture);
+                if (index > removeIndex)
+                    bone.Keyframes[$"constraint.{index - 1}.{string.Join('.', track.Parts.Skip(2))}"] = track.Value;
+            }
+            Timeline?.RefreshFromScene();
+            ProjectManager.Instance.SetDirty(true);
+        }
+        ImGui.EndChild();
+        ImGui.PopStyleVar(2);
     }
 
     private void RemoveSceneObjectsFromLibrary(string libraryEntryId)
@@ -4367,6 +4637,9 @@ public class PropertiesPanel : UiPanel
             }
         }
 
+        if (_currentObject is BoneSceneObject constraintBone)
+            DrawBoneConstraints(constraintBone);
+
         // ── Effects (shown only for CameraSceneObject) ────────────────────────
         if (_currentObject is CameraSceneObject cameraObject)
         {
@@ -5811,6 +6084,17 @@ public class PropertiesPanel : UiPanel
             return defaultValue ? 1f : (float)(axis == 0 ? obj.GetEffectiveTileX() : axis == 1 ? obj.GetEffectiveTileY() : obj.GetEffectiveTileZ());
         if (defaultValue && (path.StartsWith("bend.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal)))
             return 0f;
+        if (defaultValue && path.StartsWith("constraint.", StringComparison.Ordinal))
+            return path.Split('.').Last() switch
+            {
+                "target" or "pole" => "",
+                "enabled" or "influence" or "rotate" or "bend" => 1f,
+                "chain_length" => 2f,
+                "iterations" => 32f,
+                _ => 0f
+            };
+        if (defaultValue && path.StartsWith("bone.end", StringComparison.Ordinal))
+            return path == "bone.end.y" ? 16f : 0f;
         if (defaultValue)
         {
             // Detached defaults preserve the model's base pose and never touch scene resources.
@@ -5824,7 +6108,8 @@ public class PropertiesPanel : UiPanel
             return Timeline!.GetPropertyValue(defaults, path);
         }
         object value = Timeline!.GetPropertyValue(obj, path);
-        return path.StartsWith("position.", StringComparison.Ordinal) ? Convert.ToSingle(value, CultureInfo.InvariantCulture) * 16f : value;
+        return path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal)
+            ? Convert.ToSingle(value, CultureInfo.InvariantCulture) * 16f : value;
     }
 
     private void SetContextPropertyValue(string path, object value, bool recordKeyframe = true, bool resetValue = false)
@@ -5858,7 +6143,7 @@ public class PropertiesPanel : UiPanel
         foreach (var obj in GetSelectedObjectsForEdit())
         {
             // Indexed effect/mesh paths are local to the object that opened the menu.
-            if (obj != _currentObject && (path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal)))
+            if (obj != _currentObject && (path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("constraint.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal)))
                 continue;
             if (path.StartsWith("pivot.", StringComparison.Ordinal))
             {
@@ -5877,7 +6162,7 @@ public class PropertiesPanel : UiPanel
             else
             {
                 object stored = value;
-                if (path.StartsWith("position.", StringComparison.Ordinal))
+                if (path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal))
                     stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / 16f;
                 else if (path.StartsWith("scale.", StringComparison.Ordinal))
                     stored = MathF.Max(0.001f, Convert.ToSingle(value, CultureInfo.InvariantCulture));
@@ -5937,7 +6222,7 @@ public class PropertiesPanel : UiPanel
         {
             if (path.StartsWith("background:", StringComparison.Ordinal) || path.StartsWith("rotation.", StringComparison.Ordinal) ||
                 path.StartsWith("pivot.", StringComparison.Ordinal) || path.StartsWith("tile.", StringComparison.Ordinal)) continue;
-            if (obj != _currentObject && (path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal))) continue;
+            if (obj != _currentObject && (path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("constraint.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal))) continue;
             Timeline?.RecordAutoKeyframe(obj, path);
             if (path == "light.spot_angle") Timeline?.RecordAutoKeyframe(obj, "light.spot_blend");
         }

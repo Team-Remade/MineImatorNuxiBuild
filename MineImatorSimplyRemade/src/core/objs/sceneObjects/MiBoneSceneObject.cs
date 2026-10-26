@@ -74,7 +74,7 @@ public class MiBoneSceneObject : BoneSceneObject
         var source = FindInheritedPoseBone();
         if (source == null) return mat4.Identity;
         return mat4.Translate(source.OffsetPosition) * mat4.Scale(source.OffsetScale)
-            * (source._basePoseRotationInverse * source.GetLocalRotationMatrix());
+            * (source._basePoseRotationInverse * source.GetLocalRotationMatrix()) * source.EvaluatedIkRotation;
     }
 
     private vec3? _lastInheritedPoseBend;
@@ -111,6 +111,80 @@ public class MiBoneSceneObject : BoneSceneObject
         InvalidateRenderEvaluation();
         // Offsets start at zero / one — no extra work needed since the properties
         // below derive them on demand.
+    }
+
+    /// <summary>
+    /// Copies model construction data and authored pose without baking evaluated IK.
+    /// The caller retains identity, hierarchy, constraints and the destination model owner.
+    /// </summary>
+    internal void CopyConstructionStateFrom(MiBoneSceneObject source)
+    {
+        if (ReferenceEquals(this, source)) return;
+
+        _basePosePosition = source._basePosePosition;
+        _basePoseRotation = source._basePoseRotation;
+        _basePoseRotationInverse = source._basePoseRotationInverse;
+        _basePoseScale = source._basePoseScale;
+        SetLocalPosition(source.Position);
+        SetLocalRotationMatrix(source.GetLocalRotationMatrix(), source.Rotation);
+        SetLocalScale(source.Scale);
+        SetBendParameters(source.BendParameters, source.LockBend);
+        ColorAlpha = source.ColorAlpha;
+        ColorBlend = source.ColorBlend;
+        ColorMix = source.ColorMix;
+        ColorBlendAmount = source.ColorBlendAmount;
+        Depth = source.Depth;
+        ResetInverseKinematics();
+        _lastInheritedPoseBend = null;
+        _lastIkVisualBend = null;
+
+        _shapeDataList.Clear();
+        foreach (var data in source._shapeDataList)
+            _shapeDataList.Add(new BoneShapeData
+            {
+                PartName = data.PartName,
+                ShapeIndex = data.ShapeIndex,
+                Shape = data.Shape,
+                Model = data.Model,
+                TextureId = data.TextureId,
+                AccumulatedScale = data.AccumulatedScale,
+                ModelBendStyle = data.ModelBendStyle,
+                PartColorBlend = data.PartColorBlend,
+                PartColorMix = data.PartColorMix,
+                PartColorBlendAmount = data.PartColorBlendAmount,
+                PartColorAlpha = data.PartColorAlpha,
+                PartDepth = data.PartDepth,
+                TextureSize = data.TextureSize?.ToArray(),
+                DoubleSided = data.DoubleSided
+            });
+
+        foreach (var mesh in Visuals) mesh.Dispose();
+        Visuals.Clear();
+        foreach (var mesh in source.Visuals)
+        {
+            var clone = mesh.Clone();
+            // Mesh.Clone shares its GPU bend state; a duplicate must not share
+            // dynamic angles with its source, even before any mesh regeneration.
+            if (mesh.GpuBend is { } bend)
+                clone.GpuBend = new GpuBendState
+                {
+                    Angle = GetEffectiveBendAngle(),
+                    Pivot = bend.Pivot,
+                    ShapePosition = bend.ShapePosition,
+                    InverseShapeTransform = bend.InverseShapeTransform,
+                    SegmentAxis = bend.SegmentAxis,
+                    ScaleCorrectionAxis = bend.ScaleCorrectionAxis,
+                    AxisStart = bend.AxisStart,
+                    BendStart = bend.BendStart,
+                    BendEnd = bend.BendEnd,
+                    BendSize = bend.BendSize,
+                    InvertWeight = bend.InvertWeight,
+                    Sharp = bend.Sharp,
+                    Plane = bend.Plane,
+                    ExtrudedPlane = bend.ExtrudedPlane
+                };
+            AddMesh(clone);
+        }
     }
 
     // ── User-editable offsets (what the Properties panel reads and writes) ─────
@@ -156,7 +230,7 @@ public class MiBoneSceneObject : BoneSceneObject
         // overrides must operate on those channels, not on the combined pose.
         modelTransform = mat4.Translate(_basePosePosition) * _basePoseRotation;
         position = OffsetPosition;
-        rotation = _basePoseRotationInverse * GetLocalRotationMatrix();
+        rotation = _basePoseRotationInverse * GetLocalRotationMatrix() * EvaluatedIkRotation;
     }
 
     /// <summary>
@@ -182,6 +256,36 @@ public class MiBoneSceneObject : BoneSceneObject
     /// The Angle field is the current editable angle.
     /// </summary>
     public BendParams? BendParameters { get; private set; }
+
+    private vec3? _evaluatedIkBend;
+    private vec3? _lastIkVisualBend;
+
+    internal vec3 GetEvaluatedEditableBendAngle() => GetEffectiveEditableBendAngle();
+
+    internal void SetEvaluatedIkBend(vec3 angle)
+    {
+        if (BendParameters is not { } bp) return;
+        _evaluatedIkBend = new vec3(
+            bp.AxisX ? Math.Clamp(angle.x, Math.Min(bp.DirectionMin.x, bp.DirectionMax.x), Math.Max(bp.DirectionMin.x, bp.DirectionMax.x)) : 0f,
+            bp.AxisY ? Math.Clamp(angle.y, Math.Min(bp.DirectionMin.y, bp.DirectionMax.y), Math.Max(bp.DirectionMin.y, bp.DirectionMax.y)) : 0f,
+            bp.AxisZ ? Math.Clamp(angle.z, Math.Min(bp.DirectionMin.z, bp.DirectionMax.z), Math.Max(bp.DirectionMin.z, bp.DirectionMax.z)) : 0f);
+        InvalidateRenderEvaluation();
+    }
+
+    internal override void ResetInverseKinematics()
+    {
+        base.ResetInverseKinematics();
+        _evaluatedIkBend = null;
+    }
+
+    internal void RefreshInverseKinematicsVisuals()
+    {
+        vec3 angle = GetEffectiveBendAngle();
+        // Includes CPU-deformed planes and inherited bends/poses, not only GPU meshes.
+        if (_lastIkVisualBend != angle)
+            RefreshBendVisuals(propagateInheritedBends: false);
+        _lastIkVisualBend = angle;
+    }
 
     /// <summary>lock_bend value from the model (0–1, default 1).</summary>
     public new float LockBend { get; private set; } = 1f;
@@ -429,6 +533,7 @@ public class MiBoneSceneObject : BoneSceneObject
     private vec3 GetEffectiveEditableBendAngle(bool includePose = true)
     {
         if (!BendParameters.HasValue) return vec3.Zero;
+        if (includePose && _evaluatedIkBend.HasValue) return _evaluatedIkBend.Value;
 
         var bp = BendParameters.Value;
         vec3 editable = StoredToEditable(bp.Angle, bp);

@@ -1419,15 +1419,25 @@ public class SceneObject
         return includePivot ? world : logicalWorld;
     }
 
-    private mat4 ComputeWorldMatrixNoPivot()
+    private mat4 ComputeWorldMatrixNoPivot() => ComputeWorldMatrixNoPivot(false, out _, out _, out _);
+
+    internal mat4 GetWorldRotationEditFrame(out mat4 rotationPrefix, out mat4 authoredRotation, out mat4 rotationSuffix) =>
+        ComputeWorldMatrixNoPivot(true, out rotationPrefix, out authoredRotation, out rotationSuffix);
+
+    private mat4 ComputeWorldMatrixNoPivot(bool captureRotationFrame,
+        out mat4 rotationPrefix, out mat4 authoredRotation, out mat4 rotationSuffix)
     {
         GetTimelineTransform(out mat4 modelTransform, out vec3 position, out mat4 rotation);
+        authoredRotation = rotation;
+        rotationPrefix = mat4.Identity;
+        rotationSuffix = mat4.Identity;
         // GameMaker matrix_build rotates before scaling. The resize override
         // below deliberately rebuilds its basis in the opposite order.
         mat4 local = mat4.Translate(position) * mat4.Scale(Scale) * rotation;
 
         mat4 parentWorld = GetBendAdjustedParentMatrix() * modelTransform;
         mat4 world = parentWorld * local;
+        if (captureRotationFrame) rotationPrefix = parentWorld * mat4.Scale(Scale);
 
         // Mine-imator applies inheritance overrides after composing the full
         // transform. Removing rotation/scale must not change child placement.
@@ -1450,23 +1460,35 @@ public class SceneObject
                     scale *= current.Parent.Scale;
             }
             basis = parentWorld * rotation * mat4.Scale(scale);
+            if (captureRotationFrame)
+            {
+                rotationPrefix = parentWorld;
+                rotationSuffix = mat4.Scale(scale);
+            }
         }
         else if (!InheritRotation)
         {
             basis = mat4.Scale(GetBasisScale(world)) * rotation;
+            if (captureRotationFrame) rotationPrefix = mat4.Scale(GetBasisScale(world));
         }
 
         world.m00 = basis.m00; world.m01 = basis.m01; world.m02 = basis.m02;
         world.m10 = basis.m10; world.m11 = basis.m11; world.m12 = basis.m12;
         world.m20 = basis.m20; world.m21 = basis.m21; world.m22 = basis.m22;
         if (this is MiBoneSceneObject poseBone)
-            world *= poseBone.GetInheritedPoseTransform();
+        {
+            mat4 pose = poseBone.GetInheritedPoseTransform();
+            world *= pose;
+            if (captureRotationFrame) rotationSuffix *= pose;
+        }
         if (!InheritPosition)
         {
             world.m30 = position.x;
             world.m31 = position.y;
             world.m32 = position.z;
         }
+        if (this is BoneSceneObject constrainedBone)
+            world = constrainedBone.ApplyInverseKinematicsWorldRotation(world);
         return world;
     }
 

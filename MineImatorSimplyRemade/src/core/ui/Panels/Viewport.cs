@@ -2319,6 +2319,8 @@ public class Viewport : UiPanel
 
     public override unsafe void Render()
     {
+        // Gizmo interaction needs the current solved pose; input changes are solved again below.
+        InverseKinematicsSolver.Evaluate(SceneObjects);
         // Outer window uses the default window padding so the tab bar, borders,
         // and title bar all behave normally when docked.
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0);
@@ -2572,17 +2574,23 @@ public class Viewport : UiPanel
         var imageMin  = ImGui.GetCursorScreenPos();
         var imageSize = size;
 
-        // Camera-backed materials must be refreshed before the main scene is
-        // drawn. Each camera owns a stable texture, so several feeds can be
-        // visible at the same time.
-        PreviewViewport?.UpdateCameraTextureFeeds();
-
         // Use the active camera (work camera or a spawned camera) for both
         // input and rendering so controls always affect what is being viewed.
         var (activeCamera, activeCamObj) = GetActiveRenderCamera();
 
         // ── Camera orbit/pan input ─────────────────────────────────────────────
         HandleCameraInput(imageMin, imageSize, activeCamera, activeCamObj);
+
+        Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
+        bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
+        if (!IsPreviewViewport)
+        {
+            using var particleScope = FrameProfiler.Shared.Measure(ProfileStage.ParticleUpdate);
+            UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
+        }
+        // Input and simulation can move targets. Every view must use that same updated pose.
+        InverseKinematicsSolver.Evaluate(SceneObjects);
+        PreviewViewport?.UpdateCameraTextureFeeds();
 
         // ── 3D render into FBO ────────────────────────────────────────────────
         bool renderedWithVeldrid = false;
@@ -2648,14 +2656,6 @@ public class Viewport : UiPanel
             }
 
             // ── Per-frame mesh globals ─────────────────────────────────────────────
-            Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
-            bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
-            if (!IsPreviewViewport)
-            {
-                using var particleScope = FrameProfiler.Shared.Measure(ProfileStage.ParticleUpdate);
-                UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
-            }
-
             using var evaluation = SceneObject.BeginRenderEvaluation();
             foreach (var root in SceneObjects)
                 root.RefreshInheritedMaterials();
@@ -2992,7 +2992,6 @@ public class Viewport : UiPanel
 
         Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
         bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
-        UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
         Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
         Mesh.AnimatedTextureSpeedScale = Math.Clamp(PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240) / 20.0;
         using var evaluation = SceneObject.BeginRenderEvaluation();
@@ -6386,6 +6385,14 @@ public class Viewport : UiPanel
     {
         if (Gl == null || MainViewport == null) return;
         using var uncachedPreparation = SceneObject.SuspendRenderEvaluation();
+        Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
+        bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
+        if (!IsPreviewViewport)
+        {
+            using var particleScope = FrameProfiler.Shared.Measure(ProfileStage.ParticleUpdate);
+            UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
+        }
+        InverseKinematicsSolver.Evaluate(MainViewport.SceneObjects);
 
         // Render substages/counters aggregate across all views; feed time stays out of PreviewScene.
         using var sceneScope = FrameProfiler.Shared.Measure(
@@ -6442,14 +6449,6 @@ public class Viewport : UiPanel
         MainViewport.RenderBackgroundPlanePublic(w, h);
         Gl.Clear(ClearBufferMask.DepthBufferBit);
 
-
-        Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
-        bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
-        if (!IsPreviewViewport)
-        {
-            using var particleScope = FrameProfiler.Shared.Measure(ProfileStage.ParticleUpdate);
-            UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
-        }
 
         using var evaluation = SceneObject.BeginRenderEvaluation();
         foreach (var root in MainViewport.SceneObjects)

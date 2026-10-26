@@ -81,6 +81,35 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.Position);
         hash.Add(obj.Rotation);
         hash.Add(obj.Scale);
+        hash.Add(obj is BoneSceneObject);
+        if (obj is BoneSceneObject bone)
+        {
+            hash.Add(bone.BoneName);
+            hash.Add(bone.EndOffset.HasValue);
+            if (bone.EndOffset is { } endOffset)
+                hash.Add(endOffset);
+            hash.Add(bone.Constraints.Count);
+            foreach (var constraint in bone.Constraints)
+            {
+                hash.Add(constraint.Enabled);
+                hash.Add((int)constraint.Type);
+                var ik = constraint.InverseKinematics;
+                hash.Add(ik.TargetObjectId);
+                hash.Add(ik.PoleObjectId);
+                hash.Add(ik.ChainLength);
+                hash.Add(ik.Iterations);
+                hash.Add(ik.PoleAngle);
+                hash.Add(ik.Influence);
+                hash.Add(ik.LockOrientation);
+                hash.Add(ik.Bones.Count);
+                foreach (var settings in ik.Bones)
+                {
+                    hash.Add(settings.BoneObjectId);
+                    hash.Add(settings.AllowRotation);
+                    hash.Add(settings.AllowBend);
+                }
+            }
+        }
         bool hasBend = obj is MiBoneSceneObject { BendParameters: not null };
         hash.Add(hasBend);
         if (obj is MiBoneSceneObject { BendParameters: { } bend })
