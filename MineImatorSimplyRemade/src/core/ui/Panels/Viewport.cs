@@ -229,6 +229,7 @@ public class Viewport : UiPanel
     private Shader? _indirectLightingShader;
     private Shader? _indirectDenoiseShader;
     private Shader? _glowShader;
+    private Shader? _bloomShader;
     private Shader? _filmGrainShader;
     private Shader? _antiAliasingShader;
     private Shader? _colorManagementShader;
@@ -813,6 +814,8 @@ public class Viewport : UiPanel
         _indirectDenoiseShader.CompileShader("edge.vert", "indirect_denoise.frag");
         _glowShader = new Shader(Gl);
         _glowShader.CompileShader("edge.vert", "glow.frag");
+        _bloomShader = new Shader(Gl);
+        _bloomShader.CompileShader("edge.vert", "bloom.frag");
         _filmGrainShader = new Shader(Gl);
         _filmGrainShader.CompileShader("edge.vert", "film_grain.frag");
         _antiAliasingShader = new Shader(Gl);
@@ -2036,9 +2039,11 @@ public class Viewport : UiPanel
             return;
 
         Gl.BindTexture(GLEnum.Texture2D, texture);
-        bool rgba = hdr && !rgbOnly;
-        Gl.TexImage2D(GLEnum.Texture2D, 0, hdr ? (rgba ? InternalFormat.Rgba16f : InternalFormat.Rgb16f) : InternalFormat.Rgb, width, height, 0,
-            rgba ? PixelFormat.Rgba : PixelFormat.Rgb, hdr ? GLEnum.Float : GLEnum.UnsignedByte, (void*)0);
+        // Bloom needs floating-point scratch color and coverage so small highlights survive repeated blur.
+        bool rgba = !rgbOnly;
+        bool floatingPoint = hdr || rgba;
+        Gl.TexImage2D(GLEnum.Texture2D, 0, floatingPoint ? (rgba ? InternalFormat.Rgba16f : InternalFormat.Rgb16f) : InternalFormat.Rgb, width, height, 0,
+            rgba ? PixelFormat.Rgba : PixelFormat.Rgb, floatingPoint ? GLEnum.Float : GLEnum.UnsignedByte, (void*)0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
     }
 
@@ -2052,7 +2057,7 @@ public class Viewport : UiPanel
             return;
 
         // Preserve unclipped highlights through glow/DOF until the final display transform.
-        // Keep legacy 8-bit storage when disabled, including for diagnostic render passes.
+        // Keep legacy 8-bit scene storage when disabled, including for diagnostic render passes.
         ResizeGlowResources(preview ? _previewColorTex : _colorTex, width, height, hdr: enabled, rgbOnly: true);
         ResizeGlowResources(preview ? _previewGlowTex : _glowTex, width, height, hdr: enabled);
         ResizeGlowResources(preview ? _previewGlowPingTex : _glowPingTex, width, height, hdr: enabled);
@@ -2863,6 +2868,7 @@ public class Viewport : UiPanel
             if (renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
             {
                 ApplyDepthOfFieldPass(_fbo, _colorTex, _depthTex, _glowFbo, _glowTex, w, h, renderNear, renderFar, activeCamObj);
+                ApplyBloomPass(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, activeCamObj);
                 ApplyColorManagementPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel, activeCamObj);
                 ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel);
                 ApplyFilmGrainPass(_fbo, _colorTex, _glowFbo, _glowTex, w, h, activeCamObj);
@@ -5465,6 +5471,11 @@ public class Viewport : UiPanel
             _filmGrainShader = new Shader(Gl);
             _filmGrainShader.CompileShader("edge.vert", "film_grain.frag");
         }
+        if (_bloomShader == null)
+        {
+            _bloomShader = new Shader(Gl);
+            _bloomShader.CompileShader("edge.vert", "bloom.frag");
+        }
         if (_antiAliasingShader == null)
         {
             _antiAliasingShader = new Shader(Gl);
@@ -5905,6 +5916,93 @@ public class Viewport : UiPanel
             Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.DepthAttachment, GLEnum.Texture2D, depthTexture, 0);
             Gl.Enable(GLEnum.DepthTest);
             Gl.Enable(GLEnum.CullFace);
+        }
+    }
+
+    private void ApplyBloomPass(uint sceneFbo, uint sceneTexture, uint bloomFbo, uint bloomTexture,
+        uint pingFbo, uint pingTexture, uint width, uint height, CameraSceneObject? camera)
+    {
+        if (Gl == null || _bloomShader == null || camera == null || width == 0 || height == 0 ||
+            sceneFbo == 0 || sceneTexture == 0 || bloomFbo == 0 || bloomTexture == 0 || pingFbo == 0 || pingTexture == 0)
+            return;
+
+        foreach (var effect in camera.Effects)
+        {
+            if (effect.Type != CameraEffectType.Bloom || effect.Bloom.Intensity <= 0f)
+                continue;
+            using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.Glow);
+            var settings = effect.Bloom;
+            bool depthTest = Gl.IsEnabled(GLEnum.DepthTest);
+            bool cullFace = Gl.IsEnabled(GLEnum.CullFace);
+            bool blend = Gl.IsEnabled(GLEnum.Blend);
+            Gl.Disable(GLEnum.DepthTest);
+            Gl.Disable(GLEnum.CullFace);
+            Gl.Disable(GLEnum.Blend);
+            Gl.Viewport(0, 0, width, height);
+            Gl.UseProgram(_bloomShader.ShaderProgram);
+            Gl.BindVertexArray(_edgeVao);
+            Gl.ActiveTexture(GLEnum.Texture0);
+            Gl.BindTexture(GLEnum.Texture2D, sceneTexture);
+            Gl.Uniform1(_bloomShader.GetUniformLocation("uScene"), 0);
+            Gl.Uniform1(_bloomShader.GetUniformLocation("uBloom"), 1);
+            Gl.Uniform2(_bloomShader.GetUniformLocation("uTexelSize"), 1f / width, 1f / height);
+            Gl.Uniform1(_bloomShader.GetUniformLocation("uThreshold"), Math.Clamp(settings.Threshold, 0f, 100f) / 100f);
+            Gl.Uniform1(_bloomShader.GetUniformLocation("uIntensity"), Math.Clamp(settings.Intensity, 0f, 1000f) / 100f);
+            Gl.Uniform3(_bloomShader.GetUniformLocation("uBlendColor"), Math.Clamp(settings.BlendColorR, 0f, 1f),
+                Math.Clamp(settings.BlendColorG, 0f, 1f), Math.Clamp(settings.BlendColorB, 0f, 1f));
+            Gl.Uniform1(_bloomShader.GetUniformLocation("uBlendMode"), Math.Clamp((int)settings.BlendMode, 0, 4));
+
+            Gl.BindFramebuffer(GLEnum.Framebuffer, bloomFbo);
+            Gl.DrawBuffer(GLEnum.ColorAttachment0);
+            Gl.Uniform1(_bloomShader.GetUniformLocation("uPass"), 0);
+            Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+
+            // Radius is relative to the image's shorter side; 100% ratio is circular.
+            float radius = Math.Clamp(settings.Radius, 0f, 100f) * 0.0004f * Math.Min(width, height);
+            float ratio = Math.Clamp(settings.AnamorphicRatio, 1f, 1000f) / 100f;
+            float horizontal = radius * MathF.Sqrt(ratio);
+            float vertical = radius / MathF.Sqrt(ratio);
+            // Grow the kernel gradually to avoid gaps between taps at large radii.
+            int stages = Math.Clamp((int)MathF.Ceiling(MathF.Log2(MathF.Max(1f, MathF.Max(horizontal, vertical)))) + 1, 1, 10);
+            Gl.Uniform1(_bloomShader.GetUniformLocation("uPass"), 1);
+            for (int stage = 0; stage < stages && radius > 0f; stage++)
+            {
+                float scale = 0.5f / MathF.Pow(2f, stages - stage - 1);
+                Gl.BindFramebuffer(GLEnum.Framebuffer, pingFbo);
+                Gl.DrawBuffer(GLEnum.ColorAttachment0);
+                Gl.BindTexture(GLEnum.Texture2D, bloomTexture);
+                Gl.Uniform2(_bloomShader.GetUniformLocation("uStep"), horizontal * scale / width, 0f);
+                Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+
+                Gl.BindFramebuffer(GLEnum.Framebuffer, bloomFbo);
+                Gl.DrawBuffer(GLEnum.ColorAttachment0);
+                Gl.BindTexture(GLEnum.Texture2D, pingTexture);
+                Gl.Uniform2(_bloomShader.GetUniformLocation("uStep"), 0f, vertical * scale / height);
+                Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+            }
+
+            // The ping target is free after blur. Copy the base to avoid sampling our output attachment.
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+            Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
+            Gl.ReadBuffer(GLEnum.ColorAttachment0);
+            Gl.BindFramebuffer(GLEnum.DrawFramebuffer, pingFbo);
+            Gl.BlitFramebuffer(0, 0, (int)width, (int)height, 0, 0, (int)width, (int)height,
+                ClearBufferMask.ColorBufferBit, GLEnum.Nearest);
+            Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
+            Gl.DrawBuffer(GLEnum.ColorAttachment0);
+            Gl.BindTexture(GLEnum.Texture2D, pingTexture);
+            Gl.ActiveTexture(GLEnum.Texture1);
+            Gl.BindTexture(GLEnum.Texture2D, bloomTexture);
+            Gl.Uniform1(_bloomShader.GetUniformLocation("uPass"), 2);
+            Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+
+            Gl.BindVertexArray(0);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+            Gl.ActiveTexture(GLEnum.Texture0);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+            if (depthTest) Gl.Enable(GLEnum.DepthTest);
+            if (cullFace) Gl.Enable(GLEnum.CullFace);
+            if (blend) Gl.Enable(GLEnum.Blend);
         }
     }
 
@@ -6715,6 +6813,8 @@ public class Viewport : UiPanel
         {
             ApplyDepthOfFieldPass(_previewFbo, _previewColorTex, _previewDepthTex, _previewGlowFbo, _previewGlowTex,
                 w, h, renderCamera.Near, renderCamera.Far, sceneObj);
+            ApplyBloomPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex,
+                _previewGlowPingFbo, _previewGlowPingTex, w, h, sceneObj);
             ApplyColorManagementPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, MainViewport.PropertiesPanel, sceneObj);
             ApplyAntiAliasingPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, MainViewport.PropertiesPanel);
             ApplyFilmGrainPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);

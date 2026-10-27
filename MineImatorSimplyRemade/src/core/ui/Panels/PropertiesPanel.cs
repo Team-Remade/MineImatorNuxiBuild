@@ -313,8 +313,11 @@ public class PropertiesPanel : UiPanel
 
     // Scale link toggle
     private bool _linkScale = true;
-    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field" };
+    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom" };
     private static readonly string[] CameraShakeModeOptions = { "Rotational", "Positional", "Both" };
+    private static readonly string[] BloomBlendModeOptions =
+        ["text.panel.properties.blend_normal", "text.panel.properties.blend_add", "text.panel.properties.blend_screen",
+         "text.panel.properties.blend_multiply", "text.panel.properties.blend_overlay"];
 
     // ── Right-click keyframe context menu ──────────────────────────────────
     
@@ -1149,6 +1152,7 @@ public class PropertiesPanel : UiPanel
                 {
                     Type = effect.Type,
                     DepthOfField = effect.DepthOfField.Clone(),
+                    Bloom = effect.Bloom.Clone(),
                     Shake = new ProjectCameraShakeSettings
                     {
                         Mode = effect.Shake.Mode,
@@ -4975,6 +4979,7 @@ public class PropertiesPanel : UiPanel
                             CameraEffectType.CameraShake => Localization.T("text.panel.properties.camera_shake") + $"###Camera Shake##cameraEffect{i}",
                             CameraEffectType.FilmGrain => Localization.T("text.panel.properties.film_grain") + $"###Film Grain##cameraEffect{i}",
                             CameraEffectType.DepthOfField => Localization.T("text.panel.properties.depth_of_field") + $"###Depth of Field##cameraEffect{i}",
+                            CameraEffectType.Bloom => Localization.T("text.panel.properties.bloom") + $"###Bloom##cameraEffect{i}",
                             _ => Localization.Format("text.panel.properties.effect", i + 1) + $"###Effect {i + 1}##cameraEffect{i}"
                         };
 
@@ -5084,6 +5089,49 @@ public class PropertiesPanel : UiPanel
                                     _openPropContextMenu = true;
                                 }
                                 if (changed) ProjectManager.Instance.SetDirty(true);
+                            }
+
+                            if (effect.Type == CameraEffectType.Bloom)
+                            {
+                                ImGui.PushID(i);
+                                string basePath = $"camera.effect.{i}.bloom";
+                                foreach (var control in BloomSettings.Controls)
+                                {
+                                    if (control.Key is not ("radius" or "intensity" or "threshold" or "anamorphic_ratio"))
+                                        continue;
+                                    float value = effect.Bloom.GetValue(control.Key);
+                                    if (ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value, control.Min, control.Max, "%.1f%%", ImGuiSliderFlags.AlwaysClamp))
+                                    {
+                                        effect.Bloom.SetValue(control.Key, value);
+                                        Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.{control.Key}");
+                                        ProjectManager.Instance.SetDirty(true);
+                                    }
+                                    RegisterPropertyContext($"{basePath}.{control.Key}");
+                                }
+
+                                var color = new Vector3(effect.Bloom.BlendColorR, effect.Bloom.BlendColorG, effect.Bloom.BlendColorB);
+                                if (ImGui.ColorEdit3(Localization.Label("text.panel.properties.blend_color", "Blend Color"), ref color, ImGuiColorEditFlags.NoInputs))
+                                {
+                                    effect.Bloom.SetValue("blend_color.r", color.X);
+                                    effect.Bloom.SetValue("blend_color.g", color.Y);
+                                    effect.Bloom.SetValue("blend_color.b", color.Z);
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.blend_color.r");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.blend_color.g");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.blend_color.b");
+                                    ProjectManager.Instance.SetDirty(true);
+                                }
+                                RegisterPropertyContext($"{basePath}.blend_color.r", $"{basePath}.blend_color.g", $"{basePath}.blend_color.b");
+
+                                int mode = (int)effect.Bloom.BlendMode;
+                                if (ImGui.Combo(Localization.Label("text.panel.properties.blend_mode", "Blend Mode"), ref mode,
+                                    BloomBlendModeOptions.Select(key => Localization.T(key)).ToArray(), BloomBlendModeOptions.Length))
+                                {
+                                    effect.Bloom.SetValue("mode", mode);
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.mode");
+                                    ProjectManager.Instance.SetDirty(true);
+                                }
+                                RegisterPropertyContext($"{basePath}.mode");
+                                ImGui.PopID();
                             }
 
                             if (effect.Type == CameraEffectType.DepthOfField)
@@ -6621,6 +6669,11 @@ public class PropertiesPanel : UiPanel
                         if (parts[3] == "depth_of_field")
                         {
                             var control = DepthOfFieldSettings.Controls.First(c => c.Key == parts[4]);
+                            stored = Math.Clamp(number, control.Min, control.Max);
+                        }
+                        else if (parts[3] == "bloom")
+                        {
+                            var control = BloomSettings.Controls.First(c => c.Key == string.Join('.', parts.Skip(4)));
                             stored = Math.Clamp(number, control.Min, control.Max);
                         }
                         else if (parts[3] == "film_grain")

@@ -582,6 +582,7 @@ public class ProjectCameraEffectEntry
     public ProjectCameraShakeSettings Shake { get; set; } = new();
     public ProjectFilmGrainSettings FilmGrain { get; set; } = new();
     public DepthOfFieldSettings DepthOfField { get; set; } = new();
+    public BloomSettings Bloom { get; set; } = new();
 }
 
 public class ProjectFilmGrainSettings

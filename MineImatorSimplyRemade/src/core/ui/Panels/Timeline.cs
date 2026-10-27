@@ -1569,6 +1569,7 @@ public class Timeline : UiPanel
             return camera.Effects[index].Type switch
             {
                 CameraEffectType.DepthOfField => Localization.Format("text.panel.timeline.effect_depth_of_field", index + 1),
+                CameraEffectType.Bloom => Localization.Format("text.panel.timeline.effect_bloom", index + 1),
                 CameraEffectType.FilmGrain => Localization.Format("text.panel.timeline.effect_film_grain", index + 1),
                 _ => Localization.Format("text.panel.timeline.effect_camera_shake", index + 1)
             };
@@ -2754,6 +2755,12 @@ public class Timeline : UiPanel
                     yield return $"camera.effect.{i}.depth_of_field.{control.Key}";
                 continue;
             }
+            if (cam.Effects[i].Type == CameraEffectType.Bloom)
+            {
+                foreach (var control in BloomSettings.Controls)
+                    yield return $"camera.effect.{i}.bloom.{control.Key}";
+                continue;
+            }
             if (cam.Effects[i].Type == CameraEffectType.FilmGrain)
             {
                 string grainPath = $"camera.effect.{i}.film_grain";
@@ -3355,6 +3362,8 @@ public class Timeline : UiPanel
             var effect = camFx.Effects[effectIndex];
             if (effect.Type == CameraEffectType.DepthOfField && parts.Length == 5 && parts[3] == "depth_of_field")
                 return effect.DepthOfField.GetValue(parts[4]);
+            if (effect.Type == CameraEffectType.Bloom && parts[3] == "bloom")
+                return effect.Bloom.GetValue(string.Join('.', parts.Skip(4)));
             if (effect.Type == CameraEffectType.CameraShake && parts[3] == "shake")
             {
                 if (parts.Length == 5 && parts[4] == "mode")
@@ -3917,6 +3926,15 @@ public class Timeline : UiPanel
                     effect.DepthOfField.SetValue(parts[4], value);
                 break;
             }
+            case 5 or 6 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "bloom" && obj is CameraSceneObject camBloom:
+            {
+                if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camBloom.Effects.Count)
+                    break;
+                var effect = camBloom.Effects[effectIndex];
+                if (effect.Type == CameraEffectType.Bloom)
+                    effect.Bloom.SetValue(string.Join('.', parts.Skip(4)), value);
+                break;
+            }
             case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "film_grain" && obj is CameraSceneObject camGrain:
             {
                 if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camGrain.Effects.Count)
@@ -4228,6 +4246,17 @@ public class Timeline : UiPanel
                                     newRows.Add(MakeSingle(obj, control.Label, $"{baseDofPath}.{control.Key}", 1));
                             continue;
                         }
+                        if (effect.Type == CameraEffectType.Bloom)
+                        {
+                            string bloomPath = $"camera.effect.{i}.bloom";
+                            string[] paths = BloomSettings.Controls.Select(c => $"{bloomPath}.{c.Key}").ToArray();
+                            if (!paths.Any(propsWithKeyframes.Contains)) continue;
+                            newRows.Add(MakeGroup(obj, $"Effect {i + 1}: Bloom", paths, $"camera.effect.{i}"));
+                            foreach (var control in BloomSettings.Controls)
+                                if (propsWithKeyframes.Contains($"{bloomPath}.{control.Key}"))
+                                    newRows.Add(MakeSingle(obj, control.Label, $"{bloomPath}.{control.Key}", 1));
+                            continue;
+                        }
                         if (effect.Type == CameraEffectType.FilmGrain)
                         {
                             string grainPath = $"camera.effect.{i}.film_grain";
@@ -4421,6 +4450,15 @@ public class Timeline : UiPanel
                     _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Depth of Field", paths, $"camera.effect.{i}"));
                     foreach (var control in DepthOfFieldSettings.Controls)
                         _displayRows.Add(MakeSingle(obj, control.Label, $"{baseDofPath}.{control.Key}", 1));
+                    continue;
+                }
+                if (effect.Type == CameraEffectType.Bloom)
+                {
+                    string bloomPath = $"camera.effect.{i}.bloom";
+                    string[] paths = BloomSettings.Controls.Select(c => $"{bloomPath}.{c.Key}").ToArray();
+                    _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Bloom", paths, $"camera.effect.{i}"));
+                    foreach (var control in BloomSettings.Controls)
+                        _displayRows.Add(MakeSingle(obj, control.Label, $"{bloomPath}.{control.Key}", 1));
                     continue;
                 }
                 if (effect.Type == CameraEffectType.FilmGrain)

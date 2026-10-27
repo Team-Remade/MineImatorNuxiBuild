@@ -354,6 +354,15 @@ internal static class SceneObjectFingerprint
                 hash.Add(depth.RedOffset);
                 hash.Add(depth.GreenOffset);
                 hash.Add(depth.BlueOffset);
+                var bloom = effect.Bloom;
+                hash.Add(bloom.Radius);
+                hash.Add(bloom.Intensity);
+                hash.Add(bloom.Threshold);
+                hash.Add(bloom.AnamorphicRatio);
+                hash.Add(bloom.BlendColorR);
+                hash.Add(bloom.BlendColorG);
+                hash.Add(bloom.BlendColorB);
+                hash.Add((int)bloom.BlendMode);
                 hash.Add(effect.Shake.Mode);
                 hash.Add(effect.Shake.Trauma);
                 hash.Add(effect.Shake.Strength);

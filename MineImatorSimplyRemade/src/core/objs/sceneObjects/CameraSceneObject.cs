@@ -116,6 +116,9 @@ public class CameraSceneObject : SceneObject
             case CameraEffectType.DepthOfField:
                 Effects.Add(new CameraEffect { Type = CameraEffectType.DepthOfField });
                 break;
+            case CameraEffectType.Bloom:
+                Effects.Add(new CameraEffect { Type = CameraEffectType.Bloom });
+                break;
         }
     }
 
@@ -125,6 +128,7 @@ public class CameraSceneObject : SceneObject
         {
             Type = source.Type,
             DepthOfField = source.DepthOfField.Clone(),
+            Bloom = source.Bloom.Clone(),
             Shake = new CameraShakeSettings
             {
                 Mode = source.Shake.Mode,
