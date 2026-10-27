@@ -222,7 +222,10 @@ public class PreviewRenderer : IDisposable
                         model = mat4.Translate(-(min + max) * 0.5f);
                 }
                 foreach (var mesh in meshes)
+                {
+                    Mesh.ApplyBlendMode(_gl, mesh.BlendMode);
                     mesh.Render(model, view, proj);
+                }
 
                 if (sceneRoot != null)
                     RenderSceneObjectRecursive(sceneRoot, view, proj);
@@ -234,6 +237,8 @@ public class PreviewRenderer : IDisposable
         }
 
         // ── Restore GL state ─────────────────────────────────────────────────
+        _gl.BlendEquation(GLEnum.FuncAdd);
+        _gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
         _gl.BindFramebuffer(GLEnum.Framebuffer, 0);
     }
 
@@ -248,7 +253,10 @@ public class PreviewRenderer : IDisposable
         mat4 worldMatrix = obj.GetWorldMatrix();
 
         foreach (var mesh in obj.Visuals)
+        {
+            Mesh.ApplyBlendMode(_gl, mesh.BlendMode);
             mesh.Render(worldMatrix, view, proj);
+        }
 
         foreach (var child in obj.Children)
             RenderSceneObjectRecursive(child, view, proj);

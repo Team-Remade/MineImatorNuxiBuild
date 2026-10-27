@@ -4947,9 +4947,12 @@ public class Viewport : UiPanel
         foreach (var (_, index) in _renderOrder)
         {
             var (model, mesh, _, includeFog, blurTexture, textureMipmaps) = renderItems[index];
+            Mesh.ApplyBlendMode(Gl, mesh.BlendMode);
             SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allLights);
             RenderMeshWithModeOverride(mesh, model, view, proj, forceUnshaded, includeFog, blurTexture, textureMipmaps, _preparedMipmaps);
         }
+        Gl.BlendEquation(GLEnum.FuncAdd);
+        Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
         Gl.Disable(GLEnum.Blend);
     }
 

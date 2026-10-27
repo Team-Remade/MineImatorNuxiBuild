@@ -607,6 +607,28 @@ public class Mesh : IDisposable
         set => DefaultMaterial.AlphaClipThreshold = Math.Clamp(value, 0f, 1f);
     }
 
+    public MaterialBlendMode BlendMode
+    {
+        get => DefaultMaterial.BlendMode;
+        set => DefaultMaterial.BlendMode = value;
+    }
+
+    internal static void ApplyBlendMode(GL gl, MaterialBlendMode mode)
+    {
+        var source = mode switch
+        {
+            MaterialBlendMode.Multiply => GLEnum.DstColor,
+            MaterialBlendMode.Screen => GLEnum.OneMinusDstColor,
+            _ => GLEnum.SrcAlpha
+        };
+        var destination = mode is MaterialBlendMode.Add or MaterialBlendMode.Subtract or MaterialBlendMode.Screen
+            ? GLEnum.One : GLEnum.OneMinusSrcAlpha;
+        gl.BlendEquationSeparate(mode == MaterialBlendMode.Subtract ? GLEnum.FuncReverseSubtract : GLEnum.FuncAdd,
+            GLEnum.FuncAdd);
+        gl.BlendFuncSeparate(source, destination,
+            mode == MaterialBlendMode.Normal ? GLEnum.SrcAlpha : GLEnum.One, GLEnum.OneMinusSrcAlpha);
+    }
+
     public vec4 BlendColor
     {
         get => DefaultMaterial.BlendColor;
@@ -837,6 +859,7 @@ public class Mesh : IDisposable
         dstMat.NormalEnabled             = srcMat.NormalEnabled;
         dstMat.NormalTexture             = srcMat.NormalTexture;
         dstMat.Transparency              = srcMat.Transparency;
+        dstMat.BlendMode                 = srcMat.BlendMode;
         dstMat.EmissionEnabled           = srcMat.EmissionEnabled;
         dstMat.EmissionTexture           = srcMat.EmissionTexture;
         dstMat.Emission                  = srcMat.Emission;
@@ -1302,6 +1325,7 @@ public class Mesh : IDisposable
         SetUniformVec4("uBlendColor", BlendColor);
         SetUniformVec4("uMixColor", MixColor);
         SetUniformFloat("uAlpha", Alpha);
+        SetUniformBool("uPremultiplyBlend", BlendMode is MaterialBlendMode.Multiply or MaterialBlendMode.Screen);
         SetUniformBool("uAlphaClipEnabled", AlphaMode == MaterialAlphaMode.Clip);
         SetUniformFloat("uAlphaClipThreshold", AlphaClipThreshold);
         SetUniformBool("uEmissionEnabled", EmissionEnabled);

@@ -218,6 +218,7 @@ internal static class SceneObjectFingerprint
             hash.Add(material.HeightScale);
             hash.Add(material.NormalEnabled);
             hash.Add(material.Transparency);
+            hash.Add((int)material.BlendMode);
             hash.Add(material.DoubleSided);
             hash.Add(material.TextureOffset);
             hash.Add(material.TextureRepeat);

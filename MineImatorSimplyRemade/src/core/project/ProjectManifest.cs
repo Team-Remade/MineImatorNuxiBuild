@@ -438,6 +438,7 @@ public class ProjectSceneObjectEntry
     public bool NormalEnabled { get; set; } = false;
     public float Transparency { get; set; } = 0f;
     public MaterialAlphaMode AlphaMode { get; set; } = MaterialAlphaMode.Blend;
+    public MaterialBlendMode BlendMode { get; set; } = MaterialBlendMode.Normal;
     public float AlphaClipThreshold { get; set; } = 0.5f;
     public bool DoubleSided { get; set; } = false;
     public float TextureOffsetH { get; set; } = 0f;

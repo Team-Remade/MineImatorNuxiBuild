@@ -18,6 +18,15 @@ public enum MaterialAlphaMode
     Clip
 }
 
+public enum MaterialBlendMode
+{
+    Normal = 0,
+    Add,
+    Subtract,
+    Multiply,
+    Screen
+}
+
 /// <summary>
 /// Per-object material overrides that can be inherited down the scene hierarchy.
 /// Mirrors the Godot MaterialSettings class from ExampleSceneObject.
@@ -45,6 +54,7 @@ public class MaterialSettings
     /// <summary>Alpha-transparency amount (0 = fully opaque, 1 = fully transparent).</summary>
     public float Transparency = 0f;
     public MaterialAlphaMode AlphaMode = MaterialAlphaMode.Blend;
+    public MaterialBlendMode BlendMode = MaterialBlendMode.Normal;
     public float AlphaClipThreshold = 0.5f;
     public bool EmissionEnabled = false;
     public vec4 EmissionColor = new vec4(0f, 0f, 0f, 1f);
@@ -97,6 +107,7 @@ public class MaterialSettings
             NormalTexture = this.NormalTexture,
             Transparency = this.Transparency,
             AlphaMode = this.AlphaMode,
+            BlendMode = this.BlendMode,
             AlphaClipThreshold = this.AlphaClipThreshold,
             EmissionEnabled = this.EmissionEnabled,
             EmissionColor = this.EmissionColor,
@@ -1007,6 +1018,7 @@ public class SceneObject
             // can control opacity: 0 Transparency = fully opaque.
             mesh.Alpha = mesh.BaseAlpha * settings.AlbedoColor.w * (1f - settings.Transparency);
             mesh.AlphaMode = settings.AlphaMode;
+            mesh.BlendMode = settings.BlendMode;
             mesh.AlphaClipThreshold = settings.AlphaClipThreshold;
             bool useAutoEmission = settings.AutoEmission && mesh.AutoEmissionLevel > 0;
             if (useAutoEmission)

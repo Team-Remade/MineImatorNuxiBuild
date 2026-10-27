@@ -5101,6 +5101,26 @@ public class PropertiesPanel : UiPanel
 
         if (ImGui.CollapsingHeader(Localization.Label("text.common.appearance", "Appearance")))
         {
+            int blendMode = (int)(_currentObject.MaterialSettings?.BlendMode ?? MaterialBlendMode.Normal);
+            string[] blendModes = [
+                Localization.Label("text.panel.properties.blend_normal", "Normal"),
+                Localization.Label("text.panel.properties.blend_add", "Add"),
+                Localization.Label("text.panel.properties.blend_subtract", "Subtract"),
+                Localization.Label("text.panel.properties.blend_multiply", "Multiply"),
+                Localization.Label("text.panel.properties.blend_screen", "Screen")
+            ];
+            if (ImGui.Combo(Localization.Label("text.panel.properties.blend_mode", "Blend Mode"), ref blendMode,
+                    blendModes, blendModes.Length))
+            {
+                ApplyToSelectedSubtrees(obj =>
+                {
+                    obj.SetExplicitMaterialSettings();
+                    obj.MaterialSettings.BlendMode = (MaterialBlendMode)blendMode;
+                    obj.PropagateMaterialSettingsToChildren();
+                });
+                ProjectManager.Instance.SetDirty(true);
+            }
+
             bool vis = _currentObject.ObjectVisible;
             if (ImGui.Checkbox(Localization.Label("text.common.visible", "Visible"), ref vis))
             {

@@ -433,6 +433,7 @@ public static class ProjectSceneSerializer
             entry.NormalEnabled = obj.MaterialSettings.NormalEnabled;
             entry.Transparency = obj.MaterialSettings.Transparency;
             entry.AlphaMode = obj.MaterialSettings.AlphaMode;
+            entry.BlendMode = obj.MaterialSettings.BlendMode;
             entry.AlphaClipThreshold = obj.MaterialSettings.AlphaClipThreshold;
             entry.DoubleSided = obj.MaterialSettings.DoubleSided;
             entry.TextureOffsetH = obj.MaterialSettings.TextureOffset.x;
@@ -1002,6 +1003,8 @@ public static class ProjectSceneSerializer
             material.AlphaMode = Enum.IsDefined(typeof(MaterialAlphaMode), entry.AlphaMode)
                 ? entry.AlphaMode : MaterialAlphaMode.Blend;
             material.AlphaClipThreshold = Math.Clamp(entry.AlphaClipThreshold, 0f, 1f);
+            material.BlendMode = Enum.IsDefined(typeof(MaterialBlendMode), entry.BlendMode)
+                ? entry.BlendMode : MaterialBlendMode.Normal;
             material.DoubleSided = entry.DoubleSided;
             material.TextureOffset = new vec2(entry.TextureOffsetH, entry.TextureOffsetV);
             material.TextureRepeat = new vec2(Math.Max(0.0001f, entry.TextureRepeatH), Math.Max(0.0001f, entry.TextureRepeatV));

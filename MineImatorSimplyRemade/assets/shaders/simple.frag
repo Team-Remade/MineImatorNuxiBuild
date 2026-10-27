@@ -9,6 +9,7 @@ uniform vec3  uAlbedo;
 uniform vec4  uBlendColor;
 uniform vec4  uMixColor;
 uniform float uAlpha;
+uniform bool  uPremultiplyBlend;
 uniform bool  uAlphaClipEnabled;
 uniform float uAlphaClipThreshold;
 uniform bool  uBendEnabled;
@@ -716,4 +717,6 @@ void main() {
     GiRadiance = vec4(bounceSource * textFillWeight * alpha, alpha);
     // Leave HDR range intact; downstream scene effects own exposure/tone mapping.
     FragColor   = vec4(pbr ? toDisplay(result) : result, uAlphaClipEnabled ? 1.0 : alpha);
+    // Multiply and screen use opacity-weighted source RGB in framebuffer blending.
+    if (uPremultiplyBlend) FragColor.rgb *= FragColor.a;
 }

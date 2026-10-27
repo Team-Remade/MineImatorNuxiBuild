@@ -32,7 +32,7 @@ public sealed class VeldridSceneRenderer : IDisposable
     private readonly VeldridTexture _white;
     private readonly Sampler _pointSampler;
     private readonly Sampler _linearSampler;
-    private readonly Dictionary<(bool Wire, bool Overlay, FaceCullMode Cull, bool AlphaClip), Pipeline> _pipelines = new();
+    private readonly Dictionary<(bool Wire, bool Overlay, FaceCullMode Cull, bool AlphaClip, MaterialBlendMode BlendMode), Pipeline> _pipelines = new();
     private readonly Dictionary<uint, VeldridTexture> _textures = new();
     private readonly List<IDisposable> _frameResources = new();
     private VeldridFramebuffer? _target;
@@ -134,11 +134,13 @@ public sealed class VeldridSceneRenderer : IDisposable
                 vec3 normal = length(vNormal) > 0.00001 ? normalize(vNormal) : vec3(0, 1, 0);
                 normal = mappedNormal(normal);
                 if (alpha <= (MapOptions.z > 0.5 ? MapOptions.w : 0.0)) discard;
+                if (MapOptions.z > 0.5) alpha = 1.0;
                 if (!gl_FrontFacing) normal = -normal;
                 vec3 light = Ambient.rgb + LightColor.rgb * max(dot(normal, normalize(LightDirection.xyz)), 0.0);
                 vec3 emissionMask = MapOptions.y > 0.5
                     ? texture(sampler2D(EmissionTexture, SurfaceSampler), vUv).rgb : texel.rgb;
                 vec3 result = Options.x > 0.5 ? base : base * light + Emission.rgb * emissionMask;
+                if (Options.w > 0.5) result *= alpha;
                 Color = vec4(result, alpha);
             }
             """;
@@ -236,7 +238,8 @@ public sealed class VeldridSceneRenderer : IDisposable
             LightColor = new vec4(Mesh.GlobalFillLightColor * Mesh.GlobalFillLightStrength, 0),
             LightDirection = new vec4(1, 1, 1, 0),
             Options = new vec4(forceUnshaded || mesh.Unlit ? 1 : 0,
-                _device.IsDepthRangeZeroToOne ? 1 : 0, _device.IsClipSpaceYInverted ? -1 : 1, 0),
+                _device.IsDepthRangeZeroToOne ? 1 : 0, _device.IsClipSpaceYInverted ? -1 : 1,
+                mesh.BlendMode is MaterialBlendMode.Multiply or MaterialBlendMode.Screen ? 1 : 0),
             MapOptions = new vec4(useNormalTexture ? 1 : 0, useEmissionTexture ? 1 : 0,
                 mesh.AlphaMode == MaterialAlphaMode.Clip ? 1 : 0, mesh.AlphaClipThreshold)
         };
@@ -250,14 +253,26 @@ public sealed class VeldridSceneRenderer : IDisposable
         _frameResources.Add(set);
         FaceCullMode cull = mesh.DoubleSided ? FaceCullMode.None : mesh.CullFrontFaces ? FaceCullMode.Front : FaceCullMode.Back;
         bool alphaClip = mesh.AlphaMode == MaterialAlphaMode.Clip;
-        var key = (_wireframe, mesh.DepthTestDisabled, cull, alphaClip);
+        var key = (_wireframe, mesh.DepthTestDisabled, cull, alphaClip, mesh.BlendMode);
         if (!_pipelines.TryGetValue(key, out var pipeline))
         {
+            var (sourceColor, destinationColor, colorFunction) = mesh.BlendMode switch
+            {
+                MaterialBlendMode.Add => (BlendFactor.SourceAlpha, BlendFactor.One, BlendFunction.Add),
+                MaterialBlendMode.Subtract => (BlendFactor.SourceAlpha, BlendFactor.One, BlendFunction.ReverseSubtract),
+                // These modes receive premultiplied RGB from the fragment shader.
+                MaterialBlendMode.Multiply => (BlendFactor.DestinationColor, BlendFactor.InverseSourceAlpha, BlendFunction.Add),
+                MaterialBlendMode.Screen => (BlendFactor.InverseDestinationColor, BlendFactor.One, BlendFunction.Add),
+                _ => (alphaClip ? BlendFactor.One : BlendFactor.SourceAlpha,
+                    alphaClip ? BlendFactor.Zero : BlendFactor.InverseSourceAlpha, BlendFunction.Add)
+            };
+            var blend = new BlendAttachmentDescription(true,
+                sourceColor, destinationColor, colorFunction,
+                alphaClip || mesh.BlendMode != MaterialBlendMode.Normal ? BlendFactor.One : BlendFactor.SourceAlpha,
+                alphaClip ? BlendFactor.Zero : BlendFactor.InverseSourceAlpha, BlendFunction.Add);
             pipeline = _device.ResourceFactory.CreateGraphicsPipeline(new GraphicsPipelineDescription
             {
-                BlendState = alphaClip
-                    ? BlendStateDescription.SingleOverrideBlend
-                    : BlendStateDescription.SingleAlphaBlend,
+                BlendState = new BlendStateDescription(RgbaFloat.Black, blend),
                 DepthStencilState = new DepthStencilStateDescription(!mesh.DepthTestDisabled,
                     !mesh.DepthTestDisabled, ComparisonKind.Less),
                 RasterizerState = new RasterizerStateDescription(cull,

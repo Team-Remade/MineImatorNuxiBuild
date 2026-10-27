@@ -39,6 +39,7 @@ public class StandardMaterial : Material
 
     public float Transparency;
     public MaterialAlphaMode AlphaMode = MaterialAlphaMode.Blend;
+    public MaterialBlendMode BlendMode = MaterialBlendMode.Normal;
     public float AlphaClipThreshold = 0.5f;
 
     /// <summary>
