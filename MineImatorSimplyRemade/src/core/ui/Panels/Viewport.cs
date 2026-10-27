@@ -6919,6 +6919,7 @@ public class Viewport : UiPanel
         // Process full input (orbit, pan, zoom, free-fly, gizmo) through the
         // centralized input handler. The gizmo is shared with the main viewport
         // (see InitPreviewViewport) so hover/drag works here as well.
+        var previousCameraPose = (cam.Target, cam.Yaw, cam.Pitch, cam.Roll, cam.Distance);
         _previewInput.ProcessInput(
             cam,
             MainViewport?.Gizmo,
@@ -6945,8 +6946,9 @@ public class Viewport : UiPanel
             OverlaysEnabled
         );
 
-        // Sync camera transform only when a scene camera is active
-        sceneObj?.SyncTransformFromCamera();
+        // Idle preview frames must not rewrite authored camera transforms.
+        if (previousCameraPose != (cam.Target, cam.Yaw, cam.Pitch, cam.Roll, cam.Distance))
+            sceneObj?.SyncTransformFromCamera();
 
         // If the input handler queued a left-click pick, convert it from
         // screen-space into the preview FBO's pixel space and store it so the
@@ -7124,6 +7126,7 @@ public class Viewport : UiPanel
         bool resetFlyCamera = Keybinds.Pressed("resetFlyCamera");
 
         // Process input through the centralized input handler
+        var previousCameraPose = (camera.Target, camera.Yaw, camera.Pitch, camera.Roll, camera.Distance);
         _input.ProcessInput(
             camera,
             Gizmo,
@@ -7149,9 +7152,8 @@ public class Viewport : UiPanel
             OverlaysEnabled
         );
 
-        // Keep spawned camera scene-object transform in sync when the active
-        // viewport camera is a scene camera (distance ~= first-person mode).
-        sceneObj?.SyncTransformFromCamera();
+        if (previousCameraPose != (camera.Target, camera.Yaw, camera.Pitch, camera.Roll, camera.Distance))
+            sceneObj?.SyncTransformFromCamera();
 
         // Sync old fields for backward compatibility
         _freeFly = _input.IsFreeFlyActive;

@@ -164,7 +164,8 @@ public class Camera
     /// <summary>Returns a right-handed look-at view matrix.</summary>
     public mat4 GetViewMatrix()
     {
-        vec3 forward = (Target - Position).Normalized;
+        // Avoid cancellation when a scene camera's target is very close to its eye.
+        vec3 forward = -OffsetFromTarget().Normalized;
         vec3 right = vec3.Cross(forward, vec3.UnitY);
         if (right.LengthSqr < 1e-8f)
             right = vec3.UnitX;
@@ -175,7 +176,8 @@ public class Camera
         if (MathF.Abs(Roll) > 1e-8f)
             up = (up * MathF.Cos(Roll) + right * MathF.Sin(Roll)).Normalized;
 
-        return mat4.LookAt(Position, Target, up);
+        vec3 eye = Position;
+        return mat4.LookAt(eye, eye + forward, up);
     }
 
     /// <summary>

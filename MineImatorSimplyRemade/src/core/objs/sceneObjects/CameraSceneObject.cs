@@ -201,30 +201,28 @@ public class CameraSceneObject : SceneObject
     }
 
     /// <summary>
-    /// Synchronises <see cref="ViewCamera"/> so that its eye position matches
-    /// <see cref="SceneObject.Position"/> and it looks in the direction encoded
-    /// by <see cref="SceneObject.Rotation"/> (Euler XYZ in radians).
-    ///
-    /// The camera's target includes the <see cref="PivotOffset"/> so that the camera
-    /// looks at the pivot point rather than the origin position.
-    ///
-    /// Sign mapping (derived from matching Camera.OffsetFromTarget against
-    /// the mesh look-direction produced by GetLocalMatrix = rz*ry*rx):
-    ///   ViewCamera.Yaw   =  Rotation.y   (same sign — both rotate around +Y)
-    ///   ViewCamera.Pitch = -Rotation.x   (negated — RotateX pitches opposite to
-    ///                                     the camera's OffsetFromTarget Y term)
+    /// Synchronises <see cref="ViewCamera"/> with the evaluated world transform,
+    /// including the existing eye displacement by <see cref="PivotOffset"/>.
     /// </summary>
     public void SyncCameraToTransform()
     {
         var world = GetWorldMatrixNoPivot();
-        var rotation = MineImatorSimplyRemade.core.mdl.mineImator.MineImatorLoader.MatrixToEulerRzRyRx(
-            CopyConstraintSolver.Rotation(world));
-        float yaw   =  rotation.y;
-        float pitch = -rotation.x;
+        var rotation = CopyConstraintSolver.Rotation(world);
+        var backward = new GlmSharp.vec3(rotation.m20, rotation.m21, rotation.m22);
+        var up = new GlmSharp.vec3(rotation.m10, rotation.m11, rotation.m12);
+        float horizontal = MathF.Sqrt(backward.x * backward.x + backward.z * backward.z);
+        float yaw = horizontal > 1e-6f ? MathF.Atan2(backward.x, backward.z) : 0f;
+        float pitch = MathF.Atan2(backward.y, horizontal);
+
+        // Scene Euler Z is not camera roll. Use the same zero-roll frame as Camera.GetViewMatrix.
+        var right = horizontal >= 1e-4f
+            ? new GlmSharp.vec3(MathF.Cos(yaw), 0f, -MathF.Sin(yaw))
+            : GlmSharp.vec3.UnitX;
+        var baseUp = GlmSharp.vec3.Cross(right, -backward).Normalized;
 
         ViewCamera.Yaw      = yaw;
         ViewCamera.Pitch    = pitch;
-        ViewCamera.Roll     = rotation.z;
+        ViewCamera.Roll     = MathF.Atan2(GlmSharp.vec3.Dot(up, right), GlmSharp.vec3.Dot(up, baseUp));
         ViewCamera.Distance = 0.001f; // near-zero so eye ≈ Position
 
         // eye = Target + OffsetFromTarget()  →  Target = eye − OffsetFromTarget()
@@ -238,12 +236,6 @@ public class CameraSceneObject : SceneObject
         ViewCamera.Target = new GlmSharp.vec3(world.m30, world.m31, world.m32) - offset + PivotOffset;
     }
 
-    /// <summary>
-    /// Reads <see cref="ViewCamera"/>'s current eye position and look direction
-    /// back into the scene-object transform (<see cref="SceneObject.Position"/>
-    /// and <see cref="SceneObject.Rotation"/>).
-    /// Call this after the camera viewport moves the fly camera.
-    /// </summary>
     /// <summary>
     /// Applies a look direction directly to the camera view state and keeps the
     /// scene-object transform in sync. This is used for gizmo-based rotation so
@@ -271,13 +263,25 @@ public class CameraSceneObject : SceneObject
         SyncTransformFromCamera();
     }
 
+    /// <summary>Writes viewport navigation back into the local scene transform.</summary>
     public void SyncTransformFromCamera()
     {
-        SetLocalPosition(ViewCamera.Position);
+        var position = ViewCamera.Position - PivotOffset;
+        if (InheritPosition && Parent != null)
+        {
+            var local = GetParentWorldTransform().Inverse * new GlmSharp.vec4(position, 1f);
+            position = new GlmSharp.vec3(local.x, local.y, local.z);
+        }
+        SetLocalPosition(position);
 
-        // Inverse of SyncCameraToTransform:
-        //   Rotation.y =  ViewCamera.Yaw
-        //   Rotation.x = -ViewCamera.Pitch  (pitch sign flipped back)
-        SetLocalRotation(new GlmSharp.vec3(-ViewCamera.Pitch, ViewCamera.Yaw, ViewCamera.Roll));
+        var world = GetWorldRotationEditFrame(out var prefix, out _, out var suffix);
+        if (MathF.Abs(prefix.Determinant) <= 1e-8f || MathF.Abs(suffix.Determinant) <= 1e-8f)
+            return;
+
+        var desiredRotation = CopyConstraintSolver.Rotation(ViewCamera.GetViewMatrix().Transposed);
+        // Rotate the existing basis to retain its scale before removing the parent/edit frame.
+        var desiredBasis = desiredRotation * CopyConstraintSolver.Rotation(world).Transposed * world;
+        var localRotation = CopyConstraintSolver.Rotation(prefix.Inverse * desiredBasis * suffix.Inverse);
+        SetLocalRotation(MineImatorSimplyRemade.core.mdl.mineImator.MineImatorLoader.MatrixToEulerRzRyRx(localRotation));
     }
 }
