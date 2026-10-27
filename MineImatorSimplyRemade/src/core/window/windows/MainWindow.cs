@@ -221,6 +221,7 @@ public class MainWindow : Window
     private readonly Dictionary<SceneObject, ProjectSceneObjectEntry> _historyObjectBaselines = new();
     private readonly Dictionary<SceneObject, ProjectSceneObjectEntry> _activeHistoryObjectBaselines = new();
     private SceneHistoryAction.HierarchyState? _historyHierarchyBaseline;
+    private SceneHistoryAction.ProjectState? _historyProjectBaseline;
     private bool _historyInteractionActive;
 
     private readonly UiPanel[] _panels =
@@ -2491,6 +2492,7 @@ public class MainWindow : Window
         _historyInteractionActive = false;
         CaptureSelectedObjectBaselines(_historyObjectBaselines);
         _historyHierarchyBaseline = _mainViewport == null ? null : new SceneHistoryAction.HierarchyState(_mainViewport);
+        _historyProjectBaseline = SceneHistoryAction.ProjectState.Capture(_projectManager.Manifest);
     }
 
     private void CaptureSelectedObjectBaselines(Dictionary<SceneObject, ProjectSceneObjectEntry> destination)
@@ -2511,7 +2513,7 @@ public class MainWindow : Window
         actions.Add(action);
     }
 
-    private void UpdateUndoRedoTracking()
+    private void UpdateUndoRedoTracking(bool commitInteraction = false)
     {
         if (!_projectManager.HasProject || _mainViewport == null || _spawnMenu == null)
             return;
@@ -2524,7 +2526,7 @@ public class MainWindow : Window
                                  ImGui.IsMouseDown(ImGuiMouseButton.Right) ||
                                  ImGui.IsMouseDown(ImGuiMouseButton.Middle);
 
-        if (interactionActive)
+        if (interactionActive && !commitInteraction)
         {
             if (!_historyInteractionActive)
             {
@@ -2542,13 +2544,17 @@ public class MainWindow : Window
             : _historyObjectBaselines;
         _historyInteractionActive = false;
         var currentHierarchy = new SceneHistoryAction.HierarchyState(_mainViewport);
+        // Capture persisted settings, not the background values evaluated during playback.
+        var currentProject = SceneHistoryAction.ProjectState.Capture(_projectManager.Manifest);
         // Clicking away can commit an editor and deselect its object in the same frame.
         SceneHistoryAction? action = SceneHistoryAction.Create(beforeStates
             .Select(pair => (pair.Key, pair.Value, currentStates.TryGetValue(pair.Key, out var state)
                 ? state
                 : ProjectSceneSerializer.CaptureObjectState(pair.Key))),
             _historyHierarchyBaseline ?? currentHierarchy,
-            currentHierarchy);
+            currentHierarchy,
+            _historyProjectBaseline ?? currentProject,
+            currentProject);
         if (action != null)
         {
             PushHistoryAction(_undoActions, action);
@@ -2559,6 +2565,7 @@ public class MainWindow : Window
 
         _activeHistoryObjectBaselines.Clear();
         _historyHierarchyBaseline = currentHierarchy;
+        _historyProjectBaseline = currentProject;
         _historyObjectBaselines.Clear();
         foreach ((SceneObject obj, ProjectSceneObjectEntry state) in currentStates)
             _historyObjectBaselines[obj] = state;
@@ -2566,6 +2573,7 @@ public class MainWindow : Window
 
     private void PerformUndo()
     {
+        UpdateUndoRedoTracking(commitInteraction: true);
         if (_undoActions.Count == 0 || _mainViewport == null)
             return;
 
@@ -2577,6 +2585,7 @@ public class MainWindow : Window
             PushHistoryAction(_redoActions, action);
             CaptureSelectedObjectBaselines(_historyObjectBaselines);
             _historyHierarchyBaseline = new SceneHistoryAction.HierarchyState(_mainViewport);
+            _historyProjectBaseline = SceneHistoryAction.ProjectState.Capture(_projectManager.Manifest);
             _activeHistoryObjectBaselines.Clear();
             _historyInteractionActive = false;
             _projectManager.SetDirty(true);
@@ -2586,6 +2595,7 @@ public class MainWindow : Window
 
     private void PerformRedo()
     {
+        UpdateUndoRedoTracking(commitInteraction: true);
         if (_redoActions.Count == 0 || _mainViewport == null)
             return;
 
@@ -2597,6 +2607,7 @@ public class MainWindow : Window
             PushHistoryAction(_undoActions, action);
             CaptureSelectedObjectBaselines(_historyObjectBaselines);
             _historyHierarchyBaseline = new SceneHistoryAction.HierarchyState(_mainViewport);
+            _historyProjectBaseline = SceneHistoryAction.ProjectState.Capture(_projectManager.Manifest);
             _activeHistoryObjectBaselines.Clear();
             _historyInteractionActive = false;
             _projectManager.SetDirty(true);

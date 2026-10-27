@@ -18,6 +18,8 @@ internal sealed class SceneHistoryAction
     private readonly SceneObject[] _afterSelection = [];
     private readonly ParticleSpawnerSceneObject[] _removedOnUndo = [];
     private readonly ParticleSpawnerSceneObject[] _removedOnRedo = [];
+    private readonly ProjectState? _beforeProject;
+    private readonly ProjectState? _afterProject;
 
     private SceneHistoryAction(IReadOnlyList<Change> changes, IReadOnlyList<SceneObjectChange>? sceneObjectChanges)
     {
@@ -29,11 +31,15 @@ internal sealed class SceneHistoryAction
         IReadOnlyList<DirectObjectChange> directObjectChanges,
         IReadOnlyList<HierarchyChange> hierarchyChanges,
         HierarchyState beforeHierarchy,
-        HierarchyState afterHierarchy)
+        HierarchyState afterHierarchy,
+        ProjectState? beforeProject,
+        ProjectState? afterProject)
     {
         _changes = [];
         _directObjectChanges = directObjectChanges;
         _hierarchyChanges = hierarchyChanges;
+        _beforeProject = beforeProject;
+        _afterProject = afterProject;
         if (hierarchyChanges.Count > 0)
         {
             _beforeSelection = beforeHierarchy.Selection.Where(beforeHierarchy.Children.ContainsKey).ToArray();
@@ -46,7 +52,9 @@ internal sealed class SceneHistoryAction
     public static SceneHistoryAction? Create(
         IEnumerable<(SceneObject Object, ProjectSceneObjectEntry Before, ProjectSceneObjectEntry After)> changes,
         HierarchyState beforeHierarchy,
-        HierarchyState afterHierarchy)
+        HierarchyState afterHierarchy,
+        ProjectState beforeProject,
+        ProjectState afterProject)
     {
         DirectObjectChange[] directChanges = changes
             .Where(change => !JsonSerializer.Serialize(change.Before, AppJsonContext.Default.ProjectSceneObjectEntry)
@@ -64,9 +72,11 @@ internal sealed class SceneHistoryAction
                 hierarchyChanges.Add(new HierarchyChange(parent, before, after));
         }
 
-        return directChanges.Length == 0 && hierarchyChanges.Count == 0
+        bool projectChanged = beforeProject != afterProject;
+        return directChanges.Length == 0 && hierarchyChanges.Count == 0 && !projectChanged
             ? null
-            : new SceneHistoryAction(directChanges, hierarchyChanges, beforeHierarchy, afterHierarchy);
+            : new SceneHistoryAction(directChanges, hierarchyChanges, beforeHierarchy, afterHierarchy,
+                projectChanged ? beforeProject : null, projectChanged ? afterProject : null);
     }
 
     public bool Apply(Viewport viewport, PropertiesPanel? propertiesPanel, bool undo)
@@ -113,6 +123,20 @@ internal sealed class SceneHistoryAction
         ProjectSceneSerializer.ApplyObjectStates(
             propertiesPanel,
             _directObjectChanges.Select(change => (change.Object, undo ? change.Before : change.After)));
+        ProjectState? projectState = undo ? _beforeProject : _afterProject;
+        if (projectState != null)
+        {
+            ProjectManifest manifest = ProjectManager.Instance.Manifest;
+            ProjectRenderSettings settings = JsonSerializer.Deserialize(projectState.SettingsJson, AppJsonContext.Default.ProjectRenderSettings)!;
+            bool skyTexturesChanged = manifest.Settings.SunTexture != settings.SunTexture ||
+                                      manifest.Settings.MoonTexture != settings.MoonTexture ||
+                                      manifest.Settings.CloudTexture != settings.CloudTexture;
+            manifest.ProjectName = projectState.Name;
+            manifest.Settings = settings;
+            propertiesPanel?.LoadProjectSettingsFromManifest(manifest);
+            if (skyTexturesChanged)
+                viewport.ReloadSkyTextures();
+        }
         if (_hierarchyChanges.Count > 0 && SelectionManager.Instance is { } selection)
         {
             SceneObject[] targetSelection = undo ? _beforeSelection : _afterSelection;
@@ -122,6 +146,13 @@ internal sealed class SceneHistoryAction
                 selection.DeselectObject(obj);
         }
         return true;
+    }
+
+    internal sealed record ProjectState(string Name, string SettingsJson)
+    {
+        public static ProjectState Capture(ProjectManifest manifest) => new(
+            manifest.ProjectName,
+            JsonSerializer.Serialize(manifest.Settings, AppJsonContext.Default.ProjectRenderSettings));
     }
 
     internal sealed class HierarchyState

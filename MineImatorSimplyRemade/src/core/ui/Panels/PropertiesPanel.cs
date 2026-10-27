@@ -35,7 +35,7 @@ public class PropertiesPanel : UiPanel
 
     public bool UseSky = true;
     public bool UseAdvancedSky;
-    public bool FogEnabled;
+    public bool FogEnabled = true;
     public bool SkyFog = true;
     public bool CustomFogColor;
     public readonly float[] FogColor = [0.5764706f, 0.5764706f, 1f];
@@ -2140,6 +2140,7 @@ public class PropertiesPanel : UiPanel
                 WriteProjectSettingsToManifest(projectManager.Manifest);
                 projectManager.SetDirty(true);
             }
+            RegisterProjectPropertyContext(nameof(_projectName));
 
             ImGui.BeginDisabled(!projectManager.HasProject);
             if (ImGui.Button(Localization.Label("text.panel.properties.open_project_folder", "Open Project Folder")))
@@ -2163,11 +2164,13 @@ public class PropertiesPanel : UiPanel
             ImGui.TextUnformatted(Localization.T("text.panel.properties.resolution"));
             ImGui.SetNextItemWidth(80);
             bool resolutionChanged = InputIntEditor("##ResWidth", ref _resolutionWidth, 1, 10, 1, int.MaxValue);
+            RegisterProjectPropertyContext(nameof(_resolutionWidth), 1, int.MaxValue);
             ImGui.SameLine();
             ImGui.TextUnformatted(" x ");
             ImGui.SameLine();
             ImGui.SetNextItemWidth(80);
             resolutionChanged |= InputIntEditor("##ResHeight", ref _resolutionHeight, 1, 10, 1, int.MaxValue);
+            RegisterProjectPropertyContext(nameof(_resolutionHeight), 1, int.MaxValue);
             ImGui.TextUnformatted(Localization.T("text.panel.properties.presets"));
             if (ImGui.Button("720p"))  { _resolutionWidth = 1280; _resolutionHeight = 720; resolutionChanged = true; }
             ImGui.SameLine();
@@ -2188,6 +2191,7 @@ public class PropertiesPanel : UiPanel
             ImGui.TextUnformatted(Localization.T("text.panel.properties.framerate"));
             ImGui.SetNextItemWidth(80);
             bool frameRateChanged = InputIntEditor("##Framerate", ref _framerate, 1, 10, 1, 120);
+            RegisterProjectPropertyContext(nameof(_framerate), 1, 120);
             ImGui.SameLine();
             ImGui.TextUnformatted(Localization.T("text.panel.properties.fps"));
             ImGui.TextUnformatted(Localization.T("text.panel.properties.presets"));
@@ -2201,6 +2205,7 @@ public class PropertiesPanel : UiPanel
             if (frameRateChanged)
             {
                 _framerate = Math.Clamp(_framerate, 1, 120);
+                Timeline?.SetFrameRate(_framerate);
                 WriteProjectSettingsToManifest(projectManager.Manifest);
                 projectManager.SetDirty(true);
             }
@@ -2209,6 +2214,7 @@ public class PropertiesPanel : UiPanel
             ImGui.TextUnformatted(Localization.T("text.panel.properties.texture_animation_speed"));
             ImGui.SetNextItemWidth(80);
             bool textureFpsChanged = InputIntEditor("##TexAnimSpeed", ref TextureAnimationFps, 1, 10, 1, 120);
+            RegisterProjectPropertyContext(nameof(TextureAnimationFps), 1, 240);
             ImGui.SameLine();
             ImGui.TextUnformatted(Localization.T("text.panel.properties.fps"));
             ImGui.TextUnformatted(Localization.T("text.panel.properties.presets"));
@@ -2334,24 +2340,35 @@ public class PropertiesPanel : UiPanel
 
                 ImGui.SeparatorText(Localization.T("text.panel.properties.fog"));
                 bool fogChanged = ImGui.Checkbox(Localization.Label("text.panel.properties.enable_fog", "Enable Fog"), ref FogEnabled);
+                RegisterProjectPropertyContext(nameof(FogEnabled));
                 if (FogEnabled)
                 {
                     ImGui.Indent();
                     fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.fog_the_sky", "Fog the Sky"), ref SkyFog);
+                    RegisterProjectPropertyContext(nameof(SkyFog));
                     fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.custom_fog_color", "Custom Fog Color"), ref CustomFogColor);
+                    RegisterProjectPropertyContext(nameof(CustomFogColor));
                     if (CustomFogColor) fogChanged |= SkyColorEditor("Fog Color", FogColor);
                     fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.custom_object_fog_color", "Custom Object Fog Color"), ref CustomObjectFogColor);
+                    RegisterProjectPropertyContext(nameof(CustomObjectFogColor));
                     if (CustomObjectFogColor) fogChanged |= SkyColorEditor("Object Fog Color", ObjectFogColor);
                     fogChanged |= InputFloatEditor("Distance", ref FogDistance, 10f, 0f, 1000000f, "%.0f px");
+                    RegisterProjectPropertyContext(nameof(FogDistance), 0, 1000000);
                     fogChanged |= InputFloatEditor("Fade Size", ref FogFadeSize, 10f, 1f, 1000000f, "%.0f px");
+                    RegisterProjectPropertyContext(nameof(FogFadeSize), 1, 1000000);
                     fogChanged |= InputFloatEditor("Height", ref FogHeight, 10f, -1000000f, 1000000f, "%.0f px");
+                    RegisterProjectPropertyContext(nameof(FogHeight), -1000000, 1000000);
                     fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.height_fog", "Height Fog"), ref HeightFog);
+                    RegisterProjectPropertyContext(nameof(HeightFog));
                     if (HeightFog)
                     {
                         fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.custom_height_fog_color", "Custom Height Fog Color"), ref CustomHeightFogColor);
+                        RegisterProjectPropertyContext(nameof(CustomHeightFogColor));
                         if (CustomHeightFogColor) fogChanged |= SkyColorEditor("Height Fog Color", HeightFogColor);
                         fogChanged |= InputFloatEditor("Height Fog Size", ref HeightFogSize, 10f, 1f, 1000000f, "%.0f px");
+                        RegisterProjectPropertyContext(nameof(HeightFogSize), 1, 1000000);
                         fogChanged |= InputFloatEditor("Height Fog Offset", ref HeightFogOffset, 10f, -1000000f, 1000000f, "%.0f px");
+                        RegisterProjectPropertyContext(nameof(HeightFogOffset), -1000000, 1000000);
                     }
                     ImGui.Unindent();
                 }
@@ -2367,7 +2384,7 @@ public class PropertiesPanel : UiPanel
                 fixed (byte* label = "##BackgroundColor"u8)
                 fixed (float* bgColorPtr = BackgroundColor)
                 {
-                    if (ImGui.ColorEdit4(label, bgColorPtr, ImGuiColorEditFlags.NoInputs))
+                    if (ImGui.ColorEdit4(label, bgColorPtr, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions))
                     {
                         WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
                         ProjectManager.Instance.SetDirty(true);
@@ -2597,7 +2614,7 @@ public class PropertiesPanel : UiPanel
                 fixed (byte* ambientLabel = "##AmbientLightColor"u8)
                 fixed (float* ambientColorPtr = AmbientLightColor)
                 {
-                    if (ImGui.ColorEdit3(ambientLabel, ambientColorPtr, ImGuiColorEditFlags.NoInputs))
+                    if (ImGui.ColorEdit3(ambientLabel, ambientColorPtr, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions))
                         ambientChanged = true;
                 }
                 RegisterBackgroundKeyframeContext(nameof(AmbientLightColor));
@@ -2617,7 +2634,7 @@ public class PropertiesPanel : UiPanel
                 fixed (byte* nightAmbientLabel = "##NightAmbientLightColor"u8)
                 fixed (float* nightAmbientColorPtr = NightAmbientLightColor)
                 {
-                    if (ImGui.ColorEdit3(nightAmbientLabel, nightAmbientColorPtr, ImGuiColorEditFlags.NoInputs))
+                    if (ImGui.ColorEdit3(nightAmbientLabel, nightAmbientColorPtr, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions))
                         ambientChanged = true;
                 }
                 RegisterBackgroundKeyframeContext(nameof(NightAmbientLightColor));
@@ -2637,7 +2654,7 @@ public class PropertiesPanel : UiPanel
                 fixed (byte* fillLabel = "##FillLightColor"u8)
                 fixed (float* fillColorPtr = FillLightColor)
                 {
-                    if (ImGui.ColorEdit3(fillLabel, fillColorPtr, ImGuiColorEditFlags.NoInputs))
+                    if (ImGui.ColorEdit3(fillLabel, fillColorPtr, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions))
                         ambientChanged = true;
                 }
                 RegisterBackgroundKeyframeContext(nameof(FillLightColor));
@@ -2677,16 +2694,20 @@ public class PropertiesPanel : UiPanel
 
         ImGui.TextUnformatted(Localization.T("text.panel.properties.anti_aliasing"));
         changed |= ImGui.Checkbox(Localization.Label("text.panel.properties.enabled", "Enabled##antiAliasing"), ref AntiAliasingEnabled);
+        RegisterProjectPropertyContext(nameof(AntiAliasingEnabled));
         if (AntiAliasingEnabled)
         {
             ImGui.Indent();
             changed |= PercentageSlider("Subpixel Smoothing##antiAliasing", ref AntiAliasingSubpixel, 0f, 100f);
+            RegisterProjectPropertyContext(nameof(AntiAliasingSubpixel), 0, 1);
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip(Localization.T("text.panel.properties.anti_aliasing_subpixel_smoothing_tooltip"));
             changed |= ImGui.SliderFloat(Localization.Label("text.panel.properties.anti_aliasing_edge_threshold", "Edge Threshold##antiAliasing"), ref AntiAliasingEdgeThreshold, 0.03125f, 0.5f, "%.3f");
+            RegisterProjectPropertyContext(nameof(AntiAliasingEdgeThreshold), 0.03125f, 0.5f);
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip(Localization.T("text.panel.properties.anti_aliasing_edge_threshold_tooltip"));
             changed |= ImGui.SliderFloat(Localization.Label("text.panel.properties.anti_aliasing_minimum_threshold", "Minimum Threshold##antiAliasing"), ref AntiAliasingMinimumThreshold, 0.001f, 0.25f, "%.3f");
+            RegisterProjectPropertyContext(nameof(AntiAliasingMinimumThreshold), 0.001f, 0.25f);
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip(Localization.T("text.panel.properties.anti_aliasing_minimum_threshold_tooltip"));
             ImGui.TextWrapped(Localization.T("text.panel.properties.anti_aliasing_description"));
@@ -2696,22 +2717,30 @@ public class PropertiesPanel : UiPanel
         ImGui.Separator();
         ImGui.TextUnformatted(Localization.T("text.panel.properties.ambient_occlusion"));
         changed |= ImGui.Checkbox(Localization.Label("text.panel.properties.enabled", "Enabled##ambientOcclusion"), ref AmbientOcclusionEnabled);
+        RegisterProjectPropertyContext(nameof(AmbientOcclusionEnabled));
         if (AmbientOcclusionEnabled)
         {
             ImGui.Indent();
             changed |= InputFloatEditor("Radius (px)", ref AmbientOcclusionRadius, 0.25f, 0f, 128f, "%.1f");
+            RegisterProjectPropertyContext(nameof(AmbientOcclusionRadius), 0, 128);
             changed |= PercentageSlider("Strength##ao", ref AmbientOcclusionStrength, 0f, 200f);
+            RegisterProjectPropertyContext(nameof(AmbientOcclusionStrength), 0, 2);
             changed |= ImGui.SliderInt(Localization.Label("text.panel.properties.samples", "Samples##ao"), ref AmbientOcclusionSampleCount, 1, 128);
+            RegisterProjectPropertyContext(nameof(AmbientOcclusionSampleCount), 1, 128);
             fixed (float* color = AmbientOcclusionColor)
-                changed |= ImGui.ColorEdit3(Localization.Label("text.common.color", "Color##ao"), color, ImGuiColorEditFlags.NoInputs);
+                changed |= ImGui.ColorEdit3(Localization.Label("text.common.color", "Color##ao"), color, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions);
+            RegisterProjectPropertyContext(nameof(AmbientOcclusionColor), 0, 1);
             changed |= InputFloatEditor("Ratio##ao", ref AmbientOcclusionRatio, 0.001f, 0f, 1f, "%.3f");
+            RegisterProjectPropertyContext(nameof(AmbientOcclusionRatio), 0, 1);
             changed |= InputFloatEditor("Ratio Balance##ao", ref AmbientOcclusionRatioBalance, 0.005f, 0f, 1f, "%.3f");
+            RegisterProjectPropertyContext(nameof(AmbientOcclusionRatioBalance), 0, 1);
             ImGui.Unindent();
         }
 
         ImGui.Separator();
         ImGui.TextUnformatted(Localization.T("text.panel.properties.indirect_lighting"));
         changed |= ImGui.Checkbox(Localization.Label("text.panel.properties.enabled", "Enabled##indirectLighting"), ref IndirectLightingEnabled);
+        RegisterProjectPropertyContext(nameof(IndirectLightingEnabled));
         if (IndirectLightingEnabled)
         {
             ImGui.Indent();
@@ -2720,7 +2749,9 @@ public class PropertiesPanel : UiPanel
                 ? "World Space (Experimental)"
                 : "Screen Space";
 
-            if (ImGui.BeginCombo(Localization.Label("text.panel.properties.global_illumination", "Global Illumination"), Localization.DisplayText(giModeLabel)))
+            bool giModeOpen = ImGui.BeginCombo(Localization.Label("text.panel.properties.global_illumination", "Global Illumination"), Localization.DisplayText(giModeLabel));
+            RegisterProjectPropertyContext(nameof(GlobalIlluminationMode));
+            if (giModeOpen)
             {
                 bool screenSelected = !string.Equals(GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
                 if (ImGui.Selectable(Localization.Label("text.panel.properties.screen_space", "Screen Space"), screenSelected))
@@ -2739,12 +2770,20 @@ public class PropertiesPanel : UiPanel
             }
 
             changed |= PercentageSlider("Precision##indirect", ref IndirectLightingPrecision, 0f, 100f);
+            RegisterProjectPropertyContext(nameof(IndirectLightingPrecision), 0, 1);
             changed |= PercentageSlider("Strength##indirect", ref IndirectLightingStrength, 0f, 400f);
+            RegisterProjectPropertyContext(nameof(IndirectLightingStrength), 0, 4);
             changed |= InputFloatEditor("Ray Step##indirect", ref IndirectLightingRayStep, 0.1f, 1f, 64f, "%.1f");
+            RegisterProjectPropertyContext(nameof(IndirectLightingRayStep), 1, 64);
             changed |= InputFloatEditor("Blur Radius##indirect", ref IndirectLightingBlurRadius, 0.05f, 0f, 8f, "%.2f");
+            RegisterProjectPropertyContext(nameof(IndirectLightingBlurRadius), 0, 8);
             changed |= ImGui.Checkbox(Localization.Label("text.panel.properties.denoiser", "Denoiser##indirect"), ref IndirectLightingDenoiser);
+            RegisterProjectPropertyContext(nameof(IndirectLightingDenoiser));
             if (IndirectLightingDenoiser)
+            {
                 changed |= ImGui.SliderFloat(Localization.Label("text.panel.properties.denoiser_strength", "Denoiser Strength##indirect"), ref IndirectLightingDenoiserStrength, 0f, 200f, "%.0f%%");
+                RegisterProjectPropertyContext(nameof(IndirectLightingDenoiserStrength), 0, 200);
+            }
 
             ImGui.Unindent();
         }
@@ -2752,45 +2791,65 @@ public class PropertiesPanel : UiPanel
         ImGui.Separator();
         ImGui.TextUnformatted(Localization.T("text.panel.properties.shadows"));
         changed |= ImGui.Checkbox(Localization.Label("text.panel.properties.enabled", "Enabled##globalShadows"), ref ShadowsEnabled);
+        RegisterProjectPropertyContext(nameof(ShadowsEnabled));
         if (ShadowsEnabled)
         {
             ImGui.Indent();
             changed |= ShadowBufferCombo("Sun lamps", ref SunShadowBufferSize);
+            RegisterProjectPropertyContext(nameof(SunShadowBufferSize));
             changed |= ShadowBufferCombo("Spot lights", ref SpotShadowBufferSize);
+            RegisterProjectPropertyContext(nameof(SpotShadowBufferSize));
             changed |= ShadowBufferCombo("Point lights", ref PointShadowBufferSize);
+            RegisterProjectPropertyContext(nameof(PointShadowBufferSize));
             changed |= PercentageSlider("Blur Strength", ref ShadowBlurStrength, 0f, 400f);
+            RegisterProjectPropertyContext(nameof(ShadowBlurStrength), 0, 4);
             ImGui.Unindent();
         }
 
         ImGui.Separator();
         ImGui.TextUnformatted(Localization.T("text.panel.properties.glow"));
         changed |= ImGui.Checkbox(Localization.Label("text.panel.properties.enabled", "Enabled##glow"), ref GlowEnabled);
+        RegisterProjectPropertyContext(nameof(GlowEnabled));
         if (GlowEnabled)
         {
             ImGui.Indent();
             changed |= PercentageSlider("Strength##glow", ref GlowStrength, 0f, 200f);
+            RegisterProjectPropertyContext(nameof(GlowStrength), 0, 2);
             changed |= InputFloatEditor("Size (px)##glow", ref GlowSize, 0.1f, 0f, 20f, "%.1f");
+            RegisterProjectPropertyContext(nameof(GlowSize), 0, 20);
             ImGui.Unindent();
         }
 
         ImGui.Separator();
         ImGui.TextUnformatted(Localization.T("text.panel.properties.subsurface_scattering"));
         changed |= ImGui.Checkbox(Localization.Label("text.panel.properties.enabled", "Enabled##sss"), ref SubsurfaceEnabled);
+        RegisterProjectPropertyContext(nameof(SubsurfaceEnabled));
         if (SubsurfaceEnabled)
         {
             ImGui.Indent();
             changed |= ImGui.SliderInt(Localization.Label("text.panel.properties.blur_samples", "Blur Samples##sss"), ref SubsurfaceBlurSamples, 0, 32);
+            RegisterProjectPropertyContext(nameof(SubsurfaceBlurSamples), 0, 32);
             changed |= PercentageSlider("Strength##sss", ref SubsurfaceStrength, 0f, 400f);
+            RegisterProjectPropertyContext(nameof(SubsurfaceStrength), 0, 4);
             changed |= PercentageSlider("Desaturation##sss", ref SubsurfaceDesaturation, 0f, 100f);
+            RegisterProjectPropertyContext(nameof(SubsurfaceDesaturation), 0, 1);
             changed |= PercentageSlider("Color Threshold##sss", ref SubsurfaceColorThreshold, 0f, 100f);
+            RegisterProjectPropertyContext(nameof(SubsurfaceColorThreshold), 0, 1);
             fixed (float* sssRadius = SubsurfaceRadiusRgb)
                 changed |= ImGui.DragFloat3(Localization.Label("text.panel.properties.radius_rgb", "Radius RGB##sss"), sssRadius, 0.01f, 0f, 8f, "%.3f");
+            RegisterProjectPropertyContext(nameof(SubsurfaceRadiusRgb), 0, 8);
             changed |= InputFloatEditor("Highlight Size##sss", ref SubsurfaceHighlightSize, 0.01f, 0f, 8f, "%.2f");
+            RegisterProjectPropertyContext(nameof(SubsurfaceHighlightSize), 0, 8);
             changed |= PercentageSlider("Highlight Strength##sss", ref SubsurfaceHighlightStrength, 0f, 800f);
+            RegisterProjectPropertyContext(nameof(SubsurfaceHighlightStrength), 0, 8);
             changed |= InputFloatEditor("Highlight Sharpness##sss", ref SubsurfaceHighlightSharpness, 0.05f, 0.01f, 16f, "%.2f");
+            RegisterProjectPropertyContext(nameof(SubsurfaceHighlightSharpness), 0.01f, 16);
             changed |= PercentageSlider("Highlight Desaturation##sss", ref SubsurfaceHighlightDesaturation, 0f, 100f);
+            RegisterProjectPropertyContext(nameof(SubsurfaceHighlightDesaturation), 0, 1);
             changed |= PercentageSlider("Highlight Color Threshold##sss", ref SubsurfaceHighlightColorThreshold, 0f, 100f);
+            RegisterProjectPropertyContext(nameof(SubsurfaceHighlightColorThreshold), 0, 1);
             changed |= ImGui.SliderFloat(Localization.Label("text.panel.properties.absorption", "Absorption##sss"), ref SubsurfaceAbsorption, -0.95f, 0.95f, "%.2f");
+            RegisterProjectPropertyContext(nameof(SubsurfaceAbsorption), -0.95f, 0.95f);
             ImGui.Unindent();
         }
 
@@ -2980,7 +3039,7 @@ public class PropertiesPanel : UiPanel
     {
         bool changed;
         fixed (float* value = color)
-            changed = ImGui.ColorEdit3(Localization.DisplayLabel(label), value, ImGuiColorEditFlags.NoInputs);
+            changed = ImGui.ColorEdit3(Localization.DisplayLabel(label), value, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions);
         string path = label switch
         {
             "Horizon Day" => nameof(SkyHorizonDay), "Zenith Day" => nameof(SkyZenithDay),
@@ -2989,9 +3048,14 @@ public class PropertiesPanel : UiPanel
             "Cloud Color" => nameof(CloudColor), "Night Cloud Color" => nameof(NightCloudColor),
             "Star Color" => nameof(StarColor),
             "Sun Fill Light" => nameof(SunFillLightColor),
-            "Moon Fill Light" => nameof(MoonFillLightColor), _ => label
+            "Moon Fill Light" => nameof(MoonFillLightColor),
+            "Fog Color" => nameof(FogColor), "Object Fog Color" => nameof(ObjectFogColor),
+            "Height Fog Color" => nameof(HeightFogColor), _ => label
         };
-        RegisterBackgroundKeyframeContext(path);
+        if (path is nameof(FogColor) or nameof(ObjectFogColor) or nameof(HeightFogColor))
+            RegisterProjectPropertyContext(path, 0, 1);
+        else
+            RegisterBackgroundKeyframeContext(path);
         return changed;
     }
 
@@ -5357,6 +5421,17 @@ public class PropertiesPanel : UiPanel
                 if (edited) Apply(value);
                 RegisterPropertyContext("camera.custom.color_management." + property, () => get(camera), Apply, defaultValue);
             }
+            else
+            {
+                switch (property)
+                {
+                    case "enabled": RegisterProjectPropertyContext(nameof(ColorManagementEnabled)); break;
+                    case "tone_mapper": RegisterProjectPropertyContext(nameof(ColorManagementToneMapper), 0, ColorManagementToneMapperOptions.Length - 1); break;
+                    case "exposure": RegisterProjectPropertyContext(nameof(ColorManagementExposure), -10, 10); break;
+                    case "gamma": RegisterProjectPropertyContext(nameof(ColorManagementGamma), 0.1f, 5); break;
+                    case "look": RegisterProjectPropertyContext(nameof(ColorManagementLook), 0, ColorManagementLookOptions.Length - 1); break;
+                }
+            }
             return edited;
         }
 
@@ -6338,6 +6413,35 @@ public class PropertiesPanel : UiPanel
     private string[]? _propertyContextPaths;
     private SceneObject? _propertyContextObject;
 
+    private void RegisterProjectPropertyContext(string fieldName, double minimum = double.MinValue, double maximum = double.MaxValue)
+    {
+        if (!ImGui.IsItemClicked(ImGuiMouseButton.Right)) return;
+        // Like background bindings, project bindings use panel field defaults, not the selected object.
+        var field = typeof(PropertiesPanel).GetField(fieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
+        object defaultValue = field.GetValue(new PropertiesPanel())!;
+        RegisterPropertyContext("project:" + fieldName, () => field.GetValue(this)!, value =>
+        {
+            if (value is float[] values && field.GetValue(this) is float[] target)
+                for (int i = 0; i < target.Length; i++)
+                    target[i] = SanitizeFloatValue(values[i], (float)minimum, (float)maximum);
+            else
+            {
+                if (value is float number)
+                    value = SanitizeFloatValue(number, (float)minimum, (float)maximum);
+                else if (value is int integer)
+                    value = fieldName is nameof(SunShadowBufferSize) or nameof(SpotShadowBufferSize) or nameof(PointShadowBufferSize)
+                        ? NormalizeShadowBufferSize(integer, (int)defaultValue)
+                        : (int)Math.Clamp((double)integer, minimum, maximum);
+                else if (fieldName == nameof(GlobalIlluminationMode))
+                    value = NormalizeGlobalIlluminationMode((string)value);
+                field.SetValue(this, value);
+            }
+            if (fieldName == nameof(_framerate)) Timeline?.SetFrameRate(_framerate);
+            WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+            ProjectManager.Instance.SetDirty(true);
+        }, defaultValue);
+    }
+
     private void RegisterPropertyContext(params string[] paths)
     {
         if (!ImGui.IsItemClicked(ImGuiMouseButton.Right) || paths.Length == 0) return;
@@ -6456,6 +6560,8 @@ public class PropertiesPanel : UiPanel
             ApplyFloorSettingsToViewport();
             ApplyBackgroundSettingsToViewport();
             ApplyAmbientSettingsToRenderer();
+            if (backgroundPath is nameof(SunTexture) or nameof(MoonTexture) or nameof(CloudTexture))
+                Viewport?.ReloadSkyTextures();
             WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
             return;
         }
@@ -6664,7 +6770,9 @@ public class PropertiesPanel : UiPanel
     {
         if (!ImGui.BeginPopup("##prop_keyframe_ctx")) return;
         if (_ctxPropertyPath == null) { ImGui.EndPopup(); return; }
-        if (!_ctxPropertyPath.StartsWith("background:", StringComparison.Ordinal) && _currentObject != _propertyContextObject)
+        bool projectProperty = _ctxPropertyPath.StartsWith("project:", StringComparison.Ordinal);
+        bool backgroundProperty = _ctxPropertyPath.StartsWith("background:", StringComparison.Ordinal);
+        if (!projectProperty && !backgroundProperty && _currentObject != _propertyContextObject)
         {
             ImGui.CloseCurrentPopup();
             ImGui.EndPopup();
@@ -6682,6 +6790,12 @@ public class PropertiesPanel : UiPanel
                 RenderPropertyValueActions(group);
                 ImGui.EndMenu();
             }
+        }
+
+        if (projectProperty)
+        {
+            ImGui.EndPopup();
+            return;
         }
         ImGui.Separator();
 
