@@ -5284,13 +5284,9 @@ public class PropertiesPanel : UiPanel
                 _ctxMenuPos = ImGui.GetMousePos();
                 _openPropContextMenu = true;
             }
-        }
-
-        if (_currentObject is CameraSceneObject customCamera &&
-            ImGui.CollapsingHeader(Localization.Label("text.common.custom", "Custom##cameraCustom")))
-        {
+            ImGui.Spacing();
             ImGui.TextUnformatted(Localization.T("text.panel.properties.color_management"));
-            bool overrideEnabled = customCamera.ColorManagementOverrideEnabled;
+            bool overrideEnabled = selectedCamera.ColorManagementOverrideEnabled;
             bool changed = ImGui.Checkbox(Localization.Label("text.panel.properties.camera_custom_color_management",
                 "Custom Color Management##cameraCustom"), ref overrideEnabled);
             void ApplyOverride(object value) => ApplyToSelectedObjects(obj =>
@@ -5299,19 +5295,19 @@ public class PropertiesPanel : UiPanel
                     camera.ColorManagementOverrideEnabled = (bool)value;
             });
             if (changed) ApplyOverride(overrideEnabled);
-            RegisterPropertyContext("camera.custom.color_management.override", () => customCamera.ColorManagementOverrideEnabled,
+            RegisterPropertyContext("camera.custom.color_management.override", () => selectedCamera.ColorManagementOverrideEnabled,
                 ApplyOverride, false);
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip(Localization.T("text.panel.properties.camera_custom_color_management_tooltip"));
             if (overrideEnabled)
             {
-                bool enabled = customCamera.ColorManagementEnabled;
-                int toneMapper = customCamera.ColorManagementToneMapper;
-                float exposure = customCamera.ColorManagementExposure;
-                float gamma = customCamera.ColorManagementGamma;
-                int look = customCamera.ColorManagementLook;
+                bool enabled = selectedCamera.ColorManagementEnabled;
+                int toneMapper = selectedCamera.ColorManagementToneMapper;
+                float exposure = selectedCamera.ColorManagementExposure;
+                float gamma = selectedCamera.ColorManagementGamma;
+                int look = selectedCamera.ColorManagementLook;
                 ImGui.Indent();
-                changed |= DrawColorManagementControls(ref enabled, ref toneMapper, ref exposure, ref gamma, ref look, customCamera);
+                changed |= DrawColorManagementControls(ref enabled, ref toneMapper, ref exposure, ref gamma, ref look, selectedCamera);
                 ImGui.Unindent();
             }
             if (changed) ProjectManager.Instance.SetDirty(true);
