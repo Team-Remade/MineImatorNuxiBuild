@@ -857,7 +857,13 @@ public class SceneTree : UiPanel
                 {
                     Fov  = cam.Fov,
                     Near = cam.Near,
-                    Far  = cam.Far
+                    Far  = cam.Far,
+                    ColorManagementOverrideEnabled = cam.ColorManagementOverrideEnabled,
+                    ColorManagementEnabled = cam.ColorManagementEnabled,
+                    ColorManagementToneMapper = cam.ColorManagementToneMapper,
+                    ColorManagementExposure = cam.ColorManagementExposure,
+                    ColorManagementGamma = cam.ColorManagementGamma,
+                    ColorManagementLook = cam.ColorManagementLook
                 };
                 foreach (var effect in cam.Effects)
                     ((CameraSceneObject)dup).Effects.Add(CameraSceneObject.CloneEffect(effect));

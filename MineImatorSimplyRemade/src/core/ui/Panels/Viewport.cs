@@ -231,6 +231,9 @@ public class Viewport : UiPanel
     private Shader? _glowShader;
     private Shader? _filmGrainShader;
     private Shader? _antiAliasingShader;
+    private Shader? _colorManagementShader;
+    private bool _colorManagementHdr;
+    private bool _previewColorManagementHdr;
     private Shader? _depthOfFieldShader;
     private CameraSceneObject? _focusCamera;
     private CameraEffect? _focusEffect;
@@ -744,6 +747,7 @@ public class Viewport : UiPanel
 
     public unsafe void InitFramebuffer(uint width, uint height)
     {
+        _colorManagementHdr = false;
         _viewportWidth  = width;
         _viewportHeight = height;
 
@@ -813,6 +817,8 @@ public class Viewport : UiPanel
         _filmGrainShader.CompileShader("edge.vert", "film_grain.frag");
         _antiAliasingShader = new Shader(Gl);
         _antiAliasingShader.CompileShader("edge.vert", "fxaa.frag");
+        _colorManagementShader = new Shader(Gl);
+        _colorManagementShader.CompileShader("edge.vert", "color_management.frag");
         _depthOfFieldShader = new Shader(Gl);
         _depthOfFieldShader.CompileShader("edge.vert", "depth_of_field.frag");
 
@@ -1948,9 +1954,7 @@ public class Viewport : UiPanel
         _viewportHeight = height;
 
         // Resize display FBO attachments.
-        Gl.BindTexture(GLEnum.Texture2D, _colorTex);
-        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb, width, height, 0,
-                      PixelFormat.Rgb, GLEnum.UnsignedByte, (void*)0);
+        ResizeGlowResources(_colorTex, width, height, hdr: _colorManagementHdr, rgbOnly: true);
 
         Gl.BindTexture(GLEnum.Texture2D, _depthTex);
         Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.DepthComponent24, width, height, 0,
@@ -1976,8 +1980,8 @@ public class Viewport : UiPanel
         ResizeGlowResources(_giRadianceTex, width, height, hdr: true);
         ResizeGlowResources(_indirectTex, width, height, hdr: true);
         ResizeGlowResources(_indirectPingTex, width, height, hdr: true);
-        ResizeGlowResources(_glowTex, width, height);
-        ResizeGlowResources(_glowPingTex, width, height);
+        ResizeGlowResources(_glowTex, width, height, hdr: _colorManagementHdr);
+        ResizeGlowResources(_glowPingTex, width, height, hdr: _colorManagementHdr);
     }
 
     private void InitGiTexture(ref uint texture, uint width, uint height, GLEnum attachment)
@@ -2026,15 +2030,33 @@ public class Viewport : UiPanel
         Gl.BindTexture(GLEnum.Texture2D, 0);
     }
 
-    private unsafe void ResizeGlowResources(uint texture, uint width, uint height, bool hdr = false)
+    private unsafe void ResizeGlowResources(uint texture, uint width, uint height, bool hdr = false, bool rgbOnly = false)
     {
         if (Gl == null || texture == 0 || width == 0 || height == 0)
             return;
 
         Gl.BindTexture(GLEnum.Texture2D, texture);
-        Gl.TexImage2D(GLEnum.Texture2D, 0, hdr ? InternalFormat.Rgba16f : InternalFormat.Rgb, width, height, 0,
-            hdr ? PixelFormat.Rgba : PixelFormat.Rgb, hdr ? GLEnum.Float : GLEnum.UnsignedByte, (void*)0);
+        bool rgba = hdr && !rgbOnly;
+        Gl.TexImage2D(GLEnum.Texture2D, 0, hdr ? (rgba ? InternalFormat.Rgba16f : InternalFormat.Rgb16f) : InternalFormat.Rgb, width, height, 0,
+            rgba ? PixelFormat.Rgba : PixelFormat.Rgb, hdr ? GLEnum.Float : GLEnum.UnsignedByte, (void*)0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
+    }
+
+    private void EnsureColorManagementTargets(bool preview, uint width, uint height, bool enabled)
+    {
+        if (Gl == null || width == 0 || height == 0)
+            return;
+
+        ref bool hdr = ref (preview ? ref _previewColorManagementHdr : ref _colorManagementHdr);
+        if (hdr == enabled)
+            return;
+
+        // Preserve unclipped highlights through glow/DOF until the final display transform.
+        // Keep legacy 8-bit storage when disabled, including for diagnostic render passes.
+        ResizeGlowResources(preview ? _previewColorTex : _colorTex, width, height, hdr: enabled, rgbOnly: true);
+        ResizeGlowResources(preview ? _previewGlowTex : _glowTex, width, height, hdr: enabled);
+        ResizeGlowResources(preview ? _previewGlowPingTex : _glowPingTex, width, height, hdr: enabled);
+        hdr = enabled;
     }
 
     public void DisposeFramebufferResources()
@@ -2597,6 +2619,8 @@ public class Viewport : UiPanel
         // Use the active camera (work camera or a spawned camera) for both
         // input and rendering so controls always affect what is being viewed.
         var (activeCamera, activeCamObj) = GetActiveRenderCamera();
+        EnsureColorManagementTargets(false, w, h, ResolveColorManagementSettings(PropertiesPanel, activeCamObj).Enabled &&
+            _viewportRenderMode == ViewportRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined);
 
         // ── Camera orbit/pan input ─────────────────────────────────────────────
         HandleCameraInput(imageMin, imageSize, activeCamera, activeCamObj);
@@ -2839,6 +2863,7 @@ public class Viewport : UiPanel
             if (renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
             {
                 ApplyDepthOfFieldPass(_fbo, _colorTex, _depthTex, _glowFbo, _glowTex, w, h, renderNear, renderFar, activeCamObj);
+                ApplyColorManagementPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel, activeCamObj);
                 ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel);
                 ApplyFilmGrainPass(_fbo, _colorTex, _glowFbo, _glowTex, w, h, activeCamObj);
             }
@@ -3043,7 +3068,10 @@ public class Viewport : UiPanel
         renderer.EndFrame(_colorTex);
 
         if (renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
+        {
+            ApplyColorManagementPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel, activeCamObj);
             ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel);
+        }
 
         // Keep editor tools usable during the scene-renderer migration. These
         // draw over the bridged colour target; scene shading above is Veldrid.
@@ -5344,6 +5372,7 @@ public class Viewport : UiPanel
     public unsafe void InitPreviewViewport(uint width, uint height)
     {
         if (!IsPreviewViewport || Gl == null) return;
+        _previewColorManagementHdr = false;
         _previewWidth = width;
         _previewHeight = height;
 
@@ -5446,6 +5475,11 @@ public class Viewport : UiPanel
             _depthOfFieldShader = new Shader(Gl);
             _depthOfFieldShader.CompileShader("edge.vert", "depth_of_field.frag");
         }
+        if (_colorManagementShader == null)
+        {
+            _colorManagementShader = new Shader(Gl);
+            _colorManagementShader.CompileShader("edge.vert", "color_management.frag");
+        }
 
         InitGlowResources(ref _previewIndirectFbo, ref _previewIndirectTex, width, height, "Preview indirect", hdr: true);
         InitGlowResources(ref _previewIndirectPingFbo, ref _previewIndirectPingTex, width, height, "Preview indirect ping", hdr: true);
@@ -5522,9 +5556,7 @@ public class Viewport : UiPanel
         _previewWidth = w;
         _previewHeight = h;
 
-        Gl.BindTexture(GLEnum.Texture2D, _previewColorTex);
-        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb, w, h, 0,
-                      PixelFormat.Rgb, GLEnum.UnsignedByte, (void*)0);
+        ResizeGlowResources(_previewColorTex, w, h, hdr: _previewColorManagementHdr, rgbOnly: true);
         Gl.BindTexture(GLEnum.Texture2D, _previewDepthTex);
         Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.DepthComponent24, w, h, 0,
             PixelFormat.DepthComponent, GLEnum.UnsignedInt, null);
@@ -5559,8 +5591,8 @@ public class Viewport : UiPanel
         ResizeGlowResources(_previewGiRadianceTex, w, h, hdr: true);
         ResizeGlowResources(_previewIndirectTex, w, h, hdr: true);
         ResizeGlowResources(_previewIndirectPingTex, w, h, hdr: true);
-        ResizeGlowResources(_previewGlowTex, w, h);
-        ResizeGlowResources(_previewGlowPingTex, w, h);
+        ResizeGlowResources(_previewGlowTex, w, h, hdr: _previewColorManagementHdr);
+        ResizeGlowResources(_previewGlowPingTex, w, h, hdr: _previewColorManagementHdr);
     }
 
     public List<CameraSceneObject> GetSpawnedCamerasPublic()
@@ -5874,6 +5906,58 @@ public class Viewport : UiPanel
             Gl.Enable(GLEnum.DepthTest);
             Gl.Enable(GLEnum.CullFace);
         }
+    }
+
+    private static (bool Enabled, int ToneMapper, float Exposure, float Gamma, int Look) ResolveColorManagementSettings(
+        PropertiesPanel? settings, CameraSceneObject? camera)
+    {
+        if (camera?.ColorManagementOverrideEnabled == true)
+            return (camera.ColorManagementEnabled, camera.ColorManagementToneMapper, camera.ColorManagementExposure,
+                camera.ColorManagementGamma, camera.ColorManagementLook);
+
+        return (settings?.ColorManagementEnabled == true, settings?.ColorManagementToneMapper ?? 1,
+            settings?.ColorManagementExposure ?? 0f, settings?.ColorManagementGamma ?? 2.2f, settings?.ColorManagementLook ?? 0);
+    }
+
+    private void ApplyColorManagementPass(uint sceneFbo, uint scratchFbo, uint scratchTexture,
+        uint width, uint height, PropertiesPanel? settings, CameraSceneObject? camera)
+    {
+        var colorManagement = ResolveColorManagementSettings(settings, camera);
+        if (Gl == null || _colorManagementShader == null || !colorManagement.Enabled ||
+            width == 0 || height == 0 || sceneFbo == 0 || scratchFbo == 0 || scratchTexture == 0)
+            return;
+
+        bool depthTest = Gl.IsEnabled(GLEnum.DepthTest);
+        bool cullFace = Gl.IsEnabled(GLEnum.CullFace);
+        bool blend = Gl.IsEnabled(GLEnum.Blend);
+        Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
+        Gl.BindFramebuffer(GLEnum.DrawFramebuffer, scratchFbo);
+        Gl.BlitFramebuffer(0, 0, (int)width, (int)height, 0, 0, (int)width, (int)height,
+            ClearBufferMask.ColorBufferBit, GLEnum.Nearest);
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.Disable(GLEnum.DepthTest);
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Disable(GLEnum.Blend);
+        Gl.Viewport(0, 0, width, height);
+        Gl.UseProgram(_colorManagementShader.ShaderProgram);
+        Gl.ActiveTexture(GLEnum.Texture0);
+        Gl.BindTexture(GLEnum.Texture2D, scratchTexture);
+        Gl.Uniform1(_colorManagementShader.GetUniformLocation("uScene"), 0);
+        Gl.Uniform2(_colorManagementShader.GetUniformLocation("uTexelSize"), 1f / width, 1f / height);
+        Gl.Uniform1(_colorManagementShader.GetUniformLocation("uToneMapper"), Math.Clamp(colorManagement.ToneMapper, 0, 8));
+        Gl.Uniform1(_colorManagementShader.GetUniformLocation("uExposure"), colorManagement.Exposure);
+        Gl.Uniform1(_colorManagementShader.GetUniformLocation("uGamma"), colorManagement.Gamma);
+        Gl.Uniform1(_colorManagementShader.GetUniformLocation("uLook"), Math.Clamp(colorManagement.Look, 0, 9));
+        Gl.BindVertexArray(_edgeVao);
+        Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+        Gl.BindVertexArray(0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        if (depthTest) Gl.Enable(GLEnum.DepthTest);
+        if (cullFace) Gl.Enable(GLEnum.CullFace);
+        if (blend) Gl.Enable(GLEnum.Blend);
     }
 
     private void ApplyAntiAliasingPass(uint sceneFbo, uint scratchFbo, uint scratchTexture,
@@ -6440,6 +6524,8 @@ public class Viewport : UiPanel
                              effectiveMode == ViewportRenderMode.Wireframe;
         bool wireframeMode = effectiveMode == ViewportRenderMode.Wireframe;
         RenderedPassMode effectivePassMode = highQuality ? RenderedPassMode.Combined : _renderedPassMode;
+        EnsureColorManagementTargets(true, w, h, ResolveColorManagementSettings(MainViewport.PropertiesPanel, sceneObj).Enabled &&
+            (renderMode == SceneRenderMode.Rendered || applyCameraEffects) && effectivePassMode == RenderedPassMode.Combined);
         bool previewWorldGi = renderMode == SceneRenderMode.Rendered &&
                       MainViewport.PropertiesPanel?.IndirectLightingEnabled == true &&
                       string.Equals(MainViewport.PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
@@ -6629,6 +6715,7 @@ public class Viewport : UiPanel
         {
             ApplyDepthOfFieldPass(_previewFbo, _previewColorTex, _previewDepthTex, _previewGlowFbo, _previewGlowTex,
                 w, h, renderCamera.Near, renderCamera.Far, sceneObj);
+            ApplyColorManagementPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, MainViewport.PropertiesPanel, sceneObj);
             ApplyAntiAliasingPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, MainViewport.PropertiesPanel);
             ApplyFilmGrainPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
         }

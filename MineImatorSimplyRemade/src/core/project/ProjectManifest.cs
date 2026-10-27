@@ -132,6 +132,11 @@ public class ProjectRenderSettings
     public float SubsurfaceHighlightDesaturation { get; set; } = 0f;
     public float SubsurfaceHighlightColorThreshold { get; set; } = 0f;
     public float SubsurfaceAbsorption { get; set; } = 0.35f;
+    public bool ColorManagementEnabled { get; set; } = false;
+    public int ColorManagementToneMapper { get; set; } = 1;
+    public float ColorManagementExposure { get; set; } = 0f;
+    public float ColorManagementGamma { get; set; } = 2.2f;
+    public int ColorManagementLook { get; set; } = 0;
     public Dictionary<string, List<ProjectBackgroundKeyframeEntry>> BackgroundKeyframes { get; set; } = new();
     public int ResolutionWidth { get; set; } = 1920;
     public int ResolutionHeight { get; set; } = 1080;
@@ -501,6 +506,12 @@ public class ProjectSceneObjectEntry
     public float CameraNear { get; set; } = 0.05f;
     public float CameraFar { get; set; } = 4000f;
     public bool CameraActive { get; set; } = false;
+    public bool CameraColorManagementOverrideEnabled { get; set; } = false;
+    public bool CameraColorManagementEnabled { get; set; } = true;
+    public int CameraColorManagementToneMapper { get; set; } = 1;
+    public float CameraColorManagementExposure { get; set; } = 0f;
+    public float CameraColorManagementGamma { get; set; } = 2.2f;
+    public int CameraColorManagementLook { get; set; } = 0;
     public List<ProjectCameraEffectEntry> CameraEffects { get; set; } = new();
 
     // Light-specific data

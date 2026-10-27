@@ -131,6 +131,21 @@ public class PropertiesPanel : UiPanel
     public float SubsurfaceHighlightDesaturation = 0f;
     public float SubsurfaceHighlightColorThreshold = 0f;
     public float SubsurfaceAbsorption = 0.35f;
+    public bool ColorManagementEnabled = false;
+    public int ColorManagementToneMapper = 1;
+    public float ColorManagementExposure = 0f;
+    public float ColorManagementGamma = 2.2f;
+    public int ColorManagementLook = 0;
+    private static readonly string[] ColorManagementToneMapperOptions =
+        ["text.panel.properties.tone_map_reinhard", "text.panel.properties.tone_map_aces", "text.panel.properties.tone_map_uchimura",
+         "text.panel.properties.tone_map_lottes", "text.panel.properties.tone_map_hable", "text.panel.properties.tone_map_gt7_curve",
+         "text.panel.properties.tone_map_pbr_neutral", "text.panel.properties.tone_map_agx", "text.panel.properties.tone_map_filmic"];
+    private static readonly string[] ColorManagementLookOptions =
+        ["text.common.none", "text.panel.properties.color_management_look_punchy", "text.panel.properties.color_management_look_grayscale",
+         "text.panel.properties.color_management_look_very_high_contrast", "text.panel.properties.color_management_look_high_contrast",
+         "text.panel.properties.color_management_look_medium_high_contrast", "text.panel.properties.color_management_look_medium_contrast",
+         "text.panel.properties.color_management_look_medium_low_contrast", "text.panel.properties.color_management_look_low_contrast",
+         "text.panel.properties.color_management_look_very_low_contrast"];
 
     private string _projectName = "Untitled Project";
     private string _selectedBackgroundKeyProperty = "SkyTime";
@@ -382,6 +397,11 @@ public class PropertiesPanel : UiPanel
         SubsurfaceHighlightDesaturation = Math.Clamp(settings.SubsurfaceHighlightDesaturation, 0f, 1f);
         SubsurfaceHighlightColorThreshold = Math.Clamp(settings.SubsurfaceHighlightColorThreshold, 0f, 1f);
         SubsurfaceAbsorption = Math.Clamp(settings.SubsurfaceAbsorption, -0.95f, 0.95f);
+        ColorManagementEnabled = settings.ColorManagementEnabled;
+        ColorManagementToneMapper = Math.Clamp(settings.ColorManagementToneMapper, 0, ColorManagementToneMapperOptions.Length - 1);
+        ColorManagementExposure = float.IsFinite(settings.ColorManagementExposure) ? Math.Clamp(settings.ColorManagementExposure, -10f, 10f) : 0f;
+        ColorManagementGamma = float.IsFinite(settings.ColorManagementGamma) ? Math.Clamp(settings.ColorManagementGamma, 0.1f, 5f) : 2.2f;
+        ColorManagementLook = Math.Clamp(settings.ColorManagementLook, 0, ColorManagementLookOptions.Length - 1);
         _resolutionWidth = Math.Max(1, settings.ResolutionWidth);
         _resolutionHeight = Math.Max(1, settings.ResolutionHeight);
         _framerate = Math.Clamp(settings.Framerate, 1, 120);
@@ -529,6 +549,11 @@ public class PropertiesPanel : UiPanel
         manifest.Settings.SubsurfaceHighlightDesaturation = Math.Clamp(SubsurfaceHighlightDesaturation, 0f, 1f);
         manifest.Settings.SubsurfaceHighlightColorThreshold = Math.Clamp(SubsurfaceHighlightColorThreshold, 0f, 1f);
         manifest.Settings.SubsurfaceAbsorption = Math.Clamp(SubsurfaceAbsorption, -0.95f, 0.95f);
+        manifest.Settings.ColorManagementEnabled = ColorManagementEnabled;
+        manifest.Settings.ColorManagementToneMapper = Math.Clamp(ColorManagementToneMapper, 0, ColorManagementToneMapperOptions.Length - 1);
+        manifest.Settings.ColorManagementExposure = float.IsFinite(ColorManagementExposure) ? Math.Clamp(ColorManagementExposure, -10f, 10f) : 0f;
+        manifest.Settings.ColorManagementGamma = float.IsFinite(ColorManagementGamma) ? Math.Clamp(ColorManagementGamma, 0.1f, 5f) : 2.2f;
+        manifest.Settings.ColorManagementLook = Math.Clamp(ColorManagementLook, 0, ColorManagementLookOptions.Length - 1);
 
         manifest.Settings.ResolutionWidth = Math.Max(1, _resolutionWidth);
         manifest.Settings.ResolutionHeight = Math.Max(1, _resolutionHeight);
@@ -1113,6 +1138,12 @@ public class PropertiesPanel : UiPanel
             CameraNear = source.CameraNear,
             CameraFar = source.CameraFar,
             CameraActive = source.CameraActive,
+            CameraColorManagementOverrideEnabled = source.CameraColorManagementOverrideEnabled,
+            CameraColorManagementEnabled = source.CameraColorManagementEnabled,
+            CameraColorManagementToneMapper = source.CameraColorManagementToneMapper,
+            CameraColorManagementExposure = source.CameraColorManagementExposure,
+            CameraColorManagementGamma = source.CameraColorManagementGamma,
+            CameraColorManagementLook = source.CameraColorManagementLook,
             CameraEffects = source.CameraEffects
                 .Select(effect => new ProjectCameraEffectEntry
                 {
@@ -2763,6 +2794,10 @@ public class PropertiesPanel : UiPanel
             ImGui.Unindent();
         }
 
+        ImGui.Separator();
+        ImGui.TextUnformatted(Localization.T("text.panel.properties.color_management"));
+        changed |= DrawColorManagementControls(ref ColorManagementEnabled, ref ColorManagementToneMapper,
+            ref ColorManagementExposure, ref ColorManagementGamma, ref ColorManagementLook);
 
         if (changed)
         {
@@ -5099,6 +5134,37 @@ public class PropertiesPanel : UiPanel
             }
         }
 
+        if (_currentObject is CameraSceneObject customCamera &&
+            ImGui.CollapsingHeader(Localization.Label("text.common.custom", "Custom##cameraCustom")))
+        {
+            ImGui.TextUnformatted(Localization.T("text.panel.properties.color_management"));
+            bool overrideEnabled = customCamera.ColorManagementOverrideEnabled;
+            bool changed = ImGui.Checkbox(Localization.Label("text.panel.properties.camera_custom_color_management",
+                "Custom Color Management##cameraCustom"), ref overrideEnabled);
+            void ApplyOverride(object value) => ApplyToSelectedObjects(obj =>
+            {
+                if (obj is CameraSceneObject camera)
+                    camera.ColorManagementOverrideEnabled = (bool)value;
+            });
+            if (changed) ApplyOverride(overrideEnabled);
+            RegisterPropertyContext("camera.custom.color_management.override", () => customCamera.ColorManagementOverrideEnabled,
+                ApplyOverride, false);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(Localization.T("text.panel.properties.camera_custom_color_management_tooltip"));
+            if (overrideEnabled)
+            {
+                bool enabled = customCamera.ColorManagementEnabled;
+                int toneMapper = customCamera.ColorManagementToneMapper;
+                float exposure = customCamera.ColorManagementExposure;
+                float gamma = customCamera.ColorManagementGamma;
+                int look = customCamera.ColorManagementLook;
+                ImGui.Indent();
+                changed |= DrawColorManagementControls(ref enabled, ref toneMapper, ref exposure, ref gamma, ref look, customCamera);
+                ImGui.Unindent();
+            }
+            if (changed) ProjectManager.Instance.SetDirty(true);
+        }
+
         if (ImGui.CollapsingHeader(Localization.Label("text.common.appearance", "Appearance")))
         {
             int blendMode = (int)(_currentObject.MaterialSettings?.BlendMode ?? MaterialBlendMode.Normal);
@@ -5273,6 +5339,51 @@ public class PropertiesPanel : UiPanel
         return _currentObject != null
             ? new List<SceneObject> { _currentObject }
             : Array.Empty<SceneObject>();
+    }
+
+    private bool DrawColorManagementControls(ref bool enabled, ref int toneMapper, ref float exposure,
+        ref float gamma, ref int look, CameraSceneObject? camera = null)
+    {
+        bool Edit<T>(bool edited, string property, T value, Func<CameraSceneObject, T> get,
+            Action<CameraSceneObject, T> set, T defaultValue) where T : notnull
+        {
+            if (camera != null)
+            {
+                void Apply(object newValue) => ApplyToSelectedObjects(obj =>
+                {
+                    if (obj is CameraSceneObject selectedCamera)
+                        set(selectedCamera, (T)newValue);
+                });
+                if (edited) Apply(value);
+                RegisterPropertyContext("camera.custom.color_management." + property, () => get(camera), Apply, defaultValue);
+            }
+            return edited;
+        }
+
+        ImGui.PushID(camera == null ? "colorManagement" : "cameraColorManagement");
+        bool changed = Edit(ImGui.Checkbox(Localization.Label("text.panel.properties.enabled", "Enabled"), ref enabled),
+            "enabled", enabled, obj => obj.ColorManagementEnabled, (obj, value) => obj.ColorManagementEnabled = value, true);
+        if (enabled)
+        {
+            ImGui.Indent();
+            changed |= Edit(ImGui.Combo(Localization.Label("text.panel.properties.color_management_tone_map", "Tone Map"), ref toneMapper,
+                ColorManagementToneMapperOptions.Select(key => Localization.T(key)).ToArray(), ColorManagementToneMapperOptions.Length),
+                "tone_mapper", toneMapper, obj => obj.ColorManagementToneMapper,
+                (obj, value) => obj.ColorManagementToneMapper = Math.Clamp(value, 0, ColorManagementToneMapperOptions.Length - 1), 1);
+            changed |= Edit(InputFloatEditor("Exposure (stops)", ref exposure, 0.05f, -10f, 10f),
+                "exposure", exposure, obj => obj.ColorManagementExposure,
+                (obj, value) => obj.ColorManagementExposure = SanitizeFloatValue(value, -10f, 10f), 0f);
+            changed |= Edit(InputFloatEditor("Gamma", ref gamma, 0.01f, 0.1f, 5f),
+                "gamma", gamma, obj => obj.ColorManagementGamma,
+                (obj, value) => obj.ColorManagementGamma = SanitizeFloatValue(value, 0.1f, 5f), 2.2f);
+            changed |= Edit(ImGui.Combo(Localization.Label("text.panel.properties.color_management_look", "Look"), ref look,
+                ColorManagementLookOptions.Select(key => Localization.T(key)).ToArray(), ColorManagementLookOptions.Length),
+                "look", look, obj => obj.ColorManagementLook,
+                (obj, value) => obj.ColorManagementLook = Math.Clamp(value, 0, ColorManagementLookOptions.Length - 1), 0);
+            ImGui.Unindent();
+        }
+        ImGui.PopID();
+        return changed;
     }
 
     private void ApplyToSelectedObjects(Action<SceneObject> apply)

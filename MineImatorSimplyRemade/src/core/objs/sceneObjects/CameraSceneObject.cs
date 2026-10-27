@@ -13,6 +13,12 @@ public class CameraSceneObject : SceneObject
     public float Fov  = 70f;
     public float Near = 0.05f;
     public float Far  = 4000f;
+    public bool ColorManagementOverrideEnabled;
+    public bool ColorManagementEnabled = true;
+    public int ColorManagementToneMapper = 1;
+    public float ColorManagementExposure;
+    public float ColorManagementGamma = 2.2f;
+    public int ColorManagementLook;
 
     public List<CameraEffect> Effects { get; } = new();
 

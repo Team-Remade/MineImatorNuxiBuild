@@ -326,6 +326,12 @@ internal static class SceneObjectFingerprint
             hash.Add(camera.Near);
             hash.Add(camera.Far);
             hash.Add(camera.Active);
+            hash.Add(camera.ColorManagementOverrideEnabled);
+            hash.Add(camera.ColorManagementEnabled);
+            hash.Add(camera.ColorManagementToneMapper);
+            hash.Add(camera.ColorManagementExposure);
+            hash.Add(camera.ColorManagementGamma);
+            hash.Add(camera.ColorManagementLook);
             hash.Add(camera.Effects.Count);
             for (int i = 0; i < camera.Effects.Count; i++)
             {

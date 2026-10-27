@@ -511,6 +511,12 @@ public static class ProjectSceneSerializer
             entry.CameraNear = camera.Near;
             entry.CameraFar = camera.Far;
             entry.CameraActive = camera.Active;
+            entry.CameraColorManagementOverrideEnabled = camera.ColorManagementOverrideEnabled;
+            entry.CameraColorManagementEnabled = camera.ColorManagementEnabled;
+            entry.CameraColorManagementToneMapper = Math.Clamp(camera.ColorManagementToneMapper, 0, 8);
+            entry.CameraColorManagementExposure = float.IsFinite(camera.ColorManagementExposure) ? Math.Clamp(camera.ColorManagementExposure, -10f, 10f) : 0f;
+            entry.CameraColorManagementGamma = float.IsFinite(camera.ColorManagementGamma) ? Math.Clamp(camera.ColorManagementGamma, 0.1f, 5f) : 2.2f;
+            entry.CameraColorManagementLook = Math.Clamp(camera.ColorManagementLook, 0, 9);
             entry.CameraEffects = camera.Effects
                 .Select(SerializeCameraEffect)
                 .ToList();
@@ -1053,6 +1059,12 @@ public static class ProjectSceneSerializer
             camera.Fov = entry.CameraFov;
             camera.Near = entry.CameraNear;
             camera.Far = entry.CameraFar;
+            camera.ColorManagementOverrideEnabled = entry.CameraColorManagementOverrideEnabled;
+            camera.ColorManagementEnabled = entry.CameraColorManagementEnabled;
+            camera.ColorManagementToneMapper = Math.Clamp(entry.CameraColorManagementToneMapper, 0, 8);
+            camera.ColorManagementExposure = float.IsFinite(entry.CameraColorManagementExposure) ? Math.Clamp(entry.CameraColorManagementExposure, -10f, 10f) : 0f;
+            camera.ColorManagementGamma = float.IsFinite(entry.CameraColorManagementGamma) ? Math.Clamp(entry.CameraColorManagementGamma, 0.1f, 5f) : 2.2f;
+            camera.ColorManagementLook = Math.Clamp(entry.CameraColorManagementLook, 0, 9);
             camera.Effects.Clear();
             if (entry.CameraEffects != null)
             {
