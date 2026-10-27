@@ -583,6 +583,7 @@ public class ProjectCameraEffectEntry
     public ProjectFilmGrainSettings FilmGrain { get; set; } = new();
     public DepthOfFieldSettings DepthOfField { get; set; } = new();
     public BloomSettings Bloom { get; set; } = new();
+    public ColorCorrectionSettings ColorCorrection { get; set; } = new();
 }
 
 public class ProjectFilmGrainSettings

@@ -7,7 +7,8 @@ public enum CameraEffectType
     CameraShake = 0,
     FilmGrain = 1,
     DepthOfField = 2,
-    Bloom = 3
+    Bloom = 3,
+    ColorCorrection = 4
 }
 
 public enum BloomBlendMode
@@ -74,6 +75,65 @@ public class BloomSettings
     }
 }
 
+public class ColorCorrectionSettings
+{
+    public float Contrast { get; set; } = 100f;
+    public float Brightness { get; set; } = 100f;
+    public float Saturation { get; set; } = 100f;
+    public float Vibrance { get; set; } = 0f;
+    public float Hue { get; set; } = 0f;
+    public bool Invert { get; set; } = false;
+    public float InvertStrength { get; set; } = 100f;
+    public float ColorBurn { get; set; } = 0f;
+
+    public ColorCorrectionSettings Clone() => (ColorCorrectionSettings)MemberwiseClone();
+
+    // Suggested slider ranges only; typed percentage and hue values remain unrestricted.
+    public static readonly (string Key, string Label, float Min, float Max)[] Controls =
+    [
+        ("contrast", "Contrast (%)", 0f, 200f),
+        ("brightness", "Brightness (%)", 0f, 200f),
+        ("saturation", "Saturation (%)", 0f, 200f),
+        ("vibrance", "Vibrance (%)", -100f, 100f),
+        ("hue", "Hue (degrees)", -180f, 180f),
+        ("invert", "Invert", 0f, 1f),
+        ("invert_strength", "Invert Strength (%)", 0f, 100f),
+        ("color_burn", "Color Burn (%)", 0f, 100f)
+    ];
+
+    public float GetValue(string key) => key switch
+    {
+        "contrast" => Contrast,
+        "brightness" => Brightness,
+        "saturation" => Saturation,
+        "vibrance" => Vibrance,
+        "hue" => Hue,
+        "invert" => Invert ? 1f : 0f,
+        "invert_strength" => InvertStrength,
+        "color_burn" => ColorBurn,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown color correction control.")
+    };
+
+    public void SetValue(string key, float value)
+    {
+        if (!float.IsFinite(value))
+            throw new ArgumentOutOfRangeException(nameof(value), value, "Color correction values must be finite.");
+
+        switch (key)
+        {
+            case "contrast": Contrast = value; break;
+            case "brightness": Brightness = value; break;
+            case "saturation": Saturation = value; break;
+            case "vibrance": Vibrance = value; break;
+            case "hue": Hue = value; break;
+            case "invert": Invert = value >= 0.5f; break;
+            case "invert_strength": InvertStrength = Math.Clamp(value, 0f, 100f); break;
+            case "color_burn": ColorBurn = Math.Clamp(value, 0f, 100f); break;
+            default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown color correction control.");
+        }
+    }
+}
+
 public class FilmGrainSettings
 {
     public float Strength = 0.15f;
@@ -112,4 +172,5 @@ public class CameraEffect
     public FilmGrainSettings FilmGrain = new FilmGrainSettings();
     public DepthOfFieldSettings DepthOfField = new();
     public BloomSettings Bloom = new();
+    public ColorCorrectionSettings ColorCorrection = new();
 }

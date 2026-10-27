@@ -1271,6 +1271,7 @@ public static class ProjectSceneSerializer
             Type = effect.Type,
             DepthOfField = effect.DepthOfField.Clone(),
             Bloom = effect.Bloom.Clone(),
+            ColorCorrection = effect.ColorCorrection.Clone(),
             Shake = new ProjectCameraShakeSettings
             {
                 Mode = effect.Shake.Mode,
@@ -1295,6 +1296,7 @@ public static class ProjectSceneSerializer
             Type = effect.Type,
             DepthOfField = effect.DepthOfField?.Clone() ?? new DepthOfFieldSettings(),
             Bloom = effect.Bloom?.Clone() ?? new BloomSettings(),
+            ColorCorrection = effect.ColorCorrection?.Clone() ?? new ColorCorrectionSettings(),
             Shake = new CameraShakeSettings
             {
                 Mode = effect.Shake?.Mode ?? CameraShakeMode.Both,

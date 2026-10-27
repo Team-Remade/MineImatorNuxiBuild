@@ -313,7 +313,7 @@ public class PropertiesPanel : UiPanel
 
     // Scale link toggle
     private bool _linkScale = true;
-    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom" };
+    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction" };
     private static readonly string[] CameraShakeModeOptions = { "Rotational", "Positional", "Both" };
     private static readonly string[] BloomBlendModeOptions =
         ["text.panel.properties.blend_normal", "text.panel.properties.blend_add", "text.panel.properties.blend_screen",
@@ -1153,6 +1153,7 @@ public class PropertiesPanel : UiPanel
                     Type = effect.Type,
                     DepthOfField = effect.DepthOfField.Clone(),
                     Bloom = effect.Bloom.Clone(),
+                    ColorCorrection = effect.ColorCorrection.Clone(),
                     Shake = new ProjectCameraShakeSettings
                     {
                         Mode = effect.Shake.Mode,
@@ -4980,6 +4981,7 @@ public class PropertiesPanel : UiPanel
                             CameraEffectType.FilmGrain => Localization.T("text.panel.properties.film_grain") + $"###Film Grain##cameraEffect{i}",
                             CameraEffectType.DepthOfField => Localization.T("text.panel.properties.depth_of_field") + $"###Depth of Field##cameraEffect{i}",
                             CameraEffectType.Bloom => Localization.T("text.panel.properties.bloom") + $"###Bloom##cameraEffect{i}",
+                            CameraEffectType.ColorCorrection => Localization.T("text.panel.properties.color_correction") + $"###Color Correction##cameraEffect{i}",
                             _ => Localization.Format("text.panel.properties.effect", i + 1) + $"###Effect {i + 1}##cameraEffect{i}"
                         };
 
@@ -5131,6 +5133,44 @@ public class PropertiesPanel : UiPanel
                                     ProjectManager.Instance.SetDirty(true);
                                 }
                                 RegisterPropertyContext($"{basePath}.mode");
+                                ImGui.PopID();
+                            }
+
+                            if (effect.Type == CameraEffectType.ColorCorrection)
+                            {
+                                ImGui.PushID(i);
+                                string basePath = $"camera.effect.{i}.color_correction";
+                                foreach (var control in ColorCorrectionSettings.Controls)
+                                {
+                                    if (control.Key == "invert_strength" && !effect.ColorCorrection.Invert)
+                                        continue;
+
+                                    float value = effect.ColorCorrection.GetValue(control.Key);
+                                    bool changed;
+                                    if (control.Key == "invert")
+                                    {
+                                        bool invert = effect.ColorCorrection.Invert;
+                                        changed = ImGui.Checkbox(Localization.DisplayLabel(control.Label), ref invert);
+                                        value = invert ? 1f : 0f;
+                                    }
+                                    else if (control.Key is "invert_strength" or "color_burn")
+                                    {
+                                        changed = ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value,
+                                            control.Min, control.Max, "%.1f%%", ImGuiSliderFlags.AlwaysClamp);
+                                    }
+                                    else
+                                    {
+                                        changed = ImGui.DragFloat(Localization.DisplayLabel(control.Label), ref value,
+                                            1f, 0f, 0f, control.Key == "hue" ? "%.1f degrees" : "%.1f%%");
+                                    }
+                                    if (changed && float.IsFinite(value))
+                                    {
+                                        effect.ColorCorrection.SetValue(control.Key, value);
+                                        Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.{control.Key}");
+                                        ProjectManager.Instance.SetDirty(true);
+                                    }
+                                    RegisterPropertyContext($"{basePath}.{control.Key}");
+                                }
                                 ImGui.PopID();
                             }
 

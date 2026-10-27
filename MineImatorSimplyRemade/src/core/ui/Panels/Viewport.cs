@@ -233,6 +233,7 @@ public class Viewport : UiPanel
     private Shader? _filmGrainShader;
     private Shader? _antiAliasingShader;
     private Shader? _colorManagementShader;
+    private Shader? _colorCorrectionShader;
     private bool _colorManagementHdr;
     private bool _previewColorManagementHdr;
     private Shader? _depthOfFieldShader;
@@ -822,6 +823,8 @@ public class Viewport : UiPanel
         _antiAliasingShader.CompileShader("edge.vert", "fxaa.frag");
         _colorManagementShader = new Shader(Gl);
         _colorManagementShader.CompileShader("edge.vert", "color_management.frag");
+        _colorCorrectionShader = new Shader(Gl);
+        _colorCorrectionShader.CompileShader("edge.vert", "color_correction.frag");
         _depthOfFieldShader = new Shader(Gl);
         _depthOfFieldShader.CompileShader("edge.vert", "depth_of_field.frag");
 
@@ -2870,6 +2873,7 @@ public class Viewport : UiPanel
                 ApplyDepthOfFieldPass(_fbo, _colorTex, _depthTex, _glowFbo, _glowTex, w, h, renderNear, renderFar, activeCamObj);
                 ApplyBloomPass(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, activeCamObj);
                 ApplyColorManagementPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel, activeCamObj);
+                ApplyColorCorrectionPass(_fbo, _glowFbo, _glowTex, w, h, activeCamObj);
                 ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel);
                 ApplyFilmGrainPass(_fbo, _colorTex, _glowFbo, _glowTex, w, h, activeCamObj);
             }
@@ -3076,6 +3080,7 @@ public class Viewport : UiPanel
         if (renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
         {
             ApplyColorManagementPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel, activeCamObj);
+            ApplyColorCorrectionPass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
             ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel);
         }
 
@@ -5491,6 +5496,11 @@ public class Viewport : UiPanel
             _colorManagementShader = new Shader(Gl);
             _colorManagementShader.CompileShader("edge.vert", "color_management.frag");
         }
+        if (_colorCorrectionShader == null)
+        {
+            _colorCorrectionShader = new Shader(Gl);
+            _colorCorrectionShader.CompileShader("edge.vert", "color_correction.frag");
+        }
 
         InitGlowResources(ref _previewIndirectFbo, ref _previewIndirectTex, width, height, "Preview indirect", hdr: true);
         InitGlowResources(ref _previewIndirectPingFbo, ref _previewIndirectPingTex, width, height, "Preview indirect ping", hdr: true);
@@ -6056,6 +6066,57 @@ public class Viewport : UiPanel
         if (depthTest) Gl.Enable(GLEnum.DepthTest);
         if (cullFace) Gl.Enable(GLEnum.CullFace);
         if (blend) Gl.Enable(GLEnum.Blend);
+    }
+
+    private void ApplyColorCorrectionPass(uint sceneFbo, uint scratchFbo, uint scratchTexture,
+        uint width, uint height, CameraSceneObject? camera)
+    {
+        if (Gl == null || _colorCorrectionShader == null || camera == null ||
+            width == 0 || height == 0 || sceneFbo == 0 || scratchFbo == 0 || scratchTexture == 0)
+            return;
+
+        foreach (var effect in camera.Effects)
+        {
+            if (effect.Type != CameraEffectType.ColorCorrection)
+                continue;
+
+            var settings = effect.ColorCorrection;
+            bool depthTest = Gl.IsEnabled(GLEnum.DepthTest);
+            bool cullFace = Gl.IsEnabled(GLEnum.CullFace);
+            bool blend = Gl.IsEnabled(GLEnum.Blend);
+            // Copy each result before the next effect to preserve stack order without feedback.
+            Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
+            Gl.ReadBuffer(GLEnum.ColorAttachment0);
+            Gl.BindFramebuffer(GLEnum.DrawFramebuffer, scratchFbo);
+            Gl.BlitFramebuffer(0, 0, (int)width, (int)height, 0, 0, (int)width, (int)height,
+                ClearBufferMask.ColorBufferBit, GLEnum.Nearest);
+
+            Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
+            Gl.DrawBuffer(GLEnum.ColorAttachment0);
+            Gl.Disable(GLEnum.DepthTest);
+            Gl.Disable(GLEnum.CullFace);
+            Gl.Disable(GLEnum.Blend);
+            Gl.Viewport(0, 0, width, height);
+            Gl.UseProgram(_colorCorrectionShader.ShaderProgram);
+            Gl.ActiveTexture(GLEnum.Texture0);
+            Gl.BindTexture(GLEnum.Texture2D, scratchTexture);
+            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uScene"), 0);
+            Gl.Uniform2(_colorCorrectionShader.GetUniformLocation("uTexelSize"), 1f / width, 1f / height);
+            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uContrast"), settings.Contrast);
+            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uBrightness"), settings.Brightness);
+            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uSaturation"), settings.Saturation);
+            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uVibrance"), settings.Vibrance);
+            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uHue"), settings.Hue);
+            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uInvertStrength"), settings.Invert ? settings.InvertStrength : 0f);
+            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uColorBurn"), settings.ColorBurn);
+            Gl.BindVertexArray(_edgeVao);
+            Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+            Gl.BindVertexArray(0);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+            if (depthTest) Gl.Enable(GLEnum.DepthTest);
+            if (cullFace) Gl.Enable(GLEnum.CullFace);
+            if (blend) Gl.Enable(GLEnum.Blend);
+        }
     }
 
     private void ApplyAntiAliasingPass(uint sceneFbo, uint scratchFbo, uint scratchTexture,
@@ -6816,6 +6877,7 @@ public class Viewport : UiPanel
             ApplyBloomPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex,
                 _previewGlowPingFbo, _previewGlowPingTex, w, h, sceneObj);
             ApplyColorManagementPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, MainViewport.PropertiesPanel, sceneObj);
+            ApplyColorCorrectionPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
             ApplyAntiAliasingPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, MainViewport.PropertiesPanel);
             ApplyFilmGrainPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
         }

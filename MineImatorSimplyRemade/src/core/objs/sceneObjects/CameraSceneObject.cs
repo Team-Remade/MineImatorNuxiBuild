@@ -119,6 +119,9 @@ public class CameraSceneObject : SceneObject
             case CameraEffectType.Bloom:
                 Effects.Add(new CameraEffect { Type = CameraEffectType.Bloom });
                 break;
+            case CameraEffectType.ColorCorrection:
+                Effects.Add(new CameraEffect { Type = CameraEffectType.ColorCorrection });
+                break;
         }
     }
 
@@ -129,6 +132,7 @@ public class CameraSceneObject : SceneObject
             Type = source.Type,
             DepthOfField = source.DepthOfField.Clone(),
             Bloom = source.Bloom.Clone(),
+            ColorCorrection = source.ColorCorrection.Clone(),
             Shake = new CameraShakeSettings
             {
                 Mode = source.Shake.Mode,

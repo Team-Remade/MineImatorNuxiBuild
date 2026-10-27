@@ -1570,6 +1570,7 @@ public class Timeline : UiPanel
             {
                 CameraEffectType.DepthOfField => Localization.Format("text.panel.timeline.effect_depth_of_field", index + 1),
                 CameraEffectType.Bloom => Localization.Format("text.panel.timeline.effect_bloom", index + 1),
+                CameraEffectType.ColorCorrection => Localization.Format("text.panel.timeline.effect_color_correction", index + 1),
                 CameraEffectType.FilmGrain => Localization.Format("text.panel.timeline.effect_film_grain", index + 1),
                 _ => Localization.Format("text.panel.timeline.effect_camera_shake", index + 1)
             };
@@ -2761,6 +2762,12 @@ public class Timeline : UiPanel
                     yield return $"camera.effect.{i}.bloom.{control.Key}";
                 continue;
             }
+            if (cam.Effects[i].Type == CameraEffectType.ColorCorrection)
+            {
+                foreach (var control in ColorCorrectionSettings.Controls)
+                    yield return $"camera.effect.{i}.color_correction.{control.Key}";
+                continue;
+            }
             if (cam.Effects[i].Type == CameraEffectType.FilmGrain)
             {
                 string grainPath = $"camera.effect.{i}.film_grain";
@@ -3364,6 +3371,8 @@ public class Timeline : UiPanel
                 return effect.DepthOfField.GetValue(parts[4]);
             if (effect.Type == CameraEffectType.Bloom && parts[3] == "bloom")
                 return effect.Bloom.GetValue(string.Join('.', parts.Skip(4)));
+            if (effect.Type == CameraEffectType.ColorCorrection && parts.Length == 5 && parts[3] == "color_correction")
+                return effect.ColorCorrection.GetValue(parts[4]);
             if (effect.Type == CameraEffectType.CameraShake && parts[3] == "shake")
             {
                 if (parts.Length == 5 && parts[4] == "mode")
@@ -3935,6 +3944,15 @@ public class Timeline : UiPanel
                     effect.Bloom.SetValue(string.Join('.', parts.Skip(4)), value);
                 break;
             }
+            case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "color_correction" && obj is CameraSceneObject camColorCorrection:
+            {
+                if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camColorCorrection.Effects.Count)
+                    break;
+                var effect = camColorCorrection.Effects[effectIndex];
+                if (effect.Type == CameraEffectType.ColorCorrection)
+                    effect.ColorCorrection.SetValue(parts[4], value);
+                break;
+            }
             case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "film_grain" && obj is CameraSceneObject camGrain:
             {
                 if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camGrain.Effects.Count)
@@ -4257,6 +4275,17 @@ public class Timeline : UiPanel
                                     newRows.Add(MakeSingle(obj, control.Label, $"{bloomPath}.{control.Key}", 1));
                             continue;
                         }
+                        if (effect.Type == CameraEffectType.ColorCorrection)
+                        {
+                            string colorCorrectionPath = $"camera.effect.{i}.color_correction";
+                            string[] paths = ColorCorrectionSettings.Controls.Select(c => $"{colorCorrectionPath}.{c.Key}").ToArray();
+                            if (!paths.Any(propsWithKeyframes.Contains)) continue;
+                            newRows.Add(MakeGroup(obj, $"Effect {i + 1}: Color Correction", paths, $"camera.effect.{i}"));
+                            foreach (var control in ColorCorrectionSettings.Controls)
+                                if (propsWithKeyframes.Contains($"{colorCorrectionPath}.{control.Key}"))
+                                    newRows.Add(MakeSingle(obj, control.Label, $"{colorCorrectionPath}.{control.Key}", 1));
+                            continue;
+                        }
                         if (effect.Type == CameraEffectType.FilmGrain)
                         {
                             string grainPath = $"camera.effect.{i}.film_grain";
@@ -4459,6 +4488,15 @@ public class Timeline : UiPanel
                     _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Bloom", paths, $"camera.effect.{i}"));
                     foreach (var control in BloomSettings.Controls)
                         _displayRows.Add(MakeSingle(obj, control.Label, $"{bloomPath}.{control.Key}", 1));
+                    continue;
+                }
+                if (effect.Type == CameraEffectType.ColorCorrection)
+                {
+                    string colorCorrectionPath = $"camera.effect.{i}.color_correction";
+                    string[] paths = ColorCorrectionSettings.Controls.Select(c => $"{colorCorrectionPath}.{c.Key}").ToArray();
+                    _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Color Correction", paths, $"camera.effect.{i}"));
+                    foreach (var control in ColorCorrectionSettings.Controls)
+                        _displayRows.Add(MakeSingle(obj, control.Label, $"{colorCorrectionPath}.{control.Key}", 1));
                     continue;
                 }
                 if (effect.Type == CameraEffectType.FilmGrain)
