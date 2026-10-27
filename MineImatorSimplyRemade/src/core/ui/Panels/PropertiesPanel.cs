@@ -6093,16 +6093,6 @@ public class PropertiesPanel : UiPanel
             foreach (var mesh in obj.Visuals)
             {
                 mesh.TextureId = tex;
-                
-                // Configure material for proper rendering
-                if (mesh.GetSurfaceCount() > 0)
-                {
-                    var material = mesh.SurfaceGetMaterial(0);
-                    if (material is StandardMaterial stdMat)
-                    {
-                        stdMat.AlbedoColor = new vec4(1f, 1f, 1f, 1f); // White for full color pass-through
-                    }
-                }
             }
 
             // Store the relative path for persistence

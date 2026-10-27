@@ -835,7 +835,7 @@ public class SceneObject
     public void RefreshInheritedMaterials()
     {
         if (this is MiBoneSceneObject poseBone) poseBone.RefreshInheritedPoseBend();
-        if (UsePropertyInheritance || _inheritedTextures.Count > 0) ApplyMaterialSettingsToMeshes();
+        if (UsePropertyInheritance || _materialSettings != null || _inheritedTextures.Count > 0) ApplyMaterialSettingsToMeshes();
         else ApplyAuxiliaryTextures();
         foreach (var child in _children)
             child.RefreshInheritedMaterials();
