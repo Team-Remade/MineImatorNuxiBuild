@@ -1120,7 +1120,8 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             _allowUnknown = false;
             throw new InvalidDataException(Localization.T("text.panel.world_importer.the_selected_area_contains_unavailable_blocks_review_the_list_and_explicitly"));
         }
-        Import(volume, conversion, animate);
+        var root = Import(volume, conversion, animate);
+        spawnMenu.SpawnWithCursor(() => root, root);
         Close();
     }
 
@@ -1333,7 +1334,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         });
     }
 
-    private void Import(WorldVolume volume, WorldSpecialBlockPlan? conversion = null, bool animate = true)
+    private SceneObject Import(WorldVolume volume, WorldSpecialBlockPlan? conversion = null, bool animate = true)
     {
         var manager = ProjectManager.Instance;
         if (!manager.HasProject) throw new InvalidOperationException(Localization.T("text.panel.world_importer.open_a_project_before_importing_terrain"));
@@ -1377,7 +1378,9 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
                       (_blockFilter.IsActive ? Localization.Format("text.panel.world_importer.applied_block_filter_types", _blockFilter.FilteredBlocks.Count) : "") +
                       (_unknown.Length > 0 ? Localization.Format("text.panel.world_importer.omitted_unavailable_block_types", _unknown.Length) : "");
             committed = true;
+            var imported = root;
             root = null;
+            return imported;
         }
         finally
         {

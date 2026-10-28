@@ -11,6 +11,7 @@ using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.world;
+using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using NativeFileDialogSharp;
@@ -54,6 +55,31 @@ public class SpawnMenu : UiPanel
 
     // ── State ────────────────────────────────────────────────────────────────
     private bool _isOpen = false;
+    private bool _placeWithCursor = true;
+
+    public void SpawnWithCursor(Func<SceneObject?> spawn, SceneObject? existingObject = null)
+    {
+        if (Viewport == null) return;
+        Viewport.CancelObjectPlacement();
+        if (!_placeWithCursor)
+        {
+            spawn();
+            return;
+        }
+
+        _isOpen = false;
+        Viewport.RequestObjectPlacement(position =>
+        {
+            var obj = spawn();
+            if (obj == null) return;
+            obj.SetLocalPosition(position);
+            if (obj is CameraSceneObject camera)
+                camera.SyncCameraToTransform();
+            SelectionManager.Instance?.ClearSelection();
+            SelectionManager.Instance?.SelectObject(obj);
+            core.project.ProjectManager.Instance.SetDirty(true);
+        }, existingObject);
+    }
 
     // Retry-prompt state for schematic loads that fail on invalid/corrupt data.
     private string? _pendingSchematicRetryPath;
@@ -399,6 +425,7 @@ public class SpawnMenu : UiPanel
     /// </summary>
     public void Toggle(Vector2? screenPos = null)
     {
+        Viewport?.CancelObjectPlacement();
         if (_isOpen)
         {
             _isOpen = false;
@@ -2137,6 +2164,10 @@ public class SpawnMenu : UiPanel
 
     private void RenderBottomBar()
     {
+        ImGui.Checkbox("Place with cursor", ref _placeWithCursor);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("After spawning, click a scene surface to place the object. Escape cancels placement.");
+        ImGui.SameLine();
         float buttonWidth = 110f;
         ImGui.SetCursorPosX(ImGui.GetContentRegionAvail().X - buttonWidth + ImGui.GetCursorPosX());
 
@@ -2287,7 +2318,7 @@ public class SpawnMenu : UiPanel
 
         if (result.IsOk && !string.IsNullOrEmpty(result.Path) &&
             core.project.ProjectManager.DetectImportAssetType(result.Path) == ProjectAssetType.Model)
-            SpawnCustomModelFromPath(result.Path);
+            SpawnWithCursor(() => SpawnCustomModelFromPath(result.Path));
     }
 
     /// <summary>
@@ -2301,9 +2332,8 @@ public class SpawnMenu : UiPanel
         if (!result.IsOk || string.IsNullOrEmpty(result.Path)) return;
 
         string pathToSpawn = ResolveSchematicPathForProject(result.Path);
-        var root = SpawnSchematicFromPathInteractive(pathToSpawn, _spawnResourcePackId);
-        if (root != null)
-            _isOpen = false;
+        string resourcePackId = _spawnResourcePackId;
+        SpawnWithCursor(() => SpawnSchematicFromPathInteractive(pathToSpawn, resourcePackId));
     }
 
     private string ResolveSchematicPathForProject(string sourcePath)
@@ -2639,7 +2669,7 @@ public class SpawnMenu : UiPanel
         // Re-spawn a model from the history list.
         if (_customModelPaths.TryGetValue(objectName, out string? path))
         {
-            SpawnCustomModelFromPath(path);
+            SpawnWithCursor(() => SpawnCustomModelFromPath(path));
             _isOpen = false;
         }
     }
@@ -2720,6 +2750,7 @@ public class SpawnMenu : UiPanel
                     _pendingSchematicRetryError = null;
                     _isOpen = false;
                     ImGui.CloseCurrentPopup();
+                    SpawnWithCursor(() => root, root);
                 }
             }
 
@@ -5091,7 +5122,8 @@ public class SpawnMenu : UiPanel
         int nextNum = GetNextAvailableObjectNumber(baseName);
         string fullName = nextNum > 1 ? $"{baseName}{nextNum}" : baseName;
 
-        SpawnParticleSpawnerObject(fullName, _selectedParticleLibraryEntryId);
+        string libraryEntryId = _selectedParticleLibraryEntryId;
+        SpawnWithCursor(() => SpawnParticleSpawnerObject(fullName, libraryEntryId));
         _isOpen = false;
     }
 
@@ -5113,7 +5145,8 @@ public class SpawnMenu : UiPanel
         if (variantIndex >= variants.Count) variantIndex = 0;
 
         var variant = variants[variantIndex];
-        SpawnBlockObject(blockName, variant, _spawnResourcePackId);
+        string resourcePackId = _spawnResourcePackId;
+        SpawnWithCursor(() => SpawnBlockObject(blockName, variant, resourcePackId));
         _isOpen = false;
     }
 
@@ -5158,19 +5191,28 @@ public class SpawnMenu : UiPanel
             }
         }
 
-        var model = SpawnCustomModelFromPath(ResolveCharacterModelPath(entry), textureOverride);
-        if (model != null)
+        string modelPath = ResolveCharacterModelPath(entry);
+        string category = _selectedCategory;
+        SpawnWithCursor(() =>
         {
-            model.SpawnCategory = _selectedCategory;
-            model.InheritPose = string.Equals(_selectedCategory, "Equipment", StringComparison.Ordinal);
-        }
+            var model = SpawnCustomModelFromPath(modelPath, textureOverride);
+            if (model != null)
+            {
+                model.SpawnCategory = category;
+                model.InheritPose = string.Equals(category, "Equipment", StringComparison.Ordinal);
+            }
+            return model;
+        });
         _isOpen = false;
     }
 
     private void TrySpawnItem()
     {
         if (string.IsNullOrEmpty(_selectedTileKey)) return;
-        SpawnItemObject(_selectedTileKey, _itemAtlasSource, _item3DMode);
+        string tileKey = _selectedTileKey;
+        ItemAtlasSource atlasSource = _itemAtlasSource;
+        bool is3D = _item3DMode;
+        SpawnWithCursor(() => SpawnItemObject(tileKey, atlasSource, is3D));
         _isOpen = false;
     }
 
@@ -5184,11 +5226,11 @@ public class SpawnMenu : UiPanel
         switch (_selectedCategory)
         {
             case "Camera":
-                SpawnCameraObject(fullName);
+                SpawnWithCursor(() => SpawnCameraObject(fullName));
                 break;
 
             case "Light":
-                SpawnLightObject(fullName, objectName);
+                SpawnWithCursor(() => SpawnLightObject(fullName, objectName));
                 break;
 
             case "Custom Models":
@@ -5209,16 +5251,20 @@ public class SpawnMenu : UiPanel
                     {
                         texturePath = CopyTextureToProject(_selectedPrimitiveTexturePath);
                     }
-                    SpawnPrimitiveObject(objectName, fullName, 0, texturePath,
-                        _selectedPrimitivePlaneOrientation, _selectedPrimitiveCubeMapped,
-                        _selectedPrimitiveSphereSmooth, _selectedPrimitiveSphereSegments, _selectedPrimitiveSphereRings,
-                        _selectedPrimitiveRadialSegments, _selectedPrimitiveRadialSmooth, _selectedPrimitiveRadialClosed,
-                        _selectedPrimitiveRadialMapped);
+                    var orientation = _selectedPrimitivePlaneOrientation;
+                    bool cubeMapped = _selectedPrimitiveCubeMapped;
+                    bool sphereSmooth = _selectedPrimitiveSphereSmooth;
+                    int sphereSegments = _selectedPrimitiveSphereSegments, sphereRings = _selectedPrimitiveSphereRings;
+                    int radialSegments = _selectedPrimitiveRadialSegments;
+                    bool radialSmooth = _selectedPrimitiveRadialSmooth, radialClosed = _selectedPrimitiveRadialClosed;
+                    bool radialMapped = _selectedPrimitiveRadialMapped;
+                    SpawnWithCursor(() => SpawnPrimitiveObject(objectName, fullName, 0, texturePath,
+                        orientation, cubeMapped, sphereSmooth, sphereSegments, sphereRings,
+                        radialSegments, radialSmooth, radialClosed, radialMapped));
                 }
                 else
                 {
-                    SpawnPrimitiveObject(objectName, fullName, 0, "", PlaneOrientation.XY, false,
-                        _selectedPrimitiveSphereSmooth, _selectedPrimitiveSphereSegments, _selectedPrimitiveSphereRings);
+                    SpawnWithCursor(() => SpawnPrimitiveObject(objectName, fullName));
                 }
                 break;
         }

@@ -50,6 +50,26 @@ public class Viewport : UiPanel
 
     public List<SceneObject> SceneObjects { get; } = new();
 
+    private Action<vec3>? _placeObject;
+    private SceneObject? _placementExcludedRoot;
+    private bool _consumePlacementClick;
+    private int _placementReleaseFrame = -1;
+
+    public void CancelObjectPlacement()
+    {
+        var owner = MainViewport ?? this;
+        owner._placeObject = null;
+        owner._placementExcludedRoot = null;
+    }
+
+    public void RequestObjectPlacement(Action<vec3> placeObject, SceneObject? excludedRoot = null)
+    {
+        var owner = MainViewport ?? this;
+        owner.CancelDepthOfFieldFocus();
+        owner._placeObject = placeObject;
+        owner._placementExcludedRoot = excludedRoot;
+    }
+
     private bool _showHiddenObjects;
     private bool _profilingCameraFeeds;
     private readonly List<ParticleSpawnerSceneObject> _particleSpawnersToUpdate = new();
@@ -4078,7 +4098,8 @@ public class Viewport : UiPanel
         Vector2 imageSize,
         float screenX,
         float screenY,
-        bool ctrlHeld)
+        bool ctrlHeld,
+        Action<vec3>? placeAtSurface = null)
     {
         // Selection callbacks can edit raw public fields while handling a pick.
         using var uncached = SceneObject.SuspendRenderEvaluation();
@@ -4094,7 +4115,11 @@ public class Viewport : UiPanel
         Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
         Gl.UseProgram(_pickShader.ShaderProgram);
-        RenderPickObjects(sceneObjects, view, proj);
+        vec3 previousCameraPosition = Mesh.GlobalCameraPosition;
+        if (placeAtSurface != null)
+            Mesh.GlobalCameraPosition = (view.Inverse * new vec4(0f, 0f, 0f, 1f)).xyz;
+        RenderPickObjects(sceneObjects, view, proj, surfacesOnly: placeAtSurface != null);
+        Mesh.GlobalCameraPosition = previousCameraPosition;
 
         // ── Read back the clicked pixel ───────────────────────────────────────
         // Map screen-space click coords into pick texture pixel coords.
@@ -4117,6 +4142,40 @@ public class Viewport : UiPanel
 
         pixelX = Math.Clamp(pixelX, 0, (int)w - 1);
         pixelY = Math.Clamp(pixelY, 0, (int)h - 1);
+
+        if (placeAtSurface != null)
+        {
+            float depth;
+            Gl.ReadPixels(pixelX, pixelY, 1, 1, GLEnum.DepthComponent, GLEnum.Float, &depth);
+            Gl.Disable(GLEnum.DepthTest);
+            Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+
+            mat4 inverse = (proj * view).Inverse;
+            float x = (pixelX + 0.5f) / w * 2f - 1f;
+            float y = (pixelY + 0.5f) / h * 2f - 1f;
+            vec4 surfacePoint = inverse * new vec4(x, y, depth * 2f - 1f, 1f);
+            bool hasSurface = depth < 1f && MathF.Abs(surfacePoint.w) > 1e-6f;
+            vec3 position = hasSurface ? surfacePoint.xyz / surfacePoint.w : vec3.Zero;
+            vec4 near = inverse * new vec4(x, y, -1f, 1f);
+            vec4 far = inverse * new vec4(x, y, 1f, 1f);
+            vec3 origin = near.xyz / near.w;
+            vec3 direction = (far.xyz / far.w - origin).Normalized;
+            if (MathF.Abs(direction.y) >= 1e-6f)
+            {
+                float distance = -origin.y / direction.y;
+                // Visible ground occludes underground objects; otherwise it is an empty-space fallback.
+                if (distance >= 0f && (!hasSurface ||
+                    (MainViewport ?? this).GroundPlaneVisible && distance < (position - origin).Length))
+                {
+                    position = origin + direction * distance;
+                    hasSurface = true;
+                }
+            }
+            if (hasSurface && float.IsFinite(position.x) && float.IsFinite(position.y) && float.IsFinite(position.z))
+                placeAtSurface(position);
+            return;
+        }
 
         // Read a single pixel from the pick texture.
         byte[] pixel = new byte[4]; // RGBA
@@ -4173,12 +4232,14 @@ public class Viewport : UiPanel
         IEnumerable<SceneObject> objects,
         mat4 view,
         mat4 proj,
-        Dictionary<string, BoneSceneObject>? boneDict = null)
+        Dictionary<string, BoneSceneObject>? boneDict = null,
+        bool surfacesOnly = false)
     {
         if (_pickShader == null) return;
 
         foreach (var obj in objects)
         {
+            if (surfacesOnly && ReferenceEquals(obj, (MainViewport ?? this)._placementExcludedRoot)) continue;
             if (!obj.GetEffectiveVisibility()) continue;
 
             var localBoneDict = boneDict;
@@ -4186,7 +4247,7 @@ public class Viewport : UiPanel
                 localBoneDict = BuildBoneDictionary(obj);
 
             bool hasBoneIndicator = obj is BoneSceneObject b && b.IndicatorMesh != null && ShouldShowBoneIndicator(b);
-            if (IsObjectVisible(obj) && obj.IsSelectable && (obj.Visuals.Count > 0 || hasBoneIndicator))
+            if (IsObjectVisible(obj) && (surfacesOnly || obj.IsSelectable) && (obj.Visuals.Count > 0 || hasBoneIndicator))
             {
                 mat4 model = GetRenderableWorldMatrix(obj, Mesh.GlobalCameraPosition);
                 mat4 mvp   = proj * view * model;
@@ -4214,14 +4275,29 @@ public class Viewport : UiPanel
                 // Draw geometry meshes.
                 foreach (var mesh in obj.Visuals)
                 {
+                    if (surfacesOnly && mesh.PickOnly) continue;
                     if (mesh.IsSkinned && localBoneDict != null)
                         UpdateBoneMatrices(mesh, model, localBoneDict);
                     mesh.ApplySkinningUniforms(_pickShader);
+                    if (surfacesOnly)
+                    {
+                        if (mesh.DoubleSided) Gl.Disable(GLEnum.CullFace);
+                        else
+                        {
+                            Gl.Enable(GLEnum.CullFace);
+                            Gl.CullFace(mesh.CullFrontFaces ? GLEnum.Front : GLEnum.Back);
+                        }
+                    }
                     mesh.RenderPickPass(_pickShader);
+                    if (surfacesOnly)
+                    {
+                        Gl.Enable(GLEnum.CullFace);
+                        Gl.CullFace(GLEnum.Back);
+                    }
                 }
 
                 // Draw the bone indicator octahedron as an additional pick target.
-                if (obj is BoneSceneObject bone && bone.IndicatorMesh != null && ShouldShowBoneIndicator(bone))
+                if (!surfacesOnly && obj is BoneSceneObject bone && bone.IndicatorMesh != null && ShouldShowBoneIndicator(bone))
                 {
                     bone.IndicatorMesh.ApplySkinningUniforms(_pickShader);
                     bone.IndicatorMesh.RenderPickPass(_pickShader);
@@ -4229,7 +4305,7 @@ public class Viewport : UiPanel
             }
 
             // Recurse into children.
-            RenderPickObjects(obj.Children, view, proj, localBoneDict);
+            RenderPickObjects(obj.Children, view, proj, localBoneDict, surfacesOnly);
         }
     }
 
@@ -5778,6 +5854,7 @@ public class Viewport : UiPanel
 
     public void RequestDepthOfFieldFocus(CameraSceneObject camera, CameraEffect effect, DepthOfFieldFocusTarget target)
     {
+        CancelObjectPlacement();
         _focusCamera = camera;
         _focusEffect = effect;
         _focusTarget = target;
@@ -5798,6 +5875,56 @@ public class Viewport : UiPanel
         _focusSource = null;
         _focusPoint = null;
         DepthOfFieldFocusMessage = "";
+    }
+
+    private bool HandleObjectPlacementInput(Camera camera, CameraSceneObject? sceneObject, bool hovered,
+        Vector2 imageMin, Vector2 imageSize, bool preview)
+    {
+        var owner = MainViewport ?? this;
+        // Consume the release in every viewport too, so it cannot become a selection click.
+        if (owner._consumePlacementClick)
+        {
+            if (!ImGui.IsMouseDown(ImGuiMouseButton.Left))
+            {
+                owner._consumePlacementClick = false;
+                owner._placementReleaseFrame = ImGui.GetFrameCount();
+            }
+            return true;
+        }
+        if (owner._placementReleaseFrame == ImGui.GetFrameCount()) return true;
+        if (owner._placeObject == null) return false;
+        if (ImGui.IsKeyPressed(ImGuiKey.Escape))
+        {
+            owner.CancelObjectPlacement();
+            return true;
+        }
+        Vector2 point = ImGui.GetMousePos() - imageMin;
+        if (!hovered || imageSize.X <= 0 || imageSize.Y <= 0 ||
+            point.X < 0 || point.Y < 0 || point.X >= imageSize.X || point.Y >= imageSize.Y)
+            return true;
+
+        ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+        ImGui.SetTooltip("Click a surface to place the object. Escape to cancel.");
+        if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        {
+            owner._consumePlacementClick = true;
+            Camera prepared = BuildPreparedCamera(camera, sceneObject);
+            uint width = preview ? _previewWidth : _viewportWidth;
+            uint height = preview ? _previewHeight : _viewportHeight;
+            if (width == 0 || height == 0) return true;
+            ExecutePendingPickGeneric(
+                preview ? _previewPickFbo : _pickFbo,
+                preview ? _previewPickColorTex : _pickColorTex, width, height,
+                prepared.GetViewMatrix(), prepared.GetProjectionMatrix((float)width / height),
+                owner.SceneObjects, imageMin, imageSize, ImGui.GetMousePos().X, ImGui.GetMousePos().Y, false,
+                position =>
+                {
+                    var place = owner._placeObject;
+                    owner.CancelObjectPlacement();
+                    place?.Invoke(position);
+                });
+        }
+        return true;
     }
 
     private bool HandleDepthOfFieldFocusInput(CameraSceneObject? camera, bool hovered, Vector2 imageMin, Vector2 imageSize)
@@ -6938,7 +7065,8 @@ public class Viewport : UiPanel
         bool keyboardBlocked = io.WantTextInput || io.AppFocusLost || Keybinds.IsCapturing;
         if (keyboardBlocked || !ImGui.IsMouseDown(ImGuiMouseButton.Right))
             _previewInput.StopFreeFly();
-        if (HandleDepthOfFieldFocusInput(sceneObj, hovered, imageMin, imageSize))
+        if (HandleObjectPlacementInput(cam, sceneObj, hovered, imageMin, imageSize, true) ||
+            HandleDepthOfFieldFocusInput(sceneObj, hovered, imageMin, imageSize))
         {
             _previewInput.ClearPendingPick();
             _pendingPreviewPickX = float.NaN;
@@ -7141,7 +7269,8 @@ public class Viewport : UiPanel
         bool keyboardBlocked = io.WantTextInput || io.AppFocusLost || Keybinds.IsCapturing;
         if (keyboardBlocked || !ImGui.IsMouseDown(ImGuiMouseButton.Right))
             _input.StopFreeFly();
-        if (HandleDepthOfFieldFocusInput(sceneObj, ImGui.IsWindowHovered(), imageMin, imageSize))
+        if (HandleObjectPlacementInput(camera, sceneObj, ImGui.IsWindowHovered(), imageMin, imageSize, false) ||
+            HandleDepthOfFieldFocusInput(sceneObj, ImGui.IsWindowHovered(), imageMin, imageSize))
         {
             _input.ClearPendingPick();
             _pendingPickX = float.NaN;

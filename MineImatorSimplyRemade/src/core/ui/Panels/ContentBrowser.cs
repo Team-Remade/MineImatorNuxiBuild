@@ -565,10 +565,10 @@ public class ContentBrowser : UiPanel
         string ext = Path.GetExtension(fullPath).ToLowerInvariant();
         if (ext is ".schematic" or ".schem")
         {
-            SpawnMenu?.SpawnSchematicFromPathInteractive(fullPath);
+            SpawnMenu?.SpawnWithCursor(() => SpawnMenu.SpawnSchematicFromPathInteractive(fullPath));
             return;
         }
 
-        SpawnMenu?.SpawnCustomModelFromPath(fullPath);
+        SpawnMenu?.SpawnWithCursor(() => SpawnMenu.SpawnCustomModelFromPath(fullPath));
     }
 }
