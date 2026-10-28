@@ -23,7 +23,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
     private (int X, int Z)? _loadedCenter;
     private (int X, int Z) _requestedCenter;
     private Task<List<WorldVolume>>? _previewReadTask;
-    private readonly Queue<WorldVolume> _pendingTiles = [];
+    private readonly System.Collections.Concurrent.ConcurrentQueue<WorldVolume> _pendingTiles = new();
     private int _previewTileCount, _previewTilesCompleted;
     private readonly PreviewRenderer _renderer = new(gl, 512) { AutoRotateSpeed = 0, Distance = 2.2f };
     private readonly Camera _camera = new() { Far = 4096 };
@@ -31,7 +31,9 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
     private WindowHandle* _flightWindow;
     private vec3 _worldOrigin;
     private bool _cameraInitialized;
+    private int? _initialHeight;
     private bool _streamingPaused;
+    private bool _restartStreaming;
     private Vector2 _viewportPosition, _viewportSize;
     public Glfw? GlfwApi { get; set; }
     public bool IsOpen => _open;
@@ -232,6 +234,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         if (ImGui.Button(Localization.Label("text.panel.world_importer.go", "Go")))
         {
             _cameraInitialized = false;
+            _initialHeight = null;
             StartRead(preview: true);
             ImGui.CloseCurrentPopup();
         }
@@ -426,7 +429,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             if (_readTask != null || PreviewBusy)
             {
                 ImGui.SameLine();
-                if (ImGui.Button(Localization.Label("text.panel.world_importer.cancel_reading", "Cancel reading"))) _cancellation?.Cancel();
+                if (ImGui.Button(Localization.Label("text.panel.world_importer.cancel_reading", "Cancel reading"))) CancelReading();
             }
         }
         else if (_streamingPaused)
@@ -520,6 +523,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
 
     private unsafe void RenderPreview()
     {
+        RebasePreviewOrigin();
         _renderer.Resize((int)_viewportSize.X, (int)_viewportSize.Y);
         double previousDelta = Mesh.DeltaTime, previousSpeed = Mesh.AnimatedTextureSpeedScale;
         bool previousAdvance = Mesh.AdvanceAnimatedTextures;
@@ -815,9 +819,9 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             Keybinds.Down("flyUp"), Keybinds.Down("flyDown"),
             Keybinds.Down("flyFaster"), Keybinds.Down("flySlower"), false,
             io.MouseWheel, Math.Min(io.DeltaTime, 0.1f), hovered);
-        var eye = _camera.Position + _worldOrigin;
-        var clamped = new vec3(Math.Clamp(eye.x, -29_999_968, 29_999_968),
-            Math.Clamp(eye.y, -2048, 4096), Math.Clamp(eye.z, -29_999_968, 29_999_968));
+        var eye = _camera.Position;
+        var clamped = new vec3(Math.Clamp(eye.x, -29_999_968 - _worldOrigin.x, 29_999_968 - _worldOrigin.x),
+            Math.Clamp(eye.y, -2048, 4096), Math.Clamp(eye.z, -29_999_968 - _worldOrigin.z, 29_999_968 - _worldOrigin.z));
         _camera.Target += clamped - eye;
         if (_flightInput.IsFreeFlyActive)
         {
@@ -833,9 +837,15 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         _flightWindow = null;
     }
 
+    private void CancelReading()
+    {
+        _restartStreaming = false;
+        _cancellation?.Cancel();
+    }
+
     private void GoToSpawn()
     {
-        int index = FindSpawnDimension(_world!);
+        int index = FindDimension(_world!, _world!.SpawnDimension);
         if (index < 0)
             throw new InvalidDataException(Localization.Format("text.panel.world_importer.the_spawn_dimension_has_no_generated_terrain", _world!.SpawnDimension));
         _dimensionIndex = index;
@@ -874,7 +884,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         {
             Selection.Validate();
             var extent = new vec3(Selection.Width, Selection.Height, Selection.Length);
-            var center = new vec3(_minX, _minY, _minZ) + extent * 0.5f;
+            var center = new vec3(_minX - (int)_worldOrigin.x, _minY, _minZ - (int)_worldOrigin.z) + extent * 0.5f;
             float aspect = Math.Max(1, _viewportSize.X) / Math.Max(1, _viewportSize.Y);
             float halfFov = Math.Min(_camera.FovY * 0.5f, MathF.Atan(MathF.Tan(_camera.FovY * 0.5f) * aspect));
             FrameCamera(center, Math.Max(24, extent.Length * 0.55f / MathF.Sin(halfFov)));
@@ -907,25 +917,59 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         return _world!.SpawnDimension == Dimension.Id ? _world.SpawnY : Math.Clamp(64, Dimension.MinY, Dimension.MaxY);
     }
 
-    private void FrameCamera(vec3 worldTarget, float distance)
+    private void FrameCamera(vec3 localTarget, float distance)
     {
         _camera.Yaw = 0.75f;
         _camera.Pitch = 0.55f;
         _camera.Distance = Camera.DefaultDistance;
         var offset = new vec3(MathF.Cos(_camera.Pitch) * MathF.Sin(_camera.Yaw),
             MathF.Sin(_camera.Pitch), MathF.Cos(_camera.Pitch) * MathF.Cos(_camera.Yaw));
-        _camera.Target = worldTarget - _worldOrigin + offset * (distance - _camera.Distance);
+        _camera.Target = localTarget + offset * (distance - _camera.Distance);
         _cameraInitialized = true;
     }
 
+    private void RebasePreviewOrigin()
+    {
+        var local = _cameraInitialized ? _camera.Position :
+            new vec3(_centerX - (int)_worldOrigin.x, 0, _centerZ - (int)_worldOrigin.z);
+        if (Math.Abs(local.x) < TileSize * 4 && Math.Abs(local.z) < TileSize * 4) return;
+        var shift = new vec3(MathF.Floor(local.x / TileSize) * TileSize, 0,
+            MathF.Floor(local.z / TileSize) * TileSize);
+        _worldOrigin += shift;
+        _camera.Target -= shift;
+        foreach (var tile in _tiles.Values)
+            if (tile.Scene != null) tile.Scene.SetLocalPosition(TilePosition(tile.Volume.Bounds));
+    }
+
+    private vec3 TilePosition(WorldBounds bounds) => new(
+        bounds.MinX - (int)_worldOrigin.x + bounds.Width * 0.5f, bounds.MinY,
+        bounds.MinZ - (int)_worldOrigin.z + bounds.Length * 0.5f);
+
+    private void FrameInitialArea() => FrameCamera(new vec3(
+        _centerX - (int)_worldOrigin.x, _initialHeight ?? SurfaceHeight(_centerX, _centerZ),
+        _centerZ - (int)_worldOrigin.z), 36);
+
     private void UpdateStreaming()
     {
-        if (_world == null || _readTask != null || PreviewBusy || !_cameraInitialized || _streamingPaused ||
-            _loadedCenter == null)
+        if (_world == null || _readTask != null || !_cameraInitialized || _streamingPaused)
             return;
-        var aim = _camera.Position + _worldOrigin + (_camera.Target - _camera.Position).Normalized * 16;
-        int x = (int)MathF.Floor(aim.x), z = (int)MathF.Floor(aim.z);
-        if (PreviewCenter(x, z) == _loadedCenter) return;
+        var aim = _camera.Position + (_camera.Target - _camera.Position).Normalized * 16;
+        int x = (int)_worldOrigin.x + (int)MathF.Floor(aim.x);
+        int z = (int)_worldOrigin.z + (int)MathF.Floor(aim.z);
+        var center = PreviewCenter(x, z);
+        if (PreviewBusy)
+        {
+            if (_cancellation?.IsCancellationRequested == true) return;
+            // Do not finish a stale neighborhood after fast flight has left it behind.
+            if (Math.Abs(center.X - _requestedCenter.X) > ActiveTileRadius ||
+                Math.Abs(center.Z - _requestedCenter.Z) > ActiveTileRadius)
+            {
+                _restartStreaming = true;
+                _cancellation?.Cancel();
+            }
+            return;
+        }
+        if (center == _loadedCenter) return;
         _centerX = x;
         _centerZ = z;
         StartRead(preview: true);
@@ -933,24 +977,26 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
 
     private void ChooseWorld(MinecraftWorld world)
     {
+        var player = world.ReadPlayerPosition();
+        int playerDimension = player == null ? -1 : FindDimension(world, player.Dimension);
+        int spawnDimension = FindDimension(world, world.SpawnDimension);
         _world = world;
-        int spawnDimension = FindSpawnDimension(world);
-        _dimensionIndex = Math.Max(0, spawnDimension);
+        _dimensionIndex = playerDimension >= 0 ? playerDimension : Math.Max(0, spawnDimension);
         if (!_worlds.Any(w => w.Folder == world.Folder)) _worlds.Add(world);
-        ResetArea(useSpawn: spawnDimension >= 0);
+        ResetArea(useSpawn: spawnDimension >= 0, player: playerDimension >= 0 ? player : null);
         StartRead(preview: true);
-        if (spawnDimension < 0)
+        if (playerDimension < 0 && spawnDimension < 0)
             _notice = Localization.Format("text.panel.world_importer.spawn_dimension_has_no_generated_terrain_showing_around_the_origin", world.SpawnDimension, Dimension.Name);
     }
 
-    private static int FindSpawnDimension(MinecraftWorld world)
+    private static int FindDimension(MinecraftWorld world, string dimension)
     {
         for (int i = 0; i < world.Dimensions.Count; i++)
-            if (world.Dimensions[i].Id == world.SpawnDimension)
+            if (world.Dimensions[i].Id == dimension)
                 return i;
         return -1;
     }
-    private void ResetArea(bool useSpawn)
+    private void ResetArea(bool useSpawn, WorldPlayerPosition? player = null)
     {
         StopFlying();
         StopSelectionDrag();
@@ -959,12 +1005,14 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         _loadedCenter = null;
         _unknown = [];
         _allowUnknown = false;
-        _centerX = useSpawn ? _world!.SpawnX : 0;
-        _centerZ = useSpawn ? _world!.SpawnZ : 0;
-        _worldOrigin = new vec3(_centerX, 0, _centerZ);
+        _centerX = player != null ? (int)Math.Floor(player.X) : useSpawn ? _world!.SpawnX : 0;
+        _centerZ = player != null ? (int)Math.Floor(player.Z) : useSpawn ? _world!.SpawnZ : 0;
+        _worldOrigin = new vec3((_centerX >> 6) * TileSize, 0, (_centerZ >> 6) * TileSize);
         _cameraInitialized = false;
+        _initialHeight = player != null ? (int)Math.Floor(player.Y) : null;
         _streamingPaused = false;
-        int y = useSpawn ? _world!.SpawnY : Math.Clamp(64, Dimension.MinY, Dimension.MaxY);
+        _restartStreaming = false;
+        int y = _initialHeight ?? (useSpawn ? _world!.SpawnY : Math.Clamp(64, Dimension.MinY, Dimension.MaxY));
         SetSelectionCube((_centerX, y, _centerZ), 16);
     }
 
@@ -983,6 +1031,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             _notice = null;
             if (preview)
             {
+                RebasePreviewOrigin();
                 _streamingPaused = false;
                 _requestedCenter = PreviewCenter(_centerX, _centerZ);
                 List<WorldBounds> missing = [];
@@ -1001,7 +1050,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
                 if (missing.Count == 0) FinishPreview(true);
                 else
                     _previewReadTask = Task.Run(() => WorldImportService.ReadTiles(world, dimension, missing, token,
-                        new ReadProgress(value => Volatile.Write(ref _progress, value * 0.5f))), token);
+                        tileReady: _pendingTiles.Enqueue), token);
             }
             else
             {
@@ -1109,8 +1158,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             }
             TryAction(() =>
             {
-                foreach (var volume in task.GetAwaiter().GetResult())
-                    _pendingTiles.Enqueue(volume);
+                task.GetAwaiter().GetResult();
             });
             if (_error != null)
             {
@@ -1123,41 +1171,50 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
                 return;
             }
         }
-        if (_previewReadTask != null) return;
         if (_cancellation!.IsCancellationRequested || !_open)
         {
+            if (_previewReadTask != null) return;
             _notice = "World reading cancelled.";
             FinishPreview(false);
             return;
         }
         // Keep existing meshes while gradually uploading the newly reached edge.
         var started = System.Diagnostics.Stopwatch.StartNew();
-        for (int count = 0; count < 2 && _pendingTiles.Count > 0; count++)
+        for (int count = 0; count < 2 && _pendingTiles.TryDequeue(out var volume); count++)
         {
-            var volume = _pendingTiles.Dequeue();
             TryAction(() => InstallTile(volume));
             if (_error != null)
             {
                 FinishPreview(false);
                 return;
             }
-            _progress = 0.5f + 0.5f * ++_previewTilesCompleted / _previewTileCount;
+            _progress = (float)++_previewTilesCompleted / _previewTileCount;
             if (started.ElapsedMilliseconds >= 8) break;
         }
-        if (_pendingTiles.Count == 0) FinishPreview(true);
+        if (_previewReadTask == null && _pendingTiles.IsEmpty) FinishPreview(true);
     }
 
     private void FinishPreview(bool completed)
     {
+        if (_previewReadTask != null)
+        {
+            CancelReading();
+            return;
+        }
         _pendingTiles.Clear();
         _cancellation?.Dispose();
         _cancellation = null;
-        _streamingPaused = !completed;
-        if (!completed) return;
+        _streamingPaused = !completed && !_restartStreaming;
+        _restartStreaming = false;
+        if (!completed)
+        {
+            _loadedCenter = null;
+            return;
+        }
         _loadedCenter = _requestedCenter;
         PruneTiles();
         if (!_cameraInitialized)
-            FrameCamera(new vec3(_centerX, SurfaceHeight(_centerX, _centerZ), _centerZ), 36);
+            FrameInitialArea();
         _unknown = _tiles.Values.Select(t => t.Volume.ApplyFilter(_blockFilter)).SelectMany(FindUnknown).Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal).ToArray();
         if (_tiles.Values.All(t => t.Volume.ApplyFilter(_blockFilter).NonAirCount == 0))
@@ -1194,7 +1251,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         PruneTiles();
         _allowUnknown = false;
         if (!_cameraInitialized)
-            FrameCamera(new vec3(_centerX, SurfaceHeight(_centerX, _centerZ), _centerZ), 36);
+            FrameInitialArea();
     }
 
     private static string[] FindUnknown(WorldVolume volume)
@@ -1253,9 +1310,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         {
             filtered.SaveSchematic(path);
             var preview = spawnMenu.CreateSchematicPreview(path, _resourcePack);
-            var bounds = filtered.Bounds;
-            preview.Position = new vec3(bounds.MinX + bounds.Width * 0.5f, bounds.MinY,
-                bounds.MinZ + bounds.Length * 0.5f) - _worldOrigin;
+            preview.SetLocalPosition(TilePosition(filtered.Bounds));
             return preview;
         }
         finally { if (File.Exists(path)) File.Delete(path); }
@@ -1368,7 +1423,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         _open = false;
         StopFlying();
         StopSelectionDrag();
-        _cancellation?.Cancel();
+        CancelReading();
         _pendingImport = null;
         _specialBlocks = null;
         ClearPreview();

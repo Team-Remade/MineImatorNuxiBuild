@@ -6,10 +6,36 @@ namespace MineImatorSimplyRemade.core.world;
 internal sealed record WorldDimension(
     string Name, string RegionPath, int BedrockId, int MinY, int MaxY, string Id = "minecraft:overworld");
 
+internal sealed record WorldPlayerPosition(double X, double Y, double Z, string Dimension)
+{
+    internal static WorldPlayerPosition? Create(double x, double y, double z, string? dimension)
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(y) || !double.IsFinite(z) ||
+            Math.Abs(x) > 30_000_000 || Math.Abs(z) > 30_000_000 || y < -2048 || y >= 2048 ||
+            string.IsNullOrWhiteSpace(dimension))
+            return null;
+        string[] parts = dimension.Split(':');
+        if (parts.Length != 2 || parts.Any(p => p.Length == 0) ||
+            parts[0].Any(c => !(c is >= 'a' and <= 'z' or >= '0' and <= '9' or '_' or '-' or '.')) ||
+            parts[1].Any(c => !(c is >= 'a' and <= 'z' or >= '0' and <= '9' or '_' or '-' or '.' or '/')))
+            return null;
+        return new WorldPlayerPosition(x, y, z, dimension);
+    }
+}
+
 internal sealed record MinecraftWorld(
     string Folder, string Name, bool IsBedrock, int SpawnX, int SpawnY, int SpawnZ,
-    IReadOnlyList<WorldDimension> Dimensions, string SpawnDimension = "minecraft:overworld")
+    IReadOnlyList<WorldDimension> Dimensions, string SpawnDimension = "minecraft:overworld",
+    WorldPlayerPosition? PlayerPosition = null)
 {
+    /// <summary>Returns optional saved local-player metadata; only Bedrock opens a database here.</summary>
+    public WorldPlayerPosition? ReadPlayerPosition()
+    {
+        if (!IsBedrock) return PlayerPosition;
+        using var reader = new BedrockWorldReader(Folder, CancellationToken.None);
+        return reader.ReadPlayerPosition();
+    }
+
     public static MinecraftWorld Open(string path)
     {
         path = Path.GetFullPath(path);
@@ -98,7 +124,8 @@ internal sealed record MinecraftWorld(
         if (dimensions.Count == 0)
             throw new InvalidDataException("This world has no generated Anvil region folders.");
         var spawn = ReadJavaSpawn(root);
-        return new MinecraftWorld(folder, name, false, spawn.X, spawn.Y, spawn.Z, dimensions, spawn.Dimension);
+        return new MinecraftWorld(folder, name, false, spawn.X, spawn.Y, spawn.Z, dimensions, spawn.Dimension,
+            ReadJavaPlayerPosition(root));
 
         void AddDimension(string displayName, string id, string dimensionFolder, int minY, int maxY)
         {
@@ -111,6 +138,28 @@ internal sealed record MinecraftWorld(
                 else dimensions.Add(dimension);
             }
         }
+    }
+
+    internal static WorldPlayerPosition? ReadJavaPlayerPosition(TagCompound data)
+    {
+        if (data.GetTag("Player") is not TagCompound player ||
+            player.GetTag("Pos") is not TagList position || position.ListType != TagType.Double || position.Count != 3)
+            return null;
+        var coordinates = position.Value.Cast<Tag>().OfType<TagDouble>().ToArray();
+        if (coordinates.Length != 3) return null;
+        string? dimension = player.GetTag("Dimension") switch
+        {
+            TagString text => text.Value,
+            TagInt number => number.Value switch
+            {
+                -1 => "minecraft:the_nether",
+                0 => "minecraft:overworld",
+                1 => "minecraft:the_end",
+                _ => null
+            },
+            _ => null
+        };
+        return WorldPlayerPosition.Create(coordinates[0].Value, coordinates[1].Value, coordinates[2].Value, dimension);
     }
 
     internal static (int X, int Y, int Z, string Dimension) ReadJavaSpawn(TagCompound data)
@@ -189,17 +238,19 @@ internal static class WorldImportService
     }
 
     public static List<WorldVolume> ReadTiles(MinecraftWorld world, WorldDimension dimension,
-        IReadOnlyList<WorldBounds> bounds, CancellationToken cancellationToken, IProgress<float>? progress = null)
+        IReadOnlyList<WorldBounds> bounds, CancellationToken cancellationToken, IProgress<float>? progress = null,
+        Action<WorldVolume>? tileReady = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var volumes = bounds.Select(b => new WorldVolume(b)).ToList();
         if (volumes.Count > 0)
-            ReadVolumes(world, dimension, volumes, cancellationToken, progress);
+            ReadVolumes(world, dimension, volumes, cancellationToken, progress, tileReady);
         return volumes;
     }
 
     private static void ReadVolumes(MinecraftWorld world, WorldDimension dimension,
-        IReadOnlyList<WorldVolume> volumes, CancellationToken cancellationToken, IProgress<float>? progress)
+        IReadOnlyList<WorldVolume> volumes, CancellationToken cancellationToken, IProgress<float>? progress,
+        Action<WorldVolume>? tileReady = null)
     {
         int total = volumes.Sum(v => ((v.Bounds.MaxX >> 4) - (v.Bounds.MinX >> 4) + 1) *
                                     ((v.Bounds.MaxZ >> 4) - (v.Bounds.MinZ >> 4) + 1));
@@ -223,6 +274,7 @@ internal static class WorldImportService
                 }
                 progress?.Report((float)++completed / total);
             }
+            tileReady?.Invoke(volume);
         }
     }
 }

@@ -66,6 +66,41 @@ internal sealed class BedrockWorldReader : IDisposable
             ? number : throw new InvalidDataException($"Bedrock level.dat is missing int {key}.");
     }
 
+    public WorldPlayerPosition? ReadPlayerPosition()
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        byte[] localPlayerKey = Encoding.UTF8.GetBytes("~local_player");
+        // Keep database reads outside the optional NBT parser's fallback handling.
+        foreach ((byte[] key, byte[] value) in database.ReadPrefix(localPlayerKey))
+        {
+            if (!key.AsSpan().SequenceEqual(localPlayerKey)) continue;
+            try
+            {
+                var nbt = new LittleNbt(value, cancellation);
+                Dictionary<string, object> player = nbt.Root();
+                if (nbt.Remaining != 0 ||
+                    !player.TryGetValue("Pos", out object? position) || position is not List<object> coordinates ||
+                    coordinates.Count != 3 || coordinates[0] is not float x ||
+                    coordinates[1] is not float y || coordinates[2] is not float z ||
+                    !player.TryGetValue("DimensionId", out object? dimension) || dimension is not int id)
+                    return null;
+                string? dimensionName = id switch
+                {
+                    0 => "minecraft:overworld",
+                    1 => "minecraft:the_nether",
+                    2 => "minecraft:the_end",
+                    _ => null
+                };
+                return WorldPlayerPosition.Create(x, y, z, dimensionName);
+            }
+            catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or DecoderFallbackException)
+            {
+                return null;
+            }
+        }
+        return null;
+    }
+
     public IEnumerable<(int X, int Y, int Z, string State)> ReadChunk(int chunkX, int chunkZ, int dimension)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
