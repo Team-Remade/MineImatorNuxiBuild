@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -74,7 +75,7 @@ public class MineImatorLoader
                 return null;
             }
 
-            var miObject = JsonSerializer.Deserialize(File.ReadAllText(objectPath),
+            var miObject = JsonSerializer.Deserialize(EscapeJsonControlCharacters(File.ReadAllText(objectPath)),
                 AppJsonContext.Default.MiObject);
 
             if (miObject == null) return null;
@@ -89,6 +90,35 @@ public class MineImatorLoader
             Console.Error.WriteLine($"Error loading '{objectPath}': {ex.Message}");
             return null;
         }
+    }
+
+    private static string EscapeJsonControlCharacters(string json)
+    {
+        StringBuilder? escapedJson = null;
+        bool inString = false;
+        bool escaped = false;
+
+        for (int i = 0; i < json.Length; i++)
+        {
+            char c = json[i];
+            if (escaped)
+                escaped = false;
+            else if (c == '"')
+                inString = !inString;
+            else if (inString && c == '\\')
+                escaped = true;
+
+            // Some Mine-imator exports contain raw control characters in part names.
+            if (inString && c < ' ')
+            {
+                escapedJson ??= new StringBuilder(json.Length).Append(json, 0, i);
+                escapedJson.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+            }
+            else
+                escapedJson?.Append(c);
+        }
+
+        return escapedJson?.ToString() ?? json;
     }
 
     /// <summary>Creates a SceneObject hierarchy from a loaded MiObject.</summary>
@@ -309,7 +339,7 @@ public class MineImatorLoader
                 return null;
             }
 
-            string json = File.ReadAllText(modelPath);
+            string json = EscapeJsonControlCharacters(File.ReadAllText(modelPath));
             using var doc = JsonDocument.Parse(json, AppJsonContext.DocumentOptions);
             if (!ValidateModelRoot(doc.RootElement, modelPath))
                 return null;
@@ -3936,9 +3966,9 @@ public class MiTemplate
     }
     [JsonPropertyName("shape")] public JsonElement? Shape { get; set; }
     [JsonPropertyName("block")] public JsonElement? Block { get; set; }
-    [JsonPropertyName("model_tex")] public string ModelTex { get; set; }
-    [JsonPropertyName("model_tex_material")] public string ModelTexMaterial { get; set; }
-    [JsonPropertyName("model_tex_normal")] public string ModelTexNormal { get; set; }
+    [JsonPropertyName("model_tex")] [JsonConverter(typeof(MiStringOrObjectRefConverter))] public string ModelTex { get; set; }
+    [JsonPropertyName("model_tex_material")] [JsonConverter(typeof(MiStringOrObjectRefConverter))] public string ModelTexMaterial { get; set; }
+    [JsonPropertyName("model_tex_normal")] [JsonConverter(typeof(MiStringOrObjectRefConverter))] public string ModelTexNormal { get; set; }
     [JsonPropertyName("item")] public MiTemplateItem? Item { get; set; }
 }
 
