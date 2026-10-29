@@ -7187,13 +7187,14 @@ public class Viewport : UiPanel
         // centralized input handler. The gizmo is shared with the main viewport
         // (see InitPreviewViewport) so hover/drag works here as well.
         var previousCameraPose = (cam.Target, cam.Yaw, cam.Pitch, cam.Roll, cam.Distance);
+        var inputWindow = (WindowHandle*)ImGui.GetWindowViewport().PlatformHandle;
         _previewInput.ProcessInput(
             cam,
             MainViewport?.Gizmo,
             imageMin,
             imageSize,
             GlfwApiPreview,
-            GlfwWindowPreview,
+            inputWindow,
             mousePos,
             mouseDown_Left,
             mouseDown_Right,
@@ -7432,13 +7433,14 @@ public class Viewport : UiPanel
 
         // Process input through the centralized input handler
         var previousCameraPose = (camera.Target, camera.Yaw, camera.Pitch, camera.Roll, camera.Distance);
+        var inputWindow = (WindowHandle*)ImGui.GetWindowViewport().PlatformHandle;
         _input.ProcessInput(
             camera,
             Gizmo,
             imageMin,
             imageSize,
             GlfwApi,
-            GlfwWindow,
+            inputWindow,
             mousePos,
             mouseDown_Left,
             mouseDown_Right,

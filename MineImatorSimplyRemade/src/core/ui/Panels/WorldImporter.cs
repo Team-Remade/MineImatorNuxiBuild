@@ -833,7 +833,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
 
     private void StopFlying()
     {
-        _flightInput.StopFreeFly(GlfwApi, _flightWindow);
+        _flightInput.StopFreeFly();
         _flightWindow = null;
     }
 
