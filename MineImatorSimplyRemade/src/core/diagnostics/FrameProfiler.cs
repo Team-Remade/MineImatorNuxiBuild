@@ -369,7 +369,7 @@ public sealed class FrameProfiler
         text.AppendLine("CPU wall time, not CPU utilization. Frame includes waits/frame limiter; inclusive stages overlap and must not be summed. Same-stage recursion times only the outermost span; all calls are counted.");
         text.AppendLine("Shared render substages aggregate main/preview/camera-feed views. SceneDraw includes sorting. SceneNodesVisited counts color-collection visits, including repeated/hidden nodes.");
         text.AppendLine("World/visibility queries include cache hits; evaluation timings measure misses. Caches exist only inside renderer read phases, not across editor updates or separate views.");
-        text.AppendLine("ShadowCacheHits covers main directional-map reuse; ShadowBoundsRebuilds also includes uncached preview bounds.");
+        text.AppendLine("ShadowCacheHits covers main/preview directional-map reuse; ShadowBoundsRebuilds includes main/preview bounds recomputation.");
         text.AppendLine("MeshesSubmitted counts scene/ground submissions, not GL draw calls; excludes shadow, picking and direct-overlay draws. Close the profiler panel during recording to reduce UI overhead.");
         text.AppendLine("LightCandidatesExamined sums candidate-list sizes across uncached per-mesh light selections; LightSelectionCacheHits reuses exact-origin selections within one draw pass. PointLightsUploaded sums selected lights across color draws. EmissiveProxyLights counts generated fallback lights (suppressed by screen-space GI).");
         text.AppendLine("GPU work is asynchronous: CPU submission/swap time is not GPU execution time. Allocations are main-thread only and stage totals are inclusive (do not sum overlapping stages); GC counts are process-wide.");

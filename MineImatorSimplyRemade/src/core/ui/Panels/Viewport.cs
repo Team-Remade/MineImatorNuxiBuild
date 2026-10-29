@@ -449,6 +449,11 @@ public class Viewport : UiPanel
     private Shader? _previewPointShadowShader;
     private readonly uint[] _previewPointShadowCubeTextures = new uint[MaxPointShadowLights];
     private readonly int[] _previewPointShadowTextureSizes = new int[MaxPointShadowLights];
+    private int _previewDirectionalShadowCacheSignature;
+    private bool _hasPreviewDirectionalShadowCache;
+    private mat4 _previewDirectionalShadowLightSpaceMatrix;
+    private int _previewPointShadowCacheSignature;
+    private bool _hasPreviewPointShadowCache;
 
     // Preview pick / silhouette FBOs. Mirrors the main viewport's resources so
     // the camera preview can run its own GPU colour-ID pick and Sobel outline
@@ -3416,6 +3421,7 @@ public class Viewport : UiPanel
                     _shadowMapSize, 0, PixelFormat.DepthComponent, GLEnum.Float, null);
                 Gl.BindTexture(GLEnum.Texture2D, 0);
                 _previewAllocatedShadowMapSize = _shadowMapSize;
+                _hasPreviewDirectionalShadowCache = false;
             }
             return;
         }
@@ -3656,13 +3662,14 @@ public class Viewport : UiPanel
     {
         using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.ShadowSignature);
         var hash = new HashCode();
+        var source = IsPreviewViewport ? MainViewport ?? this : this;
         hash.Add(_showHiddenObjects);
         hash.Add(_shadowMapSize);
-        hash.Add(PropertiesPanel?.PointShadowBufferSize ?? 1024);
-        hash.Add(PropertiesPanel?.SpotShadowBufferSize ?? 1024);
+        hash.Add(source.PropertiesPanel?.PointShadowBufferSize ?? 1024);
+        hash.Add(source.PropertiesPanel?.SpotShadowBufferSize ?? 1024);
         if (!includePointLights)
         {
-            hash.Add(GroundPlaneVisible);
+            hash.Add(source.GroundPlaneVisible);
             hash.Add(Mesh.MoonFillLightCastsShadows);
             hash.Add(Mesh.SunFillLightCastsShadows);
             hash.Add(Mesh.GlobalMoonFillLightDirection.x);
@@ -3683,6 +3690,8 @@ public class Viewport : UiPanel
     {
         foreach (var obj in objects)
         {
+            hash.Add(obj);
+            hash.Add(obj.Parent);
             hash.Add(obj.ObjectVisible);
             hash.Add(obj.IsHiddenForRendering());
             hash.Add(obj.InheritVisibility);
@@ -3699,27 +3708,15 @@ public class Viewport : UiPanel
             hash.Add(obj.Scale.z);
             hash.Add(obj.Visuals.Count);
 
-            if (!includePointLights && obj.RenderInHighQuality && IsObjectVisible(obj) && obj.CastShadow)
+            // Include every node's resolved transform: non-casting bones can still
+            // deform a visible skinned mesh, and point lights can inherit transforms.
+            hash.Add(obj.GetWorldMatrix());
+            hash.Add(obj.GetEffectiveInvertFaces());
+            if (obj is BoneSceneObject bone) hash.Add(bone.BoneName);
+            if (obj.RenderInHighQuality && IsObjectVisible(obj) && obj.CastShadow)
             {
-                // Resolved matrices cover pivots, inheritance, exact imported rotations,
-                // bend-adjusted parents and reparenting without duplicating transform rules.
-                mat4 world = obj.GetWorldMatrix();
-                hash.Add(world.m00); hash.Add(world.m01); hash.Add(world.m02); hash.Add(world.m03);
-                hash.Add(world.m10); hash.Add(world.m11); hash.Add(world.m12); hash.Add(world.m13);
-                hash.Add(world.m20); hash.Add(world.m21); hash.Add(world.m22); hash.Add(world.m23);
-                hash.Add(world.m30); hash.Add(world.m31); hash.Add(world.m32); hash.Add(world.m33);
                 for (int i = 0; i < obj.Visuals.Count; i++)
-                {
-                    var mesh = obj.Visuals[i];
-                    hash.Add(mesh);
-                    hash.Add(mesh.PickOnly);
-                    hash.Add(mesh.DepthTestDisabled);
-                    hash.Add(mesh.Vertices.Count);
-                    hash.Add(mesh.BoundingSphereCenter.x);
-                    hash.Add(mesh.BoundingSphereCenter.y);
-                    hash.Add(mesh.BoundingSphereCenter.z);
-                    hash.Add(mesh.BoundingSphereRadius);
-                }
+                    obj.Visuals[i].AddShadowCacheState(ref hash);
             }
 
             if (includePointLights && obj is LightSceneObject light)
@@ -4009,10 +4006,21 @@ public class Viewport : UiPanel
             return;
         }
 
-        mat4 lightViewProj = ComputeShadowLightSpaceMatrix();
+        int cacheSignature = ComputeShadowCacheSignature(sceneObjects, includePointLights: false);
+        bool reuseShadowMap = CanReuseShadowMaps() && _hasPreviewDirectionalShadowCache &&
+            _previewDirectionalShadowCacheSignature == cacheSignature;
+        mat4 lightViewProj = reuseShadowMap
+            ? _previewDirectionalShadowLightSpaceMatrix
+            : ComputeShadowLightSpaceMatrix();
         Mesh.ShadowsEnabled = true;
         Mesh.ShadowMapTexture = _previewShadowTex;
         Mesh.ShadowLightSpaceMatrix = lightViewProj;
+
+        if (reuseShadowMap)
+        {
+            FrameProfiler.Shared.Count(ProfileCounter.ShadowCacheHits);
+            return;
+        }
 
         Gl.BindFramebuffer(GLEnum.Framebuffer, _previewShadowFbo);
         Gl.Viewport(0, 0, _previewAllocatedShadowMapSize, _previewAllocatedShadowMapSize);
@@ -4026,6 +4034,9 @@ public class Viewport : UiPanel
         Gl.CullFace(GLEnum.Back);
         Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
         Gl.Viewport(0, 0, _previewWidth, _previewHeight);
+        _previewDirectionalShadowCacheSignature = cacheSignature;
+        _previewDirectionalShadowLightSpaceMatrix = lightViewProj;
+        _hasPreviewDirectionalShadowCache = true;
     }
 
     /// <summary>
@@ -4054,6 +4065,13 @@ public class Viewport : UiPanel
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         var properties = MainViewport?.PropertiesPanel ?? PropertiesPanel;
+        var hash = new HashCode();
+        hash.Add(ComputeShadowCacheSignature(MainViewport?.SceneObjects ?? [], includePointLights: true));
+        // A camera move can change the selected lights and their cubemap slots.
+        for (int i = 0; i < lightCount; i++) hash.Add(shadowLights[i].Light);
+        int cacheSignature = hash.ToHashCode();
+        bool refreshShadowMaps = !CanReuseShadowMaps() || !_hasPreviewPointShadowCache ||
+            _previewPointShadowCacheSignature != cacheSignature;
         for (int lightIndex = 0; lightIndex < lightCount; lightIndex++)
         {
             var (light, position, range) = shadowLights[lightIndex];
@@ -4064,6 +4082,9 @@ public class Viewport : UiPanel
             shadowSize = _previewPointShadowTextureSizes[lightIndex];
             shadowIndices[light] = lightIndex;
             Mesh.PointShadowCubeTextures[lightIndex] = _previewPointShadowCubeTextures[lightIndex];
+
+            if (!refreshShadowMaps)
+                continue;
 
             float farPlane = Math.Max(range, 0.5f);
             mat4 projection = mat4.Perspective(glm.Radians(90f), 1f, 0.05f, farPlane);
@@ -4093,6 +4114,8 @@ public class Viewport : UiPanel
         Gl.CullFace(GLEnum.Back);
         Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
         Gl.Viewport(0, 0, _previewWidth, _previewHeight);
+        _previewPointShadowCacheSignature = cacheSignature;
+        _hasPreviewPointShadowCache = true;
         return shadowIndices;
     }
 

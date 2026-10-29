@@ -33,6 +33,7 @@ public class Mesh : IDisposable
 
     private uint _vbo, _ebo, _vao, _skinVbo;
     private Shader _shader;
+    private int _shadowGeometryVersion;
 
     // ── CPU-side geometry ─────────────────────────────────────────────────────
 
@@ -299,6 +300,7 @@ public class Mesh : IDisposable
         int floatsPerVertex = _vertexFloats;
         int totalFloats = vertexCount * floatsPerVertex;
         int totalBytes  = totalFloats * sizeof(float);
+        _shadowGeometryVersion++;
 
         bool anyActive = false;
         foreach (var sk in ShapeKeys)
@@ -986,6 +988,7 @@ public class Mesh : IDisposable
     /// </summary>
     public unsafe void Upload()
     {
+        _shadowGeometryVersion++;
         // Compile shader on first upload.
         if (_shader == null)
         {
@@ -1595,6 +1598,55 @@ public class Mesh : IDisposable
     {
         _gl.Enable(GLEnum.CullFace);
         _gl.CullFace(GLEnum.Back);
+    }
+
+    internal void AddShadowCacheState(ref HashCode hash)
+    {
+        if (HasShapeKeys)
+            RefreshShapeKeyGeometry();
+        hash.Add(this);
+        hash.Add(_vao);
+        hash.Add(_shadowGeometryVersion);
+        hash.Add(PickOnly);
+        hash.Add(DepthTestDisabled);
+        hash.Add(Vertices.Count);
+        hash.Add(TexCoords.Count);
+        hash.Add(Indices?.Length ?? 0);
+        hash.Add(BoundingSphereCenter);
+        hash.Add(BoundingSphereRadius);
+        hash.Add(DoubleSided);
+        hash.Add(Alpha);
+        hash.Add(AlphaMode);
+        hash.Add(AlphaClipThreshold);
+        hash.Add(TextureId);
+        hash.Add(AlphaMaskTextureId);
+        hash.Add(TextureOffset);
+        hash.Add(TextureRepeat);
+        hash.Add(TextureMirror);
+        hash.Add(AnimationKey);
+        if (!string.IsNullOrEmpty(AnimationKey))
+            hash.Add(_animTime);
+        hash.Add(IsSkinned);
+        foreach (var name in BoneNames) hash.Add(name);
+        foreach (var inverseBind in BoneInverseBindMatrices) hash.Add(inverseBind);
+
+        var bend = GpuBend;
+        hash.Add(bend != null);
+        if (bend == null) return;
+        hash.Add(bend.Angle);
+        hash.Add(bend.Pivot);
+        hash.Add(bend.ShapePosition);
+        hash.Add(bend.InverseShapeTransform);
+        hash.Add(bend.SegmentAxis);
+        hash.Add(bend.ScaleCorrectionAxis);
+        hash.Add(bend.AxisStart);
+        hash.Add(bend.BendStart);
+        hash.Add(bend.BendEnd);
+        hash.Add(bend.BendSize);
+        hash.Add(bend.InvertWeight);
+        hash.Add(bend.Sharp);
+        hash.Add(bend.Plane);
+        hash.Add(bend.ExtrudedPlane);
     }
 
     public unsafe void RenderShadow(Shader shader, mat4 lightViewProj, mat4 model)
