@@ -1740,6 +1740,94 @@ public class Mesh : IDisposable
 
     // ── Uniform helpers (cached locations via Shader) ─────────────────────────
 
+    private static GL? _renderBatchGl;
+    private static GL? _uniformCacheGl;
+    private static long _uniformGeneration;
+    private static readonly Dictionary<uint, BatchUniformState> BatchUniforms = new();
+    private static BatchUniformState? _currentBatchUniforms;
+
+    private sealed class BatchUniformState(uint program)
+    {
+        internal readonly uint Program = program;
+        internal vec4[] Vectors = [];
+        internal int[] Integers = [];
+        internal long[] Generations = [];
+
+        internal void EnsureCapacity(int location)
+        {
+            if (location < Generations.Length) return;
+            int capacity = Math.Max(location + 1, Math.Max(64, Generations.Length * 2));
+            Array.Resize(ref Vectors, capacity);
+            Array.Resize(ref Integers, capacity);
+            Array.Resize(ref Generations, capacity);
+        }
+    }
+
+    /// <summary>
+    /// Reuses unchanged mesh uniforms across draws sharing a program. Only Mesh render
+    /// calls may write uniforms inside this scope; other passes must run outside it.
+    /// </summary>
+    public static RenderBatchScope BeginRenderBatch(GL gl)
+    {
+        ArgumentNullException.ThrowIfNull(gl);
+        if (_renderBatchGl != null)
+            throw new InvalidOperationException("Mesh render batches cannot be nested.");
+        if (_uniformCacheGl != gl)
+        {
+            BatchUniforms.Clear();
+            _uniformCacheGl = gl;
+        }
+        _uniformGeneration++;
+        _currentBatchUniforms = null;
+        _renderBatchGl = gl;
+        return new RenderBatchScope(_uniformGeneration);
+    }
+
+    public readonly struct RenderBatchScope : IDisposable
+    {
+        private readonly long _generation;
+        internal RenderBatchScope(long generation) => _generation = generation;
+        public void Dispose()
+        {
+            if (_generation == _uniformGeneration) _renderBatchGl = null;
+        }
+    }
+
+    private static BatchUniformState GetBatchUniforms(uint program, int location)
+    {
+        var state = _currentBatchUniforms;
+        if (state == null || state.Program != program)
+        {
+            if (!BatchUniforms.TryGetValue(program, out state))
+                BatchUniforms[program] = state = new BatchUniformState(program);
+            _currentBatchUniforms = state;
+        }
+        state.EnsureCapacity(location);
+        return state;
+    }
+
+    private bool ShouldUploadUniform(Shader shader, int location, vec4 value)
+    {
+        if (_renderBatchGl != _gl) return true;
+        var state = GetBatchUniforms(shader.ShaderProgram, location);
+        if (state.Generations[location] == _uniformGeneration && state.Vectors[location] == value)
+            return false;
+        state.Generations[location] = _uniformGeneration;
+        state.Vectors[location] = value;
+        return true;
+    }
+
+    private bool ShouldUploadUniform(Shader shader, int location, int value)
+    {
+        if (_renderBatchGl != _gl) return true;
+        var state = GetBatchUniforms(shader.ShaderProgram, location);
+        if (state.Generations[location] == _uniformGeneration && state.Integers[location] == value)
+            return false;
+        state.Generations[location] = _uniformGeneration;
+        state.Integers[location] = value;
+        return true;
+    }
+
     private void SetUniformMat4(string name, mat4 m) => SetUniformMat4(_shader, name, m);
 
     private unsafe void SetUniformMat4(Shader shader, string name, mat4 m)
@@ -1754,73 +1842,83 @@ public class Mesh : IDisposable
     private void SetUniformVec2(string name, vec2 v)
     {
         int loc = _shader.GetUniformLocation(name);
-        if (loc >= 0) _gl.Uniform2(loc, v.x, v.y);
+        if (loc >= 0 && ShouldUploadUniform(_shader, loc, new vec4(v.x, v.y, 0f, 0f)))
+            _gl.Uniform2(loc, v.x, v.y);
     }
 
     private void SetUniformVec2(Shader shader, string name, vec2 v)
     {
         int loc = shader.GetUniformLocation(name);
-        if (loc >= 0) _gl.Uniform2(loc, v.x, v.y);
+        if (loc >= 0 && ShouldUploadUniform(shader, loc, new vec4(v.x, v.y, 0f, 0f)))
+            _gl.Uniform2(loc, v.x, v.y);
     }
 
     private void SetUniformVec3(string name, vec3 v)
     {
         int loc = _shader.GetUniformLocation(name);
-        if (loc >= 0) _gl.Uniform3(loc, v.x, v.y, v.z);
+        if (loc >= 0 && ShouldUploadUniform(_shader, loc, new vec4(v, 0f)))
+            _gl.Uniform3(loc, v.x, v.y, v.z);
     }
 
     private void SetUniformVec4(string name, vec4 v)
     {
         int loc = _shader.GetUniformLocation(name);
-        if (loc >= 0) _gl.Uniform4(loc, v.x, v.y, v.z, v.w);
+        if (loc >= 0 && ShouldUploadUniform(_shader, loc, v))
+            _gl.Uniform4(loc, v.x, v.y, v.z, v.w);
     }
 
     private void SetUniformVec4(Shader shader, string name, vec4 v)
     {
         int loc = shader.GetUniformLocation(name);
-        if (loc >= 0) _gl.Uniform4(loc, v.x, v.y, v.z, v.w);
+        if (loc >= 0 && ShouldUploadUniform(shader, loc, v))
+            _gl.Uniform4(loc, v.x, v.y, v.z, v.w);
     }
 
     private void SetUniformVec3(Shader shader, string name, vec3 v)
     {
         int loc = shader.GetUniformLocation(name);
-        if (loc >= 0) _gl.Uniform3(loc, v.x, v.y, v.z);
+        if (loc >= 0 && ShouldUploadUniform(shader, loc, new vec4(v, 0f)))
+            _gl.Uniform3(loc, v.x, v.y, v.z);
     }
 
     private void SetUniformBool(string name, bool value)
     {
         int loc = _shader.GetUniformLocation(name);
-        if (loc >= 0) _gl.Uniform1(loc, value ? 1 : 0);
+        if (loc >= 0 && ShouldUploadUniform(_shader, loc, value ? 1 : 0))
+            _gl.Uniform1(loc, value ? 1 : 0);
     }
 
     private void SetUniformBool(Shader shader, string name, bool value)
     {
         int loc = shader.GetUniformLocation(name);
-        if (loc >= 0) _gl.Uniform1(loc, value ? 1 : 0);
+        if (loc >= 0 && ShouldUploadUniform(shader, loc, value ? 1 : 0))
+            _gl.Uniform1(loc, value ? 1 : 0);
     }
 
     private void SetUniformInt(string name, int value)
     {
         int loc = _shader.GetUniformLocation(name);
-        if (loc >= 0) _gl.Uniform1(loc, value);
+        if (loc >= 0 && ShouldUploadUniform(_shader, loc, value)) _gl.Uniform1(loc, value);
     }
 
     private void SetUniformInt(Shader shader, string name, int value)
     {
         int loc = shader.GetUniformLocation(name);
-        if (loc >= 0) _gl.Uniform1(loc, value);
+        if (loc >= 0 && ShouldUploadUniform(shader, loc, value)) _gl.Uniform1(loc, value);
     }
 
     private void SetUniformFloat(string name, float value)
     {
         int loc = _shader.GetUniformLocation(name);
-        if (loc >= 0) _gl.Uniform1(loc, value);
+        if (loc >= 0 && ShouldUploadUniform(_shader, loc, new vec4(value, 0f, 0f, 0f)))
+            _gl.Uniform1(loc, value);
     }
 
     private void SetUniformFloat(Shader shader, string name, float value)
     {
         int loc = shader.GetUniformLocation(name);
-        if (loc >= 0) _gl.Uniform1(loc, value);
+        if (loc >= 0 && ShouldUploadUniform(shader, loc, new vec4(value, 0f, 0f, 0f)))
+            _gl.Uniform1(loc, value);
     }
 
     // ── Pick pass ─────────────────────────────────────────────────────────────

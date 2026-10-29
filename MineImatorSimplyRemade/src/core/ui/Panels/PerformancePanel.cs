@@ -139,11 +139,12 @@ public sealed class PerformancePanel : UiPanel
 
     private void RenderStages()
     {
-        if (!ImGui.BeginTable("CpuStages", 4, ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.Resizable)) return;
+        if (!ImGui.BeginTable("CpuStages", 5, ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.Resizable)) return;
         ImGui.TableSetupColumn("Stage (inclusive)");
         ImGui.TableSetupColumn("Mean ms");
         ImGui.TableSetupColumn("Max ms");
         ImGui.TableSetupColumn("Calls/frame");
+        ImGui.TableSetupColumn("KiB/frame");
         ImGui.TableHeadersRow();
         foreach (var row in _stages)
         {
@@ -152,6 +153,7 @@ public sealed class PerformancePanel : UiPanel
             ImGui.TableNextColumn(); ImGui.TextUnformatted($"{row.MeanMs:F3}");
             ImGui.TableNextColumn(); ImGui.TextUnformatted($"{row.MaxMs:F3}");
             ImGui.TableNextColumn(); ImGui.TextUnformatted($"{row.MeanCalls:N1}");
+            ImGui.TableNextColumn(); ImGui.TextUnformatted($"{row.MeanAllocatedBytes / 1024:F1}");
         }
         ImGui.EndTable();
     }

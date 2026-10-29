@@ -62,14 +62,17 @@ internal sealed class SceneHistoryAction
             .Select(change => new DirectObjectChange(change.Object, change.Before, change.After))
             .ToArray();
         var hierarchyChanges = new List<HierarchyChange>();
-        if (!beforeHierarchy.Roots.SequenceEqual(afterHierarchy.Roots))
-            hierarchyChanges.Add(new HierarchyChange(null, beforeHierarchy.Roots, afterHierarchy.Roots));
-        foreach (SceneObject parent in beforeHierarchy.Children.Keys.Union(afterHierarchy.Children.Keys))
+        if (!ReferenceEquals(beforeHierarchy, afterHierarchy))
         {
-            SceneObject[] before = beforeHierarchy.Children.GetValueOrDefault(parent) ?? [];
-            SceneObject[] after = afterHierarchy.Children.GetValueOrDefault(parent) ?? [];
-            if (!before.SequenceEqual(after))
-                hierarchyChanges.Add(new HierarchyChange(parent, before, after));
+            if (!beforeHierarchy.Roots.SequenceEqual(afterHierarchy.Roots))
+                hierarchyChanges.Add(new HierarchyChange(null, beforeHierarchy.Roots, afterHierarchy.Roots));
+            foreach (SceneObject parent in beforeHierarchy.Children.Keys.Union(afterHierarchy.Children.Keys))
+            {
+                SceneObject[] before = beforeHierarchy.Children.GetValueOrDefault(parent) ?? [];
+                SceneObject[] after = afterHierarchy.Children.GetValueOrDefault(parent) ?? [];
+                if (!before.SequenceEqual(after))
+                    hierarchyChanges.Add(new HierarchyChange(parent, before, after));
+            }
         }
 
         bool projectChanged = beforeProject != afterProject;
@@ -160,6 +163,33 @@ internal sealed class SceneHistoryAction
         public SceneObject[] Roots { get; }
         public Dictionary<SceneObject, SceneObject[]> Children { get; } = new();
         public SceneObject[] Selection { get; }
+
+        public static HierarchyState Capture(Viewport viewport, HierarchyState? previous) =>
+            previous != null && previous.Matches(viewport) ? previous : new HierarchyState(viewport);
+
+        private bool Matches(Viewport viewport)
+        {
+            if (!MatchesObjects(viewport.SceneObjects, Roots, ignoreTransient: true) ||
+                !MatchesObjects(SelectionManager.Instance?.SelectedObjects ?? [], Selection, ignoreTransient: false))
+                return false;
+            foreach (var (obj, children) in Children)
+                if (!MatchesObjects(obj.Children, children, ignoreTransient: true))
+                    return false;
+            return true;
+        }
+
+        private static bool MatchesObjects(IReadOnlyList<SceneObject> current, SceneObject[] saved, bool ignoreTransient)
+        {
+            int index = 0;
+            for (int i = 0; i < current.Count; i++)
+            {
+                SceneObject obj = current[i];
+                if (ignoreTransient && obj.IsRuntimeTransient) continue;
+                if (index >= saved.Length || !ReferenceEquals(obj, saved[index++]))
+                    return false;
+            }
+            return index == saved.Length;
+        }
 
         public HierarchyState(Viewport viewport)
         {

@@ -4720,6 +4720,8 @@ public class Viewport : UiPanel
     private readonly List<(mat4 model, Mesh mesh)> _cachedOverlays = new();
     private readonly List<(float depth, int index)> _renderOrder = new();
     private readonly HashSet<uint> _preparedMipmaps = new();
+    private readonly Dictionary<vec3, int> _pointLightSelections = new();
+    private readonly List<int> _pointLightSelectionIndices = new();
 
     /// <summary>
     /// Maximum number of point/spot lights selected per individual mesh draw
@@ -4750,14 +4752,23 @@ public class Viewport : UiPanel
     /// lights from its own nearest/brightest lights no matter how many other
     /// lights exist elsewhere in the scene.
     /// </summary>
-    private static unsafe void SelectPointLightsForMesh(
+    private unsafe void SelectPointLightsForMesh(
         vec3 meshWorldPos,
-        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle)> allLights)
+        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle)> allLights,
+        bool cacheSelection = false)
     {
         using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.LightSelection);
-        FrameProfiler.Shared.Count(ProfileCounter.LightCandidatesExamined, allLights.Count);
         Mesh.PointLights.Clear();
 
+        if (cacheSelection && _pointLightSelections.TryGetValue(meshWorldPos, out int offset))
+        {
+            for (int i = 0; i < MaxLightsPerMesh; i++)
+                Mesh.PointLights.Add(allLights[_pointLightSelectionIndices[offset + i]]);
+            FrameProfiler.Shared.Count(ProfileCounter.LightSelectionCacheHits);
+            return;
+        }
+
+        FrameProfiler.Shared.Count(ProfileCounter.LightCandidatesExamined, allLights.Count);
         if (allLights.Count <= MaxLightsPerMesh)
         {
             Mesh.PointLights.AddRange(allLights);
@@ -4814,8 +4825,14 @@ public class Viewport : UiPanel
             best[slot] = candidate;
         }
 
+        if (cacheSelection)
+            _pointLightSelections[meshWorldPos] = _pointLightSelectionIndices.Count;
         for (int i = 0; i < MaxLightsPerMesh; i++)
+        {
             Mesh.PointLights.Add(allLights[best[i].index]);
+            if (cacheSelection)
+                _pointLightSelectionIndices.Add(best[i].index);
+        }
     }
 
     private static int CompareLightScore((float score, int index) a, (float score, int index) b)
@@ -5128,6 +5145,10 @@ public class Viewport : UiPanel
             _renderOrder.Sort(CompareRenderOrder);
         }
         _preparedMipmaps.Clear();
+        // Selection depends only on this pass's light list and the exact mesh origin.
+        _pointLightSelections.Clear();
+        _pointLightSelectionIndices.Clear();
+        using var uniformBatch = Mesh.BeginRenderBatch(Gl);
         Gl.Enable(GLEnum.Blend);
         Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
         // Material/source data follows the winning depth fragment, not display alpha blending.
@@ -5138,7 +5159,7 @@ public class Viewport : UiPanel
         {
             var (model, mesh, _, includeFog, blurTexture, textureMipmaps) = renderItems[index];
             Mesh.ApplyBlendMode(Gl, mesh.BlendMode);
-            SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allLights);
+            SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allLights, cacheSelection: true);
             RenderMeshWithModeOverride(mesh, model, view, proj, forceUnshaded, includeFog, blurTexture, textureMipmaps, _preparedMipmaps);
         }
         Gl.BlendEquation(GLEnum.FuncAdd);

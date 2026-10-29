@@ -26,10 +26,13 @@ public enum ProfileCounter
     MeshFlattenCalls, SnapshotsCreated, SnapshotCacheHits, MainRenderInvocations,
     PreviewRenderInvocations, CameraFeedRenderInvocations, WorldMatrixCacheHits,
     VisibilityCacheHits, ShadowCacheHits, ShadowBoundsRebuilds, LightCandidatesExamined,
-    PointLightsUploaded, EmissiveProxyLights, Count
+    PointLightsUploaded, EmissiveProxyLights, LightSelectionCacheHits, Count
 }
 
-public readonly record struct ProfileStageSummary(ProfileStage Stage, double MeanMs, double MaxMs, double MeanCalls);
+public readonly record struct ProfileStageSummary(ProfileStage Stage, double MeanMs, double MaxMs, double MeanCalls)
+{
+    public double MeanAllocatedBytes { get; init; }
+}
 public readonly record struct ProfileCounterSummary(ProfileCounter Counter, double MeanValue, long MaxValue);
 
 public sealed class ProfileSummary
@@ -60,6 +63,7 @@ public sealed class FrameProfiler
     private readonly Samples _live = new(LiveCapacity);
     private readonly int[] _depth = new int[StageCount];
     private readonly long[] _stageStarts = new long[StageCount];
+    private readonly long[] _stageAllocationStarts = new long[StageCount];
     private Samples? _capture;
     private bool _enabled;
     private volatile bool _inFrame;
@@ -160,7 +164,11 @@ public sealed class FrameProfiler
 
     private Scope BeginScope(ProfileStage stage, long timestamp)
     {
-        if (_depth[(int)stage]++ == 0) _stageStarts[(int)stage] = timestamp;
+        if (_depth[(int)stage]++ == 0)
+        {
+            _stageStarts[(int)stage] = timestamp;
+            _stageAllocationStarts[(int)stage] = GC.GetAllocatedBytesForCurrentThread();
+        }
         return new Scope(this, stage, _generation);
     }
 
@@ -175,13 +183,17 @@ public sealed class FrameProfiler
     {
         if (!_inFrame || _frameThread != Environment.CurrentManagedThreadId || generation != _generation) return;
         if (_depth[(int)stage] <= 0) return;
-        long ticks = --_depth[(int)stage] == 0 ? Math.Max(0, end - _stageStarts[(int)stage]) : 0;
+        bool outermost = --_depth[(int)stage] == 0;
+        long ticks = outermost ? Math.Max(0, end - _stageStarts[(int)stage]) : 0;
+        long bytes = outermost ? Math.Max(0, GC.GetAllocatedBytesForCurrentThread() - _stageAllocationStarts[(int)stage]) : 0;
         int index = _liveSlot * StageCount + (int)stage;
         _live.Ticks[index] += ticks;
+        _live.StageBytes[index] += bytes;
         _live.Calls[index]++;
         if (_captureSlot < 0) return;
         index = _captureSlot * StageCount + (int)stage;
         _capture!.Ticks[index] += ticks;
+        _capture.StageBytes[index] += bytes;
         _capture.Calls[index]++;
     }
 
@@ -239,7 +251,7 @@ public sealed class FrameProfiler
         double frameTotal = 0, bytes = 0;
         for (int s = 0; s < StageCount; s++)
         {
-            double total = 0, maximum = 0, calls = 0;
+            double total = 0, maximum = 0, calls = 0, stageBytes = 0;
             for (int i = 0; i < count; i++)
             {
                 int slot = samples!.Slot(i);
@@ -247,6 +259,7 @@ public sealed class FrameProfiler
                 total += ms;
                 maximum = Math.Max(maximum, ms);
                 calls += samples.Calls[slot * StageCount + s];
+                stageBytes += samples.StageBytes[slot * StageCount + s];
                 if (s == 0)
                 {
                     frames[i] = ms;
@@ -255,7 +268,8 @@ public sealed class FrameProfiler
                     for (int g = 0; g < 3; g++) gc[g] += samples.Gc[slot * 3 + g];
                 }
             }
-            stages[s] = new((ProfileStage)s, count == 0 ? 0 : total / count, maximum, count == 0 ? 0 : calls / count);
+            stages[s] = new((ProfileStage)s, count == 0 ? 0 : total / count, maximum, count == 0 ? 0 : calls / count)
+            { MeanAllocatedBytes = count == 0 ? 0 : stageBytes / count };
         }
         for (int c = 0; c < CounterCount; c++)
         {
@@ -290,7 +304,9 @@ public sealed class FrameProfiler
         text.Append("# Status,").Append(Quote(CaptureStatus)).AppendLine();
         text.Append("# Context,").Append(Quote(_captureContext)).AppendLine();
         text.Append("Frame,FrameMs,AllocatedBytes,GC0,GC1,GC2");
-        for (int s = 0; s < StageCount; s++) text.Append(',').Append((ProfileStage)s).Append("Ms,").Append((ProfileStage)s).Append("Calls");
+        for (int s = 0; s < StageCount; s++)
+            text.Append(',').Append((ProfileStage)s).Append("Ms,").Append((ProfileStage)s).Append("Calls,")
+                .Append((ProfileStage)s).Append("AllocatedBytes");
         for (int c = 0; c < CounterCount; c++) text.Append(',').Append((ProfileCounter)c);
         text.AppendLine();
         for (int i = 0; i < CapturedFrames; i++)
@@ -303,6 +319,7 @@ public sealed class FrameProfiler
             {
                 text.Append(',').Append(Number(_capture.Ticks[slot * StageCount + s] * TickMilliseconds));
                 AppendInteger(text, _capture.Calls[slot * StageCount + s]);
+                AppendInteger(text, _capture.StageBytes[slot * StageCount + s]);
             }
             for (int c = 0; c < CounterCount; c++) AppendInteger(text, _capture.Counters[slot * CounterCount + c]);
             text.AppendLine();
@@ -336,13 +353,14 @@ public sealed class FrameProfiler
         text.Append("Main-thread allocated bytes/frame: ").AppendLine(Number(summary.MeanAllocatedBytes));
         text.Append("Process GC collections (gen 0/1/2): ").Append(summary.GcCollections[0]).Append('/')
             .Append(summary.GcCollections[1]).Append('/').AppendLine(summary.GcCollections[2].ToString(CultureInfo.InvariantCulture));
-        text.AppendLine("Slowest inclusive stages (mean ms, max ms, calls/frame):");
+        text.AppendLine("Slowest inclusive stages (mean ms, max ms, calls/frame, allocated bytes/frame):");
         Array.Sort(summary.Stages, static (a, b) => b.MeanMs.CompareTo(a.MeanMs));
         foreach (var stage in summary.Stages)
         {
             if (stage.Stage == ProfileStage.Frame || stage.MeanCalls == 0) continue;
             text.Append(stage.Stage).Append(": ").Append(Number(stage.MeanMs)).Append(", ")
-                .Append(Number(stage.MaxMs)).Append(", ").AppendLine(Number(stage.MeanCalls));
+                .Append(Number(stage.MaxMs)).Append(", ").Append(Number(stage.MeanCalls)).Append(", ")
+                .AppendLine(Number(stage.MeanAllocatedBytes));
         }
         text.AppendLine("Counters (mean/frame, max/frame):");
         foreach (var counter in summary.Counters)
@@ -353,15 +371,15 @@ public sealed class FrameProfiler
         text.AppendLine("World/visibility queries include cache hits; evaluation timings measure misses. Caches exist only inside renderer read phases, not across editor updates or separate views.");
         text.AppendLine("ShadowCacheHits covers main directional-map reuse; ShadowBoundsRebuilds also includes uncached preview bounds.");
         text.AppendLine("MeshesSubmitted counts scene/ground submissions, not GL draw calls; excludes shadow, picking and direct-overlay draws. Close the profiler panel during recording to reduce UI overhead.");
-        text.AppendLine("LightCandidatesExamined sums candidate-list sizes across per-mesh light selections; PointLightsUploaded sums selected lights across color draws. EmissiveProxyLights counts generated fallback lights (suppressed by screen-space GI).");
-        text.AppendLine("GPU work is asynchronous: CPU submission/swap time is not GPU execution time. Allocations are main-thread only; GC counts are process-wide.");
+        text.AppendLine("LightCandidatesExamined sums candidate-list sizes across uncached per-mesh light selections; LightSelectionCacheHits reuses exact-origin selections within one draw pass. PointLightsUploaded sums selected lights across color draws. EmissiveProxyLights counts generated fallback lights (suppressed by screen-space GI).");
+        text.AppendLine("GPU work is asynchronous: CPU submission/swap time is not GPU execution time. Allocations are main-thread only and stage totals are inclusive (do not sum overlapping stages); GC counts are process-wide.");
         return text.ToString();
     }
 
     private sealed class Samples
     {
         internal readonly int Capacity, Limit;
-        internal readonly long[] Ticks, Calls, Counters, Bytes;
+        internal readonly long[] Ticks, Calls, Counters, Bytes, StageBytes;
         internal readonly int[] Gc;
         internal int Count, Next;
         internal Samples(int capacity)
@@ -371,6 +389,7 @@ public sealed class FrameProfiler
             Capacity = capacity + 1;
             Ticks = new long[Capacity * StageCount];
             Calls = new long[Capacity * StageCount];
+            StageBytes = new long[Capacity * StageCount];
             Counters = new long[Capacity * CounterCount];
             Bytes = new long[Capacity];
             Gc = new int[Capacity * 3];
@@ -380,6 +399,7 @@ public sealed class FrameProfiler
         {
             Array.Clear(Ticks, slot * StageCount, StageCount);
             Array.Clear(Calls, slot * StageCount, StageCount);
+            Array.Clear(StageBytes, slot * StageCount, StageCount);
             Array.Clear(Counters, slot * CounterCount, CounterCount);
         }
         internal void Finish(int slot, long ticks, long bytes, int gc0, int gc1, int gc2)
@@ -387,6 +407,7 @@ public sealed class FrameProfiler
             Ticks[slot * StageCount] = ticks;
             Calls[slot * StageCount] = 1;
             Bytes[slot] = bytes;
+            StageBytes[slot * StageCount] = bytes;
             Gc[slot * 3] = gc0; Gc[slot * 3 + 1] = gc1; Gc[slot * 3 + 2] = gc2;
             Count = Math.Min(Count + 1, Limit);
             Next = (slot + 1) % Capacity;

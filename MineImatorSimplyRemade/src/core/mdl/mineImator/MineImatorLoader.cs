@@ -92,7 +92,7 @@ public class MineImatorLoader
         }
     }
 
-    private static string EscapeJsonControlCharacters(string json)
+    internal static string EscapeJsonControlCharacters(string json)
     {
         StringBuilder? escapedJson = null;
         bool inString = false;
@@ -156,8 +156,10 @@ public class MineImatorLoader
         {
             foreach (var timeline in miObject.Timelines)
             {
-                if (string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase) &&
-                    !string.IsNullOrEmpty(timeline.PartOf) && timeline.PartOf != "null") continue;
+                // Both part formats animate an existing bone, not another copy of its whole model.
+                if (IsModelPartType(timeline.Type) &&
+                    !string.IsNullOrWhiteSpace(timeline.PartOf) &&
+                    !string.Equals(timeline.PartOf, "null", StringComparison.OrdinalIgnoreCase)) continue;
 
                 MiTemplate template = null;
                 if (!string.IsNullOrEmpty(timeline.Temp))
@@ -165,7 +167,7 @@ public class MineImatorLoader
 
                 SceneObject itemObject = null;
 
-                if (template != null && !string.Equals(template.Type, "bodypart", StringComparison.OrdinalIgnoreCase) &&
+                if (template != null && !IsModelPartType(template.Type) &&
                     !string.IsNullOrEmpty(template.Model))
                 {
                     string modelPath = ResolveTemplateModelPath(template, resourceDict, miObject);
@@ -262,7 +264,7 @@ public class MineImatorLoader
             // cannot be rejected because its old model hierarchy still exists.
             foreach (var timeline in miObject.Timelines)
             {
-                if (!string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase) ||
+                if (!IsModelPartType(timeline.Type) ||
                     string.IsNullOrWhiteSpace(timeline.Id) || string.IsNullOrWhiteSpace(timeline.Parent) ||
                     !sceneObjectsByTimelineId.TryGetValue(timeline.Id, out var bone))
                     continue;
@@ -282,8 +284,9 @@ public class MineImatorLoader
                 if (string.IsNullOrWhiteSpace(timeline.Id)) continue;
                 if (!sceneObjectsByTimelineId.TryGetValue(timeline.Id, out var itemObject)) continue;
 
-                bool bodypart = string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase) &&
-                    !string.IsNullOrEmpty(timeline.PartOf) && timeline.PartOf != "null";
+                bool bodypart = IsModelPartType(timeline.Type) &&
+                    !string.IsNullOrWhiteSpace(timeline.PartOf) &&
+                    !string.Equals(timeline.PartOf, "null", StringComparison.OrdinalIgnoreCase);
 
                 SceneObject parentObject = null;
                 if (!string.IsNullOrEmpty(timeline.Parent))
@@ -1166,6 +1169,10 @@ public class MineImatorLoader
 
     private static string GetBoneLookupKey(int boneIdx) => $"bone:{boneIdx}";
 
+    private static bool IsModelPartType(string? type) =>
+        string.Equals(type, "bodypart", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(type, "model_part", StringComparison.OrdinalIgnoreCase);
+
     private static bool TryFindBoneByModelPartName(CharacterSceneObject character, string modelPartName,
         out BoneSceneObject boneObj)
     {
@@ -1182,7 +1189,7 @@ public class MineImatorLoader
 
         foreach (var timeline in miObject.Timelines)
         {
-            if (!string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase))
+            if (!IsModelPartType(timeline.Type))
                 continue;
             if (string.IsNullOrWhiteSpace(timeline.PartOf) || string.IsNullOrEmpty(timeline.ModelPartName))
                 continue;
@@ -1210,7 +1217,7 @@ public class MineImatorLoader
                 resources[resource.Id] = resource.Filename;
         foreach (var timeline in miObject.Timelines)
         {
-            if (!string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase) ||
+            if (!IsModelPartType(timeline.Type) ||
                 string.IsNullOrWhiteSpace(timeline.Id) ||
                 !sceneObjectsByTimelineId.TryGetValue(timeline.Id, out var obj) || obj is not MiBoneSceneObject bone)
                 continue;
@@ -1317,7 +1324,7 @@ public class MineImatorLoader
             obj.LockToBentHalf = timeline.LockBend.Value > 0f;
 
         if (includeHierarchySettings)
-            obj.ScaleResize = timeline.ScaleResize ?? !string.Equals(timeline.Type, "bodypart", StringComparison.OrdinalIgnoreCase);
+            obj.ScaleResize = timeline.ScaleResize ?? !IsModelPartType(timeline.Type);
 
         if (includeHierarchySettings && timeline.RotPointCustom && timeline.RotPoint is { Length: >= 3 })
             obj.PivotOffset = ResolveTimelinePivotOffset(obj, timeline.RotPoint);

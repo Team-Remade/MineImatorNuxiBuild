@@ -893,7 +893,8 @@ public sealed class ProjectManager
         MiObject? miObject;
         try
         {
-            miObject = JsonSerializer.Deserialize(File.ReadAllText(miObjectPath), AppJsonContext.Default.MiObject);
+            miObject = JsonSerializer.Deserialize(
+                MineImatorLoader.EscapeJsonControlCharacters(File.ReadAllText(miObjectPath)), AppJsonContext.Default.MiObject);
         }
         catch
         {
@@ -955,7 +956,8 @@ public sealed class ProjectManager
         MiModel? model;
         try
         {
-            model = JsonSerializer.Deserialize(File.ReadAllText(miModelPath), AppJsonContext.Default.MiModel);
+            model = JsonSerializer.Deserialize(
+                MineImatorLoader.EscapeJsonControlCharacters(File.ReadAllText(miModelPath)), AppJsonContext.Default.MiModel);
         }
         catch
         {

@@ -2543,7 +2543,7 @@ public class MainWindow : Window
             ? _activeHistoryObjectBaselines
             : _historyObjectBaselines;
         _historyInteractionActive = false;
-        var currentHierarchy = new SceneHistoryAction.HierarchyState(_mainViewport);
+        var currentHierarchy = SceneHistoryAction.HierarchyState.Capture(_mainViewport, _historyHierarchyBaseline);
         // Capture persisted settings, not the background values evaluated during playback.
         var currentProject = SceneHistoryAction.ProjectState.Capture(_projectManager.Manifest);
         // Clicking away can commit an editor and deselect its object in the same frame.
