@@ -190,6 +190,7 @@ public class Viewport : UiPanel
     /// </summary>
     private Input _input = new Input();
     private Input _previewInput = new Input();
+    private bool _transformToolbarOwnsMouse;
 
     // ── Orbit drag state ───────────────────────────────────────────────────────
 
@@ -2651,7 +2652,10 @@ public class Viewport : UiPanel
             _viewportRenderMode == ViewportRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined);
 
         // ── Camera orbit/pan input ─────────────────────────────────────────────
-        HandleCameraInput(imageMin, imageSize, activeCamera, activeCamObj);
+        // A child window stays above the image and is submitted before scene input.
+        HandleGizmoModeShortcuts(_input, ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows));
+        bool transformToolbarHovered = RenderTransformToolbar(imageMin, imageSize);
+        HandleCameraInput(imageMin, imageSize, activeCamera, activeCamObj, transformToolbarHovered);
 
         Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
         bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
@@ -2993,6 +2997,77 @@ public class Viewport : UiPanel
 
         ImGui.EndChild();
         ImGui.End();
+    }
+
+    private bool RenderTransformToolbar(Vector2 imageMin, Vector2 imageSize)
+    {
+        if (!OverlaysEnabled || Gizmo == null)
+            return false;
+
+        float scale = UiTheme.Scale;
+        float buttonSize = 28f * scale;
+        float padding = 4f * scale;
+        float spacing = 2f * scale;
+        var toolbarSize = new Vector2(buttonSize + padding * 2f,
+            buttonSize * 5f + spacing * 4f + padding * 2f);
+        var toolbarMin = imageMin + new Vector2(8f * scale);
+        if (PreviewViewport is { IsInlineVisible: true, InlineCorner: Corner.TopLeft or Corner.BottomLeft })
+            toolbarMin.X = imageMin.X + imageSize.X - toolbarSize.X - 8f * scale;
+        if (imageSize.X < toolbarSize.X + 16f * scale || imageSize.Y < toolbarSize.Y + 16f * scale)
+            return false;
+
+        bool hovered = ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows) &&
+                       ImGui.IsMouseHoveringRect(toolbarMin, toolbarMin + toolbarSize);
+        var cursor = ImGui.GetCursorScreenPos();
+        var accent = GetAccentColorFromPreferences();
+        ImGui.SetCursorScreenPos(toolbarMin);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(padding));
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(spacing));
+        ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 3f * scale);
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 2f * scale);
+        ImGui.PushStyleColor(ImGuiCol.ChildBg, new Vector4(0.13f, 0.13f, 0.13f, 0.94f));
+        if (ImGui.BeginChild("##vpTransformToolbar", toolbarSize, ImGuiChildFlags.AlwaysUseWindowPadding,
+                ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse))
+        {
+            ImGui.BeginDisabled(Gizmo.Editing || _input.HasLeftPressCapture || _input.IsDragging ||
+                                _input.IsPanning || _input.IsFreeFlyActive);
+            DrawMode(Gizmo3D.ToolMode.Move, ViewportIcons.Position, "text.common.position", "toggleGizmoMove");
+            DrawMode(Gizmo3D.ToolMode.Rotate, ViewportIcons.Rotation, "text.common.rotation", "toggleGizmoRotate");
+            DrawMode(Gizmo3D.ToolMode.Bend, ViewportIcons.Bend, "text.panel.timeline.bend", "toggleGizmoBend");
+            DrawMode(Gizmo3D.ToolMode.Scale, ViewportIcons.Scale, "text.common.scale", "toggleGizmoScale");
+            bool localSpace = Gizmo.UseLocalSpace;
+            if (DrawToggle("vpTransformSpace", localSpace ? ViewportIcons.LocalSpace : ViewportIcons.GlobalSpace,
+                    localSpace ? "text.panel.viewport.gizmo_local_space" : "text.panel.viewport.gizmo_global_space",
+                    "toggleGizmoSpace", localSpace))
+                Gizmo.UseLocalSpace = !localSpace;
+            ImGui.EndDisabled();
+        }
+        ImGui.EndChild();
+        ImGui.PopStyleColor();
+        ImGui.PopStyleVar(4);
+        ImGui.SetCursorScreenPos(cursor);
+        return hovered;
+
+        void DrawMode(Gizmo3D.ToolMode mode, uint icon, string labelKey, string bindingId)
+        {
+            if (DrawToggle($"vpTransform{mode}", icon, labelKey, bindingId, (Gizmo.Mode & mode) != 0))
+                Gizmo.Mode ^= mode;
+        }
+
+        bool DrawToggle(string id, uint icon, string labelKey, string bindingId, bool enabled)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Button, enabled
+                ? accent with { W = 0.35f } : new Vector4(1f, 1f, 1f, 0.04f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, accent with { W = 0.55f });
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive, accent with { W = 0.8f });
+            ImGui.PushStyleColor(ImGuiCol.Text, enabled
+                ? accent with { W = 1f } : new Vector4(0.6f, 0.6f, 0.6f, 1f));
+            string label = Localization.T(labelKey);
+            bool clicked = ViewportIcons.Button(id, icon, label, buttonSize,
+                $"{label} ({Keybinds.DisplayLabel(bindingId)})");
+            ImGui.PopStyleColor(4);
+            return clicked;
+        }
     }
 
     public void DrawRuleOfThirdsToggle(float height = 0f)
@@ -7082,6 +7157,8 @@ public class Viewport : UiPanel
         if (!_previewInput.IsFreeFlyActive && !_previewInput.HasLeftPressCapture && !hovered &&
             !_previewInput.IsDragging && !_previewInput.IsPanning && !_previewInput.IsGizmoDragging) return;
 
+        HandleGizmoModeShortcuts(_previewInput, hovered);
+
         Vector2 mousePos = new Vector2(io.MousePos.X, io.MousePos.Y);
 
         // Gather full input state for undocked window (same as main viewport)
@@ -7263,12 +7340,49 @@ public class Viewport : UiPanel
 
     // ── Camera / gizmo input ───────────────────────────────────────────────────
 
-    private unsafe void HandleCameraInput(Vector2 imageMin, Vector2 imageSize, Camera camera, CameraSceneObject? sceneObj)
+    private void HandleGizmoModeShortcuts(Input input, bool hovered)
+    {
+        if (!hovered || !OverlaysEnabled || Gizmo == null || Gizmo.Editing || ImGui.GetIO().AppFocusLost ||
+            ImGui.IsAnyItemActive() || Input.IsAnyFreeFlyActive || input.HasLeftPressCapture ||
+            input.IsDragging || input.IsPanning || input.IsGizmoDragging ||
+            ImGui.IsMouseDown(ImGuiMouseButton.Left) || ImGui.IsMouseDown(ImGuiMouseButton.Middle) ||
+            ImGui.IsMouseDown(ImGuiMouseButton.Right))
+            return;
+
+        if (Keybinds.Pressed("toggleGizmoMove")) Gizmo.Mode ^= Gizmo3D.ToolMode.Move;
+        if (Keybinds.Pressed("toggleGizmoRotate")) Gizmo.Mode ^= Gizmo3D.ToolMode.Rotate;
+        if (Keybinds.Pressed("toggleGizmoBend")) Gizmo.Mode ^= Gizmo3D.ToolMode.Bend;
+        if (Keybinds.Pressed("toggleGizmoScale")) Gizmo.Mode ^= Gizmo3D.ToolMode.Scale;
+    }
+
+    private unsafe void HandleCameraInput(Vector2 imageMin, Vector2 imageSize, Camera camera, CameraSceneObject? sceneObj,
+        bool transformToolbarHovered)
     {
         var io = ImGui.GetIO();
         bool keyboardBlocked = io.WantTextInput || io.AppFocusLost || Keybinds.IsCapturing;
         if (keyboardBlocked || !ImGui.IsMouseDown(ImGuiMouseButton.Right))
             _input.StopFreeFly();
+
+        bool sceneInputCaptured = _input.HasLeftPressCapture || _input.IsDragging || _input.IsGizmoDragging ||
+                                  _input.IsPanning || _input.IsFreeFlyActive;
+        if (transformToolbarHovered && !sceneInputCaptured &&
+            (ImGui.IsMouseClicked(ImGuiMouseButton.Left) || ImGui.IsMouseClicked(ImGuiMouseButton.Middle) ||
+             ImGui.IsMouseClicked(ImGuiMouseButton.Right)))
+            _transformToolbarOwnsMouse = true;
+
+        // Keep toolbar presses out of scene input even if the pointer leaves before release.
+        bool blockSceneInput = _transformToolbarOwnsMouse || (transformToolbarHovered && !sceneInputCaptured);
+        if (!ImGui.IsMouseDown(ImGuiMouseButton.Left) && !ImGui.IsMouseDown(ImGuiMouseButton.Middle) &&
+            !ImGui.IsMouseDown(ImGuiMouseButton.Right))
+            _transformToolbarOwnsMouse = false;
+        if (blockSceneInput)
+        {
+            _input.ClearPendingPick();
+            _pendingPickX = float.NaN;
+            _pendingPickY = float.NaN;
+            return;
+        }
+
         if (HandleObjectPlacementInput(camera, sceneObj, ImGui.IsWindowHovered(), imageMin, imageSize, false) ||
             HandleDepthOfFieldFocusInput(sceneObj, ImGui.IsWindowHovered(), imageMin, imageSize))
         {

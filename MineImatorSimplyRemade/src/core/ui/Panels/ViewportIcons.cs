@@ -12,6 +12,12 @@ internal static class ViewportIcons
     public static uint Preview { get; private set; }
     public static uint PopOut { get; private set; }
     public static uint Dock { get; private set; }
+    public static uint Position { get; private set; }
+    public static uint Rotation { get; private set; }
+    public static uint Bend { get; private set; }
+    public static uint Scale { get; private set; }
+    public static uint GlobalSpace { get; private set; }
+    public static uint LocalSpace { get; private set; }
 
     private static bool _initialized;
 
@@ -26,6 +32,12 @@ internal static class ViewportIcons
         Preview = Load("picture-in-picture-bottom-right");
         PopOut = Load("open-in-new");
         Dock = Load("dock-window");
+        Position = Load("cursor-move");
+        Rotation = Load("sync");
+        Bend = Load("angle-acute");
+        Scale = Load("resize");
+        GlobalSpace = Load("earth");
+        LocalSpace = Load("axis-arrow");
         _initialized = true;
 
         uint Load(string name)
