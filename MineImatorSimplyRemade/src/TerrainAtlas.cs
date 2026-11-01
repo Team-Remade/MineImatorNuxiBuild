@@ -102,12 +102,27 @@ public static class TerrainAtlas
     private static readonly Dictionary<string, bool> _translucencyCache = new();
 
     private static GL? _gl;
+    private static readonly HashSet<string> _loadedResourcePackIds = new(StringComparer.OrdinalIgnoreCase);
 
     public static void Initialize(GL gl, Action<float, string>? progress = null)
     {
         _gl = gl;
         LoadTextures(progress);
         ResourcePackMaterialTextures.Initialize(gl);
+    }
+
+    public static void LoadAdditionalResourcePacks(IReadOnlySet<string> packIds)
+    {
+        ArgumentNullException.ThrowIfNull(packIds);
+        if (_gl == null) throw new InvalidOperationException("TerrainAtlas must be initialized before loading additional packs.");
+        var pending = packIds.Select(MinecraftDataLoader.NormalizeResourcePackId)
+            .Where(id => id.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        pending.ExceptWith(_loadedResourcePackIds);
+        if (pending.Count == 0) return;
+        StbImage.stbi_set_flip_vertically_on_load(0);
+        ApplyResourcePackOverrides(packIds: pending);
+        ResourcePackMaterialTextures.InvalidateAdditionalResourcePacks(pending);
+        _loadedResourcePackIds.UnionWith(pending);
     }
 
     /// <summary>
@@ -162,6 +177,7 @@ public static class TerrainAtlas
         TilePixels.Clear();
         AnimatedTextures.Clear();
         _translucencyCache.Clear();
+        _loadedResourcePackIds.Clear();
 
         string versionRoot = MinecraftDataLoader.GetVersionRoot();
         string texturesDir = Path.Combine(versionRoot, "textures");
@@ -258,7 +274,7 @@ public static class TerrainAtlas
         progress?.Invoke(1f, $"Loaded {Textures.Count} terrain texture(s)");
     }
 
-    private static void ApplyResourcePackOverrides(Action<float, string>? progress = null)
+    private static void ApplyResourcePackOverrides(Action<float, string>? progress = null, IReadOnlySet<string>? packIds = null)
     {
         if (_gl == null) return;
 
@@ -269,6 +285,7 @@ public static class TerrainAtlas
                      progress?.Invoke(ratio * 0.20f, $"Scanning animation metadata {current}/{total}: {containerName}");
                  }))
         {
+            if (!ShouldLoadResourcePack(file.PackName, packIds)) continue;
             mcmetaByPath[MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, file.RelativePath)] = MinecraftDataLoader.DecodeUtf8(file.Data);
         }
 
@@ -279,11 +296,14 @@ public static class TerrainAtlas
                      progress?.Invoke(0.20f + ratio * 0.30f, $"Scanning block overrides {current}/{total}: {containerName}");
                  }))
         {
+            if (!ShouldLoadResourcePack(file.PackName, packIds)) continue;
             if (MinecraftDataLoader.IsMaterialTexturePath(file.RelativePath)) continue;
             if (!MinecraftDataLoader.TryParseTextureAssetPath(file.RelativePath, out _, out _, out string baseKey)) continue;
             if (string.IsNullOrWhiteSpace(baseKey)) continue;
 
             string key = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, baseKey);
+            if (packIds != null && Textures.ContainsKey(key)) continue;
+            _translucencyCache.Remove(key);
 
             ImageResult img;
             try
@@ -322,6 +342,7 @@ public static class TerrainAtlas
                      progress?.Invoke(0.50f + ratio * 0.20f, $"Scanning entity overrides {current}/{total}: {containerName}");
                  }))
         {
+            if (!ShouldLoadResourcePack(file.PackName, packIds)) continue;
             if (MinecraftDataLoader.IsMaterialTexturePath(file.RelativePath)) continue;
             string baseRelative = file.RelativePath
                 .Replace("assets/minecraft/textures/", "", StringComparison.OrdinalIgnoreCase)
@@ -332,6 +353,8 @@ public static class TerrainAtlas
                 continue;
 
             string relative = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, baseRelative);
+            if (packIds != null && Textures.ContainsKey(relative)) continue;
+            _translucencyCache.Remove(relative);
 
             ImageResult img;
             try
@@ -370,6 +393,7 @@ public static class TerrainAtlas
                      progress?.Invoke(0.70f + ratio * 0.30f, $"Scanning namespaced textures {current}/{total}: {containerName}");
                  }))
         {
+            if (!ShouldLoadResourcePack(file.PackName, packIds)) continue;
             if (MinecraftDataLoader.IsMaterialTexturePath(file.RelativePath)) continue;
             if (!MinecraftDataLoader.TryParseTextureAssetPath(file.RelativePath, out string assetNamespace, out string category, out string textureKey))
                 continue;
@@ -382,6 +406,8 @@ public static class TerrainAtlas
                 continue;
 
             string key = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, $"{assetNamespace}/{category}/{textureKey}");
+            if (packIds != null && Textures.ContainsKey(key)) continue;
+            _translucencyCache.Remove(key);
 
             ImageResult img;
             try
@@ -412,6 +438,14 @@ public static class TerrainAtlas
 
             progress?.Invoke(1f, $"Namespaced texture: {assetNamespace}/{category}/{textureKey}");
         }
+    }
+
+    private static bool ShouldLoadResourcePack(string packName, IReadOnlySet<string>? packIds)
+    {
+        string id = MinecraftDataLoader.GetResourcePackId(packName);
+        if (packIds != null && !packIds.Contains(id)) return false;
+        if (packIds == null) _loadedResourcePackIds.Add(id);
+        return true;
     }
 
     private static unsafe void UpsertTexture(string key, byte[] pixels, int width, int height, bool hasAnim)

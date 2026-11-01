@@ -13,7 +13,7 @@ public sealed class ProjectManager
     private static readonly Lazy<ProjectManager> _lazy = new(() => new ProjectManager());
     public static ProjectManager Instance => _lazy.Value;
 
-    public const string ModelImportFilter = "glb,gltf,fbx,obj,dae,3ds,ply,stl,x3d,mimodel,miobject";
+    public const string ModelImportFilter = "glb,gltf,fbx,obj,dae,3ds,ply,stl,x3d,mimodel,miobject,nxObj";
     public const string ImageImportFilter = "png,jpg,jpeg,bmp,tga,gif,webp,tiff,hdr,exr";
     public const string SoundImportFilter = "wav,mp3,ogg,flac,m4a";
     public const string AssetImportFilter = ModelImportFilter + "," + ImageImportFilter + "," + SoundImportFilter;

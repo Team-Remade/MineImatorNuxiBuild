@@ -62,6 +62,11 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.NormalResourcePackId);
         hash.Add(obj.EmissionResourcePackId);
         hash.Add(obj.SourceAssetPath);
+        hash.Add(obj.RestoreExactChildren);
+        hash.Add(obj.SourceNodePath?.Count ?? -1);
+        if (obj.SourceNodePath != null)
+            foreach (int childIndex in obj.SourceNodePath)
+                hash.Add(childIndex);
         hash.Add(obj.AlbedoTexturePath);
         hash.Add(obj.NormalTexturePath);
         hash.Add(obj.EmissionTexturePath);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using Hexa.NET.ImGui;
@@ -8,6 +9,7 @@ using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
+using NativeFileDialogSharp;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
@@ -49,6 +51,7 @@ public class SceneTree : UiPanel
     // Context-menu state
     private SceneObject _contextMenuTarget;
     private bool        _openContextMenu;
+    private string? _exportMessage;
 
     // Drag-and-drop state
     private SceneObject _draggingObject;
@@ -175,6 +178,7 @@ public class SceneTree : UiPanel
         if (_openContextMenu && _contextMenuTarget != null)
             ImGui.OpenPopup("##SceneTreeContextMenu");
 
+        SceneObject exportTarget = null;
         if (ImGui.BeginPopup("##SceneTreeContextMenu"))
         {
             if (_contextMenuTarget != null)
@@ -195,6 +199,13 @@ public class SceneTree : UiPanel
                 if (ImGui.MenuItem(Localization.Label("text.common.duplicate", "Duplicate"), Keybinds.Label("duplicate")))
                 {
                     DuplicateObject(_contextMenuTarget);
+                    _contextMenuTarget = null;
+                }
+
+                if (_contextMenuTarget != null && ImGui.MenuItem(Localization.Label(
+                        "text.panel.scene_tree.export_object", "Export Object (.nxObj)...")))
+                {
+                    exportTarget = _contextMenuTarget;
                     _contextMenuTarget = null;
                 }
 
@@ -224,6 +235,26 @@ public class SceneTree : UiPanel
             ImGui.EndPopup();
         }
 
+        // Open the result at panel scope, not inside the context menu that just closed.
+        string exportPopupTitle = Localization.Label("text.panel.scene_tree.object_export", "Object Export");
+        if (exportTarget != null)
+        {
+            ExportObject(exportTarget);
+            if (_exportMessage != null)
+                ImGui.OpenPopup(exportPopupTitle);
+        }
+
+        bool exportPopupOpen = true;
+        if (ImGui.BeginPopupModal(exportPopupTitle, ref exportPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + 420f * UiTheme.Scale);
+            ImGui.TextUnformatted(_exportMessage ?? "");
+            ImGui.PopTextWrapPos();
+            if (ImGui.Button(Localization.Label("text.window.main.close", "Close")))
+                ImGui.CloseCurrentPopup();
+            ImGui.EndPopup();
+        }
+
         // Cancel drag if the mouse was released outside any target.
         if (_draggingObject != null && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
             _draggingObject = null;
@@ -231,6 +262,44 @@ public class SceneTree : UiPanel
         if (_nameEditor.CommitIfHidden())
             _renamingObject = null;
         ImGui.End();
+    }
+
+    private void ExportObject(SceneObject root)
+    {
+        _exportMessage = null;
+        try
+        {
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+            string name = new string(root.GetDisplayName().Select(c =>
+                char.IsControl(c) || invalidChars.Contains(c) ? '_' : c).Take(100).ToArray()).Trim().TrimEnd('.');
+            if (string.IsNullOrWhiteSpace(name))
+                name = "Object";
+            string stem = name.Split('.')[0];
+            if (new[] { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+                    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9" }.Contains(stem, StringComparer.OrdinalIgnoreCase))
+                name = "_" + name;
+            if (!name.EndsWith(".nxObj", StringComparison.OrdinalIgnoreCase))
+                name += ".nxObj";
+
+            string defaultPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), name);
+            var result = Dialog.FileSave("nxObj", defaultPath);
+            if (result.IsError)
+            {
+                _exportMessage = Localization.Format("text.panel.scene_tree.export_failed", result.ErrorMessage);
+                return;
+            }
+            if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
+                return;
+
+            string path = result.Path.EndsWith(".nxObj", StringComparison.OrdinalIgnoreCase)
+                ? result.Path : result.Path + ".nxObj";
+            NxObjectArchive.Export(path, root);
+            _exportMessage = Localization.Format("text.panel.scene_tree.export_succeeded", path);
+        }
+        catch (Exception ex)
+        {
+            _exportMessage = Localization.Format("text.panel.scene_tree.export_failed", ex.Message);
+        }
     }
 
     /// <summary>
@@ -939,6 +1008,8 @@ public class SceneTree : UiPanel
         dup.NormalResourcePackId = original.NormalResourcePackId;
         dup.EmissionResourcePackId = original.EmissionResourcePackId;
         dup.SourceAssetPath = original.SourceAssetPath;
+        dup.SourceNodePath = original.SourceNodePath?.ToList();
+        dup.RestoreExactChildren = original.RestoreExactChildren;
         dup.AlbedoTexturePath   = original.AlbedoTexturePath;
         dup.NormalTexturePath = original.NormalTexturePath;
         dup.EmissionTexturePath = original.EmissionTexturePath;

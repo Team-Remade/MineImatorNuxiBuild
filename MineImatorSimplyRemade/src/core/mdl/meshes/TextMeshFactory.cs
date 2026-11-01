@@ -200,6 +200,7 @@ public static class TextMeshFactory
     {
         if (string.Equals(requested, "minecraftia", StringComparison.OrdinalIgnoreCase))
             return ResolveMinecraftiaPath();
+        requested = core.project.ProjectManager.Instance.ResolveAssetPath(requested);
         if (!string.IsNullOrWhiteSpace(requested) && File.Exists(requested)) return requested;
         string[] candidates = OperatingSystem.IsWindows()
             ? [Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "arial.ttf")]

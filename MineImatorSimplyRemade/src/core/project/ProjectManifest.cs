@@ -318,6 +318,8 @@ public class ProjectSceneObjectEntry
     public string NormalResourcePackId { get; set; } = "";
     public string EmissionResourcePackId { get; set; } = "";
     public string SourceAssetPath { get; set; } = "";
+    public List<int>? SourceNodePath { get; set; }
+    public bool RestoreExactChildren { get; set; }
     public string AlbedoTexturePath { get; set; } = "";
     public string NormalTexturePath { get; set; } = "";
     public string EmissionTexturePath { get; set; } = "";

@@ -51,11 +51,26 @@ public static class ItemsAtlas
     public static readonly Dictionary<string, TemporaryItemSheet> TemporaryItemSheets = new();
 
     private static GL? _gl;
+    private static readonly HashSet<string> _loadedResourcePackIds = new(StringComparer.OrdinalIgnoreCase);
 
     public static void Initialize(GL gl, Action<float, string>? progress = null)
     {
         _gl = gl;
         LoadAtlas(progress);
+    }
+
+    public static void LoadAdditionalResourcePacks(IReadOnlySet<string> packIds)
+    {
+        ArgumentNullException.ThrowIfNull(packIds);
+        if (_gl == null) throw new InvalidOperationException("ItemsAtlas must be initialized before loading additional packs.");
+        var pending = packIds.Select(MinecraftDataLoader.NormalizeResourcePackId)
+            .Where(id => id.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        pending.ExceptWith(_loadedResourcePackIds);
+        if (pending.Count == 0) return;
+        StbImage.stbi_set_flip_vertically_on_load(0);
+        ApplyResourcePackItemsOverrides(packIds: pending);
+        ResourcePackMaterialTextures.InvalidateAdditionalResourcePacks(pending);
+        _loadedResourcePackIds.UnionWith(pending);
     }
 
     public static string BuildProjectCustomTextureKey(string relativePath)
@@ -215,6 +230,7 @@ public static class ItemsAtlas
         Textures.Clear();
         TilePixels.Clear();
         TileDimensions.Clear();
+        _loadedResourcePackIds.Clear();
 
         string versionRoot = MinecraftDataLoader.GetVersionRoot();
         string atlasPath = Path.Combine(versionRoot, "gui", "items.png");
@@ -331,7 +347,7 @@ public static class ItemsAtlas
         return null;
     }
 
-    private static void ApplyResourcePackItemsOverrides(Action<float, string>? progress = null)
+    private static void ApplyResourcePackItemsOverrides(Action<float, string>? progress = null, IReadOnlySet<string>? packIds = null)
     {
         if (_gl == null) return;
 
@@ -342,6 +358,7 @@ public static class ItemsAtlas
                      progress?.Invoke(ratio * 0.25f, $"Scanning item sheets {current}/{total}: {containerName}");
                  }))
         {
+            if (!ShouldLoadResourcePack(file.PackName, packIds)) continue;
             ImageResult atlas;
             try
             {
@@ -361,7 +378,7 @@ public static class ItemsAtlas
             }
 
             string packPrefix = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, "");
-            SliceGridAtlas(atlas.Data, atlasSize, packPrefix);
+            SliceGridAtlas(atlas.Data, atlasSize, packPrefix, preserveExisting: packIds != null);
             progress?.Invoke(0.25f, $"Applied item sheet from {file.PackName}");
         }
 
@@ -373,6 +390,7 @@ public static class ItemsAtlas
                      progress?.Invoke(0.25f + ratio * 0.35f, $"Scanning item overrides {current}/{total}: {containerName}");
                  }))
         {
+            if (!ShouldLoadResourcePack(file.PackName, packIds)) continue;
             if (MinecraftDataLoader.IsMaterialTexturePath(file.RelativePath)) continue;
             ImageResult img;
             try
@@ -394,6 +412,7 @@ public static class ItemsAtlas
                 continue;
 
             string key = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, baseKey);
+            if (packIds != null && Textures.ContainsKey(key)) continue;
 
             UpsertTileTexture(key, img.Data, img.Width, img.Height);
             progress?.Invoke(0.60f, $"Item override: {baseKey}");
@@ -406,6 +425,7 @@ public static class ItemsAtlas
                      progress?.Invoke(0.60f + ratio * 0.40f, $"Scanning mod item textures {current}/{total}: {containerName}");
                  }))
         {
+            if (!ShouldLoadResourcePack(file.PackName, packIds)) continue;
             if (MinecraftDataLoader.IsMaterialTexturePath(file.RelativePath)) continue;
             if (!MinecraftDataLoader.TryParseTextureAssetPath(file.RelativePath, out string assetNamespace, out string category, out string textureKey))
                 continue;
@@ -428,12 +448,21 @@ public static class ItemsAtlas
             }
 
             string key = MinecraftDataLoader.BuildResourcePackTextureKey(file.PackName, $"{assetNamespace}/item/{textureKey}");
+            if (packIds != null && Textures.ContainsKey(key)) continue;
             UpsertTileTexture(key, img.Data, img.Width, img.Height);
             progress?.Invoke(1f, $"Mod item texture: {assetNamespace}/item/{textureKey}");
         }
     }
 
-    private static void SliceGridAtlas(byte[] src, int atlasSize, string keyPrefix = "")
+    private static bool ShouldLoadResourcePack(string packName, IReadOnlySet<string>? packIds)
+    {
+        string id = MinecraftDataLoader.GetResourcePackId(packName);
+        if (packIds != null && !packIds.Contains(id)) return false;
+        if (packIds == null) _loadedResourcePackIds.Add(id);
+        return true;
+    }
+
+    private static void SliceGridAtlas(byte[] src, int atlasSize, string keyPrefix = "", bool preserveExisting = false)
     {
         if (_gl == null) return;
 
@@ -441,6 +470,10 @@ public static class ItemsAtlas
         {
             for (int tx = 0; tx < AtlasTiles; tx++)
             {
+                string key = string.IsNullOrWhiteSpace(keyPrefix)
+                    ? $"{tx},{ty}"
+                    : $"{keyPrefix}{tx},{ty}";
+                if (preserveExisting && Textures.ContainsKey(key)) continue;
                 byte[] tile = new byte[TileSize * TileSize * 4];
                 for (int row = 0; row < TileSize; row++)
                 {
@@ -451,9 +484,6 @@ public static class ItemsAtlas
                     System.Buffer.BlockCopy(src, srcIdx, tile, dstIdx, TileSize * 4);
                 }
 
-                string key = string.IsNullOrWhiteSpace(keyPrefix)
-                    ? $"{tx},{ty}"
-                    : $"{keyPrefix}{tx},{ty}";
                 UpsertTileTexture(key, tile, TileSize, TileSize);
             }
         }

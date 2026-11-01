@@ -2058,8 +2058,7 @@ public class PropertiesPanel : UiPanel
     }
 
     /// <summary>
-    /// Loads pending albedo textures for all objects that have a stored path but
-    /// no texture loaded yet. Called after a project scene is loaded.
+    /// Reapplies authored albedo overrides after source models have been loaded.
     /// </summary>
     public void LoadPendingAlbedoTextures(IEnumerable<SceneObject> sceneObjects)
     {
@@ -2074,24 +2073,11 @@ public class PropertiesPanel : UiPanel
         if (obj == null) return;
 
         if (SupportsAlbedoTexture(obj) &&
-            !string.IsNullOrEmpty(obj.AlbedoTexturePath))
+            !string.IsNullOrEmpty(obj.AlbedoTexturePath) && string.IsNullOrEmpty(obj.CameraTextureObjectId))
         {
-            bool hasTexture = false;
-            foreach (var mesh in obj.Visuals)
-            {
-                if (mesh.TextureId != 0)
-                {
-                    hasTexture = true;
-                    break;
-                }
-            }
-
-            if (!hasTexture)
-            {
-                string fullPath = ProjectManager.Instance.ResolveAssetPath(obj.AlbedoTexturePath);
-                if (File.Exists(fullPath))
-                    OnLoadAlbedoTextureForObject(obj, fullPath);
-            }
+            string fullPath = ProjectManager.Instance.ResolveAssetPath(obj.AlbedoTexturePath);
+            if (File.Exists(fullPath))
+                OnLoadAlbedoTextureForObject(obj, fullPath);
         }
 
         foreach (var child in obj.Children)

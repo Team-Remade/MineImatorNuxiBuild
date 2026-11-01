@@ -324,6 +324,8 @@ public static class ProjectSceneSerializer
             NormalResourcePackId = obj.NormalResourcePackId,
             EmissionResourcePackId = obj.EmissionResourcePackId,
             SourceAssetPath = pm.ToAssetReference(obj.SourceAssetPath),
+            SourceNodePath = obj.SourceNodePath?.ToList(),
+            RestoreExactChildren = obj.RestoreExactChildren,
             AlbedoTexturePath = pm.ToProjectRelativePath(obj.AlbedoTexturePath),
             NormalTexturePath = pm.ToAssetReference(obj.NormalTexturePath),
             EmissionTexturePath = pm.ToAssetReference(obj.EmissionTexturePath),
@@ -403,7 +405,7 @@ public static class ProjectSceneSerializer
             PrimitiveRadialSmooth = obj.PrimitiveRadialSmooth,
             PrimitiveRadialClosed = obj.PrimitiveRadialClosed,
             PrimitiveRadialMapped = obj.PrimitiveRadialMapped,
-            TextMeshFontPath = obj.TextMeshFontPath,
+            TextMeshFontPath = pm.ToAssetReference(obj.TextMeshFontPath),
             TextMeshBaseString = obj.TextMeshBaseString,
             TextMeshStringOverride = obj.TextMeshStringOverride,
             TextMeshExtruded = obj.TextMeshExtruded,
@@ -618,17 +620,27 @@ public static class ProjectSceneSerializer
 
             usedChildren.Add(RestoreNode(childEntry, viewport, spawnMenu, obj, originDelta, importedIkState));
         }
+        if (entry.RestoreExactChildren)
+            foreach (var child in obj.Children.ToArray())
+                if (!usedChildren.Contains(child) && !child.IsRuntimeTransient)
+                    obj.RemoveChild(child);
     }
 
     private static SceneObject? FindMatchingChild(SceneObject parent, ProjectSceneObjectEntry entry, HashSet<SceneObject> usedChildren)
     {
+        if (entry.SourceNodePath is { Count: > 0 })
+            return parent.Children.FirstOrDefault(child => !usedChildren.Contains(child) &&
+                child.SourceNodePath != null && child.SourceNodePath.SequenceEqual(entry.SourceNodePath));
+
+        bool Eligible(SceneObject child) => !usedChildren.Contains(child) &&
+            (!entry.RestoreExactChildren || child.SourceNodePath is not { Count: > 0 });
+        var named = parent.Children.FirstOrDefault(child => Eligible(child) &&
+            !string.IsNullOrWhiteSpace(entry.Name) && string.Equals(child.Name, entry.Name, StringComparison.Ordinal));
+        if (named != null) return named;
         foreach (var child in parent.Children)
         {
-            if (usedChildren.Contains(child))
+            if (!Eligible(child))
                 continue;
-
-            if (!string.IsNullOrWhiteSpace(entry.Name) && string.Equals(child.Name, entry.Name, StringComparison.Ordinal))
-                return child;
 
             if (!string.IsNullOrWhiteSpace(entry.ObjectType) &&
                 string.Equals(child.ObjectType, entry.ObjectType, StringComparison.Ordinal) &&
@@ -643,6 +655,38 @@ public static class ProjectSceneSerializer
     {
         if (spawnMenu.Viewport == null)
             return null;
+
+        if (entry.SourceNodePath is { Count: > 0 } sourceNodePath)
+        {
+            string sourcePath = ResolveSourcePath(entry);
+            if (!File.Exists(sourcePath))
+                throw new InvalidDataException($"The source asset for subpart '{entry.Name}' is missing.");
+
+            string? textureOverride = string.IsNullOrWhiteSpace(entry.TextureOverridePath)
+                ? null
+                : ResolveTextureOverridePath(entry.TextureOverridePath);
+            SceneObject sourceRoot = (entry.SpawnCategory == "Scenery"
+                ? spawnMenu.SpawnSchematicFromPath(sourcePath, entry.ResourcePackId)
+                : spawnMenu.SpawnCustomModelFromPath(sourcePath, textureOverride, registerAsset: false))
+                ?? throw new InvalidDataException($"The source asset for subpart '{entry.Name}' could not be loaded.");
+
+            SceneObject selectedRoot = sourceRoot;
+            foreach (int childIndex in sourceNodePath)
+            {
+                if ((uint)childIndex >= (uint)selectedRoot.Children.Count)
+                {
+                    spawnMenu.Viewport.SceneObjects.Remove(sourceRoot);
+                    throw new InvalidDataException($"The source node path for subpart '{entry.Name}' is invalid.");
+                }
+                selectedRoot = selectedRoot.Children[childIndex];
+            }
+
+            // Detach without deleting: MiBone nodes still need their original ModelOwner for bend regeneration.
+            selectedRoot.Parent?.RemoveChild(selectedRoot);
+            spawnMenu.Viewport.SceneObjects.Remove(sourceRoot);
+            spawnMenu.Viewport.SceneObjects.Add(selectedRoot);
+            return selectedRoot;
+        }
 
         if (entry.SpawnCategory == "Items")
         {
@@ -699,7 +743,7 @@ public static class ProjectSceneSerializer
             string? textureOverride = string.IsNullOrWhiteSpace(entry.TextureOverridePath)
                 ? null
                 : ResolveTextureOverridePath(entry.TextureOverridePath);
-            return spawnMenu.SpawnCustomModelFromPath(resolvedPath, textureOverride);
+            return spawnMenu.SpawnCustomModelFromPath(resolvedPath, textureOverride, registerAsset: false);
         }
 
         return null;
@@ -789,8 +833,13 @@ public static class ProjectSceneSerializer
         obj.ResourcePackId = resourcePackStack;
         obj.NormalResourcePackId = entry.NormalResourcePackId ?? "";
         obj.EmissionResourcePackId = entry.EmissionResourcePackId ?? "";
-        obj.SourceAssetPath = ResolveSourcePath(entry);
-        obj.TextureOverridePath = ResolveTextureOverridePath(entry.TextureOverridePath);
+        // Old saves omit construction identity on internal parts; retain it from the freshly loaded source.
+        if (!string.IsNullOrEmpty(entry.SourceAssetPath) || obj.SourceNodePath is not { Count: > 0 })
+            obj.SourceAssetPath = ResolveSourcePath(entry);
+        obj.SourceNodePath = entry.SourceNodePath?.ToList() ?? obj.SourceNodePath;
+        obj.RestoreExactChildren = entry.RestoreExactChildren;
+        if (!string.IsNullOrEmpty(entry.TextureOverridePath) || obj.SourceNodePath is not { Count: > 0 })
+            obj.TextureOverridePath = ResolveTextureOverridePath(entry.TextureOverridePath);
         // Assign empty paths too so history can remove previously authored maps.
         obj.NormalTexturePath = ProjectManager.Instance.ResolveAssetPath(entry.NormalTexturePath ?? "");
         obj.EmissionTexturePath = ProjectManager.Instance.ResolveAssetPath(entry.EmissionTexturePath ?? "");
@@ -1397,7 +1446,7 @@ public static class ProjectSceneSerializer
                 .Select(kf => new ProjectKeyframeEntry
                 {
                     Frame = kf.Frame,
-                    Value = pair.Key == "material.texture"
+                    Value = pair.Key is "material.texture" or "text.font"
                         ? ProjectManager.Instance.ToProjectRelativePath(kf.Value is JsonElement json && json.ValueKind == JsonValueKind.String
                             ? json.GetString() ?? "" : Convert.ToString(kf.Value, CultureInfo.InvariantCulture) ?? "")
                         : kf.Value,

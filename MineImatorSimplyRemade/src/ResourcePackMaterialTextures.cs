@@ -43,6 +43,16 @@ public static class ResourcePackMaterialTextures
         _indexed = false;
     }
 
+    internal static void InvalidateAdditionalResourcePacks(IReadOnlySet<string> packIds)
+    {
+        if (packIds.Count == 0) return;
+        foreach (string id in packIds) Packs.Remove(id);
+        foreach (var key in Textures.Keys.Where(key => packIds.Contains(key.Pack)).ToArray())
+            Textures.Remove(key);
+        // Reindex lazily, but keep all GL handles alive for meshes already using them.
+        _indexed = false;
+    }
+
     public static vec3 GetEmissionAverage(uint textureId) =>
         EmissionAverages.TryGetValue(textureId, out vec3 average) ? average : vec3.Ones;
 

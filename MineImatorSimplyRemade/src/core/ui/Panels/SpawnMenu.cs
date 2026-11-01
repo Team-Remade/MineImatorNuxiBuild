@@ -86,6 +86,7 @@ public class SpawnMenu : UiPanel
     private string  _pendingSchematicRetryResourcePackId = "";
     private string? _pendingSchematicRetryError;
     private string? _lastSchematicLoadError;
+    private string? _objectImportError;
 
     private string _selectedCategory  = "Primitives";
     private int    _selectedObjectIndex  = -1;
@@ -443,6 +444,23 @@ public class SpawnMenu : UiPanel
         // failure triggered from the content browser or elsewhere can still
         // prompt the user, even if the spawn menu window itself isn't shown.
         RenderSchematicLoadRetryDialog();
+        string objectImportTitle = Localization.Label("text.panel.spawn.object_import", "Object Import");
+        if (_objectImportError != null)
+            ImGui.OpenPopup(objectImportTitle);
+        bool importErrorOpen = true;
+        if (ImGui.BeginPopupModal(objectImportTitle, ref importErrorOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + 420f * UiTheme.Scale);
+            UiText.Wrapped(Localization.Format("text.panel.spawn.object_import_failed", _objectImportError));
+            ImGui.PopTextWrapPos();
+            if (ImGui.Button(Localization.Label("text.window.main.close", "Close")))
+            {
+                _objectImportError = null;
+                ImGui.CloseCurrentPopup();
+            }
+            ImGui.EndPopup();
+        }
+        if (!importErrorOpen) _objectImportError = null;
 
         if (!_isOpen) return;
 
@@ -2376,11 +2394,27 @@ public class SpawnMenu : UiPanel
     ///
     /// Returns the root <see cref="SceneObject"/> on success, or <c>null</c> on error.
     /// </summary>
-    public SceneObject? SpawnCustomModelFromPath(string filePath, string? textureOverridePath = null)
+    public SceneObject? SpawnCustomModelFromPath(string filePath, string? textureOverridePath = null, bool registerAsset = true)
     {
         if (Viewport == null || Gl == null) return null;
 
-        string pathToSpawn = ResolveModelPathForProject(filePath);
+        if (Path.GetExtension(filePath).Equals(".nxObj", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                string archivePath = registerAsset ? ResolveModelPathForProject(filePath) : filePath;
+                var imported = NxObjectArchive.Import(archivePath, Viewport, this);
+                AddToCustomModelHistory(archivePath, Path.GetFileNameWithoutExtension(archivePath));
+                return imported;
+            }
+            catch (Exception ex)
+            {
+                _objectImportError = ex.Message;
+                return null;
+            }
+        }
+
+        string pathToSpawn = registerAsset ? ResolveModelPathForProject(filePath) : filePath;
 
         string ext = Path.GetExtension(pathToSpawn).ToLowerInvariant();
 
@@ -2426,6 +2460,20 @@ public class SpawnMenu : UiPanel
         // load) — otherwise a reload always falls back to the source file's
         // own default/embedded texture.
         root.TextureOverridePath = textureOverridePath ?? "";
+        RecordSourceNodes(root, new List<int>());
+
+        void RecordSourceNodes(SceneObject node, List<int> path)
+        {
+            node.SourceAssetPath = pathToSpawn;
+            node.SourceNodePath = path.Count == 0 ? null : path.ToList();
+            if (string.IsNullOrEmpty(node.TextureOverridePath)) node.TextureOverridePath = root.TextureOverridePath;
+            for (int index = 0; index < node.Children.Count; index++)
+            {
+                path.Add(index);
+                RecordSourceNodes(node.Children[index], path);
+                path.RemoveAt(path.Count - 1);
+            }
+        }
 
         string displayName = Path.GetFileNameWithoutExtension(pathToSpawn);
         if (string.IsNullOrEmpty(root.Name)) root.Name = displayName;
