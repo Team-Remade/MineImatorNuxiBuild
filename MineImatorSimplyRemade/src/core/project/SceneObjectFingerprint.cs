@@ -99,6 +99,16 @@ internal static class SceneObjectFingerprint
             hash.Add(constraint.Blend);
             hash.Add(constraint.BentHalf);
             hash.Add(constraint.Rotate);
+            hash.Add(constraint.SourceRotationAxis);
+            hash.Add(constraint.BendAxis);
+            hash.Add(constraint.RotationMultiplier);
+            hash.Add(constraint.UseBendAxisMask);
+            hash.Add(constraint.SourceRotationAxisX.HasValue);
+            if (constraint.SourceRotationAxisX is { } sourceX) hash.Add(sourceX);
+            hash.Add(constraint.SourceRotationAxisY.HasValue);
+            if (constraint.SourceRotationAxisY is { } sourceY) hash.Add(sourceY);
+            hash.Add(constraint.SourceRotationAxisZ.HasValue);
+            if (constraint.SourceRotationAxisZ is { } sourceZ) hash.Add(sourceZ);
         }
         hash.Add(obj is BoneSceneObject);
         if (obj is BoneSceneObject bone)

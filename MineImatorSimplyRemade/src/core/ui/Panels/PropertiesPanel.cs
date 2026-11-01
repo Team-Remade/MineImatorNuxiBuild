@@ -944,7 +944,13 @@ public class PropertiesPanel : UiPanel
                     X = constraint.Offset.X, Y = constraint.Offset.Y, Z = constraint.Offset.Z
                 },
                 AxisX = constraint.AxisX, AxisY = constraint.AxisY, AxisZ = constraint.AxisZ,
-                Blend = constraint.Blend, BentHalf = constraint.BentHalf, Rotate = constraint.Rotate
+                Blend = constraint.Blend, BentHalf = constraint.BentHalf, Rotate = constraint.Rotate,
+                SourceRotationAxis = constraint.SourceRotationAxis, BendAxis = constraint.BendAxis,
+                RotationMultiplier = constraint.RotationMultiplier,
+                UseBendAxisMask = constraint.UseBendAxisMask,
+                SourceRotationAxisX = constraint.SourceRotationAxisX,
+                SourceRotationAxisY = constraint.SourceRotationAxisY,
+                SourceRotationAxisZ = constraint.SourceRotationAxisZ
             }).ToList(),
             SpawnCategory = source.SpawnCategory,
             BlockVariant = source.BlockVariant,
@@ -1535,14 +1541,28 @@ public class PropertiesPanel : UiPanel
         if (ImGui.BeginPopup("##addMenu"))
         {
             foreach (var type in Enum.GetValues<CopyConstraintType>())
+            {
+                if (type == CopyConstraintType.RotationToBend && owner is not MiBoneSceneObject { BendParameters: not null })
+                    continue;
                 if (ImGui.MenuItem(Localization.DisplayLabel(TimelinePanel.GetCopyConstraintLabel(type))))
                 {
+                    int bendAxis = owner is MiBoneSceneObject { BendParameters: { } bp }
+                        ? bp.AxisX ? 0 : bp.AxisY ? 1 : 2 : 0;
                     owner.CopyConstraints.Add(new CopyConstraint
                     {
-                        Type = type, Offset = type == CopyConstraintType.Scale ? vec3.Ones : vec3.Zero
+                        Type = type, Offset = type == CopyConstraintType.Scale ? vec3.Ones : vec3.Zero,
+                        BendAxis = bendAxis,
+                        UseBendAxisMask = type == CopyConstraintType.RotationToBend,
+                        AxisX = type != CopyConstraintType.RotationToBend || bendAxis == 0,
+                        AxisY = type != CopyConstraintType.RotationToBend || bendAxis == 1,
+                        AxisZ = type != CopyConstraintType.RotationToBend || bendAxis == 2,
+                        SourceRotationAxisX = type == CopyConstraintType.RotationToBend ? 0 : null,
+                        SourceRotationAxisY = type == CopyConstraintType.RotationToBend ? 1 : null,
+                        SourceRotationAxisZ = type == CopyConstraintType.RotationToBend ? 2 : null
                     });
                     ProjectManager.Instance.SetDirty(true);
                 }
+            }
             if (owner is BoneSceneObject bone && ImGui.MenuItem(Localization.DisplayLabel("Inverse Kinematics")))
             {
                 bone.Constraints.Add(new BoneConstraint());
@@ -1635,30 +1655,85 @@ public class PropertiesPanel : UiPanel
                         }
                         RegisterPropertyContext($"{prefix}.rotate");
                     }
-                    float factor = constraint.Type == CopyConstraintType.Position ? 16f
-                        : constraint.Type == CopyConstraintType.Rotation ? 180f / MathF.PI : 1f;
-                    var offset = new Vector3(constraint.Offset.x, constraint.Offset.y, constraint.Offset.z) * factor;
-                    string offsetLabel = constraint.Type == CopyConstraintType.Position ? "Offset (pixels)"
-                        : constraint.Type == CopyConstraintType.Rotation ? "Offset (degrees)" : "Offset";
-                    if (ImGui.DragFloat3(Localization.DisplayLabel(offsetLabel), ref offset, 0.1f))
+                    if (constraint.Type == CopyConstraintType.RotationToBend)
                     {
-                        constraint.Offset = new vec3(offset.X, offset.Y, offset.Z) / factor;
-                        foreach (string axis in new[] { "x", "y", "z" }) Changed($"offset.{axis}");
-                    }
-                    RegisterPropertyContext($"{prefix}.offset.x", $"{prefix}.offset.y", $"{prefix}.offset.z");
-                    for (int axis = 0; axis < 3; axis++)
-                    {
-                        string component = axis == 0 ? "x" : axis == 1 ? "y" : "z";
-                        bool active = axis == 0 ? constraint.AxisX : axis == 1 ? constraint.AxisY : constraint.AxisZ;
-                        if (axis > 0) ImGui.SameLine();
-                        if (ImGui.Checkbox(Localization.DisplayLabel(axis == 0 ? "Axis X" : axis == 1 ? "Axis Y" : "Axis Z"), ref active))
+                        string[] axes = ["X", "Y", "Z"];
+                        for (int axis = 0; axis < 3; axis++)
                         {
-                            if (axis == 0) constraint.AxisX = active;
-                            else if (axis == 1) constraint.AxisY = active;
-                            else constraint.AxisZ = active;
-                            Changed($"axis.{component}");
+                            ImGui.PushID(axis);
+                            string component = axes[axis].ToLowerInvariant();
+                            bool supported = owner is MiBoneSceneObject { BendParameters: { } bp } &&
+                                (axis == 0 ? bp.AxisX : axis == 1 ? bp.AxisY : bp.AxisZ);
+                            bool active = constraint.IsBendAxisEnabled(axis);
+                            ImGui.BeginDisabled(!supported);
+                            if (ImGui.Checkbox(Localization.DisplayLabel($"Bend {axes[axis]}"), ref active))
+                            {
+                                constraint.SetBendAxisEnabled(axis, active);
+                                Changed($"axis.{component}");
+                            }
+                            RegisterPropertyContext($"{prefix}.axis.{component}");
+                            ImGui.EndDisabled();
+                            if (active && supported)
+                            {
+                                ImGui.Indent();
+                                int sourceAxis = constraint.GetSourceRotationAxis(axis);
+                                if (ImGui.Combo(Localization.DisplayLabel("Source Rotation Axis"), ref sourceAxis, axes, axes.Length))
+                                {
+                                    if (axis == 0) constraint.SourceRotationAxisX = sourceAxis;
+                                    else if (axis == 1) constraint.SourceRotationAxisY = sourceAxis;
+                                    else constraint.SourceRotationAxisZ = sourceAxis;
+                                    Changed($"source_rotation_axis.{component}");
+                                }
+                                RegisterPropertyContext($"{prefix}.source_rotation_axis.{component}");
+                                float bendOffset = constraint.Offset[axis];
+                                if (ImGui.DragFloat(Localization.DisplayLabel("Offset (degrees)"), ref bendOffset, 0.1f))
+                                {
+                                    vec3 offset = constraint.Offset;
+                                    offset[axis] = bendOffset;
+                                    constraint.Offset = offset;
+                                    Changed($"offset.{component}");
+                                }
+                                RegisterPropertyContext($"{prefix}.offset.{component}");
+                                ImGui.Unindent();
+                            }
+                            ImGui.PopID();
                         }
-                        RegisterPropertyContext($"{prefix}.axis.{component}");
+                        float multiplier = constraint.RotationMultiplier;
+                        if (ImGui.DragFloat(Localization.DisplayLabel("Rotation Multiplier"), ref multiplier, 0.01f))
+                        {
+                            constraint.RotationMultiplier = multiplier;
+                            Changed("rotation_multiplier");
+                        }
+                        RegisterPropertyContext($"{prefix}.rotation_multiplier");
+                        UiText.Wrapped(Localization.DisplayText("Uses target world rotation. A negative multiplier reverses the bend."));
+                    }
+                    else
+                    {
+                        float factor = constraint.Type == CopyConstraintType.Position ? 16f
+                            : constraint.Type == CopyConstraintType.Rotation ? 180f / MathF.PI : 1f;
+                        var offset = new Vector3(constraint.Offset.x, constraint.Offset.y, constraint.Offset.z) * factor;
+                        string offsetLabel = constraint.Type == CopyConstraintType.Position ? "Offset (pixels)"
+                            : constraint.Type == CopyConstraintType.Rotation ? "Offset (degrees)" : "Offset";
+                        if (ImGui.DragFloat3(Localization.DisplayLabel(offsetLabel), ref offset, 0.1f))
+                        {
+                            constraint.Offset = new vec3(offset.X, offset.Y, offset.Z) / factor;
+                            foreach (string axis in new[] { "x", "y", "z" }) Changed($"offset.{axis}");
+                        }
+                        RegisterPropertyContext($"{prefix}.offset.x", $"{prefix}.offset.y", $"{prefix}.offset.z");
+                        for (int axis = 0; axis < 3; axis++)
+                        {
+                            string component = axis == 0 ? "x" : axis == 1 ? "y" : "z";
+                            bool active = axis == 0 ? constraint.AxisX : axis == 1 ? constraint.AxisY : constraint.AxisZ;
+                            if (axis > 0) ImGui.SameLine();
+                            if (ImGui.Checkbox(Localization.DisplayLabel(axis == 0 ? "Axis X" : axis == 1 ? "Axis Y" : "Axis Z"), ref active))
+                            {
+                                if (axis == 0) constraint.AxisX = active;
+                                else if (axis == 1) constraint.AxisY = active;
+                                else constraint.AxisZ = active;
+                                Changed($"axis.{component}");
+                            }
+                            RegisterPropertyContext($"{prefix}.axis.{component}");
+                        }
                     }
                     float blend = constraint.Blend;
                     if (ImGui.SliderFloat(Localization.DisplayLabel("Blend"), ref blend, 0f, 1f))
@@ -6568,13 +6643,21 @@ public class PropertiesPanel : UiPanel
             float factor = copy.Type == CopyConstraintType.Position ? 16f
                 : copy.Type == CopyConstraintType.Rotation ? 180f / MathF.PI : 1f;
             if (defaultValue)
+            {
+                int defaultBendAxis = obj is MiBoneSceneObject { BendParameters: { } bp }
+                    ? bp.AxisX ? 0 : bp.AxisY ? 1 : 2 : 0;
                 return copyChannel switch
                 {
                     "target" => "",
-                    "enabled" or "axis.x" or "axis.y" or "axis.z" or "blend" => 1f,
+                    _ when copy.Type == CopyConstraintType.RotationToBend && copyChannel.StartsWith("axis.", StringComparison.Ordinal)
+                        => axis == defaultBendAxis ? 1f : 0f,
+                    "source_rotation_axis.y" => 1f,
+                    "source_rotation_axis.z" => 2f,
+                    "enabled" or "axis.x" or "axis.y" or "axis.z" or "blend" or "rotation_multiplier" => 1f,
                     _ when copyChannel.StartsWith("offset.", StringComparison.Ordinal) && copy.Type == CopyConstraintType.Scale => 1f,
                     _ => 0f
                 };
+            }
             object current = Timeline!.GetPropertyValue(obj, path);
             return copyChannel.StartsWith("offset.", StringComparison.Ordinal)
                 ? Convert.ToSingle(current, CultureInfo.InvariantCulture) * factor : current;

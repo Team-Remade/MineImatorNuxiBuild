@@ -5,7 +5,7 @@ using NumericsQuaternion = System.Numerics.Quaternion;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
-public enum CopyConstraintType { Position, Rotation, Scale }
+public enum CopyConstraintType { Position, Rotation, Scale, RotationToBend }
 
 public sealed class CopyConstraint
 {
@@ -20,16 +20,50 @@ public sealed class CopyConstraint
     public float Blend { get; set; } = 1f;
     public bool BentHalf { get; set; }
     public bool Rotate { get; set; }
+    public int SourceRotationAxis { get; set; }
+    public int BendAxis { get; set; }
+    public float RotationMultiplier { get; set; } = 1f;
+    public bool UseBendAxisMask { get; set; }
+    public int? SourceRotationAxisX { get; set; }
+    public int? SourceRotationAxisY { get; set; }
+    public int? SourceRotationAxisZ { get; set; }
     internal mat4? EvaluatedInput { get; set; }
     internal vec3 EvaluatedInputScale { get; set; }
     internal mat4? EvaluatedOutput { get; set; }
     internal vec3 EvaluatedOutputScale { get; set; }
+    internal vec3? EvaluatedInputBend { get; set; }
+    internal vec3? EvaluatedOutputBend { get; set; }
+
+    public bool IsBendAxisEnabled(int axis) => UseBendAxisMask
+        ? axis == 0 ? AxisX : axis == 1 ? AxisY : AxisZ
+        : axis == BendAxis;
+
+    public void SetBendAxisEnabled(int axis, bool enabled)
+    {
+        // Projects saved with a single bend axis retain their original mapping until edited.
+        if (!UseBendAxisMask)
+        {
+            AxisX = BendAxis == 0;
+            AxisY = BendAxis == 1;
+            AxisZ = BendAxis == 2;
+            UseBendAxisMask = true;
+        }
+        if (axis == 0) AxisX = enabled;
+        else if (axis == 1) AxisY = enabled;
+        else if (axis == 2) AxisZ = enabled;
+    }
+
+    public int GetSourceRotationAxis(int axis) =>
+        (axis == 0 ? SourceRotationAxisX : axis == 1 ? SourceRotationAxisY : SourceRotationAxisZ)
+        ?? (axis == BendAxis ? SourceRotationAxis : axis);
 
     public CopyConstraint Clone()
     {
         var copy = (CopyConstraint)MemberwiseClone();
         copy.EvaluatedInput = null;
         copy.EvaluatedOutput = null;
+        copy.EvaluatedInputBend = null;
+        copy.EvaluatedOutputBend = null;
         return copy;
     }
 }
@@ -46,20 +80,48 @@ public static class CopyConstraintSolver
         foreach (var owner in objects)
         {
             var constraints = owner.CopyConstraints.Where(c => c.Enabled && float.IsFinite(c.Blend) && c.Blend > 0f &&
+                (c.Type != CopyConstraintType.RotationToBend || owner is MiBoneSceneObject { BendParameters: not null }) &&
                 ids.TryGetValue(c.TargetObjectId, out var target) && SafeHierarchy(target) &&
                 SafeHierarchy(owner) && !IsWithin(target, owner)).ToArray();
             if (constraints.Length == 0) continue;
+            var sources = constraints.Select(c => ids[c.TargetObjectId]).ToList();
+            if (owner is MiBoneSceneObject bendOwner && constraints.Any(c => c.Type == CopyConstraintType.RotationToBend))
+                sources.AddRange(bendOwner.GetBendEvaluationSources());
             jobs.Add(new EvaluationJob(owner, new[] { owner },
-                constraints.Select(c => ids[c.TargetObjectId]).ToArray(), () =>
+                sources, () =>
                 {
                     mat4 world = owner.GetWorldMatrixNoPivot();
                     vec3 scale = owner.GetCopyConstraintScale(), originalScale = scale;
-                    foreach (var constraint in constraints)
+                    foreach (var constraint in owner.CopyConstraints)
                     {
+                        if (owner is MiBoneSceneObject inputBone)
+                            constraint.EvaluatedInputBend = constraint.EvaluatedOutputBend = inputBone.GetEvaluatedEditableBendAngle();
+                        // Cache the stack-local pose even for inactive entries, for keep-pose activation.
+                        if (!constraints.Contains(constraint)) continue;
                         var target = ids[constraint.TargetObjectId];
                         constraint.EvaluatedInput = world;
                         constraint.EvaluatedInputScale = scale;
-                        world = Apply(world, constraint, TargetFrame(target, constraint), ref scale, target.GetCopyConstraintScale());
+                        mat4 frame = TargetFrame(target, constraint);
+                        if (constraint.Type == CopyConstraintType.RotationToBend && owner is MiBoneSceneObject bone)
+                        {
+                            vec3 bend = bone.GetEvaluatedEditableBendAngle();
+                            constraint.EvaluatedInputBend = bend;
+                            if (float.IsFinite(constraint.RotationMultiplier) && Finite(constraint.Offset))
+                            {
+                                vec3 rotation = SourceRotationDegrees(frame);
+                                for (int axis = 0; axis < 3; axis++)
+                                {
+                                    int sourceAxis = constraint.GetSourceRotationAxis(axis);
+                                    if (!constraint.IsBendAxisEnabled(axis) || sourceAxis is < 0 or > 2) continue;
+                                    float desired = rotation[sourceAxis] * constraint.RotationMultiplier + constraint.Offset[axis];
+                                    bend[axis] += (desired - bend[axis]) * Math.Clamp(constraint.Blend, 0f, 1f);
+                                }
+                                if (Finite(bend)) bone.SetEvaluatedBend(bend);
+                            }
+                            constraint.EvaluatedOutputBend = bone.GetEvaluatedEditableBendAngle();
+                        }
+                        else
+                            world = Apply(world, constraint, frame, ref scale, target.GetCopyConstraintScale());
                         constraint.EvaluatedOutput = world;
                         constraint.EvaluatedOutputScale = scale;
                     }
@@ -97,6 +159,20 @@ public static class CopyConstraintSolver
         float blend = float.IsFinite(constraint.Blend) && constraint.Blend > 1e-6f ? Math.Clamp(constraint.Blend, 0f, 1f) : 1f;
         switch (constraint.Type)
         {
+            case CopyConstraintType.RotationToBend when owner is MiBoneSceneObject bone:
+                vec3 currentBend = constraint.EvaluatedOutputBend ?? bone.GetEvaluatedEditableBendAngle();
+                vec3 inputBend = constraint.EvaluatedInputBend ?? currentBend;
+                vec3 bendOffset = constraint.Offset;
+                vec3 sourceRotation = SourceRotationDegrees(frame);
+                for (int axis = 0; axis < 3; axis++)
+                {
+                    int sourceAxis = constraint.GetSourceRotationAxis(axis);
+                    if (!constraint.IsBendAxisEnabled(axis) || sourceAxis is < 0 or > 2) continue;
+                    bendOffset[axis] = inputBend[axis] + (currentBend[axis] - inputBend[axis]) / blend
+                        - sourceRotation[sourceAxis] * constraint.RotationMultiplier;
+                }
+                if (Finite(bendOffset)) constraint.Offset = bendOffset;
+                break;
             case CopyConstraintType.Position:
                 vec3 desiredPosition = Translation(input) + (Translation(world) - Translation(input)) / blend;
                 vec3 offset = desiredPosition - Translation(frame);
@@ -122,6 +198,35 @@ public static class CopyConstraintSolver
         if (constraint.Type != CopyConstraintType.Scale && constraint.BentHalf && target is MiBoneSceneObject bone)
             frame *= bone.GetBentHalfTransform(vec3.Zero);
         return frame;
+    }
+
+    private static vec3 SourceRotationDegrees(mat4 frame) =>
+        MineImatorLoader.MatrixToEulerRzRyRx(BendSourceRotation(frame)) * (180f / MathF.PI);
+
+    private static mat4 BendSourceRotation(mat4 frame)
+    {
+        vec3 x = new(frame.m00, frame.m01, frame.m02);
+        vec3 y = new(frame.m10, frame.m11, frame.m12);
+        vec3 z = new(frame.m20, frame.m21, frame.m22);
+        if (!Finite(x) || !Finite(y) || !Finite(z) || vec3.Dot(x, vec3.Cross(y, z)) <= 1e-12f)
+            return Rotation(frame);
+        // Polar decomposition removes scale on either side of the rotation. The engine
+        // normally scales before rotating, so normalizing columns would distort the driver.
+        mat4 result = new(new vec4(x, 0f), new vec4(y, 0f), new vec4(z, 0f), new vec4(0f, 0f, 0f, 1f));
+        for (int iteration = 0; iteration < 32; iteration++)
+        {
+            mat4 next = (result + result.Inverse.Transposed) * 0.5f;
+            float difference = 0f;
+            for (int column = 0; column < 3; column++)
+                for (int row = 0; row < 3; row++)
+                {
+                    if (!float.IsFinite(next[column, row])) return Rotation(frame);
+                    difference = MathF.Max(difference, MathF.Abs(next[column, row] - result[column, row]));
+                }
+            result = next;
+            if (difference < 1e-6f) break;
+        }
+        return Rotation(result);
     }
 
     private static mat4 Apply(mat4 world, CopyConstraint constraint, mat4 target, ref vec3 scale, vec3 targetScale)

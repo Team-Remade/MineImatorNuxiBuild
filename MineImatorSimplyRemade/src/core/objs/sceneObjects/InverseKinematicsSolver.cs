@@ -45,6 +45,8 @@ public static class InverseKinematicsSolver
             {
                 constraint.EvaluatedInput = null;
                 constraint.EvaluatedOutput = null;
+                constraint.EvaluatedInputBend = null;
+                constraint.EvaluatedOutputBend = null;
             }
         }
         var bones = objects.OfType<BoneSceneObject>().ToList();
@@ -173,7 +175,7 @@ public static class InverseKinematicsSolver
                         float min = Component(bp.DirectionMin, axis), max = Component(bp.DirectionMax, axis);
                         if (!float.IsFinite(min) || !float.IsFinite(max)) continue;
                         Optimize(Component(start, axis), Math.Min(min, max), Math.Max(min, max), value =>
-                            mi.SetEvaluatedIkBend(WithComponent(start, component, value)), Score);
+                            mi.SetEvaluatedBend(WithComponent(start, component, value)), Score);
                     }
                 }
                 if (!CanRotate(job, bone)) continue;
@@ -202,7 +204,7 @@ public static class InverseKinematicsSolver
                 bends[index] is { } bend && GetBoneSettings(job.Settings, bone)?.AllowBend != false)
             {
                 vec3 solved = mi.GetEvaluatedEditableBendAngle();
-                mi.SetEvaluatedIkBend(influence <= 0f || !Finite(solved) ? bend : bend + (solved - bend) * influence);
+                mi.SetEvaluatedBend(influence <= 0f || !Finite(solved) ? bend : bend + (solved - bend) * influence);
             }
         }
     }
@@ -234,7 +236,7 @@ public static class InverseKinematicsSolver
                     float max = Component(bp.DirectionMax, axis), min = Component(bp.DirectionMin, axis);
                     float seed = SeedAngle(BoneSceneObject.TransformPoint(mi.GetWorldMatrixNoPivot(),
                         BendHelper.GetBendPivot(bp, vec3.Zero))) * Degrees;
-                    mi.SetEvaluatedIkBend(WithComponent(angle, axis, max > 0f ? Math.Min(seed, max) : Math.Max(-seed, min)));
+                    mi.SetEvaluatedBend(WithComponent(angle, axis, max > 0f ? Math.Min(seed, max) : Math.Max(-seed, min)));
                     return;
                 }
             }

@@ -2551,11 +2551,30 @@ public class Timeline : UiPanel
                 : obj is BoneSceneObject ? new BoneSceneObject() : new SceneObject();
             defaults.UsePropertyInheritance = obj.UsePropertyInheritance;
             foreach (var constraint in obj.CopyConstraints)
-                defaults.CopyConstraints.Add(new CopyConstraint
+            {
+                var defaultConstraint = new CopyConstraint
                 {
                     Type = constraint.Type,
-                    Offset = constraint.Type == CopyConstraintType.Scale ? vec3.Ones : vec3.Zero
-                });
+                    Offset = constraint.Type == CopyConstraintType.Scale ? vec3.Ones : vec3.Zero,
+                    SourceRotationAxis = 0,
+                    BendAxis = 0,
+                    SourceRotationAxisX = 0,
+                    SourceRotationAxisY = 1,
+                    SourceRotationAxisZ = 2,
+                    RotationMultiplier = 1f
+                };
+                if (constraint.Type == CopyConstraintType.RotationToBend && constraint.UseBendAxisMask)
+                {
+                    int defaultBendAxis = obj is MiBoneSceneObject { BendParameters: { } bend }
+                        ? bend.AxisX ? 0 : bend.AxisY ? 1 : bend.AxisZ ? 2 : 0
+                        : 0;
+                    defaultConstraint.UseBendAxisMask = true;
+                    defaultConstraint.AxisX = defaultBendAxis == 0;
+                    defaultConstraint.AxisY = defaultBendAxis == 1;
+                    defaultConstraint.AxisZ = defaultBendAxis == 2;
+                }
+                defaults.CopyConstraints.Add(defaultConstraint);
+            }
             if (defaults is CameraSceneObject defaultCamera && obj is CameraSceneObject camera)
                 foreach (var effect in camera.Effects)
                     defaultCamera.Effects.Add(new CameraEffect { Type = effect.Type });
@@ -2715,7 +2734,7 @@ public class Timeline : UiPanel
                                   : obj is CameraSceneObject  ? standardPaths.Concat(cameraPaths)
                                   : standardPaths;
         paths = paths.Concat(MaterialPropertyPaths);
-        paths = paths.Concat(obj.CopyConstraints.SelectMany((_, index) => GetCopyConstraintPropertyPaths(index)));
+        paths = paths.Concat(obj.CopyConstraints.SelectMany((constraint, index) => GetCopyConstraintPropertyPaths(index, constraint)));
         if (obj is MiBoneSceneObject)
             paths = paths.Concat(new[] { "bend.x", "bend.y", "bend.z" });
         if (obj is BoneSceneObject bone)
@@ -2887,7 +2906,8 @@ public class Timeline : UiPanel
             (path.StartsWith("constraint.", StringComparison.Ordinal) &&
                 !(path.EndsWith(".pole_angle", StringComparison.Ordinal) || path.EndsWith(".influence", StringComparison.Ordinal))) ||
             (path.StartsWith("copy_constraint.", StringComparison.Ordinal) &&
-                !path.Contains(".offset.", StringComparison.Ordinal) && !path.EndsWith(".blend", StringComparison.Ordinal)) ||
+                !path.Contains(".offset.", StringComparison.Ordinal) && !path.EndsWith(".blend", StringComparison.Ordinal) &&
+                !path.EndsWith(".rotation_multiplier", StringComparison.Ordinal)) ||
             prev.InterpolationType == "instant")
             return TryConvertKeyframeValue(prev.Value, out float prevInstant) ? prevInstant : null;
 
@@ -3064,18 +3084,30 @@ public class Timeline : UiPanel
         ("enabled", "Enabled"), ("target", "Target Object"),
         ("offset.x", "Offset X"), ("offset.y", "Offset Y"), ("offset.z", "Offset Z"),
         ("axis.x", "Axis X"), ("axis.y", "Axis Y"), ("axis.z", "Axis Z"),
-        ("blend", "Blend"), ("bent_half", "Bent Half"), ("rotate", "Rotate")
+        ("blend", "Blend"), ("bent_half", "Bent Half"), ("rotate", "Rotate"),
+        ("source_rotation_axis.x", "Source Rotation Axis X"), ("source_rotation_axis.y", "Source Rotation Axis Y"), ("source_rotation_axis.z", "Source Rotation Axis Z"),
+        ("source_rotation_axis", "Source Rotation Axis"), ("bend_axis", "Bend Axis"), ("rotation_multiplier", "Rotation Multiplier")
     ];
 
     internal static string GetCopyConstraintLabel(CopyConstraintType type) => type switch
     {
         CopyConstraintType.Position => "Copy Position",
         CopyConstraintType.Rotation => "Copy Rotation",
+        CopyConstraintType.RotationToBend => "Rotation to Bend",
         _ => "Copy Scale"
     };
 
-    private static IEnumerable<string> GetCopyConstraintPropertyPaths(int index) =>
-        CopyConstraintChannels.Select(channel => $"copy_constraint.{index}.{channel.Channel}");
+    private static IEnumerable<(string Channel, string Label)> GetCopyConstraintChannels(CopyConstraintType type) =>
+        CopyConstraintChannels.Where(channel => type == CopyConstraintType.RotationToBend
+            ? channel.Channel != "rotate"
+            : channel.Channel is not ("source_rotation_axis" or "source_rotation_axis.x" or "source_rotation_axis.y" or "source_rotation_axis.z" or "bend_axis" or "rotation_multiplier"));
+
+    private static IEnumerable<string> GetCopyConstraintPropertyPaths(int index, CopyConstraint constraint) =>
+        GetCopyConstraintChannels(constraint.Type)
+            .Where(channel => constraint.Type != CopyConstraintType.RotationToBend || (constraint.UseBendAxisMask
+                ? channel.Channel is not ("source_rotation_axis" or "bend_axis")
+                : channel.Channel is not ("axis.x" or "axis.y" or "axis.z" or "source_rotation_axis.x" or "source_rotation_axis.y" or "source_rotation_axis.z")))
+            .Select(channel => $"copy_constraint.{index}.{channel.Channel}");
 
     internal static bool TryGetCopyConstraint(SceneObject obj, string path, out CopyConstraint constraint, out string channel)
     {
@@ -3143,8 +3175,16 @@ public class Timeline : UiPanel
                 "enabled" => copy.Enabled ? 1f : 0f,
                 "target" => copy.TargetObjectId,
                 "offset.x" => copy.Offset.x, "offset.y" => copy.Offset.y, "offset.z" => copy.Offset.z,
-                "axis.x" => copy.AxisX ? 1f : 0f, "axis.y" => copy.AxisY ? 1f : 0f, "axis.z" => copy.AxisZ ? 1f : 0f,
+                "axis.x" => (copy.Type == CopyConstraintType.RotationToBend ? copy.IsBendAxisEnabled(0) : copy.AxisX) ? 1f : 0f,
+                "axis.y" => (copy.Type == CopyConstraintType.RotationToBend ? copy.IsBendAxisEnabled(1) : copy.AxisY) ? 1f : 0f,
+                "axis.z" => (copy.Type == CopyConstraintType.RotationToBend ? copy.IsBendAxisEnabled(2) : copy.AxisZ) ? 1f : 0f,
                 "blend" => copy.Blend, "bent_half" => copy.BentHalf ? 1f : 0f, "rotate" => copy.Rotate ? 1f : 0f,
+                "source_rotation_axis" => Math.Clamp(copy.SourceRotationAxis, 0, 2),
+                "source_rotation_axis.x" => copy.GetSourceRotationAxis(0),
+                "source_rotation_axis.y" => copy.GetSourceRotationAxis(1),
+                "source_rotation_axis.z" => copy.GetSourceRotationAxis(2),
+                "bend_axis" => Math.Clamp(copy.BendAxis, 0, 2),
+                "rotation_multiplier" => copy.RotationMultiplier,
                 _ => 0f
             };
         if (path == "visible") return obj.ObjectVisible ? 1f : 0f;
@@ -3472,13 +3512,29 @@ public class Timeline : UiPanel
                 switch (copyChannel)
                 {
                     case "enabled": copy.Enabled = copyValue >= 0.5f; break;
-                    case "axis.x": copy.AxisX = copyValue >= 0.5f; break;
-                    case "axis.y": copy.AxisY = copyValue >= 0.5f; break;
-                    case "axis.z": copy.AxisZ = copyValue >= 0.5f; break;
+                    case "axis.x":
+                        if (copy.Type == CopyConstraintType.RotationToBend) copy.SetBendAxisEnabled(0, copyValue >= 0.5f);
+                        else copy.AxisX = copyValue >= 0.5f;
+                        break;
+                    case "axis.y":
+                        if (copy.Type == CopyConstraintType.RotationToBend) copy.SetBendAxisEnabled(1, copyValue >= 0.5f);
+                        else copy.AxisY = copyValue >= 0.5f;
+                        break;
+                    case "axis.z":
+                        if (copy.Type == CopyConstraintType.RotationToBend) copy.SetBendAxisEnabled(2, copyValue >= 0.5f);
+                        else copy.AxisZ = copyValue >= 0.5f;
+                        break;
                     case "blend": copy.Blend = Math.Clamp(copyValue, 0f, 1f); break;
                     case "bent_half": copy.BentHalf = copyValue >= 0.5f; break;
                     case "rotate": copy.Rotate = copyValue >= 0.5f; break;
+                    case "source_rotation_axis": copy.SourceRotationAxis = (int)Math.Clamp(MathF.Round(copyValue), 0f, 2f); break;
+                    case "source_rotation_axis.x": copy.SourceRotationAxisX = (int)Math.Clamp(MathF.Round(copyValue), 0f, 2f); break;
+                    case "source_rotation_axis.y": copy.SourceRotationAxisY = (int)Math.Clamp(MathF.Round(copyValue), 0f, 2f); break;
+                    case "source_rotation_axis.z": copy.SourceRotationAxisZ = (int)Math.Clamp(MathF.Round(copyValue), 0f, 2f); break;
+                    case "bend_axis": copy.BendAxis = (int)Math.Clamp(MathF.Round(copyValue), 0f, 2f); break;
+                    case "rotation_multiplier": copy.RotationMultiplier = copyValue; break;
                     case "offset.x": case "offset.y": case "offset.z":
+                        // Rotation-to-bend offsets are already in degrees.
                         var offset = copy.Offset;
                         offset[copyChannel[^1] == 'x' ? 0 : copyChannel[^1] == 'y' ? 1 : 2] = copyValue;
                         copy.Offset = offset;
@@ -4155,10 +4211,13 @@ public class Timeline : UiPanel
 
             for (int i = 0; i < obj.CopyConstraints.Count; i++)
             {
-                string[] paths = GetCopyConstraintPropertyPaths(i).ToArray();
+                string[] paths = GetCopyConstraintPropertyPaths(i, obj.CopyConstraints[i])
+                    .Concat(GetCopyConstraintChannels(obj.CopyConstraints[i].Type)
+                        .Select(channel => $"copy_constraint.{i}.{channel.Channel}").Where(propsWithKeyframes.Contains))
+                    .Distinct().ToArray();
                 if (!paths.Any(propsWithKeyframes.Contains)) continue;
                 newRows.Add(MakeGroup(obj, GetCopyConstraintLabel(obj.CopyConstraints[i].Type), paths, $"copy_constraint.{i}"));
-                foreach (var (channel, label) in CopyConstraintChannels)
+                foreach (var (channel, label) in GetCopyConstraintChannels(obj.CopyConstraints[i].Type))
                 {
                     string path = $"copy_constraint.{i}.{channel}";
                     if (propsWithKeyframes.Contains(path)) newRows.Add(MakeSingle(obj, label, path, 1));

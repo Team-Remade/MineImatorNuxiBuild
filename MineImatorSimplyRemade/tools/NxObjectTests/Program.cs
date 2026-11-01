@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using GlmSharp;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core;
@@ -52,7 +53,23 @@ internal static class Program
             ("Animated material texture resource closure", AnimatedTexture),
             ("Missing animated texture preserves atomic destination", MissingAnimatedTexture),
             ("Animated texture manifest path validation", AnimatedTextureTraversal),
-            ("Animated font dependency closure and built-in sentinel", AnimatedFont)
+            ("Animated font dependency closure and built-in sentinel", AnimatedFont),
+            ("Rotation-to-bend world axes, multiplier, degree offset, blend and no drift", RotationBendMapping),
+            ("Rotation-to-bend disabled and missing target reset evaluated pose", RotationBendReset),
+            ("Rotation-to-bend limits, inversion and unsupported axes", RotationBendLimits),
+            ("Rotation-to-bend follows source copy-rotation dependencies", RotationBendDependencies),
+            ("Rotation-to-bend cyclic drivers and dependents are skipped", RotationBendCycles),
+            ("Rotation-to-bend capture offset preserves blended stack pose", RotationBendCaptureOffset),
+            ("Rotation-to-bend source-generated archive and runtime persistence", RotationBendPersistence),
+            ("Rotation-to-bend extracts rotation from nonuniformly scaled rows", RotationBendScaledRows),
+            ("Rotation-to-bend enabling earlier driver captures stack prefix pose", RotationBendEnableCapture),
+            ("Rotation-to-bend inherited pose dependency precedes partial blend", RotationBendInheritedPose),
+            ("Rotation-to-bend all axis masks, independent sources and toggles", RotationBendAxisMasks),
+            ("Rotation-to-bend masked axes respect limits and unsupported axes", RotationBendMaskLimits),
+            ("Rotation-to-bend legacy fallback and explicit checkbox conversion", RotationBendMaskLegacy),
+            ("Rotation-to-bend multi-axis capture preserves blended stack", RotationBendMaskCapture),
+            ("Rotation-to-bend mask and nullable source archive persistence and clone", RotationBendMaskPersistence),
+            ("Rotation-to-bend timeline mask reads, writes and discrete animation", RotationBendMaskTimeline)
         ];
         int failures = 0;
         foreach (var test in tests)
@@ -112,6 +129,607 @@ internal static class Program
         Check(ReferenceEquals(helper, parent.Children[0]), "Runtime helpers must be retained.");
         Check(ProjectSceneSerializer.SerializeObjectForLibrary(parent).RestoreExactChildren,
             "Exact hierarchy restoration must survive project serialization.");
+    }
+
+    private static MiBoneSceneObject BendBone(string name, vec3 angle)
+    {
+        var bone = new MiBoneSceneObject { Name = name, ObjectId = Guid.NewGuid().ToString("N"), ObjectType = "Bone" };
+        bone.SetBendParameters(new BendParams
+        {
+            Angle = angle, AxisX = true, AxisY = true, AxisZ = true,
+            DirectionMin = new vec3(-180f), DirectionMax = new vec3(180f),
+            Part = BendPart.Upper, BendSize = 4f
+        }, 1f);
+        return bone;
+    }
+
+    private static vec3 EvaluatedBend(MiBoneSceneObject bone) => (vec3)(typeof(MiBoneSceneObject)
+        .GetMethod("GetEvaluatedEditableBendAngle", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+        ?? throw new MissingMethodException("MiBoneSceneObject.GetEvaluatedEditableBendAngle")).Invoke(bone, null)!;
+
+    private static void Near(float expected, float actual, string message) =>
+        Check(float.IsFinite(actual) && MathF.Abs(expected - actual) < 0.002f,
+            $"{message}: expected '{expected}', got '{actual}'.");
+
+    private static void Near(vec3 expected, vec3 actual, string message)
+    {
+        for (int axis = 0; axis < 3; axis++) Near(expected[axis], actual[axis], $"{message}, axis {axis}");
+    }
+
+    private static void RotationBendMapping(Fixture f)
+    {
+        var parent = Node("rotated source parent");
+        parent.SetLocalRotation(new vec3(0f, 0f, 30f) * (MathF.PI / 180f));
+        var source = Node("scaled source");
+        source.SetLocalRotation(new vec3(20f, -15f, 10f) * (MathF.PI / 180f));
+        source.SetLocalScale(new vec3(2f, 3f, 4f));
+        parent.AddChild(source);
+        vec3 authored = new(4f, 8f, 12f), worldDegrees = new(20f, -15f, 40f);
+        for (int sourceAxis = 0; sourceAxis < 3; sourceAxis++)
+        {
+            int bendAxis = (sourceAxis + 1) % 3;
+            var bone = BendBone("mapped bone", authored);
+            bone.SetLocalPosition(new vec3(1f, 2f, 3f));
+            bone.SetLocalRotation(new vec3(0.1f, 0.2f, 0.3f));
+            bone.SetLocalScale(new vec3(1.5f, 2f, 0.5f));
+            var constraint = new CopyConstraint
+            {
+                Type = CopyConstraintType.RotationToBend, TargetObjectId = source.ObjectId,
+                SourceRotationAxis = sourceAxis, BendAxis = bendAxis,
+                RotationMultiplier = -1.5f, Offset = new vec3(7f, 11f, 13f), Blend = 0.25f
+            };
+            bone.CopyConstraints.Add(constraint);
+            vec3 expected = authored;
+            expected[bendAxis] += (worldDegrees[sourceAxis] * -1.5f + constraint.Offset[bendAxis] - authored[bendAxis]) * 0.25f;
+            for (int frame = 0; frame < 12; frame++)
+            {
+                InverseKinematicsSolver.Evaluate([parent, bone]);
+                Near(expected, EvaluatedBend(bone), $"World source axis {sourceAxis}, evaluation {frame}");
+                Equal(authored, bone.BendParameters!.Value.Angle, "Evaluation mutated stored bend");
+                Equal(authored, bone.GetEditableBendAngle(), "Evaluation mutated editable bend");
+                Equal(new vec3(1f, 2f, 3f), bone.Position, "Evaluation mutated authored position");
+                Equal(new vec3(0.1f, 0.2f, 0.3f), bone.Rotation, "Evaluation mutated authored rotation");
+                Equal(new vec3(1.5f, 2f, 0.5f), bone.Scale, "Evaluation mutated authored scale");
+            }
+        }
+    }
+
+    private static void RotationBendReset(Fixture f)
+    {
+        vec3 authored = new(5f, 6f, 7f);
+        var bone = BendBone("reset bone", authored);
+        var source = Node("reset source");
+        source.SetLocalRotation(new vec3(0.5f, 0f, 0f));
+        var constraint = new CopyConstraint { Type = CopyConstraintType.RotationToBend, TargetObjectId = source.ObjectId };
+        bone.CopyConstraints.Add(constraint);
+        foreach (string reason in new[] { "disabled", "missing ID", "target removed", "zero blend" })
+        {
+            constraint.Enabled = true;
+            constraint.TargetObjectId = source.ObjectId;
+            constraint.Blend = 1f;
+            InverseKinematicsSolver.Evaluate([source, bone]);
+            Near(0.5f * (180f / MathF.PI), EvaluatedBend(bone).x, "Active driver before reset");
+            if (reason == "disabled") constraint.Enabled = false;
+            if (reason == "missing ID") constraint.TargetObjectId = "missing-target";
+            if (reason == "zero blend") constraint.Blend = 0f;
+            InverseKinematicsSolver.Evaluate(reason == "target removed" ? new SceneObject[] { bone } : new SceneObject[] { source, bone });
+            Near(authored, EvaluatedBend(bone), $"Stale evaluated bend after {reason}");
+            Equal(authored, bone.BendParameters!.Value.Angle, $"Authored bend changed after {reason}");
+        }
+    }
+
+    private static void RotationBendLimits(Fixture f)
+    {
+        var bone = BendBone("limited inverted bone", new vec3(-7f, 0f, 9f));
+        var parameters = bone.BendParameters!.Value;
+        parameters.InvertX = true;
+        parameters.AxisY = false;
+        parameters.DirectionMin = new vec3(-10f, -180f, -180f);
+        parameters.DirectionMax = new vec3(25f, 180f, 180f);
+        bone.SetBendParameters(parameters, 1f);
+        var source = Node("limit source");
+        source.SetLocalRotation(new vec3(MathF.PI / 4f, 0f, 0f));
+        var constraint = new CopyConstraint { Type = CopyConstraintType.RotationToBend, TargetObjectId = source.ObjectId };
+        bone.CopyConstraints.Add(constraint);
+        InverseKinematicsSolver.Evaluate([source, bone]);
+        Near(new vec3(25f, 0f, 9f), EvaluatedBend(bone), "Editable upper bend limit");
+        Near(new vec3(-25f, 0f, 9f), bone.GetEffectiveBendParameters()!.Value.Angle, "Inversion must apply only to effective stored bend");
+        constraint.RotationMultiplier = -3f;
+        InverseKinematicsSolver.Evaluate([source, bone]);
+        Near(new vec3(-10f, 0f, 9f), EvaluatedBend(bone), "Editable lower bend limit");
+        Near(10f, bone.GetEffectiveBendParameters()!.Value.Angle.x, "Inverted lower bend limit");
+        constraint.BendAxis = 1;
+        InverseKinematicsSolver.Evaluate([source, bone]);
+        Near(new vec3(7f, 0f, 9f), EvaluatedBend(bone), "Unsupported bend axis must remain zero");
+        Equal(parameters.Angle, bone.BendParameters!.Value.Angle, "Limits mutated authored bend");
+        Equal(parameters.DirectionMin, bone.BendParameters.Value.DirectionMin, "Evaluation mutated bend limits");
+    }
+
+    private static void RotationBendDependencies(Fixture f)
+    {
+        var source = Node("ultimate rotation source");
+        source.SetLocalRotation(new vec3(0f, 0f, 55f) * (MathF.PI / 180f));
+        var intermediate = Node("copy rotation source");
+        intermediate.SetLocalRotation(new vec3(0f, 0f, -10f) * (MathF.PI / 180f));
+        intermediate.CopyConstraints.Add(new CopyConstraint { Type = CopyConstraintType.Rotation, TargetObjectId = source.ObjectId });
+        var bone = BendBone("dependent bend", new vec3(3f, 4f, 5f));
+        bone.CopyConstraints.Add(new CopyConstraint
+        {
+            Type = CopyConstraintType.RotationToBend, TargetObjectId = intermediate.ObjectId, SourceRotationAxis = 2, BendAxis = 1
+        });
+        // Evaluate the consumer first in traversal order, then reverse the roots.
+        foreach (SceneObject[] roots in new[] { new SceneObject[] { source, intermediate, bone }, new SceneObject[] { bone, intermediate, source } })
+        {
+            InverseKinematicsSolver.Evaluate(roots);
+            Near(new vec3(3f, 55f, 5f), EvaluatedBend(bone), "Bend must read evaluated copy rotation, not authored source rotation");
+            Near(-10f * (MathF.PI / 180f), intermediate.Rotation.z, "Source copy rotation mutated authored channel");
+            source.SetLocalRotation(new vec3(0f, 0f, 25f) * (MathF.PI / 180f));
+            InverseKinematicsSolver.Evaluate(roots);
+            Near(25f, EvaluatedBend(bone).y, "Dependency must update on the next evaluation");
+            source.SetLocalRotation(new vec3(0f, 0f, 55f) * (MathF.PI / 180f));
+        }
+    }
+
+    private static void RotationBendCycles(Fixture f)
+    {
+        var first = BendBone("first cyclic driver", new vec3(3f, 4f, 5f));
+        var second = BendBone("second cyclic driver", new vec3(6f, 7f, 8f));
+        var dependent = BendBone("cyclic dependent", new vec3(9f, 10f, 11f));
+        first.SetLocalRotation(new vec3(20f, 0f, 0f) * (MathF.PI / 180f));
+        second.SetLocalRotation(new vec3(40f, 0f, 0f) * (MathF.PI / 180f));
+        first.CopyConstraints.Add(new CopyConstraint { Type = CopyConstraintType.RotationToBend, TargetObjectId = second.ObjectId });
+        dependent.CopyConstraints.Add(new CopyConstraint { Type = CopyConstraintType.RotationToBend, TargetObjectId = first.ObjectId });
+        InverseKinematicsSolver.Evaluate([first, second, dependent]);
+        Near(40f, EvaluatedBend(first).x, "Acyclic setup must first produce an evaluated bend");
+        second.CopyConstraints.Add(new CopyConstraint { Type = CopyConstraintType.RotationToBend, TargetObjectId = first.ObjectId });
+        for (int frame = 0; frame < 3; frame++)
+        {
+            InverseKinematicsSolver.Evaluate([first, second, dependent]);
+            foreach (var bone in new[] { first, second, dependent })
+                Near(bone.BendParameters!.Value.Angle, EvaluatedBend(bone), "Cyclic driver/dependent must reset and remain authored");
+        }
+    }
+
+    private static void RotationBendCaptureOffset(Fixture f)
+    {
+        var bone = BendBone("capture bend", new vec3(10f, 2f, 3f));
+        var source = Node("capture source");
+        source.SetLocalRotation(new vec3(20f, 0f, 0f) * (MathF.PI / 180f));
+        var laterSource = Node("later stack source");
+        laterSource.SetLocalRotation(new vec3(40f, 0f, 0f) * (MathF.PI / 180f));
+        var constraint = new CopyConstraint
+        {
+            Type = CopyConstraintType.RotationToBend, TargetObjectId = source.ObjectId,
+            RotationMultiplier = 1.5f, Offset = new vec3(7f, 8f, 9f), Blend = 0.4f
+        };
+        bone.CopyConstraints.Add(constraint);
+        bone.CopyConstraints.Add(new CopyConstraint
+        {
+            Type = CopyConstraintType.RotationToBend, TargetObjectId = laterSource.ObjectId, Blend = 0.5f
+        });
+        InverseKinematicsSolver.Evaluate([source, laterSource, bone]);
+        vec3 before = EvaluatedBend(bone);
+        Near(new vec3(30.4f, 2f, 3f), before, "Initial blended bend stack");
+        source.SetLocalRotation(new vec3(50f, 0f, 0f) * (MathF.PI / 180f));
+        CopyConstraintSolver.CaptureOffset(bone, constraint, source);
+        Near(new vec3(-38f, 8f, 9f), constraint.Offset, "Capture must preserve this entry's result using degree offsets");
+        InverseKinematicsSolver.Evaluate([source, laterSource, bone]);
+        Near(before, EvaluatedBend(bone), "Captured offset must preserve blended stack pose");
+        Equal(new vec3(10f, 2f, 3f), bone.BendParameters!.Value.Angle, "Capture mutated authored bend");
+    }
+
+    private static void RotationBendPersistence(Fixture f)
+    {
+        Equal(0, (int)CopyConstraintType.Position, "Existing position enum value changed");
+        Equal(1, (int)CopyConstraintType.Rotation, "Existing rotation enum value changed");
+        Equal(2, (int)CopyConstraintType.Scale, "Existing scale enum value changed");
+        Equal(3, (int)CopyConstraintType.RotationToBend, "Rotation-to-bend must be appended to persisted enum");
+        var defaults = new CopyConstraint { Type = CopyConstraintType.RotationToBend };
+        Equal(0, defaults.SourceRotationAxis, "Default source axis");
+        Equal(0, defaults.BendAxis, "Default bend axis");
+        Equal(1f, defaults.RotationMultiplier, "Default rotation multiplier");
+        Equal(vec3.Zero, defaults.Offset, "Default bend offset");
+        var root = Node("persistent drivers");
+        var source = Node("persistent source");
+        var bone = BendBone("persistent bend", new vec3(4f, 5f, 6f));
+        root.AddChild(source);
+        root.AddChild(bone);
+        var constraint = new CopyConstraint
+        {
+            Type = CopyConstraintType.RotationToBend, TargetObjectId = source.ObjectId,
+            SourceRotationAxis = 2, BendAxis = 1, RotationMultiplier = -2.5f,
+            Offset = new vec3(12f, 23f, 34f), Blend = 0.35f, BentHalf = true
+        };
+        bone.CopyConstraints.Add(constraint);
+        source.SetLocalRotation(new vec3(0f, 0f, 0.5f));
+        InverseKinematicsSolver.Evaluate([root]);
+        // Roundtrip uses NxObjectArchive's source-generated JSON context, not reflection serialization.
+        var (manifest, _) = f.Roundtrip(root);
+        var savedBone = manifest.Root.Children.Single(entry => entry.ObjectId == bone.ObjectId);
+        var saved = savedBone.CopyConstraints!.Single();
+        Equal(CopyConstraintType.RotationToBend, saved.Type, "Persisted constraint type");
+        Equal(source.ObjectId, saved.TargetObjectId, "Persisted internal driver reference");
+        Equal(2, saved.SourceRotationAxis, "Persisted source rotation axis");
+        Equal(1, saved.BendAxis, "Persisted bend axis");
+        Equal(-2.5f, saved.RotationMultiplier, "Persisted rotation multiplier");
+        Equal(23f, saved.Offset.Y, "Degree offset must not be converted to radians");
+        Equal(0.35f, saved.Blend, "Persisted bend blend");
+        Check(saved.BentHalf && saved.Enabled, "Persisted driver flags");
+        Equal(5f, savedBone.BendAngle!.Y, "Saving must preserve authored bend rather than evaluated pose");
+        var deserialize = typeof(ProjectSceneSerializer).GetMethod("DeserializeCopyConstraint", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var restored = (CopyConstraint)deserialize.Invoke(null, [saved])!;
+        Equal(constraint.Type, restored.Type, "Restored runtime constraint type");
+        Equal(constraint.TargetObjectId, restored.TargetObjectId, "Restored runtime target");
+        Equal(constraint.SourceRotationAxis, restored.SourceRotationAxis, "Restored runtime source axis");
+        Equal(constraint.BendAxis, restored.BendAxis, "Restored runtime bend axis");
+        Equal(constraint.RotationMultiplier, restored.RotationMultiplier, "Restored runtime multiplier");
+        Equal(constraint.Offset, restored.Offset, "Restored runtime degree offsets");
+        Equal(constraint.Blend, restored.Blend, "Restored runtime blend");
+        var legacy = (CopyConstraint)deserialize.Invoke(null, [new ProjectCopyConstraintEntry()])!;
+        Equal(0, legacy.SourceRotationAxis, "Legacy DTO default source axis");
+        Equal(0, legacy.BendAxis, "Legacy DTO default bend axis");
+        Equal(1f, legacy.RotationMultiplier, "Legacy DTO default multiplier");
+        var clone = constraint.Clone();
+        Equal(constraint.SourceRotationAxis, clone.SourceRotationAxis, "Cloned source axis");
+        Equal(constraint.BendAxis, clone.BendAxis, "Cloned bend axis");
+        Equal(constraint.RotationMultiplier, clone.RotationMultiplier, "Cloned multiplier");
+    }
+
+    private static void RotationBendScaledRows(Fixture f)
+    {
+        (vec3 Degrees, vec3 Scale)[] cases =
+        [
+            (new vec3(45f, 0f, 0f), new vec3(1f, 2f, 1f)),
+            (new vec3(25f, -35f, 40f), new vec3(2f, 3f, 0.5f))
+        ];
+        foreach (var sample in cases)
+        {
+            var source = Node("row-scaled rotation source");
+            // The non-resize path composes S * R, unlike the column-scaled R * S path.
+            source.ScaleResize = false;
+            vec3 radians = sample.Degrees * (MathF.PI / 180f);
+            source.SetLocalRotation(radians);
+            source.SetLocalScale(sample.Scale);
+            mat4 expectedWorld = mat4.Scale(sample.Scale) * mat4.RotateZ(radians.z) * mat4.RotateY(radians.y) * mat4.RotateX(radians.x);
+            mat4 actualWorld = source.GetWorldMatrixNoPivot();
+            for (int column = 0; column < 3; column++)
+                for (int row = 0; row < 3; row++)
+                    Near(expectedWorld[column, row], actualWorld[column, row], "Fixture must contain row-scaled rotation");
+            var bone = BendBone("row-scaled driven bend", vec3.Zero);
+            for (int axis = 0; axis < 3; axis++)
+                bone.CopyConstraints.Add(new CopyConstraint
+                {
+                    Type = CopyConstraintType.RotationToBend, TargetObjectId = source.ObjectId,
+                    SourceRotationAxis = axis, BendAxis = axis
+                });
+            InverseKinematicsSolver.Evaluate([source, bone]);
+            Near(sample.Degrees, EvaluatedBend(bone), "Nonuniform row scale must not distort source Euler angles");
+            Equal(vec3.Zero, bone.BendParameters!.Value.Angle, "Rotation extraction mutated authored bend");
+        }
+    }
+
+    private static void RotationBendEnableCapture(Fixture f)
+    {
+        var bone = BendBone("enable capture bend", vec3.Zero);
+        var earlierSource = Node("disabled earlier source");
+        earlierSource.SetLocalRotation(new vec3(80f, 0f, 0f) * (MathF.PI / 180f));
+        var laterSource = Node("active later source");
+        laterSource.SetLocalRotation(new vec3(40f, 0f, 0f) * (MathF.PI / 180f));
+        var earlier = new CopyConstraint
+        {
+            Type = CopyConstraintType.RotationToBend, TargetObjectId = earlierSource.ObjectId,
+            Enabled = false, Blend = 0.5f, Offset = new vec3(0f, 11f, 12f)
+        };
+        bone.CopyConstraints.Add(earlier);
+        bone.CopyConstraints.Add(new CopyConstraint
+        {
+            Type = CopyConstraintType.RotationToBend, TargetObjectId = laterSource.ObjectId, Blend = 0.5f
+        });
+        InverseKinematicsSolver.Evaluate([earlierSource, laterSource, bone]);
+        Near(new vec3(20f, 0f, 0f), EvaluatedBend(bone), "Disabled earlier driver must leave later partial blend at 20 degrees");
+        earlier.Enabled = true;
+        CopyConstraintSolver.CaptureOffset(bone, earlier, earlierSource);
+        Near(new vec3(-80f, 11f, 12f), earlier.Offset, "Newly enabled driver must capture its stack prefix, not the final pose");
+        for (int frame = 0; frame < 3; frame++)
+        {
+            InverseKinematicsSolver.Evaluate([earlierSource, laterSource, bone]);
+            Near(new vec3(20f, 0f, 0f), EvaluatedBend(bone), "Enabling and capturing earlier driver must preserve final stack pose");
+            Equal(vec3.Zero, bone.BendParameters!.Value.Angle, "Enable capture mutated authored bend");
+        }
+    }
+
+    private static void RotationBendInheritedPose(Fixture f)
+    {
+        var body = new CharacterSceneObject { Name = "body model", ObjectId = Guid.NewGuid().ToString("N") };
+        var armor = new CharacterSceneObject { Name = "armor model", ObjectId = Guid.NewGuid().ToString("N"), InheritPose = true };
+        var bodyBone = BendBone("body arm", new vec3(10f, 0f, 0f));
+        var armorBone = BendBone("armor arm", new vec3(4f, 0f, 0f));
+        bodyBone.BoneName = armorBone.BoneName = "arm";
+        body.BoneObjects.Add("arm", bodyBone);
+        armor.BoneObjects.Add("arm", armorBone);
+        var modelOwner = typeof(MiBoneSceneObject).GetProperty("ModelOwner", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new MissingMemberException("MiBoneSceneObject.ModelOwner");
+        modelOwner.SetValue(bodyBone, body);
+        modelOwner.SetValue(armorBone, armor);
+        // The inherited pose source is a sibling of the armor model, not a bone ancestor.
+        body.AddChild(bodyBone);
+        body.AddChild(armor);
+        armor.AddChild(armorBone);
+        var bodyDriver = Node("body bend driver");
+        var armorDriver = Node("armor bend driver");
+        armorDriver.SetLocalRotation(new vec3(20f, 0f, 0f) * (MathF.PI / 180f));
+        bodyBone.CopyConstraints.Add(new CopyConstraint { Type = CopyConstraintType.RotationToBend, TargetObjectId = bodyDriver.ObjectId });
+        armorBone.CopyConstraints.Add(new CopyConstraint
+        {
+            Type = CopyConstraintType.RotationToBend, TargetObjectId = armorDriver.ObjectId, Blend = 0.5f
+        });
+        SceneObject[][] orders =
+        [
+            [body, bodyDriver, armorDriver, bodyBone, armorBone],
+            [armorBone, body, armorDriver, bodyDriver, bodyBone]
+        ];
+        foreach (var roots in orders)
+        {
+            foreach (float drivenBodyAngle in new[] { 60f, 80f })
+            {
+                bodyDriver.SetLocalRotation(new vec3(drivenBodyAngle, 0f, 0f) * (MathF.PI / 180f));
+                InverseKinematicsSolver.Evaluate(roots);
+                Near(drivenBodyAngle, EvaluatedBend(bodyBone).x, "Body bend driver must evaluate");
+                Near((4f + drivenBodyAngle + 20f) * 0.5f, EvaluatedBend(armorBone).x,
+                    "Armor partial blend must start from its own bend plus the body's evaluated pose in either root order");
+                Equal(new vec3(10f, 0f, 0f), bodyBone.BendParameters!.Value.Angle, "Inherited pose evaluation mutated body bend");
+                Equal(new vec3(4f, 0f, 0f), armorBone.BendParameters!.Value.Angle, "Inherited pose evaluation mutated armor bend");
+            }
+        }
+    }
+
+    private static void RotationBendAxisMasks(Fixture f)
+    {
+        vec3 authored = new(4f, 8f, 12f);
+        var bone = BendBone("masked bend", authored);
+        var source = Node("masked source");
+        source.SetLocalRotation(new vec3(20f, -30f, 40f) * (MathF.PI / 180f));
+        var constraint = new CopyConstraint
+        {
+            Type = CopyConstraintType.RotationToBend, TargetObjectId = source.ObjectId,
+            UseBendAxisMask = true, SourceRotationAxisX = 2, SourceRotationAxisY = 0, SourceRotationAxisZ = 1,
+            RotationMultiplier = -1.5f, Offset = new vec3(3f, 7f, 11f), Blend = 0.4f
+        };
+        bone.CopyConstraints.Add(constraint);
+        vec3 mapped = new(40f, 20f, -30f);
+        foreach (int mask in new[] { 1, 2, 3, 4, 5, 6, 7, 0, 7, 2, 0 })
+        {
+            vec3 expected = authored;
+            for (int axis = 0; axis < 3; axis++)
+            {
+                bool enabled = (mask & (1 << axis)) != 0;
+                constraint.SetBendAxisEnabled(axis, enabled);
+                Equal(enabled, constraint.IsBendAxisEnabled(axis), "Checkbox mask selection");
+                if (enabled) expected[axis] += (mapped[axis] * -1.5f + constraint.Offset[axis] - authored[axis]) * 0.4f;
+            }
+            for (int frame = 0; frame < 3; frame++)
+            {
+                InverseKinematicsSolver.Evaluate([source, bone]);
+                Near(expected, EvaluatedBend(bone), $"Single-constraint mask {mask}, evaluation {frame}");
+                Equal(authored, bone.BendParameters!.Value.Angle, "Axis toggles mutated authored bend");
+            }
+        }
+        Equal(1, bone.CopyConstraints.Count, "Multiple axes must be driven by one constraint");
+    }
+
+    private static void RotationBendMaskLimits(Fixture f)
+    {
+        var bone = BendBone("masked limits", new vec3(-7f, 0f, 9f));
+        var parameters = bone.BendParameters!.Value;
+        parameters.AxisY = false;
+        parameters.InvertX = true;
+        parameters.DirectionMin = new vec3(-10f, -180f, -12f);
+        parameters.DirectionMax = new vec3(25f, 180f, 18f);
+        bone.SetBendParameters(parameters, 1f);
+        var source = Node("masked limits source");
+        source.SetLocalRotation(new vec3(20f, -30f, 40f) * (MathF.PI / 180f));
+        var constraint = new CopyConstraint
+        {
+            Type = CopyConstraintType.RotationToBend, TargetObjectId = source.ObjectId,
+            UseBendAxisMask = true, SourceRotationAxisX = 2, SourceRotationAxisY = 0, SourceRotationAxisZ = 1
+        };
+        bone.CopyConstraints.Add(constraint);
+        InverseKinematicsSolver.Evaluate([source, bone]);
+        Near(new vec3(25f, 0f, -12f), EvaluatedBend(bone), "Each selected axis must obey its own model limit/support");
+        Near(new vec3(-25f, 0f, -12f), bone.GetEffectiveBendParameters()!.Value.Angle, "Masked bend inversion");
+        constraint.RotationMultiplier = -2f;
+        InverseKinematicsSolver.Evaluate([source, bone]);
+        Near(new vec3(-10f, 0f, 18f), EvaluatedBend(bone), "Masked opposite limits");
+        Equal(parameters.Angle, bone.BendParameters!.Value.Angle, "Masked limits mutated stored angles");
+    }
+
+    private static void RotationBendMaskLegacy(Fixture f)
+    {
+        var constraint = new CopyConstraint { Type = CopyConstraintType.RotationToBend, BendAxis = 1, SourceRotationAxis = 2 };
+        Check(!constraint.UseBendAxisMask && constraint.SourceRotationAxisX == null && constraint.SourceRotationAxisY == null && constraint.SourceRotationAxisZ == null,
+            "Legacy constraints must default to single-axis mode and nullable source overrides");
+        Check(!constraint.IsBendAxisEnabled(0) && constraint.IsBendAxisEnabled(1) && !constraint.IsBendAxisEnabled(2),
+            "Legacy single axis must ignore the default all-true Axis flags");
+        Equal(0, constraint.GetSourceRotationAxis(0), "Unselected X fallback must match X");
+        Equal(2, constraint.GetSourceRotationAxis(1), "Selected Y must retain legacy source Z");
+        Equal(2, constraint.GetSourceRotationAxis(2), "Unselected Z fallback must match Z");
+        var bone = BendBone("legacy masked bend", new vec3(4f, 8f, 12f));
+        var source = Node("legacy mask source");
+        source.SetLocalRotation(new vec3(20f, -30f, 40f) * (MathF.PI / 180f));
+        constraint.TargetObjectId = source.ObjectId;
+        bone.CopyConstraints.Add(constraint);
+        InverseKinematicsSolver.Evaluate([source, bone]);
+        Near(new vec3(4f, 40f, 12f), EvaluatedBend(bone), "Unconverted legacy Y-from-Z mapping");
+        constraint.BendAxis = 2;
+        constraint.SourceRotationAxis = 0;
+        InverseKinematicsSolver.Evaluate([source, bone]);
+        Near(new vec3(4f, 8f, 20f), EvaluatedBend(bone), "Legacy single-axis animation must still change the selected axis");
+        Check(!constraint.UseBendAxisMask, "Legacy field edits must not activate mask mode");
+        constraint.SetBendAxisEnabled(0, true);
+        Check(constraint.UseBendAxisMask && constraint.AxisX && !constraint.AxisY && constraint.AxisZ,
+            "First checkbox edit must retain only the old selected axis plus the newly enabled one");
+        InverseKinematicsSolver.Evaluate([source, bone]);
+        Near(new vec3(20f, 8f, 20f), EvaluatedBend(bone), "Conversion must preserve old Z-from-X and default new X-from-X mapping");
+        constraint.SourceRotationAxisZ = 1;
+        InverseKinematicsSolver.Evaluate([source, bone]);
+        Near(new vec3(20f, 8f, -30f), EvaluatedBend(bone), "Explicit per-axis source must override legacy source");
+        var disable = new CopyConstraint { BendAxis = 1 };
+        disable.SetBendAxisEnabled(1, false);
+        Check(disable.UseBendAxisMask && !disable.AxisX && !disable.AxisY && !disable.AxisZ,
+            "Disabling the sole legacy checkbox must convert to all-off, not enable other default flags");
+    }
+
+    private static void RotationBendMaskCapture(Fixture f)
+    {
+        var bone = BendBone("multi-axis capture", new vec3(4f, 8f, 12f));
+        var source = Node("multi-axis capture source");
+        source.SetLocalRotation(new vec3(20f, -10f, 30f) * (MathF.PI / 180f));
+        var laterSource = Node("multi-axis later source");
+        laterSource.SetLocalRotation(new vec3(12f, 22f, 32f) * (MathF.PI / 180f));
+        var constraint = new CopyConstraint
+        {
+            Type = CopyConstraintType.RotationToBend, TargetObjectId = source.ObjectId, UseBendAxisMask = true,
+            SourceRotationAxisX = 2, SourceRotationAxisY = 0, SourceRotationAxisZ = 1,
+            RotationMultiplier = 1.25f, Offset = new vec3(3f, 5f, 7f), Blend = 0.4f
+        };
+        bone.CopyConstraints.Add(constraint);
+        bone.CopyConstraints.Add(new CopyConstraint
+        {
+            Type = CopyConstraintType.RotationToBend, TargetObjectId = laterSource.ObjectId,
+            UseBendAxisMask = true, SourceRotationAxisX = 0, SourceRotationAxisY = 1, SourceRotationAxisZ = 2, Blend = 0.5f
+        });
+        InverseKinematicsSolver.Evaluate([source, laterSource, bone]);
+        vec3 before = EvaluatedBend(bone);
+        Near(new vec3(15.3f, 19.4f, 18.5f), before, "Initial multi-axis blended stack");
+        source.SetLocalRotation(new vec3(-15f, 25f, 10f) * (MathF.PI / 180f));
+        CopyConstraintSolver.CaptureOffset(bone, constraint, source);
+        Near(new vec3(28f, 48.75f, -36.75f), constraint.Offset, "Capture must solve all selected axis offsets from this entry's output");
+        InverseKinematicsSolver.Evaluate([source, laterSource, bone]);
+        Near(before, EvaluatedBend(bone), "Multi-axis capture must preserve final blended stack pose");
+        constraint.SetBendAxisEnabled(1, false);
+        vec3 offset = constraint.Offset;
+        source.SetLocalRotation(new vec3(5f, 15f, 25f) * (MathF.PI / 180f));
+        CopyConstraintSolver.CaptureOffset(bone, constraint, source);
+        Equal(offset.y, constraint.Offset.y, "Capture must not overwrite an unchecked axis offset");
+        Equal(new vec3(4f, 8f, 12f), bone.BendParameters!.Value.Angle, "Multi-axis capture mutated authored bend");
+    }
+
+    private static void RotationBendMaskPersistence(Fixture f)
+    {
+        var root = Node("mask archive root");
+        var source = Node("mask archive source");
+        var bone = BendBone("mask archive bend", new vec3(4f, 8f, 12f));
+        root.AddChild(source);
+        root.AddChild(bone);
+        var constraint = new CopyConstraint
+        {
+            Type = CopyConstraintType.RotationToBend, TargetObjectId = source.ObjectId, UseBendAxisMask = true,
+            AxisX = true, AxisY = false, AxisZ = true,
+            SourceRotationAxisX = 2, SourceRotationAxisY = 0, SourceRotationAxisZ = 1,
+            RotationMultiplier = -1.25f, Offset = new vec3(3f, 5f, 7f), Blend = 0.4f
+        };
+        bone.CopyConstraints.Add(constraint);
+        bone.CopyConstraints.Add(new CopyConstraint
+        {
+            Type = CopyConstraintType.RotationToBend, TargetObjectId = source.ObjectId, BendAxis = 1, SourceRotationAxis = 2
+        });
+        var (manifest, _) = f.Roundtrip(root);
+        var saved = manifest.Root.Children.Single(entry => entry.ObjectId == bone.ObjectId).CopyConstraints!;
+        Check(saved[0].UseBendAxisMask && saved[0].AxisX && !saved[0].AxisY && saved[0].AxisZ, "Archive lost independent mask flags");
+        Equal<int?>(2, saved[0].SourceRotationAxisX, "Archived X source");
+        Equal<int?>(0, saved[0].SourceRotationAxisY, "Archived Y source even when unchecked");
+        Equal<int?>(1, saved[0].SourceRotationAxisZ, "Archived Z source");
+        var deserialize = typeof(ProjectSceneSerializer).GetMethod("DeserializeCopyConstraint", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var restored = (CopyConstraint)deserialize.Invoke(null, [saved[0]])!;
+        var clone = constraint.Clone();
+        foreach (var copy in new[] { restored, clone })
+        {
+            Check(copy.UseBendAxisMask && copy.AxisX && !copy.AxisY && copy.AxisZ, "Restored/cloned mask flags");
+            Equal(constraint.SourceRotationAxisX, copy.SourceRotationAxisX, "Restored/cloned X source");
+            Equal(constraint.SourceRotationAxisY, copy.SourceRotationAxisY, "Restored/cloned Y source");
+            Equal(constraint.SourceRotationAxisZ, copy.SourceRotationAxisZ, "Restored/cloned Z source");
+            Equal(constraint.Offset, copy.Offset, "Restored/cloned per-axis degree offsets");
+            Equal(constraint.Blend, copy.Blend, "Restored/cloned shared blend");
+            Equal(constraint.RotationMultiplier, copy.RotationMultiplier, "Restored/cloned shared multiplier");
+        }
+        clone.SourceRotationAxisX = 0;
+        clone.SetBendAxisEnabled(2, false);
+        Check(constraint.SourceRotationAxisX == 2 && constraint.AxisZ, "Cloned settings must be independent");
+        var legacy = (CopyConstraint)deserialize.Invoke(null, [saved[1]])!;
+        Check(!legacy.UseBendAxisMask && legacy.SourceRotationAxisX == null && legacy.SourceRotationAxisY == null && legacy.SourceRotationAxisZ == null,
+            "Archive must retain legacy mode and null source overrides");
+        Check(!legacy.IsBendAxisEnabled(0) && legacy.IsBendAxisEnabled(1) && !legacy.IsBendAxisEnabled(2), "Legacy archive must remain single-axis");
+        Equal(2, legacy.GetSourceRotationAxis(1), "Legacy archive source fallback");
+        string oldArchive = f.Zip(null, [("manifest.json", """
+            {"format":"nxObj","version":1,"root":{"copyConstraints":[{"type":3,"bendAxis":1,"sourceRotationAxis":2}]}}
+            """)]);
+        var oldEntry = Extract(oldArchive, f.NewPath()).Root.CopyConstraints!.Single();
+        var oldRuntime = (CopyConstraint)deserialize.Invoke(null, [oldEntry])!;
+        Check(!oldRuntime.UseBendAxisMask && oldRuntime.SourceRotationAxisX == null && oldRuntime.SourceRotationAxisY == null && oldRuntime.SourceRotationAxisZ == null,
+            "Old source-generated JSON without new fields must retain legacy defaults");
+        Check(!oldRuntime.IsBendAxisEnabled(0) && oldRuntime.IsBendAxisEnabled(1) && !oldRuntime.IsBendAxisEnabled(2),
+            "Missing mask field must not activate all default Axis flags");
+        Equal(2, oldRuntime.GetSourceRotationAxis(1), "Missing per-axis fields must retain old source selector");
+    }
+
+    private static void RotationBendMaskTimeline(Fixture f)
+    {
+        var timeline = new Timeline();
+        var get = typeof(Timeline).GetMethod("GetPropertyValue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var set = typeof(Timeline).GetMethod("SetPropertyValue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var interpolate = typeof(Timeline).GetMethod("InterpolateKeyframes", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var bone = BendBone("timeline masked bend", vec3.Zero);
+        var constraint = new CopyConstraint { Type = CopyConstraintType.RotationToBend, BendAxis = 1, SourceRotationAxis = 2 };
+        bone.CopyConstraints.Add(constraint);
+        var paths = (IEnumerable<string>)typeof(Timeline).GetMethod("GetKeyframePropertyPaths", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [bone])!;
+        var pathSet = paths.ToHashSet(StringComparer.Ordinal);
+        foreach (string channel in new[] { "source_rotation_axis", "bend_axis" })
+            Check(pathSet.Contains("copy_constraint.0." + channel), "Legacy timeline must discover its original selector channels");
+        foreach (string channel in new[] { "axis.x", "axis.y", "axis.z", "source_rotation_axis.x", "source_rotation_axis.y", "source_rotation_axis.z" })
+            Check(!pathSet.Contains("copy_constraint.0." + channel), "Automatic legacy keying must not introduce overriding mask/source tracks");
+        float Read(string channel) => Convert.ToSingle(get.Invoke(timeline, [bone, "copy_constraint.0." + channel]));
+        void Set(string channel, object value) => set.Invoke(timeline, [bone, "copy_constraint.0." + channel, value]);
+        Near(0f, Read("axis.x"), "Timeline must expose effective legacy X checkbox");
+        Near(1f, Read("axis.y"), "Timeline must expose effective legacy Y checkbox");
+        Near(2f, Read("source_rotation_axis.y"), "Timeline must expose legacy source fallback");
+        Set("bend_axis", 2f);
+        Set("source_rotation_axis", 1f);
+        Check(!constraint.UseBendAxisMask, "Legacy timeline channels must not activate mask mode");
+        Near(1f, Read("axis.z"), "Legacy bend-axis animation must select Z");
+        Near(1f, Read("source_rotation_axis.z"), "Legacy source-axis animation must still drive Z mapping");
+        Set("axis.x", 1f);
+        Check(constraint.UseBendAxisMask && constraint.AxisX && !constraint.AxisY && constraint.AxisZ, "Timeline checkbox write must convert legacy mode");
+        var maskedPaths = ((IEnumerable<string>)typeof(Timeline).GetMethod("GetKeyframePropertyPaths", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [bone])!).ToHashSet(StringComparer.Ordinal);
+        foreach (string channel in new[] { "axis.x", "axis.y", "axis.z", "source_rotation_axis.x", "source_rotation_axis.y", "source_rotation_axis.z" })
+            Check(maskedPaths.Contains("copy_constraint.0." + channel), "Mask mode must discover checkbox and per-axis source tracks");
+        foreach (string channel in new[] { "source_rotation_axis", "bend_axis" })
+            Check(!maskedPaths.Contains("copy_constraint.0." + channel), "Mask mode must not automatically key obsolete selectors");
+        Set("source_rotation_axis.x", 2f);
+        Set("source_rotation_axis.y", 0f);
+        Set("source_rotation_axis.z", 1f);
+        Near(2f, Read("source_rotation_axis.x"), "Timeline X source read/write");
+        Near(0f, Read("source_rotation_axis.y"), "Timeline Y source read/write");
+        Near(1f, Read("source_rotation_axis.z"), "Timeline Z source read/write");
+        Set("axis.y", 0.5f);
+        Set("axis.z", 0.49f);
+        Check(constraint.AxisY && !constraint.AxisZ, "Timeline checkbox threshold");
+        foreach (string channel in new[] { "axis.x", "axis.y", "axis.z", "source_rotation_axis.x", "source_rotation_axis.y", "source_rotation_axis.z", "source_rotation_axis", "bend_axis" })
+        {
+            float end = channel.StartsWith("axis.", StringComparison.Ordinal) ? 1f : 2f;
+            var keys = new List<TimelineKeyframe> { new() { Frame = 0, Value = 0f }, new() { Frame = 10, Value = end } };
+            string path = "copy_constraint.0." + channel;
+            Near(0f, Convert.ToSingle(interpolate.Invoke(timeline, [keys, path, 9, false])), "Checkbox/source selector animation must hold previous keyframe");
+            Near(end, Convert.ToSingle(interpolate.Invoke(timeline, [keys, path, 10, false])), "Discrete channel must switch at exact keyframe");
+            Check(interpolate.Invoke(timeline, [keys, path, -1, false]) == null, "Before first keyframe must not change current mode/mapping");
+        }
+        foreach (string channel in new[] { "offset.x", "offset.y", "offset.z", "blend", "rotation_multiplier" })
+        {
+            var keys = new List<TimelineKeyframe> { new() { Frame = 0, Value = 0f }, new() { Frame = 10, Value = 1f } };
+            Near(0.5f, Convert.ToSingle(interpolate.Invoke(timeline, [keys, "copy_constraint.0." + channel, 5, false])),
+                "Shared numeric bend controls and per-axis offsets must remain continuously animated");
+        }
     }
 
     private static SceneObject Node(string name) => new()

@@ -257,15 +257,35 @@ public class MiBoneSceneObject : BoneSceneObject
     /// </summary>
     public BendParams? BendParameters { get; private set; }
 
-    private vec3? _evaluatedIkBend;
+    private vec3? _evaluatedBend;
     private vec3? _lastIkVisualBend;
 
     internal vec3 GetEvaluatedEditableBendAngle() => GetEffectiveEditableBendAngle();
 
-    internal void SetEvaluatedIkBend(vec3 angle)
+    internal IEnumerable<MiBoneSceneObject> GetBendEvaluationSources()
+    {
+        var visited = new HashSet<MiBoneSceneObject> { this };
+        var pending = new Stack<MiBoneSceneObject>();
+        pending.Push(this);
+        while (pending.TryPop(out var bone))
+        {
+            if (bone.FindInheritedPoseBone() is { } pose && visited.Add(pose))
+            {
+                yield return pose;
+                pending.Push(pose);
+            }
+            if (bone.BendParameters is { InheritBend: true } && bone.FindParentBendBone() is { } parent && visited.Add(parent))
+            {
+                yield return parent;
+                pending.Push(parent);
+            }
+        }
+    }
+
+    internal void SetEvaluatedBend(vec3 angle)
     {
         if (BendParameters is not { } bp) return;
-        _evaluatedIkBend = new vec3(
+        _evaluatedBend = new vec3(
             bp.AxisX ? Math.Clamp(angle.x, Math.Min(bp.DirectionMin.x, bp.DirectionMax.x), Math.Max(bp.DirectionMin.x, bp.DirectionMax.x)) : 0f,
             bp.AxisY ? Math.Clamp(angle.y, Math.Min(bp.DirectionMin.y, bp.DirectionMax.y), Math.Max(bp.DirectionMin.y, bp.DirectionMax.y)) : 0f,
             bp.AxisZ ? Math.Clamp(angle.z, Math.Min(bp.DirectionMin.z, bp.DirectionMax.z), Math.Max(bp.DirectionMin.z, bp.DirectionMax.z)) : 0f);
@@ -275,7 +295,7 @@ public class MiBoneSceneObject : BoneSceneObject
     internal override void ResetInverseKinematics()
     {
         base.ResetInverseKinematics();
-        _evaluatedIkBend = null;
+        _evaluatedBend = null;
     }
 
     internal void RefreshInverseKinematicsVisuals()
@@ -533,7 +553,7 @@ public class MiBoneSceneObject : BoneSceneObject
     private vec3 GetEffectiveEditableBendAngle(bool includePose = true)
     {
         if (!BendParameters.HasValue) return vec3.Zero;
-        if (includePose && _evaluatedIkBend.HasValue) return _evaluatedIkBend.Value;
+        if (includePose && _evaluatedBend.HasValue) return _evaluatedBend.Value;
 
         var bp = BendParameters.Value;
         vec3 editable = StoredToEditable(bp.Angle, bp);

@@ -550,6 +550,13 @@ public class ProjectCopyConstraintEntry
     public float Blend { get; set; } = 1f;
     public bool BentHalf { get; set; } = false;
     public bool Rotate { get; set; } = false;
+    public int SourceRotationAxis { get; set; } = 0;
+    public int BendAxis { get; set; } = 0;
+    public float RotationMultiplier { get; set; } = 1f;
+    public bool UseBendAxisMask { get; set; } = false;
+    public int? SourceRotationAxisX { get; set; } = null;
+    public int? SourceRotationAxisY { get; set; } = null;
+    public int? SourceRotationAxisZ { get; set; } = null;
 }
 
 public class ProjectBoneConstraintEntry

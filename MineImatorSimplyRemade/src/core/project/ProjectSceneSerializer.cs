@@ -1192,7 +1192,14 @@ public static class ProjectSceneSerializer
             AxisZ = constraint.AxisZ,
             Blend = constraint.Blend,
             BentHalf = constraint.BentHalf,
-            Rotate = constraint.Rotate
+            Rotate = constraint.Rotate,
+            SourceRotationAxis = constraint.SourceRotationAxis,
+            BendAxis = constraint.BendAxis,
+            RotationMultiplier = constraint.RotationMultiplier,
+            UseBendAxisMask = constraint.UseBendAxisMask,
+            SourceRotationAxisX = constraint.SourceRotationAxisX,
+            SourceRotationAxisY = constraint.SourceRotationAxisY,
+            SourceRotationAxisZ = constraint.SourceRotationAxisZ
         };
     }
 
@@ -1210,7 +1217,14 @@ public static class ProjectSceneSerializer
             AxisZ = constraint.AxisZ,
             Blend = constraint.Blend,
             BentHalf = constraint.BentHalf,
-            Rotate = constraint.Rotate
+            Rotate = constraint.Rotate,
+            SourceRotationAxis = Math.Clamp(constraint.SourceRotationAxis, 0, 2),
+            BendAxis = Math.Clamp(constraint.BendAxis, 0, 2),
+            RotationMultiplier = constraint.RotationMultiplier,
+            UseBendAxisMask = constraint.UseBendAxisMask,
+            SourceRotationAxisX = constraint.SourceRotationAxisX is { } sourceX ? Math.Clamp(sourceX, 0, 2) : null,
+            SourceRotationAxisY = constraint.SourceRotationAxisY is { } sourceY ? Math.Clamp(sourceY, 0, 2) : null,
+            SourceRotationAxisZ = constraint.SourceRotationAxisZ is { } sourceZ ? Math.Clamp(sourceZ, 0, 2) : null
         };
     }
 
