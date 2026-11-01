@@ -27,6 +27,7 @@ internal static class Program
             ("JSON model and external mimodel texture closure", JsonClosure),
             ("JSON object-form texture dependency closure", JsonObjectReferences),
             ("JSON object-form texture dependency traversal rejection", JsonObjectReferenceTraversal),
+            ("Mine-imator numeric texture sentinels are not file resources", MiTextureSentinels),
             ("glTF buffer/image URI remapping and embedded data", GltfClosure),
             ("GLB external image closure preserves binary chunks", GlbClosure),
             ("OBJ/MTL dependency closure with texture options", ObjClosure),
@@ -97,6 +98,32 @@ internal static class Program
         }
         Console.WriteLine($"RESULT {tests.Length - failures}/{tests.Length} passed; {failures} failed.");
         return failures == 0 ? 0 : 1;
+    }
+
+    private static void MiTextureSentinels(Fixture f)
+    {
+        string texture = Path.GetFullPath(f.File("textures/custom.png", "custom texture"));
+        var resources = new Dictionary<string, MiResource>
+        {
+            ["custom-texture"] = new() { Filename = "textures/custom.png" }
+        };
+        foreach (string type in new[] { "block", "cube" })
+        foreach (string reference in new[] { "-3", "-1", "null", "\"null\"", "\"default\"", "\"custom-texture\"", "\"textures/custom.png\"" })
+        {
+            using var settings = JsonDocument.Parse("{\"name\":\"redstone_lamp\",\"tex\":" + reference + "}");
+            var template = new MiTemplate
+            {
+                Type = type, Block = settings.RootElement, Shape = settings.RootElement
+            };
+            var obj = MiObjectTemplateFactory.Create(null!, null!, template, new MiTimeline(), resources, f.Root)!;
+            string expected = reference is "\"custom-texture\"" or "\"textures/custom.png\"" ? texture : "";
+            Equal(expected, obj.AlbedoTexturePath, $"{type} texture reference {reference}");
+            var (manifest, directory) = f.Roundtrip(obj);
+            if (expected.Length == 0)
+                Equal("", manifest.Root.AlbedoTexturePath, "Built-in material acquired a file dependency");
+            else
+                Equal("custom texture", File.ReadAllText(Resource(directory, manifest.Root.AlbedoTexturePath)), "Custom texture missing");
+        }
     }
 
     private static void ExactSourceHierarchy(Fixture f)

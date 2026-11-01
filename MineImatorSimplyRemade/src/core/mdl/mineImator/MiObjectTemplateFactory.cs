@@ -87,7 +87,10 @@ public static class MiObjectTemplateFactory
         if (string.IsNullOrEmpty(obj.ObjectId)) obj.AssignObjectId();
         if (settings.HasValue)
         {
-            string path = TexturePath(Text(settings, "tex"), resources, directory);
+            // Numeric texture values select built-in materials, not external files.
+            var textureReference = Property(settings, "tex");
+            string path = textureReference is { ValueKind: JsonValueKind.String }
+                ? TexturePath(textureReference.Value.GetString()!, resources, directory) : "";
             obj.AlbedoTexturePath = path;
             if (gl != null && File.Exists(path))
             {
