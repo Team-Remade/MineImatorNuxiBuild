@@ -387,6 +387,7 @@ public class ProjectSceneObjectEntry
     public ProjectVec3 Rotation { get; set; } = new();
     public ProjectVec3 Scale { get; set; } = new() { X = 1f, Y = 1f, Z = 1f };
     public ProjectVec3? BendAngle { get; set; }
+    public ProceduralEffectSettings? ProceduralEffect { get; set; }
     public string? BoneName { get; set; }
     public ProjectVec3? BoneEndOffset { get; set; }
     // Null retains imported defaults for legacy saves; an empty list explicitly clears them.

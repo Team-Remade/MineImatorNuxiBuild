@@ -910,6 +910,7 @@ public class PropertiesPanel : UiPanel
             ObjectId = source.ObjectId,
             Name = source.Name,
             ObjectType = source.ObjectType,
+            ProceduralEffect = source.ProceduralEffect,
             BoneName = source.BoneName,
             BoneEndOffset = source.BoneEndOffset == null ? null : new ProjectVec3
             {
@@ -3704,6 +3705,51 @@ public class PropertiesPanel : UiPanel
                 _currentObject.TextMeshExtrusionDepth = Math.Clamp(extrusionDepth, 0.001f, 10f);
                 TextMeshFactory.Rebuild(_currentObject, Gl);
                 ProjectManager.Instance.SetDirty(true);
+            }
+        }
+
+        if (_currentObject is ProceduralEffectSceneObject procedural &&
+            ImGui.CollapsingHeader(Localization.Label("text.effects.title", "Procedural Effect"), ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            UiText.Disabled(Localization.T("text.effects.help"));
+            foreach (var control in ProceduralEffectSettings.Controls)
+            {
+                float value = control.Read(procedural.Settings);
+                string label = Localization.Label($"text.effects.{control.Key}", control.Label);
+                bool changed;
+                if (control.Key == "shape")
+                {
+                    int shape = (int)value;
+                    string[] shapes = [Localization.T("text.effects.line"), Localization.T("text.effects.ring"), Localization.T("text.effects.helix")];
+                    changed = ImGui.Combo(label, ref shape, shapes, shapes.Length);
+                    value = shape;
+                }
+                else if (control.Key == "smooth")
+                {
+                    bool smooth = value >= 0.5f;
+                    changed = ImGui.Checkbox(label, ref smooth);
+                    value = smooth ? 1f : 0f;
+                }
+                else if (control.Discrete)
+                {
+                    int number = (int)value;
+                    changed = ImGui.DragInt(label, ref number, control.Step, (int)control.Min, (int)control.Max);
+                    value = number;
+                }
+                else
+                    changed = ImGui.DragFloat(label, ref value, control.Step, control.Min, control.Max, "%.3f");
+
+                if (changed)
+                {
+                    procedural.Settings = control.Set(procedural.Settings, value);
+                    Timeline?.RecordAutoKeyframe(procedural, control.Path);
+                    ProjectManager.Instance.SetDirty(true);
+                }
+                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                {
+                    _ctxPropertyPath = control.Path;
+                    _openPropContextMenu = true;
+                }
             }
         }
 
@@ -6678,7 +6724,8 @@ public class PropertiesPanel : UiPanel
             // Detached defaults preserve the model's base pose and never touch scene resources.
             SceneObject defaults = obj is CameraSceneObject ? new CameraSceneObject()
                 : obj is LightSceneObject ? new LightSceneObject()
-                : obj is ParticleSpawnerSceneObject ? new ParticleSpawnerSceneObject() : new SceneObject();
+                : obj is ParticleSpawnerSceneObject ? new ParticleSpawnerSceneObject()
+                : obj is ProceduralEffectSceneObject ? new ProceduralEffectSceneObject() : new SceneObject();
             defaults.MaterialSettings = new MaterialSettings();
             if (defaults is CameraSceneObject defaultCamera && obj is CameraSceneObject sourceCamera)
                 foreach (var effect in sourceCamera.Effects)

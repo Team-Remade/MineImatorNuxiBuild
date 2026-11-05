@@ -19,6 +19,64 @@ Requirements
 5. Run `cd ./MineImatorSimplyRemade`
 6. Run `dotnet run`
 
+## Procedural 3D effects
+
+Open **Spawn > Effects** and choose **Lightning**, **Ring / Portal**, or
+**Procedural Effect**. These are editable scene objects, not baked animations.
+The presets share a path -> fractal noise -> branches -> tube geometry pipeline.
+
+- In **Properties > Procedural Effect**, choose a **Line**, **Ring**, or **Helix**
+  path. Line and helix endpoints are local-space offsets from the object's origin;
+  rings lie in local XY. Move, rotate, scale, or parent the object normally.
+- Change tube width, taper, path resolution, noise detail, seed, and branching.
+  Set noise and branches to zero for clean beams, rings, or coils.
+- **Refresh Rate** controls shape changes per timeline second; zero freezes the
+  shape. **Smooth Motion** blends between shapes instead of snapping.
+  Playback, backward scrubbing, previews, camera feeds, and export use timeline
+  time rather than frame-to-frame random simulation.
+- Animate **Path Reveal** from 0 to 1 to grow the effect. All effect controls can
+  be keyframed using auto-key or their right-click menus. Seed, shape, resolution,
+  branch count, and motion mode use stepped interpolation.
+- Use the existing **Materials** controls for color, emission, transparency,
+  textures, and blend modes. Enable the scene's **Glow** setting for a halo.
+  Effects start emissive and do not cast shadows by default.
+- Save custom configurations to the existing object library or export as
+  `.nxObj`. Settings and keyframes survive project saves, duplication, and undo.
+
+The initial system is a parameter-based path generator, not a node graph or a
+physics simulation. It does not yet support surface-following, collision,
+object-target endpoints, arbitrary drawn splines, or motion-history trails.
+Geometry is bounded to 128 path segments, 12 tube sides, and 16 single-level
+branches (at most 84,168 vertices per effect). Unchanged evaluations reuse their
+uploaded mesh; animated changes use the existing mesh-upload pipeline.
+The experimental Veldrid renderer can draw the geometry, but retains its existing
+lighting/post-processing limitations described below.
+
+### Research behind the approach
+
+- [Conn Buranicz: Procedural Lightning](https://www.connburanicz.com/procedural-lightning)
+  describes controllable source/target paths, randomized offsets, branching,
+  and procedural strand geometry. Camera-facing ribbons/quads are economical;
+  tubes cost more geometry but remain volumetric from every camera angle.
+- [Jettelly: Draw Lightning Generators](https://jettelly.com/blog/draw-lightning-generators-procedural-lightning-with-geometry-nodes-in-blender)
+  describes curve-driven lightning and the reuse of generated curves for other
+  procedural structures. This motivates separating path generation from tube
+  construction rather than introducing a lightning-only renderer.
+
+This implementation uses original, seed-hashed multiscale displacement, bounded
+branching, and parallel-transport tube frames. It does not embed either source's
+code or assets. Stateless timeline evaluation makes every export frame repeatable.
+
+Regression checks (custom executable test harness; no test adapter required):
+
+```powershell
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --effects-graphics
+```
+
+The second command requires an OpenGL 3.3 desktop session and checks real rendered
+pixels, animation/seek reproducibility, emission, and empty-mesh rebuilding.
+
 ## Experimental Veldrid scene renderer
 
 OpenGL remains the default renderer. To render the main scene through Veldrid,

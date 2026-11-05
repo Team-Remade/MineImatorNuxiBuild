@@ -2670,6 +2670,8 @@ public class Viewport : UiPanel
             UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
         }
         // Input and simulation can move targets. Every view must use that same updated pose.
+        UpdateProceduralEffects(IsPreviewViewport ? MainViewport?.SceneObjects ?? SceneObjects : SceneObjects,
+            GetTimelineEffectTimeSeconds());
         InverseKinematicsSolver.Evaluate(SceneObjects);
         PreviewViewport?.UpdateCameraTextureFeeds();
 
@@ -5361,6 +5363,17 @@ public class Viewport : UiPanel
         return translation * rotation * scaling * pivot;
     }
 
+    private static void UpdateProceduralEffects(IReadOnlyList<SceneObject> objects, float seconds)
+    {
+        for (int i = 0; i < objects.Count; i++)
+        {
+            var obj = objects[i];
+            if (obj is ProceduralEffectSceneObject effect)
+                effect.EvaluateGeometry(seconds);
+            UpdateProceduralEffects(obj.Children, seconds);
+        }
+    }
+
     private void UpdateParticleSpawners(IReadOnlyList<SceneObject> objects, float deltaTime, bool timelinePlaying)
     {
         if (SpawnMenu == null)
@@ -6913,6 +6926,7 @@ public class Viewport : UiPanel
             using var particleScope = FrameProfiler.Shared.Measure(ProfileStage.ParticleUpdate);
             UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
         }
+        UpdateProceduralEffects(MainViewport.SceneObjects, GetTimelineEffectTimeSeconds());
         InverseKinematicsSolver.Evaluate(MainViewport.SceneObjects);
 
         // Render substages/counters aggregate across all views; feed time stays out of PreviewScene.

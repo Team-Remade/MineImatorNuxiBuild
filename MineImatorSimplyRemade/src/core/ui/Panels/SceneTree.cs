@@ -879,6 +879,10 @@ public class SceneTree : UiPanel
             case CharacterSceneObject:
                 return null;
 
+            case ProceduralEffectSceneObject effect:
+                dup = new ProceduralEffectSceneObject { Settings = effect.Settings };
+                break;
+
             case ParticleSpawnerSceneObject particleSpawner:
                 dup = new ParticleSpawnerSceneObject
                 {

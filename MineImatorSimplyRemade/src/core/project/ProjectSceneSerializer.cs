@@ -466,6 +466,9 @@ public static class ProjectSceneSerializer
             entry.ItemIs3D = obj.Visuals.OfType<ExtrudedItemMesh>().FirstOrDefault()?.Is3D ?? true;
         }
 
+        if (obj is ProceduralEffectSceneObject procedural)
+            entry.ProceduralEffect = procedural.Settings;
+
         if (obj is ParticleSpawnerSceneObject particleSpawner)
         {
             entry.ParticleLibraryEntryId = particleSpawner.ParticleLibraryEntryId;
@@ -729,6 +732,9 @@ public static class ProjectSceneSerializer
         if (entry.SpawnCategory == "Particle Spawners")
             return spawnMenu.SpawnParticleSpawnerObject(entry.Name, entry.ParticleLibraryEntryId, entry.ParticleLibraryDisplayName);
 
+        if (entry.SpawnCategory == "Effects")
+            return spawnMenu.SpawnProceduralEffectObject(entry.Name, entry.ProceduralEffect ?? new());
+
         if (entry.SpawnCategory == "Scenery")
         {
             string resolved = ResolveSourcePath(entry);
@@ -799,7 +805,9 @@ public static class ProjectSceneSerializer
 
     private static SceneObject CreateFallbackObject(ProjectSceneObjectEntry entry, Viewport viewport)
     {
-        SceneObject obj = entry.BoneName != null || entry.BoneConstraints != null
+        SceneObject obj = entry.SpawnCategory == "Effects"
+            ? new ProceduralEffectSceneObject()
+            : entry.BoneName != null || entry.BoneConstraints != null
             ? new BoneSceneObject()
             : new SceneObject();
         obj.Name = entry.Name;
@@ -943,6 +951,9 @@ public static class ProjectSceneSerializer
         obj.TemporaryItemSheetRows = entry.TemporaryItemSheetRows;
         obj.TemporaryItemSheetColumnIndex = entry.TemporaryItemSheetColumnIndex;
         obj.TemporaryItemSheetRowIndex = entry.TemporaryItemSheetRowIndex;
+
+        if (obj is ProceduralEffectSceneObject procedural)
+            procedural.Settings = entry.ProceduralEffect ?? new();
 
         if (obj is ParticleSpawnerSceneObject particleSpawner)
         {

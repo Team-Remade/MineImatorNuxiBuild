@@ -2548,6 +2548,7 @@ public class Timeline : UiPanel
             SceneObject defaults = obj is CameraSceneObject ? new CameraSceneObject()
                 : obj is LightSceneObject ? new LightSceneObject()
                 : obj is ParticleSpawnerSceneObject ? new ParticleSpawnerSceneObject()
+                : obj is ProceduralEffectSceneObject ? new ProceduralEffectSceneObject()
                 : obj is BoneSceneObject ? new BoneSceneObject() : new SceneObject();
             defaults.UsePropertyInheritance = obj.UsePropertyInheritance;
             foreach (var constraint in obj.CopyConstraints)
@@ -2746,6 +2747,8 @@ public class Timeline : UiPanel
             paths = paths.Concat(GetCameraEffectPropertyPaths(cameraObj));
         if (obj is ParticleSpawnerSceneObject)
             paths = paths.Concat(particleScalarPaths).Concat(particleVectorPaths);
+        if (obj is ProceduralEffectSceneObject)
+            paths = paths.Concat(ProceduralEffectSettings.Controls.Select(control => control.Path));
         if (obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
             paths = paths.Concat(itemPaths);
         if (string.Equals(obj.ObjectType, "Text Mesh", StringComparison.OrdinalIgnoreCase))
@@ -2908,6 +2911,7 @@ public class Timeline : UiPanel
             (path.StartsWith("copy_constraint.", StringComparison.Ordinal) &&
                 !path.Contains(".offset.", StringComparison.Ordinal) && !path.EndsWith(".blend", StringComparison.Ordinal) &&
                 !path.EndsWith(".rotation_multiplier", StringComparison.Ordinal)) ||
+            (ProceduralEffectSettings.FindControl(path)?.Discrete ?? false) ||
             prev.InterpolationType == "instant")
             return TryConvertKeyframeValue(prev.Value, out float prevInstant) ? prevInstant : null;
 
@@ -3169,6 +3173,8 @@ public class Timeline : UiPanel
 
     internal object GetPropertyValue(SceneObject obj, string path)
     {
+        if (obj is ProceduralEffectSceneObject procedural && ProceduralEffectSettings.FindControl(path) is { } effectControl)
+            return effectControl.Read(procedural.Settings);
         if (TryGetCopyConstraint(obj, path, out var copy, out string copyChannel))
             return copyChannel switch
             {
@@ -3502,6 +3508,13 @@ public class Timeline : UiPanel
 
     internal void SetPropertyValue(SceneObject obj, string path, object rawValue)
     {
+        if (obj is ProceduralEffectSceneObject procedural && ProceduralEffectSettings.FindControl(path) is { } effectControl)
+        {
+            if (!TryConvertKeyframeValue(rawValue, out float effectValue) || !float.IsFinite(effectValue))
+                throw new InvalidDataException($"Invalid procedural effect keyframe: {path}.");
+            procedural.Settings = effectControl.Set(procedural.Settings, effectValue);
+            return;
+        }
         if (TryGetCopyConstraint(obj, path, out var copy, out string copyChannel))
         {
             if (copyChannel == "target")
@@ -4411,6 +4424,11 @@ public class Timeline : UiPanel
                 }
             }
 
+            if (obj is ProceduralEffectSceneObject)
+                foreach (var control in ProceduralEffectSettings.Controls)
+                    if (propsWithKeyframes.Contains(control.Path))
+                        newRows.Add(MakeSingle(obj, control.Label, control.Path));
+
             if (obj is ParticleSpawnerSceneObject)
             {
                 var particleProps = new[]
@@ -4598,6 +4616,10 @@ public class Timeline : UiPanel
                 _displayRows.Add(MakeSingle(obj, "Z", offsetPaths[2], 2));
             }
         }
+
+        if (obj is ProceduralEffectSceneObject)
+            foreach (var control in ProceduralEffectSettings.Controls)
+                _displayRows.Add(MakeSingle(obj, control.Label, control.Path));
 
         if (obj is ParticleSpawnerSceneObject)
         {

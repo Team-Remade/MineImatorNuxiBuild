@@ -5,8 +5,11 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using GlmSharp;
+using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
+using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -17,9 +20,23 @@ internal static class Program
     private static readonly MethodInfo ExtractMethod = typeof(NxObjectArchive).GetMethod("Extract",
         BindingFlags.Static | BindingFlags.NonPublic) ?? throw new MissingMethodException("NxObjectArchive.Extract");
 
-    private static int Main()
+    private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--effects-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                EffectGraphics();
+                Console.WriteLine("PASS Procedural effect OpenGL upload, animation, emission, empty/rebuild and pixel rendering");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         (string Name, Action<Fixture> Run)[] tests =
         [
             ("Subtree, transforms, keyframes and material preservation", Subtree),
@@ -70,7 +87,14 @@ internal static class Program
             ("Rotation-to-bend legacy fallback and explicit checkbox conversion", RotationBendMaskLegacy),
             ("Rotation-to-bend multi-axis capture preserves blended stack", RotationBendMaskCapture),
             ("Rotation-to-bend mask and nullable source archive persistence and clone", RotationBendMaskPersistence),
-            ("Rotation-to-bend timeline mask reads, writes and discrete animation", RotationBendMaskTimeline)
+            ("Rotation-to-bend timeline mask reads, writes and discrete animation", RotationBendMaskTimeline),
+            ("Procedural effect deterministic seek, seed and stepped/smooth motion", EffectDeterminism),
+            ("Procedural effect ring closure, reveal and branch attachment", EffectPaths),
+            ("Procedural effect tube counts, winding, normals, UVs and bounds", EffectTubes),
+            ("Procedural effect bounded parameters and invalid input rejection", EffectLimits),
+            ("Procedural effect source-generated archive, library and duplicate persistence", EffectPersistence),
+            ("Procedural effect snapshot restoration and dirty fingerprint", EffectSnapshots),
+            ("Procedural effect timeline discovery, read/write and interpolation", EffectTimeline)
         ];
         int failures = 0;
         foreach (var test in tests)
@@ -98,6 +122,292 @@ internal static class Program
         }
         Console.WriteLine($"RESULT {tests.Length - failures}/{tests.Length} passed; {failures} failed.");
         return failures == 0 ? 0 : 1;
+    }
+
+    private static unsafe void EffectGraphics()
+    {
+        using var glfw = Silk.NET.GLFW.Glfw.GetApi();
+        Check(glfw.Init(), "GLFW initialization failed");
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintBool.Visible, false);
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintInt.ContextVersionMajor, 3);
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintInt.ContextVersionMinor, 3);
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintOpenGlProfile.OpenGlProfile, Silk.NET.GLFW.OpenGlProfile.Core);
+        var window = glfw.CreateWindow(64, 64, "Procedural effect smoke test", null, null);
+        try
+        {
+            Check(window != null, "OpenGL context creation failed");
+            glfw.MakeContextCurrent(window);
+            using var gl = Silk.NET.OpenGL.GL.GetApi(glfw.GetProcAddress);
+            using var ubo = new SceneUniformBuffer(gl);
+            Mesh.SceneUBO = ubo;
+            ubo.Upload(mat4.Identity, new vec3(0.1f), vec3.UnitY, vec3.Zero, vec3.UnitY, vec3.Zero,
+                vec3.UnitY, vec3.Zero, 0, false, false, false);
+            using var preview = new PreviewRenderer(gl, 160) { Distance = 6f, AutoRotateSpeed = 0f };
+            preview.Render([], "effects", 0);
+            byte[] baseline = ReadPixels();
+            var viewport = new Viewport();
+            var spawn = new SpawnMenu { Viewport = viewport, Gl = gl };
+            foreach (var settings in new[] { ProceduralEffectSettings.Lightning, ProceduralEffectSettings.Portal })
+            {
+                var effect = spawn.SpawnProceduralEffectObject("graphics test", settings)!;
+                var mesh = effect.Visuals.Single();
+                try
+                {
+                    Check(mesh.BoundingSphereRadius > 0f, "Uploaded bounds");
+                    byte[] Render()
+                    {
+                        preview.Render(effect.Visuals, "effects", 0, centerMeshes: true);
+                        return ReadPixels();
+                    }
+                    var first = Render();
+                    int changedPixels = 0;
+                    for (int i = 0; i < first.Length; i += 4)
+                        if (first[i] != baseline[i] || first[i + 1] != baseline[i + 1] || first[i + 2] != baseline[i + 2])
+                            changedPixels++;
+                    Check(changedPixels > 32, $"Effect must actually draw visible pixels; got {changedPixels}");
+                    effect.EvaluateGeometry(0.75f);
+                    Check(!first.SequenceEqual(Render()), "Animated GPU output must change");
+                    effect.EvaluateGeometry(0f);
+                    Check(first.SequenceEqual(Render()), "GPU output must reproduce after backwards seek");
+                    var versionField = typeof(Mesh).GetField("_shadowGeometryVersion", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    int version = (int)versionField.GetValue(mesh)!;
+                    effect.EvaluateGeometry(0f);
+                    Equal(version, (int)versionField.GetValue(mesh)!, "Repeated views must not re-upload geometry");
+                    effect.MaterialSettings!.EmissionEnergy = 0f;
+                    effect.ApplyMaterialSettingsToMeshes();
+                    Check(!first.SequenceEqual(Render()), "Emission energy must affect rendered output");
+                    effect.Settings = settings with { Reveal = 0f };
+                    effect.EvaluateGeometry(0f);
+                    Check(baseline.SequenceEqual(Render()), "Zero reveal must render no pixels");
+                    effect.Settings = settings;
+                    effect.MaterialSettings.EmissionEnergy = 5f;
+                    effect.ApplyMaterialSettingsToMeshes();
+                    effect.EvaluateGeometry(0f);
+                    Check(first.SequenceEqual(Render()), "Empty geometry must rebuild correctly");
+                    Equal(Silk.NET.OpenGL.GLEnum.NoError, gl.GetError(), "OpenGL error");
+                    Console.WriteLine($"PASS {settings.Shape}: {changedPixels} visible pixels; {mesh.Vertices.Count} vertices");
+                }
+                finally
+                {
+                    mesh.Dispose();
+                    viewport.SceneObjects.Remove(effect);
+                }
+            }
+            Mesh.SceneUBO = null;
+
+            byte[] ReadPixels()
+            {
+                byte[] pixels = new byte[160 * 160 * 4];
+                gl.BindTexture(Silk.NET.OpenGL.GLEnum.Texture2D, preview.ColorTexture);
+                fixed (byte* pointer = pixels)
+                    gl.GetTexImage(Silk.NET.OpenGL.GLEnum.Texture2D, 0, Silk.NET.OpenGL.GLEnum.Rgba,
+                        Silk.NET.OpenGL.GLEnum.UnsignedByte, pointer);
+                gl.BindTexture(Silk.NET.OpenGL.GLEnum.Texture2D, 0);
+                return pixels;
+            }
+        }
+        finally
+        {
+            Mesh.SceneUBO = null;
+            if (window != null) glfw.DestroyWindow(window);
+            glfw.Terminate();
+        }
+    }
+
+    private static void EffectDeterminism(Fixture f)
+    {
+        var s = ProceduralEffectSettings.Lightning;
+        var first = ProceduralEffectGeometry.GeneratePaths(s, 1.25f);
+        ProceduralEffectGeometry.GeneratePaths(s, 7f);
+        var replay = ProceduralEffectGeometry.GeneratePaths(s, 1.25f);
+        Equal(first.Count, replay.Count, "Seek must preserve branch count");
+        for (int i = 0; i < first.Count; i++)
+            Check(first[i].Points.SequenceEqual(replay[i].Points), "Random-access evaluation must reproduce every point");
+        var next = ProceduralEffectGeometry.GeneratePaths(s, 1.26f);
+        Check(first[0].Points.SequenceEqual(next[0].Points), "Stepped motion must hold within a refresh interval");
+        var changed = ProceduralEffectGeometry.GeneratePaths(s, 1.35f);
+        Check(!first[0].Points.SequenceEqual(changed[0].Points), "Next refresh must change the bolt");
+        changed = ProceduralEffectGeometry.GeneratePaths(s with { Seed = 42 }, 1.25f);
+        Check(!first[0].Points.SequenceEqual(changed[0].Points), "Seed must affect geometry");
+        s = ProceduralEffectSettings.Portal;
+        first = ProceduralEffectGeometry.GeneratePaths(s, 1.25f);
+        next = ProceduralEffectGeometry.GeneratePaths(s, 1.26f);
+        Check(!first[0].Points.SequenceEqual(next[0].Points), "Smooth motion must evolve inside an interval");
+        var offset = ProceduralEffectGeometry.GeneratePaths(s with { TimeOffset = 1f }, 0.25f);
+        Check(first[0].Points.SequenceEqual(offset[0].Points), "Time offset must agree with direct seek");
+        var frozen = s with { RefreshRate = 0f };
+        Check(ProceduralEffectGeometry.GeneratePaths(frozen, 0f)[0].Points
+            .SequenceEqual(ProceduralEffectGeometry.GeneratePaths(frozen, 10f)[0].Points), "Zero rate freezes motion");
+    }
+
+    private static void EffectPaths(Fixture f)
+    {
+        var s = ProceduralEffectSettings.Lightning;
+        var paths = ProceduralEffectGeometry.GeneratePaths(s, 2f);
+        Equal(s.Branches + 1, paths.Count, "Full reveal branch count");
+        Equal(vec3.Zero, paths[0].Points[0], "Lightning start must be anchored");
+        Equal(new vec3(s.EndX, s.EndY, s.EndZ), paths[0].Points[^1], "Lightning end must be anchored");
+        foreach (var branch in paths.Skip(1))
+        {
+            bool attached = false;
+            var main = paths[0].Points;
+            for (int i = 0; i < main.Length - 1; i++)
+            {
+                vec3 delta = main[i + 1] - main[i];
+                float t = Math.Clamp(vec3.Dot(branch.Points[0] - main[i], delta) / delta.LengthSqr, 0f, 1f);
+                if ((branch.Points[0] - main[i] - delta * t).Length < 0.00001f) attached = true;
+            }
+            Check(attached, "Each branch must start on its parent path");
+        }
+        Equal(0, ProceduralEffectGeometry.GeneratePaths(s with { Reveal = 0f }, 0f).Count, "Hidden reveal");
+        var half = ProceduralEffectGeometry.GeneratePaths(s with { Reveal = 0.5f, Noise = 0f, Branches = 0 }, 0f)[0];
+        Near(new vec3(0, 1.5f, 0), half.Points[^1], "Reveal must trim rather than rescale the full path");
+        var portal = ProceduralEffectGeometry.GeneratePaths(ProceduralEffectSettings.Portal, 0.7f)[0];
+        Check(portal.Closed, "Full ring must be closed");
+        Equal(portal.Points[0], portal.Points[^1], "Ring seam exact equality");
+        portal = ProceduralEffectGeometry.GeneratePaths(ProceduralEffectSettings.Portal with { Reveal = 0.5f }, 0.7f)[0];
+        Check(!portal.Closed && portal.Points[0] != portal.Points[^1], "Partial ring must be an open arc");
+        var helix = ProceduralEffectGeometry.GeneratePaths(s with
+        {
+            Shape = EffectPathShape.Helix, Noise = 0, Branches = 0, Turns = 2, Radius = 2
+        }, 0f)[0];
+        Near(2f, new vec3(helix.Points[0].x, 0, helix.Points[0].z).Length, "Helix radius");
+        Near(3f, helix.Points[^1].y, "Helix axial length");
+    }
+
+    private static void EffectTubes(Fixture f)
+    {
+        var mesh = new Mesh(null!);
+        var s = ProceduralEffectSettings.Lightning with { Noise = 0, Branches = 0, Taper = 0 };
+        ProceduralEffectGeometry.Populate(mesh, s, 0f);
+        Equal(s.Segments * s.Sides * 6 + s.Sides * 6, mesh.Vertices.Count, "Tube plus two caps triangle budget");
+        Equal(mesh.Vertices.Count, mesh.Normals.Count, "Normal stream count");
+        Equal(mesh.Vertices.Count, mesh.TexCoords.Count, "UV stream count");
+        for (int i = 0; i < mesh.Vertices.Count; i++)
+        {
+            Check(float.IsFinite(mesh.Vertices[i].LengthSqr), "Finite positions");
+            Near(1f, mesh.Normals[i].Length, "Unit normals");
+            Check(mesh.TexCoords[i].x is >= 0f and <= 1f && mesh.TexCoords[i].y is >= 0f and <= 1f, "UV domain");
+            if (i < s.Segments * s.Sides * 6)
+                Near(s.Width / 2f, new vec3(mesh.Vertices[i].x, 0, mesh.Vertices[i].z).Length, "Width must be diameter");
+        }
+        for (int i = 0; i < mesh.Vertices.Count; i += 3)
+        {
+            vec3 normal = vec3.Cross(mesh.Vertices[i + 1] - mesh.Vertices[i], mesh.Vertices[i + 2] - mesh.Vertices[i]);
+            Check(vec3.Dot(normal, mesh.Normals[i]) > 0f, "Outward triangle winding, including caps");
+        }
+        s = ProceduralEffectSettings.Portal;
+        ProceduralEffectGeometry.Populate(mesh, s, 0.7f);
+        Equal(s.Segments * s.Sides * 6, mesh.Vertices.Count, "Closed loops have no end caps");
+        for (int j = 0; j < s.Sides; j++)
+        {
+            int first = j * 6;
+            int last = ((s.Segments - 1) * s.Sides + j) * 6 + 2;
+            Equal(mesh.Vertices[first], mesh.Vertices[last], "Welded loop positions");
+            Equal(mesh.Normals[first], mesh.Normals[last], "Welded loop normals");
+        }
+        ProceduralEffectGeometry.Populate(mesh, s with { Reveal = 0 }, 0f);
+        Equal(0, mesh.Vertices.Count, "Empty reveal clears old geometry");
+        Equal(0, mesh.Normals.Count, "Empty reveal clears old normals");
+        Equal(0, mesh.TexCoords.Count, "Empty reveal clears old UVs");
+    }
+
+    private static void EffectLimits(Fixture f)
+    {
+        var s = new ProceduralEffectSettings
+        {
+            Segments = int.MaxValue, Sides = int.MaxValue, Branches = int.MaxValue, NoiseOctaves = int.MaxValue
+        };
+        var mesh = new Mesh(null!);
+        ProceduralEffectGeometry.Populate(mesh, s, 0f);
+        Equal(84168, mesh.Vertices.Count, "Worst-case vertex count must be capped exactly");
+        s = s.Validated();
+        Equal(128, s.Segments, "Segment cap");
+        Equal(12, s.Sides, "Side cap");
+        Equal(16, s.Branches, "Branch cap");
+        Reject(() => (s with { Noise = float.NaN }).Validated(), "Nonfinite noise must fail explicitly");
+        Reject(() => (s with { EndX = float.PositiveInfinity }).Validated(), "Nonfinite endpoint must fail explicitly");
+        Equal(0, ProceduralEffectGeometry.GeneratePaths(s with { EndY = 0, Noise = 0, Branches = 0 }, 0f).Count,
+            "Coincident line endpoints must not generate degenerate geometry");
+        foreach (var shape in Enum.GetValues<EffectPathShape>())
+        {
+            ProceduralEffectGeometry.Populate(mesh, s with { Shape = shape, EndY = 0, Noise = 0, Branches = 0 }, 0f);
+            Check(mesh.Vertices.All(p => float.IsFinite(p.LengthSqr)), "Zero-axis fallback must stay finite");
+        }
+    }
+
+    private static void EffectPersistence(Fixture f)
+    {
+        var effect = new ProceduralEffectSceneObject
+        {
+            Name = "Portal", Settings = ProceduralEffectSettings.Portal with { Seed = 734, Noise = 0.23f, Reveal = 0.75f }
+        };
+        effect.Keyframes["effect.radius"] = [new ObjectKeyframe { Frame = 4, Value = 2f }];
+        var (manifest, _) = f.Roundtrip(effect);
+        Equal(effect.Settings, manifest.Root.ProceduralEffect, "Source-generated settings roundtrip");
+        Check(manifest.Root.Keyframes.ContainsKey("effect.radius"), "Archive effect keyframes");
+        var viewport = new Viewport();
+        var spawn = new SpawnMenu { Viewport = viewport };
+        var imported = ProjectSceneSerializer.SpawnObjectFromEntry(manifest.Root, viewport, spawn) as ProceduralEffectSceneObject;
+        Check(imported != null, "Import must preserve runtime type");
+        Equal(effect.Settings, imported!.Settings, "Import settings");
+        Check(effect.ObjectId != imported.ObjectId, "Independent imported ID");
+        var libraryClone = typeof(PropertiesPanel).GetMethod("CloneLibraryEntryRecursive", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var clonedEntry = (ProjectSceneObjectEntry)libraryClone.Invoke(null, [manifest.Root])!;
+        Equal(effect.Settings, clonedEntry.ProceduralEffect, "Object library clone settings");
+        var duplicate = typeof(SceneTree).GetMethod("CreateSceneObjectDuplicate", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var clone = (ProceduralEffectSceneObject)duplicate.Invoke(new SceneTree(), [effect, new Dictionary<string, string>()])!;
+        Equal(effect.Settings, clone.Settings, "Scene duplicate settings");
+        clone.Settings = clone.Settings with { Radius = 8f };
+        Check(effect.Settings.Radius != clone.Settings.Radius, "Immutable settings keep duplicates independent");
+        Near(effect.MaterialSettings!.EmissionEnergy, clone.MaterialSettings!.EmissionEnergy, "Duplicate material emission");
+    }
+
+    private static void EffectSnapshots(Fixture f)
+    {
+        var effect = new ProceduralEffectSceneObject { Settings = ProceduralEffectSettings.Portal };
+        var snapshot = ProjectSceneSerializer.SerializeObjectForLibrary(effect);
+        var fingerprint = typeof(ProjectSceneSerializer).Assembly.GetType("MineImatorSimplyRemade.core.project.SceneObjectFingerprint")!
+            .GetMethod("Compute", BindingFlags.Static | BindingFlags.Public)!;
+        ulong Hash() => (ulong)fingerprint.Invoke(null, [new List<SceneObject> { effect }])!;
+        ulong originalHash = Hash();
+        foreach (var control in ProceduralEffectSettings.Controls)
+        {
+            var original = effect.Settings;
+            float value = control.Read(original);
+            effect.Settings = control.Set(original, value == control.Max ? control.Min : control.Max);
+            Check(originalHash != Hash(), $"Dirty detection must include {control.Path}");
+            effect.Settings = original;
+        }
+        effect.Settings = effect.Settings with { Radius = 12f };
+        typeof(ProjectSceneSerializer).GetMethod("ApplyEntryToObject", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [effect, snapshot, null]);
+        Equal(ProceduralEffectSettings.Portal, effect.Settings, "Undo snapshot restoration");
+        Equal(originalHash, Hash(), "Restored fingerprint");
+    }
+
+    private static void EffectTimeline(Fixture f)
+    {
+        var timeline = new Timeline();
+        var effect = new ProceduralEffectSceneObject();
+        var get = typeof(Timeline).GetMethod("GetPropertyValue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var set = typeof(Timeline).GetMethod("SetPropertyValue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var interpolate = typeof(Timeline).GetMethod("InterpolateKeyframes", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var paths = ((IEnumerable<string>)typeof(Timeline).GetMethod("GetKeyframePropertyPaths", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [effect])!).ToHashSet();
+        foreach (var control in ProceduralEffectSettings.Controls)
+        {
+            Check(paths.Contains(control.Path), $"Discover {control.Path}");
+            set.Invoke(timeline, [effect, control.Path, control.Max]);
+            Near(control.Max, Convert.ToSingle(get.Invoke(timeline, [effect, control.Path])), $"Read/write {control.Path}");
+            var keys = new List<TimelineKeyframe>
+            {
+                new() { Frame = 0, Value = control.Min }, new() { Frame = 10, Value = control.Max }
+            };
+            float expected = control.Discrete ? control.Min : (control.Min + control.Max) * 0.5f;
+            Near(expected, Convert.ToSingle(interpolate.Invoke(timeline, [keys, control.Path, 5, false])),
+                $"Interpolation {control.Path}");
+        }
     }
 
     private static void MiTextureSentinels(Fixture f)

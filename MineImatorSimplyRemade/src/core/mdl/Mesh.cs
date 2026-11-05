@@ -1298,6 +1298,7 @@ public class Mesh : IDisposable
     /// </summary>
     public unsafe void Render(mat4 model, mat4 view, mat4 proj, HashSet<uint>? preparedMipmaps = null)
     {
+        if (Vertices.Count == 0) return;
         if (_vao == 0 || _shader == null)
         {
             Console.Error.WriteLine($"Render skipped: vao={_vao} shader null={_shader == null}");

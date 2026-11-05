@@ -273,6 +273,7 @@ public class SpawnMenu : UiPanel
             { "Equipment",    new List<string>() },
             { "Props",        new List<string>() },
             { "Particle Spawners", new List<string> { "Particle Spawner" } },
+            { "Effects", new List<string> { "Lightning", "Ring / Portal", "Procedural Effect" } },
             { "Scenery",      new List<string> { SceneryLoadLabel, WorldImportLabel } },
             { "Custom Models", new List<string> { "Load..." } }
         };
@@ -469,7 +470,7 @@ public class SpawnMenu : UiPanel
             _localizationRevision = Localization.Revision;
             // Translated search results may reorder the index-based selection.
             if (!string.IsNullOrEmpty(_searchQuery) &&
-                _selectedCategory is "Camera" or "Light" or "Primitives" or "Scenery" or "Particle Spawners" or "Custom Models")
+                _selectedCategory is "Camera" or "Light" or "Primitives" or "Scenery" or "Particle Spawners" or "Effects" or "Custom Models")
             {
                 _selectedObjectIndex = -1;
                 _selectedVariantIndex = -1;
@@ -592,7 +593,7 @@ public class SpawnMenu : UiPanel
 
         // Render into FBO every frame (so auto-rotation plays)
         _previewRenderer.Render(_previewMeshes, _previewKey, deltaTime, sceneRoot: _previewCharacter,
-            centerMeshes: _selectedCategory == "Blocks");
+            centerMeshes: _selectedCategory is "Blocks" or "Effects");
     }
 
     /// <summary>Returns a string that uniquely identifies the current selection.</summary>
@@ -632,6 +633,7 @@ public class SpawnMenu : UiPanel
             "Items"      => 2.2f,
             "Camera"     => 3.5f,
             "Primitives" => 2.2f,
+            "Effects" => 5f,
             "Characters" or "Equipment" or "Props" => 3.5f,
             _            => 2.5f
         };
@@ -717,6 +719,22 @@ public class SpawnMenu : UiPanel
                     meshes.AddRange(topMeshes);
                 }
                 return meshes;
+            }
+
+            case "Effects":
+            {
+                var filtered = GetFilteredObjects();
+                if (_selectedObjectIndex < 0 || _selectedObjectIndex >= filtered.Count)
+                    return new List<Mesh>();
+                var effect = new ProceduralEffectSceneObject
+                {
+                    Settings = filtered[_selectedObjectIndex] == "Ring / Portal"
+                        ? ProceduralEffectSettings.Portal : ProceduralEffectSettings.Lightning
+                };
+                effect.AddMesh(new Mesh(Gl));
+                effect.EvaluateGeometry(0f);
+                effect.ApplyMaterialSettingsToMeshes();
+                return effect.Visuals.ToList();
             }
 
             case "Primitives":
@@ -1080,7 +1098,7 @@ public class SpawnMenu : UiPanel
                     ? objectList
                     : objectList
                         .Where(o => o.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
-                            ((_selectedCategory is "Camera" or "Light" or "Primitives" or "Scenery" or "Particle Spawners" ||
+                            ((_selectedCategory is "Camera" or "Light" or "Primitives" or "Scenery" or "Particle Spawners" or "Effects" ||
                               (_selectedCategory == "Custom Models" && o == "Load...")) &&
                              Localization.DisplayText(o).Contains(_searchQuery, StringComparison.OrdinalIgnoreCase)))
                         .ToList();
@@ -1297,7 +1315,7 @@ public class SpawnMenu : UiPanel
             ImGui.Spacing();
 
             // Centred name label
-            CentreText(_selectedCategory is "Camera" or "Light" or "Primitives" or "Scenery"
+            CentreText(_selectedCategory is "Camera" or "Light" or "Primitives" or "Scenery" or "Effects"
                 ? Localization.DisplayText(objectName) : objectName);
         }
         else
@@ -5281,6 +5299,12 @@ public class SpawnMenu : UiPanel
                 SpawnWithCursor(() => SpawnLightObject(fullName, objectName));
                 break;
 
+            case "Effects":
+                var settings = objectName == "Ring / Portal"
+                    ? ProceduralEffectSettings.Portal : ProceduralEffectSettings.Lightning;
+                SpawnWithCursor(() => SpawnProceduralEffectObject(fullName, settings));
+                break;
+
             case "Custom Models":
                 SpawnCustomModel(objectName);
                 break;
@@ -5442,6 +5466,21 @@ public class SpawnMenu : UiPanel
     }
 
     // ── Public spawn helpers ─────────────────────────────────────────────────
+
+    public ProceduralEffectSceneObject? SpawnProceduralEffectObject(string objectName, ProceduralEffectSettings settings)
+    {
+        if (Viewport == null) return null;
+        var obj = new ProceduralEffectSceneObject { Name = objectName, Settings = settings };
+        obj.AssignObjectId();
+        if (Gl != null)
+        {
+            obj.AddMesh(new Mesh(Gl));
+            obj.EvaluateGeometry(0f);
+            obj.ApplyMaterialSettingsToMeshes();
+        }
+        Viewport.SceneObjects.Add(obj);
+        return obj;
+    }
 
     public ParticleSpawnerSceneObject? SpawnParticleSpawnerObject(
         string objectName,
@@ -6134,7 +6173,7 @@ public class SpawnMenu : UiPanel
         return string.IsNullOrEmpty(_searchQuery)
             ? all
             : all.Where(o => o.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
-                ((_selectedCategory is "Camera" or "Light" or "Primitives" or "Scenery" or "Particle Spawners" ||
+                ((_selectedCategory is "Camera" or "Light" or "Primitives" or "Scenery" or "Particle Spawners" or "Effects" ||
                   (_selectedCategory == "Custom Models" && o == "Load...")) &&
                  Localization.DisplayText(o).Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))).ToList();
     }

@@ -218,6 +218,10 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.TextMeshOutlineEnabled);
         hash.Add(obj.TextMeshOutlineColor);
         hash.Add(obj.TextMeshOutlineThickness);
+        hash.Add(obj is ProceduralEffectSceneObject);
+        if (obj is ProceduralEffectSceneObject procedural)
+            foreach (var control in ProceduralEffectSettings.Controls)
+                hash.Add(control.Read(procedural.Settings));
 
         if (obj is { HasExplicitMaterialSettings: true, MaterialSettings: { } material })
         {
