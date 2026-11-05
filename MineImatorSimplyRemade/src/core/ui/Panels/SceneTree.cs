@@ -887,6 +887,19 @@ public class SceneTree : UiPanel
                 dup = new ParticleSpawnerSceneObject
                 {
                     ParticleLibraryEntryId = particleSpawner.ParticleLibraryEntryId,
+                    Seed = particleSpawner.Seed,
+                    Freeze = particleSpawner.Freeze,
+                    AttractorObjectId = particleSpawner.AttractorObjectId,
+                    AttractorForce = particleSpawner.AttractorForce,
+                    SimulationSpeed = particleSpawner.SimulationSpeed,
+                    LinearDamping = particleSpawner.LinearDamping,
+                    AngularDamping = particleSpawner.AngularDamping,
+                    EmissionShape = particleSpawner.EmissionShape,
+                    UseDirectionalEmission = particleSpawner.UseDirectionalEmission,
+                    Direction = particleSpawner.Direction,
+                    SpreadDegrees = particleSpawner.SpreadDegrees,
+                    InitialSpeedMin = particleSpawner.InitialSpeedMin,
+                    InitialSpeedMax = particleSpawner.InitialSpeedMax,
                     ParticleLibraryDisplayName = particleSpawner.ParticleLibraryDisplayName,
                     Emitting = particleSpawner.Emitting,
                     OneShot = particleSpawner.OneShot,
@@ -908,6 +921,7 @@ public class SceneTree : UiPanel
                     EndScaleMax = particleSpawner.EndScaleMax,
                     TopLevelParticles = particleSpawner.TopLevelParticles
                 };
+                ((ParticleSpawnerSceneObject)dup).SetPreset(particleSpawner.Preset);
                 break;
 
             case LightSceneObject light:

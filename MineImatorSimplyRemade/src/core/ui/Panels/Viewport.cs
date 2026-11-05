@@ -1890,20 +1890,20 @@ public class Viewport : UiPanel
             (_showHiddenObjects || !obj.IsHiddenForRendering()))
         {
             vec3 extents = new vec3(
-                MathF.Max(0f, spawner.SpawnBoxExtents.x),
-                MathF.Max(0f, spawner.SpawnBoxExtents.y),
-                MathF.Max(0f, spawner.SpawnBoxExtents.z));
+                MathF.Max(0f, spawner.EmissionExtents.x),
+                MathF.Max(0f, spawner.EmissionExtents.y),
+                MathF.Max(0f, spawner.EmissionExtents.z));
 
             vec3 emissionScale = new vec3(
                 MathF.Max(0.0001f, extents.x * 2f),
                 MathF.Max(0.0001f, extents.y * 2f),
                 MathF.Max(0.0001f, extents.z * 2f));
 
-            mat4 baseTransform = spawner.TopLevelParticles
+            mat4 baseTransform = spawner.TopLevelParticles || spawner.Preset != null
                 ? mat4.Translate(spawner.GetWorldPosition())
                 : spawner.GetWorldMatrix();
 
-            if (spawner.EmissionShape == ParticleEmissionShape.Box)
+            if (spawner.EffectiveEmissionShape == ParticleEmissionShape.Box)
             {
                 mat4 boxModel = baseTransform * mat4.Scale(emissionScale);
                 RenderMeshWithModeOverride(_particleEmissionWireCube!, boxModel, view, proj, true, includeFog: false);
@@ -5360,7 +5360,8 @@ public class Viewport : UiPanel
         mat4 translation = mat4.Translate(worldPos);
         mat4 scaling = mat4.Scale(scale);
         mat4 pivot = mat4.Translate(obj.PivotOffset);
-        return translation * rotation * scaling * pivot;
+        mat4 roll = obj is ParticleSpriteSceneObject sprite ? mat4.RotateZ(sprite.RollRadians) : mat4.Identity;
+        return translation * rotation * roll * scaling * pivot;
     }
 
     private static void UpdateProceduralEffects(IReadOnlyList<SceneObject> objects, float seconds)
@@ -5380,10 +5381,7 @@ public class Viewport : UiPanel
             return;
 
         SelectionManager? selection = SelectionManager.Instance;
-        if (!timelinePlaying && (!ParticlePreviewEnabled || selection == null || selection.SelectedObjects.Count == 0))
-            return;
-
-        float timelineSeconds = timelinePlaying ? GetTimelineEffectTimeSeconds() : 0f;
+        float timelineSeconds = GetTimelineEffectTimeSeconds();
         _particleSpawnersToUpdate.Clear();
         try
         {
@@ -5395,7 +5393,7 @@ public class Viewport : UiPanel
                                        selection != null &&
                                        selection.IsSelected(spawner);
 
-                if (timelinePlaying)
+                if (timelinePlaying || !previewSelected && spawner.Preset != null)
                     spawner.SimulateToTime(timelineSeconds, this, SpawnMenu);
                 else if (previewSelected)
                     spawner.Step(deltaTime, this, SpawnMenu);

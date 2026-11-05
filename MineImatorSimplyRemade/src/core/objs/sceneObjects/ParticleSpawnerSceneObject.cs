@@ -1,4 +1,5 @@
 using GlmSharp;
+using System.Text.Json.Nodes;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -31,6 +32,15 @@ public class ParticleSpawnerSceneObject : SceneObject
     private bool _oneShotFired;
     private float _simulatedTimeSeconds;
     private Viewport? _runtimeViewport;
+    private ParticlePreset? _preset;
+    private ParticlePresetSimulation? _presetSimulation;
+    private readonly Dictionary<ParticlePresetSimulation.Particle, SceneObject> _presetObjects = new();
+
+    public JsonObject? Preset => _preset?.Document;
+    public int Seed = 0;
+    public bool Freeze = false;
+    public string AttractorObjectId = "";
+    public float AttractorForce = 0f;
 
     public string ParticleLibraryEntryId = "";
     public string ParticleLibraryDisplayName = "";
@@ -70,7 +80,27 @@ public class ParticleSpawnerSceneObject : SceneObject
     public float EndScaleMax = 0.25f;
     public bool TopLevelParticles = false;
 
-    public int ActiveParticleCount => _particles.Count;
+    public int ActiveParticleCount => _presetSimulation?.Particles.Count ?? _particles.Count;
+
+    public vec3 EmissionExtents => _preset == null ? SpawnBoxExtents :
+        !ParticlePreset.Flag(_preset.Settings, "spawn_region_use") ? vec3.Zero :
+        ParticlePreset.Text(_preset.Settings, "spawn_region_type", "box") switch
+        {
+            "sphere" => new vec3(ParticlePreset.Number(_preset.Settings, "spawn_region_sphere_radius") / 16f),
+            "cube" => new vec3(ParticlePreset.Number(_preset.Settings, "spawn_region_cube_size") / 32f),
+            _ => ParticlePreset.Vector(_preset.Settings, "spawn_region_box_size") / 32f
+        };
+
+    public ParticleEmissionShape EffectiveEmissionShape => _preset == null ? EmissionShape :
+        ParticlePreset.Text(_preset.Settings, "spawn_region_type") == "sphere"
+            ? ParticleEmissionShape.Sphere : ParticleEmissionShape.Box;
+
+    public void SetPreset(JsonObject? document)
+    {
+        ParticlePreset? preset = document == null ? null : new ParticlePreset(document);
+        ResetRuntime();
+        _preset = preset;
+    }
 
     public ParticleSpawnerSceneObject()
     {
@@ -83,6 +113,7 @@ public class ParticleSpawnerSceneObject : SceneObject
     {
         ParticleLibraryEntryId = libraryEntryId ?? "";
         ParticleLibraryDisplayName = displayName ?? "";
+        _preset = null;
         ResetRuntime();
     }
 
@@ -96,6 +127,10 @@ public class ParticleSpawnerSceneObject : SceneObject
             RemoveRuntimeNode(particle.Root, _runtimeViewport);
 
         _particles.Clear();
+        foreach (SceneObject obj in _presetObjects.Values)
+            RemoveRuntimeNode(obj, _runtimeViewport);
+        _presetObjects.Clear();
+        _presetSimulation = null;
     }
 
     public void Step(float deltaTime, Viewport viewport, SpawnMenu spawnMenu)
@@ -108,6 +143,7 @@ public class ParticleSpawnerSceneObject : SceneObject
         float dt = MathF.Min(deltaTime, 0.1f);
         StepInternal(dt, viewport, spawnMenu);
         _simulatedTimeSeconds += dt;
+        if (_preset != null) SyncPresetObjects(viewport, spawnMenu);
     }
 
     public void SimulateToTime(float timelineSeconds, Viewport viewport, SpawnMenu spawnMenu)
@@ -131,6 +167,7 @@ public class ParticleSpawnerSceneObject : SceneObject
         }
 
         _simulatedTimeSeconds = target;
+        if (_preset != null) SyncPresetObjects(viewport, spawnMenu);
     }
 
     private void StepInternal(float dt, Viewport viewport, SpawnMenu spawnMenu)
@@ -140,6 +177,11 @@ public class ParticleSpawnerSceneObject : SceneObject
             return;
 
         dt *= simulationSpeed;
+        if (_preset != null)
+        {
+            AdvancePreset(dt, viewport);
+            return;
+        }
 
         float minLifetime = MathF.Max(0.01f, MathF.Min(LifetimeMin, LifetimeMax));
         float maxLifetime = MathF.Max(minLifetime, MathF.Max(LifetimeMin, LifetimeMax));
@@ -191,7 +233,6 @@ public class ParticleSpawnerSceneObject : SceneObject
             }
 
             _oneShotFired = true;
-            Emitting = false;
             return;
         }
 
@@ -211,6 +252,80 @@ public class ParticleSpawnerSceneObject : SceneObject
             if (!TrySpawnParticle(viewport, spawnMenu, minLifetime, maxLifetime))
                 break;
         }
+    }
+
+    private void AdvancePreset(float dt, Viewport viewport)
+    {
+        if (Freeze) return;
+        _presetSimulation ??= new ParticlePresetSimulation(_preset!, Seed);
+        SceneObject? attractor = FindSceneObject(viewport.SceneObjects, AttractorObjectId);
+        _presetSimulation.AttractorPosition = attractor?.GetWorldPosition();
+        _presetSimulation.AttractorForce = AttractorForce;
+        mat4 world = GetWorldMatrixNoPivot();
+        vec3 scale = new(new vec3(world.m00, world.m01, world.m02).Length,
+            new vec3(world.m10, world.m11, world.m12).Length,
+            new vec3(world.m20, world.m21, world.m22).Length);
+        mat4 rotation = world * mat4.Scale(new vec3(1f / Math.Max(scale.x, 1e-6f),
+            1f / Math.Max(scale.y, 1e-6f), 1f / Math.Max(scale.z, 1e-6f)));
+        rotation.m30 = rotation.m31 = rotation.m32 = 0;
+        _presetSimulation.Advance(dt, Emitting, GetWorldPosition(), rotation);
+    }
+
+    private void SyncPresetObjects(Viewport viewport, SpawnMenu spawnMenu)
+    {
+        if (_presetSimulation == null) return;
+        MaterialSettings material = GetEffectiveMaterialSettings();
+        var active = _presetSimulation.Particles.ToHashSet();
+        foreach (var pair in _presetObjects.ToArray())
+            if (!active.Contains(pair.Key))
+            {
+                RemoveRuntimeNode(pair.Value, viewport);
+                _presetObjects.Remove(pair.Key);
+            }
+        foreach (var particle in _presetSimulation.Particles)
+        {
+            if (!_presetObjects.TryGetValue(particle, out SceneObject? root))
+            {
+                root = spawnMenu.CreatePresetParticle(_preset!, particle.TypeIndex);
+                MarkRuntimeNode(root);
+                viewport.SceneObjects.Add(root);
+                _presetObjects.Add(particle, root);
+            }
+            root.SetLocalPosition(particle.Position);
+            mat4 rotation = particle.RotationPrefix * ParticlePresetSimulation.DegreesRotation(particle.Rotation);
+            root.SetLocalRotationMatrix(rotation,
+                MineImatorSimplyRemade.core.mdl.mineImator.MineImatorLoader.MatrixToEulerRzRyRx(rotation));
+            root.SetLocalScale(new vec3(particle.Scale));
+            if (root is ParticleSpriteSceneObject sprite)
+            {
+                sprite.RollRadians = particle.SpriteAngle * MathF.PI / 180f;
+                spawnMenu.SetPresetParticleFrame(sprite, particle.Frame);
+            }
+            ApplyParticleColor(root, particle.Color, Math.Clamp(particle.Alpha, 0, 1), material);
+        }
+    }
+
+    private static void ApplyParticleColor(SceneObject obj, vec3 color, float alpha, MaterialSettings source)
+    {
+        obj.SetExplicitMaterialSettings();
+        var material = source.Clone();
+        material.AlbedoColor *= new vec4(color, alpha);
+        material.DoubleSided |= obj is ParticleSpriteSceneObject;
+        obj.MaterialSettings = material;
+        foreach (SceneObject child in obj.Children)
+            ApplyParticleColor(child, color, alpha, source);
+    }
+
+    private static SceneObject? FindSceneObject(IEnumerable<SceneObject> objects, string id)
+    {
+        if (string.IsNullOrEmpty(id)) return null;
+        foreach (SceneObject obj in objects)
+        {
+            if (obj.ObjectId == id) return obj;
+            SceneObject? nested = FindSceneObject(obj.Children, id);
+            if (nested != null) return nested;
+        }
+        return null;
     }
 
     private bool TrySpawnParticle(Viewport viewport, SpawnMenu spawnMenu, float minLifetime, float maxLifetime)

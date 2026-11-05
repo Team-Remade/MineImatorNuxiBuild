@@ -1300,7 +1300,8 @@ public class SceneObject
         }
 
         using var timing = FrameProfiler.Shared.Measure(ProfileStage.VisibilityEvaluation);
-        bool visible = ObjectVisible && (!_inheritVisibility || Parent == null || Parent.GetEffectiveVisibility());
+        bool visible = ObjectVisible && (!_inheritVisibility || Parent == null || Parent.GetEffectiveVisibility()) &&
+                       (RuntimeHiddenParent == null || RuntimeHiddenParent.GetEffectiveVisibility());
         if (evaluation != 0)
         {
             _evaluatedVisibility = visible;

@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using GlmSharp;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -306,6 +307,11 @@ internal static class SceneObjectFingerprint
         hash.Add(obj is ParticleSpawnerSceneObject);
         if (obj is ParticleSpawnerSceneObject particle)
         {
+            hash.AddNode(particle.Preset);
+            hash.Add(particle.Seed);
+            hash.Add(particle.Freeze);
+            hash.Add(particle.AttractorObjectId);
+            hash.Add(particle.AttractorForce);
             hash.Add(particle.ParticleLibraryEntryId);
             hash.Add(particle.ParticleLibraryDisplayName);
             hash.Add(particle.Emitting);
@@ -501,6 +507,32 @@ internal static class SceneObjectFingerprint
         public void Add(CameraEffectType value) => Add((int)value);
         public void Add(CameraShakeMode value) => Add((int)value);
         public void Add(LightType value) => Add((int)value);
+
+        public void AddNode(JsonNode? node)
+        {
+            switch (node)
+            {
+                case null: Add(0); break;
+                case JsonObject obj:
+                    Add(1); Add(obj.Count);
+                    foreach (var pair in obj) { Add(pair.Key); AddNode(pair.Value); }
+                    break;
+                case JsonArray array:
+                    Add(2); Add(array.Count);
+                    foreach (JsonNode? item in array) AddNode(item);
+                    break;
+                case JsonValue value:
+                    Add(3);
+                    if (value.TryGetValue<JsonElement>(out var json)) AddJson(json);
+                    else if (value.TryGetValue<bool>(out bool flag)) { Add(1); Add(flag); }
+                    else if (value.TryGetValue<string>(out string? text)) { Add(2); Add(text); }
+                    else if (value.TryGetValue<float>(out float number)) { Add(3); Add(number); }
+                    else if (value.TryGetValue<int>(out int integer)) { Add(4); Add(integer); }
+                    else if (value.TryGetValue<double>(out double real)) { Add(5); Add(BitConverter.DoubleToInt64Bits(real)); }
+                    else throw new NotSupportedException("Unsupported particle parameter value.");
+                    break;
+            }
+        }
 
         public void Add(string? value)
         {

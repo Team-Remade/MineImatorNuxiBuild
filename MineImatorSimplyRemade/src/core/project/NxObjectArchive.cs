@@ -350,6 +350,7 @@ public static class NxObjectArchive
         foreach (var node in Walk(root))
         {
             node.CameraTextureObjectId = Reference(node.CameraTextureObjectId);
+            node.ParticleAttractorObjectId = Reference(node.ParticleAttractorObjectId);
             foreach (var constraint in node.CopyConstraints ?? []) constraint.TargetObjectId = Reference(constraint.TargetObjectId);
             foreach (var constraint in node.BoneConstraints ?? [])
             {

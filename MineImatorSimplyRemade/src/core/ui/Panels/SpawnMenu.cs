@@ -1,5 +1,7 @@
 using System.Numerics;
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade;
@@ -126,6 +128,28 @@ public class SpawnMenu : UiPanel
     private string _particleLibrarySearchBuffer = "";
     private string _particleLibrarySearchQuery = "";
     private string _selectedParticleLibraryEntryId = "";
+    private List<string>? _particlePresetFiles;
+
+    private List<string> GetParticleSpawnerOptions()
+    {
+        _particlePresetFiles ??= ParticlePreset.EnumerateFiles(
+            Path.Combine(AppContext.BaseDirectory, "data", "Particles")).ToList();
+        return new[] { "Particle Spawner" }.Concat(_particlePresetFiles.Select(ParticlePresetLabel))
+            .Where(name => string.IsNullOrEmpty(_searchQuery) || name.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private static string ParticlePresetLabel(string path) =>
+        Path.Combine(Path.GetFileName(Path.GetDirectoryName(path))!, Path.GetFileNameWithoutExtension(path));
+
+    private string? SelectedParticlePresetPath
+    {
+        get
+        {
+            string? label = GetParticleSpawnerOptions().ElementAtOrDefault(_selectedObjectIndex);
+            return _particlePresetFiles?.FirstOrDefault(path => ParticlePresetLabel(path) == label);
+        }
+    }
 
     // Custom-model history (in-memory; load/save not yet implemented)
     private readonly List<string>             _customModelHistory = new();
@@ -1946,7 +1970,7 @@ public class SpawnMenu : UiPanel
         UiText.Disabled(Localization.T("text.panel.spawn.objects"));
         ImGui.Separator();
 
-        var filtered = GetFilteredObjects();
+        var filtered = GetParticleSpawnerOptions();
         for (int i = 0; i < filtered.Count; i++)
         {
             bool selected = _selectedObjectIndex == i;
@@ -1969,6 +1993,12 @@ public class SpawnMenu : UiPanel
     private void RenderParticleSpawnerVariantsColumn(float columnWidth)
     {
         ImGui.BeginChild("##particleSpawnerVariants", new Vector2(columnWidth, 0), ImGuiChildFlags.Borders);
+        if (SelectedParticlePresetPath != null)
+        {
+            UiText.Wrapped(Localization.T("text.particles.preset_source"));
+            ImGui.EndChild();
+            return;
+        }
         UiText.Disabled(Localization.T("text.common.particle_source"));
         ImGui.Separator();
 
@@ -2019,6 +2049,14 @@ public class SpawnMenu : UiPanel
         ImGui.Spacing();
         CentreText(Localization.T("text.common.particle_spawner"));
         ImGui.Spacing();
+
+        if (SelectedParticlePresetPath is { } presetPath)
+        {
+            CentreText(Path.GetFileNameWithoutExtension(presetPath));
+            UiText.Wrapped(Localization.T("text.particles.preset_edit_hint"));
+            ImGui.EndChild();
+            return;
+        }
 
         var selected = GetParticleLibraryOptions().FirstOrDefault(o =>
             string.Equals(o.Id, _selectedParticleLibraryEntryId, StringComparison.OrdinalIgnoreCase));
@@ -2222,7 +2260,7 @@ public class SpawnMenu : UiPanel
             return !string.IsNullOrEmpty(_selectedTileKey);
 
         if (_selectedCategory == "Particle Spawners")
-            return _selectedObjectIndex >= 0;
+            return _selectedObjectIndex >= 0 && _selectedObjectIndex < GetParticleSpawnerOptions().Count;
 
         if (_selectedObjectIndex < 0) return false;
 
@@ -5184,12 +5222,26 @@ public class SpawnMenu : UiPanel
         if (_selectedObjectIndex < 0)
             return;
 
-        string baseName = "Particle Spawner";
+        string? presetPath = SelectedParticlePresetPath;
+        string baseName = presetPath == null ? "Particle Spawner" : Path.GetFileNameWithoutExtension(presetPath);
         int nextNum = GetNextAvailableObjectNumber(baseName);
         string fullName = nextNum > 1 ? $"{baseName}{nextNum}" : baseName;
 
         string libraryEntryId = _selectedParticleLibraryEntryId;
-        SpawnWithCursor(() => SpawnParticleSpawnerObject(fullName, libraryEntryId));
+        SpawnWithCursor(() =>
+        {
+            try
+            {
+                return presetPath == null ? SpawnParticleSpawnerObject(fullName, libraryEntryId) :
+                    SpawnParticlePresetObject(fullName, presetPath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                Console.Error.WriteLine($"Failed to load particle preset '{presetPath}': {ex.Message}");
+                _objectImportError = ex.Message;
+                return null;
+            }
+        });
         _isOpen = false;
     }
 
@@ -5523,6 +5575,78 @@ public class SpawnMenu : UiPanel
 
         Viewport.SceneObjects.Add(obj);
         return obj;
+    }
+
+    public ParticleSpawnerSceneObject? SpawnParticlePresetObject(string objectName, string filePath)
+    {
+        ParticlePreset preset = ParticlePreset.Load(filePath);
+        ValidatePresetTextures(preset);
+        ParticleSpawnerSceneObject? obj = SpawnParticleSpawnerObject(objectName, "");
+        obj?.SetPreset(preset.Document);
+        return obj;
+    }
+
+    private static string PresetTexturePath(string sprite, int frame)
+    {
+        int frames = ParticlePreset.Sprite(sprite).Frames;
+        string name = frames > 1 ? $"{sprite}_{frame}" : sprite;
+        return Path.Combine(MinecraftDataLoader.GetVersionRoot(), "textures", "particle", name + ".png");
+    }
+
+    private static void ValidatePresetTextures(ParticlePreset preset)
+    {
+        foreach (JsonObject type in preset.Types)
+        {
+            if (ParticlePreset.Text(type, "temp_type", "template") != "template") continue;
+            string sprite = ParticlePreset.Text(type, "sprite_template", "generic");
+            for (int frame = 0; frame < ParticlePreset.Sprite(sprite).Frames; frame++)
+                if (!File.Exists(PresetTexturePath(sprite, frame)))
+                    throw new FileNotFoundException("Particle sprite texture is missing.", PresetTexturePath(sprite, frame));
+        }
+    }
+
+    internal SceneObject CreatePresetParticle(ParticlePreset preset, int typeIndex)
+    {
+        JsonObject type = preset.Types[typeIndex];
+        if (ParticlePreset.Text(type, "temp_type", "template") == "templateobj")
+        {
+            JsonObject templateData = ((JsonArray)preset.Document["templates"]!).OfType<JsonObject>()
+                .First(template => ParticlePreset.Text(template, "id") == ParticlePreset.Text(type, "temp"));
+            MiTemplate template = JsonSerializer.Deserialize(templateData, AppJsonContext.Default.MiTemplate)!;
+            SceneObject blockParticle = MiObjectTemplateFactory.Create(MineImatorLoader.Instance, Gl, template, new MiTimeline(),
+                new Dictionary<string, MiResource>(), "") ??
+                throw new InvalidDataException($"Could not create particle block '{template.Id}'.");
+            blockParticle.PivotOffset = new vec3(-blockParticle.TileX, -blockParticle.TileY, -blockParticle.TileZ) * 0.5f;
+            if (Gl != null && blockParticle.Visuals.Count == 0)
+                throw new InvalidDataException($"Particle block '{blockParticle.ObjectType}' has no renderable Minecraft model.");
+            return blockParticle;
+        }
+        string sprite = ParticlePreset.Text(type, "sprite_template", "generic");
+        var obj = new ParticleSpriteSceneObject { SpriteTemplate = sprite, PivotOffset = vec3.Zero };
+        obj.SetExplicitMaterialSettings();
+        obj.MaterialSettings.DoubleSided = true;
+        if (Gl != null)
+        {
+            float size = ParticlePreset.Sprite(sprite).Size;
+            obj.AddMesh(new PlaneMesh(Gl, size, size, PlaneOrientation.XY) { IsTranslucent = true });
+        }
+        return obj;
+    }
+
+    internal void SetPresetParticleFrame(ParticleSpriteSceneObject obj, int frame)
+    {
+        if (obj.CurrentFrame == frame) return;
+        obj.CurrentFrame = frame;
+        string path = PresetTexturePath(obj.SpriteTemplate, frame);
+        obj.AlbedoTexturePath = path;
+        if (Gl != null)
+        {
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Particle sprite texture is missing.", path);
+            uint texture = MineImatorLoader.Instance.LoadTextureFromFile(path);
+            if (texture == 0) throw new IOException($"Could not load particle texture '{path}'.");
+            foreach (var mesh in obj.Visuals) mesh.TextureId = texture;
+        }
     }
 
     /// <summary>Creates and registers a <see cref="CameraSceneObject"/> in the viewport.</summary>
@@ -6167,6 +6291,8 @@ public class SpawnMenu : UiPanel
 
     private List<string> GetFilteredObjects()
     {
+        if (_selectedCategory == "Particle Spawners")
+            return GetParticleSpawnerOptions();
         if (!_categories.TryGetValue(_selectedCategory, out var all))
             return new List<string>();
 

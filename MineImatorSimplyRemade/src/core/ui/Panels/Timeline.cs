@@ -2745,8 +2745,11 @@ public class Timeline : UiPanel
                         ? GetIkPropertyPaths(bone, index) : Array.Empty<string>()));
         if (obj is CameraSceneObject cameraObj)
             paths = paths.Concat(GetCameraEffectPropertyPaths(cameraObj));
-        if (obj is ParticleSpawnerSceneObject)
-            paths = paths.Concat(particleScalarPaths).Concat(particleVectorPaths);
+        if (obj is ParticleSpawnerSceneObject particleObject)
+            paths = particleObject.Preset != null
+                ? paths.Concat(new[] { "particle.emitting", "particle.simulation_speed", "particle.freeze",
+                    "particle.attractor_force" })
+                : paths.Concat(particleScalarPaths).Concat(particleVectorPaths);
         if (obj is ProceduralEffectSceneObject)
             paths = paths.Concat(ProceduralEffectSettings.Controls.Select(control => control.Path));
         if (obj.TemporaryItemSheetColumns > 0 && obj.TemporaryItemSheetRows > 0)
@@ -2903,7 +2906,7 @@ public class Timeline : UiPanel
         if (path == "visible" || path == "camera.active" || path == "material.pbr_enabled" || path == "item.slot" || path == "item.custom_slot" ||
             path == "text.horizontal_alignment" || path == "text.vertical_alignment" ||
             path == "text.antialiasing" || path == "text.outline_enabled" ||
-            path == "particle.emitting" || path == "particle.one_shot" || path == "particle.amount" ||
+            path == "particle.emitting" || path == "particle.freeze" || path == "particle.one_shot" || path == "particle.amount" ||
             path == "particle.emission_shape" || path == "particle.directional_emission" || path == "particle.top_level_particles" ||
             path.EndsWith(".mode", StringComparison.Ordinal) || path == "bone.end_enabled" ||
             (path.StartsWith("constraint.", StringComparison.Ordinal) &&
@@ -3330,6 +3333,8 @@ public class Timeline : UiPanel
                         return comp switch
                         {
                             "emitting" => particle.Emitting ? 1f : 0f,
+                            "freeze" => particle.Freeze ? 1f : 0f,
+                            "attractor_force" => particle.AttractorForce,
                             "one_shot" => particle.OneShot ? 1f : 0f,
                             "amount" => particle.Amount,
                             "spawn_rate" => particle.SpawnRate,
@@ -3838,6 +3843,8 @@ public class Timeline : UiPanel
                             switch (comp)
                             {
                                 case "emitting": particle.Emitting = value >= 0.5f; break;
+                                case "freeze": particle.Freeze = value >= 0.5f; break;
+                                case "attractor_force": particle.AttractorForce = MathF.Max(0f, value); break;
                                 case "one_shot": particle.OneShot = value >= 0.5f; break;
                                 case "amount": particle.Amount = Math.Clamp((int)MathF.Round(value), 1, 10000); break;
                                 case "spawn_rate": particle.SpawnRate = MathF.Max(0f, value); break;
@@ -4429,7 +4436,14 @@ public class Timeline : UiPanel
                     if (propsWithKeyframes.Contains(control.Path))
                         newRows.Add(MakeSingle(obj, control.Label, control.Path));
 
-            if (obj is ParticleSpawnerSceneObject)
+            if (obj is ParticleSpawnerSceneObject { Preset: not null })
+            {
+                foreach (string path in new[] { "particle.emitting", "particle.simulation_speed",
+                             "particle.freeze", "particle.attractor_force" })
+                    if (propsWithKeyframes.Contains(path))
+                        newRows.Add(MakeSingle(obj, path["particle.".Length..].Replace('_', ' '), path));
+            }
+            else if (obj is ParticleSpawnerSceneObject)
             {
                 var particleProps = new[]
                 {
@@ -4621,7 +4635,14 @@ public class Timeline : UiPanel
             foreach (var control in ProceduralEffectSettings.Controls)
                 _displayRows.Add(MakeSingle(obj, control.Label, control.Path));
 
-        if (obj is ParticleSpawnerSceneObject)
+        if (obj is ParticleSpawnerSceneObject { Preset: not null })
+        {
+            _displayRows.Add(MakeSingle(obj, "Emitting", "particle.emitting"));
+            _displayRows.Add(MakeSingle(obj, "Simulation Speed", "particle.simulation_speed"));
+            _displayRows.Add(MakeSingle(obj, "Freeze", "particle.freeze"));
+            _displayRows.Add(MakeSingle(obj, "Attractor Force", "particle.attractor_force"));
+        }
+        else if (obj is ParticleSpawnerSceneObject)
         {
             _displayRows.Add(MakeSingle(obj, "Emitting", "particle.emitting"));
             _displayRows.Add(MakeSingle(obj, "One Shot", "particle.one_shot"));

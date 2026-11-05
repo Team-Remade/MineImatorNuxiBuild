@@ -19,7 +19,7 @@ using TimelinePanel = MineImatorSimplyRemade.core.ui.Panels.Timeline;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
-public class PropertiesPanel : UiPanel
+public partial class PropertiesPanel : UiPanel
 {
     private const string NoImageSelected = "No image selected";
     private const string BackgroundModeStretch = "stretch";
@@ -1047,6 +1047,11 @@ public class PropertiesPanel : UiPanel
             ItemTileKey = source.ItemTileKey,
             ItemIs3D = source.ItemIs3D,
             ParticleLibraryEntryId = source.ParticleLibraryEntryId,
+            ParticlePreset = (System.Text.Json.Nodes.JsonObject?)source.ParticlePreset?.DeepClone(),
+            ParticleSeed = source.ParticleSeed,
+            ParticleFreeze = source.ParticleFreeze,
+            ParticleAttractorObjectId = source.ParticleAttractorObjectId,
+            ParticleAttractorForce = source.ParticleAttractorForce,
             ParticleLibraryDisplayName = source.ParticleLibraryDisplayName,
             ParticleEmitting = source.ParticleEmitting,
             ParticleOneShot = source.ParticleOneShot,
@@ -3753,7 +3758,10 @@ public class PropertiesPanel : UiPanel
             }
         }
 
-        if (_currentObject is ParticleSpawnerSceneObject particleSpawner &&
+        if (_currentObject is ParticleSpawnerSceneObject presetSpawner && presetSpawner.Preset != null)
+            RenderParticlePresetProperties(presetSpawner);
+
+        if (_currentObject is ParticleSpawnerSceneObject particleSpawner && particleSpawner.Preset == null &&
             ImGui.CollapsingHeader(Localization.Label("text.panel.properties.particles", "Particles"), ImGuiTreeNodeFlags.DefaultOpen))
         {
             EnsureObjectLibraryInitialized(ProjectManager.Instance.Manifest);

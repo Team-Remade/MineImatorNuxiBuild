@@ -15,7 +15,7 @@ using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
-internal static class Program
+internal static partial class Program
 {
     private static readonly MethodInfo ExtractMethod = typeof(NxObjectArchive).GetMethod("Extract",
         BindingFlags.Static | BindingFlags.NonPublic) ?? throw new MissingMethodException("NxObjectArchive.Extract");
@@ -23,6 +23,20 @@ internal static class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--particles-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                ParticleGraphics();
+                Console.WriteLine("PASS Particle sprite textures, pixels, opacity, frames and camera-facing rotation");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--effects-graphics", StringComparer.Ordinal))
         {
             try
@@ -94,8 +108,21 @@ internal static class Program
             ("Procedural effect bounded parameters and invalid input rejection", EffectLimits),
             ("Procedural effect source-generated archive, library and duplicate persistence", EffectPersistence),
             ("Procedural effect snapshot restoration and dirty fingerprint", EffectSnapshots),
-            ("Procedural effect timeline discovery, read/write and interpolation", EffectTimeline)
+            ("Procedural effect timeline discovery, read/write and interpolation", EffectTimeline),
+            ("All 15 bundled particle presets, assets and finite simulation", ParticleBundled),
+            ("Particle spawn menu selection, search and all provided presets", ParticleSpawnMenu),
+            ("Particle per-minute rate, multi-type burst, restart and amount limit", ParticleEmission),
+            ("Particle random ranges, per-axis motion, color, alpha and scale", ParticleParameters),
+            ("Particle regions, ground/custom/sphere bounds, bounce and destruction", ParticleCollisions),
+            ("Particle animation frames, reverse, loop, ping-pong and destruction", ParticleAnimation),
+            ("Particle deterministic fixed-step seek, freeze and runtime cleanup", ParticleRuntime),
+            ("Particle project/archive, library, duplicate, snapshot and reference persistence", ParticlePersistence),
+            ("Particle preset timeline controls and legacy channel preservation", ParticleTimeline),
+            ("Particle invalid and unsupported preset rejection", ParticleInvalid)
         ];
+        if (args.Contains("--particles", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Particle", StringComparison.Ordinal) ||
+                test.Name.StartsWith("All 15 bundled particle", StringComparison.Ordinal)).ToArray();
         int failures = 0;
         foreach (var test in tests)
         {

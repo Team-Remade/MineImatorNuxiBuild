@@ -1,6 +1,12 @@
 {
   "name": "English (US)",
   "strings": {
+    "text.particles.preset_source": "This preset includes its particle sprites or block sources. No object-library entry is required.",
+    "text.particles.preset_edit_hint": "Spawn this preset, then edit its types, motion, appearance, regions and destruction rules in Properties > Particles.",
+    "text.particles.units": "Preset units match Mine-imator: distances in pixels (16 per block), angles in degrees, continuous spawn amount per minute. Acceleration increments are applied at 60 steps/second. Random values are sampled once per particle.",
+    "text.particles.freeze": "Freeze",
+    "text.particles.attractor": "Attractor",
+    "text.particles.attractor_force": "Attractor Force",
     "text.effects.title": "Procedural Effect",
     "text.effects.category": "Effects",
     "text.effects.lightning": "Lightning",

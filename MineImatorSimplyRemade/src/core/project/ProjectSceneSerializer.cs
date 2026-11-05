@@ -471,6 +471,11 @@ public static class ProjectSceneSerializer
 
         if (obj is ParticleSpawnerSceneObject particleSpawner)
         {
+            entry.ParticlePreset = (System.Text.Json.Nodes.JsonObject?)particleSpawner.Preset?.DeepClone();
+            entry.ParticleSeed = particleSpawner.Seed;
+            entry.ParticleFreeze = particleSpawner.Freeze;
+            entry.ParticleAttractorObjectId = particleSpawner.AttractorObjectId;
+            entry.ParticleAttractorForce = particleSpawner.AttractorForce;
             entry.ParticleLibraryEntryId = particleSpawner.ParticleLibraryEntryId;
             entry.ParticleLibraryDisplayName = particleSpawner.ParticleLibraryDisplayName;
             entry.ParticleEmitting = particleSpawner.Emitting;
@@ -957,6 +962,11 @@ public static class ProjectSceneSerializer
 
         if (obj is ParticleSpawnerSceneObject particleSpawner)
         {
+            particleSpawner.SetPreset(entry.ParticlePreset);
+            particleSpawner.Seed = entry.ParticleSeed;
+            particleSpawner.Freeze = entry.ParticleFreeze;
+            particleSpawner.AttractorObjectId = entry.ParticleAttractorObjectId;
+            particleSpawner.AttractorForce = entry.ParticleAttractorForce;
             particleSpawner.ParticleLibraryEntryId = entry.ParticleLibraryEntryId ?? "";
             particleSpawner.ParticleLibraryDisplayName = entry.ParticleLibraryDisplayName ?? "";
             particleSpawner.Emitting = entry.ParticleEmitting;
@@ -1293,6 +1303,9 @@ public static class ProjectSceneSerializer
 
     internal static void RemapObjectReferences(SceneObject obj, IReadOnlyDictionary<string, string> objectIds)
     {
+        if (obj is ParticleSpawnerSceneObject particle &&
+            objectIds.TryGetValue(particle.AttractorObjectId, out string? attractorId))
+            particle.AttractorObjectId = attractorId;
         if (objectIds.TryGetValue(obj.CameraTextureObjectId, out string? cameraId))
             obj.CameraTextureObjectId = cameraId;
         foreach (var pair in obj.Keyframes)
