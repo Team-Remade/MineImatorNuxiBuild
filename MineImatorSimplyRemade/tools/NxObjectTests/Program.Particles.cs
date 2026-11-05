@@ -430,6 +430,7 @@ internal static partial class Program
             var viewport = new Viewport();
             var spawn = new SpawnMenu { Viewport = viewport, Gl = gl };
             preview.Render([], "particles", 0);
+            preview.Yaw = preview.Pitch = 0;
             byte[] baseline = ReadPixels();
             var emitter = spawn.SpawnParticlePresetObject("Smoke",
                 Path.Combine(ParticleDataRoot(), "Particles", "Effects", "Smoke.miparticles"))!;
@@ -451,6 +452,33 @@ internal static partial class Program
                 first[index * 4] != baseline[index * 4] || first[index * 4 + 1] != baseline[index * 4 + 1] ||
                 first[index * 4 + 2] != baseline[index * 4 + 2]);
             Check(changed > 32, $"Particle must draw visible textured pixels: {changed}");
+            uint spriteTexture = mesh.TextureId;
+            uint orientationTexture = gl.GenTexture();
+            try
+            {
+                // Match the loader's top-to-bottom image rows: red top, blue bottom.
+                byte[] rows = [255, 0, 0, 255, 0, 0, 255, 255];
+                gl.BindTexture(Silk.NET.OpenGL.GLEnum.Texture2D, orientationTexture);
+                fixed (byte* pointer = rows)
+                    gl.TexImage2D(Silk.NET.OpenGL.GLEnum.Texture2D, 0, (int)Silk.NET.OpenGL.GLEnum.Rgba,
+                        1, 2, 0, Silk.NET.OpenGL.GLEnum.Rgba, Silk.NET.OpenGL.GLEnum.UnsignedByte, pointer);
+                gl.TexParameter(Silk.NET.OpenGL.GLEnum.Texture2D, Silk.NET.OpenGL.GLEnum.TextureMinFilter,
+                    (int)Silk.NET.OpenGL.GLEnum.Nearest);
+                gl.TexParameter(Silk.NET.OpenGL.GLEnum.Texture2D, Silk.NET.OpenGL.GLEnum.TextureMagFilter,
+                    (int)Silk.NET.OpenGL.GLEnum.Nearest);
+                mesh.TextureId = orientationTexture;
+                byte[] upright = Render();
+                // OpenGL readback starts at the bottom of the framebuffer.
+                int top = (88 * 160 + 80) * 4;
+                int bottom = (72 * 160 + 80) * 4;
+                Check(upright[top] > upright[top + 2] + 32, "Sprite image top must render above its center");
+                Check(upright[bottom + 2] > upright[bottom] + 32, "Sprite image bottom must render below its center");
+            }
+            finally
+            {
+                mesh.TextureId = spriteTexture;
+                gl.DeleteTexture(orientationTexture);
+            }
             typeof(SpawnMenu).GetMethod("SetPresetParticleFrame", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(spawn, [sprite, 7]);
             sprite.ApplyMaterialSettingsToMeshes();

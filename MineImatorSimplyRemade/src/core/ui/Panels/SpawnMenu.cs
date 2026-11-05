@@ -5628,7 +5628,12 @@ public class SpawnMenu : UiPanel
         if (Gl != null)
         {
             float size = ParticlePreset.Sprite(sprite).Size;
-            obj.AddMesh(new PlaneMesh(Gl, size, size, PlaneOrientation.XY) { IsTranslucent = true });
+            var mesh = new PlaneMesh(Gl, size, size, PlaneOrientation.XY) { IsTranslucent = true };
+            // Particle images are loaded top-first, unlike the plane's bottom-origin UVs.
+            for (int i = 0; i < mesh.TexCoords.Count; i++)
+                mesh.TexCoords[i] = new vec2(mesh.TexCoords[i].x, 1f - mesh.TexCoords[i].y);
+            mesh.Upload();
+            obj.AddMesh(mesh);
         }
         return obj;
     }
