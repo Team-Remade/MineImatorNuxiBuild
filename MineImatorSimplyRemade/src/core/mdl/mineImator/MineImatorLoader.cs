@@ -123,7 +123,8 @@ public class MineImatorLoader
 
     /// <summary>Creates a SceneObject hierarchy from a loaded MiObject.</summary>
     public SceneObject CreateSceneFromMiObject(MiObject miObject,
-        Func<MiTemplate, MiTimeline, IReadOnlyDictionary<string, MiResource>, string, SceneObject?>? itemFactory = null)
+        Func<MiTemplate, MiTimeline, IReadOnlyDictionary<string, MiResource>, string, SceneObject?>? itemFactory = null,
+        Action<string>? warning = null)
     {
         if (miObject == null) return null;
 
@@ -156,6 +157,7 @@ public class MineImatorLoader
         {
             foreach (var timeline in miObject.Timelines)
             {
+                if (MiObjectFeatureMapper.IsEnvironment(timeline)) continue;
                 // Both part formats animate an existing bone, not another copy of its whole model.
                 if (IsModelPartType(timeline.Type) &&
                     !string.IsNullOrWhiteSpace(timeline.PartOf) &&
@@ -227,6 +229,19 @@ public class MineImatorLoader
                 if (itemObject == null && template != null)
                     itemObject = MiObjectTemplateFactory.Create(this, _gl, template, timeline, resourceInfoById, miObject.DirectoryPath);
 
+                if (itemObject == null)
+                {
+                    try
+                    {
+                        itemObject = MiObjectFeatureMapper.Create(timeline, template, miObject, _gl);
+                    }
+                    catch (InvalidDataException ex) when (timeline.Type == "particle_spawner")
+                    {
+                        MiObjectFeatureMapper.Report($"MIObject particle '{timeline.Name}' could not be imported: {ex.Message}", warning);
+                    }
+                }
+                if (itemObject == null)
+                    MiObjectFeatureMapper.Report($"MIObject timeline '{timeline.Id}' ({timeline.Type}) is unsupported; preserving a placeholder.", warning);
                 itemObject ??= new SceneObject
                 {
                     Name = !string.IsNullOrWhiteSpace(timeline.ModelPartName)
@@ -308,7 +323,12 @@ public class MineImatorLoader
         foreach (var timeline in miObject.Timelines ?? [])
             if (!string.IsNullOrEmpty(timeline.Id) &&
                 sceneObjectsByTimelineId.TryGetValue(timeline.Id, out var obj))
+            {
                 ImportTimelineKeyframes(obj, timeline, resourceDict, miObject.DirectoryPath);
+                MiObjectFeatureMapper.Apply(obj, timeline, sceneObjectsByTimelineId, warning);
+            }
+        foreach (var path in sceneObjectsByTimelineId.Values.OfType<PathSceneObject>())
+            path.EvaluateGeometry();
 
         var refreshed = new HashSet<SceneObject>();
         foreach (var bodypart in reparentedBodyparts.Concat(changedBends))
@@ -713,6 +733,7 @@ public class MineImatorLoader
 
     private static MiKeyframe? GetFirstTimelineKeyframe(MiTimeline timeline)
     {
+        if (timeline.Animated == false) return timeline.CurrentValues;
         if (timeline.Keyframes == null || timeline.Keyframes.Count == 0)
             return null;
 
@@ -925,6 +946,7 @@ public class MineImatorLoader
 
     private static void ImportItemSlotKeyframes(SceneObject obj, MiTimeline timeline, MiTemplate template, int columns, int rows)
     {
+        if (timeline.Animated == false) return;
         if (obj == null || timeline?.Keyframes == null || timeline.Keyframes.Count == 0 || columns <= 0 || rows <= 0 ||
             template.Item is not { } item)
             return;
@@ -963,7 +985,7 @@ public class MineImatorLoader
         var frames = (timeline.Keyframes ?? [])
             .Select(pair => (Frame: int.TryParse(pair.Key, NumberStyles.Integer, CultureInfo.InvariantCulture,
                 out int frame) ? frame : -1, Key: pair.Value))
-            .Where(pair => pair.Frame >= 0 && pair.Key != null)
+            .Where(pair => timeline.Animated != false && pair.Frame >= 0 && pair.Key != null)
             .OrderBy(pair => pair.Frame).ToList();
         JsonElement DefaultReference(string channel) =>
             timeline.DefaultValues?.Values.TryGetValue(channel, out var value) == true ? value : default;
@@ -980,7 +1002,9 @@ public class MineImatorLoader
             value.ValueKind == JsonValueKind.Undefined ? DefaultReference(channel) : value;
 
         JsonElement defaultTarget = DefaultReference("IK_TARGET");
+        var first = GetFirstTimelineKeyframe(timeline);
         if (string.IsNullOrEmpty(ResolveReference(defaultTarget)) &&
+            string.IsNullOrEmpty(ResolveReference(first?.IkTarget ?? default)) &&
             !frames.Any(frame => !string.IsNullOrEmpty(ResolveReference(frame.Key.IkTarget))))
             return;
 
@@ -997,7 +1021,6 @@ public class MineImatorLoader
             InverseKinematics = settings
         });
 
-        var first = GetFirstTimelineKeyframe(timeline);
         settings.TargetObjectId = ResolveReference(Reference(first?.IkTarget ?? default, "IK_TARGET"));
         settings.PoleObjectId = ResolveReference(Reference(first?.IkTargetAngle ?? default, "IK_TARGET_ANGLE"));
         settings.PoleAngle = first?.IkAngleOffset ?? Default("IK_ANGLE_OFFSET", 0f);
@@ -1030,6 +1053,7 @@ public class MineImatorLoader
     private static void ImportTimelineKeyframes(SceneObject obj, MiTimeline timeline,
         IReadOnlyDictionary<string, string> resources, string directory)
     {
+        if (timeline.Animated == false) return;
         var frames = (timeline.Keyframes ?? [])
             .Select(pair => (Frame: int.TryParse(pair.Key, NumberStyles.Integer, CultureInfo.InvariantCulture,
                 out int frame) ? frame : -1, Key: pair.Value))
@@ -1071,10 +1095,7 @@ public class MineImatorLoader
 
         foreach (var (frame, key) in frames)
         {
-            string transition = key.Transition ?? DefaultColor("TRANSITION", "linear");
-            if (transition == "bezier")
-                transition = string.Create(CultureInfo.InvariantCulture,
-                    $"bezier:{key.EaseInX ?? Default("EASE_IN_X", 1f)},{key.EaseInY ?? Default("EASE_IN_Y", 0f)},{key.EaseOutX ?? Default("EASE_OUT_X", 0f)},{key.EaseOutY ?? Default("EASE_OUT_Y", 1f)}");
+            string transition = MiObjectFeatureMapper.Transition(timeline, key);
             // Each saved pose is relative to default_values, not the preceding keyframe.
             ResolveTimelineTransformValues(timeline, key, out var position, out var rotation, out var scale);
             AddVector("position", position);
@@ -3977,6 +3998,7 @@ public class MiTemplate
     [JsonPropertyName("model_tex_material")] [JsonConverter(typeof(MiStringOrObjectRefConverter))] public string ModelTexMaterial { get; set; }
     [JsonPropertyName("model_tex_normal")] [JsonConverter(typeof(MiStringOrObjectRefConverter))] public string ModelTexNormal { get; set; }
     [JsonPropertyName("item")] public MiTemplateItem? Item { get; set; }
+    [JsonPropertyName("particles")] public JsonElement? Particles { get; set; }
 }
 
 public class MiTemplateItem
@@ -3989,6 +4011,9 @@ public class MiTemplateItem
 
 public class MiTimeline
 {
+    [JsonPropertyName("path")] public JsonElement? Path { get; set; }
+    [JsonPropertyName("animated")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Animated { get; set; }
+    [JsonPropertyName("current_values")] public MiKeyframe? CurrentValues { get; set; }
     [JsonPropertyName("id")] public string Id { get; set; }
     [JsonPropertyName("type")] public string Type { get; set; }
     [JsonPropertyName("name")] public string Name { get; set; }
@@ -4025,6 +4050,7 @@ public class MiTimeline
 [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
 public class MiKeyframe
 {
+    [JsonExtensionData] public Dictionary<string, JsonElement> ExtraValues { get; set; } = new();
     [JsonPropertyName("TRANSITION")] public string? Transition { get; set; }
     [JsonPropertyName("EASE_IN_X")] public float? EaseInX { get; set; }
     [JsonPropertyName("EASE_IN_Y")] public float? EaseInY { get; set; }

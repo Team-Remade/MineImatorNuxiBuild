@@ -305,6 +305,25 @@ internal static partial class Program
                 }
                 preview.Render([], "path", 0);
                 byte[] baseline = ReadPixels();
+                var loader = new MineImatorSimplyRemade.core.mdl.mineImator.MineImatorLoader();
+                loader.Initialize(gl);
+                var imported = loader.CreateSceneFromMiObject(MiDocument(MiPathDocument));
+                var importedPath = imported.Children.OfType<PathSceneObject>().Single();
+                try
+                {
+                    Check(importedPath.Visuals.Single().Vertices.Count > 0, "Imported path uploads generated geometry");
+                    Check(importedPath.Children.All(p => p.Visuals.Single().PickOnly), "Imported point proxies are editor-only");
+                    preview.Render([], "imported-path", 0, sceneRoot: importedPath);
+                    byte[] pixels = ReadPixels();
+                    int changed = 0;
+                    for (int i = 0; i < pixels.Length; i += 4)
+                        if (pixels[i] != baseline[i] || pixels[i + 1] != baseline[i + 1] || pixels[i + 2] != baseline[i + 2]) changed++;
+                    Check(changed > 32, $"Imported path draws visible pixels ({changed})");
+                }
+                finally
+                {
+                    foreach (var mesh in imported.GetMeshInstancesRecursively()) mesh.Dispose();
+                }
                 Check(Render().SequenceEqual(baseline), "None and point proxies are not rendered");
                 foreach (var shape in new[] { PathShape.Flat, PathShape.Tube })
                 {

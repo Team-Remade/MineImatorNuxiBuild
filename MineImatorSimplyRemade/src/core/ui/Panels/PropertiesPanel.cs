@@ -2973,7 +2973,9 @@ public partial class PropertiesPanel : UiPanel
             nameof(FloorVisible), nameof(FloorTextureAtlas), nameof(FloorTileKey), nameof(BackgroundImagePath),
             nameof(BackgroundRenderMode), nameof(BackgroundScale), nameof(BackgroundRotationDegrees),
             nameof(AmbientLightStrength), nameof(NightAmbientLightStrength), nameof(FillLightStrength), nameof(FillLightCastsShadows),
-            nameof(Twilight), nameof(ShowStars), nameof(StarDensity), nameof(StarBrightness), nameof(StarTwinkleSpeed)
+            nameof(Twilight), nameof(ShowStars), nameof(StarDensity), nameof(StarBrightness), nameof(StarTwinkleSpeed),
+            nameof(FogEnabled), nameof(SkyFog), nameof(CustomFogColor), nameof(CustomObjectFogColor),
+            nameof(FogDistance), nameof(FogFadeSize), nameof(FogHeight)
         ];
         string[] vectors =
         [
@@ -2982,7 +2984,7 @@ public partial class PropertiesPanel : UiPanel
             nameof(SunFillLightColor), nameof(MoonFillLightColor), nameof(CloudColor), nameof(NightCloudColor),
             nameof(CloudOffset), nameof(BackgroundColor),
             nameof(BackgroundOffset), nameof(AmbientLightColor), nameof(NightAmbientLightColor), nameof(FillLightColor),
-            nameof(StarColor)
+            nameof(StarColor), nameof(FogColor), nameof(ObjectFogColor)
         ];
         var result = new List<string>(scalars);
         foreach (string vector in vectors)
@@ -3082,6 +3084,17 @@ public partial class PropertiesPanel : UiPanel
             foreach (string path in BackgroundKeyframeProperties) AddBackgroundKeyframe(path, frame);
     }
 
+    public void ImportMineImatorBackground(MiObject source, Action<string>? warning = null)
+    {
+        var imported = MiObjectFeatureMapper.BackgroundTracks(source, warning);
+        if (imported.Count == 0) return;
+        foreach (var (path, keys) in imported)
+            ProjectManager.Instance.Manifest.Settings.BackgroundKeyframes[path] = keys;
+        ApplyBackgroundAnimation(Timeline?.CurrentFrame ?? 0);
+        WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+        ProjectManager.Instance.SetDirty(true);
+    }
+
     private void ApplyBackgroundAnimation(int frame)
     {
         var tracks = ProjectManager.Instance.Manifest?.Settings?.BackgroundKeyframes;
@@ -3100,6 +3113,7 @@ public partial class PropertiesPanel : UiPanel
                 float a = float.Parse(previous.Value, CultureInfo.InvariantCulture);
                 float b = float.Parse(next.Value, CultureInfo.InvariantCulture);
                 float t = (frame - previous.Frame) / (float)(next.Frame - previous.Frame);
+                t = core.ui.Panels.Timeline.ApplyInterpolation(t, previous.InterpolationType);
                 SetBackgroundPropertyValue(path, previous.Value, false, a + (b - a) * t, true);
             }
             applied = true;

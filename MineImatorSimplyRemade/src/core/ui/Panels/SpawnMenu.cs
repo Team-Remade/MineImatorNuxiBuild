@@ -2491,7 +2491,16 @@ public class SpawnMenu : UiPanel
                 root = SpawnMineImatorModel(pathToSpawn, textureOverridePath);
                 break;
             case ".miobject":
-                root = SpawnMineImatorObject(pathToSpawn);
+                try
+                {
+                    root = SpawnMineImatorObject(pathToSpawn, registerAsset);
+                }
+                catch (InvalidDataException ex)
+                {
+                    Console.Error.WriteLine($"Mine-imator import failed: {ex.Message}");
+                    _objectImportError = ex.Message;
+                    return null;
+                }
                 break;
             default:
             {
@@ -2636,14 +2645,18 @@ public class SpawnMenu : UiPanel
     /// <summary>
     /// Loads a Mine Imator .miobject file and creates a scene hierarchy.
     /// </summary>
-    private SceneObject? SpawnMineImatorObject(string filePath)
+    private SceneObject? SpawnMineImatorObject(string filePath, bool importBackground)
     {
         var loader   = MineImatorLoader.Instance;
         var miObject = loader.LoadMiObject(filePath);
         if (miObject == null) return null;
 
-        var scene = loader.CreateSceneFromMiObject(miObject, SpawnMiObjectItemViaSpawnMenu);
+        var warnings = new List<string>();
+        var scene = loader.CreateSceneFromMiObject(miObject, SpawnMiObjectItemViaSpawnMenu, warnings.Add);
         if (scene == null) return null;
+        if (importBackground)
+            Viewport?.PropertiesPanel?.ImportMineImatorBackground(miObject, warnings.Add);
+        if (warnings.Count > 0) _objectImportError = string.Join(Environment.NewLine, warnings.Distinct());
 
         scene.Name = Path.GetFileNameWithoutExtension(filePath);
         scene.SourceAssetPath = filePath;

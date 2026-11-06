@@ -241,6 +241,7 @@ public class ProjectBackgroundKeyframeEntry
     public int Frame { get; set; }
     public string Value { get; set; } = "";
     public bool Discrete { get; set; }
+    public string InterpolationType { get; set; } = "linear";
 }
 
 public class ProjectTimelineState

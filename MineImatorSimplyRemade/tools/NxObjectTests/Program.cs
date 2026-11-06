@@ -67,6 +67,11 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("MI import paths, points, references, sparse poses and repeated loads", MiImportPaths),
+            ("MI import static current values and invalid path settings", MiImportStatic),
+            ("MI import background colors, toggles, sparse keys, easing and persistence", MiImportBackground),
+            ("MI import embedded particle presets, controls and references", MiImportParticles),
+            ("MI import unsupported particles report warnings and retain other objects", MiImportWarnings),
             ("Scene tree root and batch insertion ordering and no-ops", SceneTreeOrdering),
             ("Scene tree child ordering, mixed parents and subtree preservation", SceneTreeParenting),
             ("Scene tree cyclic, stale, hidden and runtime target rejection is atomic", SceneTreeSafety),
@@ -151,6 +156,8 @@ internal static partial class Program
             ("Particle preset timeline controls and legacy channel preservation", ParticleTimeline),
             ("Particle invalid and unsupported preset rejection", ParticleInvalid)
         ];
+        if (args.Contains("--mi-import", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("MI import", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--particles", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Particle", StringComparison.Ordinal) ||
                 test.Name.StartsWith("All 15 bundled particle", StringComparison.Ordinal)).ToArray();

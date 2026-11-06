@@ -58,6 +58,7 @@ public partial class PropertiesPanel
                     string.IsNullOrEmpty(spawner.AttractorObjectId)))
             {
                 spawner.AttractorObjectId = "";
+                Timeline?.RecordAutoKeyframe(spawner, "particle.attractor_target");
                 changed = true;
             }
             foreach (SceneObject target in targets)
@@ -65,6 +66,7 @@ public partial class PropertiesPanel
                         target.ObjectId == spawner.AttractorObjectId))
                 {
                     spawner.AttractorObjectId = target.ObjectId;
+                    Timeline?.RecordAutoKeyframe(spawner, "particle.attractor_target");
                     changed = true;
                 }
             ImGui.EndCombo();

@@ -2754,7 +2754,7 @@ public class Timeline : UiPanel
         if (obj is ParticleSpawnerSceneObject particleObject)
             paths = particleObject.Preset != null
                 ? paths.Concat(new[] { "particle.emitting", "particle.simulation_speed", "particle.freeze",
-                    "particle.attractor_force" })
+                    "particle.attractor_force", "particle.attractor_target" })
                 : paths.Concat(particleScalarPaths).Concat(particleVectorPaths);
         if (obj is ProceduralEffectSceneObject)
             paths = paths.Concat(ProceduralEffectSettings.Controls.Select(control => control.Path));
@@ -2897,12 +2897,12 @@ public class Timeline : UiPanel
         if (prev == null)
         {
             if (holdFirstKeyframeBeforeStart && next != null)
-                return path is "text.font" or "material.texture" or "path_follow.target" || IsIkReferencePath(path) ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
+                return path is "text.font" or "material.texture" or "path_follow.target" or "particle.attractor_target" || IsIkReferencePath(path) ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
             return null;
         }
 
         // At or after the last keyframe, or exactly on a keyframe.
-        if (path is "text.font" or "material.texture" or "path_follow.target" || IsIkReferencePath(path)) return prev.Value;
+        if (path is "text.font" or "material.texture" or "path_follow.target" or "particle.attractor_target" || IsIkReferencePath(path)) return prev.Value;
         if (next == null || prev.Frame == frame)
             return TryConvertKeyframeValue(prev.Value, out float prevDirect) ? prevDirect : null;
 
@@ -3010,7 +3010,7 @@ public class Timeline : UiPanel
         return false;
     }
 
-    private static float ApplyInterpolation(float t, string type)
+    internal static float ApplyInterpolation(float t, string type)
     {
         if (t <= 0f || t >= 1f) return Math.Clamp(t, 0f, 1f);
         type = type switch
@@ -3187,6 +3187,8 @@ public class Timeline : UiPanel
     internal object GetPropertyValue(SceneObject obj, string path)
     {
         if (path == "path_follow.target") return obj.PathFollowObjectId;
+        if (path == "particle.attractor_target" && obj is ParticleSpawnerSceneObject attractorParticle)
+            return attractorParticle.AttractorObjectId;
         if (path == "path_follow.offset") return obj.PathFollowOffset;
         if (obj is PathPointSceneObject point)
         {
@@ -3530,6 +3532,12 @@ public class Timeline : UiPanel
 
     internal void SetPropertyValue(SceneObject obj, string path, object rawValue)
     {
+        if (path == "particle.attractor_target" && obj is ParticleSpawnerSceneObject attractorParticle)
+        {
+            attractorParticle.AttractorObjectId = rawValue is JsonElement reference && reference.ValueKind == JsonValueKind.String
+                ? reference.GetString() ?? "" : Convert.ToString(rawValue, CultureInfo.InvariantCulture) ?? "";
+            return;
+        }
         if (path == "path_follow.target")
         {
             obj.PathFollowObjectId = rawValue is JsonElement reference && reference.ValueKind == JsonValueKind.String
@@ -4479,7 +4487,7 @@ public class Timeline : UiPanel
             if (obj is ParticleSpawnerSceneObject { Preset: not null })
             {
                 foreach (string path in new[] { "particle.emitting", "particle.simulation_speed",
-                             "particle.freeze", "particle.attractor_force" })
+                             "particle.freeze", "particle.attractor_force", "particle.attractor_target" })
                     if (propsWithKeyframes.Contains(path))
                         newRows.Add(MakeSingle(obj, path["particle.".Length..].Replace('_', ' '), path));
             }
@@ -4684,6 +4692,7 @@ public class Timeline : UiPanel
             _displayRows.Add(MakeSingle(obj, "Simulation Speed", "particle.simulation_speed"));
             _displayRows.Add(MakeSingle(obj, "Freeze", "particle.freeze"));
             _displayRows.Add(MakeSingle(obj, "Attractor Force", "particle.attractor_force"));
+            _displayRows.Add(MakeSingle(obj, "Attractor", "particle.attractor_target"));
         }
         else if (obj is ParticleSpawnerSceneObject)
         {
