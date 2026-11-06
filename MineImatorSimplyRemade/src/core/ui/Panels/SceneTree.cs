@@ -22,7 +22,8 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 ///  • Multi-selection (Ctrl+click toggle, Shift+click range)
 ///  • Inline rename (double-click label area)
 ///  • Right-click context menu (preserves multi-selection)
-///  • Drag-and-drop reparenting (drop on item = child; drop on blank = unparent to root)
+///  • Ordered multi-object dragging (row edges = siblings, center = child, blank = root)
+///  • Move up/down, unparent, and expand/collapse all
 ///
 /// Not yet implemented
 /// ────────────────────
@@ -55,6 +56,15 @@ public class SceneTree : UiPanel
 
     // Drag-and-drop state
     private SceneObject _draggingObject;
+    private List<SceneObject> _draggingObjects = [];
+    private SceneObject? _pendingClickObject;
+    private bool _movePending;
+    private SceneObject? _moveTarget;
+    private SceneDropPlacement _movePlacement;
+    private SceneObject? _hoverDropTarget;
+    private double _hoverDropSince;
+    private int _hoverDropFrame = -1;
+    private readonly Dictionary<SceneObject, bool> _openOverrides = new();
 
     private readonly List<List<SceneObject>> _childSnapshotsByDepth = [];
     private uint _lockedIcon;
@@ -118,7 +128,15 @@ public class SceneTree : UiPanel
 
         ImGui.SetNextItemWidth(-1);
         ImGui.InputTextWithHint("##sceneTreeSearch", Localization.T("text.panel.scene_tree.search_scene_objects"), ref _searchQuery, 128);
+        if (ImGui.SmallButton(Localization.Label("text.panel.scene_tree.expand_all", "Expand All")))
+            SetAllExpanded(true);
+        ImGui.SameLine();
+        if (ImGui.SmallButton(Localization.Label("text.panel.scene_tree.collapse_all", "Collapse All")))
+            SetAllExpanded(false);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(Localization.T("text.panel.scene_tree.drag_help"));
         ImGui.Separator();
+        float treeTop = ImGui.GetCursorScreenPos().Y;
 
         string searchTerm = _searchQuery.Trim();
         _filteredVisibleSet = string.IsNullOrEmpty(searchTerm)
@@ -162,13 +180,12 @@ public class SceneTree : UiPanel
         {
             unsafe
             {
-                var payload   = ImGui.AcceptDragDropPayload("SCENE_OBJECT");
-                bool delivered = payload.Handle != null && ImGui.IsDelivery(payload);
-                if (delivered && _draggingObject != null)
+                if (_draggingObject != null &&
+                    SceneHierarchy.CanMove(Viewport.SceneObjects, _draggingObjects, null, SceneDropPlacement.RootEnd))
                 {
-                    if (_draggingObject.Parent != null)
-                        ReparentObject(_draggingObject, newParent: null);
-                    _draggingObject = null;
+                    var payload = ImGui.AcceptDragDropPayload("SCENE_OBJECT");
+                    if (payload.Handle != null && ImGui.IsDelivery(payload))
+                        QueueMove(null, SceneDropPlacement.RootEnd);
                 }
             }
             ImGui.EndDragDropTarget();
@@ -188,6 +205,20 @@ public class SceneTree : UiPanel
 
                 if (ImGui.MenuItem(Localization.Label("text.common.rename", "Rename"), Keybinds.Label("rename")))
                     BeginRename(_contextMenuTarget);
+                ImGui.Separator();
+
+                var moveRoots = GetSelectedMoveRoots();
+                if (ImGui.MenuItem(Localization.Label("text.panel.scene_tree.move_up", "Move Up"), "",
+                        false, SceneHierarchy.CanShift(Viewport.SceneObjects, moveRoots, down: false)))
+                    MoveSelectedObjects(down: false);
+                if (ImGui.MenuItem(Localization.Label("text.panel.scene_tree.move_down", "Move Down"), "",
+                        false, SceneHierarchy.CanShift(Viewport.SceneObjects, moveRoots, down: true)))
+                    MoveSelectedObjects(down: true);
+                if (ImGui.MenuItem(Localization.Label("text.panel.scene_tree.unparent", "Unparent to Root"), "",
+                        false, moveRoots.Any(obj => obj.Parent != null)))
+                    UnparentSelectedObjects();
+                if (ImGui.MenuItem(Localization.Label("text.panel.scene_tree.group", "Group Selection"), Keybinds.Label("group")))
+                    GroupSelectedObjects();
                 ImGui.Separator();
 
                 if (ImGui.MenuItem(Localization.Label("text.menu.hide", "Hide"), Keybinds.Label("hide")))
@@ -255,9 +286,40 @@ public class SceneTree : UiPanel
             ImGui.EndPopup();
         }
 
-        // Cancel drag if the mouse was released outside any target.
+        // Apply after traversing the tree so a moved row cannot render twice.
+        if (_movePending)
+        {
+            if (SceneHierarchy.Move(Viewport.SceneObjects, _draggingObjects, _moveTarget, _movePlacement))
+            {
+                HierarchyChanged();
+                if (_movePlacement == SceneDropPlacement.Inside && _moveTarget != null)
+                    _openOverrides[_moveTarget] = true;
+            }
+            _movePending = false;
+        }
+
+        if (_draggingObject != null && ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem))
+        {
+            float mouseY = ImGui.GetMousePos().Y;
+            float bottom = ImGui.GetWindowPos().Y + ImGui.GetWindowSize().Y - ImGui.GetStyle().WindowPadding.Y;
+            float speed = 350f * UiTheme.Scale * ImGui.GetIO().DeltaTime;
+            if (mouseY < treeTop + 20f * UiTheme.Scale)
+                ImGui.SetScrollY(Math.Max(0, ImGui.GetScrollY() - speed));
+            else if (mouseY > bottom - 20f * UiTheme.Scale)
+                ImGui.SetScrollY(ImGui.GetScrollY() + speed);
+        }
+
+        if (_pendingClickObject != null && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+        {
+            HandleClick(_pendingClickObject);
+            _pendingClickObject = null;
+        }
         if (_draggingObject != null && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+        {
             _draggingObject = null;
+            _draggingObjects.Clear();
+            _hoverDropTarget = null;
+        }
 
         if (_nameEditor.CommitIfHidden())
             _renamingObject = null;
@@ -380,9 +442,7 @@ public class SceneTree : UiPanel
             return;
 
         // Keep selected descendants in their existing hierarchy rather than flattening them.
-        var roots = selectedObjects
-            .Where(obj => !selectedObjects.Any(other => other != obj && obj.IsDescendantOf(other)))
-            .ToList();
+        var roots = SceneHierarchy.GetMoveRoots(Viewport.SceneObjects, selectedObjects);
         if (roots.Count == 0)
             return;
 
@@ -402,15 +462,18 @@ public class SceneTree : UiPanel
         group.AssignObjectId();
 
         if (parent != null)
+        {
+            int index = parent.Children.ToList().IndexOf(roots[0]);
             parent.AddChild(group);
+            parent.MoveChild(group, index);
+        }
         else
         {
             int index = Viewport.SceneObjects.IndexOf(roots[0]);
             Viewport.SceneObjects.Insert(index >= 0 ? index : Viewport.SceneObjects.Count, group);
         }
 
-        foreach (var obj in roots)
-            ReparentObject(obj, group);
+        SceneHierarchy.Move(Viewport.SceneObjects, roots, group, SceneDropPlacement.Inside);
 
         SetSelection(group);
         MineImatorSimplyRemade.core.project.ProjectManager.Instance.SetDirty(true);
@@ -452,6 +515,47 @@ public class SceneTree : UiPanel
         }
     }
 
+    private List<SceneObject> GetSelectedMoveRoots() =>
+        SceneHierarchy.GetMoveRoots(Viewport.SceneObjects,
+            SelectionManager.Instance?.SelectedObjects ??
+            (_selectedObject != null ? new List<SceneObject> { _selectedObject } : []));
+
+    public void MoveSelectedObjects(bool down)
+    {
+        if (Viewport != null && SceneHierarchy.Shift(Viewport.SceneObjects, GetSelectedMoveRoots(), down))
+            HierarchyChanged();
+    }
+
+    public void UnparentSelectedObjects()
+    {
+        if (Viewport == null)
+            return;
+        var roots = GetSelectedMoveRoots().Where(obj => obj.Parent != null).ToList();
+        if (roots.Count > 0 && SceneHierarchy.Move(Viewport.SceneObjects, roots, null, SceneDropPlacement.RootEnd))
+            HierarchyChanged();
+    }
+
+    private void HierarchyChanged()
+    {
+        ProjectManager.Instance.SetDirty(true);
+        SelectionManager.Instance?.SyncGizmoSelection();
+    }
+
+    private void QueueMove(SceneObject? target, SceneDropPlacement placement)
+    {
+        _moveTarget = target;
+        _movePlacement = placement;
+        _movePending = true;
+    }
+
+    private void SetAllExpanded(bool expanded)
+    {
+        _openOverrides.Clear();
+        foreach (var obj in FlattenVisibleTree())
+            _openOverrides[obj] = expanded;
+        _selectionToReveal = null;
+    }
+
     // ── Rendering helpers ───────────────────────────────────────────────────
 
     private void RenderNode(SceneObject obj, HashSet<SceneObject>? visibilityFilter, int depth)
@@ -476,6 +580,11 @@ public class SceneTree : UiPanel
         if (isSelected)   flags |= ImGuiTreeNodeFlags.Selected;
 
         ImGui.PushID(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj));
+
+        if (_openOverrides.Remove(obj, out bool expanded))
+            ImGui.SetNextItemOpen(expanded, ImGuiCond.Always);
+        else if (visibilityFilter != null && hasChildren)
+            ImGui.SetNextItemOpen(true, ImGuiCond.Always);
 
         // A viewport pick can select an item whose branch is collapsed. Open
         // every ancestor on the way to it before rendering the node so the
@@ -507,7 +616,12 @@ public class SceneTree : UiPanel
 
         // Single click → select (multi-select with Ctrl/Shift)
         if (!isRenaming && ImGui.IsItemClicked(ImGuiMouseButton.Left) && !ImGui.IsItemToggledOpen())
-            HandleClick(obj);
+        {
+            if (isSelected && !ImGui.GetIO().KeyCtrl && !ImGui.GetIO().KeyShift)
+                _pendingClickObject = obj;
+            else
+                HandleClick(obj);
+        }
 
         // Double click → begin inline rename
         if (!isRenaming && ImGui.IsItemHovered() && !ImGui.IsItemToggledOpen() &&
@@ -527,31 +641,71 @@ public class SceneTree : UiPanel
         }
 
         // ── Drag source ─────────────────────────────────────────────────────
-        if (ImGui.BeginDragDropSource())
+        var rowMin = ImGui.GetItemRectMin();
+        var rowMax = ImGui.GetItemRectMax();
+        if (!isRenaming && ImGui.BeginDragDropSource())
         {
-            _draggingObject = obj;
+            if (_draggingObject == null)
+            {
+                _draggingObject = obj;
+                _draggingObjects = SelectionManager.Instance?.IsSelected(obj) == true
+                    ? GetSelectedMoveRoots()
+                    : [obj];
+            }
+            _pendingClickObject = null;
             unsafe
             {
                 byte dummy = 1;
                 ImGui.SetDragDropPayload("SCENE_OBJECT", &dummy, 1);
             }
             ImGui.TextUnformatted(Localization.Format("text.panel.scene_tree.move", obj.GetDisplayName()));
+            ImGui.TextUnformatted(Localization.Format("text.panel.scene_tree.move_count", _draggingObjects.Count));
+            ImGui.TextUnformatted(Localization.T("text.panel.scene_tree.drag_help"));
             ImGui.EndDragDropSource();
         }
 
         // ── Drop target ─────────────────────────────────────────────────────
-        if (ImGui.BeginDragDropTarget())
+        if (!isRenaming && ImGui.BeginDragDropTarget())
         {
             unsafe
             {
-                var payload   = ImGui.AcceptDragDropPayload("SCENE_OBJECT");
-                bool delivered = payload.Handle != null && ImGui.IsDelivery(payload);
-                if (delivered && _draggingObject != null)
+                float fraction = (ImGui.GetMousePos().Y - rowMin.Y) / Math.Max(1f, rowMax.Y - rowMin.Y);
+                var placement = fraction < 0.25f ? SceneDropPlacement.Before :
+                    fraction > 0.75f ? SceneDropPlacement.After : SceneDropPlacement.Inside;
+                if (_draggingObject != null &&
+                    SceneHierarchy.CanMove(Viewport.SceneObjects, _draggingObjects, obj, placement))
                 {
-                    if (_draggingObject != obj && !obj.IsDescendantOf(_draggingObject))
-                        ReparentObject(_draggingObject, obj);
-                    _draggingObject = null;
+                    var payload = ImGui.AcceptDragDropPayload("SCENE_OBJECT",
+                        ImGuiDragDropFlags.AcceptBeforeDelivery | ImGuiDragDropFlags.AcceptNoDrawDefaultRect);
+                    if (payload.Handle != null)
+                    {
+                        uint color = ImGui.GetColorU32(ImGuiCol.DragDropTarget);
+                        var draw = ImGui.GetWindowDrawList();
+                        if (placement == SceneDropPlacement.Inside)
+                        {
+                            draw.AddRect(rowMin, rowMax, color);
+                            int frame = ImGui.GetFrameCount();
+                            if (_hoverDropTarget != obj || _hoverDropFrame != frame - 1)
+                            {
+                                _hoverDropTarget = obj;
+                                _hoverDropSince = ImGui.GetTime();
+                            }
+                            _hoverDropFrame = frame;
+                            if (ImGui.GetTime() - _hoverDropSince >= 0.6)
+                                _openOverrides[obj] = true;
+                        }
+                        else
+                        {
+                            _hoverDropTarget = null;
+                            float y = placement == SceneDropPlacement.Before ? rowMin.Y : rowMax.Y;
+                            draw.AddLine(new Vector2(rowMin.X, y), new Vector2(rowMax.X, y), color, 2f * UiTheme.Scale);
+                        }
+                        if (ImGui.IsDelivery(payload))
+                            QueueMove(obj, placement);
+                    }
                 }
+                else if (_draggingObject != null)
+                    ImGui.SetTooltip(Localization.T("text.panel.scene_tree.invalid_drop"));
             }
             ImGui.EndDragDropTarget();
         }
@@ -798,6 +952,7 @@ public class SceneTree : UiPanel
             _searchQuery = "";
 
         _nameEditor.Commit();
+        _pendingClickObject = null;
         _renamingObject = obj;
         _selectionToReveal = obj;
         _renameFocusPending = true;
@@ -1215,48 +1370,6 @@ public class SceneTree : UiPanel
             Viewport?.SceneObjects.Remove(child);
             RemoveDescendantsFromViewport(child);
         }
-    }
-
-    // ── Reparent ────────────────────────────────────────────────────────────
-
-    private void ReparentObject(SceneObject obj, SceneObject newParent)
-    {
-        var equipment = obj as CharacterSceneObject;
-        var equipmentParent = newParent as CharacterSceneObject
-            ?? (newParent as MiBoneSceneObject)?.ModelOwner;
-        bool equip = equipment != null && equipmentParent != null &&
-            string.Equals(obj.SpawnCategory, "Equipment", StringComparison.Ordinal) &&
-            equipment.BoneObjects.Values.OfType<MiBoneSceneObject>().Any(part =>
-                !string.IsNullOrEmpty(part.BoneName) &&
-                equipmentParent.BoneObjects.Values.OfType<MiBoneSceneObject>().Any(target =>
-                    string.Equals(part.BoneName, target.BoneName, StringComparison.Ordinal)));
-
-        // A complete armor model follows the character root, even when dropped on a limb.
-        if (equip)
-            newParent = equipmentParent;
-
-        if (newParent == obj || (newParent != null && newParent.IsDescendantOf(obj)))
-            return;
-
-        if (obj.Parent != null)
-            obj.Parent.RemoveChild(obj);
-        else
-            Viewport?.SceneObjects.Remove(obj);
-
-        if (newParent != null)
-            newParent.AddChild(obj);
-        else
-            Viewport?.SceneObjects.Add(obj);
-
-        if (equip)
-        {
-            obj.SetLocalPosition(GlmSharp.vec3.Zero);
-            obj.SetLocalRotation(GlmSharp.vec3.Zero);
-            obj.SetLocalScale(GlmSharp.vec3.Ones);
-            obj.InheritPose = true;
-        }
-        MineImatorSimplyRemade.core.project.ProjectManager.Instance.SetDirty(true);
-        SelectionManager.Instance?.SyncGizmoSelection();
     }
 
     // ── Naming helpers ──────────────────────────────────────────────────────

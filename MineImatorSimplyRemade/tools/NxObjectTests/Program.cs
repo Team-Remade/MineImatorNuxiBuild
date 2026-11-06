@@ -67,6 +67,15 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Scene tree root and batch insertion ordering and no-ops", SceneTreeOrdering),
+            ("Scene tree child ordering, mixed parents and subtree preservation", SceneTreeParenting),
+            ("Scene tree cyclic, stale, hidden and runtime target rejection is atomic", SceneTreeSafety),
+            ("Scene tree move up/down blocks, boundaries and multiple parents", SceneTreeShift),
+            ("Scene tree armor fitting and ordinary parenting compatibility", SceneTreeEquipment),
+            ("Scene tree undo/redo ordering, hierarchy, selection and identity", SceneTreeHistory),
+            ("Scene tree saved ordering, IDs and context operations", SceneTreePersistence),
+            ("Scene tree grouping preserves sibling position, order and descendants", SceneTreeGrouping),
+            ("Scene tree ImGui multi-drag, parenting, hover expansion and branch controls", SceneTreeInteraction),
             ("Subtree, transforms, keyframes and material preservation", Subtree),
             ("Same-basename resource collision and deduplication", BasenameCollision),
             ("JSON model and external mimodel texture closure", JsonClosure),
@@ -147,6 +156,10 @@ internal static partial class Program
                 test.Name.StartsWith("All 15 bundled particle", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--paths", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Path", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--scene-tree", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Scene tree", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--scene-tree-ui", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Scene tree ImGui", StringComparison.Ordinal)).ToArray();
         int failures = 0;
         foreach (var test in tests)
         {
