@@ -882,6 +882,12 @@ public class SceneTree : UiPanel
             case ProceduralEffectSceneObject effect:
                 dup = new ProceduralEffectSceneObject { Settings = effect.Settings };
                 break;
+            case PathSceneObject path:
+                dup = new PathSceneObject { Settings = path.Settings };
+                break;
+            case PathPointSceneObject point:
+                dup = new PathPointSceneObject { PathPointAngle = point.PathPointAngle, PathPointScale = point.PathPointScale };
+                break;
 
             case ParticleSpawnerSceneObject particleSpawner:
                 dup = new ParticleSpawnerSceneObject
@@ -996,6 +1002,8 @@ public class SceneTree : UiPanel
         dup.IsLocked            = original.IsLocked;
         dup.IsHidden            = original.IsHidden;
         dup.Position            = original.Position;
+        dup.PathFollowObjectId  = original.PathFollowObjectId;
+        dup.PathFollowOffset    = original.PathFollowOffset;
         dup.Rotation            = original.Rotation;
         dup.Scale               = original.Scale;
         dup.PivotOffset         = original.PivotOffset;

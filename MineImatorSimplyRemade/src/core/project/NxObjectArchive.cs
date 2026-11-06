@@ -350,6 +350,7 @@ public static class NxObjectArchive
         foreach (var node in Walk(root))
         {
             node.CameraTextureObjectId = Reference(node.CameraTextureObjectId);
+            node.PathFollowObjectId = Reference(node.PathFollowObjectId);
             node.ParticleAttractorObjectId = Reference(node.ParticleAttractorObjectId);
             foreach (var constraint in node.CopyConstraints ?? []) constraint.TargetObjectId = Reference(constraint.TargetObjectId);
             foreach (var constraint in node.BoneConstraints ?? [])
@@ -361,7 +362,8 @@ public static class NxObjectArchive
             }
             foreach (var (key, track) in node.Keyframes)
             {
-                if (!(key.StartsWith("constraint.", StringComparison.Ordinal) && (key.EndsWith(".ik.target", StringComparison.Ordinal) || key.EndsWith(".ik.pole", StringComparison.Ordinal))) &&
+                if (key != "path_follow.target" &&
+                    !(key.StartsWith("constraint.", StringComparison.Ordinal) && (key.EndsWith(".ik.target", StringComparison.Ordinal) || key.EndsWith(".ik.pole", StringComparison.Ordinal))) &&
                     !(key.StartsWith("copy_constraint.", StringComparison.Ordinal) && key.EndsWith(".target", StringComparison.Ordinal))) continue;
                 foreach (var frame in track)
                 {

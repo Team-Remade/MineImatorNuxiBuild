@@ -2982,6 +2982,8 @@ public class Viewport : UiPanel
             new Vector2(1, 0));
 
         RenderRuleOfThirdsOverlay(imageMin, imageSize);
+        if (OverlaysEnabled)
+            RenderPathOverlay(BuildPreparedCamera(activeCamera, activeCamObj), imageMin, imageSize);
 
         // ── Gizmo overlay (rotation arc drawn on the ImGui draw list) ─────────
         if (OverlaysEnabled)
@@ -3127,7 +3129,51 @@ public class Viewport : UiPanel
             drawList.AddLine(top, bottom, guideColor, UiTheme.Scale);
             drawList.AddLine(left, right, guideColor, UiTheme.Scale);
         }
+
         drawList.PopClipRect();
+    }
+
+    private void RenderPathOverlay(Camera camera, Vector2 imageMin, Vector2 imageSize)
+    {
+        var draw = ImGui.GetWindowDrawList();
+        mat4 vp = camera.GetProjectionMatrix(imageSize.X / imageSize.Y) * camera.GetViewMatrix();
+        draw.PushClipRect(imageMin, imageMin + imageSize, true);
+        DrawObjects(MainViewport?.SceneObjects ?? SceneObjects);
+        draw.PopClipRect();
+
+        bool Project(vec3 point, out Vector2 screen)
+        {
+            vec4 clip = vp * new vec4(point, 1f);
+            screen = default;
+            if (clip.w <= 0.001f || clip.z < -clip.w || clip.z > clip.w) return false;
+            screen = imageMin + new Vector2((clip.x / clip.w + 1f) * 0.5f * imageSize.X,
+                (1f - clip.y / clip.w) * 0.5f * imageSize.Y);
+            return true;
+        }
+        void DrawObjects(IEnumerable<SceneObject> objects)
+        {
+            foreach (var obj in objects)
+            {
+                if (!IsObjectVisible(obj)) continue;
+                if (obj is PathSceneObject path)
+                {
+                    var samples = path.Samples;
+                    mat4 world = path.GetWorldMatrixNoPivot();
+                    uint color = path.IsSelected ? 0xFF66BBFF : 0xFFBBBBBB;
+                    for (int i = 0; i < samples.Count - 1; i++)
+                    {
+                        vec3 a = (world * new vec4(samples[i].Position, 1f)).xyz;
+                        vec3 b = (world * new vec4(samples[i + 1].Position, 1f)).xyz;
+                        if (Project(a, out var start) && Project(b, out var end))
+                            draw.AddLine(start, end, color, 2f * UiTheme.Scale);
+                    }
+                }
+                if (obj is PathPointSceneObject && Project(obj.GetWorldPosition(), out var position))
+                    draw.AddCircleFilled(position, (obj.IsSelected ? 6f : 4f) * UiTheme.Scale,
+                        obj.IsSelected ? 0xFF66BBFF : 0xFFFFFFFF);
+                DrawObjects(obj.Children);
+            }
+        }
     }
 
     private void RenderVeldridScene(
@@ -5371,6 +5417,8 @@ public class Viewport : UiPanel
             var obj = objects[i];
             if (obj is ProceduralEffectSceneObject effect)
                 effect.EvaluateGeometry(seconds);
+            if (obj is PathSceneObject path)
+                path.EvaluateGeometry();
             UpdateProceduralEffects(obj.Children, seconds);
         }
     }

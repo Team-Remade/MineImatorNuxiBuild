@@ -72,7 +72,7 @@ public sealed class CopyConstraint
 public static class CopyConstraintSolver
 {
     internal sealed record EvaluationJob(SceneObject Owner, IReadOnlyList<SceneObject> Driven,
-        IReadOnlyList<SceneObject> Sources, Action Apply, bool IsCopy = false);
+        IReadOnlyList<SceneObject> Sources, Action Apply, bool IsCopy = false, bool IsPath = false);
 
     internal static void Evaluate(List<SceneObject> objects, Dictionary<string, SceneObject> ids,
         List<EvaluationJob> jobs)
@@ -140,8 +140,10 @@ public static class CopyConstraintSolver
                 if (ReferenceEquals(dependency, job)) continue;
                 bool required = dependency.Driven.Any(driven =>
                     job.Sources.Any(source => IsWithin(source, driven)) ||
-                    ((job.IsCopy || dependency.IsCopy) && job.Driven.Any(owner => owner.Parent != null && IsWithin(owner.Parent, driven)))) ||
-                    (job.IsCopy && !dependency.IsCopy && dependency.Driven.Contains(job.Owner));
+                    ((job.IsCopy || dependency.IsCopy || job.IsPath || dependency.IsPath) &&
+                        job.Driven.Any(owner => owner.Parent != null && IsWithin(owner.Parent, driven)))) ||
+                    (job.IsCopy && !dependency.IsCopy && dependency.Driven.Contains(job.Owner)) ||
+                    (dependency.IsPath && job.Driven.Any(owner => IsWithin(owner, dependency.Owner)));
                 if (required && !Visit(dependency)) valid = false;
             }
             states[job] = valid ? 2 : 3;

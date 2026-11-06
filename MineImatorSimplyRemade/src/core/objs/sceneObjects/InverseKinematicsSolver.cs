@@ -41,6 +41,7 @@ public static class InverseKinematicsSolver
         foreach (var obj in objects)
         {
             obj.SetEvaluatedCopyTransform(null, vec3.Ones);
+            obj.SetEvaluatedPathFrame(null);
             foreach (var constraint in obj.CopyConstraints)
             {
                 constraint.EvaluatedInput = null;
@@ -73,9 +74,11 @@ public static class InverseKinematicsSolver
         }
 
         // Evaluate target dependencies first; cycles are skipped instead of feeding back frame-to-frame.
-        CopyConstraintSolver.Evaluate(objects, ids, jobs.Select(job =>
+        var evaluationJobs = jobs.Select(job =>
             new CopyConstraintSolver.EvaluationJob(job.Owner, job.Chain.Cast<SceneObject>().ToArray(),
-                job.Pole == null ? new[] { job.Target } : new[] { job.Target, job.Pole }, () => Solve(job))).ToList());
+                job.Pole == null ? new[] { job.Target } : new[] { job.Target, job.Pole }, () => Solve(job))).ToList();
+        PathSceneObject.AddFollowerJobs(objects, ids, evaluationJobs);
+        CopyConstraintSolver.Evaluate(objects, ids, evaluationJobs);
         foreach (var bone in bones.OfType<MiBoneSceneObject>())
             if (SafeHierarchy(bone)) bone.RefreshInverseKinematicsVisuals();
     }

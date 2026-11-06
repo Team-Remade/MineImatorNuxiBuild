@@ -220,6 +220,22 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.TextMeshOutlineColor);
         hash.Add(obj.TextMeshOutlineThickness);
         hash.Add(obj is ProceduralEffectSceneObject);
+        hash.Add(obj.PathFollowObjectId);
+        hash.Add(obj.PathFollowOffset);
+        hash.Add(obj is PathSceneObject);
+        if (obj is PathSceneObject path)
+        {
+            var settings = path.Settings;
+            hash.Add(settings.Closed); hash.Add(settings.Smooth); hash.Add(settings.Detail);
+            hash.Add((int)settings.Shape); hash.Add(settings.Radius); hash.Add(settings.Sides);
+            hash.Add(settings.SmoothSegments); hash.Add(settings.SmoothRing); hash.Add(settings.Invert);
+            hash.Add(settings.MappedTexture); hash.Add(settings.TextureLength);
+        }
+        if (obj is PathPointSceneObject point)
+        {
+            hash.Add(point.PathPointAngle);
+            hash.Add(point.PathPointScale);
+        }
         if (obj is ProceduralEffectSceneObject procedural)
             foreach (var control in ProceduralEffectSettings.Controls)
                 hash.Add(control.Read(procedural.Settings));

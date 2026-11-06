@@ -2549,6 +2549,8 @@ public class Timeline : UiPanel
                 : obj is LightSceneObject ? new LightSceneObject()
                 : obj is ParticleSpawnerSceneObject ? new ParticleSpawnerSceneObject()
                 : obj is ProceduralEffectSceneObject ? new ProceduralEffectSceneObject()
+                : obj is PathSceneObject ? new PathSceneObject()
+                : obj is PathPointSceneObject ? new PathPointSceneObject()
                 : obj is BoneSceneObject ? new BoneSceneObject() : new SceneObject();
             defaults.UsePropertyInheritance = obj.UsePropertyInheritance;
             foreach (var constraint in obj.CopyConstraints)
@@ -2735,6 +2737,10 @@ public class Timeline : UiPanel
                                   : obj is CameraSceneObject  ? standardPaths.Concat(cameraPaths)
                                   : standardPaths;
         paths = paths.Concat(MaterialPropertyPaths);
+        if (obj is PathPointSceneObject)
+            paths = paths.Concat(new[] { "path_point.angle", "path_point.scale" });
+        else if (obj is not PathSceneObject)
+            paths = paths.Concat(new[] { "path_follow.target", "path_follow.offset" });
         paths = paths.Concat(obj.CopyConstraints.SelectMany((constraint, index) => GetCopyConstraintPropertyPaths(index, constraint)));
         if (obj is MiBoneSceneObject)
             paths = paths.Concat(new[] { "bend.x", "bend.y", "bend.z" });
@@ -2891,12 +2897,12 @@ public class Timeline : UiPanel
         if (prev == null)
         {
             if (holdFirstKeyframeBeforeStart && next != null)
-                return path is "text.font" or "material.texture" || IsIkReferencePath(path) ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
+                return path is "text.font" or "material.texture" or "path_follow.target" || IsIkReferencePath(path) ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
             return null;
         }
 
         // At or after the last keyframe, or exactly on a keyframe.
-        if (path is "text.font" or "material.texture" || IsIkReferencePath(path)) return prev.Value;
+        if (path is "text.font" or "material.texture" or "path_follow.target" || IsIkReferencePath(path)) return prev.Value;
         if (next == null || prev.Frame == frame)
             return TryConvertKeyframeValue(prev.Value, out float prevDirect) ? prevDirect : null;
 
@@ -3081,6 +3087,10 @@ public class Timeline : UiPanel
 
     // ── Get / set property values ─────────────────────────────────────────────
 
+    private static IEnumerable<(string Path, string Label)> GetPathChannels(SceneObject obj) =>
+        obj is PathPointSceneObject ? [("path_point.angle", "text.path.angle"), ("path_point.scale", "text.path.scale")] :
+        obj is PathSceneObject ? [] : [("path_follow.target", "text.path.target"), ("path_follow.offset", "text.path.offset")];
+
     private static bool IsIkReferencePath(string path) =>
         (path.StartsWith("constraint.", StringComparison.Ordinal) &&
             (path.EndsWith(".ik.target", StringComparison.Ordinal) || path.EndsWith(".ik.pole", StringComparison.Ordinal))) ||
@@ -3176,6 +3186,13 @@ public class Timeline : UiPanel
 
     internal object GetPropertyValue(SceneObject obj, string path)
     {
+        if (path == "path_follow.target") return obj.PathFollowObjectId;
+        if (path == "path_follow.offset") return obj.PathFollowOffset;
+        if (obj is PathPointSceneObject point)
+        {
+            if (path == "path_point.angle") return point.PathPointAngle;
+            if (path == "path_point.scale") return point.PathPointScale;
+        }
         if (obj is ProceduralEffectSceneObject procedural && ProceduralEffectSettings.FindControl(path) is { } effectControl)
             return effectControl.Read(procedural.Settings);
         if (TryGetCopyConstraint(obj, path, out var copy, out string copyChannel))
@@ -3513,6 +3530,25 @@ public class Timeline : UiPanel
 
     internal void SetPropertyValue(SceneObject obj, string path, object rawValue)
     {
+        if (path == "path_follow.target")
+        {
+            obj.PathFollowObjectId = rawValue is JsonElement reference && reference.ValueKind == JsonValueKind.String
+                ? reference.GetString() ?? "" : Convert.ToString(rawValue, CultureInfo.InvariantCulture) ?? "";
+            obj.SetEvaluatedPathFrame(null);
+            return;
+        }
+        if (path is "path_follow.offset" or "path_point.angle" or "path_point.scale")
+        {
+            if (!TryConvertKeyframeValue(rawValue, out float pathValue) || !float.IsFinite(pathValue))
+                throw new InvalidDataException($"Invalid path keyframe: {path}.");
+            if (path == "path_follow.offset") obj.PathFollowOffset = pathValue;
+            else if (obj is PathPointSceneObject point)
+            {
+                if (path == "path_point.angle") point.PathPointAngle = pathValue;
+                else point.PathPointScale = Math.Max(0f, pathValue);
+            }
+            return;
+        }
         if (obj is ProceduralEffectSceneObject procedural && ProceduralEffectSettings.FindControl(path) is { } effectControl)
         {
             if (!TryConvertKeyframeValue(rawValue, out float effectValue) || !float.IsFinite(effectValue))
@@ -4431,6 +4467,10 @@ public class Timeline : UiPanel
                 }
             }
 
+            foreach (var (pathChannel, pathLabel) in GetPathChannels(obj))
+                if (propsWithKeyframes.Contains(pathChannel))
+                    newRows.Add(MakeSingle(obj, Localization.T(pathLabel), pathChannel));
+
             if (obj is ProceduralEffectSceneObject)
                 foreach (var control in ProceduralEffectSettings.Controls)
                     if (propsWithKeyframes.Contains(control.Path))
@@ -4630,6 +4670,9 @@ public class Timeline : UiPanel
                 _displayRows.Add(MakeSingle(obj, "Z", offsetPaths[2], 2));
             }
         }
+
+        foreach (var (pathChannel, pathLabel) in GetPathChannels(obj))
+            _displayRows.Add(MakeSingle(obj, Localization.T(pathLabel), pathChannel));
 
         if (obj is ProceduralEffectSceneObject)
             foreach (var control in ProceduralEffectSettings.Controls)

@@ -23,6 +23,20 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--paths-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                PathGraphics();
+                Console.WriteLine("PASS Path OpenGL geometry, editor-only guides, rebuilds and pixels");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--particles-graphics", StringComparer.Ordinal))
         {
             try
@@ -109,6 +123,14 @@ internal static partial class Program
             ("Procedural effect source-generated archive, library and duplicate persistence", EffectPersistence),
             ("Procedural effect snapshot restoration and dirty fingerprint", EffectSnapshots),
             ("Procedural effect timeline discovery, read/write and interpolation", EffectTimeline),
+            ("Path spawn, ordered points, arc length, smooth and closed sampling", PathSampling),
+            ("Path flat/tube geometry, winding, normals, UVs, roll and scale", PathMeshes),
+            ("Path limits, degenerate curves and invalid input rejection", PathLimits),
+            ("Path following world transforms, clamping, wrapping and no drift", PathFollowing),
+            ("Path following dependency ordering, copy constraints and cycles", PathDependencies),
+            ("Path archive, import, library, duplicate and reference persistence", PathPersistence),
+            ("Path snapshots, point ordering and dirty detection", PathSnapshots),
+            ("Path timeline discovery, interpolation and seek reproducibility", PathTimeline),
             ("All 15 bundled particle presets, assets and finite simulation", ParticleBundled),
             ("Particle spawn menu selection, search and all provided presets", ParticleSpawnMenu),
             ("Particle per-minute rate, multi-type burst, restart and amount limit", ParticleEmission),
@@ -123,6 +145,8 @@ internal static partial class Program
         if (args.Contains("--particles", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Particle", StringComparison.Ordinal) ||
                 test.Name.StartsWith("All 15 bundled particle", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--paths", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Path", StringComparison.Ordinal)).ToArray();
         int failures = 0;
         foreach (var test in tests)
         {

@@ -223,6 +223,7 @@ public class PreviewRenderer : IDisposable
                 }
                 foreach (var mesh in meshes)
                 {
+                    if (mesh.PickOnly) continue;
                     Mesh.ApplyBlendMode(_gl, mesh.BlendMode);
                     mesh.Render(model, view, proj);
                 }
@@ -254,6 +255,7 @@ public class PreviewRenderer : IDisposable
 
         foreach (var mesh in obj.Visuals)
         {
+            if (mesh.PickOnly) continue;
             Mesh.ApplyBlendMode(_gl, mesh.BlendMode);
             mesh.Render(worldMatrix, view, proj);
         }

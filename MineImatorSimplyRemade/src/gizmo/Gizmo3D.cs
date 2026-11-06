@@ -1716,7 +1716,7 @@ public class Gizmo3D : IDisposable
                     {
                         independentPositionBone.OffsetPosition = newWorldPos;
                     }
-                    else if (obj.Parent != null && obj.InheritPosition)
+                    else if ((obj.Parent != null || obj.IsFollowingPath) && obj.InheritPosition)
                     {
                         mat4 parentTransform = obj.GetParentWorldTransform();
                         mat4 parentInverse   = parentTransform.Inverse;
@@ -1752,7 +1752,7 @@ public class Gizmo3D : IDisposable
                     // parent's own transform during rendering, once already present in the
                     // stored "local" value), visibly flipping/misrotating any bone whose
                     // parent bone itself had a non-identity rotation.
-                    if (!localCoords && obj.Parent != null && obj.InheritRotation)
+                    if (!localCoords && (obj.Parent != null || obj.IsFollowingPath) && obj.InheritRotation)
                     {
                         // Must match exactly how GetWorldTransform(obj) built
                         // item.TargetGlobal.Basis in the first place (parentRot *
@@ -2015,7 +2015,7 @@ public class Gizmo3D : IDisposable
 
         // Accumulate parent rotations (strip scale from each parent's contribution
         // by normalising each column before combining).
-        if (obj.Parent != null && obj.InheritRotation)
+        if ((obj.Parent != null || obj.IsFollowingPath) && obj.InheritRotation)
         {
             mat4 parentWorld = obj.GetParentWorldTransform();
             mat4 parentRot   = NormalizeRotation(parentWorld);

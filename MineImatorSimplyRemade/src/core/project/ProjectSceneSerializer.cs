@@ -468,6 +468,15 @@ public static class ProjectSceneSerializer
 
         if (obj is ProceduralEffectSceneObject procedural)
             entry.ProceduralEffect = procedural.Settings;
+        if (obj is PathSceneObject path)
+            entry.Path = path.Settings;
+        if (obj is PathPointSceneObject point)
+        {
+            entry.PathPointAngle = point.PathPointAngle;
+            entry.PathPointScale = point.PathPointScale;
+        }
+        entry.PathFollowObjectId = obj.PathFollowObjectId;
+        entry.PathFollowOffset = obj.PathFollowOffset;
 
         if (obj is ParticleSpawnerSceneObject particleSpawner)
         {
@@ -729,6 +738,12 @@ public static class ProjectSceneSerializer
         if (entry.SpawnCategory == "Light")
             return spawnMenu.SpawnLightObject(entry.Name);
 
+        if (entry.ObjectType == "Path")
+            return spawnMenu.SpawnPathObject(entry.Name, addDefaultPoints: false);
+
+        if (entry.ObjectType == "Path Point")
+            return spawnMenu.SpawnPathPointObject(entry.Name);
+
         if (entry.SpawnCategory == "Primitives")
             return spawnMenu.SpawnPrimitiveObject(entry.ObjectType, entry.Name, 0, "", entry.PrimitivePlaneOrientation,
                 entry.PrimitiveCubeMapped, entry.PrimitiveSphereSmooth, entry.PrimitiveSphereSegments, entry.PrimitiveSphereRings,
@@ -810,7 +825,9 @@ public static class ProjectSceneSerializer
 
     private static SceneObject CreateFallbackObject(ProjectSceneObjectEntry entry, Viewport viewport)
     {
-        SceneObject obj = entry.SpawnCategory == "Effects"
+        SceneObject obj = entry.ObjectType == "Path" ? new PathSceneObject()
+            : entry.ObjectType == "Path Point" ? new PathPointSceneObject()
+            : entry.SpawnCategory == "Effects"
             ? new ProceduralEffectSceneObject()
             : entry.BoneName != null || entry.BoneConstraints != null
             ? new BoneSceneObject()
@@ -959,6 +976,16 @@ public static class ProjectSceneSerializer
 
         if (obj is ProceduralEffectSceneObject procedural)
             procedural.Settings = entry.ProceduralEffect ?? new();
+        if (obj is PathSceneObject path)
+            path.Settings = entry.Path ?? new();
+        if (obj is PathPointSceneObject point)
+        {
+            point.PathPointAngle = entry.PathPointAngle;
+            point.PathPointScale = entry.PathPointScale;
+        }
+        obj.PathFollowObjectId = entry.PathFollowObjectId ?? "";
+        obj.PathFollowOffset = entry.PathFollowOffset;
+        obj.SetEvaluatedPathFrame(null);
 
         if (obj is ParticleSpawnerSceneObject particleSpawner)
         {
@@ -1303,6 +1330,8 @@ public static class ProjectSceneSerializer
 
     internal static void RemapObjectReferences(SceneObject obj, IReadOnlyDictionary<string, string> objectIds)
     {
+        if (!string.IsNullOrEmpty(obj.PathFollowObjectId) && objectIds.TryGetValue(obj.PathFollowObjectId, out string? pathId))
+            obj.PathFollowObjectId = pathId;
         if (obj is ParticleSpawnerSceneObject particle &&
             objectIds.TryGetValue(particle.AttractorObjectId, out string? attractorId))
             particle.AttractorObjectId = attractorId;
@@ -1339,7 +1368,7 @@ public static class ProjectSceneSerializer
             (key.EndsWith(".ik.target", StringComparison.Ordinal) || key.EndsWith(".ik.pole", StringComparison.Ordinal));
         bool isCopyReference = key.StartsWith("copy_constraint.", StringComparison.Ordinal) &&
             key.EndsWith(".target", StringComparison.Ordinal);
-        if ((!isIkReference && !isCopyReference) || track == null)
+        if ((!isIkReference && !isCopyReference && key != "path_follow.target") || track == null)
             return;
         foreach (var keyframe in track)
         {

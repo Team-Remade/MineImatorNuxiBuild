@@ -271,7 +271,7 @@ public class CameraSceneObject : SceneObject
     public void SyncTransformFromCamera()
     {
         var position = ViewCamera.Position - PivotOffset;
-        if (InheritPosition && Parent != null)
+        if (InheritPosition && (Parent != null || IsFollowingPath))
         {
             var local = GetParentWorldTransform().Inverse * new GlmSharp.vec4(position, 1f);
             position = new GlmSharp.vec3(local.x, local.y, local.z);

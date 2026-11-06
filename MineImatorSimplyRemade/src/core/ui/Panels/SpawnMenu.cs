@@ -285,7 +285,7 @@ public class SpawnMenu : UiPanel
             {
                 "Primitives", new List<string>
                 {
-                    "Empty", "Cube", "Sphere", "Cylinder", "Cone", "Plane", "Text Mesh"
+                    "Empty", "Cube", "Sphere", "Cylinder", "Cone", "Plane", "Text Mesh", "Path"
                 }
             },
             // Items renders its own custom UI in the objects/variants columns.
@@ -769,6 +769,15 @@ public class SpawnMenu : UiPanel
 
                 string name = filtered[_selectedObjectIndex];
                 if (name == "Empty") return new List<Mesh>();
+                if (name == "Path")
+                {
+                    var path = CreateDefaultPath("Path");
+                    path.Settings = path.Settings with { Shape = PathShape.Tube, Radius = 0.04f };
+                    path.AddMesh(new Mesh(Gl));
+                    path.EvaluateGeometry();
+                    path.ApplyMaterialSettingsToMeshes();
+                    return path.Visuals.ToList();
+                }
                 if (name == "Text Mesh")
                 {
                     var text = new SceneObject { ObjectType = name, SpawnCategory = "Primitives" };
@@ -5519,6 +5528,47 @@ public class SpawnMenu : UiPanel
 
     // ── Public spawn helpers ─────────────────────────────────────────────────
 
+    private static PathSceneObject CreateDefaultPath(string name)
+    {
+        var path = new PathSceneObject { Name = name };
+        vec3[] positions = [new(-2, 0, 0), new(0, 0, 2), new(2, 0, 0), new(0, 0, -2)];
+        for (int i = 0; i < positions.Length; i++)
+            path.AddChild(new PathPointSceneObject { Name = $"Point {i + 1}", Position = positions[i] });
+        return path;
+    }
+
+    public PathSceneObject? SpawnPathObject(string objectName, bool addDefaultPoints = true)
+    {
+        if (Viewport == null) return null;
+        var path = new PathSceneObject { Name = objectName };
+        path.AssignObjectId();
+        if (Gl != null) path.AddMesh(new Mesh(Gl));
+        Viewport.SceneObjects.Add(path);
+        if (addDefaultPoints)
+        {
+            foreach (var point in CreateDefaultPath(objectName).Children.OfType<PathPointSceneObject>())
+            {
+                var spawned = SpawnPathPointObject(point.Name)!;
+                spawned.Position = point.Position;
+                Viewport.SceneObjects.Remove(spawned);
+                path.AddChild(spawned);
+            }
+        }
+        path.EvaluateGeometry();
+        path.ApplyMaterialSettingsToMeshes();
+        return path;
+    }
+
+    public PathPointSceneObject? SpawnPathPointObject(string objectName)
+    {
+        if (Viewport == null) return null;
+        var point = new PathPointSceneObject { Name = objectName };
+        point.AssignObjectId();
+        if (Gl != null) point.AddMesh(new SphereMesh(Gl, 0.12f, 8, 6) { PickOnly = true });
+        Viewport.SceneObjects.Add(point);
+        return point;
+    }
+
     public ProceduralEffectSceneObject? SpawnProceduralEffectObject(string objectName, ProceduralEffectSettings settings)
     {
         if (Viewport == null) return null;
@@ -5886,6 +5936,8 @@ public class SpawnMenu : UiPanel
                                              bool radialMapped = false)
     {
         if (Viewport == null) return null;
+
+        if (primitiveType == "Path") return SpawnPathObject(objectName);
 
         var obj = new SceneObject
         {

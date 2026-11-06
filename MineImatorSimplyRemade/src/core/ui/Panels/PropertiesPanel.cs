@@ -911,6 +911,11 @@ public partial class PropertiesPanel : UiPanel
             Name = source.Name,
             ObjectType = source.ObjectType,
             ProceduralEffect = source.ProceduralEffect,
+            Path = source.Path,
+            PathPointAngle = source.PathPointAngle,
+            PathPointScale = source.PathPointScale,
+            PathFollowObjectId = source.PathFollowObjectId,
+            PathFollowOffset = source.PathFollowOffset,
             BoneName = source.BoneName,
             BoneEndOffset = source.BoneEndOffset == null ? null : new ProjectVec3
             {
@@ -3712,6 +3717,8 @@ public partial class PropertiesPanel : UiPanel
                 ProjectManager.Instance.SetDirty(true);
             }
         }
+
+        RenderPathProperties();
 
         if (_currentObject is ProceduralEffectSceneObject procedural &&
             ImGui.CollapsingHeader(Localization.Label("text.effects.title", "Procedural Effect"), ImGuiTreeNodeFlags.DefaultOpen))
@@ -6733,6 +6740,8 @@ public partial class PropertiesPanel : UiPanel
             SceneObject defaults = obj is CameraSceneObject ? new CameraSceneObject()
                 : obj is LightSceneObject ? new LightSceneObject()
                 : obj is ParticleSpawnerSceneObject ? new ParticleSpawnerSceneObject()
+                : obj is PathSceneObject ? new PathSceneObject()
+                : obj is PathPointSceneObject ? new PathPointSceneObject()
                 : obj is ProceduralEffectSceneObject ? new ProceduralEffectSceneObject() : new SceneObject();
             defaults.MaterialSettings = new MaterialSettings();
             if (defaults is CameraSceneObject defaultCamera && obj is CameraSceneObject sourceCamera)
@@ -6741,7 +6750,7 @@ public partial class PropertiesPanel : UiPanel
             return Timeline!.GetPropertyValue(defaults, path);
         }
         object value = Timeline!.GetPropertyValue(obj, path);
-        return path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal)
+        return path == "path_follow.offset" || path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal)
             ? Convert.ToSingle(value, CultureInfo.InvariantCulture) * 16f : value;
     }
 
@@ -6804,7 +6813,7 @@ public partial class PropertiesPanel : UiPanel
                         : copy.Type == CopyConstraintType.Rotation ? 180f / MathF.PI : 1f;
                     stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / factor;
                 }
-                else if (path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal))
+                else if (path == "path_follow.offset" || path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal))
                     stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / 16f;
                 else if (path.StartsWith("scale.", StringComparison.Ordinal))
                     stored = MathF.Max(0.001f, Convert.ToSingle(value, CultureInfo.InvariantCulture));

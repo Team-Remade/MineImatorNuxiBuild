@@ -1166,6 +1166,16 @@ public class SceneObject
 
     public IReadOnlyList<SceneObject> Children => _children;
 
+    public void MoveChild(SceneObject child, int index)
+    {
+        int oldIndex = _children.IndexOf(child);
+        if (oldIndex < 0 || (uint)index >= (uint)_children.Count)
+            throw new ArgumentOutOfRangeException(nameof(index), "The child and destination must belong to this hierarchy.");
+        _children.RemoveAt(oldIndex);
+        _children.Insert(index, child);
+        InvalidateRenderEvaluation();
+    }
+
     /// <summary>Adds a child and sets its <see cref="Parent"/>.</summary>
     public void AddChild(SceneObject child)
     {
@@ -1437,6 +1447,16 @@ public class SceneObject
     }
 
     public List<CopyConstraint> CopyConstraints { get; set; } = new();
+    public string PathFollowObjectId = "";
+    public float PathFollowOffset;
+    private mat4? _evaluatedPathFrame;
+    public bool IsFollowingPath => _evaluatedPathFrame.HasValue;
+
+    internal void SetEvaluatedPathFrame(mat4? frame)
+    {
+        _evaluatedPathFrame = frame;
+        InvalidateRenderEvaluation();
+    }
     private mat4? _evaluatedCopyTransform;
     private vec3 _evaluatedCopyLocalScale = vec3.Ones;
     private vec3 CopyConstraintLocalScale => _evaluatedCopyTransform.HasValue ? _evaluatedCopyLocalScale : Scale;
@@ -1479,7 +1499,7 @@ public class SceneObject
         // below deliberately rebuilds its basis in the opposite order.
         mat4 local = mat4.Translate(position) * mat4.Scale(Scale) * rotation;
 
-        mat4 parentWorld = GetBendAdjustedParentMatrix() * modelTransform;
+        mat4 parentWorld = GetParentWorldTransform() * modelTransform;
         mat4 world = parentWorld * local;
         if (captureRotationFrame) rotationPrefix = parentWorld * mat4.Scale(Scale);
 
@@ -1558,7 +1578,8 @@ public class SceneObject
     /// </summary>
     public mat4 GetParentWorldTransform()
     {
-        return GetBendAdjustedParentMatrix();
+        mat4 parent = GetBendAdjustedParentMatrix();
+        return _evaluatedPathFrame is { } pathFrame ? pathFrame * parent : parent;
     }
 
     /// <summary>
