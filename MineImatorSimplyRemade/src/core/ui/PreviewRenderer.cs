@@ -2,6 +2,7 @@ using GlmSharp;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemadeNuxi.core.objs;
+using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.core.ui;
@@ -247,21 +248,21 @@ public class PreviewRenderer : IDisposable
     /// Recursively renders all visible nodes in a <see cref="SceneObject"/> hierarchy,
     /// applying each node's own world matrix so that bones are placed correctly.
     /// </summary>
-    private void RenderSceneObjectRecursive(SceneObject obj, mat4 view, mat4 proj)
+    private void RenderSceneObjectRecursive(SceneObject obj, mat4 view, mat4 proj, ModifierEvaluation? modifiers = null)
     {
         if (!obj.GetEffectiveVisibility()) return;
+        modifiers ??= new ModifierEvaluation([obj]);
 
-        mat4 worldMatrix = obj.GetWorldMatrix();
-
+        foreach (mat4 delta in modifiers.GetDeltas(obj))
         foreach (var mesh in obj.Visuals)
         {
             if (mesh.PickOnly) continue;
             Mesh.ApplyBlendMode(_gl, mesh.BlendMode);
-            mesh.Render(worldMatrix, view, proj);
+            mesh.Render(delta * obj.GetWorldMatrix(), view, proj);
         }
 
         foreach (var child in obj.Children)
-            RenderSceneObjectRecursive(child, view, proj);
+            RenderSceneObjectRecursive(child, view, proj, modifiers);
     }
 
     // ── Manual orbit (drag) ───────────────────────────────────────────────────

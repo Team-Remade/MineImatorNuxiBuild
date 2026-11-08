@@ -916,6 +916,7 @@ public partial class PropertiesPanel : UiPanel
             PathPointScale = source.PathPointScale,
             PathFollowObjectId = source.PathFollowObjectId,
             PathFollowOffset = source.PathFollowOffset,
+            Modifiers = source.Modifiers?.ToList(),
             BoneName = source.BoneName,
             BoneEndOffset = source.BoneEndOffset == null ? null : new ProjectVec3
             {
@@ -5063,6 +5064,7 @@ public partial class PropertiesPanel : UiPanel
         }
 
         DrawConstraints(_currentObject);
+        DrawModifiers(_currentObject);
 
         // ── Effects (shown only for CameraSceneObject) ────────────────────────
         if (_currentObject is CameraSceneObject cameraObject)

@@ -23,6 +23,20 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--modifiers-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                ModifierGraphics();
+                Console.WriteLine("PASS Array OpenGL pixels, skinned copies, path placement, picking, outlines and shadows");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--paths-graphics", StringComparer.Ordinal))
         {
             try
@@ -145,6 +159,11 @@ internal static partial class Program
             ("Path archive, import, library, duplicate and reference persistence", PathPersistence),
             ("Path snapshots, point ordering and dirty detection", PathSnapshots),
             ("Path timeline discovery, interpolation and seek reproducibility", PathTimeline),
+            ("Array axes, spacing, compounded transforms and non-destructive subtree copies", ModifierTransforms),
+            ("Array path alignment, spacing, wrapping, point edits and unavailable targets", ModifierPaths),
+            ("Array stacks, inherited instances, safety cap and invalid transform rejection", ModifierStacks),
+            ("Array archive, library, duplicate references, snapshots and dirty detection", ModifierPersistence),
+            ("Array viewport render collection and shadow cache invalidation", ModifierRenderCollection),
             ("All 15 bundled particle presets, assets and finite simulation", ParticleBundled),
             ("Particle spawn menu selection, search and all provided presets", ParticleSpawnMenu),
             ("Particle per-minute rate, multi-type burst, restart and amount limit", ParticleEmission),

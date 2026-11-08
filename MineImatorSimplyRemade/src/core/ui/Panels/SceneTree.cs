@@ -1159,6 +1159,7 @@ public class SceneTree : UiPanel
         dup.Position            = original.Position;
         dup.PathFollowObjectId  = original.PathFollowObjectId;
         dup.PathFollowOffset    = original.PathFollowOffset;
+        dup.Modifiers = original.Modifiers.ToList();
         dup.Rotation            = original.Rotation;
         dup.Scale               = original.Scale;
         dup.PivotOffset         = original.PivotOffset;
@@ -1291,6 +1292,7 @@ public class SceneTree : UiPanel
         duplicate.InheritGlowColor = original.InheritGlowColor;
         duplicate.InheritSelect = original.InheritSelect;
         duplicate.InheritPose = original.InheritPose;
+        duplicate.Modifiers = original.Modifiers.ToList();
         duplicate.CopyConstraints.Clear();
         foreach (var constraint in original.CopyConstraints)
             duplicate.CopyConstraints.Add(constraint.Clone());

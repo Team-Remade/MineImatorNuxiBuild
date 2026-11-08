@@ -400,6 +400,7 @@ public class ProjectSceneObjectEntry
     public List<ProjectBoneConstraintEntry>? BoneConstraints { get; set; }
     // Null retains imported defaults for legacy saves; an empty list explicitly clears them.
     public List<ProjectCopyConstraintEntry>? CopyConstraints { get; set; }
+    public List<SceneModifier>? Modifiers { get; set; }
     public ProjectVec3 PivotOffset { get; set; } = new() { X = 0f, Y = 0.5f, Z = 0f };
 
     public bool InheritPosition { get; set; } = true;

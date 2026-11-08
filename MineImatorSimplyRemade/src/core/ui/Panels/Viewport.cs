@@ -49,6 +49,20 @@ public class Viewport : UiPanel
     // ── Scene ──────────────────────────────────────────────────────────────────
 
     public List<SceneObject> SceneObjects { get; } = new();
+    private ModifierEvaluation? _modifierEvaluation;
+
+    private void ResetModifierEvaluation() =>
+        (MainViewport ?? this)._modifierEvaluation = new ModifierEvaluation((MainViewport ?? this).SceneObjects);
+
+    private IEnumerable<mat4> GetModifiedWorldMatrices(SceneObject obj, mat4 source, vec3? cameraPos = null)
+    {
+        var owner = MainViewport ?? this;
+        owner._modifierEvaluation ??= new ModifierEvaluation(owner.SceneObjects);
+        foreach (var delta in owner._modifierEvaluation.GetDeltas(obj))
+            yield return cameraPos.HasValue
+                ? GetRenderableWorldMatrixForInstance(obj, cameraPos.Value, delta)
+                : delta * source;
+    }
 
     private Action<vec3>? _placeObject;
     private SceneObject? _placementExcludedRoot;
@@ -1743,26 +1757,28 @@ public class Viewport : UiPanel
         if (obj is BoneSceneObject bone && bone.IndicatorMesh != null && ShouldShowBoneIndicator(bone) &&
             (_showHiddenObjects || !obj.IsHiddenForRendering()))
         {
-            mat4 model = obj.GetWorldMatrix();
-            mat4 mvp   = proj * view * model;
-
-            if (mvpLoc >= 0)
+            foreach (mat4 model in GetModifiedWorldMatrices(obj, obj.GetWorldMatrix()))
             {
-                float[] f =
+                mat4 mvp = proj * view * model;
+
+                if (mvpLoc >= 0)
                 {
+                    float[] f =
+                    {
                     mvp.m00, mvp.m01, mvp.m02, mvp.m03,
                     mvp.m10, mvp.m11, mvp.m12, mvp.m13,
                     mvp.m20, mvp.m21, mvp.m22, mvp.m23,
                     mvp.m30, mvp.m31, mvp.m32, mvp.m33,
                 };
-                fixed (float* p = f) Gl.UniformMatrix4(mvpLoc, 1, false, p);
+                    fixed (float* p = f) Gl.UniformMatrix4(mvpLoc, 1, false, p);
+                }
+
+                bool selected = sm != null && sm.SelectedObjects.Contains(obj);
+                vec4 col = selected ? BoneColorSelected : BoneColor;
+                if (colorLoc >= 0) Gl.Uniform4(colorLoc, col.x, col.y, col.z, col.w);
+
+                bone.IndicatorMesh.RenderPickPass(Gl);
             }
-
-            bool selected = sm != null && sm.SelectedObjects.Contains(obj);
-            vec4 col = selected ? BoneColorSelected : BoneColor;
-            if (colorLoc >= 0) Gl.Uniform4(colorLoc, col.x, col.y, col.z, col.w);
-
-            bone.IndicatorMesh.RenderPickPass(Gl);
         }
 
         var children = obj.Children;
@@ -2740,6 +2756,7 @@ public class Viewport : UiPanel
 
             // ── Per-frame mesh globals ─────────────────────────────────────────────
             using var evaluation = SceneObject.BeginRenderEvaluation();
+            ResetModifierEvaluation();
             foreach (var root in SceneObjects)
                 root.RefreshInheritedMaterials();
             Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
@@ -3198,6 +3215,7 @@ public class Viewport : UiPanel
         Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
         Mesh.AnimatedTextureSpeedScale = Math.Clamp(PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240) / 20.0;
         using var evaluation = SceneObject.BeginRenderEvaluation();
+        ResetModifierEvaluation();
         foreach (var root in SceneObjects)
             root.RefreshInheritedMaterials();
 
@@ -3759,6 +3777,7 @@ public class Viewport : UiPanel
             // Include every node's resolved transform: non-casting bones can still
             // deform a visible skinned mesh, and point lights can inherit transforms.
             hash.Add(obj.GetWorldMatrix());
+            foreach (var model in GetModifiedWorldMatrices(obj, obj.GetWorldMatrix())) hash.Add(model);
             hash.Add(obj.GetEffectiveInvertFaces());
             if (obj is BoneSceneObject bone) hash.Add(bone.BoneName);
             if (obj.RenderInHighQuality && IsObjectVisible(obj) && obj.CastShadow)
@@ -3893,7 +3912,7 @@ public class Viewport : UiPanel
             if (!ShouldRenderInQuality(obj, renderMode))
                 continue;
 
-            mat4 model = obj.GetWorldMatrix();
+            mat4 sourceModel = obj.GetWorldMatrix();
             var localBoneDict = boneDict ?? BuildBoneDictionary(obj);
 
             // Respect the per-object "Cast Shadow" toggle: objects with it
@@ -3901,26 +3920,27 @@ public class Viewport : UiPanel
             // directional (sun) shadow-map pass.
             if (IsObjectVisible(obj) && obj.CastShadow)
             {
-                foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly && !mesh.DepthTestDisabled))
-                {
-                    mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
+                foreach (mat4 model in GetModifiedWorldMatrices(obj, sourceModel))
+                    foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly && !mesh.DepthTestDisabled))
+                    {
+                        mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
 
-                    // Frustum cull against the shadow light frustum.
-                    vec3 worldCenter = new vec3((model * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
-                    float scale = MathF.Max(
-                        new vec3(model.m00, model.m10, model.m20).Length,
-                        MathF.Max(
-                            new vec3(model.m01, model.m11, model.m21).Length,
-                            new vec3(model.m02, model.m12, model.m22).Length));
-                    float worldRadius = mesh.BoundingSphereRadius * scale;
-                    if (!shadowFrustum.TestSphere(worldCenter, worldRadius))
-                        continue;
+                        // Frustum cull against the shadow light frustum.
+                        vec3 worldCenter = new vec3((model * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
+                        float scale = MathF.Max(
+                            new vec3(model.m00, model.m10, model.m20).Length,
+                            MathF.Max(
+                                new vec3(model.m01, model.m11, model.m21).Length,
+                                new vec3(model.m02, model.m12, model.m22).Length));
+                        float worldRadius = mesh.BoundingSphereRadius * scale;
+                        if (!shadowFrustum.TestSphere(worldCenter, worldRadius))
+                            continue;
 
-                    if (mesh.IsSkinned)
-                        UpdateBoneMatrices(mesh, model, localBoneDict);
+                        if (mesh.IsSkinned)
+                            UpdateBoneMatrices(mesh, sourceModel, localBoneDict);
 
-                    mesh.RenderShadow(shadowShader, lightViewProj, model);
-                }
+                        mesh.RenderShadow(shadowShader, lightViewProj, model);
+                    }
             }
 
             RenderShadowCasters(obj.Children, lightViewProj, shadowShader, renderMode, localBoneDict);
@@ -3938,26 +3958,28 @@ public class Viewport : UiPanel
 
             if (IsObjectVisible(obj) && obj.CastShadow)
             {
-                mat4 world = obj.GetWorldMatrix();
-                bool includedMeshVertex = false;
-                foreach (var mesh in obj.Visuals.Where(m => !m.PickOnly && !m.DepthTestDisabled && m.Vertices.Count != 0))
+                foreach (mat4 world in GetModifiedWorldMatrices(obj, obj.GetWorldMatrix()))
                 {
-                    includedMeshVertex = true;
-                    // Use the local bounding sphere to compute world-space extents,
-                    // avoiding per-vertex iteration over every mesh.
-                    vec3 worldCenter = new vec3((world * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
-                    float scale = MathF.Max(
-                        new vec3(world.m00, world.m10, world.m20).Length,
-                        MathF.Max(
-                            new vec3(world.m01, world.m11, world.m21).Length,
-                            new vec3(world.m02, world.m12, world.m22).Length));
-                    float worldRadius = mesh.BoundingSphereRadius * scale;
-                    bounds.Include(worldCenter - new vec3(worldRadius));
-                    bounds.Include(worldCenter + new vec3(worldRadius));
-                }
+                    bool includedMeshVertex = false;
+                    foreach (var mesh in obj.Visuals.Where(m => !m.PickOnly && !m.DepthTestDisabled && m.Vertices.Count != 0))
+                    {
+                        includedMeshVertex = true;
+                        // Use the local bounding sphere to compute world-space extents,
+                        // avoiding per-vertex iteration over every mesh.
+                        vec3 worldCenter = new vec3((world * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
+                        float scale = MathF.Max(
+                            new vec3(world.m00, world.m10, world.m20).Length,
+                            MathF.Max(
+                                new vec3(world.m01, world.m11, world.m21).Length,
+                                new vec3(world.m02, world.m12, world.m22).Length));
+                        float worldRadius = mesh.BoundingSphereRadius * scale;
+                        bounds.Include(worldCenter - new vec3(worldRadius));
+                        bounds.Include(worldCenter + new vec3(worldRadius));
+                    }
 
-                if (!includedMeshVertex)
-                    bounds.Include(new vec3(world.m30, world.m31, world.m32));
+                    if (!includedMeshVertex)
+                        bounds.Include(new vec3(world.m30, world.m31, world.m32));
+                }
             }
 
             CollectShadowBounds(obj.Children, ref bounds, renderMode);
@@ -3973,7 +3995,7 @@ public class Viewport : UiPanel
             if (!ShouldRenderInQuality(obj, renderMode))
                 continue;
 
-            mat4 model = obj.GetWorldMatrix();
+            mat4 sourceModel = obj.GetWorldMatrix();
             var localBoneDict = boneDict;
             if (localBoneDict == null)
                 localBoneDict = BuildBoneDictionary(obj);
@@ -3985,27 +4007,28 @@ public class Viewport : UiPanel
             // mesh always cast point/spot shadows regardless of the setting.
             if (IsObjectVisible(obj) && obj.CastShadow)
             {
-                foreach (var mesh in obj.Visuals.Where(mesh => mesh is { PickOnly: false, DepthTestDisabled: false }))
-                {
-                    mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
+                foreach (mat4 model in GetModifiedWorldMatrices(obj, sourceModel))
+                    foreach (var mesh in obj.Visuals.Where(mesh => mesh is { PickOnly: false, DepthTestDisabled: false }))
+                    {
+                        mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
 
-                    // Distance cull: skip meshes outside the light's range.
-                    vec3 worldCenter = new vec3((model * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
-                    float distToLight = (worldCenter - lightPos).Length;
-                    float scale = MathF.Max(
-                        new vec3(model.m00, model.m10, model.m20).Length,
-                        MathF.Max(
-                            new vec3(model.m01, model.m11, model.m21).Length,
-                            new vec3(model.m02, model.m12, model.m22).Length));
-                    float worldRadius = mesh.BoundingSphereRadius * scale;
-                    if (distToLight - worldRadius > farPlane)
-                        continue;
+                        // Distance cull: skip meshes outside the light's range.
+                        vec3 worldCenter = new vec3((model * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
+                        float distToLight = (worldCenter - lightPos).Length;
+                        float scale = MathF.Max(
+                            new vec3(model.m00, model.m10, model.m20).Length,
+                            MathF.Max(
+                                new vec3(model.m01, model.m11, model.m21).Length,
+                                new vec3(model.m02, model.m12, model.m22).Length));
+                        float worldRadius = mesh.BoundingSphereRadius * scale;
+                        if (distToLight - worldRadius > farPlane)
+                            continue;
 
-                    if (mesh.IsSkinned)
-                        UpdateBoneMatrices(mesh, model, localBoneDict);
+                        if (mesh.IsSkinned)
+                            UpdateBoneMatrices(mesh, sourceModel, localBoneDict);
 
-                    mesh.RenderPointShadow(pointShadowShader, lightViewProj, model, lightPos, farPlane);
-                }
+                        mesh.RenderPointShadow(pointShadowShader, lightViewProj, model, lightPos, farPlane);
+                    }
             }
 
             RenderPointShadowCasters(obj.Children, lightViewProj, lightPos, farPlane, pointShadowShader, renderMode, localBoneDict);
@@ -4249,6 +4272,7 @@ public class Viewport : UiPanel
     {
         // Selection callbacks can edit raw public fields while handling a pick.
         using var uncached = SceneObject.SuspendRenderEvaluation();
+        ResetModifierEvaluation();
         if (_pickShader == null) return;
         if (pickFbo == 0 || pickColorTex == 0 || w == 0 || h == 0) return;
 
@@ -4395,58 +4419,61 @@ public class Viewport : UiPanel
             bool hasBoneIndicator = obj is BoneSceneObject b && b.IndicatorMesh != null && ShouldShowBoneIndicator(b);
             if (IsObjectVisible(obj) && (surfacesOnly || obj.IsSelectable) && (obj.Visuals.Count > 0 || hasBoneIndicator))
             {
-                mat4 model = GetRenderableWorldMatrix(obj, Mesh.GlobalCameraPosition);
-                mat4 mvp   = proj * view * model;
-
-                // Upload MVP.
-                int mvpLoc = Gl.GetUniformLocation(_pickShader.ShaderProgram, "uMVP");
-                if (mvpLoc >= 0)
+                mat4 sourceModel = GetRenderableWorldMatrix(obj, Mesh.GlobalCameraPosition);
+                foreach (mat4 model in GetModifiedWorldMatrices(obj, sourceModel, Mesh.GlobalCameraPosition))
                 {
-                    float[] f =
+                    mat4 mvp = proj * view * model;
+
+                    // Upload MVP.
+                    int mvpLoc = Gl.GetUniformLocation(_pickShader.ShaderProgram, "uMVP");
+                    if (mvpLoc >= 0)
                     {
+                        float[] f =
+                        {
                         mvp.m00, mvp.m01, mvp.m02, mvp.m03,
                         mvp.m10, mvp.m11, mvp.m12, mvp.m13,
                         mvp.m20, mvp.m21, mvp.m22, mvp.m23,
                         mvp.m30, mvp.m31, mvp.m32, mvp.m33,
                     };
-                    fixed (float* p = f)
-                        Gl.UniformMatrix4(mvpLoc, 1, false, p);
-                }
+                        fixed (float* p = f)
+                            Gl.UniformMatrix4(mvpLoc, 1, false, p);
+                    }
 
-                // Upload pick colour.
-                int colorLoc = Gl.GetUniformLocation(_pickShader.ShaderProgram, "uPickColor");
-                if (colorLoc >= 0)
-                    Gl.Uniform3(colorLoc, obj.PickColor.x, obj.PickColor.y, obj.PickColor.z);
+                    // Upload pick colour.
+                    int colorLoc = Gl.GetUniformLocation(_pickShader.ShaderProgram, "uPickColor");
+                    if (colorLoc >= 0)
+                        Gl.Uniform3(colorLoc, obj.PickColor.x, obj.PickColor.y, obj.PickColor.z);
 
-                // Draw geometry meshes.
-                foreach (var mesh in obj.Visuals)
-                {
-                    if (surfacesOnly && mesh.PickOnly) continue;
-                    if (mesh.IsSkinned && localBoneDict != null)
-                        UpdateBoneMatrices(mesh, model, localBoneDict);
-                    mesh.ApplySkinningUniforms(_pickShader);
-                    if (surfacesOnly)
+                    // Draw geometry meshes.
+                    foreach (var mesh in obj.Visuals)
                     {
-                        if (mesh.DoubleSided) Gl.Disable(GLEnum.CullFace);
-                        else
+                        if (surfacesOnly && mesh.PickOnly) continue;
+                        if (mesh.IsSkinned && localBoneDict != null)
+                            UpdateBoneMatrices(mesh, sourceModel, localBoneDict);
+                        mesh.ApplySkinningUniforms(_pickShader);
+                        if (surfacesOnly)
+                        {
+                            if (mesh.DoubleSided) Gl.Disable(GLEnum.CullFace);
+                            else
+                            {
+                                Gl.Enable(GLEnum.CullFace);
+                                Gl.CullFace(mesh.CullFrontFaces ? GLEnum.Front : GLEnum.Back);
+                            }
+                        }
+                        mesh.RenderPickPass(_pickShader);
+                        if (surfacesOnly)
                         {
                             Gl.Enable(GLEnum.CullFace);
-                            Gl.CullFace(mesh.CullFrontFaces ? GLEnum.Front : GLEnum.Back);
+                            Gl.CullFace(GLEnum.Back);
                         }
                     }
-                    mesh.RenderPickPass(_pickShader);
-                    if (surfacesOnly)
-                    {
-                        Gl.Enable(GLEnum.CullFace);
-                        Gl.CullFace(GLEnum.Back);
-                    }
-                }
 
-                // Draw the bone indicator octahedron as an additional pick target.
-                if (!surfacesOnly && obj is BoneSceneObject bone && bone.IndicatorMesh != null && ShouldShowBoneIndicator(bone))
-                {
-                    bone.IndicatorMesh.ApplySkinningUniforms(_pickShader);
-                    bone.IndicatorMesh.RenderPickPass(_pickShader);
+                    // Draw the bone indicator octahedron as an additional pick target.
+                    if (!surfacesOnly && obj is BoneSceneObject bone && bone.IndicatorMesh != null && ShouldShowBoneIndicator(bone))
+                    {
+                        bone.IndicatorMesh.ApplySkinningUniforms(_pickShader);
+                        bone.IndicatorMesh.RenderPickPass(_pickShader);
+                    }
                 }
             }
 
@@ -4512,40 +4539,43 @@ public class Viewport : UiPanel
             if (!IsObjectVisible(obj)) continue;
             if (obj.Visuals.Count == 0) continue;
 
-            mat4 model = GetRenderableWorldMatrix(obj, Mesh.GlobalCameraPosition);
-            mat4 mvp   = proj * view * model;
-
-            if (mvpLoc >= 0)
+            mat4 sourceModel = GetRenderableWorldMatrix(obj, Mesh.GlobalCameraPosition);
+            foreach (mat4 model in GetModifiedWorldMatrices(obj, sourceModel, Mesh.GlobalCameraPosition))
             {
-                float[] f =
+                mat4 mvp = proj * view * model;
+
+                if (mvpLoc >= 0)
                 {
+                    float[] f =
+                    {
                     mvp.m00, mvp.m01, mvp.m02, mvp.m03,
                     mvp.m10, mvp.m11, mvp.m12, mvp.m13,
                     mvp.m20, mvp.m21, mvp.m22, mvp.m23,
                     mvp.m30, mvp.m31, mvp.m32, mvp.m33,
                 };
-                fixed (float* p = f)
-                    Gl.UniformMatrix4(mvpLoc, 1, false, p);
-            }
+                    fixed (float* p = f)
+                        Gl.UniformMatrix4(mvpLoc, 1, false, p);
+                }
 
-            // Build a bone dictionary for the top-level hierarchy that contains
-            // the selected object, caching by root to avoid recomputation.
-            var root = obj;
-            while (root.Parent != null)
-                root = root.Parent;
+                // Build a bone dictionary for the top-level hierarchy that contains
+                // the selected object, caching by root to avoid recomputation.
+                var root = obj;
+                while (root.Parent != null)
+                    root = root.Parent;
 
-            if (!boneDictCache.TryGetValue(root, out var boneDict))
-            {
-                boneDict = BuildBoneDictionary(root);
-                boneDictCache[root] = boneDict;
-            }
+                if (!boneDictCache.TryGetValue(root, out var boneDict))
+                {
+                    boneDict = BuildBoneDictionary(root);
+                    boneDictCache[root] = boneDict;
+                }
 
-            foreach (var mesh in obj.Visuals)
-            {
-                if (mesh.IsSkinned && boneDict != null)
-                    UpdateBoneMatrices(mesh, model, boneDict);
-                mesh.ApplySkinningUniforms(_silhouetteShader);
-                mesh.RenderPickPass(_silhouetteShader);
+                foreach (var mesh in obj.Visuals)
+                {
+                    if (mesh.IsSkinned && boneDict != null)
+                        UpdateBoneMatrices(mesh, sourceModel, boneDict);
+                    mesh.ApplySkinningUniforms(_silhouetteShader);
+                    mesh.RenderPickPass(_silhouetteShader);
+                }
             }
         }
 
@@ -4718,60 +4748,62 @@ public class Viewport : UiPanel
     /// These pseudo-lights are unshadowed and use a bounded range derived from
     /// mesh size and emissive energy.
     /// </summary>
-    private static void AddEmissivePointLightsForObject(
+    private void AddEmissivePointLightsForObject(
         SceneObject obj,
         List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle)> result)
     {
         if (obj.Visuals.Count == 0)
             return;
 
-        mat4 world = obj.GetWorldMatrix();
-        float worldScale = MathF.Max(
-            new vec3(world.m00, world.m10, world.m20).Length,
-            MathF.Max(
-                new vec3(world.m01, world.m11, world.m21).Length,
-                new vec3(world.m02, world.m12, world.m22).Length));
-
-        foreach (var mesh in obj.Visuals)
+        foreach (mat4 world in GetModifiedWorldMatrices(obj, obj.GetWorldMatrix()))
         {
-            if (mesh.PickOnly || mesh.Vertices.Count == 0)
-                continue;
-            if (!mesh.EmissionEnabled)
-                continue;
+            float worldScale = MathF.Max(
+                new vec3(world.m00, world.m10, world.m20).Length,
+                MathF.Max(
+                    new vec3(world.m01, world.m11, world.m21).Length,
+                    new vec3(world.m02, world.m12, world.m22).Length));
 
-            float emissionEnergy = MathF.Max(mesh.EmissionEnergy, 0f);
-            vec3 emissionColor = new vec3(
-                MathF.Max(mesh.EmissionColor.x, 0f),
-                MathF.Max(mesh.EmissionColor.y, 0f),
-                MathF.Max(mesh.EmissionColor.z, 0f));
-            emissionColor *= ResourcePackMaterialTextures.GetEmissionAverage(mesh.EmissionTexture);
+            foreach (var mesh in obj.Visuals)
+            {
+                if (mesh.PickOnly || mesh.Vertices.Count == 0)
+                    continue;
+                if (!mesh.EmissionEnabled)
+                    continue;
 
-            float colorLuma = MathF.Max(emissionColor.x, MathF.Max(emissionColor.y, emissionColor.z));
-            if (emissionEnergy <= 0.0001f || colorLuma <= 0.0001f)
-                continue;
+                float emissionEnergy = MathF.Max(mesh.EmissionEnergy, 0f);
+                vec3 emissionColor = new vec3(
+                    MathF.Max(mesh.EmissionColor.x, 0f),
+                    MathF.Max(mesh.EmissionColor.y, 0f),
+                    MathF.Max(mesh.EmissionColor.z, 0f));
+                emissionColor *= ResourcePackMaterialTextures.GetEmissionAverage(mesh.EmissionTexture);
 
-            vec3 localCenter = mesh.BoundingSphereCenter;
-            vec3 worldCenter = new vec3((world * new vec4(localCenter, 1f)).xyz);
-            float worldRadius = MathF.Max(mesh.BoundingSphereRadius * worldScale, 0.15f);
+                float colorLuma = MathF.Max(emissionColor.x, MathF.Max(emissionColor.y, emissionColor.z));
+                if (emissionEnergy <= 0.0001f || colorLuma <= 0.0001f)
+                    continue;
 
-            // Keep emissive influence local and stable: scale mostly by object
-            // size and emission amount, with a hard upper clamp.
-            float lightRange = Math.Clamp((worldRadius * 3.5f) + (emissionEnergy * 2.0f), 0.5f, 40f);
-            float lightEnergy = mesh.EmissionIndirectOnly
-                ? 0f
-                : Math.Clamp(emissionEnergy * 0.6f, 0f, 10f);
-            float indirectEnergy = Math.Clamp(emissionEnergy, 0f, 16f);
+                vec3 localCenter = mesh.BoundingSphereCenter;
+                vec3 worldCenter = new vec3((world * new vec4(localCenter, 1f)).xyz);
+                float worldRadius = MathF.Max(mesh.BoundingSphereRadius * worldScale, 0.15f);
 
-            result.Add((
-                worldCenter,
-                emissionColor,
-                lightRange,
-                lightEnergy,
-                -1,
-                vec3.Zero,
-                indirectEnergy,
-                0f,
-                0f));
+                // Keep emissive influence local and stable: scale mostly by object
+                // size and emission amount, with a hard upper clamp.
+                float lightRange = Math.Clamp((worldRadius * 3.5f) + (emissionEnergy * 2.0f), 0.5f, 40f);
+                float lightEnergy = mesh.EmissionIndirectOnly
+                    ? 0f
+                    : Math.Clamp(emissionEnergy * 0.6f, 0f, 10f);
+                float indirectEnergy = Math.Clamp(emissionEnergy, 0f, 16f);
+
+                result.Add((
+                    worldCenter,
+                    emissionColor,
+                    lightRange,
+                    lightEnergy,
+                    -1,
+                    vec3.Zero,
+                    indirectEnergy,
+                    0f,
+                    0f));
+            }
             FrameProfiler.Shared.Count(ProfileCounter.EmissiveProxyLights);
         }
     }
@@ -5309,50 +5341,53 @@ public class Viewport : UiPanel
                 continue;
             }
 
-            mat4  model    = GetRenderableWorldMatrix(obj, camPos);
-            vec3  worldPos = new vec3(model.m30, model.m31, model.m32);
-            float dist     = (worldPos - camPos).LengthSqr;
-
-            // Only this node's own Visuals — not its descendants.
-            foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly))
+            mat4 sourceModel = GetRenderableWorldMatrix(obj, camPos);
+            foreach (mat4 model in GetModifiedWorldMatrices(obj, sourceModel, camPos))
             {
-                mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
+                vec3 worldPos = new vec3(model.m30, model.m31, model.m32);
+                float dist = (worldPos - camPos).LengthSqr;
 
-                // Frustum culling: test mesh bounding sphere against the view frustum.
-                // Overlay / always-visible meshes skip the test.
-                if (!mesh.DepthTestDisabled)
+                // Only this node's own Visuals — not its descendants.
+                foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly))
                 {
-                    vec3 worldCenter = new vec3((model * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
-                    float scale = MathF.Max(
-                        new vec3(model.m00, model.m10, model.m20).Length,
-                        MathF.Max(
-                            new vec3(model.m01, model.m11, model.m21).Length,
-                            new vec3(model.m02, model.m12, model.m22).Length));
-                    float worldRadius = mesh.BoundingSphereRadius * scale;
-                    if (!frustum.TestSphere(worldCenter, worldRadius))
+                    mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
+
+                    // Frustum culling: test mesh bounding sphere against the view frustum.
+                    // Overlay / always-visible meshes skip the test.
+                    if (!mesh.DepthTestDisabled)
+                    {
+                        vec3 worldCenter = new vec3((model * new vec4(mesh.BoundingSphereCenter, 1f)).xyz);
+                        float scale = MathF.Max(
+                            new vec3(model.m00, model.m10, model.m20).Length,
+                            MathF.Max(
+                                new vec3(model.m01, model.m11, model.m21).Length,
+                                new vec3(model.m02, model.m12, model.m22).Length));
+                        float worldRadius = mesh.BoundingSphereRadius * scale;
+                        if (!frustum.TestSphere(worldCenter, worldRadius))
+                            continue;
+                    }
+
+                    if (mesh.IsSkinned && localBoneDict != null)
+                        UpdateBoneMatrices(mesh, sourceModel, localBoneDict);
+
+                    // Overlay meshes (e.g. camera icon) are collected separately so
+                    // they can be shown/hidden with the Overlays toggle and are never
+                    // fed into the normal depth-sorted scene passes.
+                    if (mesh.DepthTestDisabled)
+                    {
+                        overlays.Add((model, mesh));
                         continue;
+                    }
+
+                    var targetList = obj.IncludeInAmbientOcclusion ? renderItems : renderItemsNoAo;
+                    targetList.Add((
+                        model,
+                        mesh,
+                        mesh.SortDepth + obj.RenderDepthOffset,
+                        obj.IncludeInFog,
+                        obj.BlurTexture,
+                        obj.TextureMipmaps));
                 }
-
-                if (mesh.IsSkinned && localBoneDict != null)
-                    UpdateBoneMatrices(mesh, model, localBoneDict);
-
-                // Overlay meshes (e.g. camera icon) are collected separately so
-                // they can be shown/hidden with the Overlays toggle and are never
-                // fed into the normal depth-sorted scene passes.
-                if (mesh.DepthTestDisabled)
-                {
-                    overlays.Add((model, mesh));
-                    continue;
-                }
-
-                var targetList = obj.IncludeInAmbientOcclusion ? renderItems : renderItemsNoAo;
-                targetList.Add((
-                    model,
-                    mesh,
-                    mesh.SortDepth + obj.RenderDepthOffset,
-                    obj.IncludeInFog,
-                    obj.BlurTexture,
-                    obj.TextureMipmaps));
             }
 
             // Recurse into children so each child uses its own world matrix.
@@ -5362,7 +5397,12 @@ public class Viewport : UiPanel
 
     private static mat4 GetRenderableWorldMatrix(SceneObject obj, vec3 cameraPos)
     {
-        mat4 world = obj.GetWorldMatrix();
+        return GetRenderableWorldMatrixForInstance(obj, cameraPos, mat4.Identity);
+    }
+
+    private static mat4 GetRenderableWorldMatrixForInstance(SceneObject obj, vec3 cameraPos, mat4 delta)
+    {
+        mat4 world = delta * obj.GetWorldMatrix();
 
         bool faceCamera = obj.PrimitivePlaneFaceCamera && string.Equals(obj.ObjectType, "Plane", StringComparison.OrdinalIgnoreCase)
                           || obj.TextMeshFaceCamera && string.Equals(obj.ObjectType, "Text Mesh", StringComparison.OrdinalIgnoreCase);
@@ -5373,7 +5413,7 @@ public class Viewport : UiPanel
 
         // The billboard is rebuilt around the logical pivot, not the already
         // offset mesh center; applying PivotOffset twice shifts the plane.
-        world = obj.GetWorldMatrixNoPivot();
+        world = delta * obj.GetWorldMatrixNoPivot();
         vec3 worldPos = new vec3(world.m30, world.m31, world.m32);
         vec3 toCamera = cameraPos - worldPos;
         if (toCamera.LengthSqr <= 1e-10f)
@@ -7034,6 +7074,7 @@ public class Viewport : UiPanel
 
 
         using var evaluation = SceneObject.BeginRenderEvaluation();
+        ResetModifierEvaluation();
         foreach (var root in MainViewport.SceneObjects)
             root.RefreshInheritedMaterials();
         Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;

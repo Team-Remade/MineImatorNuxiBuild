@@ -346,6 +346,7 @@ public static class ProjectSceneSerializer
             Rotation = ToProjectVec3(obj.Rotation),
             Scale = ToProjectVec3(obj.Scale),
             CopyConstraints = obj.CopyConstraints.Select(SerializeCopyConstraint).ToList(),
+            Modifiers = obj.Modifiers.Select(modifier => modifier.Validated()).ToList(),
             BendAngle = obj is MiBoneSceneObject bendBone && bendBone.BendParameters is { } bend
                 ? ToProjectVec3(bend.Angle)
                 : null,
@@ -891,6 +892,7 @@ public static class ProjectSceneSerializer
         obj.SetLocalPosition(ToVec3(entry.Position));
         obj.SetLocalRotation(ToVec3(entry.Rotation));
         obj.SetLocalScale(ToVec3(entry.Scale));
+        obj.Modifiers = entry.Modifiers?.Select(modifier => modifier.Validated()).ToList() ?? [];
         if (entry.CopyConstraints != null)
         {
             obj.CopyConstraints.Clear();
@@ -1330,6 +1332,9 @@ public static class ProjectSceneSerializer
 
     internal static void RemapObjectReferences(SceneObject obj, IReadOnlyDictionary<string, string> objectIds)
     {
+        for (int i = 0; i < obj.Modifiers.Count; i++)
+            if (objectIds.TryGetValue(obj.Modifiers[i].PathObjectId, out string? modifierPathId))
+                obj.Modifiers[i] = obj.Modifiers[i] with { PathObjectId = modifierPathId };
         if (!string.IsNullOrEmpty(obj.PathFollowObjectId) && objectIds.TryGetValue(obj.PathFollowObjectId, out string? pathId))
             obj.PathFollowObjectId = pathId;
         if (obj is ParticleSpawnerSceneObject particle &&

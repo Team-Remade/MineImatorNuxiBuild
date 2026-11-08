@@ -1447,6 +1447,7 @@ public class SceneObject
     }
 
     public List<CopyConstraint> CopyConstraints { get; set; } = new();
+    public List<SceneModifier> Modifiers { get; set; } = new();
     public string PathFollowObjectId = "";
     public float PathFollowOffset;
     private mat4? _evaluatedPathFrame;

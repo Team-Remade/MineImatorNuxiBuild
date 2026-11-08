@@ -351,6 +351,9 @@ public static class NxObjectArchive
         {
             node.CameraTextureObjectId = Reference(node.CameraTextureObjectId);
             node.PathFollowObjectId = Reference(node.PathFollowObjectId);
+            if (node.Modifiers != null)
+                for (int i = 0; i < node.Modifiers.Count; i++)
+                    node.Modifiers[i] = node.Modifiers[i] with { PathObjectId = Reference(node.Modifiers[i].PathObjectId) };
             node.ParticleAttractorObjectId = Reference(node.ParticleAttractorObjectId);
             foreach (var constraint in node.CopyConstraints ?? []) constraint.TargetObjectId = Reference(constraint.TargetObjectId);
             foreach (var constraint in node.BoneConstraints ?? [])

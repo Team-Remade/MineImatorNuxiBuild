@@ -88,6 +88,22 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.Rotation);
         hash.Add(obj.Scale);
         hash.Add(obj.CopyConstraints.Count);
+        hash.Add(obj.Modifiers.Count);
+        foreach (var modifier in obj.Modifiers)
+        {
+            hash.Add((int)modifier.Type);
+            hash.Add(modifier.Enabled);
+            hash.Add(modifier.Count);
+            hash.Add((int)modifier.Axis);
+            hash.Add(modifier.Distance);
+            hash.Add(modifier.RotationX);
+            hash.Add(modifier.RotationY);
+            hash.Add(modifier.RotationZ);
+            hash.Add(modifier.ScaleX);
+            hash.Add(modifier.ScaleY);
+            hash.Add(modifier.ScaleZ);
+            hash.Add(modifier.PathObjectId);
+        }
         foreach (var constraint in obj.CopyConstraints)
         {
             hash.Add(constraint.Enabled);
