@@ -108,6 +108,7 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("UI scale persistence, limits, fonts, metrics and independent contexts", UiScaleTests),
             ("Model part bundled catalogs, single-part exclusion and stable paths", ModelPartCatalogTests),
             ("MI import paths, points, references, sparse poses and repeated loads", MiImportPaths),
             ("MI import static current values and invalid path settings", MiImportStatic),
@@ -226,6 +227,8 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Scene tree", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--scene-tree-ui", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Scene tree ImGui", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--ui-scale", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("UI scale", StringComparison.Ordinal)).ToArray();
         int failures = 0;
         foreach (var test in tests)
         {

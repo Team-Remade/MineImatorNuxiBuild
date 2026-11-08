@@ -46,6 +46,8 @@ public class PreferencesPanel : UiPanel
     }
 
     public ThemeMode Theme { get; set; } = ThemeMode.Darker;
+    public float UiScale { get; private set; } = 1f;
+    public Action<float>? UiScaleChanged { get; set; }
     public AccentColor Accent { get; set; } = AccentColor.Purple;
     public Vector4 CustomAccentColor { get; set; } = new Vector4(0.58f, 0.36f, 0.96f, 1.0f);
     public string Language
@@ -172,6 +174,12 @@ public class PreferencesPanel : UiPanel
         Accent = color;
         ApplyThemeInternal(Theme);
         AccentColorChanged?.Invoke(color);
+    }
+
+    public void ApplyUiScale(float scale)
+    {
+        UiScale = UiTheme.NormalizeUiScale(scale);
+        UiScaleChanged?.Invoke(UiScale);
     }
 
     /// <summary>
@@ -409,6 +417,19 @@ public class PreferencesPanel : UiPanel
 
                 ImGui.Spacing();
 
+                {
+                    int scalePercent = (int)MathF.Round(UiScale * 100f);
+                    if (ImGui.SliderInt(Localization.Label("text.panel.preferences.ui_scale", "UI scale##uiScale"),
+                        ref scalePercent, (int)(UiTheme.MinUiScale * 100f), (int)(UiTheme.MaxUiScale * 100f),
+                        "%d%%", ImGuiSliderFlags.AlwaysClamp))
+                    {
+                        ApplyUiScale(scalePercent / 100f);
+                        preferencesChanged = true;
+                    }
+                }
+
+                ImGui.Spacing();
+
                 // Language
                 {
                     ImGui.TextUnformatted(Localization.T("text.panel.preferences.language"));
@@ -530,6 +551,7 @@ public class PreferencesPanel : UiPanel
             AutomaticBackups = AutomaticBackups,
             CopyWorkCameraIntoNewCameras = CopyWorkCameraIntoNewCameras,
             Theme = Theme,
+            UiScale = UiScale,
             Accent = Accent,
             CustomAccentColor = CustomAccentColor,
             Language = Language,
@@ -568,6 +590,7 @@ public class PreferencesPanel : UiPanel
         AutomaticBackups = state.AutomaticBackups;
         CopyWorkCameraIntoNewCameras = state.CopyWorkCameraIntoNewCameras;
         Theme = state.Theme;
+        ApplyUiScale(state.UiScale);
         Accent = state.Accent;
         if (state.CustomAccentColor != Vector4.Zero)
             CustomAccentColor = state.CustomAccentColor;
@@ -594,6 +617,7 @@ public class PreferencesPanel : UiPanel
         AutomaticBackups = defaults.AutomaticBackups;
         CopyWorkCameraIntoNewCameras = defaults.CopyWorkCameraIntoNewCameras;
         Theme = defaults.Theme;
+        ApplyUiScale(defaults.UiScale);
         Accent = defaults.Accent;
         CustomAccentColor = defaults.CustomAccentColor;
         Language = defaults.Language;
@@ -712,6 +736,7 @@ public class PreferencesState
     public bool AutomaticBackups { get; set; } = true;
     public bool CopyWorkCameraIntoNewCameras { get; set; } = true;
     public PreferencesPanel.ThemeMode Theme { get; set; } = PreferencesPanel.ThemeMode.Darker;
+    public float UiScale { get; set; } = 1f;
     public PreferencesPanel.AccentColor Accent { get; set; } = PreferencesPanel.AccentColor.Purple;
     public Vector4 CustomAccentColor { get; set; } = new Vector4(0.58f, 0.36f, 0.96f, 1.0f);
     public string Language { get; set; } = Localization.DefaultLanguage;

@@ -11,8 +11,19 @@ namespace MineImatorSimplyRemade.core.ui;
 /// </summary>
 public static class UiTheme
 {
-    /// <summary>Converts logical UI dimensions to the current window's monitor scale.</summary>
-    public static float Scale => ImGui.GetWindowDpiScale();
+    public const float MinUiScale = 0.5f;
+    public const float MaxUiScale = 2f;
+
+    /// <summary>Converts logical UI dimensions using both user and monitor scaling.</summary>
+    public static float Scale => ImGui.GetWindowDpiScale() * ImGui.GetStyle().FontScaleMain;
+
+    public static float NormalizeUiScale(float scale)
+    {
+        float normalized = float.IsFinite(scale) ? Math.Clamp(scale, MinUiScale, MaxUiScale) : 1f;
+        if (normalized != scale)
+            System.Diagnostics.Debug.WriteLine($"Invalid UI scale {scale}; using {normalized}.");
+        return normalized;
+    }
 
     public enum ThemePreset
     {

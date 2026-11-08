@@ -186,6 +186,8 @@ public static class main
             var preferencesPanel = MainWindow.GetPreferencesPanel();
             if (preferencesPanel != null)
             {
+                CameraWindow.UiScale = preferencesPanel.UiScale;
+                preferencesPanel.UiScaleChanged += scale => CameraWindow.UiScale = scale;
                 CameraWindow.WithContextCurrent(preferencesPanel.ApplyThemeAndAccentToCurrentContext);
 
                 preferencesPanel.ThemeChanged += _ =>

@@ -32,6 +32,13 @@ public class Window : IDisposable
 
     private ImGuiStyle _unscaledStyle;
     private float _dpiScale;
+    private float _appliedUiScale;
+    private float _uiScale = 1f;
+    public float UiScale
+    {
+        get => _uiScale;
+        set => _uiScale = UiTheme.NormalizeUiScale(value);
+    }
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private unsafe delegate void ViewportChangedCallback(ImGuiViewport* viewport);
     private ViewportChangedCallback? _viewportChangedCallback;
@@ -41,7 +48,7 @@ public class Window : IDisposable
     {
         if (!float.IsFinite(scale) || scale <= 0)
             scale = 1f;
-        if (_dpiScale == scale)
+        if (_dpiScale == scale && _appliedUiScale == UiScale)
             return;
 
         var style = ImGui.GetStyle();
@@ -52,10 +59,11 @@ public class Window : IDisposable
             style.Colors[i] = previousStyle.Colors[i];
         style.Alpha = previousStyle.Alpha;
         style.DisabledAlpha = previousStyle.DisabledAlpha;
-        style.FontScaleMain = previousStyle.FontScaleMain;
+        style.FontScaleMain = UiScale;
         style.FontScaleDpi = scale;
-        style.ScaleAllSizes(scale);
+        style.ScaleAllSizes(scale * UiScale);
         _dpiScale = scale;
+        _appliedUiScale = UiScale;
     }
 
     protected unsafe void UpdateDpiScale()

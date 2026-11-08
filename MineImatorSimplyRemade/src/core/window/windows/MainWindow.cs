@@ -491,7 +491,9 @@ public class MainWindow : Window
         // Load preferences after all UI is ready
         if (_preferencesPanel != null)
         {
+            _preferencesPanel.UiScaleChanged += scale => UiScale = scale;
             _preferencesPanel.LoadPreferences();
+            UiScale = _preferencesPanel.UiScale;
 
             if (_cameraViewport != null)
             {

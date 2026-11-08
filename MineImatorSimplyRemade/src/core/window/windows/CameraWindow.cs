@@ -70,9 +70,11 @@ public class CameraWindow : Window
 
         // Estimate available content size for this frame and fit it to the
         // project's render-resolution aspect ratio so the preview stays accurate.
+        var style = ImGui.GetStyle();
+        float uiScale = style.FontScaleDpi * style.FontScaleMain;
         var estimatedAvail = new Vector2(
-            Math.Max(4, WindowWidth - 8 * ImGui.GetStyle().FontScaleDpi),
-            Math.Max(4, WindowHeight - 56 * ImGui.GetStyle().FontScaleDpi));
+            Math.Max(4, WindowWidth - 8 * uiScale),
+            Math.Max(4, WindowHeight - 56 * uiScale));
         Vector2 drawSizeEstimate = _panel.GetPreviewDrawSize(estimatedAvail);
         uint sceneW = (uint)Math.Max(4, (int)MathF.Round(drawSizeEstimate.X));
         uint sceneH = (uint)Math.Max(4, (int)MathF.Round(drawSizeEstimate.Y));
