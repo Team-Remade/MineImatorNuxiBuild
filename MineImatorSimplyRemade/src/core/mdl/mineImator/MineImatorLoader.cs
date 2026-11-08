@@ -2830,6 +2830,12 @@ public class MineImatorLoader
     //  Extruded plane mesh (per-pixel item-style)
     // ─────────────────────────────────────────────────────────────────────────
 
+    private static int ToExtrudedTexel(float value, int textureSize, int contentSize)
+    {
+        // Divide last in double precision so integral texels do not round up to an extra pixel.
+        return (int)Math.Ceiling((double)value * contentSize / textureSize);
+    }
+
     private Mesh CreateExtrudedPlaneMesh(vec3 from, vec3 to, float uvU, float uvV, float sizeX, float sizeY,
         int texWidth, int texHeight, uint textureId, bool textureMirror, bool invert, float inflate = 0f,
         vec3 shapeRotation = default, vec3 shapeScale = default, vec3[]? shapeVertexOffsets = null)
@@ -2844,10 +2850,10 @@ public class MineImatorLoader
             return CreatePlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
                 textureMirror, invert, inflate, shapeRotation, shapeScale, shapeVertexOffsets: shapeVertexOffsets);
 
-        int uvStartX = Math.Clamp((int)MathF.Ceiling(uvU / texWidth * contentW), 0, contentW - 1);
-        int uvStartY = Math.Clamp((int)MathF.Ceiling(uvV / texHeight * contentH), 0, contentH - 1);
-        int regionW = Math.Min((int)MathF.Ceiling(sizeX / texWidth * contentW), contentW - uvStartX);
-        int regionH = Math.Min((int)MathF.Ceiling(sizeY / texHeight * contentH), contentH - uvStartY);
+        int uvStartX = Math.Clamp(ToExtrudedTexel(uvU, texWidth, contentW), 0, contentW - 1);
+        int uvStartY = Math.Clamp(ToExtrudedTexel(uvV, texHeight, contentH), 0, contentH - 1);
+        int regionW = Math.Min(ToExtrudedTexel(sizeX, texWidth, contentW), contentW - uvStartX);
+        int regionH = Math.Min(ToExtrudedTexel(sizeY, texHeight, contentH), contentH - uvStartY);
 
         if (regionW <= 0 || regionH <= 0)
             return CreatePlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
@@ -3193,10 +3199,10 @@ public class MineImatorLoader
                 textureMirror, invert, inflate, bend, shapePosition, shapeRotation, shapeScale, bendStyle,
                 shapeVertexOffsets: shapeVertexOffsets);
 
-        int uvStartX = (int)MathF.Ceiling(uvU / texWidth * contentW);
-        int uvStartY = (int)MathF.Ceiling(uvV / texHeight * contentH);
-        int regionW = (int)MathF.Ceiling(sizeX / texWidth * contentW);
-        int regionH = (int)MathF.Ceiling(sizeY / texHeight * contentH);
+        int uvStartX = ToExtrudedTexel(uvU, texWidth, contentW);
+        int uvStartY = ToExtrudedTexel(uvV, texHeight, contentH);
+        int regionW = ToExtrudedTexel(sizeX, texWidth, contentW);
+        int regionH = ToExtrudedTexel(sizeY, texHeight, contentH);
 
         if (regionW <= 0 || regionH <= 0)
             return CreateBentPlaneMesh(from, to, uvU, uvV, sizeX, sizeY, texWidth, texHeight,
