@@ -98,6 +98,7 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.Modifiers.Count);
         foreach (var modifier in obj.Modifiers)
         {
+            hash.Add(modifier.Id);
             hash.Add((int)modifier.Type);
             hash.Add(modifier.Enabled);
             hash.Add(modifier.Count);

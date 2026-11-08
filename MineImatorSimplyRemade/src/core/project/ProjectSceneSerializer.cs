@@ -1379,7 +1379,7 @@ public static class ProjectSceneSerializer
             (key.EndsWith(".ik.target", StringComparison.Ordinal) || key.EndsWith(".ik.pole", StringComparison.Ordinal));
         bool isCopyReference = key.StartsWith("copy_constraint.", StringComparison.Ordinal) &&
             key.EndsWith(".target", StringComparison.Ordinal);
-        if ((!isIkReference && !isCopyReference && key is not ("path_follow.target" or "particle.attractor_target")) || track == null)
+        if ((!isIkReference && !isCopyReference && !Timeline.IsModifierReferencePath(key) && key is not ("path_follow.target" or "particle.attractor_target")) || track == null)
             return;
         foreach (var keyframe in track)
         {

@@ -71,13 +71,14 @@ Regression checks (custom executable test harness; no test adapter required):
 
 ```powershell
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --modifiers
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --effects-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --particles-graphics
 ```
 
-The second command requires an OpenGL 3.3 desktop session and checks real rendered
+The third command requires an OpenGL 3.3 desktop session and checks real rendered
 pixels, animation/seek reproducibility, emission, and empty-mesh rebuilding.
-The third also requires OpenGL 3.3 and checks particle sprite image orientation,
+The fourth also requires OpenGL 3.3 and checks particle sprite image orientation,
 textures, animation frames, opacity, camera-facing rotation, and block particles.
 
 ## Experimental Veldrid scene renderer

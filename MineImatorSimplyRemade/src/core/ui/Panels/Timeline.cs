@@ -74,7 +74,7 @@ public class TimelineMarker
     public Vector4 Color { get; set; } = new(0.9f, 0.2f, 0.2f, 1f);
 }
 
-public class Timeline : UiPanel
+public partial class Timeline : UiPanel
 {
     public static string SanitizeIntegerText(string text)
     {
@@ -2394,6 +2394,16 @@ public class Timeline : UiPanel
             AddKeyframeForProperty(_ctxAddKeyframeObj, "scale.z", _currentFrame);
         }
 
+        if (_ctxAddKeyframeObj.Modifiers.Count > 0 &&
+            ImGui.BeginMenu(Localization.Label("text.modifier.title", "Modifiers")))
+        {
+            foreach (var (path, label) in GetModifierChannels(_ctxAddKeyframeObj)
+                         .Concat(GetPathChannels(_ctxAddKeyframeObj).Select(channel => (channel.Path, Localization.T(channel.Label)))))
+                if (ImGui.MenuItem($"{label}##{path}"))
+                    AddKeyframeForProperty(_ctxAddKeyframeObj, path, _currentFrame);
+            ImGui.EndMenu();
+        }
+
         ImGui.EndPopup();
     }
 
@@ -2553,6 +2563,8 @@ public class Timeline : UiPanel
                 : obj is PathPointSceneObject ? new PathPointSceneObject()
                 : obj is BoneSceneObject ? new BoneSceneObject() : new SceneObject();
             defaults.UsePropertyInheritance = obj.UsePropertyInheritance;
+            defaults.Modifiers = obj.Modifiers.Select(modifier => new SceneModifier
+                { Id = modifier.Id, Type = modifier.Type }).ToList();
             foreach (var constraint in obj.CopyConstraints)
             {
                 var defaultConstraint = new CopyConstraint
@@ -2737,6 +2749,7 @@ public class Timeline : UiPanel
                                   : obj is CameraSceneObject  ? standardPaths.Concat(cameraPaths)
                                   : standardPaths;
         paths = paths.Concat(MaterialPropertyPaths);
+        paths = paths.Concat(GetModifierChannels(obj).Select(channel => channel.Path));
         if (obj is PathPointSceneObject)
             paths = paths.Concat(new[] { "path_point.angle", "path_point.scale" });
         else if (obj is not PathSceneObject && obj.FollowPathModifier != null)
@@ -2836,6 +2849,7 @@ public class Timeline : UiPanel
     private void ApplyKeyframesAtCurrentFrame(bool holdFirstKeyframeBeforeStart)
     {
         var rotatedObjects = new HashSet<string>();
+        var animatedModifiers = new Dictionary<(SceneObject Owner, string Id), SceneModifier>();
         // Enable the optional endpoint before applying its animated components.
         foreach (var kvp in _propertyKeyframes.OrderBy(pair => pair.Key.EndsWith(".bone.end_enabled", StringComparison.Ordinal) ? 0 : 1))
         {
@@ -2849,6 +2863,17 @@ public class Timeline : UiPanel
 
             var target = FindObjectById(objectId);
             if (target == null) continue;
+
+            if (propertyPath.StartsWith("modifier.", StringComparison.Ordinal))
+            {
+                if (TryGetModifier(target, propertyPath, out var modifier, out string channel) &&
+                    InterpolateKeyframes(keyframes, propertyPath, _currentFrame, holdFirstKeyframeBeforeStart) is { } sampled)
+                {
+                    var key = (target, modifier.Id);
+                    animatedModifiers[key] = WithModifierValue(animatedModifiers.GetValueOrDefault(key, modifier), channel, sampled);
+                }
+                continue;
+            }
 
             if (propertyPath.StartsWith("mirotation.", StringComparison.Ordinal))
             {
@@ -2875,6 +2900,11 @@ public class Timeline : UiPanel
                 SetPropertyValue(target, propertyPath, value);
             // null means "before first keyframe" — leave the object at its default state.
         }
+        foreach (var (key, modifier) in animatedModifiers)
+        {
+            key.Owner.Modifiers[key.Owner.Modifiers.FindIndex(entry => entry.Id == key.Id)] = modifier.Validated();
+            if (modifier.Type == SceneModifierType.FollowPath) key.Owner.SetEvaluatedPathFrame(null);
+        }
     }
 
     /// <summary>
@@ -2897,12 +2927,12 @@ public class Timeline : UiPanel
         if (prev == null)
         {
             if (holdFirstKeyframeBeforeStart && next != null)
-                return path is "text.font" or "material.texture" or "path_follow.target" or "particle.attractor_target" || IsIkReferencePath(path) ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
+                return path is "text.font" or "material.texture" or "path_follow.target" or "particle.attractor_target" || IsIkReferencePath(path) || IsModifierReferencePath(path) ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
             return null;
         }
 
         // At or after the last keyframe, or exactly on a keyframe.
-        if (path is "text.font" or "material.texture" or "path_follow.target" or "particle.attractor_target" || IsIkReferencePath(path)) return prev.Value;
+        if (path is "text.font" or "material.texture" or "path_follow.target" or "particle.attractor_target" || IsIkReferencePath(path) || IsModifierReferencePath(path)) return prev.Value;
         if (next == null || prev.Frame == frame)
             return TryConvertKeyframeValue(prev.Value, out float prevDirect) ? prevDirect : null;
 
@@ -2920,6 +2950,7 @@ public class Timeline : UiPanel
             (path.StartsWith("copy_constraint.", StringComparison.Ordinal) &&
                 !path.Contains(".offset.", StringComparison.Ordinal) && !path.EndsWith(".blend", StringComparison.Ordinal) &&
                 !path.EndsWith(".rotation_multiplier", StringComparison.Ordinal)) ||
+            IsDiscreteModifierPath(path) ||
             (ProceduralEffectSettings.FindControl(path)?.Discrete ?? false) ||
             prev.InterpolationType == "instant")
             return TryConvertKeyframeValue(prev.Value, out float prevInstant) ? prevInstant : null;
@@ -3187,6 +3218,8 @@ public class Timeline : UiPanel
 
     internal object GetPropertyValue(SceneObject obj, string path)
     {
+        if (TryGetModifier(obj, path, out var modifier, out string modifierChannel))
+            return GetModifierValue(modifier, modifierChannel);
         if (path == "path_follow.target") return obj.PathFollowObjectId;
         if (path == "particle.attractor_target" && obj is ParticleSpawnerSceneObject attractorParticle)
             return attractorParticle.AttractorObjectId;
@@ -3533,6 +3566,13 @@ public class Timeline : UiPanel
 
     internal void SetPropertyValue(SceneObject obj, string path, object rawValue)
     {
+        if (path.StartsWith("modifier.", StringComparison.Ordinal))
+        {
+            // Deleted modifiers must not be recreated by cached animation tracks.
+            if (TryGetModifier(obj, path, out var modifier, out string modifierChannel))
+                SetModifierValue(obj, modifier, modifierChannel, rawValue);
+            return;
+        }
         if (path == "particle.attractor_target" && obj is ParticleSpawnerSceneObject attractorParticle)
         {
             attractorParticle.AttractorObjectId = rawValue is JsonElement reference && reference.ValueKind == JsonValueKind.String
@@ -4481,6 +4521,9 @@ public class Timeline : UiPanel
             foreach (var (pathChannel, pathLabel) in GetPathChannels(obj))
                 if (propsWithKeyframes.Contains(pathChannel))
                     newRows.Add(MakeSingle(obj, Localization.T(pathLabel), pathChannel));
+            foreach (var (modifierChannel, modifierLabel) in GetModifierChannels(obj))
+                if (propsWithKeyframes.Contains(modifierChannel))
+                    newRows.Add(MakeSingle(obj, modifierLabel, modifierChannel));
 
             if (obj is ProceduralEffectSceneObject)
                 foreach (var control in ProceduralEffectSettings.Controls)
@@ -4684,6 +4727,8 @@ public class Timeline : UiPanel
 
         foreach (var (pathChannel, pathLabel) in GetPathChannels(obj))
             _displayRows.Add(MakeSingle(obj, Localization.T(pathLabel), pathChannel));
+        foreach (var (modifierChannel, modifierLabel) in GetModifierChannels(obj))
+            _displayRows.Add(MakeSingle(obj, modifierLabel, modifierChannel));
 
         if (obj is ProceduralEffectSceneObject)
             foreach (var control in ProceduralEffectSettings.Controls)

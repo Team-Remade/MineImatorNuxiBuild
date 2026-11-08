@@ -1,4 +1,5 @@
 using System.Reflection;
+using Hexa.NET.ImGui;
 using GlmSharp;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
@@ -11,6 +12,255 @@ using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 internal static partial class Program
 {
+    private static unsafe void ModifierContextInteraction(Fixture f)
+    {
+        var previous = ImGui.GetCurrentContext();
+        var context = ImGui.CreateContext();
+        try
+        {
+            var io = ImGui.GetIO();
+            io.IniFilename = null;
+            io.LogFilename = null;
+            io.DisplaySize = new System.Numerics.Vector2(1000, 900);
+            io.DeltaTime = 1f / 60f;
+            io.BackendFlags |= ImGuiBackendFlags.RendererHasTextures;
+            var obj = new SceneObject { Name = "Context array" };
+            obj.AssignObjectId();
+            obj.Modifiers = [new() { Distance = 2 }];
+            string property = $"modifier.{obj.Modifiers[0].Id}.distance";
+            var viewport = new Viewport();
+            viewport.SceneObjects.Add(obj);
+            var timeline = new Timeline { Viewport = viewport };
+            var panel = new PropertiesPanel { Viewport = viewport, Timeline = timeline };
+            var fields = BindingFlags.Instance | BindingFlags.NonPublic;
+            typeof(PropertiesPanel).GetField("_currentObject", fields)!.SetValue(panel, obj);
+            var ctxPath = typeof(PropertiesPanel).GetField("_ctxPropertyPath", fields)!;
+            var open = typeof(PropertiesPanel).GetField("_openPropContextMenu", fields)!;
+            var draw = typeof(PropertiesPanel).GetMethod("DrawModifiers", fields)!;
+            var menu = typeof(PropertiesPanel).GetMethod("RenderPropertyContextMenu", fields)!;
+            uint hovered = 0, actionId = 0;
+            System.Numerics.Vector2 popupPos = default, popupSize = default;
+            string action = "";
+            bool showMenu = false;
+            void Frame(float x = -100, float y = -100, bool left = false, bool right = false)
+            {
+                io.AddMousePosEvent(x, y);
+                io.AddMouseButtonEvent(0, left);
+                io.AddMouseButtonEvent(1, right);
+                ImGui.NewFrame();
+                ImGui.SetNextWindowPos(new System.Numerics.Vector2(10, 10), ImGuiCond.Always);
+                ImGui.SetNextWindowSize(new System.Numerics.Vector2(650, 750), ImGuiCond.Always);
+                ImGui.Begin("Modifier interaction");
+                ImGui.SetNextItemOpen(true, ImGuiCond.Always);
+                draw.Invoke(panel, [obj]);
+                if ((bool)open.GetValue(panel)!)
+                {
+                    open.SetValue(panel, false);
+                    if (showMenu)
+                    {
+                        typeof(PropertiesPanel).GetField("_propertyContextObject", fields)!.SetValue(panel, obj);
+                        ImGui.OpenPopup("##prop_keyframe_ctx");
+                    }
+                }
+                if (showMenu)
+                {
+                    menu.Invoke(panel, null);
+                    if (ImGui.BeginPopup("##prop_keyframe_ctx"))
+                    {
+                        popupPos = ImGui.GetWindowPos();
+                        popupSize = ImGui.GetWindowSize();
+                        actionId = ImGui.GetID(action);
+                        ImGui.EndPopup();
+                    }
+                }
+                hovered = context.HoveredId;
+                ImGui.End();
+                ImGui.Render();
+            }
+            Frame();
+            Frame();
+            float distanceY = -1;
+            for (int y = 60; y < 650; y += 3)
+            {
+                ctxPath.SetValue(panel, null);
+                Frame(120, y, right: true);
+                if ((string?)ctxPath.GetValue(panel) == property) distanceY = y;
+                Frame(120, y);
+                if (distanceY >= 0) break;
+            }
+            Check(distanceY >= 0, "Right-clicking the rendered distance widget registers its modifier property");
+            showMenu = true;
+            void ClickAction(string label)
+            {
+                action = label;
+                Frame(120, distanceY, right: true);
+                Frame(120, distanceY);
+                Frame();
+                float actionY = -1;
+                for (int y = (int)popupPos.Y + 4; y < popupPos.Y + popupSize.Y - 4; y++)
+                {
+                    Frame(popupPos.X + 20, y);
+                    if (hovered == actionId) { actionY = y; break; }
+                }
+                Check(actionY >= 0, "Rendered context menu action is available: " + label);
+                Frame(popupPos.X + 20, actionY, left: true);
+                Frame(popupPos.X + 20, actionY);
+                Frame();
+            }
+            ClickAction("Copy");
+            Equal("32", System.Runtime.InteropServices.Marshal.PtrToStringUTF8((nint)ImGui.GetClipboardText()),
+                "Copy gets displayed pixel distance");
+            ImGui.SetClipboardText("48");
+            ClickAction("Paste");
+            Near(3, obj.Modifiers[0].Distance, "Real Paste menu converts pixels");
+            ClickAction("Reset Value");
+            Near(1, obj.Modifiers[0].Distance, "Real Reset menu uses modifier defaults");
+            ClickAction(Localization.Label("text.panel.properties.add_keyframe_at_current_frame", "Add Keyframe at Current Frame"));
+            Equal(1f, obj.Keyframes[property][0].Value, "Real Add Keyframe menu keys modifier distance");
+            obj.Modifiers[0] = obj.Modifiers[0] with { Distance = 4 };
+            ClickAction("Cut");
+            Near(1, obj.Modifiers[0].Distance, "Real Cut menu resets modifier distance");
+            Equal("64", System.Runtime.InteropServices.Marshal.PtrToStringUTF8((nint)ImGui.GetClipboardText()), "Cut copies pixels");
+        }
+        finally
+        {
+            ImGui.DestroyContext(context);
+            ImGui.SetCurrentContext(previous);
+        }
+    }
+
+    private static void ModifierKeyframes(Fixture f)
+    {
+        var path = StraightPath();
+        var obj = new SceneObject { Name = "Animated array", PivotOffset = vec3.Zero };
+        obj.AssignObjectId();
+        var array = new SceneModifier { Count = 3 };
+        var other = new SceneModifier { Count = 2, Axis = ArrayAxis.Y };
+        obj.Modifiers = [array, other, new() { Type = SceneModifierType.FollowPath }];
+        string prefix = $"modifier.{array.Id}";
+        var viewport = new Viewport();
+        viewport.SceneObjects.Add(obj);
+        viewport.SceneObjects.Add(path);
+        var timeline = new Timeline { Viewport = viewport };
+        var panel = new PropertiesPanel { Timeline = timeline, Viewport = viewport };
+        typeof(PropertiesPanel).GetField("_currentObject", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(panel, obj);
+        var get = typeof(Timeline).GetMethod("GetPropertyValue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var set = typeof(Timeline).GetMethod("SetPropertyValue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var contextGet = typeof(PropertiesPanel).GetMethod("GetContextPropertyValue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var contextSet = typeof(PropertiesPanel).GetMethod("ApplyContextPropertyValues", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var paths = typeof(Timeline).GetMethod("GetKeyframePropertyPaths", BindingFlags.Static | BindingFlags.NonPublic)!;
+        void Seek(Timeline target, int frame, bool render = false)
+        {
+            typeof(Timeline).GetField("_currentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(target, frame);
+            typeof(Timeline).GetMethod("ApplyKeyframesAtCurrentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(target, [render]);
+        }
+        typeof(Timeline).GetField("_autoKeyframe", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(timeline, true);
+        SelectionManager.Instance!.ClearSelection();
+        SelectionManager.Instance.SelectObject(obj);
+        SelectionManager.Instance.SelectObject(path);
+
+        Equal(16f, contextGet.Invoke(panel, [$"{prefix}.distance", false]), "Context distance uses pixels");
+        Equal(2f, contextGet.Invoke(panel, [$"{prefix}.count", true]), "Count default matches inspector");
+        Equal(1f, contextGet.Invoke(panel, [$"{prefix}.scale.z", true]), "Scale default is one");
+        Equal("", contextGet.Invoke(panel, [$"{prefix}.target", true]), "Target default is none");
+        void Edit(string channel, object value) => contextSet.Invoke(panel, [new[] { $"{prefix}.{channel}" }, new[] { value }, false]);
+        Edit("distance", 32f);
+        Near(2, obj.Modifiers[0].Distance, "Context distance converts back to world units");
+        Equal(2f, obj.Keyframes[$"{prefix}.distance"][0].Value, "Auto key stores world units");
+        Equal(0, path.Keyframes.Count, "Modifier edits do not affect another selected object");
+        Edit("target", path.ObjectId);
+        Equal(path.ObjectId, obj.Keyframes[$"{prefix}.target"][0].Value, "Path target auto key");
+        string[] rotations = ["x", "y", "z"];
+        contextSet.Invoke(panel, [rotations.Select(axis => $"{prefix}.rotation.{axis}").ToArray(), new object[] { 10f, 20f, 30f }, false]);
+        foreach (string axis in rotations)
+            Check(obj.Keyframes.ContainsKey($"{prefix}.rotation.{axis}"), "Vector context action keys all components");
+        var before = obj.Modifiers[0];
+        Edit("axis", 7f);
+        Equal(before, obj.Modifiers[0], "Invalid context axis edit is rejected atomically");
+        Check(typeof(PropertiesPanel).GetField("_modifierError", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(panel) is string,
+            "Invalid modifier edit surfaces an error");
+        Check(!obj.Keyframes.ContainsKey($"{prefix}.axis"), "Rejected edit creates no key");
+
+        foreach (string channel in new[] { "enabled", "count", "axis", "distance", "rotation.x", "rotation.y", "rotation.z",
+                     "scale.x", "scale.y", "scale.z", "target" })
+        {
+            Check(((IEnumerable<string>)paths.Invoke(null, [obj])!).Contains($"{prefix}.{channel}"), "Channel enumerated: " + channel);
+            _ = get.Invoke(timeline, [obj, $"{prefix}.{channel}"]);
+        }
+        string followEnabled = $"modifier.{obj.FollowPathModifier!.Id}.enabled";
+        timeline.AddKeyframeForProperty(obj, followEnabled, 0);
+        timeline.AddKeyframeForProperty(obj, $"{prefix}.count", 0);
+        timeline.AddKeyframeForProperty(obj, $"{prefix}.axis", 0);
+        timeline.AddKeyframeForProperty(obj, $"{prefix}.enabled", 0);
+        timeline.AddKeyframeForProperty(obj, $"{prefix}.scale.x", 0);
+        set.Invoke(timeline, [obj, $"{prefix}.distance", 4f]);
+        set.Invoke(timeline, [obj, $"{prefix}.count", 5f]);
+        set.Invoke(timeline, [obj, $"{prefix}.axis", 2f]);
+        set.Invoke(timeline, [obj, $"{prefix}.enabled", 0f]);
+        set.Invoke(timeline, [obj, $"{prefix}.scale.x", 0.5f]);
+        set.Invoke(timeline, [obj, $"{prefix}.target", ""]);
+        set.Invoke(timeline, [obj, followEnabled, 0f]);
+        foreach (string channel in new[] { "distance", "count", "axis", "enabled", "scale.x", "target" })
+            timeline.AddKeyframeForProperty(obj, $"{prefix}.{channel}", 10);
+        timeline.AddKeyframeForProperty(obj, followEnabled, 10);
+        Seek(timeline, 5);
+        Near(3, obj.Modifiers[0].Distance, "Distance interpolates");
+        Near(0.75f, obj.Modifiers[0].ScaleX, "Scale interpolates");
+        Equal(3, obj.Modifiers[0].Count, "Count is stepped");
+        Equal(ArrayAxis.X, obj.Modifiers[0].Axis, "Axis is stepped");
+        Check(obj.Modifiers[0].Enabled && obj.FollowPathModifier!.Enabled, "Enabled flags are stepped");
+        Equal(path.ObjectId, obj.Modifiers[0].PathObjectId, "Path reference holds until next key");
+        Seek(timeline, 10);
+        Equal(5, obj.Modifiers[0].Count, "Exact key uses new count");
+        Check(!obj.Modifiers[0].Enabled && !obj.FollowPathModifier!.Enabled, "Exact enabled keys applied");
+        obj.Modifiers.Reverse();
+        timeline.RefreshFromScene();
+        Seek(timeline, 5);
+        Near(3, obj.Modifiers.Single(modifier => modifier.Id == array.Id).Distance, "Reordering preserves track ownership");
+        Equal(other, obj.Modifiers.Single(modifier => modifier.Id == other.Id), "Unkeyed modifier is unchanged");
+        Seek(timeline, 0, render: true);
+        Near(2, obj.Modifiers.Single(modifier => modifier.Id == array.Id).Distance, "Backward render seek is reproducible");
+
+        var root = new SceneObject { Name = "Animated modifier root" };
+        viewport.SceneObjects.Clear();
+        root.AddChild(obj);
+        root.AddChild(path);
+        viewport.SceneObjects.Add(root);
+        var (manifest, _) = f.Roundtrip(root);
+        var loadedViewport = new Viewport();
+        var imported = ProjectSceneSerializer.SpawnObjectFromEntry(manifest.Root, loadedViewport,
+            new SpawnMenu { Viewport = loadedViewport })!;
+        var restored = imported.Children[0];
+        Equal(array.Id, restored.Modifiers.Single(modifier => modifier.Type == SceneModifierType.Array && modifier.Id == array.Id).Id,
+            "Persistent modifier identity");
+        var restoredTarget = restored.Keyframes[$"{prefix}.target"][0].Value;
+        Equal(imported.Children[1].ObjectId, restoredTarget, "Modifier target key remapped on archive import");
+        var restoredTimeline = new Timeline { Viewport = loadedViewport };
+        restoredTimeline.LoadKeyframesForAllObjects([restored]);
+        Seek(restoredTimeline, 5);
+        Near(3, restored.Modifiers.Single(modifier => modifier.Id == array.Id).Distance, "Loaded modifier track evaluates");
+        var duplicate = (SceneObject)typeof(SceneTree).GetMethod("DuplicateObject", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(new SceneTree { Viewport = loadedViewport }, [imported, false, null])!;
+        Equal(duplicate.Children[1].ObjectId, duplicate.Children[0].Keyframes[$"{prefix}.target"][0].Value,
+            "Duplicate remaps animated array target");
+        var snapshot = ProjectSceneSerializer.SerializeObjectForLibrary(restored);
+        restored.Modifiers.Clear();
+        typeof(ProjectSceneSerializer).GetMethod("ApplyEntryToObject", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [restored, snapshot, null]);
+        restoredTimeline.RefreshFromScene();
+        Seek(restoredTimeline, 10);
+        Equal(5, restored.Modifiers.Single(modifier => modifier.Id == array.Id).Count, "Undo snapshot preserves modifier track identity");
+
+        obj.Modifiers.RemoveAll(modifier => modifier.Id == array.Id);
+        Seek(timeline, 10);
+        Check(obj.Modifiers.All(modifier => modifier.Id != array.Id), "Cached track cannot recreate removed modifier");
+        obj.Modifiers.Add(new SceneModifier());
+        Seek(timeline, 10);
+        Equal(2, obj.Modifiers[^1].Count, "New modifier does not inherit deleted modifier tracks");
+        SelectionManager.Instance.ClearSelection();
+    }
+
     private static vec3 InstanceOrigin(ModifierEvaluation evaluation, SceneObject obj, int index) =>
         (evaluation.GetDeltas(obj)[index] * obj.GetWorldMatrixNoPivot() * new vec4(0, 0, 0, 1)).xyz;
 

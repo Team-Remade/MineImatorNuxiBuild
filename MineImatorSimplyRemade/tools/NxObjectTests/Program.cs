@@ -166,6 +166,8 @@ internal static partial class Program
             ("Follow Path modifier migration, persistence, references and special objects", ModifierFollowPersistence),
             ("Array archive, library, duplicate references, snapshots and dirty detection", ModifierPersistence),
             ("Array viewport render collection and shadow cache invalidation", ModifierRenderCollection),
+            ("Modifier context values, auto keys, interpolation, identity and persistence", ModifierKeyframes),
+            ("Modifier ImGui context menu copy, paste, reset and manual keyframes", ModifierContextInteraction),
             ("All 15 bundled particle presets, assets and finite simulation", ParticleBundled),
             ("Particle spawn menu selection, search and all provided presets", ParticleSpawnMenu),
             ("Particle per-minute rate, multi-type burst, restart and amount limit", ParticleEmission),
@@ -186,6 +188,10 @@ internal static partial class Program
                 test.Name.StartsWith("All 15 bundled particle", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--paths", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Path", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--modifiers", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Array", StringComparison.Ordinal) ||
+                test.Name.StartsWith("Follow Path modifier", StringComparison.Ordinal) ||
+                test.Name.StartsWith("Modifier", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--scene-tree", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Scene tree", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--scene-tree-ui", StringComparer.Ordinal))

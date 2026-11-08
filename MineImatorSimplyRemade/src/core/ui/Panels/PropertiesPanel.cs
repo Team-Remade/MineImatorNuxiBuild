@@ -6708,6 +6708,11 @@ public partial class PropertiesPanel : UiPanel
         if (path.StartsWith("background:", StringComparison.Ordinal))
             return (defaultValue ? new PropertiesPanel() : this).GetBackgroundPropertyValue(path[11..])!;
         var obj = _currentObject!;
+        if (TimelinePanel.TryGetModifier(obj, path, out var modifier, out string modifierChannel))
+        {
+            object current = TimelinePanel.GetModifierValue(defaultValue ? new SceneModifier { Type = modifier.Type } : modifier, modifierChannel);
+            return modifierChannel == "distance" ? Convert.ToSingle(current, CultureInfo.InvariantCulture) * 16f : current;
+        }
         int axis = path.EndsWith(".y", StringComparison.Ordinal) ? 1 : path.EndsWith(".z", StringComparison.Ordinal) ? 2 : 0;
         if (path.StartsWith("pivot.", StringComparison.Ordinal))
             return defaultValue ? (obj.SpawnCategory == "Blocks" && axis != 1 ? 8f : 0f) : GetEditablePivotOffset(obj)[axis] * 16f;
@@ -6803,7 +6808,7 @@ public partial class PropertiesPanel : UiPanel
         foreach (var obj in GetSelectedObjectsForEdit())
         {
             // Indexed effect/mesh paths are local to the object that opened the menu.
-            if (obj != _currentObject && (path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("constraint.", StringComparison.Ordinal) || path.StartsWith("copy_constraint.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal)))
+            if (obj != _currentObject && (path.StartsWith("modifier.", StringComparison.Ordinal) || path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("constraint.", StringComparison.Ordinal) || path.StartsWith("copy_constraint.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal)))
                 continue;
             if (path.StartsWith("pivot.", StringComparison.Ordinal))
             {
@@ -6829,7 +6834,7 @@ public partial class PropertiesPanel : UiPanel
                         : copy.Type == CopyConstraintType.Rotation ? 180f / MathF.PI : 1f;
                     stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / factor;
                 }
-                else if (path == "path_follow.offset" || path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal))
+                else if (path == "path_follow.offset" || path.StartsWith("modifier.", StringComparison.Ordinal) && path.EndsWith(".distance", StringComparison.Ordinal) || path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal))
                     stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / 16f;
                 else if (path.StartsWith("scale.", StringComparison.Ordinal))
                     stored = MathF.Max(0.001f, Convert.ToSingle(value, CultureInfo.InvariantCulture));
@@ -6874,7 +6879,19 @@ public partial class PropertiesPanel : UiPanel
                             };
                     }
                 }
-                Timeline.SetPropertyValue(obj, path, stored);
+                try
+                {
+                    Timeline.SetPropertyValue(obj, path, stored);
+                    if (path.StartsWith("modifier.", StringComparison.Ordinal) || path.StartsWith("path_follow.", StringComparison.Ordinal))
+                        _modifierError = null;
+                }
+                catch (InvalidDataException ex) when (path.StartsWith("modifier.", StringComparison.Ordinal) || path.StartsWith("path_follow.", StringComparison.Ordinal))
+                {
+                    _modifierErrorOwner = obj;
+                    _modifierError = ex.Message;
+                    Console.Error.WriteLine($"Modifier edit rejected: {ex.Message}");
+                    return;
+                }
                 if (isCopyConstraint && (copyChannel is "target" or "bent_half" or "rotate" || copyChannel == "enabled" && copy.Enabled))
                     CaptureCopyConstraintOffset(obj, copy, path[..path.LastIndexOf('.')]);
                 if (path == "light.spot_angle" && obj is LightSceneObject spot)
@@ -6896,7 +6913,7 @@ public partial class PropertiesPanel : UiPanel
         {
             if (path.StartsWith("background:", StringComparison.Ordinal) || path.StartsWith("rotation.", StringComparison.Ordinal) ||
                 path.StartsWith("pivot.", StringComparison.Ordinal) || path.StartsWith("tile.", StringComparison.Ordinal)) continue;
-            if (obj != _currentObject && (path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("constraint.", StringComparison.Ordinal) || path.StartsWith("copy_constraint.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal))) continue;
+            if (obj != _currentObject && (path.StartsWith("modifier.", StringComparison.Ordinal) || path.StartsWith("camera.effect.", StringComparison.Ordinal) || path.StartsWith("constraint.", StringComparison.Ordinal) || path.StartsWith("copy_constraint.", StringComparison.Ordinal) || path.StartsWith("shapekey.", StringComparison.Ordinal))) continue;
             Timeline?.RecordAutoKeyframe(obj, path);
             if (path == "light.spot_angle") Timeline?.RecordAutoKeyframe(obj, "light.spot_blend");
         }
@@ -6904,6 +6921,32 @@ public partial class PropertiesPanel : UiPanel
 
     private void ApplyContextPropertyValues(string[] paths, object[] values, bool resetValue = false)
     {
+        if (_currentObject != null && Timeline != null && paths.Length > 0 &&
+            TimelinePanel.TryGetModifier(_currentObject, paths[0], out var modifier, out _))
+        {
+            try
+            {
+                var updated = modifier;
+                for (int i = 0; i < paths.Length; i++)
+                {
+                    if (!TimelinePanel.TryGetModifier(_currentObject, paths[i], out var entry, out string channel) || entry.Id != modifier.Id)
+                        throw new InvalidDataException("Modifier value groups must belong to one modifier.");
+                    object stored = channel == "distance" ? Convert.ToSingle(values[i], CultureInfo.InvariantCulture) / 16f : values[i];
+                    updated = TimelinePanel.WithModifierValue(updated, channel, stored);
+                }
+                _currentObject.Modifiers[_currentObject.Modifiers.FindIndex(entry => entry.Id == modifier.Id)] = updated.Validated();
+                if (modifier.Type == SceneModifierType.FollowPath) _currentObject.SetEvaluatedPathFrame(null);
+                _modifierError = null;
+                RecordContextPropertyKeyframes(_currentObject, paths);
+            }
+            catch (InvalidDataException ex)
+            {
+                _modifierErrorOwner = _currentObject;
+                _modifierError = ex.Message;
+                Console.Error.WriteLine($"Modifier edit rejected: {ex.Message}");
+            }
+            return;
+        }
         for (int i = 0; i < paths.Length; i++)
             SetContextPropertyValue(paths[i], values[i], false, resetValue);
         foreach (var obj in GetSelectedObjectsForEdit())

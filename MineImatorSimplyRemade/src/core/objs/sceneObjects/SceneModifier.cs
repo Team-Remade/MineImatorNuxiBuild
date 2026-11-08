@@ -9,6 +9,7 @@ public enum ArrayAxis { X, Y, Z }
 public sealed record SceneModifier
 {
     public const int MaxInstances = 1000;
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public SceneModifierType Type { get; init; }
     public bool Enabled { get; init; } = true;
     public int Count { get; init; } = 2;
@@ -25,7 +26,7 @@ public sealed record SceneModifier
 
     public SceneModifier Validated()
     {
-        if (!Enum.IsDefined(Type) || PathObjectId == null || !float.IsFinite(PathOffset))
+        if (!Guid.TryParseExact(Id, "N", out _) || !Enum.IsDefined(Type) || PathObjectId == null || !float.IsFinite(PathOffset))
             throw new InvalidDataException("Modifiers require a valid type, path reference and finite path offset.");
         if (Type == SceneModifierType.FollowPath) return this;
         if (!Enum.IsDefined(Axis) || Count is < 1 or > MaxInstances || !float.IsFinite(Distance) ||

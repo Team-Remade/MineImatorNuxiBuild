@@ -365,7 +365,7 @@ public static class NxObjectArchive
             }
             foreach (var (key, track) in node.Keyframes)
             {
-                if (key != "path_follow.target" &&
+                if (key != "path_follow.target" && !Timeline.IsModifierReferencePath(key) &&
                     !(key.StartsWith("constraint.", StringComparison.Ordinal) && (key.EndsWith(".ik.target", StringComparison.Ordinal) || key.EndsWith(".ik.pole", StringComparison.Ordinal))) &&
                     !(key.StartsWith("copy_constraint.", StringComparison.Ordinal) && key.EndsWith(".target", StringComparison.Ordinal))) continue;
                 foreach (var frame in track)
