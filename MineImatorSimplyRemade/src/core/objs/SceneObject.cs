@@ -1448,8 +1448,30 @@ public class SceneObject
 
     public List<CopyConstraint> CopyConstraints { get; set; } = new();
     public List<SceneModifier> Modifiers { get; set; } = new();
-    public string PathFollowObjectId = "";
-    public float PathFollowOffset;
+    public SceneModifier? FollowPathModifier => Modifiers.FirstOrDefault(modifier => modifier.Type == SceneModifierType.FollowPath);
+    // Keep existing timeline channel names and legacy import callers while storing settings in the modifier.
+    public string PathFollowObjectId
+    {
+        get => FollowPathModifier?.PathObjectId ?? "";
+        set
+        {
+            int index = Modifiers.FindIndex(modifier => modifier.Type == SceneModifierType.FollowPath);
+            if (index >= 0) Modifiers[index] = Modifiers[index] with { PathObjectId = value };
+            else if (!string.IsNullOrEmpty(value))
+                Modifiers.Insert(0, new SceneModifier { Type = SceneModifierType.FollowPath, PathObjectId = value });
+        }
+    }
+    public float PathFollowOffset
+    {
+        get => FollowPathModifier?.PathOffset ?? 0f;
+        set
+        {
+            int index = Modifiers.FindIndex(modifier => modifier.Type == SceneModifierType.FollowPath);
+            if (index >= 0) Modifiers[index] = Modifiers[index] with { PathOffset = value };
+            else if (value != 0f)
+                Modifiers.Insert(0, new SceneModifier { Type = SceneModifierType.FollowPath, PathOffset = value });
+        }
+    }
     private mat4? _evaluatedPathFrame;
     public bool IsFollowingPath => _evaluatedPathFrame.HasValue;
 

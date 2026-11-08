@@ -162,6 +162,8 @@ internal static partial class Program
             ("Array axes, spacing, compounded transforms and non-destructive subtree copies", ModifierTransforms),
             ("Array path alignment, spacing, wrapping, point edits and unavailable targets", ModifierPaths),
             ("Array stacks, inherited instances, safety cap and invalid transform rejection", ModifierStacks),
+            ("Follow Path modifier and Array offset composition, toggles and animation", ModifierFollowPath),
+            ("Follow Path modifier migration, persistence, references and special objects", ModifierFollowPersistence),
             ("Array archive, library, duplicate references, snapshots and dirty detection", ModifierPersistence),
             ("Array viewport render collection and shadow cache invalidation", ModifierRenderCollection),
             ("All 15 bundled particle presets, assets and finite simulation", ParticleBundled),

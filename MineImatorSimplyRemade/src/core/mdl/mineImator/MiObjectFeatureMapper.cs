@@ -93,6 +93,8 @@ public static class MiObjectFeatureMapper
         {
             Reference("PATH_OBJ", "path_follow.target", id => obj.PathFollowObjectId = id, target => target is PathSceneObject);
             Scalar("PATH_OFFSET", "path_follow.offset", 0f, value => obj.PathFollowOffset = value, 1f / 16f);
+            if (obj.FollowPathModifier == null && obj.Keyframes.ContainsKey("path_follow.target"))
+                obj.Modifiers.Insert(0, new SceneModifier { Type = SceneModifierType.FollowPath });
         }
         if (obj is ParticleSpawnerSceneObject particle)
         {

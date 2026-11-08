@@ -2739,7 +2739,7 @@ public class Timeline : UiPanel
         paths = paths.Concat(MaterialPropertyPaths);
         if (obj is PathPointSceneObject)
             paths = paths.Concat(new[] { "path_point.angle", "path_point.scale" });
-        else if (obj is not PathSceneObject)
+        else if (obj is not PathSceneObject && obj.FollowPathModifier != null)
             paths = paths.Concat(new[] { "path_follow.target", "path_follow.offset" });
         paths = paths.Concat(obj.CopyConstraints.SelectMany((constraint, index) => GetCopyConstraintPropertyPaths(index, constraint)));
         if (obj is MiBoneSceneObject)
@@ -3089,7 +3089,8 @@ public class Timeline : UiPanel
 
     private static IEnumerable<(string Path, string Label)> GetPathChannels(SceneObject obj) =>
         obj is PathPointSceneObject ? [("path_point.angle", "text.path.angle"), ("path_point.scale", "text.path.scale")] :
-        obj is PathSceneObject ? [] : [("path_follow.target", "text.path.target"), ("path_follow.offset", "text.path.offset")];
+        obj is PathSceneObject || obj.FollowPathModifier == null ? [] :
+            [("path_follow.target", "text.path.target"), ("path_follow.offset", "text.path.offset")];
 
     private static bool IsIkReferencePath(string path) =>
         (path.StartsWith("constraint.", StringComparison.Ordinal) &&
@@ -3540,6 +3541,7 @@ public class Timeline : UiPanel
         }
         if (path == "path_follow.target")
         {
+            if (obj.FollowPathModifier == null) return;
             obj.PathFollowObjectId = rawValue is JsonElement reference && reference.ValueKind == JsonValueKind.String
                 ? reference.GetString() ?? "" : Convert.ToString(rawValue, CultureInfo.InvariantCulture) ?? "";
             obj.SetEvaluatedPathFrame(null);
@@ -3547,6 +3549,7 @@ public class Timeline : UiPanel
         }
         if (path is "path_follow.offset" or "path_point.angle" or "path_point.scale")
         {
+            if (path == "path_follow.offset" && obj.FollowPathModifier == null) return;
             if (!TryConvertKeyframeValue(rawValue, out float pathValue) || !float.IsFinite(pathValue))
                 throw new InvalidDataException($"Invalid path keyframe: {path}.");
             if (path == "path_follow.offset") obj.PathFollowOffset = pathValue;

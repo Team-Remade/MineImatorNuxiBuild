@@ -118,12 +118,15 @@ public partial class PropertiesPanel
             UiText.Wrapped(Localization.T("text.path.point_help"));
             return;
         }
-        if (_currentObject == null || Viewport == null ||
-            !ImGui.CollapsingHeader(Localization.Label("text.path.follow", "Follow Path"))) return;
-        var owner = _currentObject;
+    }
+
+    private void DrawFollowPathModifier(SceneObject owner)
+    {
+        if (Viewport == null) return;
         var paths = EnumeratePaths(Viewport.SceneObjects).ToArray();
         var selected = paths.FirstOrDefault(p => p.ObjectId == owner.PathFollowObjectId);
-        string preview = selected?.GetDisplayName() ?? Localization.T("text.path.none");
+        string preview = owner.PathFollowObjectId.Length == 0 ? Localization.T("text.path.none") :
+            selected?.GetDisplayName() ?? Localization.DisplayText("Missing object");
         if (ImGui.BeginCombo(Localization.Label("text.path.target", "Path Object"), preview))
         {
             if (ImGui.Selectable(Localization.T("text.path.none"), owner.PathFollowObjectId.Length == 0)) SetTarget("");
@@ -141,14 +144,26 @@ public partial class PropertiesPanel
         }
         RegisterPropertyContext("path_follow.target");
         if (owner.PathFollowObjectId.Length == 0) return;
-        if (selected == null || selected.Length <= 0f || !owner.IsFollowingPath)
+        if (owner.FollowPathModifier is { Enabled: true } &&
+            (selected == null || selected.Length <= 0f || !owner.IsFollowingPath))
             UiText.Wrapped(Localization.T("text.path.unavailable"));
         float offset = owner.PathFollowOffset * 16f;
         if (ImGui.DragFloat(Localization.Label("text.path.offset", "Path Offset"), ref offset, 0.1f))
         {
-            owner.PathFollowOffset = offset / 16f;
-            Timeline?.RecordAutoKeyframe(owner, "path_follow.offset");
-            ProjectManager.Instance.SetDirty(true);
+            try
+            {
+                var updated = (owner.FollowPathModifier! with { PathOffset = offset / 16f }).Validated();
+                owner.PathFollowOffset = updated.PathOffset;
+                _modifierError = null;
+                Timeline?.RecordAutoKeyframe(owner, "path_follow.offset");
+                ProjectManager.Instance.SetDirty(true);
+            }
+            catch (InvalidDataException ex)
+            {
+                _modifierErrorOwner = owner;
+                _modifierError = ex.Message;
+                Console.Error.WriteLine($"Follow Path modifier edit rejected: {ex.Message}");
+            }
         }
         RegisterPropertyContext("path_follow.offset");
         UiText.Wrapped(Localization.T("text.path.follow_help"));

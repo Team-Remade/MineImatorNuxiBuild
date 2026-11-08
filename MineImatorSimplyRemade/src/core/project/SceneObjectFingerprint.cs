@@ -103,6 +103,7 @@ internal static class SceneObjectFingerprint
             hash.Add(modifier.ScaleY);
             hash.Add(modifier.ScaleZ);
             hash.Add(modifier.PathObjectId);
+            hash.Add(modifier.PathOffset);
         }
         foreach (var constraint in obj.CopyConstraints)
         {

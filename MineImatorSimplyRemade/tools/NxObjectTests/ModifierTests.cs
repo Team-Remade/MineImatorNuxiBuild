@@ -135,6 +135,158 @@ internal static partial class Program
         Near(new vec3(3, 0, 0), InstanceOrigin(new ModifierEvaluation([obj]), obj, 3), "Reordering changes evaluation order");
     }
 
+    private static void ModifierFollowPath(Fixture f)
+    {
+        var path = StraightPath();
+        path.Position = new(8, 2, 3);
+        path.Rotation = new(0, 0, MathF.PI / 4f);
+        path.Scale = new(2);
+        var obj = new SceneObject { PivotOffset = vec3.Zero };
+        var child = new SceneObject { Position = vec3.UnitZ, PivotOffset = vec3.Zero };
+        obj.AddChild(child);
+        obj.Modifiers =
+        [
+            new() { Type = SceneModifierType.FollowPath, PathObjectId = path.ObjectId, PathOffset = 3 },
+            new() { Count = 4, Axis = ArrayAxis.Y, Distance = 2 }
+        ];
+        var roots = new List<SceneObject> { obj, path };
+        InverseKinematicsSolver.Evaluate(roots);
+        var evaluation = new ModifierEvaluation(roots);
+        Equal(4, evaluation.GetDeltas(obj).Count, "Follow Path does not multiply copies");
+        for (int i = 0; i < 4; i++)
+        {
+            var sample = PathGeometry.AtDistance(path.Samples, 3 + 2 * i, false);
+            mat4 frame = path.GetWorldMatrixNoPivot() * sample.Frame;
+            Near((frame * new vec4(0, 0, 0, 1)).xyz, InstanceOrigin(evaluation, obj, i),
+                "Implicit array path starts at follow offset");
+            Near((frame * new vec4(0, 0, 1, 1)).xyz, InstanceOrigin(evaluation, child, i),
+                "Child inherits each offset copy");
+        }
+        obj.Modifiers[1] = obj.Modifiers[1] with { PathObjectId = path.ObjectId };
+        Near(InstanceOrigin(evaluation, obj, 2), InstanceOrigin(new ModifierEvaluation(roots), obj, 2),
+            "Explicit same path also uses follow offset");
+        obj.Modifiers.Reverse();
+        InverseKinematicsSolver.Evaluate(roots);
+        Near(InstanceOrigin(evaluation, obj, 2), InstanceOrigin(new ModifierEvaluation(roots), obj, 2),
+            "Follow Path remains a base-transform modifier after reordering");
+        var timeline = new Timeline();
+        var set = typeof(Timeline).GetMethod("SetPropertyValue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        foreach (bool closed in new[] { false, true })
+        {
+            path.Settings = path.Settings with { Closed = closed };
+            foreach (float offset in new[] { -3f, 7f, 30f })
+            {
+                set.Invoke(timeline, [obj, "path_follow.offset", offset]);
+                InverseKinematicsSolver.Evaluate(roots);
+                var moved = new ModifierEvaluation(roots);
+                for (int i = 0; i < 4; i++)
+                    Near((path.GetWorldMatrixNoPivot() *
+                        new vec4(PathGeometry.AtDistance(path.Samples, offset + 2 * i, closed).Position, 1)).xyz,
+                        InstanceOrigin(moved, obj, i), "Raw offset plus spacing clamps or wraps per copy");
+            }
+        }
+        path.Settings = path.Settings with { Closed = false };
+        obj.PathFollowOffset = 3;
+        InverseKinematicsSolver.Evaluate(roots);
+        Near(InstanceOrigin(evaluation, obj, 2), InstanceOrigin(new ModifierEvaluation(roots), obj, 2),
+            "Animated array start is reproducible after backward seek");
+        var other = StraightPath();
+        other.Position = new(-5, 0, 0);
+        roots.Add(other);
+        obj.Modifiers[0] = obj.Modifiers[0] with { PathObjectId = other.ObjectId };
+        Near(other.Position + vec3.UnitY * 4, InstanceOrigin(new ModifierEvaluation(roots), obj, 2),
+            "Different explicit path ignores follow offset");
+        obj.Modifiers[0] = obj.Modifiers[0] with { PathObjectId = path.ObjectId };
+        obj.Modifiers[1] = obj.Modifiers[1] with { Enabled = false };
+        InverseKinematicsSolver.Evaluate(roots);
+        Check(!obj.IsFollowingPath, "Disabled Follow Path clears base frame");
+        Near((path.GetWorldMatrixNoPivot() * new vec4(0, 4, 0, 1)).xyz,
+            InstanceOrigin(new ModifierEvaluation(roots), obj, 2), "Disabled follower leaves explicit array starting at zero");
+        obj.Modifiers[0] = obj.Modifiers[0] with { PathObjectId = "" };
+        Near(vec3.UnitY * 4, InstanceOrigin(new ModifierEvaluation(roots), obj, 2),
+            "Disabled follower restores local array");
+        obj.Modifiers[1] = obj.Modifiers[1] with { Enabled = true };
+        obj.Modifiers[0] = obj.Modifiers[0] with { Enabled = false };
+        InverseKinematicsSolver.Evaluate(roots);
+        Equal(1, new ModifierEvaluation(roots).GetDeltas(obj).Count, "Disabled array retains single path follower");
+        Near((path.GetWorldMatrixNoPivot() * new vec4(0, 3, 0, 1)).xyz, obj.GetWorldPosition(),
+            "Follow Path remains active with array disabled");
+        obj.Modifiers.RemoveAt(1);
+        InverseKinematicsSolver.Evaluate(roots);
+        set.Invoke(timeline, [obj, "path_follow.target", path.ObjectId]);
+        set.Invoke(timeline, [obj, "path_follow.offset", 5f]);
+        Check(obj.FollowPathModifier == null && !obj.IsFollowingPath, "Removed follower is not recreated by timeline evaluation");
+    }
+
+    private static void ModifierFollowPersistence(Fixture f)
+    {
+        var root = new SceneObject { Name = "Root" };
+        var path = StraightPath();
+        var obj = new SceneObject { Name = "Follower" };
+        obj.Modifiers =
+        [
+            new() { Type = SceneModifierType.FollowPath, Enabled = false, PathObjectId = path.ObjectId, PathOffset = -3 },
+            new() { Count = 4, Axis = ArrayAxis.Y, Distance = 2 }
+        ];
+        obj.Keyframes["path_follow.target"] = [new() { Frame = 0, Value = path.ObjectId }];
+        obj.Keyframes["path_follow.offset"] = [new() { Frame = 0, Value = -3f }];
+        root.AddChild(path);
+        root.AddChild(obj);
+        var (manifest, _) = f.Roundtrip(root);
+        Equal(obj.Modifiers[0], manifest.Root.Children[1].Modifiers![0], "Follow modifier archive settings");
+        var viewport = new Viewport();
+        var spawn = new SpawnMenu { Viewport = viewport };
+        var imported = ProjectSceneSerializer.SpawnObjectFromEntry(manifest.Root, viewport, spawn)!;
+        var follower = imported.Children[1];
+        Equal(imported.Children[0].ObjectId, follower.FollowPathModifier!.PathObjectId, "Follow modifier reference remaps");
+        Check(!follower.FollowPathModifier.Enabled, "Disabled Follow Path remains disabled after load");
+        Near(-3, follower.PathFollowOffset, "Follow modifier offset persists");
+        Equal(imported.Children[0].ObjectId, follower.Keyframes["path_follow.target"][0].Value,
+            "Follow target keyframe remaps alongside modifier");
+        var duplicate = typeof(SceneTree).GetMethod("DuplicateObject", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var copied = (SceneObject)duplicate.Invoke(new SceneTree { Viewport = viewport }, [imported, false, null])!;
+        Equal(copied.Children[0].ObjectId, copied.Children[1].FollowPathModifier!.PathObjectId, "Duplicate follower path remaps");
+        copied.Children[1].PathFollowOffset = 8;
+        Near(-3, follower.PathFollowOffset, "Duplicate follower settings independent");
+        var capture = ProjectSceneSerializer.SerializeObjectForLibrary(follower);
+        follower.PathFollowOffset = 9;
+        typeof(ProjectSceneSerializer).GetMethod("ApplyEntryToObject", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [follower, capture, null]);
+        Near(-3, follower.PathFollowOffset, "Undo restores follow offset");
+        Check(!follower.FollowPathModifier!.Enabled, "Undo restores follow enabled state");
+
+        var legacy = ProjectSceneSerializer.SerializeObjectForLibrary(obj);
+        legacy.Modifiers = [new() { Count = 4 }];
+        legacy.PathFollowObjectId = path.ObjectId;
+        legacy.PathFollowOffset = 6;
+        typeof(ProjectSceneSerializer).GetMethod("ApplyEntryToObject", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [obj, legacy, null]);
+        Equal(2, obj.Modifiers.Count, "Legacy follow settings migrate alongside existing arrays");
+        Equal(path.ObjectId, obj.FollowPathModifier!.PathObjectId, "Legacy target migrates");
+        Near(6, obj.FollowPathModifier.PathOffset, "Legacy offset migrates");
+        legacy.PathFollowObjectId = "";
+        legacy.PathFollowOffset = 0;
+        typeof(ProjectSceneSerializer).GetMethod("ApplyEntryToObject", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [obj, legacy, null]);
+        Check(obj.FollowPathModifier != null, "Legacy keyframe-only follow gets a modifier");
+        foreach (var invalid in new SceneModifier[]
+        {
+            new() { Type = SceneModifierType.FollowPath, PathOffset = float.NaN },
+            new() { Type = SceneModifierType.FollowPath, PathOffset = float.PositiveInfinity }
+        })
+        {
+            bool rejected = false;
+            try { invalid.Validated(); } catch (InvalidDataException) { rejected = true; }
+            Check(rejected, "Invalid follow offset rejected");
+        }
+        foreach (SceneObject special in new SceneObject[] { new CameraSceneObject(), new LightSceneObject() })
+        {
+            special.Modifiers = [new() { Type = SceneModifierType.FollowPath, PathObjectId = path.ObjectId, PathOffset = 2 }];
+            InverseKinematicsSolver.Evaluate([special, path]);
+            Near(vec3.UnitY * 2, special.GetWorldPosition(), "Cameras and lights still follow paths");
+        }
+    }
+
     private static void ModifierPersistence(Fixture f)
     {
         var root = new SceneObject { Name = "Root" };
@@ -275,11 +427,25 @@ internal static partial class Program
             typeof(Viewport).GetField("_silhouetteShader", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(viewport, silhouette);
             Call("InitPickFramebuffer", size, size);
             Call("InitSilhouetteFbo", size, size);
+            float activeOffset = 0f;
             try
             {
-                foreach (bool onPath in new[] { false, true })
+                foreach (var (onPath, offset, implicitPath) in new[]
+                    { (false, 0f, false), (true, 0f, false), (true, 1f, false), (true, 1.5f, true) })
                 {
-                    source.Modifiers[0] = source.Modifiers[0] with { PathObjectId = onPath ? path.ObjectId : "", Axis = onPath ? ArrayAxis.Y : ArrayAxis.X };
+                    activeOffset = offset;
+                    source.Position = offset == 0f ? path.Position : vec3.Zero;
+                    source.Modifiers = [new()
+                    {
+                        Count = 4, Distance = 2,
+                        PathObjectId = onPath && !implicitPath ? path.ObjectId : "",
+                        Axis = onPath ? ArrayAxis.Y : ArrayAxis.X
+                    }];
+                    if (offset != 0f)
+                    {
+                        source.Modifiers.Add(new() { Type = SceneModifierType.FollowPath, PathObjectId = path.ObjectId, PathOffset = offset });
+                    }
+                    InverseKinematicsSolver.Evaluate(viewport.SceneObjects);
                     Call("ResetModifierEvaluation");
                     var items = new List<(mat4, Mesh, float, bool, bool, bool)>();
                     var noAo = new List<(mat4, Mesh, float, bool, bool, bool)>();
@@ -345,7 +511,7 @@ internal static partial class Program
                         gl.ReadPixels(0, 0, size, size, Silk.NET.OpenGL.GLEnum.Rgba, Silk.NET.OpenGL.GLEnum.UnsignedByte, p);
                     return pixels;
                 }
-                int PixelX(int i) => (int)(((-3f + 2 * i + 0.125f) / 10f + 0.5f) * size);
+                int PixelX(int i) => (int)(((-3f + activeOffset + 2 * i + 0.125f) / 10f + 0.5f) * size);
                 void AssertCopies(byte[] pixels, string message)
                 {
                     for (int i = 0; i < 4; i++)

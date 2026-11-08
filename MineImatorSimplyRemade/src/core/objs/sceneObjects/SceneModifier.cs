@@ -3,7 +3,7 @@ using MineImatorSimplyRemade.core.mdl.meshes;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
-public enum SceneModifierType { Array }
+public enum SceneModifierType { Array, FollowPath }
 public enum ArrayAxis { X, Y, Z }
 
 public sealed record SceneModifier
@@ -21,11 +21,14 @@ public sealed record SceneModifier
     public float ScaleY { get; init; } = 1f;
     public float ScaleZ { get; init; } = 1f;
     public string PathObjectId { get; init; } = "";
+    public float PathOffset { get; init; }
 
     public SceneModifier Validated()
     {
-        if (!Enum.IsDefined(Type) || !Enum.IsDefined(Axis) || Count is < 1 or > MaxInstances ||
-            PathObjectId == null || !float.IsFinite(Distance) ||
+        if (!Enum.IsDefined(Type) || PathObjectId == null || !float.IsFinite(PathOffset))
+            throw new InvalidDataException("Modifiers require a valid type, path reference and finite path offset.");
+        if (Type == SceneModifierType.FollowPath) return this;
+        if (!Enum.IsDefined(Axis) || Count is < 1 or > MaxInstances || !float.IsFinite(Distance) ||
             !float.IsFinite(RotationX) || !float.IsFinite(RotationY) || !float.IsFinite(RotationZ) ||
             !float.IsFinite(ScaleX) || !float.IsFinite(ScaleY) || !float.IsFinite(ScaleZ))
             throw new InvalidDataException("Array modifiers require valid axes, finite transforms and a count from 1 to 1000.");
@@ -63,13 +66,16 @@ public sealed class ModifierEvaluation
         foreach (var modifier in obj.Modifiers)
         {
             modifier.Validated();
-            if (!modifier.Enabled) continue;
+            if (!modifier.Enabled || modifier.Type == SceneModifierType.FollowPath) continue;
             PathSceneObject? path = null;
             IReadOnlyList<PathSample> samples = [];
-            if (modifier.PathObjectId.Length != 0)
+            string pathId = modifier.PathObjectId;
+            if (pathId.Length == 0 && obj.IsFollowingPath) pathId = obj.PathFollowObjectId;
+            float startOffset = obj.IsFollowingPath && pathId == obj.PathFollowObjectId ? obj.PathFollowOffset : 0f;
+            if (pathId.Length != 0)
             {
                 // Deleted, incomplete or self-dependent paths retain the source until repaired in the editor.
-                if (!_ids.TryGetValue(modifier.PathObjectId, out var target) || target is not PathSceneObject candidate ||
+                if (!_ids.TryGetValue(pathId, out var target) || target is not PathSceneObject candidate ||
                     IsWithin(candidate, obj) || candidate.Samples.Count < 2) continue;
                 path = candidate;
                 samples = path.Samples;
@@ -100,7 +106,10 @@ public sealed class ModifierEvaluation
                     mat4 frame;
                     if (path != null)
                     {
-                        var sample = PathGeometry.AtDistance(samples, modifier.Distance * i, path.Settings.Closed);
+                        float distance = startOffset + modifier.Distance * i;
+                        if (!float.IsFinite(distance))
+                            throw new InvalidDataException($"Array path offset on '{obj.Name}' exceeds the supported numeric range.");
+                        var sample = PathGeometry.AtDistance(samples, distance, path.Settings.Closed);
                         frame = pathWorld * sample.Frame * alignment * mat4.Scale(new vec3(sample.Scale));
                     }
                     else frame = anchor * mat4.Translate(axis * (modifier.Distance * i));

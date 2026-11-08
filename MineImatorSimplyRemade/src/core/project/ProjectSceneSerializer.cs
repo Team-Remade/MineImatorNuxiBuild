@@ -985,8 +985,13 @@ public static class ProjectSceneSerializer
             point.PathPointAngle = entry.PathPointAngle;
             point.PathPointScale = entry.PathPointScale;
         }
-        obj.PathFollowObjectId = entry.PathFollowObjectId ?? "";
-        obj.PathFollowOffset = entry.PathFollowOffset;
+        if (obj.FollowPathModifier == null)
+        {
+            obj.PathFollowObjectId = entry.PathFollowObjectId ?? "";
+            obj.PathFollowOffset = entry.PathFollowOffset;
+            if (obj.FollowPathModifier == null && entry.Keyframes.ContainsKey("path_follow.target"))
+                obj.Modifiers.Insert(0, new SceneModifier { Type = SceneModifierType.FollowPath });
+        }
         obj.SetEvaluatedPathFrame(null);
 
         if (obj is ParticleSpawnerSceneObject particleSpawner)

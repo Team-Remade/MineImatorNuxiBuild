@@ -62,7 +62,8 @@ public sealed class PathSceneObject : SceneObject
         foreach (var obj in objects)
         {
             obj.SetEvaluatedPathFrame(null);
-            if (obj is PathSceneObject or PathPointSceneObject || string.IsNullOrEmpty(obj.PathFollowObjectId) ||
+            if (obj is PathSceneObject or PathPointSceneObject || obj.FollowPathModifier is not { Enabled: true } ||
+                string.IsNullOrEmpty(obj.PathFollowObjectId) ||
                 !float.IsFinite(obj.PathFollowOffset) ||
                 !ids.TryGetValue(obj.PathFollowObjectId, out var target) || target is not PathSceneObject path ||
                 IsWithin(path, obj) || path.Samples.Count < 2) continue;
