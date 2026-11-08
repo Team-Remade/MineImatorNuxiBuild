@@ -23,6 +23,19 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--model-uv-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                ModelUvGraphics();
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--spawn-preview-graphics", StringComparer.Ordinal))
         {
             try

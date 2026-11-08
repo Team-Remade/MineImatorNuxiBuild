@@ -2419,26 +2419,6 @@ public class MineImatorLoader
 
             float totalSize = segAxis == 0 ? (x2 - x1) : segAxis == 1 ? (y2 - y1) : (z2 - z1);
 
-            float texpSide1, texpSide2, texpSide3;
-            switch (segAxis)
-            {
-                case 0:
-                    texpSide1 = texSouth1.x;
-                    texpSide2 = texNorth2.x;
-                    texpSide3 = texDown4.x;
-                    break;
-                case 1:
-                    texpSide1 = texSouth3.y;
-                    texpSide2 = texSouth3.y;
-                    texpSide3 = texSouth3.y;
-                    break;
-                default:
-                    texpSide1 = texEast2.x;
-                    texpSide2 = texWest1.x;
-                    texpSide3 = texUp1.y;
-                    break;
-            }
-
             vec3 p1, p2, p3, p4;
             vec3 n1, n2, n3, n4;
             vec2 texStart1, texStart2, texStart3, texStart4;
@@ -2455,14 +2435,14 @@ public class MineImatorLoader
                     n2 = new vec3(0, -1, 0);
                     n3 = new vec3(0, 0, 1);
                     n4 = new vec3(0, 0, -1);
-                    texStart1 = texWest1;
+                    texStart1 = texWest3;
                     texStart2 = texWest2;
-                    texStart3 = texWest3;
+                    texStart3 = texWest1;
                     texStart4 = texWest4;
                     texEnd1 = texEast1;
-                    texEnd2 = texEast2;
+                    texEnd2 = texEast4;
                     texEnd3 = texEast3;
-                    texEnd4 = texEast4;
+                    texEnd4 = texEast2;
                     break;
                 case 1:
                     p1 = new vec3(x2, y1, z2);
@@ -2473,14 +2453,14 @@ public class MineImatorLoader
                     n2 = new vec3(-1, 0, 0);
                     n3 = new vec3(0, 0, 1);
                     n4 = new vec3(0, 0, -1);
-                    texStart1 = texDown1;
-                    texStart2 = texDown2;
-                    texStart3 = texDown3;
-                    texStart4 = texDown4;
-                    texEnd1 = texUp1;
-                    texEnd2 = texUp2;
-                    texEnd3 = texUp3;
-                    texEnd4 = texUp4;
+                    texStart1 = texDown2;
+                    texStart2 = texDown1;
+                    texStart3 = texDown4;
+                    texStart4 = texDown3;
+                    texEnd1 = texUp2;
+                    texEnd2 = texUp1;
+                    texEnd3 = texUp4;
+                    texEnd4 = texUp3;
                     break;
                 default:
                     p1 = new vec3(x1, y2, z1);
@@ -2491,14 +2471,14 @@ public class MineImatorLoader
                     n2 = new vec3(-1, 0, 0);
                     n3 = new vec3(0, 1, 0);
                     n4 = new vec3(0, -1, 0);
-                    texStart1 = texNorth1;
-                    texStart2 = texNorth2;
-                    texStart3 = texNorth3;
-                    texStart4 = texNorth4;
-                    texEnd1 = texSouth1;
-                    texEnd2 = texSouth2;
-                    texEnd3 = texSouth3;
-                    texEnd4 = texSouth4;
+                    texStart1 = texNorth2;
+                    texStart2 = texNorth1;
+                    texStart3 = texNorth4;
+                    texStart4 = texNorth3;
+                    texEnd1 = texSouth2;
+                    texEnd2 = texSouth1;
+                    texEnd3 = texSouth4;
+                    texEnd4 = texSouth3;
                     break;
             }
 
@@ -2575,12 +2555,12 @@ public class MineImatorLoader
                     curSegSize = Math.Min(totalSize - segPos, curSegSize);
                 }
 
+                float previousWeight = segPos / totalSize;
                 // Reference minimum is 0.005 scaled pixels, not world units.
                 segPos = Math.Min(totalSize, segPos + Math.Max(curSegSize, 0.005f / (16f * axisScale)));
 
                 vec3 np1, np2, np3, np4;
                 vec3 nn1, nn2, nn3, nn4;
-                float ntexpSide1, ntexpSide2, ntexpSide3;
 
                 switch (segAxis)
                 {
@@ -2593,12 +2573,6 @@ public class MineImatorLoader
                         nn2 = new vec3(0, -1, 0);
                         nn3 = new vec3(0, 0, 1);
                         nn4 = new vec3(0, 0, -1);
-                    {
-                        float toff = (segPos / totalSize) * texSizeFixX * (textureMirror ? -1 : 1);
-                        ntexpSide1 = texSouth1.x + toff;
-                        ntexpSide2 = texNorth2.x - toff;
-                        ntexpSide3 = texDown4.x + toff;
-                    }
                         break;
                     case 1:
                         np1 = new vec3(x2, y1 + segPos, z2);
@@ -2609,12 +2583,6 @@ public class MineImatorLoader
                         nn2 = new vec3(-1, 0, 0);
                         nn3 = new vec3(0, 0, 1);
                         nn4 = new vec3(0, 0, -1);
-                    {
-                        float toff = (segPos / totalSize) * texSizeFixY;
-                        ntexpSide1 = texSouth3.y - toff;
-                        ntexpSide2 = ntexpSide1;
-                        ntexpSide3 = ntexpSide1;
-                    }
                         break;
                     default:
                         np1 = new vec3(x1, y2, z1 + segPos);
@@ -2625,12 +2593,6 @@ public class MineImatorLoader
                         nn2 = new vec3(-1, 0, 0);
                         nn3 = new vec3(0, 1, 0);
                         nn4 = new vec3(0, -1, 0);
-                    {
-                        float toff = (segPos / totalSize) * texSizeFixZ;
-                        ntexpSide1 = texEast2.x - toff * (textureMirror ? -1 : 1);
-                        ntexpSide2 = texWest1.x + toff * (textureMirror ? -1 : 1);
-                        ntexpSide3 = texUp1.y + toff;
-                    }
                         break;
                 }
 
@@ -2670,56 +2632,54 @@ public class MineImatorLoader
                 if (sharpBend)
                     n1 = n2 = n3 = n4 = nn1 = nn2 = nn3 = nn4 = vec3.Zero;
 
+                // Interpolate the same face edges as an ordinary block, after
+                // mirroring, so segmentation cannot twist or reverse its UVs.
+                vec2 PreviousUv(vec2 start, vec2 end) => start + (end - start) * previousWeight;
+                vec2 NextUv(vec2 start, vec2 end) => start + (end - start) * offsetWeight;
+
                 switch (segAxis)
                 {
                     case 0:
                         AddFaceWithUVs(vertices, normals, uvs, indices, p2, np2, np3, p3, n1, nn1, nn1, n1,
-                            new vec2(texpSide1, texSouth1.y), new vec2(ntexpSide1, texSouth1.y),
-                            new vec2(ntexpSide1, texSouth3.y), new vec2(texpSide1, texSouth3.y), invert);
+                            PreviousUv(texUp4, texUp3), NextUv(texUp4, texUp3),
+                            NextUv(texUp1, texUp2), PreviousUv(texUp1, texUp2), invert);
                         AddFaceWithUVs(vertices, normals, uvs, indices, np1, p1, p4, np4, nn2, n2, n2, nn2,
-                            new vec2(ntexpSide2, texNorth1.y), new vec2(texpSide2, texNorth1.y),
-                            new vec2(texpSide2, texNorth3.y), new vec2(ntexpSide2, texNorth3.y), invert);
+                            NextUv(texDown1, texDown2), PreviousUv(texDown1, texDown2),
+                            PreviousUv(texDown4, texDown3), NextUv(texDown4, texDown3), invert);
                         AddFaceWithUVs(vertices, normals, uvs, indices, p1, np1, np2, p2, n3, nn3, nn3, n3,
-                            new vec2(texpSide1, texUp1.y), new vec2(ntexpSide1, texUp1.y),
-                            new vec2(ntexpSide1, texUp3.y), new vec2(texpSide1, texUp3.y), invert);
+                            PreviousUv(texSouth4, texSouth3), NextUv(texSouth4, texSouth3),
+                            NextUv(texSouth1, texSouth2), PreviousUv(texSouth1, texSouth2), invert);
                         AddFaceWithUVs(vertices, normals, uvs, indices, p3, np3, np4, p4, n4, nn4, nn4, n4,
-                            new vec2(texpSide3, texDown1.y), new vec2(ntexpSide3, texDown1.y),
-                            new vec2(ntexpSide3, texDown3.y), new vec2(texpSide3, texDown3.y), invert);
-                        texpSide1 = ntexpSide1;
-                        texpSide2 = ntexpSide2;
-                        texpSide3 = ntexpSide3;
+                            PreviousUv(texNorth2, texNorth1), NextUv(texNorth2, texNorth1),
+                            NextUv(texNorth3, texNorth4), PreviousUv(texNorth3, texNorth4), invert);
                         break;
                     case 1:
                         AddFaceWithUVs(vertices, normals, uvs, indices, np1, p1, p4, np4, nn1, n1, n1, nn1,
-                            new vec2(texEast1.x, ntexpSide1), new vec2(texEast1.x, texpSide1),
-                            new vec2(texEast2.x, texpSide1), new vec2(texEast2.x, ntexpSide1), invert);
+                            NextUv(texEast4, texEast1), PreviousUv(texEast4, texEast1),
+                            PreviousUv(texEast3, texEast2), NextUv(texEast3, texEast2), invert);
                         AddFaceWithUVs(vertices, normals, uvs, indices, p2, np2, np3, p3, n2, nn2, nn2, n2,
-                            new vec2(texWest1.x, texpSide1), new vec2(texWest1.x, ntexpSide1),
-                            new vec2(texWest2.x, ntexpSide1), new vec2(texWest2.x, texpSide1), invert);
+                            PreviousUv(texWest3, texWest2), NextUv(texWest3, texWest2),
+                            NextUv(texWest4, texWest1), PreviousUv(texWest4, texWest1), invert);
                         AddFaceWithUVs(vertices, normals, uvs, indices, p2, p1, np1, np2, n3, n3, nn3, nn3,
-                            new vec2(texSouth1.x, texpSide1), new vec2(texSouth2.x, texpSide1),
-                            new vec2(texSouth2.x, ntexpSide1), new vec2(texSouth1.x, ntexpSide1), invert);
+                            PreviousUv(texSouth4, texSouth1), PreviousUv(texSouth3, texSouth2),
+                            NextUv(texSouth3, texSouth2), NextUv(texSouth4, texSouth1), invert);
                         AddFaceWithUVs(vertices, normals, uvs, indices, np3, np4, p4, p3, nn4, nn4, n4, n4,
-                            new vec2(texNorth1.x, ntexpSide1), new vec2(texNorth2.x, ntexpSide1),
-                            new vec2(texNorth2.x, texpSide1), new vec2(texNorth1.x, texpSide1), invert);
-                        texpSide1 = ntexpSide1;
+                            NextUv(texNorth3, texNorth2), NextUv(texNorth4, texNorth1),
+                            PreviousUv(texNorth4, texNorth1), PreviousUv(texNorth3, texNorth2), invert);
                         break;
                     default:
                         AddFaceWithUVs(vertices, normals, uvs, indices, np2, np3, p3, p2, nn1, n1,
-                            new vec2(ntexpSide1, texEast1.y), new vec2(texpSide1, texEast1.y),
-                            new vec2(texpSide1, texEast3.y), new vec2(ntexpSide1, texEast3.y), invert);
+                            NextUv(texEast2, texEast1), NextUv(texEast3, texEast4),
+                            PreviousUv(texEast3, texEast4), PreviousUv(texEast2, texEast1), invert);
                         AddFaceWithUVs(vertices, normals, uvs, indices, np4, np1, p1, p4, nn2, n2,
-                            new vec2(texpSide2, texWest1.y), new vec2(ntexpSide2, texWest1.y),
-                            new vec2(ntexpSide2, texWest3.y), new vec2(texpSide2, texWest3.y), invert);
+                            NextUv(texWest4, texWest3), NextUv(texWest1, texWest2),
+                            PreviousUv(texWest1, texWest2), PreviousUv(texWest4, texWest3), invert);
                         AddFaceWithUVs(vertices, normals, uvs, indices, np1, np2, p2, p1, nn3, n3,
-                            new vec2(texUp1.x, texpSide3), new vec2(texUp2.x, texpSide3),
-                            new vec2(texUp2.x, ntexpSide3), new vec2(texUp1.x, ntexpSide3), invert);
+                            NextUv(texUp1, texUp4), NextUv(texUp2, texUp3),
+                            PreviousUv(texUp2, texUp3), PreviousUv(texUp1, texUp4), invert);
                         AddFaceWithUVs(vertices, normals, uvs, indices, np3, np4, p4, p3, nn4, n4,
-                            new vec2(texDown1.x, ntexpSide3), new vec2(texDown2.x, ntexpSide3),
-                            new vec2(texDown2.x, texpSide3), new vec2(texDown1.x, texpSide3), invert);
-                        texpSide1 = ntexpSide1;
-                        texpSide2 = ntexpSide2;
-                        texpSide3 = ntexpSide3;
+                            NextUv(texDown3, texDown2), NextUv(texDown4, texDown1),
+                            PreviousUv(texDown4, texDown1), PreviousUv(texDown3, texDown2), invert);
                         break;
                 }
 
