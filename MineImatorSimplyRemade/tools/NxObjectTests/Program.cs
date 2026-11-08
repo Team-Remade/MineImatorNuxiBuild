@@ -23,6 +23,20 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--spawn-preview-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                SpawnPreviewGraphics();
+                Console.WriteLine("PASS Spawn model previews, framing, isolated lighting and scene-state preservation");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--modifiers-graphics", StringComparer.Ordinal))
         {
             try

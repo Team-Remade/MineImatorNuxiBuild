@@ -58,6 +58,7 @@ public class PreviewRenderer : IDisposable
     public string LastSelectionKey { get; private set; } = "";
 
     private bool _initialized;
+    private SceneUniformBuffer? _previewLighting;
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -145,6 +146,8 @@ public class PreviewRenderer : IDisposable
     /// rendered in addition to (or instead of) the flat <paramref name="meshes"/> list.
     /// Each node in the hierarchy is rendered with its own world matrix so that a
     /// character's bones appear in their correct poses.
+    /// Centered hierarchies are fitted to the orbit camera. Isolated lighting uses
+    /// neutral studio lights without scene lights, shadows, fog, or world illumination.
     /// </summary>
     public void Render(
         IReadOnlyList<Mesh> meshes,
@@ -153,7 +156,8 @@ public class PreviewRenderer : IDisposable
         float               boundsRadius = 0.75f,
         SceneObject?        sceneRoot    = null,
         Camera?             camera       = null,
-        bool                centerMeshes = false)
+        bool                centerMeshes = false,
+        bool                isolatedLighting = false)
     {
         if (!_initialized) Initialize();
         if (_fbo == 0 || ColorTexture == 0) return;
@@ -188,6 +192,31 @@ public class PreviewRenderer : IDisposable
         bool hasSomethingToRender = meshes.Count > 0 || sceneRoot != null || camera != null;
         if (hasSomethingToRender)
         {
+            mat4 hierarchyTransform = mat4.Identity;
+            if (sceneRoot != null && centerMeshes && camera == null)
+            {
+                vec3 min = new(float.PositiveInfinity);
+                vec3 max = new(float.NegativeInfinity);
+                foreach (var node in new[] { sceneRoot }.Concat(sceneRoot.GetAllDescendants()))
+                foreach (var mesh in node.Visuals)
+                {
+                    if (mesh.PickOnly) continue;
+                    mat4 world = node.GetWorldMatrix();
+                    foreach (var vertex in mesh.Vertices)
+                    {
+                        vec3 position = (world * new vec4(vertex, 1f)).xyz;
+                        min = vec3.Min(min, position);
+                        max = vec3.Max(max, position);
+                    }
+                }
+                if (float.IsFinite(min.x) && float.IsFinite(max.x))
+                {
+                    hierarchyTransform = mat4.Translate(-(min + max) * 0.5f);
+                    float radius = (max - min).Length * 0.5f;
+                    Distance = Math.Max(0.2f, radius / MathF.Sin(glm.Radians(25f)) * 1.1f);
+                }
+            }
+
             // ── Camera matrices ───────────────────────────────────────────────
             float cosP = MathF.Cos(Pitch);
             var eye = new vec3(
@@ -200,14 +229,24 @@ public class PreviewRenderer : IDisposable
                 glm.Radians(50f),   // 50° FOV
                 (float)Width / Height,
                 0.05f,
-                100f);
+                Math.Max(100f, Distance * 4f));
             ViewProjection = proj * view;
 
             // ── Flat mesh list (Items, Blocks, Primitives) ────────────────────
             var previousCameraPosition = Mesh.GlobalCameraPosition;
-            if (camera != null) Mesh.GlobalCameraPosition = camera.Position;
+            var previousLighting = Mesh.SceneUBO;
+            int previousUniformBuffer = _gl.GetInteger(GLEnum.UniformBufferBinding, 0);
+            Mesh.GlobalCameraPosition = camera?.Position ?? eye;
             try
             {
+                if (isolatedLighting)
+                {
+                    _previewLighting ??= new SceneUniformBuffer(_gl);
+                    _previewLighting.Upload(mat4.Identity, new vec3(0.45f),
+                        new vec3(-0.5f, 1f, 0.8f).Normalized, new vec3(0.75f),
+                        vec3.UnitY, vec3.Zero, vec3.UnitY, vec3.Zero, 0, false, false, false);
+                    Mesh.SceneUBO = _previewLighting;
+                }
                 mat4 model = mat4.Identity;
                 if (centerMeshes)
                 {
@@ -226,15 +265,18 @@ public class PreviewRenderer : IDisposable
                 {
                     if (mesh.PickOnly) continue;
                     Mesh.ApplyBlendMode(_gl, mesh.BlendMode);
-                    mesh.Render(model, view, proj);
+                    mesh.Render(model, view, proj, useSceneLighting: !isolatedLighting);
                 }
 
                 if (sceneRoot != null)
-                    RenderSceneObjectRecursive(sceneRoot, view, proj);
+                    RenderSceneObjectRecursive(sceneRoot, view, proj, hierarchyTransform,
+                        useSceneLighting: !isolatedLighting);
             }
             finally
             {
                 Mesh.GlobalCameraPosition = previousCameraPosition;
+                Mesh.SceneUBO = previousLighting;
+                _gl.BindBufferBase(GLEnum.UniformBuffer, 0, (uint)previousUniformBuffer);
             }
         }
 
@@ -248,7 +290,8 @@ public class PreviewRenderer : IDisposable
     /// Recursively renders all visible nodes in a <see cref="SceneObject"/> hierarchy,
     /// applying each node's own world matrix so that bones are placed correctly.
     /// </summary>
-    private void RenderSceneObjectRecursive(SceneObject obj, mat4 view, mat4 proj, ModifierEvaluation? modifiers = null)
+    private void RenderSceneObjectRecursive(SceneObject obj, mat4 view, mat4 proj, mat4 previewTransform,
+        ModifierEvaluation? modifiers = null, bool useSceneLighting = true)
     {
         if (!obj.GetEffectiveVisibility()) return;
         modifiers ??= new ModifierEvaluation([obj]);
@@ -258,11 +301,12 @@ public class PreviewRenderer : IDisposable
         {
             if (mesh.PickOnly) continue;
             Mesh.ApplyBlendMode(_gl, mesh.BlendMode);
-            mesh.Render(delta * obj.GetWorldMatrix(), view, proj);
+            mesh.Render(previewTransform * delta * obj.GetWorldMatrix(), view, proj,
+                useSceneLighting: useSceneLighting);
         }
 
         foreach (var child in obj.Children)
-            RenderSceneObjectRecursive(child, view, proj, modifiers);
+            RenderSceneObjectRecursive(child, view, proj, previewTransform, modifiers, useSceneLighting);
     }
 
     // ── Manual orbit (drag) ───────────────────────────────────────────────────
@@ -278,6 +322,8 @@ public class PreviewRenderer : IDisposable
 
     public void Dispose()
     {
+        _previewLighting?.Dispose();
+        _previewLighting = null;
         if (_fbo != 0)
         {
             _gl.DeleteFramebuffers(1, _fbo);

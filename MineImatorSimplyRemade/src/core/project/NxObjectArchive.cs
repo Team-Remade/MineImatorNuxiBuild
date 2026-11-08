@@ -208,6 +208,16 @@ public static class NxObjectArchive
         }
     }
 
+    internal static SceneObject CreatePreview(ProjectSceneObjectEntry entry, SpawnMenu source)
+    {
+        var viewport = new Viewport();
+        var spawn = new SpawnMenu { Viewport = viewport, Gl = source.Gl };
+        var root = ProjectSceneSerializer.SpawnObjectFromEntry(entry, viewport, spawn)
+            ?? throw new InvalidDataException("The object preview could not be loaded.");
+        LoadAlbedoTextures(root);
+        return root;
+    }
+
     // Kept independent of GPU loading so malformed archives are rejected before scene mutation.
     internal static NxObjectManifest Extract(string filePath, string directory)
     {

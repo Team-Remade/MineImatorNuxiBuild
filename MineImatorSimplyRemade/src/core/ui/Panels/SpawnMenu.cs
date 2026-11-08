@@ -154,6 +154,7 @@ public class SpawnMenu : UiPanel
     // Custom-model history (in-memory; load/save not yet implemented)
     private readonly List<string>             _customModelHistory = new();
     private readonly Dictionary<string, string> _customModelPaths = new(); // displayName → full path
+    private readonly Dictionary<string, ProjectSceneObjectEntry> _customArchivePreviews = new();
 
     // ── Owner reference ──────────────────────────────────────────────────────
     /// <summary>The viewport whose child list receives newly spawned objects.</summary>
@@ -607,7 +608,17 @@ public class SpawnMenu : UiPanel
 
             // Build fresh meshes for the new selection
             if (!string.IsNullOrEmpty(newKey))
-                _previewMeshes = BuildPreviewMeshes();
+            {
+                try
+                {
+                    _previewMeshes = BuildPreviewMeshes();
+                }
+                catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+                {
+                    _objectImportError = $"Failed to load model preview: {ex.Message}";
+                    Console.Error.WriteLine(_objectImportError);
+                }
+            }
 
             // Tune camera distance to fit the object type
             _previewRenderer.Distance = GetPreviewDistance();
@@ -617,12 +628,20 @@ public class SpawnMenu : UiPanel
 
         // Render into FBO every frame (so auto-rotation plays)
         _previewRenderer.Render(_previewMeshes, _previewKey, deltaTime, sceneRoot: _previewCharacter,
-            centerMeshes: _selectedCategory is "Blocks" or "Effects");
+            centerMeshes: _selectedCategory is "Blocks" or "Effects" or "Characters" or "Equipment" or "Props" or "Custom Models",
+            isolatedLighting: true);
     }
 
     /// <summary>Returns a string that uniquely identifies the current selection.</summary>
     private string ComputePreviewKey()
     {
+        if (_selectedCategory == "Custom Models")
+        {
+            var filtered = GetFilteredObjects();
+            return _selectedObjectIndex >= 0 && _selectedObjectIndex < filtered.Count &&
+                   _customModelPaths.TryGetValue(filtered[_selectedObjectIndex], out string? path)
+                ? $"custom:{path}" : "";
+        }
         return _selectedCategory switch
         {
             "Items"  => string.IsNullOrEmpty(_selectedTileKey) ? ""
@@ -635,7 +654,7 @@ public class SpawnMenu : UiPanel
             "Characters" or "Equipment" or "Props" => _selectedObjectIndex < 0 ||
                             _selectedObjectIndex >= SelectedModelCatalog.Count ? "" :
                             $"char:{SelectedModelCatalog[_selectedObjectIndex].FilePath}" +
-                            $":{_selectedCharTextureIndex}",
+                            $":{_selectedCharTextureIndex}:{_customCharTexturePath}",
             "Primitives" => _selectedObjectIndex < 0 ? "" :
                             $"primitive:{GetFilteredObjects().ElementAtOrDefault(_selectedObjectIndex) ?? ""}:" +
                             $"{_selectedPrimitivePlaneOrientation}:{_selectedPrimitiveCubeMapped}:" +
@@ -665,7 +684,7 @@ public class SpawnMenu : UiPanel
 
     /// <summary>
     /// Builds and returns GL meshes for the currently selected item.
-    /// Returns an empty list for categories that have no geometry (Camera, Light, Empty, Custom).
+    /// Hierarchical models are stored in <see cref="_previewCharacter"/> instead of the flat mesh list.
     /// </summary>
     private List<Mesh> BuildPreviewMeshes()
     {
@@ -805,6 +824,32 @@ public class SpawnMenu : UiPanel
                         material.AlbedoColor = new vec4(1f, 1f, 1f, 1f);
                 }
                 return new List<Mesh> { mesh };
+            }
+
+            case "Custom Models":
+            {
+                var filtered = GetFilteredObjects();
+                if (_selectedObjectIndex < 0 || _selectedObjectIndex >= filtered.Count ||
+                    !_customModelPaths.TryGetValue(filtered[_selectedObjectIndex], out string? path))
+                    return new List<Mesh>();
+
+                if (Path.GetExtension(path).Equals(".nxObj", StringComparison.OrdinalIgnoreCase))
+                {
+                    _previewCharacter = NxObjectArchive.CreatePreview(_customArchivePreviews[path], this);
+                }
+                else if (Path.GetExtension(path).Equals(".miobject", StringComparison.OrdinalIgnoreCase))
+                    _previewCharacter = SpawnMineImatorObject(path, importBackground: false);
+                else if (Path.GetExtension(path).Equals(".mimodel", StringComparison.OrdinalIgnoreCase))
+                    _previewCharacter = SpawnMineImatorModel(path);
+                else
+                    _previewCharacter = AssimpModelLoader.Load(Gl, path);
+
+                if (_previewCharacter == null)
+                {
+                    _objectImportError = $"Failed to load model preview: {path}";
+                    Console.Error.WriteLine(_objectImportError);
+                }
+                return new List<Mesh>();
             }
 
             case "Characters":
@@ -1339,9 +1384,7 @@ public class SpawnMenu : UiPanel
         {
             string objectName = filtered[_selectedObjectIndex];
 
-            bool hasGeometry = _previewMeshes.Count > 0 &&
-                               _previewRenderer != null &&
-                               _previewRenderer.ColorTexture != 0;
+            bool hasGeometry = HasPreviewGeometry;
 
             ImGui.Spacing();
             RenderPreviewImage(hasGeometry);
@@ -1600,9 +1643,7 @@ public class SpawnMenu : UiPanel
 
         if (!string.IsNullOrEmpty(_selectedTileKey))
         {
-            bool hasGeometry = _previewMeshes.Count > 0 &&
-                               _previewRenderer != null &&
-                               _previewRenderer.ColorTexture != 0;
+            bool hasGeometry = HasPreviewGeometry;
 
             ImGui.Spacing();
             RenderPreviewImage(hasGeometry);
@@ -1765,9 +1806,7 @@ public class SpawnMenu : UiPanel
 
             if (variants.Count > 0 && variantIdx < variants.Count)
             {
-                bool hasGeometry = (_previewMeshes.Count > 0 || _previewCharacter != null) &&
-                                   _previewRenderer != null &&
-                                   _previewRenderer.ColorTexture != 0;
+                bool hasGeometry = HasPreviewGeometry;
 
                 ImGui.Spacing();
                 RenderPreviewImage(hasGeometry);
@@ -2182,6 +2221,9 @@ public class SpawnMenu : UiPanel
 
     // ── Shared preview helpers ────────────────────────────────────────────────
 
+    private bool HasPreviewGeometry => (_previewMeshes.Count > 0 || _previewCharacter != null) &&
+                                       _previewRenderer != null && _previewRenderer.ColorTexture != 0;
+
     /// <summary>
     /// Draws the preview FBO texture (if <paramref name="hasGeometry"/> is true) or a
     /// "no preview" placeholder.  The image is centred in the available horizontal space
@@ -2469,6 +2511,7 @@ public class SpawnMenu : UiPanel
             {
                 string archivePath = registerAsset ? ResolveModelPathForProject(filePath) : filePath;
                 var imported = NxObjectArchive.Import(archivePath, Viewport, this);
+                _customArchivePreviews[archivePath] = ProjectSceneSerializer.SerializeObjectForLibrary(imported);
                 AddToCustomModelHistory(archivePath, Path.GetFileNameWithoutExtension(archivePath));
                 return imported;
             }

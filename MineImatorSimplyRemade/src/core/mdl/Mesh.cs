@@ -1296,7 +1296,8 @@ public class Mesh : IDisposable
     /// The shader must already be loaded; call <see cref="Upload"/> before the
     /// first frame.
     /// </summary>
-    public unsafe void Render(mat4 model, mat4 view, mat4 proj, HashSet<uint>? preparedMipmaps = null)
+    public unsafe void Render(mat4 model, mat4 view, mat4 proj, HashSet<uint>? preparedMipmaps = null,
+        bool useSceneLighting = true)
     {
         if (Vertices.Count == 0) return;
         if (_vao == 0 || _shader == null)
@@ -1347,7 +1348,7 @@ public class Mesh : IDisposable
         SetUniformVec3("uSSSColor", SubsurfaceColor);
         SetUniformFloat("uSSSHighlight", SubsurfaceHighlight);
         SetUniformFloat("uSSSHighlightStrength", SubsurfaceHighlightStrength);
-        SetUniformBool("uSSSEnabled", SssEnabled);
+        SetUniformBool("uSSSEnabled", useSceneLighting && SssEnabled);
         SetUniformInt("uSSSBlurSamples", Math.Clamp(SssBlurSamples, 0, 32));
         SetUniformFloat("uSSSStrength", Math.Max(SssStrength, 0f));
         SetUniformFloat("uSSSDesaturation", Math.Clamp(SssDesaturation, 0f, 1f));
@@ -1362,7 +1363,7 @@ public class Mesh : IDisposable
         SetUniformFloat("uSSSHighlightDesaturation", Math.Clamp(SssHighlightDesaturation, 0f, 1f));
         SetUniformFloat("uSSSHighlightColorThreshold", Math.Clamp(SssHighlightColorThreshold, 0f, 1f));
         SetUniformFloat("uSSSAbsorption", Math.Clamp(SssAbsorption, -0.95f, 0.95f));
-        SetUniformBool("uUseShadowMap", DirectionalShadowEnabled && ShadowsEnabled && !Unlit && ShadowMapTexture != 0);
+        SetUniformBool("uUseShadowMap", useSceneLighting && DirectionalShadowEnabled && ShadowsEnabled && !Unlit && ShadowMapTexture != 0);
         SetUniformFloat("uShadowBlurStrength", ShadowBlurStrength);
         SetUniformInt("uShadowDebugMode", ShadowDebugMode);
 
@@ -1371,19 +1372,22 @@ public class Mesh : IDisposable
         // the shared SceneData UBO uploaded once per frame by the Viewport.
         SetUniformBool("uIsUnlit", Unlit);
         SetUniformVec3("uCameraPosition", GlobalCameraPosition);
-        SetUniformBool("uFogEnabled", FogEnabled && IncludeInFog);
+        SetUniformBool("uFogEnabled", useSceneLighting && FogEnabled && IncludeInFog);
         SetUniformVec3("uFogColor", FogColor);
         SetUniformFloat("uFogDistance", FogDistance);
         SetUniformFloat("uFogFadeSize", FogFadeSize);
         SetUniformFloat("uFogHeight", FogHeight);
-        SetUniformBool("uHeightFogEnabled", HeightFogEnabled);
+        SetUniformBool("uHeightFogEnabled", useSceneLighting && HeightFogEnabled);
         SetUniformVec3("uHeightFogColor", HeightFogColor);
         SetUniformFloat("uHeightFogSize", HeightFogSize);
         SetUniformFloat("uHeightFogOffset", HeightFogOffset);
-        SetUniformBool("uIndirectWorldEnabled", IndirectWorldEnabled && !Unlit);
+        SetUniformBool("uIndirectWorldEnabled", useSceneLighting && IndirectWorldEnabled && !Unlit);
         SetUniformFloat("uIndirectWorldStrength", Math.Max(IndirectWorldStrength, 0f));
 
-        UploadPointLights();
+        if (useSceneLighting)
+            UploadPointLights();
+        else
+            SetUniformInt("uPointLightCount", 0);
 
         // ── Animation UV offset ───────────────────────────────────────────────
         float texOffsetV = 0f;
