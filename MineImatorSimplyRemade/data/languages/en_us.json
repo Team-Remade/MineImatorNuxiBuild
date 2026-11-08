@@ -805,6 +805,8 @@
     "text.panel.spawn.load_schematic": "Load schematic...",
     "text.panel.spawn.load_texture": "Load texture...",
     "text.panel.spawn.mapped": "Mapped",
+    "text.panel.spawn.model_part": "Model part",
+    "text.panel.spawn.no_model_parts": "(this variant has no separate model parts)",
     "text.panel.spawn.no_blocks_found": "(no blocks found)",
     "text.panel.spawn.no_file_chosen": "No file chosen.",
     "text.panel.spawn.no_matches": "(no matches)",

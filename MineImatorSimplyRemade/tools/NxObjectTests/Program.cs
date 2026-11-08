@@ -108,6 +108,7 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Model part bundled catalogs, single-part exclusion and stable paths", ModelPartCatalogTests),
             ("MI import paths, points, references, sparse poses and repeated loads", MiImportPaths),
             ("MI import static current values and invalid path settings", MiImportStatic),
             ("MI import background colors, toggles, sparse keys, easing and persistence", MiImportBackground),
@@ -210,6 +211,8 @@ internal static partial class Program
         ];
         if (args.Contains("--mi-import", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("MI import", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--model-parts", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Model part", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--particles", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Particle", StringComparison.Ordinal) ||
                 test.Name.StartsWith("All 15 bundled particle", StringComparison.Ordinal)).ToArray();

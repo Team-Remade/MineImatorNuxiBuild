@@ -219,6 +219,8 @@ public class SpawnMenu : UiPanel
     /// Reset whenever the character selection changes.
     /// </summary>
     private string _customCharTexturePath = "";
+    private readonly Dictionary<string, IReadOnlyList<ModelPartEntry>> _modelParts = new(StringComparer.OrdinalIgnoreCase);
+    private List<CharacterEntry>? _modelPartCatalog;
 
     // ── Primitive texture state ──────────────────────────────────────────────────
 
@@ -297,6 +299,7 @@ public class SpawnMenu : UiPanel
             { "Characters",   new List<string>() },
             { "Equipment",    new List<string>() },
             { "Props",        new List<string>() },
+            { "Model part",   new List<string>() },
             { "Particle Spawners", new List<string> { "Particle Spawner" } },
             { "Effects", new List<string> { "Lightning", "Ring / Portal", "Procedural Effect" } },
             { "Scenery",      new List<string> { SceneryLoadLabel, WorldImportLabel } },
@@ -327,14 +330,52 @@ public class SpawnMenu : UiPanel
             .ToList();
         _categories["Equipment"] = CharacterRegistry.Equipment.Select(entry => entry.Name).ToList();
         _categories["Props"] = CharacterRegistry.Props.Select(entry => entry.Name).ToList();
+        _modelPartCatalog = null;
+        _modelParts.Clear();
     }
 
-    private bool IsModelCatalogCategory => _selectedCategory is "Characters" or "Equipment" or "Props";
+    private bool IsModelCatalogCategory => _selectedCategory is "Characters" or "Equipment" or "Props" or "Model part";
+
+    private IReadOnlyList<ModelPartEntry> GetModelParts(string path)
+    {
+        if (_modelParts.TryGetValue(path, out var parts)) return parts;
+        try
+        {
+            parts = CharacterRegistry.GetModelParts(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _objectImportError = $"Failed to list model parts: {ex.Message}";
+            Console.Error.WriteLine(_objectImportError);
+            parts = [];
+        }
+        _modelParts[path] = parts;
+        return parts;
+    }
+
+    private IReadOnlyList<CharacterEntry> ModelPartCatalog => _modelPartCatalog ??=
+        CharacterRegistry.Characters.Concat(CharacterRegistry.Equipment).Concat(CharacterRegistry.Props)
+            .Where(entry => GetModelParts(entry.FilePath).Count > 1 ||
+                entry.TextureVariants.Any(variant => !string.IsNullOrEmpty(variant.ModelPath) &&
+                    GetModelParts(variant.ModelPath).Count > 1))
+            .OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase).ToList();
+
+    private ModelPartEntry? SelectedModelPart
+    {
+        get
+        {
+            var entry = SelectedModelCatalog.ElementAtOrDefault(_selectedObjectIndex);
+            if (entry == null) return null;
+            var parts = GetModelParts(ResolveCharacterModelPath(entry));
+            return parts.Count > 1 ? parts.ElementAtOrDefault(Math.Max(0, _selectedVariantIndex)) : null;
+        }
+    }
 
     private IReadOnlyList<CharacterEntry> SelectedModelCatalog => _selectedCategory switch
     {
         "Equipment" => CharacterRegistry.Equipment,
         "Props" => CharacterRegistry.Props,
+        "Model part" => ModelPartCatalog,
         _ => CharacterRegistry.Characters
     };
 
@@ -628,7 +669,7 @@ public class SpawnMenu : UiPanel
 
         // Render into FBO every frame (so auto-rotation plays)
         _previewRenderer.Render(_previewMeshes, _previewKey, deltaTime, sceneRoot: _previewCharacter,
-            centerMeshes: _selectedCategory is "Blocks" or "Effects" or "Characters" or "Equipment" or "Props" or "Custom Models",
+            centerMeshes: _selectedCategory is "Blocks" or "Effects" or "Characters" or "Equipment" or "Props" or "Model part" or "Custom Models",
             isolatedLighting: true);
     }
 
@@ -651,10 +692,10 @@ public class SpawnMenu : UiPanel
                         $"block:{BlockRegistry.Blocks[_selectedObjectIndex]}:" +
                         $"{(_selectedVariantIndex >= 0 ? _selectedVariantIndex : 0)}:" +
                         $"rp:{MinecraftDataLoader.NormalizeResourcePackStack(_spawnResourcePackId)}",
-            "Characters" or "Equipment" or "Props" => _selectedObjectIndex < 0 ||
+            "Characters" or "Equipment" or "Props" or "Model part" => _selectedObjectIndex < 0 ||
                             _selectedObjectIndex >= SelectedModelCatalog.Count ? "" :
                             $"char:{SelectedModelCatalog[_selectedObjectIndex].FilePath}" +
-                            $":{_selectedCharTextureIndex}:{_customCharTexturePath}",
+                            $":{_selectedCharTextureIndex}:{_customCharTexturePath}:{_selectedCategory}:{_selectedVariantIndex}",
             "Primitives" => _selectedObjectIndex < 0 ? "" :
                             $"primitive:{GetFilteredObjects().ElementAtOrDefault(_selectedObjectIndex) ?? ""}:" +
                             $"{_selectedPrimitivePlaneOrientation}:{_selectedPrimitiveCubeMapped}:" +
@@ -677,7 +718,7 @@ public class SpawnMenu : UiPanel
             "Camera"     => 3.5f,
             "Primitives" => 2.2f,
             "Effects" => 5f,
-            "Characters" or "Equipment" or "Props" => 3.5f,
+            "Characters" or "Equipment" or "Props" or "Model part" => 3.5f,
             _            => 2.5f
         };
     }
@@ -855,6 +896,7 @@ public class SpawnMenu : UiPanel
             case "Characters":
             case "Equipment":
             case "Props":
+            case "Model part":
             {
                 if (_selectedObjectIndex < 0 ||
                     _selectedObjectIndex >= SelectedModelCatalog.Count)
@@ -862,6 +904,8 @@ public class SpawnMenu : UiPanel
 
                 var entry = SelectedModelCatalog[_selectedObjectIndex];
                 if (string.IsNullOrEmpty(entry.FilePath)) return new List<Mesh>();
+                var selectedPart = _selectedCategory == "Model part" ? SelectedModelPart : null;
+                if (_selectedCategory == "Model part" && selectedPart == null) return new List<Mesh>();
 
                 string modelPath = ResolveCharacterModelPath(entry);
                 string ext = Path.GetExtension(modelPath).ToLowerInvariant();
@@ -910,7 +954,8 @@ public class SpawnMenu : UiPanel
                 }
 
                 // Store the hierarchy so PreviewRenderer can render it with proper world matrices.
-                _previewCharacter = character;
+                _previewCharacter = selectedPart == null ? character :
+                    ExtractModelPart(character, selectedPart.SourceNodePath);
 
                 // Return an empty flat mesh list; the renderer will walk the hierarchy.
                 return new List<Mesh>();
@@ -1920,6 +1965,28 @@ public class SpawnMenu : UiPanel
         {
             var entry = SelectedModelCatalog[_selectedObjectIndex];
 
+            if (_selectedCategory == "Model part")
+            {
+                UiText.Disabled(Localization.T("text.panel.spawn.model_part"));
+                var parts = GetModelParts(ResolveCharacterModelPath(entry));
+                if (parts.Count > 1)
+                {
+                    for (int i = 0; i < parts.Count; i++)
+                    {
+                        if (ImGui.Selectable(parts[i].Name + "##part" + i, i == Math.Max(0, _selectedVariantIndex)))
+                            _selectedVariantIndex = i;
+                        if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                        {
+                            _selectedVariantIndex = i;
+                            TrySpawn();
+                        }
+                    }
+                }
+                else
+                    UiText.Disabled(Localization.T("text.panel.spawn.no_model_parts"));
+                ImGui.Separator();
+            }
+
             if (entry.TextureVariants.Count > 0)
             {
                 ImGui.Spacing();
@@ -1938,7 +2005,10 @@ public class SpawnMenu : UiPanel
 
                 ImGui.SetNextItemWidth(-1);
                 if (ImGui.Combo("##charTexture", ref comboIndex, variantNames, variantNames.Length))
+                {
                     _selectedCharTextureIndex = comboIndex;
+                    if (_selectedCategory == "Model part") _selectedVariantIndex = -1;
+                }
 
                 ImGui.Spacing();
 
@@ -1947,7 +2017,10 @@ public class SpawnMenu : UiPanel
                 {
                     bool sel = (i == comboIndex);
                     if (ImGui.Selectable(entry.TextureVariants[i].Name + "##ctex" + i, sel))
+                    {
                         _selectedCharTextureIndex = i;
+                        if (_selectedCategory == "Model part") _selectedVariantIndex = -1;
+                    }
 
                     if (ImGui.IsItemHovered() &&
                         ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
@@ -2339,6 +2412,8 @@ public class SpawnMenu : UiPanel
         {
             var chars = SelectedModelCatalog;
             if (_selectedObjectIndex < 0 || _selectedObjectIndex >= chars.Count)
+                return false;
+            if (_selectedCategory == "Model part" && SelectedModelPart == null)
                 return false;
 
             // If the selected texture variant is Custom, a file must have been picked.
@@ -5376,8 +5451,12 @@ public class SpawnMenu : UiPanel
 
         string modelPath = ResolveCharacterModelPath(entry);
         string category = _selectedCategory;
+        var part = category == "Model part" ? SelectedModelPart : null;
+        if (category == "Model part" && part == null) return;
         SpawnWithCursor(() =>
         {
+            if (part != null)
+                return SpawnModelPartFromPath(modelPath, part.SourceNodePath, textureOverride);
             var model = SpawnCustomModelFromPath(modelPath, textureOverride);
             if (model != null)
             {
@@ -5387,6 +5466,66 @@ public class SpawnMenu : UiPanel
             return model;
         });
         _isOpen = false;
+    }
+
+    public SceneObject? SpawnModelPartFromPath(string modelPath, IReadOnlyList<int> sourceNodePath,
+        string? textureOverridePath = null)
+    {
+        var root = SpawnCustomModelFromPath(modelPath, textureOverridePath);
+        if (root == null) return null;
+        Viewport!.SceneObjects.Remove(root);
+        try
+        {
+            var part = ExtractModelPart(root, sourceNodePath);
+            int number = GetNextAvailableObjectNumber(part.Name);
+            if (number > 1) part.Name += number;
+            Viewport.SceneObjects.Add(part);
+            return part;
+        }
+        catch (InvalidDataException ex)
+        {
+            _objectImportError = ex.Message;
+            Console.Error.WriteLine(_objectImportError);
+            return null;
+        }
+    }
+
+    public static SceneObject ExtractModelPart(SceneObject root, IReadOnlyList<int> sourceNodePath)
+    {
+        SceneObject part = root;
+        foreach (int index in sourceNodePath)
+        {
+            if ((uint)index >= (uint)part.Children.Count)
+            {
+                DisposeModelGeometry(root);
+                throw new InvalidDataException("The selected model part's source node path is invalid.");
+            }
+            part = part.Children[index];
+        }
+        part.Parent?.RemoveChild(part);
+        foreach (var child in part.Children.ToArray())
+        {
+            part.RemoveChild(child);
+            DisposeModelGeometry(child);
+        }
+        if (part != root) DisposeModelGeometry(root);
+        part.SetLocalPosition(vec3.Zero);
+        if (part is MiBoneSceneObject bone) bone.CommitBasePose();
+        part.SourceNodePath = sourceNodePath.ToList();
+        part.SpawnCategory = "Model part";
+        part.RestoreExactChildren = true;
+        part.IsSelectable = true;
+        part.HideInSceneTree = false;
+        return part;
+    }
+
+    private static void DisposeModelGeometry(SceneObject root)
+    {
+        foreach (var node in new[] { root }.Concat(root.GetAllDescendants()))
+        {
+            foreach (var mesh in node.Visuals) mesh.Dispose();
+            if (node is BoneSceneObject bone) bone.IndicatorMesh?.Dispose();
+        }
     }
 
     private void TrySpawnItem()
@@ -6404,6 +6543,9 @@ public class SpawnMenu : UiPanel
 
     private List<string> GetFilteredObjects()
     {
+        // Model columns filter visually but keep unfiltered catalog indices for selection.
+        if (IsModelCatalogCategory)
+            return SelectedModelCatalog.Select(entry => entry.Name).ToList();
         if (_selectedCategory == "Particle Spawners")
             return GetParticleSpawnerOptions();
         if (!_categories.TryGetValue(_selectedCategory, out var all))

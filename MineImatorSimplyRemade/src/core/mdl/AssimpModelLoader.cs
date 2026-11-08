@@ -41,6 +41,37 @@ namespace MineImatorSimplyRemade.core.mdl;
 /// </summary>
 public static class AssimpModelLoader
 {
+    public static unsafe IReadOnlyList<ModelPartEntry> GetModelParts(string filePath)
+    {
+        using var assimp = AiAssimp.GetApi();
+        AiScene* scene = assimp.ImportFile(filePath, (uint)PostProcessSteps.Triangulate);
+        if (scene == null || scene->MRootNode == null ||
+            (scene->MFlags & (uint)SceneFlags.Incomplete) != 0)
+        {
+            string error = assimp.GetErrorStringS();
+            if (scene != null) assimp.ReleaseImport(scene);
+            throw new InvalidDataException($"Could not read model parts from '{filePath}': {error}");
+        }
+        try
+        {
+            var parts = new List<ModelPartEntry>();
+            Visit(scene->MRootNode, []);
+            return parts;
+
+            void Visit(AiNode* node, List<int> path)
+            {
+                if (node->MNumMeshes > 0)
+                    parts.Add(new ModelPartEntry(node->MName.AsString, path.ToList()));
+                for (int i = 0; i < node->MNumChildren; i++)
+                    Visit(node->MChildren[i], path.Append(i).ToList());
+            }
+        }
+        finally
+        {
+            assimp.ReleaseImport(scene);
+        }
+    }
+
     // ── Public entry point ────────────────────────────────────────────────────
 
     public static SceneObject? Load(GL gl, string filePath)

@@ -675,7 +675,8 @@ public static class ProjectSceneSerializer
         if (spawnMenu.Viewport == null)
             return null;
 
-        if (entry.SourceNodePath is { Count: > 0 } sourceNodePath)
+        if (entry.SourceNodePath is { } sourceNodePath &&
+            (sourceNodePath.Count > 0 || entry.SpawnCategory == "Model part"))
         {
             string sourcePath = ResolveSourcePath(entry);
             if (!File.Exists(sourcePath))
@@ -688,6 +689,14 @@ public static class ProjectSceneSerializer
                 ? spawnMenu.SpawnSchematicFromPath(sourcePath, entry.ResourcePackId)
                 : spawnMenu.SpawnCustomModelFromPath(sourcePath, textureOverride, registerAsset: false))
                 ?? throw new InvalidDataException($"The source asset for subpart '{entry.Name}' could not be loaded.");
+
+            if (entry.SpawnCategory == "Model part")
+            {
+                spawnMenu.Viewport.SceneObjects.Remove(sourceRoot);
+                var part = SpawnMenu.ExtractModelPart(sourceRoot, sourceNodePath);
+                spawnMenu.Viewport.SceneObjects.Add(part);
+                return part;
+            }
 
             SceneObject selectedRoot = sourceRoot;
             foreach (int childIndex in sourceNodePath)

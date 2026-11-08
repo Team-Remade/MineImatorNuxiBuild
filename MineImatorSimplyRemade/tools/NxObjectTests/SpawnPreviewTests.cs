@@ -59,6 +59,9 @@ internal static partial class Program
                     injected.Add(catalog);
                 }
                 spawn.RefreshCharactersCategory();
+                ModelPartGraphicsTests(spawn, viewport, native,
+                    () => update.Invoke(spawn, [0d]),
+                    () => ReadPixels((PreviewRenderer)rendererField.GetValue(spawn)!));
                 foreach (var (name, customPath) in new[]
                 {
                     ("Characters", ""), ("Equipment", ""), ("Props", ""),

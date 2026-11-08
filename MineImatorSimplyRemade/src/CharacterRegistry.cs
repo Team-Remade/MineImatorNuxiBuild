@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 
 namespace MineImatorSimplyRemade;
 
@@ -89,6 +91,8 @@ public class CharacterEntry
         Array.Empty<CharacterTextureVariant>();
 }
 
+public sealed record ModelPartEntry(string Name, IReadOnlyList<int> SourceNodePath);
+
 // ── CharacterRegistry ─────────────────────────────────────────────────────────
 
 /// <summary>
@@ -116,6 +120,31 @@ public class CharacterEntry
 /// </summary>
 public static class CharacterRegistry
 {
+    public static IReadOnlyList<ModelPartEntry> GetModelParts(string modelPath)
+    {
+        if (!Path.GetExtension(modelPath).Equals(".mimodel", StringComparison.OrdinalIgnoreCase))
+            return AssimpModelLoader.GetModelParts(modelPath);
+
+        var model = MineImatorLoader.Instance.LoadModel(modelPath)
+            ?? throw new InvalidDataException($"Could not read model parts from '{modelPath}'.");
+        var parts = new List<ModelPartEntry>();
+        Visit(model.Parts, []);
+        return parts;
+
+        void Visit(List<MiPart>? children, List<int> parentPath)
+        {
+            if (children == null) return;
+            for (int i = 0; i < children.Count; i++)
+            {
+                var part = children[i];
+                var path = parentPath.Append(i).ToList();
+                if (part.Shapes is { Count: > 0 })
+                    parts.Add(new ModelPartEntry(part.Name, path));
+                Visit(part.Parts, path);
+            }
+        }
+    }
+
     // ── Supported model file extensions ──────────────────────────────────────
     private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
