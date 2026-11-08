@@ -1349,8 +1349,7 @@ public class SceneTree : UiPanel
 
     private void DeleteObject(SceneObject obj)
     {
-        if (obj is ParticleSpawnerSceneObject particleSpawner)
-            particleSpawner.ResetRuntime();
+        ResetParticleSpawners(obj);
 
         if (SelectionManager.Instance != null)
             SelectionManager.Instance.DeselectObject(obj);
@@ -1363,6 +1362,15 @@ public class SceneTree : UiPanel
             Viewport?.SceneObjects.Remove(obj);
 
         RemoveDescendantsFromViewport(obj);
+    }
+
+    private static void ResetParticleSpawners(SceneObject obj)
+    {
+        if (obj is ParticleSpawnerSceneObject spawner)
+            spawner.ResetRuntime();
+
+        foreach (var child in obj.Children.ToArray())
+            ResetParticleSpawners(child);
     }
 
     private void RemoveDescendantsFromViewport(SceneObject obj)

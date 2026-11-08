@@ -3,11 +3,13 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using GlmSharp;
 using MineImatorSimplyRemade;
+using MineImatorSimplyRemade.core.history;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
+using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
@@ -307,6 +309,103 @@ internal static partial class Program
             obj.MaterialSettings.EmissionEnabled && obj.MaterialSettings.EmissionEnergy == 3 &&
             obj.MaterialSettings.AlbedoColor.w <= 0.25f), "Emitter material reaches runtime particles");
         emitter.ResetRuntime();
+    }
+
+    private static void ParticleRuntimePersistence(Fixture f)
+    {
+        var emitter = new ParticleSpawnerSceneObject { Name = "emitter" };
+        emitter.SetPreset(BasicParticlePreset().Document);
+        var authored = Node("authored hidden plane");
+        authored.ObjectType = "Plane";
+        authored.SpawnCategory = "Primitives";
+        authored.IsSelectable = false;
+        authored.HideInSceneTree = true;
+        var viewport = new Viewport();
+        viewport.SceneObjects.AddRange([emitter, authored]);
+        var spawn = new SpawnMenu { Viewport = viewport };
+        var manifest = new ProjectManifest();
+        ProjectSceneSerializer.WriteSceneToManifest(manifest, viewport);
+        ulong before = SceneObjectFingerprint.Compute(viewport.SceneObjects);
+        emitter.SimulateToTime(0.1f, viewport, spawn);
+        var particles = viewport.SceneObjects.OfType<ParticleSpriteSceneObject>().ToArray();
+        Equal(1, particles.Length, "Actual sprite spawned before saving");
+        viewport.SceneObjects.Remove(particles[0]);
+        viewport.SceneObjects.Insert(1, particles[0]);
+        Equal(before, SceneObjectFingerprint.Compute(viewport.SceneObjects), "Runtime roots do not dirty authored state");
+        particles[0].Position = new vec3(10, 20, 30);
+        Equal(before, SceneObjectFingerprint.Compute(viewport.SceneObjects), "Runtime movement does not dirty authored state");
+        var nested = Node("nested runtime");
+        nested.IsRuntimeTransient = true;
+        emitter.AddChild(nested);
+        ProjectSceneSerializer.WriteSceneToManifest(manifest, viewport);
+        Check(manifest.SceneObjects.Select(entry => entry.ObjectId).SequenceEqual([emitter.ObjectId, authored.ObjectId]),
+            "Only authored roots saved in order");
+        Equal(0, manifest.SceneObjects[0].Children.Count, "Nested runtime nodes are excluded");
+        Check(manifest.ObjectLibrary.Select(entry => entry.ObjectId).SequenceEqual([emitter.ObjectId, authored.ObjectId]),
+            "Runtime roots are not added to the object library");
+        Equal("", particles[0].LibrarySourceId, "Runtime roots are not assigned library sources");
+        Equal("", nested.LibrarySourceId, "Runtime children are not assigned library sources");
+        string json = JsonSerializer.Serialize(manifest, AppJsonContext.Default.ProjectManifest);
+        var saved = JsonSerializer.Deserialize(json, AppJsonContext.Default.ProjectManifest)!;
+        var loaded = new Viewport();
+        ProjectSceneSerializer.LoadSceneFromManifest(saved, loaded, new SpawnMenu { Viewport = loaded });
+        Equal(2, loaded.SceneObjects.Count, "Reload contains no baked particle planes");
+        Check(loaded.SceneObjects[0] is ParticleSpawnerSceneObject restored && restored.Preset != null,
+            "Reload retains authored spawner preset");
+        Check(!loaded.SceneObjects[1].IsSelectable && loaded.SceneObjects[1].HideInSceneTree,
+            "Legitimate hidden authored objects are preserved");
+        emitter.ResetRuntime();
+    }
+
+    private static void ParticleDeletion(Fixture f)
+    {
+        foreach (bool grouped in new[] { false, true })
+        {
+            var emitter = new ParticleSpawnerSceneObject { Name = "emitter" };
+            emitter.SetPreset(BasicParticlePreset().Document);
+            var nestedEmitter = new ParticleSpawnerSceneObject { Name = "nested emitter" };
+            nestedEmitter.SetPreset(BasicParticlePreset().Document);
+            emitter.AddChild(nestedEmitter);
+            SceneObject root = grouped ? Node("group") : emitter;
+            if (grouped) root.AddChild(emitter);
+            var keep = Node("keep");
+            var viewport = new Viewport();
+            viewport.SceneObjects.AddRange([root, keep]);
+            var spawn = new SpawnMenu { Viewport = viewport };
+            emitter.SimulateToTime(0.1f, viewport, spawn);
+            nestedEmitter.SimulateToTime(0.1f, viewport, spawn);
+            Equal(2, viewport.SceneObjects.OfType<ParticleSpriteSceneObject>().Count(), "Both spawners emit sprites");
+            var selection = SelectionManager.Instance;
+            selection.ClearSelection();
+            selection.SelectObject(root);
+            selection.SelectObject(nestedEmitter);
+            var before = new SceneHistoryAction.HierarchyState(viewport);
+            var project = SceneHistoryAction.ProjectState.Capture(ProjectManager.Instance.Manifest);
+            new SceneTree { Viewport = viewport }.DeleteSelectedObjects();
+            Check(viewport.SceneObjects.SequenceEqual([keep]), "Deletion removes all owned runtime roots and preserves other objects");
+            Equal(0, emitter.ActiveParticleCount, "Deleted emitter simulation cleared");
+            Equal(0, nestedEmitter.ActiveParticleCount, "Deleted descendant simulation cleared");
+            var after = SceneHistoryAction.HierarchyState.Capture(viewport, before);
+            var action = SceneHistoryAction.Create([], before, after, project, project);
+            Check(action != null, "Deletion creates hierarchy history");
+            for (int i = 0; i < 2; i++)
+            {
+                Check(action!.Apply(viewport, null, undo: true), "Undo restores deleted hierarchy");
+                Check(viewport.SceneObjects.SequenceEqual([root, keep]), "Undo does not restore baked particle objects");
+                emitter.SimulateToTime(0.1f, viewport, spawn);
+                nestedEmitter.SimulateToTime(0.1f, viewport, spawn);
+                Equal(2, viewport.SceneObjects.OfType<ParticleSpriteSceneObject>().Count(), "Undo allows particles to be simulated again");
+                Check(action.Apply(viewport, null, undo: false), "Redo deletes hierarchy");
+                Check(viewport.SceneObjects.SequenceEqual([keep]), "Redo clears regenerated sprites");
+            }
+            var manifest = new ProjectManifest();
+            ProjectSceneSerializer.WriteSceneToManifest(manifest, viewport);
+            var loaded = new Viewport();
+            ProjectSceneSerializer.LoadSceneFromManifest(manifest, loaded, new SpawnMenu { Viewport = loaded });
+            Equal(1, loaded.SceneObjects.Count, "Deleted sprites remain absent after reload");
+            Equal(keep.ObjectId, loaded.SceneObjects[0].ObjectId, "Unrelated authored object survives reload");
+            selection.ClearSelection();
+        }
     }
 
     private static void ParticlePersistence(Fixture f)

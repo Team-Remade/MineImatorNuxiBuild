@@ -38,10 +38,17 @@ internal static class SceneObjectFingerprint
     public static ulong Compute(IReadOnlyList<SceneObject> roots)
     {
         var hash = new Fnv1a();
-        hash.Add(roots.Count);
+        int rootCount = 0;
+        for (int i = 0; i < roots.Count; i++)
+            if (!roots[i].IsRuntimeTransient)
+                rootCount++;
+        hash.Add(rootCount);
         // Transient transforms are excluded, but legacy shape weights use all subtree meshes.
         for (int i = 0; i < roots.Count; i++)
         {
+            if (roots[i].IsRuntimeTransient)
+                continue;
+
             bool hasShapeWeights = HasShapeWeights(roots[i]);
             hash.Add(hasShapeWeights);
             AddNode(ref hash, roots[i], hasShapeWeights);

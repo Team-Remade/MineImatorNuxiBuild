@@ -173,6 +173,8 @@ internal static partial class Program
             ("Particle regions, ground/custom/sphere bounds, bounce and destruction", ParticleCollisions),
             ("Particle animation frames, reverse, loop, ping-pong and destruction", ParticleAnimation),
             ("Particle deterministic fixed-step seek, freeze and runtime cleanup", ParticleRuntime),
+            ("Particle active sprite save/load excludes runtime roots and library entries", ParticleRuntimePersistence),
+            ("Particle direct and grouped deletion cleans sprites through undo/redo", ParticleDeletion),
             ("Particle project/archive, library, duplicate, snapshot and reference persistence", ParticlePersistence),
             ("Particle preset timeline controls and legacy channel preservation", ParticleTimeline),
             ("Particle invalid and unsupported preset rejection", ParticleInvalid)

@@ -188,6 +188,7 @@ public static class ProjectSceneSerializer
         WriteSceneMetadataToManifest(manifest, viewport, timeline, propertiesPanel);
 
         manifest.SceneObjects = viewport.SceneObjects
+            .Where(obj => !obj.IsRuntimeTransient)
             .Select(SerializeNode)
             .ToList();
     }
@@ -1694,6 +1695,9 @@ public static class ProjectSceneSerializer
 
         foreach (var root in sceneRoots)
         {
+            if (root.IsRuntimeTransient)
+                continue;
+
             EnsureLibrarySourceIdsRecursive(root);
 
             string sourceId = root.LibrarySourceId;
@@ -1734,6 +1738,7 @@ public static class ProjectSceneSerializer
             obj.LibrarySourceId = string.IsNullOrWhiteSpace(obj.ObjectId) ? Guid.NewGuid().ToString("N") : obj.ObjectId;
 
         foreach (var child in obj.Children)
-            EnsureLibrarySourceIdsRecursive(child);
+            if (!child.IsRuntimeTransient)
+                EnsureLibrarySourceIdsRecursive(child);
     }
 }
