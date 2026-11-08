@@ -6079,8 +6079,8 @@ public class Viewport : UiPanel
         _focusPoint = null;
         _focusSource = null;
         DepthOfFieldFocusMessage = target == DepthOfFieldFocusTarget.PickPoint
-            ? "Click in a viewport showing this camera (Escape to cancel)."
-            : "Waiting for this camera to render. Foreground/background selects the nearest/farthest visible surface.";
+            ? Localization.T("text.panel.viewport.click_in_a_viewport_showing_this_camera_escape_to_cancel")
+            : Localization.T("text.panel.viewport.waiting_for_this_camera_to_render_foreground_background_selects_the_nearest");
     }
 
     public bool IsDepthOfFieldFocusPending(CameraSceneObject camera, CameraEffect effect) =>
@@ -6210,7 +6210,7 @@ public class Viewport : UiPanel
             if (depth < 0f || depth >= 1f)
             {
                 owner.CancelDepthOfFieldFocus();
-                owner.DepthOfFieldFocusMessage = "No visible surface found. View this camera's scene and try again.";
+                owner.DepthOfFieldFocusMessage = Localization.T("text.panel.viewport.no_visible_surface_found_view_this_camera_s_scene_and_try_again");
                 return;
             }
         }

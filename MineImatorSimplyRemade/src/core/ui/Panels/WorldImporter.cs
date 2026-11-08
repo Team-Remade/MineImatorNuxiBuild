@@ -1219,7 +1219,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         _unknown = _tiles.Values.Select(t => t.Volume.ApplyFilter(_blockFilter)).SelectMany(FindUnknown).Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal).ToArray();
         if (_tiles.Values.All(t => t.Volume.ApplyFilter(_blockFilter).NonAirCount == 0))
-            _notice = "No generated terrain in this area. Fly back or go to another position.";
+            _notice = Localization.T("text.panel.world_importer.no_generated_terrain_in_this_area_fly_back_or_go_to_another_position");
     }
 
     private void PruneTiles()

@@ -2826,7 +2826,7 @@ public class SpawnMenu : UiPanel
         {
             _pendingSchematicRetryPath = filePath;
             _pendingSchematicRetryResourcePackId = resourcePackId;
-            _pendingSchematicRetryError = _lastSchematicLoadError ?? "The file could not be loaded.";
+            _pendingSchematicRetryError = _lastSchematicLoadError ?? Localization.T("text.panel.spawn.the_file_could_not_be_loaded");
         }
         return root;
     }
@@ -2855,7 +2855,7 @@ public class SpawnMenu : UiPanel
         {
             string fileName = Path.GetFileName(_pendingSchematicRetryPath);
             UiText.Wrapped(Localization.Format("text.panel.spawn.failed_to_load_schematic", fileName));
-            UiText.Wrapped(Localization.DisplayText(_pendingSchematicRetryError ?? "The file contains invalid data."));
+            UiText.Wrapped(Localization.DisplayText(_pendingSchematicRetryError ?? Localization.T("text.panel.spawn.the_file_contains_invalid_data")));
             ImGui.Separator();
             UiText.Wrapped(Localization.T("text.panel.spawn.do_you_want_to_try_loading_it_again"));
 
@@ -2868,7 +2868,7 @@ public class SpawnMenu : UiPanel
                 if (root == null)
                 {
                     // Still failing — keep the popup open with the fresh error.
-                    _pendingSchematicRetryError = _lastSchematicLoadError ?? "The file could not be loaded.";
+                    _pendingSchematicRetryError = _lastSchematicLoadError ?? Localization.T("text.panel.spawn.the_file_could_not_be_loaded");
                 }
                 else
                 {
@@ -3092,7 +3092,7 @@ public class SpawnMenu : UiPanel
 
             if ((placed == 0 || merged.Count == 0) && schematic.EmbeddedModels.Length == 0)
             {
-                _lastSchematicLoadError = "The schematic had no spawnable blocks.";
+                _lastSchematicLoadError = Localization.T("text.panel.spawn.the_schematic_had_no_spawnable_blocks");
                 Console.Error.WriteLine($"Schematic had no spawnable blocks: {filePath}");
                 return null;
             }
@@ -3147,7 +3147,7 @@ public class SpawnMenu : UiPanel
 
             if (root.Visuals.Count == 0)
             {
-                _lastSchematicLoadError = "The schematic produced no renderable geometry.";
+                _lastSchematicLoadError = Localization.T("text.panel.spawn.the_schematic_produced_no_renderable_geometry");
                 Console.Error.WriteLine($"Schematic produced no renderable geometry: {filePath}");
                 return null;
             }

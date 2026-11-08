@@ -1601,7 +1601,7 @@ public partial class PropertiesPanel : UiPanel
         int removeIndex = -1;
         if (visible && owner.CopyConstraints.Count == 0 &&
             (owner is not BoneSceneObject emptyBone || emptyBone.Constraints.Count == 0))
-            UiText.Disabled(Localization.DisplayText("No constraints added."));
+            UiText.Disabled(Localization.T("text.panel.properties.ik_no_constraints"));
         if (visible)
             for (int i = 0; i < owner.CopyConstraints.Count; i++)
             {
@@ -1755,9 +1755,9 @@ public partial class PropertiesPanel : UiPanel
                     }
                     RegisterPropertyContext($"{prefix}.blend");
                     if (string.IsNullOrEmpty(constraint.TargetObjectId))
-                        UiText.Disabled(Localization.DisplayText("Select a target object to activate this constraint."));
+                        UiText.Disabled(Localization.T("text.panel.properties.copy_select_target"));
                     else if (target == null)
-                        UiText.Wrapped(Localization.DisplayText("Target is missing or is this object or one of its descendants."));
+                        UiText.Wrapped(Localization.T("text.panel.properties.copy_invalid_target"));
                     ImGui.TreePop();
                 }
                 ImGui.PopID();
@@ -1880,7 +1880,7 @@ public partial class PropertiesPanel : UiPanel
                     }
                     RegisterPropertyContext($"constraint.{i}.ik.lock_orientation");
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip(Localization.DisplayText("Hold this bone's animated world orientation while the chain moves it. Its origin stays attached to its parent and Bend remains independent."));
+                        ImGui.SetTooltip(Localization.T("text.panel.properties.ik_lock_orientation_tooltip"));
                     int chainLength = ik.ChainLength;
                     if (ImGui.InputInt(Localization.DisplayLabel("Chain Length"), ref chainLength))
                     {
@@ -1890,7 +1890,7 @@ public partial class PropertiesPanel : UiPanel
                     }
                     RegisterPropertyContext($"constraint.{i}.ik.chain_length");
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip(Localization.DisplayText("Number of bones including this bone, walking up through bone parents. Bendable model parts include their internal joint."));
+                        ImGui.SetTooltip(Localization.T("text.panel.properties.ik_chain_length_tooltip"));
                     float influence = ik.Influence;
                     if (ImGui.SliderFloat(Localization.DisplayLabel("Influence"), ref influence, 0f, 1f))
                     {
@@ -1927,7 +1927,7 @@ public partial class PropertiesPanel : UiPanel
                         bool rotationChanged = ImGui.Checkbox(Localization.DisplayLabel("Rotate"), ref rotate);
                         RegisterPropertyContext($"constraint.{i}.ik.bone.{depth}.rotate");
                         if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip(Localization.DisplayText("Allow the IK solver to rotate this bone locally. Turning this off still follows parent rotation; use Lock Orientation to hold the constrained bone's world orientation."));
+                            ImGui.SetTooltip(Localization.T("text.panel.properties.ik_rotate_tooltip"));
                         bool bendChanged = false;
                         if (chainBone is MiBoneSceneObject miBone && miBone.BendParameters.HasValue)
                         {
@@ -1951,9 +1951,9 @@ public partial class PropertiesPanel : UiPanel
                         ImGui.PopID();
                     }
                     if (string.IsNullOrEmpty(ik.TargetObjectId))
-                        UiText.Disabled(Localization.DisplayText("Select a target object to activate IK."));
+                        UiText.Disabled(Localization.T("text.panel.properties.ik_select_target"));
                     else if (objects.FirstOrDefault(obj => obj.ObjectId == ik.TargetObjectId) is not { } target || IsDrivenObject(target))
-                        UiText.Wrapped(Localization.DisplayText("Target is missing or belongs to the driven chain."));
+                        UiText.Wrapped(Localization.T("text.panel.properties.ik_invalid_target"));
                     if (changed) ProjectManager.Instance.SetDirty(true);
                     ImGui.TreePop();
                 }
@@ -1983,7 +1983,7 @@ public partial class PropertiesPanel : UiPanel
                     RegisterPropertyContext("bone.end.x", "bone.end.y", "bone.end.z");
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip(Localization.DisplayText("Bone-local endpoint in model pixels (16 per world unit). Imported end_offset is mapped here. Disable to target this bone's origin."));
+                    ImGui.SetTooltip(Localization.T("text.panel.properties.ik_end_offset_tooltip"));
             }
         }
         if (removeIndex >= 0)
