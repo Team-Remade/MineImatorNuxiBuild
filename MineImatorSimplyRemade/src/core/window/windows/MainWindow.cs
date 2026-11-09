@@ -1554,6 +1554,21 @@ public class MainWindow : Window
         if (ImGui.IsItemHovered())
             UiText.Tooltip(Localization.T("text.window.main.show_hidden_objects_tooltip"));
 
+        bool transparentBackground = _propertiesPanel?.TransparentBackground == true;
+        if (transparentBackground)
+        {
+            if (_renderPopupImageFormat == "jpg")
+            {
+                _renderPopupImageFormat = "png";
+                settingsChanged = true;
+            }
+            if (_renderPopupVideoFormat is not ("mov" or "png"))
+            {
+                _renderPopupVideoFormat = "mov";
+                settingsChanged = true;
+            }
+        }
+
         if (_renderPopupMode == RenderMode.Image)
         {
             string formatLabel = _renderPopupImageFormat.ToUpperInvariant();
@@ -1561,6 +1576,8 @@ public class MainWindow : Window
             {
                 foreach (string candidate in new[] { "png", "jpg", "webp" })
                 {
+                    if (transparentBackground && candidate == "jpg")
+                        continue;
                     bool selected = string.Equals(_renderPopupImageFormat, candidate, StringComparison.OrdinalIgnoreCase);
                     if (ImGui.Selectable(Localization.DisplayLabel(candidate.ToUpperInvariant()), selected))
                     {
@@ -1579,8 +1596,10 @@ public class MainWindow : Window
                 : Localization.DisplayText(_renderPopupVideoFormat.ToUpperInvariant());
             if (ImGui.BeginCombo(Localization.Label("text.window.main.file_format", "File Format"), formatLabel))
             {
-                foreach (string candidate in new[] { "mp4", "webm", "png" })
+                foreach (string candidate in new[] { "mp4", "webm", "mov", "png" })
                 {
+                    if (transparentBackground && candidate is not ("mov" or "png"))
+                        continue;
                     bool selected = string.Equals(_renderPopupVideoFormat, candidate, StringComparison.OrdinalIgnoreCase);
                     string candidateLabel = candidate == "png"
                         ? Localization.Label("text.window.main.png_sequence", "PNG Sequence")
@@ -1611,7 +1630,7 @@ public class MainWindow : Window
                 ImGui.EndCombo();
             }
 
-            ImGui.BeginDisabled(_renderPopupVideoFormat == "png");
+            ImGui.BeginDisabled(_renderPopupVideoFormat is "png" or "mov");
             string bitrateLabel = Localization.Format("text.window.main.kbps", _renderPopupBitrateKbps);
             if (ImGui.BeginCombo(Localization.Label("text.window.main.bitrate", "Bitrate"), bitrateLabel))
             {
@@ -1843,6 +1862,7 @@ public class MainWindow : Window
                 previewWidth = previewHeight * (_renderPreviewWidth / (float)_renderPreviewHeight);
             }
 
+            _cameraViewport?.RenderTransparencyBackground(ImGui.GetCursorScreenPos(), new Vector2(previewWidth, previewHeight));
             ImGui.Image(
                 new ImTextureRef(texId: (ulong)_renderPreviewTexture),
                 new Vector2(previewWidth, previewHeight),
@@ -2015,11 +2035,12 @@ public class MainWindow : Window
             if (_renderJobMode == RenderMode.Image)
             {
                 _renderJobStatus = Localization.T("text.window.main.rendering_image");
-                if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame, showHiddenObjects: _renderJobShowHiddenObjects))
+                bool rgba = _cameraViewport.TransparentBackground;
+                if (!_cameraViewport.CaptureCurrentView((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame, showHiddenObjects: _renderJobShowHiddenObjects, rgba: rgba))
                     throw new InvalidOperationException(Localization.T("text.common.failed_to_capture_render_frame"));
 
-                UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight);
-                _renderExporter.ExportImageFromRgb(_renderJobWidth, _renderJobHeight, _renderPopupImageFormat, _renderJobOutputPath, frame);
+                UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight, rgba);
+                _renderExporter.ExportImageFromRgb(_renderJobWidth, _renderJobHeight, _renderPopupImageFormat, _renderJobOutputPath, frame, rgba);
 
                 _renderFrameCurrent = 1;
                 CompleteRenderJobSuccess();
@@ -2040,15 +2061,21 @@ public class MainWindow : Window
             {
                 int timelineFrame = _renderFrameStart + _renderFrameCurrent;
                 _timeline.SetCurrentFrameForRender(timelineFrame);
-                if (!_cameraViewport.CaptureCurrentViewRgb((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame, showHiddenObjects: _renderJobShowHiddenObjects))
+                bool rgba = _cameraViewport.TransparentBackground;
+                if (!_cameraViewport.CaptureCurrentView((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame, showHiddenObjects: _renderJobShowHiddenObjects, rgba: rgba))
                     throw new InvalidOperationException(Localization.Format("text.window.main.failed_to_capture_frame", timelineFrame));
 
-                UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight);
+                UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight, rgba);
 
                 if (_renderPopupVideoFormat == "png")
                 {
                     string framePath = Path.Combine(_renderJobOutputPath, $"frame_{_renderFrameCurrent:D6}.png");
-                    Viewport.WritePng24(framePath, frame, _renderJobWidth, _renderJobHeight, bottomUp: false);
+                    Viewport.WritePng(framePath, frame, _renderJobWidth, _renderJobHeight, bottomUp: false, rgba: rgba);
+                }
+                else if (rgba)
+                {
+                    string framePath = Path.Combine(_renderTempFramesDir, $"frame_{_renderFrameCurrent:D6}.png");
+                    Viewport.WritePng(framePath, frame, _renderJobWidth, _renderJobHeight, bottomUp: false, rgba: true);
                 }
                 else
                 {
@@ -2077,7 +2104,8 @@ public class MainWindow : Window
                 string format = _renderPopupVideoFormat;
                 int startFrame = _renderFrameStart;
                 int totalFrames = _renderFrameTotal;
-                _renderEncodeTask = Task.Run(() => RenderExporter.EncodePpmSequenceToVideo(tempDir, fps, bitrate, format, outputPath, _timeline, startFrame, totalFrames));
+                bool rgba = _cameraViewport.TransparentBackground;
+                _renderEncodeTask = Task.Run(() => RenderExporter.EncodePpmSequenceToVideo(tempDir, fps, bitrate, format, outputPath, _timeline, startFrame, totalFrames, rgba));
             }
 
             if (_renderEncodeTask != null)
@@ -2134,7 +2162,7 @@ public class MainWindow : Window
         ShowErrorToast(_renderJobStatus);
     }
 
-    private unsafe void UpdateRenderPreviewTexture(byte[] rgbPixels, int width, int height)
+    private unsafe void UpdateRenderPreviewTexture(byte[] rgbPixels, int width, int height, bool rgba = false)
     {
         if (GL == null)
             return;
@@ -2158,13 +2186,13 @@ public class MainWindow : Window
         {
             if (_renderPreviewWidth != width || _renderPreviewHeight != height)
             {
-                GL.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb8, (uint)width, (uint)height, 0, PixelFormat.Rgb, GLEnum.UnsignedByte, p);
+                GL.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8, (uint)width, (uint)height, 0, rgba ? PixelFormat.Rgba : PixelFormat.Rgb, GLEnum.UnsignedByte, p);
                 _renderPreviewWidth = width;
                 _renderPreviewHeight = height;
             }
             else
             {
-                GL.TexSubImage2D(GLEnum.Texture2D, 0, 0, 0, (uint)width, (uint)height, PixelFormat.Rgb, GLEnum.UnsignedByte, p);
+                GL.TexSubImage2D(GLEnum.Texture2D, 0, 0, 0, (uint)width, (uint)height, rgba ? PixelFormat.Rgba : PixelFormat.Rgb, GLEnum.UnsignedByte, p);
             }
         }
         GL.PixelStore(GLEnum.UnpackAlignment, 4);
@@ -2231,6 +2259,7 @@ public class MainWindow : Window
             "webp" => "webp",
             "mp4" => "mp4",
             "webm" => "webm",
+            "mov" => "mov",
             _ => "png"
         };
     }

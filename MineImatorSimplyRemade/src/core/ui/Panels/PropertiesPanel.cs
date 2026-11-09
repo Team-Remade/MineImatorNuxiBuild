@@ -34,6 +34,7 @@ public partial class PropertiesPanel : UiPanel
     public readonly float[] BackgroundColor = [0.5764706f, 0.5764706f, 1f, 1f];
 
     public bool UseSky = true;
+    public bool TransparentBackground;
     public string SkyMode = "minecraft";
     public string SkyTexture = "";
     public readonly float[] SkyRotation = [0f, 0f, 0f];
@@ -428,6 +429,7 @@ public partial class PropertiesPanel : UiPanel
         _renderResolutionPreset = string.IsNullOrWhiteSpace(settings.RenderResolutionPreset) ? "Custom" : settings.RenderResolutionPreset.Trim();
         _renderShowHiddenObjects = settings.RenderShowHiddenObjects;
         TextureAnimationFps = Math.Clamp(settings.TextureAnimationFps, 1, 240);
+        TransparentBackground = settings.TransparentBackground;
         UseSky = settings.UseSky;
         SkyMode = settings.SkyMode is "sphere" or "box" ? settings.SkyMode : "minecraft";
         SkyTexture = settings.SkyTexture;
@@ -594,6 +596,7 @@ public partial class PropertiesPanel : UiPanel
         manifest.Settings.RenderResolutionPreset = string.IsNullOrWhiteSpace(_renderResolutionPreset) ? "Custom" : _renderResolutionPreset.Trim();
         manifest.Settings.RenderShowHiddenObjects = _renderShowHiddenObjects;
         manifest.Settings.TextureAnimationFps = Math.Clamp(TextureAnimationFps, 1, 240);
+        manifest.Settings.TransparentBackground = TransparentBackground;
         manifest.Settings.UseSky = UseSky;
         manifest.Settings.SkyMode = SkyMode;
         manifest.Settings.SkyTexture = SkyTexture;
@@ -2859,6 +2862,12 @@ public partial class PropertiesPanel : UiPanel
     private unsafe void RenderRenderSettings()
     {
         bool changed = false;
+
+        changed |= ImGui.Checkbox(Localization.Label("text.panel.properties.transparent_background", "Transparent Background"), ref TransparentBackground);
+        RegisterProjectPropertyContext(nameof(TransparentBackground));
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(Localization.T("text.panel.properties.transparent_background_tooltip"));
+        ImGui.Separator();
 
         ImGui.TextUnformatted(Localization.T("text.panel.properties.anti_aliasing"));
         changed |= ImGui.Checkbox(Localization.Label("text.panel.properties.enabled", "Enabled##antiAliasing"), ref AntiAliasingEnabled);

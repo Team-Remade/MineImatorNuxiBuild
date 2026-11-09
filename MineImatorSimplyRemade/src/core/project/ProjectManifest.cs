@@ -91,6 +91,7 @@ public class ProjectWorkCameraState
 
 public class ProjectRenderSettings
 {
+    public bool TransparentBackground { get; set; }
     public bool AntiAliasingEnabled { get; set; } = false;
     public float AntiAliasingSubpixel { get; set; } = 0.75f;
     public float AntiAliasingEdgeThreshold { get; set; } = 0.125f;

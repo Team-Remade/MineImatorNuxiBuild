@@ -23,6 +23,20 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--transparency-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                TransparencyGraphics();
+                Console.WriteLine("PASS Transparent previews, RGBA post effects, image/sequence exports and decoded ProRes MOV alpha");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--replace-asset-graphics", StringComparer.Ordinal))
         {
             try
@@ -235,6 +249,7 @@ internal static partial class Program
             ("Biome catalog, independent custom colors, project persistence and reset", BiomeSettings),
             ("Opaque leaf defaults, persistence, texture selection and pixels", OpaqueLeavesSettings),
             ("Textured sky defaults, project persistence and background animation", SkySettings),
+            ("Transparent background defaults, persistence and MOV extension", TransparencySettings),
             ("UI scale persistence, limits, fonts, metrics and independent contexts", UiScaleTests),
             ("Library replacement matching, rest poses, values and independent keyframes", LibraryReplacementMapping),
             ("Library replacement unmatched branches, ambiguity, ordering and references", LibraryReplacementRetention),

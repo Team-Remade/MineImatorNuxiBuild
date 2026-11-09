@@ -268,6 +268,7 @@ public class Viewport : UiPanel
     private Shader? _indirectLightingShader;
     private Shader? _indirectDenoiseShader;
     private Shader? _glowShader;
+    private Shader? _alphaResolveShader;
     private Shader? _bloomShader;
     private Shader? _filmGrainShader;
     private Shader? _antiAliasingShader;
@@ -804,8 +805,8 @@ public class Viewport : UiPanel
         // Colour attachment
         Gl.GenTextures(1, out _colorTex);
         Gl.BindTexture(GLEnum.Texture2D, _colorTex);
-        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb, width, height, 0,
-                      PixelFormat.Rgb, GLEnum.UnsignedByte, (void*)0);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8, width, height, 0,
+                      PixelFormat.Rgba, GLEnum.UnsignedByte, (void*)0);
         Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
         Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
         Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.ColorAttachment0,
@@ -1268,7 +1269,7 @@ public class Viewport : UiPanel
         var p = PropertiesPanel;
         if (p == null) return;
         var (sunDirection, moonDirection, fogColor) = PrepareSceneEnvironment(camera);
-        if (!p.UseSky || _skyShader == null || _backgroundVao == 0) return;
+        if (p.TransparentBackground || !p.UseSky || _skyShader == null || _backgroundVao == 0) return;
         ReloadSkyTextures();
         bool texturedSky = p.SkyMode is "sphere" or "box";
         if (texturedSky && _environmentTexture == 0) return;
@@ -1467,6 +1468,8 @@ public class Viewport : UiPanel
 
     private void RenderBackgroundPlane(uint viewportWidth, uint viewportHeight)
     {
+        if (PropertiesPanel?.TransparentBackground == true)
+            return;
         if (_backgroundShader == null || _backgroundTexture == 0 || _backgroundVao == 0)
             return;
 
@@ -2062,7 +2065,7 @@ public class Viewport : UiPanel
         _viewportHeight = height;
 
         // Resize display FBO attachments.
-        ResizeGlowResources(_colorTex, width, height, hdr: _colorManagementHdr, rgbOnly: true);
+        ResizeGlowResources(_colorTex, width, height, hdr: _colorManagementHdr, sceneColor: true);
 
         Gl.BindTexture(GLEnum.Texture2D, _depthTex);
         Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.DepthComponent24, width, height, 0,
@@ -2138,17 +2141,16 @@ public class Viewport : UiPanel
         Gl.BindTexture(GLEnum.Texture2D, 0);
     }
 
-    private unsafe void ResizeGlowResources(uint texture, uint width, uint height, bool hdr = false, bool rgbOnly = false)
+    private unsafe void ResizeGlowResources(uint texture, uint width, uint height, bool hdr = false, bool sceneColor = false)
     {
         if (Gl == null || texture == 0 || width == 0 || height == 0)
             return;
 
         Gl.BindTexture(GLEnum.Texture2D, texture);
         // Bloom needs floating-point scratch color and coverage so small highlights survive repeated blur.
-        bool rgba = !rgbOnly;
-        bool floatingPoint = hdr || rgba;
-        Gl.TexImage2D(GLEnum.Texture2D, 0, floatingPoint ? (rgba ? InternalFormat.Rgba16f : InternalFormat.Rgb16f) : InternalFormat.Rgb, width, height, 0,
-            rgba ? PixelFormat.Rgba : PixelFormat.Rgb, floatingPoint ? GLEnum.Float : GLEnum.UnsignedByte, (void*)0);
+        bool floatingPoint = hdr || !sceneColor;
+        Gl.TexImage2D(GLEnum.Texture2D, 0, floatingPoint ? InternalFormat.Rgba16f : InternalFormat.Rgba8, width, height, 0,
+            PixelFormat.Rgba, floatingPoint ? GLEnum.Float : GLEnum.UnsignedByte, (void*)0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
     }
 
@@ -2163,7 +2165,7 @@ public class Viewport : UiPanel
 
         // Preserve unclipped highlights through glow/DOF until the final display transform.
         // Keep legacy 8-bit scene storage when disabled, including for diagnostic render passes.
-        ResizeGlowResources(preview ? _previewColorTex : _colorTex, width, height, hdr: enabled, rgbOnly: true);
+        ResizeGlowResources(preview ? _previewColorTex : _colorTex, width, height, hdr: enabled, sceneColor: true);
         ResizeGlowResources(preview ? _previewGlowTex : _glowTex, width, height, hdr: enabled);
         ResizeGlowResources(preview ? _previewGlowPingTex : _glowPingTex, width, height, hdr: enabled);
         hdr = enabled;
@@ -2256,6 +2258,7 @@ public class Viewport : UiPanel
         Gl.UseProgram(program);
         Gl.ActiveTexture(GLEnum.Texture0);
         Gl.BindTexture(GLEnum.Texture2D, sourceColorTex);
+        Gl.Uniform1(_glowShader.GetUniformLocation("uTransparentOutput"), settings.TransparentBackground ? 1 : 0);
         if (sceneLoc >= 0) Gl.Uniform1(sceneLoc, 0);
         if (texelLoc >= 0) Gl.Uniform2(texelLoc, 1f / width, 1f / height);
         if (strengthLoc >= 0) Gl.Uniform1(strengthLoc, 1f);
@@ -2303,8 +2306,24 @@ public class Viewport : UiPanel
         Gl.DrawBuffer(GLEnum.ColorAttachment0);
         Gl.ReadBuffer(GLEnum.ColorAttachment0);
         Gl.Viewport(0, 0, width, height);
-        Gl.Enable(GLEnum.Blend);
-        Gl.BlendFunc(GLEnum.One, GLEnum.One);
+        if (settings.TransparentBackground)
+        {
+            Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
+            Gl.BindFramebuffer(GLEnum.DrawFramebuffer, glowPingFbo);
+            Gl.BlitFramebuffer(0, 0, (int)width, (int)height, 0, 0, (int)width, (int)height,
+                ClearBufferMask.ColorBufferBit, GLEnum.Nearest);
+            Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
+            Gl.ActiveTexture(GLEnum.Texture1);
+            Gl.BindTexture(GLEnum.Texture2D, glowPingTex);
+            Gl.Uniform1(_glowShader.GetUniformLocation("uBaseScene"), 1);
+            Gl.ActiveTexture(GLEnum.Texture0);
+            Gl.Disable(GLEnum.Blend);
+        }
+        else
+        {
+            Gl.Enable(GLEnum.Blend);
+            Gl.BlendFuncSeparate(GLEnum.One, GLEnum.One, GLEnum.Zero, GLEnum.One);
+        }
         Gl.BindTexture(GLEnum.Texture2D, glowTex);
         if (strengthLoc >= 0) Gl.Uniform1(strengthLoc, glowStrength);
         if (sizeLoc >= 0) Gl.Uniform1(sizeLoc, glowSize);
@@ -2368,15 +2387,19 @@ public class Viewport : UiPanel
     private static readonly byte[] PngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
 
     internal static void WritePng24(string filePath, byte[] rgbPixels, int width, int height, bool bottomUp)
+        => WritePng(filePath, rgbPixels, width, height, bottomUp, false);
+
+    internal static void WritePng(string filePath, byte[] rgbPixels, int width, int height, bool bottomUp, bool rgba)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
-        if (rgbPixels.Length != checked(width * height * 3))
-            throw new ArgumentException("Unexpected RGB frame size.", nameof(rgbPixels));
+        int channels = rgba ? 4 : 3;
+        if (rgbPixels.Length != checked(width * height * channels))
+            throw new ArgumentException("Unexpected frame size.", nameof(rgbPixels));
 
         Directory.CreateDirectory(Path.GetDirectoryName(filePath) ?? ".");
 
-        int stride = width * 3;
+        int stride = width * channels;
         byte[] scanlines = new byte[height * (stride + 1)];
         for (int y = 0; y < height; y++)
         {
@@ -2390,7 +2413,7 @@ public class Viewport : UiPanel
         BinaryPrimitives.WriteUInt32BigEndian(ihdr.AsSpan(0, 4), (uint)width);
         BinaryPrimitives.WriteUInt32BigEndian(ihdr.AsSpan(4, 4), (uint)height);
         ihdr[8] = 8;
-        ihdr[9] = 2;
+        ihdr[9] = rgba ? (byte)6 : (byte)2;
 
         byte[] compressed;
         using (var compressedStream = new MemoryStream())
@@ -2791,7 +2814,10 @@ public class Viewport : UiPanel
                 Gl.FrontFace(GLEnum.Ccw);
 
                 float[] bg = PropertiesPanel?.BackgroundColor ?? [0.18f, 0.18f, 0.18f, 1.0f];
-                Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
+                if (PropertiesPanel?.TransparentBackground == true)
+                    Gl.ClearColor(0f, 0f, 0f, 0f);
+                else
+                    Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
                 Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
                 float aspect = (h > 0) ? (float)w / h : 1f;
@@ -2968,6 +2994,8 @@ public class Viewport : UiPanel
                 SetGiDrawBuffers(false);
             }
 
+            ResolveSceneAlpha(_fbo, _glowFbo, _glowTex, w, h);
+
             if (renderMode == SceneRenderMode.Rendered)
                 ApplyIndirectLightingPassGeneric(_fbo, _colorTex, _depthTex, _indirectFbo, _indirectTex, _indirectPingFbo, _indirectPingTex,
                     w, h, _giAlbedoTex, _giRadianceTex, proj, PropertiesPanel, _renderedPassMode);
@@ -3052,6 +3080,7 @@ public class Viewport : UiPanel
         }
 
         // ── Display FBO as ImGui image (flip V for OpenGL→ImGui convention) ────
+        RenderTransparencyBackground(imageMin, imageSize);
         ImGui.Image(
             new ImTextureRef(texId: (ulong)_colorTex),
             size,
@@ -3430,7 +3459,8 @@ public class Viewport : UiPanel
         _cachedRenderItems.AddRange(_cachedRenderItemsNoAo);
 
         renderer.BeginFrame(width, height, view, projection,
-            new Vector4(background[0], background[1], background[2], background[3]), wireframe);
+            PropertiesPanel?.TransparentBackground == true ? Vector4.Zero :
+                new Vector4(background[0], background[1], background[2], background[3]), wireframe);
         if (_groundPlane != null && GroundPlaneVisible)
             renderer.Draw(_groundPlane, _groundPlaneModel, forceUnshaded);
         foreach (var item in _cachedRenderItems.OrderBy(item => item.sortDepth))
@@ -3445,6 +3475,7 @@ public class Viewport : UiPanel
             foreach (var (model, mesh) in _cachedOverlays)
                 renderer.Draw(mesh, model, true);
         renderer.EndFrame(_colorTex);
+        ResolveSceneAlpha(_fbo, _glowFbo, _glowTex, width, height);
 
         if (renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
         {
@@ -5215,7 +5246,7 @@ public class Viewport : UiPanel
         else
         {
             Gl.Enable(GLEnum.Blend);
-            Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+            Gl.BlendFuncSeparate(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha, GLEnum.Zero, GLEnum.One);
         }
 
         Shader aoShader = _ambientOcclusionShader!;
@@ -5913,8 +5944,8 @@ public class Viewport : UiPanel
 
         Gl.GenTextures(1, out _previewColorTex);
         Gl.BindTexture(GLEnum.Texture2D, _previewColorTex);
-        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb, width, height, 0,
-                      PixelFormat.Rgb, GLEnum.UnsignedByte, (void*)0);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8, width, height, 0,
+                      PixelFormat.Rgba, GLEnum.UnsignedByte, (void*)0);
         Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Linear);
         Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Linear);
         Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.ColorAttachment0,
@@ -6098,7 +6129,7 @@ public class Viewport : UiPanel
         _previewWidth = w;
         _previewHeight = h;
 
-        ResizeGlowResources(_previewColorTex, w, h, hdr: _previewColorManagementHdr, rgbOnly: true);
+        ResizeGlowResources(_previewColorTex, w, h, hdr: _previewColorManagementHdr, sceneColor: true);
         Gl.BindTexture(GLEnum.Texture2D, _previewDepthTex);
         Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.DepthComponent24, w, h, 0,
             PixelFormat.DepthComponent, GLEnum.UnsignedInt, null);
@@ -6533,6 +6564,7 @@ public class Viewport : UiPanel
             Gl.Uniform3(_bloomShader.GetUniformLocation("uBlendColor"), Math.Clamp(settings.BlendColorR, 0f, 1f),
                 Math.Clamp(settings.BlendColorG, 0f, 1f), Math.Clamp(settings.BlendColorB, 0f, 1f));
             Gl.Uniform1(_bloomShader.GetUniformLocation("uBlendMode"), Math.Clamp((int)settings.BlendMode, 0, 4));
+            Gl.Uniform1(_bloomShader.GetUniformLocation("uTransparentOutput"), TransparentBackground ? 1 : 0);
 
             Gl.BindFramebuffer(GLEnum.Framebuffer, bloomFbo);
             Gl.DrawBuffer(GLEnum.ColorAttachment0);
@@ -6689,6 +6721,46 @@ public class Viewport : UiPanel
             if (cullFace) Gl.Enable(GLEnum.CullFace);
             if (blend) Gl.Enable(GLEnum.Blend);
         }
+    }
+
+    private void ResolveSceneAlpha(uint sceneFbo, uint scratchFbo, uint scratchTexture, uint width, uint height)
+    {
+        if (!TransparentBackground)
+            return;
+
+        if (_alphaResolveShader == null)
+        {
+            _alphaResolveShader = new Shader(Gl);
+            _alphaResolveShader.CompileShader("edge.vert", "alpha_resolve.frag");
+        }
+
+        bool depthTest = Gl.IsEnabled(GLEnum.DepthTest);
+        bool cullFace = Gl.IsEnabled(GLEnum.CullFace);
+        bool blend = Gl.IsEnabled(GLEnum.Blend);
+        Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
+        Gl.BindFramebuffer(GLEnum.DrawFramebuffer, scratchFbo);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.BlitFramebuffer(0, 0, (int)width, (int)height, 0, 0, (int)width, (int)height,
+            ClearBufferMask.ColorBufferBit, GLEnum.Nearest);
+        Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.Disable(GLEnum.DepthTest);
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Disable(GLEnum.Blend);
+        Gl.Viewport(0, 0, width, height);
+        Gl.UseProgram(_alphaResolveShader.ShaderProgram);
+        Gl.ActiveTexture(GLEnum.Texture0);
+        Gl.BindTexture(GLEnum.Texture2D, scratchTexture);
+        Gl.Uniform1(_alphaResolveShader.GetUniformLocation("uScene"), 0);
+        Gl.Uniform2(_alphaResolveShader.GetUniformLocation("uTexelSize"), 1f / width, 1f / height);
+        Gl.BindVertexArray(_edgeVao);
+        Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+        Gl.BindVertexArray(0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        if (depthTest) Gl.Enable(GLEnum.DepthTest);
+        if (cullFace) Gl.Enable(GLEnum.CullFace);
+        if (blend) Gl.Enable(GLEnum.Blend);
     }
 
     private void ApplyAntiAliasingPass(uint sceneFbo, uint scratchFbo, uint scratchTexture,
@@ -7007,6 +7079,7 @@ public class Viewport : UiPanel
             var previewImageSize = drawSize;
             HandleFreeFlyPublic(activeCam, sceneObj, allowCameraInput, previewImageMin, previewImageSize);
 
+            RenderTransparencyBackground(previewImageMin, previewImageSize);
             ImGui.Image(
                 new ImTextureRef(texId: (ulong)_previewColorTex),
                 drawSize,
@@ -7216,8 +7289,8 @@ public class Viewport : UiPanel
 
         Gl!.GenTextures(1, out uint texture);
         Gl.BindTexture(GLEnum.Texture2D, texture);
-        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgb, CameraFeedSize, CameraFeedSize,
-            0, GLEnum.Rgb, GLEnum.UnsignedByte, null);
+        Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8, CameraFeedSize, CameraFeedSize,
+            0, GLEnum.Rgba, GLEnum.UnsignedByte, null);
         Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)GLEnum.Linear);
         Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)GLEnum.Linear);
         Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)GLEnum.ClampToEdge);
@@ -7284,7 +7357,10 @@ public class Viewport : UiPanel
             Gl.FrontFace(GLEnum.Ccw);
 
             float[] bg = MainViewport.PropertiesPanel?.BackgroundColor ?? [0.18f, 0.18f, 0.18f, 1.0f];
-            Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
+            if (MainViewport.PropertiesPanel?.TransparentBackground == true)
+                Gl.ClearColor(0f, 0f, 0f, 0f);
+            else
+                Gl.ClearColor(bg[0], bg[1], bg[2], bg[3]);
             Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
             float aspect = h > 0 ? (float)w / h : 1f;
@@ -7430,6 +7506,8 @@ public class Viewport : UiPanel
             RenderDepthOrdered(view, proj, renderItemsNoAo, allPointLights, forceUnshaded);
             SetGiDrawBuffers(false);
         }
+
+        ResolveSceneAlpha(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h);
 
         if (renderMode == SceneRenderMode.Rendered)
             ApplyIndirectLightingPassGeneric(_previewFbo, _previewColorTex, _previewDepthTex,
@@ -7611,7 +7689,29 @@ public class Viewport : UiPanel
         }
     }
 
-    public unsafe bool CaptureCurrentViewRgb(uint w, uint h, bool highQuality, out byte[] rgbPixels, bool showHiddenObjects = false)
+    public bool TransparentBackground => (MainViewport?.PropertiesPanel ?? PropertiesPanel)?.TransparentBackground == true;
+
+    public void RenderTransparencyBackground(Vector2 position, Vector2 size)
+    {
+        if (!TransparentBackground)
+            return;
+
+        const float cell = 16f;
+        var draw = ImGui.GetWindowDrawList();
+        for (int y = 0; y * cell < size.Y; y++)
+            for (int x = 0; x * cell < size.X; x++)
+            {
+                var min = position + new Vector2(x * cell, y * cell);
+                var max = position + Vector2.Min(new Vector2((x + 1) * cell, (y + 1) * cell), size);
+                draw.AddRectFilled(min, max, (x + y) % 2 == 0 ? 0xFF383838u : 0xFF505050u);
+            }
+    }
+
+    public bool CaptureCurrentViewRgb(uint w, uint h, bool highQuality, out byte[] rgbPixels, bool showHiddenObjects = false)
+        => CaptureCurrentView(w, h, highQuality, out rgbPixels, showHiddenObjects);
+
+    public unsafe bool CaptureCurrentView(uint w, uint h, bool highQuality, out byte[] rgbPixels,
+        bool showHiddenObjects = false, bool rgba = false)
     {
         rgbPixels = Array.Empty<byte>();
         if (Gl == null || MainViewport == null || _previewFbo == 0 || w == 0 || h == 0)
@@ -7630,16 +7730,17 @@ public class Viewport : UiPanel
             ResizeFboPublic(w, h);
             RenderScenePublic(activeCam, sceneObj, w, h, highQuality);
 
-            rgbPixels = new byte[checked((int)(w * h * 3))];
+            int channels = rgba ? 4 : 3;
+            rgbPixels = new byte[checked((int)(w * h * channels))];
 
             Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
             Gl.PixelStore(GLEnum.PackAlignment, 1);
             fixed (byte* p = rgbPixels)
-                Gl.ReadPixels(0, 0, w, h, GLEnum.Rgb, GLEnum.UnsignedByte, p);
+                Gl.ReadPixels(0, 0, w, h, rgba ? GLEnum.Rgba : GLEnum.Rgb, GLEnum.UnsignedByte, p);
             Gl.PixelStore(GLEnum.PackAlignment, 4);
             Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
 
-            FlipRgbRows(rgbPixels, (int)w, (int)h);
+            FlipRgbRows(rgbPixels, (int)w, (int)h, channels);
             return true;
         }
         finally
@@ -7651,9 +7752,9 @@ public class Viewport : UiPanel
         }
     }
 
-    private static void FlipRgbRows(byte[] rgbPixels, int width, int height)
+    private static void FlipRgbRows(byte[] rgbPixels, int width, int height, int channels = 3)
     {
-        int stride = width * 3;
+        int stride = width * channels;
         byte[] row = new byte[stride];
 
         for (int y = 0; y < height / 2; y++)

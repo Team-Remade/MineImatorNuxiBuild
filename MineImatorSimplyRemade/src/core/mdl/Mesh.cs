@@ -661,7 +661,7 @@ public class Mesh : IDisposable
         gl.BlendEquationSeparate(mode == MaterialBlendMode.Subtract ? GLEnum.FuncReverseSubtract : GLEnum.FuncAdd,
             GLEnum.FuncAdd);
         gl.BlendFuncSeparate(source, destination,
-            mode == MaterialBlendMode.Normal ? GLEnum.SrcAlpha : GLEnum.One, GLEnum.OneMinusSrcAlpha);
+            GLEnum.One, GLEnum.OneMinusSrcAlpha);
     }
 
     public vec4 BlendColor

@@ -221,6 +221,7 @@ public class CameraWindow : Window
             var imageSize = drawSize;
             _panel.HandleFreeFlyPublic(activeCam, sceneObj, ImGui.IsWindowHovered(), imageMin, imageSize);
 
+            _panel.RenderTransparencyBackground(imageMin, imageSize);
             ImGui.Image(
                 new ImTextureRef(texId: (ulong)_panel.ColorTexture),
                 drawSize,

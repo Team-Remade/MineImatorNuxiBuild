@@ -84,5 +84,5 @@ void main()
     float subpixel = clamp(abs(average - m) / contrast, 0.0, 1.0);
     subpixel = subpixel * subpixel * (3.0 - 2.0 * subpixel);
     subpixel = subpixel * subpixel * uSubpixel;
-    FragColor = vec4(texture(uScene, uv + normal * max(edgeBlend, subpixel)).rgb, center.a);
+    FragColor = texture(uScene, uv + normal * max(edgeBlend, subpixel));
 }

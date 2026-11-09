@@ -304,7 +304,7 @@ public sealed class VeldridSceneRenderer : IDisposable
             };
             var blend = new BlendAttachmentDescription(true,
                 sourceColor, destinationColor, colorFunction,
-                alphaClip || mesh.BlendMode != MaterialBlendMode.Normal ? BlendFactor.One : BlendFactor.SourceAlpha,
+                BlendFactor.One,
                 alphaClip ? BlendFactor.Zero : BlendFactor.InverseSourceAlpha, BlendFunction.Add);
             pipeline = _device.ResourceFactory.CreateGraphicsPipeline(new GraphicsPipelineDescription
             {

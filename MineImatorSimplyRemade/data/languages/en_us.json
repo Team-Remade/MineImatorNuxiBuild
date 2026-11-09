@@ -386,6 +386,8 @@
     "text.panel.properties.ambient_occlusion": "Ambient Occlusion",
     "text.panel.properties.ambient_strength": "Ambient Strength",
     "text.panel.properties.anamorphic_ratio": "Anamorphic Ratio",
+    "text.panel.properties.transparent_background": "Transparent Background",
+    "text.panel.properties.transparent_background_tooltip": "Remove the sky, clouds, and background.",
     "text.panel.properties.anti_aliasing": "Anti-Aliasing (FXAA)",
     "text.panel.properties.anti_aliasing_description": "Used in rendered views, camera previews and exports.",
     "text.panel.properties.anti_aliasing_edge_threshold": "Edge Threshold",

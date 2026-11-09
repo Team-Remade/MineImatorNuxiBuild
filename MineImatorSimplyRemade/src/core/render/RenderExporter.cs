@@ -95,14 +95,19 @@ public sealed class RenderExporter
     {
         EnsureFfmpegReady();
 
-        return !_cameraViewport.CaptureCurrentViewRgb((uint)width, (uint)height, highQuality, out byte[] frame, showHiddenObjects: showHiddenObjects) ? throw new InvalidOperationException("Failed to capture render frame.") : ExportImageFromRgb(width, height, imageFormat, outputPath, frame);
+        bool rgba = _cameraViewport.TransparentBackground;
+        return !_cameraViewport.CaptureCurrentView((uint)width, (uint)height, highQuality, out byte[] frame, showHiddenObjects: showHiddenObjects, rgba: rgba) ? throw new InvalidOperationException("Failed to capture render frame.") : ExportImageFromRgb(width, height, imageFormat, outputPath, frame, rgba);
     }
 
-    public string ExportImageFromRgb(int width, int height, string imageFormat, string outputPath, byte[] rgbFrame)
+    public string ExportImageFromRgb(int width, int height, string imageFormat, string outputPath, byte[] rgbFrame, bool rgba = false)
     {
         EnsureFfmpegReady();
 
         string format = NormalizeImageFormat(imageFormat);
+        if (rgba && format == "jpg")
+            throw new InvalidOperationException("JPEG does not support transparency. Choose PNG or WebP.");
+        if (rgbFrame.Length != checked(width * height * (rgba ? 4 : 3)))
+            throw new ArgumentException("Unexpected frame size.", nameof(rgbFrame));
         string finalPath = EnsureOutputExtension(outputPath, format);
         Directory.CreateDirectory(Path.GetDirectoryName(finalPath) ?? ".");
 
@@ -110,7 +115,7 @@ public sealed class RenderExporter
         [
             "-y",
             "-f", "rawvideo",
-            "-pixel_format", "rgb24",
+            "-pixel_format", rgba ? "rgba" : "rgb24",
             "-video_size", $"{width}x{height}",
             "-i", "-",
             "-frames:v", "1"
@@ -121,6 +126,8 @@ public sealed class RenderExporter
         {
             args.AddRange(["-q:v", "2"]);
         }
+        if (rgba && format == "webp")
+            args.AddRange(["-lossless", "1"]);
 
         args.Add(finalPath);
 
@@ -134,13 +141,15 @@ public sealed class RenderExporter
         int framerate,
         int bitrateKbps,
         string videoFormat,
-        string outputPath)
+        string outputPath,
+        bool rgba = false)
     {
         EnsureFfmpegReady();
 
         int fps = Math.Clamp(framerate, 1, 120);
         int bitrate = Math.Clamp(bitrateKbps, 500, 200000);
         string format = NormalizeVideoFormat(videoFormat);
+        ValidateVideoTransparency(format, rgba);
         string finalPath = EnsureOutputExtension(outputPath, format);
         Directory.CreateDirectory(Path.GetDirectoryName(finalPath) ?? ".");
 
@@ -148,21 +157,14 @@ public sealed class RenderExporter
         [
             "-y",
             "-f", "rawvideo",
-            "-pixel_format", "rgb24",
+            "-pixel_format", rgba ? "rgba" : "rgb24",
             "-video_size", $"{width}x{height}",
             "-framerate", fps.ToString(),
             "-i", "-",
             "-an"
         ];
 
-        if (string.Equals(format, "webm", StringComparison.OrdinalIgnoreCase))
-        {
-            args.AddRange(["-c:v", "libvpx-vp9", "-b:v", $"{bitrate}k", "-pix_fmt", "yuv420p"]);
-        }
-        else
-        {
-            args.AddRange(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-b:v", $"{bitrate}k"]);
-        }
+        AddVideoCodecArguments(args, format, bitrate, rgba);
 
         args.Add(finalPath);
 
@@ -170,7 +172,7 @@ public sealed class RenderExporter
         process.Start();
 
         var writer = new BinaryWriter(process.StandardInput.BaseStream);
-        int expectedFrameBytes = checked(width * height * 3);
+        int expectedFrameBytes = checked(width * height * (rgba ? 4 : 3));
         return new VideoExportSession(finalPath, process, writer, expectedFrameBytes);
     }
 
@@ -182,17 +184,19 @@ public sealed class RenderExporter
         string outputPath,
         Timeline? timeline,
         int startFrame,
-        int totalFrames)
+        int totalFrames,
+        bool rgba = false)
     {
         EnsureFfmpegReady();
 
         int fps = Math.Clamp(framerate, 1, 120);
         int bitrate = Math.Clamp(bitrateKbps, 500, 200000);
         string format = NormalizeVideoFormat(videoFormat);
+        ValidateVideoTransparency(format, rgba);
         string finalPath = EnsureOutputExtension(outputPath, format);
         Directory.CreateDirectory(Path.GetDirectoryName(finalPath) ?? ".");
 
-        string pattern = Path.Combine(framesDirectory, "frame_%06d.ppm");
+        string pattern = Path.Combine(framesDirectory, rgba ? "frame_%06d.png" : "frame_%06d.ppm");
 
         List<string> args =
         [
@@ -212,10 +216,7 @@ public sealed class RenderExporter
             args.Add("-an");
         }
 
-        if (string.Equals(format, "webm", StringComparison.OrdinalIgnoreCase))
-            args.AddRange(["-c:v", "libvpx-vp9", "-b:v", $"{bitrate}k", "-pix_fmt", "yuv420p"]);
-        else
-            args.AddRange(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-b:v", $"{bitrate}k"]);
+        AddVideoCodecArguments(args, format, bitrate, rgba);
 
         args.Add(finalPath);
 
@@ -265,11 +266,12 @@ public sealed class RenderExporter
 
         try
         {
-            using VideoExportSession session = CreateVideoSession(width, height, fps, bitrate, format, finalPath);
+            bool rgba = _cameraViewport.TransparentBackground;
+            using VideoExportSession session = CreateVideoSession(width, height, fps, bitrate, format, finalPath, rgba);
             for (int frame = range.StartFrame; frame <= range.EndFrame; frame++)
             {
                 timeline.SetCurrentFrame(frame);
-                if (!_cameraViewport.CaptureCurrentViewRgb((uint)width, (uint)height, highQuality, out byte[] rgbFrame, showHiddenObjects: showHiddenObjects))
+                if (!_cameraViewport.CaptureCurrentView((uint)width, (uint)height, highQuality, out byte[] rgbFrame, showHiddenObjects: showHiddenObjects, rgba: rgba))
                     throw new InvalidOperationException($"Failed to capture frame {frame}.");
 
                 session.AppendFrame(rgbFrame);
@@ -369,6 +371,22 @@ public sealed class RenderExporter
     private static string NormalizeVideoFormat(string format)
     {
         string normalized = (format ?? "mp4").Trim().ToLowerInvariant();
-        return normalized == "webm" ? "webm" : "mp4";
+        return normalized is "webm" or "mov" ? normalized : "mp4";
+    }
+
+    private static void ValidateVideoTransparency(string format, bool rgba)
+    {
+        if (rgba && format != "mov")
+            throw new InvalidOperationException("Transparent animation exports require MOV (ProRes 4444) or a PNG sequence.");
+    }
+
+    private static void AddVideoCodecArguments(List<string> args, string format, int bitrate, bool rgba)
+    {
+        if (format == "mov")
+            args.AddRange(["-c:v", "prores_ks", "-profile:v", "4", "-pix_fmt", rgba ? "yuva444p10le" : "yuv444p10le", "-alpha_bits", "16"]);
+        else if (format == "webm")
+            args.AddRange(["-c:v", "libvpx-vp9", "-b:v", $"{bitrate}k", "-pix_fmt", "yuv420p"]);
+        else
+            args.AddRange(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-b:v", $"{bitrate}k"]);
     }
 }

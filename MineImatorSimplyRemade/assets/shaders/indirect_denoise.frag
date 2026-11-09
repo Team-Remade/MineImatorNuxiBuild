@@ -49,13 +49,14 @@ void main()
     vec3 center = max(texture(uIndirectTex, uv).rgb, 0.0);
     if (uMode == 1)
     {
-        vec3 scene = texture(uScene, uv).rgb;
+        vec4 sceneSample = texture(uScene, uv);
+        vec3 scene = sceneSample.rgb;
         if (depth >= 0.999999 || material.a <= 0.0 || uStrength <= 0.0)
-            FragColor = vec4(scene, 1.0);
+            FragColor = sceneSample;
         else
         {
             vec3 indirect = center * material.rgb * material.a * max(uStrength, 0.0);
-            FragColor = vec4(pow(pow(max(scene, 0.0), vec3(2.2)) + indirect, vec3(1.0 / 2.2)), 1.0);
+            FragColor = vec4(pow(pow(max(scene, 0.0), vec3(2.2)) + indirect, vec3(1.0 / 2.2)), sceneSample.a);
         }
         return;
     }

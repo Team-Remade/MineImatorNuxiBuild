@@ -9,6 +9,7 @@ uniform float uIntensity;
 uniform vec3 uBlendColor;
 uniform int uBlendMode;
 uniform int uPass;
+uniform bool uTransparentOutput;
 
 out vec4 FragColor;
 
@@ -20,6 +21,7 @@ void main()
     {
         float brightness = max(max(scene.r, scene.g), scene.b);
         float coverage = max(brightness - uThreshold, 0.0) / max(brightness, 0.00001);
+        if (uTransparentOutput) coverage *= scene.a;
         // Keep coverage with the premultiplied light so non-additive modes only affect highlights.
         FragColor = vec4(scene.rgb * coverage, coverage);
         return;
@@ -57,5 +59,15 @@ void main()
                 1.0 - 2.0 * (1.0 - scene.rgb) * (1.0 - color), step(vec3(0.5), scene.rgb));
         result = mix(scene.rgb, blended, clamp(bloom.a * uIntensity, 0.0, 1.0));
     }
-    FragColor = vec4(result, scene.a);
+    if (uTransparentOutput)
+    {
+        float coverage = clamp(bloom.a * uIntensity, 0.0, 1.0);
+        float alpha = scene.a + coverage * (1.0 - scene.a);
+        // Retain the selected blend on surfaces while giving off-object light its own coverage.
+        vec3 halo = light * uIntensity;
+        result = (result * scene.a + halo * (1.0 - scene.a)) / max(alpha, 0.00001);
+        FragColor = vec4(result, alpha);
+    }
+    else
+        FragColor = vec4(result, scene.a);
 }

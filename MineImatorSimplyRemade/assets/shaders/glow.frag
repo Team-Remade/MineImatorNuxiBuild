@@ -6,6 +6,8 @@ uniform float uStrength;
 uniform float uSize;
 uniform vec2 uDirection;
 uniform int uMode;
+uniform bool uTransparentOutput;
+uniform sampler2D uBaseScene;
 
 out vec4 FragColor;
 
@@ -24,6 +26,15 @@ void main()
 
     if (uMode == 2)
     {
+        if (uTransparentOutput)
+        {
+            vec4 scene = texture(uBaseScene, uv);
+            vec3 light = texture(uScene, uv).rgb * max(uStrength, 0.0);
+            float coverage = clamp(max(max(light.r, light.g), light.b), 0.0, 1.0);
+            float alpha = scene.a + coverage * (1.0 - scene.a);
+            FragColor = vec4((scene.rgb * scene.a + light) / max(alpha, 0.00001), alpha);
+            return;
+        }
         // Composite mode: output as-is so additive blending can apply strength.
         FragColor = vec4(texture(uScene, uv).rgb * max(uStrength, 0.0), 1.0);
         return;
@@ -32,7 +43,8 @@ void main()
     if (uMode == 0)
     {
         // Threshold mode.
-        FragColor = vec4(ExtractBright(texture(uScene, uv).rgb), 1.0);
+        vec4 scene = texture(uScene, uv);
+        FragColor = vec4(ExtractBright(scene.rgb) * (uTransparentOutput ? scene.a : 1.0), 1.0);
         return;
     }
 
