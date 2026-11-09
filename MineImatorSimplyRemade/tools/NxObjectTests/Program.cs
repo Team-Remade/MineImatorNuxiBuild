@@ -192,6 +192,10 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Minecraft skin download, username validation and immutable local storage", MinecraftSkinDownloads),
+            ("Minecraft skin HTTP, profile, URL and PNG failures", MinecraftSkinFailures),
+            ("Minecraft skin selection, preview resolution, stale requests and retry", MinecraftSkinSelection),
+            ("Minecraft skin project copy, manifest persistence and deduplication", MinecraftSkinProjectStorage),
             ("Snap settings validation, modifier inversion and source-generated persistence", SnapPreferences),
             ("Snap relative/absolute lattices, all constraints and normal alignment math", SnapConstraints),
             ("Snap vertex, edge midpoint, face, origin, radius and camera clipping", SnapTargets),
@@ -350,6 +354,8 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("UI scale", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--backups", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Backup", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--skins", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Minecraft skin", StringComparison.Ordinal)).ToArray();
         int failures = 0;
         foreach (var test in tests)
         {

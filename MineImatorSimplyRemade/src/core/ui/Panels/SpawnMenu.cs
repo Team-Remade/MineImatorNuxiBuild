@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Net.Http;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -219,6 +220,12 @@ public class SpawnMenu : UiPanel
     /// Reset whenever the character selection changes.
     /// </summary>
     private string _customCharTexturePath = "";
+    private string _skinUsername = "";
+    private string? _skinDownloadError;
+    private Task<string>? _skinDownloadTask;
+    private int _characterSelectionRevision;
+    private int _skinDownloadRevision;
+    private CharacterEntry? _skinDownloadEntry;
     private readonly Dictionary<string, IReadOnlyList<ModelPartEntry>> _modelParts = new(StringComparer.OrdinalIgnoreCase);
     private List<CharacterEntry>? _modelPartCatalog;
 
@@ -507,6 +514,7 @@ public class SpawnMenu : UiPanel
 
     public override unsafe void Render()
     {
+        CompleteSkinDownload();
         // Rendered every frame regardless of _isOpen so a schematic load
         // failure triggered from the content browser or elsewhere can still
         // prompt the user, even if the spawn menu window itself isn't shown.
@@ -1167,6 +1175,7 @@ public class SpawnMenu : UiPanel
                     _selectedVariantIndex       = -1;
                     _selectedCharTextureIndex   = -1;
                     _customCharTexturePath      = "";
+                    ResetSkinDownloadSelection();
                     _currentVariants.Clear();
                 }
             }
@@ -1895,6 +1904,7 @@ public class SpawnMenu : UiPanel
             _charSearchQuery     = _charSearchBuffer;
             _selectedObjectIndex  = -1;
             _selectedVariantIndex = -1;
+            ResetSkinDownloadSelection();
         }
 
         ImGui.Separator();
@@ -1926,6 +1936,7 @@ public class SpawnMenu : UiPanel
                 _selectedVariantIndex      = -1;
                 _selectedCharTextureIndex  = -1;
                 _customCharTexturePath     = "";
+                ResetSkinDownloadSelection();
                 _currentVariants.Clear();
             }
 
@@ -2007,6 +2018,7 @@ public class SpawnMenu : UiPanel
                 if (ImGui.Combo("##charTexture", ref comboIndex, variantNames, variantNames.Length))
                 {
                     _selectedCharTextureIndex = comboIndex;
+                    ResetSkinDownloadSelection();
                     if (_selectedCategory == "Model part") _selectedVariantIndex = -1;
                 }
 
@@ -2019,6 +2031,7 @@ public class SpawnMenu : UiPanel
                     if (ImGui.Selectable(entry.TextureVariants[i].Name + "##ctex" + i, sel))
                     {
                         _selectedCharTextureIndex = i;
+                        ResetSkinDownloadSelection();
                         if (_selectedCategory == "Model part") _selectedVariantIndex = -1;
                     }
 
@@ -2026,6 +2039,7 @@ public class SpawnMenu : UiPanel
                         ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
                     {
                         _selectedCharTextureIndex = i;
+                        ResetSkinDownloadSelection();
                         TrySpawn();
                     }
                 }
@@ -2042,7 +2056,10 @@ public class SpawnMenu : UiPanel
                     {
                         var result = Dialog.FileOpen("png,jpg,jpeg,tga,bmp");
                         if (result.IsOk && !string.IsNullOrEmpty(result.Path))
+                        {
+                            ResetSkinDownloadSelection();
                             _customCharTexturePath = result.Path;
+                        }
                     }
 
                     ImGui.Spacing();
@@ -2060,6 +2077,12 @@ public class SpawnMenu : UiPanel
                         UiText.Disabled(Localization.T("text.panel.spawn.no_file_chosen"));
                     }
                 }
+
+                if (_selectedCategory == "Characters" &&
+                    (entry.Name.Equals("alex", StringComparison.OrdinalIgnoreCase) ||
+                     entry.Name.Equals("steve", StringComparison.OrdinalIgnoreCase)) &&
+                    entry.TextureVariants.Any(variant => variant.IsCustom))
+                    RenderSkinDownload();
             }
             else
             {
@@ -2598,6 +2621,20 @@ public class SpawnMenu : UiPanel
         }
 
         string pathToSpawn = registerAsset ? ResolveModelPathForProject(filePath) : filePath;
+
+        if (registerAsset && !string.IsNullOrEmpty(textureOverridePath))
+        {
+            try
+            {
+                textureOverridePath = ResolveTexturePathForProject(textureOverridePath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                Console.Error.WriteLine($"Could not copy model texture to project: {ex.Message}");
+                _objectImportError = ex.Message;
+                return null;
+            }
+        }
 
         string ext = Path.GetExtension(pathToSpawn).ToLowerInvariant();
 
@@ -5326,23 +5363,28 @@ public class SpawnMenu : UiPanel
 
         try
         {
-            string fullSourcePath = ProjectManager.ResolveAssetPath(sourcePath);
-            var existing = ProjectManager.GetProjectAssets().FirstOrDefault(a =>
-                a.AssetType == ProjectAssetType.Image &&
-                ProjectManager.AssetMatchesPath(a, fullSourcePath));
-
-            var asset = existing ?? ProjectManager.AddAsset(fullSourcePath, ProjectAssetType.Image);
-
-            if (asset.StoredInProject && !string.IsNullOrWhiteSpace(asset.RelativePath))
-                return asset.RelativePath;
-
-            return ProjectManager.GetAssetFullPath(asset);
+            return ResolveTexturePathForProject(sourcePath, relativePath: true);
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Failed to copy texture to project: {ex.Message}");
             return sourcePath;
         }
+    }
+
+    private string ResolveTexturePathForProject(string sourcePath, bool relativePath = false)
+    {
+        var manager = ProjectManager ?? core.project.ProjectManager.Instance;
+        string fullSourcePath = manager.ResolveAssetPath(sourcePath);
+        if (!manager.HasProject)
+            return fullSourcePath;
+
+        var existing = manager.GetProjectAssets().FirstOrDefault(asset =>
+            asset.AssetType == ProjectAssetType.Image && manager.AssetMatchesPath(asset, fullSourcePath));
+        var texture = existing ?? manager.AddAsset(fullSourcePath, ProjectAssetType.Image);
+        if (relativePath && texture.StoredInProject && !string.IsNullOrWhiteSpace(texture.RelativePath))
+            return texture.RelativePath;
+        return manager.GetAssetFullPath(texture);
     }
 
     // ── Spawn logic ───────────────────────────────────────────────────────────
@@ -5449,6 +5491,67 @@ public class SpawnMenu : UiPanel
             ? _spawnBlockSourceId
             : BlockRegistry.GetBlockSourceId(blockName);
         return MinecraftDataLoader.NormalizeResourcePackId(blockSourceId);
+    }
+
+    private void ResetSkinDownloadSelection()
+    {
+        _characterSelectionRevision++;
+        _skinDownloadError = null;
+    }
+
+    private void RenderSkinDownload()
+    {
+        ImGui.Separator();
+        UiText.Wrapped(Localization.T("text.panel.spawn.skin_username"));
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputTextWithHint("##skinUsername", Localization.T("text.panel.spawn.java_username"), ref _skinUsername, 64);
+        bool valid = MinecraftSkinDownloader.IsValidUsername(_skinUsername.Trim());
+        ImGui.BeginDisabled(_skinDownloadTask != null || !valid);
+        if (ImGui.Button(Localization.Label("text.panel.spawn.download_skin", "Download skin##downloadSkin"), new Vector2(-1, 0)))
+        {
+            _skinDownloadError = null;
+            _skinDownloadRevision = _characterSelectionRevision;
+            _skinDownloadEntry = SelectedModelCatalog[_selectedObjectIndex];
+            string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "MineImatorSimplyRemade", "Skins");
+            _skinDownloadTask = MinecraftSkinDownloader.DownloadAsync(_skinUsername, directory);
+        }
+        ImGui.EndDisabled();
+        if (_skinDownloadTask != null)
+            UiText.Wrapped(Localization.T("text.panel.spawn.downloading_skin"));
+        else if (_skinDownloadError != null)
+            UiText.Wrapped(Localization.Format("text.panel.spawn.skin_download_failed", _skinDownloadError));
+        else if (!valid && _skinUsername.Length > 0)
+            UiText.Wrapped(Localization.T("text.panel.spawn.invalid_skin_username"));
+    }
+
+    private void CompleteSkinDownload()
+    {
+        if (_skinDownloadTask is not { IsCompleted: true }) return;
+        bool stillSelected = _skinDownloadRevision == _characterSelectionRevision &&
+            _selectedCategory == "Characters" && _selectedObjectIndex >= 0 &&
+            _selectedObjectIndex < SelectedModelCatalog.Count &&
+            ReferenceEquals(SelectedModelCatalog[_selectedObjectIndex], _skinDownloadEntry);
+        try
+        {
+            string path = _skinDownloadTask.GetAwaiter().GetResult();
+            if (stillSelected)
+            {
+                _customCharTexturePath = path;
+                _selectedCharTextureIndex = _skinDownloadEntry!.TextureVariants.ToList().FindIndex(variant => variant.IsCustom);
+            }
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or
+            UnauthorizedAccessException or JsonException or FormatException or OperationCanceledException or ArgumentException)
+        {
+            if (stillSelected)
+                _skinDownloadError = exception.Message;
+        }
+        finally
+        {
+            _skinDownloadTask = null;
+            _skinDownloadEntry = null;
+        }
     }
 
     private void TrySpawnCharacter()

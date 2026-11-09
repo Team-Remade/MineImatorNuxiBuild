@@ -62,6 +62,8 @@ internal static partial class Program
                 ModelPartGraphicsTests(spawn, viewport, native,
                     () => update.Invoke(spawn, [0d]),
                     () => ReadPixels((PreviewRenderer)rendererField.GetValue(spawn)!));
+                MinecraftSkinGraphics(spawn, viewport, fixture,
+                    () => ReadPixels((PreviewRenderer)rendererField.GetValue(spawn)!));
                 foreach (var (name, customPath) in new[]
                 {
                     ("Characters", ""), ("Equipment", ""), ("Props", ""),
