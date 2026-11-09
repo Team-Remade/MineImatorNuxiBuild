@@ -234,6 +234,11 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Frames selected export, roundtrip, broadcast, timing, replacement and seeking", FramesRoundtrip),
+            ("Frames hierarchy, semantic properties, references and ambiguity", FramesMapping),
+            ("Frames reordered shape keys, ancestor names, IK and rotation compatibility", FramesAdvancedMapping),
+            ("Frames validation, atomic failures, assets and undo redo", FramesValidationHistory),
+            ("Frames ImGui timeline context menu and localization", FramesContextMenu),
             ("Visibility appearance right-click manual keys and multi-selection auto keys", VisibilityControls),
             ("Visibility stepped seeking, inheritance, render cache and persistence", VisibilityTimeline),
             ("Texture sheet rectangular tile pixels, alpha, row orientation and reuse", TextureSheetPixels),
@@ -419,6 +424,8 @@ internal static partial class Program
                 test.Name.StartsWith("All 15 bundled particle", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--paths", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Path", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--frames", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Frames ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--modifiers", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Array", StringComparison.Ordinal) ||
                 test.Name.StartsWith("Follow Path modifier", StringComparison.Ordinal) ||

@@ -31,6 +31,7 @@ namespace MineImatorSimplyRemade;
 [JsonSerializable(typeof(ProjectManifest))]
 [JsonSerializable(typeof(ProjectSceneObjectEntry))]
 [JsonSerializable(typeof(NxObjectManifest))]
+[JsonSerializable(typeof(NxFramesManifest))]
 [JsonSerializable(typeof(DataAssetRemapRules))]
 [JsonSerializable(typeof(ProjectAudioTrack))]
 [JsonSerializable(typeof(RecentProjectsState))]

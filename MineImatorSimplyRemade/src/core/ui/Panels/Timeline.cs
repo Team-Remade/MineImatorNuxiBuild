@@ -479,6 +479,7 @@ public partial class Timeline : UiPanel
             ImGui.OpenPopup("##kf_ctx");
         }
         RenderContextMenu();
+        RenderFramesTransfer();
 
         // Deferred add-keyframe menu popup
         if (_openAddKeyframeMenu)
@@ -2123,6 +2124,11 @@ public partial class Timeline : UiPanel
         if (ImGui.MenuItem(Localization.Label("text.panel.timeline.cut_keyframes", "Cut Keyframes"), Keybinds.Label("cut"), false, hasSelection)) CutSelectedKeyframes();
         if (ImGui.MenuItem(Localization.Label("text.panel.timeline.copy_keyframes", "Copy Keyframes"), Keybinds.Label("copy"), false, hasSelection)) CopySelectedKeyframes();
         if (ImGui.MenuItem(Localization.Label("text.panel.timeline.paste_keyframes", "Paste Keyframes"), Keybinds.Label("paste"), false, _keyframeClipboard.Count > 0)) PasteKeyframes(_contextFrame);
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.export_frames", "Export Selected Keyframes (.nxFrames)..."), "", false, hasSelection))
+            _exportFramesPending = true;
+        if (ImGui.MenuItem(Localization.Label("text.panel.timeline.import_frames", "Import Keyframes (.nxFrames)..."), "", false,
+                SelectionManager.Instance?.SelectedObjects.Count > 0))
+            _importFramesPending = true;
         if (ImGui.MenuItem(Localization.Label("text.panel.timeline.scale_selected_keyframe_speed_2", "Scale Selected Keyframe Speed..."), "", false, _selectedKeyframes.Count > 1))
         {
             _speedScaleSlowDown = true;

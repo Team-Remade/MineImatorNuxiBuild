@@ -428,7 +428,10 @@ public class MainWindow : Window
         if (viewport != null && propertiesPanel != null)
             propertiesPanel.Viewport = viewport;
         if (timeline != null)
+        {
             SelectionManager.Instance.Timeline = timeline;
+            timeline.KeyframesImporting += CaptureImportedKeyframeBaselines;
+        }
 
         if (viewport != null)
         {
@@ -2572,6 +2575,17 @@ public class MainWindow : Window
 
         foreach (SceneObject obj in SelectionManager.Instance.SelectedObjects)
             destination[obj] = ProjectSceneSerializer.CaptureObjectState(obj);
+    }
+
+    private void CaptureImportedKeyframeBaselines(IReadOnlyList<SceneObject> objects)
+    {
+        foreach (var obj in objects)
+        {
+            if (!_historyObjectBaselines.ContainsKey(obj))
+                _historyObjectBaselines[obj] = ProjectSceneSerializer.CaptureObjectState(obj);
+            if (_historyInteractionActive && !_activeHistoryObjectBaselines.ContainsKey(obj))
+                _activeHistoryObjectBaselines[obj] = _historyObjectBaselines[obj];
+        }
     }
 
     private static void PushHistoryAction(List<SceneHistoryAction> actions, SceneHistoryAction action)
