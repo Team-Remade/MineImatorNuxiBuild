@@ -137,6 +137,7 @@ internal sealed class SceneHistoryAction
                                       manifest.Settings.CloudTexture != settings.CloudTexture;
             manifest.ProjectName = projectState.Name;
             manifest.Settings = settings;
+            manifest.ObjectLibrary = projectState.ObjectLibrary;
             propertiesPanel?.LoadProjectSettingsFromManifest(manifest);
             if (skyTexturesChanged)
                 viewport.ReloadSkyTextures();
@@ -152,11 +153,12 @@ internal sealed class SceneHistoryAction
         return true;
     }
 
-    internal sealed record ProjectState(string Name, string SettingsJson)
+    internal sealed record ProjectState(string Name, string SettingsJson, List<ProjectSceneObjectEntry> ObjectLibrary)
     {
         public static ProjectState Capture(ProjectManifest manifest) => new(
             manifest.ProjectName,
-            JsonSerializer.Serialize(manifest.Settings, AppJsonContext.Default.ProjectRenderSettings));
+            JsonSerializer.Serialize(manifest.Settings, AppJsonContext.Default.ProjectRenderSettings),
+            manifest.ObjectLibrary);
     }
 
     internal sealed class HierarchyState

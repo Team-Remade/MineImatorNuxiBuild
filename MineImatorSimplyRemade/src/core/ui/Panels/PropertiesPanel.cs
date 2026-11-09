@@ -896,6 +896,12 @@ public partial class PropertiesPanel : UiPanel
             UiText.Disabled(Localization.Format("text.panel.properties.type_2", type));
             UiText.Disabled(Localization.Format("text.panel.properties.used_in_scene", usageCount));
 
+            if (ImGui.Button(Localization.Label("text.panel.properties.replace_asset", "Replace Asset")))
+                ReplaceLibraryAssetFromDialog(projectManager, selected);
+
+            if (!string.IsNullOrEmpty(_libraryReplacementMessage))
+                ImGui.TextWrapped(_libraryReplacementMessage);
+
             if (ImGui.Button(Localization.Label("text.panel.properties.create_in_scene_from_base", "Create In Scene From Base")))
             {
                 SceneObject? created = ProjectSceneSerializer.SpawnObjectFromEntry(selected, Viewport, SpawnMenu);

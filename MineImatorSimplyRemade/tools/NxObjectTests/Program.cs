@@ -23,6 +23,20 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--replace-asset-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                LibraryReplacementGraphics();
+                Console.WriteLine("PASS Library replacement imports, linked instances, seeking, persistence, undo and failure safety");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--wind-graphics", StringComparer.Ordinal) ||
             args.Contains("--wind-veldrid-graphics", StringComparer.Ordinal))
         {
@@ -222,6 +236,9 @@ internal static partial class Program
             ("Opaque leaf defaults, persistence, texture selection and pixels", OpaqueLeavesSettings),
             ("Textured sky defaults, project persistence and background animation", SkySettings),
             ("UI scale persistence, limits, fonts, metrics and independent contexts", UiScaleTests),
+            ("Library replacement matching, rest poses, values and independent keyframes", LibraryReplacementMapping),
+            ("Library replacement unmatched branches, ambiguity, ordering and references", LibraryReplacementRetention),
+            ("Library replacement library-only and scene undo/redo", LibraryReplacementHistory),
             ("Model part bundled catalogs, single-part exclusion and stable paths", ModelPartCatalogTests),
             ("MI import paths, points, references, sparse poses and repeated loads", MiImportPaths),
             ("MI import static current values and invalid path settings", MiImportStatic),
@@ -337,6 +354,8 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("MI import", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--model-parts", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Model part", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--replace-asset", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Library replacement", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--particles", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Particle", StringComparison.Ordinal) ||
                 test.Name.StartsWith("All 15 bundled particle", StringComparison.Ordinal)).ToArray();

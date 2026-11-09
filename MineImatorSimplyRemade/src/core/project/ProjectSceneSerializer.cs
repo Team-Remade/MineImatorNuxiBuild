@@ -656,7 +656,10 @@ public static class ProjectSceneSerializer
     {
         if (entry.SourceNodePath is { Count: > 0 })
             return parent.Children.FirstOrDefault(child => !usedChildren.Contains(child) &&
-                child.SourceNodePath != null && child.SourceNodePath.SequenceEqual(entry.SourceNodePath));
+                child.SourceNodePath != null && child.SourceNodePath.SequenceEqual(entry.SourceNodePath) &&
+                (string.IsNullOrEmpty(entry.SourceAssetPath) || string.Equals(
+                    ProjectManager.Instance.ResolveAssetPath(child.SourceAssetPath), ResolveSourcePath(entry),
+                    StringComparison.OrdinalIgnoreCase)));
 
         bool Eligible(SceneObject child) => !usedChildren.Contains(child) &&
             (!entry.RestoreExactChildren || child.SourceNodePath is not { Count: > 0 });
