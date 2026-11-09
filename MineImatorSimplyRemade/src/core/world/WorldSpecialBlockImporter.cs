@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using GlmSharp;
 using MineImatorSimplyRemade.core.mdl.mineImator;
+using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -146,14 +147,25 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
     {
         string key = $"{block.Model}|{block.Texture}|{(block.Name == "sticky_piston")}|{block.Property("attached")}";
         if (_models.TryGetValue(key, out string? cached)) return cached;
-        var entry = CharacterRegistry.Props.Concat(CharacterRegistry.Characters)
-            .FirstOrDefault(e => e.Name == block.Model && Path.GetExtension(e.FilePath) == ".mimodel") ??
-            throw new InvalidDataException($"The {block.Model} model is not installed. Install the Minecraft model catalog before importing this block.");
-        var document = JsonNode.Parse(File.ReadAllText(entry.FilePath), documentOptions: AppJsonContext.DocumentOptions) as JsonObject ??
-            throw new InvalidDataException($"Invalid model file for {block.Name}.");
-        string sourceDirectory = Path.GetDirectoryName(entry.FilePath)!;
+        bool mobHead = MobHeadBlockMesh.GetModelName(block.Name) != null;
+        string sourcePath;
+        JsonObject document;
+        CharacterEntry? entry = null;
+        if (mobHead)
+            document = MobHeadBlockMesh.ReadModelDocument(block.Name, out sourcePath);
+        else
+        {
+            entry = CharacterRegistry.Props.Concat(CharacterRegistry.Characters)
+                .FirstOrDefault(e => e.Name == block.Model && Path.GetExtension(e.FilePath) == ".mimodel") ??
+                throw new InvalidDataException($"The {block.Model} model is not installed. Install the Minecraft model catalog before importing this block.");
+            sourcePath = entry.FilePath;
+            document = JsonNode.Parse(File.ReadAllText(entry.FilePath), documentOptions: AppJsonContext.DocumentOptions) as JsonObject ??
+                throw new InvalidDataException($"Invalid model file for {block.Name}.");
+        }
+        string sourceDirectory = Path.GetDirectoryName(sourcePath)!;
         string? baseTexture = document["texture"]?.GetValue<string>();
-        string? replacement = block.Texture == null ? null : ResolveVariantTexture(entry, block.Texture);
+        string? replacement = block.Texture == null ? null : ResolveVariantTexture(
+            entry ?? new CharacterEntry { FilePath = sourcePath }, block.Texture);
         string snapshotDirectory = Path.Combine(_temporaryDirectory, _models.Count.ToString());
         Directory.CreateDirectory(snapshotDirectory);
         var textures = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -224,12 +236,6 @@ internal sealed class WorldSpecialBlockImporter(SpawnMenu spawnMenu, string reso
             return localName;
         }
 
-        if (block.Model == "mob_head" && !block.Name.StartsWith("player", StringComparison.Ordinal))
-        {
-            document["player_skin"] = false;
-            if (document["parts"]?[0]?["shapes"] is JsonArray shapes && shapes.Count > 1)
-                shapes.RemoveAt(1);
-        }
         Snapshot(document);
         document["minecraft_texture_keys"] = textureKeys;
         string snapshot = Path.Combine(snapshotDirectory, block.Model + ".mimodel");

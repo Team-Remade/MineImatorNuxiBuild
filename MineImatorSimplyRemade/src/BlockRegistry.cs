@@ -370,6 +370,8 @@ public static class BlockRegistry
     public static IReadOnlyList<BlockVariantEntry> GetVariants(string blockName, string resourcePackId = "")
     {
         blockName = NormalizeBlockName(blockName);
+        if (core.mdl.meshes.MobHeadBlockMesh.GetModelName(blockName) != null)
+            return core.mdl.meshes.MobHeadBlockMesh.GetVariants(blockName);
         foreach (string packId in MinecraftDataLoader.GetResourcePackStack(resourcePackId))
             if (_externalVariants.TryGetValue((packId, blockName), out var selected) ||
                 (blockName == "short_grass" && _externalVariants.TryGetValue((packId, "grass"), out selected)))

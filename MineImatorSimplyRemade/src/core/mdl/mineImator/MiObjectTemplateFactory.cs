@@ -140,7 +140,9 @@ public static class MiObjectTemplateFactory
         void AddMeshes(BlockVariantEntry entry, vec3 offset)
         {
             var resolved = string.IsNullOrEmpty(entry.ModelPath) ? null : BlockRegistry.ResolveModel(entry.ModelPath, "", name);
-            var meshes = !string.IsNullOrEmpty(entry.CemPath)
+            var meshes = MobHeadBlockMesh.GetModelName(name) != null
+                ? MobHeadBlockMesh.Build(gl, name, entry, tileX: obj.TileX, tileY: obj.TileY, tileZ: obj.TileZ)
+                : !string.IsNullOrEmpty(entry.CemPath)
                 ? CemLoader.Load(gl, entry.CemPath, MinecraftDataLoader.GetVersionRoot(), "")
                 : resolved != null
                     ? MinecraftModelMesh.Build(gl, resolved, entry.RotationX, entry.RotationY,

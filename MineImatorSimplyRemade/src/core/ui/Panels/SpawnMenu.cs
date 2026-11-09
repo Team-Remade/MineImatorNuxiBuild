@@ -1033,7 +1033,9 @@ public class SpawnMenu : UiPanel
             resolved = BlockRegistry.ResolveModel(variant.ModelPath, _spawnResourcePackId, blockName);
 
         List<Mesh> built;
-        if (!string.IsNullOrEmpty(variant.CemPath))
+        if (MobHeadBlockMesh.GetModelName(blockName) != null)
+            built = MobHeadBlockMesh.Build(Gl, blockName, variant, textureSourceId);
+        else if (!string.IsNullOrEmpty(variant.CemPath))
         {
             built = CemLoader.Load(Gl, variant.CemPath, BlockRegistry.VersionRoot, textureSourceId);
             PreserveAtlasTextureKeys(built);
@@ -4036,7 +4038,8 @@ public class SpawnMenu : UiPanel
 
     private CubeFaceSet? TryBuildCullableCubeFaces(BlockVariantEntry variant, string blockName)
     {
-        if (!string.IsNullOrEmpty(variant.CemPath) || variant.TopHalf != null || variant.RotationX != 0)
+        if (MobHeadBlockMesh.GetModelName(blockName) != null ||
+            !string.IsNullOrEmpty(variant.CemPath) || variant.TopHalf != null || variant.RotationX != 0)
             return null;
 
         if (string.IsNullOrEmpty(variant.ModelPath))
@@ -6678,7 +6681,9 @@ public class SpawnMenu : UiPanel
             resolved = BlockRegistry.ResolveModel(variant.ModelPath, resourcePackId, obj.ObjectType);
 
         List<Mesh> meshes;
-        if (!string.IsNullOrEmpty(variant.CemPath))
+        if (MobHeadBlockMesh.GetModelName(obj.ObjectType) != null)
+            meshes = MobHeadBlockMesh.Build(Gl!, obj.ObjectType, variant, resourcePackId, tileX, tileY, tileZ);
+        else if (!string.IsNullOrEmpty(variant.CemPath))
         {
             meshes = CemLoader.Load(Gl!, variant.CemPath, BlockRegistry.VersionRoot, resourcePackId);
             PreserveAtlasTextureKeys(meshes);

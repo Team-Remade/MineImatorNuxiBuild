@@ -181,18 +181,13 @@ internal static class WorldSpecialBlocks
             }
             else if (name.EndsWith("_head", StringComparison.Ordinal) || name.EndsWith("_skull", StringComparison.Ordinal))
             {
-                model = name.StartsWith("dragon", StringComparison.Ordinal) ? "dragon_head" :
-                    name.StartsWith("piglin", StringComparison.Ordinal) ? "piglin_head" : "mob_head";
-                if (model == "mob_head")
-                    texture = name.StartsWith("player", StringComparison.Ordinal) ? "textures\\entity\\steve.png" :
-                        name.StartsWith("wither_skeleton", StringComparison.Ordinal) ? "textures\\entity\\wither_skeleton.png" :
-                        $"textures\\entity\\{name.Split('_')[0]}.png";
+                model = MineImatorSimplyRemade.core.mdl.meshes.MobHeadBlockMesh.GetModelName(name);
                 if (name.Contains("_wall_", StringComparison.Ordinal))
                 {
                     var direction = Direction(state.Get("facing"));
                     position += new vec3(-direction.X * 0.25f, 0.25f, -direction.Z * 0.25f);
                 }
-                else rotation.y = 180 - Number(state.Get("rotation")) * 22.5f;
+                else rotation.y = -Number(state.Get("rotation")) * 22.5f;
             }
             else if (name == "lever")
             {

@@ -373,10 +373,7 @@ public class MineImatorLoader
 
             model.DirectoryPath = Path.GetDirectoryName(modelPath);
             model.FullPath = modelPath;
-            NormalizeTextureSizeSquare(model.TextureSize);
-
-            if (model.Parts != null)
-                NormalizePartAndShapeTextureSizes(model.Parts, model.TextureSize);
+            NormalizeModelTextureSizes(model);
 
             _modelCache[modelPath] = model;
             return model;
@@ -627,6 +624,13 @@ public class MineImatorLoader
         }
 
         return true;
+    }
+
+    internal static void NormalizeModelTextureSizes(MiModel model)
+    {
+        NormalizeTextureSizeSquare(model.TextureSize);
+        if (model.Parts != null)
+            NormalizePartAndShapeTextureSizes(model.Parts, model.TextureSize);
     }
 
     private static void NormalizeTextureSizeSquare(int[]? textureSize)
