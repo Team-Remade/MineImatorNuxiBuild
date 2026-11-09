@@ -3209,7 +3209,7 @@ public class SpawnMenu : UiPanel
                             foreach (var template in largePlacement.Info.Templates)
                             {
                                 var acc = GetOrCreateAccumulator(merged, template.TextureId, largePlacement.Info.AutoEmissionLevel, template.Tint,
-                                    template.MinecraftTextureKey, template.MinecraftItemTexture, template.BiomeTint, template.TerrainWindKind);
+                                    template.MinecraftTextureKey, template.MinecraftItemTexture, template.BiomeTint, template.TerrainWindKind, template.EndPortalSurface);
                                 AppendTemplate(acc, template, largePlacement.Px, largePlacement.Py, largePlacement.Pz);
                             }
 
@@ -3273,7 +3273,7 @@ public class SpawnMenu : UiPanel
                         foreach (var template in info.Templates)
                         {
                             var acc = GetOrCreateAccumulator(merged, template.TextureId, info.AutoEmissionLevel, template.Tint,
-                                template.MinecraftTextureKey, template.MinecraftItemTexture, template.BiomeTint, template.TerrainWindKind);
+                                template.MinecraftTextureKey, template.MinecraftItemTexture, template.BiomeTint, template.TerrainWindKind, template.EndPortalSurface);
                             AppendTemplate(acc, template, px, py, pz);
                         }
                     }
@@ -3306,6 +3306,7 @@ public class SpawnMenu : UiPanel
                     TextureId = textureId,
                     MinecraftTextureKey = kv.Key.MinecraftTextureKey,
                     TerrainWindKind = kv.Key.TerrainWindKind,
+                    EndPortalSurface = kv.Key.EndPortalSurface,
                     MinecraftItemTexture = kv.Key.MinecraftItemTexture,
                     BaseTint = kv.Key.Tint,
                     Albedo = kv.Key.Tint,
@@ -3543,9 +3544,10 @@ public class SpawnMenu : UiPanel
         public readonly bool MinecraftItemTexture;
         public readonly BiomeTintKind BiomeTint;
         public readonly int TerrainWindKind;
+        public readonly bool EndPortalSurface;
 
         public MeshBatchKey(uint textureId, byte autoEmissionLevel, vec3 tint,
-                            string minecraftTextureKey, bool minecraftItemTexture, BiomeTintKind biomeTint, int terrainWindKind)
+                            string minecraftTextureKey, bool minecraftItemTexture, BiomeTintKind biomeTint, int terrainWindKind, bool endPortalSurface)
         {
             TextureId = textureId;
             AutoEmissionLevel = autoEmissionLevel;
@@ -3554,17 +3556,18 @@ public class SpawnMenu : UiPanel
             MinecraftItemTexture = minecraftItemTexture;
             BiomeTint = biomeTint;
             TerrainWindKind = terrainWindKind;
+            EndPortalSurface = endPortalSurface;
         }
 
         public bool Equals(MeshBatchKey other) =>
             TextureId == other.TextureId && AutoEmissionLevel == other.AutoEmissionLevel && Tint == other.Tint &&
             MinecraftTextureKey == other.MinecraftTextureKey && MinecraftItemTexture == other.MinecraftItemTexture &&
-            BiomeTint == other.BiomeTint && TerrainWindKind == other.TerrainWindKind;
+            BiomeTint == other.BiomeTint && TerrainWindKind == other.TerrainWindKind && EndPortalSurface == other.EndPortalSurface;
 
         public override bool Equals(object? obj) => obj is MeshBatchKey other && Equals(other);
 
         public override int GetHashCode() => HashCode.Combine(TextureId, AutoEmissionLevel, Tint,
-            MinecraftTextureKey, MinecraftItemTexture, BiomeTint, TerrainWindKind);
+            MinecraftTextureKey, MinecraftItemTexture, BiomeTint, TerrainWindKind, EndPortalSurface);
     }
 
     private sealed class MeshTemplate
@@ -3573,6 +3576,7 @@ public class SpawnMenu : UiPanel
         public string MinecraftTextureKey = "";
         public bool MinecraftItemTexture;
         public int TerrainWindKind;
+        public bool EndPortalSurface;
         public vec3 Tint = new(1f);
         public BiomeTintKind BiomeTint;
         public vec3[] Vertices = Array.Empty<vec3>();
@@ -4038,6 +4042,7 @@ public class SpawnMenu : UiPanel
 
     private CubeFaceSet? TryBuildCullableCubeFaces(BlockVariantEntry variant, string blockName)
     {
+        if (MinecraftModelMesh.IsEndPortalBlock(blockName)) return null;
         if (MobHeadBlockMesh.GetModelName(blockName) != null ||
             !string.IsNullOrEmpty(variant.CemPath) || variant.TopHalf != null || variant.RotationX != 0)
             return null;
@@ -4200,6 +4205,7 @@ public class SpawnMenu : UiPanel
                 TextureId = mesh.TextureId,
                 MinecraftTextureKey = mesh.MinecraftTextureKey,
                 TerrainWindKind = mesh.EffectiveWindKind,
+                EndPortalSurface = mesh.EndPortalSurface,
                 MinecraftItemTexture = mesh.MinecraftItemTexture,
                 Tint = mesh.Albedo,
                 BiomeTint = mesh.BiomeTint,
@@ -4400,9 +4406,10 @@ public class SpawnMenu : UiPanel
         string minecraftTextureKey,
         bool minecraftItemTexture = false,
         BiomeTintKind biomeTint = BiomeTintKind.None,
-        int terrainWindKind = 0)
+        int terrainWindKind = 0,
+        bool endPortalSurface = false)
     {
-        var key = new MeshBatchKey(textureId, autoEmissionLevel, tint, minecraftTextureKey, minecraftItemTexture, biomeTint, terrainWindKind);
+        var key = new MeshBatchKey(textureId, autoEmissionLevel, tint, minecraftTextureKey, minecraftItemTexture, biomeTint, terrainWindKind, endPortalSurface);
         if (!merged.TryGetValue(key, out var acc))
         {
             acc = new MeshAccumulator

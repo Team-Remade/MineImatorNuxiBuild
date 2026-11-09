@@ -128,6 +128,8 @@ public class Mesh : IDisposable
     /// Leave empty (default) for static textures.
     /// </summary>
     public string AnimationKey = "";
+    public bool EndPortalSurface;
+    public static float EffectTime;
 
     /// <summary>Logical atlas key used to resolve independently selected Minecraft material maps.</summary>
     public string MinecraftTextureKey = "";
@@ -851,6 +853,7 @@ public class Mesh : IDisposable
         clone.Indices = Indices != null ? (uint[])Indices.Clone() : null;
 
         clone.AnimationKey        = AnimationKey;
+        clone.EndPortalSurface = EndPortalSurface;
         clone.MinecraftTextureKey = MinecraftTextureKey;
         clone.TerrainWindKind = TerrainWindKind;
         clone.AffectedByWind = AffectedByWind;
@@ -1373,6 +1376,8 @@ public class Mesh : IDisposable
         SetUniformBool("uAlphaClipEnabled", AlphaMode == MaterialAlphaMode.Clip);
         SetUniformFloat("uAlphaClipThreshold", AlphaClipThreshold);
         SetUniformBool("uEmissionEnabled", EmissionEnabled);
+        SetUniformBool("uEndPortalSurface", EndPortalSurface);
+        SetUniformFloat("uEffectTime", EffectTime);
         SetUniformVec3("uEmissionColor", EmissionColor);
         SetUniformFloat("uEmissionEnergy", EmissionEnergy);
         SetUniformBool("uEmissionIndirectOnly", EmissionIndirectOnly);

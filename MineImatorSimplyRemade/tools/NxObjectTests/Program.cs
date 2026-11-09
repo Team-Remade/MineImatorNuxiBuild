@@ -23,6 +23,21 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--end-portals-graphics", StringComparer.Ordinal) ||
+            args.Contains("--end-portals-veldrid-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                EndPortalGraphics(args.Contains("--end-portals-veldrid-graphics", StringComparer.Ordinal));
+                Console.WriteLine("PASS End portal/gateway geometry, import batches, rebuilding, shader pixels and deterministic animation");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--mob-heads-graphics", StringComparer.Ordinal))
         {
             try

@@ -32,9 +32,10 @@ public class Shader : IDisposable
         if (stream == null) throw new FileNotFoundException($"Shader not found: {shaderName}");
         using StreamReader reader = new StreamReader(stream);
         string source = reader.ReadToEnd();
-        return source.Contains("#include \"wind.glsl\"", StringComparison.Ordinal)
-            ? source.Replace("#include \"wind.glsl\"", LoadShaderSource("wind.glsl"), StringComparison.Ordinal)
-            : source;
+        foreach (string include in new[] { "wind.glsl", "end_portal.glsl" })
+            if (source.Contains($"#include \"{include}\"", StringComparison.Ordinal))
+                source = source.Replace($"#include \"{include}\"", LoadShaderSource(include), StringComparison.Ordinal);
+        return source;
     }
 
     /// <summary>

@@ -46,6 +46,9 @@ uniform bool  uUseShadowMap;
 uniform float uShadowBlurStrength;
 
 uniform bool  uIsUnlit;
+uniform bool  uEndPortalSurface;
+uniform float uEffectTime;
+#include "end_portal.glsl"
 uniform vec3 uCameraPosition, uFogColor, uHeightFogColor;
 uniform bool uFogEnabled, uHeightFogEnabled;
 uniform float uFogDistance, uFogFadeSize, uFogHeight, uHeightFogSize, uHeightFogOffset;
@@ -489,7 +492,7 @@ void main() {
         return;
     }
 
-    bool pbr = uPbrEnabled && !uIsUnlit && !uIsTextAlphaMask;
+    bool pbr = uPbrEnabled && !uIsUnlit && !uIsTextAlphaMask && !uEndPortalSurface;
     // Derivatives must be evaluated before the alpha discard, including for cutouts.
     vec3 vertexNormal = pbr ? safeDirection(vNormal, vec3(0.0, 1.0, 0.0)) : normalize(vNormal);
     if (!uIsUnlit && uBendEnabled && uBendSharp) {
@@ -515,6 +518,11 @@ void main() {
     }
     if (uUseEmissionTexture)
         emissionMask = pbr ? textureGrad(uEmissionTexture, uv, uvDx, uvDy).rgb : texture(uEmissionTexture, vTexCoord).rgb;
+    if (uEndPortalSurface) {
+        baseColor = endPortalColor(vFragPos, uCameraPosition, vertexNormal, uEffectTime) * uAlbedo;
+        emissionMask = baseColor;
+        alpha = 1.0;
+    }
     if (uUseAlphaMask) {
         vec4 textMask = texture(uAlphaMask, vTexCoord);
         if (uIsTextAlphaMask && textMask.a > 0.0) {
@@ -549,7 +557,7 @@ void main() {
     float giVisibility = uIsUnlit ? 0.0 : 1.0 - clamp(uMetallic, 0.0, 1.0);
     if (pbr) giVisibility = (1.0 - metallic) * occlusion;
 
-    if (!uIsUnlit) {
+    if (!uIsUnlit && !uEndPortalSurface) {
     vec3 norm    = gl_FrontFacing ? vertexNormal : -vertexNormal;
     vec3 sunDir  = pbr ? safeDirection(uLightDir, norm) : normalize(uLightDir);
     float diff   = max(dot(norm, sunDir), 0.0);
@@ -690,6 +698,7 @@ void main() {
         result += baseColor * pointIndirectSum * max(uIndirectWorldStrength, 0.0) * (pbr ? (1.0 - metallic) * occlusion : 1.0);
     }
     }
+    if (uEndPortalSurface) bounceSource = toLinear(baseColor);
     if (uEmissionEnabled) {
         vec3 emission = (uEmissionColor * emissionMask) * max(uEmissionEnergy, 0.0);
         if (pbr) emission = toLinear(uEmissionColor) * toLinear(emissionMask) * max(uEmissionEnergy, 0.0);

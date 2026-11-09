@@ -39,6 +39,7 @@ public sealed class VeldridSceneRenderer : IDisposable
     private Veldrid.Texture? _staging;
     private byte[] _pixels = Array.Empty<byte>();
     private mat4 _viewProjection;
+    private vec3 _cameraPosition;
     private bool _wireframe, _recording, _disposed, _hasDraws;
     private double _animationTime;
 
@@ -49,6 +50,7 @@ public sealed class VeldridSceneRenderer : IDisposable
         public vec4 Albedo, Blend, Mix, Emission, Ambient, LightColor, LightDirection, Options, MapOptions;
         public vec4 WindParameters, WindOptions;
         public vec4 UvTransform, UvAnimationMirror;
+        public vec4 PortalOptions, PortalCamera;
     }
 
     public VeldridSceneRenderer(GraphicsDevice device, GL gl)
@@ -82,6 +84,8 @@ public sealed class VeldridSceneRenderer : IDisposable
                 vec4 WindOptions;
                 vec4 UvTransform;
                 vec4 UvAnimationMirror;
+                vec4 PortalOptions;
+                vec4 PortalCamera;
             };
             """;
         string wind = """
@@ -118,7 +122,8 @@ public sealed class VeldridSceneRenderer : IDisposable
                 vWorldPosition = (Model * position).xyz;
             }
             """;
-        string fragment = "#version 450\n" + uniforms + """
+        string fragment = "#version 450\n" + uniforms +
+            MineImatorSimplyRemade.core.mdl.Shader.LoadShaderSource("end_portal.glsl") + "\n" + """
             layout(set = 0, binding = 1) uniform texture2D AlbedoTexture;
             layout(set = 0, binding = 2) uniform texture2D AlphaTexture;
             layout(set = 0, binding = 3) uniform texture2D NormalTexture;
@@ -151,6 +156,8 @@ public sealed class VeldridSceneRenderer : IDisposable
             }
             void main() {
                 vec4 texel = texture(sampler2D(AlbedoTexture, SurfaceSampler), vUv);
+                if (PortalOptions.x > 0.5)
+                    texel = vec4(endPortalColor(vWorldPosition, PortalCamera.xyz, vNormal, PortalOptions.y), 1.0);
                 vec4 mask = texture(sampler2D(AlphaTexture, SurfaceSampler), vUv);
                 vec3 base = mix(texel.rgb * Albedo.rgb * Blend.rgb, Mix.rgb, clamp(Mix.a, 0.0, 1.0));
                 float alpha = texel.a * mask.a * Albedo.a * Blend.a;
@@ -162,7 +169,8 @@ public sealed class VeldridSceneRenderer : IDisposable
                 vec3 light = Ambient.rgb + LightColor.rgb * max(dot(normal, normalize(LightDirection.xyz)), 0.0);
                 vec3 emissionMask = MapOptions.y > 0.5
                     ? texture(sampler2D(EmissionTexture, SurfaceSampler), vUv).rgb : texel.rgb;
-                vec3 result = Options.x > 0.5 ? base : base * light + Emission.rgb * emissionMask;
+                vec3 result = Options.x > 0.5 || PortalOptions.x > 0.5 ? base : base * light + Emission.rgb * emissionMask;
+                if (PortalOptions.x > 0.5 && Options.x < 0.5) result += Emission.rgb * emissionMask;
                 if (Options.w > 0.5) result *= alpha;
                 Color = vec4(result, alpha);
             }
@@ -210,6 +218,7 @@ public sealed class VeldridSceneRenderer : IDisposable
             _pixels = new byte[checked((int)(width * height * 4))];
         }
         _viewProjection = projection * view;
+        _cameraPosition = (view.Inverse * new vec4(0, 0, 0, 1)).xyz;
         _wireframe = wireframe;
         _hasDraws = false;
         if (Mesh.AdvanceAnimatedTextures)
@@ -276,6 +285,8 @@ public sealed class VeldridSceneRenderer : IDisposable
                 mesh.AlphaMode == MaterialAlphaMode.Clip ? 1 : 0, mesh.AlphaClipThreshold),
             WindParameters = Mesh.Wind.Parameters,
             WindOptions = new vec4(Mesh.Wind.Heading, mesh.WindKind, mesh.WindActive ? 1f : 0f),
+            PortalOptions = new vec4(mesh.EndPortalSurface ? 1 : 0, Mesh.EffectTime, 0, 0),
+            PortalCamera = new vec4(_cameraPosition, 0),
             UvTransform = new vec4(mesh.TextureOffset.x, mesh.TextureOffset.y, mesh.TextureRepeat.x, mesh.TextureRepeat.y),
             UvAnimationMirror = new vec4(scaleV, offsetV, mesh.TextureMirror.x ? 1f : 0f, mesh.TextureMirror.y ? 1f : 0f)
         };

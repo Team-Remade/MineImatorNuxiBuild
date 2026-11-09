@@ -327,6 +327,9 @@ public static class MinecraftModelMesh
         tileY = ClampTileCount(tileY);
         tileZ = ClampTileCount(tileZ);
 
+        if (IsEndPortalBlock(blockName))
+            return [BuildEndPortal(gl, blockName, tileX, tileY, tileZ, variantRotX, variantRotY)];
+
         if (model.Elements.Count == 0)
         {
             // Model has no geometry elements (e.g. only references a builtin parent).
@@ -454,7 +457,43 @@ public static class MinecraftModelMesh
                                                  string resourcePackId = "",
                                                  int tileX = 1, int tileY = 1, int tileZ = 1)
     {
+        if (IsEndPortalBlock(blockNameHint))
+            return BuildEndPortal(gl, blockNameHint!, tileX, tileY, tileZ);
         return BuildTiledFallbackCube(gl, model, blockNameHint, resourcePackId, tileX, tileY, tileZ);
+    }
+
+    public static bool IsEndPortalBlock(string? blockName) =>
+        string.Equals(blockName, "end_portal", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(blockName, "end_gateway", StringComparison.OrdinalIgnoreCase);
+
+    private static Mesh BuildEndPortal(GL gl, string blockName, int tileX, int tileY, int tileZ,
+        int rotationX = 0, int rotationY = 0)
+    {
+        tileX = ClampTileCount(tileX);
+        tileY = ClampTileCount(tileY);
+        tileZ = ClampTileCount(tileZ);
+        Mesh mesh;
+        if (string.Equals(blockName, "end_gateway", StringComparison.OrdinalIgnoreCase))
+            mesh = BuildTiledUntexturedCube(gl, tileX, tileY, tileZ);
+        else
+        {
+            mesh = new Mesh(gl);
+            vec2[] uvs = [new(0, 0), new(1, 0), new(1, 1), new(0, 1)];
+            for (int z = 0; z < tileZ; z++)
+            for (int y = 0; y < tileY; y++)
+            for (int x = 0; x < tileX; x++)
+                AppendCubeFaceIfExternal(mesh, "up", new vec3(x, y - 0.25f, z), false, uvs);
+        }
+        mesh.EndPortalSurface = true;
+        mesh.AutoEmissionLevel = 15;
+        var transform = BuildVariantTransform(rotationX, rotationY);
+        for (int i = 0; i < mesh.Vertices.Count; i++)
+        {
+            mesh.Vertices[i] = (transform * new vec4(mesh.Vertices[i], 1)).xyz;
+            mesh.Normals[i] = (transform * new vec4(mesh.Normals[i], 0)).xyz;
+        }
+        mesh.Upload();
+        return mesh;
     }
 
     /// <summary>

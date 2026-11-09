@@ -1199,6 +1199,7 @@ public partial class Viewport : UiPanel
     private (vec3 Sun, vec3 Moon, vec3 Fog) PrepareSceneEnvironment(Camera camera)
     {
         Mesh.GlobalCameraPosition = camera.Position;
+        Mesh.EffectTime = GetTimelineEffectTimeSeconds();
         var p = PropertiesPanel;
         if (p == null) return (vec3.Zero, vec3.Zero, vec3.Zero);
         Mesh.Wind = new WindSettings(p.WindEnabled, p.WindSpeed, p.WindStrength, p.WindDirection,
