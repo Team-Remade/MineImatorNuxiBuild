@@ -153,6 +153,9 @@ public class CameraSceneObject : SceneObject
             case CameraEffectType.LensDirt:
                 Effects.Add(new CameraEffect { Type = CameraEffectType.LensDirt });
                 break;
+            case CameraEffectType.Vignette:
+                Effects.Add(new CameraEffect { Type = CameraEffectType.Vignette });
+                break;
         }
     }
 
@@ -164,6 +167,7 @@ public class CameraSceneObject : SceneObject
             DepthOfField = source.DepthOfField.Clone(),
             Bloom = source.Bloom.Clone(),
             LensDirt = source.LensDirt.Clone(),
+            Vignette = source.Vignette.Clone(),
             ColorCorrection = source.ColorCorrection.Clone(),
             Shake = new CameraShakeSettings
             {

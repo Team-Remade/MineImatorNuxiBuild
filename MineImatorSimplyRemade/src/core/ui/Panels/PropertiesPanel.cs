@@ -328,7 +328,7 @@ public partial class PropertiesPanel : UiPanel
 
     // Scale link toggle
     private bool _linkScale = true;
-    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction", "Lens Dirt" };
+    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction", "Lens Dirt", "Vignette" };
     private static readonly string[] CameraShakeModeOptions = { "Rotational", "Positional", "Both" };
     private static readonly string[] BloomBlendModeOptions =
         ["text.panel.properties.blend_normal", "text.panel.properties.blend_add", "text.panel.properties.blend_screen",
@@ -1234,6 +1234,7 @@ public partial class PropertiesPanel : UiPanel
                     DepthOfField = effect.DepthOfField.Clone(),
                     Bloom = effect.Bloom.Clone(),
                     LensDirt = effect.LensDirt.Clone(),
+                    Vignette = effect.Vignette.Clone(),
                     ColorCorrection = effect.ColorCorrection.Clone(),
                     Shake = new ProjectCameraShakeSettings
                     {
@@ -5285,6 +5286,7 @@ public partial class PropertiesPanel : UiPanel
                             CameraEffectType.Bloom => Localization.T("text.panel.properties.bloom") + $"###Bloom##cameraEffect{i}",
                             CameraEffectType.ColorCorrection => Localization.T("text.panel.properties.color_correction") + $"###Color Correction##cameraEffect{i}",
                             CameraEffectType.LensDirt => Localization.T("text.panel.properties.lens_dirt") + $"###Lens Dirt##cameraEffect{i}",
+                            CameraEffectType.Vignette => Localization.T("text.panel.properties.vignette") + $"###Vignette##cameraEffect{i}",
                             _ => Localization.Format("text.panel.properties.effect", i + 1) + $"###Effect {i + 1}##cameraEffect{i}"
                         };
 
@@ -5441,6 +5443,9 @@ public partial class PropertiesPanel : UiPanel
 
                             if (effect.Type == CameraEffectType.LensDirt)
                                 DrawLensDirtControls(cameraObject, i);
+
+                            if (effect.Type == CameraEffectType.Vignette)
+                                DrawVignetteControls(cameraObject, i);
 
                             if (effect.Type == CameraEffectType.ColorCorrection)
                             {
@@ -6432,6 +6437,40 @@ public partial class PropertiesPanel : UiPanel
         }
     }
 
+    private void DrawVignetteControls(CameraSceneObject camera, int index)
+    {
+        ImGui.PushID(index);
+        var settings = camera.Effects[index].Vignette;
+        string basePath = $"camera.effect.{index}.vignette";
+        foreach (var control in VignetteSettings.Controls)
+        {
+            if (control.Key.StartsWith("color.", StringComparison.Ordinal))
+                continue;
+            float value = settings.GetValue(control.Key);
+            if (ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value,
+                control.Min, control.Max, "%.1f%%", ImGuiSliderFlags.AlwaysClamp))
+            {
+                settings.SetValue(control.Key, value);
+                Timeline?.RecordAutoKeyframe(camera, $"{basePath}.{control.Key}");
+                ProjectManager.Instance.SetDirty(true);
+            }
+            RegisterPropertyContext($"{basePath}.{control.Key}");
+        }
+        var color = new Vector3(settings.ColorR, settings.ColorG, settings.ColorB);
+        if (ImGui.ColorEdit3(Localization.Label("text.common.color", "Color##vignette"), ref color, ImGuiColorEditFlags.NoInputs))
+        {
+            settings.SetValue("color.r", color.X);
+            settings.SetValue("color.g", color.Y);
+            settings.SetValue("color.b", color.Z);
+            Timeline?.RecordAutoKeyframe(camera, $"{basePath}.color.r");
+            Timeline?.RecordAutoKeyframe(camera, $"{basePath}.color.g");
+            Timeline?.RecordAutoKeyframe(camera, $"{basePath}.color.b");
+            ProjectManager.Instance.SetDirty(true);
+        }
+        RegisterPropertyContext($"{basePath}.color.r", $"{basePath}.color.g", $"{basePath}.color.b");
+        ImGui.PopID();
+    }
+
     private void DrawLensDirtControls(CameraSceneObject camera, int index)
     {
         ImGui.PushID(index);
@@ -7231,6 +7270,11 @@ public partial class PropertiesPanel : UiPanel
                         else if (parts[3] == "lens_dirt")
                         {
                             var control = LensDirtSettings.Controls.First(c => c.Key == parts[4]);
+                            stored = Math.Clamp(number, control.Min, control.Max);
+                        }
+                        else if (parts[3] == "vignette")
+                        {
+                            var control = VignetteSettings.Controls.First(c => c.Key == string.Join('.', parts.Skip(4)));
                             stored = Math.Clamp(number, control.Min, control.Max);
                         }
                         else if (parts[3] == "film_grain")

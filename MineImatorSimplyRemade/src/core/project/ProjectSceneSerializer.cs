@@ -1434,6 +1434,7 @@ public static class ProjectSceneSerializer
             DepthOfField = effect.DepthOfField.Clone(),
             Bloom = effect.Bloom.Clone(),
             LensDirt = dirt,
+            Vignette = effect.Vignette.Clone(),
             ColorCorrection = effect.ColorCorrection.Clone(),
             Shake = new ProjectCameraShakeSettings
             {
@@ -1462,6 +1463,7 @@ public static class ProjectSceneSerializer
             DepthOfField = effect.DepthOfField?.Clone() ?? new DepthOfFieldSettings(),
             Bloom = effect.Bloom?.Clone() ?? new BloomSettings(),
             LensDirt = dirt,
+            Vignette = effect.Vignette?.Clone() ?? new VignetteSettings(),
             ColorCorrection = effect.ColorCorrection?.Clone() ?? new ColorCorrectionSettings(),
             Shake = new CameraShakeSettings
             {

@@ -274,6 +274,7 @@ public partial class Viewport : UiPanel
     private Shader? _antiAliasingShader;
     private Shader? _colorManagementShader;
     private Shader? _colorCorrectionShader;
+    private Shader? _vignetteShader;
     private bool _colorManagementHdr;
     private bool _previewColorManagementHdr;
     private Shader? _depthOfFieldShader;
@@ -2177,6 +2178,11 @@ public partial class Viewport : UiPanel
             return;
 
         DisposeLensDirtResources();
+        if (_vignetteShader != null)
+        {
+            _vignetteShader.Dispose();
+            _vignetteShader = null;
+        }
         DeleteFramebuffer(ref _fbo);
         DeleteTexture(ref _colorTex);
         DeleteTexture(ref _depthTex);
@@ -3026,6 +3032,7 @@ public partial class Viewport : UiPanel
                 ApplyLensDirtPass(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, activeCamObj);
                 ApplyColorManagementPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel, activeCamObj);
                 ApplyColorCorrectionPass(_fbo, _glowFbo, _glowTex, w, h, activeCamObj);
+                ApplyVignettePass(_fbo, _glowFbo, _glowTex, w, h, activeCamObj);
                 ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel);
                 ApplyFilmGrainPass(_fbo, _colorTex, _glowFbo, _glowTex, w, h, activeCamObj);
             }
@@ -3497,6 +3504,7 @@ public partial class Viewport : UiPanel
         {
             ApplyColorManagementPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel, activeCamObj);
             ApplyColorCorrectionPass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
+            ApplyVignettePass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
             ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel);
         }
 
@@ -6758,6 +6766,58 @@ public partial class Viewport : UiPanel
         }
     }
 
+    private void ApplyVignettePass(uint sceneFbo, uint scratchFbo, uint scratchTexture,
+        uint width, uint height, CameraSceneObject? camera)
+    {
+        if (Gl == null || camera == null || width == 0 || height == 0 ||
+            sceneFbo == 0 || scratchFbo == 0 || scratchTexture == 0)
+            return;
+
+        foreach (var effect in camera.Effects)
+        {
+            if (effect.Type != CameraEffectType.Vignette || effect.Vignette.Strength <= 0f ||
+                effect.Vignette.Radius >= 100f)
+                continue;
+            if (_vignetteShader == null)
+            {
+                _vignetteShader = new Shader(Gl);
+                _vignetteShader.CompileShader("edge.vert", "vignette.frag");
+            }
+            var settings = effect.Vignette;
+            bool depthTest = Gl.IsEnabled(GLEnum.DepthTest);
+            bool cullFace = Gl.IsEnabled(GLEnum.CullFace);
+            bool blend = Gl.IsEnabled(GLEnum.Blend);
+            Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
+            Gl.ReadBuffer(GLEnum.ColorAttachment0);
+            Gl.BindFramebuffer(GLEnum.DrawFramebuffer, scratchFbo);
+            Gl.DrawBuffer(GLEnum.ColorAttachment0);
+            Gl.BlitFramebuffer(0, 0, (int)width, (int)height, 0, 0, (int)width, (int)height,
+                ClearBufferMask.ColorBufferBit, GLEnum.Nearest);
+            Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
+            Gl.DrawBuffer(GLEnum.ColorAttachment0);
+            Gl.Disable(GLEnum.DepthTest);
+            Gl.Disable(GLEnum.CullFace);
+            Gl.Disable(GLEnum.Blend);
+            Gl.Viewport(0, 0, width, height);
+            Gl.UseProgram(_vignetteShader.ShaderProgram);
+            Gl.ActiveTexture(GLEnum.Texture0);
+            Gl.BindTexture(GLEnum.Texture2D, scratchTexture);
+            Gl.Uniform1(_vignetteShader.GetUniformLocation("uScene"), 0);
+            Gl.Uniform2(_vignetteShader.GetUniformLocation("uResolution"), (float)width, (float)height);
+            Gl.Uniform1(_vignetteShader.GetUniformLocation("uRadius"), settings.Radius);
+            Gl.Uniform1(_vignetteShader.GetUniformLocation("uSoftness"), settings.Softness);
+            Gl.Uniform1(_vignetteShader.GetUniformLocation("uStrength"), settings.Strength);
+            Gl.Uniform3(_vignetteShader.GetUniformLocation("uColor"), settings.ColorR, settings.ColorG, settings.ColorB);
+            Gl.BindVertexArray(_edgeVao);
+            Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+            Gl.BindVertexArray(0);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+            if (depthTest) Gl.Enable(GLEnum.DepthTest);
+            if (cullFace) Gl.Enable(GLEnum.CullFace);
+            if (blend) Gl.Enable(GLEnum.Blend);
+        }
+    }
+
     private void ResolveSceneAlpha(uint sceneFbo, uint scratchFbo, uint scratchTexture, uint width, uint height)
     {
         if (!TransparentBackground)
@@ -7571,6 +7631,7 @@ public partial class Viewport : UiPanel
                 _previewGlowPingFbo, _previewGlowPingTex, w, h, sceneObj);
             ApplyColorManagementPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, MainViewport.PropertiesPanel, sceneObj);
             ApplyColorCorrectionPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
+            ApplyVignettePass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
             ApplyAntiAliasingPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, MainViewport.PropertiesPanel);
             ApplyFilmGrainPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
         }

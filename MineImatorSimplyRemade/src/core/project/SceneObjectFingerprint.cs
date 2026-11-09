@@ -446,6 +446,13 @@ internal static class SceneObjectFingerprint
                 hash.Add(dirt.Radius);
                 hash.Add(dirt.Intensity);
                 hash.Add(dirt.Power);
+                var vignette = effect.Vignette;
+                hash.Add(vignette.Radius);
+                hash.Add(vignette.Softness);
+                hash.Add(vignette.Strength);
+                hash.Add(vignette.ColorR);
+                hash.Add(vignette.ColorG);
+                hash.Add(vignette.ColorB);
                 var colorCorrection = effect.ColorCorrection;
                 hash.Add(colorCorrection.Contrast);
                 hash.Add(colorCorrection.Brightness);

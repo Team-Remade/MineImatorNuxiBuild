@@ -270,6 +270,8 @@ internal static partial class Program
             ("Camera blades ImGui controls and multi-selection", CameraBladeControls),
             ("Lens dirt settings, persistence, packaging, duplication, undo and timeline", LensDirtPersistence),
             ("Lens dirt ImGui texture and percentage controls", LensDirtControls),
+            ("Vignette settings, persistence, duplication, undo and timeline", VignettePersistence),
+            ("Vignette ImGui percentage sliders and color picker", VignetteControls),
             ("Wind defaults, project/object persistence, duplication, undo, animation and classification", WindPersistence),
             ("Biome catalog, independent custom colors, project persistence and reset", BiomeSettings),
             ("Opaque leaf defaults, persistence, texture selection and pixels", OpaqueLeavesSettings),
@@ -396,6 +398,10 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Lens dirt", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--lens-dirt-graphics", StringComparer.Ordinal))
             tests = [("Lens dirt GPU source toggles, texture orientation, radius, intensity, power and alpha", LensDirtGraphics)];
+        if (args.Contains("--vignette", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Vignette", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--vignette-graphics", StringComparer.Ordinal))
+            tests = [("Vignette GPU radius, softness, strength, color, stacking, alpha and preview/export parity", VignetteGraphics)];
         if (args.Contains("--wind", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Wind", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--biomes", StringComparer.Ordinal))

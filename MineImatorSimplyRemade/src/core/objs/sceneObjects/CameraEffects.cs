@@ -9,7 +9,57 @@ public enum CameraEffectType
     DepthOfField = 2,
     Bloom = 3,
     ColorCorrection = 4,
-    LensDirt = 5
+    LensDirt = 5,
+    Vignette = 6
+}
+
+public class VignetteSettings
+{
+    public float Radius { get; set; } = 50f;
+    public float Softness { get; set; } = 50f;
+    public float Strength { get; set; } = 50f;
+    public float ColorR { get; set; }
+    public float ColorG { get; set; }
+    public float ColorB { get; set; }
+
+    public VignetteSettings Clone() => (VignetteSettings)MemberwiseClone();
+
+    public static readonly (string Key, string Label, float Min, float Max)[] Controls =
+    [
+        ("radius", "Radius (%)", 0f, 100f),
+        ("softness", "Softness (%)", 0f, 100f),
+        ("strength", "Strength (%)", 0f, 100f),
+        ("color.r", "Color R", 0f, 1f),
+        ("color.g", "Color G", 0f, 1f),
+        ("color.b", "Color B", 0f, 1f)
+    ];
+
+    public float GetValue(string key) => key switch
+    {
+        "radius" => Radius,
+        "softness" => Softness,
+        "strength" => Strength,
+        "color.r" => ColorR,
+        "color.g" => ColorG,
+        "color.b" => ColorB,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown vignette control.")
+    };
+
+    public void SetValue(string key, float value)
+    {
+        if (!float.IsFinite(value))
+            throw new ArgumentOutOfRangeException(nameof(value), value, "Vignette values must be finite.");
+        switch (key)
+        {
+            case "radius": Radius = Math.Clamp(value, 0f, 100f); break;
+            case "softness": Softness = Math.Clamp(value, 0f, 100f); break;
+            case "strength": Strength = Math.Clamp(value, 0f, 100f); break;
+            case "color.r": ColorR = Math.Clamp(value, 0f, 1f); break;
+            case "color.g": ColorG = Math.Clamp(value, 0f, 1f); break;
+            case "color.b": ColorB = Math.Clamp(value, 0f, 1f); break;
+            default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown vignette control.");
+        }
+    }
 }
 
 public class LensDirtSettings
@@ -220,5 +270,6 @@ public class CameraEffect
     public DepthOfFieldSettings DepthOfField = new();
     public BloomSettings Bloom = new();
     public LensDirtSettings LensDirt = new();
+    public VignetteSettings Vignette = new();
     public ColorCorrectionSettings ColorCorrection = new();
 }
