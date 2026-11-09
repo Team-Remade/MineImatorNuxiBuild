@@ -192,6 +192,18 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Snap settings validation, modifier inversion and source-generated persistence", SnapPreferences),
+            ("Snap relative/absolute lattices, all constraints and normal alignment math", SnapConstraints),
+            ("Snap vertex, edge midpoint, face, origin, radius and camera clipping", SnapTargets),
+            ("Snap occlusion, X-Ray, closest surface and triangulation seams", SnapOcclusion),
+            ("Snap actual transforms, Ctrl/Shift, group center and parent conversion", SnapTransforms),
+            ("Snap face alignment, restoration, constraints and snapshot lifecycle", SnapAlignment),
+            ("Snap scale and rotation increments through actual gizmo drags", SnapScaleRotation),
+            ("Snap viewport geometry collection, selection exclusion, hidden objects and pivots", SnapSceneCollection),
+            ("Snap settings ImGui controls and localization", SnapControls),
+            ("Snap input ownership, physical modifiers and overlay cancellation", SnapInput),
+            ("Snap aligned transforms auto-key, undo and redo", SnapKeyframesHistory),
+            ("Snap large-scene exact results and query performance", SnapLargeScene),
             ("Backup preference defaults and source-generated persistence", BackupPreferences),
             ("Backup live scene, metadata, assets and unsaved state isolation", BackupSnapshot),
             ("Backup interval boundaries, deferred capture, disable and project switching", BackupScheduling),
@@ -307,6 +319,8 @@ internal static partial class Program
             ("Particle preset timeline controls and legacy channel preservation", ParticleTimeline),
             ("Particle invalid and unsupported preset rejection", ParticleInvalid)
         ];
+        if (args.Contains("--snapping", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Snap ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--camera-orbit", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Camera orbit", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--wind", StringComparer.Ordinal))

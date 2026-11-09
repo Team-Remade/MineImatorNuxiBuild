@@ -327,7 +327,7 @@ public sealed class VeldridSceneRenderer : IDisposable
         _hasDraws = true;
     }
 
-    private VeldridVertex[] BuildVertices(Mesh mesh)
+    internal static VeldridVertex[] BuildVertices(Mesh mesh)
     {
         var vertices = new VeldridVertex[mesh.Vertices.Count];
         bool morph = mesh.ShapeKeys.Any(key => key.Weight != 0 && key.Deltas.Length >= vertices.Length * 3);

@@ -332,7 +332,12 @@ public class Gizmo3D : IDisposable
     // ── Public properties ─────────────────────────────────────────────────────
 
     public ToolMode Mode             { get; set; } = ToolMode.All;
-    public bool     Snapping         { get; set; }
+    public SnapSettings SnapSettings { get; set; } = new();
+    public bool InvertSnapping { get; set; }
+    public bool Snapping { get => SnapSettings.Enabled ^ InvertSnapping; set => SnapSettings.Enabled = value; }
+    public Func<Camera, Vector2, Vector2, SnapGeometry>? CreateSnapGeometry { get; set; }
+    public SnapHit? SnapTarget { get; private set; }
+    public bool NormalAlignmentApplied { get; private set; }
     public bool     ShiftSnap        { get; set; }
     public string   Message          { get; private set; } = "";
     public bool     Editing          { get; private set; }
@@ -345,9 +350,13 @@ public class Gizmo3D : IDisposable
     public bool     ShowRotationLine { get; set; } = true;
     public bool     ShowRotationArc  { get; set; } = true;
     public float    Opacity          { get; set; } = 0.9f;
-    public float    RotateSnap       { get; set; } = 15.0f;
-    public float    TranslateSnap    { get; set; } = 1.0f;
-    public float    ScaleSnap        { get; set; } = 0.25f;
+    public float RotateSnap { get => SnapSettings.RotationStep; set => SnapSettings.RotationStep = value; }
+    public float TranslateSnap { get => SnapSettings.TranslationStep; set => SnapSettings.TranslationStep = value; }
+    public float ScaleSnap { get => SnapSettings.ScaleStep; set => SnapSettings.ScaleStep = value; }
+    private SnapGeometry? _snapGeometry;
+    private mat4 _translationAlignment = mat4.Identity;
+    private bool _restoreTranslationRotation;
+    private Vector2 _snapMouse;
 
     // ── Events ────────────────────────────────────────────────────────────────
 
@@ -419,6 +428,7 @@ public class Gizmo3D : IDisposable
         public vec3          ClickRay, ClickRayPos;
         public vec3          Center;
         public Vector2       MousePos;
+        public Vector2       MousePosAtStart;
 
         // Rotation arc
         public vec3   RotationAxis;
@@ -578,17 +588,23 @@ public class Gizmo3D : IDisposable
         _edit.DisplayRotationAngle     = 0;
         _edit.GizmoInitiated           = false;
         _edit.MousePos                 = screenPos;
+        _edit.MousePosAtStart          = screenPos;
 
         bool hit = TransformGizmoSelect(screenPos, highlightOnly: false);
         if (hit)
         {
+            _snapGeometry = null;
+            SnapTarget = null;
+            NormalAlignmentApplied = false;
+            _restoreTranslationRotation = false;
             Editing = true;
             TransformBegin?.Invoke(_edit.Mode);
         }
         return hit;
     }
 
-    public void ContinueEdit(Vector2 screenPos, Camera camera, Vector2 imageMin, Vector2 imageSize)
+    public void ContinueEdit(Vector2 screenPos, Camera camera, Vector2 imageMin, Vector2 imageSize,
+        Vector2? targetMouse = null)
     {
         if (!Editing) return;
         // Refresh the viewport parameters because Render() calls from other
@@ -600,6 +616,7 @@ public class Gizmo3D : IDisposable
         _imageSize = imageSize;
         UpdateTransformGizmoView();
         _edit.MousePos = screenPos;
+        _snapMouse = targetMouse ?? screenPos;
         vec3 value = UpdateTransform(false);
         TransformChanged?.Invoke(_edit.Mode, value);
     }
@@ -608,6 +625,9 @@ public class Gizmo3D : IDisposable
     {
         if (!Editing) return;
         TransformEnd?.Invoke(_edit.Mode, _edit.Plane);
+        _snapGeometry = null;
+        SnapTarget = null;
+        NormalAlignmentApplied = false;
         Editing    = false;
         Message    = "";
         _edit.Mode = TransformMode.None;
@@ -621,6 +641,10 @@ public class Gizmo3D : IDisposable
     public float GetTranslateSnap() => ShiftSnap ? TranslateSnap / 10f : TranslateSnap;
     public float GetRotationSnap()  => ShiftSnap ? RotateSnap    / 3f  : RotateSnap;
     public float GetScaleSnap()     => ShiftSnap ? ScaleSnap     / 2f  : ScaleSnap;
+
+    private bool SnapMove => Snapping && SnapSettings.Move;
+    private bool SnapRotate => Snapping && SnapSettings.Rotate;
+    private bool SnapScale => Snapping && SnapSettings.Scale;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Render – 3D pass
@@ -722,6 +746,27 @@ public class Gizmo3D : IDisposable
         _camera    = camera;
         _imageMin  = imageMin;
         _imageSize = imageSize;
+
+        if (Visible && ((Mode & ToolMode.Move) != 0 || (Mode & ToolMode.Scale) != 0 && CanScaleSelection()))
+        {
+            var draw = ImGui.GetWindowDrawList();
+            draw.PushClipRect(imageMin, imageMin + imageSize, true);
+            draw.AddCircleFilled(PointToScreen(_gizmoTransform.Origin), 5f, 0xFFE0E0E0);
+            draw.PopClipRect();
+        }
+
+        if (Editing && SnapTarget is { } target)
+        {
+            var draw = ImGui.GetWindowDrawList();
+            Vector2 point = PointToScreen(target.Position);
+            uint color = 0xFF40DFFF;
+            draw.PushClipRect(imageMin, imageMin + imageSize, true);
+            draw.AddCircle(point, 7f, color, 16, 2f);
+            draw.AddLine(point - new Vector2(11f, 0f), point + new Vector2(11f, 0f), color);
+            draw.AddLine(point - new Vector2(0f, 11f), point + new Vector2(0f, 11f), color);
+            draw.AddLine(PointToScreen(_visualCenter), point, color);
+            draw.PopClipRect();
+        }
 
         if (_edit.Mode != TransformMode.Rotate && _edit.Mode != TransformMode.Bend) return;
 
@@ -1173,6 +1218,20 @@ public class Gizmo3D : IDisposable
         vec3        ray    = GetRay(screenpos);
         Transform3D gt     = _gizmoTransform;
 
+        bool centerMove = (Mode & ToolMode.Move) != 0;
+        bool centerScale = !centerMove && (Mode & ToolMode.Scale) != 0 && CanScaleSelection();
+        if ((centerMove || centerScale) && Vector2.DistanceSquared(screenpos, PointToScreen(gt.Origin)) <= 64f)
+        {
+            if (highlightOnly) _highlightAxis = -1;
+            else
+            {
+                _edit.Mode = centerMove ? TransformMode.Translate : TransformMode.Scale;
+                ComputeEdit(screenpos);
+                _edit.Plane = TransformPlane.View;
+            }
+            return true;
+        }
+
         // ── Move ────────────────────────────────────────────────────────────
         if ((Mode & ToolMode.Move) != 0)
         {
@@ -1423,6 +1482,17 @@ public class Gizmo3D : IDisposable
         {
             case TransformMode.Scale:
             {
+                if (_edit.Plane == TransformPlane.View)
+                {
+                    Vector2 drag = _edit.MousePos - _edit.MousePosAtStart;
+                    vec3 uniform = new((drag.X - drag.Y) / Size);
+                    if (SnapScale)
+                        uniform = new vec3(SnapMath.Round(uniform.x, GetScaleSnap()));
+                    uniform = EditScale(uniform);
+                    Message = $"Scaling: ({uniform.x:0.###}, {uniform.y:0.###}, {uniform.z:0.###})";
+                    ApplyTransform(uniform, GetScaleSnap());
+                    return uniform;
+                }
                 vec3 smotionMask = vec3.Zero;
                 vec3 planeNorm   = vec3.Zero;
                 vec3 planePt     = _edit.Center;
@@ -1490,15 +1560,17 @@ public class Gizmo3D : IDisposable
                 smotion /= (sc.Value - _edit.Center).Length;
 
                 bool slocalCoords = UseLocalSpace && _edit.Plane != TransformPlane.View;
-                if (Snapping) snap = GetScaleSnap();
+                if (SnapScale) snap = GetScaleSnap();
                 if (slocalCoords)
                     smotion = GizmoMath.BasisTransform(_edit.Original.Basis.Inverse, smotion);
 
                 smotion = EditScale(smotion);
-                vec3 smSnapped = GizmoMath.Snapped(smotion, snap);
+                vec3 smSnapped = SnapScale
+                    ? new vec3(SnapMath.Round(smotion.x, snap), SnapMath.Round(smotion.y, snap), SnapMath.Round(smotion.z, snap))
+                    : smotion;
                 Message = $"Scaling: ({smSnapped.x:0.###}, {smSnapped.y:0.###}, {smSnapped.z:0.###})";
-                ApplyTransform(smotion, snap);
-                return smotion;
+                ApplyTransform(smSnapped, snap);
+                return smSnapped;
             }
 
             case TransformMode.Translate:
@@ -1551,13 +1623,37 @@ public class Gizmo3D : IDisposable
                     tmotion = tmotionMask * vec3.Dot(tmotionMask, tmotion);
 
                 bool tlocalCoords = UseLocalSpace && _edit.Plane != TransformPlane.View;
-                if (Snapping) snap = GetTranslateSnap();
-                if (tlocalCoords)
-                    tmotion = GizmoMath.BasisTransform(_gizmoTransform.Basis.Inverse, tmotion);
-
                 tmotion = EditTranslate(tmotion);
-                vec3 tmSnapped = GizmoMath.Snapped(tmotion, snap);
-                Message = $"Translating: ({tmSnapped.x:0.###}, {tmSnapped.y:0.###}, {tmSnapped.z:0.###})";
+                SnapTarget = null;
+                _translationAlignment = mat4.Identity;
+                NormalAlignmentApplied = false;
+                mat4 snapBasis = tlocalCoords ? _edit.Original.Orthonormalized().Basis : mat4.Identity;
+                if (SnapMove)
+                {
+                    if (SnapSettings.Mode == SnapMode.Geometry && _camera != null)
+                    {
+                        _snapGeometry ??= (CreateSnapGeometry ??
+                            throw new InvalidOperationException("Geometry snapping requires a scene provider."))
+                            .Invoke(_camera, _imageMin, _imageSize);
+                        SnapTarget = _snapGeometry?.Find(_snapMouse, SnapSettings.Elements,
+                            SnapSettings.PixelRadius, SnapSettings.XRay);
+                        if (SnapTarget is { } target)
+                        {
+                            tmotion = SnapMath.Constrain(target.Position - _edit.Center, snapBasis, _edit.Plane);
+                            if (SnapSettings.AlignToNormal && target.Element == SnapElements.Face &&
+                                CanRotateSelection() && _selections.All(s => s.LockedRotation == null))
+                            {
+                                _translationAlignment = SnapMath.Align(_selections[0].TargetGlobal.BasisY, target.Normal);
+                                NormalAlignmentApplied = true;
+                                _restoreTranslationRotation = true;
+                            }
+                        }
+                    }
+                    else
+                        tmotion = SnapMath.Translation(_edit.Center, tmotion, snapBasis, _edit.Plane,
+                            GetTranslateSnap(), SnapSettings.Mode == SnapMode.Grid);
+                }
+                Message = $"Translating: ({tmotion.x:0.###}, {tmotion.y:0.###}, {tmotion.z:0.###})";
                 ApplyTransform(tmotion, snap);
                 return tmotion;
             }
@@ -1642,19 +1738,19 @@ public class Gizmo3D : IDisposable
                     ? _edit.AccumulatedRotationAngle
                     : angle;
 
-                if (Snapping)
+                if (SnapRotate)
                 {
                     snap = GetRotationSnap();
                     _edit.DisplayRotationAngle = glm.Radians(
-                        GizmoMath.Snapped(glm.Degrees(_edit.AccumulatedRotationAngle), snap));
+                        SnapMath.Round(glm.Degrees(_edit.AccumulatedRotationAngle), snap));
                 }
                 else
                 {
                     _edit.DisplayRotationAngle = _edit.AccumulatedRotationAngle;
                 }
 
-                if (_edit.Mode == TransformMode.Bend && Snapping)
-                    motionAngle = glm.Radians(GizmoMath.Snapped(glm.Degrees(motionAngle), snap));
+                if (_edit.Mode == TransformMode.Bend && SnapRotate)
+                    motionAngle = glm.Radians(SnapMath.Round(glm.Degrees(motionAngle), snap));
 
                 bool    rlocalCoords = UseLocalSpace && _edit.Plane != TransformPlane.View;
                 vec3    computeAxis  = rlocalCoords ? localAxis : globalAxis;
@@ -1666,7 +1762,7 @@ public class Gizmo3D : IDisposable
                 }
 
                 float angleDeg = glm.Degrees(motionAngle);
-                if (!(_edit.Mode == TransformMode.Bend && Snapping)) angleDeg = Snapping ? GizmoMath.Snapped(angleDeg, snap) : angleDeg;
+                if (!(_edit.Mode == TransformMode.Bend && SnapRotate)) angleDeg = SnapRotate ? SnapMath.Round(angleDeg, snap) : angleDeg;
                 Message = _edit.Mode == TransformMode.Bend
                     ? $"Bending: {angleDeg:0.###} degrees"
                     : $"Rotating: {angleDeg:0.###} degrees";
@@ -1712,6 +1808,8 @@ public class Gizmo3D : IDisposable
                 {
                     vec3 newWorldPos = newTransform.Origin;
 
+                    if (_restoreTranslationRotation)
+                        ApplyRotationBasis(obj, _translationAlignment * item.TargetGlobal.Basis, true);
                     if (obj is MiBoneSceneObject independentPositionBone && !obj.InheritPosition)
                     {
                         independentPositionBone.OffsetPosition = newWorldPos;
@@ -1739,39 +1837,7 @@ public class Gizmo3D : IDisposable
                         break;
                     }
 
-                    mat4 rotBasis = newTransform.Basis;
-
-                    // When rotating in world/view space (not local), ComputeTransform's
-                    // rotate branch returns the object's NEW WORLD-space rotation (it
-                    // rotates the captured world basis, item.TargetGlobal). SetLocalRotation
-                    // stores a rotation relative to the parent, so for a parented object we
-                    // must remove the parent's world rotation before storing it — exactly
-                    // like the Translate branch above converts a world position back to
-                    // local via the parent's inverse transform. Skipping this previously
-                    // caused the parent's rotation to be baked in twice (once from the
-                    // parent's own transform during rendering, once already present in the
-                    // stored "local" value), visibly flipping/misrotating any bone whose
-                    // parent bone itself had a non-identity rotation.
-                    if (!localCoords && (obj.Parent != null || obj.IsFollowingPath) && obj.InheritRotation)
-                    {
-                        // Must match exactly how GetWorldTransform(obj) built
-                        // item.TargetGlobal.Basis in the first place (parentRot *
-                        // localRotOnly), so invert with the same parentRot here.
-                        mat4 parentWorldRot = NormalizeRotation(obj.GetParentWorldTransform());
-                        rotBasis = parentWorldRot.Inverse * rotBasis;
-                    }
-
-                    // Strip scale from the basis before extracting Euler angles.
-                    // In local-rotation mode, ComputeTransform returns purRot * rotMat * scaleMat,
-                    // so the basis includes scale. MatrixToEulerYXZ assumes a pure-rotation matrix
-                    // (m.m21 == -sin(x) only holds without scale), so we must normalise first.
-                    vec3 rotation = GizmoMath.MatrixToEulerYXZ(NormalizeRotation(rotBasis));
-                    if (obj is MiBoneSceneObject independentRotationBone && !obj.InheritRotation)
-                        independentRotationBone.OffsetRotation = rotation;
-                    else
-                        obj.SetLocalRotation(rotation);
-                    if (obj is CameraSceneObject cameraObject)
-                        cameraObject.SyncCameraToTransform();
+                    ApplyRotationBasis(obj, newTransform.Basis, !localCoords);
                     break;
                 }
                 case TransformMode.Scale:
@@ -1791,6 +1857,18 @@ public class Gizmo3D : IDisposable
         UpdateTransformGizmo();
     }
 
+    private static void ApplyRotationBasis(SceneObject obj, mat4 basis, bool world)
+    {
+        if (world && (obj.Parent != null || obj.IsFollowingPath) && obj.InheritRotation)
+            basis = NormalizeRotation(obj.GetParentWorldTransform()).Inverse * basis;
+        vec3 rotation = GizmoMath.MatrixToEulerYXZ(NormalizeRotation(basis));
+        if (obj is MiBoneSceneObject bone && !obj.InheritRotation)
+            bone.OffsetRotation = rotation;
+        else
+            obj.SetLocalRotation(rotation);
+        if (obj is CameraSceneObject camera) camera.SyncCameraToTransform();
+    }
+
     private Transform3D ComputeTransform(TransformMode mode, Transform3D original,
                                           Transform3D originalLocal, vec3 motion,
                                           float extra, bool local, bool orthogonal)
@@ -1799,7 +1877,6 @@ public class Gizmo3D : IDisposable
         {
             case TransformMode.Scale:
             {
-                if (Snapping) motion = GizmoMath.Snapped(motion, extra);
                 Transform3D s;
                 if (local)
                 {
@@ -1837,8 +1914,7 @@ public class Gizmo3D : IDisposable
 
             case TransformMode.Translate:
             {
-                if (Snapping) motion = GizmoMath.Snapped(motion, extra);
-                return local ? original.TranslatedLocal(motion) : original.Translated(motion);
+                return original.Translated(motion);
             }
 
             case TransformMode.Rotate:

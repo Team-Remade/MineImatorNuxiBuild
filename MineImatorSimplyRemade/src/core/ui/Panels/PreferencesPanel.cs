@@ -1,6 +1,7 @@
 using Hexa.NET.ImGui;
 using System.Numerics;
 using System.Text.Json;
+using MineImatorSimplyRemade.gizmo;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
@@ -69,6 +70,7 @@ public class PreferencesPanel : UiPanel
     public bool ZIsUp { get; set; } = false;
     public bool HideMineImatorBoneDisplayShapes { get; set; } = true;
     public bool HideRegularAssetBoneDisplayShapes { get; set; } = false;
+    public SnapSettings Snapping { get; set; } = new();
 
     /// <summary>
     /// Callback invoked when the theme changes.
@@ -580,6 +582,7 @@ public class PreferencesPanel : UiPanel
             ZIsUp = ZIsUp,
             HideMineImatorBoneDisplayShapes = HideMineImatorBoneDisplayShapes,
             HideRegularAssetBoneDisplayShapes = HideRegularAssetBoneDisplayShapes,
+            Snapping = Snapping,
             KeybindOverrides = Keybinds.Overrides
         };
 
@@ -622,6 +625,7 @@ public class PreferencesPanel : UiPanel
         ZIsUp = state.ZIsUp;
         HideMineImatorBoneDisplayShapes = state.HideMineImatorBoneDisplayShapes;
         HideRegularAssetBoneDisplayShapes = state.HideRegularAssetBoneDisplayShapes;
+        Snapping = state.Snapping ?? new SnapSettings();
 
         return true;
     }
@@ -650,6 +654,7 @@ public class PreferencesPanel : UiPanel
         ZIsUp = defaults.ZIsUp;
         HideMineImatorBoneDisplayShapes = defaults.HideMineImatorBoneDisplayShapes;
         HideRegularAssetBoneDisplayShapes = defaults.HideRegularAssetBoneDisplayShapes;
+        Snapping = defaults.Snapping;
         Keybinds.Reset();
 
         // Re-apply styling and notify listeners so secondary windows stay in sync.
@@ -772,4 +777,5 @@ public class PreferencesState
     public bool HideMineImatorBoneDisplayShapes { get; set; } = true;
     public bool HideRegularAssetBoneDisplayShapes { get; set; } = false;
     public Dictionary<string, string>? KeybindOverrides { get; set; }
+    public SnapSettings Snapping { get; set; } = new();
 }

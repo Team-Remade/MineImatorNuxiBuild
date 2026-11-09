@@ -8,5 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../MineImatorSimplyRemade.csproj" />
+    <None Include="..\..\data\languages\en_us.json" Link="data\languages\en_us.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

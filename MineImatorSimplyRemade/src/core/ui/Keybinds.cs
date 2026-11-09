@@ -58,6 +58,7 @@ public static class Keybinds
         new("toggleGizmoRotate", nameof(ImGuiKey.Key2), "text.keybinds.toggle_gizmo_rotation"),
         new("toggleGizmoBend", nameof(ImGuiKey.Key3), "text.keybinds.toggle_gizmo_bend"),
         new("toggleGizmoScale", nameof(ImGuiKey.Key4), "text.keybinds.toggle_gizmo_scale"),
+        new("toggleSnapping", "Shift+Tab", "text.snap.toggle"),
         new("resetFlyCamera", "R", "text.keybinds.reset_fly_camera", BindingScope.Flight),
         new("flyForward", "W", "text.keybinds.fly_forward", BindingScope.Flight, Held: true),
         new("flyBackward", "S", "text.keybinds.fly_backward", BindingScope.Flight, Held: true),

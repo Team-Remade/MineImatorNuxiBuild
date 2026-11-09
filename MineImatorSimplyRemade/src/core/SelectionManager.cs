@@ -104,6 +104,8 @@ public class SelectionManager
                 Gizmo3D.TransformPlane.View => ["x", "y", "z"],
                 _ => throw new ArgumentOutOfRangeException(nameof(plane), plane, null)
             };
+            if (mode == Gizmo3D.TransformMode.Translate)
+                axes = ["x", "y", "z"];
 
             foreach (var obj in SelectedObjects)
             {
@@ -122,6 +124,9 @@ public class SelectionManager
                 if (property == null) continue;
                 foreach (string axis in axes)
                     Timeline.RecordAutoKeyframe(obj, $"{property}.{axis}");
+                if (mode == Gizmo3D.TransformMode.Translate && _gizmo.NormalAlignmentApplied)
+                    foreach (string axis in new[] { "x", "y", "z" })
+                        Timeline.RecordAutoKeyframe(obj, $"rotation.{axis}");
             }
         }
 

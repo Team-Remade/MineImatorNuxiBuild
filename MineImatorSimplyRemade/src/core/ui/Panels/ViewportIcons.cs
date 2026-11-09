@@ -18,6 +18,8 @@ internal static class ViewportIcons
     public static uint Scale { get; private set; }
     public static uint GlobalSpace { get; private set; }
     public static uint LocalSpace { get; private set; }
+    public static uint Magnet { get; private set; }
+    public static uint SnapSettings { get; private set; }
 
     private static bool _initialized;
 
@@ -38,6 +40,8 @@ internal static class ViewportIcons
         Scale = Load("resize");
         GlobalSpace = Load("earth");
         LocalSpace = Load("axis-arrow");
+        Magnet = Load("magnet");
+        SnapSettings = Load("tune-variant");
         _initialized = true;
 
         uint Load(string name)

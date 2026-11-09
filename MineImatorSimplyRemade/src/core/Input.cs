@@ -105,11 +105,17 @@ public class Input
         float deltaTime,
         bool windowHovered,
         bool ctrlHeld = false,
-        bool overlaysEnabled = true)
+        bool overlaysEnabled = true,
+        bool? snapFine = null)
     {
         // Cache GLFW for mouse-wrap SetCursorPos calls in the sub-methods.
         _glfw = glfw;
         _glfwWindow = glfwWindow;
+        if (gizmo != null)
+        {
+            gizmo.InvertSnapping = ctrlHeld;
+            gizmo.ShiftSnap = snapFine ?? keyDown_Shift;
+        }
 
         // ── Gizmo global-space toggle (G key) ──────────────────────────────
         // Only allow toggling local/global space when overlays (and therefore
@@ -290,7 +296,8 @@ public class Input
                     _gizmoVirtualMouseX += dx;
                     _gizmoVirtualMouseY += dy;
                 }
-                gizmo?.ContinueEdit(new Vector2((float)_gizmoVirtualMouseX, (float)_gizmoVirtualMouseY), camera, imageMin, imageSize);
+                gizmo?.ContinueEdit(new Vector2((float)_gizmoVirtualMouseX, (float)_gizmoVirtualMouseY),
+                    camera, imageMin, imageSize, mousePos);
             }
             else if (_dragging && pressInsideImage)
                 camera.Orbit(dx * 0.005f, dy * 0.005f);

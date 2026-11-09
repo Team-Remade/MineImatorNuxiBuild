@@ -892,6 +892,8 @@ public class Viewport : UiPanel
         // ── Gizmo ─────────────────────────────────────────────────────────────
         // Initialise the gizmo now that the GL context is fully ready.
         Gizmo = new Gizmo3D(Gl);
+        Gizmo.SnapSettings = PreferencesPanel?.Snapping ?? new SnapSettings();
+        Gizmo.CreateSnapGeometry = BuildSnapGeometry;
         Gizmo.Init();
 
         // Register the gizmo with the SelectionManager so selection changes
@@ -3093,7 +3095,7 @@ public class Viewport : UiPanel
         float padding = 4f * scale;
         float spacing = 2f * scale;
         var toolbarSize = new Vector2(buttonSize + padding * 2f,
-            buttonSize * 5f + spacing * 4f + padding * 2f);
+            buttonSize * 7f + spacing * 6f + padding * 2f);
         var toolbarMin = imageMin + new Vector2(8f * scale);
         if (PreviewViewport is { IsInlineVisible: true, InlineCorner: Corner.TopLeft or Corner.BottomLeft })
             toolbarMin.X = imageMin.X + imageSize.X - toolbarSize.X - 8f * scale;
@@ -3124,6 +3126,17 @@ public class Viewport : UiPanel
                     localSpace ? "text.panel.viewport.gizmo_local_space" : "text.panel.viewport.gizmo_global_space",
                     "toggleGizmoSpace", localSpace))
                 Gizmo.UseLocalSpace = !localSpace;
+            if (DrawToggle("vpSnap", ViewportIcons.Magnet, "text.snap.toggle", "toggleSnapping",
+                    Gizmo.SnapSettings.Enabled))
+            {
+                Gizmo.SnapSettings.Enabled = !Gizmo.SnapSettings.Enabled;
+                PreferencesPanel?.SavePreferences();
+            }
+            if (ViewportIcons.Button("vpSnapSettings", ViewportIcons.SnapSettings,
+                    Localization.T("text.snap.settings"), buttonSize))
+                ImGui.OpenPopup("vpSnapSettingsPopup");
+            RenderSnapSettings();
+            hovered |= ImGui.IsPopupOpen("vpSnapSettingsPopup");
             ImGui.EndDisabled();
         }
         ImGui.EndChild();
@@ -3152,6 +3165,138 @@ public class Viewport : UiPanel
             ImGui.PopStyleColor(4);
             return clicked;
         }
+    }
+
+    private void RenderSnapSettings()
+    {
+        if (Gizmo == null || !ImGui.BeginPopup("vpSnapSettingsPopup")) return;
+        SnapSettings settings = Gizmo.SnapSettings;
+        bool changed = false;
+        ImGui.TextUnformatted(Localization.T("text.snap.settings"));
+        ImGui.Separator();
+        foreach (var mode in Enum.GetValues<SnapMode>())
+            if (ImGui.RadioButton(Localization.T($"text.snap.mode.{mode.ToString().ToLowerInvariant()}"), settings.Mode == mode))
+            {
+                settings.Mode = mode;
+                changed = true;
+            }
+        if (settings.Mode == SnapMode.Geometry)
+        {
+            foreach (var element in Enum.GetValues<SnapElements>())
+            {
+                bool selected = (settings.Elements & element) != 0;
+                if (ImGui.Checkbox(Localization.T($"text.snap.element.{element.ToString().ToLowerInvariant()}"), ref selected))
+                {
+                    if (selected) settings.Elements |= element;
+                    else if ((settings.Elements & ~element) != 0) settings.Elements &= ~element;
+                    changed = true;
+                }
+            }
+            bool xray = settings.XRay, align = settings.AlignToNormal;
+            if (ImGui.Checkbox(Localization.T("text.snap.xray"), ref xray))
+            {
+                settings.XRay = xray;
+                changed = true;
+            }
+            if (ImGui.Checkbox(Localization.T("text.snap.align"), ref align))
+            {
+                settings.AlignToNormal = align;
+                changed = true;
+            }
+            float radius = settings.PixelRadius;
+            if (ImGui.SliderFloat(Localization.T("text.snap.radius"), ref radius, 4f, 64f, "%.0f px"))
+            {
+                settings.PixelRadius = radius;
+                changed = true;
+            }
+        }
+        ImGui.Separator();
+        bool move = settings.Move, rotate = settings.Rotate, scale = settings.Scale;
+        if (ImGui.Checkbox(Localization.T("text.snap.affect_move"), ref move)) { settings.Move = move; changed = true; }
+        if (ImGui.Checkbox(Localization.T("text.snap.affect_rotate"), ref rotate)) { settings.Rotate = rotate; changed = true; }
+        if (ImGui.Checkbox(Localization.T("text.snap.affect_scale"), ref scale)) { settings.Scale = scale; changed = true; }
+        float translation = settings.TranslationStep, rotation = settings.RotationStep, scaleStep = settings.ScaleStep;
+        if (Step("text.snap.translation_step", ref translation, 0.001f, 1024f)) { settings.TranslationStep = translation; changed = true; }
+        if (Step("text.snap.rotation_step", ref rotation, 0.01f, 180f)) { settings.RotationStep = rotation; changed = true; }
+        if (Step("text.snap.scale_step", ref scaleStep, 0.001f, 10f)) { settings.ScaleStep = scaleStep; changed = true; }
+        ImGui.Separator();
+        ImGui.TextUnformatted(Localization.T("text.snap.help"));
+        if (changed) PreferencesPanel?.SavePreferences();
+        ImGui.EndPopup();
+
+        static bool Step(string key, ref float value, float min, float max)
+        {
+            ImGui.SetNextItemWidth(130f * UiTheme.Scale);
+            return ImGui.DragFloat(Localization.T(key), ref value, min, min, max, "%.3f",
+                ImGuiSliderFlags.AlwaysClamp);
+        }
+    }
+
+    private SnapGeometry BuildSnapGeometry(Camera camera, Vector2 imageMin, Vector2 imageSize)
+    {
+        var owner = MainViewport ?? this;
+        owner.ResetModifierEvaluation();
+        var scene = new SnapGeometry(camera, imageMin, imageSize);
+        foreach (var root in owner.SceneObjects)
+            Collect(root, BuildBoneDictionary(root));
+        scene.Build();
+        return scene;
+
+        bool Excluded(SceneObject obj)
+        {
+            for (SceneObject? current = obj; current != null; current = current.Parent)
+                if (Gizmo?.IsSelected(current) == true) return true;
+            return false;
+        }
+
+        void Collect(SceneObject obj, Dictionary<string, BoneSceneObject>? bones)
+        {
+            if (Excluded(obj) || !obj.GetEffectiveVisibility()) return;
+            if (owner.IsObjectVisible(obj))
+            {
+                mat4 source = GetRenderableWorldMatrix(obj, camera.Position);
+                var models = owner.GetModifiedWorldMatrices(obj, source, camera.Position).ToArray();
+                foreach (mat4 delta in owner._modifierEvaluation!.GetDeltas(obj))
+                    scene.AddOrigin((delta * new vec4(obj.GetWorldPosition(), 1f)).xyz);
+                foreach (var mesh in obj.Visuals)
+                {
+                    if (mesh.PickOnly || mesh.DepthTestDisabled) continue;
+                    if (mesh.IsSkinned && bones != null)
+                    {
+                        if (mesh.BoneNames.Any(name => bones.TryGetValue(name, out var bone) && Excluded(bone)))
+                            continue;
+                        UpdateBoneMatrices(mesh, source, bones);
+                    }
+                    var vertices = VeldridSceneRenderer.BuildVertices(mesh);
+                    foreach (mat4 model in models)
+                    {
+                        var positions = new vec3[vertices.Length];
+                        for (int i = 0; i < positions.Length; i++)
+                        {
+                            positions[i] = (model * new vec4(vertices[i].Position, 1f)).xyz;
+                            if (mesh.WindActive)
+                                positions[i] += SnapWindOffset(positions[i], vertices[i].TexCoord, mesh.WindKind);
+                        }
+                        scene.AddMesh(positions, mesh.Indices);
+                    }
+                }
+            }
+            foreach (var child in obj.Children) Collect(child, bones);
+        }
+    }
+
+    private static vec3 SnapWindOffset(vec3 position, vec2 uv, int kind)
+    {
+        vec4 parameters = Mesh.Wind.Parameters;
+        vec2 heading = Mesh.Wind.Heading;
+        float phase = position.x * 0.73f + position.z * 0.51f;
+        float flutter = MathF.Sin(phase + parameters.x) + 0.35f * MathF.Sin(phase * 2.31f - parameters.x * 1.73f);
+        float gust = MathF.Sin((position.x * heading.x + position.z * heading.y) * 0.42f - parameters.z);
+        if (kind == 2)
+            return new vec3(0f, 0.04f * (MathF.Sin(phase * 1.7f + parameters.x) * parameters.y + gust * parameters.w), 0f);
+        float weight = kind == 3 ? 1f - Math.Clamp(uv.y, 0f, 1f) : kind == 4 ? 2f - Math.Clamp(uv.y, 0f, 1f) : 1f;
+        vec2 sway = new vec2(-heading.y, heading.x) * flutter * parameters.y + heading * gust * parameters.w;
+        return new vec3(sway.x, 0.12f * flutter * parameters.y, sway.y) * (0.08f * weight);
     }
 
     public void DrawRuleOfThirdsToggle(float height = 0f)
@@ -6746,16 +6891,16 @@ public class Viewport : UiPanel
         switch (leftDown)
         {
             case true when hovered:
-            {
-                if (mouseJustPressed)
                 {
-                    _inlineMouseDownPos = mouse;
-                    _inlineSnappedThisInteraction = false;  // Reset snap flag for new drag
+                    if (mouseJustPressed)
+                    {
+                        _inlineMouseDownPos = mouse;
+                        _inlineSnappedThisInteraction = false;  // Reset snap flag for new drag
+                    }
+
+                    _inlineFramesSinceMouseUp = 0;
+                    break;
                 }
-            
-                _inlineFramesSinceMouseUp = 0;
-                break;
-            }
             // Mouse was just released - end drag mode
             case false when _inlineMouseWasDownLastFrame:
                 _inlineDragActive = false;
@@ -7438,7 +7583,8 @@ public class Viewport : UiPanel
             io.DeltaTime,
             hovered,
             io.KeyCtrl,
-            OverlaysEnabled
+            OverlaysEnabled,
+            snapFine: io.KeyShift
         );
 
         // Idle preview frames must not rewrite authored camera transforms.
@@ -7570,6 +7716,8 @@ public class Viewport : UiPanel
 
     private void HandleGizmoModeShortcuts(Input input, bool hovered)
     {
+        if (Gizmo != null && (MainViewport ?? this).PreferencesPanel is { } preferences)
+            Gizmo.SnapSettings = preferences.Snapping;
         if (!hovered || !OverlaysEnabled || Gizmo == null || Gizmo.Editing || ImGui.GetIO().AppFocusLost ||
             ImGui.IsAnyItemActive() || Input.IsAnyFreeFlyActive || input.HasLeftPressCapture ||
             input.IsDragging || input.IsPanning || input.IsGizmoDragging ||
@@ -7581,6 +7729,11 @@ public class Viewport : UiPanel
         if (Keybinds.Pressed("toggleGizmoRotate")) Gizmo.Mode ^= Gizmo3D.ToolMode.Rotate;
         if (Keybinds.Pressed("toggleGizmoBend")) Gizmo.Mode ^= Gizmo3D.ToolMode.Bend;
         if (Keybinds.Pressed("toggleGizmoScale")) Gizmo.Mode ^= Gizmo3D.ToolMode.Scale;
+        if (Keybinds.Pressed("toggleSnapping"))
+        {
+            Gizmo.SnapSettings.Enabled = !Gizmo.SnapSettings.Enabled;
+            (MainViewport ?? this).PreferencesPanel?.SavePreferences();
+        }
     }
 
     private unsafe void HandleCameraInput(Vector2 imageMin, Vector2 imageSize, Camera camera, CameraSceneObject? sceneObj,
@@ -7683,7 +7836,8 @@ public class Viewport : UiPanel
             io.DeltaTime,
             windowHovered,
             io.KeyCtrl,
-            OverlaysEnabled
+            OverlaysEnabled,
+            snapFine: io.KeyShift
         );
 
         if (previousCameraPose != (camera.Target, camera.Yaw, camera.Pitch, camera.Roll, camera.Distance))
