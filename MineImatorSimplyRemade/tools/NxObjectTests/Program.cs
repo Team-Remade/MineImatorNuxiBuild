@@ -248,6 +248,9 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Item options persistence, duplication, undo and non-keyframable channels", ItemOptionsPersistence),
+            ("Item options deterministic motion, camera priority and instance transforms", ItemOptionsTransforms),
+            ("Item options ImGui toggles and multi-selection without auto-key", ItemOptionsControls),
             ("Block model parent inheritance, child aliases and automatic textures", BlockModelResolution),
             ("Block model project copying and portable archive dependencies", BlockModelPersistence),
             ("Block model missing textures, invalid models and cycles", BlockModelValidation),
@@ -465,6 +468,10 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Backup", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--skins", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Minecraft skin", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--items", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Item options", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--items-graphics", StringComparer.Ordinal))
+            tests = [("Item options spawned settings, live 3D geometry, duplication and undo", ItemOptionsGraphics)];
         int failures = 0;
         foreach (var test in tests)
         {

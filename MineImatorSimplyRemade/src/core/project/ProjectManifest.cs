@@ -506,6 +506,9 @@ public class ProjectSceneObjectEntry
     // Item-specific data
     public string ItemTileKey { get; set; } = "";
     public bool ItemIs3D { get; set; } = true;
+    public bool ItemBounce { get; set; } = false;
+    public bool ItemSpin { get; set; } = false;
+    public bool ItemFaceCamera { get; set; } = false;
 
     // Particle-spawner specific data
     public System.Text.Json.Nodes.JsonObject? ParticlePreset { get; set; }

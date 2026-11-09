@@ -1220,6 +1220,16 @@ public class SceneTree : UiPanel
         dup.PrimitiveRadialClosed = original.PrimitiveRadialClosed;
         dup.PrimitiveRadialMapped = original.PrimitiveRadialMapped;
         dup.PrimitivePlaneFaceCamera = original.PrimitivePlaneFaceCamera;
+        dup.ItemBounce = original.ItemBounce;
+        dup.ItemSpin = original.ItemSpin;
+        dup.ItemFaceCamera = original.ItemFaceCamera;
+        dup.ItemTileKey = original.ItemTileKey;
+        dup.TemporaryItemSheetPath = original.TemporaryItemSheetPath;
+        dup.TemporaryItemSheetCacheKey = original.TemporaryItemSheetCacheKey;
+        dup.TemporaryItemSheetColumns = original.TemporaryItemSheetColumns;
+        dup.TemporaryItemSheetRows = original.TemporaryItemSheetRows;
+        dup.TemporaryItemSheetColumnIndex = original.TemporaryItemSheetColumnIndex;
+        dup.TemporaryItemSheetRowIndex = original.TemporaryItemSheetRowIndex;
         dup.TextMeshFontPath = original.TextMeshFontPath;
         dup.TextMeshBaseString = original.TextMeshBaseString;
         dup.TextMeshStringOverride = original.TextMeshStringOverride;

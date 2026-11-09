@@ -301,6 +301,10 @@ public class SceneObject
     /// </summary>
     public bool PrimitivePlaneFaceCamera = false;
 
+    public bool ItemBounce = false;
+    public bool ItemSpin = false;
+    public bool ItemFaceCamera = false;
+
     public string TextMeshFontPath = "minecraftia";
     public string TextMeshBaseString = "Text";
     public string TextMeshStringOverride = "";

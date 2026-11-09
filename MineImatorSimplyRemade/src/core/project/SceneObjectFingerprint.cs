@@ -303,6 +303,9 @@ internal static class SceneObjectFingerprint
 
         if (obj.SpawnCategory == "Items")
         {
+            hash.Add(obj.ItemBounce);
+            hash.Add(obj.ItemSpin);
+            hash.Add(obj.ItemFaceCamera);
             if (!string.IsNullOrWhiteSpace(obj.ItemTileKey))
                 hash.Add(obj.ItemTileKey);
             else

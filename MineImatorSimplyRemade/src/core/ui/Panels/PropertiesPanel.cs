@@ -1127,6 +1127,9 @@ public partial class PropertiesPanel : UiPanel
             AutoEmission = source.AutoEmission,
             ItemTileKey = source.ItemTileKey,
             ItemIs3D = source.ItemIs3D,
+            ItemBounce = source.ItemBounce,
+            ItemSpin = source.ItemSpin,
+            ItemFaceCamera = source.ItemFaceCamera,
             ParticleLibraryEntryId = source.ParticleLibraryEntryId,
             ParticlePreset = (System.Text.Json.Nodes.JsonObject?)source.ParticlePreset?.DeepClone(),
             ParticleSeed = source.ParticleSeed,
@@ -3720,6 +3723,10 @@ public partial class PropertiesPanel : UiPanel
 
         }
 
+        if (string.Equals(_currentObject.SpawnCategory, "Items", StringComparison.OrdinalIgnoreCase) &&
+            ImGui.CollapsingHeader(Localization.Label("text.panel.properties.item", "Item")))
+            DrawItemControls();
+
         if (string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(_currentObject.ObjectType, "Cube", StringComparison.OrdinalIgnoreCase) &&
             ImGui.CollapsingHeader(Localization.Label("text.common.cube", "Cube")))
@@ -5843,6 +5850,44 @@ public partial class PropertiesPanel : UiPanel
         return _currentObject != null
             ? new List<SceneObject> { _currentObject }
             : Array.Empty<SceneObject>();
+    }
+
+    private void DrawItemControls()
+    {
+        if (_currentObject == null) return;
+
+        void Edit(bool changed, bool value, Action<SceneObject, bool> set)
+        {
+            if (!changed) return;
+            ApplyToSelectedObjects(obj =>
+            {
+                if (string.Equals(obj.SpawnCategory, "Items", StringComparison.OrdinalIgnoreCase))
+                    set(obj, value);
+            });
+            ProjectManager.Instance.SetDirty(true);
+        }
+
+        ImGui.PushID("itemOptions");
+        var mesh = _currentObject.Visuals.OfType<ExtrudedItemMesh>().FirstOrDefault();
+        bool is3D = mesh?.Is3D ?? true;
+        ImGui.BeginDisabled(mesh == null);
+        Edit(ImGui.Checkbox(Localization.Label("text.panel.spawn.3d_extruded", "3D (extruded)"), ref is3D),
+            is3D, (obj, value) =>
+            {
+                foreach (var itemMesh in obj.Visuals.OfType<ExtrudedItemMesh>())
+                    itemMesh.Set3D(value);
+            });
+        ImGui.EndDisabled();
+        bool bounce = _currentObject.ItemBounce;
+        Edit(ImGui.Checkbox(Localization.Label("text.panel.properties.item_bounce", "Bounce"), ref bounce),
+            bounce, (obj, value) => obj.ItemBounce = value);
+        bool spin = _currentObject.ItemSpin;
+        Edit(ImGui.Checkbox(Localization.Label("text.panel.properties.item_spin", "Spin"), ref spin),
+            spin, (obj, value) => obj.ItemSpin = value);
+        bool faceCamera = _currentObject.ItemFaceCamera;
+        Edit(ImGui.Checkbox(Localization.Label("text.panel.properties.face_camera", "Face Camera"), ref faceCamera),
+            faceCamera, (obj, value) => obj.ItemFaceCamera = value);
+        ImGui.PopID();
     }
 
     private void DrawCameraBladeControls(CameraSceneObject camera)

@@ -111,6 +111,9 @@ public class SpawnMenu : UiPanel
 
     /// <summary>When true (default) the spawned mesh is extruded; otherwise flat.</summary>
     private bool _item3DMode = true;
+    private bool _itemBounce;
+    private bool _itemSpin;
+    private bool _itemFaceCamera;
 
     /// <summary>Search filter applied to the tile grid list.</summary>
     private string _itemSearchBuffer = "";
@@ -1579,8 +1582,10 @@ public class SpawnMenu : UiPanel
         UiText.Disabled(Localization.T("text.panel.spawn.options"));
         ImGui.Separator();
 
-        // 3D toggle
         ImGui.Checkbox(Localization.Label("text.panel.spawn.3d_extruded", "3D (extruded)"), ref _item3DMode);
+        ImGui.Checkbox(Localization.Label("text.panel.properties.item_bounce", "Bounce"), ref _itemBounce);
+        ImGui.Checkbox(Localization.Label("text.panel.properties.item_spin", "Spin"), ref _itemSpin);
+        ImGui.Checkbox(Localization.Label("text.panel.properties.face_camera", "Face Camera"), ref _itemFaceCamera);
         ImGui.Spacing();
         UiText.Disabled(_item3DMode
             ? Localization.T("text.panel.spawn.each_pixel_is_extruded_to_form_a_hull_mesh")
@@ -2906,7 +2911,7 @@ public class SpawnMenu : UiPanel
         Viewport.SceneObjects.Remove(obj);
         obj.Name = !string.IsNullOrWhiteSpace(timeline.Name) ? timeline.Name : "Item";
         obj.ObjectType = "Item";
-        obj.PrimitivePlaneFaceCamera = template.Item.FaceCamera;
+        obj.ItemFaceCamera = template.Item.FaceCamera;
         obj.PivotOffset = ExtrudedItemMesh.GetDefaultPivotOffset(cellWidth, cellHeight);
         obj.ResourcePackId = "";
         obj.TemporaryItemSheetPath = texturePath;
@@ -5696,7 +5701,8 @@ public class SpawnMenu : UiPanel
         string tileKey = _selectedTileKey;
         ItemAtlasSource atlasSource = _itemAtlasSource;
         bool is3D = _item3DMode;
-        SpawnWithCursor(() => SpawnItemObject(tileKey, atlasSource, is3D));
+        bool bounce = _itemBounce, spin = _itemSpin, faceCamera = _itemFaceCamera;
+        SpawnWithCursor(() => SpawnItemObject(tileKey, atlasSource, is3D, bounce, spin, faceCamera));
         _isOpen = false;
     }
 
@@ -5767,7 +5773,8 @@ public class SpawnMenu : UiPanel
     /// Creates and registers a <see cref="SceneObject"/> carrying an
     /// <see cref="ExtrudedItemMesh"/> built from the selected atlas tile.
     /// </summary>
-    public SceneObject? SpawnItemObject(string tileKey, ItemAtlasSource atlasSource, bool is3D)
+    public SceneObject? SpawnItemObject(string tileKey, ItemAtlasSource atlasSource, bool is3D,
+        bool bounce = false, bool spin = false, bool faceCamera = false)
     {
         if (Viewport == null || Gl == null) return null;
 
@@ -5808,6 +5815,9 @@ public class SpawnMenu : UiPanel
             SpawnCategory = "Items",
             TextureType   = atlasSource == ItemAtlasSource.ItemAtlas ? "item" : "block",
             ItemTileKey   = tileKey,
+            ItemBounce    = bounce,
+            ItemSpin      = spin,
+            ItemFaceCamera = faceCamera,
             ResourcePackId = GetSourceIdFromTextureKey(tileKey),
             Position      = vec3.Zero
         };

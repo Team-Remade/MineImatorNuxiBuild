@@ -58,6 +58,8 @@ public partial class Viewport : UiPanel
     {
         var owner = MainViewport ?? this;
         owner._modifierEvaluation ??= new ModifierEvaluation(owner.SceneObjects);
+        if (string.Equals(obj.SpawnCategory, "Items", StringComparison.OrdinalIgnoreCase))
+            cameraPos ??= Mesh.GlobalCameraPosition;
         foreach (var delta in owner._modifierEvaluation.GetDeltas(obj))
             yield return cameraPos.HasValue
                 ? GetRenderableWorldMatrixForInstance(obj, cameraPos.Value, delta)
@@ -5690,16 +5692,29 @@ public partial class Viewport : UiPanel
     {
         mat4 world = delta * obj.GetWorldMatrix();
 
-        bool faceCamera = obj.PrimitivePlaneFaceCamera && string.Equals(obj.ObjectType, "Plane", StringComparison.OrdinalIgnoreCase)
-                          || obj.TextMeshFaceCamera && string.Equals(obj.ObjectType, "Text Mesh", StringComparison.OrdinalIgnoreCase);
+        bool isItem = string.Equals(obj.SpawnCategory, "Items", StringComparison.OrdinalIgnoreCase);
+        if (isItem && !obj.ItemBounce && !obj.ItemSpin && !obj.ItemFaceCamera)
+            return world;
+        bool faceCamera = isItem ? obj.ItemFaceCamera :
+            string.Equals(obj.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) &&
+            (obj.PrimitivePlaneFaceCamera && string.Equals(obj.ObjectType, "Plane", StringComparison.OrdinalIgnoreCase)
+             || obj.TextMeshFaceCamera && string.Equals(obj.ObjectType, "Text Mesh", StringComparison.OrdinalIgnoreCase));
+        float seconds = isItem ? GetTimelineEffectTimeSeconds() : 0f;
+        mat4 bounce = isItem && obj.ItemBounce
+            ? mat4.Translate(new vec3(0f, 0.1f * MathF.Sin(MathF.Tau * seconds), 0f))
+            : mat4.Identity;
+        if (isItem && !faceCamera)
+        {
+            mat4 spin = obj.ItemSpin ? mat4.RotateY(MathF.Tau * seconds / 4f) : mat4.Identity;
+            return bounce * delta * obj.GetWorldMatrixNoPivot() * spin * mat4.Translate(obj.PivotOffset);
+        }
         if (!faceCamera ||
-            !string.Equals(obj.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) ||
             obj.Visuals.Count == 0)
             return world;
 
         // The billboard is rebuilt around the logical pivot, not the already
         // offset mesh center; applying PivotOffset twice shifts the plane.
-        world = delta * obj.GetWorldMatrixNoPivot();
+        world = bounce * delta * obj.GetWorldMatrixNoPivot();
         vec3 worldPos = new vec3(world.m30, world.m31, world.m32);
         vec3 toCamera = cameraPos - worldPos;
         if (toCamera.LengthSqr <= 1e-10f)

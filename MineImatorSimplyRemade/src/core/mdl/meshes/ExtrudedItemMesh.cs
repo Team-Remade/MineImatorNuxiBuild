@@ -24,7 +24,7 @@ public class ExtrudedItemMesh : Mesh
     // ── Parameters ────────────────────────────────────────────────────────────
 
     /// <summary>When false a plain double-sided plane is produced instead.</summary>
-    public bool Is3D { get; }
+    public bool Is3D { get; private set; }
 
     /// <summary>Maximum tile dimension in pixels used to normalize the mesh to unit size.</summary>
     public int TileSize { get; }
@@ -106,6 +106,31 @@ public class ExtrudedItemMesh : Mesh
         GenerateVertices();
         Upload();
     }
+
+    public void Set3D(bool is3D)
+    {
+        if (Is3D == is3D) return;
+        Is3D = is3D;
+        Vertices.Clear();
+        Normals.Clear();
+        TexCoords.Clear();
+        Indices = null;
+        GenerateVertices();
+        Upload();
+    }
+
+    private ExtrudedItemMesh(GL gl, ExtrudedItemMesh source) : base(gl)
+    {
+        Is3D = source.Is3D;
+        TileWidth = source.TileWidth;
+        TileHeight = source.TileHeight;
+        TileSize = source.TileSize;
+        ExtrudeDepth = source.ExtrudeDepth;
+        AlphaThreshold = source.AlphaThreshold;
+        _pixels = (byte[])source._pixels.Clone();
+    }
+
+    protected override Mesh CreateCloneGeometry(GL gl) => new ExtrudedItemMesh(gl, this);
 
     // ── Geometry generation ───────────────────────────────────────────────────
 

@@ -468,6 +468,9 @@ public static class ProjectSceneSerializer
             if (string.IsNullOrWhiteSpace(entry.ItemTileKey))
                 entry.ItemTileKey = ExtractItemTileKey(obj) ?? "";
             entry.ItemIs3D = obj.Visuals.OfType<ExtrudedItemMesh>().FirstOrDefault()?.Is3D ?? true;
+            entry.ItemBounce = obj.ItemBounce;
+            entry.ItemSpin = obj.ItemSpin;
+            entry.ItemFaceCamera = obj.ItemFaceCamera;
         }
 
         if (obj is ProceduralEffectSceneObject procedural)
@@ -994,6 +997,11 @@ public static class ProjectSceneSerializer
         obj.TileY = entry.TileY;
         obj.TileZ = entry.TileZ;
         obj.ItemTileKey = entry.ItemTileKey;
+        obj.ItemBounce = entry.ItemBounce;
+        obj.ItemSpin = entry.ItemSpin;
+        obj.ItemFaceCamera = entry.ItemFaceCamera;
+        foreach (var itemMesh in obj.Visuals.OfType<ExtrudedItemMesh>())
+            itemMesh.Set3D(entry.ItemIs3D);
         obj.TemporaryItemSheetPath = entry.TemporaryItemSheetPath;
         obj.TemporaryItemSheetCacheKey = entry.TemporaryItemSheetCacheKey;
         obj.TemporaryItemSheetColumns = entry.TemporaryItemSheetColumns;

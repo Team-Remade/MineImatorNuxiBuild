@@ -890,7 +890,7 @@ public class MineImatorLoader
         {
             Name = !string.IsNullOrWhiteSpace(timeline.Name) ? timeline.Name : "Item",
             ObjectType = "Item",
-            PrimitivePlaneFaceCamera = item.FaceCamera,
+            ItemFaceCamera = item.FaceCamera,
             SpawnCategory = "Items",
             TextureType = "local",
             Position = vec3.Zero,
