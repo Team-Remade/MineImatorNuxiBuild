@@ -26,7 +26,7 @@ public class BlockVariantEntry
     /// <summary>Optional X-rotation from the blockstate (0, 90, 180, 270).</summary>
     public int RotationX { get; init; }
 
-    /// <summary>Optional Y-rotation from the blockstate (0, 90, 180, 270).</summary>
+    /// <summary>Y-rotation in mesher coordinates, opposite to the blockstate's clockwise Y angle.</summary>
     public int RotationY { get; init; }
 
     /// <summary>
@@ -521,7 +521,7 @@ public static class BlockRegistry
             {
                 VariantKey = variantKey,
                 ModelPath = modelPath,
-                RotationY = rotationY,
+                RotationY = (360 - rotationY) % 360,
                 CemPath = cemPath
             });
         }
@@ -743,7 +743,7 @@ public static class BlockRegistry
                         VariantKey = variantKey,
                         ModelPath  = model,
                         RotationX  = rx,
-                        RotationY  = ry,
+                        RotationY  = (360 - ry) % 360,
                         CemPath    = cemPath ?? ""
                     };
 
@@ -751,16 +751,7 @@ public static class BlockRegistry
                     // Keep one deterministic choice per part for imported terrain.
                     if (firstApply)
                     {
-                        // Minecraft's clockwise Y rotation is opposite to the
-                        // model mesher's right-handed Y rotation.
-                        multipartParts.Add((partObj["when"] as JsonObject, new BlockVariantEntry
-                        {
-                            VariantKey = variantKey,
-                            ModelPath = model,
-                            RotationX = rx,
-                            RotationY = (360 - ry) % 360,
-                            CemPath = cemPath ?? ""
-                        }));
+                        multipartParts.Add((partObj["when"] as JsonObject, entry));
                         firstApply = false;
                     }
                     if (seen.Add(dedupeKey))
@@ -804,16 +795,7 @@ public static class BlockRegistry
             if (multipartParts != null)
                 _multipartParts[compressed] = multipartParts;
             else
-                _importVariants[compressed] = importVariants.Select(v => new BlockVariantEntry
-                {
-                    VariantKey = v.VariantKey,
-                    StateKey = v.StateKey,
-                    ModelPath = v.ModelPath,
-                    RotationX = v.RotationX,
-                    // Match the mesher convention, as for multipart imports above.
-                    RotationY = (360 - v.RotationY) % 360,
-                    CemPath = v.CemPath
-                }).ToArray();
+                _importVariants[compressed] = importVariants;
 
             if (string.IsNullOrEmpty(packId))
                 _variants[blockName] = compressed;
@@ -933,7 +915,7 @@ public static class BlockRegistry
             StateKey   = stateKey,
             ModelPath  = model,
             RotationX  = rx,
-            RotationY  = ry,
+            RotationY  = (360 - ry) % 360,
             CemPath    = cemPath ?? ""
         };
     }

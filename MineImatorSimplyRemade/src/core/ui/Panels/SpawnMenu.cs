@@ -4966,14 +4966,18 @@ public class SpawnMenu : UiPanel
                 return true;
             }
             case 77:
+            case 143:
             {
-                blockName = "stone_button";
+                blockName = blockId == 77 ? "stone_button" : "oak_button";
                 bool powered = (blockData & 0x8) != 0;
                 int orient = blockData & 0x7;
                 if (TryLegacyHorizontalFacingFromButtonData(orient, out string? buttonFacing))
                     variantHint = $"face=wall,facing={buttonFacing},powered={(powered ? "true" : "false")}";
                 else
-                    variantHint = $"face=wall,facing=north,powered={(powered ? "true" : "false")}";
+                {
+                    string face = orient == 0 ? "ceiling" : orient == 5 ? "floor" : "wall";
+                    variantHint = $"face={face},facing=north,powered={(powered ? "true" : "false")}";
+                }
                 return true;
             }
             case 78: blockName = "snow"; return true;
@@ -5134,8 +5138,8 @@ public class SpawnMenu : UiPanel
         {
             1 => "east",
             2 => "west",
-            3 => "north",
-            4 => "south",
+            3 => "south",
+            4 => "north",
             _ => null
         };
         return facing != null;

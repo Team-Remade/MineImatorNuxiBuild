@@ -75,6 +75,7 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --effects-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --particles-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --emissive-graphics
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --block-rotation-graphics
 ```
 
 The third command requires an OpenGL 3.3 desktop session and checks real rendered
@@ -83,6 +84,10 @@ The fourth also requires OpenGL 3.3 and checks particle sprite image orientation
 textures, animation frames, opacity, camera-facing rotation, and block particles.
 The fifth requires OpenGL 3.3 and checks auto-emissive source positions in modern
 and legacy schematics (including the terrain format used by world imports).
+The sixth requires OpenGL 3.3 and checks button mounting/facing (including legacy
+stone and wooden buttons), trapdoors, both door halves, multipart rotations, and
+consistent geometry after conversion to animatable blocks, rebuilding, and
+resource-pack reapplication.
 
 ## Experimental Veldrid scene renderer
 
