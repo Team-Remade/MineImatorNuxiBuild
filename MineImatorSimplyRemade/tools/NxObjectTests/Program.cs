@@ -23,6 +23,20 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--biome-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                BiomeGraphics();
+                Console.WriteLine("PASS Biome standalone blocks, merged scenery, liquid meshes, clones and live GPU pixels");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--opaque-leaves-graphics", StringComparer.Ordinal))
         {
             try
@@ -163,6 +177,7 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Biome catalog, independent custom colors, project persistence and reset", BiomeSettings),
             ("Opaque leaf defaults, persistence, texture selection and pixels", OpaqueLeavesSettings),
             ("Textured sky defaults, project persistence and background animation", SkySettings),
             ("UI scale persistence, limits, fonts, metrics and independent contexts", UiScaleTests),
@@ -267,6 +282,10 @@ internal static partial class Program
             ("Particle preset timeline controls and legacy channel preservation", ParticleTimeline),
             ("Particle invalid and unsupported preset rejection", ParticleInvalid)
         ];
+        if (args.Contains("--biomes", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Biome", StringComparison.Ordinal) ||
+                test.Name.StartsWith("Opaque leaf", StringComparison.Ordinal) ||
+                test.Name.StartsWith("Textured sky", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--mi-import", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("MI import", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--model-parts", StringComparer.Ordinal))

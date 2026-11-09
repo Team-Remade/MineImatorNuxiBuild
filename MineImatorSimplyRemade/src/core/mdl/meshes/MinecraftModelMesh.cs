@@ -28,8 +28,8 @@ public static class MinecraftModelMesh
 
     // ── Default block tints ───────────────────────────────────────────────────
     //
-    // Water uses a block-wide default. Grass and foliage use model tintindex
-    // metadata and the default colormap sample rather than per-world biome data.
+    // Legacy project colors. Biome-enabled meshes retain a category and resolve
+    // the selected palette at render time instead of baking colors into geometry.
     private static readonly Dictionary<string, vec3> DefaultBlockTints =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -51,22 +51,24 @@ public static class MinecraftModelMesh
 
     private static readonly Dictionary<string, bool> GrayscaleTextureCache =
         new(StringComparer.OrdinalIgnoreCase);
+    private static readonly (string Name, BiomeTintKind Kind)[] LeafTints =
+    [
+        ("dark_oak", BiomeTintKind.DarkOak), ("mangrove", BiomeTintKind.Mangrove),
+        ("spruce", BiomeTintKind.Spruce), ("birch", BiomeTintKind.Birch),
+        ("jungle", BiomeTintKind.Jungle), ("acacia", BiomeTintKind.Acacia), ("oak", BiomeTintKind.Oak)
+    ];
 
     /// <summary>
-    /// Applies <see cref="DefaultBlockTints"/> (if any) for <paramref name="blockName"/>
-    /// to every mesh in <paramref name="meshes"/>. No-op for blocks without a
-    /// registered tint or when <paramref name="blockName"/> is empty (e.g. spawn-menu
-    /// preview thumbnails built without a block-name hint).
+    /// Marks block-wide water tinting independently of model tint indices.
     /// </summary>
     private static void ApplyDefaultBlockTint(List<Mesh> meshes, string blockName)
     {
         if (string.IsNullOrEmpty(blockName)) return;
-        if (!DefaultBlockTints.TryGetValue(blockName, out vec3 tint)) return;
+        if (!DefaultBlockTints.ContainsKey(blockName)) return;
 
         foreach (var mesh in meshes)
         {
-            mesh.BaseTint = tint;
-            mesh.Albedo = tint;
+            mesh.BiomeTint = BiomeTintKind.Water;
         }
     }
 
@@ -82,13 +84,6 @@ public static class MinecraftModelMesh
     internal static vec3 GetFaceTint(string blockName, BlockModelFace face, string baseTextureKey, string resolvedTextureKey) =>
         TryGetFaceBiomeTint(blockName, face, baseTextureKey, resolvedTextureKey, out _, out var tint)
             ? tint : new vec3(1f);
-
-    private enum BiomeTintKind
-    {
-        None,
-        Grass,
-        Foliage,
-    }
 
     private static vec3 LoadDefaultColormapTint(string colormapFileName, vec3 fallback)
     {
@@ -125,13 +120,27 @@ public static class MinecraftModelMesh
         }
     }
 
-    private static vec3 GetBiomeTint(BiomeTintKind kind)
+    internal static vec3 LoadColormapTint(string fileName, float temperature, float downfall)
+    {
+        string path = Path.Combine(MinecraftDataLoader.GetVersionRoot(), "textures", "colormap", fileName);
+        using var stream = File.OpenRead(path);
+        var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+        float t = Math.Clamp(temperature, 0f, 1f);
+        float humidity = Math.Clamp(downfall, 0f, 1f) * t;
+        int x = (int)((1f - t) * (image.Width - 1));
+        int y = (int)((1f - humidity) * (image.Height - 1));
+        int i = (y * image.Width + x) * 4;
+        return new vec3(image.Data[i], image.Data[i + 1], image.Data[i + 2]) / 255f;
+    }
+
+    internal static vec3 GetLegacyTint(BiomeTintKind kind)
     {
         return kind switch
         {
             BiomeTintKind.Grass => DefaultGrassTint.Value,
-            BiomeTintKind.Foliage => DefaultFoliageTint.Value,
-            _ => new vec3(1f, 1f, 1f),
+            BiomeTintKind.Water => DefaultBlockTints["water"],
+            BiomeTintKind.None => new vec3(1f),
+            _ => DefaultFoliageTint.Value,
         };
     }
 
@@ -154,7 +163,7 @@ public static class MinecraftModelMesh
         if (tintKind == BiomeTintKind.None)
             return false;
 
-        tint = GetBiomeTint(tintKind);
+        tint = BiomeEnvironment.GetTint(tintKind);
         return true;
     }
 
@@ -225,6 +234,11 @@ public static class MinecraftModelMesh
                 part.Contains("fern", StringComparison.OrdinalIgnoreCase))
                 return BiomeTintKind.Grass;
 
+            foreach (var (name, kind) in LeafTints)
+                if (part.Contains(name, StringComparison.OrdinalIgnoreCase) &&
+                    (part.Contains("leaves", StringComparison.OrdinalIgnoreCase) || part.Contains("leaf", StringComparison.OrdinalIgnoreCase)))
+                    return kind;
+
             if (part.Contains("leaves", StringComparison.OrdinalIgnoreCase) ||
                 part.Contains("leaf", StringComparison.OrdinalIgnoreCase) ||
                 part.Contains("vine", StringComparison.OrdinalIgnoreCase) ||
@@ -260,6 +274,12 @@ public static class MinecraftModelMesh
         if (string.IsNullOrWhiteSpace(textureKey))
             return false;
 
+        if (IsWaterTextureKey(textureKey))
+        {
+            tint = BiomeEnvironment.GetTint(BiomeTintKind.Water);
+            return true;
+        }
+
         if (textureKey.Contains("pale_oak_leaves", StringComparison.OrdinalIgnoreCase))
             return false;
 
@@ -270,9 +290,19 @@ public static class MinecraftModelMesh
         if (kind == BiomeTintKind.None)
             return false;
 
-        tint = GetBiomeTint(kind);
+        tint = BiomeEnvironment.GetTint(kind);
         return true;
     }
+
+    internal static BiomeTintKind GetFaceTintKind(string blockName, BlockModelFace face, string baseTextureKey, string resolvedTextureKey) =>
+        TryGetFaceBiomeTint(blockName, face, baseTextureKey, resolvedTextureKey, out var kind, out _) ? kind : BiomeTintKind.None;
+
+    private static bool IsWaterTextureKey(string textureKey) =>
+        Path.GetFileName(textureKey[(textureKey.LastIndexOf(':') + 1)..]) is "water_still" or "water_flow";
+
+    public static BiomeTintKind GetTextureTintKind(string textureKey) =>
+        IsWaterTextureKey(textureKey) ? BiomeTintKind.Water :
+        TryGetBiomeTintForTextureKey(textureKey, out _) ? InferBiomeTintKind(textureKey, textureKey, textureKey) : BiomeTintKind.None;
 
     /// <summary>
     /// Builds one or more <see cref="Mesh"/> objects from a fully-resolved
@@ -345,8 +375,7 @@ public static class MinecraftModelMesh
             mesh.DoubleSided = false;
             if (tintKind != BiomeTintKind.None)
             {
-                mesh.BaseTint = tint;
-                mesh.Albedo = tint;
+                mesh.BiomeTint = tintKind;
             }
 
             mesh.AnimationKey = TerrainAtlas.GetAnimationKey(texId);

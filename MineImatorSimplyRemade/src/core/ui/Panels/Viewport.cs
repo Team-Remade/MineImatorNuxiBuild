@@ -656,8 +656,8 @@ public class Viewport : UiPanel
 
         _groundPlane.TextureId = tileId;
         _groundPlane.Albedo = new vec3(1f, 1f, 1f);
-        if (normalizedAtlas == "block" && MinecraftModelMesh.TryGetBiomeTintForTextureKey(normalizedKey, out vec3 tint))
-            _groundPlane.Albedo = tint;
+        _groundPlane.BiomeTint = normalizedAtlas == "block"
+            ? MinecraftModelMesh.GetTextureTintKind(normalizedKey) : BiomeTintKind.None;
 
         GroundTileAtlas = normalizedAtlas;
         GroundTileKey = normalizedKey;

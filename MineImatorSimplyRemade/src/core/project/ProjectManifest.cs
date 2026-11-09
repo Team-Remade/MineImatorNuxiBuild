@@ -206,6 +206,8 @@ public class ProjectRenderSettings
     public string BackgroundImagePath { get; set; } = "No image selected";
     public bool FloorVisible { get; set; } = true;
     public bool OpaqueLeaves { get; set; }
+    public string Biome { get; set; } = "default";
+    public MineImatorSimplyRemade.core.mdl.meshes.BiomeColors CustomBiomeColors { get; set; } = new();
     public string FloorTextureAtlas { get; set; } = "block";
     public string FloorTileKey { get; set; } = "grass_block_top";
     public ProjectVec4 BackgroundColor { get; set; } = new()

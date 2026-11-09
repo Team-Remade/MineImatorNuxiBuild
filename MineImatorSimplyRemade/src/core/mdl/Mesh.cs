@@ -5,6 +5,7 @@ using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.mdl.material;
 using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.mdl.mineImator;
+using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using Silk.NET.OpenGL;
 
@@ -566,6 +567,8 @@ public class Mesh : IDisposable
     /// Intrinsic mesh colour multiplied by the scene object's material colour.
     /// </summary>
     public vec3 BaseTint { get; set; } = new vec3(1f);
+    public BiomeTintKind BiomeTint { get; set; }
+    public vec3 RenderAlbedo => Albedo * BiomeEnvironment.GetTint(BiomeTint);
 
     /// <summary>Authored geometry opacity multiplied by the scene material opacity.</summary>
     public float BaseAlpha { get; set; } = 1f;
@@ -827,6 +830,7 @@ public class Mesh : IDisposable
         clone.MinecraftTextureKey = MinecraftTextureKey;
         clone.MinecraftItemTexture = MinecraftItemTexture;
         clone.BaseTint            = BaseTint;
+        clone.BiomeTint           = BiomeTint;
         clone.BaseAlpha           = BaseAlpha;
         clone.BaseBlendColor      = BaseBlendColor;
         clone.BaseMixColor        = BaseMixColor;
@@ -1333,7 +1337,7 @@ public class Mesh : IDisposable
 
         ApplySkinningUniforms(_shader);
 
-        SetUniformVec3("uAlbedo", Albedo);
+        SetUniformVec3("uAlbedo", RenderAlbedo);
         SetUniformVec4("uBlendColor", BlendColor);
         SetUniformVec4("uMixColor", MixColor);
         SetUniformFloat("uAlpha", Alpha);

@@ -229,7 +229,7 @@ public sealed class VeldridSceneRenderer : IDisposable
             Mvp = _viewProjection * model,
             NormalMatrix = MathF.Abs(model.Determinant) > 1e-12f ? model.Inverse.Transposed : mat4.Identity,
             Model = model,
-            Albedo = new vec4(mesh.Albedo, mesh.Alpha),
+            Albedo = new vec4(mesh.RenderAlbedo, mesh.Alpha),
             Blend = mesh.BlendColor,
             Mix = mesh.MixColor,
             Emission = new vec4(mesh.EmissionEnabled && !mesh.EmissionIndirectOnly

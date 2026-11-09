@@ -19,6 +19,12 @@ Requirements
 5. Run `cd ./MineImatorSimplyRemade`
 6. Run `dotnet run`
 
+## Biome colors
+
+Preset climate and color values are based on the
+[Java 26.3 biome data](https://github.com/misode/mcmeta/blob/26.3-summary/data/worldgen/biome/data.json)
+and the bundled grass/foliage colormaps.
+
 ## Procedural 3D effects
 
 Open **Spawn > Effects** and choose **Lightning**, **Ring / Portal**, or
