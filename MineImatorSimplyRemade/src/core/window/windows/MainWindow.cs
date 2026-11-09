@@ -102,6 +102,7 @@ public class MainWindow : Window
     private readonly PerformancePanel _performancePanel = new();
     public PerformanceMetricsOverlay MetricsOverlay { get; } = new();
     private readonly ProjectManager _projectManager = ProjectManager.Instance;
+    private readonly ProjectBackupService _projectBackups = new();
     private readonly Queue<string> _droppedFiles = new();
     private GlfwCallbacks.DropCallback? _fileDropCallback;
     private readonly Dictionary<string, uint> _thumbnailTextures = new(StringComparer.OrdinalIgnoreCase);
@@ -580,6 +581,7 @@ public class MainWindow : Window
         }
         using (FrameProfiler.Shared.Measure(ProfileStage.HistoryTracking))
             UpdateUndoRedoTracking();
+        UpdateAutomaticBackups();
         RenderProjectHomeScreen();
         RenderToast();
         _performancePanel.Render();
@@ -2427,6 +2429,30 @@ public class MainWindow : Window
         _resourcePackImportActive = true;
         _resourcePackImportStage = ResourcePackImportStage.CopyPack;
         _openResourcePackImportPopup = true;
+    }
+
+    private void UpdateAutomaticBackups()
+    {
+        if (_preferencesPanel == null || _mainViewport == null)
+            return;
+
+        bool canCapture = !_showProjectHome && !_renderJobActive && !_resourcePackImportActive &&
+                          _worldImporter?.IsOpen != true && _timeline?.IsPlaying != true &&
+                          !ImGui.IsAnyItemActive() &&
+                          !ImGui.IsMouseDown(ImGuiMouseButton.Left) &&
+                          !ImGui.IsMouseDown(ImGuiMouseButton.Right) &&
+                          !ImGui.IsMouseDown(ImGuiMouseButton.Middle);
+        try
+        {
+            _projectBackups.Update(_projectManager, _preferencesPanel.AutomaticBackups,
+                _preferencesPanel.NumberOfBackupsToKeep, _preferencesPanel.BackupIntervalMinutes,
+                canCapture, snapshot => ProjectSceneSerializer.WriteSceneToManifest(
+                    snapshot, _mainViewport, _timeline, _propertiesPanel));
+        }
+        catch (Exception ex)
+        {
+            ShowErrorToast(Localization.Format("text.window.main.backup_failed", ex.Message));
+        }
     }
 
     private void SaveProjectWithScene()

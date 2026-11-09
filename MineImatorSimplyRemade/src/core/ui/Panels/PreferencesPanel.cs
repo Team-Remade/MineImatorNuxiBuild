@@ -15,6 +15,8 @@ public class PreferencesPanel : UiPanel
     public string MinecraftVersion { get; set; } = PreferencesDefaults.GetDefaultMinecraftVersion();
     public int TargetFps { get; set; } = 60;
     public bool AutomaticBackups { get; set; } = true;
+    public int NumberOfBackupsToKeep { get; set; } = 3;
+    public int BackupIntervalMinutes { get; set; } = 5;
     public bool CopyWorkCameraIntoNewCameras { get; set; } = true;
 
     // ── Interface Preferences ──────────────────────────────────────────────────
@@ -287,8 +289,23 @@ public class PreferencesPanel : UiPanel
                 {
                     AutomaticBackups = backups;
                     preferencesChanged = true;
-                    // TODO: Implement automatic backups
                 }
+
+                ImGui.BeginDisabled(!AutomaticBackups);
+                int count = NumberOfBackupsToKeep;
+                if (ImGui.InputInt(Localization.Label("text.panel.preferences.number_of_backups_to_keep", "Number of backups to keep##backupCount"), ref count))
+                {
+                    NumberOfBackupsToKeep = Math.Max(1, count);
+                    preferencesChanged = true;
+                }
+
+                int minutes = BackupIntervalMinutes;
+                if (ImGui.InputInt(Localization.Label("text.panel.preferences.backup_interval", "Backup interval (minutes)##backupInterval"), ref minutes))
+                {
+                    BackupIntervalMinutes = Math.Max(1, minutes);
+                    preferencesChanged = true;
+                }
+                ImGui.EndDisabled();
             }
 
             ImGui.Spacing();
@@ -549,6 +566,8 @@ public class PreferencesPanel : UiPanel
             MinecraftVersion = MinecraftVersion,
             TargetFps = TargetFps,
             AutomaticBackups = AutomaticBackups,
+            NumberOfBackupsToKeep = Math.Max(1, NumberOfBackupsToKeep),
+            BackupIntervalMinutes = Math.Max(1, BackupIntervalMinutes),
             CopyWorkCameraIntoNewCameras = CopyWorkCameraIntoNewCameras,
             Theme = Theme,
             UiScale = UiScale,
@@ -588,6 +607,8 @@ public class PreferencesPanel : UiPanel
             : state.MinecraftVersion;
         TargetFps = Math.Clamp(state.TargetFps, 0, 120);
         AutomaticBackups = state.AutomaticBackups;
+        NumberOfBackupsToKeep = Math.Max(1, state.NumberOfBackupsToKeep);
+        BackupIntervalMinutes = Math.Max(1, state.BackupIntervalMinutes);
         CopyWorkCameraIntoNewCameras = state.CopyWorkCameraIntoNewCameras;
         Theme = state.Theme;
         ApplyUiScale(state.UiScale);
@@ -615,6 +636,8 @@ public class PreferencesPanel : UiPanel
         MinecraftVersion = defaults.MinecraftVersion;
         TargetFps = defaults.TargetFps;
         AutomaticBackups = defaults.AutomaticBackups;
+        NumberOfBackupsToKeep = defaults.NumberOfBackupsToKeep;
+        BackupIntervalMinutes = defaults.BackupIntervalMinutes;
         CopyWorkCameraIntoNewCameras = defaults.CopyWorkCameraIntoNewCameras;
         Theme = defaults.Theme;
         ApplyUiScale(defaults.UiScale);
@@ -734,6 +757,8 @@ public class PreferencesState
     public string MinecraftVersion { get; set; } = PreferencesDefaults.GetDefaultMinecraftVersion();
     public int TargetFps { get; set; } = 60;
     public bool AutomaticBackups { get; set; } = true;
+    public int NumberOfBackupsToKeep { get; set; } = 3;
+    public int BackupIntervalMinutes { get; set; } = 5;
     public bool CopyWorkCameraIntoNewCameras { get; set; } = true;
     public PreferencesPanel.ThemeMode Theme { get; set; } = PreferencesPanel.ThemeMode.Darker;
     public float UiScale { get; set; } = 1f;

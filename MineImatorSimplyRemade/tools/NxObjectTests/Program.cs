@@ -192,6 +192,11 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Backup preference defaults and source-generated persistence", BackupPreferences),
+            ("Backup live scene, metadata, assets and unsaved state isolation", BackupSnapshot),
+            ("Backup interval boundaries, deferred capture, disable and project switching", BackupScheduling),
+            ("Backup retention, changed limits and project isolation", BackupRetention),
+            ("Backup failed capture/write preserves saves, rotation and retry interval", BackupFailures),
             ("Camera orbit defaults, transforms, look-at, poles and parented navigation", CameraOrbitTransforms),
             ("Camera orbit project/archive/library, duplication, undo and dirty detection", CameraOrbitPersistence),
             ("Camera orbit timeline discovery, read/write, interpolation and seeking", CameraOrbitTimeline),
@@ -329,6 +334,8 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Scene tree ImGui", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--ui-scale", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("UI scale", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--backups", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Backup", StringComparison.Ordinal)).ToArray();
         int failures = 0;
         foreach (var test in tests)
         {
