@@ -265,6 +265,9 @@ internal static partial class Program
             ("Camera orbit project/archive/library, duplication, undo and dirty detection", CameraOrbitPersistence),
             ("Camera orbit timeline discovery, read/write, interpolation and seeking", CameraOrbitTimeline),
             ("Camera orbit ImGui enable/disable, show/hide and multi-selection", CameraOrbitControls),
+            ("Camera blades defaults, ranges, persistence, duplication and undo", CameraBladePersistence),
+            ("Camera blades timeline discovery, interpolation and seeking", CameraBladeTimeline),
+            ("Camera blades ImGui controls and multi-selection", CameraBladeControls),
             ("Wind defaults, project/object persistence, duplication, undo, animation and classification", WindPersistence),
             ("Biome catalog, independent custom colors, project persistence and reset", BiomeSettings),
             ("Opaque leaf defaults, persistence, texture selection and pixels", OpaqueLeavesSettings),
@@ -383,6 +386,10 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Snap ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--camera-orbit", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Camera orbit", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--camera-blades", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Camera blades", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--camera-blades-graphics", StringComparer.Ordinal))
+            tests = [("Camera blades rendered aperture, angle, stretch and default parity", CameraBladeGraphics)];
         if (args.Contains("--wind", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Wind", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--biomes", StringComparer.Ordinal))

@@ -7,6 +7,7 @@ uniform vec2 uResolution;
 uniform vec2 uClip;
 uniform vec4 uFocus; // depth, full sharp range, fade distance, blur percentage
 uniform vec4 uBokeh; // anamorphic ratio, edge highlight, threshold, strength
+uniform vec3 uBlades; // blade count, angle in degrees, signed stretch percentage
 uniform int uColorFringe;
 uniform vec3 uFringeAngles;
 uniform vec3 uFringeOffsets;
@@ -51,6 +52,8 @@ void main()
 
     float ratio = clamp(uBokeh.x, 0.1, 10.0);
     vec2 shape = vec2(sqrt(ratio), inversesqrt(ratio));
+    float stretch = clamp(uBlades.z / 100.0, -1.0, 1.0);
+    shape *= vec2(1.0 + max(stretch, 0.0), 1.0 + max(-stretch, 0.0));
     vec4 center = sampleColor(uv, centerBlur);
     vec3 sum = center.rgb * center.a;
     float alphaSum = center.a;
@@ -63,7 +66,17 @@ void main()
     {
         float radius = sqrt((float(i) + 0.5) / float(sampleCount));
         float angle = float(i) * 2.39996323;
-        vec2 sampleUv = uv + vec2(cos(angle), sin(angle)) * radius * maxRadius * shape / uResolution;
+        float apertureRadius = 1.0;
+        // Fewer than three blades cannot form a polygon; retain the circular aperture.
+        if (uBlades.x >= 3.0)
+        {
+            float halfSector = 3.14159265 / uBlades.x;
+            float sectorAngle = mod(angle + halfSector, 2.0 * halfSector) - halfSector;
+            apertureRadius = cos(halfSector) / cos(sectorAngle);
+        }
+        float rotatedAngle = angle + (uBlades.x >= 3.0 ? radians(uBlades.y) : 0.0);
+        vec2 sampleUv = uv + vec2(cos(rotatedAngle), sin(rotatedAngle)) *
+            radius * apertureRadius * maxRadius * shape / uResolution;
         if (any(lessThan(sampleUv, vec2(0.0))) || any(greaterThan(sampleUv, vec2(1.0))))
             continue;
 

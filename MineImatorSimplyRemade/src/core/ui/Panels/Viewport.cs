@@ -6512,6 +6512,8 @@ public class Viewport : UiPanel
             Gl.Uniform1(_depthOfFieldShader.GetUniformLocation("uDepth"), 1);
             Gl.Uniform2(_depthOfFieldShader.GetUniformLocation("uResolution"), (float)width, (float)height);
             Gl.Uniform2(_depthOfFieldShader.GetUniformLocation("uClip"), near, far);
+            Gl.Uniform3(_depthOfFieldShader.GetUniformLocation("uBlades"), (float)Math.Clamp(camera.BladeCount, 0, 16),
+                camera.BladeAngle % 360f, Math.Clamp(camera.BladeStretch, -100f, 100f));
             Gl.Uniform4(_depthOfFieldShader.GetUniformLocation("uFocus"), MathF.Max(0f, settings.Depth),
                 MathF.Max(0f, settings.FocusRange), MathF.Max(0f, settings.FadeSize), Math.Clamp(settings.BlurSize, 0f, 100f));
             Gl.Uniform4(_depthOfFieldShader.GetUniformLocation("uBokeh"), Math.Clamp(settings.AnamorphicRatio, 0.1f, 10f),

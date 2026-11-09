@@ -13,6 +13,9 @@ public class CameraSceneObject : SceneObject
     public float Fov  = 70f;
     public float Near = 0.05f;
     public float Far  = 4000f;
+    public int BladeCount;
+    public float BladeAngle;
+    public float BladeStretch;
     public bool OrbitEnabled;
     public float OrbitDistance = 100f;
     public float OrbitRotationXY;

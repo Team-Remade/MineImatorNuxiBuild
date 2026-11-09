@@ -1213,6 +1213,9 @@ public partial class PropertiesPanel : UiPanel
             CameraNear = source.CameraNear,
             CameraFar = source.CameraFar,
             CameraActive = source.CameraActive,
+            CameraBladeCount = source.CameraBladeCount,
+            CameraBladeAngle = source.CameraBladeAngle,
+            CameraBladeStretch = source.CameraBladeStretch,
             CameraOrbitEnabled = source.CameraOrbitEnabled,
             CameraOrbitDistance = source.CameraOrbitDistance,
             CameraOrbitRotationXY = source.CameraOrbitRotationXY,
@@ -5583,6 +5586,8 @@ public partial class PropertiesPanel : UiPanel
                 _openPropContextMenu = true;
             }
             ImGui.Spacing();
+            DrawCameraBladeControls(selectedCamera);
+            ImGui.Spacing();
             DrawCameraOrbitControls(selectedCamera);
             ImGui.Spacing();
             ImGui.TextUnformatted(Localization.T("text.panel.properties.color_management"));
@@ -5806,6 +5811,40 @@ public partial class PropertiesPanel : UiPanel
         return _currentObject != null
             ? new List<SceneObject> { _currentObject }
             : Array.Empty<SceneObject>();
+    }
+
+    private void DrawCameraBladeControls(CameraSceneObject camera)
+    {
+        void Edit<T>(bool changed, string property, T value, Action<CameraSceneObject, T> set)
+        {
+            string path = "camera." + property;
+            if (changed)
+            {
+                ApplyToSelectedObjects(obj =>
+                {
+                    if (obj is not CameraSceneObject selected) return;
+                    set(selected, value);
+                    Timeline?.RecordAutoKeyframe(selected, path);
+                });
+                ProjectManager.Instance.SetDirty(true);
+            }
+            RegisterPropertyContext(path);
+        }
+
+        ImGui.TextUnformatted(Localization.T("text.panel.properties.camera_blades"));
+        ImGui.PushID("cameraBlades");
+        int count = camera.BladeCount;
+        Edit(InputIntEditor(Localization.Label("text.panel.properties.camera_blade_count", "Blades"),
+            ref count, 1, 4, 0, 16), "blade_count", count, (selected, value) => selected.BladeCount = value);
+        float angle = camera.BladeAngle;
+        Edit(InputFloatEditor(Localization.Label("text.panel.properties.camera_blade_angle", "Blade Angle (degrees)"),
+            ref angle, 0.1f, -float.MaxValue, float.MaxValue, "%.2f"), "blade_angle", angle,
+            (selected, value) => selected.BladeAngle = value);
+        float stretch = camera.BladeStretch;
+        Edit(InputFloatEditor(Localization.Label("text.panel.properties.camera_blade_stretch", "Blade Stretch (%)"),
+            ref stretch, 1f, -100f, 100f, "%.1f"), "blade_stretch", stretch,
+            (selected, value) => selected.BladeStretch = value);
+        ImGui.PopID();
     }
 
     private void DrawCameraOrbitControls(CameraSceneObject camera)

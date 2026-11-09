@@ -542,6 +542,9 @@ public class ProjectSceneObjectEntry
     public float CameraNear { get; set; } = 0.05f;
     public float CameraFar { get; set; } = 4000f;
     public bool CameraActive { get; set; } = false;
+    public int CameraBladeCount { get; set; }
+    public float CameraBladeAngle { get; set; }
+    public float CameraBladeStretch { get; set; }
     public bool CameraOrbitEnabled { get; set; }
     public float CameraOrbitDistance { get; set; } = 100f;
     public float CameraOrbitRotationXY { get; set; }

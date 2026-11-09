@@ -394,6 +394,9 @@ internal static class SceneObjectFingerprint
             hash.Add(camera.Near);
             hash.Add(camera.Far);
             hash.Add(camera.Active);
+            hash.Add(camera.BladeCount);
+            hash.Add(camera.BladeAngle);
+            hash.Add(camera.BladeStretch);
             hash.Add(camera.OrbitEnabled);
             hash.Add(camera.OrbitDistance);
             hash.Add(camera.OrbitRotationXY);

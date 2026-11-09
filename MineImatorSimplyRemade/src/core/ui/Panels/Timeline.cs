@@ -2723,6 +2723,7 @@ public partial class Timeline : UiPanel
         string[] cameraPaths =
         {
             "camera.active", "camera.fov",
+            "camera.blade_count", "camera.blade_angle", "camera.blade_stretch",
             "camera.orbit_enabled", "camera.orbit_distance", "camera.orbit_rotation_xy",
             "camera.orbit_rotation_z", "camera.orbit_look_at",
         };
@@ -3380,6 +3381,9 @@ public partial class Timeline : UiPanel
                         {
                             "active" => cam.Active ? 1f : 0f,
                             "fov" => cam.Fov,
+                            "blade_count" => cam.BladeCount,
+                            "blade_angle" => cam.BladeAngle,
+                            "blade_stretch" => cam.BladeStretch,
                             "orbit_enabled" => cam.OrbitEnabled ? 1f : 0f,
                             "orbit_distance" => cam.OrbitDistance,
                             "orbit_rotation_xy" => cam.OrbitRotationXY,
@@ -3933,6 +3937,9 @@ public partial class Timeline : UiPanel
                             {
                                 switch (comp)
                                 {
+                                    case "blade_count": camSet.BladeCount = (int)MathF.Round(Math.Clamp(value, 0f, 16f)); break;
+                                    case "blade_angle": camSet.BladeAngle = value; break;
+                                    case "blade_stretch": camSet.BladeStretch = Math.Clamp(value, -100f, 100f); break;
                                     case "orbit_enabled": camSet.OrbitEnabled = value >= 0.5f; break;
                                     case "orbit_distance": camSet.OrbitDistance = MathF.Max(0f, value); break;
                                     case "orbit_rotation_xy": camSet.OrbitRotationXY = value; break;
@@ -4424,6 +4431,9 @@ public partial class Timeline : UiPanel
                 {
                     (label: "Active", path: "camera.active", parent: "", indent: 0),
                     (label: "Field of View", path: "camera.fov", parent: "", indent: 0),
+                    (label: "Blades", path: "camera.blade_count", parent: "", indent: 0),
+                    (label: "Blade Angle (degrees)", path: "camera.blade_angle", parent: "", indent: 0),
+                    (label: "Blade Stretch (%)", path: "camera.blade_stretch", parent: "", indent: 0),
                     (label: "Rotate around a point", path: "camera.orbit_enabled", parent: "", indent: 0),
                     (label: "Distance", path: "camera.orbit_distance", parent: "", indent: 1),
                     (label: "Rotation XY", path: "camera.orbit_rotation_xy", parent: "", indent: 1),
@@ -4678,6 +4688,9 @@ public partial class Timeline : UiPanel
         {
             _displayRows.Add(MakeSingle(obj, "Active", "camera.active"));
             _displayRows.Add(MakeSingle(obj, "Field of View", "camera.fov"));
+            _displayRows.Add(MakeSingle(obj, "Blades", "camera.blade_count"));
+            _displayRows.Add(MakeSingle(obj, "Blade Angle (degrees)", "camera.blade_angle"));
+            _displayRows.Add(MakeSingle(obj, "Blade Stretch (%)", "camera.blade_stretch"));
             _displayRows.Add(MakeSingle(obj, "Rotate around a point", "camera.orbit_enabled"));
             _displayRows.Add(MakeSingle(obj, "Distance", "camera.orbit_distance", 1));
             _displayRows.Add(MakeSingle(obj, "Rotation XY", "camera.orbit_rotation_xy", 1));

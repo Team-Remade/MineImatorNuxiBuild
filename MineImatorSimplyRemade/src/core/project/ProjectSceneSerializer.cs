@@ -534,6 +534,9 @@ public static class ProjectSceneSerializer
             entry.CameraNear = camera.Near;
             entry.CameraFar = camera.Far;
             entry.CameraActive = camera.Active;
+            entry.CameraBladeCount = camera.BladeCount;
+            entry.CameraBladeAngle = camera.BladeAngle;
+            entry.CameraBladeStretch = camera.BladeStretch;
             entry.CameraOrbitEnabled = camera.OrbitEnabled;
             entry.CameraOrbitDistance = camera.OrbitDistance;
             entry.CameraOrbitRotationXY = camera.OrbitRotationXY;
@@ -1185,6 +1188,9 @@ public static class ProjectSceneSerializer
             camera.Fov = entry.CameraFov;
             camera.Near = entry.CameraNear;
             camera.Far = entry.CameraFar;
+            camera.BladeCount = Math.Clamp(entry.CameraBladeCount, 0, 16);
+            camera.BladeAngle = entry.CameraBladeAngle;
+            camera.BladeStretch = Math.Clamp(entry.CameraBladeStretch, -100f, 100f);
             camera.OrbitEnabled = entry.CameraOrbitEnabled;
             camera.OrbitDistance = entry.CameraOrbitDistance;
             camera.OrbitRotationXY = entry.CameraOrbitRotationXY;
