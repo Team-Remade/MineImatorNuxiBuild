@@ -890,6 +890,8 @@ public class SpawnMenu : UiPanel
                     _previewCharacter = SpawnMineImatorObject(path, importBackground: false);
                 else if (Path.GetExtension(path).Equals(".mimodel", StringComparison.OrdinalIgnoreCase))
                     _previewCharacter = SpawnMineImatorModel(path);
+                else if (Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase))
+                    _previewCharacter = LoadCustomBlockModel(path);
                 else
                     _previewCharacter = AssimpModelLoader.Load(Gl, path);
 
@@ -2529,7 +2531,7 @@ public class SpawnMenu : UiPanel
 
     /// <summary>
     /// Opens a native file-open dialog filtered to common 3-D model formats.
-    /// On success the model is imported via <see cref="AssimpModelLoader"/>,
+    /// On success the model is imported via the matching format loader,
     /// added to the scene, and the entry is stored in the custom-model history.
     /// </summary>
     private void OpenCustomModelFileDialog()
@@ -2590,6 +2592,7 @@ public class SpawnMenu : UiPanel
     ///
     /// Supports:
     ///  - .mimodel / .miobject  — Mine Imator model files (via MineImatorLoader)
+    ///  - .json — Minecraft cuboid block models (via BlockModelLoader)
     ///  - .glb / .gltf and all Assimp-supported formats (via AssimpModelLoader)
     ///
     /// <paramref name="textureOverridePath"/> — when not null, overrides the
@@ -2642,6 +2645,9 @@ public class SpawnMenu : UiPanel
 
         switch (ext)
         {
+            case ".json":
+                root = LoadCustomBlockModel(pathToSpawn, textureOverridePath);
+                break;
             case ".mimodel":
                 root = SpawnMineImatorModel(pathToSpawn, textureOverridePath);
                 break;
@@ -2712,6 +2718,28 @@ public class SpawnMenu : UiPanel
         if (ext == ".miobject")
             Timeline.Instance?.LoadKeyframesForAllObjects(new[] { root }.Concat(root.GetAllDescendants()));
         return root;
+    }
+
+    private SceneObject? LoadCustomBlockModel(string path, string? textureOverridePath = null)
+    {
+        try
+        {
+            var warnings = new List<string>();
+            var root = BlockModelLoader.Load(Gl!, path, textureOverridePath, message =>
+            {
+                Console.Error.WriteLine(message);
+                warnings.Add(message);
+            });
+            if (warnings.Count > 0) _objectImportError = string.Join(Environment.NewLine, warnings.Distinct());
+            return root;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                                   System.Text.Json.JsonException or InvalidOperationException or ArgumentException)
+        {
+            _objectImportError = $"Block model import failed: {ex.Message}";
+            Console.Error.WriteLine(_objectImportError);
+            return null;
+        }
     }
 
     private string ResolveModelPathForProject(string sourcePath)

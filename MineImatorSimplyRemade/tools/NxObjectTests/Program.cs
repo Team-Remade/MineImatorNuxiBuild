@@ -23,6 +23,20 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--block-models-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                BlockModelGraphics();
+                Console.WriteLine("PASS Block model GPU geometry, per-face textures, UV orientation, override and archive reload");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--texture-sheets-graphics", StringComparer.Ordinal))
         {
             try
@@ -234,6 +248,9 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Block model parent inheritance, child aliases and automatic textures", BlockModelResolution),
+            ("Block model project copying and portable archive dependencies", BlockModelPersistence),
+            ("Block model missing textures, invalid models and cycles", BlockModelValidation),
             ("Watermark defaults, persistence and disabled settings retention", WatermarkSettings),
             ("Watermark Enabled checkbox hides and restores controls", WatermarkControls),
             ("Frames selected export, roundtrip, broadcast, timing, replacement and seeking", FramesRoundtrip),
@@ -389,6 +406,8 @@ internal static partial class Program
             ("Particle preset timeline controls and legacy channel preservation", ParticleTimeline),
             ("Particle invalid and unsupported preset rejection", ParticleInvalid)
         ];
+        if (args.Contains("--block-models", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Block model", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--visibility", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Visibility", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--watermark", StringComparer.Ordinal))

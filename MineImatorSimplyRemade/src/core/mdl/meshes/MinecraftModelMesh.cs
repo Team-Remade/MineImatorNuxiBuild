@@ -320,7 +320,8 @@ public static class MinecraftModelMesh
                                    int variantRotX = 0, int variantRotY = 0,
                                    string resourcePackId = "",
                                    string blockName = "",
-                                   int tileX = 1, int tileY = 1, int tileZ = 1)
+                                   int tileX = 1, int tileY = 1, int tileZ = 1,
+                                   Func<string, uint>? textureLoader = null)
     {
         tileX = ClampTileCount(tileX);
         tileY = ClampTileCount(tileY);
@@ -356,7 +357,7 @@ public static class MinecraftModelMesh
             foreach (var element in model.Elements)
             {
                 AppendElement(element, model, groups, variantTransform, resourcePackId,
-                              blockName, tileOffset, tx, ty, tz, tileX, tileY, tileZ);
+                              blockName, tileOffset, tx, ty, tz, tileX, tileY, tileZ, textureLoader);
             }
         }
 
@@ -371,7 +372,7 @@ public static class MinecraftModelMesh
             mesh.Normals.AddRange(norms);
             mesh.TexCoords.AddRange(uvs);
             mesh.TextureId   = texId;
-            mesh.MinecraftTextureKey = CtmAtlas.GetTextureKey(texId) ?? texKey;
+            mesh.MinecraftTextureKey = textureLoader == null ? CtmAtlas.GetTextureKey(texId) ?? texKey : "";
             mesh.TerrainWindKind = WindSettings.ClassifyBlock(blockName, texKey);
             mesh.DoubleSided = false;
             if (tintKind != BiomeTintKind.None)
@@ -693,7 +694,8 @@ public static class MinecraftModelMesh
         string blockName,
         vec3 tileOffset,
         int tx, int ty, int tz,
-        int tileX, int tileY, int tileZ)
+        int tileX, int tileY, int tileZ,
+        Func<string, uint>? textureLoader)
     {
         float x0 = element.From[0] * Scale;
         float y0 = element.From[1] * Scale;
@@ -717,20 +719,27 @@ public static class MinecraftModelMesh
                 continue;
 
             // Resolve texture
-            string? texKey = BlockRegistry.ResolveTextureKey(model, face.Texture);
+            string? texKey = textureLoader == null
+                ? BlockRegistry.ResolveTextureKey(model, face.Texture)
+                : BlockRegistry.ResolveTextureReference(model, face.Texture) ?? "__missing_texture";
             if (texKey == null)
             {
             // texture ref missing — skip this face
                 continue;
             }
 
-            string resolvedTexKey = TerrainAtlas.ResolveTextureKey(texKey, resourcePackId, blockName);
+            string resolvedTexKey = textureLoader == null
+                ? TerrainAtlas.ResolveTextureKey(texKey, resourcePackId, blockName) : texKey;
             uint texId;
-            CtmResolvedTile? ctmTile = CtmResolver.Resolve(blockName, texKey, faceName,
+            CtmResolvedTile? ctmTile = textureLoader == null ? CtmResolver.Resolve(blockName, texKey, faceName,
                                                          tx, ty, tz, tileX, tileY, tileZ,
-                                                         resourcePackId);
+                                                         resourcePackId) : null;
 
-            if (ctmTile != null)
+            if (textureLoader != null)
+            {
+                texId = textureLoader(texKey);
+            }
+            else if (ctmTile != null)
             {
                 texId = ctmTile.TextureId;
             }

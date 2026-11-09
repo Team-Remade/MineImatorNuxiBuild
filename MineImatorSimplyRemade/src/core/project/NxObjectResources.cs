@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
+using MineImatorSimplyRemade.core.mdl;
 
 namespace MineImatorSimplyRemade.core.project;
 
@@ -56,7 +57,14 @@ internal sealed class NxObjectResources : IDisposable
         string extension = Path.GetExtension(source).ToLowerInvariant();
         string? text = null;
         long glbTail = 0;
-        if (extension is ".mimodel" or ".miobject" or ".gltf")
+        if (extension == ".json")
+        {
+            JsonObject document = BlockModelLoader.ReadDocument(source);
+            BlockModelLoader.RewriteTextures(document, reference =>
+                RelativeTarget(target, AddFile(ResolveSource(source, reference, false))));
+            text = document.ToJsonString(AppJsonContext.Default.Options);
+        }
+        else if (extension is ".mimodel" or ".miobject" or ".gltf")
         {
             JsonNode document = ReadModelJson(source, extension);
             RewriteJson(document, extension, reference =>
@@ -132,7 +140,14 @@ internal sealed class NxObjectResources : IDisposable
                 return reference;
             }
 
-            if (extension is ".mimodel" or ".miobject" or ".gltf")
+            if (extension == ".json")
+            {
+                var document = (JsonObject)ReadModelJson(current, extension);
+                if (document["parent"] != null)
+                    throw new InvalidDataException("Archived block models must have flattened parents.");
+                BlockModelLoader.RewriteTextures(document, Validate);
+            }
+            else if (extension is ".mimodel" or ".miobject" or ".gltf")
                 RewriteJson(ReadModelJson(current, extension), extension, Validate);
             else if (extension == ".glb")
                 RewriteJson(ReadGlbJson(current).Document, ".gltf", Validate);

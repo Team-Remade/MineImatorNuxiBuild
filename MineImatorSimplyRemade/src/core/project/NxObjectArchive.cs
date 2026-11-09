@@ -326,7 +326,7 @@ public static class NxObjectArchive
         string File(string? path) => string.IsNullOrWhiteSpace(path) ? "" : rewrite(path);
         if (!string.IsNullOrWhiteSpace(node.SourceAssetPath) &&
             Path.GetExtension(node.SourceAssetPath).ToLowerInvariant() is not
-                (".glb" or ".gltf" or ".obj" or ".mimodel" or ".miobject" or ".schematic" or ".schem" or ".stl"))
+                (".glb" or ".gltf" or ".obj" or ".mimodel" or ".miobject" or ".json" or ".schematic" or ".schem" or ".stl"))
             throw new NotSupportedException("This source model format cannot yet be packaged safely in nxObj. Convert the model to GLB, glTF, or OBJ first.");
         node.SourceAssetPath = File(node.SourceAssetPath);
         node.TextureOverridePath = File(node.TextureOverridePath);

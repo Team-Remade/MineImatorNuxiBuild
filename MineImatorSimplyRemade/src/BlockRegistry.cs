@@ -944,6 +944,11 @@ public static class BlockRegistry
                 parentResolved = BuildResolvedModel(parentPath, visited, packId, sourceId);
         }
 
+        return ParseModelJson(raw, parentResolved);
+    }
+
+    internal static ResolvedBlockModel ParseModelJson(JsonObject raw, ResolvedBlockModel? parentResolved = null)
+    {
         // Start from parent (or empty) then overlay this model's data
         var result = new ResolvedBlockModel();
 
@@ -1196,20 +1201,9 @@ public static class BlockRegistry
     /// </summary>
     public static string? ResolveTextureKey(ResolvedBlockModel model, string textureRef)
     {
-        if (string.IsNullOrEmpty(textureRef)) return null;
-
-        string value = textureRef;
-
-        // Dereference # chains
-        for (int i = 0; i < 8 && value.StartsWith('#'); i++)
-        {
-            string key = value[1..];
-            if (!model.Textures.TryGetValue(key, out string? next) || string.IsNullOrEmpty(next))
-                return null;
-            value = next;
-        }
-
-        if (value.StartsWith('#')) return null; // unresolved
+        string? reference = ResolveTextureReference(model, textureRef);
+        if (reference == null) return null;
+        string value = reference;
 
         // Split optional namespace (e.g. "minecraft:block/grass").
         string ns = "";
@@ -1230,10 +1224,28 @@ public static class BlockRegistry
             return tail;
         }
 
-        // "entity/" textures are keyed by their full relative path (e.g. "entity/bed/red")
-        // TerrainAtlas stores these with the path intact so return as-is.
+        // "entity/" textures are keyed by their full relative path.
         if (!string.IsNullOrWhiteSpace(ns) && !string.Equals(ns, "minecraft", StringComparison.OrdinalIgnoreCase))
             return $"{ns}/{value}";
+
+        return value;
+    }
+
+    internal static string? ResolveTextureReference(ResolvedBlockModel model, string textureRef)
+    {
+        if (string.IsNullOrEmpty(textureRef)) return null;
+
+        string value = textureRef;
+
+        // Dereference # chains without truncating valid aliases; detect cycles.
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        while (value.StartsWith('#'))
+        {
+            string key = value[1..];
+            if (!visited.Add(key) || !model.Textures.TryGetValue(key, out string? next) || string.IsNullOrEmpty(next))
+                return null;
+            value = next;
+        }
 
         return value;
     }
