@@ -378,7 +378,7 @@ public sealed class ProjectManager
         return destinationPath;
     }
 
-    public ProjectAssetEntry AddAsset(string sourcePath, ProjectAssetType assetType)
+    public ProjectAssetEntry AddAsset(string sourcePath, ProjectAssetType assetType, int tileWidth = 0, int tileHeight = 0)
     {
         if (!HasProject)
             throw new InvalidOperationException("No project is currently open.");
@@ -389,6 +389,14 @@ public sealed class ProjectManager
 
         if (string.Equals(Path.GetExtension(fullSourcePath), ".blend", StringComparison.OrdinalIgnoreCase))
             throw new NotSupportedException("Blender files are not supported for import. Export the model to a supported format first.");
+
+        int sheetWidth = 0, sheetHeight = 0;
+        if (tileWidth != 0 || tileHeight != 0)
+        {
+            if (assetType != ProjectAssetType.Image)
+                throw new ArgumentException("Only images can be imported as texture sheets.");
+            (sheetWidth, sheetHeight) = TextureSheet.Validate(fullSourcePath, tileWidth, tileHeight);
+        }
 
         string displayName = Path.GetFileName(fullSourcePath);
 
@@ -408,7 +416,11 @@ public sealed class ProjectManager
             RelativePath = relativePath,
             AssetType = assetType,
             SourcePath = fromDataDirectory ? DataAssetRemapper.Current.ToReference(fullSourcePath) : fullSourcePath,
-            StoredInProject = storedInProject
+            StoredInProject = storedInProject,
+            TextureTileWidth = tileWidth,
+            TextureTileHeight = tileHeight,
+            TextureSheetWidth = sheetWidth,
+            TextureSheetHeight = sheetHeight
         };
         Manifest.Assets.Add(entry);
         SaveManifest();
@@ -420,6 +432,55 @@ public sealed class ProjectManager
         if (asset.StoredInProject && !string.IsNullOrWhiteSpace(asset.RelativePath))
             return Path.Combine(ProjectFolder, asset.RelativePath);
         return asset.StoredInProject ? asset.SourcePath : ResolveAssetPath(asset.SourcePath);
+    }
+
+    public ProjectAssetEntry? FindTextureSheet(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        string fullPath = ResolveAssetPath(path);
+        return Manifest.Assets.FirstOrDefault(asset => asset.TextureTileWidth > 0 && asset.TextureTileHeight > 0 &&
+            (string.Equals(GetAssetFullPath(asset), fullPath, StringComparison.OrdinalIgnoreCase) ||
+             asset.TextureSheetTiles.Values.Any(tile =>
+                 string.Equals(ResolveAssetPath(tile), fullPath, StringComparison.OrdinalIgnoreCase))));
+    }
+
+    public string GetTextureSheetTile(ProjectAssetEntry sheet, int column, int row)
+    {
+        if (!HasProject || !Manifest.Assets.Contains(sheet))
+            throw new InvalidOperationException("The texture sheet is not in the current project.");
+        string source = GetAssetFullPath(sheet);
+        var (width, height) = TextureSheet.Validate(source, sheet.TextureTileWidth, sheet.TextureTileHeight);
+        if (width != sheet.TextureSheetWidth || height != sheet.TextureSheetHeight)
+            throw new InvalidDataException("The texture sheet dimensions have changed. Import it again.");
+        if (column < 0 || row < 0 || column >= width / sheet.TextureTileWidth || row >= height / sheet.TextureTileHeight)
+            throw new ArgumentOutOfRangeException(nameof(column), "The selected tile is outside the texture sheet.");
+
+        string key = $"{column},{row}";
+        if (sheet.TextureSheetTiles.TryGetValue(key, out string? existing) && File.Exists(ResolveAssetPath(existing)))
+            return ResolveAssetPath(existing);
+
+        // Material paths remain real image files, so all renderers, undo and object exports
+        // use the same texture pipeline without changing UVs or other material slots.
+        string folder = Path.Combine(ImagesFolder, "texture-sheets");
+        Directory.CreateDirectory(folder);
+        string target = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".png");
+        TextureSheet.WriteTile(source, target, sheet.TextureTileWidth, sheet.TextureTileHeight, column, row);
+        sheet.TextureSheetTiles[key] = ToProjectRelativePath(target);
+        SaveManifest();
+        SetDirty(true);
+        return target;
+    }
+
+    public void RegisterTextureSheetTileAlias(string tilePath, string convertedPath)
+    {
+        var sheet = FindTextureSheet(tilePath);
+        if (sheet == null || string.Equals(ResolveAssetPath(tilePath), ResolveAssetPath(convertedPath), StringComparison.OrdinalIgnoreCase))
+            return;
+        var tile = sheet.TextureSheetTiles.First(entry =>
+            string.Equals(ResolveAssetPath(entry.Value), ResolveAssetPath(tilePath), StringComparison.OrdinalIgnoreCase));
+        string relative = ToProjectRelativePath(convertedPath);
+        sheet.TextureSheetTiles[tile.Key.Split('|')[0] + "|" + relative] = relative;
+        SaveManifest();
     }
 
     public bool AssetMatchesPath(ProjectAssetEntry asset, string fullPath)

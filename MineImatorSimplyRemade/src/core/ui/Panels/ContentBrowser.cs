@@ -18,6 +18,7 @@ public class ContentBrowser : UiPanel
     private string _search = "";
     private int _selectedFolderIndex;
     private ProjectAssetEntry? _pendingRemoval;
+    private readonly TextureImportDialog _textureImport = new();
     private readonly List<int> _visibleAssetIndices = [];
     private readonly Dictionary<string, ThumbnailEntry> _thumbnailCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Queue<string> _pendingThumbnailPaths = new();
@@ -77,6 +78,7 @@ public class ContentBrowser : UiPanel
         ImGui.EndChild();
 
         RenderRemovalPopup(projectManager);
+        _textureImport.Render(Gl);
 
         bool canSpawn = CanSpawnSelectedAsset();
         bool canAddAudio = CanAddSelectedAssetToTimeline();
@@ -504,7 +506,18 @@ public class ContentBrowser : UiPanel
             ProjectManager.DetectImportAssetType(result.Path) != assetType)
             return;
 
-        var entry = ProjectManager.Instance.AddAsset(result.Path, assetType);
+        if (assetType == ProjectAssetType.Image)
+        {
+            RequestImageImport(result.Path);
+            return;
+        }
+        SelectImportedAsset(ProjectManager.Instance.AddAsset(result.Path, assetType));
+    }
+
+    public void RequestImageImport(string path) => _textureImport.Request(path, SelectImportedAsset);
+
+    private void SelectImportedAsset(ProjectAssetEntry entry)
+    {
         var assets = ProjectManager.Instance.GetProjectAssets();
         for (int i = 0; i < assets.Count; i++)
         {

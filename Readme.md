@@ -77,6 +77,8 @@ Regression checks (custom executable test harness; no test adapter required):
 
 ```powershell
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --texture-sheets
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --texture-sheets-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --backups
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --modifiers
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --effects-graphics
@@ -87,6 +89,12 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 
 The `--backups` command checks preference defaults/persistence, timed snapshots,
 retention, failure safety, and preservation of unsaved edits without a GPU.
+
+The `--texture-sheets` command checks import validation, exact rectangular tile
+pixels and alpha, project/object persistence, undo, ImGui controls, and live tile-cut overlays.
+The `--texture-sheets-graphics` command requires OpenGL 3.3 and checks uploaded
+tile dimensions, pixels, alpha, the existing material orientation rules, and
+the dialog's image preview, orientation, transparency, and texture cleanup.
 
 The `--effects-graphics` command requires an OpenGL 3.3 desktop session and checks real rendered
 pixels, animation/seek reproducibility, emission, and empty-mesh rebuilding.

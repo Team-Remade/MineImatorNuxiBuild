@@ -22,6 +22,11 @@ public class ProjectAssetEntry
     public ProjectAssetType AssetType { get; set; } = ProjectAssetType.Unknown;
     public string SourcePath { get; set; } = "";
     public bool StoredInProject { get; set; } = true;
+    public int TextureTileWidth { get; set; }
+    public int TextureTileHeight { get; set; }
+    public int TextureSheetWidth { get; set; }
+    public int TextureSheetHeight { get; set; }
+    public Dictionary<string, string> TextureSheetTiles { get; set; } = new();
 }
 
 public class RecentProjectEntry

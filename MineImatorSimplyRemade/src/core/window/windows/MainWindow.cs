@@ -2376,13 +2376,18 @@ public class MainWindow : Window
         bool failed = false;
         while (_droppedFiles.TryDequeue(out string? path))
         {
+            if (ProjectManager.DetectImportAssetType(path) == ProjectAssetType.Image && _contentBrowser != null)
+            {
+                _contentBrowser.RequestImageImport(path);
+                continue;
+            }
             if (ImportAssetFromPath(path))
                 imported++;
             else
                 failed = true;
         }
 
-        if (!failed)
+        if (!failed && imported > 0)
             ShowSuccessToast(Localization.Format("text.window.main.imported_assets", imported));
     }
 
@@ -2397,6 +2402,13 @@ public class MainWindow : Window
                 return false;
             }
 
+            if (type == ProjectAssetType.Image)
+            {
+                if (_contentBrowser == null)
+                    throw new InvalidOperationException("The texture import dialog is not available.");
+                _contentBrowser.RequestImageImport(path);
+                return true;
+            }
             _projectManager.AddAsset(path, type);
             return true;
         }

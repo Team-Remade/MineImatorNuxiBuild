@@ -23,6 +23,20 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--texture-sheets-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                TextureSheetGraphics();
+                Console.WriteLine("PASS Texture sheet GPU tile dimensions, pixels, alpha and material orientation");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--transparency-graphics", StringComparer.Ordinal))
         {
             try
@@ -220,6 +234,10 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Texture sheet rectangular tile pixels, alpha, row orientation and reuse", TextureSheetPixels),
+            ("Texture sheet invalid sizes, slots, missing files and legacy defaults", TextureSheetValidation),
+            ("Texture sheet project, independent material slots, object export and undo", TextureSheetPersistence),
+            ("Texture sheet ImGui modal, checkbox, tile controls and localization", TextureSheetControls),
             ("Minecraft skin download, username validation and immutable local storage", MinecraftSkinDownloads),
             ("Minecraft skin HTTP, profile, URL and PNG failures", MinecraftSkinFailures),
             ("Minecraft skin selection, preview resolution, stale requests and retry", MinecraftSkinSelection),
@@ -355,6 +373,8 @@ internal static partial class Program
             ("Particle preset timeline controls and legacy channel preservation", ParticleTimeline),
             ("Particle invalid and unsupported preset rejection", ParticleInvalid)
         ];
+        if (args.Contains("--texture-sheets", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Texture sheet", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--snapping", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Snap ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--camera-orbit", StringComparer.Ordinal))

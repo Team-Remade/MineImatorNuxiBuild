@@ -26,6 +26,7 @@ public partial class PropertiesPanel : UiPanel
     private const string BackgroundModeFit = "fit";
     private const string BackgroundModeOriginal = "original";
     private string _pbrImportError = "";
+    private readonly TextureImportDialog _textureImport = new();
 
     // ── Project tab state ─────────────────────────────────────────────────────
 
@@ -858,7 +859,8 @@ public partial class PropertiesPanel : UiPanel
     {
         return ProjectManager.Instance
             .GetProjectAssets()
-            .Where(asset => asset.AssetType == ProjectAssetType.Image)
+            .Where(asset => asset.AssetType == ProjectAssetType.Image &&
+                !TextureSheetPicker.IsGeneratedTile(ProjectManager.Instance.GetAssetFullPath(asset)))
             .ToList();
     }
 
@@ -2132,28 +2134,19 @@ public partial class PropertiesPanel : UiPanel
             : Path.GetFileName(backgroundImagePath);
     }
 
-    private bool ImportBackgroundImageFromDialog()
+    private void ImportBackgroundImageFromDialog()
     {
         if (!ProjectManager.Instance.HasProject)
-            return false;
-
-        var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
-        if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
-            return false;
-
-        ProjectAssetEntry entry = ProjectManager.Instance.AddAsset(result.Path, ProjectAssetType.Image);
-        string importedPath = entry.StoredInProject && !string.IsNullOrWhiteSpace(entry.RelativePath)
-            ? entry.RelativePath
-            : ProjectManager.Instance.ToProjectRelativePath(entry.SourcePath);
-
-        BackgroundImagePath = string.IsNullOrWhiteSpace(importedPath) ? NoImageSelected : importedPath;
-        return true;
+            return;
+        RequestTextureImport(path => AssignBackgroundTexture(path, sky: false));
     }
 
     private string ResolveAlbedoTexturePathForProject(string sourcePath)
     {
         string fullSourcePath = Path.GetFullPath(sourcePath);
         if (!ProjectManager.Instance.HasProject)
+            return fullSourcePath;
+        if (TextureSheetPicker.IsGeneratedTile(fullSourcePath))
             return fullSourcePath;
 
         try
@@ -2254,6 +2247,7 @@ public partial class PropertiesPanel : UiPanel
             RenderPropertyContextMenu();
         }
         _nameEditor.CommitIfHidden();
+        _textureImport.Render(Gl);
         ImGui.End();
     }
     
@@ -2654,6 +2648,8 @@ public partial class PropertiesPanel : UiPanel
                 
                 var imageAssets = GetBackgroundImageAssets();
                 string selectedImageLabel = GetBackgroundImageLabel(BackgroundImagePath);
+                if (selectedImageLabel != NoImageSelected)
+                    selectedImageLabel = TextureSheetPicker.Label(BackgroundImagePath);
                 ImGui.TextUnformatted(Localization.T("text.panel.properties.background_image"));
                 ImGui.SetNextItemWidth(-1);
                 bool backgroundImageOpen = ImGui.BeginCombo("##BackgroundImage", selectedImageLabel == NoImageSelected ? Localization.T("text.common.no_image_selected") : selectedImageLabel);
@@ -2682,16 +2678,15 @@ public partial class PropertiesPanel : UiPanel
 
                         if (ImGui.Selectable(optionLabel + "##" + candidatePath, selected))
                         {
-                            BackgroundImagePath = candidatePath;
-                            backgroundChanged = true;
+                            ApplySheetSelection(candidatePath, path => AssignBackgroundTexture(path, sky: false));
                         }
                     }
 
                     ImGui.EndCombo();
                 }
 
-                if (ImGui.Button(Localization.Label("text.common.import", "Import##backgroundImport")) && ImportBackgroundImageFromDialog())
-                    backgroundChanged = true;
+                if (ImGui.Button(Localization.Label("text.common.import", "Import##backgroundImport")))
+                    ImportBackgroundImageFromDialog();
 
                 ImGui.SameLine();
                 if (ImGui.Button(Localization.Label("text.common.clear", "Clear##backgroundClear")) && !string.Equals(BackgroundImagePath, NoImageSelected, StringComparison.OrdinalIgnoreCase))
@@ -2699,6 +2694,7 @@ public partial class PropertiesPanel : UiPanel
                     BackgroundImagePath = NoImageSelected;
                     backgroundChanged = true;
                 }
+                DrawTextureSheetPicker("BackgroundSheet", BackgroundImagePath, path => AssignBackgroundTexture(path, sky: false));
 
                 if (backgroundChanged)
                 {
@@ -3286,7 +3282,7 @@ public partial class PropertiesPanel : UiPanel
     {
         bool changed = false;
         bool open = ImGui.BeginCombo(Localization.Label("text.panel.properties.sky_texture", "Sky Texture"),
-            string.IsNullOrWhiteSpace(SkyTexture) ? Localization.T("text.common.no_image_selected") : Path.GetFileName(SkyTexture));
+            string.IsNullOrWhiteSpace(SkyTexture) ? Localization.T("text.common.no_image_selected") : TextureSheetPicker.Label(SkyTexture));
         RegisterBackgroundKeyframeContext(nameof(SkyTexture));
         if (open)
         {
@@ -3300,23 +3296,16 @@ public partial class PropertiesPanel : UiPanel
                 string path = asset.StoredInProject && !string.IsNullOrWhiteSpace(asset.RelativePath) ? asset.RelativePath : asset.SourcePath;
                 if (ImGui.Selectable(asset.DisplayName + "##sky" + path, SkyTexture == path))
                 {
-                    SkyTexture = path;
-                    changed = true;
+                    ApplySheetSelection(path, selectedPath => AssignBackgroundTexture(selectedPath, sky: true));
                 }
             }
             ImGui.EndCombo();
         }
         if (ImGui.Button(Localization.Label("text.common.import", "Import##skyTexture")) && ProjectManager.Instance.HasProject)
         {
-            var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
-            if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path))
-            {
-                var asset = ProjectManager.Instance.AddAsset(result.Path, ProjectAssetType.Image);
-                SkyTexture = asset.StoredInProject && !string.IsNullOrWhiteSpace(asset.RelativePath)
-                    ? asset.RelativePath : ProjectManager.Instance.ToProjectRelativePath(asset.SourcePath);
-                changed = true;
-            }
+            RequestTextureImport(path => AssignBackgroundTexture(path, sky: true));
         }
+        DrawTextureSheetPicker("SkySheet", SkyTexture, path => AssignBackgroundTexture(path, sky: true));
         return changed;
     }
 
@@ -4522,7 +4511,7 @@ public partial class PropertiesPanel : UiPanel
                     else if (!string.IsNullOrWhiteSpace(_currentObject.AlbedoTexturePath))
                     {
                         string fullPath = ProjectManager.Instance.ResolveAssetPath(_currentObject.AlbedoTexturePath);
-                        currentLabel = Path.GetFileName(fullPath);
+                        currentLabel = TextureSheetPicker.Label(fullPath);
                     }
                     else if (currentTextureId != 0)
                     {
@@ -4575,10 +4564,16 @@ public partial class PropertiesPanel : UiPanel
                         foreach (var (texId, path) in _loadedTexturePathCache)
                         {
                             if (texId == 0) continue;
+                            if (TextureSheetPicker.IsGeneratedTile(path)) continue;
                             string label = Path.GetFileName(path);
                             bool selected = (currentTextureId == texId);
                             if (ImGui.Selectable(label, selected))
                             {
+                                if (ProjectManager.Instance.FindTextureSheet(path) != null)
+                                {
+                                    ApplySheetSelection(path, selectedPath => OnLoadAlbedoTextureForObject(_currentObject, selectedPath));
+                                    continue;
+                                }
                                 _currentObject.CameraTextureObjectId = "";
                                 // Check if this is an actual loaded texture or just an imported file
                                 bool isLoadedTexture = false;
@@ -4622,15 +4617,11 @@ public partial class PropertiesPanel : UiPanel
 
                     if (ImGui.Button(Localization.Label("text.panel.properties.load_new_texture", "Load new texture...##AlbedoTexture"), new Vector2(-1, 0)))
                     {
-                        var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,hdr,exr");
-                        if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
-                        {
-                            string resolvedPath = ResolveAlbedoTexturePathForProject(result.Path);
-                            OnLoadAlbedoTextureForObject(_currentObject, resolvedPath);
-                            _currentObject.CameraTextureObjectId = "";
-                            ProjectManager.Instance.SetDirty(true);
-                        }
+                        var target = _currentObject;
+                        RequestTextureImport(path => OnLoadAlbedoTextureForObject(target, path));
                     }
+                    DrawTextureSheetPicker("AlbedoSheet", _currentObject.AlbedoTexturePath,
+                        path => OnLoadAlbedoTextureForObject(_currentObject, path));
 
                     if ((currentTextureId != 0 || !string.IsNullOrEmpty(_currentObject.AlbedoTexturePath) ||
                          !string.IsNullOrEmpty(_currentObject.CameraTextureObjectId)) &&
@@ -6405,7 +6396,7 @@ public partial class PropertiesPanel : UiPanel
         string effectivePack = _currentObject.GetEffectiveAuxiliaryResourcePackId(normal);
         string currentLabel = !string.IsNullOrEmpty(effectivePack) ? effectivePack : string.IsNullOrEmpty(effectivePath)
             ? Localization.T("text.panel.properties.none")
-            : Path.GetFileName(effectivePath);
+            : TextureSheetPicker.Label(effectivePath);
 
         ImGui.PushID(slot + "Texture");
         ImGui.TextUnformatted(Localization.T(normal
@@ -6435,13 +6426,15 @@ public partial class PropertiesPanel : UiPanel
                     .Where(asset => asset.AssetType == ProjectAssetType.Image)
                     .Select(asset => ProjectManager.Instance.GetAssetFullPath(asset)))
                 .Where(File.Exists)
-                .Distinct(StringComparer.OrdinalIgnoreCase);
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
             foreach (string path in paths)
             {
+                if (TextureSheetPicker.IsGeneratedTile(path)) continue;
                 bool selected = string.Equals(ProjectManager.Instance.ResolveAssetPath(effectivePath),
                     path, StringComparison.OrdinalIgnoreCase);
                 if (ImGui.Selectable(Path.GetFileName(path) + "##" + path, selected))
-                    AssignAuxiliaryTexture(normal, path);
+                    ApplySheetSelection(path, selectedPath => AssignAuxiliaryTexture(normal, selectedPath));
                 if (selected) ImGui.SetItemDefaultFocus();
             }
             ImGui.EndCombo();
@@ -6449,10 +6442,9 @@ public partial class PropertiesPanel : UiPanel
 
         if (ImGui.Button(Localization.Label("text.panel.properties.load_new_texture", "Load new texture..."), new Vector2(-1, 0)))
         {
-            var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,hdr,exr");
-            if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path) && File.Exists(result.Path))
-                AssignAuxiliaryTexture(normal, ResolveAlbedoTexturePathForProject(result.Path));
+            RequestTextureImport(path => AssignAuxiliaryTexture(normal, path));
         }
+        DrawTextureSheetPicker(slot + "Sheet", effectivePath, path => AssignAuxiliaryTexture(normal, path));
         if ((!string.IsNullOrEmpty(ownPath) || !string.IsNullOrEmpty(ownPack)) &&
             ImGui.Button(Localization.Label("text.panel.properties.clear_texture", "Clear texture"), new Vector2(-1, 0)))
             AssignAuxiliaryTexture(normal, "");
@@ -6467,11 +6459,13 @@ public partial class PropertiesPanel : UiPanel
             try
             {
                 path = ProjectManager.Instance.ResolveAssetPath(path);
-                string name = Path.GetFileNameWithoutExtension(path);
+                string tilePath = path;
+                string name = Path.GetFileNameWithoutExtension(ProjectManager.Instance.FindTextureSheet(path)?.DisplayName ?? path);
                 bool directX = normal && (name.Contains("nor_dx", StringComparison.OrdinalIgnoreCase) ||
                     name.Contains("normaldx", StringComparison.OrdinalIgnoreCase) ||
                     name.Contains("normal_dx", StringComparison.OrdinalIgnoreCase));
                 path = ResolveAlbedoTexturePathForProject(PbrMaterialImporter.ImportTexture(path, color: !normal, directXNormal: directX));
+                ProjectManager.Instance.RegisterTextureSheetTileAlias(tilePath, path);
                 if (Gl == null || _currentObject.LoadTexture(path, reload: true) == 0)
                     throw new InvalidDataException($"Could not load material texture '{Path.GetFileName(path)}'.");
                 path = ProjectManager.Instance.ToProjectRelativePath(path);
@@ -6672,17 +6666,27 @@ public partial class PropertiesPanel : UiPanel
         };
         bool hasMap = source != null && path != "";
         string currentLabel = !hasMap ? Localization.T("text.panel.properties.none")
-            : path == null ? Localization.T("text.panel.properties.baked_surface_map") : Path.GetFileName(path);
+            : path == null ? Localization.T("text.panel.properties.baked_surface_map") : TextureSheetPicker.Label(path);
         ImGui.PushID("SurfaceMap" + channel);
         ImGui.TextUnformatted(Localization.T(labelKey));
         ImGui.TextWrapped(currentLabel);
+        if (ImGui.BeginCombo("##SurfaceTexture", currentLabel))
+        {
+            foreach (var asset in ProjectManager.Instance.GetProjectAssets().Where(asset => asset.AssetType == ProjectAssetType.Image).ToArray())
+            {
+                string assetPath = ProjectManager.Instance.GetAssetFullPath(asset);
+                if (TextureSheetPicker.IsGeneratedTile(assetPath)) continue;
+                if (ImGui.Selectable(asset.DisplayName + "##" + assetPath))
+                    ApplySheetSelection(assetPath, selectedPath => AssignSurfaceTexture(channel, selectedPath));
+            }
+            ImGui.EndCombo();
+        }
         if (ImGui.IsItemHovered() && !string.IsNullOrEmpty(path)) ImGui.SetTooltip(path);
         float availableWidth = ImGui.GetContentRegionAvail().X;
         float buttonWidth = hasMap ? Math.Max(1f, (availableWidth - ImGui.GetStyle().ItemSpacing.X) * 0.5f) : availableWidth;
         if (ImGui.Button(Localization.Label("text.panel.properties.load_new_texture", "Load new texture..."), new Vector2(buttonWidth, 0)))
         {
-            var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,hdr,exr");
-            if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path)) AssignSurfaceTexture(channel, result.Path);
+            RequestTextureImport(selectedPath => AssignSurfaceTexture(channel, selectedPath));
         }
         if (hasMap)
         {
@@ -6690,6 +6694,7 @@ public partial class PropertiesPanel : UiPanel
             if (ImGui.Button(Localization.Label("text.panel.properties.clear_texture", "Clear texture"), new Vector2(buttonWidth, 0)))
                 AssignSurfaceTexture(channel, "");
         }
+        DrawTextureSheetPicker("SurfaceSheet" + channel, path ?? "", selectedPath => AssignSurfaceTexture(channel, selectedPath));
         ImGui.PopID();
         ImGui.Spacing();
     }
