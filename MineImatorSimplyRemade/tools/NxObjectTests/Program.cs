@@ -23,6 +23,21 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--wind-graphics", StringComparer.Ordinal) ||
+            args.Contains("--wind-veldrid-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                WindGraphics(args.Contains("--wind-veldrid-graphics", StringComparer.Ordinal));
+                Console.WriteLine("PASS Wind GPU deformation, terrain masks, precedence, timeline seeking and render-pass parity");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--biome-graphics", StringComparer.Ordinal))
         {
             try
@@ -177,6 +192,7 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Wind defaults, project/object persistence, duplication, undo, animation and classification", WindPersistence),
             ("Biome catalog, independent custom colors, project persistence and reset", BiomeSettings),
             ("Opaque leaf defaults, persistence, texture selection and pixels", OpaqueLeavesSettings),
             ("Textured sky defaults, project persistence and background animation", SkySettings),
@@ -282,6 +298,8 @@ internal static partial class Program
             ("Particle preset timeline controls and legacy channel preservation", ParticleTimeline),
             ("Particle invalid and unsupported preset rejection", ParticleInvalid)
         ];
+        if (args.Contains("--wind", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Wind", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--biomes", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Biome", StringComparison.Ordinal) ||
                 test.Name.StartsWith("Opaque leaf", StringComparison.Ordinal) ||

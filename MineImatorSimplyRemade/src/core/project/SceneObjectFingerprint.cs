@@ -199,6 +199,8 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.TextureMipmaps);
         hash.Add(obj.IncludeInAmbientOcclusion);
         hash.Add(obj.IncludeInFog);
+        hash.Add(obj.AffectedByWind);
+        hash.Add(obj.TerrainAffectedByWind);
         hash.Add(obj.RenderInHighQuality);
         hash.Add(obj.RenderInLowQuality);
         hash.Add(obj.RenderDepthOffset);

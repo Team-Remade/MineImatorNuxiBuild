@@ -159,6 +159,8 @@ internal static partial class Program
                     models.Add(("", "", "block/" + block), model);
                     var built = MinecraftModelMesh.Build(gl, model, blockName: block);
                     meshes.AddRange(built);
+                    Check(built.All(m => m.EffectiveWindKind == WindSettings.ClassifyTexture(block)),
+                        block + ": standalone wind classification survives shared custom textures");
                     Check(built.Any(m => m.BiomeTint == kind), block + ": standalone tint category");
                     if (block == "grass_block")
                         Check(built.Any(m => m.BiomeTint == BiomeTintKind.None), "Untinted grass dirt faces stay separate");
@@ -175,6 +177,11 @@ internal static partial class Program
                 volumeType.GetMethod("SaveSchematic")!.Invoke(volume, [path, null]);
                 var root = spawn.SpawnSchematicFromPath(path) ?? throw new InvalidOperationException("Biome terrain import failed");
                 meshes.AddRange(root.Visuals);
+                Check(root.Visuals.Any(m => m.BiomeTint == BiomeTintKind.None && m.EffectiveWindKind == 1) &&
+                    root.Visuals.Any(m => m.BiomeTint == BiomeTintKind.None && m.EffectiveWindKind == 0),
+                    "Shared-texture untinted leaves and stone retain independent terrain wind batches");
+                Check(root.Visuals.Any(m => m.EffectiveWindKind == 2) && root.Visuals.Any(m => m.EffectiveWindKind == 3),
+                    "Merged terrain preserves water ripples and rooted plant wind");
                 foreach (var kind in Enum.GetValues<BiomeTintKind>())
                     Check(root.Visuals.Any(m => m.BiomeTint == kind), kind + ": merged scenery retains category, including shared-texture leaves");
                 root.SetExplicitMaterialSettings();
@@ -195,6 +202,7 @@ internal static partial class Program
 
                 var oak = meshes.First(m => m.BiomeTint == BiomeTintKind.Oak);
                 using var clone = oak.Clone();
+                Equal(oak.EffectiveWindKind, clone.EffectiveWindKind, "Duplicate preserves wind classification");
                 Equal(BiomeTintKind.Oak, clone.BiomeTint, "Duplicate preserves tint category");
                 palette.Oak = 0;
                 BiomeEnvironment.Apply("custom", palette);

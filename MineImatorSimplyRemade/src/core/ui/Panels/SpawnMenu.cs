@@ -3137,7 +3137,7 @@ public class SpawnMenu : UiPanel
                             foreach (var template in largePlacement.Info.Templates)
                             {
                                 var acc = GetOrCreateAccumulator(merged, template.TextureId, largePlacement.Info.AutoEmissionLevel, template.Tint,
-                                    template.MinecraftTextureKey, template.MinecraftItemTexture, template.BiomeTint);
+                                    template.MinecraftTextureKey, template.MinecraftItemTexture, template.BiomeTint, template.TerrainWindKind);
                                 AppendTemplate(acc, template, largePlacement.Px, largePlacement.Py, largePlacement.Pz);
                             }
 
@@ -3201,7 +3201,7 @@ public class SpawnMenu : UiPanel
                         foreach (var template in info.Templates)
                         {
                             var acc = GetOrCreateAccumulator(merged, template.TextureId, info.AutoEmissionLevel, template.Tint,
-                                template.MinecraftTextureKey, template.MinecraftItemTexture, template.BiomeTint);
+                                template.MinecraftTextureKey, template.MinecraftItemTexture, template.BiomeTint, template.TerrainWindKind);
                             AppendTemplate(acc, template, px, py, pz);
                         }
                     }
@@ -3233,6 +3233,7 @@ public class SpawnMenu : UiPanel
                 {
                     TextureId = textureId,
                     MinecraftTextureKey = kv.Key.MinecraftTextureKey,
+                    TerrainWindKind = kv.Key.TerrainWindKind,
                     MinecraftItemTexture = kv.Key.MinecraftItemTexture,
                     BaseTint = kv.Key.Tint,
                     Albedo = kv.Key.Tint,
@@ -3469,9 +3470,10 @@ public class SpawnMenu : UiPanel
         public readonly string MinecraftTextureKey;
         public readonly bool MinecraftItemTexture;
         public readonly BiomeTintKind BiomeTint;
+        public readonly int TerrainWindKind;
 
         public MeshBatchKey(uint textureId, byte autoEmissionLevel, vec3 tint,
-                            string minecraftTextureKey, bool minecraftItemTexture, BiomeTintKind biomeTint)
+                            string minecraftTextureKey, bool minecraftItemTexture, BiomeTintKind biomeTint, int terrainWindKind)
         {
             TextureId = textureId;
             AutoEmissionLevel = autoEmissionLevel;
@@ -3479,17 +3481,18 @@ public class SpawnMenu : UiPanel
             MinecraftTextureKey = minecraftTextureKey;
             MinecraftItemTexture = minecraftItemTexture;
             BiomeTint = biomeTint;
+            TerrainWindKind = terrainWindKind;
         }
 
         public bool Equals(MeshBatchKey other) =>
             TextureId == other.TextureId && AutoEmissionLevel == other.AutoEmissionLevel && Tint == other.Tint &&
             MinecraftTextureKey == other.MinecraftTextureKey && MinecraftItemTexture == other.MinecraftItemTexture &&
-            BiomeTint == other.BiomeTint;
+            BiomeTint == other.BiomeTint && TerrainWindKind == other.TerrainWindKind;
 
         public override bool Equals(object? obj) => obj is MeshBatchKey other && Equals(other);
 
         public override int GetHashCode() => HashCode.Combine(TextureId, AutoEmissionLevel, Tint,
-            MinecraftTextureKey, MinecraftItemTexture, BiomeTint);
+            MinecraftTextureKey, MinecraftItemTexture, BiomeTint, TerrainWindKind);
     }
 
     private sealed class MeshTemplate
@@ -3497,6 +3500,7 @@ public class SpawnMenu : UiPanel
         public uint TextureId;
         public string MinecraftTextureKey = "";
         public bool MinecraftItemTexture;
+        public int TerrainWindKind;
         public vec3 Tint = new(1f);
         public BiomeTintKind BiomeTint;
         public vec3[] Vertices = Array.Empty<vec3>();
@@ -3508,6 +3512,7 @@ public class SpawnMenu : UiPanel
     {
         public required uint TextureId;
         public required string MinecraftTextureKey;
+        public int TerrainWindKind;
         public vec3 Tint = new(1f);
         public BiomeTintKind BiomeTint;
         public required vec2[] Uv; // TL, TR, BR, BL
@@ -3986,6 +3991,7 @@ public class SpawnMenu : UiPanel
             {
                 TextureId = texId,
                 MinecraftTextureKey = resolvedTexKey,
+                TerrainWindKind = WindSettings.ClassifyBlock(blockName, texKey),
                 Uv = uv,
                 BiomeTint = MinecraftModelMesh.GetFaceTintKind(blockName, face, texKey, resolvedTexKey)
             };
@@ -4120,6 +4126,7 @@ public class SpawnMenu : UiPanel
             {
                 TextureId = mesh.TextureId,
                 MinecraftTextureKey = mesh.MinecraftTextureKey,
+                TerrainWindKind = mesh.EffectiveWindKind,
                 MinecraftItemTexture = mesh.MinecraftItemTexture,
                 Tint = mesh.Albedo,
                 BiomeTint = mesh.BiomeTint,
@@ -4319,9 +4326,10 @@ public class SpawnMenu : UiPanel
         vec3 tint,
         string minecraftTextureKey,
         bool minecraftItemTexture = false,
-        BiomeTintKind biomeTint = BiomeTintKind.None)
+        BiomeTintKind biomeTint = BiomeTintKind.None,
+        int terrainWindKind = 0)
     {
-        var key = new MeshBatchKey(textureId, autoEmissionLevel, tint, minecraftTextureKey, minecraftItemTexture, biomeTint);
+        var key = new MeshBatchKey(textureId, autoEmissionLevel, tint, minecraftTextureKey, minecraftItemTexture, biomeTint, terrainWindKind);
         if (!merged.TryGetValue(key, out var acc))
         {
             acc = new MeshAccumulator
@@ -4426,7 +4434,7 @@ public class SpawnMenu : UiPanel
         byte autoEmissionLevel)
     {
         var acc = GetOrCreateAccumulator(merged, face.TextureId, autoEmissionLevel, face.Tint, face.MinecraftTextureKey,
-            biomeTint: face.BiomeTint);
+            biomeTint: face.BiomeTint, terrainWindKind: face.TerrainWindKind);
         acc.AutoEmissionCenters?.Add(new vec3(px, py, pz));
 
         vec3 v0;

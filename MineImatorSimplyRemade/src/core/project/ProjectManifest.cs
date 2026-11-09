@@ -155,6 +155,12 @@ public class ProjectRenderSettings
     public bool SkyboxMapped { get; set; } = false;
     public bool UseAdvancedSky { get; set; } = false;
     public bool FogEnabled { get; set; } = true;
+    public bool WindEnabled { get; set; }
+    public float WindSpeed { get; set; } = 0.1f;
+    public float WindStrength { get; set; } = 0.5f;
+    public float WindDirection { get; set; } = 45f;
+    public float WindDirectionalSpeed { get; set; } = 0.2f;
+    public float WindDirectionalStrength { get; set; } = 1.5f;
     public bool SkyFog { get; set; } = true;
     public bool CustomFogColor { get; set; } = false;
     public ProjectVec3 FogColor { get; set; } = new() { X = 0.5764706f, Y = 0.5764706f, Z = 1f };
@@ -439,6 +445,8 @@ public class ProjectSceneObjectEntry
     public bool TextureMipmaps { get; set; } = false;
     public bool IncludeInAmbientOcclusion { get; set; } = true;
     public bool IncludeInFog { get; set; } = true;
+    public bool AffectedByWind { get; set; }
+    public bool TerrainAffectedByWind { get; set; } = true;
     public bool RenderInHighQuality { get; set; } = true;
     public bool RenderInLowQuality { get; set; } = true;
     public float RenderDepthOffset { get; set; } = 0f;

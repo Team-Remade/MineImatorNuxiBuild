@@ -42,6 +42,8 @@ vec2 applyUvTransform(vec2 uv)
     return repeated + uTexUvOffset;
 }
 
+#include "wind.glsl"
+
 void main() {
     vec3 bentPosition = bendPosition(aPos);
     vec4 pos;
@@ -57,7 +59,7 @@ void main() {
         pos = vec4(bentPosition, 1.0);
     }
 
-    vec4 worldPos = uModel * pos;
+    vec4 worldPos = uModel * windPosition(pos, aTexCoord);
     vWorldPos = worldPos.xyz;
     vec2 baseUv = vec2(aTexCoord.x, aTexCoord.y * uTexScaleV + uTexOffset.y);
     vTexCoord = applyUvTransform(baseUv);

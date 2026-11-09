@@ -47,6 +47,8 @@ public sealed class VeldridSceneRenderer : IDisposable
     {
         public mat4 Mvp, NormalMatrix, Model;
         public vec4 Albedo, Blend, Mix, Emission, Ambient, LightColor, LightDirection, Options, MapOptions;
+        public vec4 WindParameters, WindOptions;
+        public vec4 UvTransform, UvAnimationMirror;
     }
 
     public VeldridSceneRenderer(GraphicsDevice device, GL gl)
@@ -76,9 +78,23 @@ public sealed class VeldridSceneRenderer : IDisposable
                 vec4 LightDirection;
                 vec4 Options;
                 vec4 MapOptions;
+                vec4 WindParameters;
+                vec4 WindOptions;
+                vec4 UvTransform;
+                vec4 UvAnimationMirror;
             };
             """;
-        string vertex = "#version 450\n" + uniforms + """
+        string wind = """
+            #define WIND_CUSTOM_UNIFORMS
+            #define uWindEnabled (WindOptions.w > 0.5)
+            #define uWindKind int(WindOptions.z)
+            #define uWindParameters WindParameters
+            #define uWindDirection WindOptions.xy
+            #define uWindModel Model
+            #define uWindInverseModel inverse(Model)
+
+            """ + MineImatorSimplyRemade.core.mdl.Shader.LoadShaderSource("wind.glsl");
+        string vertex = "#version 450\n" + uniforms + "\n" + wind + "\n" + """
             layout(location = 0) in vec3 Position;
             layout(location = 1) in vec3 Normal;
             layout(location = 2) in vec2 TexCoord;
@@ -86,13 +102,20 @@ public sealed class VeldridSceneRenderer : IDisposable
             layout(location = 1) out vec2 vUv;
             layout(location = 2) out vec3 vWorldPosition;
             void main() {
-                gl_Position = Mvp * vec4(Position, 1.0);
+                vec4 position = vec4(Position, 1.0);
+                vec3 normal = windNormal(position, Normal, TexCoord);
+                position = windPosition(position, TexCoord);
+                gl_Position = Mvp * position;
                 if (Options.y > 0.5) gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;
                 gl_Position.y *= Options.z;
-                vNormal = mat3(NormalMatrix) * Normal;
+                vNormal = mat3(NormalMatrix) * normal;
                 vNormal = length(vNormal) > 0.00001 ? normalize(vNormal) : vec3(0, 1, 0);
-                vUv = TexCoord;
-                vWorldPosition = (Model * vec4(Position, 1.0)).xyz;
+                vec2 uv = vec2(TexCoord.x, TexCoord.y * UvAnimationMirror.x + UvAnimationMirror.y);
+                uv *= UvTransform.zw;
+                if (UvAnimationMirror.z > 0.5) uv.x = abs(fract(uv.x * 0.5) * 2.0 - 1.0);
+                if (UvAnimationMirror.w > 0.5) uv.y = abs(fract(uv.y * 0.5) * 2.0 - 1.0);
+                vUv = uv + UvTransform.xy;
+                vWorldPosition = (Model * position).xyz;
             }
             """;
         string fragment = "#version 450\n" + uniforms + """
@@ -224,6 +247,15 @@ public sealed class VeldridSceneRenderer : IDisposable
         bool useEmissionTexture = hasUvs && mesh.EmissionTexture != 0;
         var normalTexture = useNormalTexture ? ImportTexture(mesh.NormalTexture) : _white;
         var emissionTexture = useEmissionTexture ? ImportTexture(mesh.EmissionTexture) : _white;
+        float scaleV = 1, offsetV = 0;
+        if (!string.IsNullOrEmpty(mesh.AnimationKey) &&
+            TerrainAtlas.AnimatedTextures.TryGetValue(mesh.AnimationKey, out var animation) &&
+            animation.Frames.Length > 0 && animation.TotalFrames > 0 && animation.FrameTime > 0)
+        {
+            int frame = (int)((_animationTime / (animation.FrameTime / 20.0)) % animation.Frames.Length);
+            scaleV = 1f / animation.TotalFrames;
+            offsetV = animation.Frames[frame] * scaleV;
+        }
         var data = new DrawUniforms
         {
             Mvp = _viewProjection * model,
@@ -241,7 +273,11 @@ public sealed class VeldridSceneRenderer : IDisposable
                 _device.IsDepthRangeZeroToOne ? 1 : 0, _device.IsClipSpaceYInverted ? -1 : 1,
                 mesh.BlendMode is MaterialBlendMode.Multiply or MaterialBlendMode.Screen ? 1 : 0),
             MapOptions = new vec4(useNormalTexture ? 1 : 0, useEmissionTexture ? 1 : 0,
-                mesh.AlphaMode == MaterialAlphaMode.Clip ? 1 : 0, mesh.AlphaClipThreshold)
+                mesh.AlphaMode == MaterialAlphaMode.Clip ? 1 : 0, mesh.AlphaClipThreshold),
+            WindParameters = Mesh.Wind.Parameters,
+            WindOptions = new vec4(Mesh.Wind.Heading, mesh.WindKind, mesh.WindActive ? 1f : 0f),
+            UvTransform = new vec4(mesh.TextureOffset.x, mesh.TextureOffset.y, mesh.TextureRepeat.x, mesh.TextureRepeat.y),
+            UvAnimationMirror = new vec4(scaleV, offsetV, mesh.TextureMirror.x ? 1f : 0f, mesh.TextureMirror.y ? 1f : 0f)
         };
         var uniform = _device.ResourceFactory.CreateBuffer(new BufferDescription(
             (uint)Marshal.SizeOf<DrawUniforms>(), BufferUsage.UniformBuffer));
@@ -295,15 +331,6 @@ public sealed class VeldridSceneRenderer : IDisposable
     {
         var vertices = new VeldridVertex[mesh.Vertices.Count];
         bool morph = mesh.ShapeKeys.Any(key => key.Weight != 0 && key.Deltas.Length >= vertices.Length * 3);
-        float scaleV = 1, offsetV = 0;
-        if (!string.IsNullOrEmpty(mesh.AnimationKey) &&
-            TerrainAtlas.AnimatedTextures.TryGetValue(mesh.AnimationKey, out var animation) &&
-            animation.Frames.Length > 0 && animation.TotalFrames > 0 && animation.FrameTime > 0)
-        {
-            int frame = (int)((_animationTime / (animation.FrameTime / 20.0)) % animation.Frames.Length);
-            scaleV = 1f / animation.TotalFrames;
-            offsetV = animation.Frames[frame] * scaleV;
-        }
         for (int i = 0; i < vertices.Length; i++)
         {
             vec3 position = mesh.Vertices[i];
@@ -312,15 +339,11 @@ public sealed class VeldridSceneRenderer : IDisposable
                     if (key.Weight != 0 && key.Deltas.Length >= vertices.Length * 3)
                         position += key.Weight * new vec3(key.Deltas[i * 3], key.Deltas[i * 3 + 1], key.Deltas[i * 3 + 2]);
             vec2 uv = mesh.TexCoords.Count == vertices.Length ? mesh.TexCoords[i] : vec2.Zero;
-            uv.y = uv.y * scaleV + offsetV;
-            uv *= mesh.TextureRepeat;
-            if (mesh.TextureMirror.x) uv.x = MathF.Abs((uv.x * 0.5f - MathF.Floor(uv.x * 0.5f)) * 2 - 1);
-            if (mesh.TextureMirror.y) uv.y = MathF.Abs((uv.y * 0.5f - MathF.Floor(uv.y * 0.5f)) * 2 - 1);
             vertices[i] = new VeldridVertex
             {
                 Position = position,
                 Normal = mesh.Normals.Count == vertices.Length ? mesh.Normals[i] : vec3.UnitY,
-                TexCoord = uv + mesh.TextureOffset
+                TexCoord = uv
             };
         }
         if (morph || mesh.Normals.Count != vertices.Length)

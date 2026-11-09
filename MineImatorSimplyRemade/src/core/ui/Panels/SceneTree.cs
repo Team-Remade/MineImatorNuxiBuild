@@ -1180,6 +1180,8 @@ public class SceneTree : UiPanel
         dup.TextureMipmaps      = original.TextureMipmaps;
         dup.IncludeInAmbientOcclusion = original.IncludeInAmbientOcclusion;
         dup.IncludeInFog        = original.IncludeInFog;
+        dup.AffectedByWind      = original.AffectedByWind;
+        dup.TerrainAffectedByWind = original.TerrainAffectedByWind;
         dup.RenderInHighQuality = original.RenderInHighQuality;
         dup.RenderInLowQuality  = original.RenderInLowQuality;
         dup.RenderDepthOffset   = original.RenderDepthOffset;

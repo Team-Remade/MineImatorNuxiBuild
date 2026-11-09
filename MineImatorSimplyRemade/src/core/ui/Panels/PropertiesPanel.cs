@@ -40,6 +40,12 @@ public partial class PropertiesPanel : UiPanel
     public bool SkyboxMapped;
     public bool UseAdvancedSky;
     public bool FogEnabled = true;
+    public bool WindEnabled;
+    public float WindSpeed = 0.1f;
+    public float WindStrength = 0.5f;
+    public float WindDirection = 45f;
+    public float WindDirectionalSpeed = 0.2f;
+    public float WindDirectionalStrength = 1.5f;
     public bool OpaqueLeaves;
     public string Biome = "default";
     public BiomeColors CustomBiomeColors = new();
@@ -429,6 +435,12 @@ public partial class PropertiesPanel : UiPanel
         SkyboxMapped = settings.SkyboxMapped;
         UseAdvancedSky = settings.UseAdvancedSky;
         FogEnabled = settings.FogEnabled; SkyFog = settings.SkyFog;
+        WindEnabled = settings.WindEnabled;
+        WindSpeed = Math.Clamp(settings.WindSpeed, 0f, 10f);
+        WindStrength = Math.Clamp(settings.WindStrength, 0f, 10f);
+        WindDirection = Math.Clamp(settings.WindDirection, -360f, 360f);
+        WindDirectionalSpeed = Math.Clamp(settings.WindDirectionalSpeed, 0f, 10f);
+        WindDirectionalStrength = Math.Clamp(settings.WindDirectionalStrength, 0f, 10f);
         OpaqueLeaves = settings.OpaqueLeaves;
         Biome = settings.Biome;
         CustomBiomeColors = settings.CustomBiomeColors.Clone();
@@ -589,6 +601,12 @@ public partial class PropertiesPanel : UiPanel
         manifest.Settings.SkyboxMapped = SkyboxMapped;
         manifest.Settings.UseAdvancedSky = UseAdvancedSky;
         manifest.Settings.FogEnabled = FogEnabled; manifest.Settings.SkyFog = SkyFog;
+        manifest.Settings.WindEnabled = WindEnabled;
+        manifest.Settings.WindSpeed = WindSpeed;
+        manifest.Settings.WindStrength = WindStrength;
+        manifest.Settings.WindDirection = WindDirection;
+        manifest.Settings.WindDirectionalSpeed = WindDirectionalSpeed;
+        manifest.Settings.WindDirectionalStrength = WindDirectionalStrength;
         manifest.Settings.OpaqueLeaves = OpaqueLeaves;
         manifest.Settings.Biome = Biome;
         manifest.Settings.CustomBiomeColors = CustomBiomeColors.Clone();
@@ -1037,6 +1055,8 @@ public partial class PropertiesPanel : UiPanel
             TextureMipmaps = source.TextureMipmaps,
             IncludeInAmbientOcclusion = source.IncludeInAmbientOcclusion,
             IncludeInFog = source.IncludeInFog,
+            AffectedByWind = source.AffectedByWind,
+            TerrainAffectedByWind = source.TerrainAffectedByWind,
             RenderInHighQuality = source.RenderInHighQuality,
             RenderInLowQuality = source.RenderInLowQuality,
             RenderDepthOffset = source.RenderDepthOffset,
@@ -2744,6 +2764,7 @@ public partial class PropertiesPanel : UiPanel
                 RegisterBackgroundKeyframeContext(nameof(BackgroundOffset) + ".1");
 
                 ImGui.Spacing();
+                DrawWindSettings();
                 ImGui.TextUnformatted(Localization.T("text.panel.properties.ambient_light"));
                 bool ambientChanged = false;
                 ImGui.SetNextItemWidth(-1);
@@ -3001,6 +3022,32 @@ public partial class PropertiesPanel : UiPanel
         }
     }
 
+    private static bool ContainsMinecraftTerrain(SceneObject obj) =>
+        obj.SpawnCategory is "Blocks" or "Scenery" ||
+        obj.Visuals.Any(mesh => !mesh.MinecraftItemTexture && !string.IsNullOrEmpty(mesh.MinecraftTextureKey)) ||
+        obj.Children.Any(ContainsMinecraftTerrain);
+
+    private void DrawWindSettings()
+    {
+        if (!ImGui.TreeNode(Localization.Label("text.panel.properties.wind", "Wind"))) return;
+        bool changed = ImGui.Checkbox(Localization.Label("text.panel.properties.wind_enabled", "Enabled##wind"), ref WindEnabled);
+        RegisterBackgroundKeyframeContext(nameof(WindEnabled));
+        changed |= PercentageSlider("Speed##wind", ref WindSpeed, 0f, 1000f);
+        RegisterBackgroundKeyframeContext(nameof(WindSpeed));
+        changed |= InputFloatEditor("Strength##wind", ref WindStrength, 0.01f, 0f, 10f, "%.2f");
+        RegisterBackgroundKeyframeContext(nameof(WindStrength));
+        changed |= InputFloatEditor("Direction (degrees)##wind", ref WindDirection, 1f, -360f, 360f, "%.1f");
+        RegisterBackgroundKeyframeContext(nameof(WindDirection));
+        changed |= PercentageSlider("Directional Speed##wind", ref WindDirectionalSpeed, 0f, 1000f);
+        RegisterBackgroundKeyframeContext(nameof(WindDirectionalSpeed));
+        changed |= InputFloatEditor("Directional Strength##wind", ref WindDirectionalStrength, 0.01f, 0f, 10f, "%.2f");
+        RegisterBackgroundKeyframeContext(nameof(WindDirectionalStrength));
+        ImGui.TreePop();
+        if (!changed) return;
+        WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+        ProjectManager.Instance.SetDirty(true);
+    }
+
     private static bool ShadowBufferCombo(string label, ref int value)
     {
         string[] labels = ["256", "512", "1024", "2048", "4096", "8192"];
@@ -3035,7 +3082,9 @@ public partial class PropertiesPanel : UiPanel
             nameof(AmbientLightStrength), nameof(NightAmbientLightStrength), nameof(FillLightStrength), nameof(FillLightCastsShadows),
             nameof(Twilight), nameof(ShowStars), nameof(StarDensity), nameof(StarBrightness), nameof(StarTwinkleSpeed),
             nameof(FogEnabled), nameof(SkyFog), nameof(CustomFogColor), nameof(CustomObjectFogColor),
-            nameof(FogDistance), nameof(FogFadeSize), nameof(FogHeight)
+            nameof(FogDistance), nameof(FogFadeSize), nameof(FogHeight),
+            nameof(WindEnabled), nameof(WindSpeed), nameof(WindStrength), nameof(WindDirection),
+            nameof(WindDirectionalSpeed), nameof(WindDirectionalStrength)
         ];
         string[] vectors =
         [
@@ -5550,6 +5599,24 @@ public partial class PropertiesPanel : UiPanel
 
         if (ImGui.CollapsingHeader(Localization.Label("text.common.appearance", "Appearance")))
         {
+            bool affectedByWind = _currentObject.AffectedByWind;
+            if (ImGui.Checkbox(Localization.Label("text.panel.properties.affected_by_wind", "Effected by wind"), ref affectedByWind))
+            {
+                ApplyToSelectedSubtrees(obj => obj.AffectedByWind = affectedByWind);
+                ProjectManager.Instance.SetDirty(true);
+            }
+            if (ContainsMinecraftTerrain(_currentObject))
+            {
+                bool terrainWind = _currentObject.TerrainAffectedByWind;
+                if (ImGui.Checkbox(Localization.Label("text.panel.properties.terrain_affected_by_wind", "Terrain effected by wind"), ref terrainWind))
+                {
+                    ApplyToSelectedSubtrees(obj => obj.TerrainAffectedByWind = terrainWind);
+                    ProjectManager.Instance.SetDirty(true);
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(Localization.T("text.panel.properties.terrain_wind_tooltip"));
+            }
+
             int blendMode = (int)(_currentObject.MaterialSettings?.BlendMode ?? MaterialBlendMode.Normal);
             string[] blendModes = [
                 Localization.Label("text.panel.properties.blend_normal", "Normal"),

@@ -380,6 +380,8 @@ public static class ProjectSceneSerializer
             TextureMipmaps = obj.TextureMipmaps,
             IncludeInAmbientOcclusion = obj.IncludeInAmbientOcclusion,
             IncludeInFog = obj.IncludeInFog,
+            AffectedByWind = obj.AffectedByWind,
+            TerrainAffectedByWind = obj.TerrainAffectedByWind,
             RenderInHighQuality = obj.RenderInHighQuality,
             RenderInLowQuality = obj.RenderInLowQuality,
             RenderDepthOffset = obj.RenderDepthOffset,
@@ -968,6 +970,8 @@ public static class ProjectSceneSerializer
         obj.TextureMipmaps = entry.TextureMipmaps;
         obj.IncludeInAmbientOcclusion = entry.IncludeInAmbientOcclusion;
         obj.IncludeInFog = entry.IncludeInFog;
+        obj.AffectedByWind = entry.AffectedByWind;
+        obj.TerrainAffectedByWind = entry.TerrainAffectedByWind;
         obj.RenderInHighQuality = entry.RenderInHighQuality;
         obj.RenderInLowQuality = entry.RenderInLowQuality;
         obj.RenderDepthOffset = entry.RenderDepthOffset;

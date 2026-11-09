@@ -24,14 +24,17 @@ public class Shader : IDisposable
         _gl = gl;
     }
 
-    private static string LoadShaderSource(string shaderName)
+    internal static string LoadShaderSource(string shaderName)
     {
         var assembly = Assembly.GetExecutingAssembly();
         string resourcePath = $"MineImatorSimplyRemade.assets.shaders.{shaderName}";
         using Stream? stream = assembly.GetManifestResourceStream(resourcePath);
         if (stream == null) throw new FileNotFoundException($"Shader not found: {shaderName}");
         using StreamReader reader = new StreamReader(stream);
-        return reader.ReadToEnd();
+        string source = reader.ReadToEnd();
+        return source.Contains("#include \"wind.glsl\"", StringComparison.Ordinal)
+            ? source.Replace("#include \"wind.glsl\"", LoadShaderSource("wind.glsl"), StringComparison.Ordinal)
+            : source;
     }
 
     /// <summary>

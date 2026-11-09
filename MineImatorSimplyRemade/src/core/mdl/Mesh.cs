@@ -132,6 +132,30 @@ public class Mesh : IDisposable
     /// <summary>Logical atlas key used to resolve independently selected Minecraft material maps.</summary>
     public string MinecraftTextureKey = "";
 
+    public static WindSettings Wind;
+    public bool AffectedByWind;
+    public bool TerrainAffectedByWind;
+    public int TerrainWindKind;
+    private string? _windTextureKey;
+    private int _textureWindKind;
+    public int EffectiveWindKind
+    {
+        get
+        {
+            if (TerrainWindKind != 0) return TerrainWindKind;
+            if (_windTextureKey != MinecraftTextureKey)
+            {
+                _windTextureKey = MinecraftTextureKey;
+                _textureWindKind = WindSettings.ClassifyTexture(MinecraftTextureKey);
+            }
+            return _textureWindKind;
+        }
+    }
+    public bool WindActive => Wind.Enabled && !PickOnly && !DepthTestDisabled &&
+        (AffectedByWind || (TerrainAffectedByWind && EffectiveWindKind != 0));
+    public int WindKind => AffectedByWind ? 0 : EffectiveWindKind;
+    public float WindBoundsPadding => WindActive ? Wind.MaximumDisplacement * (WindKind == 4 ? 2f : 1f) : 0f;
+
     /// <summary>Whether the logical texture key belongs to ItemsAtlas rather than TerrainAtlas.</summary>
     public bool MinecraftItemTexture = false;
 
@@ -828,6 +852,9 @@ public class Mesh : IDisposable
 
         clone.AnimationKey        = AnimationKey;
         clone.MinecraftTextureKey = MinecraftTextureKey;
+        clone.TerrainWindKind = TerrainWindKind;
+        clone.AffectedByWind = AffectedByWind;
+        clone.TerrainAffectedByWind = TerrainAffectedByWind;
         clone.MinecraftItemTexture = MinecraftItemTexture;
         clone.BaseTint            = BaseTint;
         clone.BiomeTint           = BiomeTint;
@@ -1322,6 +1349,7 @@ public class Mesh : IDisposable
             RefreshShapeKeyGeometry();
 
         _gl.UseProgram(_shader.ShaderProgram);
+        ApplyWindUniforms(_shader, model);
         ApplyBendUniforms(_shader);
 
         // Bind the shared scene UBO (initializes link on first use).
@@ -1621,6 +1649,12 @@ public class Mesh : IDisposable
         if (HasShapeKeys)
             RefreshShapeKeyGeometry();
         hash.Add(this);
+        hash.Add(WindActive);
+        if (WindActive)
+        {
+            hash.Add(Wind);
+            hash.Add(WindKind);
+        }
         hash.Add(_vao);
         hash.Add(_shadowGeometryVersion);
         hash.Add(PickOnly);
@@ -1671,6 +1705,7 @@ public class Mesh : IDisposable
             return;
 
         _gl.UseProgram(shader.ShaderProgram);
+        ApplyWindUniforms(shader, model);
         ApplyBendUniforms(shader);
         SetUniformMat4(shader, "uMVP", lightViewProj * model);
 
@@ -1745,6 +1780,7 @@ public class Mesh : IDisposable
             return;
 
         _gl.UseProgram(shader.ShaderProgram);
+        ApplyWindUniforms(shader, model);
         ApplyBendUniforms(shader);
         SetUniformMat4(shader, "uLightViewProj", lightViewProj);
         SetUniformMat4(shader, "uModel", model);
@@ -2072,6 +2108,17 @@ public class Mesh : IDisposable
         if (loc >= 0) _gl.Uniform1(loc, (uint)count, shadowIndices);
     }
 
+    public void ApplyWindUniforms(Shader shader, mat4 model)
+    {
+        SetUniformBool(shader, "uWindEnabled", WindActive);
+        if (!WindActive) return;
+        SetUniformInt(shader, "uWindKind", WindKind);
+        SetUniformVec4(shader, "uWindParameters", Wind.Parameters);
+        SetUniformVec2(shader, "uWindDirection", Wind.Heading);
+        SetUniformMat4(shader, "uWindModel", model);
+        SetUniformMat4(shader, "uWindInverseModel", model.Inverse);
+    }
+
     public void ApplyBendUniforms(Shader shader)
     {
         GpuBendState? bend = GpuBend;
@@ -2122,10 +2169,11 @@ public class Mesh : IDisposable
     /// shader.  This mirrors the main material path just enough to discard fully
     /// transparent texels before writing the helper-pass output.
     /// </summary>
-    public unsafe void RenderPickPass(Shader shader)
+    public unsafe void RenderPickPass(Shader shader, mat4? model = null)
     {
         if (_vao == 0 || shader == null) return;
 
+        ApplyWindUniforms(shader, model ?? mat4.Identity);
         ApplyBendUniforms(shader);
 
         float texOffsetV = 0f;

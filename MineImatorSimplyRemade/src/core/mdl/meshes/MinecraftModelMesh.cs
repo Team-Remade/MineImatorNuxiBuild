@@ -372,6 +372,7 @@ public static class MinecraftModelMesh
             mesh.TexCoords.AddRange(uvs);
             mesh.TextureId   = texId;
             mesh.MinecraftTextureKey = CtmAtlas.GetTextureKey(texId) ?? texKey;
+            mesh.TerrainWindKind = WindSettings.ClassifyBlock(blockName, texKey);
             mesh.DoubleSided = false;
             if (tintKind != BiomeTintKind.None)
             {

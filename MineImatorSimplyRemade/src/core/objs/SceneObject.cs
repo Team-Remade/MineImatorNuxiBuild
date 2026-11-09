@@ -635,6 +635,8 @@ public class SceneObject
     /// Controls whether this object is affected by scene fog.
     /// </summary>
     public bool IncludeInFog = true;
+    public bool AffectedByWind;
+    public bool TerrainAffectedByWind = true;
 
     /// <summary>
     /// Controls whether this object renders while the viewport is in rendered mode.

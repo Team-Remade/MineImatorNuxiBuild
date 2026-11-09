@@ -1193,6 +1193,9 @@ public class Viewport : UiPanel
         Mesh.GlobalCameraPosition = camera.Position;
         var p = PropertiesPanel;
         if (p == null) return (vec3.Zero, vec3.Zero, vec3.Zero);
+        Mesh.Wind = new WindSettings(p.WindEnabled, p.WindSpeed, p.WindStrength, p.WindDirection,
+            p.WindDirectionalSpeed, p.WindDirectionalStrength, GetTimelineEffectTimeSeconds());
+        ConfigureWind(IsPreviewViewport ? MainViewport?.SceneObjects ?? SceneObjects : SceneObjects);
         float orbit = p.SkyTime * 15f;
         float[] sunAngles = [p.SunAngle[0] + orbit, p.SunAngle[1], p.SunAngle[2]];
         bool sunFillLightActive = IsCelestialFillLightActive(sunAngles[0]);
@@ -1243,6 +1246,19 @@ public class Viewport : UiPanel
         Mesh.HeightFogSize = Math.Max(1f, p.HeightFogSize);
         Mesh.HeightFogOffset = p.HeightFogOffset;
         return (sunDirection, moonDirection, fogColor);
+    }
+
+    private static void ConfigureWind(IEnumerable<SceneObject> objects)
+    {
+        foreach (var obj in objects)
+        {
+            foreach (var mesh in obj.Visuals)
+            {
+                mesh.AffectedByWind = obj.AffectedByWind;
+                mesh.TerrainAffectedByWind = obj.TerrainAffectedByWind && !mesh.MinecraftItemTexture;
+            }
+            ConfigureWind(obj.Children);
+        }
     }
 
     private void RenderSky(Camera camera, uint width, uint height)
@@ -3805,6 +3821,8 @@ public class Viewport : UiPanel
             hash.Add(obj.IsHiddenForRendering());
             hash.Add(obj.InheritVisibility);
             hash.Add(obj.CastShadow);
+            hash.Add(obj.AffectedByWind);
+            hash.Add(obj.TerrainAffectedByWind);
             hash.Add(obj.RenderInHighQuality);
             hash.Add(obj.Position.x);
             hash.Add(obj.Position.y);
@@ -3975,7 +3993,7 @@ public class Viewport : UiPanel
                             MathF.Max(
                                 new vec3(model.m01, model.m11, model.m21).Length,
                                 new vec3(model.m02, model.m12, model.m22).Length));
-                        float worldRadius = mesh.BoundingSphereRadius * scale;
+                        float worldRadius = mesh.BoundingSphereRadius * scale + mesh.WindBoundsPadding;
                         if (!shadowFrustum.TestSphere(worldCenter, worldRadius))
                             continue;
 
@@ -4015,7 +4033,7 @@ public class Viewport : UiPanel
                             MathF.Max(
                                 new vec3(world.m01, world.m11, world.m21).Length,
                                 new vec3(world.m02, world.m12, world.m22).Length));
-                        float worldRadius = mesh.BoundingSphereRadius * scale;
+                        float worldRadius = mesh.BoundingSphereRadius * scale + mesh.WindBoundsPadding;
                         bounds.Include(worldCenter - new vec3(worldRadius));
                         bounds.Include(worldCenter + new vec3(worldRadius));
                     }
@@ -4063,7 +4081,7 @@ public class Viewport : UiPanel
                             MathF.Max(
                                 new vec3(model.m01, model.m11, model.m21).Length,
                                 new vec3(model.m02, model.m12, model.m22).Length));
-                        float worldRadius = mesh.BoundingSphereRadius * scale;
+                        float worldRadius = mesh.BoundingSphereRadius * scale + mesh.WindBoundsPadding;
                         if (distToLight - worldRadius > farPlane)
                             continue;
 
@@ -4503,7 +4521,7 @@ public class Viewport : UiPanel
                                 Gl.CullFace(mesh.CullFrontFaces ? GLEnum.Front : GLEnum.Back);
                             }
                         }
-                        mesh.RenderPickPass(_pickShader);
+                        mesh.RenderPickPass(_pickShader, model);
                         if (surfacesOnly)
                         {
                             Gl.Enable(GLEnum.CullFace);
@@ -4617,7 +4635,7 @@ public class Viewport : UiPanel
                     if (mesh.IsSkinned && boneDict != null)
                         UpdateBoneMatrices(mesh, sourceModel, boneDict);
                     mesh.ApplySkinningUniforms(_silhouetteShader);
-                    mesh.RenderPickPass(_silhouetteShader);
+                    mesh.RenderPickPass(_silhouetteShader, model);
                 }
             }
         }
@@ -5426,7 +5444,7 @@ public class Viewport : UiPanel
                             MathF.Max(
                                 new vec3(model.m01, model.m11, model.m21).Length,
                                 new vec3(model.m02, model.m12, model.m22).Length));
-                        float worldRadius = mesh.BoundingSphereRadius * scale;
+                        float worldRadius = mesh.BoundingSphereRadius * scale + mesh.WindBoundsPadding;
                         if (!frustum.TestSphere(worldCenter, worldRadius))
                             continue;
                     }

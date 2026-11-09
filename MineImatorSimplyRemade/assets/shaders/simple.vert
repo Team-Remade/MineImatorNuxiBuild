@@ -133,6 +133,8 @@ vec2 applyUvTransform(vec2 uv)
     return repeated + uTexUvOffset;
 }
 
+#include "wind.glsl"
+
 void main() {
     mat4 modelMat = uUseInstancing
         ? mat4(aInstanceM0, aInstanceM1, aInstanceM2, aInstanceM3)
@@ -158,6 +160,8 @@ void main() {
         normal = bentNormal;
     }
 
+    normal = windNormal(pos, normal, aTexCoord);
+    pos = windPosition(pos, aTexCoord);
     vec4 worldPos   = modelMat * pos;
     vFragPos        = worldPos.xyz;
     vNormal         = normalize(mat3(transpose(inverse(modelMat))) * normal);
