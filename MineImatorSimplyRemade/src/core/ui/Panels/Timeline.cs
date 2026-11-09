@@ -2723,6 +2723,8 @@ public partial class Timeline : UiPanel
         string[] cameraPaths =
         {
             "camera.active", "camera.fov",
+            "camera.orbit_enabled", "camera.orbit_distance", "camera.orbit_rotation_xy",
+            "camera.orbit_rotation_z", "camera.orbit_look_at",
         };
         string[] particleScalarPaths =
         {
@@ -2939,7 +2941,8 @@ public partial class Timeline : UiPanel
         // Between two keyframes — interpolate.
         // Discrete state-like properties and "instant" interpolation use the
         // previous keyframe's value with no blending.
-        if (path == "visible" || path == "camera.active" || path == "material.pbr_enabled" || path == "item.slot" || path == "item.custom_slot" ||
+        if (path == "visible" || path == "camera.active" || path == "camera.orbit_enabled" || path == "camera.orbit_look_at" ||
+            path == "material.pbr_enabled" || path == "item.slot" || path == "item.custom_slot" ||
             path == "text.horizontal_alignment" || path == "text.vertical_alignment" ||
             path == "text.antialiasing" || path == "text.outline_enabled" ||
             path == "particle.emitting" || path == "particle.freeze" || path == "particle.one_shot" || path == "particle.amount" ||
@@ -3377,6 +3380,11 @@ public partial class Timeline : UiPanel
                         {
                             "active" => cam.Active ? 1f : 0f,
                             "fov" => cam.Fov,
+                            "orbit_enabled" => cam.OrbitEnabled ? 1f : 0f,
+                            "orbit_distance" => cam.OrbitDistance,
+                            "orbit_rotation_xy" => cam.OrbitRotationXY,
+                            "orbit_rotation_z" => cam.OrbitRotationZ,
+                            "orbit_look_at" => cam.OrbitLookAtPoint ? 1f : 0f,
                             _ => 0f,
                         };
                     break;
@@ -3921,6 +3929,18 @@ public partial class Timeline : UiPanel
                             }
                             else if (comp == "fov" && float.IsFinite(value))
                                 camSet.Fov = Math.Clamp(value, 1f, 179f);
+                            else if (float.IsFinite(value))
+                            {
+                                switch (comp)
+                                {
+                                    case "orbit_enabled": camSet.OrbitEnabled = value >= 0.5f; break;
+                                    case "orbit_distance": camSet.OrbitDistance = MathF.Max(0f, value); break;
+                                    case "orbit_rotation_xy": camSet.OrbitRotationXY = value; break;
+                                    case "orbit_rotation_z": camSet.OrbitRotationZ = value; break;
+                                    case "orbit_look_at": camSet.OrbitLookAtPoint = value >= 0.5f; break;
+                                }
+                                camSet.UpdateVisualPosition();
+                            }
                         }
                         break;
 
@@ -4404,6 +4424,11 @@ public partial class Timeline : UiPanel
                 {
                     (label: "Active", path: "camera.active", parent: "", indent: 0),
                     (label: "Field of View", path: "camera.fov", parent: "", indent: 0),
+                    (label: "Rotate around a point", path: "camera.orbit_enabled", parent: "", indent: 0),
+                    (label: "Distance", path: "camera.orbit_distance", parent: "", indent: 1),
+                    (label: "Rotation XY", path: "camera.orbit_rotation_xy", parent: "", indent: 1),
+                    (label: "Rotation Z", path: "camera.orbit_rotation_z", parent: "", indent: 1),
+                    (label: "Look at rotation point", path: "camera.orbit_look_at", parent: "", indent: 1),
                 };
 
                 foreach (var (label, path, parent, indent) in cameraProps)
@@ -4653,6 +4678,11 @@ public partial class Timeline : UiPanel
         {
             _displayRows.Add(MakeSingle(obj, "Active", "camera.active"));
             _displayRows.Add(MakeSingle(obj, "Field of View", "camera.fov"));
+            _displayRows.Add(MakeSingle(obj, "Rotate around a point", "camera.orbit_enabled"));
+            _displayRows.Add(MakeSingle(obj, "Distance", "camera.orbit_distance", 1));
+            _displayRows.Add(MakeSingle(obj, "Rotation XY", "camera.orbit_rotation_xy", 1));
+            _displayRows.Add(MakeSingle(obj, "Rotation Z", "camera.orbit_rotation_z", 1));
+            _displayRows.Add(MakeSingle(obj, "Look at rotation point", "camera.orbit_look_at", 1));
 
             for (int i = 0; i < cameraObj.Effects.Count; i++)
             {

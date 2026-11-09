@@ -1202,6 +1202,11 @@ public partial class PropertiesPanel : UiPanel
             CameraNear = source.CameraNear,
             CameraFar = source.CameraFar,
             CameraActive = source.CameraActive,
+            CameraOrbitEnabled = source.CameraOrbitEnabled,
+            CameraOrbitDistance = source.CameraOrbitDistance,
+            CameraOrbitRotationXY = source.CameraOrbitRotationXY,
+            CameraOrbitRotationZ = source.CameraOrbitRotationZ,
+            CameraOrbitLookAtPoint = source.CameraOrbitLookAtPoint,
             CameraColorManagementOverrideEnabled = source.CameraColorManagementOverrideEnabled,
             CameraColorManagementEnabled = source.CameraColorManagementEnabled,
             CameraColorManagementToneMapper = source.CameraColorManagementToneMapper,
@@ -5569,6 +5574,8 @@ public partial class PropertiesPanel : UiPanel
                 _openPropContextMenu = true;
             }
             ImGui.Spacing();
+            DrawCameraOrbitControls(selectedCamera);
+            ImGui.Spacing();
             ImGui.TextUnformatted(Localization.T("text.panel.properties.color_management"));
             bool overrideEnabled = selectedCamera.ColorManagementOverrideEnabled;
             bool changed = ImGui.Checkbox(Localization.Label("text.panel.properties.camera_custom_color_management",
@@ -5789,6 +5796,53 @@ public partial class PropertiesPanel : UiPanel
         return _currentObject != null
             ? new List<SceneObject> { _currentObject }
             : Array.Empty<SceneObject>();
+    }
+
+    private void DrawCameraOrbitControls(CameraSceneObject camera)
+    {
+        void Edit<T>(bool changed, string property, T value, Action<CameraSceneObject, T> set)
+        {
+            string path = "camera." + property;
+            if (changed)
+            {
+                ApplyToSelectedObjects(obj =>
+                {
+                    if (obj is not CameraSceneObject selected) return;
+                    set(selected, value);
+                    selected.UpdateVisualPosition();
+                    Timeline?.RecordAutoKeyframe(selected, path);
+                });
+                ProjectManager.Instance.SetDirty(true);
+            }
+            RegisterPropertyContext(path);
+        }
+
+        ImGui.TextUnformatted(Localization.T("text.panel.properties.camera_orbit"));
+        ImGui.PushID("cameraOrbit");
+        bool enabled = camera.OrbitEnabled;
+        Edit(ImGui.Checkbox(Localization.Label("text.panel.properties.enabled", "Enabled"), ref enabled),
+            "orbit_enabled", enabled, (selected, value) => selected.OrbitEnabled = value);
+        if (camera.OrbitEnabled)
+        {
+            ImGui.Indent();
+            float distance = camera.OrbitDistance;
+            Edit(InputFloatEditor(Localization.Label("text.panel.properties.camera_orbit_distance", "Distance"),
+                ref distance, 0.1f, 0f, float.MaxValue, "%.2f"), "orbit_distance", distance,
+                (selected, value) => selected.OrbitDistance = value);
+            float rotationXY = camera.OrbitRotationXY;
+            Edit(InputFloatEditor(Localization.Label("text.panel.properties.camera_orbit_rotation_xy", "Rotation XY"),
+                ref rotationXY, 0.1f, -float.MaxValue, float.MaxValue, "%.2f"), "orbit_rotation_xy", rotationXY,
+                (selected, value) => selected.OrbitRotationXY = value);
+            float rotationZ = camera.OrbitRotationZ;
+            Edit(InputFloatEditor(Localization.Label("text.panel.properties.camera_orbit_rotation_z", "Rotation Z"),
+                ref rotationZ, 0.1f, -float.MaxValue, float.MaxValue, "%.2f"), "orbit_rotation_z", rotationZ,
+                (selected, value) => selected.OrbitRotationZ = value);
+            bool lookAt = camera.OrbitLookAtPoint;
+            Edit(ImGui.Checkbox(Localization.Label("text.panel.properties.camera_orbit_look_at", "Look at rotation point"),
+                ref lookAt), "orbit_look_at", lookAt, (selected, value) => selected.OrbitLookAtPoint = value);
+            ImGui.Unindent();
+        }
+        ImGui.PopID();
     }
 
     private bool DrawColorManagementControls(ref bool enabled, ref int toneMapper, ref float exposure,

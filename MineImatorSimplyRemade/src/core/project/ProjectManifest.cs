@@ -536,6 +536,11 @@ public class ProjectSceneObjectEntry
     public float CameraNear { get; set; } = 0.05f;
     public float CameraFar { get; set; } = 4000f;
     public bool CameraActive { get; set; } = false;
+    public bool CameraOrbitEnabled { get; set; }
+    public float CameraOrbitDistance { get; set; } = 100f;
+    public float CameraOrbitRotationXY { get; set; }
+    public float CameraOrbitRotationZ { get; set; }
+    public bool CameraOrbitLookAtPoint { get; set; } = true;
     public bool CameraColorManagementOverrideEnabled { get; set; } = false;
     public bool CameraColorManagementEnabled { get; set; } = true;
     public int CameraColorManagementToneMapper { get; set; } = 1;

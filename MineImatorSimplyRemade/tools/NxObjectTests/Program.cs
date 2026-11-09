@@ -192,6 +192,10 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Camera orbit defaults, transforms, look-at, poles and parented navigation", CameraOrbitTransforms),
+            ("Camera orbit project/archive/library, duplication, undo and dirty detection", CameraOrbitPersistence),
+            ("Camera orbit timeline discovery, read/write, interpolation and seeking", CameraOrbitTimeline),
+            ("Camera orbit ImGui enable/disable, show/hide and multi-selection", CameraOrbitControls),
             ("Wind defaults, project/object persistence, duplication, undo, animation and classification", WindPersistence),
             ("Biome catalog, independent custom colors, project persistence and reset", BiomeSettings),
             ("Opaque leaf defaults, persistence, texture selection and pixels", OpaqueLeavesSettings),
@@ -298,6 +302,8 @@ internal static partial class Program
             ("Particle preset timeline controls and legacy channel preservation", ParticleTimeline),
             ("Particle invalid and unsupported preset rejection", ParticleInvalid)
         ];
+        if (args.Contains("--camera-orbit", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Camera orbit", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--wind", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Wind", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--biomes", StringComparer.Ordinal))

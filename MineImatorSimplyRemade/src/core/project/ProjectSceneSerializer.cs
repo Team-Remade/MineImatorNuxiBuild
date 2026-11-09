@@ -534,6 +534,11 @@ public static class ProjectSceneSerializer
             entry.CameraNear = camera.Near;
             entry.CameraFar = camera.Far;
             entry.CameraActive = camera.Active;
+            entry.CameraOrbitEnabled = camera.OrbitEnabled;
+            entry.CameraOrbitDistance = camera.OrbitDistance;
+            entry.CameraOrbitRotationXY = camera.OrbitRotationXY;
+            entry.CameraOrbitRotationZ = camera.OrbitRotationZ;
+            entry.CameraOrbitLookAtPoint = camera.OrbitLookAtPoint;
             entry.CameraColorManagementOverrideEnabled = camera.ColorManagementOverrideEnabled;
             entry.CameraColorManagementEnabled = camera.ColorManagementEnabled;
             entry.CameraColorManagementToneMapper = Math.Clamp(camera.ColorManagementToneMapper, 0, 8);
@@ -1177,6 +1182,12 @@ public static class ProjectSceneSerializer
             camera.Fov = entry.CameraFov;
             camera.Near = entry.CameraNear;
             camera.Far = entry.CameraFar;
+            camera.OrbitEnabled = entry.CameraOrbitEnabled;
+            camera.OrbitDistance = entry.CameraOrbitDistance;
+            camera.OrbitRotationXY = entry.CameraOrbitRotationXY;
+            camera.OrbitRotationZ = entry.CameraOrbitRotationZ;
+            camera.OrbitLookAtPoint = entry.CameraOrbitLookAtPoint;
+            camera.UpdateVisualPosition();
             camera.ColorManagementOverrideEnabled = entry.CameraColorManagementOverrideEnabled;
             camera.ColorManagementEnabled = entry.CameraColorManagementEnabled;
             camera.ColorManagementToneMapper = Math.Clamp(entry.CameraColorManagementToneMapper, 0, 8);

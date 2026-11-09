@@ -13,6 +13,11 @@ public class CameraSceneObject : SceneObject
     public float Fov  = 70f;
     public float Near = 0.05f;
     public float Far  = 4000f;
+    public bool OrbitEnabled;
+    public float OrbitDistance = 100f;
+    public float OrbitRotationXY;
+    public float OrbitRotationZ;
+    public bool OrbitLookAtPoint = true;
     public bool ColorManagementOverrideEnabled;
     public bool ColorManagementEnabled = true;
     public int ColorManagementToneMapper = 1;
@@ -94,6 +99,26 @@ public class CameraSceneObject : SceneObject
     /// transform by <see cref="SyncCameraToTransform"/> and vice-versa.
     /// </summary>
     public Camera ViewCamera { get; } = new Camera();
+
+    private GlmSharp.mat4 GetOrbitRotation() =>
+        GlmSharp.mat4.RotateY(GlmSharp.glm.Radians(OrbitRotationXY)) *
+        GlmSharp.mat4.RotateX(-GlmSharp.glm.Radians(OrbitRotationZ));
+
+    private GlmSharp.vec3 GetOrbitOffset()
+    {
+        var offset = GetOrbitRotation() * new GlmSharp.vec4(0f, 0f, OrbitDistance, 0f);
+        return new GlmSharp.vec3(offset.x, offset.y, offset.z);
+    }
+
+    protected override void GetTimelineTransform(out GlmSharp.mat4 modelTransform,
+        out GlmSharp.vec3 position, out GlmSharp.mat4 rotation)
+    {
+        base.GetTimelineTransform(out modelTransform, out position, out rotation);
+        if (!OrbitEnabled) return;
+        position += GetOrbitOffset();
+        if (OrbitLookAtPoint)
+            rotation = GetOrbitRotation();
+    }
 
     public void AddEffect(CameraEffectType type)
     {
@@ -263,29 +288,37 @@ public class CameraSceneObject : SceneObject
             MathF.Sin(pitch),
             cosP * MathF.Cos(yaw)) * ViewCamera.Distance;
 
-        ViewCamera.Target = Position - offset + PivotOffset;
+        ViewCamera.Target = GetWorldPosition() - offset + PivotOffset;
         SyncTransformFromCamera();
     }
 
     /// <summary>Writes viewport navigation back into the local scene transform.</summary>
     public void SyncTransformFromCamera()
     {
+        var world = GetWorldRotationEditFrame(out var prefix, out _, out var suffix);
+        if (MathF.Abs(prefix.Determinant) > 1e-8f && MathF.Abs(suffix.Determinant) > 1e-8f)
+        {
+            var desiredRotation = CopyConstraintSolver.Rotation(ViewCamera.GetViewMatrix().Transposed);
+            // Rotate the existing basis to retain its scale before removing the parent/edit frame.
+            var desiredBasis = desiredRotation * CopyConstraintSolver.Rotation(world).Transposed * world;
+            var localRotation = CopyConstraintSolver.Rotation(prefix.Inverse * desiredBasis * suffix.Inverse);
+            if (OrbitEnabled && OrbitLookAtPoint)
+            {
+                var backward = new GlmSharp.vec3(localRotation.m20, localRotation.m21, localRotation.m22);
+                OrbitRotationXY = GlmSharp.glm.Degrees(MathF.Atan2(backward.x, backward.z));
+                OrbitRotationZ = GlmSharp.glm.Degrees(MathF.Atan2(backward.y,
+                    MathF.Sqrt(backward.x * backward.x + backward.z * backward.z)));
+            }
+            else
+                SetLocalRotation(MineImatorSimplyRemade.core.mdl.mineImator.MineImatorLoader.MatrixToEulerRzRyRx(localRotation));
+        }
+
         var position = ViewCamera.Position - PivotOffset;
         if (InheritPosition && (Parent != null || IsFollowingPath))
         {
             var local = GetParentWorldTransform().Inverse * new GlmSharp.vec4(position, 1f);
             position = new GlmSharp.vec3(local.x, local.y, local.z);
         }
-        SetLocalPosition(position);
-
-        var world = GetWorldRotationEditFrame(out var prefix, out _, out var suffix);
-        if (MathF.Abs(prefix.Determinant) <= 1e-8f || MathF.Abs(suffix.Determinant) <= 1e-8f)
-            return;
-
-        var desiredRotation = CopyConstraintSolver.Rotation(ViewCamera.GetViewMatrix().Transposed);
-        // Rotate the existing basis to retain its scale before removing the parent/edit frame.
-        var desiredBasis = desiredRotation * CopyConstraintSolver.Rotation(world).Transposed * world;
-        var localRotation = CopyConstraintSolver.Rotation(prefix.Inverse * desiredBasis * suffix.Inverse);
-        SetLocalRotation(MineImatorSimplyRemade.core.mdl.mineImator.MineImatorLoader.MatrixToEulerRzRyRx(localRotation));
+        SetLocalPosition(position - (OrbitEnabled ? GetOrbitOffset() : GlmSharp.vec3.Zero));
     }
 }
