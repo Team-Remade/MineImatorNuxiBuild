@@ -428,6 +428,7 @@ internal static partial class Program
             ("Array viewport render collection and shadow cache invalidation", ModifierRenderCollection),
             ("Modifier context values, auto keys, interpolation, identity and persistence", ModifierKeyframes),
             ("Modifier ImGui context menu copy, paste, reset and manual keyframes", ModifierContextInteraction),
+            ("Property reset Shift-right-click, defaults, groups, selection, auto-key and persistence", PropertyResetInteraction),
             ("All 15 bundled particle presets, assets and finite simulation", ParticleBundled),
             ("Particle spawn menu selection, search and all provided presets", ParticleSpawnMenu),
             ("Particle per-minute rate, multi-type burst, restart and amount limit", ParticleEmission),
@@ -445,6 +446,9 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Block model", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--visibility", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Visibility", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--property-reset", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Property reset", StringComparison.Ordinal) ||
+                test.Name.StartsWith("Modifier ImGui context menu", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--watermark", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Watermark", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--watermark-graphics", StringComparer.Ordinal))

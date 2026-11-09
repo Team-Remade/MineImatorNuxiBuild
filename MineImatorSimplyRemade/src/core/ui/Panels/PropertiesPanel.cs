@@ -2264,17 +2264,7 @@ public partial class PropertiesPanel : UiPanel
                 ImGui.EndTabBar();
             }
             
-            // Deferred context menu popup
-            if (_openPropContextMenu)
-            {
-                _openPropContextMenu = false;
-                _propertyContextObject = _currentObject;
-                if (_propertyContextPaths?.FirstOrDefault() != _ctxPropertyPath)
-                    _propertyContextPaths = null;
-                if (_propertyContextBinding?.Path != _ctxPropertyPath)
-                    _propertyContextBinding = null;
-                ImGui.OpenPopup("##prop_keyframe_ctx");
-            }
+            ProcessPropertyContextRequest();
             RenderPropertyContextMenu();
         }
         _nameEditor.CommitIfHidden();
@@ -3405,6 +3395,7 @@ public partial class PropertiesPanel : UiPanel
             bool inheritPos = _currentObject.InheritPosition;
             if (ImGui.Checkbox(Localization.Label("text.panel.properties.inherit_position", "Inherit Position##pos"), ref inheritPos))
                 ApplyToSelectedObjects(obj => obj.InheritPosition = inheritPos);
+            RegisterObjectPropertyContext("inherit_position", obj => obj.InheritPosition, (obj, value) => obj.InheritPosition = value);
 
             // MiBoneSceneObjects expose an offset from their model base pose (always zero at load).
             // Plain BoneSceneObjects (GLB) use TargetPosition as an offset from rest pose.
@@ -3478,6 +3469,7 @@ public partial class PropertiesPanel : UiPanel
             bool inheritRot = _currentObject.InheritRotation;
             if (ImGui.Checkbox(Localization.Label("text.panel.properties.inherit_rotation", "Inherit Rotation##rot"), ref inheritRot))
                 ApplyToSelectedObjects(obj => obj.InheritRotation = inheritRot);
+            RegisterObjectPropertyContext("inherit_rotation", obj => obj.InheritRotation, (obj, value) => obj.InheritRotation = value);
 
             vec3 rawRot = (_currentObject is MiBoneSceneObject miRot)
                 ? miRot.OffsetRotation
@@ -3541,6 +3533,7 @@ public partial class PropertiesPanel : UiPanel
             bool inheritScale = _currentObject.InheritScale;
             if (ImGui.Checkbox(Localization.Label("text.panel.properties.inherit_scale", "Inherit Scale##scale"), ref inheritScale))
                 ApplyToSelectedObjects(obj => obj.InheritScale = inheritScale);
+            RegisterObjectPropertyContext("inherit_scale", obj => obj.InheritScale, (obj, value) => obj.InheritScale = value);
 
             ImGui.Checkbox(Localization.Label("text.panel.properties.link_scale", "Link Scale"), ref _linkScale);
 
@@ -4024,6 +4017,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.emitting");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.emitting");
 
             bool oneShot = particleSpawner.OneShot;
             if (ImGui.Checkbox(Localization.Label("text.common.one_shot", "One Shot"), ref oneShot))
@@ -4033,6 +4027,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.one_shot");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.one_shot");
 
             bool topLevelParticles = particleSpawner.TopLevelParticles;
             if (ImGui.Checkbox(Localization.Label("text.common.top_level_particles", "Top Level Particles"), ref topLevelParticles))
@@ -4042,6 +4037,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.top_level_particles");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.top_level_particles");
 
             int amount = particleSpawner.Amount;
             if (InputIntEditor("Amount", ref amount, 1, 10, 1, 10000))
@@ -4050,6 +4046,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.amount");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.amount");
 
             float spawnRate = particleSpawner.SpawnRate;
             if (InputFloatEditor("Spawn Rate", ref spawnRate, 0.1f, 0f, 10000f, "%.2f"))
@@ -4058,6 +4055,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.spawn_rate");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.spawn_rate");
 
             float lifeMin = particleSpawner.LifetimeMin;
             if (InputFloatEditor("Lifetime Min", ref lifeMin, 0.01f, 0.01f, 120f, "%.2f"))
@@ -4066,6 +4064,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.lifetime_min");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.lifetime_min");
 
             float lifeMax = particleSpawner.LifetimeMax;
             if (InputFloatEditor("Lifetime Max", ref lifeMax, 0.01f, 0.01f, 120f, "%.2f"))
@@ -4074,6 +4073,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.lifetime_max");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.lifetime_max");
 
             float simSpeed = particleSpawner.SimulationSpeed;
             if (InputFloatEditor("Simulation Speed", ref simSpeed, 0.01f, 0f, 32f, "%.2f"))
@@ -4082,6 +4082,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.simulation_speed");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.simulation_speed");
 
             float linearDamping = particleSpawner.LinearDamping;
             if (InputFloatEditor("Linear Damping", ref linearDamping, 0.01f, 0f, 100f, "%.3f"))
@@ -4090,6 +4091,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.linear_damping");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.linear_damping");
 
             float angularDamping = particleSpawner.AngularDamping;
             if (InputFloatEditor("Angular Damping", ref angularDamping, 0.01f, 0f, 100f, "%.3f"))
@@ -4098,6 +4100,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.angular_damping");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.angular_damping");
 
             string[] shapeOptions = { Localization.T("text.panel.properties.box"), Localization.T("text.common.sphere") };
             int emissionShape = particleSpawner.EmissionShape == ParticleEmissionShape.Sphere ? 1 : 0;
@@ -4109,6 +4112,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.emission_shape");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.emission_shape");
 
             vec3 spawnExtents = particleSpawner.SpawnBoxExtents;
             if (EditVec3Editor(_currentObject, "particleSpawnExtents", ref spawnExtents, 0.01f, 0f, 1000f, "%.3f", "Spawn Extents", "particle.spawn_extents"))
@@ -4124,6 +4128,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.directional_emission");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.directional_emission");
 
             if (particleSpawner.UseDirectionalEmission)
             {
@@ -4141,6 +4146,7 @@ public partial class PropertiesPanel : UiPanel
                     Timeline?.RecordAutoKeyframe(_currentObject, "particle.spread");
                     ProjectManager.Instance.SetDirty(true);
                 }
+                RegisterPropertyContext("particle.spread");
 
                 float speedMin = particleSpawner.InitialSpeedMin;
                 if (InputFloatEditor("Speed Min", ref speedMin, 0.01f, 0f, 10000f, "%.3f"))
@@ -4149,6 +4155,7 @@ public partial class PropertiesPanel : UiPanel
                     Timeline?.RecordAutoKeyframe(_currentObject, "particle.speed_min");
                     ProjectManager.Instance.SetDirty(true);
                 }
+                RegisterPropertyContext("particle.speed_min");
 
                 float speedMax = particleSpawner.InitialSpeedMax;
                 if (InputFloatEditor("Speed Max", ref speedMax, 0.01f, 0f, 10000f, "%.3f"))
@@ -4157,6 +4164,7 @@ public partial class PropertiesPanel : UiPanel
                     Timeline?.RecordAutoKeyframe(_currentObject, "particle.speed_max");
                     ProjectManager.Instance.SetDirty(true);
                 }
+                RegisterPropertyContext("particle.speed_max");
             }
             else
             {
@@ -4233,6 +4241,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.end_scale_min");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.end_scale_min");
 
             float endScaleMax = particleSpawner.EndScaleMax;
             if (InputFloatEditor("End Scale Max", ref endScaleMax, 0.01f, 0.001f, 1000f, "%.3f"))
@@ -4241,6 +4250,7 @@ public partial class PropertiesPanel : UiPanel
                 Timeline?.RecordAutoKeyframe(_currentObject, "particle.end_scale_max");
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("particle.end_scale_max");
 
             UiText.Disabled(Localization.Format("text.panel.properties.active_particles", particleSpawner.ActiveParticleCount));
 
@@ -4256,6 +4266,7 @@ public partial class PropertiesPanel : UiPanel
             bool inheritPivot = _currentObject.InheritPivot;
             if (ImGui.Checkbox(Localization.Label("text.panel.properties.inherit_pivot", "Inherit Pivot##pivot"), ref inheritPivot))
                 ApplyToSelectedObjects(obj => obj.InheritPivot = inheritPivot);
+            RegisterObjectPropertyContext("inherit_pivot", obj => obj.InheritPivot, (obj, value) => obj.InheritPivot = value);
 
             vec3 pivot = GetEditablePivotOffset(_currentObject);
             float pivX = pivot.x * 16f;
@@ -4279,11 +4290,9 @@ public partial class PropertiesPanel : UiPanel
 
         if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.property_inheritance", "Property Inheritance")))
         {
-            void InheritanceCheckbox(string label, bool value, Action<SceneObject, bool> apply, bool material = true)
+            void InheritanceCheckbox(string label, Func<SceneObject, bool> getValue, Action<SceneObject, bool> apply, bool material = true)
             {
-                if (!ImGui.Checkbox(label, ref value)) return;
-
-                ApplyToSelectedObjects(obj =>
+                void Apply(SceneObject obj, bool value)
                 {
                     apply(obj, value);
                     if (material)
@@ -4291,8 +4300,14 @@ public partial class PropertiesPanel : UiPanel
                         obj.UsePropertyInheritance = true;
                         obj.PropagateMaterialSettingsToChildren();
                     }
-                });
-                ProjectManager.Instance.SetDirty(true);
+                }
+                bool value = getValue(_currentObject);
+                if (ImGui.Checkbox(label, ref value))
+                {
+                    ApplyToSelectedObjects(obj => Apply(obj, value));
+                    ProjectManager.Instance.SetDirty(true);
+                }
+                RegisterObjectPropertyContext(label, getValue, Apply);
             }
 
             if (_currentObject.Parent is MiBoneSceneObject { BendParameters: not null })
@@ -4300,7 +4315,7 @@ public partial class PropertiesPanel : UiPanel
                 bool internalPart = _currentObject is MiBoneSceneObject;
                 ImGui.BeginDisabled(internalPart);
                 InheritanceCheckbox(Localization.Label("text.panel.properties.lock_to_bent_half", "Lock to Bent Half"),
-                    internalPart ? _currentObject.LockBend > 0f : _currentObject.LockToBentHalf,
+                    obj => obj is MiBoneSceneObject ? obj.LockBend > 0f : obj.LockToBentHalf,
                     (obj, value) =>
                     {
                         if (obj is not MiBoneSceneObject)
@@ -4314,24 +4329,24 @@ public partial class PropertiesPanel : UiPanel
             }
 
             InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_alpha", "Inherit Alpha"),
-                _currentObject.InheritAlpha, (obj, value) => obj.InheritAlpha = value);
+                obj => obj.InheritAlpha, (obj, value) => obj.InheritAlpha = value);
             InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_color", "Inherit Color"),
-                _currentObject.InheritColor, (obj, value) => obj.InheritColor = value);
+                obj => obj.InheritColor, (obj, value) => obj.InheritColor = value);
             InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_texture", "Inherit Texture"),
-                _currentObject.InheritTexture, (obj, value) => obj.InheritTexture = value);
+                obj => obj.InheritTexture, (obj, value) => obj.InheritTexture = value);
             InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_surface", "Inherit Surface"),
-                _currentObject.InheritSurface, (obj, value) => obj.InheritSurface = value);
+                obj => obj.InheritSurface, (obj, value) => obj.InheritSurface = value);
             InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_subsurface", "Inherit Subsurface"),
-                _currentObject.InheritSubsurface, (obj, value) => obj.InheritSubsurface = value);
+                obj => obj.InheritSubsurface, (obj, value) => obj.InheritSubsurface = value);
             InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_glow_color", "Inherit Glow Color"),
-                _currentObject.InheritGlowColor, (obj, value) => obj.InheritGlowColor = value);
+                obj => obj.InheritGlowColor, (obj, value) => obj.InheritGlowColor = value);
             InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_select", "Inherit Selection"),
-                _currentObject.InheritSelect, (obj, value) => obj.InheritSelect = value, material: false);
+                obj => obj.InheritSelect, (obj, value) => obj.InheritSelect = value, material: false);
             if (_currentObject is CharacterSceneObject poseModel &&
                 poseModel.BoneObjects.Values.Any(bone => bone is MiBoneSceneObject))
             {
                 InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_pose", "Inherit Pose"),
-                    poseModel.InheritPose, (obj, value) =>
+                    obj => obj.InheritPose, (obj, value) =>
                     {
                         if (obj is CharacterSceneObject model &&
                             model.BoneObjects.Values.Any(bone => bone is MiBoneSceneObject))
@@ -5666,6 +5681,8 @@ public partial class PropertiesPanel : UiPanel
                 ApplyToSelectedSubtrees(obj => obj.AffectedByWind = affectedByWind);
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterObjectPropertyContext("affected_by_wind", obj => obj.AffectedByWind,
+                (obj, value) => obj.AffectedByWind = value, includeDescendants: true);
             if (ContainsMinecraftTerrain(_currentObject))
             {
                 bool terrainWind = _currentObject.TerrainAffectedByWind;
@@ -5674,6 +5691,8 @@ public partial class PropertiesPanel : UiPanel
                     ApplyToSelectedSubtrees(obj => obj.TerrainAffectedByWind = terrainWind);
                     ProjectManager.Instance.SetDirty(true);
                 }
+                RegisterObjectPropertyContext("terrain_affected_by_wind", obj => obj.TerrainAffectedByWind,
+                    (obj, value) => obj.TerrainAffectedByWind = value, includeDescendants: true);
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip(Localization.T("text.panel.properties.terrain_wind_tooltip"));
             }
@@ -5697,6 +5716,12 @@ public partial class PropertiesPanel : UiPanel
                 });
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterObjectPropertyContext("blend_mode", obj => obj.MaterialSettings?.BlendMode ?? MaterialBlendMode.Normal, (obj, value) =>
+            {
+                obj.SetExplicitMaterialSettings();
+                obj.MaterialSettings.BlendMode = value;
+                obj.PropagateMaterialSettingsToChildren();
+            }, includeDescendants: true);
 
             bool vis = _currentObject.ObjectVisible;
             if (ImGui.Checkbox(Localization.Label("text.common.visible", "Visible"), ref vis))
@@ -5720,6 +5745,8 @@ public partial class PropertiesPanel : UiPanel
                 });
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterObjectPropertyContext("inherit_visibility", obj => obj.InheritVisibility,
+                (obj, value) => obj.InheritVisibility = value, includeDescendants: true);
 
             // Hide Cast Shadows for cameras and point lights
             if (!(_currentObject is CameraSceneObject) && !(_currentObject is LightSceneObject))
@@ -5730,6 +5757,8 @@ public partial class PropertiesPanel : UiPanel
                     ApplyToSelectedSubtrees(obj => obj.CastShadow = castShadow);
                     ProjectManager.Instance.SetDirty(true);
                 }
+                RegisterObjectPropertyContext("cast_shadow", obj => obj.CastShadow,
+                    (obj, value) => obj.CastShadow = value, includeDescendants: true);
             }
 
             bool invertFaces = _currentObject.InvertFaces;
@@ -5738,6 +5767,8 @@ public partial class PropertiesPanel : UiPanel
                 ApplyToSelectedSubtrees(obj => obj.InvertFaces = invertFaces);
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterObjectPropertyContext("invert_faces", obj => obj.InvertFaces,
+                (obj, value) => obj.InvertFaces = value, includeDescendants: true);
 
             bool blurTexture = _currentObject.BlurTexture;
             if (ImGui.Checkbox(Localization.Label("text.panel.properties.blur_texture_linear_filtering", "Blur Texture (Linear Filtering)"), ref blurTexture))
@@ -5745,6 +5776,8 @@ public partial class PropertiesPanel : UiPanel
                 ApplyToSelectedSubtrees(obj => obj.BlurTexture = blurTexture);
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterObjectPropertyContext("blur_texture", obj => obj.BlurTexture,
+                (obj, value) => obj.BlurTexture = value, includeDescendants: true);
 
             bool textureMipmaps = _currentObject.TextureMipmaps;
             if (ImGui.Checkbox(Localization.Label("text.panel.properties.texture_filtering_mip_maps", "Texture Filtering (Mip Maps)"), ref textureMipmaps))
@@ -5752,6 +5785,8 @@ public partial class PropertiesPanel : UiPanel
                 ApplyToSelectedSubtrees(obj => obj.TextureMipmaps = textureMipmaps);
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterObjectPropertyContext("texture_mipmaps", obj => obj.TextureMipmaps,
+                (obj, value) => obj.TextureMipmaps = value, includeDescendants: true);
 
             bool includeAo = _currentObject.IncludeInAmbientOcclusion;
             if (ImGui.Checkbox(Localization.Label("text.panel.properties.include_in_ambient_occlusion", "Include In Ambient Occlusion"), ref includeAo))
@@ -5759,6 +5794,8 @@ public partial class PropertiesPanel : UiPanel
                 ApplyToSelectedSubtrees(obj => obj.IncludeInAmbientOcclusion = includeAo);
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterObjectPropertyContext("include_ao", obj => obj.IncludeInAmbientOcclusion,
+                (obj, value) => obj.IncludeInAmbientOcclusion = value, includeDescendants: true);
 
             bool includeFog = _currentObject.IncludeInFog;
             if (ImGui.Checkbox(Localization.Label("text.panel.properties.include_in_fog", "Include In Fog"), ref includeFog))
@@ -5766,6 +5803,8 @@ public partial class PropertiesPanel : UiPanel
                 ApplyToSelectedSubtrees(obj => obj.IncludeInFog = includeFog);
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterObjectPropertyContext("include_fog", obj => obj.IncludeInFog,
+                (obj, value) => obj.IncludeInFog = value, includeDescendants: true);
 
             bool renderHighQuality = _currentObject.RenderInHighQuality;
             if (ImGui.Checkbox(Localization.Label("text.panel.properties.render_in_high_quality", "Render In High Quality"), ref renderHighQuality))
@@ -5773,6 +5812,8 @@ public partial class PropertiesPanel : UiPanel
                 ApplyToSelectedSubtrees(obj => obj.RenderInHighQuality = renderHighQuality);
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterObjectPropertyContext("render_high_quality", obj => obj.RenderInHighQuality,
+                (obj, value) => obj.RenderInHighQuality = value, includeDescendants: true);
 
             bool renderLowQuality = _currentObject.RenderInLowQuality;
             if (ImGui.Checkbox(Localization.Label("text.panel.properties.render_in_low_quality", "Render In Low Quality"), ref renderLowQuality))
@@ -5780,6 +5821,8 @@ public partial class PropertiesPanel : UiPanel
                 ApplyToSelectedSubtrees(obj => obj.RenderInLowQuality = renderLowQuality);
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterObjectPropertyContext("render_low_quality", obj => obj.RenderInLowQuality,
+                (obj, value) => obj.RenderInLowQuality = value, includeDescendants: true);
 
             float renderDepth = _currentObject.RenderDepthOffset;
             if (InputFloatEditor("Render Depth", ref renderDepth, 0.01f, -1000f, 1000f, "%.2f"))
@@ -5787,6 +5830,8 @@ public partial class PropertiesPanel : UiPanel
                 ApplyToSelectedSubtrees(obj => obj.RenderDepthOffset = renderDepth);
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterObjectPropertyContext("render_depth", obj => obj.RenderDepthOffset,
+                (obj, value) => obj.RenderDepthOffset = Math.Clamp(value, -1000f, 1000f), includeDescendants: true);
 
             // Active toggle for cameras. When enabled, this camera is the
             // preferred render-output camera and every other camera is
@@ -7183,6 +7228,41 @@ public partial class PropertiesPanel : UiPanel
     private string[]? _propertyContextPaths;
     private SceneObject? _propertyContextObject;
 
+    private void RegisterObjectPropertyContext<T>(string property, Func<SceneObject, T> getValue,
+        Action<SceneObject, T> setValue, bool includeDescendants = false)
+    {
+        if (!ImGui.IsItemClicked(ImGuiMouseButton.Right) || _currentObject == null) return;
+        var owner = _currentObject;
+        RegisterPropertyContext("object:" + property, () => getValue(owner)!, value =>
+        {
+            if (includeDescendants)
+                ApplyToSelectedSubtrees(obj => setValue(obj, (T)value));
+            else
+                ApplyToSelectedObjects(obj => setValue(obj, (T)value));
+        }, getValue(new SceneObject())!);
+    }
+
+    private void ProcessPropertyContextRequest()
+    {
+        if (!_openPropContextMenu) return;
+        _openPropContextMenu = false;
+        _propertyContextObject = _currentObject;
+        if (_propertyContextPaths?.FirstOrDefault() != _ctxPropertyPath)
+            _propertyContextPaths = null;
+        if (_propertyContextBinding?.Path != _ctxPropertyPath)
+            _propertyContextBinding = null;
+        if (_ctxPropertyPath == null) return;
+
+        if (ImGui.GetIO().KeyShift)
+        {
+            if (_propertyContextBinding != null || _ctxPropertyPath.StartsWith("background:", StringComparison.Ordinal) ||
+                (_currentObject != null && Timeline != null))
+                ResetContextPropertyValues(_propertyContextPaths ?? [_ctxPropertyPath], _propertyContextBinding);
+        }
+        else
+            ImGui.OpenPopup("##prop_keyframe_ctx");
+    }
+
     private void RegisterProjectPropertyContext(string fieldName, double minimum = double.MinValue, double maximum = double.MaxValue)
     {
         if (!ImGui.IsItemClicked(ImGuiMouseButton.Right)) return;
@@ -7541,6 +7621,28 @@ public partial class PropertiesPanel : UiPanel
         _ => values[0]
     };
 
+    private void ApplyPropertyValueAction(string[] paths, object[] values, object? aggregate,
+        PropertyContextBinding? binding, bool resetValue = false)
+    {
+        if (binding != null) binding.Set(JoinPropertyComponents(aggregate!, values));
+        else if (aggregate != null) SetContextPropertyValue(paths[0], JoinPropertyComponents(aggregate, values));
+        else ApplyContextPropertyValues(paths, values, resetValue);
+        ProjectManager.Instance.SetDirty(true);
+    }
+
+    private void ResetContextPropertyValues(string[] paths, PropertyContextBinding? binding = null)
+    {
+        object? aggregate = binding?.Get();
+        object[] defaults = binding != null ? GetPropertyComponents(binding.Default)
+            : paths.Select(path => GetContextPropertyValue(path, true)).ToArray();
+        if (binding == null && defaults.Length == 1 && defaults[0] is float[])
+        {
+            aggregate = defaults[0];
+            defaults = GetPropertyComponents(aggregate);
+        }
+        ApplyPropertyValueAction(paths, defaults, aggregate, binding, true);
+    }
+
     private static bool TryParsePropertyClipboard(string? text, object[] current, out object[] values)
     {
         values = new object[current.Length];
@@ -7582,21 +7684,11 @@ public partial class PropertiesPanel : UiPanel
         object? aggregate = binding?.Get();
         object[] current = binding != null ? GetPropertyComponents(aggregate!)
             : paths.Select(path => GetContextPropertyValue(path)).ToArray();
-        object[] defaults = binding != null ? GetPropertyComponents(binding.Default)
-            : paths.Select(path => GetContextPropertyValue(path, true)).ToArray();
         // Array/color widgets use a single path but still edit all their components together.
         if (binding == null && current.Length == 1 && current[0] is float[])
         {
             aggregate = current[0];
             current = GetPropertyComponents(current[0]);
-            defaults = GetPropertyComponents(defaults[0]);
-        }
-        void Apply(object[] values, bool resetValue = false)
-        {
-            if (binding != null) binding.Set(JoinPropertyComponents(aggregate!, values));
-            else if (aggregate != null) SetContextPropertyValue(paths[0], JoinPropertyComponents(aggregate, values));
-            else ApplyContextPropertyValues(paths, values, resetValue);
-            ProjectManager.Instance.SetDirty(true);
         }
         void Copy()
         {
@@ -7610,9 +7702,9 @@ public partial class PropertiesPanel : UiPanel
             : System.Runtime.InteropServices.Marshal.PtrToStringUTF8((nint)clipboardPointer);
         bool canPaste = TryParsePropertyClipboard(clipboardText, current, out var pasted);
         if (ImGui.MenuItem("Copy")) Copy();
-        if (ImGui.MenuItem("Cut")) { Copy(); Apply(defaults, true); }
-        if (ImGui.MenuItem("Paste", "", false, canPaste)) Apply(pasted);
-        if (ImGui.MenuItem("Reset Value")) Apply(defaults, true);
+        if (ImGui.MenuItem("Cut")) { Copy(); ResetContextPropertyValues(paths, binding); }
+        if (ImGui.MenuItem("Paste", "", false, canPaste)) ApplyPropertyValueAction(paths, pasted, aggregate, binding);
+        if (ImGui.MenuItem("Reset Value")) ResetContextPropertyValues(paths, binding);
     }
 
     private void RenderPropertyContextMenu()

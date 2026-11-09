@@ -27,12 +27,14 @@ public partial class PropertiesPanel
             Timeline?.RecordAutoKeyframe(spawner, "particle.emitting");
             changed = true;
         }
+        RegisterPropertyContext("particle.emitting");
         if (ImGui.Checkbox(Localization.Label("text.particles.freeze", "Freeze"), ref freeze))
         {
             spawner.Freeze = freeze;
             Timeline?.RecordAutoKeyframe(spawner, "particle.freeze");
             changed = true;
         }
+        RegisterPropertyContext("particle.freeze");
         float speed = spawner.SimulationSpeed;
         if (ImGui.DragFloat(Localization.Label("text.common.simulation_speed", "Simulation Speed"),
                 ref speed, 0.01f, 0, 100))
@@ -41,6 +43,7 @@ public partial class PropertiesPanel
             Timeline?.RecordAutoKeyframe(spawner, "particle.simulation_speed");
             changed = true;
         }
+        RegisterPropertyContext("particle.simulation_speed");
         int seed = spawner.Seed;
         if (ImGui.InputInt(Localization.Label("text.effects.seed", "Seed"), ref seed))
         {
@@ -48,11 +51,18 @@ public partial class PropertiesPanel
             spawner.ResetRuntime();
             changed = true;
         }
+        RegisterPropertyContext("particle.custom.seed", () => spawner.Seed, value =>
+        {
+            spawner.Seed = (int)value;
+            spawner.ResetRuntime();
+        }, new ParticleSpawnerSceneObject().Seed);
         SceneObject[] targets = Viewport == null ? [] : Walk(Viewport.SceneObjects)
             .Where(obj => !obj.IsRuntimeTransient && obj != spawner).ToArray();
         string targetName = targets.FirstOrDefault(obj => obj.ObjectId == spawner.AttractorObjectId)?.Name ??
             Localization.T("text.panel.properties.none");
-        if (ImGui.BeginCombo(Localization.Label("text.particles.attractor", "Attractor"), targetName))
+        bool attractorOpen = ImGui.BeginCombo(Localization.Label("text.particles.attractor", "Attractor"), targetName);
+        RegisterPropertyContext("particle.attractor_target");
+        if (attractorOpen)
         {
             if (ImGui.Selectable(Localization.Label("text.panel.properties.none", "(none)"),
                     string.IsNullOrEmpty(spawner.AttractorObjectId)))
@@ -61,6 +71,7 @@ public partial class PropertiesPanel
                 Timeline?.RecordAutoKeyframe(spawner, "particle.attractor_target");
                 changed = true;
             }
+            RegisterPropertyContext("particle.attractor_force");
             foreach (SceneObject target in targets)
                 if (ImGui.Selectable(target.Name + "##particleAttractor_" + target.ObjectId,
                         target.ObjectId == spawner.AttractorObjectId))
