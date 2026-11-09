@@ -3037,16 +3037,19 @@ public partial class PropertiesPanel : UiPanel
         if (!ImGui.TreeNode(Localization.Label("text.panel.properties.wind", "Wind"))) return;
         bool changed = ImGui.Checkbox(Localization.Label("text.panel.properties.wind_enabled", "Enabled##wind"), ref WindEnabled);
         RegisterBackgroundKeyframeContext(nameof(WindEnabled));
-        changed |= PercentageSlider("Speed##wind", ref WindSpeed, 0f, 1000f);
-        RegisterBackgroundKeyframeContext(nameof(WindSpeed));
-        changed |= InputFloatEditor("Strength##wind", ref WindStrength, 0.01f, 0f, 10f, "%.2f");
-        RegisterBackgroundKeyframeContext(nameof(WindStrength));
-        changed |= InputFloatEditor("Direction (degrees)##wind", ref WindDirection, 1f, -360f, 360f, "%.1f");
-        RegisterBackgroundKeyframeContext(nameof(WindDirection));
-        changed |= PercentageSlider("Directional Speed##wind", ref WindDirectionalSpeed, 0f, 1000f);
-        RegisterBackgroundKeyframeContext(nameof(WindDirectionalSpeed));
-        changed |= InputFloatEditor("Directional Strength##wind", ref WindDirectionalStrength, 0.01f, 0f, 10f, "%.2f");
-        RegisterBackgroundKeyframeContext(nameof(WindDirectionalStrength));
+        if (WindEnabled)
+        {
+            changed |= PercentageSlider("Speed##wind", ref WindSpeed, 0f, 1000f);
+            RegisterBackgroundKeyframeContext(nameof(WindSpeed));
+            changed |= InputFloatEditor("Strength##wind", ref WindStrength, 0.01f, 0f, 10f, "%.2f");
+            RegisterBackgroundKeyframeContext(nameof(WindStrength));
+            changed |= InputFloatEditor("Direction (degrees)##wind", ref WindDirection, 1f, -360f, 360f, "%.1f");
+            RegisterBackgroundKeyframeContext(nameof(WindDirection));
+            changed |= PercentageSlider("Directional Speed##wind", ref WindDirectionalSpeed, 0f, 1000f);
+            RegisterBackgroundKeyframeContext(nameof(WindDirectionalSpeed));
+            changed |= InputFloatEditor("Directional Strength##wind", ref WindDirectionalStrength, 0.01f, 0f, 10f, "%.2f");
+            RegisterBackgroundKeyframeContext(nameof(WindDirectionalStrength));
+        }
         ImGui.TreePop();
         if (!changed) return;
         WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
