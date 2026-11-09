@@ -23,6 +23,20 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--emissive-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                EmissiveGraphics();
+                Console.WriteLine("PASS Imported emissive block positions, batching, transforms, duplication and material toggles");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--model-uv-graphics", StringComparer.Ordinal))
         {
             try

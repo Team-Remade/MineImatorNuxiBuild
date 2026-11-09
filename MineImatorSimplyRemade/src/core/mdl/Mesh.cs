@@ -41,6 +41,12 @@ public class Mesh : IDisposable
     public readonly List<vec3> Vertices = new();
 
     /// <summary>
+    /// Local voxel centers for auto-emissive terrain merged into this mesh.
+    /// Empty for ordinary meshes, which use their bounding sphere as the light source.
+    /// </summary>
+    public readonly List<vec3> AutoEmissionCenters = new();
+
+    /// <summary>
     /// Per-vertex normals, parallel to <see cref="Vertices"/>.
     /// Leave empty to auto-generate flat normals from triangles during <see cref="Upload"/>.
     /// </summary>
@@ -806,6 +812,7 @@ public class Mesh : IDisposable
         var clone = CreateCloneGeometry(_gl);
 
         clone.Vertices.AddRange(Vertices);
+        clone.AutoEmissionCenters.AddRange(AutoEmissionCenters);
         clone.Normals.AddRange(Normals);
         clone.TexCoords.AddRange(TexCoords);
         clone.BoneIndices.AddRange(BoneIndices);

@@ -3241,6 +3241,8 @@ public class SpawnMenu : UiPanel
                                     TerrainAtlas.IsTextureTranslucent(texKey)
                 };
                 mesh.AutoEmissionLevel = autoEmissionLevel;
+                if (acc.AutoEmissionCenters != null)
+                    mesh.AutoEmissionCenters.AddRange(acc.AutoEmissionCenters);
                 mesh.Vertices.AddRange(acc.Vertices);
                 mesh.Normals.AddRange(acc.Normals);
                 mesh.TexCoords.AddRange(acc.TexCoords);
@@ -3455,6 +3457,7 @@ public class SpawnMenu : UiPanel
         public readonly List<vec3> Vertices = new();
         public readonly List<vec3> Normals = new();
         public readonly List<vec2> TexCoords = new();
+        public HashSet<vec3>? AutoEmissionCenters;
     }
 
     private readonly struct MeshBatchKey : IEquatable<MeshBatchKey>
@@ -4313,7 +4316,10 @@ public class SpawnMenu : UiPanel
         var key = new MeshBatchKey(textureId, autoEmissionLevel, tint, minecraftTextureKey, minecraftItemTexture);
         if (!merged.TryGetValue(key, out var acc))
         {
-            acc = new MeshAccumulator();
+            acc = new MeshAccumulator
+            {
+                AutoEmissionCenters = autoEmissionLevel > 0 ? new HashSet<vec3>() : null
+            };
             merged[key] = acc;
         }
 
@@ -4323,6 +4329,8 @@ public class SpawnMenu : UiPanel
     private static void AppendTemplate(MeshAccumulator acc, MeshTemplate template, float px, float py, float pz)
     {
         var shift = new vec3(px, py, pz);
+        if (template.Vertices.Length > 0)
+            acc.AutoEmissionCenters?.Add(shift);
         for (int i = 0; i < template.Vertices.Length; i++)
         {
             acc.Vertices.Add(template.Vertices[i] + shift);
@@ -4410,6 +4418,7 @@ public class SpawnMenu : UiPanel
         byte autoEmissionLevel)
     {
         var acc = GetOrCreateAccumulator(merged, face.TextureId, autoEmissionLevel, face.Tint, face.MinecraftTextureKey);
+        acc.AutoEmissionCenters?.Add(new vec3(px, py, pz));
 
         vec3 v0;
         vec3 v1;
@@ -4643,6 +4652,8 @@ public class SpawnMenu : UiPanel
             ? waterTint : new vec3(1f);
         var stillAcc = GetOrCreateAccumulator(merged, stillTex, autoEmissionLevel, tint, stillKey);
         var flowAcc = GetOrCreateAccumulator(merged, flowTex, autoEmissionLevel, tint, flowKey);
+        stillAcc.AutoEmissionCenters?.Add(new vec3(px, py, pz));
+        flowAcc.AutoEmissionCenters?.Add(new vec3(px, py, pz));
 
         bool falling = level >= 8;
         float myHeight = LiquidLevelHeight(level);

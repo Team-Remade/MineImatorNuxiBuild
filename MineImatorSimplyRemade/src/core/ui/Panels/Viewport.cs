@@ -4742,6 +4742,8 @@ public class Viewport : UiPanel
         }
     }
 
+    private readonly HashSet<vec3> _emissiveProxyCenters = new();
+
     /// <summary>
     /// Converts emissive mesh materials into lightweight local point lights so
     /// emissive blocks (for example glowstone) can illuminate nearby surfaces.
@@ -4755,8 +4757,10 @@ public class Viewport : UiPanel
         if (obj.Visuals.Count == 0)
             return;
 
+        bool autoEmission = obj.GetEffectiveMaterialSettings().AutoEmission;
         foreach (mat4 world in GetModifiedWorldMatrices(obj, obj.GetWorldMatrix()))
         {
+            _emissiveProxyCenters.Clear();
             float worldScale = MathF.Max(
                 new vec3(world.m00, world.m10, world.m20).Length,
                 MathF.Max(
@@ -4781,28 +4785,45 @@ public class Viewport : UiPanel
                 if (emissionEnergy <= 0.0001f || colorLuma <= 0.0001f)
                     continue;
 
-                vec3 localCenter = mesh.BoundingSphereCenter;
-                vec3 worldCenter = new vec3((world * new vec4(localCenter, 1f)).xyz);
-                float worldRadius = MathF.Max(mesh.BoundingSphereRadius * worldScale, 0.15f);
+                bool useBlockCenters = autoEmission && mesh.AutoEmissionLevel > 0 &&
+                    mesh.AutoEmissionCenters.Count > 0;
+                if (useBlockCenters)
+                {
+                    foreach (vec3 center in mesh.AutoEmissionCenters)
+                    {
+                        // A block can contribute several texture/face batches, but only one light.
+                        if (_emissiveProxyCenters.Add(center))
+                            AddLight(center, MathF.Sqrt(3f) * 0.5f);
+                    }
+                }
+                else
+                {
+                    AddLight(mesh.BoundingSphereCenter, mesh.BoundingSphereRadius);
+                }
 
-                // Keep emissive influence local and stable: scale mostly by object
-                // size and emission amount, with a hard upper clamp.
-                float lightRange = Math.Clamp((worldRadius * 3.5f) + (emissionEnergy * 2.0f), 0.5f, 40f);
-                float lightEnergy = mesh.EmissionIndirectOnly
-                    ? 0f
-                    : Math.Clamp(emissionEnergy * 0.6f, 0f, 10f);
-                float indirectEnergy = Math.Clamp(emissionEnergy, 0f, 16f);
+                void AddLight(vec3 localCenter, float localRadius)
+                {
+                    vec3 worldCenter = new vec3((world * new vec4(localCenter, 1f)).xyz);
+                    float worldRadius = MathF.Max(localRadius * worldScale, 0.15f);
 
-                result.Add((
-                    worldCenter,
-                    emissionColor,
-                    lightRange,
-                    lightEnergy,
-                    -1,
-                    vec3.Zero,
-                    indirectEnergy,
-                    0f,
-                    0f));
+                    // Bound influence by source size, not the extent of the merged terrain batch.
+                    float lightRange = Math.Clamp((worldRadius * 3.5f) + (emissionEnergy * 2.0f), 0.5f, 40f);
+                    float lightEnergy = mesh.EmissionIndirectOnly
+                        ? 0f
+                        : Math.Clamp(emissionEnergy * 0.6f, 0f, 10f);
+                    float indirectEnergy = Math.Clamp(emissionEnergy, 0f, 16f);
+
+                    result.Add((
+                        worldCenter,
+                        emissionColor,
+                        lightRange,
+                        lightEnergy,
+                        -1,
+                        vec3.Zero,
+                        indirectEnergy,
+                        0f,
+                        0f));
+                }
             }
             FrameProfiler.Shared.Count(ProfileCounter.EmissiveProxyLights);
         }
