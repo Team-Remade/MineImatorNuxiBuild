@@ -5663,6 +5663,7 @@ public partial class PropertiesPanel : UiPanel
                 });
                 ProjectManager.Instance.SetDirty(true);
             }
+            RegisterPropertyContext("visible");
 
             bool inheritVis = _currentObject.InheritVisibility;
             if (ImGui.Checkbox(Localization.Label("text.panel.properties.inherit_visibility", "Inherit Visibility"), ref inheritVis))

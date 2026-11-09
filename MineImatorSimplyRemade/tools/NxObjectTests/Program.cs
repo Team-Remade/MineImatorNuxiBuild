@@ -234,6 +234,8 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Visibility appearance right-click manual keys and multi-selection auto keys", VisibilityControls),
+            ("Visibility stepped seeking, inheritance, render cache and persistence", VisibilityTimeline),
             ("Texture sheet rectangular tile pixels, alpha, row orientation and reuse", TextureSheetPixels),
             ("Texture sheet invalid sizes, slots, missing files and legacy defaults", TextureSheetValidation),
             ("Texture sheet project, independent material slots, object export and undo", TextureSheetPersistence),
@@ -373,6 +375,8 @@ internal static partial class Program
             ("Particle preset timeline controls and legacy channel preservation", ParticleTimeline),
             ("Particle invalid and unsupported preset rejection", ParticleInvalid)
         ];
+        if (args.Contains("--visibility", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Visibility", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--texture-sheets", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Texture sheet", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--snapping", StringComparer.Ordinal))

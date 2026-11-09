@@ -3728,7 +3728,7 @@ public partial class Timeline : UiPanel
                 return;
             }
         }
-        if (path == "visible") { obj.ObjectVisible = value >= 0.5f; return; }
+        if (path == "visible") { obj.SetObjectVisible(value >= 0.5f); return; }
 
         var parts = path.Split('.');
         if (MaterialPropertyPaths.Contains(path))
