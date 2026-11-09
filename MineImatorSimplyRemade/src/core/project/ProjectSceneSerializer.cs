@@ -1444,6 +1444,7 @@ public static class ProjectSceneSerializer
             LensDirt = dirt,
             Vignette = effect.Vignette.Clone(),
             ChromaticAberration = effect.ChromaticAberration.Clone(),
+            Distort = effect.Distort.Clone(),
             ColorCorrection = effect.ColorCorrection.Clone(),
             Shake = new ProjectCameraShakeSettings
             {
@@ -1474,6 +1475,7 @@ public static class ProjectSceneSerializer
             LensDirt = dirt,
             Vignette = effect.Vignette?.Clone() ?? new VignetteSettings(),
             ChromaticAberration = effect.ChromaticAberration?.Clone() ?? new ChromaticAberrationSettings(),
+            Distort = effect.Distort?.Clone() ?? new DistortSettings(),
             ColorCorrection = effect.ColorCorrection?.Clone() ?? new ColorCorrectionSettings(),
             Shake = new CameraShakeSettings
             {

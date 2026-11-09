@@ -647,6 +647,7 @@ public class ProjectCameraEffectEntry
     public LensDirtSettings LensDirt { get; set; } = new();
     public VignetteSettings Vignette { get; set; } = new();
     public ChromaticAberrationSettings ChromaticAberration { get; set; } = new();
+    public DistortSettings Distort { get; set; } = new();
     public ColorCorrectionSettings ColorCorrection { get; set; } = new();
 }
 

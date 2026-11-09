@@ -1574,6 +1574,7 @@ public partial class Timeline : UiPanel
                 CameraEffectType.LensDirt => Localization.Format("text.panel.timeline.effect_lens_dirt", index + 1),
                 CameraEffectType.Vignette => Localization.Format("text.panel.timeline.effect_vignette", index + 1),
                 CameraEffectType.ChromaticAberration => Localization.Format("text.panel.timeline.effect_chromatic_aberration", index + 1),
+                CameraEffectType.Distort => Localization.Format("text.panel.timeline.effect_distort", index + 1),
                 CameraEffectType.ColorCorrection => Localization.Format("text.panel.timeline.effect_color_correction", index + 1),
                 CameraEffectType.FilmGrain => Localization.Format("text.panel.timeline.effect_film_grain", index + 1),
                 _ => Localization.Format("text.panel.timeline.effect_camera_shake", index + 1)
@@ -2834,6 +2835,11 @@ public partial class Timeline : UiPanel
             {
                 foreach (var control in ChromaticAberrationSettings.Controls)
                     yield return $"camera.effect.{i}.chromatic_aberration.{control.Key}";
+            }
+            if (cam.Effects[i].Type == CameraEffectType.Distort)
+            {
+                foreach (var control in DistortSettings.Controls)
+                    yield return $"camera.effect.{i}.distort.{control.Key}";
                 continue;
             }
             if (cam.Effects[i].Type == CameraEffectType.ColorCorrection)
@@ -2979,6 +2985,7 @@ public partial class Timeline : UiPanel
             path.EndsWith(".lens_dirt.affected_by_bloom", StringComparison.Ordinal) ||
             path.EndsWith(".lens_dirt.affected_by_glow", StringComparison.Ordinal) ||
             path.EndsWith(".chromatic_aberration.distort_rgb", StringComparison.Ordinal) ||
+            path.EndsWith(".distort.repeat_image", StringComparison.Ordinal) ||
             (path.StartsWith("constraint.", StringComparison.Ordinal) &&
                 !(path.EndsWith(".pole_angle", StringComparison.Ordinal) || path.EndsWith(".influence", StringComparison.Ordinal))) ||
             (path.StartsWith("copy_constraint.", StringComparison.Ordinal) &&
@@ -3521,6 +3528,8 @@ public partial class Timeline : UiPanel
                 return effect.Vignette.GetValue(string.Join('.', parts.Skip(4)));
             if (effect.Type == CameraEffectType.ChromaticAberration && parts.Length == 5 && parts[3] == "chromatic_aberration")
                 return effect.ChromaticAberration.GetValue(parts[4]);
+            if (effect.Type == CameraEffectType.Distort && parts.Length == 5 && parts[3] == "distort")
+                return effect.Distort.GetValue(parts[4]);
             if (effect.Type == CameraEffectType.LensDirt && parts.Length == 5 && parts[3] == "lens_dirt")
                 return effect.LensDirt.GetValue(parts[4]);
             if (effect.Type == CameraEffectType.ColorCorrection && parts.Length == 5 && parts[3] == "color_correction")
@@ -4188,6 +4197,15 @@ public partial class Timeline : UiPanel
                     effect.Vignette.SetValue(string.Join('.', parts.Skip(4)), value);
                 break;
             }
+            case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "distort" && obj is CameraSceneObject camDistort:
+            {
+                if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camDistort.Effects.Count)
+                    break;
+                var effect = camDistort.Effects[effectIndex];
+                if (effect.Type == CameraEffectType.Distort)
+                    effect.Distort.SetValue(parts[4], value);
+                break;
+            }
             case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "chromatic_aberration" && obj is CameraSceneObject camAberration:
             {
                 if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camAberration.Effects.Count)
@@ -4561,6 +4579,17 @@ public partial class Timeline : UiPanel
                                     newRows.Add(MakeSingle(obj, control.Label, $"{colorCorrectionPath}.{control.Key}", 1));
                             continue;
                         }
+                        if (effect.Type == CameraEffectType.Distort)
+                        {
+                            string distortPath = $"camera.effect.{i}.distort";
+                            string[] paths = DistortSettings.Controls.Select(c => $"{distortPath}.{c.Key}").ToArray();
+                            if (!paths.Any(propsWithKeyframes.Contains)) continue;
+                            newRows.Add(MakeGroup(obj, $"Effect {i + 1}: Distort", paths, $"camera.effect.{i}"));
+                            foreach (var control in DistortSettings.Controls)
+                                if (propsWithKeyframes.Contains($"{distortPath}.{control.Key}"))
+                                    newRows.Add(MakeSingle(obj, control.Label, $"{distortPath}.{control.Key}", 1));
+                            continue;
+                        }
                         if (effect.Type == CameraEffectType.ChromaticAberration)
                         {
                             string aberrationPath = $"camera.effect.{i}.chromatic_aberration";
@@ -4830,6 +4859,15 @@ public partial class Timeline : UiPanel
                     _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Color Correction", paths, $"camera.effect.{i}"));
                     foreach (var control in ColorCorrectionSettings.Controls)
                         _displayRows.Add(MakeSingle(obj, control.Label, $"{colorCorrectionPath}.{control.Key}", 1));
+                    continue;
+                }
+                if (effect.Type == CameraEffectType.Distort)
+                {
+                    string distortPath = $"camera.effect.{i}.distort";
+                    string[] paths = DistortSettings.Controls.Select(c => $"{distortPath}.{c.Key}").ToArray();
+                    _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Distort", paths, $"camera.effect.{i}"));
+                    foreach (var control in DistortSettings.Controls)
+                        _displayRows.Add(MakeSingle(obj, control.Label, $"{distortPath}.{control.Key}", 1));
                     continue;
                 }
                 if (effect.Type == CameraEffectType.ChromaticAberration)

@@ -278,6 +278,7 @@ public partial class Viewport : UiPanel
     private Shader? _colorCorrectionShader;
     private Shader? _vignetteShader;
     private Shader? _chromaticAberrationShader;
+    private Shader? _distortShader;
     private bool _colorManagementHdr;
     private bool _previewColorManagementHdr;
     private Shader? _depthOfFieldShader;
@@ -2193,6 +2194,11 @@ public partial class Viewport : UiPanel
             _chromaticAberrationShader.Dispose();
             _chromaticAberrationShader = null;
         }
+        if (_distortShader != null)
+        {
+            _distortShader.Dispose();
+            _distortShader = null;
+        }
         DeleteFramebuffer(ref _fbo);
         DeleteTexture(ref _colorTex);
         DeleteTexture(ref _depthTex);
@@ -3044,6 +3050,7 @@ public partial class Viewport : UiPanel
                 ApplyColorCorrectionPass(_fbo, _glowFbo, _glowTex, w, h, activeCamObj);
                 ApplyVignettePass(_fbo, _glowFbo, _glowTex, w, h, activeCamObj);
                 ApplyChromaticAberrationPass(_fbo, _glowFbo, _glowTex, w, h, activeCamObj);
+                ApplyDistortPass(_fbo, _glowFbo, _glowTex, w, h, activeCamObj);
                 ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel);
                 ApplyFilmGrainPass(_fbo, _colorTex, _glowFbo, _glowTex, w, h, activeCamObj);
                 ApplyWatermarkPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel);
@@ -3518,6 +3525,7 @@ public partial class Viewport : UiPanel
             ApplyColorCorrectionPass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
             ApplyVignettePass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
             ApplyChromaticAberrationPass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
+            ApplyDistortPass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
             ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel);
             ApplyWatermarkPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel);
         }
@@ -7660,6 +7668,7 @@ public partial class Viewport : UiPanel
             ApplyColorCorrectionPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
             ApplyVignettePass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
             ApplyChromaticAberrationPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
+            ApplyDistortPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
             ApplyAntiAliasingPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, MainViewport.PropertiesPanel);
             ApplyFilmGrainPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
         }

@@ -11,7 +11,45 @@ public enum CameraEffectType
     ColorCorrection = 4,
     LensDirt = 5,
     Vignette = 6,
-    ChromaticAberration = 7
+    ChromaticAberration = 7,
+    Distort = 8
+}
+
+public class DistortSettings
+{
+    public bool RepeatImage { get; set; }
+    public float ZoomAmount { get; set; } = 100f;
+    public float DistortAmount { get; set; }
+
+    public DistortSettings Clone() => (DistortSettings)MemberwiseClone();
+
+    public static readonly (string Key, string Label, float Min, float Max)[] Controls =
+    [
+        ("repeat_image", "Repeat Image", 0f, 1f),
+        ("zoom_amount", "Zoom Amount (%)", 1f, 1000f),
+        ("distort_amount", "Distort Amount (%)", -100f, 100f)
+    ];
+
+    public float GetValue(string key) => key switch
+    {
+        "repeat_image" => RepeatImage ? 1f : 0f,
+        "zoom_amount" => ZoomAmount,
+        "distort_amount" => DistortAmount,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown distort control.")
+    };
+
+    public void SetValue(string key, float value)
+    {
+        if (!float.IsFinite(value))
+            throw new ArgumentOutOfRangeException(nameof(value), value, "Distort values must be finite.");
+        switch (key)
+        {
+            case "repeat_image": RepeatImage = value >= 0.5f; break;
+            case "zoom_amount": ZoomAmount = Math.Clamp(value, 1f, 1000f); break;
+            case "distort_amount": DistortAmount = Math.Clamp(value, -100f, 100f); break;
+            default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown distort control.");
+        }
+    }
 }
 
 public class ChromaticAberrationSettings
@@ -318,5 +356,6 @@ public class CameraEffect
     public LensDirtSettings LensDirt = new();
     public VignetteSettings Vignette = new();
     public ChromaticAberrationSettings ChromaticAberration = new();
+    public DistortSettings Distort = new();
     public ColorCorrectionSettings ColorCorrection = new();
 }

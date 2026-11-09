@@ -335,7 +335,7 @@ public partial class PropertiesPanel : UiPanel
 
     // Scale link toggle
     private bool _linkScale = true;
-    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction", "Lens Dirt", "Vignette", "Chromatic Aberration" };
+    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction", "Lens Dirt", "Vignette", "Chromatic Aberration", "Distort" };
     private static readonly string[] CameraShakeModeOptions = { "Rotational", "Positional", "Both" };
     private static readonly string[] BloomBlendModeOptions =
         ["text.panel.properties.blend_normal", "text.panel.properties.blend_add", "text.panel.properties.blend_screen",
@@ -1260,6 +1260,7 @@ public partial class PropertiesPanel : UiPanel
                     LensDirt = effect.LensDirt.Clone(),
                     Vignette = effect.Vignette.Clone(),
                     ChromaticAberration = effect.ChromaticAberration.Clone(),
+                    Distort = effect.Distort.Clone(),
                     ColorCorrection = effect.ColorCorrection.Clone(),
                     Shake = new ProjectCameraShakeSettings
                     {
@@ -5318,6 +5319,7 @@ public partial class PropertiesPanel : UiPanel
                             CameraEffectType.LensDirt => Localization.T("text.panel.properties.lens_dirt") + $"###Lens Dirt##cameraEffect{i}",
                             CameraEffectType.Vignette => Localization.T("text.panel.properties.vignette") + $"###Vignette##cameraEffect{i}",
                             CameraEffectType.ChromaticAberration => Localization.T("text.panel.properties.chromatic_aberration") + $"###ChromaticAberration##cameraEffect{i}",
+                            CameraEffectType.Distort => Localization.T("text.panel.properties.distort") + $"###Distort##cameraEffect{i}",
                             _ => Localization.Format("text.panel.properties.effect", i + 1) + $"###Effect {i + 1}##cameraEffect{i}"
                         };
 
@@ -5479,6 +5481,8 @@ public partial class PropertiesPanel : UiPanel
                                 DrawVignetteControls(cameraObject, i);
                             if (effect.Type == CameraEffectType.ChromaticAberration)
                                 DrawChromaticAberrationControls(cameraObject, i);
+                            if (effect.Type == CameraEffectType.Distort)
+                                DrawDistortControls(cameraObject, i);
 
                             if (effect.Type == CameraEffectType.ColorCorrection)
                             {
@@ -6511,6 +6515,35 @@ public partial class PropertiesPanel : UiPanel
         ImGui.PushStyleColor(ImGuiCol.SliderGrabActive, Vector4.Lerp(tint, Vector4.One, 0.20f));
     }
 
+    private void DrawDistortControls(CameraSceneObject camera, int index)
+    {
+        ImGui.PushID(index);
+        var settings = camera.Effects[index].Distort;
+        string basePath = $"camera.effect.{index}.distort";
+        foreach (var control in DistortSettings.Controls)
+        {
+            float value = settings.GetValue(control.Key);
+            bool changed;
+            if (control.Key == "repeat_image")
+            {
+                bool enabled = settings.RepeatImage;
+                changed = ImGui.Checkbox(Localization.DisplayLabel(control.Label), ref enabled);
+                value = enabled ? 1f : 0f;
+            }
+            else
+                changed = ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value,
+                    control.Min, control.Max, "%.1f%%", ImGuiSliderFlags.AlwaysClamp);
+            if (changed)
+            {
+                settings.SetValue(control.Key, value);
+                Timeline?.RecordAutoKeyframe(camera, $"{basePath}.{control.Key}");
+                ProjectManager.Instance.SetDirty(true);
+            }
+            RegisterPropertyContext($"{basePath}.{control.Key}");
+        }
+        ImGui.PopID();
+    }
+
     private void DrawChromaticAberrationControls(CameraSceneObject camera, int index)
     {
         ImGui.PushID(index);
@@ -7394,6 +7427,11 @@ public partial class PropertiesPanel : UiPanel
                         else if (parts[3] == "chromatic_aberration")
                         {
                             var control = ChromaticAberrationSettings.Controls.First(c => c.Key == parts[4]);
+                            stored = Math.Clamp(number, control.Min, control.Max);
+                        }
+                        else if (parts[3] == "distort")
+                        {
+                            var control = DistortSettings.Controls.First(c => c.Key == parts[4]);
                             stored = Math.Clamp(number, control.Min, control.Max);
                         }
                         else if (parts[3] == "film_grain")
