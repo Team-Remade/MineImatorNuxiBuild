@@ -96,6 +96,13 @@ public class ProjectWorkCameraState
 
 public class ProjectRenderSettings
 {
+    public bool WatermarkEnabled { get; set; }
+    public string WatermarkImagePath { get; set; } = "";
+    public int WatermarkHorizontalAlignment { get; set; } = 2;
+    public int WatermarkVerticalAlignment { get; set; } = 2;
+    public float WatermarkPadding { get; set; } = 20f;
+    public float WatermarkScale { get; set; } = 1f;
+    public float WatermarkOpacity { get; set; } = 1f;
     public bool TransparentBackground { get; set; }
     public bool AntiAliasingEnabled { get; set; } = false;
     public float AntiAliasingSubpixel { get; set; } = 0.75f;

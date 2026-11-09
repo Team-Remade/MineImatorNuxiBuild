@@ -1,6 +1,18 @@
 {
   "name": "English (US)",
   "strings": {
+    "text.panel.properties.watermark": "Watermark",
+    "text.panel.properties.watermark_image": "Image",
+    "text.panel.properties.watermark_horizontal": "Horizontal Alignment",
+    "text.panel.properties.watermark_vertical": "Vertical Alignment",
+    "text.panel.properties.watermark_left": "Left",
+    "text.panel.properties.watermark_center": "Center",
+    "text.panel.properties.watermark_right": "Right",
+    "text.panel.properties.watermark_top": "Top",
+    "text.panel.properties.watermark_bottom": "Bottom",
+    "text.panel.properties.watermark_padding": "Padding (px)",
+    "text.panel.properties.watermark_scale": "Scale",
+    "text.panel.properties.watermark_opacity": "Opacity",
     "text.snap.toggle": "Toggle Snapping",
     "text.snap.settings": "Snapping",
     "text.snap.mode.increment": "Increment (relative)",

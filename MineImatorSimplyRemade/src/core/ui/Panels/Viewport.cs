@@ -2178,6 +2178,8 @@ public partial class Viewport : UiPanel
             return;
 
         DisposeLensDirtResources();
+        _watermarkShader?.Dispose();
+        _watermarkShader = null;
         if (_vignetteShader != null)
         {
             _vignetteShader.Dispose();
@@ -3035,6 +3037,7 @@ public partial class Viewport : UiPanel
                 ApplyVignettePass(_fbo, _glowFbo, _glowTex, w, h, activeCamObj);
                 ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel);
                 ApplyFilmGrainPass(_fbo, _colorTex, _glowFbo, _glowTex, w, h, activeCamObj);
+                ApplyWatermarkPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel);
             }
 
             if (OverlaysEnabled)
@@ -3506,6 +3509,7 @@ public partial class Viewport : UiPanel
             ApplyColorCorrectionPass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
             ApplyVignettePass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
             ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel);
+            ApplyWatermarkPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel);
         }
 
         // Keep editor tools usable during the scene-renderer migration. These
@@ -7396,7 +7400,7 @@ public partial class Viewport : UiPanel
     }
 
     public void RenderScenePublic(Camera cam, CameraSceneObject? sceneObj, uint w, uint h,
-        bool highQuality = false, bool applyCameraEffects = false)
+        bool highQuality = false, bool applyCameraEffects = false, bool applyWatermark = false)
     {
         if (Gl == null || MainViewport == null) return;
         using var uncachedPreparation = SceneObject.SuspendRenderEvaluation();
@@ -7636,6 +7640,10 @@ public partial class Viewport : UiPanel
             ApplyFilmGrainPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
         }
 
+        if (!applyCameraEffects && (applyWatermark ||
+            (renderMode == SceneRenderMode.Rendered && effectivePassMode == RenderedPassMode.Combined)))
+            ApplyWatermarkPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, MainViewport.PropertiesPanel);
+
         if (OverlaysEnabled)
         {
             using var overlaysScope = FrameProfiler.Shared.Measure(ProfileStage.Overlays);
@@ -7830,7 +7838,7 @@ public partial class Viewport : UiPanel
         {
             UpdateCameraTextureFeeds();
             ResizeFboPublic(w, h);
-            RenderScenePublic(activeCam, sceneObj, w, h, highQuality);
+            RenderScenePublic(activeCam, sceneObj, w, h, highQuality, applyWatermark: true);
 
             int channels = rgba ? 4 : 3;
             rgbPixels = new byte[checked((int)(w * h * channels))];

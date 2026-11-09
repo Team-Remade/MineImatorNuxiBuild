@@ -311,6 +311,13 @@ public partial class PropertiesPanel : UiPanel
     }
 
     public int    TextureAnimationFps  = 20;
+    public bool WatermarkEnabled;
+    public string WatermarkImagePath = "";
+    public int WatermarkHorizontalAlignment = 2;
+    public int WatermarkVerticalAlignment = 2;
+    public float WatermarkPadding = 20f;
+    public float WatermarkScale = 1f;
+    public float WatermarkOpacity = 1f;
     public string BackgroundImagePath  = NoImageSelected;
     public string BackgroundRenderMode = BackgroundModeStretch;
     public float  BackgroundScale      = 1f;
@@ -374,6 +381,13 @@ public partial class PropertiesPanel : UiPanel
         _projectName = string.IsNullOrWhiteSpace(manifest.ProjectName) ? "Untitled Project" : manifest.ProjectName;
 
         ProjectRenderSettings settings = manifest.Settings;
+        WatermarkEnabled = settings.WatermarkEnabled;
+        WatermarkImagePath = settings.WatermarkImagePath ?? "";
+        WatermarkHorizontalAlignment = Math.Clamp(settings.WatermarkHorizontalAlignment, 0, 2);
+        WatermarkVerticalAlignment = Math.Clamp(settings.WatermarkVerticalAlignment, 0, 2);
+        WatermarkPadding = SanitizeFloatValue(settings.WatermarkPadding, 0f, 100000f);
+        WatermarkScale = SanitizeFloatValue(settings.WatermarkScale, 0.01f, 20f);
+        WatermarkOpacity = SanitizeFloatValue(settings.WatermarkOpacity, 0f, 1f);
         AntiAliasingEnabled = settings.AntiAliasingEnabled;
         AntiAliasingSubpixel = float.IsFinite(settings.AntiAliasingSubpixel) ? Math.Clamp(settings.AntiAliasingSubpixel, 0f, 1f) : 0.75f;
         AntiAliasingEdgeThreshold = float.IsFinite(settings.AntiAliasingEdgeThreshold) ? Math.Clamp(settings.AntiAliasingEdgeThreshold, 0.03125f, 0.5f) : 0.125f;
@@ -540,6 +554,13 @@ public partial class PropertiesPanel : UiPanel
         _projectName = normalizedName;
         manifest.ProjectName = normalizedName;
 
+        manifest.Settings.WatermarkEnabled = WatermarkEnabled;
+        manifest.Settings.WatermarkImagePath = ProjectManager.Instance.ToAssetReference(WatermarkImagePath);
+        manifest.Settings.WatermarkHorizontalAlignment = Math.Clamp(WatermarkHorizontalAlignment, 0, 2);
+        manifest.Settings.WatermarkVerticalAlignment = Math.Clamp(WatermarkVerticalAlignment, 0, 2);
+        manifest.Settings.WatermarkPadding = SanitizeFloatValue(WatermarkPadding, 0f, 100000f);
+        manifest.Settings.WatermarkScale = SanitizeFloatValue(WatermarkScale, 0.01f, 20f);
+        manifest.Settings.WatermarkOpacity = SanitizeFloatValue(WatermarkOpacity, 0f, 1f);
         manifest.Settings.AntiAliasingEnabled = AntiAliasingEnabled;
         manifest.Settings.AntiAliasingSubpixel = Math.Clamp(AntiAliasingSubpixel, 0f, 1f);
         manifest.Settings.AntiAliasingEdgeThreshold = Math.Clamp(AntiAliasingEdgeThreshold, 0.03125f, 0.5f);
@@ -2864,6 +2885,7 @@ public partial class PropertiesPanel : UiPanel
     {
         bool changed = false;
 
+        changed |= DrawWatermarkSettings();
         changed |= ImGui.Checkbox(Localization.Label("text.panel.properties.transparent_background", "Transparent Background"), ref TransparentBackground);
         RegisterProjectPropertyContext(nameof(TransparentBackground));
         if (ImGui.IsItemHovered())

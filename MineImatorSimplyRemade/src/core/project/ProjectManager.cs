@@ -150,6 +150,7 @@ public sealed class ProjectManager
 
         RemapNodes(manifest.SceneObjects);
         RemapNodes(manifest.ObjectLibrary);
+        manifest.Settings.WatermarkImagePath = Remap(manifest.Settings.WatermarkImagePath);
     }
 
     public string ImagesFolder => Path.Combine(ProjectFolder, "images");

@@ -234,6 +234,8 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Watermark defaults, persistence and disabled settings retention", WatermarkSettings),
+            ("Watermark Enabled checkbox hides and restores controls", WatermarkControls),
             ("Frames selected export, roundtrip, broadcast, timing, replacement and seeking", FramesRoundtrip),
             ("Frames hierarchy, semantic properties, references and ambiguity", FramesMapping),
             ("Frames reordered shape keys, ancestor names, IK and rotation compatibility", FramesAdvancedMapping),
@@ -389,6 +391,10 @@ internal static partial class Program
         ];
         if (args.Contains("--visibility", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Visibility", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--watermark", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Watermark", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--watermark-graphics", StringComparer.Ordinal))
+            tests = [("Watermark GPU alignment, padding, scale, opacity, orientation and export parity", WatermarkGraphics)];
         if (args.Contains("--texture-sheets", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Texture sheet", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--snapping", StringComparer.Ordinal))
