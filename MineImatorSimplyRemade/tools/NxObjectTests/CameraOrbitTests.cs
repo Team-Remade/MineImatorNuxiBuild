@@ -86,7 +86,16 @@ internal static partial class Program
         Near(camera.Position, camera.ViewCamera.Position, "Disabled eye is unchanged");
         camera.OrbitEnabled = true;
         camera.UpdateVisualPosition();
-        Near(camera.Position + new vec3(0f, 0f, 100f), camera.GetWorldPosition(), "Default orbit eye");
+        Near(camera.Position + new vec3(0f, 0f, 6.25f), camera.GetWorldPosition(), "Default distance 100 maps to 6.25 world units");
+        foreach (float distance in new[] { 0f, 16f, 32f, 237f })
+        {
+            camera.OrbitDistance = distance;
+            camera.UpdateVisualPosition();
+            camera.SyncCameraToTransform();
+            Near(distance / 16f, (camera.ViewCamera.Position - camera.Position).Length,
+                "Editor distance uses the 16-to-1 world scale");
+        }
+        camera.OrbitDistance = 100f;
 
         foreach (float xy in new[] { 0f, 90f, 180f, 270f, 360f, -90f })
         foreach (float z in new[] { 0f, 45f, 90f, 135f, -90f })
@@ -96,7 +105,7 @@ internal static partial class Program
             camera.UpdateVisualPosition();
             camera.SyncCameraToTransform();
             vec3 offset = camera.ViewCamera.Position - camera.Position;
-            Near(100f, offset.Length, "Orbit maintains distance");
+            Near(6.25f, offset.Length, "Orbit maintains scaled distance");
             mat4 view = camera.ViewCamera.GetViewMatrix();
             var backward = new vec3(view.m02, view.m12, view.m22);
             Near(offset.Normalized, backward, "Camera points at the rotation point, including poles");
@@ -105,11 +114,11 @@ internal static partial class Program
         camera.OrbitRotationXY = 90f;
         camera.OrbitRotationZ = 0f;
         camera.UpdateVisualPosition();
-        Near(camera.Position + vec3.UnitX * 100f, camera.GetWorldPosition(), "XY rotates horizontally");
+        Near(camera.Position + vec3.UnitX * 6.25f, camera.GetWorldPosition(), "XY rotates horizontally");
         camera.OrbitRotationXY = 0f;
         camera.OrbitRotationZ = 90f;
         camera.UpdateVisualPosition();
-        Near(camera.Position + vec3.UnitY * 100f, camera.GetWorldPosition(), "Z tilts vertically");
+        Near(camera.Position + vec3.UnitY * 6.25f, camera.GetWorldPosition(), "Z tilts vertically");
 
         camera.OrbitLookAtPoint = false;
         camera.UpdateVisualPosition();

@@ -106,7 +106,7 @@ public class CameraSceneObject : SceneObject
 
     private GlmSharp.vec3 GetOrbitOffset()
     {
-        var offset = GetOrbitRotation() * new GlmSharp.vec4(0f, 0f, OrbitDistance, 0f);
+        var offset = GetOrbitRotation() * new GlmSharp.vec4(0f, 0f, OrbitDistance / 16f, 0f);
         return new GlmSharp.vec3(offset.x, offset.y, offset.z);
     }
 
