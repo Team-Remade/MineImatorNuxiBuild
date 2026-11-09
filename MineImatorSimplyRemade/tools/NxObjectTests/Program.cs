@@ -23,6 +23,20 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--opaque-leaves-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                OpaqueLeavesGraphics();
+                Console.WriteLine("PASS Opaque leaf GPU textures, live toggling, restoration and connected textures");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--sky-graphics", StringComparer.Ordinal))
         {
             try
@@ -149,6 +163,7 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Opaque leaf defaults, persistence, texture selection and pixels", OpaqueLeavesSettings),
             ("Textured sky defaults, project persistence and background animation", SkySettings),
             ("UI scale persistence, limits, fonts, metrics and independent contexts", UiScaleTests),
             ("Model part bundled catalogs, single-part exclusion and stable paths", ModelPartCatalogTests),

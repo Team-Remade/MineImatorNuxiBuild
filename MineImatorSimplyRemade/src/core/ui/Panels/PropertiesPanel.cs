@@ -40,6 +40,7 @@ public partial class PropertiesPanel : UiPanel
     public bool SkyboxMapped;
     public bool UseAdvancedSky;
     public bool FogEnabled = true;
+    public bool OpaqueLeaves;
     public bool SkyFog = true;
     public bool CustomFogColor;
     public readonly float[] FogColor = [0.5764706f, 0.5764706f, 1f];
@@ -426,6 +427,7 @@ public partial class PropertiesPanel : UiPanel
         SkyboxMapped = settings.SkyboxMapped;
         UseAdvancedSky = settings.UseAdvancedSky;
         FogEnabled = settings.FogEnabled; SkyFog = settings.SkyFog;
+        OpaqueLeaves = settings.OpaqueLeaves;
         CustomFogColor = settings.CustomFogColor; ReadColor(settings.FogColor, FogColor);
         CustomObjectFogColor = settings.CustomObjectFogColor; ReadColor(settings.ObjectFogColor, ObjectFogColor);
         FogDistance = Math.Max(0f, settings.FogDistance); FogFadeSize = Math.Max(1f, settings.FogFadeSize); FogHeight = settings.FogHeight;
@@ -583,6 +585,7 @@ public partial class PropertiesPanel : UiPanel
         manifest.Settings.SkyboxMapped = SkyboxMapped;
         manifest.Settings.UseAdvancedSky = UseAdvancedSky;
         manifest.Settings.FogEnabled = FogEnabled; manifest.Settings.SkyFog = SkyFog;
+        manifest.Settings.OpaqueLeaves = OpaqueLeaves;
         manifest.Settings.CustomFogColor = CustomFogColor; manifest.Settings.FogColor = ToVec3(FogColor);
         manifest.Settings.CustomObjectFogColor = CustomObjectFogColor; manifest.Settings.ObjectFogColor = ToVec3(ObjectFogColor);
         manifest.Settings.FogDistance = Math.Max(0f, FogDistance); manifest.Settings.FogFadeSize = Math.Max(1f, FogFadeSize); manifest.Settings.FogHeight = FogHeight;
@@ -814,6 +817,7 @@ public partial class PropertiesPanel : UiPanel
 
     private void ApplyBackgroundSettingsToViewport()
     {
+        TerrainAtlas.SetOpaqueLeaves(OpaqueLeaves);
         Viewport?.SetBackgroundImage(
             BackgroundImagePath,
             BackgroundRenderMode,
@@ -2332,6 +2336,13 @@ public partial class PropertiesPanel : UiPanel
 
         if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.background_settings", "Background Settings")))
         {
+            if (ImGui.Checkbox(Localization.Label("text.panel.properties.opaque_leaves", "Opaque leaves"), ref OpaqueLeaves))
+            {
+                ApplyBackgroundSettingsToViewport();
+                WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                ProjectManager.Instance.SetDirty(true);
+            }
+            RegisterProjectPropertyContext(nameof(OpaqueLeaves));
             unsafe
             {
                 bool skyChanged = false;

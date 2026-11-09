@@ -3772,6 +3772,7 @@ public class Viewport : UiPanel
         var hash = new HashCode();
         var source = IsPreviewViewport ? MainViewport ?? this : this;
         hash.Add(_showHiddenObjects);
+        hash.Add(TerrainAtlas.OpaqueLeaves);
         hash.Add(_shadowMapSize);
         hash.Add(source.PropertiesPanel?.PointShadowBufferSize ?? 1024);
         hash.Add(source.PropertiesPanel?.SpotShadowBufferSize ?? 1024);

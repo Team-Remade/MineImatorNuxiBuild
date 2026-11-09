@@ -474,6 +474,7 @@
     "text.panel.properties.emission_texture": "Emission Texture:",
     "text.panel.properties.emission_indirect_only": "Emission Indirect Only",
     "text.panel.properties.enable_fog": "Enable Fog",
+    "text.panel.properties.opaque_leaves": "Opaque leaves",
     "text.panel.properties.enabled": "Enabled",
     "text.panel.properties.energy": "Energy",
     "text.panel.properties.extrusion_depth": "Extrusion Depth",

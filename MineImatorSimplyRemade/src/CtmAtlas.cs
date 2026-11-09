@@ -81,6 +81,12 @@ public static class CtmAtlas
 
         var paths = rules.SelectMany(rule => rule.Tiles.Select(tile =>
             $"{rule.Directory.Replace('\\', '/')}/{tile}.png".ToLowerInvariant())).ToHashSet();
+        var leafPaths = rules
+            .Where(rule => rule.MatchBlocks.Select(NormalizeBlockName).Any(TerrainAtlas.IsLeafTexture) ||
+                           rule.MatchTiles.Select(NormalizeTextureKey).Any(TerrainAtlas.IsLeafTexture))
+            .SelectMany(rule => rule.Tiles.Select(tile =>
+                (rule.PackId, Path: $"{rule.Directory.Replace('\\', '/')}/{tile}.png".ToLowerInvariant())))
+            .ToHashSet();
         var files = new Dictionary<(string Pack, string Path), byte[]>();
         foreach (var file in MinecraftDataLoader.EnumerateResourcePackFiles("assets", ".png"))
         {
@@ -92,11 +98,12 @@ public static class CtmAtlas
         foreach (var (key, data) in files)
         {
             _textureHandles.TryGetValue(key, out uint existing);
-            uint texture = LoadTextureFromBytes(data, existing);
+            string textureKey = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(key.Pack, key.Path[..^4]);
+            uint texture = LoadTextureFromBytes(data, existing, leafPaths.Contains(key) ? textureKey : "");
             if (texture == 0) continue;
             _textureHandles[key] = texture;
             _tileTextures[key] = texture;
-            _textureKeys[texture] = MinecraftDataLoader.BuildResourcePackTextureKeyFromId(key.Pack, key.Path[..^4]);
+            _textureKeys[texture] = textureKey;
         }
     }
 
@@ -110,7 +117,7 @@ public static class CtmAtlas
         return _tileTextures.GetValueOrDefault((source, path));
     }
 
-    private static uint LoadTextureFromBytes(byte[] data, uint existing = 0)
+    private static uint LoadTextureFromBytes(byte[] data, uint existing = 0, string leafKey = "")
     {
         if (_gl == null) return 0;
 
@@ -136,6 +143,10 @@ public static class CtmAtlas
             _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
             _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
             _gl.BindTexture(GLEnum.Texture2D, 0);
+
+            TerrainAtlas.UnregisterLeafTexture(texId);
+            if (leafKey.Length > 0)
+                TerrainAtlas.RegisterLeafTexture(texId, leafKey, img.Data, img.Width, img.Height);
 
             return texId;
         }

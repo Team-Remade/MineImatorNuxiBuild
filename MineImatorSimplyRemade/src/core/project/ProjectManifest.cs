@@ -205,6 +205,7 @@ public class ProjectRenderSettings
     public float BackgroundOffsetY { get; set; } = 0f;
     public string BackgroundImagePath { get; set; } = "No image selected";
     public bool FloorVisible { get; set; } = true;
+    public bool OpaqueLeaves { get; set; }
     public string FloorTextureAtlas { get; set; } = "block";
     public string FloorTileKey { get; set; } = "grass_block_top";
     public ProjectVec4 BackgroundColor { get; set; } = new()

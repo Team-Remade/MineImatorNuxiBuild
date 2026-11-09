@@ -103,6 +103,64 @@ public static class TerrainAtlas
 
     private static GL? _gl;
     private static readonly HashSet<string> _loadedResourcePackIds = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<uint, (string Key, byte[] Pixels, int Width, int Height)> _leafTextures = new();
+
+    public static bool OpaqueLeaves { get; private set; }
+
+    public static void SetOpaqueLeaves(bool enabled)
+    {
+        if (OpaqueLeaves == enabled) return;
+        OpaqueLeaves = enabled;
+        foreach (uint texture in _leafTextures.Keys)
+            UploadLeafTexture(texture);
+        _translucencyCache.Clear();
+    }
+
+    internal static bool IsLeafTexture(string key)
+    {
+        string name = key[(Math.Max(key.LastIndexOf('/'), key.LastIndexOf(':')) + 1)..];
+        return !name.StartsWith("bamboo_", StringComparison.OrdinalIgnoreCase) &&
+               (name.Equals("leaves", StringComparison.OrdinalIgnoreCase) ||
+                name.EndsWith("_leaves", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("leaves_", StringComparison.OrdinalIgnoreCase));
+    }
+
+    internal static byte[] CreateOpaqueLeafPixels(byte[] pixels)
+    {
+        byte[] opaque = (byte[])pixels.Clone();
+        for (int i = 0; i < opaque.Length; i += 4)
+        {
+            // Minecraft's fast leaves composite the cutout over black.
+            int alpha = opaque[i + 3];
+            for (int channel = 0; channel < 3; channel++)
+                opaque[i + channel] = (byte)((opaque[i + channel] * alpha + 127) / 255);
+            opaque[i + 3] = 255;
+        }
+        return opaque;
+    }
+
+    internal static void RegisterLeafTexture(uint texture, string key, byte[] pixels, int width, int height)
+    {
+        _leafTextures[texture] = (key, pixels, width, height);
+        if (OpaqueLeaves) UploadLeafTexture(texture);
+    }
+
+    internal static void UnregisterLeafTexture(uint texture) => _leafTextures.Remove(texture);
+
+    private static unsafe void UploadLeafTexture(uint texture)
+    {
+        if (_gl == null) return;
+        var source = _leafTextures[texture];
+        byte[] pixels = OpaqueLeaves ? CreateOpaqueLeafPixels(source.Pixels) : source.Pixels;
+        int previous = _gl.GetInteger(GLEnum.TextureBinding2D);
+        _gl.BindTexture(GLEnum.Texture2D, texture);
+        fixed (byte* data = pixels)
+            _gl.TexSubImage2D(GLEnum.Texture2D, 0, 0, 0, (uint)source.Width, (uint)source.Height,
+                PixelFormat.Rgba, GLEnum.UnsignedByte, data);
+        _gl.BindTexture(GLEnum.Texture2D, (uint)previous);
+        if (Textures.TryGetValue(source.Key, out uint atlasTexture) && atlasTexture == texture)
+            TilePixels[source.Key] = pixels;
+    }
 
     public static void Initialize(GL gl, Action<float, string>? progress = null)
     {
@@ -147,6 +205,9 @@ public static class TerrainAtlas
         bool result = false;
         if (TilePixels.TryGetValue(key, out byte[]? pixels))
         {
+            // Keep mesh blend classification stable when opaque leaves are toggled.
+            if (Textures.TryGetValue(key, out uint texture) && _leafTextures.TryGetValue(texture, out var leaf))
+                pixels = leaf.Pixels;
             for (int i = 3; i < pixels.Length; i += 4)
             {
                 byte a = pixels[i];
@@ -176,6 +237,7 @@ public static class TerrainAtlas
         Textures.Clear();
         TilePixels.Clear();
         AnimatedTextures.Clear();
+        _leafTextures.Clear();
         _translucencyCache.Clear();
         _loadedResourcePackIds.Clear();
 
@@ -453,7 +515,10 @@ public static class TerrainAtlas
         if (_gl == null) return;
 
         if (Textures.TryGetValue(key, out uint oldTexId) && oldTexId != 0)
+        {
+            _leafTextures.Remove(oldTexId);
             _gl.DeleteTexture(oldTexId);
+        }
 
         uint texId = _gl.GenTexture();
         _gl.BindTexture(GLEnum.Texture2D, texId);
@@ -475,6 +540,8 @@ public static class TerrainAtlas
 
         Textures[key] = texId;
         TilePixels[key] = pixels;
+        if (IsLeafTexture(key))
+            RegisterLeafTexture(texId, key, pixels, width, height);
     }
 
     internal static AnimatedTextureInfo? ParseMcMetaFromText(string metaText, int imgWidth, int imgHeight)
