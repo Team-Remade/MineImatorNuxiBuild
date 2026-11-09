@@ -1,6 +1,15 @@
 {
   "name": "English (US)",
   "strings": {
+    "text.panel.properties.sky_enabled": "Sky",
+    "text.panel.properties.sky_mode": "Sky Mode",
+    "text.panel.properties.sky_sphere": "Sky Sphere",
+    "text.panel.properties.skybox": "Skybox",
+    "text.panel.properties.sky_texture": "Sky Texture",
+    "text.panel.properties.sky_rotation": "Sky Rotation (XYZ)",
+    "text.panel.properties.skybox_mapped": "Mapped",
+    "text.panel.properties.sky_sphere_help": "Use an equirectangular panorama (usually 2:1). Rotation is in degrees.",
+    "text.panel.properties.skybox_help": "Unmapped repeats the full image on each face. Mapped uses the primitive cube's 3 x 2 texture layout.",
     "text.modifier.title": "Modifiers",
     "text.modifier.add": "Add Modifier",
     "text.modifier.array": "Array",

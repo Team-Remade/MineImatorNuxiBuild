@@ -8,6 +8,10 @@ uniform float uTanHalfFov, uAspect;
 uniform float uCameraNear, uCameraFar;
 uniform vec3 uHorizonDay, uZenithDay, uHorizonSunset, uZenithSunset, uHorizonNight, uZenithNight;
 uniform sampler2D uSunTex, uMoonTex, uCloudTex;
+uniform sampler2D uEnvironmentTex;
+uniform int uSkyMode;
+uniform bool uSkyboxMapped;
+uniform vec3 uSkyRotation;
 uniform vec3 uCloudColor, uNightCloudColor;
 uniform int uCloudMode;
 uniform vec2 uCloudOffset;
@@ -156,9 +160,58 @@ float starField(vec3 ray, float night)
     return star * uStarBrightness * night * 0.6;
 }
 
+vec3 environmentRay(vec3 ray)
+{
+    // Inverse XYZ object rotation: rotate the viewing ray Z, Y, then X.
+    vec3 a = radians(-uSkyRotation);
+    ray.xy = mat2(cos(a.z), sin(a.z), -sin(a.z), cos(a.z)) * ray.xy;
+    ray.xz = mat2(cos(a.y), -sin(a.y), sin(a.y), cos(a.y)) * ray.xz;
+    ray.yz = mat2(cos(a.x), sin(a.x), -sin(a.x), cos(a.x)) * ray.yz;
+    return ray;
+}
+
+vec2 skyboxUv(vec3 ray)
+{
+    vec3 axis = abs(ray);
+    vec2 uv;
+    vec2 cell;
+    // Match CubeMesh's face vertex order and UVs, including its top/bottom flips.
+    if (axis.z >= axis.x && axis.z >= axis.y) {
+        uv = vec2(ray.z > 0.0 ? -ray.x : ray.x, ray.y) / axis.z * 0.5 + 0.5;
+        cell = vec2(0.0, ray.z > 0.0 ? 1.0 : 0.0);
+    } else if (axis.x >= axis.y) {
+        uv = vec2(ray.x > 0.0 ? ray.z : -ray.z, ray.y) / axis.x * 0.5 + 0.5;
+        cell = vec2(ray.x > 0.0 ? 2.0 : 1.0, 0.0);
+    } else {
+        uv = vec2(ray.x, ray.y > 0.0 ? ray.z : -ray.z) / axis.y * 0.5 + 0.5;
+        cell = vec2(ray.y > 0.0 ? 1.0 : 2.0, 1.0);
+    }
+    if (!uSkyboxMapped) return uv;
+    vec2 size = vec2(textureSize(uEnvironmentTex, 0));
+    vec2 cellSize = size / vec2(3.0, 2.0);
+    vec2 origin = vec2(cell.x, 1.0 - cell.y) * cellSize;
+    // Keep bilinear sampling inside the selected atlas face.
+    return (origin + clamp(uv * cellSize, vec2(0.5), cellSize - 0.5)) / size;
+}
+
 void main()
 {
     vec3 ray = normalize(uCameraForward + vNdc.x * uAspect * uTanHalfFov * uCameraRight + vNdc.y * uTanHalfFov * uCameraUp);
+    if (uSkyMode != 0) {
+        vec3 direction = environmentRay(ray);
+        vec2 uv = uSkyMode == 1
+            ? vec2(atan(direction.z, direction.x) / 6.28318530718 + 0.5,
+                   acos(clamp(direction.y, -1.0, 1.0)) / 3.14159265359)
+            : skyboxUv(direction);
+        vec3 color = texture(uEnvironmentTex, uv).rgb;
+        if (uFogEnabled) {
+            float skyFog = 1.0 - smoothstep(0.0, 0.65, abs(ray.y));
+            color = mix(color, uFogColor, skyFog);
+        }
+        gl_FragDepth = 1.0;
+        FragColor = vec4(color, 1.0);
+        return;
+    }
     float elevation = uSunDirection.y;
     float night = 1.0 - smoothstep(-0.18, 0.02, elevation);
     float sunset = uTwilight ? (1.0 - night) * (1.0 - smoothstep(0.05, 0.35, elevation)) : 0.0;

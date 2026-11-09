@@ -23,6 +23,20 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--sky-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                SkyGraphics();
+                Console.WriteLine("PASS Textured skies, cube UV compatibility, XYZ rotation, fog, depth and texture lifecycle");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--block-rotation-graphics", StringComparer.Ordinal))
         {
             try
@@ -135,6 +149,7 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Textured sky defaults, project persistence and background animation", SkySettings),
             ("UI scale persistence, limits, fonts, metrics and independent contexts", UiScaleTests),
             ("Model part bundled catalogs, single-part exclusion and stable paths", ModelPartCatalogTests),
             ("MI import paths, points, references, sparse poses and repeated loads", MiImportPaths),

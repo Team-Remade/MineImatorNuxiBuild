@@ -162,6 +162,10 @@ public class Viewport : UiPanel
     // ── Minecraft-style procedural sky ─────────────────────────────────────
     private Shader? _skyShader;
     private uint _sunTexture, _moonTexture, _cloudTexture;
+    private uint _environmentTexture;
+    private string _loadedEnvironmentPath = "";
+    private string? _attemptedEnvironmentPath;
+    public string SkyTextureError { get; private set; } = "";
     private readonly uint[] _moonPhaseTextures = new uint[8];
     private readonly string[] _loadedMoonPhasePaths = new string[8];
     private bool _moonTextureIsAtlas = true;
@@ -960,9 +964,33 @@ public class Viewport : UiPanel
     public void ReloadSkyTextures()
     {
         if (Gl == null || PropertiesPanel == null) return;
+        LoadEnvironmentTexture(PropertiesPanel.SkyTexture);
         LoadSunSkyTexture(PropertiesPanel.SunTexture);
         LoadMoonSkyTextures(PropertiesPanel.MoonTexture);
         LoadSkyTexture(PropertiesPanel.CloudTexture, ref _cloudTexture, ref _loadedCloudPath, true);
+    }
+
+    private void LoadEnvironmentTexture(string configuredPath)
+    {
+        string path = string.IsNullOrWhiteSpace(configuredPath) ? "" : ProjectManager.Instance.ResolveProjectPath(configuredPath);
+        if (path == _attemptedEnvironmentPath) return;
+        _attemptedEnvironmentPath = path;
+        SkyTextureError = "";
+        if (_environmentTexture != 0) Gl.DeleteTexture(_environmentTexture);
+        _environmentTexture = 0;
+        _loadedEnvironmentPath = "";
+        if (path.Length == 0) return;
+        try
+        {
+            if (TryLoadSkyTexture(path, ref _environmentTexture, ref _loadedEnvironmentPath, out _, out _, preserveColor: true))
+                return;
+            SkyTextureError = $"Could not load sky texture '{configuredPath}'. Select or import a readable image.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            SkyTextureError = $"Could not load sky texture '{configuredPath}': {ex.Message}";
+        }
+        Console.Error.WriteLine(SkyTextureError);
     }
 
     private void LoadSunSkyTexture(string configuredPath)
@@ -1067,7 +1095,8 @@ public class Viewport : UiPanel
         ref string loadedPath,
         out int width,
         out int height,
-        bool repeat = false)
+        bool repeat = false,
+        bool preserveColor = false)
     {
         width = 0;
         height = 0;
@@ -1094,12 +1123,13 @@ public class Viewport : UiPanel
         try
         {
             using MemoryStream stream = new(data);
+            StbImage.stbi_set_flip_vertically_on_load(0);
             ImageResult image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
             width = image.Width;
             height = image.Height;
             // Legacy sun/moon PNGs are RGB and encode transparency as black.
             bool pngHasAlpha = data.Length > 25 && (data[25] == 4 || data[25] == 6);
-            if (!pngHasAlpha)
+            if (!preserveColor && !pngHasAlpha)
             {
                 for (int i = 0; i < image.Data.Length; i += 4)
                 {
@@ -1118,8 +1148,8 @@ public class Viewport : UiPanel
             Gl.BindTexture(GLEnum.Texture2D, texture);
             fixed (byte* pixels = image.Data)
                 Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8, (uint)image.Width, (uint)image.Height, 0, GLEnum.Rgba, GLEnum.UnsignedByte, pixels);
-            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)GLEnum.Nearest);
-            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)GLEnum.Nearest);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)(preserveColor ? GLEnum.Linear : GLEnum.Nearest));
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)(preserveColor ? GLEnum.Linear : GLEnum.Nearest));
             Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)(repeat ? GLEnum.Repeat : GLEnum.ClampToEdge));
             Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)(repeat ? GLEnum.Repeat : GLEnum.ClampToEdge));
             Gl.BindTexture(GLEnum.Texture2D, 0);
@@ -1222,14 +1252,22 @@ public class Viewport : UiPanel
         var (sunDirection, moonDirection, fogColor) = PrepareSceneEnvironment(camera);
         if (!p.UseSky || _skyShader == null || _backgroundVao == 0) return;
         ReloadSkyTextures();
-        vec3 forward = (camera.Target - camera.Position).Normalized;
-        vec3 right = vec3.Cross(forward, vec3.UnitY).Normalized;
-        vec3 up = vec3.Cross(right, forward).Normalized;
+        bool texturedSky = p.SkyMode is "sphere" or "box";
+        if (texturedSky && _environmentTexture == 0) return;
+        mat4 cameraWorld = camera.GetViewMatrix().Inverse;
+        vec3 forward = (cameraWorld * new vec4(0f, 0f, -1f, 0f)).xyz.Normalized;
+        vec3 right = (cameraWorld * new vec4(1f, 0f, 0f, 0f)).xyz.Normalized;
+        vec3 up = (cameraWorld * new vec4(0f, 1f, 0f, 0f)).xyz.Normalized;
         uint program = _skyShader.ShaderProgram;
         Gl.Enable(GLEnum.DepthTest); Gl.DepthFunc(GLEnum.Always); Gl.DepthMask(true); Gl.Disable(GLEnum.CullFace); Gl.UseProgram(program);
         void V3(string n, vec3 v) { int l = Gl.GetUniformLocation(program, n); if (l >= 0) Gl.Uniform3(l, v.x, v.y, v.z); }
         void C3(string n, float[] v) { int l = Gl.GetUniformLocation(program, n); if (l >= 0) Gl.Uniform3(l, v[0], v[1], v[2]); }
         void F(string n, float v) { int l = Gl.GetUniformLocation(program, n); if (l >= 0) Gl.Uniform1(l, v); }
+        int skyMode = Gl.GetUniformLocation(program, "uSkyMode");
+        if (skyMode >= 0) Gl.Uniform1(skyMode, p.SkyMode == "sphere" ? 1 : p.SkyMode == "box" ? 2 : 0);
+        int mapped = Gl.GetUniformLocation(program, "uSkyboxMapped");
+        if (mapped >= 0) Gl.Uniform1(mapped, p.SkyboxMapped ? 1 : 0);
+        C3("uSkyRotation", p.SkyRotation);
         V3("uCameraForward", forward); V3("uCameraRight", right); V3("uCameraUp", up);
         V3("uCameraPosition", camera.Position);
         F("uTanHalfFov", MathF.Tan(camera.FovY * 0.5f)); F("uAspect", height > 0 ? (float)width / height : 1f);
@@ -1268,6 +1306,10 @@ public class Viewport : UiPanel
         int moon = Gl.GetUniformLocation(program, "uMoonTex"); if (moon >= 0) Gl.Uniform1(moon, 1);
         Gl.ActiveTexture(GLEnum.Texture2); Gl.BindTexture(GLEnum.Texture2D, _cloudTexture);
         int clouds = Gl.GetUniformLocation(program, "uCloudTex"); if (clouds >= 0) Gl.Uniform1(clouds, 2);
+        Gl.ActiveTexture(GLEnum.Texture3); Gl.BindTexture(GLEnum.Texture2D, _environmentTexture);
+        if (_environmentTexture != 0)
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)(p.SkyMode == "sphere" ? GLEnum.Repeat : GLEnum.ClampToEdge));
+        int environment = Gl.GetUniformLocation(program, "uEnvironmentTex"); if (environment >= 0) Gl.Uniform1(environment, 3);
         Gl.BindVertexArray(_backgroundVao); Gl.DrawArrays(GLEnum.Triangles, 0, 6); Gl.BindVertexArray(0);
         Gl.ActiveTexture(GLEnum.Texture0); Gl.DepthMask(true); Gl.Enable(GLEnum.DepthTest); Gl.DepthFunc(GLEnum.Less); Gl.Enable(GLEnum.CullFace);
     }

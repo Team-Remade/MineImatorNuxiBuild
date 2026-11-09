@@ -149,6 +149,10 @@ public class ProjectRenderSettings
     public bool RenderShowHiddenObjects { get; set; } = false;
     public int TextureAnimationFps { get; set; } = 20;
     public bool UseSky { get; set; } = true;
+    public string SkyMode { get; set; } = "minecraft";
+    public string SkyTexture { get; set; } = "";
+    public ProjectVec3 SkyRotation { get; set; } = new();
+    public bool SkyboxMapped { get; set; } = false;
     public bool UseAdvancedSky { get; set; } = false;
     public bool FogEnabled { get; set; } = true;
     public bool SkyFog { get; set; } = true;

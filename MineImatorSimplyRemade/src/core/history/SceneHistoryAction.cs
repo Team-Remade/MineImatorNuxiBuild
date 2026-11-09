@@ -132,6 +132,7 @@ internal sealed class SceneHistoryAction
             ProjectManifest manifest = ProjectManager.Instance.Manifest;
             ProjectRenderSettings settings = JsonSerializer.Deserialize(projectState.SettingsJson, AppJsonContext.Default.ProjectRenderSettings)!;
             bool skyTexturesChanged = manifest.Settings.SunTexture != settings.SunTexture ||
+                                      manifest.Settings.SkyTexture != settings.SkyTexture ||
                                       manifest.Settings.MoonTexture != settings.MoonTexture ||
                                       manifest.Settings.CloudTexture != settings.CloudTexture;
             manifest.ProjectName = projectState.Name;

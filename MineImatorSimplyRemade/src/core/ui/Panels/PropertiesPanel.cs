@@ -34,6 +34,10 @@ public partial class PropertiesPanel : UiPanel
     public readonly float[] BackgroundColor = [0.5764706f, 0.5764706f, 1f, 1f];
 
     public bool UseSky = true;
+    public string SkyMode = "minecraft";
+    public string SkyTexture = "";
+    public readonly float[] SkyRotation = [0f, 0f, 0f];
+    public bool SkyboxMapped;
     public bool UseAdvancedSky;
     public bool FogEnabled = true;
     public bool SkyFog = true;
@@ -416,6 +420,10 @@ public partial class PropertiesPanel : UiPanel
         _renderShowHiddenObjects = settings.RenderShowHiddenObjects;
         TextureAnimationFps = Math.Clamp(settings.TextureAnimationFps, 1, 240);
         UseSky = settings.UseSky;
+        SkyMode = settings.SkyMode is "sphere" or "box" ? settings.SkyMode : "minecraft";
+        SkyTexture = settings.SkyTexture;
+        ReadColor(settings.SkyRotation, SkyRotation);
+        SkyboxMapped = settings.SkyboxMapped;
         UseAdvancedSky = settings.UseAdvancedSky;
         FogEnabled = settings.FogEnabled; SkyFog = settings.SkyFog;
         CustomFogColor = settings.CustomFogColor; ReadColor(settings.FogColor, FogColor);
@@ -569,6 +577,10 @@ public partial class PropertiesPanel : UiPanel
         manifest.Settings.RenderShowHiddenObjects = _renderShowHiddenObjects;
         manifest.Settings.TextureAnimationFps = Math.Clamp(TextureAnimationFps, 1, 240);
         manifest.Settings.UseSky = UseSky;
+        manifest.Settings.SkyMode = SkyMode;
+        manifest.Settings.SkyTexture = SkyTexture;
+        manifest.Settings.SkyRotation = ToVec3(SkyRotation);
+        manifest.Settings.SkyboxMapped = SkyboxMapped;
         manifest.Settings.UseAdvancedSky = UseAdvancedSky;
         manifest.Settings.FogEnabled = FogEnabled; manifest.Settings.SkyFog = SkyFog;
         manifest.Settings.CustomFogColor = CustomFogColor; manifest.Settings.FogColor = ToVec3(FogColor);
@@ -2324,9 +2336,36 @@ public partial class PropertiesPanel : UiPanel
             {
                 bool skyChanged = false;
                 bool useSky = UseSky;
-                if (ImGui.Checkbox(Localization.Label("text.panel.properties.minecraft_sky", "Minecraft Sky"), ref useSky)) { UseSky = useSky; skyChanged = true; }
+                if (ImGui.Checkbox(Localization.Label("text.panel.properties.sky_enabled", "Sky"), ref useSky)) { UseSky = useSky; skyChanged = true; }
                 RegisterBackgroundKeyframeContext(nameof(UseSky));
                 if (UseSky)
+                {
+                    string skyLabel = SkyMode == "sphere" ? "Sky Sphere" : SkyMode == "box" ? "Skybox" : "Minecraft Sky";
+                    bool skyModeOpen = ImGui.BeginCombo(Localization.Label("text.panel.properties.sky_mode", "Sky Mode"), Localization.DisplayText(skyLabel));
+                    RegisterBackgroundKeyframeContext(nameof(SkyMode));
+                    if (skyModeOpen)
+                    {
+                        foreach (var (mode, label) in new[] { ("minecraft", "Minecraft Sky"), ("sphere", "Sky Sphere"), ("box", "Skybox") })
+                            if (ImGui.Selectable(Localization.DisplayText(label), SkyMode == mode)) { SkyMode = mode; skyChanged = true; }
+                        ImGui.EndCombo();
+                    }
+                    if (SkyMode is "sphere" or "box")
+                    {
+                        skyChanged |= EnvironmentTextureSelector();
+                        fixed (float* rotation = SkyRotation)
+                            skyChanged |= ImGui.DragFloat3(Localization.Label("text.panel.properties.sky_rotation", "Sky Rotation (XYZ)"), rotation, 0.25f, -360f, 360f);
+                        RegisterBackgroundKeyframeContext(nameof(SkyRotation));
+                        if (SkyMode == "box")
+                        {
+                            skyChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.skybox_mapped", "Mapped##skybox"), ref SkyboxMapped);
+                            RegisterBackgroundKeyframeContext(nameof(SkyboxMapped));
+                        }
+                        UiText.Disabled(Localization.T(SkyMode == "sphere" ? "text.panel.properties.sky_sphere_help" : "text.panel.properties.skybox_help"));
+                        if (!string.IsNullOrEmpty(Viewport?.SkyTextureError))
+                            ImGui.TextWrapped(Viewport.SkyTextureError);
+                    }
+                }
+                if (UseSky && SkyMode == "minecraft")
                 {
                     ImGui.Indent();
                     skyChanged |= SkyColorEditor("Horizon Day", SkyHorizonDay);
@@ -2406,7 +2445,7 @@ public partial class PropertiesPanel : UiPanel
                     RegisterBackgroundKeyframeContext(nameof(MoonFillLightCastsShadows));
                     ImGui.Unindent();
                 }
-                else
+                else if (!UseSky)
                     UiText.Disabled(Localization.T("text.panel.properties.solid_background_color_is_active"));
 
                 if (skyChanged)
@@ -2967,7 +3006,8 @@ public partial class PropertiesPanel : UiPanel
     {
         string[] scalars =
         [
-            nameof(UseSky), nameof(SunTexture), nameof(MoonTexture), nameof(CloudTexture), nameof(MoonPhase), nameof(SkyTime),
+            nameof(UseSky), nameof(SkyMode), nameof(SkyTexture), nameof(SkyboxMapped),
+            nameof(SunTexture), nameof(MoonTexture), nameof(CloudTexture), nameof(MoonPhase), nameof(SkyTime),
             nameof(SunSize), nameof(MoonSize), nameof(SunFillLightStrength), nameof(SunFillLightCastsShadows),
             nameof(MoonFillLightStrength), nameof(MoonFillLightCastsShadows),
             nameof(CloudRenderMode), nameof(CloudSpeed), nameof(CloudHeight), nameof(CloudBlockSize), nameof(CloudThickness),
@@ -2980,7 +3020,7 @@ public partial class PropertiesPanel : UiPanel
         ];
         string[] vectors =
         [
-            nameof(SkyHorizonDay), nameof(SkyZenithDay), nameof(SkyHorizonSunset), nameof(SkyZenithSunset),
+            nameof(SkyRotation), nameof(SkyHorizonDay), nameof(SkyZenithDay), nameof(SkyHorizonSunset), nameof(SkyZenithSunset),
             nameof(SkyHorizonNight), nameof(SkyZenithNight), nameof(SunAngle), nameof(MoonAngle),
             nameof(SunFillLightColor), nameof(MoonFillLightColor), nameof(CloudColor), nameof(NightCloudColor),
             nameof(CloudOffset), nameof(BackgroundColor),
@@ -3148,6 +3188,44 @@ public partial class PropertiesPanel : UiPanel
             RegisterProjectPropertyContext(path, 0, 1);
         else
             RegisterBackgroundKeyframeContext(path);
+        return changed;
+    }
+
+    private bool EnvironmentTextureSelector()
+    {
+        bool changed = false;
+        bool open = ImGui.BeginCombo(Localization.Label("text.panel.properties.sky_texture", "Sky Texture"),
+            string.IsNullOrWhiteSpace(SkyTexture) ? Localization.T("text.common.no_image_selected") : Path.GetFileName(SkyTexture));
+        RegisterBackgroundKeyframeContext(nameof(SkyTexture));
+        if (open)
+        {
+            if (ImGui.Selectable(Localization.T("text.common.no_image_selected"), string.IsNullOrWhiteSpace(SkyTexture)))
+            {
+                SkyTexture = "";
+                changed = true;
+            }
+            foreach (var asset in GetBackgroundImageAssets())
+            {
+                string path = asset.StoredInProject && !string.IsNullOrWhiteSpace(asset.RelativePath) ? asset.RelativePath : asset.SourcePath;
+                if (ImGui.Selectable(asset.DisplayName + "##sky" + path, SkyTexture == path))
+                {
+                    SkyTexture = path;
+                    changed = true;
+                }
+            }
+            ImGui.EndCombo();
+        }
+        if (ImGui.Button(Localization.Label("text.common.import", "Import##skyTexture")) && ProjectManager.Instance.HasProject)
+        {
+            var result = Dialog.FileOpen("png,jpg,jpeg,bmp,tga,gif,webp,tiff");
+            if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path))
+            {
+                var asset = ProjectManager.Instance.AddAsset(result.Path, ProjectAssetType.Image);
+                SkyTexture = asset.StoredInProject && !string.IsNullOrWhiteSpace(asset.RelativePath)
+                    ? asset.RelativePath : ProjectManager.Instance.ToProjectRelativePath(asset.SourcePath);
+                changed = true;
+            }
+        }
         return changed;
     }
 
@@ -6798,7 +6876,7 @@ public partial class PropertiesPanel : UiPanel
             ApplyFloorSettingsToViewport();
             ApplyBackgroundSettingsToViewport();
             ApplyAmbientSettingsToRenderer();
-            if (backgroundPath is nameof(SunTexture) or nameof(MoonTexture) or nameof(CloudTexture))
+            if (backgroundPath is nameof(SkyTexture) or nameof(SunTexture) or nameof(MoonTexture) or nameof(CloudTexture))
                 Viewport?.ReloadSkyTextures();
             WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
             return;
