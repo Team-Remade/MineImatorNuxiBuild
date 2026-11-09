@@ -67,7 +67,6 @@ public class PreferencesPanel : UiPanel
     public bool PreviewViewportUndocked { get; set; } = false;
 
     // Tools
-    public bool ZIsUp { get; set; } = false;
     public bool HideMineImatorBoneDisplayShapes { get; set; } = true;
     public bool HideRegularAssetBoneDisplayShapes { get; set; } = false;
     public SnapSettings Snapping { get; set; } = new();
@@ -503,16 +502,6 @@ public class PreferencesPanel : UiPanel
             {
                 ImGui.Indent();
 
-                bool zUp = ZIsUp;
-                if (ImGui.Checkbox(Localization.Label("text.panel.preferences.z_is_up", "Z is up##zUp"), ref zUp))
-                {
-                    ZIsUp = zUp;
-                    preferencesChanged = true;
-                    // TODO: Implement Z-up coordinate system
-                }
-
-                ImGui.Spacing();
-
                 bool hideBoneDisplayShapes = HideMineImatorBoneDisplayShapes;
                 if (ImGui.Checkbox(Localization.Label("text.panel.preferences.hide_bone_display_shapes_on_mine_imator_assets", "Hide bone display shapes on Mine-imator assets##hideMiBoneDisplayShapes"), ref hideBoneDisplayShapes))
                 {
@@ -579,7 +568,6 @@ public class PreferencesPanel : UiPanel
             AutoScrollWhilePlaying = AutoScrollWhilePlaying,
             PreviewViewportVisible = PreviewViewportVisible,
             PreviewViewportUndocked = PreviewViewportUndocked,
-            ZIsUp = ZIsUp,
             HideMineImatorBoneDisplayShapes = HideMineImatorBoneDisplayShapes,
             HideRegularAssetBoneDisplayShapes = HideRegularAssetBoneDisplayShapes,
             Snapping = Snapping,
@@ -622,7 +610,6 @@ public class PreferencesPanel : UiPanel
         AutoScrollWhilePlaying = state.AutoScrollWhilePlaying;
         PreviewViewportVisible = state.PreviewViewportVisible;
         PreviewViewportUndocked = state.PreviewViewportUndocked;
-        ZIsUp = state.ZIsUp;
         HideMineImatorBoneDisplayShapes = state.HideMineImatorBoneDisplayShapes;
         HideRegularAssetBoneDisplayShapes = state.HideRegularAssetBoneDisplayShapes;
         Snapping = state.Snapping ?? new SnapSettings();
@@ -651,7 +638,6 @@ public class PreferencesPanel : UiPanel
         AutoScrollWhilePlaying = defaults.AutoScrollWhilePlaying;
         PreviewViewportVisible = defaults.PreviewViewportVisible;
         PreviewViewportUndocked = defaults.PreviewViewportUndocked;
-        ZIsUp = defaults.ZIsUp;
         HideMineImatorBoneDisplayShapes = defaults.HideMineImatorBoneDisplayShapes;
         HideRegularAssetBoneDisplayShapes = defaults.HideRegularAssetBoneDisplayShapes;
         Snapping = defaults.Snapping;
@@ -773,7 +759,6 @@ public class PreferencesState
     public bool AutoScrollWhilePlaying { get; set; } = true;
     public bool PreviewViewportVisible { get; set; } = true;
     public bool PreviewViewportUndocked { get; set; } = false;
-    public bool ZIsUp { get; set; } = false;
     public bool HideMineImatorBoneDisplayShapes { get; set; } = true;
     public bool HideRegularAssetBoneDisplayShapes { get; set; } = false;
     public Dictionary<string, string>? KeybindOverrides { get; set; }
