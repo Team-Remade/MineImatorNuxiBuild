@@ -150,6 +150,9 @@ public class CameraSceneObject : SceneObject
             case CameraEffectType.ColorCorrection:
                 Effects.Add(new CameraEffect { Type = CameraEffectType.ColorCorrection });
                 break;
+            case CameraEffectType.LensDirt:
+                Effects.Add(new CameraEffect { Type = CameraEffectType.LensDirt });
+                break;
         }
     }
 
@@ -160,6 +163,7 @@ public class CameraSceneObject : SceneObject
             Type = source.Type,
             DepthOfField = source.DepthOfField.Clone(),
             Bloom = source.Bloom.Clone(),
+            LensDirt = source.LensDirt.Clone(),
             ColorCorrection = source.ColorCorrection.Clone(),
             Shake = new CameraShakeSettings
             {

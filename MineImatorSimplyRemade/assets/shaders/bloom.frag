@@ -40,6 +40,11 @@ void main()
         FragColor = blur;
         return;
     }
+    if (uPass == 3)
+    {
+        FragColor = vec4(scene.rgb * uBlendColor * uIntensity, 0.0);
+        return;
+    }
 
     vec4 bloom = texture(uBloom, uv);
     vec3 light = bloom.rgb * uBlendColor;

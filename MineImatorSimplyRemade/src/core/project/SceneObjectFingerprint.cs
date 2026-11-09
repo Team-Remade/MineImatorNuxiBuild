@@ -439,6 +439,13 @@ internal static class SceneObjectFingerprint
                 hash.Add(bloom.BlendColorG);
                 hash.Add(bloom.BlendColorB);
                 hash.Add((int)bloom.BlendMode);
+                var dirt = effect.LensDirt;
+                hash.Add(dirt.TexturePath);
+                hash.Add(dirt.AffectedByBloom);
+                hash.Add(dirt.AffectedByGlow);
+                hash.Add(dirt.Radius);
+                hash.Add(dirt.Intensity);
+                hash.Add(dirt.Power);
                 var colorCorrection = effect.ColorCorrection;
                 hash.Add(colorCorrection.Contrast);
                 hash.Add(colorCorrection.Brightness);

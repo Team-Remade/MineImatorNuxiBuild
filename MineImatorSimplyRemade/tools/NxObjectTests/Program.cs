@@ -268,6 +268,8 @@ internal static partial class Program
             ("Camera blades defaults, ranges, persistence, duplication and undo", CameraBladePersistence),
             ("Camera blades timeline discovery, interpolation and seeking", CameraBladeTimeline),
             ("Camera blades ImGui controls and multi-selection", CameraBladeControls),
+            ("Lens dirt settings, persistence, packaging, duplication, undo and timeline", LensDirtPersistence),
+            ("Lens dirt ImGui texture and percentage controls", LensDirtControls),
             ("Wind defaults, project/object persistence, duplication, undo, animation and classification", WindPersistence),
             ("Biome catalog, independent custom colors, project persistence and reset", BiomeSettings),
             ("Opaque leaf defaults, persistence, texture selection and pixels", OpaqueLeavesSettings),
@@ -390,6 +392,10 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Camera blades", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--camera-blades-graphics", StringComparer.Ordinal))
             tests = [("Camera blades rendered aperture, angle, stretch and default parity", CameraBladeGraphics)];
+        if (args.Contains("--lens-dirt", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Lens dirt", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--lens-dirt-graphics", StringComparer.Ordinal))
+            tests = [("Lens dirt GPU source toggles, texture orientation, radius, intensity, power and alpha", LensDirtGraphics)];
         if (args.Contains("--wind", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Wind", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--biomes", StringComparer.Ordinal))

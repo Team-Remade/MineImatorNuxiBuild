@@ -22,7 +22,7 @@ using Shader = MineImatorSimplyRemade.core.mdl.Shader;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
-public class Viewport : UiPanel
+public partial class Viewport : UiPanel
 {
     private enum SceneRenderMode
     {
@@ -2176,6 +2176,7 @@ public class Viewport : UiPanel
         if (Gl == null)
             return;
 
+        DisposeLensDirtResources();
         DeleteFramebuffer(ref _fbo);
         DeleteTexture(ref _colorTex);
         DeleteTexture(ref _depthTex);
@@ -2223,7 +2224,8 @@ public class Viewport : UiPanel
         uint width,
         uint height,
         PropertiesPanel? settings,
-        RenderedPassMode passMode)
+        RenderedPassMode passMode,
+        bool compositeScene = true)
     {
         using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.Glow);
         if (Gl == null || _glowShader == null || sceneFbo == 0 || sourceColorTex == 0 || glowFbo == 0 || glowTex == 0 || glowPingFbo == 0 || glowPingTex == 0)
@@ -2300,6 +2302,16 @@ public class Viewport : UiPanel
             Gl.DrawArrays(GLEnum.Triangles, 0, 3);
         }
 
+        if (_captureLensDirt)
+        {
+            Gl.BindFramebuffer(GLEnum.ReadFramebuffer, glowFbo);
+            Gl.ReadBuffer(GLEnum.ColorAttachment0);
+            Gl.BindFramebuffer(GLEnum.DrawFramebuffer, _lensDirtGlowFbo);
+            Gl.BlitFramebuffer(0, 0, (int)width, (int)height, 0, 0, (int)width, (int)height,
+                ClearBufferMask.ColorBufferBit, GLEnum.Nearest);
+            _lensDirtGlowStrength = glowStrength;
+        }
+
         // Pass 3: additive composite into the scene color texture.
         Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
         Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.ColorAttachment0, GLEnum.Texture2D, sourceColorTex, 0);
@@ -2329,7 +2341,8 @@ public class Viewport : UiPanel
         if (sizeLoc >= 0) Gl.Uniform1(sizeLoc, glowSize);
         if (directionLoc >= 0) Gl.Uniform2(directionLoc, 1f, 0f);
         if (modeLoc >= 0) Gl.Uniform1(modeLoc, 2);
-        Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+        if (compositeScene)
+            Gl.DrawArrays(GLEnum.Triangles, 0, 3);
         Gl.BindVertexArray(0);
         Gl.BindTexture(GLEnum.Texture2D, 0);
         Gl.Disable(GLEnum.Blend);
@@ -3000,6 +3013,8 @@ public class Viewport : UiPanel
                 ApplyIndirectLightingPassGeneric(_fbo, _colorTex, _depthTex, _indirectFbo, _indirectTex, _indirectPingFbo, _indirectPingTex,
                     w, h, _giAlbedoTex, _giRadianceTex, proj, PropertiesPanel, _renderedPassMode);
 
+            PrepareLensDirt(renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined
+                ? activeCamObj : null, w, h);
             if (renderMode == SceneRenderMode.Rendered)
                 ApplyGlowPassGeneric(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, PropertiesPanel, _renderedPassMode);
 
@@ -3008,6 +3023,7 @@ public class Viewport : UiPanel
             {
                 ApplyDepthOfFieldPass(_fbo, _colorTex, _depthTex, _glowFbo, _glowTex, w, h, renderNear, renderFar, activeCamObj);
                 ApplyBloomPass(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, activeCamObj);
+                ApplyLensDirtPass(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, activeCamObj);
                 ApplyColorManagementPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel, activeCamObj);
                 ApplyColorCorrectionPass(_fbo, _glowFbo, _glowTex, w, h, activeCamObj);
                 ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel);
@@ -6597,6 +6613,23 @@ public class Viewport : UiPanel
                 Gl.DrawArrays(GLEnum.Triangles, 0, 3);
             }
 
+            if (_captureLensDirt)
+            {
+                int srcRgb = Gl.GetInteger(GLEnum.BlendSrcRgb);
+                int dstRgb = Gl.GetInteger(GLEnum.BlendDstRgb);
+                int srcAlpha = Gl.GetInteger(GLEnum.BlendSrcAlpha);
+                int dstAlpha = Gl.GetInteger(GLEnum.BlendDstAlpha);
+                Gl.BindFramebuffer(GLEnum.Framebuffer, _lensDirtBloomFbo);
+                Gl.DrawBuffer(GLEnum.ColorAttachment0);
+                Gl.BindTexture(GLEnum.Texture2D, bloomTexture);
+                Gl.Uniform1(_bloomShader.GetUniformLocation("uPass"), 3);
+                Gl.Enable(GLEnum.Blend);
+                Gl.BlendFuncSeparate(GLEnum.One, GLEnum.One, GLEnum.Zero, GLEnum.One);
+                Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+                Gl.Disable(GLEnum.Blend);
+                Gl.BlendFuncSeparate((GLEnum)srcRgb, (GLEnum)dstRgb, (GLEnum)srcAlpha, (GLEnum)dstAlpha);
+            }
+
             // The ping target is free after blur. Copy the base to avoid sampling our output attachment.
             Gl.BindTexture(GLEnum.Texture2D, 0);
             Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
@@ -7516,8 +7549,12 @@ public class Viewport : UiPanel
                 _previewIndirectFbo, _previewIndirectTex, _previewIndirectPingFbo, _previewIndirectPingTex,
                 w, h, _previewGiAlbedoTex, _previewGiRadianceTex, proj, MainViewport.PropertiesPanel, effectivePassMode);
 
-        if (renderMode == SceneRenderMode.Rendered)
-            ApplyGlowPassGeneric(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, _previewGlowPingFbo, _previewGlowPingTex, w, h, MainViewport.PropertiesPanel, effectivePassMode);
+        PrepareLensDirt((renderMode == SceneRenderMode.Rendered || applyCameraEffects) &&
+            effectivePassMode == RenderedPassMode.Combined ? sceneObj : null, w, h);
+        // Shaded camera feeds can illuminate dirt without changing their existing scene glow/compositing behavior.
+        if (renderMode == SceneRenderMode.Rendered || (applyCameraEffects && _captureLensDirt))
+            ApplyGlowPassGeneric(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, _previewGlowPingFbo, _previewGlowPingTex,
+                w, h, MainViewport.PropertiesPanel, effectivePassMode, compositeScene: renderMode == SceneRenderMode.Rendered);
 
         // Live camera textures must include their camera's post effects even
         // when the preview viewport itself is in a shaded/unrendered mode.
@@ -7529,6 +7566,8 @@ public class Viewport : UiPanel
             ApplyDepthOfFieldPass(_previewFbo, _previewColorTex, _previewDepthTex, _previewGlowFbo, _previewGlowTex,
                 w, h, renderCamera.Near, renderCamera.Far, sceneObj);
             ApplyBloomPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex,
+                _previewGlowPingFbo, _previewGlowPingTex, w, h, sceneObj);
+            ApplyLensDirtPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex,
                 _previewGlowPingFbo, _previewGlowPingTex, w, h, sceneObj);
             ApplyColorManagementPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, MainViewport.PropertiesPanel, sceneObj);
             ApplyColorCorrectionPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);

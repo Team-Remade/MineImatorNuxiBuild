@@ -8,7 +8,54 @@ public enum CameraEffectType
     FilmGrain = 1,
     DepthOfField = 2,
     Bloom = 3,
-    ColorCorrection = 4
+    ColorCorrection = 4,
+    LensDirt = 5
+}
+
+public class LensDirtSettings
+{
+    public string TexturePath { get; set; } = "";
+    public bool AffectedByBloom { get; set; } = true;
+    public bool AffectedByGlow { get; set; } = true;
+    public float Radius { get; set; } = 50f;
+    public float Intensity { get; set; } = 100f;
+    public float Power { get; set; } = 100f;
+
+    public LensDirtSettings Clone() => (LensDirtSettings)MemberwiseClone();
+
+    public static readonly (string Key, string Label, float Min, float Max)[] Controls =
+    [
+        ("affected_by_bloom", "Affected by Bloom", 0f, 1f),
+        ("affected_by_glow", "Affected by Glow", 0f, 1f),
+        ("radius", "Radius (%)", 0f, 100f),
+        ("intensity", "Intensity (%)", 0f, 1000f),
+        ("power", "Power (%)", 1f, 1000f)
+    ];
+
+    public float GetValue(string key) => key switch
+    {
+        "affected_by_bloom" => AffectedByBloom ? 1f : 0f,
+        "affected_by_glow" => AffectedByGlow ? 1f : 0f,
+        "radius" => Radius,
+        "intensity" => Intensity,
+        "power" => Power,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown lens dirt control.")
+    };
+
+    public void SetValue(string key, float value)
+    {
+        if (!float.IsFinite(value))
+            throw new ArgumentOutOfRangeException(nameof(value), value, "Lens dirt values must be finite.");
+        switch (key)
+        {
+            case "affected_by_bloom": AffectedByBloom = value >= 0.5f; break;
+            case "affected_by_glow": AffectedByGlow = value >= 0.5f; break;
+            case "radius": Radius = Math.Clamp(value, 0f, 100f); break;
+            case "intensity": Intensity = Math.Clamp(value, 0f, 1000f); break;
+            case "power": Power = Math.Clamp(value, 1f, 1000f); break;
+            default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown lens dirt control.");
+        }
+    }
 }
 
 public enum BloomBlendMode
@@ -172,5 +219,6 @@ public class CameraEffect
     public FilmGrainSettings FilmGrain = new FilmGrainSettings();
     public DepthOfFieldSettings DepthOfField = new();
     public BloomSettings Bloom = new();
+    public LensDirtSettings LensDirt = new();
     public ColorCorrectionSettings ColorCorrection = new();
 }

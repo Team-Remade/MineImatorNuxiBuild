@@ -1426,11 +1426,14 @@ public static class ProjectSceneSerializer
 
     private static ProjectCameraEffectEntry SerializeCameraEffect(CameraEffect effect)
     {
+        var dirt = effect.LensDirt.Clone();
+        dirt.TexturePath = ProjectManager.Instance.ToAssetReference(dirt.TexturePath);
         return new ProjectCameraEffectEntry
         {
             Type = effect.Type,
             DepthOfField = effect.DepthOfField.Clone(),
             Bloom = effect.Bloom.Clone(),
+            LensDirt = dirt,
             ColorCorrection = effect.ColorCorrection.Clone(),
             Shake = new ProjectCameraShakeSettings
             {
@@ -1451,11 +1454,14 @@ public static class ProjectSceneSerializer
 
     private static CameraEffect DeserializeCameraEffect(ProjectCameraEffectEntry effect)
     {
+        var dirt = effect.LensDirt?.Clone() ?? new LensDirtSettings();
+        dirt.TexturePath = ProjectManager.Instance.ResolveAssetPath(dirt.TexturePath);
         return new CameraEffect
         {
             Type = effect.Type,
             DepthOfField = effect.DepthOfField?.Clone() ?? new DepthOfFieldSettings(),
             Bloom = effect.Bloom?.Clone() ?? new BloomSettings(),
+            LensDirt = dirt,
             ColorCorrection = effect.ColorCorrection?.Clone() ?? new ColorCorrectionSettings(),
             Shake = new CameraShakeSettings
             {

@@ -333,6 +333,8 @@ public static class NxObjectArchive
         node.AlbedoTexturePath = File(node.AlbedoTexturePath);
         node.NormalTexturePath = File(node.NormalTexturePath);
         node.EmissionTexturePath = File(node.EmissionTexturePath);
+        foreach (var effect in node.CameraEffects)
+            effect.LensDirt.TexturePath = File(effect.LensDirt.TexturePath);
         node.SurfaceTexturePath = File(node.SurfaceTexturePath);
         if (node.OcclusionTexturePath != null) node.OcclusionTexturePath = File(node.OcclusionTexturePath);
         if (node.RoughnessTexturePath != null) node.RoughnessTexturePath = File(node.RoughnessTexturePath);

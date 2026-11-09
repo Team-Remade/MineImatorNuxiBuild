@@ -328,7 +328,7 @@ public partial class PropertiesPanel : UiPanel
 
     // Scale link toggle
     private bool _linkScale = true;
-    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction" };
+    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction", "Lens Dirt" };
     private static readonly string[] CameraShakeModeOptions = { "Rotational", "Positional", "Both" };
     private static readonly string[] BloomBlendModeOptions =
         ["text.panel.properties.blend_normal", "text.panel.properties.blend_add", "text.panel.properties.blend_screen",
@@ -1233,6 +1233,7 @@ public partial class PropertiesPanel : UiPanel
                     Type = effect.Type,
                     DepthOfField = effect.DepthOfField.Clone(),
                     Bloom = effect.Bloom.Clone(),
+                    LensDirt = effect.LensDirt.Clone(),
                     ColorCorrection = effect.ColorCorrection.Clone(),
                     Shake = new ProjectCameraShakeSettings
                     {
@@ -5283,6 +5284,7 @@ public partial class PropertiesPanel : UiPanel
                             CameraEffectType.DepthOfField => Localization.T("text.panel.properties.depth_of_field") + $"###Depth of Field##cameraEffect{i}",
                             CameraEffectType.Bloom => Localization.T("text.panel.properties.bloom") + $"###Bloom##cameraEffect{i}",
                             CameraEffectType.ColorCorrection => Localization.T("text.panel.properties.color_correction") + $"###Color Correction##cameraEffect{i}",
+                            CameraEffectType.LensDirt => Localization.T("text.panel.properties.lens_dirt") + $"###Lens Dirt##cameraEffect{i}",
                             _ => Localization.Format("text.panel.properties.effect", i + 1) + $"###Effect {i + 1}##cameraEffect{i}"
                         };
 
@@ -5436,6 +5438,9 @@ public partial class PropertiesPanel : UiPanel
                                 RegisterPropertyContext($"{basePath}.mode");
                                 ImGui.PopID();
                             }
+
+                            if (effect.Type == CameraEffectType.LensDirt)
+                                DrawLensDirtControls(cameraObject, i);
 
                             if (effect.Type == CameraEffectType.ColorCorrection)
                             {
@@ -6427,6 +6432,82 @@ public partial class PropertiesPanel : UiPanel
         }
     }
 
+    private void DrawLensDirtControls(CameraSceneObject camera, int index)
+    {
+        ImGui.PushID(index);
+        var settings = camera.Effects[index].LensDirt;
+        DrawLensDirtTextureSelector(camera, settings);
+        string basePath = $"camera.effect.{index}.lens_dirt";
+        foreach (var control in LensDirtSettings.Controls)
+        {
+            float value = settings.GetValue(control.Key);
+            bool changed;
+            if (control.Key is "affected_by_bloom" or "affected_by_glow")
+            {
+                bool enabled = value >= 0.5f;
+                changed = ImGui.Checkbox(Localization.DisplayLabel(control.Label), ref enabled);
+                value = enabled ? 1f : 0f;
+            }
+            else
+                changed = ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value,
+                    control.Min, control.Max, "%.1f%%", ImGuiSliderFlags.AlwaysClamp);
+            if (changed)
+            {
+                settings.SetValue(control.Key, value);
+                Timeline?.RecordAutoKeyframe(camera, $"{basePath}.{control.Key}");
+                ProjectManager.Instance.SetDirty(true);
+            }
+            RegisterPropertyContext($"{basePath}.{control.Key}");
+        }
+        ImGui.PopID();
+    }
+
+    private void DrawLensDirtTextureSelector(CameraSceneObject camera, LensDirtSettings settings)
+    {
+        string current = settings.TexturePath;
+        string label = string.IsNullOrEmpty(current) ? Localization.T("text.panel.properties.none") : TextureSheetPicker.Label(current);
+        ImGui.TextUnformatted(Localization.T("text.panel.properties.lens_dirt_texture"));
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.BeginCombo("##LensDirtTexture", label))
+        {
+            if (ImGui.Selectable(Localization.T("text.panel.properties.none"), string.IsNullOrEmpty(current)))
+                Assign("");
+            foreach (string path in _loadedTexturePathCache.Values
+                .Concat(ProjectManager.Instance.GetProjectAssets()
+                    .Where(asset => asset.AssetType == ProjectAssetType.Image)
+                    .Select(asset => ProjectManager.Instance.GetAssetFullPath(asset)))
+                .Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (TextureSheetPicker.IsGeneratedTile(path)) continue;
+                if (ImGui.Selectable(Path.GetFileName(path) + "##" + path,
+                    string.Equals(ProjectManager.Instance.ResolveAssetPath(current), path, StringComparison.OrdinalIgnoreCase)))
+                    ApplySheetSelection(path, Assign);
+            }
+            ImGui.EndCombo();
+        }
+        if (ImGui.Button(Localization.Label("text.panel.properties.load_new_texture", "Load new texture..."), new Vector2(-1, 0)))
+            RequestTextureImport(Assign);
+        DrawTextureSheetPicker("LensDirtSheet", current, Assign);
+        if (!string.IsNullOrEmpty(_pbrImportError))
+            UiText.Wrapped(_pbrImportError);
+
+        void Assign(string path)
+        {
+            if (!string.IsNullOrEmpty(path))
+            {
+                path = ResolveAlbedoTexturePathForProject(path);
+                if (Gl == null || camera.LoadTexture(path, reload: true) == 0)
+                {
+                    _pbrImportError = $"Could not load lens dirt texture '{Path.GetFileName(path)}'.";
+                    return;
+                }
+            }
+            settings.TexturePath = path;
+            _pbrImportError = "";
+            ProjectManager.Instance.SetDirty(true);
+        }
+    }
+
     private void DrawAuxiliaryTextureSelector(bool normal)
     {
         string slot = normal ? "Normal" : "Emission";
@@ -7145,6 +7226,11 @@ public partial class PropertiesPanel : UiPanel
                         else if (parts[3] == "bloom")
                         {
                             var control = BloomSettings.Controls.First(c => c.Key == string.Join('.', parts.Skip(4)));
+                            stored = Math.Clamp(number, control.Min, control.Max);
+                        }
+                        else if (parts[3] == "lens_dirt")
+                        {
+                            var control = LensDirtSettings.Controls.First(c => c.Key == parts[4]);
                             stored = Math.Clamp(number, control.Min, control.Max);
                         }
                         else if (parts[3] == "film_grain")
