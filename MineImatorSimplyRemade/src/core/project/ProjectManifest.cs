@@ -646,6 +646,7 @@ public class ProjectCameraEffectEntry
     public BloomSettings Bloom { get; set; } = new();
     public LensDirtSettings LensDirt { get; set; } = new();
     public VignetteSettings Vignette { get; set; } = new();
+    public ChromaticAberrationSettings ChromaticAberration { get; set; } = new();
     public ColorCorrectionSettings ColorCorrection { get; set; } = new();
 }
 

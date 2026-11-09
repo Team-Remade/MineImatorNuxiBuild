@@ -335,7 +335,7 @@ public partial class PropertiesPanel : UiPanel
 
     // Scale link toggle
     private bool _linkScale = true;
-    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction", "Lens Dirt", "Vignette" };
+    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction", "Lens Dirt", "Vignette", "Chromatic Aberration" };
     private static readonly string[] CameraShakeModeOptions = { "Rotational", "Positional", "Both" };
     private static readonly string[] BloomBlendModeOptions =
         ["text.panel.properties.blend_normal", "text.panel.properties.blend_add", "text.panel.properties.blend_screen",
@@ -1259,6 +1259,7 @@ public partial class PropertiesPanel : UiPanel
                     Bloom = effect.Bloom.Clone(),
                     LensDirt = effect.LensDirt.Clone(),
                     Vignette = effect.Vignette.Clone(),
+                    ChromaticAberration = effect.ChromaticAberration.Clone(),
                     ColorCorrection = effect.ColorCorrection.Clone(),
                     Shake = new ProjectCameraShakeSettings
                     {
@@ -5316,6 +5317,7 @@ public partial class PropertiesPanel : UiPanel
                             CameraEffectType.ColorCorrection => Localization.T("text.panel.properties.color_correction") + $"###Color Correction##cameraEffect{i}",
                             CameraEffectType.LensDirt => Localization.T("text.panel.properties.lens_dirt") + $"###Lens Dirt##cameraEffect{i}",
                             CameraEffectType.Vignette => Localization.T("text.panel.properties.vignette") + $"###Vignette##cameraEffect{i}",
+                            CameraEffectType.ChromaticAberration => Localization.T("text.panel.properties.chromatic_aberration") + $"###ChromaticAberration##cameraEffect{i}",
                             _ => Localization.Format("text.panel.properties.effect", i + 1) + $"###Effect {i + 1}##cameraEffect{i}"
                         };
 
@@ -5475,6 +5477,8 @@ public partial class PropertiesPanel : UiPanel
 
                             if (effect.Type == CameraEffectType.Vignette)
                                 DrawVignetteControls(cameraObject, i);
+                            if (effect.Type == CameraEffectType.ChromaticAberration)
+                                DrawChromaticAberrationControls(cameraObject, i);
 
                             if (effect.Type == CameraEffectType.ColorCorrection)
                             {
@@ -5548,14 +5552,7 @@ public partial class PropertiesPanel : UiPanel
                                         _ => null
                                     };
                                     if (channelColor is Vector4 tint)
-                                    {
-                                        var colors = ImGui.GetStyle().Colors;
-                                        ImGui.PushStyleColor(ImGuiCol.FrameBg, Vector4.Lerp(colors[(int)ImGuiCol.FrameBg], tint, 0.25f));
-                                        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, Vector4.Lerp(colors[(int)ImGuiCol.FrameBgHovered], tint, 0.35f));
-                                        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, Vector4.Lerp(colors[(int)ImGuiCol.FrameBgActive], tint, 0.45f));
-                                        ImGui.PushStyleColor(ImGuiCol.SliderGrab, tint);
-                                        ImGui.PushStyleColor(ImGuiCol.SliderGrabActive, Vector4.Lerp(tint, Vector4.One, 0.20f));
-                                    }
+                                        PushChannelSliderColors(tint);
                                     bool changed;
                                     if (control.Key == "color_fringe")
                                     {
@@ -6504,6 +6501,56 @@ public partial class PropertiesPanel : UiPanel
         }
     }
 
+    private static void PushChannelSliderColors(Vector4 tint)
+    {
+        var colors = ImGui.GetStyle().Colors;
+        ImGui.PushStyleColor(ImGuiCol.FrameBg, Vector4.Lerp(colors[(int)ImGuiCol.FrameBg], tint, 0.25f));
+        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, Vector4.Lerp(colors[(int)ImGuiCol.FrameBgHovered], tint, 0.35f));
+        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, Vector4.Lerp(colors[(int)ImGuiCol.FrameBgActive], tint, 0.45f));
+        ImGui.PushStyleColor(ImGuiCol.SliderGrab, tint);
+        ImGui.PushStyleColor(ImGuiCol.SliderGrabActive, Vector4.Lerp(tint, Vector4.One, 0.20f));
+    }
+
+    private void DrawChromaticAberrationControls(CameraSceneObject camera, int index)
+    {
+        ImGui.PushID(index);
+        var settings = camera.Effects[index].ChromaticAberration;
+        string basePath = $"camera.effect.{index}.chromatic_aberration";
+        foreach (var control in ChromaticAberrationSettings.Controls)
+        {
+            float value = settings.GetValue(control.Key);
+            Vector4? channelColor = control.Key switch
+            {
+                "red_offset" => new Vector4(0.90f, 0.25f, 0.25f, 1f),
+                "green_offset" => new Vector4(0.20f, 0.75f, 0.35f, 1f),
+                "blue_offset" => new Vector4(0.25f, 0.50f, 0.95f, 1f),
+                _ => null
+            };
+            if (channelColor is Vector4 tint)
+                PushChannelSliderColors(tint);
+            bool changed;
+            if (control.Key == "distort_rgb")
+            {
+                bool enabled = settings.DistortRgb;
+                changed = ImGui.Checkbox(Localization.DisplayLabel(control.Label), ref enabled);
+                value = enabled ? 1f : 0f;
+            }
+            else
+                changed = ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value,
+                    control.Min, control.Max, "%.1f%%", ImGuiSliderFlags.AlwaysClamp);
+            if (channelColor.HasValue)
+                ImGui.PopStyleColor(5);
+            if (changed)
+            {
+                settings.SetValue(control.Key, value);
+                Timeline?.RecordAutoKeyframe(camera, $"{basePath}.{control.Key}");
+                ProjectManager.Instance.SetDirty(true);
+            }
+            RegisterPropertyContext($"{basePath}.{control.Key}");
+        }
+        ImGui.PopID();
+    }
+
     private void DrawVignetteControls(CameraSceneObject camera, int index)
     {
         ImGui.PushID(index);
@@ -7342,6 +7389,11 @@ public partial class PropertiesPanel : UiPanel
                         else if (parts[3] == "vignette")
                         {
                             var control = VignetteSettings.Controls.First(c => c.Key == string.Join('.', parts.Skip(4)));
+                            stored = Math.Clamp(number, control.Min, control.Max);
+                        }
+                        else if (parts[3] == "chromatic_aberration")
+                        {
+                            var control = ChromaticAberrationSettings.Controls.First(c => c.Key == parts[4]);
                             stored = Math.Clamp(number, control.Min, control.Max);
                         }
                         else if (parts[3] == "film_grain")

@@ -10,7 +10,53 @@ public enum CameraEffectType
     Bloom = 3,
     ColorCorrection = 4,
     LensDirt = 5,
-    Vignette = 6
+    Vignette = 6,
+    ChromaticAberration = 7
+}
+
+public class ChromaticAberrationSettings
+{
+    public float BlurAmount { get; set; }
+    public bool DistortRgb { get; set; } = true;
+    public float RedOffset { get; set; } = 1f;
+    public float GreenOffset { get; set; }
+    public float BlueOffset { get; set; } = -1f;
+
+    public ChromaticAberrationSettings Clone() => (ChromaticAberrationSettings)MemberwiseClone();
+
+    public static readonly (string Key, string Label, float Min, float Max)[] Controls =
+    [
+        ("blur_amount", "Blur Amount (%)", 0f, 100f),
+        ("distort_rgb", "Distort RGB", 0f, 1f),
+        ("red_offset", "Red Offset (%)", -100f, 100f),
+        ("green_offset", "Green Offset (%)", -100f, 100f),
+        ("blue_offset", "Blue Offset (%)", -100f, 100f)
+    ];
+
+    public float GetValue(string key) => key switch
+    {
+        "blur_amount" => BlurAmount,
+        "distort_rgb" => DistortRgb ? 1f : 0f,
+        "red_offset" => RedOffset,
+        "green_offset" => GreenOffset,
+        "blue_offset" => BlueOffset,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown chromatic aberration control.")
+    };
+
+    public void SetValue(string key, float value)
+    {
+        if (!float.IsFinite(value))
+            throw new ArgumentOutOfRangeException(nameof(value), value, "Chromatic aberration values must be finite.");
+        switch (key)
+        {
+            case "blur_amount": BlurAmount = Math.Clamp(value, 0f, 100f); break;
+            case "distort_rgb": DistortRgb = value >= 0.5f; break;
+            case "red_offset": RedOffset = Math.Clamp(value, -100f, 100f); break;
+            case "green_offset": GreenOffset = Math.Clamp(value, -100f, 100f); break;
+            case "blue_offset": BlueOffset = Math.Clamp(value, -100f, 100f); break;
+            default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown chromatic aberration control.");
+        }
+    }
 }
 
 public class VignetteSettings
@@ -271,5 +317,6 @@ public class CameraEffect
     public BloomSettings Bloom = new();
     public LensDirtSettings LensDirt = new();
     public VignetteSettings Vignette = new();
+    public ChromaticAberrationSettings ChromaticAberration = new();
     public ColorCorrectionSettings ColorCorrection = new();
 }

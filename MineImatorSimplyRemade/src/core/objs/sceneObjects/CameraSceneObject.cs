@@ -156,6 +156,9 @@ public class CameraSceneObject : SceneObject
             case CameraEffectType.Vignette:
                 Effects.Add(new CameraEffect { Type = CameraEffectType.Vignette });
                 break;
+            case CameraEffectType.ChromaticAberration:
+                Effects.Add(new CameraEffect { Type = CameraEffectType.ChromaticAberration });
+                break;
         }
     }
 
@@ -168,6 +171,7 @@ public class CameraSceneObject : SceneObject
             Bloom = source.Bloom.Clone(),
             LensDirt = source.LensDirt.Clone(),
             Vignette = source.Vignette.Clone(),
+            ChromaticAberration = source.ChromaticAberration.Clone(),
             ColorCorrection = source.ColorCorrection.Clone(),
             Shake = new CameraShakeSettings
             {

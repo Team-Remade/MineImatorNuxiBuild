@@ -312,6 +312,8 @@ internal static partial class Program
             ("Lens dirt ImGui texture and percentage controls", LensDirtControls),
             ("Vignette settings, persistence, duplication, undo and timeline", VignettePersistence),
             ("Vignette ImGui percentage sliders and color picker", VignetteControls),
+            ("Chromatic aberration settings, persistence, duplication, undo and timeline", ChromaticAberrationPersistence),
+            ("Chromatic aberration ImGui percentage sliders and checkbox", ChromaticAberrationControls),
             ("Wind defaults, project/object persistence, duplication, undo, animation and classification", WindPersistence),
             ("Biome catalog, independent custom colors, project persistence and reset", BiomeSettings),
             ("Opaque leaf defaults, persistence, texture selection and pixels", OpaqueLeavesSettings),
@@ -448,6 +450,10 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Vignette", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--vignette-graphics", StringComparer.Ordinal))
             tests = [("Vignette GPU radius, softness, strength, color, stacking, alpha and preview/export parity", VignetteGraphics)];
+        if (args.Contains("--chromatic-aberration", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Chromatic aberration", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--chromatic-aberration-graphics", StringComparer.Ordinal))
+            tests = [("Chromatic aberration GPU channel offsets, distortion, blur, stacking, alpha and preview/export parity", ChromaticAberrationGraphics)];
         if (args.Contains("--wind", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Wind", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--biomes", StringComparer.Ordinal))
