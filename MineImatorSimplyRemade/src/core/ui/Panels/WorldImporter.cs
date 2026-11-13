@@ -11,6 +11,7 @@ using MineImatorSimplyRemadeNuxi.core.objs;
 using NativeFileDialogSharp;
 using Silk.NET.GLFW;
 using Silk.NET.OpenGL;
+using StbImageSharp;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
@@ -41,6 +42,9 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
     private List<MinecraftWorld> _worlds = [];
     private List<string> _warnings = [];
     private MinecraftWorld? _world;
+    private WorldPlayerPosition? _player;
+    private uint _playerHeadTexture;
+    private bool _playerHeadTextureLoaded;
     private int _dimensionIndex;
     private int _centerX, _centerZ;
     private int _minX, _minY, _minZ, _maxX, _maxY, _maxZ;
@@ -184,6 +188,16 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         NextToolbarItem(100);
         if (ImGui.Button(Localization.Label("text.panel.world_importer.world_spawn", "World spawn")) && _world != null)
             TryAction(GoToSpawn);
+        NextToolbarItem(120);
+        ImGui.BeginDisabled(_player == null || FindDimension(_world!, _player.Dimension) < 0);
+        if (ImGui.Button(Localization.Label("text.panel.world_importer.player_position", "Player position")))
+            TryAction(GoToPlayer);
+        if (_world != null && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            UiText.Tooltip(_player == null
+                ? Localization.T("text.panel.world_importer.no_saved_player_position")
+                : Localization.Format("text.panel.world_importer.player_position_tooltip",
+                    _player.X, _player.Y, _player.Z, _player.Dimension));
+        ImGui.EndDisabled();
         NextToolbarItem(80);
         if (ImGui.Button(Localization.Label("text.panel.world_importer.position", "Position..."))) ImGui.OpenPopup("##worldPosition");
         RenderPositionPopup();
@@ -591,6 +605,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
                 UiText.Tooltip(Localization.T("text.panel.world_importer.drag_this_face_to_resize_ctrl_drag_starts_a_new_box"));
         }
         DrawSelection(_viewportPosition, _viewportSize);
+        DrawPlayerMarker(_viewportPosition, _viewportSize, mouse);
         ImGui.SetCursorScreenPos(importPosition);
         ImGui.BeginDisabled(Busy || SelectionError() != null || !ProjectManager.Instance.HasProject ||
                             (_unknown.Length > 0 && !_allowUnknown));
@@ -615,6 +630,94 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             foreach (var (start, end) in ProjectSelectionEdges(Selection, _worldOrigin, _renderer.ViewProjection, position, size, face))
                 draw.AddLine(start, end, 0xff40c0ff, 4);
         draw.PopClipRect();
+    }
+
+    private void DrawPlayerMarker(Vector2 position, Vector2 size, Vector2 mouse)
+    {
+        if (_player == null || _player.Dimension != Dimension.Id) return;
+        var feet = new vec3((float)(_player.X - (int)_worldOrigin.x), (float)_player.Y, (float)(_player.Z - (int)_worldOrigin.z));
+        var head = feet + new vec3(0, 1.8f, 0);
+        if (ProjectToScreen(head, position, size) is not { } headScreen) return;
+        float distance = (head - _camera.Position).Length;
+        float half = Math.Clamp(480f / Math.Max(1, distance), 9f, 22f);
+        var draw = ImGui.GetWindowDrawList();
+        draw.PushClipRect(position, position + size, true);
+        if (ProjectToScreen(feet, position, size) is { } feetScreen)
+        {
+            draw.AddLine(headScreen, feetScreen, 0xc0000000, 3);
+            draw.AddLine(headScreen, feetScreen, 0xffffffff, 1);
+            draw.AddCircleFilled(feetScreen, 3, 0xffffffff);
+        }
+        var min = headScreen - new Vector2(half);
+        var max = headScreen + new Vector2(half);
+        draw.AddRectFilled(min - new Vector2(2), max + new Vector2(2), 0xe0000000);
+        uint texture = PlayerHeadTexture();
+        if (texture != 0) draw.AddImage(new ImTextureRef(texId: texture), min, max);
+        else draw.AddRectFilled(min, max, 0xff7a5a3c);
+        draw.AddRect(min - new Vector2(2), max + new Vector2(2), 0xffffffff, 0, ImDrawFlags.None, 1.5f);
+        draw.PopClipRect();
+        if (ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows) && mouse.X >= min.X - 2 && mouse.X <= max.X + 2 &&
+            mouse.Y >= min.Y - 2 && mouse.Y <= max.Y + 2)
+            UiText.Tooltip(Localization.Format("text.panel.world_importer.player_position_tooltip",
+                _player.X, _player.Y, _player.Z, _player.Dimension));
+    }
+
+    private Vector2? ProjectToScreen(vec3 local, Vector2 position, Vector2 size)
+    {
+        var clip = _renderer.ViewProjection * new vec4(local, 1);
+        if (clip.w <= 0.0001f) return null;
+        var ndc = clip.xyz / clip.w;
+        if (ndc.z < -1 || ndc.z > 1) return null;
+        return position + new Vector2(ndc.x + 1, 1 - ndc.y) * size * 0.5f;
+    }
+
+    private uint PlayerHeadTexture()
+    {
+        if (_playerHeadTextureLoaded) return _playerHeadTexture;
+        _playerHeadTextureLoaded = true;
+        try
+        {
+            string textures = Path.Combine(MinecraftDataLoader.GetVersionRoot(), "textures", "entity");
+            string? path = new[]
+                {
+                    Path.Combine(textures, "player", "wide", "steve.png"),
+                    Path.Combine(textures, "steve.png")
+                }.FirstOrDefault(File.Exists);
+            if (path == null) return 0;
+            using var stream = File.OpenRead(path);
+            StbImage.stbi_set_flip_vertically_on_load(0);
+            var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+            if (image.Width < 48 || image.Height < 16 || image.Width % 64 != 0) return 0;
+            int scale = image.Width / 64;
+            int pixelsPerSide = 8 * scale;
+            byte[] pixels = new byte[pixelsPerSide * pixelsPerSide * 4];
+            for (int y = 0; y < pixelsPerSide; y++)
+            for (int x = 0; x < pixelsPerSide; x++)
+            {
+                int face = ((8 * scale + y) * image.Width + 8 * scale + x) * 4;
+                int hat = ((8 * scale + y) * image.Width + 40 * scale + x) * 4;
+                int target = (y * pixelsPerSide + x) * 4;
+                float alpha = image.Data[hat + 3] / 255f;
+                for (int c = 0; c < 3; c++)
+                    pixels[target + c] = (byte)(image.Data[face + c] * (1 - alpha) + image.Data[hat + c] * alpha);
+                pixels[target + 3] = 255;
+            }
+            gl.GenTextures(1, out _playerHeadTexture);
+            gl.BindTexture(GLEnum.Texture2D, _playerHeadTexture);
+            fixed (byte* data = pixels)
+                gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8, (uint)pixelsPerSide, (uint)pixelsPerSide, 0,
+                    GLEnum.Rgba, GLEnum.UnsignedByte, data);
+            gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)GLEnum.Nearest);
+            gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)GLEnum.Nearest);
+            gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)GLEnum.ClampToEdge);
+            gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.ClampToEdge);
+            gl.BindTexture(GLEnum.Texture2D, 0);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _playerHeadTexture = 0;
+        }
+        return _playerHeadTexture;
     }
 
     internal static List<(Vector2 Start, Vector2 End)> ProjectSelectionEdges(WorldBounds bounds,
@@ -853,6 +956,17 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         StartRead(preview: true);
     }
 
+    private void GoToPlayer()
+    {
+        if (_world == null || _player == null) return;
+        int index = FindDimension(_world, _player.Dimension);
+        if (index < 0)
+            throw new InvalidDataException(Localization.Format("text.panel.world_importer.the_player_dimension_has_no_generated_terrain", _player.Dimension));
+        _dimensionIndex = index;
+        ResetArea(useSpawn: false, player: _player);
+        StartRead(preview: true);
+    }
+
     private void SetSelectionSize(int size)
     {
         var eye = _camera.Position + _worldOrigin;
@@ -981,6 +1095,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         int playerDimension = player == null ? -1 : FindDimension(world, player.Dimension);
         int spawnDimension = FindDimension(world, world.SpawnDimension);
         _world = world;
+        _player = player;
         _dimensionIndex = playerDimension >= 0 ? playerDimension : Math.Max(0, spawnDimension);
         if (!_worlds.Any(w => w.Folder == world.Folder)) _worlds.Add(world);
         ResetArea(useSpawn: spawnDimension >= 0, player: playerDimension >= 0 ? player : null);
@@ -1431,6 +1546,9 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         _specialBlocks = null;
         ClearPreview();
         _renderer.Dispose();
+        if (_playerHeadTexture != 0) gl.DeleteTexture(_playerHeadTexture);
+        _playerHeadTexture = 0;
+        _playerHeadTextureLoaded = false;
     }
 
     public void Dispose() => Close();

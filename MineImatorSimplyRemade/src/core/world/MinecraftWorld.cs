@@ -125,7 +125,7 @@ internal sealed record MinecraftWorld(
             throw new InvalidDataException("This world has no generated Anvil region folders.");
         var spawn = ReadJavaSpawn(root);
         return new MinecraftWorld(folder, name, false, spawn.X, spawn.Y, spawn.Z, dimensions, spawn.Dimension,
-            ReadJavaPlayerPosition(root));
+            ReadJavaPlayerPosition(root, folder));
 
         void AddDimension(string displayName, string id, string dimensionFolder, int minY, int maxY)
         {
@@ -140,10 +140,69 @@ internal sealed record MinecraftWorld(
         }
     }
 
-    internal static WorldPlayerPosition? ReadJavaPlayerPosition(TagCompound data)
+    /// <summary>
+    /// Reads the singleplayer position. Before 26.1 it lives in level.dat's Player tag; from 26.1 on,
+    /// level.dat stores singleplayer_uuid and the data lives in players/data/&lt;uuid&gt;.dat.
+    /// </summary>
+    internal static WorldPlayerPosition? ReadJavaPlayerPosition(TagCompound data, string? folder = null)
     {
-        if (data.GetTag("Player") is not TagCompound player ||
-            player.GetTag("Pos") is not TagList position || position.ListType != TagType.Double || position.Count != 3)
+        if (data.GetTag("Player") is TagCompound legacy && ReadJavaPlayerCompound(legacy) is { } position)
+            return position;
+        if (folder == null) return null;
+        string[] playerFolders = [Path.Combine(folder, "players", "data"), Path.Combine(folder, "playerdata")];
+        try
+        {
+            if (ReadSingleplayerUuid(data) is { } uuid)
+                foreach (string directory in playerFolders)
+                    if (ReadJavaPlayerFile(Path.Combine(directory, uuid + ".dat")) is { } owned)
+                        return owned;
+            // Worlds without a recorded owner (e.g. copied server worlds): use the most recently saved player.
+            foreach (string file in playerFolders.Where(Directory.Exists)
+                         .SelectMany(d => Directory.EnumerateFiles(d, "*.dat"))
+                         .Where(f => Path.GetExtension(f).Equals(".dat", StringComparison.OrdinalIgnoreCase))
+                         .OrderByDescending(File.GetLastWriteTimeUtc))
+                if (ReadJavaPlayerFile(file) is { } recent)
+                    return recent;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+        return null;
+    }
+
+    internal static string? ReadSingleplayerUuid(TagCompound data)
+    {
+        switch (data.GetTag("singleplayer_uuid"))
+        {
+            case TagIntArray { Value.Length: 4 } ints:
+                string hex = string.Concat(ints.Value.Select(v => ((uint)v).ToString("x8")));
+                return $"{hex[..8]}-{hex[8..12]}-{hex[12..16]}-{hex[16..20]}-{hex[20..]}";
+            case TagString text when Guid.TryParse(text.Value, out var guid):
+                return guid.ToString("D");
+            default:
+                return null;
+        }
+    }
+
+    private static WorldPlayerPosition? ReadJavaPlayerFile(string path)
+    {
+        if (!File.Exists(path)) return null;
+        try
+        {
+            using var source = File.OpenRead(path);
+            using var gzip = new GZipStream(source, CompressionMode.Decompress);
+            using var buffer = JavaWorldReader.ReadBounded(gzip, 32 * 1024 * 1024);
+            return NbtDocument.LoadDocument(buffer).DocumentRoot is { } root ? ReadJavaPlayerCompound(root) : null;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return null;
+        }
+    }
+
+    private static WorldPlayerPosition? ReadJavaPlayerCompound(TagCompound player)
+    {
+        if (player.GetTag("Pos") is not TagList position || position.ListType != TagType.Double || position.Count != 3)
             return null;
         var coordinates = position.Value.Cast<Tag>().OfType<TagDouble>().ToArray();
         if (coordinates.Length != 3) return null;

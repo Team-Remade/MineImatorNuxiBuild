@@ -440,8 +440,11 @@ internal static partial class Program
             ("Particle direct and grouped deletion cleans sprites through undo/redo", ParticleDeletion),
             ("Particle project/archive, library, duplicate, snapshot and reference persistence", ParticlePersistence),
             ("Particle preset timeline controls and legacy channel preservation", ParticleTimeline),
-            ("Particle invalid and unsupported preset rejection", ParticleInvalid)
+            ("Particle invalid and unsupported preset rejection", ParticleInvalid),
+            ("World importer player position from legacy and 26.1+ Java saves", WorldPlayerPositionReading)
         ];
+        if (args.Contains("--world-player", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("World importer player", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--block-models", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Block model", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--visibility", StringComparer.Ordinal))

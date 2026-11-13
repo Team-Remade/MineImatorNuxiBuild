@@ -91,7 +91,8 @@ internal sealed class BedrockWorldReader : IDisposable
                     2 => "minecraft:the_end",
                     _ => null
                 };
-                return WorldPlayerPosition.Create(x, y, z, dimensionName);
+                // Bedrock stores the player's eye position; normalize to feet like Java.
+                return WorldPlayerPosition.Create(x, y - 1.62, z, dimensionName);
             }
             catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or DecoderFallbackException)
             {
