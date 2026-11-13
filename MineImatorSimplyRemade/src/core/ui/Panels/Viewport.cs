@@ -3009,7 +3009,7 @@ public partial class Viewport : UiPanel
 
             if (splitAoObjects)
             {
-                RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights, forceUnshaded);
+                RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights, forceUnshaded, translucentOnly: false);
             }
             else
             {
@@ -3026,8 +3026,14 @@ public partial class Viewport : UiPanel
             if (splitAoObjects && _renderedPassMode != RenderedPassMode.AmbientOcclusion)
             {
                 SetGiDrawBuffers(useScreenSpaceGi && _renderedPassMode == RenderedPassMode.Combined);
-                RenderDepthOrdered(view, proj, _cachedRenderItemsNoAo, _cachedAllPointLights, forceUnshaded);
+                RenderDepthOrdered(view, proj, _cachedRenderItemsNoAo, _cachedAllPointLights, forceUnshaded, translucentOnly: false);
                 SetGiDrawBuffers(false);
+                _cachedRenderItems.AddRange(_cachedRenderItemsNoAo);
+                if (wireframeMode)
+                    Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
+                RenderDepthOrdered(view, proj, _cachedRenderItems, _cachedAllPointLights, forceUnshaded, translucentOnly: true);
+                if (wireframeMode)
+                    Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Fill);
             }
 
             ResolveSceneAlpha(_fbo, _glowFbo, _glowTex, w, h);
@@ -3506,7 +3512,8 @@ public partial class Viewport : UiPanel
                 new Vector4(background[0], background[1], background[2], background[3]), wireframe);
         if (_groundPlane != null && GroundPlaneVisible)
             renderer.Draw(_groundPlane, _groundPlaneModel, forceUnshaded);
-        foreach (var item in _cachedRenderItems.OrderBy(item => item.sortDepth))
+        foreach (var item in _cachedRenderItems.OrderBy(item =>
+                     item.mesh.GetRenderSortKey(item.model, camera.Position, item.sortDepth, 0)))
         {
             bool previousBlur = item.mesh.BlurTexture;
             item.mesh.BlurTexture = item.blurTexture;
@@ -5126,7 +5133,7 @@ public partial class Viewport : UiPanel
     private readonly List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> _cachedRenderItems = new();
     private readonly List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> _cachedRenderItemsNoAo = new();
     private readonly List<(mat4 model, Mesh mesh)> _cachedOverlays = new();
-    private readonly List<(float depth, int index)> _renderOrder = new();
+    private readonly List<(bool translucent, float depth, float distance, int index)> _renderOrder = new();
     private readonly HashSet<uint> _preparedMipmaps = new();
     private readonly Dictionary<vec3, int> _pointLightSelections = new();
     private readonly List<int> _pointLightSelectionIndices = new();
@@ -5535,22 +5542,30 @@ public partial class Viewport : UiPanel
     /// Thus a partially transparent earlier part leaves its colour on screen and
     /// its depth prevents later parts behind it from drawing. Fully transparent
     /// fragments are discarded by the material shader and write no depth.
+    /// Texture-classified translucent surfaces are drawn last without depth writes.
     /// </summary>
     private void RenderDepthOrdered(
         mat4 view, mat4 proj,
         List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> renderItems,
         List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy,
             float spotCosOuterAngle, float spotCosInnerAngle)> allLights,
-        bool forceUnshaded)
+        bool forceUnshaded,
+        bool? translucentOnly = null)
     {
         // Shared across main, preview and feeds; includes stable render-depth sorting.
         using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.SceneDraw);
         using (FrameProfiler.Shared.Measure(ProfileStage.SceneSort))
         {
             _renderOrder.Clear();
+            vec3 cameraPosition = (view.Inverse * new vec4(0f, 0f, 0f, 1f)).xyz;
             for (int i = 0; i < renderItems.Count; i++)
-                _renderOrder.Add((renderItems[i].sortDepth, i));
-            _renderOrder.Sort(CompareRenderOrder);
+            {
+                var item = renderItems[i];
+                if (translucentOnly.HasValue && item.mesh.RequiresTranslucentPass != translucentOnly.Value)
+                    continue;
+                _renderOrder.Add(item.mesh.GetRenderSortKey(item.model, cameraPosition, item.sortDepth, i));
+            }
+            _renderOrder.Sort();
         }
         _preparedMipmaps.Clear();
         // Selection depends only on this pass's light list and the exact mesh origin.
@@ -5563,23 +5578,24 @@ public partial class Viewport : UiPanel
         Gl.Disable(GLEnum.Blend, 1);
         Gl.Disable(GLEnum.Blend, 2);
         Gl.DepthMask(true);
-        foreach (var (_, index) in _renderOrder)
+        foreach (var (_, _, _, index) in _renderOrder)
         {
             var (model, mesh, _, includeFog, blurTexture, textureMipmaps) = renderItems[index];
+            Gl.DepthMask(!mesh.RequiresTranslucentPass);
+            Gl.ColorMask(1, !mesh.RequiresTranslucentPass, !mesh.RequiresTranslucentPass,
+                !mesh.RequiresTranslucentPass, !mesh.RequiresTranslucentPass);
+            Gl.ColorMask(2, !mesh.RequiresTranslucentPass, !mesh.RequiresTranslucentPass,
+                !mesh.RequiresTranslucentPass, !mesh.RequiresTranslucentPass);
             Mesh.ApplyBlendMode(Gl, mesh.BlendMode);
             SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allLights, cacheSelection: true);
             RenderMeshWithModeOverride(mesh, model, view, proj, forceUnshaded, includeFog, blurTexture, textureMipmaps, _preparedMipmaps);
         }
+        Gl.DepthMask(true);
+        Gl.ColorMask(1, true, true, true, true);
+        Gl.ColorMask(2, true, true, true, true);
         Gl.BlendEquation(GLEnum.FuncAdd);
         Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
         Gl.Disable(GLEnum.Blend);
-    }
-
-    private static int CompareRenderOrder((float depth, int index) a, (float depth, int index) b)
-    {
-        int depthOrder = a.depth.CompareTo(b.depth);
-        // Preserve insertion order for equal depths, just like the previous OrderBy.
-        return depthOrder != 0 ? depthOrder : a.index.CompareTo(b.index);
     }
 
     private static void RenderMeshWithModeOverride(
@@ -7617,7 +7633,7 @@ public partial class Viewport : UiPanel
 
         if (splitAoObjects)
         {
-            RenderDepthOrdered(view, proj, renderItems, allPointLights, forceUnshaded);
+            RenderDepthOrdered(view, proj, renderItems, allPointLights, forceUnshaded, translucentOnly: false);
         }
         else
         {
@@ -7634,8 +7650,14 @@ public partial class Viewport : UiPanel
         if (splitAoObjects && effectivePassMode != RenderedPassMode.AmbientOcclusion)
         {
             SetGiDrawBuffers(previewScreenSpaceGi && effectivePassMode == RenderedPassMode.Combined);
-            RenderDepthOrdered(view, proj, renderItemsNoAo, allPointLights, forceUnshaded);
+            RenderDepthOrdered(view, proj, renderItemsNoAo, allPointLights, forceUnshaded, translucentOnly: false);
             SetGiDrawBuffers(false);
+            renderItems.AddRange(renderItemsNoAo);
+            if (wireframeMode)
+                Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
+            RenderDepthOrdered(view, proj, renderItems, allPointLights, forceUnshaded, translucentOnly: true);
+            if (wireframeMode)
+                Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Fill);
         }
 
         ResolveSceneAlpha(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h);

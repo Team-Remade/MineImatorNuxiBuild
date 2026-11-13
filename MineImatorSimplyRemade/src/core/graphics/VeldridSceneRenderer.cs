@@ -32,7 +32,7 @@ public sealed class VeldridSceneRenderer : IDisposable
     private readonly VeldridTexture _white;
     private readonly Sampler _pointSampler;
     private readonly Sampler _linearSampler;
-    private readonly Dictionary<(bool Wire, bool Overlay, FaceCullMode Cull, bool AlphaClip, MaterialBlendMode BlendMode), Pipeline> _pipelines = new();
+    private readonly Dictionary<(bool Wire, bool Overlay, FaceCullMode Cull, bool AlphaClip, MaterialBlendMode BlendMode, bool Translucent), Pipeline> _pipelines = new();
     private readonly Dictionary<uint, VeldridTexture> _textures = new();
     private readonly List<IDisposable> _frameResources = new();
     private VeldridFramebuffer? _target;
@@ -232,7 +232,7 @@ public sealed class VeldridSceneRenderer : IDisposable
         _commands.ClearDepthStencil(1f);
     }
 
-    /// <summary>Records triangles in caller order, preserving the editor's alpha-blended depth-writing layers.</summary>
+    /// <summary>Records triangles in caller order; translucent surfaces test depth without writing it.</summary>
     public void Draw(Mesh mesh, mat4 model, bool forceUnshaded = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -300,7 +300,7 @@ public sealed class VeldridSceneRenderer : IDisposable
         _frameResources.Add(set);
         FaceCullMode cull = mesh.DoubleSided ? FaceCullMode.None : mesh.CullFrontFaces ? FaceCullMode.Front : FaceCullMode.Back;
         bool alphaClip = mesh.AlphaMode == MaterialAlphaMode.Clip;
-        var key = (_wireframe, mesh.DepthTestDisabled, cull, alphaClip, mesh.BlendMode);
+        var key = (_wireframe, mesh.DepthTestDisabled, cull, alphaClip, mesh.BlendMode, mesh.RequiresTranslucentPass);
         if (!_pipelines.TryGetValue(key, out var pipeline))
         {
             var (sourceColor, destinationColor, colorFunction) = mesh.BlendMode switch
@@ -321,7 +321,7 @@ public sealed class VeldridSceneRenderer : IDisposable
             {
                 BlendState = new BlendStateDescription(RgbaFloat.Black, blend),
                 DepthStencilState = new DepthStencilStateDescription(!mesh.DepthTestDisabled,
-                    !mesh.DepthTestDisabled, ComparisonKind.Less),
+                    !mesh.DepthTestDisabled && !mesh.RequiresTranslucentPass, ComparisonKind.Less),
                 RasterizerState = new RasterizerStateDescription(cull,
                     _wireframe ? PolygonFillMode.Wireframe : PolygonFillMode.Solid,
                     _device.IsClipSpaceYInverted ? FrontFace.Clockwise : FrontFace.CounterClockwise, true, false),

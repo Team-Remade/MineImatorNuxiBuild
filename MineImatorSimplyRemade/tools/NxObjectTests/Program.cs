@@ -23,6 +23,21 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--water-terrain-graphics", StringComparer.Ordinal) ||
+            args.Contains("--water-terrain-veldrid-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                WaterTerrainGraphics(args.Contains("--water-terrain-veldrid-graphics", StringComparer.Ordinal));
+                Console.WriteLine("PASS Water/terrain import batches, opaque occlusion, translucent depth and preview rendering");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--end-portals-graphics", StringComparer.Ordinal) ||
             args.Contains("--end-portals-veldrid-graphics", StringComparer.Ordinal))
         {

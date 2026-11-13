@@ -189,12 +189,21 @@ public class Mesh : IDisposable
     /// is a uniform ~70% opacity) rather than merely alpha-*cutout* (e.g. leaves,
     /// glass panes — pixels are either fully opaque or fully transparent). The
     /// viewport routes translucent meshes through the depth-tested,
-    /// depth-write-off blend pass instead of the textured/cutout depth-pre-pass
-    /// path, since that pre-pass writes full depth for any non-transparent pixel
-    /// and would otherwise make a partially-see-through surface like water wrongly
-    /// hide opaque geometry behind it. See <see cref="TerrainAtlas.IsTextureTranslucent"/>.
+    /// depth-write-off blend pass after depth-writing geometry. Writing full depth
+    /// for partially transparent pixels would otherwise make water wrongly hide
+    /// opaque geometry behind it. See <see cref="TerrainAtlas.IsTextureTranslucent"/>.
     /// </summary>
     public bool IsTranslucent = false;
+
+    internal bool RequiresTranslucentPass => IsTranslucent && AlphaMode != MaterialAlphaMode.Clip;
+
+    internal (bool translucent, float depth, float distance, int index) GetRenderSortKey(
+        mat4 model, vec3 cameraPosition, float depth, int index)
+    {
+        vec3 center = (model * new vec4(BoundingSphereCenter, 1f)).xyz;
+        return (RequiresTranslucentPass, depth,
+            RequiresTranslucentPass ? -(center - cameraPosition).LengthSqr : 0f, index);
+    }
 
     /// <summary>
     /// Optional render ordering hint used by the viewport for coplanar layered

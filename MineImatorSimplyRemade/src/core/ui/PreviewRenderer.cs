@@ -184,6 +184,7 @@ public class PreviewRenderer : IDisposable
         _gl.CullFace(GLEnum.Back);
         _gl.Enable(GLEnum.Blend);
         _gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
+        _gl.DepthMask(true);
 
         // Dark charcoal background  (0.12, 0.12, 0.14, 1)
         _gl.ClearColor(0.12f, 0.12f, 0.14f, 1.0f);
@@ -261,19 +262,27 @@ public class PreviewRenderer : IDisposable
                     if (float.IsFinite(min.x))
                         model = mat4.Translate(-(min + max) * 0.5f);
                 }
+                var draws = new List<(Mesh mesh, mat4 model, float depth)>();
                 foreach (var mesh in meshes)
                 {
                     if (mesh.PickOnly) continue;
-                    Mesh.ApplyBlendMode(_gl, mesh.BlendMode);
-                    mesh.Render(model, view, proj, useSceneLighting: !isolatedLighting);
+                    draws.Add((mesh, model, mesh.SortDepth));
                 }
 
                 if (sceneRoot != null)
-                    RenderSceneObjectRecursive(sceneRoot, view, proj, hierarchyTransform,
-                        useSceneLighting: !isolatedLighting);
+                    CollectSceneObjectRecursive(sceneRoot, hierarchyTransform, draws);
+
+                foreach (var draw in draws.OrderBy(draw =>
+                             draw.mesh.GetRenderSortKey(draw.model, Mesh.GlobalCameraPosition, draw.depth, 0)))
+                {
+                    _gl.DepthMask(!draw.mesh.RequiresTranslucentPass);
+                    Mesh.ApplyBlendMode(_gl, draw.mesh.BlendMode);
+                    draw.mesh.Render(draw.model, view, proj, useSceneLighting: !isolatedLighting);
+                }
             }
             finally
             {
+                _gl.DepthMask(true);
                 Mesh.GlobalCameraPosition = previousCameraPosition;
                 Mesh.SceneUBO = previousLighting;
                 _gl.BindBufferBase(GLEnum.UniformBuffer, 0, (uint)previousUniformBuffer);
@@ -287,11 +296,11 @@ public class PreviewRenderer : IDisposable
     }
 
     /// <summary>
-    /// Recursively renders all visible nodes in a <see cref="SceneObject"/> hierarchy,
+    /// Recursively collects all visible nodes in a <see cref="SceneObject"/> hierarchy,
     /// applying each node's own world matrix so that bones are placed correctly.
     /// </summary>
-    private void RenderSceneObjectRecursive(SceneObject obj, mat4 view, mat4 proj, mat4 previewTransform,
-        ModifierEvaluation? modifiers = null, bool useSceneLighting = true)
+    private static void CollectSceneObjectRecursive(SceneObject obj, mat4 previewTransform,
+        List<(Mesh mesh, mat4 model, float depth)> draws, ModifierEvaluation? modifiers = null)
     {
         if (!obj.GetEffectiveVisibility()) return;
         modifiers ??= new ModifierEvaluation([obj]);
@@ -300,13 +309,11 @@ public class PreviewRenderer : IDisposable
         foreach (var mesh in obj.Visuals)
         {
             if (mesh.PickOnly) continue;
-            Mesh.ApplyBlendMode(_gl, mesh.BlendMode);
-            mesh.Render(previewTransform * delta * obj.GetWorldMatrix(), view, proj,
-                useSceneLighting: useSceneLighting);
+            draws.Add((mesh, previewTransform * delta * obj.GetWorldMatrix(), mesh.SortDepth + obj.RenderDepthOffset));
         }
 
         foreach (var child in obj.Children)
-            RenderSceneObjectRecursive(child, view, proj, previewTransform, modifiers, useSceneLighting);
+            CollectSceneObjectRecursive(child, previewTransform, draws, modifiers);
     }
 
     // ── Manual orbit (drag) ───────────────────────────────────────────────────
