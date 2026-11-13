@@ -441,10 +441,13 @@ internal static partial class Program
             ("Particle project/archive, library, duplicate, snapshot and reference persistence", ParticlePersistence),
             ("Particle preset timeline controls and legacy channel preservation", ParticleTimeline),
             ("Particle invalid and unsupported preset rejection", ParticleInvalid),
-            ("World importer player position from legacy and 26.1+ Java saves", WorldPlayerPositionReading)
+            ("World importer player position from legacy and 26.1+ Java saves", WorldPlayerPositionReading),
+            ("World importer default block states for 26.1+ bare palette entries", WorldDefaultBlockStates)
         ];
         if (args.Contains("--world-player", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("World importer player", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--world-states", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("World importer default block states", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--block-models", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Block model", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--visibility", StringComparer.Ordinal))

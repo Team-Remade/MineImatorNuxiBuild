@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using Cyotek.Data.Nbt;
+using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core.world;
 
 internal static partial class Program
@@ -43,6 +44,47 @@ internal static partial class Program
         string none = Path.Combine(f.Root, "none");
         WriteWorldLevel(none, data => data.Value.Add(new TagIntArray("singleplayer_uuid", [1, 2, 3, 4])));
         Check(MinecraftWorld.Open(none).ReadPlayerPosition() == null, "Missing player data is optional");
+    }
+
+    private static void WorldDefaultBlockStates(Fixture f)
+    {
+        var versionRoot = typeof(BlockRegistry).GetProperty(nameof(BlockRegistry.VersionRoot))!;
+        object? previousRoot = versionRoot.GetValue(null);
+        versionRoot.SetValue(null, Path.Combine(ParticleDataRoot(), "minecraft", "versions", "26.3"));
+        try
+        {
+            CheckWorldDefaultBlockStates();
+        }
+        finally
+        {
+            versionRoot.SetValue(null, previousRoot);
+        }
+    }
+
+    private static void CheckWorldDefaultBlockStates()
+    {
+        Check(JavaWorldReader.ParseState(new TagString("", "minecraft:oak_log")) == "minecraft:oak_log[axis=y]",
+            "26.1+ bare palette string expands to the default axis");
+        var wrapped = new TagCompound("");
+        wrapped.Value.Add(new TagString("", "minecraft:stone_brick_stairs"));
+        Check(JavaWorldReader.ParseState(wrapped) ==
+              "minecraft:stone_brick_stairs[facing=north,half=bottom,shape=straight,waterlogged=false]",
+            "26.1+ wrapped palette entry expands to the default state");
+        var legacy = new TagCompound("");
+        legacy.Value.Add(new TagString("Name", "minecraft:nether_portal"));
+        Check(JavaWorldReader.ParseState(legacy) == "minecraft:nether_portal[axis=x]",
+            "Property-less legacy compound uses the vanilla default, not the first variant");
+
+        var explicitState = new TagCompound("");
+        explicitState.Value.Add(new TagString("id", "minecraft:oak_log"));
+        var properties = new TagCompound("properties");
+        properties.Value.Add(new TagString("axis", "z"));
+        explicitState.Value.Add(properties);
+        Check(JavaWorldReader.ParseState(explicitState) == "minecraft:oak_log[axis=z]", "Explicit properties are kept");
+        Check(JavaWorldReader.ParseState(new TagString("", "minecraft:stone")) == "minecraft:stone",
+            "Blocks without properties stay bare");
+        Check(JavaWorldReader.ParseState(new TagString("", "examplemod:oak_log")) == "examplemod:oak_log",
+            "Modded IDs are not given vanilla defaults");
     }
 
     private static void WriteWorldLevel(string folder, Action<TagCompound> configure)

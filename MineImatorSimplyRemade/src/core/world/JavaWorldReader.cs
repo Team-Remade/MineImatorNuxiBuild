@@ -121,7 +121,7 @@ internal sealed class JavaWorldReader(string regionPath, CancellationToken cance
     internal static string ParseState(Tag tag)
     {
         if (tag is TagString simple && !string.IsNullOrWhiteSpace(simple.Value))
-            return simple.Value;
+            return WithDefaultProperties(simple.Value);
         if (tag is TagCompound { Count: 1 } wrapper && wrapper.GetTag("") is TagString wrapped)
             return ParseState(wrapped);
         if (tag is not TagCompound entry ||
@@ -130,7 +130,7 @@ internal sealed class JavaWorldReader(string regionPath, CancellationToken cance
             throw new InvalidDataException("A block palette entry has no valid block ID.");
         var properties = entry.GetCompound(entry.Contains("id") ? "properties" : "Properties");
         if (properties == null || properties.Count == 0)
-            return name.Value;
+            return WithDefaultProperties(name.Value);
         var pairs = new List<string>();
         foreach (Tag property in properties.Value)
         {
@@ -141,6 +141,13 @@ internal sealed class JavaWorldReader(string regionPath, CancellationToken cance
         pairs.Sort(StringComparer.Ordinal);
         return $"{name.Value}[{string.Join(',', pairs)}]";
     }
+
+    // 26.1+ saves write default states as a bare ID; older saves only omit properties for
+    // blocks that have none, so expanding to the vanilla default is correct for both.
+    private static string WithDefaultProperties(string blockId) =>
+        blockId.Contains('[') || JavaBlockStateDefaults.Get(blockId) is not { } defaults
+            ? blockId
+            : $"{blockId}[{defaults}]";
 
     internal static int[] DecodeIndices(int paletteCount, long[]? words, bool padded)
     {
