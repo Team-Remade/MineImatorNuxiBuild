@@ -363,6 +363,8 @@ public static class ProjectSceneSerializer
             InheritSubsurface = obj.InheritSubsurface,
             InheritGlowColor = obj.InheritGlowColor,
             InheritSelect = obj.InheritSelect,
+            InheritModifiers = obj.InheritModifiers,
+            CombineChildren = obj.CombineChildren,
             InheritPose = obj.InheritPose,
             ScaleResize = obj.ScaleResize,
             LockBend = obj.LockBend,
@@ -963,6 +965,8 @@ public static class ProjectSceneSerializer
         obj.InheritSubsurface = entry.InheritSubsurface;
         obj.InheritGlowColor = entry.InheritGlowColor;
         obj.InheritSelect = entry.InheritSelect;
+        obj.InheritModifiers = entry.InheritModifiers;
+        obj.CombineChildren = entry.CombineChildren;
         obj.InheritPose = entry.InheritPose;
         obj.ScaleResize = entry.ScaleResize;
         if (entry.LockBend.HasValue)

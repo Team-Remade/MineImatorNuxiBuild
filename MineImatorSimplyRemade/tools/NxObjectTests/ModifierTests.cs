@@ -2,6 +2,7 @@ using System.Reflection;
 using Hexa.NET.ImGui;
 using GlmSharp;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.history;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui;
@@ -385,6 +386,105 @@ internal static partial class Program
         Near(new vec3(3, 0, 0), InstanceOrigin(new ModifierEvaluation([obj]), obj, 3), "Reordering changes evaluation order");
     }
 
+    private static void ModifierCombination(Fixture f)
+    {
+        var root = new SceneObject { PivotOffset = vec3.Zero, Position = new(3, 2, 1) };
+        var child = new SceneObject { PivotOffset = vec3.Zero, Position = vec3.UnitY, InheritSelect = true };
+        var grandchild = new SceneObject { PivotOffset = vec3.Zero, Position = vec3.UnitZ };
+        root.AddChild(child);
+        child.AddChild(grandchild);
+        root.Modifiers = [new() { Count = 3, Distance = 2 }];
+        child.Modifiers = [new() { Count = 2, Axis = ArrayAxis.Y, Distance = 4 }];
+        grandchild.Modifiers = [new() { Count = 2, Axis = ArrayAxis.Z }];
+        child.InheritModifiers = false;
+        var evaluation = new ModifierEvaluation([root]);
+        Equal(2, evaluation.GetDeltas(child).Count, "Inheritance off retains child's own stack");
+        Equal(4, evaluation.GetDeltas(grandchild).Count, "Descendants inherit only the remaining stack");
+        Near(root.Position + vec3.UnitY * 5, InstanceOrigin(evaluation, child, 1),
+            "Blocking modifiers does not block inherited transforms");
+        var originalWorld = grandchild.GetWorldMatrix();
+        var originalStack = child.Modifiers.ToArray();
+        child.CombineChildren = true;
+        Equal(2, new ModifierEvaluation([root]).GetDeltas(grandchild).Count, "Nested combined owner blocks outer modifiers");
+        root.CombineChildren = true;
+        evaluation = new ModifierEvaluation([root]);
+        Equal(3, evaluation.GetDeltas(grandchild).Count, "Combined geometry uses one stack despite source inheritance flags");
+        Check(ReferenceEquals(evaluation.GetDeltas(root), evaluation.GetDeltas(grandchild)), "Parts share owner evaluation");
+        Near(root.Position + new vec3(4, 1, 1), InstanceOrigin(evaluation, grandchild, 2), "Combined relative geometry retained");
+        Equal(originalWorld, grandchild.GetWorldMatrix(), "Combining does not change transforms");
+        Equal(root, grandchild.GetViewportSelectionTarget(), "Combined viewport picking resolves outer owner");
+        var selection = SelectionManager.Instance;
+        selection.ClearSelection();
+        selection.SelectObject(root);
+        Check(selection.SelectedObjects.SequenceEqual([root]), "Combined selection never separately selects inherited parts");
+        selection.ClearSelection();
+        root.CombineChildren = false;
+        Equal(child, grandchild.GetViewportSelectionTarget(), "Uncombining restores nested combined owner");
+        child.CombineChildren = false;
+        Equal(grandchild, grandchild.GetViewportSelectionTarget(), "Uncombining restores individual picking");
+        Equal(4, new ModifierEvaluation([root]).GetDeltas(grandchild).Count, "Uncombining restores original stacks");
+        Check(child.Modifiers.SequenceEqual(originalStack), "No source modifier settings changed");
+        child.InheritModifiers = true;
+        Equal(12, new ModifierEvaluation([root]).GetDeltas(grandchild).Count, "Re-enabling inheritance restores full stack");
+    }
+
+    private static void ModifierCombinationPersistence(Fixture f)
+    {
+        var root = new SceneObject { Name = "Combined", CombineChildren = true, InheritModifiers = false };
+        var child = new SceneObject { Name = "Part", InheritModifiers = false };
+        root.AssignObjectId();
+        child.AssignObjectId();
+        root.AddChild(child);
+        root.Modifiers = [new() { Count = 3 }];
+        child.Modifiers = [new() { Count = 2 }];
+        child.Keyframes["position.y"] = [new() { Frame = 0, Value = 1f }, new() { Frame = 10, Value = 2f }];
+        var (archive, _) = f.Roundtrip(root);
+        var viewport = new Viewport();
+        var spawn = new SpawnMenu { Viewport = viewport };
+        var imported = ProjectSceneSerializer.SpawnObjectFromEntry(archive.Root, viewport, spawn)!;
+        Check(imported.CombineChildren && !imported.InheritModifiers && !imported.Children[0].InheritModifiers,
+            "Archive restores combination and independent inheritance flags");
+        Equal(2, imported.Children[0].Modifiers[0].Count, "Suspended modifiers persist");
+        Equal(2, imported.Children[0].Keyframes["position.y"].Count, "Source animation persists");
+        var manifest = new ProjectManifest();
+        ProjectSceneSerializer.WriteSceneToManifest(manifest, viewport);
+        var saved = System.Text.Json.JsonSerializer.Deserialize(
+            System.Text.Json.JsonSerializer.Serialize(manifest, MineImatorSimplyRemade.AppJsonContext.Default.ProjectManifest),
+            MineImatorSimplyRemade.AppJsonContext.Default.ProjectManifest)!;
+        var loaded = new Viewport();
+        ProjectSceneSerializer.LoadSceneFromManifest(saved, loaded, new SpawnMenu { Viewport = loaded });
+        Check(loaded.SceneObjects[0].CombineChildren && !loaded.SceneObjects[0].Children[0].InheritModifiers,
+            "Project save/load restores combination");
+        var cloneLibrary = typeof(PropertiesPanel).GetMethod("CloneLibraryEntryRecursive", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var library = (ProjectSceneObjectEntry)cloneLibrary.Invoke(null, [archive.Root])!;
+        Check(library.CombineChildren && !library.InheritModifiers && !library.Children[0].InheritModifiers,
+            "Library clones preserve both flags recursively");
+        var duplicate = typeof(SceneTree).GetMethod("DuplicateObject", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var copied = (SceneObject)duplicate.Invoke(new SceneTree { Viewport = viewport }, [imported, false, null])!;
+        Check(copied.CombineChildren && !copied.InheritModifiers && !copied.Children[0].InheritModifiers,
+            "Duplication preserves both flags recursively");
+        ulong initial = SceneObjectFingerprint.Compute(viewport.SceneObjects);
+        var before = ProjectSceneSerializer.SerializeObjectForLibrary(imported);
+        var hierarchy = new SceneHistoryAction.HierarchyState(viewport);
+        var project = SceneHistoryAction.ProjectState.Capture(ProjectManager.Instance.Manifest);
+        imported.CombineChildren = false;
+        Check(SceneObjectFingerprint.Compute(viewport.SceneObjects) != initial, "Combination invalidates dirty fingerprint");
+        imported.InheritModifiers = true;
+        var after = ProjectSceneSerializer.SerializeObjectForLibrary(imported);
+        var action = SceneHistoryAction.Create([(imported, before, after)], hierarchy, hierarchy, project, project)!;
+        Check(action.Apply(viewport, null, undo: true), "Combination undo applies");
+        Check(imported.CombineChildren && !imported.InheritModifiers, "Undo restores combination and inheritance");
+        Equal(initial, SceneObjectFingerprint.Compute(viewport.SceneObjects), "Undo restores dirty fingerprint");
+        Check(action.Apply(viewport, null, undo: false), "Combination redo applies");
+        Check(!imported.CombineChildren && imported.InheritModifiers, "Redo restores independent parts");
+        ulong uncombined = SceneObjectFingerprint.Compute(viewport.SceneObjects);
+        imported.InheritModifiers = false;
+        Check(SceneObjectFingerprint.Compute(viewport.SceneObjects) != uncombined, "Inheritance alone invalidates dirty fingerprint");
+        var legacy = System.Text.Json.JsonSerializer.Deserialize("{}", MineImatorSimplyRemade.AppJsonContext.Default.ProjectSceneObjectEntry)!;
+        Check(legacy.InheritModifiers && !legacy.CombineChildren, "Old projects keep inherited modifiers and independent geometry");
+        SelectionManager.Instance.ClearSelection();
+    }
+
     private static void ModifierFollowPath(Fixture f)
     {
         var path = StraightPath();
@@ -603,6 +703,25 @@ internal static partial class Program
         typeof(Viewport).GetMethod("ResetModifierEvaluation", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(viewport, null);
         int after = (int)signature.Invoke(viewport, [viewport.SceneObjects, false])!;
         Check(before != after, "Changed copies invalidate shadow cache");
+        var part = new SceneObject { PivotOffset = vec3.Zero, Position = vec3.UnitY, InheritModifiers = false };
+        part.Visuals.Add(mesh);
+        part.Modifiers = [new() { Count = 2, Axis = ArrayAxis.Z }];
+        obj.AddChild(part);
+        obj.Visuals.Clear();
+        void CollectParts()
+        {
+            items.Clear(); noAo.Clear(); overlays.Clear();
+            typeof(Viewport).GetMethod("ResetModifierEvaluation", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(viewport, null);
+            collect.Invoke(viewport, [viewport.SceneObjects, new vec3(0, 0, 10), Enum.Parse(mode, "Rendered"),
+                Frustum.FromViewProj(mat4.Ortho(-20, 20, -20, 20, -20, 20)), items, noAo, overlays, null]);
+        }
+        CollectParts();
+        Equal(2, items.Count + noAo.Count, "Uncombined render respects inheritance boundary and source stack");
+        obj.CombineChildren = true;
+        CollectParts();
+        Equal(4, items.Count + noAo.Count, "Combined render evaluates parts with owner's stack");
+        for (int i = 0; i < items.Count; i++)
+            Near(new vec3(3 * i, 1, 0), (items[i].Item1 * new vec4(0, 0, 0, 1)).xyz, "Combined part retains local position");
         var plane = new SceneObject { ObjectType = "Plane", SpawnCategory = "Primitives",
             PrimitivePlaneFaceCamera = true, PivotOffset = vec3.Zero };
         plane.Visuals.Add(mesh);
@@ -616,7 +735,7 @@ internal static partial class Program
             "Each billboard faces camera from its own instance position");
     }
 
-    private static unsafe void ModifierGraphics()
+    private static unsafe void ModifierGraphics(string? modelPath = null)
     {
         using var glfw = Silk.NET.GLFW.Glfw.GetApi();
         Check(glfw.Init(), "GLFW initialization");
@@ -646,6 +765,10 @@ internal static partial class Program
             var mesh = source.Visuals.Single();
             var bone = new BoneSceneObject { BoneName = "arrayBone", Position = new(0, 0.25f, 0), PivotOffset = vec3.Zero };
             source.AddChild(bone);
+            var piece = new SceneObject { Name = "Combined piece", PivotOffset = vec3.Zero, InheritModifiers = false,
+                IsSelectable = false, Modifiers = [new() { Count = 2, Axis = ArrayAxis.Z }] };
+            piece.AssignObjectId();
+            source.AddChild(piece);
             mesh.BoneNames.Add(bone.BoneName);
             mesh.BoneInverseBindMatrices.Add(mat4.Identity);
             foreach (var vertex in mesh.Vertices)
@@ -680,9 +803,14 @@ internal static partial class Program
             float activeOffset = 0f;
             try
             {
+                foreach (bool combined in new[] { false, true })
                 foreach (var (onPath, offset, implicitPath) in new[]
                     { (false, 0f, false), (true, 0f, false), (true, 1f, false), (true, 1.5f, true) })
                 {
+                    source.CombineChildren = combined;
+                    source.Visuals.Clear();
+                    piece.Visuals.Clear();
+                    (combined ? piece : source).AddMesh(mesh);
                     activeOffset = offset;
                     source.Position = offset == 0f ? path.Position : vec3.Zero;
                     source.Modifiers = [new()
@@ -738,6 +866,81 @@ internal static partial class Program
                     Near((sourcePalette * new vec4(0, 0, 0, 1)).xyz,
                         (palette[0] * new vec4(0, 0, 0, 1)).xyz, "Copies retain source-local skinning palette");
                     Equal(Silk.NET.OpenGL.GLEnum.NoError, gl.GetError(), "OpenGL errors");
+                }
+
+                if (modelPath != null)
+                {
+                    var loader = new MineImatorSimplyRemade.core.mdl.mineImator.MineImatorLoader();
+                    loader.Initialize(gl);
+                    var model = loader.LoadModel(Path.GetFullPath(modelPath))
+                        ?? throw new InvalidDataException("Unable to load combination test model.");
+                    var character = loader.CreateCharacterFromModel(model)
+                        ?? throw new InvalidDataException("Unable to instantiate combination test model.");
+                    var nodes = character.GetAllDescendants().Prepend(character).ToArray();
+                    try
+                    {
+                        var skirt = nodes.Single(node => node.Name == "Skirt");
+                        var parts = skirt.GetAllDescendants().Prepend(skirt).ToArray();
+                        Check(parts.Length > 2, "Model skirt includes nested source parts");
+                        var meshes = parts.SelectMany(part => part.Visuals.Where(mesh => !mesh.PickOnly)
+                            .Select(mesh => (Part: part, Mesh: mesh, World: part.GetWorldMatrix(),
+                                Texture: mesh.TextureId, Uvs: mesh.TexCoords.ToArray()))).ToArray();
+                        Check(meshes.Length > 1, "Model skirt has multiple meshes");
+                        vec3 min = new(float.MaxValue), max = new(float.MinValue);
+                        foreach (var item in meshes)
+                        foreach (vec3 vertex in item.Mesh.Vertices)
+                        {
+                            vec3 p = (item.World * new vec4(vertex, 1)).xyz;
+                            min = vec3.Min(min, p);
+                            max = vec3.Max(max, p);
+                        }
+                        vec3 center = (min + max) * 0.5f;
+                        float radius = MathF.Max(0.1f, (max - min).Length * 0.65f);
+                        var modelView = mat4.Translate(-center + new vec3(0, 0, -radius * 3 - 1));
+                        var modelProjection = mat4.Ortho(-radius, radius, -radius, radius, 0.1f, radius * 6 + 10);
+                        byte[] RenderModel()
+                        {
+                            BindAndClear();
+                            var evaluation = new ModifierEvaluation([character]);
+                            foreach (var item in meshes)
+                            foreach (var delta in evaluation.GetDeltas(item.Part))
+                                item.Mesh.Render(delta * item.Part.GetWorldMatrix(), modelView, modelProjection);
+                            return ReadColor();
+                        }
+                        byte[] originalPixels = RenderModel();
+                        Check(originalPixels.Where((value, index) => index % 4 != 3).Any(value => value != 0),
+                            "Model skirt produces visible GPU pixels");
+                        skirt.CombineChildren = true;
+                        Check(originalPixels.SequenceEqual(RenderModel()), "Runtime combination preserves exact skirt pixels");
+                        skirt.InheritModifiers = false;
+                        skirt.Modifiers = [new() { Count = 3, Distance = 2 }];
+                        skirt.Parent!.Modifiers = [new() { Count = 2, Distance = 5 }];
+                        foreach (var part in parts.Skip(1))
+                        {
+                            part.InheritModifiers = false;
+                            part.Modifiers = [new() { Count = 2, Axis = ArrayAxis.Z }];
+                        }
+                        var evaluation = new ModifierEvaluation([character]);
+                        foreach (var item in meshes)
+                        {
+                            Equal(3, evaluation.GetDeltas(item.Part).Count, "Every skirt piece uses combined stack");
+                            Equal(skirt, item.Part.GetViewportSelectionTarget(), "Skirt mesh picks combined owner");
+                            Equal(item.World, item.Part.GetWorldMatrix(), "Skirt transforms retained");
+                            Equal(item.Texture, item.Mesh.TextureId, "Skirt textures retained");
+                            Check(item.Uvs.SequenceEqual(item.Mesh.TexCoords), "Skirt UVs retained");
+                        }
+                        skirt.CombineChildren = false;
+                        foreach (var part in parts.Skip(1))
+                            Equal(2, new ModifierEvaluation([character]).GetDeltas(part).Count,
+                                "Uncombined skirt restores independent stacks");
+                        Console.WriteLine($"PASS Model skirt runtime combination: {parts.Length} parts, {meshes.Length} textured meshes, exact GPU pixel preservation");
+                    }
+                    finally
+                    {
+                        foreach (var node in nodes)
+                            foreach (var modelMesh in node.Visuals)
+                                modelMesh.Dispose();
+                    }
                 }
 
                 void BindAndClear()

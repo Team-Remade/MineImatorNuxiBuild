@@ -441,6 +441,8 @@ public class ProjectSceneObjectEntry
     public bool InheritSubsurface { get; set; } = true;
     public bool InheritGlowColor { get; set; } = true;
     public bool InheritSelect { get; set; } = false;
+    public bool InheritModifiers { get; set; } = true;
+    public bool CombineChildren { get; set; } = false;
     public bool InheritPose { get; set; } = false;
     public bool ScaleResize { get; set; } = false;
     public float? LockBend { get; set; }

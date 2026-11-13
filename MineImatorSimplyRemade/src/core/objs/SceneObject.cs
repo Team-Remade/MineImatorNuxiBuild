@@ -470,6 +470,19 @@ public class SceneObject
     public bool InheritSubsurface = true;
     public bool InheritGlowColor = true;
     public bool InheritSelect = false;
+    public bool InheritModifiers = true;
+
+    /// <summary>Evaluates this subtree as one geometry modifier and viewport selection unit.</summary>
+    public bool CombineChildren = false;
+
+    public SceneObject GetCombinedGeometryOwner()
+    {
+        SceneObject owner = this;
+        for (SceneObject? ancestor = Parent; ancestor != null; ancestor = ancestor.Parent)
+            if (ancestor.CombineChildren)
+                owner = ancestor;
+        return owner;
+    }
 
     private bool _inheritPose;
     public bool InheritPose
@@ -1093,9 +1106,9 @@ public class SceneObject
     /// <summary>Resolves a viewport hit without restricting scene-tree selection.</summary>
     public SceneObject? GetViewportSelectionTarget()
     {
-        SceneObject? candidate = this;
+        SceneObject? candidate = GetCombinedGeometryOwner();
         while (candidate != null && (candidate.IsLocked || !candidate.IsSelectable))
-            candidate = candidate.Parent;
+            candidate = candidate.Parent?.GetCombinedGeometryOwner();
         return candidate;
     }
 

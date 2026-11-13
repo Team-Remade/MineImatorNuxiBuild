@@ -1071,6 +1071,8 @@ public partial class PropertiesPanel : UiPanel
             InheritSubsurface = source.InheritSubsurface,
             InheritGlowColor = source.InheritGlowColor,
             InheritSelect = source.InheritSelect,
+            InheritModifiers = source.InheritModifiers,
+            CombineChildren = source.CombineChildren,
             InheritPose = source.InheritPose,
             ScaleResize = source.ScaleResize,
             LockBend = source.LockBend,
@@ -4342,6 +4344,10 @@ public partial class PropertiesPanel : UiPanel
                 obj => obj.InheritGlowColor, (obj, value) => obj.InheritGlowColor = value);
             InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_select", "Inherit Selection"),
                 obj => obj.InheritSelect, (obj, value) => obj.InheritSelect = value, material: false);
+            InheritanceCheckbox(Localization.Label("text.panel.properties.inherit_modifiers", "Inherit Modifiers"),
+                obj => obj.InheritModifiers, (obj, value) => obj.InheritModifiers = value, material: false);
+            if (ImGui.IsItemHovered())
+                UiText.Tooltip(Localization.T("text.panel.properties.inherit_modifiers_help"));
             if (_currentObject is CharacterSceneObject poseModel &&
                 poseModel.BoneObjects.Values.Any(bone => bone is MiBoneSceneObject))
             {

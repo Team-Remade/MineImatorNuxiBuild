@@ -162,7 +162,7 @@ public class SelectionManager
         }
         foreach (var child in obj.Children)
         {
-            if (child.InheritSelect)
+            if (!obj.CombineChildren && child.InheritSelect)
                 changed |= AddInheritedSelection(child);
         }
         return changed;

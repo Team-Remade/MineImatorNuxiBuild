@@ -4708,7 +4708,8 @@ public partial class Viewport : UiPanel
                 localBoneDict = BuildBoneDictionary(obj);
 
             bool hasBoneIndicator = obj is BoneSceneObject b && b.IndicatorMesh != null && ShouldShowBoneIndicator(b);
-            if (IsObjectVisible(obj) && (surfacesOnly || obj.IsSelectable) && (obj.Visuals.Count > 0 || hasBoneIndicator))
+            var geometryOwner = obj.GetCombinedGeometryOwner();
+            if (IsObjectVisible(obj) && (surfacesOnly || geometryOwner.IsSelectable) && (obj.Visuals.Count > 0 || hasBoneIndicator))
             {
                 mat4 sourceModel = GetRenderableWorldMatrix(obj, Mesh.GlobalCameraPosition);
                 foreach (mat4 model in GetModifiedWorldMatrices(obj, sourceModel, Mesh.GlobalCameraPosition))
@@ -4733,7 +4734,7 @@ public partial class Viewport : UiPanel
                     // Upload pick colour.
                     int colorLoc = Gl.GetUniformLocation(_pickShader.ShaderProgram, "uPickColor");
                     if (colorLoc >= 0)
-                        Gl.Uniform3(colorLoc, obj.PickColor.x, obj.PickColor.y, obj.PickColor.z);
+                        Gl.Uniform3(colorLoc, geometryOwner.PickColor.x, geometryOwner.PickColor.y, geometryOwner.PickColor.z);
 
                     // Draw geometry meshes.
                     foreach (var mesh in obj.Visuals)

@@ -237,7 +237,9 @@ internal static partial class Program
         {
             try
             {
-                ModifierGraphics();
+                if (args.Length > 2)
+                    throw new ArgumentException("Usage: --modifiers-graphics [path-to-mimodel]");
+                ModifierGraphics(args.Length == 2 ? args[1] : null);
                 Console.WriteLine("PASS Array OpenGL pixels, skinned copies, path placement, picking, outlines and shadows");
                 return 0;
             }
@@ -441,6 +443,8 @@ internal static partial class Program
             ("Follow Path modifier migration, persistence, references and special objects", ModifierFollowPersistence),
             ("Array archive, library, duplicate references, snapshots and dirty detection", ModifierPersistence),
             ("Array viewport render collection and shadow cache invalidation", ModifierRenderCollection),
+            ("Modifier reversible combination, nested ownership, inheritance boundaries and picking", ModifierCombination),
+            ("Modifier combination project/archive/library persistence, duplication and undo/redo", ModifierCombinationPersistence),
             ("Modifier context values, auto keys, interpolation, identity and persistence", ModifierKeyframes),
             ("Modifier ImGui context menu copy, paste, reset and manual keyframes", ModifierContextInteraction),
             ("Property reset Shift-right-click, defaults, groups, selection, auto-key and persistence", PropertyResetInteraction),

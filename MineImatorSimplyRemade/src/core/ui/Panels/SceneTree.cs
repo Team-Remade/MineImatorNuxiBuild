@@ -219,6 +219,14 @@ public class SceneTree : UiPanel
                     UnparentSelectedObjects();
                 if (ImGui.MenuItem(Localization.Label("text.panel.scene_tree.group", "Group Selection"), Keybinds.Label("group")))
                     GroupSelectedObjects();
+                if (ImGui.MenuItem(Localization.Label("text.modifier.combine_children", "Combine Children"), "",
+                        _contextMenuTarget.CombineChildren,
+                        _contextMenuTarget.CombineChildren || _contextMenuTarget.Children.Count > 0))
+                {
+                    _contextMenuTarget.CombineChildren = !_contextMenuTarget.CombineChildren;
+                    SetSelection(_contextMenuTarget);
+                    MineImatorSimplyRemade.core.project.ProjectManager.Instance.SetDirty(true);
+                }
                 ImGui.Separator();
 
                 if (ImGui.MenuItem(Localization.Label("text.menu.hide", "Hide"), Keybinds.Label("hide")))
@@ -1311,6 +1319,8 @@ public class SceneTree : UiPanel
         duplicate.InheritSubsurface = original.InheritSubsurface;
         duplicate.InheritGlowColor = original.InheritGlowColor;
         duplicate.InheritSelect = original.InheritSelect;
+        duplicate.InheritModifiers = original.InheritModifiers;
+        duplicate.CombineChildren = original.CombineChildren;
         duplicate.InheritPose = original.InheritPose;
         duplicate.Modifiers = original.Modifiers.ToList();
         duplicate.CopyConstraints.Clear();

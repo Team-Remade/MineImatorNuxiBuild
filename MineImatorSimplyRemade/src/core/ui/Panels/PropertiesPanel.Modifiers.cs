@@ -163,6 +163,20 @@ public partial class PropertiesPanel
         }
         ImGui.EndChild();
         ImGui.PopStyleVar(2);
+        bool combineChildren = owner.CombineChildren;
+        ImGui.BeginDisabled(!combineChildren && owner.Children.Count == 0);
+        if (ImGui.Checkbox(Localization.Label("text.modifier.combine_children", "Combine Children"), ref combineChildren))
+        {
+            owner.CombineChildren = combineChildren;
+            MineImatorSimplyRemadeNuxi.core.SelectionManager.Instance?.ClearSelection();
+            MineImatorSimplyRemadeNuxi.core.SelectionManager.Instance?.SelectObject(owner);
+            ProjectManager.Instance.SetDirty(true);
+        }
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            UiText.Tooltip(Localization.T("text.modifier.combine_children_help"));
+        if (owner.GetCombinedGeometryOwner() != owner)
+            UiText.Wrapped(Localization.T("text.modifier.combined_source_help"));
         if (_modifierErrorOwner == owner && _modifierError != null) UiText.Wrapped(_modifierError);
         if (remove >= 0)
         {

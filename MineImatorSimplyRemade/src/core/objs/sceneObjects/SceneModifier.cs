@@ -63,7 +63,14 @@ public sealed class ModifierEvaluation
     public IReadOnlyList<mat4> GetDeltas(SceneObject obj)
     {
         if (_deltas.TryGetValue(obj, out var cached)) return cached;
-        IReadOnlyList<mat4> result = obj.Parent == null ? Identity : GetDeltas(obj.Parent);
+        var geometryOwner = obj.GetCombinedGeometryOwner();
+        if (geometryOwner != obj)
+        {
+            var combined = GetDeltas(geometryOwner);
+            _deltas.Add(obj, combined);
+            return combined;
+        }
+        IReadOnlyList<mat4> result = obj.Parent == null || !obj.InheritModifiers ? Identity : GetDeltas(obj.Parent);
         foreach (var modifier in obj.Modifiers)
         {
             modifier.Validated();
