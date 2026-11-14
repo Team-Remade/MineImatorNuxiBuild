@@ -521,12 +521,30 @@ public class MiBoneSceneObject : BoneSceneObject
         PropagateInheritedBends(this, static bone => bone.RegenerateMeshes());
     }
 
+    private bool _clothBendDeferred;
+    internal bool IsClothBakeSampling { get; set; }
+    private bool UsesClothRestGeometry => IsClothBakeSampling ||
+        Modifiers.Any(m => m.Type == SceneModifierType.Cloth && m.Enabled && m.ClothBake != null);
+
+    internal void RestoreDeferredClothBend(bool force = false)
+    {
+        if (!_clothBendDeferred || !force && UsesClothRestGeometry) return;
+        _clothBendDeferred = false;
+        RegenerateMeshes(propagateInheritedBends: false);
+    }
+
     private void RefreshBendVisuals(bool propagateInheritedBends)
     {
         if (_shapeDataList.Zip(Visuals).Any(static pair =>
             pair.First.Shape is { Type: "plane", ThreeD: true, Bend: true } && pair.Second.GpuBend == null))
         {
-            RegenerateMeshes(propagateInheritedBends: false);
+            if (UsesClothRestGeometry)
+                _clothBendDeferred = true;
+            else
+            {
+                _clothBendDeferred = false;
+                RegenerateMeshes(propagateInheritedBends: false);
+            }
         }
         else
         {

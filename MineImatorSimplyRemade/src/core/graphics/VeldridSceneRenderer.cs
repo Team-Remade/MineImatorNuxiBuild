@@ -339,12 +339,18 @@ public sealed class VeldridSceneRenderer : IDisposable
     }
 
     internal static VeldridVertex[] BuildVertices(Mesh mesh)
+        => BuildVerticesCore(mesh, false);
+
+    internal static VeldridVertex[] BuildClothRestVertices(Mesh mesh)
+        => BuildVerticesCore(mesh, true);
+
+    private static VeldridVertex[] BuildVerticesCore(Mesh mesh, bool sourceGeometry)
     {
         var vertices = new VeldridVertex[mesh.Vertices.Count];
         bool morph = mesh.ShapeKeys.Any(key => key.Weight != 0 && key.Deltas.Length >= vertices.Length * 3);
         for (int i = 0; i < vertices.Length; i++)
         {
-            vec3 position = mesh.Vertices[i];
+            vec3 position = sourceGeometry ? mesh.Vertices[i] : mesh.RenderVertices[i];
             if (morph)
                 foreach (var key in mesh.ShapeKeys)
                     if (key.Weight != 0 && key.Deltas.Length >= vertices.Length * 3)
@@ -353,7 +359,9 @@ public sealed class VeldridSceneRenderer : IDisposable
             vertices[i] = new VeldridVertex
             {
                 Position = position,
-                Normal = mesh.Normals.Count == vertices.Length ? mesh.Normals[i] : vec3.UnitY,
+                Normal = sourceGeometry
+                    ? (mesh.Normals.Count == vertices.Length ? mesh.Normals[i] : vec3.UnitY)
+                    : (mesh.RenderNormals.Count == vertices.Length ? mesh.RenderNormals[i] : vec3.UnitY),
                 TexCoord = uv
             };
         }
@@ -377,7 +385,7 @@ public sealed class VeldridSceneRenderer : IDisposable
         for (int i = 0; i < vertices.Length; i++)
         {
             ref var vertex = ref vertices[i];
-            if (mesh.GpuBend is { } bend && bend.Angle.LengthSqr > 0)
+            if ((sourceGeometry || !mesh.HasClothGeometry) && mesh.GpuBend is { } bend && bend.Angle.LengthSqr > 0)
             {
                 vec3 local = vertex.Position - bend.ShapePosition;
                 vec3 source = (bend.InverseShapeTransform * new vec4(local, 1)).xyz;

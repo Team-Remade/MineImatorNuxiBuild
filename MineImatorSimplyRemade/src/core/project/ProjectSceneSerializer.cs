@@ -921,6 +921,7 @@ public static class ProjectSceneSerializer
         obj.SetLocalRotation(ToVec3(entry.Rotation));
         obj.SetLocalScale(ToVec3(entry.Scale));
         obj.Modifiers = entry.Modifiers?.Select(modifier => modifier.Validated()).ToList() ?? [];
+        foreach (var modifier in obj.Modifiers) modifier.ClothBake?.Validate();
         if (entry.CopyConstraints != null)
         {
             obj.CopyConstraints.Clear();
@@ -1384,8 +1385,20 @@ public static class ProjectSceneSerializer
     internal static void RemapObjectReferences(SceneObject obj, IReadOnlyDictionary<string, string> objectIds)
     {
         for (int i = 0; i < obj.Modifiers.Count; i++)
+        {
             if (objectIds.TryGetValue(obj.Modifiers[i].PathObjectId, out string? modifierPathId))
                 obj.Modifiers[i] = obj.Modifiers[i] with { PathObjectId = modifierPathId };
+            if (obj.Modifiers[i].Type == SceneModifierType.Cloth)
+                obj.Modifiers[i] = obj.Modifiers[i] with
+                {
+                    Cloth = obj.Modifiers[i].Cloth with
+                    {
+                        Groups = obj.Modifiers[i].Cloth.Groups.Select(group =>
+                            objectIds.TryGetValue(group.SeamObjectId, out string? target)
+                                ? group with { SeamObjectId = target } : group).ToArray()
+                    }
+                };
+        }
         if (!string.IsNullOrEmpty(obj.PathFollowObjectId) && objectIds.TryGetValue(obj.PathFollowObjectId, out string? pathId))
             obj.PathFollowObjectId = pathId;
         if (obj is ParticleSpawnerSceneObject particle &&

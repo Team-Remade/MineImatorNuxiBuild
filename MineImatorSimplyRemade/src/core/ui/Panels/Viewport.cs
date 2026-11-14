@@ -2808,6 +2808,7 @@ public partial class Viewport : UiPanel
         UpdateProceduralEffects(IsPreviewViewport ? MainViewport?.SceneObjects ?? SceneObjects : SceneObjects,
             GetTimelineEffectTimeSeconds());
         InverseKinematicsSolver.Evaluate(SceneObjects);
+        UpdateCloth();
         PreviewViewport?.UpdateCameraTextureFeeds();
 
         // ── 3D render into FBO ────────────────────────────────────────────────
@@ -3139,6 +3140,7 @@ public partial class Viewport : UiPanel
         RenderRuleOfThirdsOverlay(imageMin, imageSize);
         if (OverlaysEnabled)
             RenderPathOverlay(BuildPreparedCamera(activeCamera, activeCamObj), imageMin, imageSize);
+        RenderClothVertexOverlay(BuildPreparedCamera(activeCamera, activeCamObj), imageMin, imageSize);
 
         // ── Gizmo overlay (rotation arc drawn on the ImGui draw list) ─────────
         if (OverlaysEnabled)
@@ -7462,6 +7464,7 @@ public partial class Viewport : UiPanel
         }
         UpdateProceduralEffects(MainViewport.SceneObjects, GetTimelineEffectTimeSeconds());
         InverseKinematicsSolver.Evaluate(MainViewport.SceneObjects);
+        UpdateCloth();
 
         // Render substages/counters aggregate across all views; feed time stays out of PreviewScene.
         using var sceneScope = FrameProfiler.Shared.Measure(
@@ -8011,6 +8014,8 @@ public partial class Viewport : UiPanel
         bool keyboardBlocked = io.WantTextInput || io.AppFocusLost || Keybinds.IsCapturing;
         if (keyboardBlocked || !ImGui.IsMouseDown(ImGuiMouseButton.Right))
             _input.StopFreeFly();
+        if (HandleClothVertexInput(BuildPreparedCamera(camera, sceneObj), imageMin, imageSize, transformToolbarHovered))
+            return;
 
         bool sceneInputCaptured = _input.HasLeftPressCapture || _input.IsDragging || _input.IsGizmoDragging ||
                                   _input.IsPanning || _input.IsFreeFlyActive;

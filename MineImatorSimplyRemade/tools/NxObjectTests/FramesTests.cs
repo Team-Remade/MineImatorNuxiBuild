@@ -13,6 +13,92 @@ using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 internal static partial class Program
 {
+    private static void FramesTimelineLength(Fixture f)
+    {
+        var obj = Node("Short animation");
+        var timeline = FramesTimeline(obj);
+        foreach (int end in new[] { 10, 120, 300, 600 })
+        {
+            obj.Keyframes.Clear();
+            timeline.ImportProjectState(new() { MaxFrames = end });
+            timeline.RefreshFromScene();
+            Equal(end, timeline.MaxFrames, "Empty scene refresh changed timeline end");
+            obj.Keyframes["position.x"] = [new() { Frame = end, Value = 1f }];
+            timeline.RefreshFromScene();
+            Equal(end, timeline.MaxFrames, "Key at timeline end changed timeline length");
+            var saved = timeline.ExportProjectState();
+            var restored = FramesTimeline(obj);
+            restored.ImportProjectState(saved);
+            restored.RefreshFromScene();
+            Equal(end, restored.MaxFrames, "Saved timeline end did not survive reload and refresh");
+            obj.Keyframes["position.x"].Add(new() { Frame = end + 1, Value = 2f });
+            timeline.RefreshFromScene();
+            Equal(end + 31, timeline.MaxFrames, "Key past timeline end did not add 30 frames of padding");
+        }
+    }
+
+    private static unsafe void FramesTimelineMaxInput(Fixture f)
+    {
+        var previous = ImGui.GetCurrentContext();
+        var context = ImGui.CreateContext();
+        try
+        {
+            var io = ImGui.GetIO();
+            io.IniFilename = null;
+            io.LogFilename = null;
+            io.DisplaySize = new System.Numerics.Vector2(1800, 900);
+            io.DeltaTime = 1f / 60f;
+            io.BackendFlags |= ImGuiBackendFlags.RendererHasTextures;
+            var timeline = FramesTimeline();
+            var drawControls = typeof(Timeline).GetMethod("RenderTransportControls", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            uint maxId = 0;
+            void Draw(float x = -100, float y = -100, bool click = false)
+            {
+                io.AddMousePosEvent(x, y);
+                io.AddMouseButtonEvent(0, click);
+                ImGui.NewFrame();
+                ImGui.SetNextWindowPos(new System.Numerics.Vector2(0, 0));
+                ImGui.SetNextWindowSize(io.DisplaySize);
+                ImGui.Begin("Timeline inputs");
+                maxId = ImGui.GetID("##maxf");
+                drawControls.Invoke(timeline, null);
+                ImGui.End();
+                ImGui.Render();
+            }
+            Draw();
+            Draw();
+            System.Numerics.Vector2 input = default;
+            for (int y = 25; y < 150 && input == default; y += 5)
+                for (int x = 10; x < 1750; x += 5)
+                {
+                    Draw(x, y);
+                    if (context.HoveredId != maxId) continue;
+                    input = new(x, y);
+                    break;
+                }
+            Check(input != default, "Maximum frames control not reachable");
+            io.AddKeyEvent(ImGuiKey.ModCtrl, true);
+            Draw(input.X, input.Y, click: true);
+            Draw(input.X, input.Y);
+            io.AddKeyEvent(ImGuiKey.ModCtrl, false);
+            Draw(input.X, input.Y);
+            Check(io.WantTextInput, "Maximum frames control did not enter text editing");
+            io.AddInputCharactersUTF8("600");
+            Draw(input.X, input.Y);
+            io.AddKeyEvent(ImGuiKey.Enter, true);
+            Draw(input.X, input.Y);
+            io.AddKeyEvent(ImGuiKey.Enter, false);
+            Draw();
+            Equal(600, timeline.MaxFrames, "Typed maximum frames was lost");
+            Equal(30f, timeline.ExportProjectState().FrameRate, "Editing maximum frames changed FPS");
+        }
+        finally
+        {
+            ImGui.DestroyContext(context);
+            ImGui.SetCurrentContext(previous);
+        }
+    }
+
     private static Timeline FramesTimeline(params SceneObject[] objects)
     {
         var viewport = new Viewport();

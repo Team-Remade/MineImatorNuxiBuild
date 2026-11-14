@@ -3,7 +3,7 @@ using MineImatorSimplyRemade.core.mdl.meshes;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
-public enum SceneModifierType { Array, FollowPath }
+public enum SceneModifierType { Array, FollowPath, Cloth }
 public enum ArrayAxis { X, Y, Z }
 
 public sealed record SceneModifier
@@ -23,12 +23,20 @@ public sealed record SceneModifier
     public float ScaleZ { get; init; } = 1f;
     public string PathObjectId { get; init; } = "";
     public float PathOffset { get; init; }
+    public ClothSettings Cloth { get; init; } = new();
+    public ClothBake? ClothBake { get; init; }
 
     public SceneModifier Validated()
     {
         if (!Guid.TryParseExact(Id, "N", out _) || !Enum.IsDefined(Type) || PathObjectId == null || !float.IsFinite(PathOffset))
             throw new InvalidDataException("Modifiers require a valid type, path reference and finite path offset.");
         if (Type == SceneModifierType.FollowPath) return this;
+        if (Type == SceneModifierType.Cloth)
+        {
+            if (Cloth == null) throw new InvalidDataException("Cloth settings are missing.");
+            Cloth.Validate();
+            return this;
+        }
         if (!Enum.IsDefined(Axis) || Count is < 1 or > MaxInstances || !float.IsFinite(Distance) ||
             !float.IsFinite(RotationX) || !float.IsFinite(RotationY) || !float.IsFinite(RotationZ) ||
             !float.IsFinite(ScaleX) || !float.IsFinite(ScaleY) || !float.IsFinite(ScaleZ))
@@ -74,7 +82,7 @@ public sealed class ModifierEvaluation
         foreach (var modifier in obj.Modifiers)
         {
             modifier.Validated();
-            if (!modifier.Enabled || modifier.Type == SceneModifierType.FollowPath) continue;
+            if (!modifier.Enabled || modifier.Type != SceneModifierType.Array) continue;
             PathSceneObject? path = null;
             IReadOnlyList<PathSample> samples = [];
             string pathId = modifier.PathObjectId;

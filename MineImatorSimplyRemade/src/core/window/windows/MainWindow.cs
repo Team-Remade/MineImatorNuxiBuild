@@ -511,7 +511,7 @@ public class MainWindow : Window
     protected override void RenderUi()
     {
         UpdateFileDropCallbacks();
-        ImportDroppedFiles();
+        if (_mainViewport?.IsClothBaking != true) ImportDroppedFiles();
         SyncPreviewViewportPreferenceState();
 
         if (_mainViewport != null)
@@ -521,6 +521,7 @@ public class MainWindow : Window
         RefreshWindowTitle();
         AdvanceRenderJob();
         AdvanceResourcePackImportJob();
+        _mainViewport?.AdvanceClothBake();
 
         _menubar.Render();
         RenderProjectDialogs();
@@ -587,6 +588,7 @@ public class MainWindow : Window
         UpdateAutomaticBackups();
         RenderProjectHomeScreen();
         RenderToast();
+        _mainViewport?.DrawClothBakePopup();
         _performancePanel.Render();
         MetricsOverlay.Render();
     }

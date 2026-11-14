@@ -365,7 +365,19 @@ public static class NxObjectArchive
             node.PathFollowObjectId = Reference(node.PathFollowObjectId);
             if (node.Modifiers != null)
                 for (int i = 0; i < node.Modifiers.Count; i++)
+                {
                     node.Modifiers[i] = node.Modifiers[i] with { PathObjectId = Reference(node.Modifiers[i].PathObjectId) };
+                    if (node.Modifiers[i].Type == MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.SceneModifierType.Cloth)
+                        node.Modifiers[i] = node.Modifiers[i] with
+                        {
+                            Cloth = node.Modifiers[i].Cloth with
+                            {
+                                Groups = node.Modifiers[i].Cloth.Groups.Select(group =>
+                                    Reference(group.SeamObjectId).Length == 0
+                                        ? group with { SeamObjectId = "", SeamGroupId = "" } : group).ToArray()
+                            }
+                        };
+                }
             node.ParticleAttractorObjectId = Reference(node.ParticleAttractorObjectId);
             foreach (var constraint in node.CopyConstraints ?? []) constraint.TargetObjectId = Reference(constraint.TargetObjectId);
             foreach (var constraint in node.BoneConstraints ?? [])

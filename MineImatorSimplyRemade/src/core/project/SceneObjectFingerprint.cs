@@ -112,6 +112,23 @@ internal static class SceneObjectFingerprint
             hash.Add(modifier.ScaleZ);
             hash.Add(modifier.PathObjectId);
             hash.Add(modifier.PathOffset);
+            if (modifier.Type == SceneModifierType.Cloth)
+            {
+                var cloth = modifier.Cloth;
+                hash.Add(modifier.ClothBake?.Id);
+                hash.Add(cloth.Gravity); hash.Add(cloth.Damping);
+                hash.Add(cloth.Stretch); hash.Add(cloth.Bend); hash.Add(cloth.Thickness);
+                hash.Add(cloth.Substeps); hash.Add(cloth.Iterations);
+                hash.Add(cloth.Collisions); hash.Add(cloth.SelfCollision);
+                hash.Add(cloth.Groups.Length);
+                foreach (var group in cloth.Groups)
+                {
+                    hash.Add(group.Id); hash.Add(group.Name); hash.Add(group.Pinned);
+                    hash.Add(group.SeamObjectId); hash.Add(group.SeamGroupId); hash.Add(group.ReverseSeam);
+                    hash.Add(group.Vertices.Length);
+                    foreach (var vertex in group.Vertices) { hash.Add(vertex.Mesh); hash.Add(vertex.Vertex); }
+                }
+            }
         }
         foreach (var constraint in obj.CopyConstraints)
         {

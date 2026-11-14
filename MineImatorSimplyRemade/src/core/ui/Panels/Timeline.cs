@@ -690,17 +690,7 @@ public partial class Timeline : UiPanel
         ImGui.SameLine();
         ImGui.SetNextItemWidth(60f * UiTheme.Scale);
         int maxFrames = Math.Max(10, _maxFrames);
-        if (ImGui.GetIO().WantTextInput)
-        {
-            string maxFramesBuffer = maxFrames.ToString();
-            if (ImGui.InputText("##maxf", ref maxFramesBuffer, 16, ImGuiInputTextFlags.CharsDecimal))
-            {
-                maxFramesBuffer = SanitizeIntegerText(maxFramesBuffer);
-                if (int.TryParse(maxFramesBuffer, NumberStyles.Integer | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedMaxFrames))
-                    _maxFrames = Math.Max(10, parsedMaxFrames);
-            }
-        }
-        else if (ImGui.DragInt("##maxf", ref maxFrames, 1f, 10, 100000, "%d", ImGuiSliderFlags.AlwaysClamp))
+        if (ImGui.DragInt("##maxf", ref maxFrames, 1f, 10, 100000, "%d", ImGuiSliderFlags.AlwaysClamp))
             _maxFrames = Math.Max(10, maxFrames);
 
         ImGui.SameLine();
@@ -2873,7 +2863,7 @@ public partial class Timeline : UiPanel
 
     private void RecalculateTimelineLength()
     {
-        int max = 300;
+        int max = 0;
         foreach (var kvp in _propertyKeyframes)
             foreach (var kf in kvp.Value)
                 if (kf.Frame > max) max = kf.Frame;
@@ -2882,7 +2872,11 @@ public partial class Timeline : UiPanel
 
     // ── Apply keyframes ───────────────────────────────────────────────────────
 
-    private void ApplyKeyframesAtCurrentFrame(bool holdFirstKeyframeBeforeStart)
+    private void ApplyKeyframesAtCurrentFrame(bool holdFirstKeyframeBeforeStart) =>
+        ApplyKeyframeChannels(holdFirstKeyframeBeforeStart, null);
+
+    private void ApplyKeyframeChannels(bool holdFirstKeyframeBeforeStart, Func<string, bool>? filter,
+        IReadOnlyDictionary<string, SceneObject>? objectLookup = null)
     {
         var rotatedObjects = new HashSet<string>();
         var animatedModifiers = new Dictionary<(SceneObject Owner, string Id), SceneModifier>();
@@ -2896,8 +2890,9 @@ public partial class Timeline : UiPanel
             if (dotIdx < 0) continue;
             string objectId     = kvp.Key[..dotIdx];
             string propertyPath = kvp.Key[(dotIdx + 1)..];
+            if (filter != null && !filter(propertyPath)) continue;
 
-            var target = FindObjectById(objectId);
+            var target = objectLookup == null ? FindObjectById(objectId) : objectLookup.GetValueOrDefault(objectId);
             if (target == null) continue;
 
             if (propertyPath.StartsWith("modifier.", StringComparison.Ordinal))

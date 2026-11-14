@@ -38,6 +38,14 @@ public partial class PropertiesPanel
                 ProjectManager.Instance.SetDirty(true);
             }
             ImGui.EndDisabled();
+            if (owner.Modifiers.All(m => m.Type != SceneModifierType.Cloth) &&
+                ImGui.MenuItem(Localization.Label("text.cloth.title", "Cloth")))
+            {
+                if (string.IsNullOrEmpty(owner.ObjectId)) owner.AssignObjectId();
+                owner.Modifiers.Add(new SceneModifier { Type = SceneModifierType.Cloth });
+                Timeline?.RefreshFromScene();
+                ProjectManager.Instance.SetDirty(true);
+            }
             ImGui.EndPopup();
         }
         ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 6f * UiTheme.Scale);
@@ -55,9 +63,12 @@ public partial class PropertiesPanel
                 string prefix = $"modifier.{modifier.Id}";
                 ImGui.PushID(i);
                 if (i > 0) ImGui.Separator();
-                string label = modifier.Type == SceneModifierType.FollowPath
-                    ? Localization.Label("text.path.follow", "Follow Path")
-                    : Localization.Label("text.modifier.array", "Array");
+                string label = modifier.Type switch
+                {
+                    SceneModifierType.FollowPath => Localization.Label("text.path.follow", "Follow Path"),
+                    SceneModifierType.Cloth => Localization.Label("text.cloth.title", "Cloth"),
+                    _ => Localization.Label("text.modifier.array", "Array")
+                };
                 if (ImGui.TreeNodeEx(label, ImGuiTreeNodeFlags.DefaultOpen))
                 {
                     ImGui.SameLine();
@@ -82,6 +93,8 @@ public partial class PropertiesPanel
                         RegisterPropertyContext($"{prefix}.enabled");
                         DrawFollowPathModifier(owner);
                     }
+                    else if (modifier.Type == SceneModifierType.Cloth)
+                        DrawClothModifier(owner, i);
                     else
                     {
                         int count = modifier.Count, axis = (int)modifier.Axis;

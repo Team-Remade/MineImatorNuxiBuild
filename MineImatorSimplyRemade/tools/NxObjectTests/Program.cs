@@ -23,6 +23,22 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        int clothProject = Array.IndexOf(args, "--cloth-project");
+        if (clothProject >= 0)
+        {
+            try
+            {
+                if (clothProject + 1 >= args.Length) throw new ArgumentException("--cloth-project requires an .nxProj path.");
+                ClothProjectWelds(args[clothProject + 1]);
+                Console.WriteLine("PASS Supplied project's cloth region welds and bake");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--water-terrain-graphics", StringComparer.Ordinal) ||
             args.Contains("--water-terrain-veldrid-graphics", StringComparer.Ordinal))
         {
@@ -306,6 +322,8 @@ internal static partial class Program
             ("Frames reordered shape keys, ancestor names, IK and rotation compatibility", FramesAdvancedMapping),
             ("Frames validation, atomic failures, assets and undo redo", FramesValidationHistory),
             ("Frames ImGui timeline context menu and localization", FramesContextMenu),
+            ("Frames timeline length survives refresh and extends for real keys", FramesTimelineLength),
+            ("Frames timeline maximum accepts typed edits without losing focus", FramesTimelineMaxInput),
             ("Visibility appearance right-click manual keys and multi-selection auto keys", VisibilityControls),
             ("Visibility stepped seeking, inheritance, render cache and persistence", VisibilityTimeline),
             ("Texture sheet rectangular tile pixels, alpha, row orientation and reuse", TextureSheetPixels),
@@ -447,6 +465,18 @@ internal static partial class Program
             ("Modifier combination project/archive/library persistence, duplication and undo/redo", ModifierCombinationPersistence),
             ("Modifier context values, auto keys, interpolation, identity and persistence", ModifierKeyframes),
             ("Modifier ImGui context menu copy, paste, reset and manual keyframes", ModifierContextInteraction),
+            ("Cloth fixed/animated pins, welded seams and UV duplicates", ClothPinsAndSeams),
+            ("Cloth unequal edge pools, interpolation, reverse order and pins", ClothUnequalSeams),
+            ("Cloth multi-row region welds retain frame-zero shape and triangle area", ClothRegionSeams),
+            ("Cloth folded region rows snap with zero gap without collapsing", ClothFoldedRegionSeams),
+            ("Cloth dense-scene idle/playback allocation budgets and edit invalidation", ClothIdlePerformance),
+            ("Cloth scene contacts, self-collision, swept and moving collisions", ClothContacts),
+            ("Cloth scene BVH refit spatial locality and query performance", ClothSceneBroadPhasePerformance),
+            ("Cloth cached animated bend and skin collider sampling parity", ClothAnimatedColliderSampling),
+            ("Cloth timeline seek reproducibility, geometry restoration and shadow invalidation", ClothTimelineAndGeometry),
+            ("Cloth current bend rest shape, replay and deformation restoration", ClothBentRestShape),
+            ("Cloth archive, duplication, seam references and undo persistence", ClothPersistence),
+            ("Cloth viewport click, box, additive and subtractive vertex selection", ClothSelectionInteraction),
             ("Property reset Shift-right-click, defaults, groups, selection, auto-key and persistence", PropertyResetInteraction),
             ("All 15 bundled particle presets, assets and finite simulation", ParticleBundled),
             ("Particle spawn menu selection, search and all provided presets", ParticleSpawnMenu),
@@ -523,6 +553,10 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Path", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--frames", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Frames ", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--cloth", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Cloth ", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--cloth-graphics", StringComparer.Ordinal))
+            tests = [("Cloth GPU deformation, restoration, repeatability and renderer parity", ClothGraphics)];
         if (args.Contains("--modifiers", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Array", StringComparison.Ordinal) ||
                 test.Name.StartsWith("Follow Path modifier", StringComparison.Ordinal) ||

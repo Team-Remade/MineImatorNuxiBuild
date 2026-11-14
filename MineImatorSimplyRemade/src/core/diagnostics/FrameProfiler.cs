@@ -17,7 +17,8 @@ public enum ProfileStage
     VisibilityEvaluation, BoneLookup, MeshFlattening, ProfilerUi, CameraFeeds,
     AmbientOcclusion, IndirectLighting, Glow, DepthOfField, FilmGrain, Picking,
     ShadowSignature, ShadowBounds, BoneMatrices, FrameWork, SceneFingerprint,
-    SnapshotMetadata, LightSelection, Count
+    SnapshotMetadata, LightSelection, ClothUpdate, ClothCacheValidation, ClothTimelineSampling,
+    ClothColliderCollection, ClothSimulation, ClothSelfContacts, Count
 }
 
 public enum ProfileCounter
@@ -26,7 +27,7 @@ public enum ProfileCounter
     MeshFlattenCalls, SnapshotsCreated, SnapshotCacheHits, MainRenderInvocations,
     PreviewRenderInvocations, CameraFeedRenderInvocations, WorldMatrixCacheHits,
     VisibilityCacheHits, ShadowCacheHits, ShadowBoundsRebuilds, LightCandidatesExamined,
-    PointLightsUploaded, EmissiveProxyLights, LightSelectionCacheHits, Count
+    PointLightsUploaded, EmissiveProxyLights, LightSelectionCacheHits, ClothBvhNodesVisited, Count
 }
 
 public readonly record struct ProfileStageSummary(ProfileStage Stage, double MeanMs, double MaxMs, double MeanCalls)

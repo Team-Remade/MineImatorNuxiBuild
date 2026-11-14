@@ -31,7 +31,7 @@ public partial class Timeline
         string[] parts = path.Split('.', 3);
         if (parts.Length != 3) return false;
         var found = obj.Modifiers.FirstOrDefault(entry => entry.Id == parts[1]);
-        if (found == null || !(found.Type == SceneModifierType.FollowPath
+        if (found == null || !(found.Type != SceneModifierType.Array
                 ? parts[2] == "enabled" : ArrayChannels.Any(entry => entry.Channel == parts[2]))) return false;
         modifier = found;
         channel = parts[2];
@@ -43,8 +43,12 @@ public partial class Timeline
         for (int i = 0; i < obj.Modifiers.Count; i++)
         {
             var modifier = obj.Modifiers[i];
-            string label = modifier.Type == SceneModifierType.Array
-                ? Localization.T("text.modifier.array") : Localization.T("text.path.follow");
+            string label = modifier.Type switch
+            {
+                SceneModifierType.Array => Localization.T("text.modifier.array"),
+                SceneModifierType.Cloth => Localization.T("text.cloth.title"),
+                _ => Localization.T("text.path.follow")
+            };
             IEnumerable<(string Channel, string Label)> channels = modifier.Type == SceneModifierType.Array
                 ? ArrayChannels : [("enabled", "Enabled")];
             foreach (var channel in channels)

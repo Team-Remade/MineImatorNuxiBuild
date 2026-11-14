@@ -40,6 +40,50 @@ public class Mesh : IDisposable
 
     /// <summary>Vertex positions (XYZ). Must have Count % 3 == 0 for non-indexed meshes.</summary>
     public readonly List<vec3> Vertices = new();
+    private vec3[]? _clothVertices;
+    private vec3[]? _clothNormals;
+    internal bool HasClothGeometry => _clothVertices != null;
+    public IReadOnlyList<vec3> RenderVertices => _clothVertices ?? (IReadOnlyList<vec3>)Vertices;
+    public IReadOnlyList<vec3> RenderNormals => _clothNormals ?? (IReadOnlyList<vec3>)Normals;
+
+    public unsafe void SetClothGeometry(vec3[]? positions)
+    {
+        if (positions == null && _clothVertices == null) return;
+        if (positions != null && positions.Length != Vertices.Count)
+            throw new InvalidDataException("Cloth topology no longer matches the source mesh.");
+        _clothVertices = positions;
+        _clothNormals = positions == null ? null : new vec3[positions.Length];
+        if (positions != null)
+        {
+            int count = Indices is { Length: > 0 } ? Indices.Length : positions.Length;
+            for (int i = 0; i + 2 < count; i += 3)
+            {
+                int a = Indices is { Length: > 0 } ? checked((int)Indices[i]) : i;
+                int b = Indices is { Length: > 0 } ? checked((int)Indices[i + 1]) : i + 1;
+                int c = Indices is { Length: > 0 } ? checked((int)Indices[i + 2]) : i + 2;
+                vec3 normal = vec3.Cross(positions[b] - positions[a], positions[c] - positions[a]);
+                _clothNormals![a] += normal;
+                _clothNormals[b] += normal;
+                _clothNormals[c] += normal;
+            }
+            for (int i = 0; i < positions.Length; i++)
+                _clothNormals![i] = _clothNormals[i].LengthSqr > 1e-16f ? _clothNormals[i].Normalized : vec3.UnitY;
+        }
+        _shadowGeometryVersion++;
+        ComputeBoundingSphere();
+        if (_baseVertexData == null || _vbo == 0) return;
+        float[] data = (float[])_baseVertexData.Clone();
+        for (int i = 0; i < Vertices.Count; i++)
+        {
+            vec3 p = RenderVertices[i], n = RenderNormals[i];
+            int offset = i * _vertexFloats;
+            data[offset] = p.x; data[offset + 1] = p.y; data[offset + 2] = p.z;
+            data[offset + 3] = n.x; data[offset + 4] = n.y; data[offset + 5] = n.z;
+        }
+        _gl.BindBuffer(GLEnum.ArrayBuffer, _vbo);
+        _gl.BufferSubData(GLEnum.ArrayBuffer, 0, (nuint)(data.Length * sizeof(float)), data);
+        _gl.BindBuffer(GLEnum.ArrayBuffer, 0);
+    }
 
     /// <summary>
     /// Local voxel centers for auto-emissive terrain merged into this mesh.
@@ -1038,6 +1082,7 @@ public class Mesh : IDisposable
     /// </summary>
     public unsafe void Upload()
     {
+        _clothVertices = _clothNormals = null;
         _shadowGeometryVersion++;
         // Compile shader on first upload.
         if (_shader == null)
@@ -1191,7 +1236,7 @@ public class Mesh : IDisposable
 
         vec3 min = new(float.MaxValue);
         vec3 max = new(float.MinValue);
-        foreach (var v in Vertices)
+        foreach (var v in RenderVertices)
         {
             min = vec3.Min(min, v);
             max = vec3.Max(max, v);
@@ -2135,7 +2180,7 @@ public class Mesh : IDisposable
 
     public void ApplyBendUniforms(Shader shader)
     {
-        GpuBendState? bend = GpuBend;
+        GpuBendState? bend = HasClothGeometry ? null : GpuBend;
         SetUniformBool(shader, "uBendEnabled", bend != null);
         SetUniformBool(shader, "uBendHasSourceSegments",
             BendSourceSegmentPositions.Count > 0 && BendSourceSegmentPositions.Count == Vertices.Count);
@@ -2264,5 +2309,6 @@ public class Mesh : IDisposable
         if (_ebo != 0) _gl.DeleteBuffers(1, _ebo);
         if (_skinVbo != 0) _gl.DeleteBuffers(1, _skinVbo);
         _shader?.Dispose();
+        _vao = _vbo = _ebo = _skinVbo = 0;
     }
 }
