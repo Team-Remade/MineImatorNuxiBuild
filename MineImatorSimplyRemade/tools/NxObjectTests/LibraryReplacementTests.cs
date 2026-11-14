@@ -286,7 +286,7 @@ internal static partial class Program
             {
                 const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
                 typeof(Timeline).GetField("_currentFrame", flags)!.SetValue(timeline, frame);
-                typeof(Timeline).GetMethod("ApplyKeyframesAtCurrentFrame", flags)!.Invoke(timeline, [true]);
+                typeof(Timeline).GetMethod("ApplyKeyframesAtCurrentFrame", flags)!.Invoke(timeline, null);
             }
 
             static void SetTestLibraryIds(ProjectSceneObjectEntry entry)

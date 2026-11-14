@@ -37,7 +37,7 @@ public partial class Timeline
         try
         {
             _currentFrame = frame;
-            ApplyKeyframeChannels(true, GeometryChannel, owners);
+            ApplyKeyframeChannels(GeometryChannel, owners);
             if (Viewport != null) InverseKinematicsSolver.Evaluate(Viewport.SceneObjects);
             sample();
         }

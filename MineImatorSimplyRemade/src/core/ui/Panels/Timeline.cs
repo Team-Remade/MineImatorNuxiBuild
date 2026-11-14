@@ -288,7 +288,7 @@ public partial class Timeline : UiPanel
     {
         _currentFrame = Math.Max(0, frame);
         _frameAccumulator = 0.0;
-        ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
+        ApplyKeyframesAtCurrentFrame();
         SyncAudioWithPlayback();
     }
 
@@ -313,7 +313,7 @@ public partial class Timeline : UiPanel
     {
         _currentFrame = Math.Max(0, frame);
         _frameAccumulator = 0.0;
-        ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: true);
+        ApplyKeyframesAtCurrentFrame();
         // Re-sync audio offsets after a render-driven seek.
         SyncAudioWithPlayback();
     }
@@ -461,7 +461,7 @@ public partial class Timeline : UiPanel
                 {
                     _currentFrame     = newFrame;
                     _frameAccumulator = 0.0;
-                    ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
+                    ApplyKeyframesAtCurrentFrame();
                 }
             }
             else
@@ -557,7 +557,7 @@ public partial class Timeline : UiPanel
             StopAllAudio();
             if (!_loopPlayback) _isPlaying = false;
         }
-        if (_currentFrame != prev) ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
+        if (_currentFrame != prev) ApplyKeyframesAtCurrentFrame();
     }
 
     // ── Transport controls ────────────────────────────────────────────────────
@@ -1249,10 +1249,10 @@ public partial class Timeline : UiPanel
         }
     }
 
-    private void JumpToStart()          { _currentFrame = 0; _frameAccumulator = 0.0; StopAllAudio(); ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
+    private void JumpToStart()          { _currentFrame = 0; _frameAccumulator = 0.0; StopAllAudio(); ApplyKeyframesAtCurrentFrame(); }
     private void Stop()                 { _isPlaying = false; StopAllAudio(); JumpToStart(); }
-    private void StepBackward()         { _currentFrame = Math.Max(0, _currentFrame - 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
-    private void StepForward()          { _currentFrame = Math.Min(_maxFrames, _currentFrame + 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
+    private void StepBackward()         { _currentFrame = Math.Max(0, _currentFrame - 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(); }
+    private void StepForward()          { _currentFrame = Math.Min(_maxFrames, _currentFrame + 1); _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(); }
 
     // ── ImageButton helpers (byte* API required by Hexa.NET.ImGui 2.x) ───────
 
@@ -1281,7 +1281,7 @@ public partial class Timeline : UiPanel
                 if (kf.Frame > last) last = kf.Frame;
         _currentFrame = last;
         _frameAccumulator = 0.0;
-        ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
+        ApplyKeyframesAtCurrentFrame();
     }
 
     // ── Frame ruler ───────────────────────────────────────────────────────────
@@ -1355,7 +1355,7 @@ public partial class Timeline : UiPanel
             _rulerScrollAtDrag       = scrollX;
             // Seek immediately on the first click
             int newFrame = Math.Max(0, (int)MathF.Round((ImGui.GetMousePos().X - wPos.X + scrollX) / _pixelsPerFrame));
-            if (newFrame != _currentFrame) { _currentFrame = newFrame; _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false); }
+            if (newFrame != _currentFrame) { _currentFrame = newFrame; _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(); }
         }
 
         if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
@@ -2234,7 +2234,7 @@ public partial class Timeline : UiPanel
         {
             _currentFrame = _playbackRegionStart.Value;
             _frameAccumulator = 0.0;
-            ApplyKeyframesAtCurrentFrame(holdFirstKeyframeBeforeStart: false);
+            ApplyKeyframesAtCurrentFrame();
         }
     }
 
@@ -2516,7 +2516,7 @@ public partial class Timeline : UiPanel
                 string path = "mirotation." + (axis == 0 ? "x" : axis == 1 ? "y" : "z");
                 if (!_propertyKeyframes.ContainsKey($"{obj.ObjectId}.{path}")) LoadKeyframesFromObject(obj, path);
                 if (_propertyKeyframes.TryGetValue($"{obj.ObjectId}.{path}", out var track) &&
-                    InterpolateKeyframes(track, path, frame, true) is { } sampled &&
+                    InterpolateKeyframes(track, path, frame) is { } sampled &&
                     TryConvertKeyframeValue(sampled, out float angle)) reference[axis] = angle;
             }
             vec3 recorded = GetMiRotationAngles(obj, reference);
@@ -2606,7 +2606,7 @@ public partial class Timeline : UiPanel
                     LoadKeyframesFromObject(obj, path);
                 // Include edits back to defaults when an existing track would overwrite them.
                 object baseline = _propertyKeyframes.TryGetValue($"{obj.ObjectId}.{path}", out var track) && track.Count > 0
-                    ? InterpolateKeyframes(track, path, _currentFrame, true) ?? GetPropertyValue(defaults, path)
+                    ? InterpolateKeyframes(track, path, _currentFrame) ?? GetPropertyValue(defaults, path)
                     : GetPropertyValue(defaults, path);
                 object value = GetRecordedKeyframeValue(obj, path, _currentFrame);
                 bool equal;
@@ -2872,10 +2872,10 @@ public partial class Timeline : UiPanel
 
     // ── Apply keyframes ───────────────────────────────────────────────────────
 
-    private void ApplyKeyframesAtCurrentFrame(bool holdFirstKeyframeBeforeStart) =>
-        ApplyKeyframeChannels(holdFirstKeyframeBeforeStart, null);
+    private void ApplyKeyframesAtCurrentFrame() =>
+        ApplyKeyframeChannels(null);
 
-    private void ApplyKeyframeChannels(bool holdFirstKeyframeBeforeStart, Func<string, bool>? filter,
+    private void ApplyKeyframeChannels(Func<string, bool>? filter,
         IReadOnlyDictionary<string, SceneObject>? objectLookup = null)
     {
         var rotatedObjects = new HashSet<string>();
@@ -2898,7 +2898,7 @@ public partial class Timeline : UiPanel
             if (propertyPath.StartsWith("modifier.", StringComparison.Ordinal))
             {
                 if (TryGetModifier(target, propertyPath, out var modifier, out string channel) &&
-                    InterpolateKeyframes(keyframes, propertyPath, _currentFrame, holdFirstKeyframeBeforeStart) is { } sampled)
+                    InterpolateKeyframes(keyframes, propertyPath, _currentFrame) is { } sampled)
                 {
                     var key = (target, modifier.Id);
                     animatedModifiers[key] = WithModifierValue(animatedModifiers.GetValueOrDefault(key, modifier), channel, sampled);
@@ -2914,7 +2914,7 @@ public partial class Timeline : UiPanel
                 {
                     string path = "mirotation." + (axis == 0 ? "x" : axis == 1 ? "y" : "z");
                     if (_propertyKeyframes.TryGetValue($"{objectId}.{path}", out var track) &&
-                        InterpolateKeyframes(track, path, _currentFrame, holdFirstKeyframeBeforeStart) is { } raw &&
+                        InterpolateKeyframes(track, path, _currentFrame) is { } raw &&
                         TryConvertKeyframeValue(raw, out float angle))
                         angles[axis] = angle;
                 }
@@ -2926,10 +2926,9 @@ public partial class Timeline : UiPanel
                 continue;
             }
 
-            object? value = InterpolateKeyframes(keyframes, propertyPath, _currentFrame, holdFirstKeyframeBeforeStart);
+            object? value = InterpolateKeyframes(keyframes, propertyPath, _currentFrame);
             if (value != null)
                 SetPropertyValue(target, propertyPath, value);
-            // null means "before first keyframe" — leave the object at its default state.
         }
         foreach (var (key, modifier) in animatedModifiers)
         {
@@ -2940,10 +2939,9 @@ public partial class Timeline : UiPanel
 
     /// <summary>
     /// Returns the interpolated value for the property at <paramref name="frame"/>,
-    /// or <c>null</c> if the frame is before the first keyframe (meaning the object
-    /// should keep its default/current value rather than being driven by animation).
+    /// holding the nearest endpoint outside the keyed range.
     /// </summary>
-    private object? InterpolateKeyframes(List<TimelineKeyframe> keyframes, string path, int frame, bool holdFirstKeyframeBeforeStart)
+    private object? InterpolateKeyframes(List<TimelineKeyframe> keyframes, string path, int frame)
     {
         TimelineKeyframe? prev = null, next = null;
         foreach (var kf in keyframes)
@@ -2952,12 +2950,10 @@ public partial class Timeline : UiPanel
             if (kf.Frame >= frame && (next == null || kf.Frame < next.Frame)) next = kf;
         }
 
-        // No keyframe at or before current frame → object is before its first keyframe.
-        // Return null so the caller skips applying anything and the object keeps its
-        // current/default property value.
+        // Before the first key, hold its value regardless of seek direction.
         if (prev == null)
         {
-            if (holdFirstKeyframeBeforeStart && next != null)
+            if (next != null)
                 return path is "text.font" or "material.texture" or "path_follow.target" or "particle.attractor_target" || IsIkReferencePath(path) || IsModifierReferencePath(path) ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
             return null;
         }

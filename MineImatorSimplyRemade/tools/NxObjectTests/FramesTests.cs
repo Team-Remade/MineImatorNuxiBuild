@@ -2,8 +2,10 @@ using System.Reflection;
 using System.Text.Json;
 using GlmSharp;
 using Hexa.NET.ImGui;
+using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.history;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
@@ -13,6 +15,71 @@ using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 internal static partial class Program
 {
+    private static void FramesBackwardSeekBeforeFirstKey(Fixture f)
+    {
+        var obj = Node("Animated object");
+        obj.SetLocalPosition(new vec3(0, 7, 0));
+        obj.Modifiers = [new() { Type = SceneModifierType.Array }];
+        string modifier = $"modifier.{obj.Modifiers[0].Id}";
+        obj.Keyframes["position.x"] =
+        [
+            new() { Frame = 30, Value = 12f },
+            new() { Frame = 10, Value = 4f }
+        ];
+        obj.Keyframes["visible"] = [new() { Frame = 10, Value = true }, new() { Frame = 30, Value = false }];
+        obj.Keyframes[$"{modifier}.distance"] = [new() { Frame = 10, Value = 2f }, new() { Frame = 30, Value = 6f }];
+        obj.Keyframes[$"{modifier}.target"] =
+            [new() { Frame = 10, Value = "first-path" }, new() { Frame = 30, Value = "last-path" }];
+        var child = Node("Imported rotation");
+        child.Keyframes["mirotation.z"] = [new() { Frame = 10, Value = 15f }, new() { Frame = 30, Value = 60f }];
+        obj.AddChild(child);
+        var light = new LightSceneObject();
+        light.AssignObjectId();
+        light.Keyframes["light.energy"] = [new() { Frame = 20, Value = 3f }];
+        var timeline = FramesTimeline(obj, light);
+        timeline.LoadKeyframesForAllObjects([child]);
+        void CheckFirstPose()
+        {
+            Near(4, obj.LocalPosition.x, "Backward seek holds earliest transform key");
+            Near(7, obj.LocalPosition.y, "Unkeyed transform component is preserved");
+            Check(obj.ObjectVisible, "Backward seek restores first discrete key");
+            Near(2, obj.Modifiers[0].Distance, "Backward seek restores first modifier key");
+            Equal("first-path", obj.Modifiers[0].PathObjectId, "Backward seek restores first reference key");
+            var rotation = MineImatorLoader.ConvertMiRotationMatrix([0f, 0f, 15f]);
+            Near(MineImatorLoader.MatrixToEulerRzRyRx(rotation), child.LocalRotation,
+                "Backward seek restores first imported rotation key");
+            Near(3, light.LightEnergy, "Single-key track holds its value before the key");
+        }
+        Services.Initialize();
+        try
+        {
+            foreach (int earlier in new[] { 0, 9, 10 })
+            {
+                timeline.SetCurrentFrame(30);
+                Near(12, obj.LocalPosition.x, "Later transform key is applied");
+                Check(!obj.ObjectVisible, "Later discrete key is applied");
+                timeline.SetCurrentFrame(earlier);
+                CheckFirstPose();
+                timeline.SetCurrentFrame(30);
+                timeline.SetCurrentFrameForRender(earlier);
+                CheckFirstPose();
+            }
+            timeline.SetCurrentFrame(20);
+            Near(8, obj.LocalPosition.x, "Interpolation between keys is preserved");
+            Near(4, obj.Modifiers[0].Distance, "Modifier interpolation is preserved");
+            timeline.SetCurrentFrame(30);
+            typeof(Timeline).GetMethod("JumpToStart", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(timeline, null);
+            CheckFirstPose();
+            timeline.SetCurrentFrame(10);
+            typeof(Timeline).GetMethod("StepBackward", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(timeline, null);
+            CheckFirstPose();
+        }
+        finally
+        {
+            Services.Shutdown();
+        }
+    }
+
     private static void FramesTimelineLength(Fixture f)
     {
         var obj = Node("Short animation");
@@ -166,7 +233,7 @@ internal static partial class Program
         Check(timeline.HasSelectedKeyframes, "Imported keys not selected");
         typeof(Timeline).GetField("_currentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(timeline, 105);
         typeof(Timeline).GetMethod("ApplyKeyframesAtCurrentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(timeline, [false]);
+            .Invoke(timeline, null);
         Near(4.5f, first.LocalPosition.x, "Imported easing seek");
         Check(!first.ObjectVisible, "Boolean key value");
         var saved = ProjectSceneSerializer.SerializeObjectForLibrary(first);

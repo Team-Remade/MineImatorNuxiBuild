@@ -150,11 +150,11 @@ internal static partial class Program
         var contextGet = typeof(PropertiesPanel).GetMethod("GetContextPropertyValue", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var contextSet = typeof(PropertiesPanel).GetMethod("ApplyContextPropertyValues", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var paths = typeof(Timeline).GetMethod("GetKeyframePropertyPaths", BindingFlags.Static | BindingFlags.NonPublic)!;
-        void Seek(Timeline target, int frame, bool render = false)
+        void Seek(Timeline target, int frame)
         {
             typeof(Timeline).GetField("_currentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(target, frame);
             typeof(Timeline).GetMethod("ApplyKeyframesAtCurrentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(target, [render]);
+                .Invoke(target, null);
         }
         typeof(Timeline).GetField("_autoKeyframe", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(timeline, true);
         SelectionManager.Instance!.ClearSelection();
@@ -220,7 +220,7 @@ internal static partial class Program
         Seek(timeline, 5);
         Near(3, obj.Modifiers.Single(modifier => modifier.Id == array.Id).Distance, "Reordering preserves track ownership");
         Equal(other, obj.Modifiers.Single(modifier => modifier.Id == other.Id), "Unkeyed modifier is unchanged");
-        Seek(timeline, 0, render: true);
+        Seek(timeline, 0);
         Near(2, obj.Modifiers.Single(modifier => modifier.Id == array.Id).Distance, "Backward render seek is reproducible");
 
         var root = new SceneObject { Name = "Animated modifier root" };

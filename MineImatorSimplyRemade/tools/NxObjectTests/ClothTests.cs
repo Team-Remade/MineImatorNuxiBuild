@@ -521,7 +521,7 @@ internal static partial class Program
             void At(int frame)
             {
                 typeof(Timeline).GetField("_currentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(timeline, frame);
-                typeof(Timeline).GetMethod("ApplyKeyframesAtCurrentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(timeline, [true]);
+                typeof(Timeline).GetMethod("ApplyKeyframesAtCurrentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(timeline, null);
                 update.Invoke(viewport, null);
                 Check(viewport.ClothError == null, "Integrated cloth evaluation succeeds: " + viewport.ClothError);
             }

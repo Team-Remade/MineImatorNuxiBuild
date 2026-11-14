@@ -323,6 +323,7 @@ internal static partial class Program
             ("Frames validation, atomic failures, assets and undo redo", FramesValidationHistory),
             ("Frames ImGui timeline context menu and localization", FramesContextMenu),
             ("Frames timeline length survives refresh and extends for real keys", FramesTimelineLength),
+            ("Frames backward seeking before first keys matches export", FramesBackwardSeekBeforeFirstKey),
             ("Frames timeline maximum accepts typed edits without losing focus", FramesTimelineMaxInput),
             ("Visibility appearance right-click manual keys and multi-selection auto keys", VisibilityControls),
             ("Visibility stepped seeking, inheritance, render cache and persistence", VisibilityTimeline),

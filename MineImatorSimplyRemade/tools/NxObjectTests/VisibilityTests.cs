@@ -148,7 +148,7 @@ internal static partial class Program
         void Seek(Timeline target, int frame)
         {
             frameField.SetValue(target, frame);
-            apply.Invoke(target, [true]);
+            apply.Invoke(target, null);
         }
         timeline.AddKeyframeForProperty(obj, "visible", 0);
         obj.SetObjectVisible(false);
