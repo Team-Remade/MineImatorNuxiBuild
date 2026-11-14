@@ -474,6 +474,7 @@ public class ProjectSceneObjectEntry
     public ProjectVec4 AlbedoColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f, W = 1f };
     public ProjectVec4 BlendColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f, W = 1f };
     public ProjectVec4 MixColor { get; set; } = new() { X = 0f, Y = 0f, Z = 0f, W = 0f };
+    public ProjectColorAdjustments ColorAdjustments { get; set; } = new();
     public float Metallic { get; set; } = 0f;
     public float Roughness { get; set; } = 0.5f;
     public bool PbrEnabled { get; set; } = false;
@@ -557,6 +558,9 @@ public class ProjectSceneObjectEntry
     public int CameraBladeCount { get; set; }
     public float CameraBladeAngle { get; set; }
     public float CameraBladeStretch { get; set; }
+    public ProjectVec3 CameraBlendColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f };
+    public ProjectVec4 CameraMixColor { get; set; } = new();
+    public ProjectColorAdjustments CameraColorAdjustments { get; set; } = new();
     public bool CameraOrbitEnabled { get; set; }
     public float CameraOrbitDistance { get; set; } = 100f;
     public float CameraOrbitRotationXY { get; set; }

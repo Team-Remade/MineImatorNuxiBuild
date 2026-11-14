@@ -432,6 +432,7 @@ public static class ProjectSceneSerializer
             entry.AlbedoColor = ToProjectVec4(obj.MaterialSettings.AlbedoColor);
             entry.BlendColor = ToProjectVec4(obj.MaterialSettings.BlendColor);
             entry.MixColor = ToProjectVec4(obj.MaterialSettings.MixColor);
+            entry.ColorAdjustments = ProjectColorAdjustments.FromRuntime(obj.MaterialSettings.ColorAdjustments);
             entry.Metallic = obj.MaterialSettings.Metallic;
             entry.Roughness = obj.MaterialSettings.Roughness;
             entry.PbrEnabled = obj.MaterialSettings.PbrEnabled;
@@ -542,6 +543,9 @@ public static class ProjectSceneSerializer
             entry.CameraBladeCount = camera.BladeCount;
             entry.CameraBladeAngle = camera.BladeAngle;
             entry.CameraBladeStretch = camera.BladeStretch;
+            entry.CameraBlendColor = ToProjectVec3(camera.BlendColor);
+            entry.CameraMixColor = ToProjectVec4(camera.MixColor);
+            entry.CameraColorAdjustments = ProjectColorAdjustments.FromRuntime(camera.ColorAdjustments);
             entry.CameraOrbitEnabled = camera.OrbitEnabled;
             entry.CameraOrbitDistance = camera.OrbitDistance;
             entry.CameraOrbitRotationXY = camera.OrbitRotationXY;
@@ -1140,6 +1144,7 @@ public static class ProjectSceneSerializer
             material.AlbedoColor = ToVec4(entry.AlbedoColor);
             material.BlendColor = ToVec4(entry.BlendColor);
             material.MixColor = ToVec4(entry.MixColor);
+            material.ColorAdjustments = entry.ColorAdjustments.ToRuntime();
             material.Metallic = entry.Metallic;
             material.Roughness = entry.Roughness;
             material.PbrEnabled = entry.PbrEnabled;
@@ -1204,6 +1209,9 @@ public static class ProjectSceneSerializer
             camera.BladeCount = Math.Clamp(entry.CameraBladeCount, 0, 16);
             camera.BladeAngle = entry.CameraBladeAngle;
             camera.BladeStretch = Math.Clamp(entry.CameraBladeStretch, -100f, 100f);
+            camera.BlendColor = ToVec3(entry.CameraBlendColor);
+            camera.MixColor = ToVec4(entry.CameraMixColor);
+            camera.ColorAdjustments = entry.CameraColorAdjustments.ToRuntime();
             camera.OrbitEnabled = entry.CameraOrbitEnabled;
             camera.OrbitDistance = entry.CameraOrbitDistance;
             camera.OrbitRotationXY = entry.CameraOrbitRotationXY;

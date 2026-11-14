@@ -1,5 +1,6 @@
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.material.materials;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
@@ -16,6 +17,9 @@ public class CameraSceneObject : SceneObject
     public int BladeCount;
     public float BladeAngle;
     public float BladeStretch;
+    public GlmSharp.vec3 BlendColor = GlmSharp.vec3.Ones;
+    public GlmSharp.vec4 MixColor = GlmSharp.vec4.Zero;
+    public MaterialColorAdjustments ColorAdjustments = new();
     public bool OrbitEnabled;
     public float OrbitDistance = 100f;
     public float OrbitRotationXY;

@@ -9,6 +9,15 @@ uniform float uVibrance;
 uniform float uHue;
 uniform float uInvertStrength;
 uniform float uColorBurn;
+uniform vec3 uBlendColor;
+uniform vec4 uMixColor;
+uniform vec3 uMultiplyHsv;
+uniform vec3 uAddRgb;
+uniform vec3 uAddHsv;
+uniform vec3 uSubtractRgb;
+uniform vec3 uSubtractHsv;
+
+#include "material_colors.glsl"
 
 out vec4 FragColor;
 
@@ -57,5 +66,8 @@ void main() {
         vec3 burned = 1.0 - min(vec3(1.0), (1.0 - base) / max(base, vec3(0.000001)));
         color = mix(color, burned, burn);
     }
+    color *= uBlendColor;
+    color = applyMaterialColors(color, uMultiplyHsv, uAddRgb, uAddHsv, uSubtractRgb, uSubtractHsv);
+    color = mix(color, uMixColor.rgb, clamp(uMixColor.a, 0.0, 1.0));
     FragColor = vec4(clamp(color, 0.0, 1.0), scene.a);
 }

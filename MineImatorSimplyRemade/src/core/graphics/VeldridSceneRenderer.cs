@@ -51,6 +51,7 @@ public sealed class VeldridSceneRenderer : IDisposable
         public vec4 WindParameters, WindOptions;
         public vec4 UvTransform, UvAnimationMirror;
         public vec4 PortalOptions, PortalCamera;
+        public vec4 MultiplyHsv, AddRgb, AddHsv, SubtractRgb, SubtractHsv;
     }
 
     public VeldridSceneRenderer(GraphicsDevice device, GL gl)
@@ -86,6 +87,11 @@ public sealed class VeldridSceneRenderer : IDisposable
                 vec4 UvAnimationMirror;
                 vec4 PortalOptions;
                 vec4 PortalCamera;
+                vec4 MultiplyHsv;
+                vec4 AddRgb;
+                vec4 AddHsv;
+                vec4 SubtractRgb;
+                vec4 SubtractHsv;
             };
             """;
         string wind = """
@@ -123,6 +129,7 @@ public sealed class VeldridSceneRenderer : IDisposable
             }
             """;
         string fragment = "#version 450\n" + uniforms +
+            MineImatorSimplyRemade.core.mdl.Shader.LoadShaderSource("material_colors.glsl") + "\n" +
             MineImatorSimplyRemade.core.mdl.Shader.LoadShaderSource("end_portal.glsl") + "\n" + """
             layout(set = 0, binding = 1) uniform texture2D AlbedoTexture;
             layout(set = 0, binding = 2) uniform texture2D AlphaTexture;
@@ -159,7 +166,9 @@ public sealed class VeldridSceneRenderer : IDisposable
                 if (PortalOptions.x > 0.5)
                     texel = vec4(endPortalColor(vWorldPosition, PortalCamera.xyz, vNormal, PortalOptions.y), 1.0);
                 vec4 mask = texture(sampler2D(AlphaTexture, SurfaceSampler), vUv);
-                vec3 base = mix(texel.rgb * Albedo.rgb * Blend.rgb, Mix.rgb, clamp(Mix.a, 0.0, 1.0));
+                vec3 base = texel.rgb * Albedo.rgb * Blend.rgb;
+                base = applyMaterialColors(base, MultiplyHsv.xyz, AddRgb.xyz, AddHsv.xyz, SubtractRgb.xyz, SubtractHsv.xyz);
+                base = mix(base, Mix.rgb, clamp(Mix.a, 0.0, 1.0));
                 float alpha = texel.a * mask.a * Albedo.a * Blend.a;
                 vec3 normal = length(vNormal) > 0.00001 ? normalize(vNormal) : vec3(0, 1, 0);
                 normal = mappedNormal(normal);
@@ -273,6 +282,11 @@ public sealed class VeldridSceneRenderer : IDisposable
             Albedo = new vec4(mesh.RenderAlbedo, mesh.Alpha),
             Blend = mesh.BlendColor,
             Mix = mesh.MixColor,
+            MultiplyHsv = new vec4(mesh.ColorAdjustments.MultiplyHsv, 0f),
+            AddRgb = new vec4(mesh.ColorAdjustments.AddRgb, 0f),
+            AddHsv = new vec4(mesh.ColorAdjustments.AddHsv, 0f),
+            SubtractRgb = new vec4(mesh.ColorAdjustments.SubtractRgb, 0f),
+            SubtractHsv = new vec4(mesh.ColorAdjustments.SubtractHsv, 0f),
             Emission = new vec4(mesh.EmissionEnabled && !mesh.EmissionIndirectOnly
                 ? mesh.EmissionColor * Math.Max(mesh.EmissionEnergy, 0f) : vec3.Zero, 0),
             Ambient = new vec4(Mesh.GlobalAmbientColor * Mesh.GlobalAmbientStrength, 0),

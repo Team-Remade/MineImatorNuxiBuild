@@ -8,6 +8,13 @@ in vec4 vShadowCoord;
 uniform vec3  uAlbedo;
 uniform vec4  uBlendColor;
 uniform vec4  uMixColor;
+uniform vec3 uMultiplyHsv;
+uniform vec3 uAddRgb;
+uniform vec3 uAddHsv;
+uniform vec3 uSubtractRgb;
+uniform vec3 uSubtractHsv;
+
+#include "material_colors.glsl"
 uniform float uAlpha;
 uniform bool  uPremultiplyBlend;
 uniform bool  uAlphaClipEnabled;
@@ -535,6 +542,11 @@ void main() {
     }
 
     baseColor *= pbr ? toLinear(uBlendColor.rgb) : uBlendColor.rgb;
+    if (hasMaterialColors(uMultiplyHsv, uAddRgb, uAddHsv, uSubtractRgb, uSubtractHsv)) {
+        vec3 displayColor = pbr ? pow(max(baseColor, vec3(0.0)), vec3(1.0 / 2.2)) : baseColor;
+        displayColor = applyMaterialColors(displayColor, uMultiplyHsv, uAddRgb, uAddHsv, uSubtractRgb, uSubtractHsv);
+        baseColor = pbr ? toLinear(displayColor) : displayColor;
+    }
     baseColor = mix(baseColor, pbr ? toLinear(uMixColor.rgb) : uMixColor.rgb, clamp(uMixColor.a, 0.0, 1.0));
     if (pbr) baseColor = clamp(baseColor, 0.0, 1.0);
     alpha *= uAlpha * uBlendColor.a;

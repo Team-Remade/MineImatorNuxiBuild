@@ -731,6 +731,12 @@ public class Mesh : IDisposable
         set => DefaultMaterial.MixColor = value;
     }
 
+    public MaterialColorAdjustments ColorAdjustments
+    {
+        get => DefaultMaterial.ColorAdjustments;
+        set => DefaultMaterial.ColorAdjustments = value;
+    }
+
     public vec2 TextureOffset
     {
         get => DefaultMaterial.TextureOffset;
@@ -944,6 +950,7 @@ public class Mesh : IDisposable
         dstMat.AlbedoColor              = srcMat.AlbedoColor;
         dstMat.BlendColor               = srcMat.BlendColor;
         dstMat.MixColor                 = srcMat.MixColor;
+        dstMat.ColorAdjustments         = srcMat.ColorAdjustments;
         dstMat.AlbedoTexture            = srcMat.AlbedoTexture;
         dstMat.Metallic                 = srcMat.Metallic;
         dstMat.Roughness                = srcMat.Roughness;
@@ -1425,6 +1432,7 @@ public class Mesh : IDisposable
         SetUniformVec3("uAlbedo", RenderAlbedo);
         SetUniformVec4("uBlendColor", BlendColor);
         SetUniformVec4("uMixColor", MixColor);
+        _shader.SetColorAdjustments(ColorAdjustments);
         SetUniformFloat("uAlpha", Alpha);
         SetUniformBool("uPremultiplyBlend", BlendMode is MaterialBlendMode.Multiply or MaterialBlendMode.Screen);
         SetUniformBool("uAlphaClipEnabled", AlphaMode == MaterialAlphaMode.Clip);

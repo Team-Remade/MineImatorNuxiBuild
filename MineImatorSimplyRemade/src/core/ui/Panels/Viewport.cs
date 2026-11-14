@@ -7,6 +7,7 @@ using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.graphics;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.window.windows;
@@ -3063,6 +3064,8 @@ public partial class Viewport : UiPanel
                 ApplyFilmGrainPass(_fbo, _colorTex, _glowFbo, _glowTex, w, h, activeCamObj);
                 ApplyWatermarkPass(_fbo, _glowFbo, _glowTex, w, h, PropertiesPanel);
             }
+            else if (_renderedPassMode == RenderedPassMode.Combined)
+                ApplyCameraMaterialPass(_fbo, _glowFbo, _glowTex, w, h, activeCamObj);
 
             if (OverlaysEnabled)
             {
@@ -3539,6 +3542,8 @@ public partial class Viewport : UiPanel
             ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel);
             ApplyWatermarkPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel);
         }
+        else if (_renderedPassMode == RenderedPassMode.Combined)
+            ApplyCameraMaterialPass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
 
         // Keep editor tools usable during the scene-renderer migration. These
         // draw over the bridged colour target; scene shading above is Veldrid.
@@ -6782,43 +6787,69 @@ public partial class Viewport : UiPanel
             if (effect.Type != CameraEffectType.ColorCorrection)
                 continue;
 
-            var settings = effect.ColorCorrection;
-            bool depthTest = Gl.IsEnabled(GLEnum.DepthTest);
-            bool cullFace = Gl.IsEnabled(GLEnum.CullFace);
-            bool blend = Gl.IsEnabled(GLEnum.Blend);
-            // Copy each result before the next effect to preserve stack order without feedback.
-            Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
-            Gl.ReadBuffer(GLEnum.ColorAttachment0);
-            Gl.BindFramebuffer(GLEnum.DrawFramebuffer, scratchFbo);
-            Gl.BlitFramebuffer(0, 0, (int)width, (int)height, 0, 0, (int)width, (int)height,
-                ClearBufferMask.ColorBufferBit, GLEnum.Nearest);
-
-            Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
-            Gl.DrawBuffer(GLEnum.ColorAttachment0);
-            Gl.Disable(GLEnum.DepthTest);
-            Gl.Disable(GLEnum.CullFace);
-            Gl.Disable(GLEnum.Blend);
-            Gl.Viewport(0, 0, width, height);
-            Gl.UseProgram(_colorCorrectionShader.ShaderProgram);
-            Gl.ActiveTexture(GLEnum.Texture0);
-            Gl.BindTexture(GLEnum.Texture2D, scratchTexture);
-            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uScene"), 0);
-            Gl.Uniform2(_colorCorrectionShader.GetUniformLocation("uTexelSize"), 1f / width, 1f / height);
-            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uContrast"), settings.Contrast);
-            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uBrightness"), settings.Brightness);
-            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uSaturation"), settings.Saturation);
-            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uVibrance"), settings.Vibrance);
-            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uHue"), settings.Hue);
-            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uInvertStrength"), settings.Invert ? settings.InvertStrength : 0f);
-            Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uColorBurn"), settings.ColorBurn);
-            Gl.BindVertexArray(_edgeVao);
-            Gl.DrawArrays(GLEnum.Triangles, 0, 3);
-            Gl.BindVertexArray(0);
-            Gl.BindTexture(GLEnum.Texture2D, 0);
-            if (depthTest) Gl.Enable(GLEnum.DepthTest);
-            if (cullFace) Gl.Enable(GLEnum.CullFace);
-            if (blend) Gl.Enable(GLEnum.Blend);
+            ApplyColorAdjustmentPass(sceneFbo, scratchFbo, scratchTexture, width, height,
+                effect.ColorCorrection, vec3.Ones, vec4.Zero);
         }
+
+        ApplyCameraMaterialPass(sceneFbo, scratchFbo, scratchTexture, width, height, camera);
+    }
+
+    private void ApplyCameraMaterialPass(uint sceneFbo, uint scratchFbo, uint scratchTexture,
+        uint width, uint height, CameraSceneObject? camera)
+    {
+        if (camera == null || (camera.BlendColor == vec3.Ones && camera.MixColor.w == 0f && camera.ColorAdjustments.IsNeutral))
+            return;
+
+        ApplyColorAdjustmentPass(sceneFbo, scratchFbo, scratchTexture, width, height,
+            null, camera.BlendColor, camera.MixColor, camera.ColorAdjustments);
+    }
+
+    private void ApplyColorAdjustmentPass(uint sceneFbo, uint scratchFbo, uint scratchTexture,
+        uint width, uint height, ColorCorrectionSettings? settings, vec3 blendColor, vec4 mixColor,
+        MaterialColorAdjustments? colorAdjustments = null)
+    {
+        if (Gl == null || _colorCorrectionShader == null || width == 0 || height == 0 ||
+            sceneFbo == 0 || scratchFbo == 0 || scratchTexture == 0)
+            return;
+
+        bool depthTest = Gl.IsEnabled(GLEnum.DepthTest);
+        bool cullFace = Gl.IsEnabled(GLEnum.CullFace);
+        bool blend = Gl.IsEnabled(GLEnum.Blend);
+        // Copy each result before the next effect to preserve stack order without feedback.
+        Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
+        Gl.BindFramebuffer(GLEnum.DrawFramebuffer, scratchFbo);
+        Gl.BlitFramebuffer(0, 0, (int)width, (int)height, 0, 0, (int)width, (int)height,
+            ClearBufferMask.ColorBufferBit, GLEnum.Nearest);
+
+        Gl.BindFramebuffer(GLEnum.Framebuffer, sceneFbo);
+        Gl.DrawBuffer(GLEnum.ColorAttachment0);
+        Gl.Disable(GLEnum.DepthTest);
+        Gl.Disable(GLEnum.CullFace);
+        Gl.Disable(GLEnum.Blend);
+        Gl.Viewport(0, 0, width, height);
+        Gl.UseProgram(_colorCorrectionShader.ShaderProgram);
+        Gl.ActiveTexture(GLEnum.Texture0);
+        Gl.BindTexture(GLEnum.Texture2D, scratchTexture);
+        Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uScene"), 0);
+        Gl.Uniform2(_colorCorrectionShader.GetUniformLocation("uTexelSize"), 1f / width, 1f / height);
+        Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uContrast"), settings?.Contrast ?? 100f);
+        Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uBrightness"), settings?.Brightness ?? 100f);
+        Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uSaturation"), settings?.Saturation ?? 100f);
+        Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uVibrance"), settings?.Vibrance ?? 0f);
+        Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uHue"), settings?.Hue ?? 0f);
+        Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uInvertStrength"), settings is { Invert: true } ? settings.InvertStrength : 0f);
+        Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uColorBurn"), settings?.ColorBurn ?? 0f);
+        Gl.Uniform3(_colorCorrectionShader.GetUniformLocation("uBlendColor"), blendColor.x, blendColor.y, blendColor.z);
+        Gl.Uniform4(_colorCorrectionShader.GetUniformLocation("uMixColor"), mixColor.x, mixColor.y, mixColor.z, mixColor.w);
+        _colorCorrectionShader.SetColorAdjustments(colorAdjustments ?? new MaterialColorAdjustments());
+        Gl.BindVertexArray(_edgeVao);
+        Gl.DrawArrays(GLEnum.Triangles, 0, 3);
+        Gl.BindVertexArray(0);
+        Gl.BindTexture(GLEnum.Texture2D, 0);
+        if (depthTest) Gl.Enable(GLEnum.DepthTest);
+        if (cullFace) Gl.Enable(GLEnum.CullFace);
+        if (blend) Gl.Enable(GLEnum.Blend);
     }
 
     private void ApplyVignettePass(uint sceneFbo, uint scratchFbo, uint scratchTexture,
@@ -7699,6 +7730,8 @@ public partial class Viewport : UiPanel
             ApplyAntiAliasingPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, MainViewport.PropertiesPanel);
             ApplyFilmGrainPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
         }
+        else if (effectivePassMode == RenderedPassMode.Combined)
+            ApplyCameraMaterialPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
 
         if (!applyCameraEffects && (applyWatermark ||
             (renderMode == SceneRenderMode.Rendered && effectivePassMode == RenderedPassMode.Combined)))

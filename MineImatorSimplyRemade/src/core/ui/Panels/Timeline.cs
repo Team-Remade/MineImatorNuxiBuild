@@ -12,6 +12,7 @@ using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.audio;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -135,13 +136,20 @@ public partial class Timeline : UiPanel
     };
 
     private static readonly (string Label, string Path)[] MaterialVectorChannels =
-    {
+    [
         ("Blend Color", "material.blend"),
         ("Mix Color", "material.mix"),
         ("Glow Color", "material.glow"),
         ("Subsurface Color", "material.subsurface_color"),
         ("Subsurface Radius", "material.subsurface_radius"),
-    };
+        .. MaterialColorAdjustments.Channels.Select(channel => (channel.Label, "material." + channel.Key))
+    ];
+
+    private static readonly (string Label, string Path)[] CameraColorAdjustmentChannels =
+        MaterialColorAdjustments.Channels.SelectMany(channel => new[] { "r", "g", "b" }
+            .Select((component, index) => (
+                channel.Label + " " + (channel.Hsv ? new[] { "H", "S", "V" }[index] : component.ToUpperInvariant()),
+                $"camera.{channel.Key}.{component}"))).ToArray();
 
     private static readonly HashSet<string> MaterialPropertyPaths = new(
         MaterialScalarChannels.Select(channel => channel.Path)
@@ -2724,6 +2732,8 @@ public partial class Timeline : UiPanel
         {
             "camera.active", "camera.fov",
             "camera.blade_count", "camera.blade_angle", "camera.blade_stretch",
+            "camera.blend_r", "camera.blend_g", "camera.blend_b",
+            "camera.mix_r", "camera.mix_g", "camera.mix_b", "camera.mix_amount",
             "camera.orbit_enabled", "camera.orbit_distance", "camera.orbit_rotation_xy",
             "camera.orbit_rotation_z", "camera.orbit_look_at",
         };
@@ -2750,6 +2760,7 @@ public partial class Timeline : UiPanel
 
         IEnumerable<string> paths = obj is LightSceneObject   ? standardPaths.Concat(lightPaths)
                                   : obj is CameraSceneObject  ? standardPaths.Concat(cameraPaths)
+                                      .Concat(CameraColorAdjustmentChannels.Select(channel => channel.Path))
                                   : standardPaths;
         paths = paths.Concat(MaterialPropertyPaths);
         paths = paths.Concat(GetModifierChannels(obj).Select(channel => channel.Path));
@@ -3317,6 +3328,14 @@ public partial class Timeline : UiPanel
         }
 
         var parts = path.Split('.');
+        if (parts.Length == 3 && MaterialColorAdjustments.IsChannel(parts[1]) &&
+            (parts[0] == "material" || parts[0] == "camera" && obj is CameraSceneObject))
+        {
+            var adjustments = parts[0] == "camera" ? ((CameraSceneObject)obj).ColorAdjustments
+                : obj.MaterialSettings?.ColorAdjustments ?? new MaterialColorAdjustments();
+            vec3 vector = adjustments[parts[1]];
+            return vector[parts[2] == "r" ? 0 : parts[2] == "g" ? 1 : 2];
+        }
         if (parts.Length == 2)
         {
             string prop = parts[0], comp = parts[1];
@@ -3412,6 +3431,13 @@ public partial class Timeline : UiPanel
                             "blade_count" => cam.BladeCount,
                             "blade_angle" => cam.BladeAngle,
                             "blade_stretch" => cam.BladeStretch,
+                            "blend_r" => cam.BlendColor.x,
+                            "blend_g" => cam.BlendColor.y,
+                            "blend_b" => cam.BlendColor.z,
+                            "mix_r" => cam.MixColor.x,
+                            "mix_g" => cam.MixColor.y,
+                            "mix_b" => cam.MixColor.z,
+                            "mix_amount" => cam.MixColor.w,
                             "orbit_enabled" => cam.OrbitEnabled ? 1f : 0f,
                             "orbit_distance" => cam.OrbitDistance,
                             "orbit_rotation_xy" => cam.OrbitRotationXY,
@@ -3771,6 +3797,14 @@ public partial class Timeline : UiPanel
         if (path == "visible") { obj.SetObjectVisible(value >= 0.5f); return; }
 
         var parts = path.Split('.');
+        if (parts.Length == 3 && parts[0] == "camera" && obj is CameraSceneObject colorCamera &&
+            MaterialColorAdjustments.IsChannel(parts[1]))
+        {
+            vec3 color = colorCamera.ColorAdjustments[parts[1]];
+            color[parts[2] == "r" ? 0 : parts[2] == "g" ? 1 : 2] = Math.Clamp(value, 0f, 1f);
+            colorCamera.ColorAdjustments[parts[1]] = color;
+            return;
+        }
         if (MaterialPropertyPaths.Contains(path))
         {
             // Detach inherited settings before changing a local animation channel.
@@ -3805,7 +3839,13 @@ public partial class Timeline : UiPanel
             else
             {
                 int component = parts[2] == "r" ? 0 : parts[2] == "g" ? 1 : 2;
-                if (parts[1] == "subsurface_radius")
+                if (MaterialColorAdjustments.IsChannel(parts[1]))
+                {
+                    var color = material.ColorAdjustments[parts[1]];
+                    color[component] = Math.Clamp(value, 0f, 1f);
+                    material.ColorAdjustments[parts[1]] = color;
+                }
+                else if (parts[1] == "subsurface_radius")
                 {
                     var radius = material.SubsurfaceRadius;
                     radius[component] = Math.Max(value, 0f);
@@ -3976,6 +4016,13 @@ public partial class Timeline : UiPanel
                                     case "blade_count": camSet.BladeCount = (int)MathF.Round(Math.Clamp(value, 0f, 16f)); break;
                                     case "blade_angle": camSet.BladeAngle = value; break;
                                     case "blade_stretch": camSet.BladeStretch = Math.Clamp(value, -100f, 100f); break;
+                                    case "blend_r": camSet.BlendColor.x = Math.Clamp(value, 0f, 1f); break;
+                                    case "blend_g": camSet.BlendColor.y = Math.Clamp(value, 0f, 1f); break;
+                                    case "blend_b": camSet.BlendColor.z = Math.Clamp(value, 0f, 1f); break;
+                                    case "mix_r": camSet.MixColor.x = Math.Clamp(value, 0f, 1f); break;
+                                    case "mix_g": camSet.MixColor.y = Math.Clamp(value, 0f, 1f); break;
+                                    case "mix_b": camSet.MixColor.z = Math.Clamp(value, 0f, 1f); break;
+                                    case "mix_amount": camSet.MixColor.w = Math.Clamp(value, 0f, 1f); break;
                                     case "orbit_enabled": camSet.OrbitEnabled = value >= 0.5f; break;
                                     case "orbit_distance": camSet.OrbitDistance = MathF.Max(0f, value); break;
                                     case "orbit_rotation_xy": camSet.OrbitRotationXY = value; break;
@@ -4389,7 +4436,9 @@ public partial class Timeline : UiPanel
                 newRows.Add(MakeGroup(obj, label, paths, basePath));
                 for (int i = 0; i < paths.Length; i++)
                     if (propsWithKeyframes.Contains(paths[i]))
-                        newRows.Add(MakeSingle(obj, i == 0 ? "R" : i == 1 ? "G" : "B", paths[i], 1));
+                        newRows.Add(MakeSingle(obj,
+                            basePath.EndsWith("_hsv", StringComparison.Ordinal) ? new[] { "H", "S", "V" }[i]
+                                : i == 0 ? "R" : i == 1 ? "G" : "B", paths[i], 1));
             }
 
             foreach (var (label, path, parent, indent) in bendProps)
@@ -4506,12 +4555,23 @@ public partial class Timeline : UiPanel
                     (label: "Blades", path: "camera.blade_count", parent: "", indent: 0),
                     (label: "Blade Angle (degrees)", path: "camera.blade_angle", parent: "", indent: 0),
                     (label: "Blade Stretch (%)", path: "camera.blade_stretch", parent: "", indent: 0),
+                    (label: "Blend Color R", path: "camera.blend_r", parent: "", indent: 0),
+                    (label: "Blend Color G", path: "camera.blend_g", parent: "", indent: 0),
+                    (label: "Blend Color B", path: "camera.blend_b", parent: "", indent: 0),
+                    (label: "Mix Color R", path: "camera.mix_r", parent: "", indent: 0),
+                    (label: "Mix Color G", path: "camera.mix_g", parent: "", indent: 0),
+                    (label: "Mix Color B", path: "camera.mix_b", parent: "", indent: 0),
+                    (label: "Mix Amount", path: "camera.mix_amount", parent: "", indent: 0),
                     (label: "Rotate around a point", path: "camera.orbit_enabled", parent: "", indent: 0),
                     (label: "Distance", path: "camera.orbit_distance", parent: "", indent: 1),
                     (label: "Rotation XY", path: "camera.orbit_rotation_xy", parent: "", indent: 1),
                     (label: "Rotation Z", path: "camera.orbit_rotation_z", parent: "", indent: 1),
                     (label: "Look at rotation point", path: "camera.orbit_look_at", parent: "", indent: 1),
                 };
+
+                foreach (var (label, path) in CameraColorAdjustmentChannels)
+                    if (propsWithKeyframes.Contains(path))
+                        newRows.Add(MakeSingle(obj, label, path));
 
                 foreach (var (label, path, parent, indent) in cameraProps)
                 {
@@ -4807,6 +4867,15 @@ public partial class Timeline : UiPanel
             _displayRows.Add(MakeSingle(obj, "Blades", "camera.blade_count"));
             _displayRows.Add(MakeSingle(obj, "Blade Angle (degrees)", "camera.blade_angle"));
             _displayRows.Add(MakeSingle(obj, "Blade Stretch (%)", "camera.blade_stretch"));
+            _displayRows.Add(MakeSingle(obj, "Blend Color R", "camera.blend_r"));
+            _displayRows.Add(MakeSingle(obj, "Blend Color G", "camera.blend_g"));
+            _displayRows.Add(MakeSingle(obj, "Blend Color B", "camera.blend_b"));
+            _displayRows.Add(MakeSingle(obj, "Mix Color R", "camera.mix_r"));
+            _displayRows.Add(MakeSingle(obj, "Mix Color G", "camera.mix_g"));
+            _displayRows.Add(MakeSingle(obj, "Mix Color B", "camera.mix_b"));
+            _displayRows.Add(MakeSingle(obj, "Mix Amount", "camera.mix_amount"));
+            foreach (var (label, path) in CameraColorAdjustmentChannels)
+                _displayRows.Add(MakeSingle(obj, label, path));
             _displayRows.Add(MakeSingle(obj, "Rotate around a point", "camera.orbit_enabled"));
             _displayRows.Add(MakeSingle(obj, "Distance", "camera.orbit_distance", 1));
             _displayRows.Add(MakeSingle(obj, "Rotation XY", "camera.orbit_rotation_xy", 1));

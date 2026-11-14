@@ -13,6 +13,7 @@ public class StandardMaterial : Material
     public vec4 AlbedoColor = new vec4(1f, 1f, 1f, 1f);
     public vec4 BlendColor = new vec4(1f, 1f, 1f, 1f);
     public vec4 MixColor = new vec4(0f, 0f, 0f, 0f);
+    public MaterialColorAdjustments ColorAdjustments = new();
 
     /// <summary>
     /// OpenGL texture handle bound as the base/diffuse texture when rendering

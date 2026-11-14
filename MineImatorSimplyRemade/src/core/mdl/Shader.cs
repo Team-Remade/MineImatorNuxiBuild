@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 using Silk.NET.OpenGL;
+using MineImatorSimplyRemade.core.mdl.material.materials;
 
 namespace MineImatorSimplyRemade.core.mdl;
 
@@ -32,7 +33,7 @@ public class Shader : IDisposable
         if (stream == null) throw new FileNotFoundException($"Shader not found: {shaderName}");
         using StreamReader reader = new StreamReader(stream);
         string source = reader.ReadToEnd();
-        foreach (string include in new[] { "wind.glsl", "end_portal.glsl" })
+        foreach (string include in new[] { "wind.glsl", "end_portal.glsl", "material_colors.glsl" })
             if (source.Contains($"#include \"{include}\"", StringComparison.Ordinal))
                 source = source.Replace($"#include \"{include}\"", LoadShaderSource(include), StringComparison.Ordinal);
         return source;
@@ -88,6 +89,15 @@ public class Shader : IDisposable
         loc = _gl.GetUniformLocation(ShaderProgram, name);
         _uniformLocations[name] = loc;
         return loc;
+    }
+
+    public void SetColorAdjustments(MaterialColorAdjustments value)
+    {
+        _gl.Uniform3(GetUniformLocation("uMultiplyHsv"), value.MultiplyHsv.x, value.MultiplyHsv.y, value.MultiplyHsv.z);
+        _gl.Uniform3(GetUniformLocation("uAddRgb"), value.AddRgb.x, value.AddRgb.y, value.AddRgb.z);
+        _gl.Uniform3(GetUniformLocation("uAddHsv"), value.AddHsv.x, value.AddHsv.y, value.AddHsv.z);
+        _gl.Uniform3(GetUniformLocation("uSubtractRgb"), value.SubtractRgb.x, value.SubtractRgb.y, value.SubtractRgb.z);
+        _gl.Uniform3(GetUniformLocation("uSubtractHsv"), value.SubtractHsv.x, value.SubtractHsv.y, value.SubtractHsv.z);
     }
 
     private void CheckShaderCompile(uint shader, string name)

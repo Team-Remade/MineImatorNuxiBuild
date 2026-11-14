@@ -1099,6 +1099,7 @@ public partial class PropertiesPanel : UiPanel
             HasMaterialOverrides = source.HasMaterialOverrides,
             AlbedoColor = new ProjectVec4 { X = source.AlbedoColor.X, Y = source.AlbedoColor.Y, Z = source.AlbedoColor.Z, W = source.AlbedoColor.W },
             BlendColor = new ProjectVec4 { X = source.BlendColor.X, Y = source.BlendColor.Y, Z = source.BlendColor.Z, W = source.BlendColor.W },
+            ColorAdjustments = ProjectColorAdjustments.FromRuntime(source.ColorAdjustments.ToRuntime()),
             MixColor = new ProjectVec4 { X = source.MixColor.X, Y = source.MixColor.Y, Z = source.MixColor.Z, W = source.MixColor.W },
             Metallic = source.Metallic,
             Roughness = source.Roughness,
@@ -1242,6 +1243,9 @@ public partial class PropertiesPanel : UiPanel
             CameraBladeCount = source.CameraBladeCount,
             CameraBladeAngle = source.CameraBladeAngle,
             CameraBladeStretch = source.CameraBladeStretch,
+            CameraBlendColor = new ProjectVec3 { X = source.CameraBlendColor.X, Y = source.CameraBlendColor.Y, Z = source.CameraBlendColor.Z },
+            CameraColorAdjustments = ProjectColorAdjustments.FromRuntime(source.CameraColorAdjustments.ToRuntime()),
+            CameraMixColor = new ProjectVec4 { X = source.CameraMixColor.X, Y = source.CameraMixColor.Y, Z = source.CameraMixColor.Z, W = source.CameraMixColor.W },
             CameraOrbitEnabled = source.CameraOrbitEnabled,
             CameraOrbitDistance = source.CameraOrbitDistance,
             CameraOrbitRotationXY = source.CameraOrbitRotationXY,
@@ -4367,6 +4371,10 @@ public partial class PropertiesPanel : UiPanel
         }
 
         // ── Material ──────────────────────────────────────────────────────────
+        if (_currentObject is CameraSceneObject materialCamera &&
+            ImGui.CollapsingHeader(Localization.Label("text.panel.properties.material", "Material")))
+            DrawCameraMaterialControls(materialCamera);
+
         bool isLight = _currentObject is LightSceneObject || _currentObject is CameraSceneObject;
         if (!isLight && ImGui.CollapsingHeader(Localization.Label("text.panel.properties.material", "Material")))
         {
@@ -4757,6 +4765,15 @@ public partial class PropertiesPanel : UiPanel
                     }
                     RegisterPropertyContext("material.blend.r", "material.blend.g", "material.blend.b");
                 }
+
+                DrawMaterialColorAdjustments(mat?.ColorAdjustments ?? new MaterialColorAdjustments(), "material",
+                    (key, value) =>
+                    {
+                        EnsureMaterialSettings();
+                        materialObject.MaterialSettings.ColorAdjustments[key] = value;
+                        materialObject.SetExplicitMaterialSettings();
+                        materialObject.PropagateMaterialSettingsToChildren();
+                    });
 
                 // Mix colour uses its alpha channel as the interpolation amount.
                 {
@@ -6021,6 +6038,74 @@ public partial class PropertiesPanel : UiPanel
             ImGui.Unindent();
         }
         ImGui.PopID();
+    }
+
+    private void DrawMaterialColorAdjustments(MaterialColorAdjustments adjustments, string prefix,
+        Action<string, vec3> apply)
+    {
+        foreach (var (key, label, hsv) in MaterialColorAdjustments.Channels)
+        {
+            vec3 current = adjustments[key];
+            var value = new Vector3(current.x, current.y, current.z);
+            string localized = Localization.Label("text.panel.properties." + key, label);
+            var flags = ImGuiColorEditFlags.NoInputs;
+            if (hsv) flags |= ImGuiColorEditFlags.InputHsv | ImGuiColorEditFlags.DisplayHsv;
+            bool edited = ImGui.ColorEdit3(localized, ref value, flags);
+            if (hsv && ImGui.IsItemHovered())
+                ImGui.SetTooltip("Click to pick a color or edit H / S / V. Hue wraps; saturation and value clamp.");
+            if (edited)
+                apply(key, new vec3(value.X, value.Y, value.Z));
+            RegisterPropertyContext($"{prefix}.{key}.r", $"{prefix}.{key}.g", $"{prefix}.{key}.b");
+        }
+    }
+
+    private void DrawCameraMaterialControls(CameraSceneObject camera)
+    {
+        void Edit(bool edited, Action<CameraSceneObject> apply, params string[] paths)
+        {
+            if (edited)
+            {
+                ApplyToSelectedObjects(obj =>
+                {
+                    if (obj is not CameraSceneObject selected) return;
+                    apply(selected);
+                    foreach (string path in paths)
+                        Timeline?.RecordAutoKeyframe(selected, path);
+                });
+                ProjectManager.Instance.SetDirty(true);
+            }
+            RegisterPropertyContext(paths);
+        }
+
+        var blend = new Vector3(camera.BlendColor.x, camera.BlendColor.y, camera.BlendColor.z);
+        Edit(ImGui.ColorEdit3(Localization.Label("text.panel.properties.blend_color", "Blend Color"),
+                ref blend, ImGuiColorEditFlags.NoInputs),
+            selected => selected.BlendColor = new vec3(blend.X, blend.Y, blend.Z),
+            "camera.blend_r", "camera.blend_g", "camera.blend_b");
+
+        DrawMaterialColorAdjustments(camera.ColorAdjustments, "camera", (key, value) =>
+        {
+            ApplyToSelectedObjects(obj =>
+            {
+                if (obj is not CameraSceneObject selected) return;
+                selected.ColorAdjustments[key] = value;
+                foreach (string component in new[] { "r", "g", "b" })
+                    Timeline?.RecordAutoKeyframe(selected, $"camera.{key}.{component}");
+            });
+            ProjectManager.Instance.SetDirty(true);
+        });
+
+        var mix = new Vector3(camera.MixColor.x, camera.MixColor.y, camera.MixColor.z);
+        Edit(ImGui.ColorEdit3(Localization.Label("text.panel.properties.mix_color", "Mix Color"),
+                ref mix, ImGuiColorEditFlags.NoInputs),
+            selected => selected.MixColor = new vec4(mix.X, mix.Y, mix.Z, selected.MixColor.w),
+            "camera.mix_r", "camera.mix_g", "camera.mix_b");
+
+        float amount = camera.MixColor.w;
+        Edit(ImGui.SliderFloat(Localization.Label("text.panel.properties.mix_amount", "Mix Amount"),
+                ref amount, 0f, 1f),
+            selected => selected.MixColor = new vec4(selected.MixColor.xyz, amount),
+            "camera.mix_amount");
     }
 
     private bool DrawColorManagementControls(ref bool enabled, ref int toneMapper, ref float exposure,

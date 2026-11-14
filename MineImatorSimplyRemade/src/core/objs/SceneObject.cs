@@ -36,6 +36,7 @@ public class MaterialSettings
     public vec4 AlbedoColor = new vec4(1f, 1f, 1f, 1f);
     public vec4 BlendColor = new vec4(1f, 1f, 1f, 1f);
     public vec4 MixColor = new vec4(0f, 0f, 0f, 0f);
+    public MaterialColorAdjustments ColorAdjustments = new();
     public float Metallic = 0f;
     public float Roughness = 0.5f;
     public bool PbrEnabled = false;
@@ -97,6 +98,7 @@ public class MaterialSettings
             AlbedoColor = this.AlbedoColor,
             BlendColor = this.BlendColor,
             MixColor = this.MixColor,
+            ColorAdjustments = this.ColorAdjustments,
             Metallic = this.Metallic,
             Roughness = this.Roughness,
             PbrEnabled = this.PbrEnabled,
@@ -818,6 +820,7 @@ public class SceneObject
                 resolved.AlbedoColor.w *= parent.AlbedoColor.w * (1f - parent.Transparency);
             if (color)
             {
+                resolved.ColorAdjustments.Inherit(parent.ColorAdjustments);
                 resolved.AlbedoColor.x *= parent.AlbedoColor.x;
                 resolved.AlbedoColor.y *= parent.AlbedoColor.y;
                 resolved.AlbedoColor.z *= parent.AlbedoColor.z;
@@ -1022,6 +1025,7 @@ public class SceneObject
                     Math.Clamp(mesh.BaseMixColor.w + settings.MixColor.w, 0f, 1f))
                 : settings.MixColor;
             mesh.DoubleSided = settings.DoubleSided;
+            mesh.ColorAdjustments = settings.ColorAdjustments;
             bool mappedAtlas = false;
             if (mesh is CubeMesh cube)
             {

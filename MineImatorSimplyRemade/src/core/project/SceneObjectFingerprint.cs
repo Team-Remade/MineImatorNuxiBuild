@@ -292,6 +292,11 @@ internal static class SceneObjectFingerprint
             hash.Add(material.AlbedoColor);
             hash.Add(material.BlendColor);
             hash.Add(material.MixColor);
+            hash.Add(material.ColorAdjustments.MultiplyHsv);
+            hash.Add(material.ColorAdjustments.AddRgb);
+            hash.Add(material.ColorAdjustments.AddHsv);
+            hash.Add(material.ColorAdjustments.SubtractRgb);
+            hash.Add(material.ColorAdjustments.SubtractHsv);
             hash.Add(material.Metallic);
             hash.Add(material.Roughness);
             hash.Add(material.PbrEnabled);
@@ -419,6 +424,13 @@ internal static class SceneObjectFingerprint
             hash.Add(camera.BladeCount);
             hash.Add(camera.BladeAngle);
             hash.Add(camera.BladeStretch);
+            hash.Add(camera.BlendColor);
+            hash.Add(camera.MixColor);
+            hash.Add(camera.ColorAdjustments.MultiplyHsv);
+            hash.Add(camera.ColorAdjustments.AddRgb);
+            hash.Add(camera.ColorAdjustments.AddHsv);
+            hash.Add(camera.ColorAdjustments.SubtractRgb);
+            hash.Add(camera.ColorAdjustments.SubtractHsv);
             hash.Add(camera.OrbitEnabled);
             hash.Add(camera.OrbitDistance);
             hash.Add(camera.OrbitRotationXY);

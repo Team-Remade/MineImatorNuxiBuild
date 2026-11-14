@@ -359,6 +359,10 @@ internal static partial class Program
             ("Camera blades defaults, ranges, persistence, duplication and undo", CameraBladePersistence),
             ("Camera blades timeline discovery, interpolation and seeking", CameraBladeTimeline),
             ("Camera blades ImGui controls and multi-selection", CameraBladeControls),
+            ("Camera material persistence, duplication, undo and timeline", CameraMaterialPersistence),
+            ("Camera material color controls and multi-selection", CameraMaterialControls),
+            ("Material color operations persistence, inheritance, undo and timeline", MaterialColorPersistence),
+            ("Material color operations controls, keyframe menus and multi-selection", MaterialColorControls),
             ("Lens dirt settings, persistence, packaging, duplication, undo and timeline", LensDirtPersistence),
             ("Lens dirt ImGui texture and percentage controls", LensDirtControls),
             ("Vignette settings, persistence, duplication, undo and timeline", VignettePersistence),
@@ -519,6 +523,14 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Camera blades", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--camera-blades-graphics", StringComparer.Ordinal))
             tests = [("Camera blades rendered aperture, angle, stretch and default parity", CameraBladeGraphics)];
+        if (args.Contains("--camera-material", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Camera material", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--camera-material-graphics", StringComparer.Ordinal))
+            tests = [("Camera material GPU blend/mix, alpha, preview and export", CameraMaterialGraphics)];
+        if (args.Contains("--material-colors", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Material color operations", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--material-colors-graphics", StringComparer.Ordinal))
+            tests = [("Material color operations GPU pixels, stacking, alpha, previews, export and D3D11", MaterialColorGraphics)];
         if (args.Contains("--lens-dirt", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Lens dirt", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--lens-dirt-graphics", StringComparer.Ordinal))

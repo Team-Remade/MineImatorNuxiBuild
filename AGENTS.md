@@ -72,6 +72,8 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --effects-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --particles-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --emissive-graphics
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --material-colors
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --material-colors-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --block-rotation-graphics
 ```
 
@@ -90,6 +92,10 @@ Coverage and prerequisites:
   animation frames, opacity, camera-facing rotation, and block particles.
 - `--emissive-graphics`: OpenGL 3.3; auto-emissive source positions in modern and
   legacy schematics, including the terrain format used by world imports.
+- `--material-colors`: object/camera color-operation persistence, duplication,
+  undo, inheritance, timeline channels, reset defaults, and ImGui controls.
+- `--material-colors-graphics`: OpenGL 3.3 and Windows D3D11; exact RGB/HSV
+  operation pixels, stacking/clamping, alpha, PBR parity, previews, and PNG export.
 - `--block-rotation-graphics`: OpenGL 3.3; button mounting/facing (including legacy
   stone and wooden buttons), trapdoors, both door halves, multipart rotations,
   and consistent geometry after conversion to animatable blocks, rebuilding,
