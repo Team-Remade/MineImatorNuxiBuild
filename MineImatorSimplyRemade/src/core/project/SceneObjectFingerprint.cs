@@ -108,6 +108,9 @@ internal static class SceneObjectFingerprint
             hash.Add(modifier.Count);
             hash.Add((int)modifier.Axis);
             hash.Add(modifier.Distance);
+            hash.Add(modifier.RadialEnabled);
+            hash.Add((int)modifier.RadialAxis);
+            hash.Add(modifier.RadialRadius);
             hash.Add(modifier.RotationX);
             hash.Add(modifier.RotationY);
             hash.Add(modifier.RotationZ);

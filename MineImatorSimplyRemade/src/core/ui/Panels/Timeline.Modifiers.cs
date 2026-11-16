@@ -10,6 +10,8 @@ public partial class Timeline
     [
         ("enabled", "Enabled"), ("count", "text.modifier.count"), ("axis", "text.modifier.axis"),
         ("distance", "text.modifier.distance"),
+        ("radial.enabled", "text.modifier.radial_enabled"), ("radial.axis", "text.modifier.radial_axis"),
+        ("radial.radius", "text.modifier.radial_radius"),
         ("rotation.x", "Rotation X"), ("rotation.y", "Rotation Y"), ("rotation.z", "Rotation Z"),
         ("scale.x", "Scale X"), ("scale.y", "Scale Y"), ("scale.z", "Scale Z"),
         ("target", "text.path.target")
@@ -62,6 +64,9 @@ public partial class Timeline
         "count" => (float)modifier.Count,
         "axis" => (float)modifier.Axis,
         "distance" => modifier.Distance,
+        "radial.enabled" => modifier.RadialEnabled ? 1f : 0f,
+        "radial.axis" => (float)modifier.RadialAxis,
+        "radial.radius" => modifier.RadialRadius,
         "rotation.x" => modifier.RotationX, "rotation.y" => modifier.RotationY, "rotation.z" => modifier.RotationZ,
         "scale.x" => modifier.ScaleX, "scale.y" => modifier.ScaleY, "scale.z" => modifier.ScaleZ,
         "target" => modifier.PathObjectId,
@@ -90,6 +95,10 @@ public partial class Timeline
                 "axis" when value is >= 0 and <= 2 && value == MathF.Truncate(value)
                     => modifier with { Axis = (ArrayAxis)(int)value },
                 "distance" => modifier with { Distance = value },
+                "radial.enabled" => modifier with { RadialEnabled = value >= 0.5f },
+                "radial.axis" when value is >= 0 and <= 2 && value == MathF.Truncate(value)
+                    => modifier with { RadialAxis = (ArrayAxis)(int)value },
+                "radial.radius" => modifier with { RadialRadius = value },
                 "rotation.x" => modifier with { RotationX = value }, "rotation.y" => modifier with { RotationY = value },
                 "rotation.z" => modifier with { RotationZ = value },
                 "scale.x" => modifier with { ScaleX = value }, "scale.y" => modifier with { ScaleY = value },

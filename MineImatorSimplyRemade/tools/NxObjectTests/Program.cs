@@ -465,6 +465,7 @@ internal static partial class Program
             ("Path snapshots, point ordering and dirty detection", PathSnapshots),
             ("Path timeline discovery, interpolation and seek reproducibility", PathTimeline),
             ("Array axes, spacing, compounded transforms and non-destructive subtree copies", ModifierTransforms),
+            ("Array radial axes, circular positions, oriented subtrees and edge cases", ModifierRadial),
             ("Array path alignment, spacing, wrapping, point edits and unavailable targets", ModifierPaths),
             ("Array stacks, inherited instances, safety cap and invalid transform rejection", ModifierStacks),
             ("Follow Path modifier and Array offset composition, toggles and animation", ModifierFollowPath),

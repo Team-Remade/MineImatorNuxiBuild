@@ -106,10 +106,28 @@ public partial class PropertiesPanel
                         changed |= ImGui.DragInt(Localization.Label("text.modifier.count", "Count (Including Original)"), ref count, 1f, 1, SceneModifier.MaxInstances);
                         RegisterPropertyContext($"{prefix}.count");
                         string[] axes = ["X", "Y", "Z"];
+                        bool radialEnabled = modifier.RadialEnabled;
+                        int radialAxis = (int)modifier.RadialAxis;
+                        float radialRadius = modifier.RadialRadius * 16f;
+                        if (ImGui.TreeNodeEx(Localization.Label("text.modifier.radial", "Radial"), ImGuiTreeNodeFlags.DefaultOpen))
+                        {
+                            changed |= ImGui.Checkbox(Localization.Label("text.modifier.radial_enabled", "Enable Radial"), ref radialEnabled);
+                            RegisterPropertyContext($"{prefix}.radial.enabled");
+                            ImGui.BeginDisabled(!radialEnabled);
+                            changed |= ImGui.Combo(Localization.Label("text.modifier.radial_axis", "Radial Axis"), ref radialAxis, axes, axes.Length);
+                            RegisterPropertyContext($"{prefix}.radial.axis");
+                            changed |= ImGui.DragFloat(Localization.Label("text.modifier.radial_radius", "Radius"), ref radialRadius, 0.1f, 0f, float.MaxValue);
+                            RegisterPropertyContext($"{prefix}.radial.radius");
+                            ImGui.EndDisabled();
+                            UiText.Wrapped(Localization.T("text.modifier.radial_help"));
+                            ImGui.TreePop();
+                        }
+                        ImGui.BeginDisabled(radialEnabled);
                         changed |= ImGui.Combo(Localization.Label("text.modifier.axis", "Axis"), ref axis, axes, axes.Length);
                         RegisterPropertyContext($"{prefix}.axis");
                         changed |= ImGui.DragFloat(Localization.Label("text.modifier.distance", "Distance Between Copies"), ref distance, 0.1f);
                         RegisterPropertyContext($"{prefix}.distance");
+                        ImGui.EndDisabled();
                         changed |= ImGui.DragFloat3(Localization.Label("text.modifier.rotation", "Rotation Per Copy (XYZ)"), ref rotation, 0.5f);
                         RegisterPropertyContext($"{prefix}.rotation.x", $"{prefix}.rotation.y", $"{prefix}.rotation.z");
                         changed |= ImGui.DragFloat3(Localization.Label("text.modifier.scale", "Scale Multiplier Per Copy (XYZ)"), ref scale, 0.01f);
@@ -118,6 +136,7 @@ public partial class PropertiesPanel
                         var selected = paths.FirstOrDefault(path => path.ObjectId == pathId);
                         string preview = pathId.Length == 0 ? Localization.T("text.path.none") :
                             selected?.GetDisplayName() ?? Localization.DisplayText("Missing object");
+                        ImGui.BeginDisabled(radialEnabled);
                         if (ImGui.BeginCombo(Localization.Label("text.path.target", "Path Object"), preview))
                         {
                             if (ImGui.Selectable(Localization.T("text.path.none"), pathId.Length == 0)) { pathId = ""; changed = true; }
@@ -131,6 +150,7 @@ public partial class PropertiesPanel
                             ImGui.EndCombo();
                         }
                         RegisterPropertyContext($"{prefix}.target");
+                        ImGui.EndDisabled();
                         if (changed)
                         {
                             try
@@ -141,6 +161,9 @@ public partial class PropertiesPanel
                                     Count = Math.Clamp(count, 1, SceneModifier.MaxInstances),
                                     Axis = (ArrayAxis)axis,
                                     Distance = distance / 16f,
+                                    RadialEnabled = radialEnabled,
+                                    RadialAxis = (ArrayAxis)radialAxis,
+                                    RadialRadius = radialRadius / 16f,
                                     RotationX = rotation.X,
                                     RotationY = rotation.Y,
                                     RotationZ = rotation.Z,
@@ -165,7 +188,7 @@ public partial class PropertiesPanel
                             }
                         }
                         selected = paths.FirstOrDefault(path => path.ObjectId == pathId);
-                        if (pathId.Length != 0 && (selected == null || ModifierEvaluation.IsWithin(selected, owner) || selected.Samples.Count < 2))
+                        if (!radialEnabled && pathId.Length != 0 && (selected == null || ModifierEvaluation.IsWithin(selected, owner) || selected.Samples.Count < 2))
                             UiText.Wrapped(Localization.T("text.modifier.path_unavailable"));
                         UiText.Wrapped(Localization.T("text.modifier.help"));
                     }

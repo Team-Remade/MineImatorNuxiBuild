@@ -15,6 +15,9 @@ public sealed record SceneModifier
     public int Count { get; init; } = 2;
     public ArrayAxis Axis { get; init; }
     public float Distance { get; init; } = 1f;
+    public bool RadialEnabled { get; init; }
+    public ArrayAxis RadialAxis { get; init; } = ArrayAxis.Y;
+    public float RadialRadius { get; init; } = 1f;
     public float RotationX { get; init; }
     public float RotationY { get; init; }
     public float RotationZ { get; init; }
@@ -37,10 +40,12 @@ public sealed record SceneModifier
             Cloth.Validate();
             return this;
         }
-        if (!Enum.IsDefined(Axis) || Count is < 1 or > MaxInstances || !float.IsFinite(Distance) ||
+        if (!Enum.IsDefined(Axis) || !Enum.IsDefined(RadialAxis) ||
+            !float.IsFinite(RadialRadius) || RadialRadius < 0 || !float.IsFinite(RadialRadius * 2f) ||
+            Count is < 1 or > MaxInstances || !float.IsFinite(Distance) ||
             !float.IsFinite(RotationX) || !float.IsFinite(RotationY) || !float.IsFinite(RotationZ) ||
             !float.IsFinite(ScaleX) || !float.IsFinite(ScaleY) || !float.IsFinite(ScaleZ))
-            throw new InvalidDataException("Array modifiers require valid axes, finite transforms and a count from 1 to 1000.");
+            throw new InvalidDataException("Array modifiers require valid axes, a finite non-negative radius, finite transforms and a count from 1 to 1000.");
         int last = Count - 1;
         if (!float.IsFinite(Distance * last) || !float.IsFinite(RotationX * last) ||
             !float.IsFinite(RotationY * last) || !float.IsFinite(RotationZ * last) ||
@@ -88,7 +93,7 @@ public sealed class ModifierEvaluation
             string pathId = modifier.PathObjectId;
             if (pathId.Length == 0 && obj.IsFollowingPath) pathId = obj.PathFollowObjectId;
             float startOffset = obj.IsFollowingPath && pathId == obj.PathFollowObjectId ? obj.PathFollowOffset : 0f;
-            if (pathId.Length != 0)
+            if (!modifier.RadialEnabled && pathId.Length != 0)
             {
                 // Deleted, incomplete or self-dependent paths retain the source until repaired in the editor.
                 if (!_ids.TryGetValue(pathId, out var target) || target is not PathSceneObject candidate ||
@@ -120,7 +125,20 @@ public sealed class ModifierEvaluation
                     mat4 scale = mat4.Scale(new vec3(MathF.Pow(modifier.ScaleX, i),
                         MathF.Pow(modifier.ScaleY, i), MathF.Pow(modifier.ScaleZ, i)));
                     mat4 frame;
-                    if (path != null)
+                    if (modifier.RadialEnabled)
+                    {
+                        float angle = 2f * MathF.PI * i / modifier.Count;
+                        mat4 radialRotation = modifier.RadialAxis switch
+                        {
+                            ArrayAxis.X => mat4.RotateX(angle),
+                            ArrayAxis.Y => mat4.RotateY(angle),
+                            _ => mat4.RotateZ(angle)
+                        };
+                        vec3 radius = (modifier.RadialAxis == ArrayAxis.X ? vec3.UnitY : vec3.UnitX) * modifier.RadialRadius;
+                        // Offset the circle center so instance zero retains the authored pose.
+                        frame = anchor * mat4.Translate(-radius) * radialRotation * mat4.Translate(radius);
+                    }
+                    else if (path != null)
                     {
                         float distance = startOffset + modifier.Distance * i;
                         if (!float.IsFinite(distance))

@@ -122,6 +122,25 @@ internal static partial class Program
             ClickAction("Cut");
             Near(1, obj.Modifiers[0].Distance, "Real Cut menu resets modifier distance");
             Equal("64", System.Runtime.InteropServices.Marshal.PtrToStringUTF8((nint)ImGui.GetClipboardText()), "Cut copies pixels");
+            obj.Modifiers[0] = obj.Modifiers[0] with { RadialEnabled = true, RadialRadius = 2 };
+            property = $"modifier.{obj.Modifiers[0].Id}.radial.radius";
+            showMenu = false;
+            distanceY = -1;
+            for (int y = 60; y < 650; y += 3)
+            {
+                ctxPath.SetValue(panel, null);
+                Frame(120, y, right: true);
+                if ((string?)ctxPath.GetValue(panel) == property) distanceY = y;
+                Frame(120, y);
+                if (distanceY >= 0) break;
+            }
+            Check(distanceY >= 0, "Radial radius widget registers its property");
+            showMenu = true;
+            ImGui.SetClipboardText("48");
+            ClickAction("Paste");
+            Near(3, obj.Modifiers[0].RadialRadius, "Radial radius Paste converts pixels");
+            ClickAction("Reset Value");
+            Near(1, obj.Modifiers[0].RadialRadius, "Radial radius Reset restores default");
         }
         finally
         {
@@ -172,6 +191,11 @@ internal static partial class Program
         Equal(0, path.Keyframes.Count, "Modifier edits do not affect another selected object");
         Edit("target", path.ObjectId);
         Equal(path.ObjectId, obj.Keyframes[$"{prefix}.target"][0].Value, "Path target auto key");
+        Edit("radial.radius", 32f);
+        Near(2, obj.Modifiers[0].RadialRadius, "Radial context radius converts pixels");
+        Equal(2f, obj.Keyframes[$"{prefix}.radial.radius"][0].Value, "Radial radius auto key uses world units");
+        Edit("radial.enabled", 1f);
+        Edit("radial.axis", 0f);
         string[] rotations = ["x", "y", "z"];
         contextSet.Invoke(panel, [rotations.Select(axis => $"{prefix}.rotation.{axis}").ToArray(), new object[] { 10f, 20f, 30f }, false]);
         foreach (string axis in rotations)
@@ -184,7 +208,7 @@ internal static partial class Program
         Check(!obj.Keyframes.ContainsKey($"{prefix}.axis"), "Rejected edit creates no key");
 
         foreach (string channel in new[] { "enabled", "count", "axis", "distance", "rotation.x", "rotation.y", "rotation.z",
-                     "scale.x", "scale.y", "scale.z", "target" })
+                     "scale.x", "scale.y", "scale.z", "target", "radial.enabled", "radial.axis", "radial.radius" })
         {
             Check(((IEnumerable<string>)paths.Invoke(null, [obj])!).Contains($"{prefix}.{channel}"), "Channel enumerated: " + channel);
             _ = get.Invoke(timeline, [obj, $"{prefix}.{channel}"]);
@@ -202,11 +226,17 @@ internal static partial class Program
         set.Invoke(timeline, [obj, $"{prefix}.scale.x", 0.5f]);
         set.Invoke(timeline, [obj, $"{prefix}.target", ""]);
         set.Invoke(timeline, [obj, followEnabled, 0f]);
-        foreach (string channel in new[] { "distance", "count", "axis", "enabled", "scale.x", "target" })
+        set.Invoke(timeline, [obj, $"{prefix}.radial.radius", 4f]);
+        set.Invoke(timeline, [obj, $"{prefix}.radial.axis", 2f]);
+        set.Invoke(timeline, [obj, $"{prefix}.radial.enabled", 0f]);
+        foreach (string channel in new[] { "distance", "count", "axis", "enabled", "scale.x", "target", "radial.radius", "radial.axis", "radial.enabled" })
             timeline.AddKeyframeForProperty(obj, $"{prefix}.{channel}", 10);
         timeline.AddKeyframeForProperty(obj, followEnabled, 10);
         Seek(timeline, 5);
         Near(3, obj.Modifiers[0].Distance, "Distance interpolates");
+        Near(3, obj.Modifiers[0].RadialRadius, "Radial radius interpolates");
+        Equal(ArrayAxis.X, obj.Modifiers[0].RadialAxis, "Radial axis is stepped");
+        Check(obj.Modifiers[0].RadialEnabled, "Radial enabled is stepped");
         Near(0.75f, obj.Modifiers[0].ScaleX, "Scale interpolates");
         Equal(3, obj.Modifiers[0].Count, "Count is stepped");
         Equal(ArrayAxis.X, obj.Modifiers[0].Axis, "Axis is stepped");
@@ -214,6 +244,8 @@ internal static partial class Program
         Equal(path.ObjectId, obj.Modifiers[0].PathObjectId, "Path reference holds until next key");
         Seek(timeline, 10);
         Equal(5, obj.Modifiers[0].Count, "Exact key uses new count");
+        Equal(ArrayAxis.Z, obj.Modifiers[0].RadialAxis, "Exact radial axis key applied");
+        Check(!obj.Modifiers[0].RadialEnabled, "Exact radial enabled key applied");
         Check(!obj.Modifiers[0].Enabled && !obj.FollowPathModifier!.Enabled, "Exact enabled keys applied");
         obj.Modifiers.Reverse();
         timeline.RefreshFromScene();
@@ -241,6 +273,7 @@ internal static partial class Program
         restoredTimeline.LoadKeyframesForAllObjects([restored]);
         Seek(restoredTimeline, 5);
         Near(3, restored.Modifiers.Single(modifier => modifier.Id == array.Id).Distance, "Loaded modifier track evaluates");
+        Near(3, restored.Modifiers.Single(modifier => modifier.Id == array.Id).RadialRadius, "Loaded radial track evaluates");
         var duplicate = (SceneObject)typeof(SceneTree).GetMethod("DuplicateObject", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(new SceneTree { Viewport = loadedViewport }, [imported, false, null])!;
         Equal(duplicate.Children[1].ObjectId, duplicate.Children[0].Keyframes[$"{prefix}.target"][0].Value,
@@ -320,6 +353,7 @@ internal static partial class Program
             Near(vec3.UnitY, (model * new vec4(direction, 0)).xyz.Normalized, "Selected axis aligns to tangent");
             Equal(4, evaluation.GetDeltas(child).Count, "Path repeats subtree");
         }
+
         obj.Modifiers = [new() { Axis = ArrayAxis.Y, Count = 4, Distance = 7, PathObjectId = path.ObjectId }];
         Near(path.Position + vec3.UnitY * 10, InstanceOrigin(new ModifierEvaluation([obj, path]), obj, 3), "Open path clamps");
         path.Settings = path.Settings with { Closed = true };
@@ -350,6 +384,57 @@ internal static partial class Program
         Equal(1, new ModifierEvaluation([obj, path]).GetDeltas(obj).Count, "Degenerate path inactive");
     }
 
+    private static void ModifierRadial(Fixture f)
+    {
+        var obj = new SceneObject { Position = new(3, 4, 5), PivotOffset = vec3.Zero };
+        var child = new SceneObject { Position = new(0, 0, 2), PivotOffset = vec3.Zero };
+        obj.AddChild(child);
+        foreach (var axis in Enum.GetValues<ArrayAxis>())
+        {
+            obj.Modifiers = [new() { Count = 4, RadialEnabled = true, RadialAxis = axis,
+                RadialRadius = 2, Distance = 99, PathObjectId = "missing" }];
+            var evaluation = new ModifierEvaluation([obj]);
+            vec3[] offsets = axis switch
+            {
+                ArrayAxis.X => [vec3.Zero, new(0, -2, 2), new(0, -4, 0), new(0, -2, -2)],
+                ArrayAxis.Y => [vec3.Zero, new(-2, 0, -2), new(-4, 0, 0), new(-2, 0, 2)],
+                _ => [vec3.Zero, new(-2, 2, 0), new(-4, 0, 0), new(-2, -2, 0)]
+            };
+            vec3[] childDirections = axis switch
+            {
+                ArrayAxis.X => [vec3.UnitZ, -vec3.UnitY, -vec3.UnitZ, vec3.UnitY],
+                ArrayAxis.Y => [vec3.UnitZ, vec3.UnitX, -vec3.UnitZ, -vec3.UnitX],
+                _ => [vec3.UnitZ, vec3.UnitZ, vec3.UnitZ, vec3.UnitZ]
+            };
+            for (int i = 0; i < 4; i++)
+            {
+                Near(obj.Position + offsets[i], InstanceOrigin(evaluation, obj, i), "Radial quarter-circle position");
+                mat4 copy = evaluation.GetDeltas(obj)[i] * obj.GetWorldMatrixNoPivot();
+                Near(childDirections[i], (copy * new vec4(0, 0, 1, 0)).xyz, "Copies rotate along radial path");
+                Near(obj.Position + offsets[i] + childDirections[i] * 2, InstanceOrigin(evaluation, child, i),
+                    "Radial children retain rotated relative geometry");
+            }
+        }
+        obj.Rotation = new(0, 0, MathF.PI / 2);
+        obj.Scale = new(2, 3, 4);
+        obj.Modifiers[0] = obj.Modifiers[0] with { RotationZ = 30, ScaleX = 0.5f };
+        var rotated = new ModifierEvaluation([obj]);
+        Near(obj.Position + new vec3(-2, -2, 0), InstanceOrigin(rotated, obj, 1),
+            "Radius follows local rotation but ignores object scale");
+        mat4 second = rotated.GetDeltas(obj)[1] * obj.GetWorldMatrixNoPivot();
+        Near(new vec3(-MathF.Sqrt(3) / 2, -0.5f, 0), (second * new vec4(1, 0, 0, 0)).xyz,
+            "Radial and per-copy rotation/scale compose");
+        obj.Modifiers[0] = obj.Modifiers[0] with { Count = 1 };
+        Near(obj.Position, InstanceOrigin(new ModifierEvaluation([obj]), obj, 0), "Single radial instance preserves source");
+        obj.Modifiers[0] = obj.Modifiers[0] with { Count = 4, RadialRadius = 0 };
+        var zero = new ModifierEvaluation([obj]);
+        for (int i = 0; i < 4; i++)
+            Near(obj.Position, InstanceOrigin(zero, obj, i), "Zero radius rotates in place");
+        obj.Modifiers[0] = obj.Modifiers[0] with { RadialEnabled = false, PathObjectId = "", Distance = 2 };
+        Near(obj.Position + vec3.UnitY * 2, InstanceOrigin(new ModifierEvaluation([obj]), obj, 1),
+            "Disabling radial restores linear settings");
+    }
+
     private static void ModifierStacks(Fixture f)
     {
         var obj = new SceneObject { PivotOffset = vec3.Zero };
@@ -369,7 +454,10 @@ internal static partial class Program
         {
             new() { Count = 0 }, new() { Count = 1001 }, new() { Axis = (ArrayAxis)9 },
             new() { Type = (SceneModifierType)9 }, new() { Distance = float.NaN },
-            new() { RotationX = float.PositiveInfinity }, new() { ScaleY = float.NaN }
+            new() { RotationX = float.PositiveInfinity }, new() { ScaleY = float.NaN },
+            new() { RadialAxis = (ArrayAxis)9 }, new() { RadialRadius = -1 },
+            new() { RadialRadius = float.NaN }, new() { RadialRadius = float.PositiveInfinity },
+            new() { RadialRadius = float.MaxValue }
         })
         {
             bool rejected = false;
@@ -644,10 +732,11 @@ internal static partial class Program
         var source = new SceneObject { Name = "Source" };
         source.Modifiers = [new() { Count = 4, Axis = ArrayAxis.Z, Distance = -2, RotationX = 15,
             RotationY = 30, RotationZ = 45, ScaleX = 0.8f, ScaleY = 1.1f, ScaleZ = -1, PathObjectId = path.ObjectId },
-            new() { Enabled = false, Count = 3 }];
+            new() { Enabled = false, Count = 3, RadialEnabled = true, RadialAxis = ArrayAxis.Z, RadialRadius = 3 }];
         root.AddChild(path); root.AddChild(source);
         var (manifest, _) = f.Roundtrip(root);
         Equal(source.Modifiers[0], manifest.Root.Children[1].Modifiers![0], "Source-generated archive settings");
+        Equal(source.Modifiers[1], manifest.Root.Children[1].Modifiers![1], "Radial archive settings");
         var viewport = new Viewport();
         var spawn = new SpawnMenu { Viewport = viewport };
         var imported = ProjectSceneSerializer.SpawnObjectFromEntry(manifest.Root, viewport, spawn)!;
@@ -668,6 +757,14 @@ internal static partial class Program
             .GetMethod("Compute", BindingFlags.Static | BindingFlags.Public)!;
         ulong Hash() => (ulong)fingerprint.Invoke(null, [new List<SceneObject> { source }])!;
         ulong initial = Hash();
+        var radial = source.Modifiers[1];
+        foreach (var changed in new[] { radial with { RadialEnabled = false }, radial with { RadialAxis = ArrayAxis.X },
+            radial with { RadialRadius = 4 } })
+        {
+            source.Modifiers[1] = changed;
+            Check(Hash() != initial, "Radial setting changes dirty fingerprint");
+        }
+        source.Modifiers[1] = radial;
         source.Modifiers[0] = source.Modifiers[0] with { Count = 8 };
         Check(Hash() != initial, "Modifier changes dirty fingerprint");
         typeof(ProjectSceneSerializer).GetMethod("ApplyEntryToObject", BindingFlags.Static | BindingFlags.NonPublic)!
@@ -801,21 +898,25 @@ internal static partial class Program
             Call("InitPickFramebuffer", size, size);
             Call("InitSilhouetteFbo", size, size);
             float activeOffset = 0f;
+            bool activeRadial = false;
             try
             {
                 foreach (bool combined in new[] { false, true })
-                foreach (var (onPath, offset, implicitPath) in new[]
-                    { (false, 0f, false), (true, 0f, false), (true, 1f, false), (true, 1.5f, true) })
+                foreach (var (onPath, offset, implicitPath, radial) in new[]
+                    { (false, 0f, false, false), (true, 0f, false, false), (true, 1f, false, false),
+                        (true, 1.5f, true, false), (false, 0f, false, true) })
                 {
                     source.CombineChildren = combined;
                     source.Visuals.Clear();
                     piece.Visuals.Clear();
                     (combined ? piece : source).AddMesh(mesh);
                     activeOffset = offset;
-                    source.Position = offset == 0f ? path.Position : vec3.Zero;
+                    activeRadial = radial;
+                    source.Position = radial ? new vec3(1.5f, 0, 0) : offset == 0f ? path.Position : vec3.Zero;
                     source.Modifiers = [new()
                     {
                         Count = 4, Distance = 2,
+                        RadialEnabled = radial, RadialAxis = ArrayAxis.Z, RadialRadius = 1.5f,
                         PathObjectId = onPath && !implicitPath ? path.ObjectId : "",
                         Axis = onPath ? ArrayAxis.Y : ArrayAxis.X
                     }];
@@ -842,10 +943,10 @@ internal static partial class Program
                     {
                         byte[] rgb = new byte[4];
                         fixed (byte* p = rgb)
-                            gl.ReadPixels(PixelX(i), (int)size / 2 + 4, 1, 1, Silk.NET.OpenGL.GLEnum.Rgba, Silk.NET.OpenGL.GLEnum.UnsignedByte, p);
-                        Equal((int)MathF.Round(source.PickColor.x * 255), (int)rgb[0], "Copy selects source ID");
-                        Equal((int)MathF.Round(source.PickColor.y * 255), (int)rgb[1], "Copy selects source ID");
-                        Equal((int)MathF.Round(source.PickColor.z * 255), (int)rgb[2], "Copy selects source ID");
+                            gl.ReadPixels(PixelX(i), PixelY(i) + (activeRadial ? 0 : 4), 1, 1, Silk.NET.OpenGL.GLEnum.Rgba, Silk.NET.OpenGL.GLEnum.UnsignedByte, p);
+                        Equal((int)MathF.Round(source.PickColor.x * 255), (int)rgb[0], $"Copy {i} selects source ID (radial={radial}, combined={combined})");
+                        Equal((int)MathF.Round(source.PickColor.y * 255), (int)rgb[1], $"Copy {i} selects source ID (radial={radial}, combined={combined})");
+                        Equal((int)MathF.Round(source.PickColor.z * 255), (int)rgb[2], $"Copy {i} selects source ID (radial={radial}, combined={combined})");
                     }
                     SelectionManager.Instance!.ClearSelection();
                     SelectionManager.Instance.SelectObject(source);
@@ -964,13 +1065,16 @@ internal static partial class Program
                         gl.ReadPixels(0, 0, size, size, Silk.NET.OpenGL.GLEnum.Rgba, Silk.NET.OpenGL.GLEnum.UnsignedByte, p);
                     return pixels;
                 }
-                int PixelX(int i) => (int)(((-3f + activeOffset + 2 * i + 0.125f) / 10f + 0.5f) * size);
+                int PixelX(int i) => (int)(((activeRadial ? new[] { 1.5f, 0f, -1.5f, 0f }[i]
+                    : -3f + activeOffset + 2 * i + 0.125f) / 10f + 0.5f) * size);
+                int PixelY(int i) => activeRadial
+                    ? (int)((new[] { 0f, 1.5f, 0f, -1.5f }[i] / 6f + 0.5f) * size) : (int)size / 2;
                 void AssertCopies(byte[] pixels, string message)
                 {
                     for (int i = 0; i < 4; i++)
                     {
                         int occupied = 0;
-                        for (int y = (int)size / 2 - 12; y < (int)size / 2 + 12; y++)
+                        for (int y = PixelY(i) - 12; y < PixelY(i) + 12; y++)
                         for (int x = (int)PixelX(i) - 8; x < (int)PixelX(i) + 8; x++)
                         {
                             int offset = (y * (int)size + x) * 4;
@@ -984,7 +1088,7 @@ internal static partial class Program
                     for (int i = 0; i < 4; i++)
                     {
                         float depth = 1;
-                        gl.ReadPixels(PixelX(i), (int)size / 2 + 4, 1, 1, Silk.NET.OpenGL.GLEnum.DepthComponent, Silk.NET.OpenGL.GLEnum.Float, &depth);
+                        gl.ReadPixels(PixelX(i), PixelY(i) + (activeRadial ? 0 : 4), 1, 1, Silk.NET.OpenGL.GLEnum.DepthComponent, Silk.NET.OpenGL.GLEnum.Float, &depth);
                         Check(depth < 0.99f, $"{message}: copy {i} writes depth ({depth})");
                     }
                 }

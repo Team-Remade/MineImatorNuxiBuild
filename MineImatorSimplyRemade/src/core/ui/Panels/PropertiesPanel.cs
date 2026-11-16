@@ -7456,7 +7456,7 @@ public partial class PropertiesPanel : UiPanel
         if (TimelinePanel.TryGetModifier(obj, path, out var modifier, out string modifierChannel))
         {
             object current = TimelinePanel.GetModifierValue(defaultValue ? new SceneModifier { Type = modifier.Type } : modifier, modifierChannel);
-            return modifierChannel == "distance" ? Convert.ToSingle(current, CultureInfo.InvariantCulture) * 16f : current;
+            return modifierChannel is "distance" or "radial.radius" ? Convert.ToSingle(current, CultureInfo.InvariantCulture) * 16f : current;
         }
         int axis = path.EndsWith(".y", StringComparison.Ordinal) ? 1 : path.EndsWith(".z", StringComparison.Ordinal) ? 2 : 0;
         if (path.StartsWith("pivot.", StringComparison.Ordinal))
@@ -7579,7 +7579,7 @@ public partial class PropertiesPanel : UiPanel
                         : copy.Type == CopyConstraintType.Rotation ? 180f / MathF.PI : 1f;
                     stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / factor;
                 }
-                else if (path == "path_follow.offset" || path.StartsWith("modifier.", StringComparison.Ordinal) && path.EndsWith(".distance", StringComparison.Ordinal) || path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal))
+                else if (path == "path_follow.offset" || path.StartsWith("modifier.", StringComparison.Ordinal) && (path.EndsWith(".distance", StringComparison.Ordinal) || path.EndsWith(".radial.radius", StringComparison.Ordinal)) || path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal))
                     stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / 16f;
                 else if (path.StartsWith("scale.", StringComparison.Ordinal))
                     stored = MathF.Max(0.001f, Convert.ToSingle(value, CultureInfo.InvariantCulture));
@@ -7696,7 +7696,7 @@ public partial class PropertiesPanel : UiPanel
                 {
                     if (!TimelinePanel.TryGetModifier(_currentObject, paths[i], out var entry, out string channel) || entry.Id != modifier.Id)
                         throw new InvalidDataException("Modifier value groups must belong to one modifier.");
-                    object stored = channel == "distance" ? Convert.ToSingle(values[i], CultureInfo.InvariantCulture) / 16f : values[i];
+                    object stored = channel is "distance" or "radial.radius" ? Convert.ToSingle(values[i], CultureInfo.InvariantCulture) / 16f : values[i];
                     updated = TimelinePanel.WithModifierValue(updated, channel, stored);
                 }
                 _currentObject.Modifiers[_currentObject.Modifiers.FindIndex(entry => entry.Id == modifier.Id)] = updated.Validated();
