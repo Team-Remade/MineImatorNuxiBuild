@@ -64,6 +64,7 @@ internal static partial class Program
                     () => ReadPixels((PreviewRenderer)rendererField.GetValue(spawn)!));
                 MinecraftSkinGraphics(spawn, viewport, fixture,
                     () => ReadPixels((PreviewRenderer)rendererField.GetValue(spawn)!));
+                ArmorEditorGraphics(spawn, viewport, fixture, ReadPixels);
                 foreach (var (name, customPath) in new[]
                 {
                     ("Characters", ""), ("Equipment", ""), ("Props", ""),

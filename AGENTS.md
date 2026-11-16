@@ -79,6 +79,11 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 
 Coverage and prerequisites:
 
+- `--armor`: adult/baby mixed armor variants, omitted pieces, custom textures,
+  rig preservation and persistent generated models. `--spawn-preview-graphics`
+  also checks the armor editor's left-hand modal preview, exact pixel parity
+  with original and spawned armor, and outfit reload with OpenGL 3.3 and the
+  application's full asset data.
 - `--backups`: preference defaults/persistence, timed snapshots, retention,
   failure safety, and preservation of unsaved edits without a GPU.
 - `--texture-sheets`: import validation, exact rectangular tile pixels and alpha,

@@ -44,7 +44,7 @@ public enum ItemAtlasSource
 ///  2. Call <see cref="Render"/> every frame from the main render loop.
 ///  3. Call <see cref="Toggle"/> (e.g. from a button handler) to open/close.
 /// </summary>
-public class SpawnMenu : UiPanel
+public partial class SpawnMenu : UiPanel
 {
     private const string SceneryLoadLabel = "Load schematic...";
     private const string WorldImportLabel = "Import from world...";
@@ -517,6 +517,8 @@ public class SpawnMenu : UiPanel
 
     public override unsafe void Render()
     {
+        if (!_isOpen) _armorEditorVisible = false;
+        if (!_armorEditorVisible) DisposeArmorEditorPreview();
         CompleteSkinDownload();
         // Rendered every frame regardless of _isOpen so a schematic load
         // failure triggered from the content browser or elsewhere can still
@@ -595,6 +597,7 @@ public class SpawnMenu : UiPanel
             RenderMainColumns();
             ImGui.Separator();
             RenderBottomBar();
+            RenderArmorEditor();
         }
 
         ImGui.End();
@@ -1984,6 +1987,13 @@ public class SpawnMenu : UiPanel
             _selectedObjectIndex < SelectedModelCatalog.Count)
         {
             var entry = SelectedModelCatalog[_selectedObjectIndex];
+
+            if (_selectedCategory == "Equipment" && ArmorModelBuilder.Supports(entry))
+            {
+                if (ImGui.Button(Localization.Label("text.panel.spawn.armor_editor", "Armor Editor"), new Vector2(-1, 0)))
+                    OpenArmorEditor(entry);
+                ImGui.Separator();
+            }
 
             if (_selectedCategory == "Model part")
             {

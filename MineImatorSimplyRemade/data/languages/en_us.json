@@ -1,6 +1,12 @@
 {
   "name": "English (US)",
   "strings": {
+    "text.panel.spawn.armor_editor": "Armor Editor",
+    "text.panel.spawn.armor_helmet": "Helmet",
+    "text.panel.spawn.armor_chestplate": "Chestplate",
+    "text.panel.spawn.armor_leggings": "Leggings",
+    "text.panel.spawn.armor_boots": "Boots",
+    "text.panel.spawn.armor_select_piece": "Select at least one armor piece to spawn.",
     "text.wiggle.title": "Wiggle Bones",
     "text.wiggle.scene": "Scene",
     "text.wiggle.enable_scene": "Enabled",
