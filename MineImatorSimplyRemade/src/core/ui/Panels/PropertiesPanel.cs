@@ -337,7 +337,7 @@ public partial class PropertiesPanel : UiPanel
 
     // Scale link toggle
     private bool _linkScale = true;
-    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction", "Lens Dirt", "Vignette", "Chromatic Aberration", "Distort", "Outline" };
+    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction", "Lens Dirt", "Vignette", "Chromatic Aberration", "Distort", "Outline", "Pixelate" };
     private static readonly string[] CameraShakeModeOptions = { "Rotational", "Positional", "Both" };
     private static readonly string[] BloomBlendModeOptions =
         ["text.panel.properties.blend_normal", "text.panel.properties.blend_add", "text.panel.properties.blend_screen",
@@ -1280,6 +1280,7 @@ public partial class PropertiesPanel : UiPanel
                     Vignette = effect.Vignette.Clone(),
                     ChromaticAberration = effect.ChromaticAberration.Clone(),
                     Distort = effect.Distort.Clone(),
+                    Pixelate = effect.Pixelate.Clone(),
                     Outline = effect.Outline.Clone(),
                     ColorCorrection = effect.ColorCorrection.Clone(),
                     Shake = new ProjectCameraShakeSettings
@@ -5416,6 +5417,7 @@ public partial class PropertiesPanel : UiPanel
                             CameraEffectType.Vignette => Localization.T("text.panel.properties.vignette") + $"###Vignette##cameraEffect{i}",
                             CameraEffectType.ChromaticAberration => Localization.T("text.panel.properties.chromatic_aberration") + $"###ChromaticAberration##cameraEffect{i}",
                             CameraEffectType.Distort => Localization.T("text.panel.properties.distort") + $"###Distort##cameraEffect{i}",
+                            CameraEffectType.Pixelate => Localization.T("text.panel.properties.pixelate") + $"###Pixelate##cameraEffect{i}",
                             CameraEffectType.Outline => Localization.T("text.panel.properties.outline") + $"###Outline##cameraEffect{i}",
                             _ => Localization.Format("text.panel.properties.effect", i + 1) + $"###Effect {i + 1}##cameraEffect{i}"
                         };
@@ -5580,6 +5582,8 @@ public partial class PropertiesPanel : UiPanel
                                 DrawChromaticAberrationControls(cameraObject, i);
                             if (effect.Type == CameraEffectType.Distort)
                                 DrawDistortControls(cameraObject, i);
+                            if (effect.Type == CameraEffectType.Pixelate)
+                                DrawPixelateControls(cameraObject, i);
                             if (effect.Type == CameraEffectType.Outline)
                                 DrawOutlineControls(cameraObject, i);
 
@@ -6780,6 +6784,23 @@ public partial class PropertiesPanel : UiPanel
         ImGui.PopID();
     }
 
+    private void DrawPixelateControls(CameraSceneObject camera, int index)
+    {
+        ImGui.PushID(index);
+        var settings = camera.Effects[index].Pixelate;
+        string path = $"camera.effect.{index}.pixelate.size";
+        float size = settings.Size;
+        if (ImGui.SliderFloat(Localization.Label("text.panel.properties.pixelate_size", "Pixel Size (px)"), ref size,
+                1f, 256f, "%.0f px", ImGuiSliderFlags.AlwaysClamp))
+        {
+            settings.SetValue("size", size);
+            Timeline?.RecordAutoKeyframe(camera, path);
+            ProjectManager.Instance.SetDirty(true);
+        }
+        RegisterPropertyContext(path);
+        ImGui.PopID();
+    }
+
     private void DrawDistortControls(CameraSceneObject camera, int index)
     {
         ImGui.PushID(index);
@@ -7732,6 +7753,11 @@ public partial class PropertiesPanel : UiPanel
                         else if (parts[3] == "distort")
                         {
                             var control = DistortSettings.Controls.First(c => c.Key == parts[4]);
+                            stored = Math.Clamp(number, control.Min, control.Max);
+                        }
+                        else if (parts[3] == "pixelate")
+                        {
+                            var control = PixelateSettings.Controls.First(c => c.Key == parts[4]);
                             stored = Math.Clamp(number, control.Min, control.Max);
                         }
                         else if (parts[3] == "outline")

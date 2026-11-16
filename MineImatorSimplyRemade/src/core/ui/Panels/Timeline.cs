@@ -1601,6 +1601,7 @@ public partial class Timeline : UiPanel
                 CameraEffectType.Vignette => Localization.Format("text.panel.timeline.effect_vignette", index + 1),
                 CameraEffectType.ChromaticAberration => Localization.Format("text.panel.timeline.effect_chromatic_aberration", index + 1),
                 CameraEffectType.Distort => Localization.Format("text.panel.timeline.effect_distort", index + 1),
+                CameraEffectType.Pixelate => Localization.Format("text.panel.timeline.effect_pixelate", index + 1),
                 CameraEffectType.Outline => Localization.Format("text.panel.timeline.effect_outline", index + 1),
                 CameraEffectType.ColorCorrection => Localization.Format("text.panel.timeline.effect_color_correction", index + 1),
                 CameraEffectType.FilmGrain => Localization.Format("text.panel.timeline.effect_film_grain", index + 1),
@@ -2960,6 +2961,12 @@ public partial class Timeline : UiPanel
                     yield return $"camera.effect.{i}.distort.{control.Key}";
                 continue;
             }
+            if (cam.Effects[i].Type == CameraEffectType.Pixelate)
+            {
+                foreach (var control in PixelateSettings.Controls)
+                    yield return $"camera.effect.{i}.pixelate.{control.Key}";
+                continue;
+            }
             if (cam.Effects[i].Type == CameraEffectType.Outline)
             {
                 foreach (var control in OutlineSettings.Controls)
@@ -3666,6 +3673,8 @@ public partial class Timeline : UiPanel
                 return effect.ChromaticAberration.GetValue(parts[4]);
             if (effect.Type == CameraEffectType.Distort && parts.Length == 5 && parts[3] == "distort")
                 return effect.Distort.GetValue(parts[4]);
+            if (effect.Type == CameraEffectType.Pixelate && parts.Length == 5 && parts[3] == "pixelate")
+                return effect.Pixelate.GetValue(parts[4]);
             if (effect.Type == CameraEffectType.Outline && parts[3] == "outline")
                 return effect.Outline.GetValue(string.Join('.', parts.Skip(4)));
             if (effect.Type == CameraEffectType.LensDirt && parts.Length == 5 && parts[3] == "lens_dirt")
@@ -4368,6 +4377,15 @@ public partial class Timeline : UiPanel
                     effect.Outline.SetValue(string.Join('.', parts.Skip(4)), value);
                 break;
             }
+            case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "pixelate" && obj is CameraSceneObject camPixelate:
+            {
+                if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camPixelate.Effects.Count)
+                    break;
+                var effect = camPixelate.Effects[effectIndex];
+                if (effect.Type == CameraEffectType.Pixelate)
+                    effect.Pixelate.SetValue(parts[4], value);
+                break;
+            }
             case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "distort" && obj is CameraSceneObject camDistort:
             {
                 if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camDistort.Effects.Count)
@@ -4731,6 +4749,17 @@ public partial class Timeline : UiPanel
                                     newRows.Add(MakeSingle(obj, control.Label, $"{baseDofPath}.{control.Key}", 1));
                             continue;
                         }
+                        if (effect.Type == CameraEffectType.Pixelate)
+                        {
+                            string pixelatePath = $"camera.effect.{i}.pixelate";
+                            string[] paths = PixelateSettings.Controls.Select(c => $"{pixelatePath}.{c.Key}").ToArray();
+                            if (!paths.Any(propsWithKeyframes.Contains)) continue;
+                            newRows.Add(MakeGroup(obj, $"Effect {i + 1}: Pixelate", paths, $"camera.effect.{i}"));
+                            foreach (var control in PixelateSettings.Controls)
+                                if (propsWithKeyframes.Contains($"{pixelatePath}.{control.Key}"))
+                                    newRows.Add(MakeSingle(obj, control.Label, $"{pixelatePath}.{control.Key}", 1));
+                            continue;
+                        }
                         if (effect.Type == CameraEffectType.Bloom)
                         {
                             string bloomPath = $"camera.effect.{i}.bloom";
@@ -4784,6 +4813,15 @@ public partial class Timeline : UiPanel
                             foreach (var control in DistortSettings.Controls)
                                 if (propsWithKeyframes.Contains($"{distortPath}.{control.Key}"))
                                     newRows.Add(MakeSingle(obj, control.Label, $"{distortPath}.{control.Key}", 1));
+                            continue;
+                        }
+                        if (effect.Type == CameraEffectType.Pixelate)
+                        {
+                            string pixelatePath = $"camera.effect.{i}.pixelate";
+                            string[] paths = PixelateSettings.Controls.Select(c => $"{pixelatePath}.{c.Key}").ToArray();
+                            _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Pixelate", paths, $"camera.effect.{i}"));
+                            foreach (var control in PixelateSettings.Controls)
+                                _displayRows.Add(MakeSingle(obj, control.Label, $"{pixelatePath}.{control.Key}", 1));
                             continue;
                         }
                         if (effect.Type == CameraEffectType.ChromaticAberration)

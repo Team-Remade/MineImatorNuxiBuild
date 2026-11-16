@@ -13,7 +13,37 @@ public enum CameraEffectType
     Vignette = 6,
     ChromaticAberration = 7,
     Distort = 8,
-    Outline = 9
+    Outline = 9,
+    Pixelate = 10
+}
+
+public class PixelateSettings
+{
+    public float Size { get; set; } = 8f;
+
+    public PixelateSettings Clone() => (PixelateSettings)MemberwiseClone();
+
+    public static readonly (string Key, string Label, float Min, float Max)[] Controls =
+    [
+        ("size", "Pixel Size (px)", 1f, 256f)
+    ];
+
+    public float GetValue(string key) => key switch
+    {
+        "size" => Size,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown pixelate control.")
+    };
+
+    public void SetValue(string key, float value)
+    {
+        if (!float.IsFinite(value))
+            throw new ArgumentOutOfRangeException(nameof(value), value, "Pixelate values must be finite.");
+        switch (key)
+        {
+            case "size": Size = Math.Clamp(value, 1f, 256f); break;
+            default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown pixelate control.");
+        }
+    }
 }
 
 public class OutlineSettings
@@ -439,6 +469,7 @@ public class CameraEffect
     public VignetteSettings Vignette = new();
     public ChromaticAberrationSettings ChromaticAberration = new();
     public DistortSettings Distort = new();
+    public PixelateSettings Pixelate = new();
     public OutlineSettings Outline = new();
     public ColorCorrectionSettings ColorCorrection = new();
 }

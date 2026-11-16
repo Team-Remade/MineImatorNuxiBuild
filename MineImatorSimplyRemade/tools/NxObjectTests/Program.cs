@@ -383,6 +383,8 @@ internal static partial class Program
             ("Distort ImGui percentage sliders and checkbox", DistortControls),
             ("Outline persistence, duplication, undo, dirty detection and timeline", OutlinePersistence),
             ("Outline ImGui conditional normal-pass controls", OutlineControls),
+            ("Pixelate persistence, independent copies, undo and timeline", PixelatePersistence),
+            ("Pixelate ImGui pixel-size slider", PixelateControls),
             ("Chromatic aberration ImGui percentage sliders and checkbox", ChromaticAberrationControls),
             ("Wind defaults, project/object persistence, duplication, undo, animation and classification", WindPersistence),
             ("Biome catalog, independent custom colors, project persistence and reset", BiomeSettings),
@@ -574,6 +576,10 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Distort", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--outline", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Outline", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--pixelate", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Pixelate", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--pixelate-graphics", StringComparer.Ordinal))
+            tests = [("Pixelate exact block dimensions, alpha, borders, previews and PNG export", PixelateGraphics)];
         if (args.Contains("--outline-graphics", StringComparer.Ordinal))
             tests = [("Outline GPU depth/normals, radius, fades, blending, alpha and preview/export parity", OutlineGraphics)];
         if (args.Contains("--distort-graphics", StringComparer.Ordinal))

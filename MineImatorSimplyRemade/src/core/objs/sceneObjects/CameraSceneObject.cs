@@ -169,6 +169,9 @@ public class CameraSceneObject : SceneObject
             case CameraEffectType.Outline:
                 Effects.Add(new CameraEffect { Type = CameraEffectType.Outline });
                 break;
+            case CameraEffectType.Pixelate:
+                Effects.Add(new CameraEffect { Type = CameraEffectType.Pixelate });
+                break;
         }
     }
 
@@ -183,6 +186,7 @@ public class CameraSceneObject : SceneObject
             Vignette = source.Vignette.Clone(),
             ChromaticAberration = source.ChromaticAberration.Clone(),
             Distort = source.Distort.Clone(),
+            Pixelate = source.Pixelate.Clone(),
             Outline = source.Outline.Clone(),
             ColorCorrection = source.ColorCorrection.Clone(),
             Shake = new CameraShakeSettings
