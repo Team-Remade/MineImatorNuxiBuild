@@ -408,12 +408,14 @@ public partial class Timeline : UiPanel
 
     public override void Render()
     {
+        UpdateKeyframeRetiming();
         UpdatePlayback();
         SyncAudioWithPlayback();
         _trackRowVisibility.Clear();
 
         if (!ImGui.Begin(Localization.Label("text.common.timeline", "Timeline")))
         {
+            FinishKeyframeRetiming(commit: false);
             IsWindowHovered = false;
             HasEditFocus = false;
             WindowPos = Vector2.Zero;
@@ -429,20 +431,19 @@ public partial class Timeline : UiPanel
         // Keep the editing target while a menu is open so menu commands use the same scope.
         if (!ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel))
             HasEditFocus = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
-        if (HasEditFocus && !Input.IsAnyFreeFlyActive && !ImGui.IsAnyItemActive())
+        HandleKeyframeScaleShortcut();
+        if (HasEditFocus && !RetimingBlocksInput && !Input.IsAnyFreeFlyActive && !ImGui.IsAnyItemActive())
         {
             if (Keybinds.Pressed("cut")) CutSelectedKeyframes();
             else if (Keybinds.Pressed("copy") && HasSelectedKeyframes) CopySelectedKeyframes();
             else if (Keybinds.Pressed("paste")) PasteAtCurrentFrame();
             else if (Keybinds.Pressed("selectAll")) SelectAllKeyframes();
-            else if (Keybinds.Pressed("stepBackward")) StepBackward();
-            else if (Keybinds.Pressed("stepForward")) StepForward();
-            else if (Keybinds.Pressed("jumpToStart")) JumpToStart();
-            else if (Keybinds.Pressed("jumpToEnd")) JumpToLastKeyframe();
         }
 
+        HandleTimelineNavigationShortcuts();
         HandleTimelineZoomShortcut();
 
+        ImGui.BeginDisabled(RetimingBlocksInput);
         RenderTransportControls();
         ImGui.Separator();
 
@@ -479,6 +480,7 @@ public partial class Timeline : UiPanel
         }
 
         ImGui.TextUnformatted(Localization.Format("text.panel.timeline.frame_s", _currentFrame, _currentFrame / _frameRate));
+        RenderKeyframeRetimingStatus();
 
         // Deferred context menu popup
         if (_openContextMenu)
@@ -499,6 +501,7 @@ public partial class Timeline : UiPanel
         RenderSpeedScaleMenu();
         RenderMarkerEditor();
 
+        ImGui.EndDisabled();
         ImGui.End();
     }
 
@@ -715,15 +718,35 @@ public partial class Timeline : UiPanel
         if (ImGui.IsItemHovered()) UiText.Tooltip(Localization.T("text.panel.timeline.zoom_in_ctrl_mouse_wheel"));
     }
 
-    private void HandleTimelineZoomShortcut()
+    private void HandleTimelineNavigationShortcuts()
     {
-        var io = ImGui.GetIO();
-        if (!IsWindowHovered || !io.KeyCtrl || MathF.Abs(io.MouseWheel) < float.Epsilon)
+        if (RetimingBlocksInput || (!IsWindowHovered && !HasEditFocus) || Input.IsAnyFreeFlyActive || ImGui.IsAnyItemActive())
             return;
 
+        if (Keybinds.Pressed("stepBackward")) StepBackward();
+        else if (Keybinds.Pressed("stepForward")) StepForward();
+        else if (Keybinds.Pressed("jumpToStart")) JumpToStart();
+        else if (Keybinds.Pressed("jumpToEnd")) JumpToLastKeyframe();
+    }
+
+    private bool IsTimelineZoomScroll()
+    {
+        var io = ImGui.GetIO();
+        return !RetimingBlocksInput && IsWindowHovered && (io.KeyCtrl || io.KeyShift) &&
+            MathF.Abs(io.MouseWheel) >= float.Epsilon;
+    }
+
+    private void HandleTimelineZoomShortcut()
+    {
+        if (!IsTimelineZoomScroll())
+            return;
+
+        var io = ImGui.GetIO();
         float timelineLeft = WindowPos.X + LeftColumnWidth;
         float mouseViewportX = Math.Clamp(io.MousePos.X - timelineLeft, 0f, Math.Max(0f, _trackViewportWidth));
         float anchorFrame = (_hScrollOffset + mouseViewportX) / _pixelsPerFrame;
+        // Override ImGui's Shift+wheel panning, including when zoom is already at a limit.
+        _pendingHScrollOffset = _hScrollOffset;
         ZoomTimeline(MathF.Pow(ZoomStep, io.MouseWheel), (anchorFrame, mouseViewportX));
     }
 
@@ -1014,7 +1037,7 @@ public partial class Timeline : UiPanel
                 Vector2 mouse = ImGui.GetMousePos();
                 bool mouseInClipArea = mouse.X >= rightMin.X && mouse.X < rightMin.X + rightSize.X
                                     && mouse.Y >= rightMin.Y && mouse.Y < rightMin.Y + rightSize.Y;
-                if (mouseInClipArea && ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup))
+                if (!RetimingBlocksInput && mouseInClipArea && ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup))
                 {
                     if (_isDraggingAudioClip)
                         UiText.Tooltip(Localization.Format("text.panel.timeline.dragging_audio_clip_to_frame", track.ManifestEntry.StartFrame));
@@ -1356,7 +1379,7 @@ public partial class Timeline : UiPanel
             new Vector2(phX, wPos.Y + 10f * UiTheme.Scale), 0xFF3377FF);
 
         // Start playhead drag on click (global drag handled in Render() outside this child)
-        if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        if (!RetimingBlocksInput && ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
         {
             _isDraggingPlayhead      = true;
             _rulerScreenLeftAtDrag   = wPos.X;
@@ -1366,7 +1389,7 @@ public partial class Timeline : UiPanel
             if (newFrame != _currentFrame) { _currentFrame = newFrame; _frameAccumulator = 0.0; ApplyKeyframesAtCurrentFrame(); }
         }
 
-        if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+        if (!RetimingBlocksInput && ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
         {
             _contextFrame = Math.Max(0, (int)MathF.Round((ImGui.GetMousePos().X - wPos.X + scrollX) / _pixelsPerFrame));
             _playbackRegionAnchorFrame = _contextFrame;
@@ -1432,6 +1455,7 @@ public partial class Timeline : UiPanel
         }
 
         ImGui.InvisibleButton("##marker_row", new Vector2(markerWidth, MarkerRowHeight));
+        if (RetimingBlocksInput) return;
         if (hovered != null && ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
         {
             _draggedMarker = hovered;
@@ -1526,6 +1550,9 @@ public partial class Timeline : UiPanel
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
         ImGui.BeginChild("##right_tracks", new Vector2(rightW, tracksH), ImGuiChildFlags.None,
             ImGuiWindowFlags.HorizontalScrollbar | ImGuiWindowFlags.AlwaysHorizontalScrollbar);
+
+        if (IsTimelineZoomScroll())
+            ImGui.SetScrollY(_vScrollOffset);
 
         if (_pendingHScrollOffset.HasValue)
         {
@@ -1843,6 +1870,7 @@ public partial class Timeline : UiPanel
     private void HandleTrackMouse(TimelineProperty row, Vector2 trackPos, float contentW,
                                    float scrollX, Vector2 wPos, Vector2 wSize)
     {
+        if (RetimingBlocksInput) return;
         if (!ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup)) return;
 
         var   mouse   = ImGui.GetMousePos();
@@ -1851,7 +1879,6 @@ public partial class Timeline : UiPanel
 
         float localX     = mouse.X - trackPos.X + scrollX;
         int   frame      = Math.Max(0, (int)MathF.Round(localX / _pixelsPerFrame));
-        bool  altHeld    = ImGui.GetIO().KeyAlt;
         bool  shiftHeld  = ImGui.GetIO().KeyShift;
         bool  ctrlHeld   = ImGui.GetIO().KeyCtrl;
 
@@ -1873,10 +1900,6 @@ public partial class Timeline : UiPanel
                 // Empty area → start drag-select
                 StartDragSelect(mouse, shiftHeld);
             }
-            else if (hoveredKf != null && altHeld)
-            {
-                RemoveKeyframeForProperty(row.Object, row.PropertyPath, hoveredKf.Frame);
-            }
             else if (hoveredKf != null)
             {
                 // Start keyframe drag / selection
@@ -1890,6 +1913,8 @@ public partial class Timeline : UiPanel
                     _selectedKeyframes.Add(hoveredKf);
                     _keyframeOwners[hoveredKf] = (row.Object, row.PropertyPath);
                 }
+                if (Keybinds.Down("stretchKeyframes") && BeginKeyframeStretch(hoveredKf))
+                    return;
                 _isDraggingKeyframe = true;
                 _draggedKeyframe    = hoveredKf;
                 _dragStartFrame     = hoveredKf.Frame;
@@ -4310,6 +4335,7 @@ public partial class Timeline : UiPanel
 
     public void RefreshFromScene()
     {
+        FinishKeyframeRetiming(commit: false);
         _displayRows.Clear();
         _propertyKeyframes.Clear();
         _selectedKeyframes.Clear();

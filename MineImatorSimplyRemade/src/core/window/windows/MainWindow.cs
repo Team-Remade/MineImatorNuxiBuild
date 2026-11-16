@@ -430,7 +430,8 @@ public class MainWindow : Window
         if (timeline != null)
         {
             SelectionManager.Instance.Timeline = timeline;
-            timeline.KeyframesImporting += CaptureImportedKeyframeBaselines;
+            timeline.KeyframesImporting += CaptureKeyframeEditBaselines;
+            timeline.KeyframesRetiming += CaptureKeyframeEditBaselines;
         }
 
         if (viewport != null)
@@ -705,6 +706,7 @@ public class MainWindow : Window
     private void HandleKeyboardShortcuts()
     {
         if (_worldImporter?.IsOpen == true) return;
+        if (_timeline?.IsRetimingKeyframes == true) return;
 
         // Ignore shortcut keys inherited from the IDE/launcher while the app
         // window is opening. Shortcuts become active after all of them have
@@ -2581,7 +2583,7 @@ public class MainWindow : Window
             destination[obj] = ProjectSceneSerializer.CaptureObjectState(obj);
     }
 
-    private void CaptureImportedKeyframeBaselines(IReadOnlyList<SceneObject> objects)
+    private void CaptureKeyframeEditBaselines(IReadOnlyList<SceneObject> objects)
     {
         foreach (var obj in objects)
         {

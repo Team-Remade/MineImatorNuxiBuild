@@ -15,6 +15,416 @@ using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 internal static partial class Program
 {
+    private static void FramesRetiming(Fixture f)
+    {
+        var previous = ImGui.GetCurrentContext();
+        var context = ImGui.CreateContext();
+        Services.Initialize();
+        try
+        {
+            var obj = Node("Retimed");
+            obj.Keyframes["position.x"] =
+            [
+                new() { Frame = 10, Value = 1f, InterpolationType = "ease_in" },
+                new() { Frame = 20, Value = 2f },
+                new() { Frame = 30, Value = 3f },
+                new() { Frame = 40, Value = 99f }
+            ];
+            obj.Keyframes["position.y"] = [new() { Frame = 15, Value = 4f }, new() { Frame = 25, Value = 5f }];
+            var timeline = FramesTimeline(obj);
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            List<TimelineKeyframe> Track(string path) => (List<TimelineKeyframe>)typeof(Timeline)
+                .GetMethod("GetKeyframesForProperty", flags)!.Invoke(timeline, [obj, path])!;
+            void Expect(string expected, string message) =>
+                Equal(expected, string.Join(",", Track("position.x").Select(k => k.Frame)), message);
+            void Preview(double scale) => typeof(Timeline).GetMethod("PreviewKeyframeRetiming", flags)!.Invoke(timeline, [scale]);
+            void Finish(bool commit) => typeof(Timeline).GetMethod("FinishKeyframeRetiming", flags)!.Invoke(timeline, [commit]);
+            void BeginScale(int pivot)
+            {
+                timeline.SetCurrentFrame(pivot);
+                var mode = Enum.Parse(typeof(Timeline).GetNestedType("KeyframeRetimingMode", BindingFlags.NonPublic)!, "Scale");
+                Check((bool)typeof(Timeline).GetMethod("BeginKeyframeRetiming", flags)!
+                    .Invoke(timeline, [mode, pivot, 0])!, "Scale gesture starts");
+            }
+            bool BeginStretch(string path, int frame) => (bool)typeof(Timeline).GetMethod("BeginKeyframeStretch", flags)!
+                .Invoke(timeline, [Track(path).Single(k => k.Frame == frame)])!;
+            void Select() => SelectFrames(timeline, (obj, "position.x", 10), (obj, "position.x", 20),
+                (obj, "position.x", 30), (obj, "position.y", 15), (obj, "position.y", 25));
+            Select();
+            BeginScale(20);
+            Preview(100);
+            Expect("0,20,40,40", "Playhead pivot limits scaling at frame zero without destroying preview collisions");
+            Equal("10,20,30,40", string.Join(",", obj.Keyframes["position.x"].Select(k => k.Frame)),
+                "Preview leaves persisted keys untouched");
+            Preview(0.5);
+            Expect("15,20,25,40", "Every preview scales from original timing, not the previous preview");
+            Preview(-1);
+            Expect("20,20,20,40", "Negative scale clamps instead of inverting timing");
+            Finish(false);
+            Expect("10,20,30,40", "Cancel restores all previewed keys and collisions");
+            int previousLength = timeline.MaxFrames;
+            BeginScale(0);
+            Preview(100);
+            Equal(previousLength, timeline.MaxFrames, "Preview does not permanently expand timeline length");
+            Finish(false);
+            Select();
+            Check(!BeginStretch("position.x", 20), "Interior selected key does not start stretching");
+            Check(BeginStretch("position.x", 10), "Left selection edge starts stretching");
+            Preview(2);
+            Expect("0,15,30,40", "Left stretch anchors the opposite edge and clamps at zero");
+            Finish(false);
+            Check(BeginStretch("position.y", 25), "A row-local right edge starts stretching");
+            Preview(2);
+            Expect("10,30,40,50", "Row-local handle stretches all selected tracks about the global opposite edge");
+            Equal("20,40", string.Join(",", Track("position.y").Select(k => k.Frame)), "Cross-track spacing scales together");
+            Finish(false);
+            SelectFrames(timeline, (obj, "position.x", 10), (obj, "position.x", 30), (obj, "position.y", 25));
+            Check(BeginStretch("position.y", 25), "Single selected key in a row uses nearest selection edge");
+            Preview(0.5);
+            Expect("10,20,20,40", "Single-key row stretches about the opposite edge");
+            Finish(false);
+
+            Select();
+            var before = new Dictionary<SceneObject, ProjectSceneObjectEntry>();
+            timeline.KeyframesRetiming += owners =>
+            {
+                foreach (var owner in owners) before.Add(owner, ProjectSceneSerializer.CaptureObjectState(owner));
+            };
+            BeginScale(0);
+            Preview(2);
+            Equal(0, before.Count, "Preview does not begin a persistent edit");
+            var hierarchy = new SceneHistoryAction.HierarchyState(timeline.Viewport);
+            var project = SceneHistoryAction.ProjectState.Capture(ProjectManager.Instance.Manifest);
+            Finish(true);
+            Equal(1, before.Count, "Commit captures each retimed object once for history");
+            Equal("20,40,60", string.Join(",", obj.Keyframes["position.x"].Select(k => k.Frame)),
+                "Commit replaces an unselected destination key and saves sorted timing");
+            Near(2f, FrameValue(obj, "position.x", 40), "Selected key wins a destination collision");
+            Equal("ease_in", obj.Keyframes["position.x"][0].InterpolationType, "Retiming preserves interpolation");
+            var action = SceneHistoryAction.Create(before.Select(pair =>
+                (pair.Key, pair.Value, ProjectSceneSerializer.CaptureObjectState(pair.Key))), hierarchy, hierarchy, project, project)!;
+            Check(action.Apply(timeline.Viewport, null, undo: true), "Retiming undo applies");
+            Equal("10,20,30,40", string.Join(",", obj.Keyframes["position.x"].Select(k => k.Frame)), "Undo restores overwritten keys");
+            Check(action.Apply(timeline.Viewport, null, undo: false), "Retiming redo applies");
+            Equal("20,40,60", string.Join(",", obj.Keyframes["position.x"].Select(k => k.Frame)), "Redo restores retimed keys");
+
+            timeline = FramesTimeline(obj);
+            SelectFrames(timeline, (obj, "position.x", 20), (obj, "position.x", 40), (obj, "position.x", 60));
+            BeginScale(0);
+            Preview(0);
+            Finish(true);
+            Equal(1, obj.Keyframes["position.x"].Count, "Collapsed selected keys merge only on commit");
+            Near(1f, FrameValue(obj, "position.x", 0), "Collision winner is deterministic");
+            Equal(1, ((List<TimelineKeyframe>)typeof(Timeline).GetField("_selectedKeyframes", flags)!.GetValue(timeline)!).Count,
+                "Merged keys are removed from selection");
+            timeline = FramesTimeline(obj);
+            SelectFrames(timeline, (obj, "position.y", 30), (obj, "position.y", 50));
+            BeginScale(0);
+            Preview(10);
+            Finish(true);
+            Equal(530, timeline.MaxFrames, "Confirmed retiming extends the timeline for later keys");
+        }
+        finally
+        {
+            Services.Shutdown();
+            ImGui.DestroyContext(context);
+            ImGui.SetCurrentContext(previous);
+        }
+    }
+
+    private static unsafe void FramesRetimingInput(Fixture f)
+    {
+        var previous = ImGui.GetCurrentContext();
+        var context = ImGui.CreateContext();
+        var bindings = Keybinds.Overrides;
+        Services.Initialize();
+        try
+        {
+            Keybinds.Reset();
+            var io = ImGui.GetIO();
+            io.IniFilename = null;
+            io.LogFilename = null;
+            io.DisplaySize = new System.Numerics.Vector2(1800, 900);
+            io.DeltaTime = 1f / 60f;
+            io.ConfigInputTrickleEventQueue = false;
+            io.BackendFlags |= ImGuiBackendFlags.RendererHasTextures;
+            var obj = Node("Retiming inputs");
+            obj.Keyframes["position.x"] =
+                [new() { Frame = 10, Value = 1f }, new() { Frame = 20, Value = 2f }, new() { Frame = 30, Value = 3f }];
+            var timeline = FramesTimeline(obj);
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            typeof(Timeline).GetField("_displayRows", flags)!.SetValue(timeline,
+                new List<TimelineProperty> { new() { Object = obj, PropertyPath = "position.x", Label = "X" } });
+            var selected = (List<TimelineKeyframe>)typeof(Timeline).GetField("_selectedKeyframes", flags)!.GetValue(timeline)!;
+            SelectFrames(timeline, (obj, "position.x", 10), (obj, "position.x", 20), (obj, "position.x", 30));
+            timeline.SetCurrentFrame(10);
+            void Draw(float x = 500, float y = 300, bool textInput = false)
+            {
+                io.AddMousePosEvent(x, y);
+                ImGui.NewFrame();
+                ImGui.SetNextWindowPos(new(1500, 0));
+                ImGui.SetNextWindowSize(new(300, 900));
+                ImGui.Begin("Retiming other panel");
+                ImGui.SetWindowFocus();
+                ImGui.End();
+                io.WantTextInput = textInput;
+                ImGui.SetNextWindowPos(new(0, 0));
+                ImGui.SetNextWindowSize(new(1400, 700));
+                timeline.Render();
+                ImGui.Render();
+            }
+            void ScaleShortcut(bool textInput = false)
+            {
+                io.AddKeyEvent(ImGuiKey.ModAlt, true);
+                io.AddKeyEvent(ImGuiKey.S, true);
+                Draw(textInput: textInput);
+                io.AddKeyEvent(ImGuiKey.S, false);
+                io.AddKeyEvent(ImGuiKey.ModAlt, false);
+                Draw();
+            }
+            void Key(ImGuiKey key, float x = 500, float y = 300)
+            {
+                io.AddKeyEvent(key, true);
+                Draw(x, y);
+                io.AddKeyEvent(key, false);
+                Draw(x, y);
+            }
+            Draw();
+            Draw();
+            ScaleShortcut(textInput: true);
+            Check(!timeline.IsRetimingKeyframes, "Text editing blocks scale shortcut");
+            ScaleShortcut();
+            Check(timeline.IsRetimingKeyframes && !timeline.HasEditFocus, "Alt+S starts scaling on hover without focus");
+            Draw(600);
+            Equal("10,30,50", string.Join(",", selected.Select(k => k.Frame)), "Mouse motion previews playhead-pivot scaling");
+            Key(ImGuiKey.Escape, 600);
+            Check(!timeline.IsRetimingKeyframes, "Escape cancels scaling");
+            Equal("10,20,30", string.Join(",", selected.Select(k => k.Frame)), "Escape restores original timing");
+            ScaleShortcut();
+            Draw(600);
+            Key(ImGuiKey.Enter, 600);
+            Equal("10,30,50", string.Join(",", obj.Keyframes["position.x"].Select(k => k.Frame)), "Enter commits scaling");
+            Equal(3, selected.Count, "Confirmation does not also clear the selection");
+
+            ScaleShortcut();
+            Draw(550);
+            io.AddMouseButtonEvent(1, true);
+            Draw(550);
+            io.AddMouseButtonEvent(1, false);
+            Draw(550);
+            Check(!timeline.IsRetimingKeyframes, "Right-click cancels without opening a context menu");
+            Equal("10,30,50", string.Join(",", obj.Keyframes["position.x"].Select(k => k.Frame)), "Right-click preserves saved keys");
+            ScaleShortcut();
+            io.AddMouseButtonEvent(0, true);
+            Draw(550);
+            io.AddMouseButtonEvent(0, false);
+            Draw(550);
+            Equal("10,35,60", string.Join(",", obj.Keyframes["position.x"].Select(k => k.Frame)), "Left-click commits scaling once");
+
+            Keybinds.LoadOverrides(new() { ["scaleKeyframes"] = "Ctrl+K", ["stretchKeyframes"] = "Shift" });
+            ScaleShortcut();
+            Check(!timeline.IsRetimingKeyframes, "Rebinding removes the default scale shortcut");
+            io.AddKeyEvent(ImGuiKey.ModCtrl, true);
+            Key(ImGuiKey.K);
+            io.AddKeyEvent(ImGuiKey.ModCtrl, false);
+            Check(timeline.IsRetimingKeyframes, "Custom scale binding starts scaling");
+            Key(ImGuiKey.Escape);
+
+            float rulerY = (float)typeof(Timeline).GetField("_timelineAreaTop", flags)!.GetValue(timeline)!;
+            float rowY = rulerY + 35f * UiTheme.Scale + ImGui.GetStyle().ItemSpacing.Y;
+            float handleX = 8f + 200f * UiTheme.Scale + 60f * 5f;
+            Draw(handleX, rowY);
+            io.AddKeyEvent(ImGuiKey.ModShift, true);
+            io.AddMouseButtonEvent(0, true);
+            Draw(handleX, rowY);
+            Check(timeline.IsRetimingKeyframes, "Custom stretch modifier plus endpoint drag starts stretching");
+            io.AddKeyEvent(ImGuiKey.ModShift, false);
+            Draw(handleX + 250, rowY + 80);
+            Equal("10,60,110", string.Join(",", selected.Select(k => k.Frame)), "Stretch updates outside the original track row");
+            io.AddMouseButtonEvent(0, false);
+            Draw(handleX + 250, rowY + 80);
+            Draw();
+            Check(!timeline.IsRetimingKeyframes, "Releasing outside the original row finishes stretching");
+            Equal("10,60,110", string.Join(",", obj.Keyframes["position.x"].Select(k => k.Frame)), "Stretch commits relative spacing");
+            Check(!ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel),
+                "Retiming confirmation/cancellation does not leak context clicks");
+
+            Keybinds.Reset();
+            float leftHandleX = 8f + 200f * UiTheme.Scale + 10f * 5f;
+            Draw(leftHandleX, rowY);
+            io.AddKeyEvent(ImGuiKey.ModAlt, true);
+            io.AddMouseButtonEvent(0, true);
+            Draw(leftHandleX, rowY);
+            Check(timeline.IsRetimingKeyframes, "Default Alt+drag starts stretching instead of deleting a key");
+            Draw(leftHandleX - 25, rowY);
+            io.AddMouseButtonEvent(1, true);
+            Draw(leftHandleX - 25, rowY);
+            io.AddMouseButtonEvent(1, false);
+            io.AddMouseButtonEvent(0, false);
+            Draw();
+            Equal("10,60,110", string.Join(",", obj.Keyframes["position.x"].Select(k => k.Frame)), "Right-click cancels a held stretch");
+            Draw(leftHandleX, rowY);
+            io.AddMouseButtonEvent(0, true);
+            Draw(leftHandleX, rowY);
+            Draw(leftHandleX - 50, rowY);
+            io.AddMouseButtonEvent(0, false);
+            Draw(leftHandleX - 50, rowY);
+            io.AddKeyEvent(ImGuiKey.ModAlt, false);
+            Draw();
+            Equal("0,55,110", string.Join(",", obj.Keyframes["position.x"].Select(k => k.Frame)), "Left-edge stretch commits around the fixed right edge");
+            ScaleShortcut();
+            Check(timeline.IsRetimingKeyframes, "Scale starts before scene refresh");
+            Draw(550);
+            timeline.RefreshFromScene();
+            Check(!timeline.IsRetimingKeyframes, "Selection/scene refresh cancels active retiming");
+            Equal("0,55,110", string.Join(",", obj.Keyframes["position.x"].Select(k => k.Frame)), "Scene refresh preserves original persisted timing");
+        }
+        finally
+        {
+            Services.Shutdown();
+            Keybinds.LoadOverrides(bindings);
+            ImGui.DestroyContext(context);
+            ImGui.SetCurrentContext(previous);
+        }
+    }
+
+    private static unsafe void FramesTimelineShortcuts(Fixture f)
+    {
+        var previous = ImGui.GetCurrentContext();
+        var context = ImGui.CreateContext();
+        var bindings = Keybinds.Overrides;
+        Services.Initialize();
+        try
+        {
+            Keybinds.Reset();
+            var io = ImGui.GetIO();
+            io.IniFilename = null;
+            io.LogFilename = null;
+            io.DisplaySize = new System.Numerics.Vector2(1800, 900);
+            io.DeltaTime = 1f / 60f;
+            io.BackendFlags |= ImGuiBackendFlags.RendererHasTextures;
+            io.ConfigInputTrickleEventQueue = false;
+            var timeline = FramesTimeline();
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            float Scale() => (float)typeof(Timeline).GetField("_pixelsPerFrame", flags)!.GetValue(timeline)!;
+            float Scroll() => (float)typeof(Timeline).GetField("_hScrollOffset", flags)!.GetValue(timeline)!;
+            bool popup = false;
+            void Draw(bool hovered = true, bool textInput = false)
+            {
+                io.AddMousePosEvent(hovered ? 600 : 1600, 300);
+                ImGui.NewFrame();
+                ImGui.SetNextWindowPos(new(1500, 0));
+                ImGui.SetNextWindowSize(new(300, 900));
+                ImGui.Begin("Other panel");
+                ImGui.SetWindowFocus();
+                if (popup) ImGui.OpenPopup("Blocking popup");
+                if (ImGui.BeginPopup("Blocking popup"))
+                {
+                    if (!popup) ImGui.CloseCurrentPopup();
+                    ImGui.EndPopup();
+                }
+                ImGui.End();
+                io.WantTextInput = textInput;
+                ImGui.SetNextWindowPos(new(0, 0));
+                ImGui.SetNextWindowSize(new(1400, 700));
+                timeline.Render();
+                ImGui.Render();
+            }
+            void Press(ImGuiKey key, bool hovered = true, bool textInput = false)
+            {
+                io.AddKeyEvent(key, true);
+                Draw(hovered, textInput);
+                io.AddKeyEvent(key, false);
+                Draw(hovered);
+            }
+            Draw();
+            Draw();
+            Check(timeline.IsWindowHovered && !timeline.HasEditFocus, "Timeline hovered without keyboard focus");
+            Press(ImGuiKey.RightArrow);
+            Equal(1, timeline.CurrentFrame, "Hover right arrow advances exactly one frame");
+            Press(ImGuiKey.LeftArrow);
+            Press(ImGuiKey.LeftArrow);
+            Equal(0, timeline.CurrentFrame, "Hover left arrow clamps at frame zero");
+            timeline.SetCurrentFrame(timeline.MaxFrames);
+            Press(ImGuiKey.RightArrow);
+            Equal(timeline.MaxFrames, timeline.CurrentFrame, "Hover right arrow clamps at timeline end");
+            Press(ImGuiKey.Home);
+            Equal(0, timeline.CurrentFrame, "Hover Home jumps to the start");
+            Press(ImGuiKey.RightArrow, hovered: false);
+            Equal(0, timeline.CurrentFrame, "Unfocused, unhovered timeline ignores navigation");
+            Press(ImGuiKey.RightArrow, textInput: true);
+            Equal(0, timeline.CurrentFrame, "Text editing blocks hover navigation");
+            popup = true;
+            Draw();
+            Press(ImGuiKey.RightArrow);
+            Equal(0, timeline.CurrentFrame, "Open popup blocks navigation");
+            popup = false;
+            Draw();
+            Draw();
+            Keybinds.LoadOverrides(new() { ["stepForward"] = "K" });
+            Press(ImGuiKey.RightArrow);
+            Equal(0, timeline.CurrentFrame, "Hover navigation respects rebound keys");
+            Press(ImGuiKey.K);
+            Equal(1, timeline.CurrentFrame, "Rebound navigation works on hover");
+
+            Draw();
+            float before = Scale();
+            float anchor = (Scroll() + 400f) / before;
+            io.AddKeyEvent(ImGuiKey.ModShift, true);
+            io.AddMouseWheelEvent(0, 1);
+            Draw();
+            Draw();
+            Near(before * 1.25f, Scale(), "Shift wheel zooms in");
+            Near(anchor, (Scroll() + 400f) / Scale(), "Zoom preserves frame under mouse");
+            io.AddMouseWheelEvent(0, -1);
+            Draw();
+            Draw();
+            Near(before, Scale(), "Shift wheel zooms out");
+            io.AddKeyEvent(ImGuiKey.ModShift, false);
+            io.AddKeyEvent(ImGuiKey.ModCtrl, true);
+            io.AddMouseWheelEvent(0, 1);
+            Draw();
+            Draw();
+            Near(before * 1.25f, Scale(), "Existing Ctrl wheel zoom is preserved");
+            io.AddKeyEvent(ImGuiKey.ModCtrl, false);
+            io.AddMouseWheelEvent(0, -1);
+            Draw();
+            Draw();
+            Near(before * 1.25f, Scale(), "Plain wheel does not zoom");
+            io.AddKeyEvent(ImGuiKey.ModShift, true);
+            io.AddMouseWheelEvent(0, 1);
+            Draw(hovered: false);
+            Near(before * 1.25f, Scale(), "Wheel outside timeline does not zoom");
+            Draw();
+            Draw();
+            io.AddMouseWheelEvent(0, 100);
+            Draw();
+            Draw();
+            Near(40f, Scale(), "Shift wheel clamps to maximum zoom");
+            float scrollAtLimit = Scroll();
+            io.AddMouseWheelEvent(0, 1);
+            Draw();
+            Draw();
+            Near(scrollAtLimit, Scroll(), "Shift wheel at maximum zoom does not pan");
+            io.AddMouseWheelEvent(0, -100);
+            Draw();
+            Draw();
+            Near(1f, Scale(), "Shift wheel clamps to minimum zoom");
+            scrollAtLimit = Scroll();
+            io.AddMouseWheelEvent(0, -1);
+            Draw();
+            Draw();
+            Near(scrollAtLimit, Scroll(), "Shift wheel at minimum zoom does not pan");
+        }
+        finally
+        {
+            Services.Shutdown();
+            Keybinds.LoadOverrides(bindings);
+            ImGui.DestroyContext(context);
+            ImGui.SetCurrentContext(previous);
+        }
+    }
+
     private static void FramesBackwardSeekBeforeFirstKey(Fixture f)
     {
         var obj = Node("Animated object");

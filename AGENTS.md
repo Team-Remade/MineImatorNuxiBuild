@@ -79,6 +79,10 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 
 Coverage and prerequisites:
 
+- `--frames`: keyframe import/export, timeline navigation, mouse-anchored zoom,
+  interactive playhead-pivot scaling and endpoint stretching, including frame
+  bounds, collisions, reversible previews, custom bindings, and undo/redo.
+  These checks drive ImGui without a GPU.
 - `--camera-spawn`: immediate camera position/rotation properties without cursor
   placement, with work-camera copying enabled and disabled; no GPU required.
 - `--armor`: adult/baby mixed armor variants, omitted pieces, custom textures,

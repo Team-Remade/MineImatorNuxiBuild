@@ -47,6 +47,8 @@ public static class Keybinds
         new("stepForward", "RightArrow", "text.keybinds.step_forward", BindingScope.Timeline),
         new("jumpToStart", "Home", "text.keybinds.jump_to_start", BindingScope.Timeline),
         new("jumpToEnd", "End", "text.keybinds.jump_to_end", BindingScope.Timeline),
+        new("scaleKeyframes", "Alt+S", "text.keybinds.scale_keyframes", BindingScope.Timeline),
+        new("stretchKeyframes", "Alt", "text.keybinds.stretch_keyframes", BindingScope.Timeline, Held: true),
         new("highQualityPreview", "F5", "text.keybinds.high_quality_preview"),
         new("shadowDebug", "Ctrl+F6", "text.keybinds.shadow_debug"),
         new("renderImage", "F7", "text.menu.render_image"),
