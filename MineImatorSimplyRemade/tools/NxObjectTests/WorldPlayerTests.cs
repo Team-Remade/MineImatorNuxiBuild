@@ -2,9 +2,49 @@ using System.IO.Compression;
 using Cyotek.Data.Nbt;
 using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core.world;
+using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.ui.Panels;
 
 internal static partial class Program
 {
+    private static void WorldPreviewScheduling(Fixture f)
+    {
+        var source = new TaskCompletionSource<SchematicData?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancellation = new CancellationTokenSource();
+        using var build = new SpawnMenu.SchematicPreviewBuild(new SpawnMenu(), "World preview", "",
+            source.Task, cancellation.Token);
+        Check(!build.Advance(), "Preview yields its pending terrain preparation");
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        for (int i = 0; i < 100; i++)
+            Check(!build.Advance(), "Preview polling never waits for the worker");
+        Check(elapsed.ElapsedMilliseconds < 100, "Pending terrain leaves the UI thread responsive");
+        cancellation.Cancel();
+        source.SetResult(null);
+        bool cancelled = false;
+        try { build.Advance(); }
+        catch (OperationCanceledException) { cancelled = true; }
+        Check(cancelled, "Cancelled preview cannot install a late worker result");
+
+        using var empty = new SpawnMenu().CreateWorldPreviewBuild(
+            new WorldVolume(new WorldBounds(0, 0, 0, 0, 0, 0)), new WorldBlockFilter(), "", CancellationToken.None);
+        var timeout = System.Diagnostics.Stopwatch.StartNew();
+        while (!empty.Advance())
+        {
+            Check(timeout.Elapsed < TimeSpan.FromSeconds(10), "Empty preview worker finishes");
+            Thread.Sleep(1);
+        }
+        Check(empty.TakeResult() == null, "Empty terrain needs no graphics context or mesh");
+
+        var failed = Task.FromException<SchematicData?>(new IOException("Preview read regression"));
+        using var faulted = new SpawnMenu.SchematicPreviewBuild(new SpawnMenu(), "World preview", "",
+            failed, CancellationToken.None);
+        Check(!faulted.Advance(), "Failed worker is observed on the next UI poll");
+        bool reported = false;
+        try { faulted.Advance(); }
+        catch (IOException ex) when (ex.Message == "Preview read regression") { reported = true; }
+        Check(reported, "Worker failures reach the importer instead of a success-shaped empty preview");
+    }
+
     private static void WorldPlayerPositionReading(Fixture f)
     {
         string legacy = Path.Combine(f.Root, "legacy");

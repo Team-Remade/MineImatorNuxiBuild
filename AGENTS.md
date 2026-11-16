@@ -69,6 +69,8 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --backups
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --modifiers
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --world-player
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --world-preview
+dotnet run --configuration Release --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --water-terrain-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --effects-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --particles-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --emissive-graphics
@@ -79,6 +81,10 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 
 Coverage and prerequisites:
 
+- `--world-preview`: nonblocking preview polling, cancellation, empty terrain,
+  and worker error propagation without a GPU. `--water-terrain-graphics` also
+  checks asynchronous terrain geometry/material parity, filter snapshots, and
+  full-height tile UI-stage timing with OpenGL 3.3.
 - `--frames`: keyframe import/export, timeline navigation, mouse-anchored zoom,
   interactive playhead-pivot scaling and endpoint stretching, including frame
   bounds, collisions, reversible previews, custom bindings, and undo/redo.

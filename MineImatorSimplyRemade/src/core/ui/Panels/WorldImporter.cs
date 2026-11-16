@@ -24,6 +24,10 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
     private (int X, int Z)? _loadedCenter;
     private (int X, int Z) _requestedCenter;
     private Task<List<WorldVolume>>? _previewReadTask;
+    private SpawnMenu.SchematicPreviewBuild? _tileBuild;
+    private WorldVolume? _buildingVolume;
+    private Task<(string[] Unknown, bool Empty)>? _previewSummaryTask;
+    private int _previewRevision, _summaryRevision;
     private readonly System.Collections.Concurrent.ConcurrentQueue<WorldVolume> _pendingTiles = new();
     private int _previewTileCount, _previewTilesCompleted;
     private readonly PreviewRenderer _renderer = new(gl, 512) { AutoRotateSpeed = 0, Distance = 2.2f };
@@ -70,13 +74,17 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
     private string _filterSearchText = "";
     private WorldBounds Selection => new(_minX, _minY, _minZ, _maxX, _maxY, _maxZ);
     private WorldDimension Dimension => _world!.Dimensions[_dimensionIndex];
-    private bool PreviewBusy => _previewReadTask != null || _pendingTiles.Count > 0;
+    private bool PreviewBusy => _previewReadTask != null || !_pendingTiles.IsEmpty ||
+                                _tileBuild != null || _previewSummaryTask != null;
     private bool Busy => _readTask != null || _pendingImport != null || PreviewBusy || _discoveryTask != null;
 
     public void Open()
     {
         _open = true;
-        if (_tiles.Count > 0 && _preview == null) TryAction(BuildPreview);
+        _streamingPaused = false;
+        if (PreviewBusy && _cancellation?.IsCancellationRequested == true)
+            _restartStreaming = true;
+        if (_tiles.Count > 0 && _preview == null && !PreviewBusy) TryAction(BuildPreview);
         if (_worlds.Count == 0 && _discoveryTask == null)
             Refresh();
     }
@@ -1189,6 +1197,8 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             });
         }
         CompletePreviewTasks();
+        if (_open && _preview == null && _tiles.Count > 0 && !PreviewBusy && !_streamingPaused && _error == null)
+            TryAction(BuildPreview);
         if (_readTask is not { IsCompleted: true } task) return;
         _readTask = null;
         bool cancelled = _cancellation!.IsCancellationRequested;
@@ -1262,6 +1272,31 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
     private void CompletePreviewTasks()
     {
         if (!PreviewBusy) return;
+        if (_previewSummaryTask is { } summary)
+        {
+            if (!summary.IsCompleted) return;
+            _previewSummaryTask = null;
+            if (_cancellation!.IsCancellationRequested || !_open)
+            {
+                if (summary.IsFaulted) Console.Error.WriteLine($"World preview: {summary.Exception}");
+                FinishPreview(false);
+                return;
+            }
+            if (_summaryRevision != _previewRevision)
+            {
+                if (summary.IsFaulted) Console.Error.WriteLine($"World preview: {summary.Exception}");
+                return;
+            }
+            TryAction(() =>
+            {
+                var result = summary.GetAwaiter().GetResult();
+                _unknown = result.Unknown;
+                if (result.Empty)
+                    _notice = Localization.T("text.panel.world_importer.no_generated_terrain_in_this_area_fly_back_or_go_to_another_position");
+            });
+            FinishPreview(_error == null, summarize: false);
+            return;
+        }
         if (_previewReadTask is { IsCompleted: true } task)
         {
             _previewReadTask = null;
@@ -1281,7 +1316,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
                 FinishPreview(false);
                 return;
             }
-            if (_pendingTiles.Count == 0)
+            if (_pendingTiles.IsEmpty && _tileBuild == null)
             {
                 FinishPreview(true);
                 return;
@@ -1294,27 +1329,69 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             FinishPreview(false);
             return;
         }
-        // Keep existing meshes while gradually uploading the newly reached edge.
+        // Never wait on CPU work here; graphics stages have a small per-frame budget.
         var started = System.Diagnostics.Stopwatch.StartNew();
-        for (int count = 0; count < 2 && _pendingTiles.TryDequeue(out var volume); count++)
+        do
         {
-            TryAction(() => InstallTile(volume));
+            TryAction(() =>
+            {
+                if (_tileBuild == null && _pendingTiles.TryDequeue(out var volume))
+                {
+                    _buildingVolume = volume;
+                    _tileBuild = spawnMenu.CreateWorldPreviewBuild(volume, _blockFilter, _resourcePack, _cancellation!.Token);
+                }
+                if (_tileBuild == null || !_tileBuild.Advance()) return;
+                if (_tileBuild.Error != null) throw new InvalidDataException(_tileBuild.Error);
+                var scene = _tileBuild.TakeResult();
+                _tileBuild.Dispose();
+                _tileBuild = null;
+                InstallTile(_buildingVolume!, scene);
+                _buildingVolume = null;
+                _progress = Math.Min(1, (float)++_previewTilesCompleted / _previewTileCount);
+            });
             if (_error != null)
             {
                 FinishPreview(false);
                 return;
             }
-            _progress = (float)++_previewTilesCompleted / _previewTileCount;
-            if (started.ElapsedMilliseconds >= 8) break;
+            if (_tileBuild?.PendingTask is { IsCompleted: false }) break;
         }
-        if (_previewReadTask == null && _pendingTiles.IsEmpty) FinishPreview(true);
+        while (started.ElapsedMilliseconds < 8 && (_tileBuild != null || !_pendingTiles.IsEmpty));
+        if (_previewReadTask == null && _pendingTiles.IsEmpty && _tileBuild == null) FinishPreview(true);
     }
 
-    private void FinishPreview(bool completed)
+    private void FinishPreview(bool completed, bool summarize = true)
     {
         if (_previewReadTask != null)
         {
             CancelReading();
+            return;
+        }
+        _tileBuild?.Dispose();
+        _tileBuild = null;
+        _buildingVolume = null;
+        if (completed && summarize)
+        {
+            PruneTiles();
+            var volumes = _tiles.Values.Select(t => t.Volume).ToArray();
+            var filter = new WorldBlockFilter { Enabled = _blockFilter.Enabled, Mode = _blockFilter.Mode };
+            filter.FilteredBlocks.UnionWith(_blockFilter.FilteredBlocks);
+            var token = _cancellation!.Token;
+            var available = new HashSet<string>(BlockRegistry.Blocks, StringComparer.OrdinalIgnoreCase);
+            _summaryRevision = _previewRevision;
+            _previewSummaryTask = Task.Run(() =>
+            {
+                HashSet<string> unknown = new(StringComparer.Ordinal);
+                bool empty = true;
+                foreach (var volume in volumes)
+                {
+                    token.ThrowIfCancellationRequested();
+                    var filtered = volume.ApplyFilter(filter);
+                    empty &= filtered.NonAirCount == 0;
+                    unknown.UnionWith(FindUnknown(filtered, available));
+                }
+                return (unknown.Order(StringComparer.Ordinal).ToArray(), empty);
+            }, token);
             return;
         }
         _pendingTiles.Clear();
@@ -1331,10 +1408,6 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         PruneTiles();
         if (!_cameraInitialized)
             FrameInitialArea();
-        _unknown = _tiles.Values.Select(t => t.Volume.ApplyFilter(_blockFilter)).SelectMany(FindUnknown).Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal).ToArray();
-        if (_tiles.Values.All(t => t.Volume.ApplyFilter(_blockFilter).NonAirCount == 0))
-            _notice = Localization.T("text.panel.world_importer.no_generated_terrain_in_this_area_fly_back_or_go_to_another_position");
     }
 
     private void PruneTiles()
@@ -1352,10 +1425,10 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         }
     }
 
-    private void InstallTile(WorldVolume volume)
+    private void InstallTile(WorldVolume volume, SceneObject? scene)
     {
         var key = (volume.Bounds.MinX >> 6, volume.Bounds.MinZ >> 6);
-        var scene = CreateTilePreview(volume);
+        scene?.SetLocalPosition(TilePosition(volume.Bounds));
         if (_tiles.TryGetValue(key, out var previous) && previous.Scene != null)
         {
             _preview?.RemoveChild(previous.Scene);
@@ -1370,9 +1443,9 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             FrameInitialArea();
     }
 
-    private static string[] FindUnknown(WorldVolume volume)
+    private static string[] FindUnknown(WorldVolume volume, HashSet<string>? available = null)
     {
-        var available = new HashSet<string>(BlockRegistry.Blocks, StringComparer.OrdinalIgnoreCase);
+        available ??= new HashSet<string>(BlockRegistry.Blocks, StringComparer.OrdinalIgnoreCase);
         var missing = new HashSet<string>(StringComparer.Ordinal);
         foreach (string state in volume.Blocks.Distinct().Select(id => volume.Palette[id]))
         {
@@ -1396,40 +1469,19 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
 
     private void BuildPreview()
     {
-        Dictionary<(int X, int Z), PreviewTile> rebuilt = [];
-        try
-        {
-            foreach (var (key, tile) in _tiles)
-                rebuilt.Add(key, new PreviewTile(tile.Volume, CreateTilePreview(tile.Volume)));
-        }
-        catch
-        {
-            foreach (var tile in rebuilt.Values)
-                if (tile.Scene != null) DisposePreviewScene(tile.Scene);
-            throw;
-        }
-        ClearPreview();
-        _preview = new SceneObject { Name = "World preview" };
-        foreach (var (key, tile) in rebuilt)
-        {
-            _tiles[key] = tile;
-            if (tile.Scene != null) _preview.AddChild(tile.Scene);
-        }
-    }
-
-    private SceneObject? CreateTilePreview(WorldVolume volume)
-    {
-        var filtered = volume.ApplyFilter(_blockFilter);
-        if (filtered.NonAirCount == 0) return null;
-        string path = Path.Combine(Path.GetTempPath(), $"nuxi-world-preview-{Guid.NewGuid():N}.schem");
-        try
-        {
-            filtered.SaveSchematic(path);
-            var preview = spawnMenu.CreateSchematicPreview(path, _resourcePack);
-            preview.SetLocalPosition(TilePosition(filtered.Bounds));
-            return preview;
-        }
-        finally { if (File.Exists(path)) File.Delete(path); }
+        var rebuild = _tiles.Values.Select(t => t.Volume).ToList();
+        if (_buildingVolume != null && !rebuild.Contains(_buildingVolume))
+            rebuild.Add(_buildingVolume);
+        _tileBuild?.Dispose();
+        _tileBuild = null;
+        _buildingVolume = null;
+        while (_pendingTiles.TryDequeue(out var pending))
+            if (!rebuild.Contains(pending)) rebuild.Add(pending);
+        if (rebuild.Count == 0) return;
+        _cancellation ??= new CancellationTokenSource();
+        _previewRevision++;
+        foreach (var volume in rebuild) _pendingTiles.Enqueue(volume);
+        _previewTileCount = Math.Max(1, _previewTileCount + rebuild.Count);
     }
 
     private void SetResourcePack(string id)
@@ -1542,6 +1594,15 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         StopFlying();
         StopSelectionDrag();
         CancelReading();
+        _tileBuild?.Dispose();
+        _tileBuild = null;
+        _buildingVolume = null;
+        if (_previewReadTask == null && _previewSummaryTask == null && _readTask == null)
+        {
+            _pendingTiles.Clear();
+            _cancellation?.Dispose();
+            _cancellation = null;
+        }
         _pendingImport = null;
         _specialBlocks = null;
         ClearPreview();

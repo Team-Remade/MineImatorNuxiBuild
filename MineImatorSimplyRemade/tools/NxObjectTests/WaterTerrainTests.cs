@@ -68,6 +68,133 @@ internal static partial class Program
                 volume.Set(1, 0, 0, "minecraft:stone");
                 string path = fixture.NewPath(".schem");
                 volume.SaveSchematic(path);
+                SceneObject FinishPreviewBuild(SpawnMenu.SchematicPreviewBuild build)
+                {
+                    var timeout = System.Diagnostics.Stopwatch.StartNew();
+                    while (!build.Advance())
+                    {
+                        Check(timeout.Elapsed < TimeSpan.FromSeconds(30), "Asynchronous terrain finishes without blocking the UI");
+                        glfw.PollEvents();
+                        if (build.PendingTask is { IsCompleted: false }) Thread.Sleep(1);
+                    }
+                    return build.TakeResult() ?? throw new InvalidOperationException("Missing asynchronous terrain");
+                }
+                var filter = new WorldBlockFilter();
+                using (var build = spawn.CreateWorldPreviewBuild(volume, filter, "", CancellationToken.None))
+                {
+                    filter.Enabled = true;
+                    filter.FilteredBlocks.Add("stone");
+                    var asynchronous = FinishPreviewBuild(build);
+                    try
+                    {
+                        var synchronous = spawn.CreateSchematicPreview(path, "");
+                        try
+                        {
+                            Equal(synchronous.Visuals.Count, asynchronous.Visuals.Count, "Async preview snapshots the filter");
+                            for (int i = 0; i < synchronous.Visuals.Count; i++)
+                            {
+                                var expected = synchronous.Visuals[i];
+                                var actual = asynchronous.Visuals[i];
+                                Check(expected.Vertices.SequenceEqual(actual.Vertices) &&
+                                      expected.Normals.SequenceEqual(actual.Normals) &&
+                                      expected.TexCoords.SequenceEqual(actual.TexCoords) &&
+                                      expected.TextureId == actual.TextureId &&
+                                      expected.RequiresTranslucentPass == actual.RequiresTranslucentPass,
+                                    "Worker meshing preserves exact solid/fluid geometry, UVs and materials");
+                            }
+                        }
+                        finally { foreach (var mesh in synchronous.Visuals) mesh.Dispose(); }
+                    }
+                    finally { foreach (var mesh in asynchronous.Visuals) mesh.Dispose(); }
+                }
+                using (var filteredBuild = spawn.CreateWorldPreviewBuild(volume, filter, "", CancellationToken.None))
+                {
+                    var filtered = FinishPreviewBuild(filteredBuild);
+                    try { Check(filtered.Visuals.All(m => m.TextureId != stoneTexture), "New previews apply the updated filter"); }
+                    finally { foreach (var mesh in filtered.Visuals) mesh.Dispose(); }
+                }
+
+                var dense = new WorldVolume(new WorldBounds(0, -64, 0, 63, 319, 63));
+                for (int y = -64; y < 0; y++)
+                for (int z = 0; z < 64; z++)
+                for (int x = 0; x < 64; x++)
+                    dense.Set(x, y, z, "minecraft:stone");
+                using (var denseBuild = spawn.CreateWorldPreviewBuild(dense, new WorldBlockFilter(), "", CancellationToken.None))
+                {
+                    var timeout = System.Diagnostics.Stopwatch.StartNew();
+                    double longestStage = 0;
+                    bool done;
+                    do
+                    {
+                        var stage = System.Diagnostics.Stopwatch.StartNew();
+                        done = denseBuild.Advance();
+                        longestStage = Math.Max(longestStage, stage.Elapsed.TotalMilliseconds);
+                        Check(timeout.Elapsed < TimeSpan.FromSeconds(30), "Full-height terrain preview finishes");
+                        glfw.PollEvents();
+                        if (!done && denseBuild.PendingTask is { IsCompleted: false }) Thread.Sleep(1);
+                    } while (!done);
+                    var denseScene = denseBuild.TakeResult()!;
+                    try
+                    {
+                        Equal(6 * 64 * 64 * 6, denseScene.Visuals.Sum(m => m.Vertices.Count),
+                            "Dense terrain culls all interior cube faces");
+                        Console.WriteLine($"World preview maximum UI stage: {longestStage:F1} ms");
+                        Check(longestStage < 100, "Full-height tile preparation avoids long UI stalls");
+                    }
+                    finally { foreach (var mesh in denseScene.Visuals) mesh.Dispose(); }
+                }
+                using (var importer = new WorldImporter(spawn, gl))
+                {
+                    const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+                    object? Get(string name) => typeof(WorldImporter).GetField(name, fields)!.GetValue(importer);
+                    void Set(string name, object value) => typeof(WorldImporter).GetField(name, fields)!.SetValue(importer, value);
+                    void Call(string name) => typeof(WorldImporter).GetMethod(name, fields)!.Invoke(importer, null);
+                    bool Busy() => (bool)typeof(WorldImporter).GetProperty("PreviewBusy", fields)!.GetValue(importer)!;
+                    void Complete()
+                    {
+                        var timeout = System.Diagnostics.Stopwatch.StartNew();
+                        while (Busy())
+                        {
+                            Call("CompletePreviewTasks");
+                            Check(timeout.Elapsed < TimeSpan.FromSeconds(30), "World importer drains background work");
+                            Thread.Sleep(1);
+                        }
+                        Check(Get("_error") == null, "World importer reports no asynchronous error");
+                    }
+                    var world = new MinecraftWorld(fixture.Root, "Preview fixture", false, 0, 0, 0,
+                        [new WorldDimension("Overworld", fixture.Root, 0, -64, 319)]);
+                    Set("_world", world);
+                    Set("_worlds", new List<MinecraftWorld> { world });
+                    Set("_open", true);
+                    Set("_cameraInitialized", true);
+                    Set("_cancellation", new CancellationTokenSource());
+                    Set("_previewTileCount", 1);
+                    var pending = (System.Collections.Concurrent.ConcurrentQueue<WorldVolume>)Get("_pendingTiles")!;
+                    pending.Enqueue(volume);
+                    Complete();
+                    var original = (SceneObject)Get("_preview")!;
+                    Check(original.Children.Count == 1, "Streamed tile installs in the importer");
+
+                    var importerFilter = (WorldBlockFilter)Get("_blockFilter")!;
+                    importerFilter.Enabled = true;
+                    importerFilter.FilteredBlocks.Add("stone");
+                    Call("BuildPreview");
+                    Check(ReferenceEquals(original, Get("_preview")) && original.Children.Count == 1,
+                        "Existing terrain remains visible during filter rebuilding");
+                    Complete();
+                    var updated = (SceneObject)Get("_preview")!;
+                    Check(updated.Children.SelectMany(c => c.Visuals).All(m => m.TextureId != stoneTexture),
+                        "Importer installs the current filter revision");
+
+                    Call("BuildPreview");
+                    Call("CompletePreviewTasks");
+                    importer.Dispose();
+                    Check(Get("_cancellation") == null, "Closing during meshing releases the streaming cancellation source");
+                    importer.Open();
+                    Complete();
+                    Check(Get("_preview") is SceneObject { Children.Count: 1 },
+                        "Reopening rebuilds cached terrain after cancelling a worker");
+                }
                 var terrain = spawn.SpawnSchematicFromPath(path) ??
                     throw new InvalidOperationException("Water/terrain import failed");
                 try

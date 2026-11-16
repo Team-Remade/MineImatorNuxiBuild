@@ -3107,27 +3107,121 @@ public partial class SpawnMenu : UiPanel
     private SceneObject? BuildSchematicFromPath(string filePath, string resourcePackId, bool addToScene)
     {
         if (Viewport == null || Gl == null) return null;
-
         _lastSchematicLoadError = null;
-
-        string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackStack(resourcePackId);
-        string previousResourcePackId = _spawnResourcePackId;
-        _spawnResourcePackId = normalizedResourcePackId;
-
+        SchematicData schematic;
         try
         {
-            SchematicData schematic;
+            schematic = SchematicData.Load(filePath);
+        }
+        catch (Exception ex)
+        {
+            _lastSchematicLoadError = Localization.Format("text.panel.spawn.the_schematic_data_could_not_be_read", ex.Message);
+            Console.Error.WriteLine($"Failed reading schematic '{filePath}': {ex.Message}");
+            return null;
+        }
+        using var build = new SchematicPreviewBuild(this, filePath, resourcePackId,
+            Task.FromResult<SchematicData?>(schematic), CancellationToken.None);
+        while (!build.Advance())
+            build.PendingTask?.GetAwaiter().GetResult();
+        if (build.Error != null)
+        {
+            _lastSchematicLoadError = build.Error;
+            Console.Error.WriteLine($"Schematic '{filePath}': {build.Error}");
+            return null;
+        }
+        var root = build.TakeResult() ??
+            throw new InvalidDataException("The terrain could not be meshed.");
+        if (addToScene) Viewport.SceneObjects.Add(root);
+        return root;
+    }
+
+    internal SchematicPreviewBuild CreateWorldPreviewBuild(WorldVolume volume, WorldBlockFilter filter,
+        string resourcePackId, CancellationToken token)
+    {
+        var snapshot = new WorldBlockFilter { Enabled = filter.Enabled, Mode = filter.Mode };
+        snapshot.FilteredBlocks.UnionWith(filter.FilteredBlocks);
+        var data = Task.Run(() =>
+        {
+            token.ThrowIfCancellationRequested();
+            var filtered = volume.ApplyFilter(snapshot);
+            if (filtered.NonAirCount == 0) return null;
+            string path = Path.Combine(Path.GetTempPath(), $"nuxi-world-preview-{Guid.NewGuid():N}.schem");
             try
             {
-                schematic = SchematicData.Load(filePath);
+                filtered.SaveSchematic(path);
+                token.ThrowIfCancellationRequested();
+                return SchematicData.Load(path);
             }
-            catch (Exception ex)
-            {
-                _lastSchematicLoadError = Localization.Format("text.panel.spawn.the_schematic_data_could_not_be_read", ex.Message);
-                Console.Error.WriteLine($"Failed reading schematic '{filePath}': {ex.Message}");
-                return null;
-            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }, token);
+        return new SchematicPreviewBuild(this, "World preview", resourcePackId, data, token);
+    }
 
+    internal sealed class SchematicPreviewBuild : IDisposable
+    {
+        private readonly SpawnMenu _owner;
+        private readonly string _resourcePackId;
+        private readonly IEnumerator<Task> _steps;
+        private readonly CancellationTokenSource _cancellation;
+        private SceneObject? _result;
+        internal Task? PendingTask { get; private set; }
+        internal string? Error { get; private set; }
+
+        internal SchematicPreviewBuild(SpawnMenu owner, string path, string resourcePackId,
+            Task<SchematicData?> data, CancellationToken token)
+        {
+            _owner = owner;
+            _resourcePackId = MinecraftDataLoader.NormalizeResourcePackStack(resourcePackId);
+            _cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+            _steps = owner.BuildSchematicSteps(path, _resourcePackId, data, _cancellation.Token,
+                root => _result = root, error => Error = error).GetEnumerator();
+        }
+
+        internal bool Advance()
+        {
+            if (PendingTask is { IsCompleted: false }) return false;
+            PendingTask?.GetAwaiter().GetResult();
+            string previous = _owner._spawnResourcePackId;
+            _owner._spawnResourcePackId = _resourcePackId;
+            try
+            {
+                if (!_steps.MoveNext()) return true;
+                PendingTask = _steps.Current;
+                return false;
+            }
+            finally { _owner._spawnResourcePackId = previous; }
+        }
+
+        internal SceneObject? TakeResult()
+        {
+            var result = _result;
+            _result = null;
+            return result;
+        }
+
+        public void Dispose()
+        {
+            _cancellation.Cancel();
+            _steps.Dispose();
+            _cancellation.Dispose();
+            if (_result != null)
+                foreach (var mesh in _result.Visuals) mesh.Dispose();
+            if (PendingTask != null)
+                _ = PendingTask.ContinueWith(task => Console.Error.WriteLine($"World preview: {task.Exception}"),
+                    CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        }
+    }
+
+    private IEnumerable<Task> BuildSchematicSteps(string filePath, string normalizedResourcePackId,
+        Task<SchematicData?> data, CancellationToken token, Action<SceneObject> completed, Action<string> failed)
+    {
+        yield return data;
+        token.ThrowIfCancellationRequested();
+        var schematic = data.GetAwaiter().GetResult();
+        if (schematic == null) yield break;
+        SceneObject? root = null;
+        try
+        {
             int width = schematic.Width;
             int height = schematic.Height;
             int length = schematic.Length;
@@ -3144,7 +3238,7 @@ public partial class SpawnMenu : UiPanel
 
             if (schematic.Palette != null)
             {
-                LoadModernPaletteBlocks(
+                foreach (var step in LoadModernPaletteBlocks(
                     schematic.Palette,
                     schematic.PaletteIndices,
                     total,
@@ -3153,11 +3247,15 @@ public partial class SpawnMenu : UiPanel
                     availableBlocks,
                     variantCache,
                     voxelInfos,
-                    liquidLevels);
+                    liquidLevels))
+                {
+                    token.ThrowIfCancellationRequested();
+                    yield return Task.CompletedTask;
+                }
             }
             else
             {
-                LoadLegacyBlocks(
+                foreach (var step in LoadLegacyBlocks(
                     schematic,
                     width,
                     height,
@@ -3166,14 +3264,18 @@ public partial class SpawnMenu : UiPanel
                     availableBlocks,
                     variantCache,
                     voxelInfos,
-                    liquidLevels);
+                    liquidLevels))
+                {
+                    token.ThrowIfCancellationRequested();
+                    yield return Task.CompletedTask;
+                }
             }
 
             string baseName = Path.GetFileNameWithoutExtension(filePath);
             int nextNum = GetNextAvailableObjectNumber(baseName);
             string fullName = nextNum > 1 ? $"{baseName}{nextNum}" : baseName;
 
-            var root = new SceneObject
+            root = new SceneObject
             {
                 Name = fullName,
                 ObjectType = "Schematic",
@@ -3189,112 +3291,33 @@ public partial class SpawnMenu : UiPanel
             float originX = (width - 1) * 0.5f;
             float originZ = (length - 1) * 0.5f;
 
-            var largeChestPlacements = BuildLargeChestPlacements(
+            var largeChestPlacements = new LargeChestPlacementSet();
+            foreach (var step in BuildLargeChestPlacements(
                 voxelInfos,
                 width,
                 height,
                 length,
                 originX,
                 originZ,
-                variantCache);
-
-            var merged = new Dictionary<MeshBatchKey, MeshAccumulator>();
-            int placed = 0;
-
-            for (int y = 0; y < height; y++)
+                variantCache, largeChestPlacements))
             {
-                for (int z = 0; z < length; z++)
-                {
-                    for (int x = 0; x < width; x++)
-                    {
-                        int index = y * width * length + z * width + x;
-
-                        if (largeChestPlacements.SkippedIndices.Contains(index))
-                            continue;
-
-                        if (largeChestPlacements.ByAnchorIndex.TryGetValue(index, out var largePlacement))
-                        {
-                            placed++;
-
-                            foreach (var template in largePlacement.Info.Templates)
-                            {
-                                var acc = GetOrCreateAccumulator(merged, template.TextureId, largePlacement.Info.AutoEmissionLevel, template.Tint,
-                                    template.MinecraftTextureKey, template.MinecraftItemTexture, template.BiomeTint, template.TerrainWindKind, template.EndPortalSurface);
-                                AppendTemplate(acc, template, largePlacement.Px, largePlacement.Py, largePlacement.Pz);
-                            }
-
-                            continue;
-                        }
-
-                        var info = voxelInfos[index];
-                        if (info == null) continue;
-
-                        placed++;
-                        float px = x - originX;
-                        float py = y + 0.5f;
-                        float pz = z - originZ;
-
-                        // Fluids get their own neighbour-aware, height-blended mesh instead of a
-                        // plain cube: Minecraft water/lava blocks carry a "level" state (0-7 flowing
-                        // amounts, 8-15 falling) and slope their top surface toward lower neighbours,
-                        // so a fixed full-height cube is only correct for an isolated source block.
-                        if (string.Equals(info.BlockName, "water", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(info.BlockName, "lava", StringComparison.OrdinalIgnoreCase))
-                        {
-                            EmitLiquidVoxel(
-                                merged,
-                                voxelInfos,
-                                liquidLevels,
-                                width,
-                                height,
-                                length,
-                                x,
-                                y,
-                                z,
-                                px,
-                                py,
-                                pz,
-                                info.BlockName,
-                                liquidLevels[index],
-                                info.AutoEmissionLevel,
-                                normalizedResourcePackId);
-                            continue;
-                        }
-
-                        if (info.IsCullableCube && info.CubeFaces != null)
-                        {
-                            EmitCubeFacesWithCulling(
-                                merged,
-                                info.CubeFaces,
-                                voxelInfos,
-                                width,
-                                height,
-                                length,
-                                x,
-                                y,
-                                z,
-                                px,
-                                py,
-                                pz,
-                                info.AutoEmissionLevel);
-                            continue;
-                        }
-
-                        foreach (var template in info.Templates)
-                        {
-                            var acc = GetOrCreateAccumulator(merged, template.TextureId, info.AutoEmissionLevel, template.Tint,
-                                template.MinecraftTextureKey, template.MinecraftItemTexture, template.BiomeTint, template.TerrainWindKind, template.EndPortalSurface);
-                            AppendTemplate(acc, template, px, py, pz);
-                        }
-                    }
-                }
+                token.ThrowIfCancellationRequested();
+                yield return Task.CompletedTask;
             }
 
-            if ((placed == 0 || merged.Count == 0) && schematic.EmbeddedModels.Length == 0)
+            // Snapshot atlas lookups before handing immutable render templates to the worker.
+            var fluids = new Dictionary<string, LiquidTextures>(StringComparer.OrdinalIgnoreCase);
+            foreach (string fluid in new[] { "water", "lava" })
+                fluids.Add(fluid, ResolveLiquidTextures(fluid, normalizedResourcePackId));
+            var merge = Task.Run(() => MergeSchematic(voxelInfos, liquidLevels, width, height, length,
+                largeChestPlacements, fluids, token), token);
+            yield return merge;
+            var merged = merge.GetAwaiter().GetResult();
+            token.ThrowIfCancellationRequested();
+            if (merged.Count == 0 && schematic.EmbeddedModels.Length == 0)
             {
-                _lastSchematicLoadError = Localization.T("text.panel.spawn.the_schematic_had_no_spawnable_blocks");
-                Console.Error.WriteLine($"Schematic had no spawnable blocks: {filePath}");
-                return null;
+                failed(Localization.T("text.panel.spawn.the_schematic_had_no_spawnable_blocks"));
+                yield break;
             }
 
             // Classify the actual diffuse handle, which may be a fallback from
@@ -3305,6 +3328,7 @@ public partial class SpawnMenu : UiPanel
 
             foreach (var kv in merged)
             {
+                token.ThrowIfCancellationRequested();
                 var acc = kv.Value;
                 if (acc.Vertices.Count == 0) continue;
 
@@ -3333,38 +3357,71 @@ public partial class SpawnMenu : UiPanel
                 mesh.TexCoords.AddRange(acc.TexCoords);
                 mesh.Upload();
                 root.AddMesh(mesh);
+                yield return Task.CompletedTask;
             }
 
             if (schematic.EmbeddedModels.Length > 0)
             {
-                try
-                {
-                    using var specialImporter = new WorldSpecialBlockImporter(this, normalizedResourcePackId, []);
-                    specialImporter.AddEmbedded(schematic.EmbeddedModels, root);
-                }
-                catch
-                {
-                    foreach (var mesh in root.Visuals) mesh.Dispose();
-                    throw;
-                }
+                using var specialImporter = new WorldSpecialBlockImporter(this, normalizedResourcePackId, []);
+                specialImporter.AddEmbedded(schematic.EmbeddedModels, root);
             }
             root.ApplyMaterialSettingsToMeshes();
 
             if (root.Visuals.Count == 0)
             {
-                _lastSchematicLoadError = Localization.T("text.panel.spawn.the_schematic_produced_no_renderable_geometry");
-                Console.Error.WriteLine($"Schematic produced no renderable geometry: {filePath}");
-                return null;
+                failed(Localization.T("text.panel.spawn.the_schematic_produced_no_renderable_geometry"));
+                yield break;
             }
 
-            if (addToScene)
-                Viewport.SceneObjects.Add(root);
-            return root;
+            completed(root);
+            root = null;
         }
         finally
         {
-            _spawnResourcePackId = previousResourcePackId;
+            if (root != null)
+                foreach (var mesh in root.Visuals) mesh.Dispose();
         }
+    }
+
+    private static Dictionary<MeshBatchKey, MeshAccumulator> MergeSchematic(
+        VariantRenderInfo?[] voxels, int[] liquidLevels, int width, int height, int length,
+        LargeChestPlacementSet chests, Dictionary<string, LiquidTextures> fluids, CancellationToken token)
+    {
+        var merged = new Dictionary<MeshBatchKey, MeshAccumulator>();
+        float originX = (width - 1) * 0.5f, originZ = (length - 1) * 0.5f;
+        for (int y = 0; y < height; y++)
+        for (int z = 0; z < length; z++)
+        {
+            token.ThrowIfCancellationRequested();
+            for (int x = 0; x < width; x++)
+            {
+                int index = (y * length + z) * width + x;
+                if (chests.SkippedIndices.Contains(index)) continue;
+                if (chests.ByAnchorIndex.TryGetValue(index, out var chest))
+                {
+                    foreach (var template in chest.Info.Templates)
+                        AppendTemplate(GetOrCreateAccumulator(merged, template.TextureId, chest.Info.AutoEmissionLevel,
+                            template.Tint, template.MinecraftTextureKey, template.MinecraftItemTexture, template.BiomeTint,
+                            template.TerrainWindKind, template.EndPortalSurface), template, chest.Px, chest.Py, chest.Pz);
+                    continue;
+                }
+                var info = voxels[index];
+                if (info == null) continue;
+                float px = x - originX, py = y + 0.5f, pz = z - originZ;
+                if (fluids.TryGetValue(info.BlockName, out var fluid))
+                    EmitLiquidVoxel(merged, voxels, liquidLevels, width, height, length, x, y, z,
+                        px, py, pz, info.BlockName, liquidLevels[index], info.AutoEmissionLevel, fluid);
+                else if (info.IsCullableCube && info.CubeFaces != null)
+                    EmitCubeFacesWithCulling(merged, info.CubeFaces, voxels, width, height, length,
+                        x, y, z, px, py, pz, info.AutoEmissionLevel);
+                else
+                    foreach (var template in info.Templates)
+                        AppendTemplate(GetOrCreateAccumulator(merged, template.TextureId, info.AutoEmissionLevel,
+                            template.Tint, template.MinecraftTextureKey, template.MinecraftItemTexture, template.BiomeTint,
+                            template.TerrainWindKind, template.EndPortalSurface), template, px, py, pz);
+            }
+        }
+        return merged;
     }
 
     private sealed class LargeChestPlacement
@@ -3381,22 +3438,23 @@ public partial class SpawnMenu : UiPanel
         public readonly HashSet<int> SkippedIndices = new();
     }
 
-    private LargeChestPlacementSet BuildLargeChestPlacements(
+    private IEnumerable<int> BuildLargeChestPlacements(
         VariantRenderInfo?[] voxelInfos,
         int width,
         int height,
         int length,
         float originX,
         float originZ,
-        Dictionary<string, VariantRenderInfo> variantCache)
+        Dictionary<string, VariantRenderInfo> variantCache,
+        LargeChestPlacementSet result)
     {
-        var result = new LargeChestPlacementSet();
         int layerSize = width * length;
         int total = voxelInfos.Length;
         var processed = new HashSet<int>();
 
         for (int index = 0; index < total; index++)
         {
+            if ((index & 2047) == 0) yield return index;
             if (processed.Contains(index))
                 continue;
 
@@ -3475,9 +3533,8 @@ public partial class SpawnMenu : UiPanel
             result.SkippedIndices.Add(index);
             result.SkippedIndices.Add(pairIndex);
             result.SkippedIndices.Remove(anchor);
+            yield return index;
         }
-
-        return result;
     }
 
     private static bool IsChestType(string blockName)
@@ -3766,7 +3823,7 @@ public partial class SpawnMenu : UiPanel
         return false;
     }
 
-    private void LoadModernPaletteBlocks(
+    private IEnumerable<int> LoadModernPaletteBlocks(
         Dictionary<int, string> paletteLookup,
         int[] paletteIndices,
         int total,
@@ -3782,6 +3839,7 @@ public partial class SpawnMenu : UiPanel
         var fencesWithoutConnections = new Dictionary<int, Dictionary<string, string>>();
         for (int i = 0; i < total; i++)
         {
+            if ((i & 2047) == 0) yield return i;
             int paletteId = paletteIndices[i];
             if (!idToInfo.TryGetValue(paletteId, out var info))
             {
@@ -3803,6 +3861,7 @@ public partial class SpawnMenu : UiPanel
 
                 info = GetOrCreateBlockStateRenderInfo(blockName, props, variantCache);
                 idToInfo[paletteId] = info;
+                yield return i;
 
                 // Fluid "level" state (0-7 flowing amount, 8-15 falling) — carried separately
                 // from the variant since our water/lava blockstate has no per-level variants and
@@ -3823,9 +3882,10 @@ public partial class SpawnMenu : UiPanel
 
         // Bedrock stores fence connections implicitly. Resolve them only after all
         // neighbours have render info, without overriding explicit Java states.
-        if (fencesWithoutConnections.Count == 0) return;
+        if (fencesWithoutConnections.Count == 0) yield break;
         for (int i = 0; i < total; i++)
         {
+            if ((i & 2047) == 0) yield return i;
             if (!fencesWithoutConnections.TryGetValue(paletteIndices[i], out var originalProps) ||
                 outVoxels[i] is not { } fence)
                 continue;
@@ -3860,10 +3920,11 @@ public partial class SpawnMenu : UiPanel
             AddConnection("south", i + width, z + 1 < length);
             AddConnection("west", i - 1, x > 0);
             outVoxels[i] = GetOrCreateBlockStateRenderInfo(fence.BlockName, props, variantCache);
+            yield return i;
         }
     }
 
-    private void LoadLegacyBlocks(
+    private IEnumerable<int> LoadLegacyBlocks(
         SchematicData schematic,
         int width,
         int height,
@@ -3882,6 +3943,7 @@ public partial class SpawnMenu : UiPanel
 
         for (int i = 0; i < total; i++)
         {
+            if ((i & 2047) == 0) yield return i;
             int blockId = blocks[i];
             if (addBlocks.Length > 0)
             {
@@ -3929,6 +3991,7 @@ public partial class SpawnMenu : UiPanel
                 outVoxels[i] = doorVariant == null
                     ? null
                     : GetOrCreateVariantRenderInfo(doorName, doorVariant, variantCache);
+                yield return i;
                 continue;
             }
 
@@ -3945,6 +4008,7 @@ public partial class SpawnMenu : UiPanel
                     TryParseVariantHintProperties(fenceHint, out var parsedFenceProps) ? parsedFenceProps : null;
 
                 outVoxels[i] = GetOrCreateBlockStateRenderInfo(fenceBlockName, fenceProps, variantCache);
+                yield return i;
                 continue;
             }
 
@@ -3972,6 +4036,7 @@ public partial class SpawnMenu : UiPanel
 
                 info = GetOrCreateVariantRenderInfo(blockName, variant, variantCache);
                 legacyCache[legacyKey] = info;
+                yield return i;
             }
 
             outVoxels[i] = info;
@@ -4687,6 +4752,18 @@ public partial class SpawnMenu : UiPanel
     /// touching water blocks) and fully opaque neighbours (no faces buried inside
     /// solid terrain).
     /// </summary>
+    private readonly record struct LiquidTextures(string StillKey, string FlowKey, uint Still, uint Flow, BiomeTintKind Tint);
+
+    private static LiquidTextures ResolveLiquidTextures(string blockName, string resourcePackId)
+    {
+        string stillKey = TerrainAtlas.ResolveTextureKey(blockName + "_still", resourcePackId);
+        string flowKey = TerrainAtlas.ResolveTextureKey(blockName + "_flow", resourcePackId);
+        TerrainAtlas.Textures.TryGetValue(stillKey, out uint still);
+        TerrainAtlas.Textures.TryGetValue(flowKey, out uint flow);
+        return new LiquidTextures(stillKey, flowKey, still, flow == 0 ? still : flow,
+            MinecraftModelMesh.TryGetDefaultBlockTint(blockName, out _) ? BiomeTintKind.Water : BiomeTintKind.None);
+    }
+
     private static void EmitLiquidVoxel(
         Dictionary<MeshBatchKey, MeshAccumulator> merged,
         VariantRenderInfo?[] voxels,
@@ -4697,7 +4774,7 @@ public partial class SpawnMenu : UiPanel
         string blockName,
         int level,
         byte autoEmissionLevel,
-        string resourcePackId)
+        LiquidTextures textures)
     {
         int GetIndex(int nx, int ny, int nz)
         {
@@ -4747,17 +4824,9 @@ public partial class SpawnMenu : UiPanel
             matchUp && (matchDown || solidDown))
             return;
 
-        string stillKey = TerrainAtlas.ResolveTextureKey(blockName + "_still", resourcePackId);
-        string flowKey = TerrainAtlas.ResolveTextureKey(blockName + "_flow", resourcePackId);
-
-        if (!TerrainAtlas.Textures.TryGetValue(stillKey, out uint stillTex) || stillTex == 0)
-            return;
-        if (!TerrainAtlas.Textures.TryGetValue(flowKey, out uint flowTex) || flowTex == 0)
-            flowTex = stillTex;
-
-        var biomeTint = MinecraftModelMesh.TryGetDefaultBlockTint(blockName, out _) ? BiomeTintKind.Water : BiomeTintKind.None;
-        var stillAcc = GetOrCreateAccumulator(merged, stillTex, autoEmissionLevel, new vec3(1f), stillKey, biomeTint: biomeTint);
-        var flowAcc = GetOrCreateAccumulator(merged, flowTex, autoEmissionLevel, new vec3(1f), flowKey, biomeTint: biomeTint);
+        if (textures.Still == 0) return;
+        var stillAcc = GetOrCreateAccumulator(merged, textures.Still, autoEmissionLevel, new vec3(1f), textures.StillKey, biomeTint: textures.Tint);
+        var flowAcc = GetOrCreateAccumulator(merged, textures.Flow, autoEmissionLevel, new vec3(1f), textures.FlowKey, biomeTint: textures.Tint);
         stillAcc.AutoEmissionCenters?.Add(new vec3(px, py, pz));
         flowAcc.AutoEmissionCenters?.Add(new vec3(px, py, pz));
 
