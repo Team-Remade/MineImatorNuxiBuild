@@ -3027,7 +3027,7 @@ public partial class Timeline : UiPanel
 
     // ── Apply keyframes ───────────────────────────────────────────────────────
 
-    private void ApplyKeyframesAtCurrentFrame() =>
+    internal void ApplyKeyframesAtCurrentFrame() =>
         ApplyKeyframeChannels(null);
 
     private void ApplyKeyframeChannels(Func<string, bool>? filter,
@@ -3035,6 +3035,7 @@ public partial class Timeline : UiPanel
     {
         var rotatedObjects = new HashSet<string>();
         var animatedModifiers = new Dictionary<(SceneObject Owner, string Id), SceneModifier>();
+        var sampleFrames = new Dictionary<SceneObject, int>();
         // Enable the optional endpoint before applying its animated components.
         foreach (var kvp in _propertyKeyframes.OrderBy(pair => pair.Key.EndsWith(".bone.end_enabled", StringComparison.Ordinal) ? 0 : 1))
         {
@@ -3049,11 +3050,14 @@ public partial class Timeline : UiPanel
 
             var target = objectLookup == null ? FindObjectById(objectId) : objectLookup.GetValueOrDefault(objectId);
             if (target == null) continue;
+            if (!sampleFrames.TryGetValue(target, out int sampleFrame))
+                sampleFrames[target] = sampleFrame = GetFrameSkipSampleFrame(target);
 
             if (propertyPath.StartsWith("modifier.", StringComparison.Ordinal))
             {
                 if (TryGetModifier(target, propertyPath, out var modifier, out string channel) &&
-                    InterpolateKeyframes(keyframes, propertyPath, _currentFrame) is { } sampled)
+                    InterpolateKeyframes(keyframes, propertyPath,
+                        modifier.Type == SceneModifierType.FrameSkip ? _currentFrame : sampleFrame) is { } sampled)
                 {
                     var key = (target, modifier.Id);
                     animatedModifiers[key] = WithModifierValue(animatedModifiers.GetValueOrDefault(key, modifier), channel, sampled);
@@ -3069,7 +3073,7 @@ public partial class Timeline : UiPanel
                 {
                     string path = "mirotation." + (axis == 0 ? "x" : axis == 1 ? "y" : "z");
                     if (_propertyKeyframes.TryGetValue($"{objectId}.{path}", out var track) &&
-                        InterpolateKeyframes(track, path, _currentFrame) is { } raw &&
+                        InterpolateKeyframes(track, path, sampleFrame) is { } raw &&
                         TryConvertKeyframeValue(raw, out float angle))
                         angles[axis] = angle;
                 }
@@ -3081,7 +3085,7 @@ public partial class Timeline : UiPanel
                 continue;
             }
 
-            object? value = InterpolateKeyframes(keyframes, propertyPath, _currentFrame);
+            object? value = InterpolateKeyframes(keyframes, propertyPath, sampleFrame);
             if (value != null)
                 SetPropertyValue(target, propertyPath, value);
         }

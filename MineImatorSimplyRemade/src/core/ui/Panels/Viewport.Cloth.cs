@@ -101,16 +101,17 @@ public partial class Viewport
                     throw new InvalidDataException(Localization.T("text.cloth.frame_not_baked"));
                 if (ClothUnsupportedReason(obj) is { } reason)
                     throw new InvalidDataException($"{obj.Name}: {reason}");
+                int sampleFrame = ModifierEvaluation.SampleFrame(obj, frame);
                 for (int i = 0; i < obj.Visuals.Count; i++)
                 {
                     var mesh = obj.Visuals[i];
                     if (!active.Add(mesh))
                         throw new InvalidDataException("Cloth objects require independent mesh instances; duplicate the geometry first.");
                     if (!_clothUploadedFrames.TryGetValue(mesh, out var uploaded) ||
-                        !ReferenceEquals(uploaded.Bake, bake) || uploaded.Frame != frame || !mesh.HasClothGeometry)
+                        !ReferenceEquals(uploaded.Bake, bake) || uploaded.Frame != sampleFrame || !mesh.HasClothGeometry)
                     {
-                        mesh.SetClothGeometry(bake.GetMeshVertices(frame, i));
-                        _clothUploadedFrames[mesh] = (bake, frame);
+                        mesh.SetClothGeometry(bake.GetMeshVertices(sampleFrame, i));
+                        _clothUploadedFrames[mesh] = (bake, sampleFrame);
                     }
                     _clothMeshes.Add(mesh);
                 }

@@ -26,11 +26,16 @@ public partial class Timeline
         ("shake.speed", "text.shake.speed"), ("shake.offset", "text.shake.offset"),
         ("shake.automatic.enabled", "text.shake.automatic"), ("shake.influence", "text.shake.influence")
     ];
+    internal static readonly (string Channel, string Label)[] FrameSkipChannels =
+    [
+        ("enabled", "Enabled"), ("frame_skip.frames", "text.frame_skip.frames")
+    ];
 
     private static IEnumerable<(string Channel, string Label)> ModifierChannels(SceneModifierType type) => type switch
     {
         SceneModifierType.Array => ArrayChannels,
         SceneModifierType.Shake => ShakeChannels,
+        SceneModifierType.FrameSkip => FrameSkipChannels,
         _ => [("enabled", "Enabled")]
     };
 
@@ -40,7 +45,7 @@ public partial class Timeline
     internal static bool IsDiscreteModifierPath(string path) =>
         path.StartsWith("modifier.", StringComparison.Ordinal) &&
         (path.EndsWith(".enabled", StringComparison.Ordinal) || path.EndsWith(".count", StringComparison.Ordinal) ||
-            path.EndsWith(".axis", StringComparison.Ordinal));
+            path.EndsWith(".axis", StringComparison.Ordinal) || path.EndsWith(".frame_skip.frames", StringComparison.Ordinal));
 
     internal static bool TryGetModifier(SceneObject obj, string path, out SceneModifier modifier, out string channel)
     {
@@ -66,6 +71,7 @@ public partial class Timeline
                 SceneModifierType.Array => Localization.T("text.modifier.array"),
                 SceneModifierType.Cloth => Localization.T("text.cloth.title"),
                 SceneModifierType.Shake => Localization.T("text.shake.title"),
+                SceneModifierType.FrameSkip => Localization.T("text.frame_skip.title"),
                 _ => Localization.T("text.path.follow")
             };
             var channels = ModifierChannels(modifier.Type);
@@ -78,6 +84,7 @@ public partial class Timeline
     {
         "enabled" => modifier.Enabled ? 1f : 0f,
         "count" => (float)modifier.Count,
+        "frame_skip.frames" => (float)modifier.FrameSkipFrames,
         "axis" => (float)modifier.Axis,
         "distance" => modifier.Distance,
         "radial.enabled" => modifier.RadialEnabled ? 1f : 0f,
@@ -119,6 +126,7 @@ public partial class Timeline
             {
                 "enabled" => modifier with { Enabled = value >= 0.5f },
                 "count" => modifier with { Count = (int)Math.Clamp(MathF.Round(value), 1f, SceneModifier.MaxInstances) },
+                "frame_skip.frames" => modifier with { FrameSkipFrames = (int)Math.Clamp(Math.Round((double)value), 1d, int.MaxValue) },
                 "axis" when value is >= 0 and <= 2 && value == MathF.Truncate(value)
                     => modifier with { Axis = (ArrayAxis)(int)value },
                 "distance" => modifier with { Distance = value },
@@ -152,5 +160,25 @@ public partial class Timeline
         obj.Modifiers[obj.Modifiers.FindIndex(entry => entry.Id == modifier.Id)] =
             WithModifierValue(modifier, channel, rawValue).Validated();
         if (modifier.Type == SceneModifierType.FollowPath) obj.SetEvaluatedPathFrame(null);
+    }
+
+    private int GetFrameSkipSampleFrame(SceneObject obj)
+    {
+        int frame = _currentFrame;
+        foreach (var modifier in obj.Modifiers)
+        {
+            if (modifier.Type != SceneModifierType.FrameSkip) continue;
+            var sampled = modifier;
+            // Controls use real timeline time so skipped frames cannot delay a toggle or step change.
+            foreach (var (channel, _) in FrameSkipChannels)
+            {
+                string path = $"modifier.{modifier.Id}.{channel}";
+                if (_propertyKeyframes.TryGetValue($"{obj.ObjectId}.{path}", out var track) &&
+                    InterpolateKeyframes(track, path, _currentFrame) is { } value)
+                    sampled = WithModifierValue(sampled, channel, value);
+            }
+            frame = sampled.SampleFrame(frame);
+        }
+        return frame;
     }
 }

@@ -7987,6 +7987,7 @@ public partial class PropertiesPanel : UiPanel
                 if (modifier.Type == SceneModifierType.FollowPath) _currentObject.SetEvaluatedPathFrame(null);
                 _modifierError = null;
                 RecordContextPropertyKeyframes(_currentObject, paths);
+                if (modifier.Type == SceneModifierType.FrameSkip) Timeline.ApplyKeyframesAtCurrentFrame();
             }
             catch (InvalidDataException ex)
             {

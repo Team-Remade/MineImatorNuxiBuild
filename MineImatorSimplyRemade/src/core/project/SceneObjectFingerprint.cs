@@ -119,6 +119,7 @@ internal static class SceneObjectFingerprint
             hash.Add(modifier.ScaleZ);
             hash.Add(modifier.PathObjectId);
             hash.Add(modifier.PathOffset);
+            if (modifier.Type == SceneModifierType.FrameSkip) hash.Add(modifier.FrameSkipFrames);
             if (modifier.Type == SceneModifierType.Shake)
             {
                 var shake = modifier.Shake;

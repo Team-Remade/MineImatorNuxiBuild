@@ -4,7 +4,7 @@ using MineImatorSimplyRemade.core.project;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
-public enum SceneModifierType { Array, FollowPath, Cloth, Shake }
+public enum SceneModifierType { Array, FollowPath, Cloth, Shake, FrameSkip }
 public enum ArrayAxis { X, Y, Z }
 
 public sealed record SceneModifier
@@ -31,12 +31,26 @@ public sealed record SceneModifier
     public ClothSettings Cloth { get; init; } = new();
     public ClothBake? ClothBake { get; init; }
     public ShakeSettings Shake { get; init; } = new();
+    public int FrameSkipFrames { get; init; } = 2;
+
+    internal int SampleFrame(int frame)
+    {
+        if (Type != SceneModifierType.FrameSkip) return frame;
+        Validated();
+        return Enabled ? frame / FrameSkipFrames * FrameSkipFrames : frame;
+    }
 
     public SceneModifier Validated()
     {
         if (!Guid.TryParseExact(Id, "N", out _) || !Enum.IsDefined(Type) || PathObjectId == null || !float.IsFinite(PathOffset))
             throw new InvalidDataException("Modifiers require a valid type, path reference and finite path offset.");
         if (Type == SceneModifierType.FollowPath) return this;
+        if (Type == SceneModifierType.FrameSkip)
+        {
+            if (FrameSkipFrames < 1)
+                throw new InvalidDataException("Frame Skip requires at least one frame per pose.");
+            return this;
+        }
         if (Type == SceneModifierType.Shake)
         {
             if (Shake == null) throw new InvalidDataException("Shake settings are missing.");
@@ -65,13 +79,19 @@ public sealed record SceneModifier
     }
 }
 
-/// <summary>World-space deltas shared by all geometry passes, without changing scene objects or bone poses.</summary>
+/// <summary>Modifier sample times and world-space deltas shared by all geometry passes.</summary>
 public sealed class ModifierEvaluation
 {
     private static readonly mat4[] Identity = [mat4.Identity];
     private readonly Dictionary<string, SceneObject> _ids = new(StringComparer.Ordinal);
     private readonly Dictionary<SceneObject, IReadOnlyList<mat4>> _deltas = new();
     private readonly int _maxInstances;
+
+    internal static int SampleFrame(SceneObject obj, int frame)
+    {
+        foreach (var modifier in obj.Modifiers) frame = modifier.SampleFrame(frame);
+        return frame;
+    }
 
     public ModifierEvaluation(IEnumerable<SceneObject> roots, int? maxInstances = null)
     {

@@ -169,6 +169,20 @@ timeline interpolation and all three ImGui percentage sliders. Graphics checks
 require OpenGL 3.3 and cover displacement, strength/speed/scale, deterministic
 seeking, frozen animation, alpha, stacking, previews and PNG export.
 
+### Frame Skip modifier regression checks
+
+Run `--modifiers` with the NxObjectTests harness for stepped transform, imported
+rotation, bone bend, Follow Path and camera sampling, independent child tracks,
+backward seeking, export/physics sampling, discrete control keys, persistence,
+duplication, undo/dirty detection and the actual Frames Per Pose slider.
+Frame Skip quantizes an object's keyframe sample time, not the global playhead;
+its own controls always sample unquantized timeline time.
+It also steps Shake noise and its keyframe-influence envelope, regardless of
+modifier order, and saved Cloth playback. Physics solving still advances every
+frame. Run `--cloth` for held baked geometry, upload reuse and restoration checks.
+Run `--shake-graphics` for held position/rotation/bend pixels, boundary changes
+and backward-seek repeatability with OpenGL 3.3.
+
 ### Shake modifier regression checks
 
 ```powershell

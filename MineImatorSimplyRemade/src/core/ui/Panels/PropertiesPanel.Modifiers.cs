@@ -23,6 +23,13 @@ public partial class PropertiesPanel
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(Localization.T("text.modifier.add"));
         if (ImGui.BeginPopup("##addMenu"))
         {
+            if (ImGui.MenuItem(Localization.Label("text.frame_skip.title", "Frame Skip")))
+            {
+                owner.Modifiers.Add(new SceneModifier { Type = SceneModifierType.FrameSkip });
+                Timeline?.RefreshFromScene();
+                Timeline?.ApplyKeyframesAtCurrentFrame();
+                ProjectManager.Instance.SetDirty(true);
+            }
             if (ImGui.MenuItem(Localization.Label("text.shake.title", "Shake")))
             {
                 owner.Modifiers.Add(new SceneModifier { Type = SceneModifierType.Shake });
@@ -74,6 +81,7 @@ public partial class PropertiesPanel
                     SceneModifierType.FollowPath => Localization.Label("text.path.follow", "Follow Path"),
                     SceneModifierType.Cloth => Localization.Label("text.cloth.title", "Cloth"),
                     SceneModifierType.Shake => Localization.Label("text.shake.title", "Shake"),
+                    SceneModifierType.FrameSkip => Localization.Label("text.frame_skip.title", "Frame Skip"),
                     _ => Localization.Label("text.modifier.array", "Array")
                 };
                 if (ImGui.TreeNodeEx(label, ImGuiTreeNodeFlags.DefaultOpen))
@@ -104,6 +112,25 @@ public partial class PropertiesPanel
                         DrawClothModifier(owner, i);
                     else if (modifier.Type == SceneModifierType.Shake)
                         DrawShakeModifier(owner, i);
+                    else if (modifier.Type == SceneModifierType.FrameSkip)
+                    {
+                        int frames = modifier.FrameSkipFrames;
+                        bool changed = ImGui.Checkbox(Localization.DisplayLabel("Enabled"), ref enabled);
+                        RegisterPropertyContext($"{prefix}.enabled");
+                        changed |= ImGui.SliderInt(Localization.Label("text.frame_skip.frames", "Frames Per Pose"),
+                            ref frames, 1, Math.Clamp(Timeline?.MaxFrames ?? 1000, 2, int.MaxValue / 2));
+                        RegisterPropertyContext($"{prefix}.frame_skip.frames");
+                        if (changed)
+                        {
+                            owner.Modifiers[i] = (modifier with { Enabled = enabled, FrameSkipFrames = Math.Max(1, frames) }).Validated();
+                            if (enabled != modifier.Enabled) Timeline?.RecordAutoKeyframe(owner, $"{prefix}.enabled");
+                            if (frames != modifier.FrameSkipFrames) Timeline?.RecordAutoKeyframe(owner, $"{prefix}.frame_skip.frames");
+                            Timeline?.ApplyKeyframesAtCurrentFrame();
+                            _modifierError = null;
+                            ProjectManager.Instance.SetDirty(true);
+                        }
+                        UiText.Wrapped(Localization.T("text.frame_skip.help"));
+                    }
                     else
                     {
                         int count = modifier.Count, axis = (int)modifier.Axis;
@@ -224,6 +251,8 @@ public partial class PropertiesPanel
         if (owner.GetCombinedGeometryOwner() != owner)
             UiText.Wrapped(Localization.T("text.modifier.combined_source_help"));
         if (_modifierErrorOwner == owner && _modifierError != null) UiText.Wrapped(_modifierError);
+        bool refreshFrameSkip = (remove >= 0 && owner.Modifiers[remove].Type == SceneModifierType.FrameSkip) ||
+            (move >= 0 && owner.Modifiers[move].Type == SceneModifierType.FrameSkip);
         if (remove >= 0)
         {
             string prefix = $"modifier.{owner.Modifiers[remove].Id}.";
@@ -247,6 +276,7 @@ public partial class PropertiesPanel
         {
             _modifierError = null;
             Timeline?.RefreshFromScene();
+            if (refreshFrameSkip) Timeline?.ApplyKeyframesAtCurrentFrame();
             ProjectManager.Instance.SetDirty(true);
         }
         ImGui.PopID();

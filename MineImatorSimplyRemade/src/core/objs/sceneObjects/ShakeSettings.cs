@@ -33,6 +33,7 @@ internal static class ShakeEvaluation
 {
     internal static void Evaluate(SceneObject obj, int frame, float framerate)
     {
+        frame = ModifierEvaluation.SampleFrame(obj, frame);
         vec3 position = vec3.Zero, rotation = vec3.Zero, bend = vec3.Zero;
         foreach (var modifier in obj.Modifiers)
         {

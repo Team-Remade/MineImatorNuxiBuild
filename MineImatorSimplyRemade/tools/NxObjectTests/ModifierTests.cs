@@ -13,6 +13,218 @@ using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 internal static partial class Program
 {
+    private static void ModifierFrameSkip(Fixture f)
+    {
+        var skip = new SceneModifier { Type = SceneModifierType.FrameSkip, FrameSkipFrames = 4 };
+        var obj = new SceneObject { Name = "Stepped", PivotOffset = vec3.Zero, Modifiers = [skip] };
+        obj.AssignObjectId();
+        obj.Keyframes["position.x"] = [new() { Frame = 0, Value = 0f }, new() { Frame = 30, Value = 30f }];
+        obj.Keyframes["rotation.z"] = [new() { Frame = 0, Value = 0f }, new() { Frame = 30, Value = 90f }];
+        obj.Keyframes["scale.x"] = [new() { Frame = 0, Value = 1f }, new() { Frame = 30, Value = 4f }];
+        var child = new SceneObject { PivotOffset = vec3.Zero };
+        child.AssignObjectId();
+        child.Keyframes["position.y"] = [new() { Frame = 0, Value = 0f }, new() { Frame = 30, Value = 30f }];
+        obj.AddChild(child);
+        var camera = new CameraSceneObject { PivotOffset = vec3.Zero, Modifiers = [skip] };
+        camera.AssignObjectId();
+        camera.Keyframes["position.x"] = [new() { Frame = 0, Value = 0f }, new() { Frame = 30, Value = 30f }];
+        var bone = WiggleMiBone();
+        bone.AssignObjectId();
+        bone.Modifiers = [skip];
+        bone.Keyframes["mirotation.z"] = [new() { Frame = 0, Value = 0f }, new() { Frame = 30, Value = 30f }];
+        bone.Keyframes["bend.x"] = [new() { Frame = 0, Value = 0f }, new() { Frame = 30, Value = 30f }];
+        var path = StraightPath();
+        foreach (var point in path.Children) point.AssignObjectId();
+        var follower = new SceneObject
+        {
+            PivotOffset = vec3.Zero,
+            Modifiers = [new() { Type = SceneModifierType.FollowPath, PathObjectId = path.ObjectId }, skip]
+        };
+        follower.AssignObjectId();
+        follower.Keyframes["path_follow.offset"] = [new() { Frame = 0, Value = 0f }, new() { Frame = 30, Value = 3f }];
+        var viewport = new Viewport();
+        viewport.SceneObjects.AddRange([obj, camera, bone, path, follower]);
+        var timeline = new Timeline { Viewport = viewport };
+        timeline.RefreshFromScene();
+        int duration = timeline.MaxFrames;
+        void Seek(int frame)
+        {
+            typeof(Timeline).GetField("_currentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(timeline, frame);
+            timeline.ApplyKeyframesAtCurrentFrame();
+        }
+        Seek(4);
+        InverseKinematicsSolver.Evaluate(viewport.SceneObjects, 4);
+        var bonePose = bone.GetWorldMatrixNoPivot();
+        var pathPose = follower.GetWorldMatrixNoPivot();
+        foreach (int frame in new[] { 0, 1, 3, 4, 7, 8, 29, 30, 31, 100, 7 })
+        {
+            Seek(frame);
+            float sampled = Math.Min(30, frame / 4 * 4);
+            Near(sampled, obj.LocalPosition.x, "Frame Skip samples the preceding grid boundary");
+            Near(glm.Radians(sampled * 3), obj.LocalRotation.z, "Rotation uses the same stepped time");
+            Near(1 + sampled / 10, obj.LocalScale.x, "Scale uses the same stepped time");
+            Near(Math.Min(30, frame), child.LocalPosition.y, "Parent Frame Skip does not retime child tracks");
+            Near(sampled, camera.LocalPosition.x, "Cameras use stepped keyframe sampling");
+            Near(sampled, bone.GetEditableBendAngle().x, "Bone bends use stepped keyframe sampling");
+            Near(sampled / 10, follower.PathFollowOffset, "Follow Path offsets use stepped keyframe sampling");
+        }
+        InverseKinematicsSolver.Evaluate(viewport.SceneObjects, 7);
+        Equal(bonePose, bone.GetWorldMatrixNoPivot(), "Imported coupled rotation and bend repeat within a held pose");
+        Equal(pathPose, follower.GetWorldMatrixNoPivot(), "Follow Path evaluates the held pose");
+        MineImatorSimplyRemade.core.Services.Initialize();
+        try { timeline.SetCurrentFrameForRender(7); }
+        finally { MineImatorSimplyRemade.core.Services.Shutdown(); }
+        Near(4, obj.LocalPosition.x, "Export uses the same stepped sample");
+        timeline.SamplePhysicsFrame(11, () =>
+        {
+            Near(8, obj.LocalPosition.x, "Physics bakes sample stepped animation");
+            Near(11, child.LocalPosition.y, "Physics bakes preserve independent child timing");
+        }, includeWiggle: false);
+        Near(4, obj.LocalPosition.x, "Physics sampling restores the previous held pose");
+        Equal(7, timeline.CurrentFrame, "Frame Skip never changes the global playhead");
+        Equal(duration, timeline.MaxFrames, "Frame Skip never changes timeline duration");
+        Equal(30, obj.Keyframes["position.x"][1].Frame, "Frame Skip preserves authored keyframe times");
+        Equal(30f, obj.Keyframes["position.x"][1].Value, "Frame Skip preserves authored keyframe values");
+
+        obj.Modifiers[0] = skip with { FrameSkipFrames = 1 };
+        Seek(7);
+        Near(7, obj.LocalPosition.x, "One frame per pose restores normal animation");
+        obj.Modifiers[0] = skip with { Enabled = false };
+        Seek(7);
+        Near(7, obj.LocalPosition.x, "Disabling restores normal animation");
+        obj.Modifiers.Clear();
+        Seek(7);
+        Near(7, obj.LocalPosition.x, "Removing restores normal animation");
+        obj.Modifiers = [skip];
+        string prefix = $"modifier.{skip.Id}";
+        obj.Keyframes[$"{prefix}.frame_skip.frames"] =
+            [new() { Frame = 0, Value = 4f }, new() { Frame = 7, Value = 3f }];
+        obj.Keyframes[$"{prefix}.enabled"] =
+            [new() { Frame = 0, Value = 1f }, new() { Frame = 10, Value = 0f }];
+        timeline.RefreshFromScene();
+        foreach (var (frame, expected, step) in new[] { (6, 4f, 4), (7, 6f, 3), (10, 10f, 3), (6, 4f, 4) })
+        {
+            Seek(frame);
+            Near(expected, obj.LocalPosition.x, "Animated controls use real time independent of track order and seek direction");
+            Equal(step, obj.Modifiers[0].FrameSkipFrames, "Frames Per Pose is discrete between control keys");
+        }
+        foreach (int invalid in new[] { 0, -1 })
+        {
+            bool rejected = false;
+            try { (skip with { FrameSkipFrames = invalid }).Validated(); }
+            catch (InvalidDataException) { rejected = true; }
+            Check(rejected, "Non-positive saved Frame Skip settings are explicitly rejected");
+        }
+    }
+
+    private static void ModifierFrameSkipShake(Fixture f)
+    {
+        var skip = new SceneModifier { Type = SceneModifierType.FrameSkip, FrameSkipFrames = 4 };
+        var shake = new SceneModifier
+        {
+            Type = SceneModifierType.Shake,
+            Shake = new() { RotationEnabled = true, BendEnabled = true, Intensity = 4, Speed = 3, KeyframeInfluence = 0.5f }
+        };
+        var bone = WiggleMiBone();
+        bone.AssignObjectId();
+        bone.Modifiers = [shake];
+        bone.Keyframes["position.x"] = [new() { Frame = 0, Value = 0f }, new() { Frame = 60, Value = 0f }];
+        mat4 Pose(int frame)
+        {
+            InverseKinematicsSolver.Evaluate([bone], frame);
+            return bone.GetWorldMatrixNoPivot();
+        }
+        var held = Pose(12);
+        var bend = bone.GetEffectiveBendParameters()!.Value.Angle;
+        var normal = Pose(15);
+        Check(held != normal, "Unstepped Shake changes between frames");
+        bone.Modifiers = [skip, shake];
+        foreach (int frame in new[] { 12, 13, 14, 15, 13 })
+        {
+            Equal(held, Pose(frame), "Frame Skip holds Shake position, rotation, noise and influence");
+            Near(bend, bone.GetEffectiveBendParameters()!.Value.Angle, "Frame Skip holds Shake bend");
+        }
+        Check(Pose(16) != held, "Shake advances at the next Frame Skip boundary");
+        bone.Modifiers.Reverse();
+        Equal(held, Pose(15), "Frame Skip affects Shake regardless of modifier order");
+        var instances = new ModifierEvaluation([bone]);
+        Equal(1, instances.GetDeltas(bone).Count, "Stepping Shake does not create geometry instances");
+        bone.Modifiers[1] = skip with { Enabled = false };
+        Equal(normal, Pose(15), "Disabling Frame Skip restores continuous Shake");
+        bone.Modifiers[1] = skip with { FrameSkipFrames = 1 };
+        Equal(normal, Pose(15), "One-frame holds preserve normal Shake");
+        bone.Modifiers.RemoveAt(1);
+        Equal(normal, Pose(15), "Removing Frame Skip restores continuous Shake without stale offsets");
+
+        bone.Modifiers.Add(skip);
+        string prefix = $"modifier.{skip.Id}";
+        bone.Keyframes[$"{prefix}.frame_skip.frames"] =
+            [new() { Frame = 0, Value = 4f }, new() { Frame = 7, Value = 3f }];
+        bone.Keyframes[$"{prefix}.enabled"] =
+            [new() { Frame = 0, Value = 1f }, new() { Frame = 10, Value = 0f }];
+        var reference = WiggleMiBone();
+        reference.Modifiers = [shake];
+        foreach (var (path, keys) in bone.Keyframes) reference.Keyframes[path] = keys;
+        var viewport = new Viewport();
+        viewport.SceneObjects.Add(bone);
+        var timeline = new Timeline { Viewport = viewport };
+        timeline.RefreshFromScene();
+        foreach (var (frame, sampleFrame) in new[] { (6, 4), (7, 6), (9, 9), (10, 10), (6, 4) })
+        {
+            typeof(Timeline).GetField("_currentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(timeline, frame);
+            timeline.ApplyKeyframesAtCurrentFrame();
+            var actual = Pose(frame);
+            InverseKinematicsSolver.Evaluate([reference], sampleFrame);
+            Equal(reference.GetWorldMatrixNoPivot(), actual, "Animated Frame Skip controls synchronize keyed pose and Shake time");
+            Near(reference.GetEffectiveBendParameters()!.Value.Angle, bone.GetEffectiveBendParameters()!.Value.Angle,
+                "Animated Frame Skip controls synchronize procedural bend time");
+        }
+        timeline.SamplePhysicsFrame(7, () =>
+        {
+            InverseKinematicsSolver.Evaluate([reference], 6);
+            Equal(reference.GetWorldMatrixNoPivot(), bone.GetWorldMatrixNoPivot(), "Physics sampling uses held Shake motion");
+        }, includeWiggle: false);
+    }
+
+    private static void ModifierFrameSkipPersistence(Fixture f)
+    {
+        var modifier = new SceneModifier { Type = SceneModifierType.FrameSkip, FrameSkipFrames = 5 };
+        var obj = new SceneObject { Name = "Saved Frame Skip", Modifiers = [modifier] };
+        obj.AssignObjectId();
+        string channel = $"modifier.{modifier.Id}.frame_skip.frames";
+        obj.Keyframes[channel] = [new() { Frame = 0, Value = 5f }, new() { Frame = 13, Value = 7f }];
+        var (manifest, _) = f.Roundtrip(obj);
+        Equal(modifier, manifest.Root.Modifiers![0], "Frame Skip settings survive archive serialization");
+        var viewport = new Viewport();
+        var restored = ProjectSceneSerializer.SpawnObjectFromEntry(manifest.Root, viewport, new SpawnMenu { Viewport = viewport })!;
+        Equal(modifier, restored.Modifiers[0], "Frame Skip settings survive archive import");
+        var timeline = new Timeline { Viewport = viewport };
+        timeline.RefreshFromScene();
+        typeof(Timeline).GetField("_currentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(timeline, 12);
+        timeline.ApplyKeyframesAtCurrentFrame();
+        Equal(5, restored.Modifiers[0].FrameSkipFrames, "Imported Frame Skip tracks remain discrete");
+        typeof(Timeline).GetField("_currentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(timeline, 13);
+        timeline.ApplyKeyframesAtCurrentFrame();
+        Equal(7, restored.Modifiers[0].FrameSkipFrames, "Imported Frame Skip tracks switch on the exact key");
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var duplicate = (SceneObject)typeof(SceneTree).GetMethod("DuplicateObject", flags)!
+            .Invoke(new SceneTree { Viewport = viewport }, [obj, false, null])!;
+        duplicate.Modifiers[0] = duplicate.Modifiers[0] with { FrameSkipFrames = 9 };
+        Equal(5, obj.Modifiers[0].FrameSkipFrames, "Duplicate Frame Skip settings are independent");
+        var snapshot = ProjectSceneSerializer.SerializeObjectForLibrary(obj);
+        var fingerprint = typeof(ProjectSceneSerializer).Assembly.GetType("MineImatorSimplyRemade.core.project.SceneObjectFingerprint")!
+            .GetMethod("Compute", BindingFlags.Static | BindingFlags.Public)!;
+        ulong Hash() => (ulong)fingerprint.Invoke(null, [new List<SceneObject> { obj }])!;
+        ulong original = Hash();
+        obj.Modifiers[0] = modifier with { FrameSkipFrames = 6 };
+        Check(original != Hash(), "Frame Skip amount participates in dirty detection");
+        obj.Modifiers.Clear();
+        typeof(ProjectSceneSerializer).GetMethod("ApplyEntryToObject", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [obj, snapshot, null]);
+        Equal(original, Hash(), "Undo snapshots restore Frame Skip settings and tracks");
+        SelectionManager.Instance!.ClearSelection();
+    }
+
     private static void ModifierShake(Fixture f)
     {
         var obj = new SceneObject { Name = "Shake", PivotOffset = vec3.Zero };
@@ -257,6 +469,14 @@ internal static partial class Program
                 InverseKinematicsSolver.Evaluate([bone], 117);
                 InverseKinematicsSolver.Evaluate([bone], 17);
                 Check(shaken.SequenceEqual(Render()), $"Shake {channel} backward seek reproduces exact pixels");
+                bone.Modifiers.Add(new SceneModifier { Type = SceneModifierType.FrameSkip, FrameSkipFrames = 17 });
+                InverseKinematicsSolver.Evaluate([bone], 29);
+                Check(shaken.SequenceEqual(Render()), $"Frame Skip holds Shake {channel} pixels within the frame grid");
+                InverseKinematicsSolver.Evaluate([bone], 34);
+                Check(Changed(shaken, Render()) > 0, $"Frame Skip advances Shake {channel} pixels at the next boundary");
+                InverseKinematicsSolver.Evaluate([bone], 29);
+                Check(shaken.SequenceEqual(Render()), $"Frame Skip Shake {channel} backward seek repeats exact pixels");
+                bone.Modifiers.RemoveAt(1);
                 bone.Modifiers[0] = modifier with { Enabled = false };
                 InverseKinematicsSolver.Evaluate([bone], 17);
                 Check(rigid.SequenceEqual(Render()), $"Disabling shake {channel} restores exact pixels");
@@ -566,6 +786,30 @@ internal static partial class Program
             Near(1, obj.Modifiers[0].Shake.Intensity, "Shake Reset restores intensity");
             ClickAction(Localization.Label("text.panel.properties.add_keyframe_at_current_frame", "Add Keyframe at Current Frame"));
             Equal(1f, obj.Keyframes[property][0].Value, "Shake keyframe action stores normalized intensity");
+            obj.Modifiers = [new() { Type = SceneModifierType.FrameSkip }];
+            property = $"modifier.{obj.Modifiers[0].Id}.frame_skip.frames";
+            showMenu = false;
+            distanceY = -1;
+            for (int y = 60; y < 650; y += 3)
+            {
+                ctxPath.SetValue(panel, null);
+                Frame(120, y, right: true);
+                if ((string?)ctxPath.GetValue(panel) == property) distanceY = y;
+                Frame(120, y);
+                if (distanceY >= 0) break;
+            }
+            Check(distanceY >= 0, "Frames Per Pose slider registers its modifier property");
+            Frame(200, distanceY, left: true);
+            Frame(200, distanceY);
+            Check(obj.Modifiers[0].FrameSkipFrames > 2, "Dragging the actual Frame Skip slider changes the hold amount");
+            showMenu = true;
+            ImGui.SetClipboardText("5");
+            ClickAction("Paste");
+            Equal(5, obj.Modifiers[0].FrameSkipFrames, "Frame Skip context Paste uses whole frames");
+            ClickAction("Reset Value");
+            Equal(2, obj.Modifiers[0].FrameSkipFrames, "Frame Skip context Reset restores two-frame holds");
+            ClickAction(Localization.Label("text.panel.properties.add_keyframe_at_current_frame", "Add Keyframe at Current Frame"));
+            Equal(2f, obj.Keyframes[property][0].Value, "Frame Skip context action keys the hold amount");
         }
         finally
         {
