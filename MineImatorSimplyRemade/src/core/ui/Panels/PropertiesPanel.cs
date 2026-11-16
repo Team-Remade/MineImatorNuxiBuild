@@ -381,6 +381,8 @@ public partial class PropertiesPanel : UiPanel
         _projectName = string.IsNullOrWhiteSpace(manifest.ProjectName) ? "Untitled Project" : manifest.ProjectName;
 
         ProjectRenderSettings settings = manifest.Settings;
+        if (settings.Wiggle == null) throw new InvalidDataException("Wiggle scene settings are missing.");
+        settings.Wiggle.Validate();
         WatermarkEnabled = settings.WatermarkEnabled;
         WatermarkImagePath = settings.WatermarkImagePath ?? "";
         WatermarkHorizontalAlignment = Math.Clamp(settings.WatermarkHorizontalAlignment, 0, 2);
@@ -991,6 +993,10 @@ public partial class PropertiesPanel : UiPanel
             PathFollowOffset = source.PathFollowOffset,
             Modifiers = source.Modifiers?.ToList(),
             BoneName = source.BoneName,
+            Wiggle = source.Wiggle,
+            WiggleBake = source.WiggleBake,
+            WiggleRig = source.WiggleRig,
+            WiggleCollider = source.WiggleCollider,
             BoneEndOffset = source.BoneEndOffset == null ? null : new ProjectVec3
             {
                 X = source.BoneEndOffset.X, Y = source.BoneEndOffset.Y, Z = source.BoneEndOffset.Z
@@ -3251,13 +3257,16 @@ public partial class PropertiesPanel : UiPanel
         ProjectManager.Instance.SetDirty(true);
     }
 
-    private void ApplyBackgroundAnimation(int frame)
+    private void ApplyBackgroundAnimation(int frame) => ApplyBackgroundAnimationFiltered(frame, null);
+
+    private void ApplyBackgroundAnimationFiltered(int frame, Func<string, bool>? filter)
     {
         var tracks = ProjectManager.Instance.Manifest?.Settings?.BackgroundKeyframes;
         if (tracks == null || tracks.Count == 0) return;
         bool applied = false;
         foreach (var (path, keys) in tracks)
         {
+            if (filter != null && !filter(path)) continue;
             if (keys.Count == 0) continue;
             ProjectBackgroundKeyframeEntry? previous = keys.Where(k => k.Frame <= frame).OrderByDescending(k => k.Frame).FirstOrDefault();
             ProjectBackgroundKeyframeEntry? next = keys.Where(k => k.Frame >= frame).OrderBy(k => k.Frame).FirstOrDefault();
@@ -5298,6 +5307,7 @@ public partial class PropertiesPanel : UiPanel
         }
 
         DrawConstraints(_currentObject);
+        DrawWiggle(_currentObject);
         DrawModifiers(_currentObject);
 
         // ── Effects (shown only for CameraSceneObject) ────────────────────────

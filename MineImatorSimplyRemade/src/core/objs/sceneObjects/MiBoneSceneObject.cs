@@ -258,9 +258,29 @@ public class MiBoneSceneObject : BoneSceneObject
     public BendParams? BendParameters { get; private set; }
 
     private vec3? _evaluatedBend;
+    private vec3? _evaluatedWiggleBend;
     private vec3? _lastIkVisualBend;
 
     internal vec3 GetEvaluatedEditableBendAngle() => GetEffectiveEditableBendAngle();
+
+    internal void SetEvaluatedWiggleBend(vec3? angle)
+    {
+        if (angle.HasValue && BendParameters is { } bp)
+            angle = new vec3(
+                bp.AxisX ? Math.Clamp(angle.Value.x, Math.Min(bp.DirectionMin.x, bp.DirectionMax.x), Math.Max(bp.DirectionMin.x, bp.DirectionMax.x)) : 0,
+                bp.AxisY ? Math.Clamp(angle.Value.y, Math.Min(bp.DirectionMin.y, bp.DirectionMax.y), Math.Max(bp.DirectionMin.y, bp.DirectionMax.y)) : 0,
+                bp.AxisZ ? Math.Clamp(angle.Value.z, Math.Min(bp.DirectionMin.z, bp.DirectionMax.z), Math.Max(bp.DirectionMin.z, bp.DirectionMax.z)) : 0);
+        _evaluatedWiggleBend = angle;
+        InvalidateRenderEvaluation();
+    }
+
+    internal vec3 GetWiggleBendEndOffset(vec3 angle)
+    {
+        if (BendParameters is not { } bp || EndOffset is not { } end)
+            throw new InvalidDataException($"{Name}: bend wiggle requires a bend joint and imported endpoint.");
+        return TransformPoint(BendHelper.GetPartBendMatrix(bp, BendHelper.GetBendVector(EditableToStored(angle, bp), 1)),
+            end - BendHelper.GetBendPivot(bp, vec3.Zero));
+    }
 
     internal IEnumerable<MiBoneSceneObject> GetBendEvaluationSources()
     {
@@ -571,6 +591,7 @@ public class MiBoneSceneObject : BoneSceneObject
     private vec3 GetEffectiveEditableBendAngle(bool includePose = true)
     {
         if (!BendParameters.HasValue) return vec3.Zero;
+        if (includePose && _evaluatedWiggleBend.HasValue) return _evaluatedWiggleBend.Value;
         if (includePose && _evaluatedBend.HasValue) return _evaluatedBend.Value;
 
         var bp = BendParameters.Value;

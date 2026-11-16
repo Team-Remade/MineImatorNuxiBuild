@@ -6,7 +6,9 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 
 public partial class Timeline
 {
-    internal void SampleClothFrame(int frame, Action sample)
+    internal void SampleClothFrame(int frame, Action sample) => SamplePhysicsFrame(frame, sample, includeWiggle: true);
+
+    internal void SamplePhysicsFrame(int frame, Action sample, bool includeWiggle)
     {
         using var profile = FrameProfiler.Shared.Measure(ProfileStage.ClothTimelineSampling);
         static bool GeometryChannel(string path) => path.StartsWith("position.", StringComparison.Ordinal) ||
@@ -39,6 +41,7 @@ public partial class Timeline
             _currentFrame = frame;
             ApplyKeyframeChannels(GeometryChannel, owners);
             if (Viewport != null) InverseKinematicsSolver.Evaluate(Viewport.SceneObjects);
+            if (includeWiggle) Viewport?.UpdateWiggle(requireBake: true);
             sample();
         }
         finally

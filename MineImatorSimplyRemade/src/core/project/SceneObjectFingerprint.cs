@@ -58,6 +58,10 @@ internal static class SceneObjectFingerprint
 
     private static void AddNode(ref Fnv1a hash, SceneObject obj, bool hasShapeWeights)
     {
+        ulong wiggle = WiggleConfiguration.AuthoredHash(obj);
+        hash.Add(unchecked((int)wiggle));
+        hash.Add(unchecked((int)(wiggle >> 32)));
+        if (obj is BoneSceneObject bakedBone) hash.Add(bakedBone.WiggleBake?.Id);
         hash.Add(0x4e4f4445); // Node boundary, independent of names and hierarchy depth.
         hash.Add(obj.ObjectId);
         hash.Add(obj.LibrarySourceId);

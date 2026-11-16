@@ -161,6 +161,38 @@ internal sealed class ClothCollisionTree
         }
     }
 
+    internal void CollideSphere(ref vec3 point, vec3 previous, ref vec3 velocity, float radius, float friction, float bounce)
+    {
+        vec3 pad = new(radius);
+        foreach (var entry in Query(vec3.Min(point, previous) - pad, vec3.Max(point, previous) + pad))
+        {
+            var t = entry.Triangle;
+            vec3 face = vec3.Cross(t.B - t.A, t.C - t.A);
+            if (face.LengthSqr < 1e-16f) continue;
+            face = face.Normalized;
+            vec3 closest = ClosestTriangle(point, t.A, t.B, t.C, out _);
+            vec3 delta = point - closest;
+            float distance = delta.Length;
+            float before = vec3.Dot(previous - t.A, face), after = vec3.Dot(point - t.A, face);
+            vec3 normal = distance > 1e-7f ? delta / distance : face * (before >= 0 ? 1 : -1);
+            float correction = radius - distance;
+            if (before * after < 0)
+            {
+                vec3 hit = vec3.Lerp(previous, point, before / (before - after));
+                if ((ClosestTriangle(hit, t.A, t.B, t.C, out _) - hit).LengthSqr < 1e-10f)
+                {
+                    normal = face * (before >= 0 ? 1 : -1);
+                    correction = radius + MathF.Abs(after);
+                }
+            }
+            if (correction <= 0) continue;
+            point += normal * correction;
+            float speed = vec3.Dot(velocity, normal);
+            velocity = (velocity - speed * normal) * (1 - friction) +
+                normal * (speed < 0 ? -speed * bounce : speed);
+        }
+    }
+
     private static bool AdjacentPoint(int point, Entry entry, HashSet<(int, int)> neighbors) =>
         point == entry.A || point == entry.B || point == entry.C ||
                 neighbors!.Contains(ClothSimulation.Pair(point, entry.A)) ||

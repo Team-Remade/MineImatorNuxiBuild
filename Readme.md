@@ -5,6 +5,57 @@ For all your Minecraft animation needs!
 For development setup, debugging, regression tests, and implementation notes,
 see [AGENTS.md](AGENTS.md).
 
+## Wiggle bones
+
+Select a bone and open **Properties > Wiggle Bones**. The Blender Wiggle 2-inspired
+panel groups **Scene**, **Armature**, and **Bone** controls. Enable the bone, then
+play the timeline to preview secondary motion without changing authored keyframes.
+
+- **Head** and **Tail** each have mass, stiffness, damping, gravity/wind multipliers,
+  and allowed stretch/compression. Higher stiffness follows the animated pose more
+  closely; damping reduces oscillation. Existing bone endpoints include bend.
+  Otherwise set **Tail Offset** in pixels (16 pixels = one block).
+- MiBones with a bend joint also expose **Bend > Enabled**, with independent
+  mass, stiffness, damping and gravity/wind settings. Bend follows animated
+  angles and responds to driver acceleration without editing bend keyframes.
+  Model axes/angle limits are respected. Bend is off by default and can be used
+  independently of Head/Tail; saved bakes include its evaluated angles.
+- **Connect head to parent tail** snaps a child to an enabled wiggle parent's tail
+  and replaces head dynamics. **Chain** lets that child pull the parent's tail.
+  Leave connection off for model parts attached somewhere other than the parent tip.
+- Scene controls include gravity, quality, preroll, and continuing live physics
+  across playback loops. Configure wind under the environment's **Wind** section.
+  **Mute** restores authored motion; **Freeze** holds the evaluated world pose.
+  Copy settings to selected bones or restore bone defaults from the same panel.
+- Enable **Collisions** on the bone. Select a collider object, then enable
+  **Wiggle Bones > Object Sphere Collider** and set its radius/local offset.
+  Invisible collider spheres follow animation and scale. Bone head/tail spheres
+  respond with friction and bounce. Alternatively, enable **Mesh Collisions**
+  to use visible scene mesh surfaces, including animated bend/skinning, shape
+  keys, saved cloth geometry and Array copies, without adding sphere colliders.
+  The toggles are independent and share radius, friction and bounce.
+  Collision affects enabled Head/Tail endpoints, not the entire bone or Bend
+  joint; very fast moving surfaces may tunnel.
+  Colliders attached to a bone or its descendants do not collide with that bone.
+  Skinned meshes driven by that bone or its descendants are also excluded.
+- **Bake All Wiggle Bones** pauses playback and saves all active bones together
+  from frame 0 through the timeline end. A cancellable modal shows progress and
+  prevents editing during sampling. Failed/cancelled bakes retain previous poses.
+  Saved bakes provide exact repeatable scrubbing, camera previews, shadows, picking,
+  and animation export, and survive project/object saves and undo.
+- Live simulation advances with timeline time, not every viewport redraw.
+  Seeking resets unbaked motion; **Reset Live Simulation** restarts it.
+  **Clear All Bakes** returns to live preview. Rebake after animation, hierarchy,
+  wind, or collider edits. Changed physics settings or frame rate and frames outside
+  the saved range report an error instead of silently exporting a different pose.
+  Animation export requires a complete bake. When cloth uses wiggle bones as
+  animated pins or colliders, bake wiggle first, then bake cloth.
+
+Limits: 256 enabled wiggle bones, 200,000 mesh collision triangles and a 64 MiB scene pose cache.
+This is an original Blender-inspired implementation, not an addon port.
+Baking stores evaluated world transforms, not editable rotation keyframes; bakes
+are tied to the sampled scene and must be redone after duplicating/reparenting rigs.
+
 ## Cloth modifier
 
 In **Properties > Modifiers > + > Cloth**, enable cloth on an object that owns

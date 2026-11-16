@@ -309,6 +309,10 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Wiggle endpoint springs, gravity, wind, damping, freeze and authored pose isolation", WiggleMotion),
+            ("Wiggle connected chains and sphere contacts", WiggleChainsCollisions),
+            ("Wiggle full timeline bake, repeatability, persistence, undo and atomic failures", WiggleBakePersistence),
+            ("Wiggle ImGui controls and bake actions", WiggleControls),
             ("Item options persistence, duplication, undo and non-keyframable channels", ItemOptionsPersistence),
             ("Item options deterministic motion, camera priority and instance transforms", ItemOptionsTransforms),
             ("Item options ImGui toggles and multi-selection without auto-key", ItemOptionsControls),
@@ -568,8 +572,12 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Frames ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--cloth", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Cloth ", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--wiggle", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Wiggle ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--cloth-graphics", StringComparer.Ordinal))
             tests = [("Cloth GPU deformation, restoration, repeatability and renderer parity", ClothGraphics)];
+        if (args.Contains("--wiggle-graphics", StringComparer.Ordinal))
+            tests = [("Wiggle GPU bone mesh motion, preview repeatability and restoration", WiggleGraphics)];
         if (args.Contains("--modifiers", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Array", StringComparison.Ordinal) ||
                 test.Name.StartsWith("Follow Path modifier", StringComparison.Ordinal) ||

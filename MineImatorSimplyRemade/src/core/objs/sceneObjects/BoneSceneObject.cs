@@ -21,6 +21,24 @@ public class BoneSceneObject : SceneObject
     public vec3? EndOffset { get; set; }
 
     public List<BoneConstraint> Constraints { get; set; } = new();
+    public WiggleSettings Wiggle { get; set; } = new();
+    public WiggleBake? WiggleBake { get; set; }
+    internal mat4? EvaluatedWiggleWorld { get; private set; }
+
+    internal void SetEvaluatedWiggleWorld(mat4? world)
+    {
+        EvaluatedWiggleWorld = world;
+        if (world == null && this is MiBoneSceneObject mi) mi.SetEvaluatedWiggleBend(null);
+        InvalidateRenderEvaluation();
+    }
+
+    internal vec3 GetWiggleEndOffset() => EndOffset ?? Wiggle.TailOffset;
+
+    internal vec3 GetWiggleEndWorldPosition()
+    {
+        if (EndOffset.HasValue) return GetEndWorldPosition();
+        return TransformPoint(GetWorldMatrixNoPivot(), Wiggle.TailOffset);
+    }
 
     internal mat4 EvaluatedIkRotation { get; private set; } = mat4.Identity;
     private mat4? _evaluatedIkWorldRotation;

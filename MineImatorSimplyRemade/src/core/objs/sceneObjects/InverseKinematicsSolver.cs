@@ -40,6 +40,7 @@ public static class InverseKinematicsSolver
 
         foreach (var obj in objects)
         {
+            if (obj is BoneSceneObject wiggleBone) wiggleBone.SetEvaluatedWiggleWorld(null);
             obj.SetEvaluatedCopyTransform(null, vec3.Ones);
             obj.SetEvaluatedPathFrame(null);
             foreach (var constraint in obj.CopyConstraints)

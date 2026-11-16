@@ -55,7 +55,7 @@ public partial class PropertiesPanel
         UiText.Wrapped(Localization.T("text.cloth.bake_help"));
         if (owner.Modifiers[index].ClothBake is { } bake)
             ImGui.TextUnformatted(Localization.Format("text.cloth.baked_range", bake.Frames.Length - 1));
-        ImGui.BeginDisabled(!enabled || Viewport.IsClothBaking);
+        ImGui.BeginDisabled(!enabled || Viewport.IsClothBaking || Viewport.IsWiggleBaking);
         if (ImGui.Button(Localization.T("text.cloth.bake"))) Viewport.BakeCloth();
         ImGui.EndDisabled();
         ImGui.SameLine();

@@ -511,7 +511,7 @@ public class MainWindow : Window
     protected override void RenderUi()
     {
         UpdateFileDropCallbacks();
-        if (_mainViewport?.IsClothBaking != true) ImportDroppedFiles();
+        if (_mainViewport?.IsClothBaking != true && _mainViewport?.IsWiggleBaking != true) ImportDroppedFiles();
         SyncPreviewViewportPreferenceState();
 
         if (_mainViewport != null)
@@ -522,6 +522,7 @@ public class MainWindow : Window
         AdvanceRenderJob();
         AdvanceResourcePackImportJob();
         _mainViewport?.AdvanceClothBake();
+        _mainViewport?.AdvanceWiggleBake();
 
         _menubar.Render();
         RenderProjectDialogs();
@@ -589,6 +590,7 @@ public class MainWindow : Window
         RenderProjectHomeScreen();
         RenderToast();
         _mainViewport?.DrawClothBakePopup();
+        _mainViewport?.DrawWiggleBakePopup();
         _performancePanel.Render();
         MetricsOverlay.Render();
     }

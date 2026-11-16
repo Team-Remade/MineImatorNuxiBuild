@@ -96,6 +96,7 @@ public class ProjectWorkCameraState
 
 public class ProjectRenderSettings
 {
+    public WiggleSceneSettings Wiggle { get; set; } = new();
     public bool WatermarkEnabled { get; set; }
     public string WatermarkImagePath { get; set; } = "";
     public int WatermarkHorizontalAlignment { get; set; } = 2;
@@ -422,6 +423,10 @@ public class ProjectSceneObjectEntry
     public float PathFollowOffset { get; set; }
     public string? BoneName { get; set; }
     public ProjectVec3? BoneEndOffset { get; set; }
+    public WiggleSettings? Wiggle { get; set; }
+    public WiggleBake? WiggleBake { get; set; }
+    public WiggleRigSettings? WiggleRig { get; set; }
+    public WiggleColliderSettings? WiggleCollider { get; set; }
     // Null retains imported defaults for legacy saves; an empty list explicitly clears them.
     public List<ProjectBoneConstraintEntry>? BoneConstraints { get; set; }
     // Null retains imported defaults for legacy saves; an empty list explicitly clears them.

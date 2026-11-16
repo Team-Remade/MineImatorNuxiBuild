@@ -347,6 +347,10 @@ public static class ProjectSceneSerializer
             Rotation = ToProjectVec3(obj.Rotation),
             Scale = ToProjectVec3(obj.Scale),
             CopyConstraints = obj.CopyConstraints.Select(SerializeCopyConstraint).ToList(),
+            Wiggle = obj is BoneSceneObject wiggleBone ? wiggleBone.Wiggle : null,
+            WiggleBake = obj is BoneSceneObject bakedBone ? bakedBone.WiggleBake : null,
+            WiggleRig = obj.WiggleRig,
+            WiggleCollider = obj.WiggleCollider,
             Modifiers = obj.Modifiers.Select(modifier => modifier.Validated()).ToList(),
             BendAngle = obj is MiBoneSceneObject bendBone && bendBone.BendParameters is { } bend
                 ? ToProjectVec3(bend.Angle)
@@ -924,6 +928,9 @@ public static class ProjectSceneSerializer
         obj.SetLocalPosition(ToVec3(entry.Position));
         obj.SetLocalRotation(ToVec3(entry.Rotation));
         obj.SetLocalScale(ToVec3(entry.Scale));
+        obj.WiggleRig = entry.WiggleRig ?? new();
+        obj.WiggleCollider = entry.WiggleCollider ?? new();
+        obj.WiggleCollider.Validate();
         obj.Modifiers = entry.Modifiers?.Select(modifier => modifier.Validated()).ToList() ?? [];
         foreach (var modifier in obj.Modifiers) modifier.ClothBake?.Validate();
         if (entry.CopyConstraints != null)
@@ -935,6 +942,11 @@ public static class ProjectSceneSerializer
         }
         if (obj is BoneSceneObject bone)
         {
+            bone.Wiggle = entry.Wiggle ?? new();
+            bone.Wiggle.Validate();
+            entry.WiggleBake?.Validate();
+            bone.WiggleBake = entry.WiggleBake;
+            bone.SetEvaluatedWiggleWorld(null);
             if (entry.BoneName != null)
                 bone.BoneName = entry.BoneName;
             if (entry.BoneConstraints != null)

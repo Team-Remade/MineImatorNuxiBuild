@@ -101,6 +101,26 @@ Coverage and prerequisites:
   and consistent geometry after conversion to animatable blocks, rebuilding,
   and resource-pack reapplication.
 
+### Wiggle bone regression checks
+
+```powershell
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --wiggle
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --wiggle-graphics
+```
+
+CPU checks exercise endpoint springs, damping, gravity/wind, connected chains,
+sphere contacts, freeze/mute, full-timeline bake persistence, backward seeking,
+undo, atomic cancellation/failure, and actual ImGui controls. The graphics selector
+requires OpenGL 3.3 and verifies visible bone-mesh pixels, repeatability, and rigid
+pose restoration. Bone physics lives in evaluated world transforms, never authored
+position/rotation/scale. Bake wiggle before sampling cloth that depends on it.
+
+Mesh collisions use visible evaluated mesh surfaces and the shared collision BVH;
+exclude self/descendant meshes and skin palettes driven by those bones. MiBone
+bend wiggle uses independent angular springs in editable bend space, preserving
+model axes/limits and IK input. Save bend frames alongside world transforms and
+include both in the bake memory budget.
+
 ### Cloth tests and profiling
 
 ```powershell

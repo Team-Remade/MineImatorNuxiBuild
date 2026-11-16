@@ -1458,7 +1458,8 @@ public class SceneObject
         }
 
         using var timing = FrameProfiler.Shared.Measure(ProfileStage.TransformEvaluation);
-        mat4 logicalWorld = ComputeWorldMatrixNoPivot();
+        mat4 logicalWorld = this is BoneSceneObject { EvaluatedWiggleWorld: { } wiggleWorld }
+            ? wiggleWorld : ComputeWorldMatrixNoPivot();
         mat4 world = logicalWorld * mat4.Translate(_pivotOffset);
         if (evaluation != 0)
         {
@@ -1471,6 +1472,8 @@ public class SceneObject
 
     public List<CopyConstraint> CopyConstraints { get; set; } = new();
     public List<SceneModifier> Modifiers { get; set; } = new();
+    public WiggleRigSettings WiggleRig { get; set; } = new();
+    public WiggleColliderSettings WiggleCollider { get; set; } = new();
     public SceneModifier? FollowPathModifier => Modifiers.FirstOrDefault(modifier => modifier.Type == SceneModifierType.FollowPath);
     // Keep existing timeline channel names and legacy import callers while storing settings in the modifier.
     public string PathFollowObjectId

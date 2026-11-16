@@ -1288,6 +1288,8 @@ public class SceneTree : UiPanel
             miTarget.CopyConstructionStateFrom(miSource);
         target.BoneName = source.BoneName;
         target.EndOffset = source.EndOffset;
+        target.Wiggle = source.Wiggle;
+        target.WiggleBake = source.WiggleBake;
         target.Constraints.Clear();
         foreach (var constraint in source.Constraints)
             target.Constraints.Add(constraint.Clone());
@@ -1326,6 +1328,8 @@ public class SceneTree : UiPanel
         duplicate.CombineChildren = original.CombineChildren;
         duplicate.InheritPose = original.InheritPose;
         duplicate.Modifiers = original.Modifiers.ToList();
+        duplicate.WiggleRig = original.WiggleRig;
+        duplicate.WiggleCollider = original.WiggleCollider;
         duplicate.CopyConstraints.Clear();
         foreach (var constraint in original.CopyConstraints)
             duplicate.CopyConstraints.Add(constraint.Clone());

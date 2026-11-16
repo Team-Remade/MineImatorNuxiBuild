@@ -136,6 +136,7 @@ public partial class Viewport
         var owner = MainViewport ?? this;
         if (owner != this) return owner.BakeCloth();
         if (IsClothBaking) throw new InvalidOperationException("A cloth bake is already running.");
+        if (IsWiggleBaking) throw new InvalidOperationException("Finish or cancel the wiggle bake before baking cloth.");
         _showClothBakePopup = true;
         ClothBakeCompletedFrames = ClothBakeTotalFrames = 0;
         var timeline = Timeline.Instance;
@@ -395,8 +396,8 @@ public partial class Viewport
                     var root = obj;
                     while (root.Parent != null) root = root.Parent;
                     if (!rootBones.TryGetValue(root, out var bones))
-                        rootBones.Add(root, bones = BuildBoneDictionary(root));
-                    UpdateBoneMatrices(mesh, source, bones);
+                        rootBones.Add(root, bones = MeshSkinning.BuildBoneDictionary(root));
+                    MeshSkinning.UpdateBoneMatrices(mesh, source, bones);
                 }
                 IReadOnlyList<vec3> vertices;
                 if (mesh.IsSkinned || mesh.HasShapeKeys)

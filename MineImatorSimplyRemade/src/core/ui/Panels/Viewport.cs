@@ -20,6 +20,7 @@ using Silk.NET.OpenGL;
 using StbImageSharp;
 using Buffer = System.Buffer;
 using Shader = MineImatorSimplyRemade.core.mdl.Shader;
+using static MineImatorSimplyRemade.core.graphics.MeshSkinning;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
@@ -2529,6 +2530,7 @@ public partial class Viewport : UiPanel
 
         // Gizmo interaction needs the current solved pose; input changes are solved again below.
         InverseKinematicsSolver.Evaluate(SceneObjects);
+        UpdateWiggle();
         // Outer window uses the default window padding so the tab bar, borders,
         // and title bar all behave normally when docked.
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0);
@@ -2809,6 +2811,7 @@ public partial class Viewport : UiPanel
         UpdateProceduralEffects(IsPreviewViewport ? MainViewport?.SceneObjects ?? SceneObjects : SceneObjects,
             GetTimelineEffectTimeSeconds());
         InverseKinematicsSolver.Evaluate(SceneObjects);
+        UpdateWiggle();
         UpdateCloth();
         PreviewViewport?.UpdateCameraTextureFeeds();
 
@@ -5857,58 +5860,6 @@ public partial class Viewport : UiPanel
     /// Builds a name → BoneSceneObject lookup for the entire hierarchy rooted at
     /// <paramref name="root"/>.
     /// </summary>
-    private static Dictionary<string, BoneSceneObject> BuildBoneDictionary(SceneObject root)
-    {
-        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.BoneLookup);
-        var dict = new Dictionary<string, BoneSceneObject>(StringComparer.OrdinalIgnoreCase);
-        CollectBones(root, dict);
-        return dict;
-    }
-
-    private static void CollectBones(SceneObject obj, Dictionary<string, BoneSceneObject> dict)
-    {
-        if (obj is BoneSceneObject bone && !string.IsNullOrEmpty(bone.BoneName))
-        {
-            dict.TryAdd(bone.BoneName, bone);
-        }
-
-        foreach (var child in obj.Children)
-            CollectBones(child, dict);
-    }
-
-    /// <summary>
-    /// Computes the current bone-matrix palette for a skinned mesh.
-    /// Each matrix is <c>meshWorldInverse * boneWorld * inverseBindMatrix</c>,
-    /// which deforms vertices in the mesh's local space so the regular model matrix
-    /// still applies the mesh node's own transform.
-    /// </summary>
-    private static void UpdateBoneMatrices(Mesh mesh, mat4 meshWorld, Dictionary<string, BoneSceneObject> boneDict)
-    {
-        using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.BoneMatrices);
-        if (mesh.BoneNames.Count == 0 || mesh.BoneInverseBindMatrices.Count == 0)
-            return;
-
-        mat4 meshWorldInverse = meshWorld.Inverse;
-        var matrices = new List<mat4>(mesh.BoneNames.Count);
-
-        for (int i = 0; i < mesh.BoneNames.Count; i++)
-        {
-            string name = mesh.BoneNames[i];
-            if (boneDict.TryGetValue(name, out var bone))
-            {
-                mat4 boneWorld = bone.GetWorldMatrix();
-                mat4 ibm = mesh.BoneInverseBindMatrices[i];
-                matrices.Add(meshWorldInverse * boneWorld * ibm);
-            }
-            else
-            {
-                matrices.Add(mat4.Identity);
-            }
-        }
-
-        mesh.BoneMatrices = matrices;
-    }
-
     /// <summary>
     /// Collects all <see cref="CameraSceneObject"/> instances from the entire scene.
     /// </summary>
@@ -7495,6 +7446,7 @@ public partial class Viewport : UiPanel
         }
         UpdateProceduralEffects(MainViewport.SceneObjects, GetTimelineEffectTimeSeconds());
         InverseKinematicsSolver.Evaluate(MainViewport.SceneObjects);
+        UpdateWiggle();
         UpdateCloth();
 
         // Render substages/counters aggregate across all views; feed time stays out of PreviewScene.
