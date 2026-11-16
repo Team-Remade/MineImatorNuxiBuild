@@ -1418,7 +1418,7 @@ public class SceneObject
     /// </summary>
     public mat4 GetLocalMatrix()
     {
-        GetTimelineTransform(out mat4 modelTransform, out vec3 position, out mat4 rotation);
+        GetEvaluatedTimelineTransform(out mat4 modelTransform, out vec3 position, out mat4 rotation);
         return modelTransform * mat4.Translate(position) * mat4.Scale(Scale) * rotation
             * mat4.Translate(_pivotOffset);
     }
@@ -1472,6 +1472,24 @@ public class SceneObject
 
     public List<CopyConstraint> CopyConstraints { get; set; } = new();
     public List<SceneModifier> Modifiers { get; set; } = new();
+    private vec3 _shakePosition, _shakeRotation;
+    internal vec3 EvaluatedShakeBend { get; private set; }
+
+    internal void SetEvaluatedShake(vec3 position, vec3 rotation, vec3 bend)
+    {
+        _shakePosition = position;
+        _shakeRotation = rotation;
+        EvaluatedShakeBend = bend;
+        InvalidateRenderEvaluation();
+    }
+
+    private void GetEvaluatedTimelineTransform(out mat4 modelTransform, out vec3 position, out mat4 rotation)
+    {
+        GetTimelineTransform(out modelTransform, out position, out rotation);
+        position += _shakePosition;
+        if (_shakeRotation != vec3.Zero)
+            rotation *= mat4.RotateZ(_shakeRotation.z) * mat4.RotateY(_shakeRotation.y) * mat4.RotateX(_shakeRotation.x);
+    }
     public WiggleRigSettings WiggleRig { get; set; } = new();
     public WiggleColliderSettings WiggleCollider { get; set; } = new();
     public SceneModifier? FollowPathModifier => Modifiers.FirstOrDefault(modifier => modifier.Type == SceneModifierType.FollowPath);
@@ -1540,7 +1558,7 @@ public class SceneObject
     private mat4 ComputeWorldMatrixNoPivot(bool captureRotationFrame,
         out mat4 rotationPrefix, out mat4 authoredRotation, out mat4 rotationSuffix)
     {
-        GetTimelineTransform(out mat4 modelTransform, out vec3 position, out mat4 rotation);
+        GetEvaluatedTimelineTransform(out mat4 modelTransform, out vec3 position, out mat4 rotation);
         authoredRotation = rotation;
         rotationPrefix = mat4.Identity;
         rotationSuffix = mat4.Identity;

@@ -167,6 +167,21 @@ timeline interpolation and all three ImGui percentage sliders. Graphics checks
 require OpenGL 3.3 and cover displacement, strength/speed/scale, deterministic
 seeking, frozen animation, alpha, stacking, previews and PNG export.
 
+### Shake modifier regression checks
+
+```powershell
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --modifiers
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shake-graphics
+```
+
+Modifier CPU/ImGui checks cover deterministic transform and bend sampling,
+camera/child/Array propagation, model bend limits, keyframe interpolation and
+influence, percentage controls, persistence, duplication, undo and dirty detection.
+The graphics selector requires OpenGL 3.3 and verifies changed position, rotation
+and bend pixels, exact backward-seek repeatability and disabled-pose restoration.
+Shake is evaluated before constraints and physics, without changing authored
+transforms or bends. Its automatic pattern is keyed by the saved modifier ID.
+
 ### Wiggle bone regression checks
 
 ```powershell

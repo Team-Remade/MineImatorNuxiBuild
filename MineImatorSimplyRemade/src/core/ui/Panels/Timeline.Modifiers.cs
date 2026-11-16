@@ -16,6 +16,23 @@ public partial class Timeline
         ("scale.x", "Scale X"), ("scale.y", "Scale Y"), ("scale.z", "Scale Z"),
         ("target", "text.path.target")
     ];
+    internal static readonly (string Channel, string Label)[] ShakeChannels =
+    [
+        ("enabled", "Enabled"),
+        ("shake.position.enabled", "text.shake.position"), ("shake.rotation.enabled", "text.shake.rotation"),
+        ("shake.bend.enabled", "text.shake.bend"),
+        ("shake.position_power", "text.shake.position_power"), ("shake.rotation_power", "text.shake.rotation_power"),
+        ("shake.bend_power", "text.shake.bend_power"), ("shake.intensity", "text.shake.intensity"),
+        ("shake.speed", "text.shake.speed"), ("shake.offset", "text.shake.offset"),
+        ("shake.automatic.enabled", "text.shake.automatic"), ("shake.influence", "text.shake.influence")
+    ];
+
+    private static IEnumerable<(string Channel, string Label)> ModifierChannels(SceneModifierType type) => type switch
+    {
+        SceneModifierType.Array => ArrayChannels,
+        SceneModifierType.Shake => ShakeChannels,
+        _ => [("enabled", "Enabled")]
+    };
 
     internal static bool IsModifierReferencePath(string path) =>
         path.StartsWith("modifier.", StringComparison.Ordinal) && path.EndsWith(".target", StringComparison.Ordinal);
@@ -33,8 +50,7 @@ public partial class Timeline
         string[] parts = path.Split('.', 3);
         if (parts.Length != 3) return false;
         var found = obj.Modifiers.FirstOrDefault(entry => entry.Id == parts[1]);
-        if (found == null || !(found.Type != SceneModifierType.Array
-                ? parts[2] == "enabled" : ArrayChannels.Any(entry => entry.Channel == parts[2]))) return false;
+        if (found == null || !ModifierChannels(found.Type).Any(entry => entry.Channel == parts[2])) return false;
         modifier = found;
         channel = parts[2];
         return true;
@@ -49,10 +65,10 @@ public partial class Timeline
             {
                 SceneModifierType.Array => Localization.T("text.modifier.array"),
                 SceneModifierType.Cloth => Localization.T("text.cloth.title"),
+                SceneModifierType.Shake => Localization.T("text.shake.title"),
                 _ => Localization.T("text.path.follow")
             };
-            IEnumerable<(string Channel, string Label)> channels = modifier.Type == SceneModifierType.Array
-                ? ArrayChannels : [("enabled", "Enabled")];
+            var channels = ModifierChannels(modifier.Type);
             foreach (var channel in channels)
                 yield return ($"modifier.{modifier.Id}.{channel.Channel}", $"{label} {i + 1}: {(Localization.IsTranslationKey(channel.Label) ? Localization.T(channel.Label) : Localization.DisplayText(channel.Label))}");
         }
@@ -70,6 +86,17 @@ public partial class Timeline
         "rotation.x" => modifier.RotationX, "rotation.y" => modifier.RotationY, "rotation.z" => modifier.RotationZ,
         "scale.x" => modifier.ScaleX, "scale.y" => modifier.ScaleY, "scale.z" => modifier.ScaleZ,
         "target" => modifier.PathObjectId,
+        "shake.position.enabled" => modifier.Shake.PositionEnabled ? 1f : 0f,
+        "shake.rotation.enabled" => modifier.Shake.RotationEnabled ? 1f : 0f,
+        "shake.bend.enabled" => modifier.Shake.BendEnabled ? 1f : 0f,
+        "shake.position_power" => modifier.Shake.PositionPower,
+        "shake.rotation_power" => modifier.Shake.RotationPower,
+        "shake.bend_power" => modifier.Shake.BendPower,
+        "shake.intensity" => modifier.Shake.Intensity,
+        "shake.speed" => modifier.Shake.Speed,
+        "shake.offset" => modifier.Shake.Offset,
+        "shake.automatic.enabled" => modifier.Shake.AutomaticOffset ? 1f : 0f,
+        "shake.influence" => modifier.Shake.KeyframeInfluence,
         _ => throw new InvalidDataException($"Unknown modifier channel: {channel}.")
     };
 
@@ -103,6 +130,17 @@ public partial class Timeline
                 "rotation.z" => modifier with { RotationZ = value },
                 "scale.x" => modifier with { ScaleX = value }, "scale.y" => modifier with { ScaleY = value },
                 "scale.z" => modifier with { ScaleZ = value },
+                "shake.position.enabled" => modifier with { Shake = modifier.Shake with { PositionEnabled = value >= 0.5f } },
+                "shake.rotation.enabled" => modifier with { Shake = modifier.Shake with { RotationEnabled = value >= 0.5f } },
+                "shake.bend.enabled" => modifier with { Shake = modifier.Shake with { BendEnabled = value >= 0.5f } },
+                "shake.position_power" => modifier with { Shake = modifier.Shake with { PositionPower = value } },
+                "shake.rotation_power" => modifier with { Shake = modifier.Shake with { RotationPower = value } },
+                "shake.bend_power" => modifier with { Shake = modifier.Shake with { BendPower = value } },
+                "shake.intensity" => modifier with { Shake = modifier.Shake with { Intensity = value } },
+                "shake.speed" => modifier with { Shake = modifier.Shake with { Speed = value } },
+                "shake.offset" => modifier with { Shake = modifier.Shake with { Offset = value } },
+                "shake.automatic.enabled" => modifier with { Shake = modifier.Shake with { AutomaticOffset = value >= 0.5f } },
+                "shake.influence" => modifier with { Shake = modifier.Shake with { KeyframeInfluence = value } },
                 _ => throw new InvalidDataException($"Invalid modifier channel or value: {channel}.")
             };
         }

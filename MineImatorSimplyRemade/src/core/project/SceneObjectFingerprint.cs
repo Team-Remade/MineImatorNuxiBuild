@@ -119,6 +119,14 @@ internal static class SceneObjectFingerprint
             hash.Add(modifier.ScaleZ);
             hash.Add(modifier.PathObjectId);
             hash.Add(modifier.PathOffset);
+            if (modifier.Type == SceneModifierType.Shake)
+            {
+                var shake = modifier.Shake;
+                hash.Add(shake.PositionEnabled); hash.Add(shake.RotationEnabled); hash.Add(shake.BendEnabled);
+                hash.Add(shake.PositionPower); hash.Add(shake.RotationPower); hash.Add(shake.BendPower);
+                hash.Add(shake.Intensity); hash.Add(shake.Speed); hash.Add(shake.Offset);
+                hash.Add(shake.AutomaticOffset); hash.Add(shake.KeyframeInfluence);
+            }
             if (modifier.Type == SceneModifierType.Cloth)
             {
                 var cloth = modifier.Cloth;

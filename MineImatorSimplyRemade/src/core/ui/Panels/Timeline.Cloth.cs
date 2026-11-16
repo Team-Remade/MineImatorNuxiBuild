@@ -40,7 +40,7 @@ public partial class Timeline
         {
             _currentFrame = frame;
             ApplyKeyframeChannels(GeometryChannel, owners);
-            if (Viewport != null) InverseKinematicsSolver.Evaluate(Viewport.SceneObjects);
+            if (Viewport != null) InverseKinematicsSolver.Evaluate(Viewport.SceneObjects, _currentFrame, Framerate);
             if (includeWiggle) Viewport?.UpdateWiggle(requireBake: true);
             sample();
         }
@@ -48,7 +48,7 @@ public partial class Timeline
         {
             _currentFrame = previous;
             foreach (var (owner, path, value) in saved) SetPropertyValue(owner, path, value);
-            if (Viewport != null) InverseKinematicsSolver.Evaluate(Viewport.SceneObjects);
+            if (Viewport != null) InverseKinematicsSolver.Evaluate(Viewport.SceneObjects, _currentFrame, Framerate);
         }
     }
 }

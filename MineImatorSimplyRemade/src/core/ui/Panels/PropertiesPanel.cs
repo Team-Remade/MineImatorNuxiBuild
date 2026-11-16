@@ -7708,6 +7708,8 @@ public partial class PropertiesPanel : UiPanel
         if (TimelinePanel.TryGetModifier(obj, path, out var modifier, out string modifierChannel))
         {
             object current = TimelinePanel.GetModifierValue(defaultValue ? new SceneModifier { Type = modifier.Type } : modifier, modifierChannel);
+            if (modifierChannel is "shake.intensity" or "shake.speed" or "shake.influence")
+                return Convert.ToSingle(current, CultureInfo.InvariantCulture) * 100f;
             return modifierChannel is "distance" or "radial.radius" ? Convert.ToSingle(current, CultureInfo.InvariantCulture) * 16f : current;
         }
         int axis = path.EndsWith(".y", StringComparison.Ordinal) ? 1 : path.EndsWith(".z", StringComparison.Ordinal) ? 2 : 0;
@@ -7836,6 +7838,9 @@ public partial class PropertiesPanel : UiPanel
                         : copy.Type is CopyConstraintType.Rotation or CopyConstraintType.LookAt ? 180f / MathF.PI : 1f;
                     stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / factor;
                 }
+                else if (TimelinePanel.TryGetModifier(obj, path, out _, out string shakeChannel) &&
+                    shakeChannel is "shake.intensity" or "shake.speed" or "shake.influence")
+                    stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / 100f;
                 else if (path == "path_follow.offset" || path.StartsWith("modifier.", StringComparison.Ordinal) && (path.EndsWith(".distance", StringComparison.Ordinal) || path.EndsWith(".radial.radius", StringComparison.Ordinal)) || path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal))
                     stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / 16f;
                 else if (path.StartsWith("scale.", StringComparison.Ordinal))
@@ -7974,6 +7979,8 @@ public partial class PropertiesPanel : UiPanel
                     if (!TimelinePanel.TryGetModifier(_currentObject, paths[i], out var entry, out string channel) || entry.Id != modifier.Id)
                         throw new InvalidDataException("Modifier value groups must belong to one modifier.");
                     object stored = channel is "distance" or "radial.radius" ? Convert.ToSingle(values[i], CultureInfo.InvariantCulture) / 16f : values[i];
+                    if (channel is "shake.intensity" or "shake.speed" or "shake.influence")
+                        stored = Convert.ToSingle(values[i], CultureInfo.InvariantCulture) / 100f;
                     updated = TimelinePanel.WithModifierValue(updated, channel, stored);
                 }
                 _currentObject.Modifiers[_currentObject.Modifiers.FindIndex(entry => entry.Id == modifier.Id)] = updated.Validated();

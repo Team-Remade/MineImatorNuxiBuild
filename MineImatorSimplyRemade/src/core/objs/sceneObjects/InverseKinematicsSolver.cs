@@ -25,8 +25,10 @@ public static class InverseKinematicsSolver
         settings.GetBoneSettings(bone.ObjectId);
 
     /// <summary>Rebuilds evaluated IK from the current authored/keyframed pose on every call.</summary>
-    public static void Evaluate(IEnumerable<SceneObject> roots)
+    public static void Evaluate(IEnumerable<SceneObject> roots, int frame = 0, float framerate = 30f)
     {
+        if (frame < 0 || !float.IsFinite(framerate) || framerate <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(frame), "Pose evaluation requires a non-negative frame and positive finite frame rate.");
         using var evaluation = SceneObject.BeginRenderEvaluation();
         var objects = new List<SceneObject>();
         var visited = new HashSet<SceneObject>();
@@ -43,6 +45,7 @@ public static class InverseKinematicsSolver
             if (obj is BoneSceneObject wiggleBone) wiggleBone.SetEvaluatedWiggleWorld(null);
             obj.SetEvaluatedCopyTransform(null, vec3.Ones);
             obj.SetEvaluatedPathFrame(null);
+            ShakeEvaluation.Evaluate(obj, frame, framerate);
             foreach (var constraint in obj.CopyConstraints)
             {
                 constraint.EvaluatedInput = null;

@@ -596,6 +596,7 @@ public class MiBoneSceneObject : BoneSceneObject
 
         var bp = BendParameters.Value;
         vec3 editable = StoredToEditable(bp.Angle, bp);
+        if (includePose) editable += EvaluatedShakeBend;
 
         MiBoneSceneObject? parentBone = FindParentBendBone();
         if (bp.InheritBend && parentBone != null)

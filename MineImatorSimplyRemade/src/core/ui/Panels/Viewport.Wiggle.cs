@@ -279,7 +279,7 @@ public partial class Viewport
             if (Timeline.Instance is { } timeline) timeline.SamplePhysicsFrame(job.Frame, SampleWind, includeWiggle: false);
             else
             {
-                InverseKinematicsSolver.Evaluate(SceneObjects);
+                InverseKinematicsSolver.Evaluate(SceneObjects, job.Frame, job.Bakes[0].Framerate);
                 SampleWind();
                 InverseKinematicsSolver.Evaluate(SceneObjects);
             }

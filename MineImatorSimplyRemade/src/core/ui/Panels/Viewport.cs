@@ -2549,7 +2549,7 @@ public partial class Viewport : UiPanel
             preview.StopFreeFly();
 
         // Gizmo interaction needs the current solved pose; input changes are solved again below.
-        InverseKinematicsSolver.Evaluate(SceneObjects);
+        InverseKinematicsSolver.Evaluate(SceneObjects, Timeline.Instance?.CurrentFrame ?? 0, Timeline.Instance?.Framerate ?? 30f);
         UpdateWiggle();
         // Outer window uses the default window padding so the tab bar, borders,
         // and title bar all behave normally when docked.
@@ -2830,7 +2830,7 @@ public partial class Viewport : UiPanel
         // Input and simulation can move targets. Every view must use that same updated pose.
         UpdateProceduralEffects(IsPreviewViewport ? MainViewport?.SceneObjects ?? SceneObjects : SceneObjects,
             GetTimelineEffectTimeSeconds());
-        InverseKinematicsSolver.Evaluate(SceneObjects);
+        InverseKinematicsSolver.Evaluate(SceneObjects, Timeline.Instance?.CurrentFrame ?? 0, Timeline.Instance?.Framerate ?? 30f);
         UpdateWiggle();
         UpdateCloth();
         PreviewViewport?.UpdateCameraTextureFeeds();
@@ -7475,7 +7475,7 @@ public partial class Viewport : UiPanel
             UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
         }
         UpdateProceduralEffects(MainViewport.SceneObjects, GetTimelineEffectTimeSeconds());
-        InverseKinematicsSolver.Evaluate(MainViewport.SceneObjects);
+        InverseKinematicsSolver.Evaluate(MainViewport.SceneObjects, Timeline.Instance?.CurrentFrame ?? 0, Timeline.Instance?.Framerate ?? 30f);
         UpdateWiggle();
         UpdateCloth();
 

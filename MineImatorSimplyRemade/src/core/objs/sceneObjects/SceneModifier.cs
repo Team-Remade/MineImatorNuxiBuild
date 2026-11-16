@@ -4,7 +4,7 @@ using MineImatorSimplyRemade.core.project;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
-public enum SceneModifierType { Array, FollowPath, Cloth }
+public enum SceneModifierType { Array, FollowPath, Cloth, Shake }
 public enum ArrayAxis { X, Y, Z }
 
 public sealed record SceneModifier
@@ -30,12 +30,19 @@ public sealed record SceneModifier
     public float PathOffset { get; init; }
     public ClothSettings Cloth { get; init; } = new();
     public ClothBake? ClothBake { get; init; }
+    public ShakeSettings Shake { get; init; } = new();
 
     public SceneModifier Validated()
     {
         if (!Guid.TryParseExact(Id, "N", out _) || !Enum.IsDefined(Type) || PathObjectId == null || !float.IsFinite(PathOffset))
             throw new InvalidDataException("Modifiers require a valid type, path reference and finite path offset.");
         if (Type == SceneModifierType.FollowPath) return this;
+        if (Type == SceneModifierType.Shake)
+        {
+            if (Shake == null) throw new InvalidDataException("Shake settings are missing.");
+            Shake.Validate();
+            return this;
+        }
         if (Type == SceneModifierType.Cloth)
         {
             if (Cloth == null) throw new InvalidDataException("Cloth settings are missing.");

@@ -23,6 +23,12 @@ public partial class PropertiesPanel
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(Localization.T("text.modifier.add"));
         if (ImGui.BeginPopup("##addMenu"))
         {
+            if (ImGui.MenuItem(Localization.Label("text.shake.title", "Shake")))
+            {
+                owner.Modifiers.Add(new SceneModifier { Type = SceneModifierType.Shake });
+                Timeline?.RefreshFromScene();
+                ProjectManager.Instance.SetDirty(true);
+            }
             if (owner is not CameraSceneObject and not LightSceneObject &&
                 ImGui.MenuItem(Localization.Label("text.modifier.array", "Array")))
             {
@@ -67,6 +73,7 @@ public partial class PropertiesPanel
                 {
                     SceneModifierType.FollowPath => Localization.Label("text.path.follow", "Follow Path"),
                     SceneModifierType.Cloth => Localization.Label("text.cloth.title", "Cloth"),
+                    SceneModifierType.Shake => Localization.Label("text.shake.title", "Shake"),
                     _ => Localization.Label("text.modifier.array", "Array")
                 };
                 if (ImGui.TreeNodeEx(label, ImGuiTreeNodeFlags.DefaultOpen))
@@ -95,6 +102,8 @@ public partial class PropertiesPanel
                     }
                     else if (modifier.Type == SceneModifierType.Cloth)
                         DrawClothModifier(owner, i);
+                    else if (modifier.Type == SceneModifierType.Shake)
+                        DrawShakeModifier(owner, i);
                     else
                     {
                         int count = modifier.Count, axis = (int)modifier.Axis;
@@ -196,6 +205,7 @@ public partial class PropertiesPanel
                 }
                 ImGui.PopID();
             }
+
         }
         ImGui.EndChild();
         ImGui.PopStyleVar(2);
@@ -240,5 +250,87 @@ public partial class PropertiesPanel
             ProjectManager.Instance.SetDirty(true);
         }
         ImGui.PopID();
+    }
+
+    private void DrawShakeModifier(SceneObject owner, int index)
+    {
+        var modifier = owner.Modifiers[index];
+        string prefix = $"modifier.{modifier.Id}";
+        bool enabled = modifier.Enabled;
+        var settings = modifier.Shake;
+        bool position = settings.PositionEnabled, rotation = settings.RotationEnabled, bend = settings.BendEnabled;
+        bool automatic = settings.AutomaticOffset;
+        float positionPower = settings.PositionPower, rotationPower = settings.RotationPower, bendPower = settings.BendPower;
+        float intensity = settings.Intensity * 100f, speed = settings.Speed * 100f;
+        float offset = settings.Offset, influence = settings.KeyframeInfluence * 100f;
+        bool changed = ImGui.Checkbox(Localization.DisplayLabel("Enabled"), ref enabled);
+        RegisterPropertyContext($"{prefix}.enabled");
+        changed |= ImGui.Checkbox(Localization.Label("text.shake.position", "Shake Position"), ref position);
+        RegisterPropertyContext($"{prefix}.shake.position.enabled");
+        changed |= ImGui.Checkbox(Localization.Label("text.shake.rotation", "Shake Rotation"), ref rotation);
+        RegisterPropertyContext($"{prefix}.shake.rotation.enabled");
+        bool hasBend = owner is MiBoneSceneObject { BendParameters: not null };
+        if (hasBend)
+        {
+            changed |= ImGui.Checkbox(Localization.Label("text.shake.bend", "Shake Bend"), ref bend);
+            RegisterPropertyContext($"{prefix}.shake.bend.enabled");
+        }
+        changed |= ImGui.DragFloat(Localization.Label("text.shake.position_power", "Position Power"), ref positionPower, 0.01f, 0f, 5f, "%.2fx");
+        RegisterPropertyContext($"{prefix}.shake.position_power");
+        changed |= ImGui.DragFloat(Localization.Label("text.shake.rotation_power", "Rotation Power"), ref rotationPower, 0.01f, 0f, 5f, "%.2fx");
+        RegisterPropertyContext($"{prefix}.shake.rotation_power");
+        if (hasBend)
+        {
+            changed |= ImGui.DragFloat(Localization.Label("text.shake.bend_power", "Bend Power"), ref bendPower, 0.01f, 0f, 5f, "%.2fx");
+            RegisterPropertyContext($"{prefix}.shake.bend_power");
+        }
+        changed |= ImGui.DragFloat(Localization.Label("text.shake.intensity", "Intensity"), ref intensity, 0.1f, 0f, float.MaxValue, "%.1f%%");
+        RegisterPropertyContext($"{prefix}.shake.intensity");
+        changed |= ImGui.DragFloat(Localization.Label("text.shake.speed", "Speed"), ref speed, 0.1f, 0f, float.MaxValue, "%.1f%%");
+        RegisterPropertyContext($"{prefix}.shake.speed");
+        changed |= ImGui.DragFloat(Localization.Label("text.shake.offset", "Offset"), ref offset, 0.1f);
+        RegisterPropertyContext($"{prefix}.shake.offset");
+        changed |= ImGui.Checkbox(Localization.Label("text.shake.automatic", "Automatic Offset"), ref automatic);
+        RegisterPropertyContext($"{prefix}.shake.automatic.enabled");
+        changed |= ImGui.DragFloat(Localization.Label("text.shake.influence", "Keyframe Influence"), ref influence, 1f, -100f, 100f, "%.1f%%");
+        RegisterPropertyContext($"{prefix}.shake.influence");
+        if (changed)
+        {
+            try
+            {
+                var updated = (modifier with
+                {
+                    Enabled = enabled,
+                    Shake = settings with
+                    {
+                        PositionEnabled = position,
+                        RotationEnabled = rotation,
+                        BendEnabled = bend,
+                        PositionPower = positionPower,
+                        RotationPower = rotationPower,
+                        BendPower = bendPower,
+                        Intensity = intensity / 100f,
+                        Speed = speed / 100f,
+                        Offset = offset,
+                        AutomaticOffset = automatic,
+                        KeyframeInfluence = influence / 100f
+                    }
+                }).Validated();
+                owner.Modifiers[index] = updated;
+                foreach (var channel in TimelinePanel.ShakeChannels)
+                    if (!Equals(TimelinePanel.GetModifierValue(modifier, channel.Channel),
+                            TimelinePanel.GetModifierValue(updated, channel.Channel)))
+                        Timeline?.RecordAutoKeyframe(owner, $"{prefix}.{channel.Channel}");
+                _modifierError = null;
+                ProjectManager.Instance.SetDirty(true);
+            }
+            catch (InvalidDataException ex)
+            {
+                _modifierErrorOwner = owner;
+                _modifierError = ex.Message;
+                Console.Error.WriteLine($"Shake modifier edit rejected: {ex.Message}");
+            }
+        }
+        UiText.Wrapped(Localization.T("text.shake.help"));
     }
 }

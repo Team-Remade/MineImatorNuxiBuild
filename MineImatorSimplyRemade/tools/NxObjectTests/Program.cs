@@ -501,6 +501,8 @@ internal static partial class Program
             ("Modifier reversible combination, nested ownership, inheritance boundaries and picking", ModifierCombination),
             ("Modifier combination project/archive/library persistence, duplication and undo/redo", ModifierCombinationPersistence),
             ("Modifier context values, auto keys, interpolation, identity and persistence", ModifierKeyframes),
+            ("Modifier shake deterministic transforms, bend limits and restoration", ModifierShake),
+            ("Modifier shake keyframes, persistence, duplication and dirty detection", ModifierShakePersistence),
             ("Modifier ImGui context menu copy, paste, reset and manual keyframes", ModifierContextInteraction),
             ("Cloth fixed/animated pins, welded seams and UV duplicates", ClothPinsAndSeams),
             ("Cloth unequal edge pools, interpolation, reverse order and pins", ClothUnequalSeams),
@@ -641,6 +643,8 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Array", StringComparison.Ordinal) ||
                 test.Name.StartsWith("Follow Path modifier", StringComparison.Ordinal) ||
                 test.Name.StartsWith("Modifier", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--shake-graphics", StringComparer.Ordinal))
+            tests = [("Modifier shake position, rotation and bend pixels, seeking and restoration", ModifierShakeGraphics)];
         if (args.Contains("--performance", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Project performance", StringComparison.Ordinal) ||
                 test.Name.StartsWith("Particle project performance", StringComparison.Ordinal) ||

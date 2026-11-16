@@ -13,6 +13,263 @@ using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 internal static partial class Program
 {
+    private static void ModifierShake(Fixture f)
+    {
+        var obj = new SceneObject { Name = "Shake", PivotOffset = vec3.Zero };
+        obj.AssignObjectId();
+        obj.SetLocalPosition(new(2, 3, 4));
+        var modifier = new SceneModifier
+        {
+            Type = SceneModifierType.Shake,
+            Shake = new() { PositionPower = 5, Intensity = 4, AutomaticOffset = false }
+        };
+        obj.Modifiers = [modifier];
+        var child = new SceneObject { PivotOffset = vec3.Zero, InheritModifiers = false };
+        child.SetLocalPosition(vec3.UnitY);
+        obj.AddChild(child);
+        var authoredPosition = obj.Position;
+        var authoredRotation = obj.Rotation;
+        mat4 Pose(int frame)
+        {
+            InverseKinematicsSolver.Evaluate([obj], frame, 30);
+            return obj.GetWorldMatrixNoPivot();
+        }
+        var pose = Pose(17);
+        Check((obj.GetWorldPosition() - authoredPosition).Length > 0.01f, "Shake changes evaluated position");
+        Near(obj.GetWorldPosition() + vec3.UnitY, child.GetWorldPosition(), "Children follow shake even without geometry modifier inheritance");
+        Near(authoredPosition, obj.Position, "Shake preserves authored position");
+        Near(authoredRotation, obj.Rotation, "Shake preserves authored rotation");
+        Near(1, (pose * new vec4(vec3.UnitX, 0)).xyz.Length, "Shake does not alter scale");
+        Pose(110);
+        Equal(pose, Pose(17), "Backward seek reproduces exact shake matrix");
+        Equal(pose, Pose(17), "Repeated evaluation never accumulates shake");
+        InverseKinematicsSolver.Evaluate([obj], 34, 60);
+        Equal(pose, obj.GetWorldMatrixNoPivot(), "Shake follows seconds at different frame rates");
+        obj.Modifiers[0] = modifier with { Shake = modifier.Shake with { Speed = 0 } };
+        var frozen = Pose(0);
+        Equal(frozen, Pose(170), "Zero speed freezes the pattern");
+        obj.Modifiers[0] = modifier with { Shake = modifier.Shake with { Offset = 4.5f } };
+        Check(Pose(17) != pose, "Manual offset changes the sampled pattern");
+        var other = new SceneObject { PivotOffset = vec3.Zero };
+        other.SetLocalPosition(authoredPosition);
+        other.Modifiers = [modifier with { Id = Guid.NewGuid().ToString("N") }];
+        obj.Modifiers[0] = modifier;
+        InverseKinematicsSolver.Evaluate([obj, other], 17, 30);
+        Equal(obj.GetWorldMatrixNoPivot(), other.GetWorldMatrixNoPivot(), "Manual matching settings synchronize objects");
+        obj.Modifiers[0] = modifier with { Shake = modifier.Shake with { AutomaticOffset = true } };
+        other.Modifiers[0] = other.Modifiers[0] with { Shake = modifier.Shake with { AutomaticOffset = true } };
+        InverseKinematicsSolver.Evaluate([obj, other], 17, 30);
+        Check(obj.GetWorldMatrixNoPivot() != other.GetWorldMatrixNoPivot(), "Automatic offset separates modifiers");
+        obj.Modifiers[0] = modifier with { Shake = modifier.Shake with { PositionEnabled = false, RotationEnabled = true } };
+        Check(Pose(17) != mat4.Translate(authoredPosition), "Rotation shake changes evaluated orientation");
+        Near(authoredPosition, obj.GetWorldPosition(), "Rotation-only shake preserves the origin");
+        obj.Modifiers[0] = modifier with { Enabled = false };
+        Equal(mat4.Translate(authoredPosition), Pose(17), "Disabling shake restores the exact authored pose");
+        obj.Modifiers[0] = modifier with { Shake = modifier.Shake with { Intensity = 0 } };
+        Equal(mat4.Translate(authoredPosition), Pose(17), "Zero intensity restores the pose");
+        obj.Modifiers.Clear();
+        Equal(mat4.Translate(authoredPosition), Pose(17), "Removing shake clears evaluated offsets");
+
+        obj.Keyframes["position.x"] =
+            [new() { Frame = 0, Value = 2f }, new() { Frame = 30, Value = 2f }];
+        obj.Modifiers = [modifier with { Shake = modifier.Shake with { KeyframeInfluence = 1 } }];
+        Near(authoredPosition, new vec3(Pose(0).m30, Pose(0).m31, Pose(0).m32), "Positive influence suppresses shake at keys");
+        Check(Pose(15) != mat4.Translate(authoredPosition), "Positive influence permits shake between keys");
+        Equal(mat4.Translate(authoredPosition), Pose(30), "Positive influence suppresses shake at final key");
+        obj.Modifiers[0] = modifier with { Shake = modifier.Shake with { KeyframeInfluence = -1 } };
+        Equal(mat4.Translate(authoredPosition), Pose(15), "Negative influence suppresses shake halfway between keys");
+
+        var bone = WiggleMiBone();
+        var authoredBend = bone.GetEditableBendAngle();
+        bone.Modifiers = [modifier with
+        {
+            Shake = modifier.Shake with { PositionEnabled = false, BendEnabled = true, BendPower = 5, Intensity = 100 }
+        }];
+        InverseKinematicsSolver.Evaluate([bone], 17);
+        var bend = bone.GetEffectiveBendParameters()!.Value.Angle;
+        Check(bend.x != authoredBend.x, "Bend shake changes the evaluated bend");
+        Check(MathF.Abs(bend.x) <= 80 && bend.y == 0 && bend.z == 0, "Bend shake respects model axes and limits");
+        Near(authoredBend, bone.GetEditableBendAngle(), "Bend shake preserves authored editable angles");
+        bone.Modifiers.Clear();
+        InverseKinematicsSolver.Evaluate([bone], 17);
+        Near(authoredBend, bone.GetEffectiveBendParameters()!.Value.Angle, "Removing bend shake restores the authored bend");
+
+        var camera = new CameraSceneObject { PivotOffset = vec3.Zero, Modifiers = [modifier] };
+        InverseKinematicsSolver.Evaluate([camera], 17);
+        camera.SyncCameraToTransform();
+        Near(camera.GetWorldPosition(), camera.ViewCamera.Position, "Scene cameras use the shaken eye position");
+        Check(camera.ViewCamera.Position.Length > 0.01f, "Camera shake reaches the render camera");
+        obj.Modifiers = [modifier, new() { Count = 3 }];
+        InverseKinematicsSolver.Evaluate([obj], 17);
+        var instances = new ModifierEvaluation([obj]);
+        Equal(3, instances.GetDeltas(obj).Count, "Shake composes with Array without generating extra instances");
+        Near(obj.GetWorldPosition() + vec3.UnitX, InstanceOrigin(instances, obj, 1), "Array copies retain evaluated shake");
+
+        foreach (var invalid in new[]
+        {
+            modifier.Shake with { Speed = float.NaN }, modifier.Shake with { Speed = -1 },
+            modifier.Shake with { Intensity = float.PositiveInfinity }, modifier.Shake with { PositionPower = 6 },
+            modifier.Shake with { Offset = float.NaN }, modifier.Shake with { KeyframeInfluence = 1.1f }
+        })
+        {
+            bool rejected = false;
+            try { (modifier with { Shake = invalid }).Validated(); }
+            catch (InvalidDataException) { rejected = true; }
+            Check(rejected, "Invalid shake settings rejected explicitly");
+        }
+    }
+
+    private static void ModifierShakePersistence(Fixture f)
+    {
+        var obj = new SceneObject { Name = "Saved shake", PivotOffset = vec3.Zero };
+        obj.AssignObjectId();
+        var modifier = new SceneModifier
+        {
+            Type = SceneModifierType.Shake,
+            Shake = new() { RotationEnabled = true, BendEnabled = true, PositionPower = 2, RotationPower = 3,
+                BendPower = 4, Intensity = 1.5f, Speed = 2.5f, Offset = -12.5f, KeyframeInfluence = 0.5f }
+        };
+        obj.Modifiers = [modifier];
+        var viewport = new Viewport();
+        viewport.SceneObjects.Add(obj);
+        var timeline = new Timeline { Viewport = viewport };
+        var panel = new PropertiesPanel { Viewport = viewport, Timeline = timeline };
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        typeof(PropertiesPanel).GetField("_currentObject", flags)!.SetValue(panel, obj);
+        var contextGet = typeof(PropertiesPanel).GetMethod("GetContextPropertyValue", flags)!;
+        var contextSet = typeof(PropertiesPanel).GetMethod("ApplyContextPropertyValues", flags)!;
+        string prefix = $"modifier.{modifier.Id}";
+        void Seek(int frame)
+        {
+            typeof(Timeline).GetField("_currentFrame", flags)!.SetValue(timeline, frame);
+            typeof(Timeline).GetMethod("ApplyKeyframesAtCurrentFrame", flags)!.Invoke(timeline, null);
+        }
+        Equal(150f, contextGet.Invoke(panel, [$"{prefix}.shake.intensity", false]), "Shake context shows percentages");
+        contextSet.Invoke(panel, [new[] { $"{prefix}.shake.speed" }, new object[] { 175f }, false]);
+        Near(1.75f, obj.Modifiers[0].Shake.Speed, "Shake context paste converts percentages");
+        foreach (var channel in Timeline.ShakeChannels)
+            timeline.AddKeyframeForProperty(obj, $"{prefix}.{channel.Channel}", 0);
+        obj.Modifiers[0] = obj.Modifiers[0] with
+        {
+            Enabled = false,
+            Shake = obj.Modifiers[0].Shake with { Intensity = 2.5f, PositionEnabled = false, AutomaticOffset = false }
+        };
+        foreach (var channel in Timeline.ShakeChannels)
+            timeline.AddKeyframeForProperty(obj, $"{prefix}.{channel.Channel}", 10);
+        Seek(5);
+        Near(2, obj.Modifiers[0].Shake.Intensity, "Shake intensity interpolates");
+        Check(obj.Modifiers[0].Enabled && obj.Modifiers[0].Shake.PositionEnabled && obj.Modifiers[0].Shake.AutomaticOffset,
+            "Shake toggles remain discrete between keys");
+        Seek(10);
+        Check(!obj.Modifiers[0].Enabled && !obj.Modifiers[0].Shake.PositionEnabled && !obj.Modifiers[0].Shake.AutomaticOffset,
+            "Shake toggles switch at the exact key");
+        Seek(5);
+        InverseKinematicsSolver.Evaluate([obj], 5);
+        var pose = obj.GetWorldMatrixNoPivot();
+        var (manifest, _) = f.Roundtrip(obj);
+        Equal(obj.Modifiers[0], manifest.Root.Modifiers![0], "All shake settings survive source-generated serialization");
+        var restored = ProjectSceneSerializer.SpawnObjectFromEntry(manifest.Root, viewport, new SpawnMenu { Viewport = viewport })!;
+        InverseKinematicsSolver.Evaluate([restored], 5);
+        Equal(pose, restored.GetWorldMatrixNoPivot(), "Reload retains the exact automatic noise pattern");
+        Equal(obj.Keyframes.Count, restored.Keyframes.Count, "Shake tracks survive archive import");
+        var duplicate = (SceneObject)typeof(SceneTree).GetMethod("DuplicateObject", flags)!
+            .Invoke(new SceneTree { Viewport = viewport }, [obj, false, null])!;
+        duplicate.Modifiers[0] = duplicate.Modifiers[0] with { Shake = duplicate.Modifiers[0].Shake with { Speed = 4 } };
+        Near(1.75f, obj.Modifiers[0].Shake.Speed, "Duplicate shake edits are independent");
+        var snapshot = ProjectSceneSerializer.SerializeObjectForLibrary(obj);
+        var fingerprint = typeof(ProjectSceneSerializer).Assembly.GetType("MineImatorSimplyRemade.core.project.SceneObjectFingerprint")!
+            .GetMethod("Compute", BindingFlags.Static | BindingFlags.Public)!;
+        ulong Hash() => (ulong)fingerprint.Invoke(null, [new List<SceneObject> { obj }])!;
+        ulong before = Hash();
+        foreach (var channel in Timeline.ShakeChannels.Where(channel => channel.Channel.StartsWith("shake.", StringComparison.Ordinal)))
+        {
+            var original = obj.Modifiers[0];
+            float value = Convert.ToSingle(Timeline.GetModifierValue(original, channel.Channel));
+            obj.Modifiers[0] = Timeline.WithModifierValue(original, channel.Channel,
+                channel.Channel.EndsWith(".enabled", StringComparison.Ordinal) ? 1f - value : value + 0.1f);
+            Check(Hash() != before, $"Shake dirty detection includes {channel.Channel}");
+            obj.Modifiers[0] = original;
+        }
+        obj.Modifiers.Clear();
+        typeof(ProjectSceneSerializer).GetMethod("ApplyEntryToObject", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [obj, snapshot, null]);
+        Equal(before, Hash(), "Undo snapshot restores shake settings and keyframes");
+    }
+
+    private static unsafe void ModifierShakeGraphics(Fixture f)
+    {
+        using var glfw = Silk.NET.GLFW.Glfw.GetApi();
+        Check(glfw.Init(), "Shake GLFW initialization");
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintBool.Visible, false);
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintInt.ContextVersionMajor, 3);
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintInt.ContextVersionMinor, 3);
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintOpenGlProfile.OpenGlProfile, Silk.NET.GLFW.OpenGlProfile.Core);
+        var window = glfw.CreateWindow(64, 64, "Shake graphics regression", null, null);
+        Check(window != null, "Shake OpenGL context");
+        try
+        {
+            glfw.MakeContextCurrent(window);
+            using var gl = Silk.NET.OpenGL.GL.GetApi(glfw.GetProcAddress);
+            using var preview = new PreviewRenderer(gl, 160) { Distance = 3, AutoRotateSpeed = 0 };
+            using var mesh = new Mesh(gl,
+                [new(-0.15f, 0, 0), new(0.15f, 0, 0), new(0.15f, 1, 0), new(-0.15f, 1, 0)],
+                null, [0, 1, 2, 0, 2, 3]);
+            mesh.DoubleSided = true;
+            var bone = WiggleMiBone();
+            bone.Visuals.Add(mesh);
+            byte[] Render()
+            {
+                preview.Render([], "shake", 0, sceneRoot: bone, isolatedLighting: true);
+                byte[] pixels = new byte[160 * 160 * 4];
+                gl.BindTexture(Silk.NET.OpenGL.GLEnum.Texture2D, preview.ColorTexture);
+                fixed (byte* pointer = pixels)
+                    gl.GetTexImage(Silk.NET.OpenGL.GLEnum.Texture2D, 0, Silk.NET.OpenGL.GLEnum.Rgba,
+                        Silk.NET.OpenGL.GLEnum.UnsignedByte, pointer);
+                return pixels;
+            }
+            int Changed(byte[] a, byte[] b) => Enumerable.Range(0, 160 * 160).Count(i =>
+                a[i * 4] != b[i * 4] || a[i * 4 + 1] != b[i * 4 + 1] || a[i * 4 + 2] != b[i * 4 + 2]);
+            foreach (string channel in new[] { "position", "rotation", "bend" })
+            {
+                mesh.GpuBend = channel == "bend" ? new()
+                {
+                    SegmentAxis = 1, BendStart = 0.25f, BendEnd = 0.75f, BendSize = 0.5f,
+                    Pivot = new(0, 0.5f, 0), Plane = true
+                } : null;
+                bone.Modifiers.Clear();
+                InverseKinematicsSolver.Evaluate([bone], 17);
+                byte[] rigid = Render();
+                var modifier = new SceneModifier
+                {
+                    Type = SceneModifierType.Shake,
+                    Shake = new()
+                    {
+                        PositionEnabled = channel == "position", RotationEnabled = channel == "rotation",
+                        BendEnabled = channel == "bend", PositionPower = 5, RotationPower = 5, BendPower = 5,
+                        Intensity = channel == "position" ? 4 : 20, AutomaticOffset = false
+                    }
+                };
+                bone.Modifiers = [modifier];
+                InverseKinematicsSolver.Evaluate([bone], 17);
+                byte[] shaken = Render();
+                int changed = Changed(rigid, shaken);
+                Check(changed > 100, $"Shake {channel} changes real mesh pixels, got {changed}");
+                InverseKinematicsSolver.Evaluate([bone], 117);
+                InverseKinematicsSolver.Evaluate([bone], 17);
+                Check(shaken.SequenceEqual(Render()), $"Shake {channel} backward seek reproduces exact pixels");
+                bone.Modifiers[0] = modifier with { Enabled = false };
+                InverseKinematicsSolver.Evaluate([bone], 17);
+                Check(rigid.SequenceEqual(Render()), $"Disabling shake {channel} restores exact pixels");
+            }
+            Equal(Silk.NET.OpenGL.GLEnum.NoError, gl.GetError(), "Shake rendering has no OpenGL errors");
+        }
+        finally
+        {
+            glfw.DestroyWindow(window);
+            glfw.Terminate();
+        }
+    }
+
     private static unsafe void ProjectPerformanceSettings(Fixture f)
     {
         var manager = ProjectManager.Instance;
@@ -285,6 +542,30 @@ internal static partial class Program
             Near(3, obj.Modifiers[0].RadialRadius, "Radial radius Paste converts pixels");
             ClickAction("Reset Value");
             Near(1, obj.Modifiers[0].RadialRadius, "Radial radius Reset restores default");
+            obj.Modifiers = [new() { Type = SceneModifierType.Shake }];
+            property = $"modifier.{obj.Modifiers[0].Id}.shake.intensity";
+            showMenu = false;
+            distanceY = -1;
+            for (int y = 60; y < 650; y += 3)
+            {
+                ctxPath.SetValue(panel, null);
+                Frame(120, y, right: true);
+                if ((string?)ctxPath.GetValue(panel) == property) distanceY = y;
+                Frame(120, y);
+                if (distanceY >= 0) break;
+            }
+            Check(distanceY >= 0, "Shake intensity widget registers its property");
+            showMenu = true;
+            ImGui.SetClipboardText("175");
+            ClickAction("Paste");
+            Near(1.75f, obj.Modifiers[0].Shake.Intensity, "Shake intensity Paste converts percentages");
+            ClickAction("Copy");
+            Equal("175", System.Runtime.InteropServices.Marshal.PtrToStringUTF8((nint)ImGui.GetClipboardText()),
+                "Shake Copy uses displayed percentage");
+            ClickAction("Reset Value");
+            Near(1, obj.Modifiers[0].Shake.Intensity, "Shake Reset restores intensity");
+            ClickAction(Localization.Label("text.panel.properties.add_keyframe_at_current_frame", "Add Keyframe at Current Frame"));
+            Equal(1f, obj.Keyframes[property][0].Value, "Shake keyframe action stores normalized intensity");
         }
         finally
         {
