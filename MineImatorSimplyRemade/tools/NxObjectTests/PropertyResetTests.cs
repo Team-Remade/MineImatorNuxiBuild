@@ -10,6 +10,129 @@ using MineImatorSimplyRemadeNuxi.core.objs;
 
 internal static partial class Program
 {
+    private static unsafe void ProjectResolutionControls(Fixture fixture)
+    {
+        var previous = ImGui.GetCurrentContext();
+        var context = ImGui.CreateContext();
+        var manager = ProjectManager.Instance;
+        var originalSettings = manager.Manifest.Settings;
+        bool originalDirty = manager.IsDirty;
+        try
+        {
+            var io = ImGui.GetIO();
+            io.IniFilename = null;
+            io.LogFilename = null;
+            io.DisplaySize = new Vector2(1000, 900);
+            io.DeltaTime = 1f / 60f;
+            io.BackendFlags |= ImGuiBackendFlags.RendererHasTextures;
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var draw = typeof(PropertiesPanel).GetMethod("DrawProjectResolutionControls", flags)!;
+            var presets = (Array)typeof(PropertiesPanel).GetField("ResolutionPresets",
+                BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+            var manifest = new ProjectManifest();
+            manager.Manifest.Settings = manifest.Settings;
+            var panel = new PropertiesPanel();
+            panel.LoadProjectSettingsFromManifest(manifest);
+            Vector2 combo = default, widthInput = default;
+            float controlsHeight = 0f, rowHeight = 0f;
+            void Frame(Vector2? mouse = null, bool down = false, float wheel = 0f)
+            {
+                io.AddMousePosEvent(mouse?.X ?? -100f, mouse?.Y ?? -100f);
+                io.AddMouseButtonEvent(0, down);
+                if (wheel != 0f) io.AddMouseWheelEvent(0f, wheel);
+                ImGui.NewFrame();
+                ImGui.SetNextWindowPos(new Vector2(10, 10), ImGuiCond.Always);
+                ImGui.SetNextWindowSize(new Vector2(600, 700), ImGuiCond.Always);
+                ImGui.Begin("Project resolution regression");
+                var start = ImGui.GetCursorScreenPos();
+                combo = start + new Vector2(100f, ImGui.GetTextLineHeightWithSpacing() + ImGui.GetFrameHeight() / 2f);
+                widthInput = combo + new Vector2(-60f, ImGui.GetFrameHeightWithSpacing());
+                draw.Invoke(panel, null);
+                controlsHeight = ImGui.GetCursorScreenPos().Y - start.Y;
+                rowHeight = ImGui.GetTextLineHeightWithSpacing();
+                ImGui.End();
+                ImGui.Render();
+            }
+            void Click(Vector2 point)
+            {
+                Frame(point);
+                Frame(point, down: true);
+                Frame(point);
+                Frame(point);
+            }
+            void Select(int index)
+            {
+                Click(combo);
+                Check(context.OpenPopupStack.Size > 0, "Resolution dropdown opens");
+                var popup = context.OpenPopupStack[context.OpenPopupStack.Size - 1].Window;
+                Check(popup != null, "Resolution dropdown has a popup");
+                var center = popup->Pos + popup->Size / 2f;
+                Frame(center, wheel: index == presets.Length ? -30f : 30f);
+                Frame(center);
+                var target = popup->DC.CursorStartPos + new Vector2(40f, index * rowHeight + rowHeight / 2f);
+                Click(target);
+                Check(context.OpenPopupStack.Size == 0, "Selecting a resolution closes dropdown");
+            }
+            int PresetIndex(string name)
+            {
+                for (int i = 0; i < presets.Length; i++)
+                {
+                    object preset = presets.GetValue(i)!;
+                    if ((string)preset.GetType().GetProperty("Name")!.GetValue(preset)! == name) return i;
+                }
+                throw new InvalidOperationException("Missing resolution preset: " + name);
+            }
+
+            Frame();
+            Frame();
+            float presetHeight = controlsHeight;
+            manager.SetDirty(false);
+            Select(presets.Length);
+            Check(controlsHeight > presetHeight, "Custom reveals dimension editors");
+            Equal(1920, panel.GetResolutionWidth(), "Custom preserves width");
+            Equal(1080, panel.GetResolutionHeight(), "Custom preserves height");
+            Equal("Custom", manager.Manifest.Settings.RenderResolutionPreset, "Custom mode persists even at preset dimensions");
+            Check(manager.IsDirty, "Changing resolution mode marks project dirty");
+            panel.LoadProjectSettingsFromManifest(manager.Manifest);
+            Frame();
+            Check(controlsHeight > presetHeight, "Reload keeps explicitly selected Custom mode");
+
+            var input = widthInput;
+            Frame(input);
+            Frame(input, down: true);
+            Frame(input + new Vector2(40f, 0), down: true);
+            Frame(input + new Vector2(40f, 0));
+            Check(panel.GetResolutionWidth() > 1920, "Custom width editor changes resolution");
+            Equal(panel.GetResolutionWidth(), manager.Manifest.Settings.ResolutionWidth, "Custom edits persist");
+            Equal("Custom", panel.GetRenderResolutionPreset(), "Custom editing keeps render settings synchronized");
+
+            foreach (var (name, width, height) in new[] { ("720P", 1280, 720), ("1440P", 2560, 1440), ("4K", 3840, 2160) })
+            {
+                Select(PresetIndex(name));
+                Equal(width, panel.GetResolutionWidth(), "Preset applies width");
+                Equal(height, panel.GetResolutionHeight(), "Preset applies height");
+                Equal(name, manager.Manifest.Settings.RenderResolutionPreset, "Preset synchronizes saved render settings");
+                Equal(width, manager.Manifest.Settings.ResolutionWidth, "Preset saves width");
+                Equal(height, manager.Manifest.Settings.ResolutionHeight, "Preset saves height");
+                Near(presetHeight, controlsHeight, "Preset hides dimension editors");
+            }
+
+            manifest.Settings.ResolutionWidth = 1234;
+            manifest.Settings.ResolutionHeight = 567;
+            panel.LoadProjectSettingsFromManifest(manifest);
+            Frame();
+            Check(controlsHeight > presetHeight, "Older nonstandard dimensions display as Custom despite stale preset name");
+            Equal(1234, panel.GetResolutionWidth(), "Displaying older project preserves its dimensions");
+        }
+        finally
+        {
+            manager.Manifest.Settings = originalSettings;
+            manager.SetDirty(originalDirty);
+            ImGui.DestroyContext(context);
+            ImGui.SetCurrentContext(previous);
+        }
+    }
+
     private static unsafe void PropertiesTabScrolling(Fixture fixture)
     {
         var previous = ImGui.GetCurrentContext();

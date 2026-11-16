@@ -167,6 +167,23 @@ public partial class PropertiesPanel : UiPanel
     private static readonly string[] BackgroundKeyframeProperties = BuildBackgroundKeyframeProperties();
     private int _resolutionWidth = 1920;
     private int _resolutionHeight = 1080;
+    internal readonly record struct ResolutionPreset(string Name, int Width, int Height);
+    internal static readonly ResolutionPreset[] ResolutionPresets =
+    [
+        new("Avatar 512x512", 512, 512),
+        new("VGA 640x480", 640, 480),
+        new("720P", 1280, 720),
+        new("1080P", 1920, 1080),
+        new("1440P", 2560, 1440),
+        new("4K", 3840, 2160),
+        new("720P Cinematic", 1280, 544),
+        new("1080P Cinematic", 1920, 816),
+        new("1440P Cinematic", 2560, 1088),
+        new("1600P Cinematic", 3200, 1360),
+        new("UW4k Cinematic", 3840, 1600),
+        new("UW5k Cinematic", 5120, 2160),
+        new("Preview 960x400", 960, 400)
+    ];
     private int _framerate = 30;
     private string _renderMode = "image";
     private string _renderImageFormat = "png";
@@ -2328,6 +2345,75 @@ public partial class PropertiesPanel : UiPanel
         ImGui.EndTabItem();
     }
 
+    private void DrawProjectResolutionControls()
+    {
+        int selectedPreset = -1;
+        if (!string.Equals(_renderResolutionPreset, "Custom", StringComparison.OrdinalIgnoreCase))
+        {
+            for (int i = 0; i < ResolutionPresets.Length; i++)
+            {
+                if (ResolutionPresets[i].Width == _resolutionWidth && ResolutionPresets[i].Height == _resolutionHeight)
+                {
+                    selectedPreset = i;
+                    break;
+                }
+            }
+        }
+
+        ImGui.TextUnformatted(Localization.T("text.panel.properties.resolution"));
+        string preview = selectedPreset >= 0
+            ? $"{Localization.DisplayText(ResolutionPresets[selectedPreset].Name)} ({_resolutionWidth} x {_resolutionHeight})"
+            : $"{Localization.T("text.common.custom")} ({_resolutionWidth} x {_resolutionHeight})";
+        bool changed = false;
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.BeginCombo("##ProjectResolutionPreset", preview))
+        {
+            for (int i = 0; i < ResolutionPresets.Length; i++)
+            {
+                var preset = ResolutionPresets[i];
+                bool selected = selectedPreset == i;
+                if (ImGui.Selectable($"{Localization.DisplayText(preset.Name)} ({preset.Width} x {preset.Height})", selected))
+                {
+                    selectedPreset = i;
+                    _resolutionWidth = preset.Width;
+                    _resolutionHeight = preset.Height;
+                    _renderResolutionPreset = preset.Name;
+                    changed = true;
+                }
+                if (selected) ImGui.SetItemDefaultFocus();
+            }
+            if (ImGui.Selectable(Localization.Label("text.common.custom", "Custom"), selectedPreset < 0))
+            {
+                selectedPreset = -1;
+                _renderResolutionPreset = "Custom";
+                changed = true;
+            }
+            if (selectedPreset < 0) ImGui.SetItemDefaultFocus();
+            ImGui.EndCombo();
+        }
+
+        if (selectedPreset < 0)
+        {
+            ImGui.SetNextItemWidth(80f * UiTheme.Scale);
+            changed |= InputIntEditor("##ResWidth", ref _resolutionWidth, 1, 10, 1, int.MaxValue);
+            RegisterProjectPropertyContext(nameof(_resolutionWidth), 1, int.MaxValue);
+            ImGui.SameLine();
+            ImGui.TextUnformatted(" x ");
+            ImGui.SameLine();
+            ImGui.SetNextItemWidth(80f * UiTheme.Scale);
+            changed |= InputIntEditor("##ResHeight", ref _resolutionHeight, 1, 10, 1, int.MaxValue);
+            RegisterProjectPropertyContext(nameof(_resolutionHeight), 1, int.MaxValue);
+            if (changed) _renderResolutionPreset = "Custom";
+        }
+
+        if (changed)
+        {
+            var projectManager = ProjectManager.Instance;
+            WriteProjectSettingsToManifest(projectManager.Manifest);
+            projectManager.SetDirty(true);
+        }
+    }
+
     private void RenderProjectProperties()
     {
         ImGui.TextUnformatted(Localization.T("text.panel.properties.project_properties"));
@@ -2365,31 +2451,7 @@ public partial class PropertiesPanel : UiPanel
             ImGui.EndDisabled();
 
             ImGui.Spacing();
-            ImGui.TextUnformatted(Localization.T("text.panel.properties.resolution"));
-            ImGui.SetNextItemWidth(80);
-            bool resolutionChanged = InputIntEditor("##ResWidth", ref _resolutionWidth, 1, 10, 1, int.MaxValue);
-            RegisterProjectPropertyContext(nameof(_resolutionWidth), 1, int.MaxValue);
-            ImGui.SameLine();
-            ImGui.TextUnformatted(" x ");
-            ImGui.SameLine();
-            ImGui.SetNextItemWidth(80);
-            resolutionChanged |= InputIntEditor("##ResHeight", ref _resolutionHeight, 1, 10, 1, int.MaxValue);
-            RegisterProjectPropertyContext(nameof(_resolutionHeight), 1, int.MaxValue);
-            ImGui.TextUnformatted(Localization.T("text.panel.properties.presets"));
-            if (ImGui.Button("720p"))  { _resolutionWidth = 1280; _resolutionHeight = 720; resolutionChanged = true; }
-            ImGui.SameLine();
-            if (ImGui.Button("1080p")) { _resolutionWidth = 1920; _resolutionHeight = 1080; resolutionChanged = true; }
-            ImGui.SameLine();
-            if (ImGui.Button("1440p")) { _resolutionWidth = 2560; _resolutionHeight = 1440; resolutionChanged = true; }
-            ImGui.SameLine();
-            if (ImGui.Button("4K"))    { _resolutionWidth = 3840; _resolutionHeight = 2160; resolutionChanged = true; }
-            if (resolutionChanged)
-            {
-                _resolutionWidth = Math.Max(1, _resolutionWidth);
-                _resolutionHeight = Math.Max(1, _resolutionHeight);
-                WriteProjectSettingsToManifest(projectManager.Manifest);
-                projectManager.SetDirty(true);
-            }
+            DrawProjectResolutionControls();
 
             ImGui.Spacing();
             ImGui.TextUnformatted(Localization.T("text.panel.properties.framerate"));

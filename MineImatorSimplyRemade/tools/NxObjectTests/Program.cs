@@ -396,6 +396,7 @@ internal static partial class Program
             ("Textured sky defaults, project persistence and background animation", SkySettings),
             ("Transparent background defaults, persistence and MOV extension", TransparencySettings),
             ("UI scale persistence, limits, fonts, metrics and independent contexts", UiScaleTests),
+            ("Project resolution presets, custom controls and persistence", ProjectResolutionControls),
             ("Library replacement matching, rest poses, values and independent keyframes", LibraryReplacementMapping),
             ("Library replacement unmatched branches, ambiguity, ordering and references", LibraryReplacementRetention),
             ("Library replacement library-only and scene undo/redo", LibraryReplacementHistory),
@@ -643,6 +644,8 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Scene tree ImGui", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--ui-scale", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("UI scale", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--project-resolution", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Project resolution", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--backups", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Backup", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--skins", StringComparer.Ordinal))

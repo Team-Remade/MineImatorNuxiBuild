@@ -69,8 +69,6 @@ public class MainWindow : Window
         Complete
     }
 
-    private readonly record struct ResolutionPreset(string Name, int Width, int Height);
-
     public static Random Rnd = new Random();
 
     // Anchored to the per-user app-data directory (not AppContext.BaseDirectory/CWD) so the
@@ -175,22 +173,6 @@ public class MainWindow : Window
     private string _updateDownloadStatus = "";
     private Task? _updateCheckTask;
     private Task? _updateDownloadTask;
-
-    private static readonly ResolutionPreset[] RenderResolutionPresets =
-    [
-        new("Avatar 512x512", 512, 512),
-        new("VGA 640x480", 640, 480),
-        new("720P", 1280, 720),
-        new("1080P", 1920, 1080),
-        new("1440P", 2560, 1440),
-        new("720P Cinematic", 1280, 544),
-        new("1080P Cinematic", 1920, 816),
-        new("1440P Cinematic", 2560, 1088),
-        new("1600P Cinematic", 3200, 1360),
-        new("UW4k Cinematic", 3840, 1600),
-        new("UW5k Cinematic", 5120, 2160),
-        new("Preview 960x400", 960, 400)
-    ];
 
     private static readonly int[] RenderFramerateOptions = [12, 24, 25, 30, 48, 50, 60, 120];
     private static readonly int[] RenderBitrateOptionsKbps = [4000, 8000, 12000, 20000, 40000, 80000];
@@ -1481,7 +1463,7 @@ public class MainWindow : Window
         string selectedPresetLabel = _renderPopupPreset == "Custom" ? Localization.T("text.common.custom") : Localization.DisplayText(_renderPopupPreset);
         if (ImGui.BeginCombo(Localization.Label("text.window.main.resolution_preset", "Resolution Preset"), selectedPresetLabel))
         {
-            foreach (ResolutionPreset preset in RenderResolutionPresets)
+            foreach (var preset in PropertiesPanel.ResolutionPresets)
             {
                 bool selected = string.Equals(_renderPopupPreset, preset.Name, StringComparison.OrdinalIgnoreCase);
                 if (ImGui.Selectable(Localization.DisplayLabel(preset.Name), selected))
