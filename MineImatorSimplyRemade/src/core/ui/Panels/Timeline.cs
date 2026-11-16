@@ -499,6 +499,7 @@ public partial class Timeline : UiPanel
         }
         RenderAddKeyframeMenu();
         RenderSpeedScaleMenu();
+        RenderBezierEditor();
         RenderMarkerEditor();
 
         ImGui.EndDisabled();
@@ -2199,22 +2200,7 @@ public partial class Timeline : UiPanel
 
         if (ImGui.BeginMenu(Localization.Label("text.panel.timeline.interpolation", "Interpolation"), hasSelection))
         {
-            foreach (var (lbl, val) in new[]
-            {
-                ("Linear",               "linear"),
-                ("Ease In Quadratic",    "ease-in-quadratic"),
-                ("Ease Out Quadratic",   "ease-out-quadratic"),
-                ("Ease In-Out Quadratic","ease-in-out-quadratic"),
-                ("Instant",              "instant"),
-            })
-            {
-                bool active = _ctxKeyframe?.InterpolationType == val;
-                if (ImGui.MenuItem(Localization.DisplayLabel(lbl), "", active))
-                {
-                    foreach (var kf in _selectedKeyframes) kf.InterpolationType = val;
-                    SaveSelectedOwners();
-                }
-            }
+            RenderInterpolationMenu();
             ImGui.EndMenu();
         }
 
@@ -2235,6 +2221,111 @@ public partial class Timeline : UiPanel
             DeleteSelectedKeyframes();
 
         ImGui.EndPopup();
+    }
+
+    private static readonly (string Label, string Curve)[] InterpolationFamilies =
+    [
+        ("Quadratic", "quad"), ("Cubic", "cubic"), ("Quartic", "quart"), ("Quintic", "quint"),
+        ("Sine", "sine"), ("Exponential", "expo"), ("Circular", "circ"),
+        ("Elastic", "elastic"), ("Back", "back"), ("Bounce", "bounce")
+    ];
+
+    private bool _openBezierEditor;
+    private Vector4 _bezierControls = new(1f, 0f, 0f, 1f);
+
+    private void RenderInterpolationMenu()
+    {
+        RenderInterpolationItem("Linear", "linear");
+        RenderInterpolationItem("Instant", "instant");
+        if (ImGui.MenuItem(Localization.DisplayLabel("Bezier..."), "",
+                (_ctxKeyframe ?? _selectedKeyframes.FirstOrDefault())?.InterpolationType.StartsWith("bezier:", StringComparison.Ordinal) == true))
+        {
+            string? type = (_ctxKeyframe ?? _selectedKeyframes.FirstOrDefault())?.InterpolationType;
+            _bezierControls = type != null && TryGetBezierControls(type, out var controls) ? controls : new(1f, 0f, 0f, 1f);
+            _openBezierEditor = true;
+        }
+        ImGui.Separator();
+        foreach (var (label, curve) in InterpolationFamilies)
+        {
+            if (!ImGui.BeginMenu(Localization.DisplayLabel(label))) continue;
+            RenderInterpolationItem("Ease In", "easein" + curve);
+            RenderInterpolationItem("Ease Out", "easeout" + curve);
+            RenderInterpolationItem("Ease In-Out", "easeinout" + curve);
+            ImGui.EndMenu();
+        }
+    }
+
+    private void RenderInterpolationItem(string label, string type)
+    {
+        string? current = (_ctxKeyframe ?? _selectedKeyframes.FirstOrDefault())?.InterpolationType;
+        if (ImGui.MenuItem(Localization.DisplayLabel(label), "", current != null && NormalizeInterpolationType(current) == type))
+            SetSelectedInterpolation(type);
+    }
+
+    private void SetSelectedInterpolation(string type)
+    {
+        foreach (var key in _selectedKeyframes) key.InterpolationType = type;
+        SaveSelectedOwners();
+        ApplyKeyframesAtCurrentFrame();
+    }
+
+    private void RenderBezierEditor()
+    {
+        string title = Localization.DisplayLabel("Bezier Interpolation");
+        if (_openBezierEditor)
+        {
+            _openBezierEditor = false;
+            ImGui.OpenPopup(title);
+        }
+        bool open = true;
+        if (!ImGui.BeginPopupModal(title, ref open, ImGuiWindowFlags.AlwaysAutoResize)) return;
+        ImGui.SetNextItemWidth(240f);
+        ImGui.DragFloat(Localization.DisplayLabel("Ease In X"), ref _bezierControls.X, 0.01f, 0f, 1f, "%.3f", ImGuiSliderFlags.AlwaysClamp);
+        ImGui.SetNextItemWidth(240f);
+        ImGui.DragFloat(Localization.DisplayLabel("Ease In Y"), ref _bezierControls.Y, 0.01f);
+        ImGui.SetNextItemWidth(240f);
+        ImGui.DragFloat(Localization.DisplayLabel("Ease Out X"), ref _bezierControls.Z, 0.01f, 0f, 1f, "%.3f", ImGuiSliderFlags.AlwaysClamp);
+        ImGui.SetNextItemWidth(240f);
+        ImGui.DragFloat(Localization.DisplayLabel("Ease Out Y"), ref _bezierControls.W, 0.01f);
+        bool valid =
+            float.IsFinite(_bezierControls.X) && _bezierControls.X is >= 0f and <= 1f &&
+            float.IsFinite(_bezierControls.Z) && _bezierControls.Z is >= 0f and <= 1f &&
+            float.IsFinite(_bezierControls.Y) && float.IsFinite(_bezierControls.W);
+        if (!valid)
+            UiText.Disabled(Localization.DisplayText("Use finite controls with X between 0 and 1."));
+        ImGui.BeginDisabled(!valid || !HasSelectedKeyframes);
+        if (ImGui.Button(Localization.Label("text.panel.timeline.apply", "Apply")))
+        {
+            SetSelectedInterpolation(string.Create(CultureInfo.InvariantCulture,
+                $"bezier:{_bezierControls.X},{_bezierControls.Y},{_bezierControls.Z},{_bezierControls.W}"));
+            ImGui.CloseCurrentPopup();
+        }
+        ImGui.EndDisabled();
+        ImGui.SameLine();
+        if (ImGui.Button(Localization.Label("text.common.cancel", "Cancel"))) ImGui.CloseCurrentPopup();
+        ImGui.EndPopup();
+    }
+
+    private static string NormalizeInterpolationType(string type) => type switch
+    {
+        "ease-in-quadratic" => "easeinquad",
+        "ease-out-quadratic" => "easeoutquad",
+        "ease-in-out-quadratic" => "easeinoutquad",
+        _ => type
+    };
+
+    private static bool TryGetBezierControls(string type, out Vector4 controls)
+    {
+        controls = default;
+        if (!type.StartsWith("bezier:", StringComparison.Ordinal)) return false;
+        string[] parts = type[7..].Split(',');
+        if (parts.Length != 4) return false;
+        Span<float> values = stackalloc float[4];
+        for (int i = 0; i < values.Length; i++)
+            if (!float.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out values[i]) ||
+                !float.IsFinite(values[i])) return false;
+        controls = new(values[0], values[1], values[2], values[3]);
+        return true;
     }
 
     private IEnumerable<(TimelineKeyframe keyframe, SceneObject obj, string path)> EnumerateKeyframes()
@@ -3112,32 +3203,21 @@ public partial class Timeline : UiPanel
     internal static float ApplyInterpolation(float t, string type)
     {
         if (t <= 0f || t >= 1f) return Math.Clamp(t, 0f, 1f);
-        type = type switch
-        {
-            "ease-in-quadratic" => "easeinquad",
-            "ease-out-quadratic" => "easeoutquad",
-            "ease-in-out-quadratic" => "easeinoutquad",
-            _ => type
-        };
+        type = NormalizeInterpolationType(type);
         if (type == "instant") return 0f;
         if (type.StartsWith("bezier:", StringComparison.Ordinal))
         {
-            string[] parts = type[7..].Split(',');
-            float[] controls = new float[4];
-            if (parts.Length != 4) return t;
-            for (int i = 0; i < 4; i++)
-                if (!float.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out controls[i]) ||
-                    !float.IsFinite(controls[i])) return t;
+            if (!TryGetBezierControls(type, out var controls)) return t;
             float lower = 0f, upper = 1f, u = 0.5f;
             // Match Mine-imator's X search, then evaluate the corresponding Y.
             for (int i = 0; i <= 10; i++)
             {
                 u = (lower + upper) * 0.5f;
-                float x = Bezier(u, controls[0], controls[2]);
+                float x = Bezier(u, controls.X, controls.Z);
                 if (MathF.Abs(t - x) < 0.001f) break;
                 if (t > x) lower = u; else upper = u;
             }
-            return Bezier(u, controls[1], controls[3]);
+            return Bezier(u, controls.Y, controls.W);
         }
 
         bool inOut = type.StartsWith("easeinout", StringComparison.Ordinal);

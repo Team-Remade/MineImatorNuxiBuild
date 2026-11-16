@@ -861,6 +861,176 @@ internal static partial class Program
         Check(!destination.Keyframes["position.x"].Any(key => key.Frame == 9), "Conflicting file partially inserted key");
     }
 
+    private static unsafe void FramesInterpolation(Fixture f)
+    {
+        var previous = ImGui.GetCurrentContext();
+        var context = ImGui.CreateContext();
+        try
+        {
+            var io = ImGui.GetIO();
+            io.IniFilename = null;
+            io.LogFilename = null;
+            io.DisplaySize = new(1200, 900);
+            io.DeltaTime = 0.1f;
+            io.BackendFlags |= ImGuiBackendFlags.RendererHasTextures;
+            var first = Node("Easing");
+            var second = Node("Other selected object");
+            foreach (var obj in new[] { first, second })
+                obj.Keyframes["position.x"] = [new() { Frame = 0, Value = 0f }, new() { Frame = 20, Value = 20f }];
+            var timeline = FramesTimeline(first, second);
+            SelectFrames(timeline, (first, "position.x", 0), (second, "position.x", 0));
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            bool openMenu = true;
+            uint itemId = 0;
+            string itemLabel = "";
+            System.Numerics.Vector2 menuPos = default, menuSize = default;
+            void Draw(float x = -100, float y = -100, bool down = false)
+            {
+                io.AddMousePosEvent(x, y);
+                io.AddMouseButtonEvent(0, down);
+                ImGui.NewFrame();
+                ImGui.Begin("Interpolation test");
+                if (openMenu) { ImGui.OpenPopup("Interpolation options"); openMenu = false; }
+                ImGui.SetNextWindowPos(new(20, 20), ImGuiCond.Always);
+                if (ImGui.BeginPopup("Interpolation options"))
+                {
+                    typeof(Timeline).GetMethod("RenderInterpolationMenu", flags)!.Invoke(timeline, null);
+                    itemId = ImGui.GetID(Localization.DisplayLabel(itemLabel));
+                    menuPos = ImGui.GetWindowPos();
+                    menuSize = ImGui.GetWindowSize();
+                    ImGui.EndPopup();
+                }
+                typeof(Timeline).GetMethod("RenderBezierEditor", flags)!.Invoke(timeline, null);
+                ImGui.End();
+                ImGui.Render();
+            }
+            System.Numerics.Vector2 FindItem(string label)
+            {
+                itemLabel = label;
+                Draw();
+                Draw();
+                float x = menuPos.X + 40;
+                for (float y = menuPos.Y + 4; y < menuPos.Y + menuSize.Y; y += 2)
+                {
+                    Draw(x, y);
+                    if (context.HoveredId == itemId) return new(x, y);
+                }
+                throw new InvalidOperationException("Interpolation item not reachable: " + label);
+            }
+            void Click(System.Numerics.Vector2 point)
+            {
+                Draw(point.X, point.Y, true);
+                Draw(point.X, point.Y);
+            }
+            (string Label, string Curve, float In, float InOut)[] families =
+            [
+                ("Quadratic", "quad", 0.0625f, 0.125f),
+                ("Cubic", "cubic", 0.015625f, 0.0625f),
+                ("Quartic", "quart", 0.00390625f, 0.03125f),
+                ("Quintic", "quint", 0.0009765625f, 0.015625f),
+                ("Sine", "sine", 0.07612047f, 0.14644661f),
+                ("Exponential", "expo", 0.005524272f, 0.015625f),
+                ("Circular", "circ", 0.03175416f, 0.06698730f),
+                ("Elastic", "elastic", -0.005524272f, 0.01196944f),
+                ("Back", "back", -0.06413656f, -0.09968185f),
+                ("Bounce", "bounce", 0.02734375f, 0.1171875f)
+            ];
+            foreach (var family in families)
+            for (int direction = 0; direction < 3; direction++)
+            {
+                openMenu = true;
+                var point = FindItem(family.Label);
+                for (int i = 0; i < 6; i++) Draw(point.X, point.Y);
+                ImGuiWindowPtr submenu = default;
+                for (int i = 0; i < context.Windows.Size; i++)
+                {
+                    var window = context.Windows[i];
+                    if (window.Active && (window.Flags & ImGuiWindowFlags.ChildMenu) != 0) submenu = window;
+                }
+                Check(!submenu.IsNull, family.Label + " submenu did not open");
+                float rowHeight = ImGui.GetTextLineHeightWithSpacing();
+                Click(submenu.Pos + new System.Numerics.Vector2(35,
+                    ImGui.GetStyle().WindowPadding.Y + rowHeight * (direction + 0.5f)));
+                string type = new[] { "easein", "easeout", "easeinout" }[direction] + family.Curve;
+                foreach (var obj in new[] { first, second })
+                {
+                    Equal(type, obj.Keyframes["position.x"][0].InterpolationType, "Menu updates every selected object");
+                    Equal("linear", obj.Keyframes["position.x"][1].InterpolationType, "Unselected key unchanged");
+                }
+                float t = direction == 1 ? 0.75f : 0.25f;
+                float expected = direction == 0 ? family.In : direction == 1 ? 1f - family.In : family.InOut;
+                typeof(Timeline).GetField("_currentFrame", flags)!.SetValue(timeline, direction == 1 ? 15 : 5);
+                typeof(Timeline).GetMethod("ApplyKeyframesAtCurrentFrame", flags)!.Invoke(timeline, null);
+                Check(Math.Abs(first.LocalPosition.x - 20 * expected) < 0.0002f, type + " evaluated curve");
+                Near(0, Timeline.ApplyInterpolation(0, type), type + " start");
+                Near(1, Timeline.ApplyInterpolation(1, type), type + " end");
+                Near(expected, Timeline.ApplyInterpolation(t, type), type + " Mine-imator sample");
+                string path = f.NewPath(".nxFrames");
+                timeline.ExportSelectedKeyframes(path);
+                Equal(type, NxFramesFile.Read(path).Objects[0].Tracks[0].Keyframes[0].InterpolationType,
+                    "New interpolation survives frames serialization");
+                Equal(type, ProjectSceneSerializer.SerializeObjectForLibrary(first).Keyframes["position.x"][0].InterpolationType,
+                    "New interpolation survives object serialization");
+            }
+            openMenu = true;
+            Click(FindItem("Linear"));
+            Near(5, first.LocalPosition.x, "Changing interpolation immediately updates the current pose");
+            openMenu = true;
+            Click(FindItem("Instant"));
+            Near(0, first.LocalPosition.x, "Instant holds the previous key");
+            Near(Timeline.ApplyInterpolation(0.25f, "easeinquad"),
+                Timeline.ApplyInterpolation(0.25f, "ease-in-quadratic"), "Legacy quadratic easing preserved");
+
+            openMenu = true;
+            Click(FindItem("Bezier..."));
+            Equal("instant", first.Keyframes["position.x"][0].InterpolationType, "Opening Bezier does not mutate keys");
+            typeof(Timeline).GetField("_bezierControls", flags)!.SetValue(timeline, new System.Numerics.Vector4(0, 0, 1, 1));
+            Draw();
+            ImGuiWindowPtr editor = default;
+            for (int i = 0; i < context.Windows.Size; i++)
+                if (context.Windows[i].Active && (context.Windows[i].Flags & ImGuiWindowFlags.Modal) != 0)
+                    editor = context.Windows[i];
+            Check(!editor.IsNull, "Bezier editor rendered");
+            // Four control rows precede the Apply/Cancel buttons.
+            var apply = editor.Pos + new System.Numerics.Vector2(ImGui.GetStyle().WindowPadding.X + 15,
+                ImGui.GetFrameHeight() + ImGui.GetStyle().WindowPadding.Y + ImGui.GetFrameHeightWithSpacing() * 4 +
+                ImGui.GetFrameHeight() * 0.5f);
+            Click(apply);
+            Equal("bezier:0,0,1,1", first.Keyframes["position.x"][0].InterpolationType, "Bezier Apply stores controls");
+            Equal("bezier:0,0,1,1", second.Keyframes["position.x"][0].InterpolationType, "Bezier updates selection");
+            Check(Math.Abs(first.LocalPosition.x - 5) < 0.025f, "Custom Bezier affects timeline evaluation");
+            string bezierPath = f.NewPath(".nxFrames");
+            timeline.ExportSelectedKeyframes(bezierPath);
+            Equal("bezier:0,0,1,1", NxFramesFile.Read(bezierPath).Objects[0].Tracks[0].Keyframes[0].InterpolationType,
+                "Bezier controls survive frames serialization");
+            openMenu = true;
+            Click(FindItem("Bezier..."));
+            Equal(new System.Numerics.Vector4(0, 0, 1, 1),
+                (System.Numerics.Vector4)typeof(Timeline).GetField("_bezierControls", flags)!.GetValue(timeline)!,
+                "Reopening Bezier restores saved controls");
+            typeof(Timeline).GetField("_bezierControls", flags)!.SetValue(timeline, new System.Numerics.Vector4(float.NaN, 0, 1, 1));
+            Draw();
+            Click(apply + new System.Numerics.Vector2(0, ImGui.GetTextLineHeightWithSpacing()));
+            Equal("bezier:0,0,1,1", first.Keyframes["position.x"][0].InterpolationType, "Invalid controls cannot be applied");
+            typeof(Timeline).GetField("_bezierControls", flags)!.SetValue(timeline, new System.Numerics.Vector4(0.25f, -2, 0.75f, 3));
+            Draw();
+            // Cancel is next to Apply; cancelling must not commit edited overshoot controls.
+            Click(apply + new System.Numerics.Vector2(ImGui.CalcTextSize(Localization.T("text.panel.timeline.apply")).X +
+                ImGui.GetStyle().FramePadding.X * 2 + ImGui.GetStyle().ItemSpacing.X, 0));
+            Equal("bezier:0,0,1,1", first.Keyframes["position.x"][0].InterpolationType, "Bezier cancellation preserves keys");
+            openMenu = true;
+            Click(FindItem("Bezier..."));
+            Equal(new System.Numerics.Vector4(0, 0, 1, 1),
+                (System.Numerics.Vector4)typeof(Timeline).GetField("_bezierControls", flags)!.GetValue(timeline)!,
+                "Cancelled controls are discarded");
+        }
+        finally
+        {
+            ImGui.DestroyContext(context);
+            ImGui.SetCurrentContext(previous);
+        }
+    }
+
     private static unsafe void FramesContextMenu(Fixture f)
     {
         var previous = ImGui.GetCurrentContext();
