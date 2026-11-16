@@ -16,7 +16,8 @@ public sealed class ProjectManager
     public const string ModelImportFilter = "glb,gltf,fbx,obj,dae,3ds,ply,stl,x3d,mimodel,miobject,nxObj,json";
     public const string ImageImportFilter = "png,jpg,jpeg,bmp,tga,gif,webp,tiff,hdr,exr";
     public const string SoundImportFilter = "wav,mp3,ogg,flac,m4a";
-    public const string AssetImportFilter = ModelImportFilter + "," + ImageImportFilter + "," + SoundImportFilter;
+    public const string SceneryImportFilter = "schematic,schem,meshcache";
+    public const string AssetImportFilter = ModelImportFilter + "," + ImageImportFilter + "," + SoundImportFilter + "," + SceneryImportFilter;
 
     public static ProjectAssetType DetectImportAssetType(string path)
     {
@@ -695,6 +696,8 @@ public sealed class ProjectManager
         string fullTargetPath = Path.Combine(ProjectFolder, relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(fullTargetPath) ?? ProjectFolder);
         File.Copy(sourcePath, fullTargetPath, overwrite: false);
+        if (core.mdl.MeshCacheData.IsSchematic(sourcePath) && File.Exists(sourcePath + ".meshcache"))
+            File.Copy(sourcePath + ".meshcache", fullTargetPath + ".meshcache", overwrite: false);
         return relativePath;
     }
 
@@ -727,6 +730,8 @@ public sealed class ProjectManager
 
             if (File.Exists(fullPath))
                 File.Delete(fullPath);
+            if (core.mdl.MeshCacheData.IsSchematic(fullPath) && File.Exists(fullPath + ".meshcache"))
+                File.Delete(fullPath + ".meshcache");
         }
         catch
         {

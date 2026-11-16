@@ -249,6 +249,33 @@ build output or modify the supplied project to make this check pass.
 
 ## Implementation notes
 
+### Meshcache scenery
+
+`MeshCacheData` reads big-endian QDataStream scalars and little-endian raw
+vertex/index arrays. Format 7 uses Zstandard and byte-plane shuffled arrays;
+formats 2/4/6 use gzip; format 2 also supports uncompressed input. Single-buffer
+format-2 custom meshes have dummy 1x1x1 dimensions, no block atlas, and mesh-local
+UVs (often negative). Preserve their authored origin and UVs; do not center them
+or resolve their UVs as block tiles. After swapping Z-up to Y-up, rotate custom
+mesh positions and normals 180 degrees around Y to match the editor's forward
+axis; keep UVs and the reflected winding unchanged. Do not apply this extra
+rotation to block-atlas caches. Format 2 is untransformed Z-up geometry; later formats
+already contain Mine-imator's timeline-axis transform. Preserve the conversion
+to centered block units, outward winding, per-tile UVs and material batches.
+Reject incompatible sidecars with a logged schematic fallback.
+
+`tools/ImportMinecraftCharacters/import_characters.py` also generates
+`meshcache-atlas.json` from the matching `.midata` texture-slot tables. Do not
+reorder these tables or infer slot order from filenames. They contain texture
+identifiers and sheet dimensions, not image assets or renderer source.
+
+Run the custom harness with `--meshcache` for CPU decoding, malformed input,
+sidecar freshness and asset/archive persistence; run `--meshcache-graphics`
+separately for OpenGL pixel/orientation and reload checks. Use
+`--meshcache-file "path\to\file.meshcache"` to validate a real file without
+modifying it. Imports are bounded to 512 MiB decompressed data and eight million
+rendered vertices.
+
 ### Look At constraints
 
 Camera forward is local -Z; Mine-imator character and bone faces use local +Z.

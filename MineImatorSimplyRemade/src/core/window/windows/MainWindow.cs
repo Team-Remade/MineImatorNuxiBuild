@@ -2387,7 +2387,9 @@ public class MainWindow : Window
         try
         {
             ProjectAssetType type = ProjectManager.DetectImportAssetType(path);
-            if (type == ProjectAssetType.Other || !File.Exists(path))
+            bool scenery = ProjectManager.SceneryImportFilter.Split(',').Contains(
+                Path.GetExtension(path).TrimStart('.'), StringComparer.OrdinalIgnoreCase);
+            if ((type == ProjectAssetType.Other && !scenery) || !File.Exists(path))
             {
                 ShowErrorToast(Localization.Format("text.window.main.unsupported_import_file", Path.GetFileName(path)));
                 return false;

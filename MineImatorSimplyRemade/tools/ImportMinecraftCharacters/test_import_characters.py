@@ -40,6 +40,10 @@ class ImportAssetsTests(unittest.TestCase):
             "characters": [{"name": "steve", "file": "steve.mimodel"}],
             "equipment": [{"name": "elytra", "file": "elytra.mimodel"}],
             "special_blocks": [{"name": "chest", "file": "chest.mimodel"}],
+            "block_sheet_size": [32, 48], "block_textures": ["block/stone", "block/dirt"],
+            "block_32_sheet_size": [16, 3], "block_32_textures": ["block/oak_sign"],
+            "block_64_sheet_size": [8, 5], "block_64_textures": ["entity/chest/normal"],
+            "block_animated_sheet_size": [32, 2, 64], "block_textures_animated": ["block/water_still"],
         }), encoding="utf-8")
         with ZipFile(self.archive, "w") as archive:
             for folder, name in (
@@ -69,6 +73,15 @@ class ImportAssetsTests(unittest.TestCase):
             self.assertTrue((model.parent / "textures.nux").exists())
         loop = self.version / "animations" / "vanilla" / "character" / "loops" / "steve_walk.miframes"
         self.assertEqual(loop.read_bytes(), b'{"format":24,"keyframes":[]}')
+
+    def test_imports_meshcache_atlas_in_metadata_slot_order(self):
+        self.run_import()
+        atlas = json.loads((self.version / "meshcache-atlas.json").read_bytes())
+        self.assertEqual(atlas["block_textures"], ["block/stone", "block/dirt"])
+        self.assertEqual(atlas["block_sheet_size"], [32, 48])
+        self.assertEqual(atlas["block_animated_sheet_size"], [32, 2, 64])
+        self.assertEqual(atlas["block_64_textures"], ["entity/chest/normal"])
+        self.assertNotIn("characters", atlas)
 
     def test_existing_assets_are_untouched_by_default(self):
         self.run_import()

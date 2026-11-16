@@ -85,9 +85,18 @@ internal sealed class NxObjectResources : IDisposable
         }
         if (IsImage(source) && File.Exists(source + ".mcmeta"))
             StoreFile(source + ".mcmeta", target + ".mcmeta");
+        if (MeshCacheData.IsSchematic(source) && File.Exists(source + ".meshcache"))
+            StoreFile(source + ".meshcache", target + ".meshcache");
 
         // Dependencies must be written first: ZipArchiveMode.Create permits one open entry at a time.
-        using Stream output = _archive.CreateEntry(target, CompressionLevel.Optimal).Open();
+        var archiveEntry = _archive.CreateEntry(target, CompressionLevel.Optimal);
+        if (MeshCacheData.IsSchematic(source) || MeshCacheData.IsCache(source))
+        {
+            long ticks = Math.Clamp(File.GetLastWriteTimeUtc(source).Ticks,
+                new DateTime(1980, 1, 1).Ticks, new DateTime(2107, 12, 31).Ticks);
+            archiveEntry.LastWriteTime = new DateTimeOffset(ticks, TimeSpan.Zero);
+        }
+        using Stream output = archiveEntry.Open();
         if (extension == ".glb")
         {
             byte[] json = Encoding.UTF8.GetBytes(text!);
@@ -156,6 +165,8 @@ internal sealed class NxObjectResources : IDisposable
 
             if (IsImage(current) && File.Exists(current + ".mcmeta"))
                 pending.Push(current + ".mcmeta");
+            if (MeshCacheData.IsSchematic(current) && File.Exists(current + ".meshcache"))
+                pending.Push(current + ".meshcache");
         }
     }
 

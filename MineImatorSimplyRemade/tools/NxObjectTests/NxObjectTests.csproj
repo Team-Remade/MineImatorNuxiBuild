@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="../../MineImatorSimplyRemade.csproj" />
     <None Include="..\..\data\languages\en_us.json" Link="data\languages\en_us.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\data\minecraft\versions\26.3\meshcache-atlas.json" Link="data\minecraft\versions\26.3\meshcache-atlas.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\data\minecraft\versions\26.3\characters\vanilla\steve\steve.mimodel" Link="data\minecraft\versions\26.3\characters\vanilla\steve\steve.mimodel" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\data\minecraft\versions\26.3\characters\vanilla\steve\steve.png" Link="data\minecraft\versions\26.3\characters\vanilla\steve\steve.png" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\data\minecraft\versions\26.3\characters\vanilla\alex\alex.mimodel" Link="data\minecraft\versions\26.3\characters\vanilla\alex\alex.mimodel" CopyToOutputDirectory="PreserveNewest" />

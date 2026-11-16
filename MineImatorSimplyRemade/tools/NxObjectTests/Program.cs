@@ -25,6 +25,37 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--meshcache-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                MeshCacheGraphics();
+                Console.WriteLine("PASS Meshcache GPU pixels, orientation, sidecars, failure fallback and archive reload");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
+        int meshCacheFile = Array.IndexOf(args, "--meshcache-file");
+        if (meshCacheFile >= 0)
+        {
+            try
+            {
+                if (meshCacheFile + 1 >= args.Length) throw new ArgumentException("--meshcache-file requires a path.");
+                var data = MeshCacheData.Load(args[meshCacheFile + 1]);
+                Console.WriteLine($"PASS Meshcache {data.Width}x{data.Height}x{data.Length}: " +
+                    $"{data.Batches.Count} batches, {data.Batches.Sum(b => b.Vertices.Count) / 3} triangles");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--startup-graphics", StringComparer.Ordinal))
         {
             try
@@ -325,6 +356,9 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Meshcache current Zstandard geometry, byte planes, materials and validation", MeshCacheCurrent),
+            ("Meshcache legacy gzip layouts, coordinates, colors and rectangular sheets", MeshCacheLegacy),
+            ("Meshcache sidecar freshness, project copying and portable archives", MeshCachePersistence),
             ("Wiggle endpoint springs, gravity, wind, damping, freeze and authored pose isolation", WiggleMotion),
             ("Wiggle connected chains and sphere contacts", WiggleChainsCollisions),
             ("Wiggle full timeline bake, repeatability, persistence, undo and atomic failures", WiggleBakePersistence),
@@ -552,6 +586,8 @@ internal static partial class Program
             ("World importer player position from legacy and 26.1+ Java saves", WorldPlayerPositionReading),
             ("World importer default block states for 26.1+ bare palette entries", WorldDefaultBlockStates)
         ];
+        if (args.Contains("--meshcache", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Meshcache ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--world-player", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("World importer player", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--world-preview", StringComparer.Ordinal))

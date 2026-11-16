@@ -16,6 +16,15 @@ MODEL_TYPES = {
 }
 
 
+def meshcache_metadata(metadata):
+    keys = ("version", "block_sheet_size", "block_textures",
+            "block_32_sheet_size", "block_32_textures",
+            "block_64_sheet_size", "block_64_textures",
+            "block_animated_sheet_size", "block_textures_animated")
+    return (json.dumps({key: metadata[key] for key in keys},
+                       ensure_ascii=True, separators=(",", ":")) + "\n").encode("utf-8")
+
+
 def nodes(node):
     yield node
     for key in ("parts", "shapes"):
@@ -118,6 +127,8 @@ def import_assets(archive_path, metadata_path, version_root, check=False, replac
         for swatch in metadata["swatches"] for color in swatch["colors"]
     }
     generated = {}
+    if "block_textures" in metadata:
+        generated[version_root / "meshcache-atlas.json"] = meshcache_metadata(metadata)
     counts = {folder: 0 for folder, _ in MODEL_TYPES.values()}
     skipped = variant_count = loop_count = source_only = 0
 

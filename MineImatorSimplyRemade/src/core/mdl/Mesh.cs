@@ -646,6 +646,7 @@ public class Mesh : IDisposable
     /// Intrinsic mesh colour multiplied by the scene object's material colour.
     /// </summary>
     public vec3 BaseTint { get; set; } = new vec3(1f);
+    public bool BaseDoubleSided { get; set; }
     public BiomeTintKind BiomeTint { get; set; }
     public vec3 RenderAlbedo => Albedo * BiomeEnvironment.GetTint(BiomeTint);
 
@@ -919,6 +920,7 @@ public class Mesh : IDisposable
         clone.TerrainAffectedByWind = TerrainAffectedByWind;
         clone.MinecraftItemTexture = MinecraftItemTexture;
         clone.BaseTint            = BaseTint;
+        clone.BaseDoubleSided     = BaseDoubleSided;
         clone.BiomeTint           = BiomeTint;
         clone.BaseAlpha           = BaseAlpha;
         clone.BaseBlendColor      = BaseBlendColor;

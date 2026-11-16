@@ -2570,7 +2570,7 @@ public partial class SpawnMenu : UiPanel
     {
         if (Viewport == null || Gl == null) return;
 
-        var result = Dialog.FileOpen("schematic,schem");
+        var result = Dialog.FileOpen(core.project.ProjectManager.SceneryImportFilter);
         if (!result.IsOk || string.IsNullOrEmpty(result.Path)) return;
 
         string pathToSpawn = ResolveSchematicPathForProject(result.Path);
@@ -3094,8 +3094,8 @@ public partial class SpawnMenu : UiPanel
     }
 
     /// <summary>
-    /// Loads legacy <c>.schematic</c> and Sponge/WorldEdit <c>.schem</c> files and
-    /// spawns them as a merged scenery object.
+    /// Loads schematics (preferring compatible meshcache sidecars) or standalone
+    /// meshcache files and spawns them as a merged scenery object.
     /// </summary>
     public SceneObject? SpawnSchematicFromPath(string filePath, string resourcePackId = "")
         => BuildSchematicFromPath(filePath, resourcePackId, addToScene: true);
@@ -3108,6 +3108,26 @@ public partial class SpawnMenu : UiPanel
     {
         if (Viewport == null || Gl == null) return null;
         _lastSchematicLoadError = null;
+        string? cachePath = MeshCacheData.IsCache(filePath) ? filePath : MeshCacheData.FindSidecar(filePath);
+        if (cachePath != null)
+        {
+            try
+            {
+                var cached = BuildMeshCache(cachePath, filePath, resourcePackId);
+                if (addToScene) Viewport.SceneObjects.Add(cached);
+                return cached;
+            }
+            catch (Exception ex) when (IsMeshCacheLoadError(ex))
+            {
+                Console.Error.WriteLine($"Failed loading meshcache '{cachePath}': {ex.Message}");
+                if (MeshCacheData.IsCache(filePath))
+                {
+                    _lastSchematicLoadError = ex.Message;
+                    return null;
+                }
+                Console.Error.WriteLine($"Rebuilding schematic '{filePath}' without its meshcache.");
+            }
+        }
         SchematicData schematic;
         try
         {

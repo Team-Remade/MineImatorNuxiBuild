@@ -1024,7 +1024,7 @@ public class SceneObject
                     Math.Clamp(mesh.BaseMixColor.z + settings.MixColor.z, 0f, 1f),
                     Math.Clamp(mesh.BaseMixColor.w + settings.MixColor.w, 0f, 1f))
                 : settings.MixColor;
-            mesh.DoubleSided = settings.DoubleSided;
+            mesh.DoubleSided = mesh.BaseDoubleSided || settings.DoubleSided;
             mesh.ColorAdjustments = settings.ColorAdjustments;
             bool mappedAtlas = false;
             if (mesh is CubeMesh cube)

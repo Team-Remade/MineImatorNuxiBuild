@@ -546,7 +546,7 @@ public class ContentBrowser : UiPanel
             return true;
 
         string ext = Path.GetExtension(fullPath).ToLowerInvariant();
-        return ext is ".schematic" or ".schem";
+        return ext is ".schematic" or ".schem" or ".meshcache";
     }
 
     private bool CanAddSelectedAssetToTimeline()
@@ -576,7 +576,7 @@ public class ContentBrowser : UiPanel
         string fullPath = projectManager.GetAssetFullPath(selected);
 
         string ext = Path.GetExtension(fullPath).ToLowerInvariant();
-        if (ext is ".schematic" or ".schem")
+        if (ext is ".schematic" or ".schem" or ".meshcache")
         {
             SpawnMenu?.SpawnWithCursor(() => SpawnMenu.SpawnSchematicFromPathInteractive(fullPath));
             return;

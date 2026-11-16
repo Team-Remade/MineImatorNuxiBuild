@@ -95,7 +95,8 @@ public static class NxObjectArchive
                             if (!string.IsNullOrEmpty(sourcePack))
                                 node.ResourcePackId = MinecraftDataLoader.NormalizeResourcePackStack(node.ResourcePackId + ";" + sourcePack);
                         }
-                        else if (node.SpawnCategory == "Scenery" && !string.IsNullOrEmpty(node.SourceAssetPath))
+                        else if (node.SpawnCategory == "Scenery" && !string.IsNullOrEmpty(node.SourceAssetPath) &&
+                                 !MeshCacheData.IsCache(node.SourceAssetPath))
                         {
                             var schematic = SchematicData.Load(manager.ResolveAssetPath(node.SourceAssetPath));
                             if (schematic.Palette != null)
@@ -326,7 +327,7 @@ public static class NxObjectArchive
         string File(string? path) => string.IsNullOrWhiteSpace(path) ? "" : rewrite(path);
         if (!string.IsNullOrWhiteSpace(node.SourceAssetPath) &&
             Path.GetExtension(node.SourceAssetPath).ToLowerInvariant() is not
-                (".glb" or ".gltf" or ".obj" or ".mimodel" or ".miobject" or ".json" or ".schematic" or ".schem" or ".stl"))
+                (".glb" or ".gltf" or ".obj" or ".mimodel" or ".miobject" or ".json" or ".schematic" or ".schem" or ".meshcache" or ".stl"))
             throw new NotSupportedException("This source model format cannot yet be packaged safely in nxObj. Convert the model to GLB, glTF, or OBJ first.");
         node.SourceAssetPath = File(node.SourceAssetPath);
         node.TextureOverridePath = File(node.TextureOverridePath);
