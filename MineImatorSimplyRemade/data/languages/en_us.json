@@ -619,6 +619,7 @@
     "text.panel.properties.color_correction_invert": "Invert",
     "text.panel.properties.color_correction_invert_strength": "Invert Strength (%)",
     "text.panel.properties.color_correction_color_burn": "Color Burn (%)",
+    "text.panel.properties.color_correction_burn_color": "Burn Color",
     "text.panel.properties.color_management": "Color Management",
     "text.panel.properties.color_management_exposure": "Exposure (stops)",
     "text.panel.properties.color_management_gamma": "Gamma",

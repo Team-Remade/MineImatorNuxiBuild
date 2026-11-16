@@ -6791,6 +6791,8 @@ public partial class Viewport : UiPanel
         Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uHue"), settings?.Hue ?? 0f);
         Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uInvertStrength"), settings is { Invert: true } ? settings.InvertStrength : 0f);
         Gl.Uniform1(_colorCorrectionShader.GetUniformLocation("uColorBurn"), settings?.ColorBurn ?? 0f);
+        Gl.Uniform3(_colorCorrectionShader.GetUniformLocation("uBurnColor"),
+            settings?.BurnColorR ?? 1f, settings?.BurnColorG ?? 1f, settings?.BurnColorB ?? 1f);
         Gl.Uniform3(_colorCorrectionShader.GetUniformLocation("uBlendColor"), blendColor.x, blendColor.y, blendColor.z);
         Gl.Uniform4(_colorCorrectionShader.GetUniformLocation("uMixColor"), mixColor.x, mixColor.y, mixColor.z, mixColor.w);
         _colorCorrectionShader.SetColorAdjustments(colorAdjustments ?? new MaterialColorAdjustments());

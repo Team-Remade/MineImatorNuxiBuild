@@ -9,6 +9,7 @@ uniform float uVibrance;
 uniform float uHue;
 uniform float uInvertStrength;
 uniform float uColorBurn;
+uniform vec3 uBurnColor;
 uniform vec3 uBlendColor;
 uniform vec4 uMixColor;
 uniform vec3 uMultiplyHsv;
@@ -63,7 +64,8 @@ void main() {
     float burn = clamp(finiteOr(uColorBurn, 0.0) / 100.0, 0.0, 1.0);
     if (burn > 0.0) {
         vec3 base = clamp(color, 0.0, 1.0);
-        vec3 burned = 1.0 - min(vec3(1.0), (1.0 - base) / max(base, vec3(0.000001)));
+        vec3 blend = base * clamp(uBurnColor, 0.0, 1.0);
+        vec3 burned = 1.0 - min(vec3(1.0), (1.0 - base) / max(blend, vec3(0.000001)));
         color = mix(color, burned, burn);
     }
     color *= uBlendColor;

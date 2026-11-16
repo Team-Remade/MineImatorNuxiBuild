@@ -266,6 +266,9 @@ public class ColorCorrectionSettings
     public bool Invert { get; set; } = false;
     public float InvertStrength { get; set; } = 100f;
     public float ColorBurn { get; set; } = 0f;
+    public float BurnColorR { get; set; } = 1f;
+    public float BurnColorG { get; set; } = 1f;
+    public float BurnColorB { get; set; } = 1f;
 
     public ColorCorrectionSettings Clone() => (ColorCorrectionSettings)MemberwiseClone();
 
@@ -279,7 +282,10 @@ public class ColorCorrectionSettings
         ("hue", "Hue (degrees)", -180f, 180f),
         ("invert", "Invert", 0f, 1f),
         ("invert_strength", "Invert Strength (%)", 0f, 100f),
-        ("color_burn", "Color Burn (%)", 0f, 100f)
+        ("color_burn", "Color Burn (%)", 0f, 100f),
+        ("burn_color.r", "Burn Color R", 0f, 1f),
+        ("burn_color.g", "Burn Color G", 0f, 1f),
+        ("burn_color.b", "Burn Color B", 0f, 1f)
     ];
 
     public float GetValue(string key) => key switch
@@ -292,6 +298,9 @@ public class ColorCorrectionSettings
         "invert" => Invert ? 1f : 0f,
         "invert_strength" => InvertStrength,
         "color_burn" => ColorBurn,
+        "burn_color.r" => BurnColorR,
+        "burn_color.g" => BurnColorG,
+        "burn_color.b" => BurnColorB,
         _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown color correction control.")
     };
 
@@ -310,6 +319,9 @@ public class ColorCorrectionSettings
             case "invert": Invert = value >= 0.5f; break;
             case "invert_strength": InvertStrength = Math.Clamp(value, 0f, 100f); break;
             case "color_burn": ColorBurn = Math.Clamp(value, 0f, 100f); break;
+            case "burn_color.r": BurnColorR = Math.Clamp(value, 0f, 1f); break;
+            case "burn_color.g": BurnColorG = Math.Clamp(value, 0f, 1f); break;
+            case "burn_color.b": BurnColorB = Math.Clamp(value, 0f, 1f); break;
             default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown color correction control.");
         }
     }

@@ -509,6 +509,9 @@ internal static class SceneObjectFingerprint
                 hash.Add(colorCorrection.Invert);
                 hash.Add(colorCorrection.InvertStrength);
                 hash.Add(colorCorrection.ColorBurn);
+                hash.Add(colorCorrection.BurnColorR);
+                hash.Add(colorCorrection.BurnColorG);
+                hash.Add(colorCorrection.BurnColorB);
                 hash.Add(effect.Shake.Mode);
                 hash.Add(effect.Shake.Trauma);
                 hash.Add(effect.Shake.Strength);

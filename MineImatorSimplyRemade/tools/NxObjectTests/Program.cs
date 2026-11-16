@@ -364,6 +364,7 @@ internal static partial class Program
             ("Camera blades timeline discovery, interpolation and seeking", CameraBladeTimeline),
             ("Camera blades ImGui controls and multi-selection", CameraBladeControls),
             ("Camera material persistence, duplication, undo and timeline", CameraMaterialPersistence),
+            ("Camera material burn color persistence, duplication, undo and timeline", CameraMaterialBurnColorPersistence),
             ("Camera material color controls and multi-selection", CameraMaterialControls),
             ("Material color operations persistence, inheritance, undo and timeline", MaterialColorPersistence),
             ("Material color operations controls, keyframe menus and multi-selection", MaterialColorControls),

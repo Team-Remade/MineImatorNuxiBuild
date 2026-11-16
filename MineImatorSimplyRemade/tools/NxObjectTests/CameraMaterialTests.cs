@@ -15,6 +15,83 @@ using StbImageSharp;
 
 internal static partial class Program
 {
+    private static void CameraMaterialBurnColorPersistence(Fixture fixture)
+    {
+        const BindingFlags statics = BindingFlags.Static | BindingFlags.NonPublic;
+        const BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic;
+        var apply = typeof(ProjectSceneSerializer).GetMethod("ApplyEntryToObject", statics)!;
+        var camera = new CameraSceneObject();
+        camera.AddEffect(CameraEffectType.ColorCorrection);
+        camera.Effects[0].ColorCorrection.ColorBurn = 65f;
+        var legacySnapshot = ProjectSceneSerializer.SerializeObjectForLibrary(camera);
+        var legacy = JsonSerializer.Deserialize<ColorCorrectionSettings>("{\"ColorBurn\":65}")!;
+        Near(1f, legacy.BurnColorR, "Legacy burn defaults to white R");
+        Near(1f, legacy.BurnColorG, "Legacy burn defaults to white G");
+        Near(1f, legacy.BurnColorB, "Legacy burn defaults to white B");
+        var settings = camera.Effects[0].ColorCorrection;
+        settings.BurnColorR = 0.8f;
+        settings.BurnColorG = 0.4f;
+        settings.BurnColorB = 0.2f;
+        var snapshot = ProjectSceneSerializer.SerializeObjectForLibrary(camera);
+        string json = JsonSerializer.Serialize(snapshot, AppJsonContext.Default.ProjectSceneObjectEntry);
+        var saved = JsonSerializer.Deserialize(json, AppJsonContext.Default.ProjectSceneObjectEntry)!;
+        var (archive, _) = fixture.Roundtrip(camera);
+        var library = (ProjectSceneObjectEntry)typeof(PropertiesPanel).GetMethod("CloneLibraryEntryRecursive", statics)!
+            .Invoke(null, [saved])!;
+        foreach (var entry in new[] { saved, archive.Root, library })
+        {
+            var loaded = new CameraSceneObject();
+            apply.Invoke(null, [loaded, entry, null]);
+            var restored = loaded.Effects[0].ColorCorrection;
+            Near(65f, restored.ColorBurn, "Burn strength survives project/archive/library");
+            Near(0.8f, restored.BurnColorR, "Burn red survives project/archive/library");
+            Near(0.4f, restored.BurnColorG, "Burn green survives project/archive/library");
+            Near(0.2f, restored.BurnColorB, "Burn blue survives project/archive/library");
+        }
+        var duplicate = (CameraSceneObject)typeof(SceneTree).GetMethod("CreateSceneObjectDuplicate", instance)!
+            .Invoke(new SceneTree(), [camera, new Dictionary<string, string>()])!;
+        Near(0.8f, duplicate.Effects[0].ColorCorrection.BurnColorR, "Duplicate keeps burn color");
+        duplicate.Effects[0].ColorCorrection.BurnColorG = 1f;
+        Near(0.4f, camera.Effects[0].ColorCorrection.BurnColorG, "Duplicate burn settings are independent");
+
+        var fingerprint = typeof(ProjectSceneSerializer).Assembly.GetType("MineImatorSimplyRemade.core.project.SceneObjectFingerprint")!
+            .GetMethod("Compute", BindingFlags.Static | BindingFlags.Public)!;
+        ulong Hash() => (ulong)fingerprint.Invoke(null, [new List<SceneObject> { camera }])!;
+        ulong original = Hash();
+        var timeline = new Timeline();
+        var get = typeof(Timeline).GetMethod("GetPropertyValue", instance)!;
+        var set = typeof(Timeline).GetMethod("SetPropertyValue", instance)!;
+        var interpolate = typeof(Timeline).GetMethod("InterpolateKeyframes", instance)!;
+        var paths = ((IEnumerable<string>)typeof(Timeline).GetMethod("GetKeyframePropertyPaths", statics)!
+            .Invoke(null, [camera])!).ToArray();
+        foreach (string channel in new[] { "r", "g", "b" })
+        {
+            string path = "camera.effect.0.color_correction.burn_color." + channel;
+            Check(paths.Contains(path), "Timeline discovers " + path);
+            set.Invoke(timeline, [camera, path, 1f]);
+            Check(Hash() != original, "Dirty detection includes " + path);
+            apply.Invoke(null, [camera, snapshot, null]);
+            Equal(original, Hash(), "Undo restores " + path);
+            var keys = new List<TimelineKeyframe>
+            {
+                new() { Frame = 0, Value = 0f }, new() { Frame = 10, Value = 1f }
+            };
+            foreach (int frame in new[] { 0, 5, 10, 5, 0 })
+            {
+                float value = Convert.ToSingle(interpolate.Invoke(timeline, [keys, path, frame]));
+                set.Invoke(timeline, [camera, path, value]);
+                Near(frame / 10f, Convert.ToSingle(get.Invoke(timeline, [camera, path])), "Seek " + path);
+            }
+            set.Invoke(timeline, [camera, path, -1f]);
+            Near(0f, Convert.ToSingle(get.Invoke(timeline, [camera, path])), "Lower bound " + path);
+            set.Invoke(timeline, [camera, path, 2f]);
+            Near(1f, Convert.ToSingle(get.Invoke(timeline, [camera, path])), "Upper bound " + path);
+            apply.Invoke(null, [camera, snapshot, null]);
+        }
+        apply.Invoke(null, [camera, legacySnapshot, null]);
+        Near(1f, camera.Effects[0].ColorCorrection.BurnColorR, "Reset restores white burn color");
+    }
+
     private static void CameraMaterialPersistence(Fixture fixture)
     {
         const BindingFlags statics = BindingFlags.Static | BindingFlags.NonPublic;
@@ -213,6 +290,33 @@ internal static partial class Program
                 Check(Render(camera)[0] < tinted[0] - 30, "Color correction composes before material tint");
                 camera.Effects.Clear();
                 Check(tinted.SequenceEqual(Render(camera)), "Repeated rendering is deterministic");
+
+                var burnCamera = new CameraSceneObject();
+                burnCamera.AddEffect(CameraEffectType.ColorCorrection);
+                var burnSettings = burnCamera.Effects[0].ColorCorrection;
+                burnSettings.ColorBurn = 100f;
+                byte[] whiteBurn = Render(burnCamera);
+                foreach (int channel in new[] { 0, 1, 2 })
+                {
+                    float source = input[channel] / 255f;
+                    float expected = (1f - Math.Min(1f, (1f - source) / source)) * 255f;
+                    Check(Math.Abs(whiteBurn[channel] - expected) <= 1f, "White burn preserves original formula");
+                }
+                burnSettings.BurnColorR = 0.5f;
+                burnSettings.BurnColorG = 0f;
+                burnSettings.BurnColorB = 0f;
+                byte[] customBurn = Render(burnCamera);
+                Check(Math.Abs(customBurn[0] - 115) <= 1, "Custom burn uses red tint in blend divisor");
+                Equal((byte)0, customBurn[1], "Zero burn green is finite black");
+                Equal((byte)0, customBurn[2], "Zero burn blue is finite black");
+                Check(customBurn.SequenceEqual(Render(burnCamera)), "Custom burn is repeatable");
+                burnSettings.ColorBurn = 50f;
+                byte[] partialBurn = Render(burnCamera);
+                for (int channel = 0; channel < 3; channel++)
+                    Check(Math.Abs(partialBurn[channel] - (input[channel] + customBurn[channel]) * 0.5f) <= 1f,
+                        "Burn strength interpolates custom color");
+                burnSettings.ColorBurn = 0f;
+                Check(input.SequenceEqual(Render(burnCamera)), "Zero strength ignores custom burn color");
 
                 viewport.PropertiesPanel = new PropertiesPanel
                 {

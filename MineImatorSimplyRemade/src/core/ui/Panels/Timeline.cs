@@ -3549,8 +3549,8 @@ public partial class Timeline : UiPanel
                 return effect.Distort.GetValue(parts[4]);
             if (effect.Type == CameraEffectType.LensDirt && parts.Length == 5 && parts[3] == "lens_dirt")
                 return effect.LensDirt.GetValue(parts[4]);
-            if (effect.Type == CameraEffectType.ColorCorrection && parts.Length == 5 && parts[3] == "color_correction")
-                return effect.ColorCorrection.GetValue(parts[4]);
+            if (effect.Type == CameraEffectType.ColorCorrection && parts[3] == "color_correction")
+                return effect.ColorCorrection.GetValue(string.Join('.', parts.Skip(4)));
             if (effect.Type == CameraEffectType.CameraShake && parts[3] == "shake")
             {
                 if (parts.Length == 5 && parts[4] == "mode")
@@ -4253,13 +4253,13 @@ public partial class Timeline : UiPanel
                     effect.ChromaticAberration.SetValue(parts[4], value);
                 break;
             }
-            case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "color_correction" && obj is CameraSceneObject camColorCorrection:
+            case 5 or 6 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "color_correction" && obj is CameraSceneObject camColorCorrection:
             {
                 if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camColorCorrection.Effects.Count)
                     break;
                 var effect = camColorCorrection.Effects[effectIndex];
                 if (effect.Type == CameraEffectType.ColorCorrection)
-                    effect.ColorCorrection.SetValue(parts[4], value);
+                    effect.ColorCorrection.SetValue(string.Join('.', parts.Skip(4)), value);
                 break;
             }
             case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "film_grain" && obj is CameraSceneObject camGrain:

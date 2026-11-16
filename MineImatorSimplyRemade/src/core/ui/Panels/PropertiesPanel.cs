@@ -5538,6 +5538,8 @@ public partial class PropertiesPanel : UiPanel
                                 string basePath = $"camera.effect.{i}.color_correction";
                                 foreach (var control in ColorCorrectionSettings.Controls)
                                 {
+                                    if (control.Key.StartsWith("burn_color.", StringComparison.Ordinal))
+                                        continue;
                                     if (control.Key == "invert_strength" && !effect.ColorCorrection.Invert)
                                         continue;
 
@@ -5567,6 +5569,20 @@ public partial class PropertiesPanel : UiPanel
                                     }
                                     RegisterPropertyContext($"{basePath}.{control.Key}");
                                 }
+                                var burnColor = new Vector3(effect.ColorCorrection.BurnColorR,
+                                    effect.ColorCorrection.BurnColorG, effect.ColorCorrection.BurnColorB);
+                                if (ImGui.ColorEdit3(Localization.Label("text.panel.properties.color_correction_burn_color", "Burn Color"),
+                                    ref burnColor, ImGuiColorEditFlags.NoInputs))
+                                {
+                                    effect.ColorCorrection.SetValue("burn_color.r", burnColor.X);
+                                    effect.ColorCorrection.SetValue("burn_color.g", burnColor.Y);
+                                    effect.ColorCorrection.SetValue("burn_color.b", burnColor.Z);
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.burn_color.r");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.burn_color.g");
+                                    Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.burn_color.b");
+                                    ProjectManager.Instance.SetDirty(true);
+                                }
+                                RegisterPropertyContext($"{basePath}.burn_color.r", $"{basePath}.burn_color.g", $"{basePath}.burn_color.b");
                                 ImGui.PopID();
                             }
 
