@@ -1602,6 +1602,7 @@ public partial class Timeline : UiPanel
                 CameraEffectType.ChromaticAberration => Localization.Format("text.panel.timeline.effect_chromatic_aberration", index + 1),
                 CameraEffectType.Distort => Localization.Format("text.panel.timeline.effect_distort", index + 1),
                 CameraEffectType.Pixelate => Localization.Format("text.panel.timeline.effect_pixelate", index + 1),
+                CameraEffectType.HeatDistort => Localization.Format("text.panel.timeline.effect_heat_distort", index + 1),
                 CameraEffectType.Outline => Localization.Format("text.panel.timeline.effect_outline", index + 1),
                 CameraEffectType.ColorCorrection => Localization.Format("text.panel.timeline.effect_color_correction", index + 1),
                 CameraEffectType.FilmGrain => Localization.Format("text.panel.timeline.effect_film_grain", index + 1),
@@ -2967,6 +2968,12 @@ public partial class Timeline : UiPanel
                     yield return $"camera.effect.{i}.pixelate.{control.Key}";
                 continue;
             }
+            if (cam.Effects[i].Type == CameraEffectType.HeatDistort)
+            {
+                foreach (var control in HeatDistortSettings.Controls)
+                    yield return $"camera.effect.{i}.heat_distort.{control.Key}";
+                continue;
+            }
             if (cam.Effects[i].Type == CameraEffectType.Outline)
             {
                 foreach (var control in OutlineSettings.Controls)
@@ -3675,6 +3682,8 @@ public partial class Timeline : UiPanel
                 return effect.Distort.GetValue(parts[4]);
             if (effect.Type == CameraEffectType.Pixelate && parts.Length == 5 && parts[3] == "pixelate")
                 return effect.Pixelate.GetValue(parts[4]);
+            if (effect.Type == CameraEffectType.HeatDistort && parts.Length == 5 && parts[3] == "heat_distort")
+                return effect.HeatDistort.GetValue(parts[4]);
             if (effect.Type == CameraEffectType.Outline && parts[3] == "outline")
                 return effect.Outline.GetValue(string.Join('.', parts.Skip(4)));
             if (effect.Type == CameraEffectType.LensDirt && parts.Length == 5 && parts[3] == "lens_dirt")
@@ -4377,6 +4386,15 @@ public partial class Timeline : UiPanel
                     effect.Outline.SetValue(string.Join('.', parts.Skip(4)), value);
                 break;
             }
+            case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "heat_distort" && obj is CameraSceneObject camHeatDistort:
+            {
+                if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camHeatDistort.Effects.Count)
+                    break;
+                var effect = camHeatDistort.Effects[effectIndex];
+                if (effect.Type == CameraEffectType.HeatDistort)
+                    effect.HeatDistort.SetValue(parts[4], value);
+                break;
+            }
             case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "pixelate" && obj is CameraSceneObject camPixelate:
             {
                 if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camPixelate.Effects.Count)
@@ -4760,6 +4778,17 @@ public partial class Timeline : UiPanel
                                     newRows.Add(MakeSingle(obj, control.Label, $"{pixelatePath}.{control.Key}", 1));
                             continue;
                         }
+                        if (effect.Type == CameraEffectType.HeatDistort)
+                        {
+                            string heatPath = $"camera.effect.{i}.heat_distort";
+                            string[] paths = HeatDistortSettings.Controls.Select(c => $"{heatPath}.{c.Key}").ToArray();
+                            if (!paths.Any(propsWithKeyframes.Contains)) continue;
+                            newRows.Add(MakeGroup(obj, $"Effect {i + 1}: Heat Distort", paths, $"camera.effect.{i}"));
+                            foreach (var control in HeatDistortSettings.Controls)
+                                if (propsWithKeyframes.Contains($"{heatPath}.{control.Key}"))
+                                    newRows.Add(MakeSingle(obj, control.Label, $"{heatPath}.{control.Key}", 1));
+                            continue;
+                        }
                         if (effect.Type == CameraEffectType.Bloom)
                         {
                             string bloomPath = $"camera.effect.{i}.bloom";
@@ -5068,6 +5097,15 @@ public partial class Timeline : UiPanel
             for (int i = 0; i < cameraObj.Effects.Count; i++)
             {
                 var effect = cameraObj.Effects[i];
+                if (effect.Type == CameraEffectType.HeatDistort)
+                {
+                    string heatPath = $"camera.effect.{i}.heat_distort";
+                    string[] paths = HeatDistortSettings.Controls.Select(c => $"{heatPath}.{c.Key}").ToArray();
+                    _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Heat Distort", paths, $"camera.effect.{i}"));
+                    foreach (var control in HeatDistortSettings.Controls)
+                        _displayRows.Add(MakeSingle(obj, control.Label, $"{heatPath}.{control.Key}", 1));
+                    continue;
+                }
                 if (effect.Type == CameraEffectType.DepthOfField)
                 {
                     string baseDofPath = $"camera.effect.{i}.depth_of_field";

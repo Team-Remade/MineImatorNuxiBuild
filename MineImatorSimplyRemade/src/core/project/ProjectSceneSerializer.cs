@@ -1489,6 +1489,7 @@ public static class ProjectSceneSerializer
             ChromaticAberration = effect.ChromaticAberration.Clone(),
             Distort = effect.Distort.Clone(),
             Pixelate = effect.Pixelate.Clone(),
+            HeatDistort = effect.HeatDistort.Clone(),
             Outline = effect.Outline.Clone(),
             ColorCorrection = effect.ColorCorrection.Clone(),
             Shake = new ProjectCameraShakeSettings
@@ -1522,6 +1523,7 @@ public static class ProjectSceneSerializer
             ChromaticAberration = effect.ChromaticAberration?.Clone() ?? new ChromaticAberrationSettings(),
             Distort = effect.Distort?.Clone() ?? new DistortSettings(),
             Pixelate = effect.Pixelate?.Clone() ?? new PixelateSettings(),
+            HeatDistort = effect.HeatDistort?.Clone() ?? new HeatDistortSettings(),
             Outline = effect.Outline?.Clone() ?? new OutlineSettings(),
             ColorCorrection = effect.ColorCorrection?.Clone() ?? new ColorCorrectionSettings(),
             Shake = new CameraShakeSettings

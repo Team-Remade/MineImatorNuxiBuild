@@ -172,6 +172,9 @@ public class CameraSceneObject : SceneObject
             case CameraEffectType.Pixelate:
                 Effects.Add(new CameraEffect { Type = CameraEffectType.Pixelate });
                 break;
+            case CameraEffectType.HeatDistort:
+                Effects.Add(new CameraEffect { Type = CameraEffectType.HeatDistort });
+                break;
         }
     }
 
@@ -187,6 +190,7 @@ public class CameraSceneObject : SceneObject
             ChromaticAberration = source.ChromaticAberration.Clone(),
             Distort = source.Distort.Clone(),
             Pixelate = source.Pixelate.Clone(),
+            HeatDistort = source.HeatDistort.Clone(),
             Outline = source.Outline.Clone(),
             ColorCorrection = source.ColorCorrection.Clone(),
             Shake = new CameraShakeSettings

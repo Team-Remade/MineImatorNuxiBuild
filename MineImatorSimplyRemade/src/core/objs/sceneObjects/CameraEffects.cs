@@ -14,7 +14,45 @@ public enum CameraEffectType
     ChromaticAberration = 7,
     Distort = 8,
     Outline = 9,
-    Pixelate = 10
+    Pixelate = 10,
+    HeatDistort = 11
+}
+
+public class HeatDistortSettings
+{
+    public float Strength { get; set; } = 25f;
+    public float Speed { get; set; } = 100f;
+    public float Scale { get; set; } = 100f;
+
+    public HeatDistortSettings Clone() => (HeatDistortSettings)MemberwiseClone();
+
+    public static readonly (string Key, string Label, float Min, float Max)[] Controls =
+    [
+        ("strength", "Strength (%)", 0f, 100f),
+        ("speed", "Speed (%)", 0f, 1000f),
+        ("scale", "Scale (%)", 1f, 1000f)
+    ];
+
+    public float GetValue(string key) => key switch
+    {
+        "strength" => Strength,
+        "speed" => Speed,
+        "scale" => Scale,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown heat distort control.")
+    };
+
+    public void SetValue(string key, float value)
+    {
+        if (!float.IsFinite(value))
+            throw new ArgumentOutOfRangeException(nameof(value), value, "Heat distort values must be finite.");
+        switch (key)
+        {
+            case "strength": Strength = Math.Clamp(value, 0f, 100f); break;
+            case "speed": Speed = Math.Clamp(value, 0f, 1000f); break;
+            case "scale": Scale = Math.Clamp(value, 1f, 1000f); break;
+            default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown heat distort control.");
+        }
+    }
 }
 
 public class PixelateSettings
@@ -470,6 +508,7 @@ public class CameraEffect
     public ChromaticAberrationSettings ChromaticAberration = new();
     public DistortSettings Distort = new();
     public PixelateSettings Pixelate = new();
+    public HeatDistortSettings HeatDistort = new();
     public OutlineSettings Outline = new();
     public ColorCorrectionSettings ColorCorrection = new();
 }

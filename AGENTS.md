@@ -143,6 +143,18 @@ timeline interpolation and the ImGui pixel-size slider. The graphics selector
 requires OpenGL 3.3 and verifies exact block sizes, partial image-edge blocks,
 whole-pixel rounding, alpha, stacking, fast/high-quality previews and PNG export.
 
+### Heat distort camera regression checks
+
+```powershell
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --heat-distort
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --heat-distort-graphics
+```
+
+CPU checks cover saved settings, independent copies, undo/dirty detection,
+timeline interpolation and all three ImGui percentage sliders. Graphics checks
+require OpenGL 3.3 and cover displacement, strength/speed/scale, deterministic
+seeking, frozen animation, alpha, stacking, previews and PNG export.
+
 ### Wiggle bone regression checks
 
 ```powershell

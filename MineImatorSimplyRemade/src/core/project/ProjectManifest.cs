@@ -677,6 +677,7 @@ public class ProjectCameraEffectEntry
     public ChromaticAberrationSettings ChromaticAberration { get; set; } = new();
     public DistortSettings Distort { get; set; } = new();
     public PixelateSettings Pixelate { get; set; } = new();
+    public HeatDistortSettings HeatDistort { get; set; } = new();
     public OutlineSettings Outline { get; set; } = new();
     public ColorCorrectionSettings ColorCorrection { get; set; } = new();
 }
