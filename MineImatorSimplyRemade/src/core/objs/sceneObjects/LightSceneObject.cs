@@ -45,6 +45,7 @@ public class LightSceneObject : SceneObject
     public float LightRange = 5f;
 
     public float LightIndirectEnergy = 1f;
+    /// <summary>Highlight strength: 0 disables highlights, 0.5 is normal, 1 doubles PBR highlights.</summary>
     public float LightSpecular = 0.5f;
     public bool  LightShadowEnabled = true;
 

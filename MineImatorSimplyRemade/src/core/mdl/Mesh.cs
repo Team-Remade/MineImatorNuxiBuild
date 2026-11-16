@@ -1282,6 +1282,7 @@ public class Mesh : IDisposable
     ///                       0 for point lights (disables the cone test in the shader)
     ///   spotCosInnerAngle – cosine of the inner (zero-intensity) spot-cone half-angle;
     ///                       0 for point lights
+    ///   specular          – highlight strength (0 disables, 0.5 is the default)
     /// </summary>
     public static readonly List<(
         vec3 pos,
@@ -1292,7 +1293,8 @@ public class Mesh : IDisposable
         vec3  direction,
         float indirectEnergy,
         float spotCosOuterAngle,
-        float spotCosInnerAngle)> PointLights = new();
+        float spotCosInnerAngle,
+        float specular)> PointLights = new();
 
     /// <summary>
     /// Global ambient light colour for lit meshes.
@@ -2121,7 +2123,7 @@ public class Mesh : IDisposable
     private unsafe void UploadPointLights()
     {
         // Must match MAX_POINT_LIGHTS in simple.frag. Upload arrays rather than
-        // rebuilding indexed names and issuing nine driver calls for every light.
+        // rebuilding indexed names and issuing driver calls for every light.
         const int maxLights = 32;
         int count = Math.Min(PointLights.Count, maxLights);
         FrameProfiler.Shared.Count(ProfileCounter.PointLightsUploaded, count);
@@ -2134,6 +2136,7 @@ public class Mesh : IDisposable
         float* ranges = stackalloc float[count];
         float* energies = stackalloc float[count];
         float* indirectEnergies = stackalloc float[count];
+        float* speculars = stackalloc float[count];
         float* spotOuter = stackalloc float[count];
         float* spotInner = stackalloc float[count];
         int* shadowIndices = stackalloc int[count];
@@ -2152,6 +2155,7 @@ public class Mesh : IDisposable
             ranges[i] = light.range;
             energies[i] = light.energy;
             indirectEnergies[i] = light.indirectEnergy;
+            speculars[i] = Math.Clamp(light.specular, 0f, 1f);
             spotOuter[i] = light.spotCosOuterAngle;
             spotInner[i] = light.spotCosInnerAngle;
             shadowIndices[i] = light.shadowIndex;
@@ -2169,6 +2173,8 @@ public class Mesh : IDisposable
         if (loc >= 0) _gl.Uniform1(loc, (uint)count, energies);
         loc = _shader.GetUniformLocation("uPointLightIndirectEnergy[0]");
         if (loc >= 0) _gl.Uniform1(loc, (uint)count, indirectEnergies);
+        loc = _shader.GetUniformLocation("uPointLightSpecular[0]");
+        if (loc >= 0) _gl.Uniform1(loc, (uint)count, speculars);
         loc = _shader.GetUniformLocation("uPointLightSpotCosOuter[0]");
         if (loc >= 0) _gl.Uniform1(loc, (uint)count, spotOuter);
         loc = _shader.GetUniformLocation("uPointLightSpotCosInner[0]");

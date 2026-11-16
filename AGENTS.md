@@ -74,12 +74,17 @@ dotnet run --configuration Release --project .\MineImatorSimplyRemade\tools\NxOb
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --effects-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --particles-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --emissive-graphics
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --lights-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --material-colors
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --material-colors-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --block-rotation-graphics
 ```
 
 Coverage and prerequisites:
+
+- `--lights-graphics`: OpenGL 3.3; point/spot specular strength through timeline
+  evaluation, light collection and GPU upload, standard/PBR dielectric/metal
+  pixels, energy/cone/unlit gating, and exclusion of highlights from diffuse GI.
 
 - `--startup-graphics`: OpenGL 3.3; loading-logo GIF frame pixels, per-frame
   delays, looping, and the startup UI's animated image draw commands.

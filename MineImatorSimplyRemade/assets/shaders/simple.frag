@@ -104,6 +104,7 @@ uniform vec3  uPointLightColor[MAX_POINT_LIGHTS];
 uniform float uPointLightRange[MAX_POINT_LIGHTS];
 uniform float uPointLightEnergy[MAX_POINT_LIGHTS];
 uniform float uPointLightIndirectEnergy[MAX_POINT_LIGHTS];
+uniform float uPointLightSpecular[MAX_POINT_LIGHTS];
 uniform int   uPointLightShadowIndex[MAX_POINT_LIGHTS];
 uniform vec3  uPointLightDir[MAX_POINT_LIGHTS];
 uniform float uPointLightSpotCosOuter[MAX_POINT_LIGHTS];
@@ -587,6 +588,7 @@ void main() {
     }
 
     vec3 pointLightSum = vec3(0.0);
+    vec3 pointSpecularSum = vec3(0.0);
     vec3 pointBounceSum = vec3(0.0);
     vec3 pointIndirectSum = vec3(0.0);
     for (int i = 0; i < uPointLightCount; i++) {
@@ -619,11 +621,19 @@ void main() {
 
         vec3 pointDirect = uPointLightColor[i] * diffFact * attenuation * spot * uPointLightEnergy[i] * (1.0 - pointShadow);
         vec3 pointDiffuse = vec3(0.0);
+        float specularStrength = clamp(uPointLightSpecular[i], 0.0, 1.0);
         if (pbr) {
             vec3 radiance = max(uPointLightColor[i], vec3(0.0)) * attenuation * spot
                           * max(uPointLightEnergy[i], 0.0) * (1.0 - pointShadow);
             pointDirect = pbrLighting(norm, pbrView, lightDir, linearAlbedo, sssDirectTint, roughness, metallic, pointDiffuse) * radiance;
             pointDiffuse *= radiance;
+            // Preserve the existing BRDF at the default light specular of 0.5.
+            pointDirect = pointDiffuse + (pointDirect - pointDiffuse) * (2.0 * specularStrength);
+        } else if (diffFact > 0.0 && dot(norm, pbrView) > 0.0) {
+            vec3 halfVector = safeDirection(pbrView + lightDir, norm);
+            float highlight = pow(max(dot(norm, halfVector), 0.0), 32.0) * specularStrength;
+            pointSpecularSum += uPointLightColor[i] * highlight * attenuation * spot
+                              * max(uPointLightEnergy[i], 0.0) * (1.0 - pointShadow);
         }
 
         if (sssAmount > 0.0) {
@@ -704,7 +714,7 @@ void main() {
         directionalLight += scatter;
     }
     result = pbr ? max(uAmbient, vec3(0.0)) * linearAlbedo * (1.0 - metallic) * occlusion + directionalLight + pointLightSum
-                 : (uAmbient + directionalLight * sssDirectTint + pointLightSum) * baseColor;
+                 : (uAmbient + directionalLight * sssDirectTint + pointLightSum) * baseColor + pointSpecularSum;
     // GI transports outgoing diffuse light, not ambient, fog or post-processing.
     bounceSource = pbr ? directionalDiffuse + pointBounceSum
                       : (directionalLight * sssDirectTint + pointBounceSum) * linearAlbedo * giVisibility;

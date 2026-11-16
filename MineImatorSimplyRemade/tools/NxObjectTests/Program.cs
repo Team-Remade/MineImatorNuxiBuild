@@ -255,6 +255,20 @@ internal static partial class Program
                 return 1;
             }
         }
+        if (args.Contains("--lights-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                LightSpecularGraphics();
+                Console.WriteLine("PASS Point/spot specular pixels, animation, PBR/standard shading and diffuse GI isolation");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--emissive-graphics", StringComparer.Ordinal))
         {
             try
