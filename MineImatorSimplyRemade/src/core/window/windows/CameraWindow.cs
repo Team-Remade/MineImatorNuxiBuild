@@ -195,11 +195,6 @@ public class CameraWindow : Window
             ImGui.PopStyleColor(4);
         }
 
-        // Corner picker — mirrors the inline preview header. This sets the
-        // corner the preview will snap to once this window is docked again.
-        ImGui.SameLine();
-        _panel.DrawCornerPicker();
-
         ImGui.SameLine();
         _panel.DrawRenderModeSelectorPublic("PreviewWindowHeader", 176f * UiTheme.Scale);
 

@@ -7238,9 +7238,6 @@ public partial class Viewport : UiPanel
         }
 
         ImGui.SameLine();
-        DrawCornerPicker();
-
-        ImGui.SameLine();
         DrawRenderModeSelector("PreviewInlineHeader", 176f);
 
         var avail = ImGui.GetContentRegionAvail();
@@ -7318,26 +7315,6 @@ public partial class Viewport : UiPanel
 
         if (_selectedCameraIndex > spawned.Count) _selectedCameraIndex = 0;
         return GetActiveCameraPreview(spawned);
-    }
-
-    public void DrawCornerPicker()
-    {
-        float scale = UiTheme.Scale;
-        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(2, 2) * scale);
-
-        if (ImGui.Button(_corner == Corner.TopLeft ? Localization.Label("text.panel.viewport.tl_2", "[TL]") : Localization.Label("text.panel.viewport.tl", " TL "), new Vector2(28, 16) * scale))
-            _corner = Corner.TopLeft;
-        ImGui.SameLine(0, 2 * scale);
-        if (ImGui.Button(_corner == Corner.TopRight ? Localization.Label("text.panel.viewport.tr_2", "[TR]") : Localization.Label("text.panel.viewport.tr", " TR "), new Vector2(28, 16) * scale))
-            _corner = Corner.TopRight;
-        ImGui.SameLine(0, 2 * scale);
-        if (ImGui.Button(_corner == Corner.BottomLeft ? Localization.Label("text.panel.viewport.bl_2", "[BL]") : Localization.Label("text.panel.viewport.bl", " BL "), new Vector2(28, 16) * scale))
-            _corner = Corner.BottomLeft;
-        ImGui.SameLine(0, 2 * scale);
-        if (ImGui.Button(_corner == Corner.BottomRight ? Localization.Label("text.panel.viewport.br_2", "[BR]") : Localization.Label("text.panel.viewport.br", " BR "), new Vector2(28, 16) * scale))
-            _corner = Corner.BottomRight;
-
-        ImGui.PopStyleVar();
     }
 
     public Vector2 GetPreviewDrawSize(Vector2 available)
