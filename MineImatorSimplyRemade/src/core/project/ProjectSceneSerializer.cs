@@ -1490,6 +1490,7 @@ public static class ProjectSceneSerializer
             Distort = effect.Distort.Clone(),
             Pixelate = effect.Pixelate.Clone(),
             HeatDistort = effect.HeatDistort.Clone(),
+            CinematicBars = effect.CinematicBars.Clone(),
             Outline = effect.Outline.Clone(),
             ColorCorrection = effect.ColorCorrection.Clone(),
             Shake = new ProjectCameraShakeSettings
@@ -1524,6 +1525,7 @@ public static class ProjectSceneSerializer
             Distort = effect.Distort?.Clone() ?? new DistortSettings(),
             Pixelate = effect.Pixelate?.Clone() ?? new PixelateSettings(),
             HeatDistort = effect.HeatDistort?.Clone() ?? new HeatDistortSettings(),
+            CinematicBars = effect.CinematicBars?.Clone() ?? new CinematicBarsSettings(),
             Outline = effect.Outline?.Clone() ?? new OutlineSettings(),
             ColorCorrection = effect.ColorCorrection?.Clone() ?? new ColorCorrectionSettings(),
             Shake = new CameraShakeSettings

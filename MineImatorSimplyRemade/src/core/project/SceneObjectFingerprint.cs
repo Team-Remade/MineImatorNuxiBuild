@@ -499,6 +499,8 @@ internal static class SceneObjectFingerprint
                 hash.Add(effect.HeatDistort.Strength);
                 hash.Add(effect.HeatDistort.Speed);
                 hash.Add(effect.HeatDistort.Scale);
+                foreach (var control in CinematicBarsSettings.Controls)
+                    hash.Add(effect.CinematicBars.GetValue(control.Key));
                 foreach (var control in OutlineSettings.Controls)
                     hash.Add(effect.Outline.GetValue(control.Key));
                 hash.Add(aberration.BlurAmount);

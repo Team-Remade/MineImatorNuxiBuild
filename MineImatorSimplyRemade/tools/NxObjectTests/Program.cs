@@ -387,6 +387,8 @@ internal static partial class Program
             ("Pixelate ImGui pixel-size slider", PixelateControls),
             ("Heat distort persistence, independent copies, undo and timeline", HeatDistortPersistence),
             ("Heat distort ImGui percentage sliders", HeatDistortControls),
+            ("Cinematic bars persistence, independent copies, undo and timeline", CinematicBarsPersistence),
+            ("Cinematic bars ImGui sliders and color picker", CinematicBarsControls),
             ("Chromatic aberration ImGui percentage sliders and checkbox", ChromaticAberrationControls),
             ("Wind defaults, project/object persistence, duplication, undo, animation and classification", WindPersistence),
             ("Biome catalog, independent custom colors, project persistence and reset", BiomeSettings),
@@ -586,6 +588,10 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Heat distort", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--heat-distort-graphics", StringComparer.Ordinal))
             tests = [("Heat distort GPU controls, seeking, alpha, stacking, previews and PNG export", HeatDistortGraphics)];
+        if (args.Contains("--cinematic-bars", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Cinematic bars", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--cinematic-bars-graphics", StringComparer.Ordinal))
+            tests = [("Cinematic bars GPU coverage, rotation, offset, color, preview modes and PNG export", CinematicBarsGraphics)];
         if (args.Contains("--outline-graphics", StringComparer.Ordinal))
             tests = [("Outline GPU depth/normals, radius, fades, blending, alpha and preview/export parity", OutlineGraphics)];
         if (args.Contains("--distort-graphics", StringComparer.Ordinal))

@@ -678,6 +678,7 @@ public class ProjectCameraEffectEntry
     public DistortSettings Distort { get; set; } = new();
     public PixelateSettings Pixelate { get; set; } = new();
     public HeatDistortSettings HeatDistort { get; set; } = new();
+    public CinematicBarsSettings CinematicBars { get; set; } = new();
     public OutlineSettings Outline { get; set; } = new();
     public ColorCorrectionSettings ColorCorrection { get; set; } = new();
 }

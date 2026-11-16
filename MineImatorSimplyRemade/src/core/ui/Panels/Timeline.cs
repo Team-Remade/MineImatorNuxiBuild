@@ -1603,6 +1603,7 @@ public partial class Timeline : UiPanel
                 CameraEffectType.Distort => Localization.Format("text.panel.timeline.effect_distort", index + 1),
                 CameraEffectType.Pixelate => Localization.Format("text.panel.timeline.effect_pixelate", index + 1),
                 CameraEffectType.HeatDistort => Localization.Format("text.panel.timeline.effect_heat_distort", index + 1),
+                CameraEffectType.CinematicBars => Localization.Format("text.panel.timeline.effect_cinematic_bars", index + 1),
                 CameraEffectType.Outline => Localization.Format("text.panel.timeline.effect_outline", index + 1),
                 CameraEffectType.ColorCorrection => Localization.Format("text.panel.timeline.effect_color_correction", index + 1),
                 CameraEffectType.FilmGrain => Localization.Format("text.panel.timeline.effect_film_grain", index + 1),
@@ -2974,6 +2975,12 @@ public partial class Timeline : UiPanel
                     yield return $"camera.effect.{i}.heat_distort.{control.Key}";
                 continue;
             }
+            if (cam.Effects[i].Type == CameraEffectType.CinematicBars)
+            {
+                foreach (var control in CinematicBarsSettings.Controls)
+                    yield return $"camera.effect.{i}.cinematic_bars.{control.Key}";
+                continue;
+            }
             if (cam.Effects[i].Type == CameraEffectType.Outline)
             {
                 foreach (var control in OutlineSettings.Controls)
@@ -3684,6 +3691,8 @@ public partial class Timeline : UiPanel
                 return effect.Pixelate.GetValue(parts[4]);
             if (effect.Type == CameraEffectType.HeatDistort && parts.Length == 5 && parts[3] == "heat_distort")
                 return effect.HeatDistort.GetValue(parts[4]);
+            if (effect.Type == CameraEffectType.CinematicBars && parts[3] == "cinematic_bars")
+                return effect.CinematicBars.GetValue(string.Join('.', parts.Skip(4)));
             if (effect.Type == CameraEffectType.Outline && parts[3] == "outline")
                 return effect.Outline.GetValue(string.Join('.', parts.Skip(4)));
             if (effect.Type == CameraEffectType.LensDirt && parts.Length == 5 && parts[3] == "lens_dirt")
@@ -4386,6 +4395,15 @@ public partial class Timeline : UiPanel
                     effect.Outline.SetValue(string.Join('.', parts.Skip(4)), value);
                 break;
             }
+            case 5 or 6 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "cinematic_bars" && obj is CameraSceneObject camBars:
+            {
+                if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camBars.Effects.Count)
+                    break;
+                var effect = camBars.Effects[effectIndex];
+                if (effect.Type == CameraEffectType.CinematicBars)
+                    effect.CinematicBars.SetValue(string.Join('.', parts.Skip(4)), value);
+                break;
+            }
             case 5 when parts[0] == "camera" && parts[1] == "effect" && parts[3] == "heat_distort" && obj is CameraSceneObject camHeatDistort:
             {
                 if (!int.TryParse(parts[2], out int effectIndex) || effectIndex < 0 || effectIndex >= camHeatDistort.Effects.Count)
@@ -4767,6 +4785,17 @@ public partial class Timeline : UiPanel
                                     newRows.Add(MakeSingle(obj, control.Label, $"{baseDofPath}.{control.Key}", 1));
                             continue;
                         }
+                        if (effect.Type == CameraEffectType.CinematicBars)
+                        {
+                            string barsPath = $"camera.effect.{i}.cinematic_bars";
+                            string[] paths = CinematicBarsSettings.Controls.Select(c => $"{barsPath}.{c.Key}").ToArray();
+                            if (!paths.Any(propsWithKeyframes.Contains)) continue;
+                            newRows.Add(MakeGroup(obj, $"Effect {i + 1}: Cinematic Bars", paths, $"camera.effect.{i}"));
+                            foreach (var control in CinematicBarsSettings.Controls)
+                                if (propsWithKeyframes.Contains($"{barsPath}.{control.Key}"))
+                                    newRows.Add(MakeSingle(obj, control.Label, $"{barsPath}.{control.Key}", 1));
+                            continue;
+                        }
                         if (effect.Type == CameraEffectType.Pixelate)
                         {
                             string pixelatePath = $"camera.effect.{i}.pixelate";
@@ -4787,6 +4816,15 @@ public partial class Timeline : UiPanel
                             foreach (var control in HeatDistortSettings.Controls)
                                 if (propsWithKeyframes.Contains($"{heatPath}.{control.Key}"))
                                     newRows.Add(MakeSingle(obj, control.Label, $"{heatPath}.{control.Key}", 1));
+                            continue;
+                        }
+                        if (effect.Type == CameraEffectType.CinematicBars)
+                        {
+                            string barsPath = $"camera.effect.{i}.cinematic_bars";
+                            string[] paths = CinematicBarsSettings.Controls.Select(c => $"{barsPath}.{c.Key}").ToArray();
+                            _displayRows.Add(MakeGroup(obj, $"Effect {i + 1}: Cinematic Bars", paths, $"camera.effect.{i}"));
+                            foreach (var control in CinematicBarsSettings.Controls)
+                                _displayRows.Add(MakeSingle(obj, control.Label, $"{barsPath}.{control.Key}", 1));
                             continue;
                         }
                         if (effect.Type == CameraEffectType.Bloom)

@@ -15,7 +15,57 @@ public enum CameraEffectType
     Distort = 8,
     Outline = 9,
     Pixelate = 10,
-    HeatDistort = 11
+    HeatDistort = 11,
+    CinematicBars = 12
+}
+
+public class CinematicBarsSettings
+{
+    public float Size { get; set; } = 12.5f;
+    public float Rotation { get; set; }
+    public float Offset { get; set; }
+    public float ColorR { get; set; }
+    public float ColorG { get; set; }
+    public float ColorB { get; set; }
+
+    public CinematicBarsSettings Clone() => (CinematicBarsSettings)MemberwiseClone();
+
+    public static readonly (string Key, string Label, float Min, float Max)[] Controls =
+    [
+        ("size", "Size (%)", 0f, 50f),
+        ("rotation", "Rotation (degrees)", -180f, 180f),
+        ("offset", "Offset (%)", -100f, 100f),
+        ("color.r", "Color R", 0f, 1f),
+        ("color.g", "Color G", 0f, 1f),
+        ("color.b", "Color B", 0f, 1f)
+    ];
+
+    public float GetValue(string key) => key switch
+    {
+        "size" => Size,
+        "rotation" => Rotation,
+        "offset" => Offset,
+        "color.r" => ColorR,
+        "color.g" => ColorG,
+        "color.b" => ColorB,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown cinematic bars control.")
+    };
+
+    public void SetValue(string key, float value)
+    {
+        if (!float.IsFinite(value))
+            throw new ArgumentOutOfRangeException(nameof(value), value, "Cinematic bars values must be finite.");
+        switch (key)
+        {
+            case "size": Size = Math.Clamp(value, 0f, 50f); break;
+            case "rotation": Rotation = Math.Clamp(value, -180f, 180f); break;
+            case "offset": Offset = Math.Clamp(value, -100f, 100f); break;
+            case "color.r": ColorR = Math.Clamp(value, 0f, 1f); break;
+            case "color.g": ColorG = Math.Clamp(value, 0f, 1f); break;
+            case "color.b": ColorB = Math.Clamp(value, 0f, 1f); break;
+            default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown cinematic bars control.");
+        }
+    }
 }
 
 public class HeatDistortSettings
@@ -509,6 +559,7 @@ public class CameraEffect
     public DistortSettings Distort = new();
     public PixelateSettings Pixelate = new();
     public HeatDistortSettings HeatDistort = new();
+    public CinematicBarsSettings CinematicBars = new();
     public OutlineSettings Outline = new();
     public ColorCorrectionSettings ColorCorrection = new();
 }

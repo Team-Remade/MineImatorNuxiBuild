@@ -143,6 +143,18 @@ timeline interpolation and the ImGui pixel-size slider. The graphics selector
 requires OpenGL 3.3 and verifies exact block sizes, partial image-edge blocks,
 whole-pixel rounding, alpha, stacking, fast/high-quality previews and PNG export.
 
+### Cinematic bars camera regression checks
+
+```powershell
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --cinematic-bars
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --cinematic-bars-graphics
+```
+
+CPU checks cover persistence, independent copies, undo/dirty detection, timeline
+interpolation, sliders and the color picker. Graphics checks require OpenGL 3.3
+and cover exact bar coverage, rotation, offset, color/alpha, stacking, all preview
+shading modes (without forcing camera effects), and PNG export.
+
 ### Heat distort camera regression checks
 
 ```powershell

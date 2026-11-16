@@ -337,7 +337,7 @@ public partial class PropertiesPanel : UiPanel
 
     // Scale link toggle
     private bool _linkScale = true;
-    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction", "Lens Dirt", "Vignette", "Chromatic Aberration", "Distort", "Outline", "Pixelate", "Heat Distort" };
+    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction", "Lens Dirt", "Vignette", "Chromatic Aberration", "Distort", "Outline", "Pixelate", "Heat Distort", "Cinematic Bars" };
     private static readonly string[] CameraShakeModeOptions = { "Rotational", "Positional", "Both" };
     private static readonly string[] BloomBlendModeOptions =
         ["text.panel.properties.blend_normal", "text.panel.properties.blend_add", "text.panel.properties.blend_screen",
@@ -1282,6 +1282,7 @@ public partial class PropertiesPanel : UiPanel
                     Distort = effect.Distort.Clone(),
                     Pixelate = effect.Pixelate.Clone(),
                     HeatDistort = effect.HeatDistort.Clone(),
+                    CinematicBars = effect.CinematicBars.Clone(),
                     Outline = effect.Outline.Clone(),
                     ColorCorrection = effect.ColorCorrection.Clone(),
                     Shake = new ProjectCameraShakeSettings
@@ -5420,6 +5421,7 @@ public partial class PropertiesPanel : UiPanel
                             CameraEffectType.Distort => Localization.T("text.panel.properties.distort") + $"###Distort##cameraEffect{i}",
                             CameraEffectType.Pixelate => Localization.T("text.panel.properties.pixelate") + $"###Pixelate##cameraEffect{i}",
                             CameraEffectType.HeatDistort => Localization.T("text.panel.properties.heat_distort") + $"###HeatDistort##cameraEffect{i}",
+                            CameraEffectType.CinematicBars => Localization.T("text.panel.properties.cinematic_bars") + $"###CinematicBars##cameraEffect{i}",
                             CameraEffectType.Outline => Localization.T("text.panel.properties.outline") + $"###Outline##cameraEffect{i}",
                             _ => Localization.Format("text.panel.properties.effect", i + 1) + $"###Effect {i + 1}##cameraEffect{i}"
                         };
@@ -5588,6 +5590,8 @@ public partial class PropertiesPanel : UiPanel
                                 DrawPixelateControls(cameraObject, i);
                             if (effect.Type == CameraEffectType.HeatDistort)
                                 DrawHeatDistortControls(cameraObject, i);
+                            if (effect.Type == CameraEffectType.CinematicBars)
+                                DrawCinematicBarsControls(cameraObject, i);
                             if (effect.Type == CameraEffectType.Outline)
                                 DrawOutlineControls(cameraObject, i);
 
@@ -6805,6 +6809,41 @@ public partial class PropertiesPanel : UiPanel
         ImGui.PopID();
     }
 
+    private void DrawCinematicBarsControls(CameraSceneObject camera, int index)
+    {
+        ImGui.PushID(index);
+        var settings = camera.Effects[index].CinematicBars;
+        string basePath = $"camera.effect.{index}.cinematic_bars";
+        foreach (var control in CinematicBarsSettings.Controls)
+        {
+            if (control.Key.StartsWith("color.", StringComparison.Ordinal))
+                continue;
+            float value = settings.GetValue(control.Key);
+            if (ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value,
+                    control.Min, control.Max, control.Key == "rotation" ? "%.1f deg" : "%.1f%%",
+                    ImGuiSliderFlags.AlwaysClamp))
+            {
+                settings.SetValue(control.Key, value);
+                Timeline?.RecordAutoKeyframe(camera, $"{basePath}.{control.Key}");
+                ProjectManager.Instance.SetDirty(true);
+            }
+            RegisterPropertyContext($"{basePath}.{control.Key}");
+        }
+        var color = new Vector3(settings.ColorR, settings.ColorG, settings.ColorB);
+        if (ImGui.ColorEdit3(Localization.Label("text.common.color", "Color##cinematicBars"), ref color, ImGuiColorEditFlags.NoInputs))
+        {
+            settings.SetValue("color.r", color.X);
+            settings.SetValue("color.g", color.Y);
+            settings.SetValue("color.b", color.Z);
+            Timeline?.RecordAutoKeyframe(camera, $"{basePath}.color.r");
+            Timeline?.RecordAutoKeyframe(camera, $"{basePath}.color.g");
+            Timeline?.RecordAutoKeyframe(camera, $"{basePath}.color.b");
+            ProjectManager.Instance.SetDirty(true);
+        }
+        RegisterPropertyContext($"{basePath}.color.r", $"{basePath}.color.g", $"{basePath}.color.b");
+        ImGui.PopID();
+    }
+
     private void DrawHeatDistortControls(CameraSceneObject camera, int index)
     {
         ImGui.PushID(index);
@@ -7787,6 +7826,11 @@ public partial class PropertiesPanel : UiPanel
                         else if (parts[3] == "heat_distort")
                         {
                             var control = HeatDistortSettings.Controls.First(c => c.Key == parts[4]);
+                            stored = Math.Clamp(number, control.Min, control.Max);
+                        }
+                        else if (parts[3] == "cinematic_bars")
+                        {
+                            var control = CinematicBarsSettings.Controls.First(c => c.Key == string.Join('.', parts.Skip(4)));
                             stored = Math.Clamp(number, control.Min, control.Max);
                         }
                         else if (parts[3] == "outline")

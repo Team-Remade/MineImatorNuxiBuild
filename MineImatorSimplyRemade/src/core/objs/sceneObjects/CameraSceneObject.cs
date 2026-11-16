@@ -175,6 +175,9 @@ public class CameraSceneObject : SceneObject
             case CameraEffectType.HeatDistort:
                 Effects.Add(new CameraEffect { Type = CameraEffectType.HeatDistort });
                 break;
+            case CameraEffectType.CinematicBars:
+                Effects.Add(new CameraEffect { Type = CameraEffectType.CinematicBars });
+                break;
         }
     }
 
@@ -191,6 +194,7 @@ public class CameraSceneObject : SceneObject
             Distort = source.Distort.Clone(),
             Pixelate = source.Pixelate.Clone(),
             HeatDistort = source.HeatDistort.Clone(),
+            CinematicBars = source.CinematicBars.Clone(),
             Outline = source.Outline.Clone(),
             ColorCorrection = source.ColorCorrection.Clone(),
             Shake = new CameraShakeSettings

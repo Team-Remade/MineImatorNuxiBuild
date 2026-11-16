@@ -2218,6 +2218,8 @@ public partial class Viewport : UiPanel
             _heatDistortShader.Dispose();
             _heatDistortShader = null;
         }
+        _cinematicBarsShader?.Dispose();
+        _cinematicBarsShader = null;
         DeleteFramebuffer(ref _fbo);
         DeleteTexture(ref _colorTex);
         DeleteTexture(ref _depthTex);
@@ -3096,6 +3098,8 @@ public partial class Viewport : UiPanel
             else if (_renderedPassMode == RenderedPassMode.Combined)
                 ApplyCameraMaterialPass(_fbo, _glowFbo, _glowTex, w, h, activeCamObj);
 
+            ApplyCinematicBarsPass(_fbo, w, h, activeCamObj);
+
             if (OverlaysEnabled)
             {
                 using var overlaysScope = FrameProfiler.Shared.Measure(ProfileStage.Overlays);
@@ -3579,6 +3583,8 @@ public partial class Viewport : UiPanel
         }
         else if (_renderedPassMode == RenderedPassMode.Combined)
             ApplyCameraMaterialPass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
+
+        ApplyCinematicBarsPass(_fbo, width, height, activeCamObj);
 
         // Keep editor tools usable during the scene-renderer migration. These
         // draw over the bridged colour target; scene shading above is Veldrid.
@@ -7739,6 +7745,8 @@ public partial class Viewport : UiPanel
         }
         else if (effectivePassMode == RenderedPassMode.Combined)
             ApplyCameraMaterialPass(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h, sceneObj);
+
+        ApplyCinematicBarsPass(_previewFbo, w, h, sceneObj);
 
         if (!applyCameraEffects && (applyWatermark ||
             (renderMode == SceneRenderMode.Rendered && effectivePassMode == RenderedPassMode.Combined)))
