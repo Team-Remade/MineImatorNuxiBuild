@@ -5,7 +5,7 @@ using NumericsQuaternion = System.Numerics.Quaternion;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
-public enum CopyConstraintType { Position, Rotation, Scale, RotationToBend, Bend }
+public enum CopyConstraintType { Position, Rotation, Scale, RotationToBend, Bend, LookAt }
 
 public sealed class CopyConstraint
 {
@@ -80,7 +80,8 @@ public sealed class CopyConstraint
 public static class CopyConstraintSolver
 {
     internal sealed record EvaluationJob(SceneObject Owner, IReadOnlyList<SceneObject> Driven,
-        IReadOnlyList<SceneObject> Sources, Action Apply, bool IsCopy = false, bool IsPath = false);
+        IReadOnlyList<SceneObject> Sources, Action Apply, bool IsCopy = false, bool IsPath = false,
+        IReadOnlyList<SceneObject>? PositionSources = null, bool WritesPosition = true);
 
     internal static void Evaluate(List<SceneObject> objects, Dictionary<string, SceneObject> ids,
         List<EvaluationJob> jobs)
@@ -94,7 +95,8 @@ public static class CopyConstraintSolver
                 ids.TryGetValue(c.TargetObjectId, out var target) && SafeHierarchy(target) &&
                 SafeHierarchy(owner) && !IsWithin(target, owner)).ToArray();
             if (constraints.Length == 0) continue;
-            var sources = constraints.Select(c => ids[c.TargetObjectId]).ToList();
+            var sources = constraints.Where(c => c.Type != CopyConstraintType.LookAt).Select(c => ids[c.TargetObjectId]).ToList();
+            var positionSources = constraints.Where(c => c.Type == CopyConstraintType.LookAt).Select(c => ids[c.TargetObjectId]).ToArray();
             if (owner is MiBoneSceneObject bendOwner && constraints.Any(c => c.Type is CopyConstraintType.RotationToBend or CopyConstraintType.Bend))
                 sources.AddRange(bendOwner.GetBendEvaluationSources());
             foreach (var constraint in constraints.Where(c => c.Type == CopyConstraintType.Bend))
@@ -114,6 +116,12 @@ public static class CopyConstraintSolver
                         constraint.EvaluatedInput = world;
                         constraint.EvaluatedInputScale = scale;
                         mat4 frame = TargetFrame(target, constraint);
+                        if (constraint.Type == CopyConstraintType.LookAt && target is CameraSceneObject targetCamera)
+                        {
+                            frame.m30 += targetCamera.PivotOffset.x;
+                            frame.m31 += targetCamera.PivotOffset.y;
+                            frame.m32 += targetCamera.PivotOffset.z;
+                        }
                         if (constraint.Type is CopyConstraintType.RotationToBend or CopyConstraintType.Bend && owner is MiBoneSceneObject bone)
                         {
                             vec3 bend = bone.GetEvaluatedEditableBendAngle();
@@ -138,12 +146,13 @@ public static class CopyConstraintSolver
                             constraint.EvaluatedOutputBend = bone.GetEvaluatedEditableBendAngle();
                         }
                         else
-                            world = Apply(world, constraint, frame, ref scale, target.GetCopyConstraintScale());
+                            world = Apply(owner, world, constraint, frame, ref scale, target.GetCopyConstraintScale());
                         constraint.EvaluatedOutput = world;
                         constraint.EvaluatedOutputScale = scale;
                     }
                     owner.SetEvaluatedCopyTransform(world, SafeRatio(scale, originalScale), scale);
-                }, true));
+                }, true, PositionSources: positionSources,
+                WritesPosition: constraints.Any(c => c.Type == CopyConstraintType.Position)));
         }
 
         var states = new Dictionary<EvaluationJob, int>();
@@ -157,6 +166,9 @@ public static class CopyConstraintSolver
                 if (ReferenceEquals(dependency, job)) continue;
                 bool required = dependency.Driven.Any(driven =>
                     job.Sources.Any(source => IsWithin(source, driven)) ||
+                    // Aiming at an object's origin does not depend on that object's own rotation.
+                    (job.PositionSources?.Any(source => IsWithin(source, driven) &&
+                        (source != driven || dependency.WritesPosition)) == true) ||
                     ((job.IsCopy || dependency.IsCopy || job.IsPath || dependency.IsPath) &&
                         job.Driven.Any(owner => owner.Parent != null && IsWithin(owner.Parent, driven)))) ||
                     (job.IsCopy && !dependency.IsCopy && dependency.Driven.Contains(job.Owner)) ||
@@ -254,7 +266,7 @@ public static class CopyConstraintSolver
         return Rotation(result);
     }
 
-    private static mat4 Apply(mat4 world, CopyConstraint constraint, mat4 target, ref vec3 scale, vec3 targetScale)
+    private static mat4 Apply(SceneObject owner, mat4 world, CopyConstraint constraint, mat4 target, ref vec3 scale, vec3 targetScale)
     {
         if (!Finite(constraint.Offset)) return world;
         float blend = Math.Clamp(constraint.Blend, 0f, 1f);
@@ -269,9 +281,28 @@ public static class CopyConstraintSolver
                 if (Finite(position)) { world.m30 = position.x; world.m31 = position.y; world.m32 = position.z; }
                 break;
             case CopyConstraintType.Rotation:
+            case CopyConstraintType.LookAt:
                 mat4 current = Rotation(world);
-                mat4 desired = MappedRotation(target, constraint) * Euler(constraint.Offset);
-                mat4 blended = AllRotationAxes(constraint) ? BlendRotation(current, desired, blend)
+                mat4 desired;
+                bool lookAt = constraint.Type == CopyConstraintType.LookAt;
+                if (lookAt)
+                {
+                    // Camera eyes include an unrotated pivot displacement.
+                    vec3 origin = Translation(world) + (owner is CameraSceneObject camera ? camera.PivotOffset : vec3.Zero);
+                    vec3 backward = origin - Translation(target);
+                    if (!Finite(backward) || backward.LengthSqr < 1e-12f) break;
+                    backward = backward.Normalized;
+                    if (owner is MiBoneSceneObject or CharacterSceneObject) backward = -backward;
+                    vec3 right = vec3.Cross(vec3.UnitY, backward);
+                    if (right.LengthSqr < 1e-8f) right = vec3.UnitX - backward * backward.x;
+                    right = right.Normalized;
+                    vec3 up = vec3.Cross(backward, right).Normalized;
+                    desired = new mat4(new vec4(right, 0f), new vec4(up, 0f),
+                        new vec4(backward, 0f), new vec4(0f, 0f, 0f, 1f)) * Euler(constraint.Offset);
+                }
+                else
+                    desired = MappedRotation(target, constraint) * Euler(constraint.Offset);
+                mat4 blended = lookAt || AllRotationAxes(constraint) ? BlendRotation(current, desired, blend)
                     : BlendRotationAxes(current, desired, constraint, blend);
                 mat4 delta = blended * current.Transposed;
                 vec3 positionBefore = Translation(world);

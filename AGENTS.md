@@ -218,6 +218,18 @@ build output or modify the supplied project to make this check pass.
 
 ## Implementation notes
 
+### Look At constraints
+
+Camera forward is local -Z; Mine-imator character and bone faces use local +Z.
+Look At reads target positions, so reciprocal aiming is valid. Keep dependencies
+on position-writing constraints and on ancestors that can move target origins;
+do not make an object's own rotation-only constraint a position dependency.
+Camera targets use their evaluated eye position, including pivot displacement.
+
+Run `--copy-constraints` for CPU/ImGui checks, or `--look-at-graphics` with the
+NxObjectTests harness for OpenGL 3.3 front-face pixel checks using the bundled
+adult armor, baby armor and Steve models.
+
 ### Biome colors
 
 Preset climate and color values are based on the

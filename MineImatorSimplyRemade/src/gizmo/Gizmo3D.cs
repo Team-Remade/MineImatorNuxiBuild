@@ -2053,7 +2053,7 @@ public class Gizmo3D : IDisposable
 
     private static Transform3D GetWorldTransform(SceneObject obj)
     {
-        if (obj.CopyConstraints.Any(c => c.Enabled && c.Type == CopyConstraintType.Rotation && c.Blend > 0f))
+        if (obj.CopyConstraints.Any(c => c.Enabled && c.Type is CopyConstraintType.Rotation or CopyConstraintType.LookAt && c.Blend > 0f))
         {
             mat4 world = obj.GetWorldMatrixNoPivot();
             return new Transform3D(CopyConstraintSolver.Rotation(world), new vec3(world.m30, world.m31, world.m32));

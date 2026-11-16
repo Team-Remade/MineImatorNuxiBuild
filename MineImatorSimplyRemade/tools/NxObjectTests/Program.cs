@@ -15,6 +15,7 @@ using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
+using Silk.NET.OpenGL;
 
 internal static partial class Program
 {
@@ -469,6 +470,10 @@ internal static partial class Program
             ("Copy constraint bend sources, dependencies, limits and reset", CopyBendMapping),
             ("Copy constraint remapping persistence, history and timeline", CopyAxisPersistence),
             ("Copy constraint ImGui axis toggles and source selectors", CopyAxisControls),
+            ("Copy constraint Look At camera/head aiming, offsets, blend and repeatability", LookAtAiming),
+            ("Copy constraint Look At dependencies, degenerate targets and reset", LookAtDependencies),
+            ("Copy constraint Look At persistence, undo and timeline", LookAtPersistence),
+            ("Copy constraint Look At actual armor/Steve facing and mutual camera targets", LookAtModelFacing),
             ("Procedural effect deterministic seek, seed and stepped/smooth motion", EffectDeterminism),
             ("Procedural effect ring closure, reveal and branch attachment", EffectPaths),
             ("Procedural effect tube counts, winding, normals, UVs and bounds", EffectTubes),
@@ -622,6 +627,8 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Frames ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--copy-constraints", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Copy constraint ", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--look-at-graphics", StringComparer.Ordinal))
+            tests = [("Look At actual head front pixels and reciprocal camera aiming", LookAtGraphics)];
         if (args.Contains("--cloth", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Cloth ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--wiggle", StringComparer.Ordinal))
@@ -1051,6 +1058,280 @@ internal static partial class Program
         for (int axis = 0; axis < 3; axis++) Near(expected[axis], actual[axis], $"{message}, axis {axis}");
     }
 
+    private static void LookAtAiming(Fixture f)
+    {
+        var target = Node("look target");
+        target.Position = new vec3(5f, 4f, -8f);
+        var parent = Node("rotated parent");
+        parent.SetLocalRotation(new vec3(0.2f, -0.5f, 0.3f));
+        parent.Position = new vec3(1f, 2f, 3f);
+        var camera = new CameraSceneObject { PivotOffset = new vec3(0.5f, 0.2f, 0.1f) };
+        var head = BendBone("Steve head", vec3.Zero);
+        parent.AddChild(camera);
+        parent.AddChild(head);
+        foreach (var owner in new SceneObject[] { camera, head })
+        {
+            owner.Position = new vec3(0.3f, 0.6f, -0.2f);
+            vec3 authored = new(0.1f, 0.2f, 0.3f);
+            owner.SetLocalRotation(authored);
+            mat4 original = owner.GetWorldMatrixNoPivot();
+            var constraint = new CopyConstraint { Type = CopyConstraintType.LookAt, TargetObjectId = target.ObjectId };
+            owner.CopyConstraints.Add(constraint);
+            for (int repeat = 0; repeat < 3; repeat++)
+            {
+                InverseKinematicsSolver.Evaluate([parent, target]);
+                mat4 world = owner.GetWorldMatrixNoPivot();
+                vec3 origin = owner.GetWorldPosition() + (owner is CameraSceneObject c ? c.PivotOffset : vec3.Zero);
+                Near((target.GetWorldPosition() - origin).Normalized,
+                    new vec3(world.m20, world.m21, world.m22).Normalized * (owner is MiBoneSceneObject ? 1f : -1f),
+                    "Front points toward target");
+                Near(new vec3(original.m30, original.m31, original.m32), owner.GetWorldPosition(), "Aiming preserves position");
+                Near(authored, owner.LocalRotation, "Aiming preserves authored rotation");
+            }
+        }
+        camera.SyncCameraToTransform();
+        vec4 inView = camera.ViewCamera.GetViewMatrix() * new vec4(target.GetWorldPosition(), 1f);
+        Near(0f, inView.x, "Target is horizontally centered in camera");
+        Near(0f, inView.y, "Target is vertically centered in camera");
+        Check(inView.z < 0f, "Target is in front of camera");
+
+        var plain = Node("blended look");
+        var look = new CopyConstraint { Type = CopyConstraintType.LookAt, TargetObjectId = target.ObjectId };
+        plain.CopyConstraints.Add(look);
+        target.Position = new vec3(10f, 0f, 0f);
+        foreach (float blend in new[] { 0f, 0.5f, 1f })
+        {
+            look.Blend = blend;
+            InverseKinematicsSolver.Evaluate([plain, target]);
+            mat4 world = plain.GetWorldMatrixNoPivot();
+            float angle = blend * MathF.PI / 2f;
+            Near(new vec3(MathF.Sin(angle), 0f, -MathF.Cos(angle)),
+                -new vec3(world.m20, world.m21, world.m22), "Blend follows shortest rotation");
+        }
+        target.Position = new vec3(0f, 0f, -10f);
+        look.Offset = new vec3(0.2f, -0.3f, 0.4f);
+        InverseKinematicsSolver.Evaluate([plain, target]);
+        mat4 expected = mat4.RotateZ(0.4f) * mat4.RotateY(-0.3f) * mat4.RotateX(0.2f);
+        mat4 actual = plain.GetWorldMatrixNoPivot();
+        for (int axis = 0; axis < 3; axis++)
+            Near(new vec3(expected[axis, 0], expected[axis, 1], expected[axis, 2]),
+                new vec3(actual[axis, 0], actual[axis, 1], actual[axis, 2]), "Local XYZ rotation offset");
+    }
+
+    private static void LookAtDependencies(Fixture f)
+    {
+        var source = Node("moving source");
+        source.Position = new vec3(5f, 2f, -6f);
+        var target = Node("constrained target");
+        target.CopyConstraints.Add(new CopyConstraint { Type = CopyConstraintType.Position, TargetObjectId = source.ObjectId });
+        var owner = Node("look follower");
+        var look = new CopyConstraint { Type = CopyConstraintType.LookAt, TargetObjectId = target.ObjectId };
+        owner.CopyConstraints.Add(look);
+        foreach (vec3 position in new[] { source.Position, vec3.UnitY * 5f, -vec3.UnitY * 5f, new vec3(0.00001f, 5f, 0f) })
+        {
+            source.Position = position;
+            InverseKinematicsSolver.Evaluate([owner, target, source]);
+            mat4 world = owner.GetWorldMatrixNoPivot();
+            Near(position.Normalized, -new vec3(world.m20, world.m21, world.m22), "Uses current target including vertical directions");
+            Near(1f, world.Determinant, "Look basis remains orthonormal");
+        }
+        void Unchanged(string reason)
+        {
+            InverseKinematicsSolver.Evaluate([owner, target, source]);
+            Near(vec3.Zero, MineImatorLoader.MatrixToEulerRzRyRx(owner.GetWorldMatrixNoPivot()), reason);
+        }
+        source.Position = vec3.Zero;
+        Unchanged("Coincident target leaves authored rotation");
+        source.Position = new vec3(5f, 0f, 0f);
+        look.Enabled = false;
+        Unchanged("Disabled look restores authored rotation");
+        look.Enabled = true;
+        look.TargetObjectId = "missing";
+        Unchanged("Missing target restores authored rotation");
+        look.TargetObjectId = owner.ObjectId;
+        Unchanged("Self target is ignored");
+        var child = Node("descendant");
+        owner.AddChild(child);
+        look.TargetObjectId = child.ObjectId;
+        Unchanged("Descendant target is ignored");
+        look.TargetObjectId = target.ObjectId;
+        target.CopyConstraints.Clear();
+        target.CopyConstraints.Add(new CopyConstraint { Type = CopyConstraintType.LookAt, TargetObjectId = owner.ObjectId });
+        target.Position = new vec3(5f, 0f, 0f);
+        InverseKinematicsSolver.Evaluate([owner, target, source]);
+        mat4 mutualOwner = owner.GetWorldMatrixNoPivot(), mutualTarget = target.GetWorldMatrixNoPivot();
+        Near(vec3.UnitX, -new vec3(mutualOwner.m20, mutualOwner.m21, mutualOwner.m22), "Mutual looks depend on position, not rotation");
+        Near(-vec3.UnitX, -new vec3(mutualTarget.m20, mutualTarget.m21, mutualTarget.m22), "Both mutual looks evaluate");
+        owner.CopyConstraints.Insert(0, new CopyConstraint { Type = CopyConstraintType.Position, TargetObjectId = target.ObjectId });
+        target.CopyConstraints.Insert(0, new CopyConstraint { Type = CopyConstraintType.Position, TargetObjectId = owner.ObjectId });
+        Unchanged("Actual position cycles still leave authored rotation");
+    }
+
+    private static void LookAtModelFacing(Fixture f)
+    {
+        string steve = Path.GetFullPath(Path.Combine("MineImatorSimplyRemade", "data", "minecraft", "versions", "26.3",
+            "characters", "vanilla", "steve", "steve.mimodel"));
+        if (!File.Exists(steve))
+            steve = Path.Combine(AppContext.BaseDirectory, "data", "minecraft", "versions", "26.3",
+                "characters", "vanilla", "steve", "steve.mimodel");
+        foreach (string modelPath in new[] { ArmorEntry("armor").FilePath, ArmorEntry("armor_baby").FilePath, steve })
+        {
+            var model = MineImatorLoader.Instance.LoadModel(modelPath);
+            var character = MineImatorLoader.Instance.CreateCharacterFromModel(model);
+            var head = character.BoneObjects.Values.OfType<MiBoneSceneObject>().Single(b => b.BoneName == "head");
+            character.SetLocalRotation(new vec3(0.1f, 0.4f, -0.2f));
+            character.Position = new vec3(2f, 0f, 1f);
+            head.OffsetRotation = new vec3(0.2f, -0.3f, 0.1f);
+            var authoredHead = head.OffsetRotation;
+            var camera = new CameraSceneObject { Position = new vec3(4f, 3f, -5f), PivotOffset = new vec3(0.2f, 0.5f, 0.1f) };
+            camera.AssignObjectId();
+            head.CopyConstraints.Add(new CopyConstraint { Type = CopyConstraintType.LookAt, TargetObjectId = camera.ObjectId });
+            for (int repeat = 0; repeat < 5; repeat++)
+            {
+                if (repeat == 1)
+                    camera.CopyConstraints.Add(new CopyConstraint { Type = CopyConstraintType.LookAt, TargetObjectId = head.ObjectId });
+                camera.Position += new vec3(0.3f, 0.1f, -0.2f);
+                SceneObject[] roots = repeat % 2 == 0 ? [character, camera] : [camera, character];
+                InverseKinematicsSolver.Evaluate(roots);
+                mat4 world = head.GetWorldMatrixNoPivot();
+                vec3 eye = camera.GetWorldPosition() + camera.PivotOffset;
+                Near((eye - head.GetWorldPosition()).Normalized,
+                    new vec3(world.m20, world.m21, world.m22).Normalized, model.Name + " visible face points toward camera");
+                Near(authoredHead, head.OffsetRotation, model.Name + " authored head offsets remain unchanged");
+                if (repeat == 0) continue;
+                camera.SyncCameraToTransform();
+                vec4 inView = camera.ViewCamera.GetViewMatrix() * new vec4(head.GetWorldPosition(), 1f);
+                Near(0f, inView.x, model.Name + " mutual look keeps head horizontally centered");
+                Near(0f, inView.y, model.Name + " mutual look keeps head vertically centered");
+                Check(inView.z < 0f, model.Name + " head stays in front of camera");
+            }
+            var source = Node("moving head target");
+            source.Position = new vec3(1f, 2f, -1f);
+            head.CopyConstraints.Insert(0, new CopyConstraint { Type = CopyConstraintType.Position, TargetObjectId = source.ObjectId });
+            InverseKinematicsSolver.Evaluate([camera, character, source]);
+            Near(source.GetWorldPosition(), head.GetWorldPosition(), "Mutual aim still follows position-driving constraints");
+            camera.SyncCameraToTransform();
+            vec4 movedInView = camera.ViewCamera.GetViewMatrix() * new vec4(head.GetWorldPosition(), 1f);
+            Near(0f, movedInView.x, "Camera follows position-driven mutual head horizontally");
+            Near(0f, movedInView.y, "Camera follows position-driven mutual head vertically");
+        }
+    }
+
+    private static unsafe void LookAtGraphics(Fixture f)
+    {
+        using var glfw = Silk.NET.GLFW.Glfw.GetApi();
+        Check(glfw.Init(), "GLFW initialization");
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintBool.Visible, false);
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintInt.ContextVersionMajor, 3);
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintInt.ContextVersionMinor, 3);
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintOpenGlProfile.OpenGlProfile, Silk.NET.GLFW.OpenGlProfile.Core);
+        var window = glfw.CreateWindow(64, 64, "Look At regression", null, null);
+        Check(window != null, "OpenGL context");
+        try
+        {
+            glfw.MakeContextCurrent(window);
+            using var gl = GL.GetApi(glfw.GetProcAddress);
+            MineImatorLoader.Instance.Initialize(gl);
+            using var renderer = new PreviewRenderer(gl, 128);
+            string data = Directory.Exists("data") ? "data" : Path.Combine("MineImatorSimplyRemade", "data");
+            string steve = Path.GetFullPath(Path.Combine(data, "minecraft", "versions", "26.3",
+                "characters", "vanilla", "steve", "steve.mimodel"));
+            foreach (string path in new[] { ArmorEntry("armor").FilePath, ArmorEntry("armor_baby").FilePath, steve })
+            {
+                var character = MineImatorLoader.Instance.CreateCharacterFromModel(MineImatorLoader.Instance.LoadModel(path));
+                try
+                {
+                    var head = character.BoneObjects.Values.OfType<MiBoneSceneObject>().Single(b => b.BoneName == "head");
+                    Check(head.Visuals.Count > 0, "Actual model head geometry was uploaded");
+                    foreach (var node in new[] { head }.Concat(head.GetAllDescendants()))
+                        foreach (var mesh in node.Visuals) mesh.Unlit = true;
+                    var camera = new CameraSceneObject { PivotOffset = vec3.Zero };
+                    camera.AssignObjectId();
+                    camera.Position = head.GetWorldPosition() + vec3.UnitZ * 2f;
+                    camera.CopyConstraints.Add(new CopyConstraint { Type = CopyConstraintType.LookAt, TargetObjectId = head.ObjectId });
+                    byte[] Render()
+                    {
+                        InverseKinematicsSolver.Evaluate([character, camera]);
+                        camera.SyncCameraToTransform();
+                        renderer.Render([], "look-at", 0d, sceneRoot: head, camera: camera.ViewCamera);
+                        var pixels = new byte[renderer.Width * renderer.Height * 4];
+                        gl.BindTexture(GLEnum.Texture2D, renderer.ColorTexture);
+                        fixed (byte* pointer = pixels)
+                            gl.GetTexImage(GLEnum.Texture2D, 0, GLEnum.Rgba, GLEnum.UnsignedByte, pointer);
+                        gl.BindTexture(GLEnum.Texture2D, 0);
+                        return pixels;
+                    }
+                    byte[] front = Render();
+                    head.OffsetRotation = new vec3(0f, MathF.PI, 0f);
+                    byte[] back = Render();
+                    int Differences(byte[] a, byte[] b) => a.Zip(b).Count(pair => Math.Abs(pair.First - pair.Second) > 3);
+                    Check(Differences(front, back) > 100, character.Name + " front texture is visibly distinct from its back");
+                    head.CopyConstraints.Add(new CopyConstraint { Type = CopyConstraintType.LookAt, TargetObjectId = camera.ObjectId });
+                    foreach (vec3 direction in new[] { vec3.UnitZ, vec3.UnitX, -vec3.UnitZ, -vec3.UnitX })
+                    {
+                        camera.Position = head.GetWorldPosition() + direction * 2f;
+                        byte[] aimed = Render();
+                        Check(Differences(front, aimed) < front.Length / 200,
+                            character.Name + " mutual Look At shows the front face from each camera side");
+                    }
+                }
+                finally
+                {
+                    foreach (var node in new[] { character }.Concat(character.GetAllDescendants()))
+                        foreach (var mesh in node.Visuals) mesh.Dispose();
+                }
+            }
+        }
+        finally
+        {
+            glfw.DestroyWindow(window);
+            glfw.Terminate();
+        }
+    }
+
+    private static void LookAtPersistence(Fixture f)
+    {
+        var root = Node("look archive");
+        var target = Node("look target");
+        var owner = Node("look owner");
+        root.AddChild(owner);
+        root.AddChild(target);
+        var look = new CopyConstraint
+        {
+            Type = CopyConstraintType.LookAt, TargetObjectId = target.ObjectId,
+            Offset = new vec3(0.2f, 0.3f, -0.1f), Blend = 0.4f
+        };
+        owner.CopyConstraints.Add(look);
+        var (archive, _) = f.Roundtrip(root);
+        var entry = archive.Root.Children.Single(e => e.ObjectId == owner.ObjectId);
+        var library = (ProjectSceneObjectEntry)typeof(PropertiesPanel).GetMethod("CloneLibraryEntryRecursive",
+            BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [entry])!;
+        var apply = typeof(ProjectSceneSerializer).GetMethod("ApplyEntryToObject", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var restored = Node("restored look");
+        apply.Invoke(null, [restored, library, null]);
+        foreach (var copy in new[] { restored.CopyConstraints.Single(), look.Clone() })
+        {
+            Equal(CopyConstraintType.LookAt, copy.Type, "Look type survives archive and clone");
+            Equal(target.ObjectId, copy.TargetObjectId, "Look target persists");
+            Near(look.Offset, copy.Offset, "Look radians persist");
+            Near(0.4f, copy.Blend, "Look blend persists");
+        }
+        var timeline = new Timeline();
+        var get = typeof(Timeline).GetMethod("GetPropertyValue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var set = typeof(Timeline).GetMethod("SetPropertyValue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var discover = typeof(Timeline).GetMethod("GetKeyframePropertyPaths", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var paths = ((IEnumerable<string>)discover.Invoke(null, [owner])!).Where(p => p.StartsWith("copy_constraint.")).ToHashSet();
+        Check(paths.SetEquals(new[] { "enabled", "target", "offset.x", "offset.y", "offset.z", "blend" }
+            .Select(p => "copy_constraint.0." + p)), "Look exposes only its supported timeline controls");
+        set.Invoke(timeline, [owner, "copy_constraint.0.blend", 0.7f]);
+        Near(0.7f, Convert.ToSingle(get.Invoke(timeline, [owner, "copy_constraint.0.blend"])), "Timeline updates look blend");
+        set.Invoke(timeline, [owner, "copy_constraint.0.offset.y", -0.5f]);
+        Near(-0.5f, look.Offset.y, "Timeline updates look offset");
+        apply.Invoke(null, [owner, entry, null]);
+        Near(0.4f, owner.CopyConstraints[0].Blend, "Undo snapshot restores look blend");
+        Near(new vec3(0.2f, 0.3f, -0.1f), owner.CopyConstraints[0].Offset, "Undo snapshot restores look offsets");
+    }
+
     private static void CopyAxisMapping(Fixture f)
     {
         vec3 sourceValue = new(0.2f, 0.4f, 0.6f), authored = new(0.1f, 0.3f, 0.5f);
@@ -1306,6 +1587,56 @@ internal static partial class Program
                 Frame(200f, optionY);
                 Equal(0, constraint.SourceAxisZ, type + " UI maps target X to destination Z");
             }
+            var look = new CopyConstraint { Type = CopyConstraintType.LookAt };
+            owner.CopyConstraints = [look];
+            Frame();
+            Frame();
+            float targetY = Find("copy_constraint.0.target", 200f);
+            Frame(200f, targetY, left: true);
+            Frame(200f, targetY);
+            float sourceY = targetY + ImGui.GetFrameHeight() + ImGui.GetStyle().WindowPadding.Y +
+                ImGui.GetTextLineHeight() * 1.5f + ImGui.GetStyle().ItemSpacing.Y;
+            Frame(200f, sourceY);
+            Frame(200f, sourceY, left: true);
+            Frame(200f, sourceY);
+            Equal(source.ObjectId, look.TargetObjectId, "Look UI selects target");
+            Near(vec3.Zero, look.Offset, "Target selection aims immediately without keep-pose offsets");
+            float blendY = Find("copy_constraint.0.blend", 200f);
+            Frame(200f, blendY, left: true);
+            Frame(200f, blendY);
+            Check(look.Blend > 0.2f && look.Blend < 0.8f, "Look percentage slider stores fractional blend");
+            void EnterValue(float x, float y, string text)
+            {
+                io.AddKeyEvent(ImGuiKey.ModCtrl, true);
+                Frame(x, y, left: true);
+                Frame(x, y);
+                io.AddKeyEvent(ImGuiKey.ModCtrl, false);
+                Frame(x, y);
+                io.AddInputCharactersUTF8(text);
+                Frame(x, y);
+                io.AddKeyEvent(ImGuiKey.Enter, true);
+                Frame(x, y);
+                io.AddKeyEvent(ImGuiKey.Enter, false);
+                Frame();
+            }
+            EnterValue(200f, blendY, "75");
+            Near(0.75f, look.Blend, "Typing 75 means 75 percent blend");
+            EnterValue(200f, blendY, "150");
+            Near(1f, look.Blend, "Look percentage is capped at 100");
+            EnterValue(200f, blendY, "-10");
+            Near(0f, look.Blend, "Look percentage is bounded at zero");
+            float offsetY = Find("copy_constraint.0.offset.x", 75f);
+            EnterValue(75f, offsetY, "90");
+            Near(MathF.PI / 2f, look.Offset.x, "Look offset input converts degrees to radians");
+            panel.Timeline = new Timeline();
+            var readContext = typeof(PropertiesPanel).GetMethod("GetContextPropertyValue", flags)!;
+            var writeContext = typeof(PropertiesPanel).GetMethod("SetContextPropertyValue", flags)!;
+            Near(100f, Convert.ToSingle(readContext.Invoke(panel, ["copy_constraint.0.blend", true])), "Reset blend uses 100 percent");
+            writeContext.Invoke(panel, ["copy_constraint.0.blend", 35f, false, false]);
+            Near(0.35f, look.Blend, "Context edits convert percent to fractional blend");
+            Near(35f, Convert.ToSingle(readContext.Invoke(panel, ["copy_constraint.0.blend", false])), "Context copies percentage units");
+            writeContext.Invoke(panel, ["copy_constraint.0.offset.y", 90f, false, false]);
+            Near(MathF.PI / 2f, look.Offset.y, "Context offsets convert degrees to radians");
         }
         finally
         {

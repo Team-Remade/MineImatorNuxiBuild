@@ -1653,6 +1653,7 @@ public partial class PropertiesPanel : UiPanel
 
     private void CaptureCopyConstraintOffset(SceneObject owner, CopyConstraint constraint, string prefix)
     {
+        if (constraint.Type == CopyConstraintType.LookAt) return;
         SceneObject? FindTarget(SceneObject obj)
         {
             if (obj == owner) return null;
@@ -1781,7 +1782,7 @@ public partial class PropertiesPanel : UiPanel
                     }
                     RegisterPropertyContext($"{prefix}.target");
                     target = objects.FirstOrDefault(obj => obj.ObjectId == constraint.TargetObjectId);
-                    if (constraint.Type is not (CopyConstraintType.Scale or CopyConstraintType.Bend) && target is MiBoneSceneObject)
+                    if (constraint.Type is not (CopyConstraintType.Scale or CopyConstraintType.Bend or CopyConstraintType.LookAt) && target is MiBoneSceneObject)
                     {
                         bool bentHalf = constraint.BentHalf;
                         if (ImGui.Checkbox(Localization.DisplayLabel("Bent Half"), ref bentHalf))
@@ -1856,17 +1857,17 @@ public partial class PropertiesPanel : UiPanel
                     else
                     {
                         float factor = constraint.Type == CopyConstraintType.Position ? 16f
-                            : constraint.Type == CopyConstraintType.Rotation ? 180f / MathF.PI : 1f;
+                            : constraint.Type is CopyConstraintType.Rotation or CopyConstraintType.LookAt ? 180f / MathF.PI : 1f;
                         var offset = new Vector3(constraint.Offset.x, constraint.Offset.y, constraint.Offset.z) * factor;
                         string offsetLabel = constraint.Type == CopyConstraintType.Position ? "Offset (pixels)"
-                            : constraint.Type is CopyConstraintType.Rotation or CopyConstraintType.Bend ? "Offset (degrees)" : "Offset";
+                            : constraint.Type is CopyConstraintType.Rotation or CopyConstraintType.Bend or CopyConstraintType.LookAt ? "Offset (degrees)" : "Offset";
                         if (ImGui.DragFloat3(Localization.DisplayLabel(offsetLabel), ref offset, 0.1f))
                         {
                             constraint.Offset = new vec3(offset.X, offset.Y, offset.Z) / factor;
                             foreach (string axis in new[] { "x", "y", "z" }) Changed($"offset.{axis}");
                         }
                         RegisterPropertyContext($"{prefix}.offset.x", $"{prefix}.offset.y", $"{prefix}.offset.z");
-                        for (int axis = 0; axis < 3; axis++)
+                        for (int axis = 0; axis < 3 && constraint.Type != CopyConstraintType.LookAt; axis++)
                         {
                             ImGui.PushID(axis);
                             string component = axis == 0 ? "x" : axis == 1 ? "y" : "z";
@@ -1899,10 +1900,12 @@ public partial class PropertiesPanel : UiPanel
                             ImGui.PopID();
                         }
                     }
-                    float blend = constraint.Blend;
-                    if (ImGui.SliderFloat(Localization.DisplayLabel("Blend"), ref blend, 0f, 1f))
+                    float blendFactor = constraint.Type == CopyConstraintType.LookAt ? 100f : 1f;
+                    float blend = constraint.Blend * blendFactor;
+                    if (ImGui.SliderFloat(Localization.DisplayLabel("Blend"), ref blend, 0f, blendFactor))
                     {
-                        constraint.Blend = blend;
+                        constraint.Blend = constraint.Type == CopyConstraintType.LookAt
+                            ? Math.Clamp(blend / blendFactor, 0f, 1f) : blend;
                         Changed("blend");
                     }
                     RegisterPropertyContext($"{prefix}.blend");
@@ -7717,7 +7720,7 @@ public partial class PropertiesPanel : UiPanel
         if (TimelinePanel.TryGetCopyConstraint(obj, path, out var copy, out string copyChannel))
         {
             float factor = copy.Type == CopyConstraintType.Position ? 16f
-                : copy.Type == CopyConstraintType.Rotation ? 180f / MathF.PI : 1f;
+                : copy.Type is CopyConstraintType.Rotation or CopyConstraintType.LookAt ? 180f / MathF.PI : 1f;
             if (defaultValue)
             {
                 int defaultBendAxis = obj is MiBoneSceneObject { BendParameters: { } bp }
@@ -7725,6 +7728,7 @@ public partial class PropertiesPanel : UiPanel
                 return copyChannel switch
                 {
                     "target" => "",
+                    "blend" when copy.Type == CopyConstraintType.LookAt => 100f,
                     _ when copy.Type == CopyConstraintType.RotationToBend && copyChannel.StartsWith("axis.", StringComparison.Ordinal)
                         => axis == defaultBendAxis ? 1f : 0f,
                     "source_rotation_axis.y" or "source_axis.y" => 1f,
@@ -7735,6 +7739,8 @@ public partial class PropertiesPanel : UiPanel
                 };
             }
             object current = Timeline!.GetPropertyValue(obj, path);
+            if (copy.Type == CopyConstraintType.LookAt && copyChannel == "blend")
+                return Convert.ToSingle(current, CultureInfo.InvariantCulture) * 100f;
             return copyChannel.StartsWith("offset.", StringComparison.Ordinal)
                 ? Convert.ToSingle(current, CultureInfo.InvariantCulture) * factor : current;
         }
@@ -7822,10 +7828,12 @@ public partial class PropertiesPanel : UiPanel
             {
                 object stored = value;
                 bool isCopyConstraint = TimelinePanel.TryGetCopyConstraint(obj, path, out var copy, out string copyChannel);
-                if (isCopyConstraint && copyChannel.StartsWith("offset.", StringComparison.Ordinal))
+                if (isCopyConstraint && copy.Type == CopyConstraintType.LookAt && copyChannel == "blend")
+                    stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / 100f;
+                else if (isCopyConstraint && copyChannel.StartsWith("offset.", StringComparison.Ordinal))
                 {
                     float factor = copy.Type == CopyConstraintType.Position ? 16f
-                        : copy.Type == CopyConstraintType.Rotation ? 180f / MathF.PI : 1f;
+                        : copy.Type is CopyConstraintType.Rotation or CopyConstraintType.LookAt ? 180f / MathF.PI : 1f;
                     stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / factor;
                 }
                 else if (path == "path_follow.offset" || path.StartsWith("modifier.", StringComparison.Ordinal) && (path.EndsWith(".distance", StringComparison.Ordinal) || path.EndsWith(".radial.radius", StringComparison.Ordinal)) || path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal))

@@ -3322,11 +3322,14 @@ public partial class Timeline : UiPanel
         CopyConstraintType.Rotation => "Copy Rotation",
         CopyConstraintType.RotationToBend => "Rotation to Bend",
         CopyConstraintType.Bend => "Copy Bend",
+        CopyConstraintType.LookAt => "Look At",
         _ => "Copy Scale"
     };
 
     private static IEnumerable<(string Channel, string Label)> GetCopyConstraintChannels(CopyConstraintType type) =>
-        CopyConstraintChannels.Where(channel => type == CopyConstraintType.RotationToBend
+        CopyConstraintChannels.Where(channel => type == CopyConstraintType.LookAt
+            ? channel.Channel is "enabled" or "target" or "offset.x" or "offset.y" or "offset.z" or "blend"
+            : type == CopyConstraintType.RotationToBend
             ? channel.Channel is not ("rotate" or "source_axis.x" or "source_axis.y" or "source_axis.z")
             : channel.Channel is not ("source_rotation_axis" or "source_rotation_axis.x" or "source_rotation_axis.y" or "source_rotation_axis.z" or "bend_axis" or "rotation_multiplier") &&
                 (type != CopyConstraintType.Bend || channel.Channel is not ("rotate" or "bent_half")));
