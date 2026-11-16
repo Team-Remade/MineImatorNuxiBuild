@@ -166,6 +166,9 @@ public class CameraSceneObject : SceneObject
             case CameraEffectType.Distort:
                 Effects.Add(new CameraEffect { Type = CameraEffectType.Distort });
                 break;
+            case CameraEffectType.Outline:
+                Effects.Add(new CameraEffect { Type = CameraEffectType.Outline });
+                break;
         }
     }
 
@@ -180,6 +183,7 @@ public class CameraSceneObject : SceneObject
             Vignette = source.Vignette.Clone(),
             ChromaticAberration = source.ChromaticAberration.Clone(),
             Distort = source.Distort.Clone(),
+            Outline = source.Outline.Clone(),
             ColorCorrection = source.ColorCorrection.Clone(),
             Shake = new CameraShakeSettings
             {

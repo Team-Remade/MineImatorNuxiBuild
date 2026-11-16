@@ -115,6 +115,7 @@ uniform float uIndirectWorldStrength;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 GiAlbedo;
 layout(location = 2) out vec4 GiRadiance;
+layout(location = 3) out vec4 OutlineNormal;
 
 // Match the display-encoded scene / linear GI convention used by indirect_denoise.frag.
 vec3 toLinear(vec3 color) { return pow(max(color, vec3(0.0)), vec3(2.2)); }
@@ -475,6 +476,7 @@ vec3 mappedNormal(vec3 normal, vec2 uv, vec2 uvDx, vec2 uvDy)
 void main() {
     GiAlbedo = vec4(0.0);
     GiRadiance = vec4(0.0);
+    OutlineNormal = vec4(0.0);
     if (uShadowDebugMode == 2) {
         float alpha = 1.0;
         if (uUseTexture) {
@@ -563,6 +565,7 @@ void main() {
     // non-zero alpha must survive so it can write depth for render-depth masks.
     if (alpha <= (uAlphaClipEnabled ? uAlphaClipThreshold : 0.0)) discard;
 
+    OutlineNormal = vec4((gl_FrontFacing ? vertexNormal : -vertexNormal) * 0.5 + 0.5, 1.0);
     vec3 result = baseColor;
     vec3 linearAlbedo = pbr ? baseColor : pow(max(baseColor, 0.0), vec3(2.2));
     vec3 bounceSource = vec3(0.0);

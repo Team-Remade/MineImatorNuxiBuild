@@ -495,6 +495,8 @@ internal static class SceneObjectFingerprint
                 hash.Add(effect.Distort.RepeatImage);
                 hash.Add(effect.Distort.ZoomAmount);
                 hash.Add(effect.Distort.DistortAmount);
+                foreach (var control in OutlineSettings.Controls)
+                    hash.Add(effect.Outline.GetValue(control.Key));
                 hash.Add(aberration.BlurAmount);
                 hash.Add(aberration.DistortRgb);
                 hash.Add(aberration.RedOffset);

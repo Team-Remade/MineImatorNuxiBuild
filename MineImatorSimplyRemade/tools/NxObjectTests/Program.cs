@@ -381,6 +381,8 @@ internal static partial class Program
             ("Chromatic aberration settings, persistence, duplication, undo and timeline", ChromaticAberrationPersistence),
             ("Distort settings, persistence, duplication, undo and timeline", DistortPersistence),
             ("Distort ImGui percentage sliders and checkbox", DistortControls),
+            ("Outline persistence, duplication, undo, dirty detection and timeline", OutlinePersistence),
+            ("Outline ImGui conditional normal-pass controls", OutlineControls),
             ("Chromatic aberration ImGui percentage sliders and checkbox", ChromaticAberrationControls),
             ("Wind defaults, project/object persistence, duplication, undo, animation and classification", WindPersistence),
             ("Biome catalog, independent custom colors, project persistence and reset", BiomeSettings),
@@ -570,6 +572,10 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Chromatic aberration", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--distort", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Distort", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--outline", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Outline", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--outline-graphics", StringComparer.Ordinal))
+            tests = [("Outline GPU depth/normals, radius, fades, blending, alpha and preview/export parity", OutlineGraphics)];
         if (args.Contains("--distort-graphics", StringComparer.Ordinal))
             tests = [("Distort GPU signed distortion, zoom, repeat, alpha, stacking and preview/export parity", DistortGraphics)];
         if (args.Contains("--chromatic-aberration-graphics", StringComparer.Ordinal))

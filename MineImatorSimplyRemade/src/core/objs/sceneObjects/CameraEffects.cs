@@ -12,7 +12,77 @@ public enum CameraEffectType
     LensDirt = 5,
     Vignette = 6,
     ChromaticAberration = 7,
-    Distort = 8
+    Distort = 8,
+    Outline = 9
+}
+
+public class OutlineSettings
+{
+    public float ColorR { get; set; }
+    public float ColorG { get; set; }
+    public float ColorB { get; set; }
+    public float Strength { get; set; } = 100f;
+    public float Radius { get; set; } = 1f;
+    public float DepthThreshold { get; set; } = 0.02f;
+    public float DepthFade { get; set; } = 0.01f;
+    public bool NormalPass { get; set; }
+    public float NormalThreshold { get; set; } = 0.2f;
+    public float NormalFade { get; set; } = 0.1f;
+    public BloomBlendMode BlendMode { get; set; }
+
+    public OutlineSettings Clone() => (OutlineSettings)MemberwiseClone();
+
+    public static readonly (string Key, string Label, float Min, float Max)[] Controls =
+    [
+        ("color.r", "Color R", 0f, 1f),
+        ("color.g", "Color G", 0f, 1f),
+        ("color.b", "Color B", 0f, 1f),
+        ("strength", "Strength (%)", 0f, 100f),
+        ("radius", "Radius (px)", 0f, 32f),
+        ("depth_threshold", "Depth Threshold", 0f, 1f),
+        ("depth_fade", "Depth Fade", 0f, 1f),
+        ("normal_pass", "Normal Pass", 0f, 1f),
+        ("normal_threshold", "Normal Threshold", 0f, 1f),
+        ("normal_fade", "Normal Fade", 0f, 1f),
+        ("mode", "Blend Mode", 0f, 4f)
+    ];
+
+    public float GetValue(string key) => key switch
+    {
+        "color.r" => ColorR,
+        "color.g" => ColorG,
+        "color.b" => ColorB,
+        "strength" => Strength,
+        "radius" => Radius,
+        "depth_threshold" => DepthThreshold,
+        "depth_fade" => DepthFade,
+        "normal_pass" => NormalPass ? 1f : 0f,
+        "normal_threshold" => NormalThreshold,
+        "normal_fade" => NormalFade,
+        "mode" => (float)BlendMode,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown outline control.")
+    };
+
+    public void SetValue(string key, float value)
+    {
+        if (!float.IsFinite(value))
+            throw new ArgumentOutOfRangeException(nameof(value), value, "Outline values must be finite.");
+        switch (key)
+        {
+            case "color.r": ColorR = Math.Clamp(value, 0f, 1f); break;
+            case "color.g": ColorG = Math.Clamp(value, 0f, 1f); break;
+            case "color.b": ColorB = Math.Clamp(value, 0f, 1f); break;
+            case "strength": Strength = Math.Clamp(value, 0f, 100f); break;
+            case "radius": Radius = Math.Clamp(value, 0f, 32f); break;
+            case "depth_threshold": DepthThreshold = Math.Clamp(value, 0f, 1f); break;
+            case "depth_fade": DepthFade = Math.Clamp(value, 0f, 1f); break;
+            case "normal_pass": NormalPass = value >= 0.5f; break;
+            case "normal_threshold": NormalThreshold = Math.Clamp(value, 0f, 1f); break;
+            case "normal_fade": NormalFade = Math.Clamp(value, 0f, 1f); break;
+            case "mode": BlendMode = (BloomBlendMode)MathF.Round(Math.Clamp(value, 0f, 4f)); break;
+            default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown outline control.");
+        }
+    }
 }
 
 public class DistortSettings
@@ -369,5 +439,6 @@ public class CameraEffect
     public VignetteSettings Vignette = new();
     public ChromaticAberrationSettings ChromaticAberration = new();
     public DistortSettings Distort = new();
+    public OutlineSettings Outline = new();
     public ColorCorrectionSettings ColorCorrection = new();
 }

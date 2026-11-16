@@ -118,6 +118,19 @@ Coverage and prerequisites:
   and consistent geometry after conversion to animatable blocks, rebuilding,
   and resource-pack reapplication.
 
+### Camera outline regression checks
+
+```powershell
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --outline
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --outline-graphics
+```
+
+CPU checks cover saved settings, independent copies, undo/dirty detection,
+timeline interpolation and conditional normal-pass controls. The graphics
+selector requires OpenGL 3.3 and checks depth/normal edges, grazing-terrain
+slope rejection (including image borders), pixel radius, soft
+thresholds, all five blend modes, strength, alpha and preview/PNG export parity.
+
 ### Wiggle bone regression checks
 
 ```powershell

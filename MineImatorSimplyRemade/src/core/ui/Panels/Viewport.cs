@@ -821,6 +821,7 @@ public partial class Viewport : UiPanel
 
         InitGiTexture(ref _giAlbedoTex, width, height, GLEnum.ColorAttachment1);
         InitGiTexture(ref _giRadianceTex, width, height, GLEnum.ColorAttachment2);
+        InitGiTexture(ref _outlineNormalTex, width, height, GLEnum.ColorAttachment3);
 
         // Sampleable depth texture used by the ambient-occlusion post pass.
         Gl.GenTextures(1, out _depthTex);
@@ -2097,6 +2098,7 @@ public partial class Viewport : UiPanel
 
         ResizeGlowResources(_giAlbedoTex, width, height, hdr: true);
         ResizeGlowResources(_giRadianceTex, width, height, hdr: true);
+        ResizeGlowResources(_outlineNormalTex, width, height, hdr: true);
         ResizeGlowResources(_indirectTex, width, height, hdr: true);
         ResizeGlowResources(_indirectPingTex, width, height, hdr: true);
         ResizeGlowResources(_glowTex, width, height, hdr: _colorManagementHdr);
@@ -2185,6 +2187,8 @@ public partial class Viewport : UiPanel
             return;
 
         DisposeLensDirtResources();
+        _outlineShader?.Dispose();
+        _outlineShader = null;
         _watermarkShader?.Dispose();
         _watermarkShader = null;
         if (_vignetteShader != null)
@@ -2207,6 +2211,7 @@ public partial class Viewport : UiPanel
         DeleteTexture(ref _depthTex);
         DeleteTexture(ref _giAlbedoTex);
         DeleteTexture(ref _giRadianceTex);
+        DeleteTexture(ref _outlineNormalTex);
         DeleteFramebuffer(ref _indirectFbo);
         DeleteTexture(ref _indirectTex);
         DeleteFramebuffer(ref _indirectPingFbo);
@@ -2217,6 +2222,7 @@ public partial class Viewport : UiPanel
         DeleteTexture(ref _previewDepthTex);
         DeleteTexture(ref _previewGiAlbedoTex);
         DeleteTexture(ref _previewGiRadianceTex);
+        DeleteTexture(ref _previewOutlineNormalTex);
         DeleteFramebuffer(ref _previewIndirectFbo);
         DeleteTexture(ref _previewIndirectTex);
         DeleteFramebuffer(ref _previewIndirectPingFbo);
@@ -2986,7 +2992,10 @@ public partial class Viewport : UiPanel
             }
 
             // ── Ground plane ──────────────────────────────────────────────────────
-            SetGiDrawBuffers(useScreenSpaceGi && _renderedPassMode == RenderedPassMode.Combined, clear: true);
+            bool outlineNormals = renderMode == SceneRenderMode.Rendered &&
+                _renderedPassMode == RenderedPassMode.Combined && NeedsOutlineNormals(activeCamObj);
+            SetGiDrawBuffers(useScreenSpaceGi && _renderedPassMode == RenderedPassMode.Combined,
+                clear: true, outlineNormals: outlineNormals);
             if (wireframeMode)
                 Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
 
@@ -3030,7 +3039,8 @@ public partial class Viewport : UiPanel
 
             if (splitAoObjects && _renderedPassMode != RenderedPassMode.AmbientOcclusion)
             {
-                SetGiDrawBuffers(useScreenSpaceGi && _renderedPassMode == RenderedPassMode.Combined);
+                SetGiDrawBuffers(useScreenSpaceGi && _renderedPassMode == RenderedPassMode.Combined,
+                    outlineNormals: outlineNormals);
                 RenderDepthOrdered(view, proj, _cachedRenderItemsNoAo, _cachedAllPointLights, forceUnshaded, translucentOnly: false);
                 SetGiDrawBuffers(false);
                 _cachedRenderItems.AddRange(_cachedRenderItemsNoAo);
@@ -3055,6 +3065,8 @@ public partial class Viewport : UiPanel
             ResolveDepthOfFieldFocus(_fbo, w, h, renderNear, renderFar, activeCamObj);
             if (renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
             {
+                ApplyOutlinePass(_fbo, _depthTex, _outlineNormalTex, _glowFbo, _glowTex,
+                    w, h, renderNear, renderFar, activeCamObj);
                 ApplyDepthOfFieldPass(_fbo, _colorTex, _depthTex, _glowFbo, _glowTex, w, h, renderNear, renderFar, activeCamObj);
                 ApplyBloomPass(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, activeCamObj);
                 ApplyLensDirtPass(_fbo, _colorTex, _glowFbo, _glowTex, _glowPingFbo, _glowPingTex, w, h, activeCamObj);
@@ -3486,6 +3498,10 @@ public partial class Viewport : UiPanel
         VeldridSceneRenderer renderer, Camera activeCamera, CameraSceneObject? activeCamObj,
         uint width, uint height, Vector2 imageMin, Vector2 imageSize)
     {
+        if (activeCamObj?.Effects.Any(effect => effect.Type == CameraEffectType.Outline &&
+            effect.Outline.Strength > 0f && effect.Outline.Radius > 0f) == true &&
+            _viewportRenderMode == ViewportRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
+            throw new NotSupportedException("Camera outlines require OpenGL depth and material-normal attachments.");
         using var mainSceneScope = FrameProfiler.Shared.Measure(ProfileStage.MainScene);
         FrameProfiler.Shared.Count(ProfileCounter.MainRenderInvocations);
         Camera camera = BuildPreparedCamera(activeCamera, activeCamObj);
@@ -5362,8 +5378,14 @@ public partial class Viewport : UiPanel
         Gl.CullFace(GLEnum.Back);
     }
 
-    private unsafe void SetGiDrawBuffers(bool enabled, bool clear = false)
+    private unsafe void SetGiDrawBuffers(bool enabled, bool clear = false, bool outlineNormals = false)
     {
+        if (outlineNormals && clear)
+        {
+            Gl.ClearColor(0f, 0f, 0f, 0f);
+            Gl.DrawBuffer(GLEnum.ColorAttachment3);
+            Gl.Clear(ClearBufferMask.ColorBufferBit);
+        }
         if (enabled && clear)
         {
             Gl.ClearColor(0f, 0f, 0f, 0f);
@@ -5372,12 +5394,16 @@ public partial class Viewport : UiPanel
             Gl.DrawBuffer(GLEnum.ColorAttachment2);
             Gl.Clear(ClearBufferMask.ColorBufferBit);
         }
-        if (enabled)
+        if (enabled || outlineNormals)
         {
-            GLEnum* attachments = stackalloc GLEnum[] { GLEnum.ColorAttachment0, GLEnum.ColorAttachment1, GLEnum.ColorAttachment2 };
-            Gl.DrawBuffers(3, attachments);
+            GLEnum* attachments = stackalloc GLEnum[] { GLEnum.ColorAttachment0,
+                enabled ? GLEnum.ColorAttachment1 : GLEnum.None,
+                enabled ? GLEnum.ColorAttachment2 : GLEnum.None,
+                outlineNormals ? GLEnum.ColorAttachment3 : GLEnum.None };
+            Gl.DrawBuffers(4, attachments);
             Gl.Disable(GLEnum.Blend, 1);
             Gl.Disable(GLEnum.Blend, 2);
+            Gl.Disable(GLEnum.Blend, 3);
         }
         else
             Gl.DrawBuffer(GLEnum.ColorAttachment0);
@@ -5989,6 +6015,7 @@ public partial class Viewport : UiPanel
 
         InitGiTexture(ref _previewGiAlbedoTex, width, height, GLEnum.ColorAttachment1);
         InitGiTexture(ref _previewGiRadianceTex, width, height, GLEnum.ColorAttachment2);
+        InitGiTexture(ref _previewOutlineNormalTex, width, height, GLEnum.ColorAttachment3);
 
         Gl.GenTextures(1, out _previewDepthTex);
         Gl.BindTexture(GLEnum.Texture2D, _previewDepthTex);
@@ -6198,6 +6225,7 @@ public partial class Viewport : UiPanel
 
         ResizeGlowResources(_previewGiAlbedoTex, w, h, hdr: true);
         ResizeGlowResources(_previewGiRadianceTex, w, h, hdr: true);
+        ResizeGlowResources(_previewOutlineNormalTex, w, h, hdr: true);
         ResizeGlowResources(_previewIndirectTex, w, h, hdr: true);
         ResizeGlowResources(_previewIndirectPingTex, w, h, hdr: true);
         ResizeGlowResources(_previewGlowTex, w, h, hdr: _previewColorManagementHdr);
@@ -7600,7 +7628,10 @@ public partial class Viewport : UiPanel
         if (wireframeMode)
             Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
 
-        SetGiDrawBuffers(previewScreenSpaceGi && effectivePassMode == RenderedPassMode.Combined, clear: true);
+        bool outlineNormals = (renderMode == SceneRenderMode.Rendered || applyCameraEffects) &&
+            effectivePassMode == RenderedPassMode.Combined && NeedsOutlineNormals(sceneObj);
+        SetGiDrawBuffers(previewScreenSpaceGi && effectivePassMode == RenderedPassMode.Combined,
+            clear: true, outlineNormals: outlineNormals);
         if (MainViewport.GroundPlane != null && MainViewport.GroundPlaneVisible)
         {
             using var drawScope = FrameProfiler.Shared.Measure(ProfileStage.SceneDraw);
@@ -7639,7 +7670,8 @@ public partial class Viewport : UiPanel
 
         if (splitAoObjects && effectivePassMode != RenderedPassMode.AmbientOcclusion)
         {
-            SetGiDrawBuffers(previewScreenSpaceGi && effectivePassMode == RenderedPassMode.Combined);
+            SetGiDrawBuffers(previewScreenSpaceGi && effectivePassMode == RenderedPassMode.Combined,
+                outlineNormals: outlineNormals);
             RenderDepthOrdered(view, proj, renderItemsNoAo, allPointLights, forceUnshaded, translucentOnly: false);
             SetGiDrawBuffers(false);
             renderItems.AddRange(renderItemsNoAo);
@@ -7671,6 +7703,8 @@ public partial class Viewport : UiPanel
         if ((renderMode == SceneRenderMode.Rendered || applyCameraEffects) &&
             effectivePassMode == RenderedPassMode.Combined)
         {
+            ApplyOutlinePass(_previewFbo, _previewDepthTex, _previewOutlineNormalTex, _previewGlowFbo, _previewGlowTex,
+                w, h, renderCamera.Near, renderCamera.Far, sceneObj);
             ApplyDepthOfFieldPass(_previewFbo, _previewColorTex, _previewDepthTex, _previewGlowFbo, _previewGlowTex,
                 w, h, renderCamera.Near, renderCamera.Far, sceneObj);
             ApplyBloomPass(_previewFbo, _previewColorTex, _previewGlowFbo, _previewGlowTex,

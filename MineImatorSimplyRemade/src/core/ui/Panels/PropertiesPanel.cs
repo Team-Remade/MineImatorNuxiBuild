@@ -337,7 +337,7 @@ public partial class PropertiesPanel : UiPanel
 
     // Scale link toggle
     private bool _linkScale = true;
-    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction", "Lens Dirt", "Vignette", "Chromatic Aberration", "Distort" };
+    private static readonly string[] CameraEffectAddOptions = { "Camera Shake", "Film Grain", "Depth of Field", "Bloom", "Color Correction", "Lens Dirt", "Vignette", "Chromatic Aberration", "Distort", "Outline" };
     private static readonly string[] CameraShakeModeOptions = { "Rotational", "Positional", "Both" };
     private static readonly string[] BloomBlendModeOptions =
         ["text.panel.properties.blend_normal", "text.panel.properties.blend_add", "text.panel.properties.blend_screen",
@@ -1280,6 +1280,7 @@ public partial class PropertiesPanel : UiPanel
                     Vignette = effect.Vignette.Clone(),
                     ChromaticAberration = effect.ChromaticAberration.Clone(),
                     Distort = effect.Distort.Clone(),
+                    Outline = effect.Outline.Clone(),
                     ColorCorrection = effect.ColorCorrection.Clone(),
                     Shake = new ProjectCameraShakeSettings
                     {
@@ -5415,6 +5416,7 @@ public partial class PropertiesPanel : UiPanel
                             CameraEffectType.Vignette => Localization.T("text.panel.properties.vignette") + $"###Vignette##cameraEffect{i}",
                             CameraEffectType.ChromaticAberration => Localization.T("text.panel.properties.chromatic_aberration") + $"###ChromaticAberration##cameraEffect{i}",
                             CameraEffectType.Distort => Localization.T("text.panel.properties.distort") + $"###Distort##cameraEffect{i}",
+                            CameraEffectType.Outline => Localization.T("text.panel.properties.outline") + $"###Outline##cameraEffect{i}",
                             _ => Localization.Format("text.panel.properties.effect", i + 1) + $"###Effect {i + 1}##cameraEffect{i}"
                         };
 
@@ -5578,6 +5580,8 @@ public partial class PropertiesPanel : UiPanel
                                 DrawChromaticAberrationControls(cameraObject, i);
                             if (effect.Type == CameraEffectType.Distort)
                                 DrawDistortControls(cameraObject, i);
+                            if (effect.Type == CameraEffectType.Outline)
+                                DrawOutlineControls(cameraObject, i);
 
                             if (effect.Type == CameraEffectType.ColorCorrection)
                             {
@@ -6723,6 +6727,59 @@ public partial class PropertiesPanel : UiPanel
         ImGui.PushStyleColor(ImGuiCol.SliderGrabActive, Vector4.Lerp(tint, Vector4.One, 0.20f));
     }
 
+    private void DrawOutlineControls(CameraSceneObject camera, int index)
+    {
+        ImGui.PushID(index);
+        var settings = camera.Effects[index].Outline;
+        string basePath = $"camera.effect.{index}.outline";
+        var color = new Vector3(settings.ColorR, settings.ColorG, settings.ColorB);
+        if (ImGui.ColorEdit3(Localization.Label("text.common.color", "Color##outline"), ref color, ImGuiColorEditFlags.NoInputs))
+        {
+            settings.SetValue("color.r", color.X);
+            settings.SetValue("color.g", color.Y);
+            settings.SetValue("color.b", color.Z);
+            Timeline?.RecordAutoKeyframe(camera, $"{basePath}.color.r");
+            Timeline?.RecordAutoKeyframe(camera, $"{basePath}.color.g");
+            Timeline?.RecordAutoKeyframe(camera, $"{basePath}.color.b");
+            ProjectManager.Instance.SetDirty(true);
+        }
+        RegisterPropertyContext($"{basePath}.color.r", $"{basePath}.color.g", $"{basePath}.color.b");
+        foreach (var control in OutlineSettings.Controls)
+        {
+            if (control.Key.StartsWith("color.", StringComparison.Ordinal) ||
+                (!settings.NormalPass && control.Key is "normal_threshold" or "normal_fade"))
+                continue;
+            float value = settings.GetValue(control.Key);
+            bool changed;
+            if (control.Key == "normal_pass")
+            {
+                bool enabled = settings.NormalPass;
+                changed = ImGui.Checkbox(Localization.DisplayLabel(control.Label), ref enabled);
+                value = enabled ? 1f : 0f;
+            }
+            else if (control.Key == "mode")
+            {
+                int mode = (int)settings.BlendMode;
+                string[] modes = { "Normal", "Add", "Screen", "Multiply", "Overlay" };
+                changed = ImGui.Combo(Localization.DisplayLabel(control.Label), ref mode,
+                    modes.Select(Localization.DisplayLabel).ToArray(), modes.Length);
+                value = mode;
+            }
+            else
+                changed = ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value,
+                    control.Min, control.Max, control.Key == "strength" ? "%.1f%%" :
+                    control.Key == "radius" ? "%.1f px" : "%.3f", ImGuiSliderFlags.AlwaysClamp);
+            if (changed)
+            {
+                settings.SetValue(control.Key, value);
+                Timeline?.RecordAutoKeyframe(camera, $"{basePath}.{control.Key}");
+                ProjectManager.Instance.SetDirty(true);
+            }
+            RegisterPropertyContext($"{basePath}.{control.Key}");
+        }
+        ImGui.PopID();
+    }
+
     private void DrawDistortControls(CameraSceneObject camera, int index)
     {
         ImGui.PushID(index);
@@ -7675,6 +7732,11 @@ public partial class PropertiesPanel : UiPanel
                         else if (parts[3] == "distort")
                         {
                             var control = DistortSettings.Controls.First(c => c.Key == parts[4]);
+                            stored = Math.Clamp(number, control.Min, control.Max);
+                        }
+                        else if (parts[3] == "outline")
+                        {
+                            var control = OutlineSettings.Controls.First(c => c.Key == string.Join('.', parts.Skip(4)));
                             stored = Math.Clamp(number, control.Min, control.Max);
                         }
                         else if (parts[3] == "film_grain")
