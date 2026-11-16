@@ -96,6 +96,20 @@ public class ProjectWorkCameraState
 
 public class ProjectRenderSettings
 {
+    private int _maxArrayInstances = SceneModifier.DefaultMaxInstances;
+    private int _maxParticlesPerSpawner = ParticlePresetSimulation.SafetyLimit;
+    public int MaxArrayInstances
+    {
+        get => _maxArrayInstances;
+        set => _maxArrayInstances = value is >= 1 and <= SceneModifier.MaxInstances
+            ? value : throw new InvalidDataException("Maximum array instances must be from 1 to 10000.");
+    }
+    public int MaxParticlesPerSpawner
+    {
+        get => _maxParticlesPerSpawner;
+        set => _maxParticlesPerSpawner = value is >= 1 and <= ParticlePresetSimulation.SafetyLimit
+            ? value : throw new InvalidDataException("Maximum particles per spawner must be from 1 to 10000.");
+    }
     public WiggleSceneSettings Wiggle { get; set; } = new();
     public bool WatermarkEnabled { get; set; }
     public string WatermarkImagePath { get; set; } = "";

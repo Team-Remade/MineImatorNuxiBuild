@@ -1,5 +1,6 @@
 using GlmSharp;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemade.core.project;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
@@ -8,7 +9,8 @@ public enum ArrayAxis { X, Y, Z }
 
 public sealed record SceneModifier
 {
-    public const int MaxInstances = 1000;
+    public const int DefaultMaxInstances = 1000;
+    public const int MaxInstances = 10000;
     public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public SceneModifierType Type { get; init; }
     public bool Enabled { get; init; } = true;
@@ -45,7 +47,7 @@ public sealed record SceneModifier
             Count is < 1 or > MaxInstances || !float.IsFinite(Distance) ||
             !float.IsFinite(RotationX) || !float.IsFinite(RotationY) || !float.IsFinite(RotationZ) ||
             !float.IsFinite(ScaleX) || !float.IsFinite(ScaleY) || !float.IsFinite(ScaleZ))
-            throw new InvalidDataException("Array modifiers require valid axes, a finite non-negative radius, finite transforms and a count from 1 to 1000.");
+            throw new InvalidDataException("Array modifiers require valid axes, a finite non-negative radius, finite transforms and a count from 1 to 10000.");
         int last = Count - 1;
         if (!float.IsFinite(Distance * last) || !float.IsFinite(RotationX * last) ||
             !float.IsFinite(RotationY * last) || !float.IsFinite(RotationZ * last) ||
@@ -62,9 +64,13 @@ public sealed class ModifierEvaluation
     private static readonly mat4[] Identity = [mat4.Identity];
     private readonly Dictionary<string, SceneObject> _ids = new(StringComparer.Ordinal);
     private readonly Dictionary<SceneObject, IReadOnlyList<mat4>> _deltas = new();
+    private readonly int _maxInstances;
 
-    public ModifierEvaluation(IEnumerable<SceneObject> roots)
+    public ModifierEvaluation(IEnumerable<SceneObject> roots, int? maxInstances = null)
     {
+        _maxInstances = maxInstances ?? ProjectManager.Instance.Manifest.Settings.MaxArrayInstances;
+        if (_maxInstances is < 1 or > SceneModifier.MaxInstances)
+            throw new ArgumentOutOfRangeException(nameof(maxInstances));
         foreach (var root in roots) Collect(root);
         void Collect(SceneObject obj)
         {
@@ -114,10 +120,10 @@ public sealed class ModifierEvaluation
                 ArrayAxis.Z => mat4.RotateX(-MathF.PI / 2f),
                 _ => mat4.Identity
             };
-            var expanded = new List<mat4>(Math.Min(SceneModifier.MaxInstances, result.Count * modifier.Count));
+            var expanded = new List<mat4>(Math.Min(_maxInstances, result.Count * modifier.Count));
             foreach (var inherited in result)
             {
-                for (int i = 0; i < modifier.Count && expanded.Count < SceneModifier.MaxInstances; i++)
+                for (int i = 0; i < modifier.Count && expanded.Count < _maxInstances; i++)
                 {
                     mat4 rotation = mat4.RotateZ(glm.Radians(modifier.RotationZ * i)) *
                         mat4.RotateY(glm.Radians(modifier.RotationY * i)) *
@@ -152,7 +158,7 @@ public sealed class ModifierEvaluation
                         throw new InvalidDataException($"Array modifier on '{obj.Name}' exceeds the supported numeric range.");
                     expanded.Add(delta);
                 }
-                if (expanded.Count == SceneModifier.MaxInstances) break;
+                if (expanded.Count == _maxInstances) break;
             }
             result = expanded;
         }

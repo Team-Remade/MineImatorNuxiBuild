@@ -311,6 +311,8 @@ public partial class PropertiesPanel : UiPanel
     }
 
     public int    TextureAnimationFps  = 20;
+    public int MaxArrayInstances = SceneModifier.DefaultMaxInstances;
+    public int MaxParticlesPerSpawner = ParticlePresetSimulation.SafetyLimit;
     public bool WatermarkEnabled;
     public string WatermarkImagePath = "";
     public int WatermarkHorizontalAlignment = 2;
@@ -381,6 +383,8 @@ public partial class PropertiesPanel : UiPanel
         _projectName = string.IsNullOrWhiteSpace(manifest.ProjectName) ? "Untitled Project" : manifest.ProjectName;
 
         ProjectRenderSettings settings = manifest.Settings;
+        MaxArrayInstances = settings.MaxArrayInstances;
+        MaxParticlesPerSpawner = settings.MaxParticlesPerSpawner;
         if (settings.Wiggle == null) throw new InvalidDataException("Wiggle scene settings are missing.");
         settings.Wiggle.Validate();
         WatermarkEnabled = settings.WatermarkEnabled;
@@ -556,6 +560,8 @@ public partial class PropertiesPanel : UiPanel
         _projectName = normalizedName;
         manifest.ProjectName = normalizedName;
 
+        manifest.Settings.MaxArrayInstances = Math.Clamp(MaxArrayInstances, 1, SceneModifier.MaxInstances);
+        manifest.Settings.MaxParticlesPerSpawner = Math.Clamp(MaxParticlesPerSpawner, 1, ParticlePresetSimulation.SafetyLimit);
         manifest.Settings.WatermarkEnabled = WatermarkEnabled;
         manifest.Settings.WatermarkImagePath = ProjectManager.Instance.ToAssetReference(WatermarkImagePath);
         manifest.Settings.WatermarkHorizontalAlignment = Math.Clamp(WatermarkHorizontalAlignment, 0, 2);
@@ -2401,6 +2407,9 @@ public partial class PropertiesPanel : UiPanel
 
         if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.render_settings", "Render Settings")))
             RenderRenderSettings();
+
+        if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.performance", "Performance")))
+            RenderPerformanceSettings();
 
         if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.background_settings", "Background Settings")))
         {

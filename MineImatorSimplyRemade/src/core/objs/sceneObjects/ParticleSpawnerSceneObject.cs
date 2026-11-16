@@ -35,6 +35,7 @@ public class ParticleSpawnerSceneObject : SceneObject
     private ParticlePreset? _preset;
     private ParticlePresetSimulation? _presetSimulation;
     private readonly Dictionary<ParticlePresetSimulation.Particle, SceneObject> _presetObjects = new();
+    private int _maxParticles = ParticlePresetSimulation.SafetyLimit;
 
     public JsonObject? Preset => _preset?.Document;
     public int Seed = 0;
@@ -135,6 +136,7 @@ public class ParticleSpawnerSceneObject : SceneObject
 
     public void Step(float deltaTime, Viewport viewport, SpawnMenu spawnMenu)
     {
+        ApplyPerformanceLimit();
         if (deltaTime <= 0f || IsRuntimeTransient)
             return;
 
@@ -148,6 +150,7 @@ public class ParticleSpawnerSceneObject : SceneObject
 
     public void SimulateToTime(float timelineSeconds, Viewport viewport, SpawnMenu spawnMenu)
     {
+        ApplyPerformanceLimit();
         if (IsRuntimeTransient)
             return;
 
@@ -168,6 +171,14 @@ public class ParticleSpawnerSceneObject : SceneObject
 
         _simulatedTimeSeconds = target;
         if (_preset != null) SyncPresetObjects(viewport, spawnMenu);
+    }
+
+    internal void ApplyPerformanceLimit()
+    {
+        int limit = ProjectManager.Instance.Manifest.Settings.MaxParticlesPerSpawner;
+        if (_maxParticles == limit) return;
+        _maxParticles = limit;
+        ResetRuntime();
     }
 
     private void StepInternal(float dt, Viewport viewport, SpawnMenu spawnMenu)
@@ -216,7 +227,7 @@ public class ParticleSpawnerSceneObject : SceneObject
         if (!Emitting || string.IsNullOrWhiteSpace(ParticleLibraryEntryId))
             return;
 
-        int maxParticles = Math.Clamp(Amount, 1, 10000);
+        int maxParticles = Math.Min(Math.Clamp(Amount, 1, ParticlePresetSimulation.SafetyLimit), _maxParticles);
         if (_particles.Count >= maxParticles)
             return;
 
@@ -257,7 +268,7 @@ public class ParticleSpawnerSceneObject : SceneObject
     private void AdvancePreset(float dt, Viewport viewport)
     {
         if (Freeze) return;
-        _presetSimulation ??= new ParticlePresetSimulation(_preset!, Seed);
+        _presetSimulation ??= new ParticlePresetSimulation(_preset!, Seed, _maxParticles);
         SceneObject? attractor = FindSceneObject(viewport.SceneObjects, AttractorObjectId);
         _presetSimulation.AttractorPosition = attractor?.GetWorldPosition();
         _presetSimulation.AttractorForce = AttractorForce;

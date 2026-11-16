@@ -13,6 +13,150 @@ using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 internal static partial class Program
 {
+    private static unsafe void ProjectPerformanceSettings(Fixture f)
+    {
+        var manager = ProjectManager.Instance;
+        var original = manager.Manifest.Settings;
+        bool dirty = manager.IsDirty;
+        var previous = ImGui.GetCurrentContext();
+        var context = ImGui.CreateContext();
+        try
+        {
+            var settings = new ProjectRenderSettings { MaxArrayInstances = 1500, MaxParticlesPerSpawner = 37 };
+            manager.Manifest.Settings = settings;
+            var obj = new SceneObject { PivotOffset = vec3.Zero };
+            obj.Modifiers = [new() { Count = 10000 }, new() { Count = 10000 }];
+            var child = new SceneObject();
+            obj.AddChild(child);
+            foreach (int limit in new[] { 1, 37, 1500, 10000 })
+            {
+                settings.MaxArrayInstances = limit;
+                var evaluation = new ModifierEvaluation([obj]);
+                Equal(limit, evaluation.GetDeltas(obj).Count, "Project cap bounds stacked arrays");
+                Equal(limit, evaluation.GetDeltas(child).Count, "Project cap bounds inherited arrays");
+                Equal(10000, obj.Modifiers[0].Count, "Performance cap preserves authored count");
+            }
+            settings.MaxArrayInstances = 1500;
+            var panel = new PropertiesPanel();
+            panel.LoadProjectSettingsFromManifest(manager.Manifest);
+            panel.AmbientOcclusionSampleCount = 7;
+            panel.ShadowsEnabled = false;
+            panel.SunShadowBufferSize = 512;
+            panel.SpotShadowBufferSize = 256;
+            panel.PointShadowBufferSize = 2048;
+            panel.IndirectLightingEnabled = false;
+            panel.WriteProjectSettingsToManifest(manager.Manifest);
+            var restored = System.Text.Json.JsonSerializer.Deserialize(
+                System.Text.Json.JsonSerializer.Serialize(manager.Manifest, MineImatorSimplyRemade.AppJsonContext.Default.ProjectManifest),
+                MineImatorSimplyRemade.AppJsonContext.Default.ProjectManifest)!;
+            var reloaded = new PropertiesPanel();
+            reloaded.LoadProjectSettingsFromManifest(restored);
+            Equal(1500, reloaded.MaxArrayInstances, "Array cap survives source-generated project roundtrip");
+            Equal(37, reloaded.MaxParticlesPerSpawner, "Particle cap survives project roundtrip");
+            Equal(7, reloaded.AmbientOcclusionSampleCount, "Performance AO shares render settings");
+            Check(!reloaded.ShadowsEnabled && !reloaded.IndirectLightingEnabled, "Rendering toggles survive project roundtrip");
+            Equal(512, reloaded.SunShadowBufferSize, "Sun shadow resolution persists");
+            Equal(256, reloaded.SpotShadowBufferSize, "Spot shadow resolution persists");
+            Equal(2048, reloaded.PointShadowBufferSize, "Point shadow resolution persists");
+            var legacy = System.Text.Json.JsonSerializer.Deserialize("""{"Settings":{}}""",
+                MineImatorSimplyRemade.AppJsonContext.Default.ProjectManifest)!;
+            obj.Modifiers = [new() { Count = 10000 }];
+            manager.Manifest.Settings = legacy.Settings;
+            Equal(1000, new ModifierEvaluation([obj]).GetDeltas(obj).Count, "Old projects retain the previous evaluation cap");
+            Equal(10000, legacy.Settings.MaxParticlesPerSpawner, "Old projects retain the previous particle cap");
+            manager.Manifest.Settings = settings;
+            foreach (int invalid in new[] { 0, 10001 })
+            {
+                bool rejected = false;
+                try { settings.MaxArrayInstances = invalid; } catch (InvalidDataException) { rejected = true; }
+                Check(rejected, "Out-of-range array caps rejected");
+                rejected = false;
+                try { settings.MaxParticlesPerSpawner = invalid; } catch (InvalidDataException) { rejected = true; }
+                Check(rejected, "Out-of-range particle caps rejected");
+            }
+
+            var io = ImGui.GetIO();
+            io.IniFilename = null;
+            io.LogFilename = null;
+            io.DisplaySize = new System.Numerics.Vector2(1000, 900);
+            io.DeltaTime = 1f / 60f;
+            io.BackendFlags |= ImGuiBackendFlags.RendererHasTextures;
+            const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+            var draw = typeof(PropertiesPanel).GetMethod("RenderPerformanceSettings", fields)!;
+            var process = typeof(PropertiesPanel).GetMethod("ProcessPropertyContextRequest", fields)!;
+            var path = typeof(PropertiesPanel).GetField("_ctxPropertyPath", fields)!;
+            uint shadowsId = 0, arrayId = 0, particlesId = 0, hovered = 0;
+            void Frame(float x = -100, float y = -100, bool left = false, bool right = false, bool shift = false)
+            {
+                io.AddMousePosEvent(x, y);
+                io.AddMouseButtonEvent(0, left);
+                io.AddMouseButtonEvent(1, right);
+                io.AddKeyEvent(ImGuiKey.LeftShift, shift);
+                io.AddKeyEvent(ImGuiKey.ModShift, shift);
+                ImGui.NewFrame();
+                ImGui.SetNextWindowPos(new System.Numerics.Vector2(10, 10), ImGuiCond.Always);
+                ImGui.SetNextWindowSize(new System.Numerics.Vector2(750, 700), ImGuiCond.Always);
+                ImGui.Begin("Project performance interaction");
+                ImGui.PushID("ProjectPerformance");
+                shadowsId = ImGui.GetID(Localization.Label("text.panel.properties.shadows", "Shadows"));
+                arrayId = ImGui.GetID(Localization.Label("text.panel.properties.max_array_instances", "Maximum Array Instances"));
+                particlesId = ImGui.GetID(Localization.Label("text.panel.properties.max_particles_per_spawner", "Maximum Particles per Spawner"));
+                ImGui.PopID();
+                draw.Invoke(panel, null);
+                hovered = context.HoveredId;
+                process.Invoke(panel, null);
+                if (ImGui.BeginPopup("##prop_keyframe_ctx"))
+                {
+                    ImGui.CloseCurrentPopup();
+                    ImGui.EndPopup();
+                }
+                ImGui.End();
+                ImGui.Render();
+            }
+            Frame();
+            Frame();
+            foreach (string field in new[] { nameof(PropertiesPanel.MaxArrayInstances), nameof(PropertiesPanel.MaxParticlesPerSpawner) })
+            {
+                float found = -1;
+                uint id = field == nameof(PropertiesPanel.MaxArrayInstances) ? arrayId : particlesId;
+                for (int y = 35; y < 220; y++)
+                {
+                    Frame(120, y);
+                    if (hovered == id) found = y;
+                    if (found >= 0) break;
+                }
+                Check(found >= 0, "Rendered performance limit is available: " + field);
+                manager.SetDirty(false);
+                Frame(120, found, shift: true);
+                Frame(120, found, right: true, shift: true);
+                Equal("project:" + field, (string?)path.GetValue(panel), "Rendered limit has project context binding");
+                Frame(120, found);
+                Check(manager.IsDirty, "Rendered limit reset marks project dirty");
+            }
+            Equal(1000, settings.MaxArrayInstances, "Array widget reset persists previous default");
+            Equal(10000, settings.MaxParticlesPerSpawner, "Particle widget reset persists previous default");
+            float shadowY = -1;
+            for (int y = 65; y < 180; y++)
+            {
+                Frame(25, y);
+                if (hovered == shadowsId) { shadowY = y; break; }
+            }
+            Check(shadowY >= 0, "Performance shadow checkbox rendered");
+            manager.SetDirty(false);
+            Frame(25, shadowY, left: true);
+            Frame(25, shadowY);
+            Check(panel.ShadowsEnabled && settings.ShadowsEnabled && manager.IsDirty,
+                "Performance shadow checkbox edits shared render settings and marks dirty");
+        }
+        finally
+        {
+            manager.Manifest.Settings = original;
+            manager.SetDirty(dirty);
+            ImGui.DestroyContext(context);
+            ImGui.SetCurrentContext(previous);
+        }
+    }
+
     private static unsafe void ModifierContextInteraction(Fixture f)
     {
         var previous = ImGui.GetCurrentContext();
@@ -452,7 +596,7 @@ internal static partial class Program
         Equal(1000, new ModifierEvaluation([obj]).GetDeltas(child).Count, "Inherited safety cap");
         foreach (var invalid in new SceneModifier[]
         {
-            new() { Count = 0 }, new() { Count = 1001 }, new() { Axis = (ArrayAxis)9 },
+            new() { Count = 0 }, new() { Count = 10001 }, new() { Axis = (ArrayAxis)9 },
             new() { Type = (SceneModifierType)9 }, new() { Distance = float.NaN },
             new() { RotationX = float.PositiveInfinity }, new() { ScaleY = float.NaN },
             new() { RadialAxis = (ArrayAxis)9 }, new() { RadialRadius = -1 },
@@ -800,6 +944,23 @@ internal static partial class Program
         typeof(Viewport).GetMethod("ResetModifierEvaluation", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(viewport, null);
         int after = (int)signature.Invoke(viewport, [viewport.SceneObjects, false])!;
         Check(before != after, "Changed copies invalidate shadow cache");
+        int originalLimit = ProjectManager.Instance.Manifest.Settings.MaxArrayInstances;
+        try
+        {
+            ProjectManager.Instance.Manifest.Settings.MaxArrayInstances = 2;
+            typeof(Viewport).GetMethod("ResetModifierEvaluation", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(viewport, null);
+            items.Clear(); noAo.Clear(); overlays.Clear();
+            collect.Invoke(viewport, [viewport.SceneObjects, new vec3(0, 0, 10), Enum.Parse(mode, "Rendered"),
+                Frustum.FromViewProj(mat4.Ortho(-20, 20, -20, 20, -20, 20)), items, noAo, overlays, null]);
+            Equal(2, items.Count + noAo.Count, "Viewport collection honors the project performance cap");
+            Check(after != (int)signature.Invoke(viewport, [viewport.SceneObjects, false])!,
+                "Changing the project cap invalidates cached shadows");
+        }
+        finally
+        {
+            ProjectManager.Instance.Manifest.Settings.MaxArrayInstances = originalLimit;
+            typeof(Viewport).GetMethod("ResetModifierEvaluation", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(viewport, null);
+        }
         var part = new SceneObject { PivotOffset = vec3.Zero, Position = vec3.UnitY, InheritModifiers = false };
         part.Visuals.Add(mesh);
         part.Modifiers = [new() { Count = 2, Axis = ArrayAxis.Z }];

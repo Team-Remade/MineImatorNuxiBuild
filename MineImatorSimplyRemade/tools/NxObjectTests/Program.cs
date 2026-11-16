@@ -468,6 +468,7 @@ internal static partial class Program
             ("Array radial axes, circular positions, oriented subtrees and edge cases", ModifierRadial),
             ("Array path alignment, spacing, wrapping, point edits and unavailable targets", ModifierPaths),
             ("Array stacks, inherited instances, safety cap and invalid transform rejection", ModifierStacks),
+            ("Project performance limits, persistence, shared render settings and ImGui controls", ProjectPerformanceSettings),
             ("Follow Path modifier and Array offset composition, toggles and animation", ModifierFollowPath),
             ("Follow Path modifier migration, persistence, references and special objects", ModifierFollowPersistence),
             ("Array archive, library, duplicate references, snapshots and dirty detection", ModifierPersistence),
@@ -492,6 +493,7 @@ internal static partial class Program
             ("All 15 bundled particle presets, assets and finite simulation", ParticleBundled),
             ("Particle spawn menu selection, search and all provided presets", ParticleSpawnMenu),
             ("Particle per-minute rate, multi-type burst, restart and amount limit", ParticleEmission),
+            ("Particle project performance caps, same-frame restart and authored amounts", ParticlePerformanceLimits),
             ("Particle random ranges, per-axis motion, color, alpha and scale", ParticleParameters),
             ("Particle regions, ground/custom/sphere bounds, bounce and destruction", ParticleCollisions),
             ("Particle animation frames, reverse, loop, ping-pong and destruction", ParticleAnimation),
@@ -584,6 +586,10 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Array", StringComparison.Ordinal) ||
                 test.Name.StartsWith("Follow Path modifier", StringComparison.Ordinal) ||
                 test.Name.StartsWith("Modifier", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--performance", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Project performance", StringComparison.Ordinal) ||
+                test.Name.StartsWith("Particle project performance", StringComparison.Ordinal) ||
+                test.Run == ModifierStacks || test.Run == ModifierRenderCollection || test.Run == ParticleEmission).ToArray();
         if (args.Contains("--scene-tree", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Scene tree", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--scene-tree-ui", StringComparer.Ordinal))

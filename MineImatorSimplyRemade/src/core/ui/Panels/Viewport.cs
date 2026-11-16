@@ -5822,6 +5822,7 @@ public partial class Viewport : UiPanel
             CollectParticleSpawners(objects, _particleSpawnersToUpdate);
             foreach (var spawner in _particleSpawnersToUpdate)
             {
+                spawner.ApplyPerformanceLimit();
                 bool previewSelected = ParticlePreviewEnabled &&
                                        selection != null &&
                                        selection.IsSelected(spawner);

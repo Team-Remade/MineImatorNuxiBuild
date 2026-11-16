@@ -110,6 +110,57 @@ internal static partial class Program
         preset.Settings["spawn_amount"] = 1000000f;
         preset.Settings["destroy_at_amount"] = false;
         Equal(ParticlePresetSimulation.SafetyLimit, Simulate(preset, 1f / 60f).Particles.Count, "Hard safety limit");
+        var limited = new ParticlePresetSimulation(preset, 123, 37);
+        limited.Advance(1f / 60f, true, vec3.Zero, mat4.Identity);
+        Equal(37, limited.Particles.Count, "Project cap bounds a multi-type preset burst");
+        preset.Settings["destroy_at_amount"] = true;
+        preset.Settings["destroy_at_amount_val"] = 4;
+        limited = new ParticlePresetSimulation(preset, 123, 37);
+        limited.Advance(1f / 60f, true, vec3.Zero, mat4.Identity);
+        Equal(4, limited.Particles.Count, "Smaller authored preset cap still takes precedence");
+    }
+
+    private static void ParticlePerformanceLimits(Fixture f)
+    {
+        var manager = ProjectManager.Instance;
+        int originalLimit = manager.Manifest.Settings.MaxParticlesPerSpawner;
+        var viewport = new Viewport();
+        var spawn = new SpawnMenu { Viewport = viewport };
+        var preset = BasicParticlePreset();
+        preset.Settings["spawn_amount"] = 100;
+        var emitter = new ParticleSpawnerSceneObject();
+        emitter.SetPreset(preset.Document);
+        viewport.SceneObjects.Add(emitter);
+        string libraryId = Guid.NewGuid().ToString("N");
+        var source = new ProjectSceneObjectEntry { LibraryEntryId = libraryId, Name = "Performance particle", ObjectType = "Object" };
+        manager.Manifest.ObjectLibrary.Add(source);
+        var libraryEmitter = new ParticleSpawnerSceneObject { Amount = 100, OneShot = true, LifetimeMin = 10, LifetimeMax = 10 };
+        libraryEmitter.SetParticleSource(libraryId, source.Name);
+        viewport.SceneObjects.Add(libraryEmitter);
+        try
+        {
+            foreach (int limit in new[] { 37, 5, 80 })
+            {
+                manager.Manifest.Settings.MaxParticlesPerSpawner = limit;
+                emitter.SimulateToTime(0.1f, viewport, spawn);
+                libraryEmitter.SimulateToTime(0.1f, viewport, spawn);
+                Equal(limit, emitter.ActiveParticleCount, "Preset cap changes take effect at the same timeline position");
+                Equal(limit, libraryEmitter.ActiveParticleCount, "Library-object particle cap changes restart the burst");
+                Equal(100, libraryEmitter.Amount, "Project cap preserves authored library amount");
+                Equal(100f, ParticlePreset.Number(preset.Settings, "spawn_amount"), "Project cap preserves authored preset amount");
+                Equal(limit, viewport.SceneObjects.Count(obj => obj.IsRuntimeTransient), "Preset restart cleans superseded runtime roots");
+            }
+            emitter.SimulateToTime(0, viewport, spawn);
+            emitter.SimulateToTime(0.1f, viewport, spawn);
+            Equal(80, emitter.ActiveParticleCount, "Backward seeking retains the project particle cap");
+        }
+        finally
+        {
+            emitter.ResetRuntime();
+            libraryEmitter.ResetRuntime();
+            manager.Manifest.ObjectLibrary.Remove(source);
+            manager.Manifest.Settings.MaxParticlesPerSpawner = originalLimit;
+        }
     }
 
     private static void ParticleSpawnMenu(Fixture f)

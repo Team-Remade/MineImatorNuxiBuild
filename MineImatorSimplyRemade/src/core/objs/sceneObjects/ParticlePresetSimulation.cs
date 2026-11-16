@@ -25,14 +25,18 @@ public sealed class ParticlePresetSimulation
     private readonly ParticlePreset _preset;
     private readonly Random _random;
     private readonly double[] _spawnRemainders;
+    private readonly int _maxParticles;
     private double _remainder;
     private bool _fired;
     public List<Particle> Particles { get; } = [];
     public vec3? AttractorPosition { get; set; }
     public float AttractorForce { get; set; }
 
-    public ParticlePresetSimulation(ParticlePreset preset, int seed)
+    public ParticlePresetSimulation(ParticlePreset preset, int seed, int maxParticles = SafetyLimit)
     {
+        if (maxParticles is < 1 or > SafetyLimit)
+            throw new ArgumentOutOfRangeException(nameof(maxParticles));
+        _maxParticles = maxParticles;
         _preset = preset;
         _random = new Random(seed);
         _spawnRemainders = new double[preset.Types.Length];
@@ -68,12 +72,12 @@ public sealed class ParticlePresetSimulation
                     count = Math.Floor(_spawnRemainders[type] + 1e-8);
                     _spawnRemainders[type] -= count;
                 }
-                int amount = (int)Math.Min(count, SafetyLimit);
+                int amount = (int)Math.Min(count, _maxParticles);
                 for (int index = 0; index < amount; index++)
                 {
                     int limit = Flag(settings, "destroy_at_amount")
-                        ? (int)Math.Clamp(Number(settings, "destroy_at_amount_val", 200), 1, SafetyLimit)
-                        : SafetyLimit;
+                        ? (int)Math.Clamp(Number(settings, "destroy_at_amount_val", 200), 1, _maxParticles)
+                        : _maxParticles;
                     if (Particles.Count >= limit)
                         Particles.RemoveAt(0);
                     Particles.Add(Spawn(type, origin, rotation));
