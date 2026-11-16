@@ -146,6 +146,9 @@ internal static class SceneObjectFingerprint
             hash.Add(constraint.AxisX);
             hash.Add(constraint.AxisY);
             hash.Add(constraint.AxisZ);
+            hash.Add(constraint.SourceAxisX);
+            hash.Add(constraint.SourceAxisY);
+            hash.Add(constraint.SourceAxisZ);
             hash.Add(constraint.Blend);
             hash.Add(constraint.BentHalf);
             hash.Add(constraint.Rotate);

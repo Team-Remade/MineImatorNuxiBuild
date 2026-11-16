@@ -5,7 +5,7 @@ using NumericsQuaternion = System.Numerics.Quaternion;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
-public enum CopyConstraintType { Position, Rotation, Scale, RotationToBend }
+public enum CopyConstraintType { Position, Rotation, Scale, RotationToBend, Bend }
 
 public sealed class CopyConstraint
 {
@@ -17,6 +17,9 @@ public sealed class CopyConstraint
     public bool AxisX { get; set; } = true;
     public bool AxisY { get; set; } = true;
     public bool AxisZ { get; set; } = true;
+    public int SourceAxisX { get; set; }
+    public int SourceAxisY { get; set; } = 1;
+    public int SourceAxisZ { get; set; } = 2;
     public float Blend { get; set; } = 1f;
     public bool BentHalf { get; set; }
     public bool Rotate { get; set; }
@@ -33,6 +36,11 @@ public sealed class CopyConstraint
     internal vec3 EvaluatedOutputScale { get; set; }
     internal vec3? EvaluatedInputBend { get; set; }
     internal vec3? EvaluatedOutputBend { get; set; }
+
+    public int GetSourceAxis(int axis) => axis == 0 ? SourceAxisX : axis == 1 ? SourceAxisY : SourceAxisZ;
+
+    internal vec3 Remap(vec3 value) => new(value[Math.Clamp(SourceAxisX, 0, 2)],
+        value[Math.Clamp(SourceAxisY, 0, 2)], value[Math.Clamp(SourceAxisZ, 0, 2)]);
 
     public bool IsBendAxisEnabled(int axis) => UseBendAxisMask
         ? axis == 0 ? AxisX : axis == 1 ? AxisY : AxisZ
@@ -81,12 +89,16 @@ public static class CopyConstraintSolver
         {
             var constraints = owner.CopyConstraints.Where(c => c.Enabled && float.IsFinite(c.Blend) && c.Blend > 0f &&
                 (c.Type != CopyConstraintType.RotationToBend || owner is MiBoneSceneObject { BendParameters: not null }) &&
+                (c.Type != CopyConstraintType.Bend || owner is MiBoneSceneObject { BendParameters: not null } &&
+                    ids.TryGetValue(c.TargetObjectId, out var bendTarget) && bendTarget is MiBoneSceneObject { BendParameters: not null }) &&
                 ids.TryGetValue(c.TargetObjectId, out var target) && SafeHierarchy(target) &&
                 SafeHierarchy(owner) && !IsWithin(target, owner)).ToArray();
             if (constraints.Length == 0) continue;
             var sources = constraints.Select(c => ids[c.TargetObjectId]).ToList();
-            if (owner is MiBoneSceneObject bendOwner && constraints.Any(c => c.Type == CopyConstraintType.RotationToBend))
+            if (owner is MiBoneSceneObject bendOwner && constraints.Any(c => c.Type is CopyConstraintType.RotationToBend or CopyConstraintType.Bend))
                 sources.AddRange(bendOwner.GetBendEvaluationSources());
+            foreach (var constraint in constraints.Where(c => c.Type == CopyConstraintType.Bend))
+                sources.AddRange(((MiBoneSceneObject)ids[constraint.TargetObjectId]).GetBendEvaluationSources());
             jobs.Add(new EvaluationJob(owner, new[] { owner },
                 sources, () =>
                 {
@@ -102,18 +114,23 @@ public static class CopyConstraintSolver
                         constraint.EvaluatedInput = world;
                         constraint.EvaluatedInputScale = scale;
                         mat4 frame = TargetFrame(target, constraint);
-                        if (constraint.Type == CopyConstraintType.RotationToBend && owner is MiBoneSceneObject bone)
+                        if (constraint.Type is CopyConstraintType.RotationToBend or CopyConstraintType.Bend && owner is MiBoneSceneObject bone)
                         {
                             vec3 bend = bone.GetEvaluatedEditableBendAngle();
                             constraint.EvaluatedInputBend = bend;
-                            if (float.IsFinite(constraint.RotationMultiplier) && Finite(constraint.Offset))
+                            bool copyBend = constraint.Type == CopyConstraintType.Bend;
+                            if ((copyBend || float.IsFinite(constraint.RotationMultiplier)) && Finite(constraint.Offset))
                             {
-                                vec3 rotation = SourceRotationDegrees(frame);
+                                vec3 source = constraint.Type == CopyConstraintType.Bend
+                                    ? ((MiBoneSceneObject)target).GetEvaluatedEditableBendAngle()
+                                    : SourceRotationDegrees(frame);
                                 for (int axis = 0; axis < 3; axis++)
                                 {
-                                    int sourceAxis = constraint.GetSourceRotationAxis(axis);
-                                    if (!constraint.IsBendAxisEnabled(axis) || sourceAxis is < 0 or > 2) continue;
-                                    float desired = rotation[sourceAxis] * constraint.RotationMultiplier + constraint.Offset[axis];
+                                    int sourceAxis = copyBend ? constraint.GetSourceAxis(axis) : constraint.GetSourceRotationAxis(axis);
+                                    bool enabled = copyBend ? axis == 0 ? constraint.AxisX : axis == 1 ? constraint.AxisY : constraint.AxisZ
+                                        : constraint.IsBendAxisEnabled(axis);
+                                    if (!enabled || sourceAxis is < 0 or > 2) continue;
+                                    float desired = source[sourceAxis] * (copyBend ? 1f : constraint.RotationMultiplier) + constraint.Offset[axis];
                                     bend[axis] += (desired - bend[axis]) * Math.Clamp(constraint.Blend, 0f, 1f);
                                 }
                                 if (Finite(bend)) bone.SetEvaluatedBend(bend);
@@ -161,6 +178,12 @@ public static class CopyConstraintSolver
         float blend = float.IsFinite(constraint.Blend) && constraint.Blend > 1e-6f ? Math.Clamp(constraint.Blend, 0f, 1f) : 1f;
         switch (constraint.Type)
         {
+            case CopyConstraintType.Bend when owner is MiBoneSceneObject copyBone && target is MiBoneSceneObject sourceBone:
+                vec3 currentCopyBend = constraint.EvaluatedOutputBend ?? copyBone.GetEvaluatedEditableBendAngle();
+                vec3 inputCopyBend = constraint.EvaluatedInputBend ?? currentCopyBend;
+                constraint.Offset = inputCopyBend + (currentCopyBend - inputCopyBend) / blend
+                    - constraint.Remap(sourceBone.GetEvaluatedEditableBendAngle());
+                break;
             case CopyConstraintType.RotationToBend when owner is MiBoneSceneObject bone:
                 vec3 currentBend = constraint.EvaluatedOutputBend ?? bone.GetEvaluatedEditableBendAngle();
                 vec3 inputBend = constraint.EvaluatedInputBend ?? currentBend;
@@ -177,19 +200,19 @@ public static class CopyConstraintSolver
                 break;
             case CopyConstraintType.Position:
                 vec3 desiredPosition = Translation(input) + (Translation(world) - Translation(input)) / blend;
-                vec3 offset = desiredPosition - Translation(frame);
+                vec3 offset = desiredPosition - constraint.Remap(Translation(frame));
                 constraint.Offset = constraint.Rotate ? Direction(Rotation(frame).Transposed, offset) : offset;
                 break;
             case CopyConstraintType.Rotation:
                 mat4 desiredRotation = AllRotationAxes(constraint)
                     ? BlendRotation(Rotation(input), Rotation(world), 1f / blend)
                     : BlendRotationAxes(Rotation(input), Rotation(world), constraint, 1f / blend);
-                constraint.Offset = MineImatorLoader.MatrixToEulerRzRyRx(Rotation(frame).Transposed * desiredRotation);
+                constraint.Offset = MineImatorLoader.MatrixToEulerRzRyRx(MappedRotation(frame, constraint).Transposed * desiredRotation);
                 break;
             case CopyConstraintType.Scale:
                 vec3 currentScale = constraint.EvaluatedOutput.HasValue ? constraint.EvaluatedOutputScale : owner.GetCopyConstraintScale();
                 vec3 inputScale = constraint.EvaluatedInput.HasValue ? constraint.EvaluatedInputScale : currentScale;
-                constraint.Offset = SafeRatio(inputScale + (currentScale - inputScale) / blend, target.GetCopyConstraintScale());
+                constraint.Offset = SafeRatio(inputScale + (currentScale - inputScale) / blend, constraint.Remap(target.GetCopyConstraintScale()));
                 break;
         }
     }
@@ -197,7 +220,7 @@ public static class CopyConstraintSolver
     private static mat4 TargetFrame(SceneObject target, CopyConstraint constraint)
     {
         mat4 frame = target.GetWorldMatrixNoPivot();
-        if (constraint.Type != CopyConstraintType.Scale && constraint.BentHalf && target is MiBoneSceneObject bone)
+        if (constraint.Type is not (CopyConstraintType.Scale or CopyConstraintType.Bend) && constraint.BentHalf && target is MiBoneSceneObject bone)
             frame *= bone.GetBentHalfTransform(vec3.Zero);
         return frame;
     }
@@ -242,12 +265,12 @@ public static class CopyConstraintSolver
             case CopyConstraintType.Position:
                 vec3 from = Translation(world);
                 vec3 offset = constraint.Rotate ? Direction(Rotation(target), constraint.Offset) : constraint.Offset;
-                vec3 position = from + (Mask(from, Translation(target) + offset) - from) * blend;
+                vec3 position = from + (Mask(from, constraint.Remap(Translation(target)) + offset) - from) * blend;
                 if (Finite(position)) { world.m30 = position.x; world.m31 = position.y; world.m32 = position.z; }
                 break;
             case CopyConstraintType.Rotation:
                 mat4 current = Rotation(world);
-                mat4 desired = Rotation(target) * Euler(constraint.Offset);
+                mat4 desired = MappedRotation(target, constraint) * Euler(constraint.Offset);
                 mat4 blended = AllRotationAxes(constraint) ? BlendRotation(current, desired, blend)
                     : BlendRotationAxes(current, desired, constraint, blend);
                 mat4 delta = blended * current.Transposed;
@@ -256,6 +279,7 @@ public static class CopyConstraintSolver
                 world.m30 = positionBefore.x; world.m31 = positionBefore.y; world.m32 = positionBefore.z;
                 break;
             case CopyConstraintType.Scale:
+                targetScale = constraint.Remap(targetScale);
                 vec3 desiredScale = Mask(scale, targetScale * constraint.Offset);
                 // A zero target scale has no finite keep-transform multiplier.
                 if (MathF.Abs(targetScale.x) <= 1e-8f) desiredScale.x = scale.x;
@@ -321,6 +345,12 @@ public static class CopyConstraintSolver
     }
 
     private static bool AllRotationAxes(CopyConstraint constraint) => constraint.AxisX && constraint.AxisY && constraint.AxisZ;
+    private static mat4 MappedRotation(mat4 frame, CopyConstraint constraint)
+    {
+        mat4 rotation = Rotation(frame);
+        return constraint.SourceAxisX == 0 && constraint.SourceAxisY == 1 && constraint.SourceAxisZ == 2
+            ? rotation : Euler(constraint.Remap(MineImatorLoader.MatrixToEulerRzRyRx(rotation)));
+    }
     private static mat4 BlendRotationAxes(mat4 from, mat4 to, CopyConstraint constraint, float blend)
     {
         vec3 start = MineImatorLoader.MatrixToEulerRzRyRx(from);

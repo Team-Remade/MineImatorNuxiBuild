@@ -3176,6 +3176,7 @@ public partial class Timeline : UiPanel
         ("enabled", "Enabled"), ("target", "Target Object"),
         ("offset.x", "Offset X"), ("offset.y", "Offset Y"), ("offset.z", "Offset Z"),
         ("axis.x", "Axis X"), ("axis.y", "Axis Y"), ("axis.z", "Axis Z"),
+        ("source_axis.x", "Source Axis X"), ("source_axis.y", "Source Axis Y"), ("source_axis.z", "Source Axis Z"),
         ("blend", "Blend"), ("bent_half", "Bent Half"), ("rotate", "Rotate"),
         ("source_rotation_axis.x", "Source Rotation Axis X"), ("source_rotation_axis.y", "Source Rotation Axis Y"), ("source_rotation_axis.z", "Source Rotation Axis Z"),
         ("source_rotation_axis", "Source Rotation Axis"), ("bend_axis", "Bend Axis"), ("rotation_multiplier", "Rotation Multiplier")
@@ -3186,13 +3187,15 @@ public partial class Timeline : UiPanel
         CopyConstraintType.Position => "Copy Position",
         CopyConstraintType.Rotation => "Copy Rotation",
         CopyConstraintType.RotationToBend => "Rotation to Bend",
+        CopyConstraintType.Bend => "Copy Bend",
         _ => "Copy Scale"
     };
 
     private static IEnumerable<(string Channel, string Label)> GetCopyConstraintChannels(CopyConstraintType type) =>
         CopyConstraintChannels.Where(channel => type == CopyConstraintType.RotationToBend
-            ? channel.Channel != "rotate"
-            : channel.Channel is not ("source_rotation_axis" or "source_rotation_axis.x" or "source_rotation_axis.y" or "source_rotation_axis.z" or "bend_axis" or "rotation_multiplier"));
+            ? channel.Channel is not ("rotate" or "source_axis.x" or "source_axis.y" or "source_axis.z")
+            : channel.Channel is not ("source_rotation_axis" or "source_rotation_axis.x" or "source_rotation_axis.y" or "source_rotation_axis.z" or "bend_axis" or "rotation_multiplier") &&
+                (type != CopyConstraintType.Bend || channel.Channel is not ("rotate" or "bent_half")));
 
     private static IEnumerable<string> GetCopyConstraintPropertyPaths(int index, CopyConstraint constraint) =>
         GetCopyConstraintChannels(constraint.Type)
@@ -3285,6 +3288,9 @@ public partial class Timeline : UiPanel
                 "axis.z" => (copy.Type == CopyConstraintType.RotationToBend ? copy.IsBendAxisEnabled(2) : copy.AxisZ) ? 1f : 0f,
                 "blend" => copy.Blend, "bent_half" => copy.BentHalf ? 1f : 0f, "rotate" => copy.Rotate ? 1f : 0f,
                 "source_rotation_axis" => Math.Clamp(copy.SourceRotationAxis, 0, 2),
+                "source_axis.x" => copy.SourceAxisX,
+                "source_axis.y" => copy.SourceAxisY,
+                "source_axis.z" => copy.SourceAxisZ,
                 "source_rotation_axis.x" => copy.GetSourceRotationAxis(0),
                 "source_rotation_axis.y" => copy.GetSourceRotationAxis(1),
                 "source_rotation_axis.z" => copy.GetSourceRotationAxis(2),
@@ -3707,6 +3713,9 @@ public partial class Timeline : UiPanel
                     case "bent_half": copy.BentHalf = copyValue >= 0.5f; break;
                     case "rotate": copy.Rotate = copyValue >= 0.5f; break;
                     case "source_rotation_axis": copy.SourceRotationAxis = (int)Math.Clamp(MathF.Round(copyValue), 0f, 2f); break;
+                    case "source_axis.x": copy.SourceAxisX = (int)Math.Clamp(MathF.Round(copyValue), 0f, 2f); break;
+                    case "source_axis.y": copy.SourceAxisY = (int)Math.Clamp(MathF.Round(copyValue), 0f, 2f); break;
+                    case "source_axis.z": copy.SourceAxisZ = (int)Math.Clamp(MathF.Round(copyValue), 0f, 2f); break;
                     case "source_rotation_axis.x": copy.SourceRotationAxisX = (int)Math.Clamp(MathF.Round(copyValue), 0f, 2f); break;
                     case "source_rotation_axis.y": copy.SourceRotationAxisY = (int)Math.Clamp(MathF.Round(copyValue), 0f, 2f); break;
                     case "source_rotation_axis.z": copy.SourceRotationAxisZ = (int)Math.Clamp(MathF.Round(copyValue), 0f, 2f); break;

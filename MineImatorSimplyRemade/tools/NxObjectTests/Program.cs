@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using GlmSharp;
+using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
@@ -449,6 +450,10 @@ internal static partial class Program
             ("Rotation-to-bend multi-axis capture preserves blended stack", RotationBendMaskCapture),
             ("Rotation-to-bend mask and nullable source archive persistence and clone", RotationBendMaskPersistence),
             ("Rotation-to-bend timeline mask reads, writes and discrete animation", RotationBendMaskTimeline),
+            ("Copy constraint axis masks, remapping, blend and capture", CopyAxisMapping),
+            ("Copy constraint bend sources, dependencies, limits and reset", CopyBendMapping),
+            ("Copy constraint remapping persistence, history and timeline", CopyAxisPersistence),
+            ("Copy constraint ImGui axis toggles and source selectors", CopyAxisControls),
             ("Procedural effect deterministic seek, seed and stepped/smooth motion", EffectDeterminism),
             ("Procedural effect ring closure, reveal and branch attachment", EffectPaths),
             ("Procedural effect tube counts, winding, normals, UVs and bounds", EffectTubes),
@@ -577,6 +582,8 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Path", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--frames", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Frames ", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--copy-constraints", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Copy constraint ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--cloth", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Cloth ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--wiggle", StringComparer.Ordinal))
@@ -1002,6 +1009,270 @@ internal static partial class Program
     private static void Near(vec3 expected, vec3 actual, string message)
     {
         for (int axis = 0; axis < 3; axis++) Near(expected[axis], actual[axis], $"{message}, axis {axis}");
+    }
+
+    private static void CopyAxisMapping(Fixture f)
+    {
+        vec3 sourceValue = new(0.2f, 0.4f, 0.6f), authored = new(0.1f, 0.3f, 0.5f);
+        foreach (var type in new[] { CopyConstraintType.Position, CopyConstraintType.Rotation, CopyConstraintType.Scale })
+            for (int mask = 0; mask < 8; mask++)
+                for (int sourceAxis = 0; sourceAxis < 3; sourceAxis++)
+                {
+                    var source = Node("axis driver");
+                    var owner = Node("axis follower");
+                    source.SetLocalPosition(sourceValue);
+                    source.SetLocalRotation(sourceValue);
+                    source.SetLocalScale(sourceValue);
+                    owner.SetLocalPosition(authored);
+                    owner.SetLocalRotation(authored);
+                    owner.SetLocalScale(authored);
+                    var constraint = new CopyConstraint
+                    {
+                        Type = type, TargetObjectId = source.ObjectId,
+                        AxisX = (mask & 1) != 0, AxisY = (mask & 2) != 0, AxisZ = (mask & 4) != 0,
+                        SourceAxisX = sourceAxis, SourceAxisY = (sourceAxis + 1) % 3, SourceAxisZ = (sourceAxis + 2) % 3,
+                        Offset = type == CopyConstraintType.Scale ? vec3.Ones : vec3.Zero
+                    };
+                    owner.CopyConstraints.Add(constraint);
+                    vec3 Read() => type == CopyConstraintType.Position ? owner.GetWorldPosition()
+                        : type == CopyConstraintType.Rotation ? MineImatorLoader.MatrixToEulerRzRyRx(
+                            (mat4)typeof(CopyConstraintSolver).GetMethod("Rotation", BindingFlags.Static | BindingFlags.NonPublic)!
+                                .Invoke(null, [owner.GetWorldMatrixNoPivot()])!)
+                        : (vec3)typeof(SceneObject).GetMethod("GetCopyConstraintScale", BindingFlags.Instance | BindingFlags.NonPublic)!
+                            .Invoke(owner, null)!;
+                    vec3 expected = authored;
+                    for (int axis = 0; axis < 3; axis++)
+                        if ((mask & (1 << axis)) != 0) expected[axis] = sourceValue[constraint.GetSourceAxis(axis)];
+                    InverseKinematicsSolver.Evaluate([owner, source]);
+                    Near(expected, Read(), $"{type} mask {mask}, source {sourceAxis}");
+                    // Capture with a partial blend preserves the previous stack result.
+                    constraint.Blend = 0.35f;
+                    CopyConstraintSolver.CaptureOffset(owner, constraint, source);
+                    InverseKinematicsSolver.Evaluate([owner, source]);
+                    Near(expected, Read(), $"{type} remapped keep-pose");
+                    InverseKinematicsSolver.Evaluate([owner, source]);
+                    Near(expected, Read(), $"{type} remapping does not drift");
+                    Equal(authored, owner.Position, "Copy did not author position");
+                    Equal(authored, owner.Rotation, "Copy did not author rotation");
+                    Equal(authored, owner.Scale, "Copy did not author scale");
+                }
+        var zeroSource = Node("zero mapped scale");
+        zeroSource.SetLocalScale(new vec3(2f, 3f, 0f));
+        var zeroOwner = Node("zero scale follower");
+        zeroOwner.CopyConstraints.Add(new CopyConstraint
+        {
+            Type = CopyConstraintType.Scale, TargetObjectId = zeroSource.ObjectId,
+            SourceAxisX = 2, SourceAxisY = 0, SourceAxisZ = 1
+        });
+        InverseKinematicsSolver.Evaluate([zeroOwner, zeroSource]);
+        var scale = (vec3)typeof(SceneObject).GetMethod("GetCopyConstraintScale", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(zeroOwner, null)!;
+        Near(new vec3(1f, 2f, 3f), scale, "Zero scale guard follows mapped source");
+    }
+
+    private static void CopyBendMapping(Fixture f)
+    {
+        vec3 sourceAngle = new(20f, 40f, 60f), authored = new(2f, 4f, 6f);
+        for (int mask = 0; mask < 8; mask++)
+        {
+            var source = BendBone("bend source", sourceAngle);
+            source.SetLocalRotation(new vec3(0.8f, 0.4f, 0.2f));
+            var owner = BendBone("bend follower", authored);
+            var constraint = new CopyConstraint
+            {
+                Type = CopyConstraintType.Bend, TargetObjectId = source.ObjectId,
+                AxisX = (mask & 1) != 0, AxisY = (mask & 2) != 0, AxisZ = (mask & 4) != 0,
+                SourceAxisX = 2, SourceAxisY = 0, SourceAxisZ = 0,
+                Offset = new vec3(1f, 3f, 5f), Blend = 0.5f
+            };
+            owner.CopyConstraints.Add(constraint);
+            vec3 expected = authored;
+            for (int axis = 0; axis < 3; axis++)
+                if ((mask & (1 << axis)) != 0)
+                    expected[axis] += (sourceAngle[constraint.GetSourceAxis(axis)] + constraint.Offset[axis] - authored[axis]) * 0.5f;
+            InverseKinematicsSolver.Evaluate([owner, source]);
+            Near(expected, EvaluatedBend(owner), "Bend copies editable angles, not world rotation");
+            CopyConstraintSolver.CaptureOffset(owner, constraint, source);
+            InverseKinematicsSolver.Evaluate([owner, source]);
+            Near(expected, EvaluatedBend(owner), "Bend capture preserves blended mapped pose");
+            constraint.Enabled = false;
+            InverseKinematicsSolver.Evaluate([owner, source]);
+            Near(authored, EvaluatedBend(owner), "Disabled bend restores authored channels");
+            Equal(authored, owner.GetEditableBendAngle(), "Copy bend never authors angles");
+        }
+        var driver = BendBone("upstream bend", new vec3(70f, 80f, 90f));
+        var middle = BendBone("middle bend", vec3.Zero);
+        middle.CopyConstraints.Add(new CopyConstraint { Type = CopyConstraintType.Bend, TargetObjectId = driver.ObjectId });
+        var follower = BendBone("dependent bend", vec3.Zero);
+        var bp = follower.BendParameters!.Value;
+        bp.AxisY = false;
+        bp.DirectionMax = new vec3(25f);
+        follower.SetBendParameters(bp, 1f);
+        follower.CopyConstraints.Add(new CopyConstraint
+        {
+            Type = CopyConstraintType.Bend, TargetObjectId = middle.ObjectId,
+            SourceAxisX = 2, SourceAxisY = 0, SourceAxisZ = 1
+        });
+        InverseKinematicsSolver.Evaluate([follower, middle, driver]);
+        Near(new vec3(25f, 0f, 25f), EvaluatedBend(follower), "Bend dependency order, limits and supported axes");
+        driver.CopyConstraints.Add(new CopyConstraint { Type = CopyConstraintType.Bend, TargetObjectId = middle.ObjectId });
+        InverseKinematicsSolver.Evaluate([follower, middle, driver]);
+        Near(vec3.Zero, EvaluatedBend(follower), "Bend cycles skip dependents");
+        follower.CopyConstraints[0].TargetObjectId = Node("not a MiBone").ObjectId;
+        InverseKinematicsSolver.Evaluate([follower]);
+        Near(vec3.Zero, EvaluatedBend(follower), "Missing bend source clears evaluated bend");
+        var nonBone = Node("ordinary object");
+        follower.CopyConstraints[0].TargetObjectId = nonBone.ObjectId;
+        InverseKinematicsSolver.Evaluate([follower, nonBone]);
+        Near(vec3.Zero, EvaluatedBend(follower), "Copy bend requires a bendable source");
+    }
+
+    private static void CopyAxisPersistence(Fixture f)
+    {
+        var source = BendBone("persistent source", new vec3(10f, 20f, 30f));
+        var owner = BendBone("persistent follower", new vec3(1f, 2f, 3f));
+        var root = Node("persistent root");
+        root.AddChild(source);
+        root.AddChild(owner);
+        var constraint = new CopyConstraint
+        {
+            Type = CopyConstraintType.Bend, TargetObjectId = source.ObjectId,
+            SourceAxisX = 2, SourceAxisY = 0, SourceAxisZ = 0, AxisY = false, Blend = 0.5f
+        };
+        owner.CopyConstraints.Add(constraint);
+        var (archive, _) = f.Roundtrip(root);
+        var library = (ProjectSceneObjectEntry)typeof(PropertiesPanel).GetMethod("CloneLibraryEntryRecursive",
+            BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [archive.Root.Children.Single(e => e.ObjectId == owner.ObjectId)])!;
+        var restored = BendBone("loaded follower", vec3.Zero);
+        var apply = typeof(ProjectSceneSerializer).GetMethod("ApplyEntryToObject", BindingFlags.Static | BindingFlags.NonPublic)!;
+        apply.Invoke(null, [restored, library, null]);
+        foreach (var copy in new[] { restored.CopyConstraints.Single(), constraint.Clone() })
+        {
+            Equal(CopyConstraintType.Bend, copy.Type, "Copy bend type persists");
+            Equal(2, copy.SourceAxisX, "X remap persists");
+            Equal(0, copy.SourceAxisY, "Disabled Y remap persists");
+            Equal(0, copy.SourceAxisZ, "Repeated source axis persists");
+            Check(!copy.AxisY, "Disabled axis persists");
+        }
+        InverseKinematicsSolver.Evaluate([restored, source]);
+        Near(new vec3(15.5f, 2f, 6.5f), EvaluatedBend(restored), "Restored bend mapping is functional");
+        var snapshot = ProjectSceneSerializer.SerializeObjectForLibrary(owner);
+        var fingerprint = typeof(ProjectSceneSerializer).Assembly.GetType("MineImatorSimplyRemade.core.project.SceneObjectFingerprint")!
+            .GetMethod("Compute", BindingFlags.Static | BindingFlags.Public)!;
+        ulong Hash() => (ulong)fingerprint.Invoke(null, [new List<SceneObject> { owner }])!;
+        ulong original = Hash();
+        constraint.SourceAxisX = 0;
+        Check(Hash() != original, "Axis remap participates in dirty detection");
+        apply.Invoke(null, [owner, snapshot, null]);
+        Equal(original, Hash(), "Snapshot restores remapping for undo");
+        var legacy = JsonSerializer.Deserialize("""{"copyConstraints":[{"type":0}]}""",
+            MineImatorSimplyRemade.AppJsonContext.Default.ProjectSceneObjectEntry)!;
+        var legacyOwner = Node("legacy copy");
+        apply.Invoke(null, [legacyOwner, legacy, null]);
+        Equal(1, legacyOwner.CopyConstraints[0].SourceAxisY, "Old projects retain identity Y mapping");
+        Equal(2, legacyOwner.CopyConstraints[0].SourceAxisZ, "Old projects retain identity Z mapping");
+        var timeline = new Timeline();
+        var get = typeof(Timeline).GetMethod("GetPropertyValue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var set = typeof(Timeline).GetMethod("SetPropertyValue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var discover = typeof(Timeline).GetMethod("GetKeyframePropertyPaths", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var interpolate = typeof(Timeline).GetMethod("InterpolateKeyframes", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        foreach (var type in new[] { CopyConstraintType.Position, CopyConstraintType.Rotation, CopyConstraintType.Scale, CopyConstraintType.Bend })
+        {
+            owner.CopyConstraints[0].Type = type;
+            var paths = ((IEnumerable<string>)discover.Invoke(null, [owner])!).ToHashSet();
+            foreach (string axis in new[] { "x", "y", "z" })
+            {
+                string path = "copy_constraint.0.source_axis." + axis;
+                Check(paths.Contains(path), "Timeline discovers remapping");
+                set.Invoke(timeline, [owner, path, 2f]);
+                Near(2f, Convert.ToSingle(get.Invoke(timeline, [owner, path])), "Timeline remap read/write");
+                var keys = new List<TimelineKeyframe> { new() { Frame = 0, Value = 0f }, new() { Frame = 10, Value = 2f } };
+                Near(0f, Convert.ToSingle(interpolate.Invoke(timeline, [keys, path, 5])), "Source remaps use discrete animation");
+                set.Invoke(timeline, [owner, path, 0f]);
+                Near(0f, Convert.ToSingle(get.Invoke(timeline, [owner, path])), "Backward remap seek");
+            }
+        }
+    }
+
+    private static unsafe void CopyAxisControls(Fixture f)
+    {
+        var previous = ImGui.GetCurrentContext();
+        var context = ImGui.CreateContext();
+        bool dirty = ProjectManager.Instance.IsDirty;
+        try
+        {
+            var io = ImGui.GetIO();
+            io.IniFilename = null;
+            io.LogFilename = null;
+            io.DisplaySize = new System.Numerics.Vector2(1000f, 900f);
+            io.DeltaTime = 1f / 60f;
+            io.BackendFlags |= ImGuiBackendFlags.RendererHasTextures;
+            var owner = BendBone("UI bend follower", vec3.Zero);
+            var source = BendBone("UI bend source", new vec3(10f, 20f, 30f));
+            var viewport = new Viewport();
+            viewport.SceneObjects.Add(owner);
+            viewport.SceneObjects.Add(source);
+            var panel = new PropertiesPanel { Viewport = viewport };
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            typeof(PropertiesPanel).GetField("_currentObject", flags)!.SetValue(panel, owner);
+            var draw = typeof(PropertiesPanel).GetMethod("DrawConstraints", flags)!;
+            var pathField = typeof(PropertiesPanel).GetField("_ctxPropertyPath", flags)!;
+            void Frame(float x = -100f, float y = -100f, bool left = false, bool right = false)
+            {
+                pathField.SetValue(panel, null);
+                io.AddMousePosEvent(x, y);
+                io.AddMouseButtonEvent(0, left);
+                io.AddMouseButtonEvent(1, right);
+                ImGui.NewFrame();
+                ImGui.SetNextWindowPos(new System.Numerics.Vector2(10f), ImGuiCond.Always);
+                ImGui.SetNextWindowSize(new System.Numerics.Vector2(700f, 800f), ImGuiCond.Always);
+                ImGui.Begin("Copy constraints controls");
+                ImGui.SetNextItemOpen(true, ImGuiCond.Always);
+                draw.Invoke(panel, [owner]);
+                ImGui.End();
+                ImGui.Render();
+            }
+            float Find(string path, float x)
+            {
+                for (int y = 60; y < 650; y += 4)
+                {
+                    Frame(x, y, right: true);
+                    bool found = Equals(pathField.GetValue(panel), path);
+                    Frame(x, y);
+                    if (found) return y;
+                }
+                throw new InvalidOperationException("Rendered constraint control not reachable: " + path);
+            }
+            foreach (var type in new[] { CopyConstraintType.Position, CopyConstraintType.Rotation, CopyConstraintType.Scale, CopyConstraintType.Bend })
+            {
+                var constraint = new CopyConstraint { Type = type, TargetObjectId = source.ObjectId };
+                owner.CopyConstraints = [constraint];
+                Frame();
+                Frame();
+                float axisY = Find("copy_constraint.0.axis.z", 75f);
+                Frame(75f, axisY, left: true);
+                Frame(75f, axisY);
+                Check(!constraint.AxisZ, type + " UI disables destination Z");
+                Frame(75f, axisY, left: true);
+                Frame(75f, axisY);
+                Check(constraint.AxisZ, type + " UI enables destination Z");
+                float comboY = Find("copy_constraint.0.source_axis.z", 200f);
+                Frame(200f, comboY, left: true);
+                Frame(200f, comboY);
+                float optionY = comboY + ImGui.GetFrameHeight() + ImGui.GetStyle().WindowPadding.Y +
+                    ImGui.GetTextLineHeight() / 2f;
+                Frame(200f, optionY);
+                Frame(200f, optionY, left: true);
+                Frame(200f, optionY);
+                Equal(0, constraint.SourceAxisZ, type + " UI maps target X to destination Z");
+            }
+        }
+        finally
+        {
+            ProjectManager.Instance.SetDirty(dirty);
+            ImGui.DestroyContext(context);
+            ImGui.SetCurrentContext(previous);
+        }
     }
 
     private static void RotationBendMapping(Fixture f)

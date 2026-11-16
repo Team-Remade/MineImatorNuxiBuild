@@ -624,6 +624,9 @@ public class ProjectCopyConstraintEntry
     public bool AxisX { get; set; } = true;
     public bool AxisY { get; set; } = true;
     public bool AxisZ { get; set; } = true;
+    public int SourceAxisX { get; set; } = 0;
+    public int SourceAxisY { get; set; } = 1;
+    public int SourceAxisZ { get; set; } = 2;
     public float Blend { get; set; } = 1f;
     public bool BentHalf { get; set; } = false;
     public bool Rotate { get; set; } = false;
