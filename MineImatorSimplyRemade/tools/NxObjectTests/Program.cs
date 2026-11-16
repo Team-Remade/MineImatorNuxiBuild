@@ -25,6 +25,20 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--startup-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                StartupLogoGraphics();
+                Console.WriteLine("PASS Startup logo GIF frame pixels, timing, looping and draw commands");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         int clothProject = Array.IndexOf(args, "--cloth-project");
         if (clothProject >= 0)
         {

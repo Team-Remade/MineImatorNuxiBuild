@@ -81,6 +81,8 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 
 Coverage and prerequisites:
 
+- `--startup-graphics`: OpenGL 3.3; loading-logo GIF frame pixels, per-frame
+  delays, looping, and the startup UI's animated image draw commands.
 - `--world-preview`: nonblocking preview polling, cancellation, empty terrain,
   and worker error propagation without a GPU. `--water-terrain-graphics` also
   checks asynchronous terrain geometry/material parity, filter snapshots, and

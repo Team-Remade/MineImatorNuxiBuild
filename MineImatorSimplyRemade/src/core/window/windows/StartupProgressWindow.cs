@@ -108,7 +108,16 @@ public class StartupProgressWindow : Window
         try
         {
             foreach (AnimatedFrameResult frame in ImageResult.AnimatedGifFramesFromStream(stream, ColorComponents.RedGreenBlueAlpha))
-                frames.Add(frame);
+            {
+                // stb_image reuses its result and pixel buffer between frames.
+                frames.Add(new AnimatedFrameResult
+                {
+                    Width = frame.Width,
+                    Height = frame.Height,
+                    Data = (byte[])frame.Data.Clone(),
+                    DelayInMs = frame.DelayInMs
+                });
+            }
         }
         catch (Exception ex)
         {
