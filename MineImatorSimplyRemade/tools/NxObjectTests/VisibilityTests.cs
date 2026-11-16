@@ -34,7 +34,7 @@ internal static partial class Program
             typeof(PropertiesPanel).GetField("_currentObject", flags)!.SetValue(panel, obj);
             var path = typeof(PropertiesPanel).GetField("_ctxPropertyPath", flags)!;
             var open = typeof(PropertiesPanel).GetField("_openPropContextMenu", flags)!;
-            var draw = typeof(PropertiesPanel).GetMethod("RenderObjectTab", flags)!;
+            var draw = typeof(PropertiesPanel).GetMethod("RenderObjectProperties", flags)!;
             var menu = typeof(PropertiesPanel).GetMethod("RenderPropertyContextMenu", flags)!;
             string action = Localization.Label("text.panel.properties.add_keyframe_at_current_frame",
                 "Add Keyframe at Current Frame");
@@ -52,10 +52,14 @@ internal static partial class Program
                 ImGui.Begin("Visibility controls");
                 if (ImGui.BeginTabBar("Properties"))
                 {
-                    ImGui.PushID(Localization.Label("text.common.object", "Object"));
-                    ImGui.GetStateStorage().SetInt(ImGui.GetID(Localization.Label("text.common.appearance", "Appearance")), 1);
-                    ImGui.PopID();
-                    draw.Invoke(panel, null);
+                    if (ImGui.BeginTabItem(Localization.Label("text.common.object", "Object")))
+                    {
+                        ImGui.BeginChild("##ObjectProperties", System.Numerics.Vector2.Zero, ImGuiChildFlags.AlwaysUseWindowPadding);
+                        ImGui.GetStateStorage().SetInt(ImGui.GetID(Localization.Label("text.common.appearance", "Appearance")), 1);
+                        draw.Invoke(panel, null);
+                        ImGui.EndChild();
+                        ImGui.EndTabItem();
+                    }
                     ImGui.EndTabBar();
                 }
                 if ((bool)open.GetValue(panel)!)

@@ -2273,7 +2273,8 @@ public partial class PropertiesPanel : UiPanel
     public override void Render()
     {
         ApplyBackgroundAnimation(Timeline?.CurrentFrame ?? 0);
-        if (ImGui.Begin(Localization.Label("text.common.properties", "Properties")))
+        if (ImGui.Begin(Localization.Label("text.common.properties", "Properties"),
+                ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse))
         {
             if (ImGui.BeginTabBar("PropertiesTabs"))
             {
@@ -2294,6 +2295,14 @@ public partial class PropertiesPanel : UiPanel
     {
         if (!ImGui.BeginTabItem(Localization.Label("text.panel.properties.project", "Project"))) return;
 
+        if (ImGui.BeginChild("##ProjectProperties", Vector2.Zero, ImGuiChildFlags.AlwaysUseWindowPadding))
+            RenderProjectProperties();
+        ImGui.EndChild();
+        ImGui.EndTabItem();
+    }
+
+    private void RenderProjectProperties()
+    {
         ImGui.TextUnformatted(Localization.T("text.panel.properties.project_properties"));
         ImGui.Separator();
 
@@ -2894,7 +2903,6 @@ public partial class PropertiesPanel : UiPanel
             }
         }
 
-        ImGui.EndTabItem();
     }
 
     private unsafe void RenderRenderSettings()
@@ -3393,6 +3401,14 @@ public partial class PropertiesPanel : UiPanel
     {
         if (!ImGui.BeginTabItem(Localization.Label("text.common.object", "Object"))) return;
 
+        if (ImGui.BeginChild("##ObjectProperties", Vector2.Zero, ImGuiChildFlags.AlwaysUseWindowPadding))
+            RenderObjectProperties();
+        ImGui.EndChild();
+        ImGui.EndTabItem();
+    }
+
+    private void RenderObjectProperties()
+    {
         // ── Object header ─────────────────────────────────────────────────────
         if (_currentObject == null)
         {
@@ -3401,7 +3417,6 @@ public partial class PropertiesPanel : UiPanel
             float textWidth  = ImGui.CalcTextSize(noSelText).X;
             ImGui.SetCursorPosX((windowWidth - textWidth) * 0.5f);
             UiText.Disabled(noSelText);
-            ImGui.EndTabItem();
             return;
         }
 
@@ -5940,7 +5955,6 @@ public partial class PropertiesPanel : UiPanel
             }
         }
 
-        ImGui.EndTabItem();
     }
     
     // ── Helpers ───────────────────────────────────────────────────────────────

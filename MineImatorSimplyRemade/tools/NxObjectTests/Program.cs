@@ -490,6 +490,7 @@ internal static partial class Program
             ("Cloth archive, duplication, seam references and undo persistence", ClothPersistence),
             ("Cloth viewport click, box, additive and subtractive vertex selection", ClothSelectionInteraction),
             ("Property reset Shift-right-click, defaults, groups, selection, auto-key and persistence", PropertyResetInteraction),
+            ("Properties tabs stay fixed, switch while scrolled and retain independent scroll positions", PropertiesTabScrolling),
             ("All 15 bundled particle presets, assets and finite simulation", ParticleBundled),
             ("Particle spawn menu selection, search and all provided presets", ParticleSpawnMenu),
             ("Particle per-minute rate, multi-type burst, restart and amount limit", ParticleEmission),
@@ -517,6 +518,8 @@ internal static partial class Program
         if (args.Contains("--property-reset", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Property reset", StringComparison.Ordinal) ||
                 test.Name.StartsWith("Modifier ImGui context menu", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--properties-tabs", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Properties tabs", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--watermark", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Watermark", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--watermark-graphics", StringComparer.Ordinal))

@@ -10,6 +10,105 @@ using MineImatorSimplyRemadeNuxi.core.objs;
 
 internal static partial class Program
 {
+    private static unsafe void PropertiesTabScrolling(Fixture fixture)
+    {
+        var previous = ImGui.GetCurrentContext();
+        var context = ImGui.CreateContext();
+        SelectionManager.Instance.ClearSelection();
+        try
+        {
+            var io = ImGui.GetIO();
+            io.IniFilename = null;
+            io.LogFilename = null;
+            io.DisplaySize = new Vector2(1000, 800);
+            io.DeltaTime = 1f / 60f;
+            io.BackendFlags |= ImGuiBackendFlags.RendererHasTextures;
+            var viewport = new Viewport();
+            var panel = new PropertiesPanel { Viewport = viewport, Timeline = new Timeline { Viewport = viewport } };
+
+            void Frame(Vector2? mouse = null, bool left = false, float wheel = 0f, float height = 240f)
+            {
+                io.AddMousePosEvent(mouse?.X ?? -100f, mouse?.Y ?? -100f);
+                io.AddMouseButtonEvent(0, left);
+                if (wheel != 0f) io.AddMouseWheelEvent(0f, wheel);
+                ImGui.NewFrame();
+                ImGui.SetNextWindowPos(new Vector2(10f, 10f), ImGuiCond.Always);
+                ImGui.SetNextWindowSize(new Vector2(650f, height), ImGuiCond.Always);
+                panel.Render();
+                ImGui.Render();
+            }
+
+            ImGuiWindowPtr FindWindow(string name)
+            {
+                for (int i = 0; i < context.Windows.Size; i++)
+                {
+                    var window = context.Windows[i];
+                    string windowName = System.Runtime.InteropServices.Marshal.PtrToStringUTF8((nint)window.Name)!;
+                    if (windowName.Contains(name, StringComparison.Ordinal)) return window;
+                }
+                throw new InvalidOperationException("Properties window not found: " + name);
+            }
+
+            Frame();
+            Frame();
+            var project = FindWindow("##ProjectProperties");
+            var parent = project.ParentWindow;
+            float contentTop = project.Pos.Y;
+            var body = project.Pos + new Vector2(100f, 80f);
+            for (int i = 0; i < 5; i++) Frame(body, wheel: -1f);
+            Frame(body);
+            Check(project.Scroll.Y > 100f, "Project settings did not scroll.");
+            float projectScroll = project.Scroll.Y;
+            Check(parent.Scroll.Y == 0f && project.Pos.Y == contentTop,
+                "Scrolling moved the properties tab header.");
+
+            var style = ImGui.GetStyle();
+            float tabY = parent.Pos.Y + ImGui.GetFrameHeight() + style.WindowPadding.Y + ImGui.GetFrameHeight() * 0.5f;
+            float projectWidth = ImGui.CalcTextSize(Localization.T("text.panel.properties.project")).X + style.FramePadding.X * 2f;
+            var objectTab = new Vector2(parent.Pos.X + style.WindowPadding.X + projectWidth + style.ItemInnerSpacing.X + 15f, tabY);
+            void Click(Vector2 point)
+            {
+                Frame(point);
+                Frame(point, left: true);
+                Frame(point);
+                Frame(point);
+            }
+            Click(objectTab);
+            var objWindow = FindWindow("##ObjectProperties");
+            Check(objWindow.Active && objWindow.Scroll.Y == 0f,
+                "Object tab was not clickable while Project was scrolled, or inherited its scroll.");
+            Check(objWindow.ScrollMax.Y == 0f, "Empty selection should not create overflowing object settings.");
+
+            var obj = new SceneObject { Name = "Scrollable object" };
+            typeof(PropertiesPanel).GetField("_currentObject", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(panel, obj);
+            Frame();
+            Frame();
+            body = objWindow.Pos + new Vector2(100f, 80f);
+            for (int i = 0; i < 5; i++) Frame(body, wheel: -1f);
+            Frame(body);
+            Check(objWindow.Scroll.Y > 0f && parent.Scroll.Y == 0f && objWindow.Pos.Y == contentTop,
+                "Object settings did not scroll independently below the fixed tabs.");
+            float objectScroll = objWindow.Scroll.Y;
+            var projectTab = new Vector2(parent.Pos.X + style.WindowPadding.X + 15f, tabY);
+            Click(projectTab);
+            Check(project.Active && Math.Abs(project.Scroll.Y - projectScroll) < 1f,
+                "Switching tabs lost the Project scroll position.");
+            Click(objectTab);
+            Check(objWindow.Active && Math.Abs(objWindow.Scroll.Y - objectScroll) < 1f,
+                "Switching tabs lost the Object scroll position.");
+            Frame(height: 160f);
+            Frame(height: 160f);
+            Check(parent.Scroll.Y == 0f && objWindow.Pos.Y == contentTop && objWindow.Size.Y < 160f,
+                "Resizing moved the tabs or failed to resize the scrolling content.");
+        }
+        finally
+        {
+            SelectionManager.Instance.ClearSelection();
+            ImGui.DestroyContext(context);
+            ImGui.SetCurrentContext(previous);
+        }
+    }
+
     private static unsafe void PropertyResetInteraction(Fixture fixture)
     {
         var previous = ImGui.GetCurrentContext();
@@ -39,7 +138,7 @@ internal static partial class Program
             typeof(PropertiesPanel).GetField("_currentObject", flags)!.SetValue(panel, obj);
             var path = typeof(PropertiesPanel).GetField("_ctxPropertyPath", flags)!;
             var process = typeof(PropertiesPanel).GetMethod("ProcessPropertyContextRequest", flags)!;
-            var objectTab = typeof(PropertiesPanel).GetMethod("RenderObjectTab", flags)!;
+            var objectTab = typeof(PropertiesPanel).GetMethod("RenderObjectProperties", flags)!;
             var modifiers = typeof(PropertiesPanel).GetMethod("DrawModifiers", flags)!;
             var register = typeof(PropertiesPanel).GetMethod("RegisterPropertyContext", flags, [typeof(string[])])!;
             var project = typeof(PropertiesPanel).GetMethod("RegisterProjectPropertyContext", flags)!;
@@ -62,11 +161,15 @@ internal static partial class Program
                 {
                     if (ImGui.BeginTabBar("Properties"))
                     {
-                        ImGui.PushID(Localization.Label("text.common.object", "Object"));
-                        ImGui.GetStateStorage().SetInt(ImGui.GetID(Localization.Label("text.common.position", "Position")), 1);
-                        ImGui.GetStateStorage().SetInt(ImGui.GetID(Localization.Label("text.common.appearance", "Appearance")), 1);
-                        ImGui.PopID();
-                        objectTab.Invoke(panel, null);
+                        if (ImGui.BeginTabItem(Localization.Label("text.common.object", "Object")))
+                        {
+                            ImGui.BeginChild("##ObjectProperties", Vector2.Zero, ImGuiChildFlags.AlwaysUseWindowPadding);
+                            ImGui.GetStateStorage().SetInt(ImGui.GetID(Localization.Label("text.common.position", "Position")), 1);
+                            ImGui.GetStateStorage().SetInt(ImGui.GetID(Localization.Label("text.common.appearance", "Appearance")), 1);
+                            objectTab.Invoke(panel, null);
+                            ImGui.EndChild();
+                            ImGui.EndTabItem();
+                        }
                         ImGui.EndTabBar();
                     }
                 }
