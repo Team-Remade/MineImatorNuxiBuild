@@ -6107,13 +6107,11 @@ public partial class SpawnMenu : UiPanel
             Name          = objectName,
             ObjectType    = "Camera",
             SpawnCategory = "Camera",
-            Position      = spawnPos,
-            // Rotation stored in radians (engine convention).
-            // Yaw  → Rotation.y (same sign).
-            // Pitch → Rotation.x negated: mesh RotateX and camera pitch are opposite sign.
-            Rotation      = new vec3(-spawnPitch, spawnYaw, 0f),
             PivotOffset   = vec3.Zero
         };
+        obj.SetLocalPosition(spawnPos);
+        // Camera pitch and mesh RotateX use opposite signs; both angles are radians.
+        obj.SetLocalRotation(new vec3(-spawnPitch, spawnYaw, 0f));
         obj.AssignObjectId();
 
         // Sync the embedded Camera to match the scene-object transform.

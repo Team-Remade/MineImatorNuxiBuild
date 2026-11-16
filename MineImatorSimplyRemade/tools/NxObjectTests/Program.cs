@@ -357,6 +357,7 @@ internal static partial class Program
             ("Backup interval boundaries, deferred capture, disable and project switching", BackupScheduling),
             ("Backup retention, changed limits and project isolation", BackupRetention),
             ("Backup failed capture/write preserves saves, rotation and retry interval", BackupFailures),
+            ("Camera spawn local properties and view transforms without cursor placement", CameraSpawnTransforms),
             ("Camera orbit defaults, transforms, look-at, poles and parented navigation", CameraOrbitTransforms),
             ("Camera orbit project/archive/library, duplication, undo and dirty detection", CameraOrbitPersistence),
             ("Camera orbit timeline discovery, read/write, interpolation and seeking", CameraOrbitTimeline),
@@ -534,6 +535,8 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Texture sheet", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--snapping", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Snap ", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--camera-spawn", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Camera spawn", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--camera-orbit", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Camera orbit", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--camera-blades", StringComparer.Ordinal))

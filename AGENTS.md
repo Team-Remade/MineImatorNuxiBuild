@@ -79,6 +79,8 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 
 Coverage and prerequisites:
 
+- `--camera-spawn`: immediate camera position/rotation properties without cursor
+  placement, with work-camera copying enabled and disabled; no GPU required.
 - `--armor`: adult/baby mixed armor variants, omitted pieces, custom textures,
   rig preservation and persistent generated models. `--spawn-preview-graphics`
   also checks the armor editor's left-hand modal preview, exact pixel parity
