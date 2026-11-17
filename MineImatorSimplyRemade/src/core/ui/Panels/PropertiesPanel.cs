@@ -1290,6 +1290,7 @@ public partial class PropertiesPanel : UiPanel
             CameraEffects = source.CameraEffects
                 .Select(effect => new ProjectCameraEffectEntry
                 {
+                    Enabled = effect.Enabled,
                     Type = effect.Type,
                     DepthOfField = effect.DepthOfField.Clone(),
                     Bloom = effect.Bloom.Clone(),
@@ -5496,6 +5497,21 @@ public partial class PropertiesPanel : UiPanel
                             ImGui.SameLine();
                             if (ImGui.SmallButton(Localization.T("text.common.remove") + $"###Remove##cameraEffectRemove{i}"))
                                 removeIndex = i;
+
+                            bool effectEnabled = effect.Enabled;
+                            string enabledPath = $"camera.effect.{i}.enabled";
+                            if (ImGui.Checkbox(Localization.T("text.panel.properties.enabled") + $"##cameraEffectEnabled{i}", ref effectEnabled))
+                            {
+                                effect.Enabled = effectEnabled;
+                                Timeline?.RecordAutoKeyframe(cameraObject, enabledPath);
+                                ProjectManager.Instance.SetDirty(true);
+                            }
+                            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                            {
+                                _ctxPropertyPath = enabledPath;
+                                _ctxMenuPos = ImGui.GetMousePos();
+                                _openPropContextMenu = true;
+                            }
 
                             if (effect.Type == CameraEffectType.CameraShake)
                             {

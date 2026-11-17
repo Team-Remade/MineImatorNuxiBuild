@@ -15,7 +15,7 @@ public partial class Viewport
 
         foreach (var effect in camera.Effects)
         {
-            if (effect.Type != CameraEffectType.Distort)
+            if (!effect.Enabled || effect.Type != CameraEffectType.Distort)
                 continue;
             var settings = effect.Distort;
             foreach (var control in DistortSettings.Controls)

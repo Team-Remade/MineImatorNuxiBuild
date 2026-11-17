@@ -60,10 +60,17 @@ required. Pass harness options after `--`; build options go before it.
 Check [Program.cs](MineImatorSimplyRemade/tools/NxObjectTests/Program.cs) for
 additional selectors and their dispatch behavior. Some graphics selectors return
 early, so run them separately rather than assuming every combined flag executes.
+CPU selectors also filter successively: combining unrelated selectors can execute
+zero tests. Run each feature selector separately and check the reported test count.
 
 ```powershell
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --frames
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --mi-import
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --audio
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --audio-playback
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --meshcache
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --meshcache-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --texture-sheets
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --texture-sheets-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --backups
@@ -82,6 +89,16 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 
 Coverage and prerequisites:
 
+- `--mi-import`: sparse/default-relative poses, cameras/lights/text, constraints,
+  modifiers, effect toggles/conversions, builtin model lookup, normal-map formats,
+  background aliases, portable resource tracks and meshcache-first scenery.
+- `--audio`: imported sound triggers, portable project assets, source/end trims,
+  pitch, loop bounds, overlapping clips and exact exported PCM samples.
+- `--audio-playback`: FFmpeg and OpenAL; actual decoding, pitch, trimmed playback,
+  looping seeks and bounded stopping. For silent checks with OpenAL Soft, set
+  `$env:ALSOFT_DRIVERS = 'null'` in the test process.
+- `--meshcache-graphics`: OpenGL 3.3; actual cache geometry/UV pixels, cache-only
+  `.miobject` scenery and portable archive reload, without stray scene roots.
 - `--lights-graphics`: OpenGL 3.3; point/spot specular strength through timeline
   evaluation, light collection and GPU upload, standard/PBR dielectric/metal
   pixels, energy/cone/unlit gating, and exclusion of highlights from diffuse GI.

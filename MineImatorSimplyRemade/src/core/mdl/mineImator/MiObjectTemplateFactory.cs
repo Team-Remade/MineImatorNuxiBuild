@@ -11,6 +11,23 @@ namespace MineImatorSimplyRemade.core.mdl.mineImator;
 
 public static class MiObjectTemplateFactory
 {
+    internal static string ResolveBuiltinModelPath(MiTemplate template)
+    {
+        string name = Text(template.ModelDefinition, "name");
+        if (name.Length == 0 || Path.GetFileName(name) != name) return "";
+        var state = Property(template.ModelDefinition, "state");
+        string variant = Text(state, "variant");
+        if (name == "human") name = variant == "alex" ? "alex" : "steve";
+        if (Text(state, "age") == "baby") name += "_baby";
+        string category = template.Type is "character" ? "characters" : "props";
+        foreach (string folder in new[] { category, "equipment", "characters", "props" }.Distinct())
+        {
+            string path = Path.Combine(MinecraftDataLoader.GetVersionRoot(), folder, "vanilla", name, name + ".mimodel");
+            if (File.Exists(path)) return path;
+        }
+        return "";
+    }
+
     public static SceneObject? Create(MineImatorLoader loader, GL gl, MiTemplate template,
         MiTimeline timeline, IReadOnlyDictionary<string, MiResource> resources, string directory)
     {
@@ -170,13 +187,8 @@ public static class MiObjectTemplateFactory
         string modelPath;
         if (resources.TryGetValue(modelRef ?? "", out var resource))
             modelPath = Path.Combine(directory ?? "", resource.Filename);
-        else if (string.Equals(modelRef, "human", StringComparison.OrdinalIgnoreCase))
-        {
-            string variant = Text(Property(definition, "state"), "variant");
-            string character = string.Equals(variant, "alex", StringComparison.OrdinalIgnoreCase) ? "alex" : "steve";
-            modelPath = Path.Combine(MinecraftDataLoader.GetVersionRoot(), "characters", "vanilla",
-                character, character + ".mimodel");
-        }
+        else if (ResolveBuiltinModelPath(template) is { Length: > 0 } builtin)
+            modelPath = builtin;
         else
             modelPath = Path.Combine(directory ?? "", modelRef ?? "");
         if (!File.Exists(modelPath)) return null;

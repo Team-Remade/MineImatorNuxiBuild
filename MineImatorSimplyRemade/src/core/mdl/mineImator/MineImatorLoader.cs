@@ -124,7 +124,7 @@ public class MineImatorLoader
     /// <summary>Creates a SceneObject hierarchy from a loaded MiObject.</summary>
     public SceneObject CreateSceneFromMiObject(MiObject miObject,
         Func<MiTemplate, MiTimeline, IReadOnlyDictionary<string, MiResource>, string, SceneObject?>? itemFactory = null,
-        Action<string>? warning = null)
+        Action<string>? warning = null, Func<string, SceneObject?>? sceneryFactory = null)
     {
         if (miObject == null) return null;
 
@@ -157,7 +157,7 @@ public class MineImatorLoader
         {
             foreach (var timeline in miObject.Timelines)
             {
-                if (MiObjectFeatureMapper.IsEnvironment(timeline)) continue;
+                if (MiObjectFeatureMapper.IsEnvironment(timeline) || MiObjectFeatureMapper.IsAudio(timeline)) continue;
                 // Both part formats animate an existing bone, not another copy of its whole model.
                 if (IsModelPartType(timeline.Type) &&
                     !string.IsNullOrWhiteSpace(timeline.PartOf) &&
@@ -169,8 +169,12 @@ public class MineImatorLoader
 
                 SceneObject itemObject = null;
 
+                if (string.Equals(template?.Type, "scenery", StringComparison.OrdinalIgnoreCase))
+                    itemObject = MiObjectFeatureMapper.CreateScenery(template, resourceInfoById,
+                        miObject.DirectoryPath, sceneryFactory, warning);
+
                 if (template != null && !IsModelPartType(template.Type) &&
-                    !string.IsNullOrEmpty(template.Model))
+                    template.ModelDefinition.HasValue)
                 {
                     string modelPath = ResolveTemplateModelPath(template, resourceDict, miObject);
                     if (!string.IsNullOrWhiteSpace(modelPath) && File.Exists(modelPath))
@@ -256,6 +260,8 @@ public class MineImatorLoader
                 if (string.IsNullOrEmpty(itemObject.ObjectId))
                     itemObject.AssignObjectId();
 
+                if (template != null && string.Equals(template.Type, "scenery", StringComparison.OrdinalIgnoreCase))
+                    itemObject.Name = !string.IsNullOrWhiteSpace(timeline.Name) ? timeline.Name : template.Name;
                 ApplyTimelineTransform(itemObject, timeline);
                 ApplyTimelineSettings(itemObject, timeline, includeHierarchySettings: true);
                 ApplyTimelineTexture(itemObject, timeline, resourceDict, miObject.DirectoryPath);
@@ -324,8 +330,13 @@ public class MineImatorLoader
             if (!string.IsNullOrEmpty(timeline.Id) &&
                 sceneObjectsByTimelineId.TryGetValue(timeline.Id, out var obj))
             {
+                if (obj.Parent is CameraSceneObject)
+                    ApplyTimelineTransform(obj, timeline);
                 ImportTimelineKeyframes(obj, timeline, resourceDict, miObject.DirectoryPath);
+                templateDict.TryGetValue(timeline.Temp ?? "", out var template);
                 MiObjectFeatureMapper.Apply(obj, timeline, sceneObjectsByTimelineId, warning);
+                MiObjectFeatureMapper.ApplyNativeChannels(obj, timeline, template, resourceInfoById,
+                    miObject.DirectoryPath, sceneObjectsByTimelineId, warning);
             }
         foreach (var path in sceneObjectsByTimelineId.Values.OfType<PathSceneObject>())
             path.EvaluateGeometry();
@@ -684,7 +695,8 @@ public class MineImatorLoader
 
     private void ApplyTimelineTransform(SceneObject obj, MiTimeline timeline)
     {
-        ResolveTimelineTransform(timeline, out vec3 position, out mat4 rotation, out vec3 scale);
+        ResolveTimelineTransform(timeline, out vec3 position, out mat4 rotation, out vec3 scale,
+            obj.Parent is CameraSceneObject);
         if (obj is MiBoneSceneObject bone)
         {
             bone.OffsetPosition = position;
@@ -699,14 +711,16 @@ public class MineImatorLoader
         }
     }
 
-    private static void ResolveTimelineTransform(MiTimeline timeline, out vec3 position, out mat4 rotation, out vec3 scale)
+    private static void ResolveTimelineTransform(MiTimeline timeline, out vec3 position, out mat4 rotation, out vec3 scale,
+        bool cameraParent = false)
     {
-        ResolveTimelineTransformValues(timeline, GetFirstTimelineKeyframe(timeline), out position, out var angles, out scale);
+        ResolveTimelineTransformValues(timeline, GetFirstTimelineKeyframe(timeline), out position, out var angles, out scale,
+            cameraParent);
         rotation = ConvertMiRotationMatrix([angles.x, angles.y, angles.z]);
     }
 
     private static void ResolveTimelineTransformValues(MiTimeline timeline, MiKeyframe? frame,
-        out vec3 position, out vec3 angles, out vec3 scale)
+        out vec3 position, out vec3 angles, out vec3 scale, bool cameraParent = false)
     {
         float Default(string key, float fallback) =>
             timeline.DefaultValues != null && timeline.DefaultValues.TryGetValue(key, out float value) ? value : fallback;
@@ -733,6 +747,15 @@ public class MineImatorLoader
         position = new vec3(pos[0], pos[1], pos[2]) / 16f;
         angles = new vec3(rot[0], rot[1], rot[2]);
         scale = new vec3(sca[0], sca[1], sca[2]);
+        // Source cameras face converted +Z; native cameras face -Z.
+        // Ry(y) Rx(x) Rz(z) Ry(180) = Ry(y+180) Rx(-x) Rz(-z).
+        if (string.Equals(timeline.Type, "camera", StringComparison.OrdinalIgnoreCase))
+            angles = new vec3(-angles.x, angles.y + 180f, -angles.z);
+        if (cameraParent)
+        {
+            position = new vec3(-position.x, position.y, -position.z);
+            angles.y += 180f;
+        }
     }
 
     private static MiKeyframe? GetFirstTimelineKeyframe(MiTimeline timeline)
@@ -842,22 +865,7 @@ public class MineImatorLoader
                 return candidate;
         }
 
-        // Fallback: if the template did not resolve cleanly, use the first model resource.
-        var modelResource = miObject.Resources?.FirstOrDefault(r =>
-            r != null &&
-            string.Equals(r.Type, "model", StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(r.Filename));
-        if (modelResource != null)
-        {
-            string modelFilename = modelResource.Filename!;
-            string fallback = Path.IsPathRooted(modelFilename)
-                ? modelFilename
-                : Path.Combine(miObject.DirectoryPath, modelFilename);
-            if (File.Exists(fallback))
-                return fallback;
-        }
-
-        return string.Empty;
+        return MiObjectTemplateFactory.ResolveBuiltinModelPath(template);
     }
 
     private SceneObject? CreateSceneObjectFromItemTemplate(MiTemplate template, MiTimeline timeline,
@@ -1101,7 +1109,8 @@ public class MineImatorLoader
         {
             string transition = MiObjectFeatureMapper.Transition(timeline, key);
             // Each saved pose is relative to default_values, not the preceding keyframe.
-            ResolveTimelineTransformValues(timeline, key, out var position, out var rotation, out var scale);
+            ResolveTimelineTransformValues(timeline, key, out var position, out var rotation, out var scale,
+                obj.Parent is CameraSceneObject);
             AddVector("position", position);
             // Preserve source Euler angles so full turns and Y-X-Z interpolation survive.
             AddVector("mirotation", rotation);
@@ -3943,6 +3952,7 @@ public class MiObject
 
 public class MiTemplate
 {
+    [JsonExtensionData] public Dictionary<string, JsonElement> ExtraValues { get; set; } = new();
     [JsonPropertyName("id")] public string Id { get; set; }
     [JsonPropertyName("type")] public string Type { get; set; }
     [JsonPropertyName("name")] public string Name { get; set; }
@@ -3969,18 +3979,24 @@ public class MiTemplate
     [JsonPropertyName("model_tex_normal")] [JsonConverter(typeof(MiStringOrObjectRefConverter))] public string ModelTexNormal { get; set; }
     [JsonPropertyName("item")] public MiTemplateItem? Item { get; set; }
     [JsonPropertyName("particles")] public JsonElement? Particles { get; set; }
+    [JsonPropertyName("scenery")] [JsonConverter(typeof(MiStringOrObjectRefConverter))] public string? Scenery { get; set; }
+    [JsonPropertyName("text")] public JsonElement? Text { get; set; }
 }
 
 public class MiTemplateItem
 {
+    [JsonExtensionData] public Dictionary<string, JsonElement> ExtraValues { get; set; } = new();
     [JsonPropertyName("tex")] public string Tex { get; set; }
     [JsonPropertyName("slot")] public int? Slot { get; set; }
     [JsonPropertyName("3d")] [JsonConverter(typeof(MiBoolConverter))] public bool ThreeD { get; set; }
     [JsonPropertyName("face_camera")] [JsonConverter(typeof(MiBoolConverter))] public bool FaceCamera { get; set; }
+    [JsonPropertyName("bounce")] [JsonConverter(typeof(MiBoolConverter))] public bool Bounce { get; set; }
+    [JsonPropertyName("spin")] [JsonConverter(typeof(MiBoolConverter))] public bool Spin { get; set; }
 }
 
 public class MiTimeline
 {
+    [JsonExtensionData] public Dictionary<string, JsonElement> ExtraValues { get; set; } = new();
     [JsonPropertyName("path")] public JsonElement? Path { get; set; }
     [JsonPropertyName("animated")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Animated { get; set; }
     [JsonPropertyName("current_values")] public MiKeyframe? CurrentValues { get; set; }
@@ -4106,6 +4122,7 @@ public class MiResource
     [JsonPropertyName("type")] public string Type { get; set; }
     [JsonPropertyName("filename")] public string Filename { get; set; }
     [JsonPropertyName("item_sheet_size")] public int[]? ItemSheetSize { get; set; }
+    [JsonPropertyName("material_format")] public int MaterialFormat { get; set; } = 2;
 }
 
 public class MiInherit

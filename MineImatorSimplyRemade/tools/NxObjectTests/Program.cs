@@ -470,6 +470,14 @@ internal static partial class Program
             ("MI import background colors, toggles, sparse keys, easing and persistence", MiImportBackground),
             ("MI import embedded particle presets, controls and references", MiImportParticles),
             ("MI import unsupported particles report warnings and retain other objects", MiImportWarnings),
+            ("MI import native lights, cameras, text, effect animation and persistence", MiImportNativeObjects),
+            ("MI import scenery cache priority, missing schematics and fallback", MiImportScenery),
+            ("MI import native constraints, modifiers, colors and reference remapping", MiImportConstraintsAndModifiers),
+            ("MI import effect units, native approximations and unsupported diagnostics", MiImportEffectConversions),
+            ("MI import builtin models, normal formats, template fallback and portable tracks", MiImportResources),
+            ("MI import audio triggers, sparse values, pitch, trims and diagnostics", MiImportAudio),
+            ("MI import audio project assets, resource identity and reload", MiImportAudioProject),
+            ("Audio mixer source trims, pitch, loop bounds, overlaps and export offsets", AudioMixTiming),
             ("Scene tree root and batch insertion ordering and no-ops", SceneTreeOrdering),
             ("Scene tree child ordering, mixed parents and subtree preservation", SceneTreeParenting),
             ("Scene tree cyclic, stale, hidden and runtime target rejection is atomic", SceneTreeSafety),
@@ -681,6 +689,11 @@ internal static partial class Program
                 test.Name.StartsWith("Textured sky", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--mi-import", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("MI import", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--audio", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Audio ", StringComparison.Ordinal) ||
+                test.Name.StartsWith("MI import audio", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--audio-playback", StringComparer.Ordinal))
+            tests = [("Audio native FFmpeg decode, OpenAL pitch, source trim, loop seek and end", AudioNativePlayback)];
         if (args.Contains("--model-parts", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Model part", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--armor", StringComparer.Ordinal))

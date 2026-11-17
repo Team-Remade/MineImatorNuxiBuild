@@ -159,6 +159,7 @@ public partial class Timeline : UiPanel
 
     private static readonly (string Label, string Path)[] TextChannels =
     {
+        ("Text", "text.string"),
         ("Font", "text.font"),
         ("Horizontal Alignment", "text.horizontal_alignment"),
         ("Vertical Alignment", "text.vertical_alignment"),
@@ -1002,13 +1003,12 @@ public partial class Timeline : UiPanel
             dl.AddRectFilled(rightMin, rightMin + rightSize,
                 ImGui.ColorConvertFloat4ToU32(new Vector4(0.10f, 0.10f, 0.14f, 1f)));
 
-            int durFrames = (int)Math.Ceiling(track.ManifestEntry.CachedDurationSeconds * _frameRate);
-            if (durFrames <= 0 && track.Clip != null)
+            if (track.ManifestEntry.CachedDurationSeconds <= 0 && track.Clip != null)
             {
-                durFrames = (int)Math.Ceiling(track.Clip.DurationSeconds * _frameRate);
-                if (durFrames > 0)
-                    track.ManifestEntry.CachedDurationSeconds = (float)track.Clip.DurationSeconds;
+                track.ManifestEntry.CachedDurationSeconds = (float)track.Clip.DurationSeconds;
             }
+            int durFrames = (int)Math.Ceiling(AudioTrackTiming.DurationSeconds(track.ManifestEntry,
+                track.ManifestEntry.CachedDurationSeconds) * _frameRate);
             if (durFrames < 1) durFrames = 1;
 
             float clipX0 = rightMin.X + track.ManifestEntry.StartFrame * _pixelsPerFrame - scrollX;
@@ -1079,8 +1079,8 @@ public partial class Timeline : UiPanel
                         track.ManifestEntry.StartFrame = newFrame;
                         if (track.IsLoaded && _isPlaying)
                         {
-                            float playOffset = Math.Max(0f, (_currentFrame - track.ManifestEntry.StartFrame) / _frameRate)
-                                             + track.ManifestEntry.SourceOffsetSeconds;
+                            float playOffset = (float)AudioTrackTiming.SourceSeconds(track.ManifestEntry,
+                                Math.Max(0f, (_currentFrame - track.ManifestEntry.StartFrame) / _frameRate), track.Clip!.DurationSeconds);
                             Services.AudioEngine.SetSourceOffsetSeconds(track.Source, playOffset);
                         }
                     }
@@ -1127,10 +1127,10 @@ public partial class Timeline : UiPanel
     }
 
     /// <summary>Add a new audio track backed by the given sound asset.</summary>
-    public TimelineAudioTrack AddAudioTrackFromAsset(ProjectAssetEntry asset)
+    public TimelineAudioTrack AddAudioTrackFromAsset(ProjectAssetEntry asset, ProjectAudioTrack? settings = null)
     {
         string fullPath = ProjectManager.Instance.GetAssetFullPath(asset);
-        var manifest = new ProjectAudioTrack
+        var manifest = settings ?? new ProjectAudioTrack
         {
             AssetDisplayName    = asset.DisplayName,
             DisplayName         = Path.GetFileNameWithoutExtension(asset.DisplayName),
@@ -1140,25 +1140,61 @@ public partial class Timeline : UiPanel
             Muted               = false,
             Loop                = false,
         };
+        manifest.AssetDisplayName = asset.DisplayName;
+        manifest.AssetPath = asset.StoredInProject
+            ? ProjectManager.Instance.ToProjectRelativePath(fullPath) : asset.SourcePath;
 
         var track = new TimelineAudioTrack { ManifestEntry = manifest };
         _audioTracks.Add(track);
-
-        Task.Run(() =>
-        {
-            var clip = Services.AudioEngine.LoadClip(fullPath);
-            if (clip == null) return;
-            track.Clip = clip;
-            var src   = Services.AudioEngine.CreateSource(clip);
-            track.Source = src;
-            Services.AudioEngine.SetSourceVolume(src, manifest.Muted ? 0f : manifest.Volume);
-            Services.AudioEngine.SetSourceLooping(src, manifest.Loop);
-            if (manifest.CachedDurationSeconds <= 0f)
-                manifest.CachedDurationSeconds = (float)clip.DurationSeconds;
-        });
-
+        LoadAudioTrackClip(track, fullPath);
         RecalculateTimelineLength();
         return track;
+    }
+
+    public void ImportMineImatorAudio(MiObject source, Action<string>? warning = null)
+    {
+        var imports = MiObjectFeatureMapper.AudioTracks(source, warning);
+        if (imports.Count == 0) return;
+        var manager = ProjectManager.Instance;
+        if (!manager.HasProject)
+        {
+            MiObjectFeatureMapper.Report("MIObject audio requires an open project to store sound assets.", warning);
+            return;
+        }
+        foreach (var (path, entry) in imports)
+        {
+            var asset = manager.GetProjectAssets().FirstOrDefault(a => a.AssetType == ProjectAssetType.Sound &&
+                manager.AssetMatchesPath(a, path)) ?? manager.AddAsset(path, ProjectAssetType.Sound);
+            AddAudioTrackFromAsset(asset, entry);
+        }
+        manager.SetDirty(true);
+    }
+
+    private static void LoadAudioTrackClip(TimelineAudioTrack track, string fullPath)
+    {
+        var engine = Services.AudioEngine;
+        if (engine == null || !engine.IsInitialized)
+        {
+            Console.Error.WriteLine($"Audio track '{track.ManifestEntry.DisplayName}' retained without playback: audio device is unavailable.");
+            return;
+        }
+        Task.Run(() =>
+        {
+            var clip = engine.LoadClip(fullPath);
+            if (clip == null)
+            {
+                Console.Error.WriteLine($"Could not decode audio track '{track.ManifestEntry.DisplayName}': '{fullPath}'.");
+                return;
+            }
+            var entry = track.ManifestEntry;
+            var src = engine.CreateSource(clip);
+            engine.SetSourceVolume(src, entry.Muted ? 0f : entry.Volume);
+            engine.SetSourceLooping(src, entry.Loop);
+            engine.SetSourcePitch(src, entry.Pitch);
+            entry.CachedDurationSeconds = (float)clip.DurationSeconds;
+            track.Clip = clip;
+            track.Source = src;
+        });
     }
 
     public void RemoveAudioTrack(TimelineAudioTrack track)
@@ -1177,28 +1213,30 @@ public partial class Timeline : UiPanel
     /// </summary>
     public void LoadAudioTracksFromManifest(IEnumerable<ProjectAudioTrack> entries)
     {
-        foreach (var entry in entries)
+        var saved = entries.ToList();
+        foreach (var existing in _audioTracks.ToArray())
+            RemoveAudioTrack(existing);
+        foreach (var entry in saved)
         {
             var track = new TimelineAudioTrack { ManifestEntry = entry };
             _audioTracks.Add(track);
 
-            var asset = ProjectManager.Instance.GetProjectAssets()
-                .FirstOrDefault(a => string.Equals(a.DisplayName, entry.AssetDisplayName, StringComparison.OrdinalIgnoreCase));
-            if (asset == null) continue;
-            string fullPath = ProjectManager.Instance.GetAssetFullPath(asset);
-
-            Task.Run(() =>
+            var manager = ProjectManager.Instance;
+            string fullPath;
+            if (!string.IsNullOrEmpty(entry.AssetPath))
+                fullPath = manager.ResolveAssetPath(entry.AssetPath);
+            else
             {
-                var clip = Services.AudioEngine.LoadClip(fullPath);
-                if (clip == null) return;
-                track.Clip = clip;
-                var src   = Services.AudioEngine.CreateSource(clip);
-                track.Source = src;
-                Services.AudioEngine.SetSourceVolume(src, entry.Muted ? 0f : entry.Volume);
-                Services.AudioEngine.SetSourceLooping(src, entry.Loop);
-                if (entry.CachedDurationSeconds <= 0f)
-                    entry.CachedDurationSeconds = (float)clip.DurationSeconds;
-            });
+                var asset = manager.GetProjectAssets().FirstOrDefault(a => a.AssetType == ProjectAssetType.Sound &&
+                    string.Equals(a.DisplayName, entry.AssetDisplayName, StringComparison.OrdinalIgnoreCase));
+                fullPath = asset == null ? "" : manager.GetAssetFullPath(asset);
+            }
+            if (!File.Exists(fullPath))
+            {
+                Console.Error.WriteLine($"Missing audio asset for track '{entry.DisplayName}': '{entry.AssetDisplayName}'.");
+                continue;
+            }
+            LoadAudioTrackClip(track, fullPath);
         }
         RecalculateTimelineLength();
     }
@@ -1232,23 +1270,24 @@ public partial class Timeline : UiPanel
     /// </summary>
     public void SyncAudioWithPlayback()
     {
-        if (!Services.AudioEngine.IsInitialized) return;
+        if (Services.AudioEngine?.IsInitialized != true) return;
         bool wantPlaying = _isPlaying;
 
         foreach (var t in _audioTracks)
         {
             if (!t.IsLoaded) continue;
 
-            int durFrames = (int)Math.Ceiling(t.Clip!.DurationSeconds * _frameRate);
-            if (durFrames < 1) durFrames = 1;
+            double duration = AudioTrackTiming.DurationSeconds(t.ManifestEntry, t.Clip!.DurationSeconds);
+            int durFrames = (int)Math.Ceiling(duration * _frameRate);
             int endFrame = t.ManifestEntry.StartFrame + durFrames;
-            bool inRange = _currentFrame >= t.ManifestEntry.StartFrame && _currentFrame < endFrame;
+            if (endFrame > _maxFrames) _maxFrames = endFrame + 30;
+            double elapsed = (_currentFrame - t.ManifestEntry.StartFrame) / (double)_frameRate;
+            bool inRange = elapsed >= 0 && elapsed < duration;
 
             if (wantPlaying && inRange)
             {
-                float offset = (_currentFrame - t.ManifestEntry.StartFrame) / _frameRate
-                             + t.ManifestEntry.SourceOffsetSeconds;
-                if (offset < 0f) offset = 0f;
+                float offset = (float)AudioTrackTiming.SourceSeconds(t.ManifestEntry, elapsed, t.Clip.DurationSeconds);
+                Services.AudioEngine.SetSourcePitch(t.Source, t.ManifestEntry.Pitch);
 
                 if (!t.WasPlaying)
                 {
@@ -2832,7 +2871,7 @@ public partial class Timeline : UiPanel
     {
         string[] standardPaths =
         {
-            "visible", "material.alpha", "material.texture",
+            "visible", "material.alpha", "material.texture", "material.normal_texture",
             "position.x", "position.y", "position.z",
             "rotation.x", "rotation.y", "rotation.z",
             "mirotation.x", "mirotation.y", "mirotation.z",
@@ -2850,7 +2889,8 @@ public partial class Timeline : UiPanel
         };
         string[] cameraPaths =
         {
-            "camera.active", "camera.fov",
+            "camera.active", "camera.fov", "camera.near", "camera.color_management",
+            "camera.tonemapper", "camera.exposure", "camera.gamma",
             "camera.blade_count", "camera.blade_angle", "camera.blade_stretch",
             "camera.blend_r", "camera.blend_g", "camera.blend_b",
             "camera.mix_r", "camera.mix_g", "camera.mix_b", "camera.mix_amount",
@@ -2928,6 +2968,7 @@ public partial class Timeline : UiPanel
     {
         for (int i = 0; i < cam.Effects.Count; i++)
         {
+            yield return $"camera.effect.{i}.enabled";
             if (cam.Effects[i].Type == CameraEffectType.DepthOfField)
             {
                 foreach (var control in DepthOfFieldSettings.Controls)
@@ -2942,6 +2983,7 @@ public partial class Timeline : UiPanel
             }
             if (cam.Effects[i].Type == CameraEffectType.LensDirt)
             {
+                yield return $"camera.effect.{i}.lens_dirt.texture";
                 foreach (var control in LensDirtSettings.Controls)
                     yield return $"camera.effect.{i}.lens_dirt.{control.Key}";
                 continue;
@@ -3022,6 +3064,9 @@ public partial class Timeline : UiPanel
         foreach (var kvp in _propertyKeyframes)
             foreach (var kf in kvp.Value)
                 if (kf.Frame > max) max = kf.Frame;
+        foreach (var track in _audioTracks)
+            max = Math.Max(max, track.ManifestEntry.StartFrame + (int)Math.Ceiling(
+                AudioTrackTiming.DurationSeconds(track.ManifestEntry, track.ManifestEntry.CachedDurationSeconds) * _frameRate));
         if (max > _maxFrames) _maxFrames = max + 30;
     }
 
@@ -3113,12 +3158,12 @@ public partial class Timeline : UiPanel
         if (prev == null)
         {
             if (next != null)
-                return path is "text.font" or "material.texture" or "path_follow.target" or "particle.attractor_target" || IsIkReferencePath(path) || IsModifierReferencePath(path) ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
+                return path is "text.string" or "text.font" or "material.normal_texture" or "material.texture" or "path_follow.target" or "particle.attractor_target" || path.EndsWith(".lens_dirt.texture", StringComparison.Ordinal) || IsIkReferencePath(path) || IsModifierReferencePath(path) ? next.Value : TryConvertKeyframeValue(next.Value, out float nextBeforeStart) ? nextBeforeStart : null;
             return null;
         }
 
         // At or after the last keyframe, or exactly on a keyframe.
-        if (path is "text.font" or "material.texture" or "path_follow.target" or "particle.attractor_target" || IsIkReferencePath(path) || IsModifierReferencePath(path)) return prev.Value;
+        if (path is "text.string" or "text.font" or "material.normal_texture" or "material.texture" or "path_follow.target" or "particle.attractor_target" || path.EndsWith(".lens_dirt.texture", StringComparison.Ordinal) || IsIkReferencePath(path) || IsModifierReferencePath(path)) return prev.Value;
         if (next == null || prev.Frame == frame)
             return TryConvertKeyframeValue(prev.Value, out float prevDirect) ? prevDirect : null;
 
@@ -3137,6 +3182,8 @@ public partial class Timeline : UiPanel
             path.EndsWith(".chromatic_aberration.distort_rgb", StringComparison.Ordinal) ||
             path.EndsWith(".distort.repeat_image", StringComparison.Ordinal) ||
             path.EndsWith(".outline.normal_pass", StringComparison.Ordinal) ||
+            path == "camera.color_management" || path == "camera.tonemapper" ||
+            (path.StartsWith("camera.effect.", StringComparison.Ordinal) && path.EndsWith(".enabled", StringComparison.Ordinal)) ||
             (path.StartsWith("constraint.", StringComparison.Ordinal) &&
                 !(path.EndsWith(".pole_angle", StringComparison.Ordinal) || path.EndsWith(".influence", StringComparison.Ordinal))) ||
             (path.StartsWith("copy_constraint.", StringComparison.Ordinal) &&
@@ -3403,8 +3450,36 @@ public partial class Timeline : UiPanel
         return settings != null;
     }
 
+    private static bool TryGetCameraEffectChannel(SceneObject obj, string path, string channel, out CameraEffect effect)
+    {
+        effect = null!;
+        if (obj is not CameraSceneObject camera || !path.StartsWith("camera.effect.", StringComparison.Ordinal))
+            return false;
+        string[] parts = path.Split('.');
+        if (parts.Length < 4 || string.Join('.', parts.Skip(3)) != channel ||
+            !int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out int index) ||
+            index < 0 || index >= camera.Effects.Count) return false;
+        effect = camera.Effects[index];
+        return true;
+    }
+
     internal object GetPropertyValue(SceneObject obj, string path)
     {
+        if (path == "text.string") return obj.GetEffectiveTextMeshString();
+        if (path == "material.normal_texture") return obj.NormalTexturePath;
+        if (TryGetCameraEffectChannel(obj, path, "enabled", out var toggleEffect)) return toggleEffect.Enabled ? 1f : 0f;
+        if (TryGetCameraEffectChannel(obj, path, "lens_dirt.texture", out var textureEffect)) return textureEffect.LensDirt.TexturePath;
+        if (obj is CameraSceneObject importedCamera)
+        {
+            switch (path)
+            {
+                case "camera.near": return importedCamera.Near;
+                case "camera.color_management": return importedCamera.ColorManagementEnabled ? 1f : 0f;
+                case "camera.tonemapper": return (float)importedCamera.ColorManagementToneMapper;
+                case "camera.exposure": return importedCamera.ColorManagementExposure;
+                case "camera.gamma": return importedCamera.ColorManagementGamma;
+            }
+        }
         if (TryGetModifier(obj, path, out var modifier, out string modifierChannel))
             return GetModifierValue(modifier, modifierChannel);
         if (path == "path_follow.target") return obj.PathFollowObjectId;
@@ -3795,6 +3870,58 @@ public partial class Timeline : UiPanel
 
     internal void SetPropertyValue(SceneObject obj, string path, object rawValue)
     {
+        if (TryGetCameraEffectChannel(obj, path, "lens_dirt.texture", out var textureEffect))
+        {
+            string texture = rawValue is JsonElement json && json.ValueKind == JsonValueKind.String
+                ? json.GetString() ?? "" : Convert.ToString(rawValue, CultureInfo.InvariantCulture) ?? "";
+            textureEffect.LensDirt.TexturePath = ProjectManager.Instance.ResolveAssetPath(texture);
+            return;
+        }
+        if (path is "text.string" or "material.normal_texture")
+        {
+            string text = rawValue is JsonElement json && json.ValueKind == JsonValueKind.String
+                ? json.GetString() ?? "" : Convert.ToString(rawValue, CultureInfo.InvariantCulture) ?? "";
+            if (path == "text.string")
+            {
+                if (obj.TextMeshStringOverride != text)
+                {
+                    obj.TextMeshStringOverride = text;
+                    TextMeshFactory.Rebuild(obj);
+                }
+            }
+            else
+            {
+                text = ProjectManager.Instance.ResolveAssetPath(text);
+                obj.NormalTexturePath = text;
+                obj.SetExplicitMaterialSettings();
+                obj.MaterialSettings.NormalEnabled = text.Length > 0;
+                if (text.Length > 0) obj.MaterialSettings.PbrEnabled = true;
+                obj.RefreshInheritedMaterials();
+            }
+            return;
+        }
+        if (TryGetCameraEffectChannel(obj, path, "enabled", out var toggleEffect))
+        {
+            if (!TryConvertKeyframeValue(rawValue, out float enabled) || !float.IsFinite(enabled))
+                throw new InvalidDataException($"Invalid camera effect toggle: {path}.");
+            toggleEffect.Enabled = enabled >= 0.5f;
+            return;
+        }
+        if (obj is CameraSceneObject importedCamera &&
+            path is "camera.near" or "camera.color_management" or "camera.tonemapper" or "camera.exposure" or "camera.gamma")
+        {
+            if (!TryConvertKeyframeValue(rawValue, out float cameraValue) || !float.IsFinite(cameraValue))
+                throw new InvalidDataException($"Invalid camera keyframe: {path}.");
+            switch (path)
+            {
+                case "camera.near": importedCamera.Near = Math.Clamp(cameraValue, 0.0001f, importedCamera.Far - 0.0001f); break;
+                case "camera.color_management": importedCamera.ColorManagementEnabled = cameraValue >= 0.5f; break;
+                case "camera.tonemapper": importedCamera.ColorManagementToneMapper = (int)Math.Clamp(cameraValue, 0, 8); break;
+                case "camera.exposure": importedCamera.ColorManagementExposure = cameraValue; break;
+                case "camera.gamma": importedCamera.ColorManagementGamma = Math.Max(0.01f, cameraValue); break;
+            }
+            return;
+        }
         if (path.StartsWith("modifier.", StringComparison.Ordinal))
         {
             // Deleted modifiers must not be recreated by cached animation tracks.
@@ -4747,6 +4874,11 @@ public partial class Timeline : UiPanel
                 {
                     (label: "Active", path: "camera.active", parent: "", indent: 0),
                     (label: "Field of View", path: "camera.fov", parent: "", indent: 0),
+                    (label: "Near Clip", path: "camera.near", parent: "", indent: 0),
+                    (label: "Color Management", path: "camera.color_management", parent: "", indent: 0),
+                    (label: "Tone Mapper", path: "camera.tonemapper", parent: "", indent: 0),
+                    (label: "Exposure", path: "camera.exposure", parent: "", indent: 0),
+                    (label: "Gamma", path: "camera.gamma", parent: "", indent: 0),
                     (label: "Blades", path: "camera.blade_count", parent: "", indent: 0),
                     (label: "Blade Angle (degrees)", path: "camera.blade_angle", parent: "", indent: 0),
                     (label: "Blade Stretch (%)", path: "camera.blade_stretch", parent: "", indent: 0),
@@ -4781,6 +4913,12 @@ public partial class Timeline : UiPanel
                     for (int i = 0; i < cameraObj.Effects.Count; i++)
                     {
                         var effect = cameraObj.Effects[i];
+                        string enabledPath = $"camera.effect.{i}.enabled";
+                        if (propsWithKeyframes.Contains(enabledPath))
+                            newRows.Add(MakeSingle(obj, $"Effect {i + 1}: Enabled", enabledPath));
+                        string texturePath = $"camera.effect.{i}.lens_dirt.texture";
+                        if (propsWithKeyframes.Contains(texturePath))
+                            newRows.Add(MakeSingle(obj, $"Effect {i + 1}: Lens Dirt Texture", texturePath));
                         if (effect.Type == CameraEffectType.DepthOfField)
                         {
                             string baseDofPath = $"camera.effect.{i}.depth_of_field";

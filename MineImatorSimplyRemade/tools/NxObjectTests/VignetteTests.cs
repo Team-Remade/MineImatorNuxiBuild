@@ -19,12 +19,14 @@ internal static partial class Program
         const BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic;
         const BindingFlags statics = BindingFlags.Static | BindingFlags.NonPublic;
         var legacy = JsonSerializer.Deserialize("{}", AppJsonContext.Default.ProjectCameraEffectEntry)!;
+        Check(legacy.Enabled, "Legacy effects remain enabled");
         Near(50f, legacy.Vignette.Radius, "Legacy radius default");
         Near(50f, legacy.Vignette.Softness, "Legacy softness default");
         Near(50f, legacy.Vignette.Strength, "Legacy strength default");
         Near(0f, legacy.Vignette.ColorR + legacy.Vignette.ColorG + legacy.Vignette.ColorB, "Default color is black");
         var camera = new CameraSceneObject();
         camera.AddEffect(CameraEffectType.Vignette);
+        camera.Effects[0].Enabled = false;
         var settings = camera.Effects[0].Vignette;
         for (int i = 0; i < VignetteSettings.Controls.Length; i++)
         {
@@ -42,6 +44,9 @@ internal static partial class Program
         apply.Invoke(null, [loaded, saved, null]);
         var duplicate = (CameraSceneObject)typeof(SceneTree).GetMethod("CreateSceneObjectDuplicate", instance)!
             .Invoke(new SceneTree(), [camera, new Dictionary<string, string>()])!;
+        Check(!saved.CameraEffects[0].Enabled && !archive.Root.CameraEffects[0].Enabled &&
+              !library.CameraEffects[0].Enabled && !loaded.Effects[0].Enabled && !duplicate.Effects[0].Enabled,
+            "Disabled effects survive project, archive, library and duplication");
         foreach (var copy in new[] { saved.CameraEffects[0].Vignette, archive.Root.CameraEffects[0].Vignette, library.CameraEffects[0].Vignette,
                      loaded.Effects[0].Vignette, duplicate.Effects[0].Vignette })
         {
@@ -57,6 +62,10 @@ internal static partial class Program
             .GetMethod("Compute", BindingFlags.Static | BindingFlags.Public)!;
         ulong Hash() => (ulong)fingerprint.Invoke(null, [new List<SceneObject> { camera }])!;
         ulong original = Hash();
+        camera.Effects[0].Enabled = true;
+        Check(Hash() != original, "Dirty detection includes effect enablement");
+        apply.Invoke(null, [camera, snapshot, null]);
+        Equal(original, Hash(), "Undo restores disabled effect state");
         foreach (var control in VignetteSettings.Controls)
         {
             camera.Effects[0].Vignette.SetValue(control.Key, control.Max);
@@ -80,7 +89,7 @@ internal static partial class Program
             };
             foreach (int frame in new[] { 0, 5, 10, 5, 0 })
             {
-                float value = Convert.ToSingle(interpolate.Invoke(timeline, [keys, path, frame, false]));
+                float value = Convert.ToSingle(interpolate.Invoke(timeline, [keys, path, frame]));
                 set.Invoke(timeline, [camera, path, value]);
                 Near(control.Min + (control.Max - control.Min) * frame / 10f,
                     Convert.ToSingle(get.Invoke(timeline, [camera, path])), "Interpolation/reverse seeking " + path);
@@ -207,6 +216,9 @@ internal static partial class Program
                 Check(input.SequenceEqual(Render()), "No effect retains exact pixels");
                 camera.AddEffect(CameraEffectType.Vignette);
                 var settings = camera.Effects[0].Vignette;
+                camera.Effects[0].Enabled = false;
+                Check(input.SequenceEqual(Render()), "Disabled effect retains exact pixels");
+                camera.Effects[0].Enabled = true;
                 int center = ((int)(height / 2) * (int)width + (int)(width / 2)) * 4;
                 int transition = (int)(height / 2) * (int)width * 4;
                 byte[] defaults = Render();

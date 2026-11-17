@@ -1481,6 +1481,7 @@ public static class ProjectSceneSerializer
         dirt.TexturePath = ProjectManager.Instance.ToAssetReference(dirt.TexturePath);
         return new ProjectCameraEffectEntry
         {
+            Enabled = effect.Enabled,
             Type = effect.Type,
             DepthOfField = effect.DepthOfField.Clone(),
             Bloom = effect.Bloom.Clone(),
@@ -1516,6 +1517,7 @@ public static class ProjectSceneSerializer
         dirt.TexturePath = ProjectManager.Instance.ResolveAssetPath(dirt.TexturePath);
         return new CameraEffect
         {
+            Enabled = effect.Enabled,
             Type = effect.Type,
             DepthOfField = effect.DepthOfField?.Clone() ?? new DepthOfFieldSettings(),
             Bloom = effect.Bloom?.Clone() ?? new BloomSettings(),
@@ -1628,7 +1630,8 @@ public static class ProjectSceneSerializer
                 .Select(kf => new ProjectKeyframeEntry
                 {
                     Frame = kf.Frame,
-                    Value = pair.Key is "material.texture" or "text.font"
+                    Value = pair.Key is "material.texture" or "material.normal_texture" or "text.font" ||
+                        pair.Key.EndsWith(".lens_dirt.texture", StringComparison.Ordinal)
                         ? ProjectManager.Instance.ToProjectRelativePath(kf.Value is JsonElement json && json.ValueKind == JsonValueKind.String
                             ? json.GetString() ?? "" : Convert.ToString(kf.Value, CultureInfo.InvariantCulture) ?? "")
                         : kf.Value,

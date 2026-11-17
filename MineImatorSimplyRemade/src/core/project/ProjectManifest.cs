@@ -60,22 +60,27 @@ public class ProjectManifest
 }
 
 /// <summary>
-/// One audio clip placed on the timeline.  References an imported sound asset
-/// (matched by display name at load time) and stores playback settings.
+/// One audio clip placed on the timeline. References an imported sound asset
+/// by project path, with display-name matching for legacy tracks.
 /// </summary>
 public class ProjectAudioTrack
 {
     public string AssetDisplayName { get; set; } = "";
+    public string AssetPath { get; set; } = "";
     public string DisplayName { get; set; } = "";
     /// <summary>Frame on the timeline where playback should start.</summary>
     public int StartFrame { get; set; } = 0;
     /// <summary>Offset (in seconds) into the source clip where playback starts.</summary>
     public float SourceOffsetSeconds { get; set; } = 0f;
+    /// <summary>Playback speed and pitch multiplier; 1 is unchanged.</summary>
+    public float Pitch { get; set; } = 1f;
+    /// <summary>Seconds added to the natural pitched/trimmed duration; negative values trim the end.</summary>
+    public float EndOffsetSeconds { get; set; } = 0f;
     /// <summary>Linear gain (0 = silent, 1 = full).  Stored as 0..1.</summary>
     public float Volume { get; set; } = 1f;
     public bool Muted { get; set; } = false;
     public bool Loop { get; set; } = false;
-    /// <summary>Optional cached duration (seconds) so the timeline can render the
+    /// <summary>Optional cached unpitched source duration (seconds) so the timeline can render the
     /// clip even before the audio engine has decoded the underlying file.</summary>
     public float CachedDurationSeconds { get; set; } = 0f;
 }
@@ -667,6 +672,7 @@ public class ProjectIkBoneSettings
 
 public class ProjectCameraEffectEntry
 {
+    public bool Enabled { get; set; } = true;
     public CameraEffectType Type { get; set; } = CameraEffectType.CameraShake;
     public ProjectCameraShakeSettings Shake { get; set; } = new();
     public ProjectFilmGrainSettings FilmGrain { get; set; } = new();

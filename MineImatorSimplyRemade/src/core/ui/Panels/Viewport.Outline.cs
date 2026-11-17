@@ -11,7 +11,7 @@ public partial class Viewport
     private uint _previewOutlineNormalTex;
 
     private static bool NeedsOutlineNormals(CameraSceneObject? camera) =>
-        camera?.Effects.Any(effect => effect.Type == CameraEffectType.Outline &&
+        camera?.Effects.Any(effect => effect.Enabled && effect.Type == CameraEffectType.Outline &&
             effect.Outline.NormalPass && effect.Outline.Strength > 0f && effect.Outline.Radius > 0f) == true;
 
     private void ApplyOutlinePass(uint sceneFbo, uint depthTexture, uint normalTexture,
@@ -24,7 +24,7 @@ public partial class Viewport
 
         foreach (var effect in camera.Effects)
         {
-            if (effect.Type != CameraEffectType.Outline)
+            if (!effect.Enabled || effect.Type != CameraEffectType.Outline)
                 continue;
             var settings = effect.Outline;
             foreach (var control in OutlineSettings.Controls)

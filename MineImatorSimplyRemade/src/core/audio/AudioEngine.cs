@@ -117,6 +117,14 @@ public sealed unsafe class AudioEngine : IDisposable
         _al.SetSourceProperty(handle.SourceId, SourceBoolean.Looping, loop);
     }
 
+    public void SetSourcePitch(AudioSourceHandle handle, float pitch)
+    {
+        if (!float.IsFinite(pitch) || pitch <= 0)
+            throw new ArgumentOutOfRangeException(nameof(pitch));
+        if (!_initialized || _al == null || !handle.IsValid) return;
+        _al.SetSourceProperty(handle.SourceId, SourceFloat.Pitch, pitch);
+    }
+
     public void SetSourceOffsetSeconds(AudioSourceHandle handle, float seconds)
     {
         if (!_initialized || _al == null || !handle.IsValid) return;

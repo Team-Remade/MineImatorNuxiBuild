@@ -137,6 +137,57 @@ The initial system is a parameter-based path generator, not a node graph or a
 physics simulation. It does not yet support surface-following, collision,
 object-target endpoints, arbitrary drawn splines, or motion-history trails.
 
+## Importing Mine-imator objects
+
+### Scenery search order
+
+For a scenery reference such as `castle.schematic`, import tries:
+
+1. `castle.schematic.meshcache`
+2. `castle.meshcache`
+3. `castle.schematic`
+
+An explicit `.meshcache` reference is loaded directly. The adjacent cache takes
+priority even when older than the schematic, because it may contain edited
+geometry. Object saves retain the actual cache used, so cache-only scenery remains portable. Ordinary schematic reloads
+still apply their existing cache-freshness rules.
+
+### Compatibility limits
+
+This is feature/parameter conversion, not pixel-identical Mine-imator rendering.
+Native effect kernels, light falloff, procedural noise, tone mapping and constraint
+evaluation can differ. Copy Position uses native world-space constraint semantics;
+the authored position is not additionally added to its offset. Heat distortion
+uses native timeline timing. Cinematic bars use visible per-edge thickness, rather
+than the source's offscreen rectangles and quality-dependent padding.
+
+Unsupported objects retain placeholders, and unmapped settings/channels or missing
+resources are reported in the import diagnostics. In particular:
+
+- Torus/icosphere geometry has no import mapping.
+- Builtin model states beyond the recognized rig selections, generated
+  banners/patterns, armor dyes/trims and resource-pack overrides are not fully
+  reconstructed.
+- Packed SEUS/LabPBR material maps and LabPBR normals require channel conversion
+  and are not applied as incompatible native maps; scalar materials are retained.
+- Source additive camera brightness and color burn are not equivalent to the
+  native operations and are not applied. VHS, vertex snapping, advanced bloom/DOF
+  sampling controls, custom camera output sizes and renderer-specific shadow
+  controls are not mapped.
+- Chromatic aberration imports radial channel scaling, not the source's spectral
+  blur or nonlinear channel distortion.
+- Depth-ignore, unsupported scenery repeat/texture overrides and unsupported
+  particle regions are reported rather than silently simulated.
+- Background biome/resource selection, image probes and other unmapped
+  environment channels require manual adjustment.
+
+Audio is imported into the project's audio timeline, not the object hierarchy.
+Overlapping triggers remain separate clips; missing sounds are reported without
+discarding other tracks. Audio imports only on an explicit object spawn, not while
+generating thumbnails or restoring scene objects. It survives project saves and
+uses the same pitch/trim/loop timing during preview playback and video export.
+Project-wide audio tracks are not embedded when exporting an individual `.nxObj`.
+
 ## Mine-imator Minecraft assets
 
 The bundled 26.3 catalog includes 129 additional character models from the

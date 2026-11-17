@@ -2671,7 +2671,7 @@ public partial class SpawnMenu : UiPanel
             case ".miobject":
                 try
                 {
-                    root = SpawnMineImatorObject(pathToSpawn, registerAsset);
+                    root = SpawnMineImatorObject(pathToSpawn, registerAsset, importAudio: registerAsset);
                 }
                 catch (InvalidDataException ex)
                 {
@@ -2845,17 +2845,25 @@ public partial class SpawnMenu : UiPanel
     /// <summary>
     /// Loads a Mine Imator .miobject file and creates a scene hierarchy.
     /// </summary>
-    private SceneObject? SpawnMineImatorObject(string filePath, bool importBackground)
+    private SceneObject? SpawnMineImatorObject(string filePath, bool importBackground, bool importAudio = false)
     {
         var loader   = MineImatorLoader.Instance;
         var miObject = loader.LoadMiObject(filePath);
         if (miObject == null) return null;
 
         var warnings = new List<string>();
-        var scene = loader.CreateSceneFromMiObject(miObject, SpawnMiObjectItemViaSpawnMenu, warnings.Add);
+        var scene = loader.CreateSceneFromMiObject(miObject, SpawnMiObjectItemViaSpawnMenu, warnings.Add,
+            path => BuildSchematicFromPath(path, "", addToScene: false));
         if (scene == null) return null;
         if (importBackground)
             Viewport?.PropertiesPanel?.ImportMineImatorBackground(miObject, warnings.Add);
+        if (importAudio && (miObject.Timelines ?? []).Any(MiObjectFeatureMapper.IsAudio))
+        {
+            if (Timeline.Instance is { } timeline)
+                timeline.ImportMineImatorAudio(miObject, warnings.Add);
+            else
+                MiObjectFeatureMapper.Report("MIObject audio could not be imported: the audio timeline is unavailable.", warnings.Add);
+        }
         if (warnings.Count > 0) _objectImportError = string.Join(Environment.NewLine, warnings.Distinct());
 
         scene.Name = Path.GetFileNameWithoutExtension(filePath);

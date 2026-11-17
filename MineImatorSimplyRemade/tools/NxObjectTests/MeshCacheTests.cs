@@ -358,6 +358,31 @@ internal static partial class Program
                     roots.Add(restored!);
                     Check(Draw(restored!.Visuals.Single()).SequenceEqual(image), "Portable cache reload renders identical pixels");
                 }
+                string missingSchematic = f.NewPath(".schematic");
+                string adjacentCache = missingSchematic + ".meshcache";
+                File.Copy(CacheFile(f, CachePayload(7)), adjacentCache);
+                var source = MiDocument("""
+                    {"resources":[{"id":"terrain","type":"scenery","filename":""}],
+                     "templates":[{"id":"scenery","type":"scenery","scenery":"terrain"}],
+                     "timelines":[{"id":"terrain","type":"scenery","temp":"scenery"}]}
+                    """);
+                source.Resources[0].Filename = Path.GetFileName(missingSchematic);
+                source.DirectoryPath = Path.GetDirectoryName(missingSchematic)!;
+                int sceneCount = viewport.SceneObjects.Count;
+                var imported = MineImatorLoader.Instance.CreateSceneFromMiObject(source,
+                    sceneryFactory: path => spawn.CreateSchematicPreview(path, "")).Children.Single();
+                roots.Add(imported);
+                Equal(sceneCount, viewport.SceneObjects.Count, "MI scenery loader does not register an extra scene root");
+                Equal(adjacentCache, imported.SourceAssetPath, "Missing schematic uses surviving cache as portable source");
+                Check(Draw(imported.Visuals.Single()).SequenceEqual(referenceImage!), "MI cache-only scenery renders exact source pixels");
+                string importedArchive = f.NewPath(".nxObj");
+                NxObjectArchive.Export(importedArchive, imported);
+                SceneObject? importedRestored = null;
+                WithTextureSheetProject(f, _ => importedRestored = NxObjectArchive.Import(importedArchive, viewport, spawn));
+                roots.Add(importedRestored!);
+                Check(Draw(importedRestored!.Visuals.Single()).SequenceEqual(referenceImage!),
+                    "MI cache-only scenery archive reload renders identical pixels");
+
                 string customPath = CacheFile(f, CustomMeshCachePayload(), raw: true);
                 var customRoot = spawn.SpawnSchematicFromPath(customPath) ??
                     throw new InvalidOperationException("Raw custom cache import failed");

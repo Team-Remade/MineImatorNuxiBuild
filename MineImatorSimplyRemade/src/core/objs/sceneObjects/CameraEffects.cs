@@ -548,6 +548,7 @@ public class CameraShakeSettings
 
 public class CameraEffect
 {
+    public bool Enabled = true;
     public CameraEffectType Type = CameraEffectType.CameraShake;
     public CameraShakeSettings Shake = new CameraShakeSettings();
     public FilmGrainSettings FilmGrain = new FilmGrainSettings();

@@ -47,40 +47,31 @@ public static class AudioRenderMixer
             var clip = track.Clip!;
             var entry = track.ManifestEntry;
 
-            float startSeconds = entry.StartFrame / frameRate + entry.SourceOffsetSeconds;
-            int startOutputSample = (int)(startSeconds * SampleRate) - exportStartSample;
-            if (startOutputSample >= totalOutputSamples) continue;
-
-            int clipTotalSamples = clip.PcmData.Length / (BitsPerSample / 8 * Channels) * Channels;
-            if (clipTotalSamples <= 0) continue;
+            double startSeconds = entry.StartFrame / (double)frameRate;
+            double duration = AudioTrackTiming.DurationSeconds(entry, clip.DurationSeconds);
+            int clipFrames = clip.PcmData.Length / (BitsPerSample / 8 * Channels);
+            if (clipFrames <= 0) continue;
 
             float volume = Math.Clamp(entry.Volume, 0f, 1f);
 
             for (int outSample = 0; outSample < totalOutputSamples; outSample++)
             {
-                int sourceSampleIndex = (outSample - startOutputSample) * Channels;
-                if (sourceSampleIndex < 0) continue;
-
-                switch (entry.Loop)
-                {
-                    case false when sourceSampleIndex >= clipTotalSamples:
-                        continue;
-                    case true when clipTotalSamples > 0:
-                        sourceSampleIndex %= clipTotalSamples;
-                        break;
-                }
+                double elapsed = (outSample + (double)exportStartSample) / SampleRate - startSeconds;
+                if (elapsed < 0 || elapsed >= duration) continue;
+                double sourceFrame = AudioTrackTiming.SourceSeconds(entry, elapsed, clip.DurationSeconds) * SampleRate;
+                if (sourceFrame < 0 || sourceFrame >= clipFrames) continue;
+                int firstFrame = (int)sourceFrame;
+                int nextFrame = entry.Loop ? (firstFrame + 1) % clipFrames : Math.Min(firstFrame + 1, clipFrames - 1);
+                float fraction = (float)(sourceFrame - firstFrame);
 
                 // Convert source byte offset to sample frame and clip channel data.
                 for (int ch = 0; ch < Channels; ch++)
                 {
-                    int srcIdx = sourceSampleIndex + ch;
-                    if (srcIdx < 0 || srcIdx >= clipTotalSamples) continue;
-
-                    int byteOffset = srcIdx * (BitsPerSample / 8);
-                    if (byteOffset + 1 >= clip.PcmData.Length) continue;
-
+                    int byteOffset = (firstFrame * Channels + ch) * (BitsPerSample / 8);
                     short sample = (short)(clip.PcmData[byteOffset] | (clip.PcmData[byteOffset + 1] << 8));
-                    float sampleF = sample / 32768f * volume;
+                    int nextOffset = (nextFrame * Channels + ch) * (BitsPerSample / 8);
+                    short next = (short)(clip.PcmData[nextOffset] | (clip.PcmData[nextOffset + 1] << 8));
+                    float sampleF = (sample + (next - sample) * fraction) / 32768f * volume;
 
                     int outIdx = outSample * Channels + ch;
                     mixBuffer[outIdx] += sampleF;

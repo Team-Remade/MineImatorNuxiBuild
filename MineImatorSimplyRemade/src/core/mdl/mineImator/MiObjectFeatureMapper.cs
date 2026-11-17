@@ -11,7 +11,7 @@ using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.core.mdl.mineImator;
 
-public static class MiObjectFeatureMapper
+public static partial class MiObjectFeatureMapper
 {
     public static bool IsEnvironment(MiTimeline timeline) =>
         timeline.Type?.ToLowerInvariant() is "environment" or "background";
@@ -20,7 +20,32 @@ public static class MiObjectFeatureMapper
     {
         string type = timeline.Type?.ToLowerInvariant() ?? template?.Type?.ToLowerInvariant() ?? "";
         SceneObject? obj = null;
-        if (type == "path")
+        if (type is "camera" or "point_light" or "spot_light" or "light")
+        {
+            obj = type == "camera"
+                ? new CameraSceneObject { ObjectType = "Camera", SpawnCategory = "Camera", Fov = 45f, Near = 1f / 16f }
+                : new LightSceneObject
+                {
+                    ObjectType = type == "spot_light" ? "Spot Light" : "Point Light",
+                    SpawnCategory = "Light", Type = type == "spot_light" ? LightType.Spot : LightType.Point,
+                    LightRange = 250f / 16f, LightSpotAngle = 50f, LightSpotBlend = 25f
+                };
+            obj.PivotOffset = vec3.Zero;
+            if (gl != null) obj.AddMesh(new CubeMesh(gl) { PickOnly = true });
+        }
+        else if (type == "text")
+        {
+            JsonElement settings = template?.Text ?? default;
+            obj = new SceneObject
+            {
+                ObjectType = "Text Mesh", SpawnCategory = "Primitives", PivotOffset = vec3.Zero,
+                TextMeshBaseString = Text(PropertyValue(timeline.ExtraValues, "text"), "Text"),
+                TextMeshExtruded = Flag(Property(settings, "3d"), false),
+                TextMeshFaceCamera = Flag(Property(settings, "face_camera"), false)
+            };
+            if (gl != null) TextMeshFactory.Rebuild(obj, gl);
+        }
+        else if (type == "path")
         {
             JsonElement settings = timeline.Path ?? default;
             string shape = Text(Property(settings, "shape"), "none");
@@ -173,6 +198,19 @@ public static class MiObjectFeatureMapper
             ("ENV_FOG_DISTANCE", "FogDistance", 1),
             ("ENV_FOG_SIZE", "FogFadeSize", 1),
             ("ENV_FOG_HEIGHT", "FogHeight", 1),
+            ("ENV_FOG_HEIGHT_SHOW", "HeightFog", 1),
+            ("ENV_FOG_HEIGHT_CUSTOM_COLOR", "CustomHeightFogColor", 1),
+            ("ENV_FOG_HEIGHT_COLOR", "HeightFogColor", 1),
+            ("ENV_FOG_HEIGHT_SIZE", "HeightFogSize", 1),
+            ("ENV_FOG_HEIGHT_OFFSET", "HeightFogOffset", 1),
+            ("ENV_SKY_CLOUDS_SPEED", "CloudSpeed", 1),
+            ("ENV_SKY_CLOUDS_HEIGHT", "CloudHeight", 1),
+            ("ENV_WIND", "WindEnabled", 1),
+            ("ENV_WIND_SPEED", "WindSpeed", 1),
+            ("ENV_WIND_STRENGTH", "WindStrength", 1),
+            ("ENV_WIND_DIRECTION", "WindDirection", 1),
+            ("ENV_WIND_DIRECTIONAL_SPEED", "WindDirectionalSpeed", 1),
+            ("ENV_WIND_DIRECTIONAL_STRENGTH", "WindDirectionalStrength", 1),
             ("ENV_SKY_COLOR", "SkyHorizonDay", 1),
             ("ENV_SKY_COLOR", "SkyZenithDay", 1),
             ("ENV_SKY_COLOR", "BackgroundColor", 1),
@@ -238,7 +276,8 @@ public static class MiObjectFeatureMapper
             var supported = mappings.Select(m => m.Source).ToHashSet(StringComparer.Ordinal);
             foreach (string channel in (timeline.DefaultValues?.Values.Keys ?? Enumerable.Empty<string>())
                          .Concat(poses.SelectMany(p => p.Key.ExtraValues.Keys)).Distinct())
-                if (channel.StartsWith("ENV_", StringComparison.Ordinal) && !supported.Contains(channel))
+                if ((channel.StartsWith("ENV_", StringComparison.Ordinal) || channel.StartsWith("BG_", StringComparison.Ordinal)) &&
+                    !supported.Contains(channel.StartsWith("BG_", StringComparison.Ordinal) ? "ENV_" + channel[3..] : channel))
                     Report($"MIObject background '{timeline.Name}': '{channel}' has no internal mapping.", warning);
 
             void Add(string target, Func<MiKeyframe, object> read, bool discrete)
@@ -277,13 +316,36 @@ public static class MiObjectFeatureMapper
             .Select(p => (Frame: int.TryParse(p.Key, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frame) ? frame : -1, Key: p.Value))
             .Where(p => p.Frame >= 0 && p.Key != null).OrderBy(p => p.Frame).ToList();
 
-    private static bool Has(MiTimeline timeline, List<(int Frame, MiKeyframe Key)> frames, string channel) =>
-        timeline.DefaultValues?.Values.ContainsKey(channel) == true ||
-        timeline.CurrentValues?.ExtraValues.ContainsKey(channel) == true || frames.Any(f => f.Key.ExtraValues.ContainsKey(channel));
+    private static bool Has(MiTimeline timeline, List<(int Frame, MiKeyframe Key)> frames, string channel)
+    {
+        string alias = channel.StartsWith("ENV_", StringComparison.Ordinal) ? "BG_" + channel[4..] : channel;
+        return timeline.DefaultValues?.Values.ContainsKey(channel) == true ||
+            timeline.DefaultValues?.Values.ContainsKey(alias) == true ||
+            HasKey(timeline.CurrentValues, channel) || HasKey(timeline.CurrentValues, alias) ||
+            frames.Any(f => HasKey(f.Key, channel) || HasKey(f.Key, alias));
+    }
 
-    private static JsonElement Value(MiTimeline timeline, MiKeyframe? key, string channel) =>
-        key?.ExtraValues.TryGetValue(channel, out var value) == true ? value :
-        timeline.DefaultValues?.Values.TryGetValue(channel, out value) == true ? value : default;
+    private static bool HasKey(MiKeyframe? key, string channel) => key != null &&
+        (key.ExtraValues.ContainsKey(channel) || channel switch
+        {
+            "RGB_MUL" => key.MultiplyColor != null,
+            "MIX_COLOR" => key.MixColor != null,
+            "MIX_PERCENT" => key.MixPercent.HasValue,
+            "TEXTURE_OBJ" => key.TextureObject != null,
+            "METALLIC" => key.Metallic.HasValue,
+            "ROUGHNESS" => key.Roughness.HasValue,
+            "SUBSURFACE" => key.Subsurface.HasValue,
+            _ => false
+        });
+
+    private static JsonElement Value(MiTimeline timeline, MiKeyframe? key, string channel)
+    {
+        string alias = channel.StartsWith("ENV_", StringComparison.Ordinal) ? "BG_" + channel[4..] : channel;
+        if (key?.ExtraValues.TryGetValue(channel, out var value) == true) return value;
+        if (key?.ExtraValues.TryGetValue(alias, out value) == true) return value;
+        if (timeline.DefaultValues?.Values.TryGetValue(channel, out value) == true) return value;
+        return timeline.DefaultValues?.Values.TryGetValue(alias, out value) == true ? value : default;
+    }
 
     private static JsonElement Property(JsonElement obj, string name) =>
         obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty(name, out var value) ? value : default;
@@ -303,6 +365,7 @@ public static class MiObjectFeatureMapper
     private static string Text(JsonElement value, string fallback) =>
         value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ? fallback :
         value.ValueKind == JsonValueKind.String ? value.GetString() ?? fallback :
+        value.ValueKind == JsonValueKind.Number ? value.ToString() :
         value.ValueKind == JsonValueKind.Object ? Text(Property(value, "id"), fallback) :
         throw new InvalidDataException($"Expected Mine-imator text or an object reference, got '{value}'.");
 }

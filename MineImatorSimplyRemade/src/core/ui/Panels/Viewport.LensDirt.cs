@@ -15,7 +15,7 @@ public partial class Viewport
 
     private void PrepareLensDirt(CameraSceneObject? camera, uint width, uint height)
     {
-        _captureLensDirt = camera?.Effects.Any(e => e.Type == CameraEffectType.LensDirt &&
+        _captureLensDirt = camera?.Effects.Any(e => e.Enabled && e.Type == CameraEffectType.LensDirt &&
             !string.IsNullOrEmpty(e.LensDirt.TexturePath) && e.LensDirt.Intensity > 0f &&
             (e.LensDirt.AffectedByBloom || e.LensDirt.AffectedByGlow)) == true;
         _lensDirtGlowStrength = 0f;
@@ -62,7 +62,7 @@ public partial class Viewport
         foreach (var effect in camera.Effects)
         {
             var settings = effect.LensDirt;
-            if (effect.Type != CameraEffectType.LensDirt || string.IsNullOrEmpty(settings.TexturePath) ||
+            if (!effect.Enabled || effect.Type != CameraEffectType.LensDirt || string.IsNullOrEmpty(settings.TexturePath) ||
                 settings.Intensity <= 0f || (!settings.AffectedByBloom && !settings.AffectedByGlow))
                 continue;
             uint dirt = camera.LoadTexture(settings.TexturePath);

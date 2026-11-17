@@ -15,7 +15,7 @@ public partial class Viewport
 
         foreach (var effect in camera.Effects)
         {
-            if (effect.Type != CameraEffectType.CinematicBars)
+            if (!effect.Enabled || effect.Type != CameraEffectType.CinematicBars)
                 continue;
             var settings = effect.CinematicBars;
             foreach (var control in CinematicBarsSettings.Controls)

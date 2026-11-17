@@ -466,6 +466,7 @@ internal static class SceneObjectFingerprint
             {
                 var effect = camera.Effects[i];
                 hash.Add(effect.Type);
+                hash.Add(effect.Enabled);
                 // SerializeCameraEffect persists all nested settings, not just the active type.
                 var depth = effect.DepthOfField;
                 hash.Add(depth.Depth);

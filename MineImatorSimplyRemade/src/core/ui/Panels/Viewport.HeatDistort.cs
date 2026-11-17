@@ -15,7 +15,7 @@ public partial class Viewport
 
         foreach (var effect in camera.Effects)
         {
-            if (effect.Type != CameraEffectType.HeatDistort)
+            if (!effect.Enabled || effect.Type != CameraEffectType.HeatDistort)
                 continue;
             var settings = effect.HeatDistort;
             foreach (var control in HeatDistortSettings.Controls)

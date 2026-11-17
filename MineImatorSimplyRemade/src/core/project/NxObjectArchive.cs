@@ -346,7 +346,8 @@ public static class NxObjectArchive
             node.TextMeshFontPath = File(node.TextMeshFontPath);
         foreach (var (key, track) in node.Keyframes)
         {
-            if (key is not ("material.texture" or "text.font")) continue;
+            if (key is not ("material.texture" or "material.normal_texture" or "text.font") &&
+                !key.EndsWith(".lens_dirt.texture", StringComparison.Ordinal)) continue;
             foreach (var frame in track)
             {
                 string? path = frame.Value is JsonElement { ValueKind: JsonValueKind.String } value ? value.GetString() : frame.Value as string;

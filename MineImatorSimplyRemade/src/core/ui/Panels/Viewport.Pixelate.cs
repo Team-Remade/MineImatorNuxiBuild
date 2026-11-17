@@ -15,7 +15,7 @@ public partial class Viewport
 
         foreach (var effect in camera.Effects)
         {
-            if (effect.Type != CameraEffectType.Pixelate)
+            if (!effect.Enabled || effect.Type != CameraEffectType.Pixelate)
                 continue;
             float size = effect.Pixelate.Size;
             if (!float.IsFinite(size))

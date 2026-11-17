@@ -3516,7 +3516,7 @@ public partial class Viewport : UiPanel
         VeldridSceneRenderer renderer, Camera activeCamera, CameraSceneObject? activeCamObj,
         uint width, uint height, Vector2 imageMin, Vector2 imageSize)
     {
-        if (activeCamObj?.Effects.Any(effect => effect.Type == CameraEffectType.Outline &&
+        if (activeCamObj?.Effects.Any(effect => effect.Enabled && effect.Type == CameraEffectType.Outline &&
             effect.Outline.Strength > 0f && effect.Outline.Radius > 0f) == true &&
             _viewportRenderMode == ViewportRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
             throw new NotSupportedException("Camera outlines require OpenGL depth and material-normal attachments.");
@@ -6366,7 +6366,7 @@ public partial class Viewport : UiPanel
     {
         foreach (var effect in effects)
         {
-            if (effect.Type != CameraEffectType.CameraShake)
+            if (!effect.Enabled || effect.Type != CameraEffectType.CameraShake)
                 continue;
 
             var shake = effect.Shake ?? new CameraShakeSettings();
@@ -6576,7 +6576,7 @@ public partial class Viewport : UiPanel
             return;
         foreach (var effect in camera.Effects)
         {
-            if (effect.Type != CameraEffectType.DepthOfField || effect.DepthOfField.BlurSize <= 0f)
+            if (!effect.Enabled || effect.Type != CameraEffectType.DepthOfField || effect.DepthOfField.BlurSize <= 0f)
                 continue;
             var settings = effect.DepthOfField;
             Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
@@ -6630,7 +6630,7 @@ public partial class Viewport : UiPanel
 
         foreach (var effect in camera.Effects)
         {
-            if (effect.Type != CameraEffectType.Bloom || effect.Bloom.Intensity <= 0f)
+            if (!effect.Enabled || effect.Type != CameraEffectType.Bloom || effect.Bloom.Intensity <= 0f)
                 continue;
             using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.Glow);
             var settings = effect.Bloom;
@@ -6787,7 +6787,7 @@ public partial class Viewport : UiPanel
 
         foreach (var effect in camera.Effects)
         {
-            if (effect.Type != CameraEffectType.ColorCorrection)
+            if (!effect.Enabled || effect.Type != CameraEffectType.ColorCorrection)
                 continue;
 
             ApplyColorAdjustmentPass(sceneFbo, scratchFbo, scratchTexture, width, height,
@@ -6866,7 +6866,7 @@ public partial class Viewport : UiPanel
 
         foreach (var effect in camera.Effects)
         {
-            if (effect.Type != CameraEffectType.Vignette || effect.Vignette.Strength <= 0f ||
+            if (!effect.Enabled || effect.Type != CameraEffectType.Vignette || effect.Vignette.Strength <= 0f ||
                 effect.Vignette.Radius >= 100f)
                 continue;
             if (_vignetteShader == null)
@@ -6996,7 +6996,7 @@ public partial class Viewport : UiPanel
         if (Gl == null || _filmGrainShader == null || cameraObject == null || width == 0 || height == 0)
             return;
 
-        var grains = cameraObject.Effects.Where(effect => effect.Type == CameraEffectType.FilmGrain).ToList();
+        var grains = cameraObject.Effects.Where(effect => effect.Enabled && effect.Type == CameraEffectType.FilmGrain).ToList();
         if (grains.Count == 0) return;
 
         Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);

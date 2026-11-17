@@ -15,7 +15,7 @@ public partial class Viewport
 
         foreach (var effect in camera.Effects)
         {
-            if (effect.Type != CameraEffectType.ChromaticAberration)
+            if (!effect.Enabled || effect.Type != CameraEffectType.ChromaticAberration)
                 continue;
             var settings = effect.ChromaticAberration;
             foreach (var control in ChromaticAberrationSettings.Controls)

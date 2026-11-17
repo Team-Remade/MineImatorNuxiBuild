@@ -185,6 +185,7 @@ public class CameraSceneObject : SceneObject
     {
         return new CameraEffect
         {
+            Enabled = source.Enabled,
             Type = source.Type,
             DepthOfField = source.DepthOfField.Clone(),
             Bloom = source.Bloom.Clone(),
