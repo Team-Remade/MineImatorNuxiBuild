@@ -2,6 +2,7 @@
 
 in vec3 vNormal;
 in vec3 vFragPos;
+in vec3 vShaderPosition;
 in vec2 vTexCoord;
 in vec4 vShadowCoord;
 
@@ -15,6 +16,7 @@ uniform vec3 uSubtractRgb;
 uniform vec3 uSubtractHsv;
 
 #include "material_colors.glsl"
+#include "shader_graph.glsl"
 uniform float uAlpha;
 uniform bool  uPremultiplyBlend;
 uniform bool  uAlphaClipEnabled;
@@ -502,7 +504,8 @@ void main() {
         return;
     }
 
-    bool pbr = uPbrEnabled && !uIsUnlit && !uIsTextAlphaMask && !uEndPortalSurface;
+    bool custom = uShaderGraphEnabled != 0 && !uIsTextAlphaMask && !uEndPortalSurface;
+    bool pbr = (uPbrEnabled || custom) && !uIsUnlit && !uIsTextAlphaMask && !uEndPortalSurface;
     // Derivatives must be evaluated before the alpha discard, including for cutouts.
     vec3 vertexNormal = pbr ? safeDirection(vNormal, vec3(0.0, 1.0, 0.0)) : normalize(vNormal);
     if (!uIsUnlit && uBendEnabled && uBendSharp) {
@@ -513,20 +516,22 @@ void main() {
     }
     vec2 uvDx = dFdx(vTexCoord);
     vec2 uvDy = dFdy(vTexCoord);
-    vec2 uv = materialUv(gl_FrontFacing ? vertexNormal : -vertexNormal, uvDx, uvDy);
+    vec2 uv = custom ? vTexCoord : materialUv(gl_FrontFacing ? vertexNormal : -vertexNormal, uvDx, uvDy);
     vec3  baseColor = pbr ? toLinear(uAlbedo) : uAlbedo;
     vec3  emissionMask = vec3(1.0);
     float alpha     = 1.0;
     float textFillWeight = 1.0;
 
-    if (uUseTexture) {
+    if (custom) {
+        if (uUseTexture) alpha = texture(uTexture, vTexCoord).a;
+    } else if (uUseTexture) {
         vec4 texSample = pbr ? textureGrad(uTexture, uv, uvDx, uvDy) : texture(uTexture, vTexCoord);
         emissionMask = texSample.rgb;
         baseColor = pbr ? toLinear(texSample.rgb) * toLinear(uAlbedo) : texSample.rgb * uAlbedo;
         // Parallax changes material shading only, not coverage, depth or silhouettes.
         alpha     = pbr && uHeightScale != 0.0 ? texture(uTexture, vTexCoord).a : texSample.a;
     }
-    if (uUseEmissionTexture)
+    if (!custom && uUseEmissionTexture)
         emissionMask = pbr ? textureGrad(uEmissionTexture, uv, uvDx, uvDy).rgb : texture(uEmissionTexture, vTexCoord).rgb;
     if (uEndPortalSurface) {
         baseColor = endPortalColor(vFragPos, uCameraPosition, vertexNormal, uEffectTime) * uAlbedo;
@@ -544,23 +549,34 @@ void main() {
         alpha *= textMask.a;
     }
 
-    baseColor *= pbr ? toLinear(uBlendColor.rgb) : uBlendColor.rgb;
-    if (hasMaterialColors(uMultiplyHsv, uAddRgb, uAddHsv, uSubtractRgb, uSubtractHsv)) {
-        vec3 displayColor = pbr ? pow(max(baseColor, vec3(0.0)), vec3(1.0 / 2.2)) : baseColor;
-        displayColor = applyMaterialColors(displayColor, uMultiplyHsv, uAddRgb, uAddHsv, uSubtractRgb, uSubtractHsv);
-        baseColor = pbr ? toLinear(displayColor) : displayColor;
+    if (!custom) {
+        baseColor *= pbr ? toLinear(uBlendColor.rgb) : uBlendColor.rgb;
+        if (hasMaterialColors(uMultiplyHsv, uAddRgb, uAddHsv, uSubtractRgb, uSubtractHsv)) {
+            vec3 displayColor = pbr ? pow(max(baseColor, vec3(0.0)), vec3(1.0 / 2.2)) : baseColor;
+            displayColor = applyMaterialColors(displayColor, uMultiplyHsv, uAddRgb, uAddHsv, uSubtractRgb, uSubtractHsv);
+            baseColor = pbr ? toLinear(displayColor) : displayColor;
+        }
+        baseColor = mix(baseColor, pbr ? toLinear(uMixColor.rgb) : uMixColor.rgb, clamp(uMixColor.a, 0.0, 1.0));
+        if (pbr) baseColor = clamp(baseColor, 0.0, 1.0);
     }
-    baseColor = mix(baseColor, pbr ? toLinear(uMixColor.rgb) : uMixColor.rgb, clamp(uMixColor.a, 0.0, 1.0));
-    if (pbr) baseColor = clamp(baseColor, 0.0, 1.0);
     alpha *= uAlpha * uBlendColor.a;
 
-    if (!uIsUnlit) vertexNormal = mappedNormal(vertexNormal, uv, uvDx, uvDy);
+    if (!custom && !uIsUnlit) vertexNormal = mappedNormal(vertexNormal, uv, uvDx, uvDy);
 
     // With no map the scalar sliders still work; their defaults give roughness=1, metallic=0.
-    vec4 surface = pbr && uUseSurfaceTexture ? textureGrad(uSurfaceTexture, uv, uvDx, uvDy) : vec4(1.0, 1.0, 1.0, 0.5);
+    vec4 surface = !custom && pbr && uUseSurfaceTexture ? textureGrad(uSurfaceTexture, uv, uvDx, uvDy) : vec4(1.0, 1.0, 1.0, 0.5);
     float roughness = clamp(uRoughness * surface.g, 0.045, 1.0);
     float metallic = clamp(uMetallic * surface.b, 0.0, 1.0);
     float occlusion = pbr ? mix(1.0, clamp(surface.r, 0.0, 1.0), clamp(uOcclusionStrength, 0.0, 1.0)) : 1.0;
+    vec3 graphEmission = vec3(0.0);
+    if (custom) {
+        NodeSurface material = evaluateShaderGraph(vShaderPosition, vTexCoord);
+        baseColor = pbr ? toLinear(material.color) : material.color;
+        roughness = material.roughness;
+        metallic = material.metallic;
+        graphEmission = pbr ? toLinear(min(material.emission, 1.0)) + max(material.emission - 1.0, 0.0) : material.emission;
+        if (pbr && uShaderGraphHeight >= 0) vertexNormal = graphBump(vertexNormal, vFragPos, material.height);
+    }
 
     // Modelbench discards only completely transparent fragments. Even very low
     // non-zero alpha must survive so it can write depth for render-depth masks.
@@ -578,7 +594,7 @@ void main() {
     vec3 sunDir  = pbr ? safeDirection(uLightDir, norm) : normalize(uLightDir);
     float diff   = max(dot(norm, sunDir), 0.0);
     vec3 diffuse = diff * uLightColor;
-    float sssAmount = uSSSEnabled ? max(uSSS, 0.0) : 0.0;
+    float sssAmount = uSSSEnabled && !custom ? max(uSSS, 0.0) : 0.0;
     vec3 viewDir = pbr ? -safeDirection(uCameraPosition - vFragPos, norm) : normalize(vFragPos - uCameraPosition);
     vec3 sssDirectTint = mix(vec3(1.0), uSSSColor, clamp(sssAmount, 0.0, 1.0));
     vec3 pbrView = safeDirection(uCameraPosition - vFragPos, norm);
@@ -724,7 +740,10 @@ void main() {
     }
     }
     if (uEndPortalSurface) bounceSource = toLinear(baseColor);
-    if (uEmissionEnabled) {
+    if (custom) {
+        result += graphEmission;
+        bounceSource += pbr ? graphEmission : pow(graphEmission, vec3(2.2));
+    } else if (uEmissionEnabled) {
         vec3 emission = (uEmissionColor * emissionMask) * max(uEmissionEnergy, 0.0);
         if (pbr) emission = toLinear(uEmissionColor) * toLinear(emissionMask) * max(uEmissionEnergy, 0.0);
         if (!uIsUnlit && !uEmissionIndirectOnly) result += emission;

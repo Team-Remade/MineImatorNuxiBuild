@@ -240,9 +240,27 @@ public class MainWindow : Window
         _menubar.SaveProjectAsRequested = OpenSaveAsPopup;
         _menubar.UndoRequested = PerformUndo;
         _menubar.RedoRequested = PerformRedo;
-        _menubar.CutRequested = () => _timeline?.CutSelectedKeyframes();
-        _menubar.CopyRequested = () => _timeline?.CopySelectedKeyframes();
-        _menubar.PasteRequested = () => _timeline?.PasteAtCurrentFrame();
+        _menubar.CutRequested = () =>
+        {
+            if (_propertiesPanel?.ShaderEditorHasFocus == true)
+                _propertiesPanel.CutSelectedShaderNode();
+            else
+                _timeline?.CutSelectedKeyframes();
+        };
+        _menubar.CopyRequested = () =>
+        {
+            if (_propertiesPanel?.ShaderEditorHasFocus == true)
+                _propertiesPanel.CopySelectedShaderNode();
+            else
+                _timeline?.CopySelectedKeyframes();
+        };
+        _menubar.PasteRequested = () =>
+        {
+            if (_propertiesPanel?.ShaderEditorHasFocus == true)
+                _propertiesPanel.PasteShaderNode();
+            else
+                _timeline?.PasteAtCurrentFrame();
+        };
         _menubar.SelectAllRequested = () =>
         {
             if (_timeline?.HasEditFocus == true)
@@ -250,12 +268,24 @@ public class MainWindow : Window
             else
                 _sceneTree?.SelectAllObjects();
         };
-        _menubar.CanCutOrCopy = () => _timeline?.HasEditFocus == true && _timeline.HasSelectedKeyframes;
-        _menubar.CanPaste = () => _timeline?.HasEditFocus == true && _timeline.HasClipboardKeyframes;
-        _menubar.DuplicateRequested = () => _sceneTree?.DuplicateSelectedObjects();
+        _menubar.CanCutOrCopy = () => _propertiesPanel?.ShaderEditorHasFocus == true
+            ? _propertiesPanel.CanCopyShaderNode
+            : _timeline?.HasEditFocus == true && _timeline.HasSelectedKeyframes;
+        _menubar.CanPaste = () => _propertiesPanel?.ShaderEditorHasFocus == true
+            ? _propertiesPanel.CanPasteShaderNode
+            : _timeline?.HasEditFocus == true && _timeline.HasClipboardKeyframes;
+        _menubar.DuplicateRequested = () =>
+        {
+            if (_propertiesPanel?.ShaderEditorHasFocus == true)
+                _propertiesPanel.DuplicateSelectedShaderNode();
+            else
+                _sceneTree?.DuplicateSelectedObjects();
+        };
         _menubar.DeleteRequested = () =>
         {
-            if (_timeline?.HasEditFocus == true)
+            if (_propertiesPanel?.ShaderEditorHasFocus == true)
+                _propertiesPanel.DeleteSelectedShaderNode();
+            else if (_timeline?.HasEditFocus == true)
                 _timeline.DeleteSelectedKeyframes();
             else
                 _sceneTree?.DeleteSelectedObjects();
@@ -738,6 +768,10 @@ public class MainWindow : Window
             OpenRenderPopup(Menubar.RenderRequestKind.Video);
             return;
         }
+
+        // The focused shader editor owns node edit shortcuts so they never reach scene objects.
+        if (_propertiesPanel?.HandleShaderEditorShortcuts() == true)
+            return;
 
         if (Keybinds.Pressed("delete"))
         {

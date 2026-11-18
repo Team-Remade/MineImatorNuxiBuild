@@ -2796,7 +2796,10 @@ public partial class Viewport : UiPanel
             ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
         ImGui.PopStyleVar();
 
-        if (VeldridContext.SceneRenderer != null)
+        bool graphFallback = VeldridContext.SceneRenderer != null && SceneObjects.Any(UsesShaderGraph);
+        if (graphFallback)
+            UiText.Disabled("OpenGL scene | Custom shader materials");
+        else if (VeldridContext.SceneRenderer != null)
         {
             UiText.Disabled($"Experimental {VeldridContext.GraphicsDevice!.BackendType} scene | OpenGL UI and editor overlays");
             if (ImGui.IsItemHovered())
@@ -2848,7 +2851,7 @@ public partial class Viewport : UiPanel
 
         // ── 3D render into FBO ────────────────────────────────────────────────
         bool renderedWithVeldrid = false;
-        if (VeldridContext.SceneRenderer is { } sceneRenderer)
+        if (!graphFallback && VeldridContext.SceneRenderer is { } sceneRenderer)
         {
             try
             {
@@ -3522,6 +3525,10 @@ public partial class Viewport : UiPanel
             }
         }
     }
+
+    private static bool UsesShaderGraph(SceneObject obj) =>
+        obj.Visuals.Any(mesh => mesh.CustomShader is { Enabled: true, ValidationError: null }) ||
+        obj.GetChildrenObjects().Any(UsesShaderGraph);
 
     private void RenderVeldridScene(
         VeldridSceneRenderer renderer, Camera activeCamera, CameraSceneObject? activeCamObj,

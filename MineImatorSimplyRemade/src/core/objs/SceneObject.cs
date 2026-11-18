@@ -2,6 +2,7 @@
 using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.material;
 using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
@@ -37,6 +38,7 @@ public class MaterialSettings
     public vec4 BlendColor = new vec4(1f, 1f, 1f, 1f);
     public vec4 MixColor = new vec4(0f, 0f, 0f, 0f);
     public MaterialColorAdjustments ColorAdjustments = new();
+    public ShaderGraph? CustomShader;
     public float Metallic = 0f;
     public float Roughness = 0.5f;
     public bool PbrEnabled = false;
@@ -99,6 +101,7 @@ public class MaterialSettings
             BlendColor = this.BlendColor,
             MixColor = this.MixColor,
             ColorAdjustments = this.ColorAdjustments,
+            CustomShader = this.CustomShader,
             Metallic = this.Metallic,
             Roughness = this.Roughness,
             PbrEnabled = this.PbrEnabled,
@@ -360,6 +363,8 @@ public class SceneObject
         {
             Visuals.Add(mesh);
             mesh.DepthWriteDisabled = IgnoreDepth;
+            if (_materialSettings?.CustomShader is { } shader)
+                mesh.CustomShader = shader;
         }
     }
 
@@ -1034,6 +1039,8 @@ public class SceneObject
         ApplyInheritedTexture();
         ApplyAuxiliaryTextures();
         var settings = UsePropertyInheritance ? GetEffectiveMaterialSettings() : _materialSettings;
+        foreach (var mesh in Visuals)
+            mesh.CustomShader = settings?.CustomShader;
         if (settings == null) return;
 
         foreach (var mesh in Visuals)

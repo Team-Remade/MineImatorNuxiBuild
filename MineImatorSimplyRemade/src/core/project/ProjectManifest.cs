@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MineImatorSimplyRemade.core.mdl.material;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -583,6 +584,7 @@ public class ProjectSceneObjectEntry
     public ProjectVec4 BlendColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f, W = 1f };
     public ProjectVec4 MixColor { get; set; } = new() { X = 0f, Y = 0f, Z = 0f, W = 0f };
     public ProjectColorAdjustments ColorAdjustments { get; set; } = new();
+    public ShaderGraph? CustomShader { get; set; }
     public float Metallic { get; set; } = 0f;
     public float Roughness { get; set; } = 0.5f;
     public bool PbrEnabled { get; set; } = false;

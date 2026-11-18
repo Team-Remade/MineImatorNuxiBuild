@@ -84,6 +84,8 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --lights-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --material-colors
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --material-colors-graphics
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --block-rotation-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --fluid
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --fluid-graphics
@@ -142,6 +144,10 @@ Coverage and prerequisites:
   undo, inheritance, timeline channels, reset defaults, and ImGui controls.
 - `--material-colors-graphics`: OpenGL 3.3 and Windows D3D11; exact RGB/HSV
   operation pixels, stacking/clamping, alpha, PBR parity, previews, and PNG export.
+- `--shader-graph`: graph validation, project archive/library roundtrips, duplication, and ImGui socket interactions.
+- `--shader-graph-graphics`: OpenGL 3.3 sphere renders for all presets, including
+  bump, emission, metallic response, alpha coverage, and disabled-mode parity.
+  Supply a PNG path after the flag to save the render contact sheet.
 - `--fluid`: deterministic position-based solving, box and scene-mesh collision,
   bounds, validation, and source-generated archive/import/duplication persistence.
 - `--fluid-graphics`: OpenGL 3.3; particle and reconstructed surface pixels,

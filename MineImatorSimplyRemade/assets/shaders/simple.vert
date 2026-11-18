@@ -64,6 +64,7 @@ layout(std140) uniform SceneData {
 
 out vec3 vNormal;
 out vec3 vFragPos;
+out vec3 vShaderPosition;
 out vec2 vTexCoord;
 out vec4 vShadowCoord;
 
@@ -136,6 +137,7 @@ vec2 applyUvTransform(vec2 uv)
 #include "wind.glsl"
 
 void main() {
+    vShaderPosition = aPos;
     mat4 modelMat = uUseInstancing
         ? mat4(aInstanceM0, aInstanceM1, aInstanceM2, aInstanceM3)
         : uModel;

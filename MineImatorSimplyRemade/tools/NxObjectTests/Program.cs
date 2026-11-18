@@ -450,6 +450,9 @@ internal static partial class Program
             ("Camera material burn color persistence, duplication, undo and timeline", CameraMaterialBurnColorPersistence),
             ("Camera material color controls and multi-selection", CameraMaterialControls),
             ("Material color operations persistence, inheritance, undo and timeline", MaterialColorPersistence),
+            ("Shader graph links, persistence and duplication", ShaderGraphPersistence),
+            ("Shader graph canvas socket interactions", ShaderGraphControls),
+            ("Shader graph editor keyboard shortcuts edit nodes, not scene objects", ShaderGraphShortcuts),
             ("Material color operations controls, keyframe menus and multi-selection", MaterialColorControls),
             ("Lens dirt settings, persistence, packaging, duplication, undo and timeline", LensDirtPersistence),
             ("Lens dirt ImGui texture and percentage controls", LensDirtControls),
@@ -670,6 +673,14 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Material color operations", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--material-colors-graphics", StringComparer.Ordinal))
             tests = [("Material color operations GPU pixels, stacking, alpha, previews, export and D3D11", MaterialColorGraphics)];
+        if (args.Contains("--shader-graph", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Shader graph", StringComparison.Ordinal)).ToArray();
+        int shaderGraphics = Array.IndexOf(args, "--shader-graph-graphics");
+        if (shaderGraphics >= 0)
+        {
+            string? contactSheet = shaderGraphics + 1 < args.Length ? args[shaderGraphics + 1] : null;
+            tests = [("Shader graph OpenGL sphere renders", fixture => ShaderGraphGraphics(contactSheet))];
+        }
         if (args.Contains("--lens-dirt", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Lens dirt", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--lens-dirt-graphics", StringComparer.Ordinal))

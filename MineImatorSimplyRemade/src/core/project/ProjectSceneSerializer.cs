@@ -446,6 +446,7 @@ public static class ProjectSceneSerializer
             entry.BlendColor = ToProjectVec4(obj.MaterialSettings.BlendColor);
             entry.MixColor = ToProjectVec4(obj.MaterialSettings.MixColor);
             entry.ColorAdjustments = ProjectColorAdjustments.FromRuntime(obj.MaterialSettings.ColorAdjustments);
+            entry.CustomShader = obj.MaterialSettings.CustomShader;
             entry.Metallic = obj.MaterialSettings.Metallic;
             entry.Roughness = obj.MaterialSettings.Roughness;
             entry.PbrEnabled = obj.MaterialSettings.PbrEnabled;
@@ -1197,6 +1198,9 @@ public static class ProjectSceneSerializer
             material.BlendColor = ToVec4(entry.BlendColor);
             material.MixColor = ToVec4(entry.MixColor);
             material.ColorAdjustments = entry.ColorAdjustments.ToRuntime();
+            material.CustomShader = entry.CustomShader;
+            if (material.CustomShader is { Enabled: true, ValidationError: { } graphError })
+                Console.Error.WriteLine($"[Shader Graph] {obj.Name}: {graphError} Using the standard material.");
             material.Metallic = entry.Metallic;
             material.Roughness = entry.Roughness;
             material.PbrEnabled = entry.PbrEnabled;

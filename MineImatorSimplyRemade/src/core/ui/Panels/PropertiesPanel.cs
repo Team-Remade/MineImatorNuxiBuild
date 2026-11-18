@@ -1134,6 +1134,7 @@ public partial class PropertiesPanel : UiPanel
             AlbedoColor = new ProjectVec4 { X = source.AlbedoColor.X, Y = source.AlbedoColor.Y, Z = source.AlbedoColor.Z, W = source.AlbedoColor.W },
             BlendColor = new ProjectVec4 { X = source.BlendColor.X, Y = source.BlendColor.Y, Z = source.BlendColor.Z, W = source.BlendColor.W },
             ColorAdjustments = ProjectColorAdjustments.FromRuntime(source.ColorAdjustments.ToRuntime()),
+            CustomShader = source.CustomShader,
             MixColor = new ProjectVec4 { X = source.MixColor.X, Y = source.MixColor.Y, Z = source.MixColor.Z, W = source.MixColor.W },
             Metallic = source.Metallic,
             Roughness = source.Roughness,
@@ -2345,6 +2346,7 @@ public partial class PropertiesPanel : UiPanel
         _nameEditor.CommitIfHidden();
         _textureImport.Render(Gl);
         ImGui.End();
+        RenderShaderGraphEditor();
     }
     
     private void RenderProjectTab()
@@ -4559,6 +4561,8 @@ public partial class PropertiesPanel : UiPanel
             EnsureMaterialSettings();
             var mat = _currentObject.MaterialSettings;
             var materialObject = _currentObject;
+            if (materialObject.Visuals.Any(mesh => !mesh.PickOnly && !mesh.IsTextAlphaMask && !mesh.EndPortalSurface))
+                DrawShaderGraphControls(materialObject);
 
             bool supportsResourcePack = string.Equals(_currentObject.SpawnCategory, "Blocks", StringComparison.Ordinal) ||
                                         string.Equals(_currentObject.SpawnCategory, "Scenery", StringComparison.Ordinal);

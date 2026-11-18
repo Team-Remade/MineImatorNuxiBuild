@@ -744,6 +744,8 @@ public class Mesh : IDisposable
         set => DefaultMaterial.ColorAdjustments = value;
     }
 
+    public ShaderGraph? CustomShader { get; set; }
+
     public vec2 TextureOffset
     {
         get => DefaultMaterial.TextureOffset;
@@ -956,6 +958,7 @@ public class Mesh : IDisposable
         // never write through to the source mesh's shared StandardMaterial.
         var srcMat = DefaultMaterial;
         var dstMat = clone.DefaultMaterial;
+        clone.CustomShader = CustomShader;
         dstMat.AlbedoColor              = srcMat.AlbedoColor;
         dstMat.BlendColor               = srcMat.BlendColor;
         dstMat.MixColor                 = srcMat.MixColor;
@@ -1424,6 +1427,24 @@ public class Mesh : IDisposable
             RefreshShapeKeyGeometry();
 
         _gl.UseProgram(_shader.ShaderProgram);
+        var graph = CustomShader is { Enabled: true } custom ? custom.Program : null;
+        bool useGraph = graph is { Error: null };
+        SetUniformInt("uShaderGraphEnabled", useGraph ? 1 : 0);
+        if (useGraph && graph != null)
+        {
+            SetUniformInt("uShaderGraphCount", graph.Count);
+            if (graph.Count > 0)
+            {
+                fixed (float* ops = graph.Instructions, parameters = graph.Parameters)
+                {
+                    _gl.Uniform4(_shader.GetUniformLocation("uShaderGraphOps[0]"), (uint)graph.Count, ops);
+                    _gl.Uniform4(_shader.GetUniformLocation("uShaderGraphParams[0]"), (uint)graph.Count, parameters);
+                }
+            }
+            var outputs = graph.Outputs;
+            _gl.Uniform4(_shader.GetUniformLocation("uShaderGraphOutputs"), outputs[0], outputs[1], outputs[2], outputs[3]);
+            SetUniformInt("uShaderGraphHeight", outputs[4]);
+        }
         ApplyWindUniforms(_shader, model);
         ApplyBendUniforms(_shader);
 

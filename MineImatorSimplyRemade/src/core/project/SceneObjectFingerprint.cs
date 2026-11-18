@@ -340,6 +340,26 @@ internal static class SceneObjectFingerprint
             hash.Add(material.ColorAdjustments.AddHsv);
             hash.Add(material.ColorAdjustments.SubtractRgb);
             hash.Add(material.ColorAdjustments.SubtractHsv);
+            if (material.CustomShader is { } graph)
+            {
+                hash.Add(true);
+                hash.Add(graph.Enabled);
+                hash.Add(graph.Nodes.AsSpan().Length);
+                foreach (var node in graph.Nodes.AsSpan())
+                {
+                    hash.Add(node != null);
+                    if (node == null) continue;
+                    hash.Add(node.Id); hash.Add((int)node.Kind);
+                    hash.Add(node.X); hash.Add(node.Y);
+                    hash.Add(node.A); hash.Add(node.B); hash.Add(node.C); hash.Add(node.D);
+                }
+                hash.Add(graph.Links.AsSpan().Length);
+                foreach (var link in graph.Links.AsSpan())
+                {
+                    hash.Add(link.Source); hash.Add(link.Target); hash.Add(link.Input);
+                }
+            }
+            else hash.Add(false);
             hash.Add(material.Metallic);
             hash.Add(material.Roughness);
             hash.Add(material.PbrEnabled);
