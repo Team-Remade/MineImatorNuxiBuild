@@ -111,7 +111,10 @@ internal static partial class Program
              ],
              "timelines":[
               {"id":"ico","type":"icosphere","temp":"icosphere-template","name":"Faceted"},
-              {"id":"ring","type":"torus","temp":"torus-template","name":"Ring"}
+              {"id":"ring","type":"torus","temp":"torus-template","name":"Ring",
+               "glow":false,"glow_texture":true,"only_render_glow":false,
+               "glint_mode":0,"glint_scale":1,"glint_speed":1,"glint_strength":1,"glint_tex":"default",
+               "alpha_mode":2,"object_tag":"Main"}
              ]}
             """);
         var warnings = new List<string>();
@@ -137,6 +140,15 @@ internal static partial class Program
         Near(0.25f, restored.PrimitiveTorusMinorRadius, "Torus minor radius survives object JSON");
         Near(-0.75f, ProjectSceneSerializer.SerializeObjectForLibrary(ico).PrimitiveIcosphereMorph,
             "Icosphere morph survives object serialization");
+
+        var enabledDefaults = MiDocument("""
+            {"timelines":[{"id":"glint","type":"folder","name":"Glint",
+              "glint_mode":1,"glint_scale":1,"glint_tex":"default"}]}
+            """);
+        warnings.Clear();
+        new MineImatorLoader().CreateSceneFromMiObject(enabledDefaults, warning: warnings.Add);
+        Check(warnings.Any(w => w.Contains("glint_mode")) && warnings.Any(w => w.Contains("glint_scale")),
+            "Enabled unsupported glint settings remain explicit");
     }
 
     private static void MiImportBackground(Fixture f)

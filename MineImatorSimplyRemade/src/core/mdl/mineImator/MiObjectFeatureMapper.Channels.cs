@@ -207,7 +207,8 @@ public static partial class MiObjectFeatureMapper
                 Report($"MIObject '{source.Name}': channel '{channel}' has no native mapping.", warning);
         foreach (var property in source.ExtraValues)
             if (property.Key is not ("text" or "lock" or "wind" or "wind_terrain" or
-                "parent_tree_index" or "tree_extend" or "color_tag" or "parts" or "blend_mode") && Active(property.Value))
+                "parent_tree_index" or "tree_extend" or "color_tag" or "parts" or "blend_mode") &&
+                ActiveSetting(source, property.Key, property.Value))
                 Report($"MIObject '{source.Name}': setting '{property.Key}' has no native mapping.", warning);
         if (template != null)
         {
@@ -579,5 +580,16 @@ public static partial class MiObjectFeatureMapper
         JsonValueKind.Number => value.GetDouble() != 0,
         JsonValueKind.String => value.GetString() is not (null or "" or "null" or "none"),
         _ => true
+    };
+
+    private static bool ActiveSetting(MiTimeline source, string name, JsonElement value) => name switch
+    {
+        "glow_texture" => Active(value) &&
+            Active(PropertyValue(source.ExtraValues, "glow")),
+        "glint_scale" or "glint_speed" or "glint_strength" or "glint_tex" =>
+            Active(value) && Number(PropertyValue(source.ExtraValues, "glint_mode"), 0) != 0,
+        "alpha_mode" => Number(value, 2) != 2,
+        "object_tag" => !string.Equals(Text(value, ""), "Main", StringComparison.OrdinalIgnoreCase),
+        _ => Active(value)
     };
 }
