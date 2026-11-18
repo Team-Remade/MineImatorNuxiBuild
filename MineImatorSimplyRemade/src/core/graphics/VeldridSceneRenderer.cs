@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 using GlmSharp;
+using MineImatorSimplyRemade.core.diagnostics;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -17,13 +18,16 @@ namespace MineImatorSimplyRemade.core.graphics;
 /// Experimental native offscreen scene pass. OpenGL is used only to import textures
 /// and upload the completed image; the caller owns both devices and presentation.
 /// Call on the thread with the source/destination OpenGL context current.
-/// Lighting is intentionally limited to ambient, directional diffuse and emission.
-/// Shadows, fog, SSS, mipmaps and postprocessing are not implemented.
+/// Scene lighting includes ambient, directional, point and spot illumination, plus
+/// distance and height fog. Shadows, SSS, mipmaps and native postprocessing are
+/// not implemented.
 /// Alpha-mask opacity is supported, but independent text outline colors are not.
 /// Animated spritesheets share a renderer-local animation clock.
 /// </summary>
 public sealed class VeldridSceneRenderer : IDisposable
 {
+    private const int MaxPointLights = 16;
+
     private readonly GraphicsDevice _device;
     private readonly GL _gl;
     private readonly CommandList _commands;
@@ -52,6 +56,18 @@ public sealed class VeldridSceneRenderer : IDisposable
         public vec4 UvTransform, UvAnimationMirror;
         public vec4 PortalOptions, PortalCamera;
         public vec4 MultiplyHsv, AddRgb, AddHsv, SubtractRgb, SubtractHsv;
+        public vec4 SunLightColor, SunLightDirection, MoonLightColor, MoonLightDirection;
+        public vec4 FogColorDistance, FogFadeHeight, HeightFogColorSize, HeightFogOffsetOptions;
+        public vec4 CameraPositionPointLights;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PointLightUniform
+    {
+        public vec4 PositionRange;
+        public vec4 ColorEnergy;
+        public vec4 DirectionOuterCos;
+        public vec4 IndirectInnerSpecular;
     }
 
     public VeldridSceneRenderer(GraphicsDevice device, GL gl)
@@ -66,7 +82,8 @@ public sealed class VeldridSceneRenderer : IDisposable
             new ResourceLayoutElementDescription("AlphaTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
             new ResourceLayoutElementDescription("NormalTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
             new ResourceLayoutElementDescription("EmissionTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
-            new ResourceLayoutElementDescription("SurfaceSampler", ResourceKind.Sampler, ShaderStages.Fragment)));
+            new ResourceLayoutElementDescription("SurfaceSampler", ResourceKind.Sampler, ShaderStages.Fragment),
+            new ResourceLayoutElementDescription("PointLights", ResourceKind.StructuredBufferReadOnly, ShaderStages.Fragment)));
         const string uniforms = """
             layout(set = 0, binding = 0) uniform DrawData {
                 mat4 Mvp;
@@ -92,6 +109,15 @@ public sealed class VeldridSceneRenderer : IDisposable
                 vec4 AddHsv;
                 vec4 SubtractRgb;
                 vec4 SubtractHsv;
+                vec4 SunLightColor;
+                vec4 SunLightDirection;
+                vec4 MoonLightColor;
+                vec4 MoonLightDirection;
+                vec4 FogColorDistance;
+                vec4 FogFadeHeight;
+                vec4 HeightFogColorSize;
+                vec4 HeightFogOffsetOptions;
+                vec4 CameraPositionPointLights;
             };
             """;
         string wind = """
@@ -136,10 +162,23 @@ public sealed class VeldridSceneRenderer : IDisposable
             layout(set = 0, binding = 3) uniform texture2D NormalTexture;
             layout(set = 0, binding = 4) uniform texture2D EmissionTexture;
             layout(set = 0, binding = 5) uniform sampler SurfaceSampler;
+            struct PointLight {
+                vec4 PositionRange;
+                vec4 ColorEnergy;
+                vec4 DirectionOuterCos;
+                vec4 IndirectInnerSpecular;
+            };
+            layout(set = 0, binding = 6, std430) readonly buffer PointLightBuffer {
+                PointLight PointLights[];
+            };
             layout(location = 0) in vec3 vNormal;
             layout(location = 1) in vec2 vUv;
             layout(location = 2) in vec3 vWorldPosition;
             layout(location = 0) out vec4 Color;
+            vec3 safeDirection(vec3 direction, vec3 fallback) {
+                float lengthSquared = dot(direction, direction);
+                return lengthSquared > 0.00000001 ? direction * inversesqrt(lengthSquared) : fallback;
+            }
             vec3 mappedNormal(vec3 normal) {
                 if (MapOptions.x < 0.5) return normal;
                 vec3 dpdx = dFdx(vWorldPosition);
@@ -175,11 +214,62 @@ public sealed class VeldridSceneRenderer : IDisposable
                 if (alpha <= (MapOptions.z > 0.5 ? MapOptions.w : 0.0)) discard;
                 if (MapOptions.z > 0.5) alpha = 1.0;
                 if (!gl_FrontFacing) normal = -normal;
-                vec3 light = Ambient.rgb + LightColor.rgb * max(dot(normal, normalize(LightDirection.xyz)), 0.0);
+                vec3 light = Ambient.rgb + LightColor.rgb
+                    * max(dot(normal, safeDirection(LightDirection.xyz, normal)), 0.0);
+                light += SunLightColor.rgb
+                    * max(dot(normal, safeDirection(SunLightDirection.xyz, normal)), 0.0);
+                light += MoonLightColor.rgb
+                    * max(dot(normal, safeDirection(MoonLightDirection.xyz, normal)), 0.0);
+                int pointLightCount = int(CameraPositionPointLights.w + 0.5);
+                vec3 viewDirection = safeDirection(CameraPositionPointLights.xyz - vWorldPosition, normal);
+                vec3 pointSpecular = vec3(0.0);
+                for (int i = 0; i < pointLightCount; i++) {
+                    PointLight point = PointLights[i];
+                    vec3 toLight = point.PositionRange.xyz - vWorldPosition;
+                    float distanceToLight = length(toLight);
+                    float range = point.PositionRange.w;
+                    if (distanceToLight >= range) continue;
+                    vec3 lightDirection = toLight / max(distanceToLight, 0.0001);
+                    float attenuation = 1.0 - distanceToLight / max(range, 0.0001);
+                    attenuation *= attenuation;
+                    float spot = 1.0;
+                    if (point.DirectionOuterCos.w > 0.0) {
+                        vec3 spotDirection = safeDirection(point.DirectionOuterCos.xyz, -lightDirection);
+                        float cone = dot(-lightDirection, spotDirection);
+                        if (cone <= point.IndirectInnerSpecular.y) continue;
+                        if (cone < point.DirectionOuterCos.w) {
+                            float t = (cone - point.IndirectInnerSpecular.y) /
+                                max(point.DirectionOuterCos.w - point.IndirectInnerSpecular.y, 0.0001);
+                            spot = smoothstep(0.0, 1.0, t);
+                        }
+                    }
+                    float diffuse = max(dot(normal, lightDirection), 0.0);
+                    vec3 radiance = point.ColorEnergy.rgb * point.ColorEnergy.w * attenuation * spot;
+                    light += radiance * diffuse;
+                    vec3 halfVector = safeDirection(viewDirection + lightDirection, normal);
+                    float highlight = pow(max(dot(normal, halfVector), 0.0), 32.0)
+                        * clamp(point.IndirectInnerSpecular.z, 0.0, 1.0);
+                    pointSpecular += radiance * highlight;
+                }
                 vec3 emissionMask = MapOptions.y > 0.5
                     ? texture(sampler2D(EmissionTexture, SurfaceSampler), vUv).rgb : texel.rgb;
-                vec3 result = Options.x > 0.5 || PortalOptions.x > 0.5 ? base : base * light + Emission.rgb * emissionMask;
+                vec3 result = Options.x > 0.5 || PortalOptions.x > 0.5
+                    ? base : base * light + pointSpecular + Emission.rgb * emissionMask;
                 if (PortalOptions.x > 0.5 && Options.x < 0.5) result += Emission.rgb * emissionMask;
+                if (HeightFogOffsetOptions.w > 0.5) {
+                    float distancePixels = distance(vWorldPosition, CameraPositionPointLights.xyz) * 64.0;
+                    float distanceFog = smoothstep(
+                        max(FogColorDistance.w - FogFadeHeight.x, 0.0),
+                        max(FogColorDistance.w, 1.0), distancePixels);
+                    result = mix(result, FogColorDistance.rgb, distanceFog);
+                    if (HeightFogOffsetOptions.y > 0.5) {
+                        float worldHeightPixels = vWorldPosition.y * 64.0;
+                        float heightStart = FogFadeHeight.y + HeightFogOffsetOptions.x;
+                        float heightFog = 1.0 - smoothstep(
+                            heightStart, heightStart + max(HeightFogColorSize.w, 1.0), worldHeightPixels);
+                        result = mix(result, HeightFogColorSize.rgb, heightFog);
+                    }
+                }
                 if (Options.w > 0.5) result *= alpha;
                 Color = vec4(result, alpha);
             }
@@ -287,6 +377,20 @@ public sealed class VeldridSceneRenderer : IDisposable
             AddHsv = new vec4(mesh.ColorAdjustments.AddHsv, 0f),
             SubtractRgb = new vec4(mesh.ColorAdjustments.SubtractRgb, 0f),
             SubtractHsv = new vec4(mesh.ColorAdjustments.SubtractHsv, 0f),
+            SunLightColor = new vec4(Mesh.GlobalSunFillLightColor * Mesh.GlobalSunFillLightStrength, 0f),
+            SunLightDirection = new vec4(Mesh.GlobalSunFillLightDirection, 0f),
+            MoonLightColor = new vec4(Mesh.GlobalMoonFillLightColor * Mesh.GlobalMoonFillLightStrength, 0f),
+            MoonLightDirection = new vec4(Mesh.GlobalMoonFillLightDirection, 0f),
+            FogColorDistance = new vec4(Mesh.FogColor, Mesh.FogDistance),
+            FogFadeHeight = new vec4(Mesh.FogFadeSize, Mesh.FogHeight, 0f, 0f),
+            HeightFogColorSize = new vec4(Mesh.HeightFogColor, Mesh.HeightFogSize),
+            HeightFogOffsetOptions = new vec4(
+                Mesh.HeightFogOffset,
+                Mesh.HeightFogEnabled ? 1f : 0f,
+                0f,
+                Mesh.FogEnabled && mesh.IncludeInFog ? 1f : 0f),
+            CameraPositionPointLights = new vec4(_cameraPosition,
+                forceUnshaded || mesh.Unlit ? 0 : Math.Min(Mesh.PointLights.Count, MaxPointLights)),
             Emission = new vec4(mesh.EmissionEnabled && !mesh.EmissionIndirectOnly
                 ? mesh.EmissionColor * Math.Max(mesh.EmissionEnergy, 0f) : vec3.Zero, 0),
             Ambient = new vec4(Mesh.GlobalAmbientColor * Mesh.GlobalAmbientStrength, 0),
@@ -308,10 +412,30 @@ public sealed class VeldridSceneRenderer : IDisposable
             (uint)Marshal.SizeOf<DrawUniforms>(), BufferUsage.UniformBuffer));
         _frameResources.Add(uniform);
         _device.UpdateBuffer(uniform, 0, ref data);
+        var pointLights = new PointLightUniform[Math.Max(1, Math.Min(Mesh.PointLights.Count, MaxPointLights))];
+        for (int i = 0; i < pointLights.Length && i < Mesh.PointLights.Count; i++)
+        {
+            var light = Mesh.PointLights[i];
+            pointLights[i] = new PointLightUniform
+            {
+                PositionRange = new vec4(light.pos, light.range),
+                ColorEnergy = new vec4(light.color, light.energy),
+                DirectionOuterCos = new vec4(light.direction, light.spotCosOuterAngle),
+                IndirectInnerSpecular = new vec4(light.indirectEnergy, light.spotCosInnerAngle, light.specular, 0f)
+            };
+        }
+        var pointLightBuffer = _device.ResourceFactory.CreateBuffer(new BufferDescription(
+            (uint)(pointLights.Length * Marshal.SizeOf<PointLightUniform>()),
+            BufferUsage.StructuredBufferReadOnly | BufferUsage.Dynamic,
+            (uint)Marshal.SizeOf<PointLightUniform>()));
+        _frameResources.Add(pointLightBuffer);
+        _device.UpdateBuffer(pointLightBuffer, 0, pointLights);
         var set = _device.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
             _layout, uniform, texture.TextureView, mask.TextureView, normalTexture.TextureView,
-            emissionTexture.TextureView, mesh.BlurTexture ? _linearSampler : _pointSampler));
+            emissionTexture.TextureView, mesh.BlurTexture ? _linearSampler : _pointSampler, pointLightBuffer));
         _frameResources.Add(set);
+        FrameProfiler.Shared.Count(ProfileCounter.PointLightsUploaded,
+            forceUnshaded || mesh.Unlit ? 0 : Math.Min(Mesh.PointLights.Count, MaxPointLights));
         FaceCullMode cull = mesh.DoubleSided ? FaceCullMode.None : mesh.CullFrontFaces ? FaceCullMode.Front : FaceCullMode.Back;
         bool alphaClip = mesh.AlphaMode == MaterialAlphaMode.Clip;
         var key = (_wireframe, mesh.DepthTestDisabled, mesh.DepthWriteDisabled, cull, alphaClip,

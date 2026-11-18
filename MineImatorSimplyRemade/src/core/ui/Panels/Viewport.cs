@@ -2789,7 +2789,7 @@ public partial class Viewport : UiPanel
         {
             UiText.Disabled($"Experimental {VeldridContext.GraphicsDevice!.BackendType} scene | OpenGL UI and editor overlays");
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Basic scene shading only. Advanced lighting/effects, camera previews and exports still use the OpenGL renderer. GPU readback is used to display this viewport.");
+                ImGui.SetTooltip("Directional, point and spot lighting plus fog use Veldrid. Shadows, advanced lighting/effects, camera previews and exports still use OpenGL. GPU readback displays this viewport.");
         }
 
         var size = ImGui.GetContentRegionAvail();
@@ -3548,24 +3548,42 @@ public partial class Viewport : UiPanel
         CollectRenderPairs(SceneObjects, camera.Position, renderMode, frustum,
             _cachedRenderItems, _cachedRenderItemsNoAo, _cachedOverlays);
         _cachedRenderItems.AddRange(_cachedRenderItemsNoAo);
+        _cachedAllPointLights.Clear();
+        if (renderMode == SceneRenderMode.Rendered)
+            CollectPointLights(SceneObjects, renderMode, new Dictionary<LightSceneObject, int>(),
+                screenSpaceIndirectFallback: false, _cachedAllPointLights);
 
         renderer.BeginFrame(width, height, view, projection,
             PropertiesPanel?.TransparentBackground == true ? Vector4.Zero :
                 new Vector4(background[0], background[1], background[2], background[3]), wireframe);
         if (_groundPlane != null && GroundPlaneVisible)
+        {
+            SelectPointLightsForMesh(vec3.Zero, _cachedAllPointLights);
             renderer.Draw(_groundPlane, _groundPlaneModel, forceUnshaded);
+        }
         foreach (var item in _cachedRenderItems.OrderBy(item =>
                      item.mesh.GetRenderSortKey(item.model, camera.Position, item.sortDepth, 0)))
         {
             bool previousBlur = item.mesh.BlurTexture;
+            bool previousIncludeFog = item.mesh.IncludeInFog;
             item.mesh.BlurTexture = item.blurTexture;
+            item.mesh.IncludeInFog = item.includeFog;
+            SelectPointLightsForMesh(new vec3(item.model.m30, item.model.m31, item.model.m32),
+                _cachedAllPointLights);
             try { renderer.Draw(item.mesh, item.model, forceUnshaded); }
-            finally { item.mesh.BlurTexture = previousBlur; }
+            finally
+            {
+                item.mesh.BlurTexture = previousBlur;
+                item.mesh.IncludeInFog = previousIncludeFog;
+            }
             FrameProfiler.Shared.Count(ProfileCounter.MeshesSubmitted);
         }
         if (OverlaysEnabled)
             foreach (var (model, mesh) in _cachedOverlays)
+            {
+                SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), _cachedAllPointLights);
                 renderer.Draw(mesh, model, true);
+            }
         renderer.EndFrame(_colorTex);
         ResolveSceneAlpha(_fbo, _glowFbo, _glowTex, width, height);
 
