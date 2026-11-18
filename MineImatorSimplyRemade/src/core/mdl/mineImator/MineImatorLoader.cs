@@ -1318,6 +1318,8 @@ public class MineImatorLoader
         {
             if (timeline.Shadows.HasValue)
                 obj.CastShadow = timeline.Shadows.Value;
+            if (timeline.DepthIgnore.HasValue)
+                obj.IgnoreDepth = timeline.DepthIgnore.Value;
             if (timeline.Ssao.HasValue)
                 obj.IncludeInAmbientOcclusion = timeline.Ssao.Value;
             if (timeline.Fog.HasValue)
@@ -4026,6 +4028,7 @@ public class MiTimeline
     [JsonPropertyName("texture_blur")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? TextureBlur { get; set; }
     [JsonPropertyName("texture_filtering")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? TextureFiltering { get; set; }
     [JsonPropertyName("shadows")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Shadows { get; set; }
+    [JsonPropertyName("depth_ignore")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? DepthIgnore { get; set; }
     [JsonPropertyName("ssao")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Ssao { get; set; }
     [JsonPropertyName("fog")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Fog { get; set; }
     [JsonPropertyName("hq_hiding")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? HqHiding { get; set; }

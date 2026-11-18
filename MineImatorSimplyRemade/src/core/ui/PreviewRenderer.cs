@@ -275,7 +275,7 @@ public class PreviewRenderer : IDisposable
                 foreach (var draw in draws.OrderBy(draw =>
                              draw.mesh.GetRenderSortKey(draw.model, Mesh.GlobalCameraPosition, draw.depth, 0)))
                 {
-                    _gl.DepthMask(!draw.mesh.RequiresTranslucentPass);
+                    _gl.DepthMask(!draw.mesh.RequiresTranslucentPass && !draw.mesh.DepthWriteDisabled);
                     Mesh.ApplyBlendMode(_gl, draw.mesh.BlendMode);
                     draw.mesh.Render(draw.model, view, proj, useSceneLighting: !isolatedLighting);
                 }
@@ -309,6 +309,7 @@ public class PreviewRenderer : IDisposable
         foreach (var mesh in obj.Visuals)
         {
             if (mesh.PickOnly) continue;
+            mesh.DepthWriteDisabled = obj.IgnoreDepth;
             draws.Add((mesh, previewTransform * delta * obj.GetWorldMatrix(), mesh.SortDepth + obj.RenderDepthOffset));
         }
 

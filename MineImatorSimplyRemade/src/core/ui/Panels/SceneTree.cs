@@ -1195,6 +1195,7 @@ public class SceneTree : UiPanel
         dup.LockBend            = original.LockBend;
         dup.LockToBentHalf      = original is MiBoneSceneObject ? original.LockBend > 0f : original.LockToBentHalf;
         dup.CastShadow          = original.CastShadow;
+        dup.IgnoreDepth         = original.IgnoreDepth;
         dup.BlurTexture         = original.BlurTexture;
         dup.TextureMipmaps      = original.TextureMipmaps;
         dup.IncludeInAmbientOcclusion = original.IncludeInAmbientOcclusion;

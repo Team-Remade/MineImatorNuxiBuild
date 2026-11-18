@@ -1117,6 +1117,7 @@ public partial class PropertiesPanel : UiPanel
             ObjectVisible = source.ObjectVisible,
             IsHidden = source.IsHidden,
             CastShadow = source.CastShadow,
+            IgnoreDepth = source.IgnoreDepth,
             InvertFaces = source.InvertFaces,
             BlurTexture = source.BlurTexture,
             TextureMipmaps = source.TextureMipmaps,
@@ -6002,6 +6003,15 @@ public partial class PropertiesPanel : UiPanel
                 RegisterObjectPropertyContext("cast_shadow", obj => obj.CastShadow,
                     (obj, value) => obj.CastShadow = value, includeDescendants: true);
             }
+
+            bool ignoreDepth = _currentObject.IgnoreDepth;
+            if (ImGui.Checkbox(Localization.Label("text.panel.properties.ignore_depth", "Ignore Depth"), ref ignoreDepth))
+            {
+                ApplyToSelectedSubtrees(obj => obj.IgnoreDepth = ignoreDepth);
+                ProjectManager.Instance.SetDirty(true);
+            }
+            RegisterObjectPropertyContext("ignore_depth", obj => obj.IgnoreDepth,
+                (obj, value) => obj.IgnoreDepth = value, includeDescendants: true);
 
             bool invertFaces = _currentObject.InvertFaces;
             if (ImGui.Checkbox(Localization.Label("text.panel.properties.invert_render_backfaces", "Invert (Render Backfaces)"), ref invertFaces))

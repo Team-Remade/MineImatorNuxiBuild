@@ -385,6 +385,7 @@ public static class ProjectSceneSerializer
             ObjectVisible = obj.ObjectVisible,
             IsHidden = obj.IsHidden,
             CastShadow = obj.CastShadow,
+            IgnoreDepth = obj.IgnoreDepth,
             InvertFaces = obj.InvertFaces,
             BlurTexture = obj.BlurTexture,
             TextureMipmaps = obj.TextureMipmaps,
@@ -1013,6 +1014,7 @@ public static class ProjectSceneSerializer
         obj.ObjectVisible = entry.ObjectVisible;
         obj.IsHidden = entry.IsHidden;
         obj.CastShadow = entry.CastShadow;
+        obj.IgnoreDepth = entry.IgnoreDepth;
         obj.InvertFaces = entry.InvertFaces;
         obj.BlurTexture = entry.BlurTexture;
         obj.TextureMipmaps = entry.TextureMipmaps;

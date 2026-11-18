@@ -239,6 +239,7 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.ObjectVisible);
         hash.Add(obj.IsHidden);
         hash.Add(obj.CastShadow);
+        hash.Add(obj.IgnoreDepth);
         hash.Add(obj.InvertFaces);
         hash.Add(obj.BlurTexture);
         hash.Add(obj.TextureMipmaps);

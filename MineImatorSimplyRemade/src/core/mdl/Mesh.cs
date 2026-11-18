@@ -229,6 +229,12 @@ public class Mesh : IDisposable
     public bool DepthTestDisabled = false;
 
     /// <summary>
+    /// Keeps depth testing enabled while preventing this mesh from affecting
+    /// depth-dependent rendering passes.
+    /// </summary>
+    public bool DepthWriteDisabled = false;
+
+    /// <summary>
     /// When true, this mesh is genuinely alpha-*blended* (e.g. water, whose texture
     /// is a uniform ~70% opacity) rather than merely alpha-*cutout* (e.g. leaves,
     /// glass panes — pixels are either fully opaque or fully transparent). The
@@ -241,11 +247,11 @@ public class Mesh : IDisposable
 
     internal bool RequiresTranslucentPass => IsTranslucent && AlphaMode != MaterialAlphaMode.Clip;
 
-    internal (bool translucent, float depth, float distance, int index) GetRenderSortKey(
+    internal (bool ignoresDepth, bool translucent, float depth, float distance, int index) GetRenderSortKey(
         mat4 model, vec3 cameraPosition, float depth, int index)
     {
         vec3 center = (model * new vec4(BoundingSphereCenter, 1f)).xyz;
-        return (RequiresTranslucentPass, depth,
+        return (DepthWriteDisabled, RequiresTranslucentPass, depth,
             RequiresTranslucentPass ? -(center - cameraPosition).LengthSqr : 0f, index);
     }
 
@@ -927,6 +933,7 @@ public class Mesh : IDisposable
         clone.BaseMixColor        = BaseMixColor;
         clone.Unlit                = Unlit;
         clone.DepthTestDisabled    = DepthTestDisabled;
+        clone.DepthWriteDisabled   = DepthWriteDisabled;
         clone.IsTranslucent        = IsTranslucent;
         clone.SortDepth            = SortDepth;
         clone.PickOnly             = PickOnly;
@@ -1626,6 +1633,10 @@ public class Mesh : IDisposable
             _gl.Disable(GLEnum.DepthTest);
             _gl.DepthMask(false);
         }
+        else if (DepthWriteDisabled)
+        {
+            _gl.DepthMask(false);
+        }
 
         _gl.BindVertexArray(_vao);
 
@@ -1641,6 +1652,10 @@ public class Mesh : IDisposable
         {
             _gl.Enable(GLEnum.DepthTest);
             _gl.DepthFunc(GLEnum.Less);
+            _gl.DepthMask(true);
+        }
+        else if (DepthWriteDisabled)
+        {
             _gl.DepthMask(true);
         }
 
@@ -1730,6 +1745,7 @@ public class Mesh : IDisposable
         hash.Add(_shadowGeometryVersion);
         hash.Add(PickOnly);
         hash.Add(DepthTestDisabled);
+        hash.Add(DepthWriteDisabled);
         hash.Add(Vertices.Count);
         hash.Add(TexCoords.Count);
         hash.Add(Indices?.Length ?? 0);

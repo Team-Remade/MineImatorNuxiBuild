@@ -173,7 +173,7 @@ resources are reported in the import diagnostics. In particular:
   controls are not mapped.
 - Chromatic aberration imports radial channel scaling, not the source's spectral
   blur or nonlinear channel distortion.
-- Depth-ignore, unsupported scenery repeat/texture overrides and unsupported
+- Unsupported scenery repeat/texture overrides and unsupported
   particle regions are reported rather than silently simulated.
 - Background biome/resource selection, image probes and other unmapped
   environment channels require manual adjustment.

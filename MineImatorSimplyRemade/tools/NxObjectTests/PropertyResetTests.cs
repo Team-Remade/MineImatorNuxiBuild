@@ -1,7 +1,9 @@
 using System.Reflection;
 using System.Numerics;
+using System.Text.Json;
 using GlmSharp;
 using Hexa.NET.ImGui;
+using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
@@ -385,6 +387,22 @@ internal static partial class Program
             Reset(FindControl("object:include_fog", 45));
             Check(obj.IncludeInFog && second.IncludeInFog && child.IncludeInFog,
                 "Appearance reset preserves the checkbox's subtree-editing behavior");
+
+            obj.IgnoreDepth = true;
+            var depthSnapshot = ProjectSceneSerializer.SerializeObjectForLibrary(obj);
+            Check(depthSnapshot.IgnoreDepth, "Ignore depth is serialized");
+            var depthRoundtrip = JsonSerializer.Deserialize(
+                JsonSerializer.Serialize(depthSnapshot, AppJsonContext.Default.ProjectSceneObjectEntry),
+                AppJsonContext.Default.ProjectSceneObjectEntry)!;
+            obj.IgnoreDepth = false;
+            typeof(ProjectSceneSerializer).GetMethod("ApplyEntryToObject", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, [obj, depthRoundtrip, null]);
+            Check(obj.IgnoreDepth, "Ignore depth survives project serialization");
+            Reset(FindControl("object:ignore_depth", 45));
+            Check(!obj.IgnoreDepth, "Ignore depth resets to the object default");
+            var miTimeline = JsonSerializer.Deserialize(
+                """{"depth_ignore":true}""", AppJsonContext.Default.MiTimeline)!;
+            Check(miTimeline.DepthIgnore == true, "Mine-imator depth_ignore is imported");
 
             mode = "group";
             obj.SetLocalScale(new vec3(2, 3, 4));

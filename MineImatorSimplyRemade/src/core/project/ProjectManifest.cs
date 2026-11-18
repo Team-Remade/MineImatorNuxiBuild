@@ -487,6 +487,7 @@ public class ProjectSceneObjectEntry
     public bool ObjectVisible { get; set; } = true;
     public bool IsHidden { get; set; } = false;
     public bool CastShadow { get; set; } = true;
+    public bool IgnoreDepth { get; set; } = false;
     public bool InvertFaces { get; set; } = false;
     public bool BlurTexture { get; set; } = false;
     public bool TextureMipmaps { get; set; } = false;

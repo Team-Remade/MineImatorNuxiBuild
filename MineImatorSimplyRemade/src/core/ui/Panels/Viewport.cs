@@ -3911,7 +3911,8 @@ public partial class Viewport : UiPanel
             if (!obj.GetEffectiveVisibility() || !ShouldRenderInQuality(obj, renderMode))
                 continue;
 
-            if (IsObjectVisible(obj) && obj.CastShadow && obj.Visuals.Any(m => !m.PickOnly && !m.DepthTestDisabled && m.Vertices.Count != 0))
+            if (IsObjectVisible(obj) && obj.CastShadow && obj.Visuals.Any(m => !m.PickOnly &&
+                    !m.DepthTestDisabled && !m.DepthWriteDisabled && m.Vertices.Count != 0))
                 return true;
 
             if (HasAnyShadowCasters(obj.Children, renderMode))
@@ -4099,6 +4100,7 @@ public partial class Viewport : UiPanel
             hash.Add(obj.IsHiddenForRendering());
             hash.Add(obj.InheritVisibility);
             hash.Add(obj.CastShadow);
+            hash.Add(obj.IgnoreDepth);
             hash.Add(obj.AffectedByWind);
             hash.Add(obj.TerrainAffectedByWind);
             hash.Add(obj.RenderInHighQuality);
@@ -4257,10 +4259,11 @@ public partial class Viewport : UiPanel
             // Respect the per-object "Cast Shadow" toggle: objects with it
             // disabled still render normally but are skipped from the
             // directional (sun) shadow-map pass.
-            if (IsObjectVisible(obj) && obj.CastShadow)
+            if (IsObjectVisible(obj) && obj.CastShadow && !obj.IgnoreDepth)
             {
                 foreach (mat4 model in GetModifiedWorldMatrices(obj, sourceModel))
-                    foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly && !mesh.DepthTestDisabled))
+                    foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly &&
+                                 !mesh.DepthTestDisabled && !mesh.DepthWriteDisabled))
                     {
                         mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
 
@@ -4295,12 +4298,13 @@ public partial class Viewport : UiPanel
             if (!ShouldRenderInQuality(obj, renderMode))
                 continue;
 
-            if (IsObjectVisible(obj) && obj.CastShadow)
+            if (IsObjectVisible(obj) && obj.CastShadow && !obj.IgnoreDepth)
             {
                 foreach (mat4 world in GetModifiedWorldMatrices(obj, obj.GetWorldMatrix()))
                 {
                     bool includedMeshVertex = false;
-                    foreach (var mesh in obj.Visuals.Where(m => !m.PickOnly && !m.DepthTestDisabled && m.Vertices.Count != 0))
+                    foreach (var mesh in obj.Visuals.Where(m => !m.PickOnly &&
+                                 !m.DepthTestDisabled && !m.DepthWriteDisabled && m.Vertices.Count != 0))
                     {
                         includedMeshVertex = true;
                         // Use the local bounding sphere to compute world-space extents,
@@ -4344,10 +4348,11 @@ public partial class Viewport : UiPanel
             // ever read by the (now identical) directional-shadow pass'
             // stub, so it was silently ignored everywhere and every visible
             // mesh always cast point/spot shadows regardless of the setting.
-            if (IsObjectVisible(obj) && obj.CastShadow)
+            if (IsObjectVisible(obj) && obj.CastShadow && !obj.IgnoreDepth)
             {
                 foreach (mat4 model in GetModifiedWorldMatrices(obj, sourceModel))
-                    foreach (var mesh in obj.Visuals.Where(mesh => mesh is { PickOnly: false, DepthTestDisabled: false }))
+                    foreach (var mesh in obj.Visuals.Where(mesh =>
+                                 mesh is { PickOnly: false, DepthTestDisabled: false, DepthWriteDisabled: false }))
                     {
                         mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
 
@@ -5183,7 +5188,7 @@ public partial class Viewport : UiPanel
     private readonly List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> _cachedRenderItems = new();
     private readonly List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> _cachedRenderItemsNoAo = new();
     private readonly List<(mat4 model, Mesh mesh)> _cachedOverlays = new();
-    private readonly List<(bool translucent, float depth, float distance, int index)> _renderOrder = new();
+    private readonly List<(bool ignoresDepth, bool translucent, float depth, float distance, int index)> _renderOrder = new();
     private readonly HashSet<uint> _preparedMipmaps = new();
     private readonly Dictionary<vec3, int> _pointLightSelections = new();
     private readonly List<int> _pointLightSelectionIndices = new();
@@ -5638,10 +5643,10 @@ public partial class Viewport : UiPanel
         Gl.Disable(GLEnum.Blend, 1);
         Gl.Disable(GLEnum.Blend, 2);
         Gl.DepthMask(true);
-        foreach (var (_, _, _, index) in _renderOrder)
+        foreach (var (_, _, _, _, index) in _renderOrder)
         {
             var (model, mesh, _, includeFog, blurTexture, textureMipmaps) = renderItems[index];
-            Gl.DepthMask(!mesh.RequiresTranslucentPass);
+            Gl.DepthMask(!mesh.RequiresTranslucentPass && !mesh.DepthWriteDisabled);
             Gl.ColorMask(1, !mesh.RequiresTranslucentPass, !mesh.RequiresTranslucentPass,
                 !mesh.RequiresTranslucentPass, !mesh.RequiresTranslucentPass);
             Gl.ColorMask(2, !mesh.RequiresTranslucentPass, !mesh.RequiresTranslucentPass,
@@ -5731,6 +5736,7 @@ public partial class Viewport : UiPanel
                 // Only this node's own Visuals — not its descendants.
                 foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly))
                 {
+                    mesh.DepthWriteDisabled = obj.IgnoreDepth;
                     mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
 
                     // Frustum culling: test mesh bounding sphere against the view frustum.
@@ -5760,7 +5766,9 @@ public partial class Viewport : UiPanel
                         continue;
                     }
 
-                    var targetList = obj.IncludeInAmbientOcclusion ? renderItems : renderItemsNoAo;
+                    var targetList = obj.IncludeInAmbientOcclusion && !obj.IgnoreDepth
+                        ? renderItems
+                        : renderItemsNoAo;
                     targetList.Add((
                         model,
                         mesh,

@@ -357,7 +357,10 @@ public class SceneObject
     public void AddMesh(Mesh mesh)
     {
         if (mesh != null && !Visuals.Contains(mesh))
+        {
             Visuals.Add(mesh);
+            mesh.DepthWriteDisabled = IgnoreDepth;
+        }
     }
 
     /// <summary>Detaches a mesh from this object's visual list.</summary>
@@ -636,6 +639,23 @@ public class SceneObject
     /// </summary>
     public void ApplyCastShadow()
     {
+    }
+
+    private bool _ignoreDepth;
+
+    /// <summary>
+    /// Keeps normal depth occlusion enabled but excludes this object's meshes
+    /// from depth-dependent passes by preventing depth writes.
+    /// </summary>
+    public bool IgnoreDepth
+    {
+        get => _ignoreDepth;
+        set
+        {
+            _ignoreDepth = value;
+            foreach (var mesh in Visuals)
+                mesh.DepthWriteDisabled = value;
+        }
     }
 
     // ── Per-object render toggles ──────────────────────────────────────────
