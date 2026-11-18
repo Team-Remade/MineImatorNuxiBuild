@@ -4731,8 +4731,7 @@ public partial class Viewport : UiPanel
         }
         else
         {
-            sm.ClearSelection();
-            if (hit != null) sm.SelectObject(hit);
+            sm.SelectOnly(hit);
         }
     }
 

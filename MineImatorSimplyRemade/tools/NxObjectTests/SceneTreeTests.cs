@@ -49,6 +49,40 @@ internal static partial class Program
         Check(scene.All(obj => obj.Parent == null), "Reordering does not introduce parents");
     }
 
+    private static void SelectionReplacement(Fixture f)
+    {
+        var inherited = TreeObject("Inherited");
+        inherited.InheritSelect = true;
+        var root = TreeObject("Root", inherited);
+        var other = TreeObject("Other");
+        var selection = SelectionManager.Instance;
+        selection.ClearSelection();
+        int changes = 0;
+        Action changed = () => changes++;
+        selection.SelectionChanged += changed;
+        try
+        {
+            selection.SelectOnly(root);
+            Check(selection.SelectedObjects.SequenceEqual([root, inherited]),
+                "Replacement preserves inherited descendant selection");
+            Check(root.IsSelected && inherited.IsSelected && changes == 1,
+                "Replacement updates selection once");
+
+            selection.SelectOnly(root);
+            Check(changes == 1, "Reselecting the same target is a no-op");
+
+            selection.SelectOnly(other);
+            Check(selection.SelectedObjects.SequenceEqual([other]) &&
+                  !root.IsSelected && !inherited.IsSelected && other.IsSelected && changes == 2,
+                "Replacement atomically moves selection");
+        }
+        finally
+        {
+            selection.SelectionChanged -= changed;
+            selection.ClearSelection();
+        }
+    }
+
     private static void SceneTreeParenting(Fixture f)
     {
         var a = TreeObject("A");

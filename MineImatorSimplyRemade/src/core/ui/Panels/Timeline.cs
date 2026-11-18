@@ -401,7 +401,7 @@ public partial class Timeline : UiPanel
     {
         Instance = this;
         if (SelectionManager.Instance != null)
-            SelectionManager.Instance.SelectionChanged += RefreshFromScene;
+            SelectionManager.Instance.SelectionChanged += RefreshSelectionRows;
         TimelineIcons.Initialize(Gl);
     }
 
@@ -4640,6 +4640,17 @@ public partial class Timeline : UiPanel
         RebuildDisplayRows();
     }
 
+    private void RefreshSelectionRows()
+    {
+        FinishKeyframeRetiming(commit: false);
+        _selectedKeyframes.Clear();
+        _keyframeOwners.Clear();
+        var selected = SelectionManager.Instance?.SelectedObjects;
+        if (selected != null)
+            LoadKeyframesForAllObjects(selected);
+        RebuildDisplayRows();
+    }
+
     /// <summary>
     /// Rebuilds _displayRows to only include properties that have keyframes.
     /// Called whenever selection changes or keyframes are added/removed.
@@ -4648,6 +4659,26 @@ public partial class Timeline : UiPanel
     {
         var selectedObjects = SelectionManager.Instance?.SelectedObjects ?? new List<SceneObject>();
         var newRows = new List<TimelineProperty>();
+        var selectedIds = selectedObjects
+            .Select(obj => obj.ObjectId)
+            .Where(id => !string.IsNullOrEmpty(id))
+            .ToHashSet(StringComparer.Ordinal);
+        var pathsByObjectId = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        foreach (var (key, keyframes) in _propertyKeyframes)
+        {
+            if (keyframes.Count == 0) continue;
+            int dotIdx = key.IndexOf('.');
+            if (dotIdx < 0) continue;
+            string objectId = key[..dotIdx];
+            if (!selectedIds.Contains(objectId)) continue;
+            if (!pathsByObjectId.TryGetValue(objectId, out var paths))
+            {
+                paths = new HashSet<string>(StringComparer.Ordinal);
+                pathsByObjectId.Add(objectId, paths);
+            }
+            paths.Add(key[(dotIdx + 1)..]);
+        }
 
         foreach (var obj in selectedObjects)
         {
@@ -4655,17 +4686,10 @@ public partial class Timeline : UiPanel
             newRows.Add(new TimelineProperty { Object = obj, Label = $"── {obj.Name} ──", PropertyPath = "__header__" });
 
             // Collect properties that have keyframes
-            var propsWithKeyframes = new HashSet<string>();
-            foreach (var kvp in _propertyKeyframes)
-            {
-                if (kvp.Value.Count == 0) continue;
-                int dotIdx = kvp.Key.IndexOf('.');
-                if (dotIdx < 0) continue;
-                string objectId = kvp.Key[..dotIdx];
-                if (objectId != obj.ObjectId) continue;
-                string propPath = kvp.Key[(dotIdx + 1)..];
-                propsWithKeyframes.Add(propPath);
-            }
+            var propsWithKeyframes = !string.IsNullOrEmpty(obj.ObjectId) &&
+                                     pathsByObjectId.GetValueOrDefault(obj.ObjectId) is { } trackedPaths
+                ? trackedPaths
+                : new HashSet<string>(StringComparer.Ordinal);
 
             // Define all possible properties in order
             var standardProps = new[]

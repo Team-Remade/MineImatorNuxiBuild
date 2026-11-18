@@ -641,8 +641,7 @@ public class SceneTree : UiPanel
         {
             if (SelectionManager.Instance != null && !SelectionManager.Instance.IsSelected(obj))
             {
-                SelectionManager.Instance.ClearSelection();
-                SelectionManager.Instance.SelectObject(obj);
+                SelectionManager.Instance.SelectOnly(obj);
             }
             _contextMenuTarget = obj;
             _openContextMenu   = true;
@@ -850,9 +849,7 @@ public class SceneTree : UiPanel
             }
             else
             {
-                SelectionManager.Instance.ClearSelection();
-                if (obj != null)
-                    SelectionManager.Instance.SelectObject(obj);
+                SelectionManager.Instance.SelectOnly(obj);
                 _lastClickedObject = obj;
             }
         }
@@ -869,9 +866,7 @@ public class SceneTree : UiPanel
     {
         if (SelectionManager.Instance != null)
         {
-            SelectionManager.Instance.ClearSelection();
-            if (obj != null)
-                SelectionManager.Instance.SelectObject(obj);
+            SelectionManager.Instance.SelectOnly(obj);
         }
         else
         {

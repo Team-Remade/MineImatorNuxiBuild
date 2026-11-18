@@ -482,6 +482,7 @@ internal static partial class Program
             ("MI import audio project assets, resource identity and reload", MiImportAudioProject),
             ("Audio mixer source trims, pitch, loop bounds, overlaps and export offsets", AudioMixTiming),
             ("Scene tree root and batch insertion ordering and no-ops", SceneTreeOrdering),
+            ("Selection replacement is atomic and avoids redundant notifications", SelectionReplacement),
             ("Scene tree child ordering, mixed parents and subtree preservation", SceneTreeParenting),
             ("Scene tree cyclic, stale, hidden and runtime target rejection is atomic", SceneTreeSafety),
             ("Scene tree move up/down blocks, boundaries and multiple parents", SceneTreeShift),

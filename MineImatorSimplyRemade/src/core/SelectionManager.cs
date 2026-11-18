@@ -151,6 +151,45 @@ public class SelectionManager
         SelectionChanged?.Invoke();
     }
 
+    /// <summary>
+    /// Replaces the current selection with <paramref name="obj"/> and emits one
+    /// selection change notification. A matching selection is a no-op.
+    /// </summary>
+    public void SelectOnly(SceneObject? obj)
+    {
+        var desired = new List<SceneObject>();
+        if (obj != null && obj.IsSelectable)
+            CollectInheritedSelection(obj, desired);
+
+        bool unchanged = SelectedObjects.Count == desired.Count;
+        if (unchanged)
+        {
+            for (int i = 0; i < desired.Count; i++)
+            {
+                if (!ReferenceEquals(SelectedObjects[i], desired[i]))
+                {
+                    unchanged = false;
+                    break;
+                }
+            }
+        }
+        if (unchanged) return;
+
+        var desiredSet = desired.ToHashSet();
+        foreach (var selected in SelectedObjects)
+            if (!desiredSet.Contains(selected))
+                selected.SetSelected(false);
+
+        foreach (var selected in desired)
+            if (!selected.IsSelected)
+                selected.SetSelected(true);
+
+        SelectedObjects.Clear();
+        SelectedObjects.AddRange(desired);
+        SyncGizmoSelection();
+        SelectionChanged?.Invoke();
+    }
+
     private bool AddInheritedSelection(SceneObject obj)
     {
         bool changed = false;
@@ -166,6 +205,15 @@ public class SelectionManager
                 changed |= AddInheritedSelection(child);
         }
         return changed;
+    }
+
+    private static void CollectInheritedSelection(SceneObject obj, List<SceneObject> destination)
+    {
+        if (obj.IsSelectable)
+            destination.Add(obj);
+        foreach (var child in obj.Children)
+            if (!obj.CombineChildren && child.InheritSelect)
+                CollectInheritedSelection(child, destination);
     }
 
     /// <summary>
