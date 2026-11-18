@@ -192,6 +192,7 @@ public static class MiObjectTemplateFactory
         else
             modelPath = Path.Combine(directory ?? "", modelRef ?? "");
         if (!File.Exists(modelPath)) return null;
+        modelPath = ArmorModelBuilder.PrepareImport(template, modelPath);
         var model = loader.LoadModel(modelPath);
         if (model == null) return null;
         var characterObject = loader.CreateCharacterFromModel(model);

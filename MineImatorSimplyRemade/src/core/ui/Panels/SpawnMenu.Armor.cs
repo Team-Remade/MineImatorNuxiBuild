@@ -19,6 +19,8 @@ public partial class SpawnMenu
     private SceneObject? _armorPreviewRoot;
     private MiModel? _armorPreviewModel;
     private string? _armorEditorError;
+    private string[] _armorTrimPatterns = [];
+    private string[] _armorTrimMaterials = [];
 
     private void OpenArmorEditor(CharacterEntry entry)
     {
@@ -28,6 +30,17 @@ public partial class SpawnMenu
             .Select(_ => new ArmorPieceSelection(variant, _customCharTexturePath)).ToArray();
         _armorEditorVisible = _armorEditorRequested = _armorPreviewDirty = true;
         _armorEditorError = null;
+        try
+        {
+            _armorTrimPatterns = new[] { "none" }.Concat(ArmorModelBuilder.TrimPatterns(entry)).ToArray();
+            _armorTrimMaterials = new[] { "none" }.Concat(ArmorModelBuilder.TrimMaterials(entry)).ToArray();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _armorTrimPatterns = _armorTrimMaterials = [];
+            _armorEditorError = ex.Message;
+            Console.Error.WriteLine($"Armor editor trims: {ex.Message}");
+        }
     }
 
     private unsafe void RenderArmorEditor()
@@ -38,7 +51,7 @@ public partial class SpawnMenu
             ImGui.OpenPopup(title);
             _armorEditorRequested = false;
         }
-        ImGui.SetNextWindowSize(new Vector2(700f, 450f) * UiTheme.Scale, ImGuiCond.Appearing);
+        ImGui.SetNextWindowSize(new Vector2(700f, 650f) * UiTheme.Scale, ImGuiCond.Appearing);
         if (!ImGui.BeginPopupModal(title, ref _armorEditorVisible)) return;
 
         float previewWidth = Math.Min(280f * UiTheme.Scale, ImGui.GetContentRegionAvail().X * 0.45f);
@@ -77,6 +90,21 @@ public partial class SpawnMenu
                     _armorPieceSelections[slot] = selection;
                     _armorPreviewDirty = true;
                 }
+                if (ArmorModelBuilder.IsLeather(_armorEditorEntry, selection))
+                {
+                    var color = new Vector3((selection.LeatherColor >> 16) & 255,
+                        (selection.LeatherColor >> 8) & 255, selection.LeatherColor & 255) / 255f;
+                    ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X * 0.55f);
+                    if (ImGui.ColorEdit3(Localization.T("text.panel.spawn.armor_leather_color"), ref color,
+                        ImGuiColorEditFlags.DisplayHex))
+                    {
+                        uint Channel(float value) => (uint)Math.Clamp((int)MathF.Round(value * 255f), 0, 255);
+                        selection = selection with { LeatherColor = Channel(color.X) << 16 |
+                            Channel(color.Y) << 8 | Channel(color.Z) };
+                        _armorPieceSelections[slot] = selection;
+                        _armorPreviewDirty = true;
+                    }
+                }
                 if (selection.VariantIndex >= 0 &&
                     _armorEditorEntry.TextureVariants[selection.VariantIndex].IsCustom)
                 {
@@ -92,8 +120,31 @@ public partial class SpawnMenu
                     UiText.Wrapped(string.IsNullOrEmpty(selection.CustomTexturePath)
                         ? Localization.T("text.panel.spawn.no_file_chosen") : Path.GetFileName(selection.CustomTexturePath));
                 }
+                ImGui.BeginDisabled(selection.VariantIndex < 0);
+                TrimCombo("text.panel.spawn.armor_trim_pattern", _armorTrimPatterns,
+                    selection.TrimPattern, value => selection = selection with { TrimPattern = value });
+                ImGui.BeginDisabled(selection.TrimPattern == "none");
+                TrimCombo("text.panel.spawn.armor_trim_material", _armorTrimMaterials,
+                    selection.TrimMaterial, value => selection = selection with { TrimMaterial = value });
+                ImGui.EndDisabled();
+                ImGui.EndDisabled();
                 ImGui.Spacing();
                 ImGui.PopID();
+
+                void TrimCombo(string label, string[] values, string value, Action<string> set)
+                {
+                    int selected = Array.IndexOf(values, value);
+                    string[] labels = values.Select(item => item == "none" ? Localization.T("text.common.none") :
+                        Localization.Label("text.panel.spawn.armor_trim_" + item,
+                            System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(item.Replace('_', ' ')))).ToArray();
+                    ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X * 0.55f);
+                    if (ImGui.Combo(Localization.T(label), ref selected, labels, labels.Length))
+                    {
+                        set(values[selected]);
+                        _armorPieceSelections[slot] = selection;
+                        _armorPreviewDirty = true;
+                    }
+                }
             }
         }
         if (_armorEditorError != null) UiText.Wrapped(_armorEditorError);

@@ -166,7 +166,7 @@ resources are reported in the import diagnostics. In particular:
 
 - Torus/icosphere geometry has no import mapping.
 - Builtin model states beyond the recognized rig selections, generated
-  banners/patterns, armor dyes/trims and resource-pack overrides are not fully
+  banners/patterns and resource-pack overrides are not fully
   reconstructed.
 - Packed SEUS/LabPBR material maps and LabPBR normals require channel conversion
   and are not applied as incompatible native maps; scalar materials are retained.

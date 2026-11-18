@@ -116,7 +116,10 @@ Coverage and prerequisites:
 - `--camera-spawn`: immediate camera position/rotation properties without cursor
   placement, with work-camera copying enabled and disabled; no GPU required.
 - `--armor`: adult/baby mixed armor variants, omitted pieces, custom textures,
-  rig preservation and persistent generated models. `--spawn-preview-graphics`
+  rig preservation, per-piece leather dye/undyed overlay pixels, trim palette
+  pixels (including darker matching materials) and persistent generated models.
+  `--mi-import` also covers imported armor piece materials, leather dyes and trims.
+  `--spawn-preview-graphics`
   also checks the armor editor's left-hand modal preview, exact pixel parity
   with original and spawned armor, and outfit reload with OpenGL 3.3 and the
   application's full asset data.

@@ -465,6 +465,7 @@ internal static partial class Program
             ("Library replacement library-only and scene undo/redo", LibraryReplacementHistory),
             ("Model part bundled catalogs, single-part exclusion and stable paths", ModelPartCatalogTests),
             ("Armor editor mixed variants, omissions, custom textures and persistent models", ArmorEditorModels),
+            ("MI import armor per-piece materials, omissions and trim palettes", MiImportArmor),
             ("MI import paths, points, references, sparse poses and repeated loads", MiImportPaths),
             ("MI import static current values and invalid path settings", MiImportStatic),
             ("MI import background colors, toggles, sparse keys, easing and persistence", MiImportBackground),

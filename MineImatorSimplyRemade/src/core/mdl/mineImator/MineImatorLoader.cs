@@ -179,6 +179,7 @@ public class MineImatorLoader
                     string modelPath = ResolveTemplateModelPath(template, resourceDict, miObject);
                     if (!string.IsNullOrWhiteSpace(modelPath) && File.Exists(modelPath))
                     {
+                        modelPath = ArmorModelBuilder.PrepareImport(template, modelPath);
                         var miModel = LoadModel(modelPath);
                         if (miModel != null)
                         {
@@ -3957,6 +3958,7 @@ public class MiTemplate
     [JsonPropertyName("type")] public string Type { get; set; }
     [JsonPropertyName("name")] public string Name { get; set; }
     [JsonPropertyName("model")] public JsonElement? ModelDefinition { get; set; }
+    [JsonPropertyName("armor")] public JsonElement? Armor { get; set; }
     [JsonIgnore]
     public string Model
     {

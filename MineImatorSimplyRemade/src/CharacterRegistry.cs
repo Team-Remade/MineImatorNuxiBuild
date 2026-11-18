@@ -273,7 +273,7 @@ public static class CharacterRegistry
     /// present) and returns the list of texture variants with absolute paths.
     /// Returns an empty array when no manifest exists or parsing fails.
     /// </summary>
-    private static IReadOnlyList<CharacterTextureVariant> LoadTextureVariants(string modelDir)
+    internal static IReadOnlyList<CharacterTextureVariant> LoadTextureVariants(string modelDir)
     {
         string manifestPath = Path.Combine(modelDir, "textures.nux");
         if (!File.Exists(manifestPath))

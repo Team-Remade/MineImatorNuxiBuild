@@ -213,13 +213,20 @@ public static partial class MiObjectFeatureMapper
         {
             foreach (var property in template.ExtraValues.Where(p => Active(p.Value)))
                 Report($"MIObject '{source.Name}': template setting '{property.Key}' has no native mapping.", warning);
+            bool armor = template.ModelDefinition is { ValueKind: JsonValueKind.Object } armorDefinition &&
+                Text(Property(armorDefinition, "name"), "") == "armor";
             if (template.ModelDefinition is { ValueKind: JsonValueKind.Object } definition &&
                 Property(definition, "state") is { ValueKind: JsonValueKind.Object } state)
                 foreach (var property in state.EnumerateObject())
                     if (!(property.Name == "age" && property.Value.ToString() is "baby" or "adult") &&
+                        !(armor && ArmorModelBuilder.Pieces.Contains(property.Name)) &&
                         !(property.Name == "variant" && Text(Property(definition, "name"), "") == "human" &&
                           property.Value.ToString() is "alex" or "steve"))
                         Report($"MIObject '{source.Name}': builtin model state '{property.Name}={property.Value}' has no native mapping.", warning);
+            NestedSettings(template.Armor, armor
+                ? ArmorModelBuilder.Pieces.SelectMany(piece => new[]
+                    { piece + "_trim_pattern", piece + "_trim_material", piece + "_dye" }).ToArray()
+                : [], "armor");
             NestedSettings(template.Shape, ["tex", "tex_normal", "tex_material", "tex_mapped", "tex_hoffset",
                 "tex_voffset", "tex_hrepeat", "tex_vrepeat", "tex_hmirror", "tex_vmirror", "closed", "invert",
                 "smooth", "detail", "face_camera"], "shape");
