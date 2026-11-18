@@ -253,6 +253,10 @@ public partial class SpawnMenu : UiPanel
     private bool _selectedPrimitiveSphereSmooth = true;
     private int _selectedPrimitiveSphereSegments = 32;
     private int _selectedPrimitiveSphereRings = 30;
+    private int _selectedPrimitiveIcosphereSubdivision = 0;
+    private float _selectedPrimitiveIcosphereMorph = 0f;
+    private float _selectedPrimitiveTorusMajorRadius = 1f;
+    private float _selectedPrimitiveTorusMinorRadius = 0.4f;
     private int _selectedPrimitiveRadialSegments = 32;
     private bool _selectedPrimitiveRadialSmooth = true;
     private bool _selectedPrimitiveRadialClosed = true;
@@ -298,7 +302,7 @@ public partial class SpawnMenu : UiPanel
             {
                 "Primitives", new List<string>
                 {
-                    "Empty", "Cube", "Sphere", "Cylinder", "Cone", "Plane", "Text Mesh", "Path"
+                    "Empty", "Cube", "Sphere", "Icosphere", "Torus", "Cylinder", "Cone", "Plane", "Text Mesh", "Path"
                 }
             },
             // Items renders its own custom UI in the objects/variants columns.
@@ -720,6 +724,8 @@ public partial class SpawnMenu : UiPanel
                             $"primitive:{GetFilteredObjects().ElementAtOrDefault(_selectedObjectIndex) ?? ""}:" +
                             $"{_selectedPrimitivePlaneOrientation}:{_selectedPrimitiveCubeMapped}:" +
                             $"{_selectedPrimitiveSphereSegments}:{_selectedPrimitiveSphereRings}:{_selectedPrimitiveSphereSmooth}:" +
+                            $"{_selectedPrimitiveIcosphereSubdivision}:{_selectedPrimitiveIcosphereMorph}:" +
+                            $"{_selectedPrimitiveTorusMajorRadius}:{_selectedPrimitiveTorusMinorRadius}:" +
                             $"{_selectedPrimitiveRadialSegments}:{_selectedPrimitiveRadialSmooth}:{_selectedPrimitiveRadialClosed}:{_selectedPrimitiveRadialMapped}:" +
                             $"{_selectedPrimitiveTextureId}:{_selectedPrimitiveTexturePath}",
             _ => _selectedObjectIndex < 0 ? "" :
@@ -870,6 +876,11 @@ public partial class SpawnMenu : UiPanel
                     "Cube" => new CubeMesh(Gl, _selectedPrimitiveCubeMapped),
                     "Sphere" => new SphereMesh(Gl, 0.5f, _selectedPrimitiveSphereSegments,
                         _selectedPrimitiveSphereRings, _selectedPrimitiveSphereSmooth),
+                    "Icosphere" => new IcosphereMesh(Gl, 0.5f, _selectedPrimitiveIcosphereSubdivision,
+                        _selectedPrimitiveSphereSmooth, _selectedPrimitiveIcosphereMorph),
+                    "Torus" => new TorusMesh(Gl, 0.5f, _selectedPrimitiveRadialSegments,
+                        _selectedPrimitiveRadialSmooth, _selectedPrimitiveTorusMajorRadius,
+                        _selectedPrimitiveTorusMinorRadius),
                     "Cylinder" => new CylinderMesh(Gl, _selectedPrimitiveRadialSegments,
                         _selectedPrimitiveRadialSmooth, _selectedPrimitiveRadialClosed, _selectedPrimitiveRadialMapped),
                     "Cone" => new ConeMesh(Gl, _selectedPrimitiveRadialSegments,
@@ -878,7 +889,8 @@ public partial class SpawnMenu : UiPanel
                     _ => throw new InvalidOperationException($"Unsupported primitive: {name}")
                 };
                 mesh.DoubleSided = name == "Plane";
-                if ((name is "Cube" or "Sphere" or "Cylinder" or "Cone" or "Plane") && _selectedPrimitiveTextureId != 0)
+                if ((name is "Cube" or "Sphere" or "Icosphere" or "Torus" or "Cylinder" or "Cone" or "Plane") &&
+                    _selectedPrimitiveTextureId != 0)
                 {
                     mesh.TextureId = _selectedPrimitiveTextureId;
                     if (mesh.GetSurfaceCount() > 0 && mesh.SurfaceGetMaterial(0) is StandardMaterial material)
@@ -1310,9 +1322,49 @@ public partial class SpawnMenu : UiPanel
                 ImGui.Spacing();
             }
 
+            bool isIcospherePrimitive = _selectedCategory == "Primitives" &&
+                _selectedObjectIndex >= 0 && _selectedObjectIndex < filteredObjects.Count &&
+                filteredObjects[_selectedObjectIndex] == "Icosphere";
+            if (isIcospherePrimitive)
+            {
+                UiText.Disabled("Icosphere Geometry");
+                bool changed = ImGui.DragInt(Localization.DisplayLabel("Subdivision##icosphereSubdivisionSpawn"),
+                    ref _selectedPrimitiveIcosphereSubdivision, 1f, 0, 5);
+                changed |= ImGui.DragFloat(Localization.DisplayLabel("Morph##icosphereMorphSpawn"),
+                    ref _selectedPrimitiveIcosphereMorph, 0.01f, -2f, 5f);
+                changed |= ImGui.Checkbox(Localization.Label("text.common.smooth_shading", "Smooth Shading##icosphereSmoothSpawn"),
+                    ref _selectedPrimitiveSphereSmooth);
+                _selectedPrimitiveIcosphereSubdivision = Math.Clamp(_selectedPrimitiveIcosphereSubdivision, 0, 5);
+                _selectedPrimitiveIcosphereMorph = Math.Clamp(_selectedPrimitiveIcosphereMorph, -2f, 5f);
+                if (changed) _previewKey = "";
+                ImGui.Spacing();
+            }
+
+            bool isTorusPrimitive = _selectedCategory == "Primitives" &&
+                _selectedObjectIndex >= 0 && _selectedObjectIndex < filteredObjects.Count &&
+                filteredObjects[_selectedObjectIndex] == "Torus";
+            if (isTorusPrimitive)
+            {
+                UiText.Disabled("Torus Geometry");
+                bool changed = ImGui.DragInt(Localization.DisplayLabel("Detail##torusDetailSpawn"),
+                    ref _selectedPrimitiveRadialSegments, 1f, 3, 256);
+                changed |= ImGui.Checkbox(Localization.Label("text.common.smooth_shading", "Smooth Shading##torusSmoothSpawn"),
+                    ref _selectedPrimitiveRadialSmooth);
+                changed |= ImGui.DragFloat(Localization.DisplayLabel("Major Radius##torusMajorSpawn"),
+                    ref _selectedPrimitiveTorusMajorRadius, 0.01f, 0f, 5f);
+                changed |= ImGui.DragFloat(Localization.DisplayLabel("Minor Radius##torusMinorSpawn"),
+                    ref _selectedPrimitiveTorusMinorRadius, 0.01f, 0f, 5f);
+                _selectedPrimitiveRadialSegments = Math.Clamp(_selectedPrimitiveRadialSegments, 3, 256);
+                _selectedPrimitiveTorusMajorRadius = Math.Clamp(_selectedPrimitiveTorusMajorRadius, 0f, 5f);
+                _selectedPrimitiveTorusMinorRadius = Math.Clamp(_selectedPrimitiveTorusMinorRadius, 0f, 5f);
+                if (changed) _previewKey = "";
+                ImGui.Spacing();
+            }
+
             bool isPrimitiveWithTexture = _selectedCategory == "Primitives" &&
                 _selectedObjectIndex >= 0 && _selectedObjectIndex < filteredObjects.Count &&
-                (filteredObjects[_selectedObjectIndex] is "Plane" or "Cube" or "Sphere" or "Cylinder" or "Cone");
+                (filteredObjects[_selectedObjectIndex] is "Plane" or "Cube" or "Sphere" or "Icosphere" or "Torus" or
+                    "Cylinder" or "Cone");
 
             if (isPrimitiveWithTexture)
             {
@@ -2512,7 +2564,8 @@ public partial class SpawnMenu : UiPanel
         }
 
         // Handle textured primitive selection: add texture option to variants
-        if (_selectedCategory == "Primitives" && (objectName is "Plane" or "Cube" or "Sphere" or "Cylinder" or "Cone"))
+        if (_selectedCategory == "Primitives" && (objectName is "Plane" or "Cube" or "Sphere" or "Icosphere" or "Torus" or
+            "Cylinder" or "Cone"))
         {
             _currentVariants.Clear();
             _currentVariants.Add("None");
@@ -5884,9 +5937,14 @@ public partial class SpawnMenu : UiPanel
                     int radialSegments = _selectedPrimitiveRadialSegments;
                     bool radialSmooth = _selectedPrimitiveRadialSmooth, radialClosed = _selectedPrimitiveRadialClosed;
                     bool radialMapped = _selectedPrimitiveRadialMapped;
+                    int icosphereSubdivision = _selectedPrimitiveIcosphereSubdivision;
+                    float icosphereMorph = _selectedPrimitiveIcosphereMorph;
+                    float torusMajorRadius = _selectedPrimitiveTorusMajorRadius;
+                    float torusMinorRadius = _selectedPrimitiveTorusMinorRadius;
                     SpawnWithCursor(() => SpawnPrimitiveObject(objectName, fullName, 0, texturePath,
                         orientation, cubeMapped, sphereSmooth, sphereSegments, sphereRings,
-                        radialSegments, radialSmooth, radialClosed, radialMapped));
+                        radialSegments, radialSmooth, radialClosed, radialMapped,
+                        icosphereSubdivision, icosphereMorph, torusMajorRadius, torusMinorRadius));
                 }
                 else
                 {
@@ -6428,7 +6486,9 @@ public partial class SpawnMenu : UiPanel
                                              bool cubeMapped = false, bool sphereSmooth = true,
                                              int sphereSegments = 32, int sphereRings = 30,
                                              int radialSegments = 32, bool radialSmooth = true, bool radialClosed = true,
-                                             bool radialMapped = false)
+                                             bool radialMapped = false, int icosphereSubdivision = 0,
+                                             float icosphereMorph = 0f, float torusMajorRadius = 1f,
+                                             float torusMinorRadius = 0.4f)
     {
         if (Viewport == null) return null;
 
@@ -6446,6 +6506,10 @@ public partial class SpawnMenu : UiPanel
             PrimitiveSphereSmooth = sphereSmooth,
             PrimitiveSphereSegments = Math.Clamp(sphereSegments, 3, 256),
             PrimitiveSphereRings = Math.Clamp(sphereRings, 2, 254),
+            PrimitiveIcosphereSubdivision = Math.Clamp(icosphereSubdivision, 0, 5),
+            PrimitiveIcosphereMorph = Math.Clamp(icosphereMorph, -2f, 5f),
+            PrimitiveTorusMajorRadius = Math.Clamp(torusMajorRadius, 0f, 5f),
+            PrimitiveTorusMinorRadius = Math.Clamp(torusMinorRadius, 0f, 5f),
             PrimitiveRadialSegments = Math.Clamp(radialSegments, 3, 256),
             PrimitiveRadialSmooth = radialSmooth,
             PrimitiveRadialClosed = radialClosed,
@@ -6521,6 +6585,23 @@ public partial class SpawnMenu : UiPanel
             obj.AddMesh(mesh);
         }
 
+        if (primitiveType == "Icosphere" && Gl != null)
+        {
+            var mesh = new IcosphereMesh(Gl, 0.5f, obj.PrimitiveIcosphereSubdivision,
+                obj.PrimitiveSphereSmooth, obj.PrimitiveIcosphereMorph);
+            ApplyTexture(mesh);
+            obj.AddMesh(mesh);
+        }
+
+        if (primitiveType == "Torus" && Gl != null)
+        {
+            var mesh = new TorusMesh(Gl, 0.5f, obj.PrimitiveRadialSegments,
+                obj.PrimitiveRadialSmooth, obj.PrimitiveTorusMajorRadius,
+                obj.PrimitiveTorusMinorRadius);
+            ApplyTexture(mesh);
+            obj.AddMesh(mesh);
+        }
+
         if ((primitiveType is "Cylinder" or "Cone") && Gl != null)
         {
             Mesh mesh = primitiveType == "Cylinder"
@@ -6543,6 +6624,14 @@ public partial class SpawnMenu : UiPanel
 
         Viewport.SceneObjects.Add(obj);
         return obj;
+
+        void ApplyTexture(Mesh mesh)
+        {
+            if (textureId == 0) return;
+            mesh.TextureId = textureId;
+            if (mesh.GetSurfaceCount() > 0 && mesh.SurfaceGetMaterial(0) is StandardMaterial material)
+                material.AlbedoColor = new vec4(1f, 1f, 1f, 1f);
+        }
     }
 
     /// <summary>

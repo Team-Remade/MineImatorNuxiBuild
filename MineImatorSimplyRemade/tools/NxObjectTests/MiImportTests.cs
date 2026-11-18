@@ -99,6 +99,46 @@ internal static partial class Program
         Reject(() => new MineImatorLoader().CreateSceneFromMiObject(source), "Invalid imported radius must be surfaced");
     }
 
+    private static void MiImportShapes(Fixture f)
+    {
+        var source = MiDocument("""
+            {"templates":[
+              {"id":"icosphere-template","type":"icosphere",
+               "shape":{"subdivision":3,"morph":-0.75,"smooth":false}},
+              {"id":"torus-template","type":"torus",
+               "shape":{"detail":20,"major_size":1.5,"minor_size":0.25,"smooth":false,
+                        "tex_hrepeat":2,"tex_vmirror":true}}
+             ],
+             "timelines":[
+              {"id":"ico","type":"icosphere","temp":"icosphere-template","name":"Faceted"},
+              {"id":"ring","type":"torus","temp":"torus-template","name":"Ring"}
+             ]}
+            """);
+        var warnings = new List<string>();
+        var root = new MineImatorLoader().CreateSceneFromMiObject(source, warning: warnings.Add);
+        Equal(0, warnings.Count, "Simply Upscaled shape settings map without warnings");
+        var ico = root.Children.Single(o => o.ObjectType == "Icosphere");
+        Equal(3, ico.PrimitiveIcosphereSubdivision, "Icosphere subdivision imports");
+        Near(-0.75f, ico.PrimitiveIcosphereMorph, "Icosphere morph imports");
+        Check(!ico.PrimitiveSphereSmooth, "Icosphere shading imports");
+        var torus = root.Children.Single(o => o.ObjectType == "Torus");
+        Equal(20, torus.PrimitiveRadialSegments, "Torus detail imports");
+        Near(1.5f, torus.PrimitiveTorusMajorRadius, "Torus major radius imports");
+        Near(0.25f, torus.PrimitiveTorusMinorRadius, "Torus minor radius imports");
+        Check(!torus.PrimitiveRadialSmooth, "Torus shading imports");
+        Near(2f, torus.MaterialSettings.TextureRepeat.x, "Torus UV repeat imports");
+        Check(torus.MaterialSettings.TextureMirror.y, "Torus UV mirror imports");
+
+        var saved = ProjectSceneSerializer.SerializeObjectForLibrary(torus);
+        Equal(20, saved.PrimitiveRadialSegments, "Torus detail serializes");
+        Near(1.5f, saved.PrimitiveTorusMajorRadius, "Torus major radius serializes");
+        var json = JsonSerializer.Serialize(saved, AppJsonContext.Default.ProjectSceneObjectEntry);
+        var restored = JsonSerializer.Deserialize(json, AppJsonContext.Default.ProjectSceneObjectEntry)!;
+        Near(0.25f, restored.PrimitiveTorusMinorRadius, "Torus minor radius survives object JSON");
+        Near(-0.75f, ProjectSceneSerializer.SerializeObjectForLibrary(ico).PrimitiveIcosphereMorph,
+            "Icosphere morph survives object serialization");
+    }
+
     private static void MiImportBackground(Fixture f)
     {
         const string backgroundJson = """

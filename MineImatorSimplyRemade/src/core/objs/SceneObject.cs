@@ -296,6 +296,10 @@ public class SceneObject
     public bool PrimitiveSphereSmooth = true;
     public int PrimitiveSphereSegments = 32;
     public int PrimitiveSphereRings = 16;
+    public int PrimitiveIcosphereSubdivision = 0;
+    public float PrimitiveIcosphereMorph = 0f;
+    public float PrimitiveTorusMajorRadius = 1f;
+    public float PrimitiveTorusMinorRadius = 0.4f;
     public int PrimitiveRadialSegments = 32;
     public bool PrimitiveRadialSmooth = true;
     public bool PrimitiveRadialClosed = true;

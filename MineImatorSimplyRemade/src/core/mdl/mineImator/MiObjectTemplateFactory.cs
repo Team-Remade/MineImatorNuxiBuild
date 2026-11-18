@@ -47,7 +47,7 @@ public static class MiObjectTemplateFactory
             obj = CreateBlock(gl, template.Block);
             settings = template.Block;
         }
-        else if (type is "cube" or "sphere" or "surface" or "cone" or "cylinder")
+        else if (type is "cube" or "sphere" or "icosphere" or "torus" or "surface" or "cone" or "cylinder")
         {
             settings = template.Shape;
             int detail = Math.Clamp((int)Number(settings, "detail", 32), type == "sphere" ? 4 : 3, 256);
@@ -58,6 +58,8 @@ public static class MiObjectTemplateFactory
                     "surface" => "Plane",
                     "cube" => "Cube",
                     "sphere" => "Sphere",
+                    "icosphere" => "Icosphere",
+                    "torus" => "Torus",
                     "cone" => "Cone",
                     _ => "Cylinder"
                 },
@@ -67,6 +69,10 @@ public static class MiObjectTemplateFactory
                 PrimitiveSphereSegments = detail,
                 PrimitiveSphereRings = detail - 2,
                 PrimitiveSphereSmooth = Bool(settings, "smooth", true),
+                PrimitiveIcosphereSubdivision = Math.Clamp((int)Number(settings, "subdivision", 0), 0, 5),
+                PrimitiveIcosphereMorph = Math.Clamp(Number(settings, "morph", 0), -2f, 5f),
+                PrimitiveTorusMajorRadius = Math.Clamp(Number(settings, "major_size", 1), 0f, 5f),
+                PrimitiveTorusMinorRadius = Math.Clamp(Number(settings, "minor_size", 0.4f), 0f, 5f),
                 PrimitiveRadialSegments = detail,
                 PrimitiveRadialSmooth = Bool(settings, "smooth", true),
                 PrimitiveRadialClosed = Bool(settings, "closed", true),
@@ -88,6 +94,10 @@ public static class MiObjectTemplateFactory
                 {
                     "cube" => new CubeMesh(gl, obj.PrimitiveCubeMapped),
                     "sphere" => new SphereMesh(gl, 0.5f, detail, detail - 2, obj.PrimitiveSphereSmooth),
+                    "icosphere" => new IcosphereMesh(gl, 0.5f, obj.PrimitiveIcosphereSubdivision,
+                        obj.PrimitiveSphereSmooth, obj.PrimitiveIcosphereMorph),
+                    "torus" => new TorusMesh(gl, 0.5f, detail, obj.PrimitiveSphereSmooth,
+                        obj.PrimitiveTorusMajorRadius, obj.PrimitiveTorusMinorRadius),
                     "cone" => new ConeMesh(gl, detail, obj.PrimitiveRadialSmooth, obj.PrimitiveRadialClosed, obj.PrimitiveRadialMapped),
                     "cylinder" => new CylinderMesh(gl, detail, obj.PrimitiveRadialSmooth, obj.PrimitiveRadialClosed, obj.PrimitiveRadialMapped),
                     _ => new PlaneMesh(gl, 1f, 1f, PlaneOrientation.XY)

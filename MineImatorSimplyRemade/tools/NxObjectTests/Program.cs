@@ -469,6 +469,7 @@ internal static partial class Program
             ("MI import armor per-piece materials, omissions and trim palettes", MiImportArmor),
             ("MI import paths, points, references, sparse poses and repeated loads", MiImportPaths),
             ("MI import static current values and invalid path settings", MiImportStatic),
+            ("MI import Simply Upscaled icospheres and tori", MiImportShapes),
             ("MI import background colors, toggles, sparse keys, easing and persistence", MiImportBackground),
             ("MI import embedded particle presets, controls and references", MiImportParticles),
             ("MI import unsupported particles report warnings and retain other objects", MiImportWarnings),

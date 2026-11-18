@@ -415,6 +415,10 @@ public static class ProjectSceneSerializer
             PrimitiveSphereSmooth = obj.PrimitiveSphereSmooth,
             PrimitiveSphereSegments = obj.PrimitiveSphereSegments,
             PrimitiveSphereRings = obj.PrimitiveSphereRings,
+            PrimitiveIcosphereSubdivision = obj.PrimitiveIcosphereSubdivision,
+            PrimitiveIcosphereMorph = obj.PrimitiveIcosphereMorph,
+            PrimitiveTorusMajorRadius = obj.PrimitiveTorusMajorRadius,
+            PrimitiveTorusMinorRadius = obj.PrimitiveTorusMinorRadius,
             PrimitiveRadialSegments = obj.PrimitiveRadialSegments,
             PrimitiveRadialSmooth = obj.PrimitiveRadialSmooth,
             PrimitiveRadialClosed = obj.PrimitiveRadialClosed,
@@ -788,7 +792,9 @@ public static class ProjectSceneSerializer
         if (entry.SpawnCategory == "Primitives")
             return spawnMenu.SpawnPrimitiveObject(entry.ObjectType, entry.Name, 0, "", entry.PrimitivePlaneOrientation,
                 entry.PrimitiveCubeMapped, entry.PrimitiveSphereSmooth, entry.PrimitiveSphereSegments, entry.PrimitiveSphereRings,
-                entry.PrimitiveRadialSegments, entry.PrimitiveRadialSmooth, entry.PrimitiveRadialClosed, entry.PrimitiveRadialMapped);
+                entry.PrimitiveRadialSegments, entry.PrimitiveRadialSmooth, entry.PrimitiveRadialClosed, entry.PrimitiveRadialMapped,
+                entry.PrimitiveIcosphereSubdivision, entry.PrimitiveIcosphereMorph,
+                entry.PrimitiveTorusMajorRadius, entry.PrimitiveTorusMinorRadius);
 
         if (entry.SpawnCategory == "Particle Spawners")
             return spawnMenu.SpawnParticleSpawnerObject(entry.Name, entry.ParticleLibraryEntryId, entry.ParticleLibraryDisplayName);
@@ -1136,6 +1142,24 @@ public static class ProjectSceneSerializer
                     radial.SetMapped(obj.PrimitiveRadialMapped);
                 }
             }
+
+        }
+
+        if (obj.SpawnCategory == "Primitives" && obj.ObjectType == "Icosphere")
+        {
+            obj.PrimitiveIcosphereSubdivision = Math.Clamp(entry.PrimitiveIcosphereSubdivision, 0, 5);
+            obj.PrimitiveIcosphereMorph = Math.Clamp(entry.PrimitiveIcosphereMorph, -2f, 5f);
+            obj.Visuals.OfType<IcosphereMesh>().FirstOrDefault()?.SetGeometry(
+                obj.PrimitiveIcosphereSubdivision, obj.PrimitiveSphereSmooth, obj.PrimitiveIcosphereMorph);
+        }
+
+        if (obj.SpawnCategory == "Primitives" && obj.ObjectType == "Torus")
+        {
+            obj.PrimitiveTorusMajorRadius = Math.Clamp(entry.PrimitiveTorusMajorRadius, 0f, 5f);
+            obj.PrimitiveTorusMinorRadius = Math.Clamp(entry.PrimitiveTorusMinorRadius, 0f, 5f);
+            obj.Visuals.OfType<TorusMesh>().FirstOrDefault()?.SetGeometry(
+                obj.PrimitiveRadialSegments, obj.PrimitiveRadialSmooth,
+                obj.PrimitiveTorusMajorRadius, obj.PrimitiveTorusMinorRadius);
         }
 
         if (obj.SpawnCategory == "Primitives" && obj.ObjectType == "Text Mesh")

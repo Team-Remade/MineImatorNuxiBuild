@@ -416,6 +416,10 @@ public class ProjectSceneObjectEntry
     public bool PrimitiveSphereSmooth { get; set; } = true;
     public int PrimitiveSphereSegments { get; set; } = 32;
     public int PrimitiveSphereRings { get; set; } = 16;
+    public int PrimitiveIcosphereSubdivision { get; set; }
+    public float PrimitiveIcosphereMorph { get; set; }
+    public float PrimitiveTorusMajorRadius { get; set; } = 1f;
+    public float PrimitiveTorusMinorRadius { get; set; } = 0.4f;
     public int PrimitiveRadialSegments { get; set; } = 32;
     public bool PrimitiveRadialSmooth { get; set; } = true;
     public bool PrimitiveRadialClosed { get; set; } = true;

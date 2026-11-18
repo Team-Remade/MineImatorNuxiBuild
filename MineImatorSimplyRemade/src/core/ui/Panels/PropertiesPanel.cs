@@ -1252,6 +1252,10 @@ public partial class PropertiesPanel : UiPanel
             PrimitiveSphereSmooth = source.PrimitiveSphereSmooth,
             PrimitiveSphereSegments = source.PrimitiveSphereSegments,
             PrimitiveSphereRings = source.PrimitiveSphereRings,
+            PrimitiveIcosphereSubdivision = source.PrimitiveIcosphereSubdivision,
+            PrimitiveIcosphereMorph = source.PrimitiveIcosphereMorph,
+            PrimitiveTorusMajorRadius = source.PrimitiveTorusMajorRadius,
+            PrimitiveTorusMinorRadius = source.PrimitiveTorusMinorRadius,
             PrimitiveRadialSegments = source.PrimitiveRadialSegments,
             PrimitiveRadialSmooth = source.PrimitiveRadialSmooth,
             PrimitiveRadialClosed = source.PrimitiveRadialClosed,
@@ -3924,7 +3928,8 @@ public partial class PropertiesPanel : UiPanel
 
         if (string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) &&
             (string.Equals(_currentObject.ObjectType, "Cylinder", StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(_currentObject.ObjectType, "Cone", StringComparison.OrdinalIgnoreCase)) &&
+             string.Equals(_currentObject.ObjectType, "Cone", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(_currentObject.ObjectType, "Torus", StringComparison.OrdinalIgnoreCase)) &&
             ImGui.CollapsingHeader(Localization.DisplayLabel(_currentObject.ObjectType + "##radialGeometry")))
         {
             int segments = _currentObject.PrimitiveRadialSegments;
@@ -3933,9 +3938,23 @@ public partial class PropertiesPanel : UiPanel
             bool mapped = _currentObject.PrimitiveRadialMapped;
             bool changed = ImGui.DragInt(Localization.DisplayLabel("Detail##radialSegments"), ref segments, 1f, 3, 256);
             changed |= ImGui.Checkbox(Localization.Label("text.common.smooth_shading", "Smooth Shading##radialSmooth"), ref smooth);
-            changed |= ImGui.Checkbox(Localization.DisplayLabel("Closed##radialClosed"), ref closed);
-            bool mappedChanged = ImGui.Checkbox(Localization.Label("text.panel.properties.mapped_uvs", "Mapped UVs##radialMapped"), ref mapped);
-            changed |= mappedChanged;
+            float torusMajor = _currentObject.PrimitiveTorusMajorRadius;
+            float torusMinor = _currentObject.PrimitiveTorusMinorRadius;
+            bool isTorus = _currentObject.ObjectType == "Torus";
+            if (isTorus)
+            {
+                changed |= ImGui.DragFloat(Localization.DisplayLabel("Major Radius##torusMajor"),
+                    ref torusMajor, 0.01f, 0f, 5f);
+                changed |= ImGui.DragFloat(Localization.DisplayLabel("Minor Radius##torusMinor"),
+                    ref torusMinor, 0.01f, 0f, 5f);
+            }
+            bool mappedChanged = false;
+            if (!isTorus)
+            {
+                changed |= ImGui.Checkbox(Localization.DisplayLabel("Closed##radialClosed"), ref closed);
+                mappedChanged = ImGui.Checkbox(Localization.Label("text.panel.properties.mapped_uvs", "Mapped UVs##radialMapped"), ref mapped);
+                changed |= mappedChanged;
+            }
             if (changed)
             {
                 segments = Math.Clamp(segments, 3, 256);
@@ -3943,6 +3962,8 @@ public partial class PropertiesPanel : UiPanel
                 _currentObject.PrimitiveRadialSmooth = smooth;
                 _currentObject.PrimitiveRadialClosed = closed;
                 _currentObject.PrimitiveRadialMapped = mapped;
+                _currentObject.PrimitiveTorusMajorRadius = Math.Clamp(torusMajor, 0f, 5f);
+                _currentObject.PrimitiveTorusMinorRadius = Math.Clamp(torusMinor, 0f, 5f);
                 if (mappedChanged)
                 {
                     _currentObject.Visuals.OfType<CylinderMesh>().FirstOrDefault()?.SetMapped(mapped);
@@ -3950,6 +3971,31 @@ public partial class PropertiesPanel : UiPanel
                 }
                 _currentObject.Visuals.OfType<CylinderMesh>().FirstOrDefault()?.SetGeometry(segments, smooth, closed);
                 _currentObject.Visuals.OfType<ConeMesh>().FirstOrDefault()?.SetGeometry(segments, smooth, closed);
+                _currentObject.Visuals.OfType<TorusMesh>().FirstOrDefault()?.SetGeometry(segments, smooth,
+                    _currentObject.PrimitiveTorusMajorRadius, _currentObject.PrimitiveTorusMinorRadius);
+                ProjectManager.Instance.SetDirty(true);
+            }
+        }
+
+        if (string.Equals(_currentObject.SpawnCategory, "Primitives", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_currentObject.ObjectType, "Icosphere", StringComparison.OrdinalIgnoreCase) &&
+            ImGui.CollapsingHeader(Localization.DisplayLabel("Icosphere##icosphereGeometry")))
+        {
+            int subdivision = _currentObject.PrimitiveIcosphereSubdivision;
+            float morph = _currentObject.PrimitiveIcosphereMorph;
+            bool smooth = _currentObject.PrimitiveSphereSmooth;
+            bool changed = ImGui.DragInt(Localization.DisplayLabel("Subdivision##icosphereSubdivision"),
+                ref subdivision, 1f, 0, 5);
+            changed |= ImGui.DragFloat(Localization.DisplayLabel("Morph##icosphereMorph"), ref morph, 0.01f, -2f, 5f);
+            changed |= ImGui.Checkbox(Localization.Label("text.common.smooth_shading", "Smooth Shading##icosphereSmooth"),
+                ref smooth);
+            if (changed)
+            {
+                _currentObject.PrimitiveIcosphereSubdivision = Math.Clamp(subdivision, 0, 5);
+                _currentObject.PrimitiveIcosphereMorph = Math.Clamp(morph, -2f, 5f);
+                _currentObject.PrimitiveSphereSmooth = smooth;
+                _currentObject.Visuals.OfType<IcosphereMesh>().FirstOrDefault()?.SetGeometry(
+                    _currentObject.PrimitiveIcosphereSubdivision, smooth, _currentObject.PrimitiveIcosphereMorph);
                 ProjectManager.Instance.SetDirty(true);
             }
         }

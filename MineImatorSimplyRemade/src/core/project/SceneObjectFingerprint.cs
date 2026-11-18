@@ -274,6 +274,10 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.PrimitiveSphereSmooth);
         hash.Add(obj.PrimitiveSphereSegments);
         hash.Add(obj.PrimitiveSphereRings);
+        hash.Add(obj.PrimitiveIcosphereSubdivision);
+        hash.Add(obj.PrimitiveIcosphereMorph);
+        hash.Add(obj.PrimitiveTorusMajorRadius);
+        hash.Add(obj.PrimitiveTorusMinorRadius);
         hash.Add(obj.PrimitiveRadialSegments);
         hash.Add(obj.PrimitiveRadialSmooth);
         hash.Add(obj.PrimitiveRadialClosed);

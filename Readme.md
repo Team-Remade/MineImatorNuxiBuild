@@ -164,7 +164,6 @@ than the source's offscreen rectangles and quality-dependent padding.
 Unsupported objects retain placeholders, and unmapped settings/channels or missing
 resources are reported in the import diagnostics. In particular:
 
-- Torus/icosphere geometry has no import mapping.
 - Builtin model states beyond the recognized rig selections and resource-pack overrides are not fully reconstructed.
 - Packed SEUS/LabPBR material maps and LabPBR normals require channel conversion
   and are not applied as incompatible native maps; scalar materials are retained.

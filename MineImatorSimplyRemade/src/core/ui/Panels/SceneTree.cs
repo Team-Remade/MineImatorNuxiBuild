@@ -1229,6 +1229,10 @@ public class SceneTree : UiPanel
         dup.PrimitiveSphereSmooth = original.PrimitiveSphereSmooth;
         dup.PrimitiveSphereSegments = original.PrimitiveSphereSegments;
         dup.PrimitiveSphereRings = original.PrimitiveSphereRings;
+        dup.PrimitiveIcosphereSubdivision = original.PrimitiveIcosphereSubdivision;
+        dup.PrimitiveIcosphereMorph = original.PrimitiveIcosphereMorph;
+        dup.PrimitiveTorusMajorRadius = original.PrimitiveTorusMajorRadius;
+        dup.PrimitiveTorusMinorRadius = original.PrimitiveTorusMinorRadius;
         dup.PrimitiveRadialSegments = original.PrimitiveRadialSegments;
         dup.PrimitiveRadialSmooth = original.PrimitiveRadialSmooth;
         dup.PrimitiveRadialClosed = original.PrimitiveRadialClosed;

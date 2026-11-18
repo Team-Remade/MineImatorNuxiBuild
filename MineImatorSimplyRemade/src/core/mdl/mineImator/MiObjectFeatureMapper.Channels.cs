@@ -229,7 +229,7 @@ public static partial class MiObjectFeatureMapper
                 : [], "armor");
             NestedSettings(template.Shape, ["tex", "tex_normal", "tex_material", "tex_mapped", "tex_hoffset",
                 "tex_voffset", "tex_hrepeat", "tex_vrepeat", "tex_hmirror", "tex_vmirror", "closed", "invert",
-                "smooth", "detail", "face_camera"], "shape");
+                "smooth", "detail", "subdivision", "morph", "major_size", "minor_size", "face_camera"], "shape");
             NestedSettings(template.Text, ["font", "3d", "face_camera"], "text");
             NestedSettings(template.Block, template.Type == "scenery"
                 ? ["tex_normal", "tex_material"]
