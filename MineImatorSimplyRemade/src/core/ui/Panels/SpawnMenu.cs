@@ -517,8 +517,13 @@ public partial class SpawnMenu : UiPanel
 
     public override unsafe void Render()
     {
-        if (!_isOpen) _armorEditorVisible = false;
+        if (!_isOpen)
+        {
+            _armorEditorVisible = false;
+            _bannerEditorVisible = false;
+        }
         if (!_armorEditorVisible) DisposeArmorEditorPreview();
+        if (!_bannerEditorVisible) DisposeBannerPatternEditorPreview();
         CompleteSkinDownload();
         // Rendered every frame regardless of _isOpen so a schematic load
         // failure triggered from the content browser or elsewhere can still
@@ -598,6 +603,7 @@ public partial class SpawnMenu : UiPanel
             ImGui.Separator();
             RenderBottomBar();
             RenderArmorEditor();
+            RenderBannerPatternEditor();
         }
 
         ImGui.End();
@@ -1992,6 +1998,13 @@ public partial class SpawnMenu : UiPanel
             {
                 if (ImGui.Button(Localization.Label("text.panel.spawn.armor_editor", "Armor Editor"), new Vector2(-1, 0)))
                     OpenArmorEditor(entry);
+                ImGui.Separator();
+            }
+            if (_selectedCategory == "Props" && entry.Name is "standing_banner" or "wall_banner")
+            {
+                if (ImGui.Button(Localization.Label("text.panel.spawn.banner_pattern_editor", "Pattern Editor"),
+                    new Vector2(-1, 0)))
+                    OpenBannerPatternEditor(entry);
                 ImGui.Separator();
             }
 
@@ -6607,6 +6620,12 @@ public partial class SpawnMenu : UiPanel
         if (!string.Equals(target.SpawnCategory, "Blocks", StringComparison.Ordinal))
             return false;
 
+        if (target.HasBannerPattern)
+        {
+            BannerPatternSystem.ApplyToScene(target, target.BannerBaseColor, target.BannerPatternLayers);
+            return true;
+        }
+
         string normalizedResourcePackId = MinecraftDataLoader.NormalizeResourcePackStack(target.ResourcePackId);
 
         var variants = BlockRegistry.GetVariants(target.ObjectType, normalizedResourcePackId);
@@ -6631,6 +6650,12 @@ public partial class SpawnMenu : UiPanel
 
         if (string.Equals(target.SpawnCategory, "Blocks", StringComparison.Ordinal))
         {
+            if (target.HasBannerPattern)
+            {
+                target.ResourcePackId = normalizedResourcePackId;
+                BannerPatternSystem.ApplyToScene(target, target.BannerBaseColor, target.BannerPatternLayers);
+                return true;
+            }
             var variants = BlockRegistry.GetVariants(target.ObjectType, normalizedResourcePackId);
             var variant = variants.FirstOrDefault(v => string.Equals(v.VariantKey, target.BlockVariant, StringComparison.Ordinal))
                           ?? variants.FirstOrDefault();

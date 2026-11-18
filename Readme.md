@@ -165,9 +165,7 @@ Unsupported objects retain placeholders, and unmapped settings/channels or missi
 resources are reported in the import diagnostics. In particular:
 
 - Torus/icosphere geometry has no import mapping.
-- Builtin model states beyond the recognized rig selections, generated
-  banners/patterns and resource-pack overrides are not fully
-  reconstructed.
+- Builtin model states beyond the recognized rig selections and resource-pack overrides are not fully reconstructed.
 - Packed SEUS/LabPBR material maps and LabPBR normals require channel conversion
   and are not applied as incompatible native maps; scalar materials are retained.
 - Source additive camera brightness and color burn are not equivalent to the
@@ -182,10 +180,6 @@ resources are reported in the import diagnostics. In particular:
   environment channels require manual adjustment.
 
 Audio is imported into the project's audio timeline, not the object hierarchy.
-Overlapping triggers remain separate clips; missing sounds are reported without
-discarding other tracks. Audio imports only on an explicit object spawn, not while
-generating thumbnails or restoring scene objects. It survives project saves and
-uses the same pitch/trim/loop timing during preview playback and video export.
 Project-wide audio tracks are not embedded when exporting an individual `.nxObj`.
 
 ## Mine-imator Minecraft assets

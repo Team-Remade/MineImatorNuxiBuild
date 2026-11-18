@@ -465,6 +465,7 @@ internal static partial class Program
             ("Library replacement library-only and scene undo/redo", LibraryReplacementHistory),
             ("Model part bundled catalogs, single-part exclusion and stable paths", ModelPartCatalogTests),
             ("Armor editor mixed variants, omissions, custom textures and persistent models", ArmorEditorModels),
+            ("Banner pattern colors, masks, layer order, MI import and persistence", BannerPatterns),
             ("MI import armor per-piece materials, omissions and trim palettes", MiImportArmor),
             ("MI import paths, points, references, sparse poses and repeated loads", MiImportPaths),
             ("MI import static current values and invalid path settings", MiImportStatic),
@@ -699,6 +700,8 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Model part", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--armor", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Armor editor", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--banners", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Banner pattern", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--replace-asset", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Library replacement", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--particles", StringComparer.Ordinal))

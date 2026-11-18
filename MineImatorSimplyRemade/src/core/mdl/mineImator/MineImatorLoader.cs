@@ -266,6 +266,8 @@ public class MineImatorLoader
                 ApplyTimelineTransform(itemObject, timeline);
                 ApplyTimelineSettings(itemObject, timeline, includeHierarchySettings: true);
                 ApplyTimelineTexture(itemObject, timeline, resourceDict, miObject.DirectoryPath);
+                if (template != null)
+                    BannerPatternSystem.TryApplyMineImator(itemObject, template, timeline);
                 if (template?.Item != null && itemObject.ObjectType == "Item")
                     ImportItemSlotKeyframes(itemObject, timeline, template,
                         itemObject.TemporaryItemSheetColumns, itemObject.TemporaryItemSheetRows);
@@ -1174,7 +1176,7 @@ public class MineImatorLoader
         return tilePixels;
     }
 
-    private uint LoadTextureFromRgba(byte[] rgbaPixels, int width, int height)
+    internal uint LoadTextureFromRgba(byte[] rgbaPixels, int width, int height)
     {
         if (_gl == null || rgbaPixels == null || rgbaPixels.Length == 0 || width <= 0 || height <= 0)
             return 0;

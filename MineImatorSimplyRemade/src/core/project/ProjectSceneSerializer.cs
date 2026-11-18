@@ -5,6 +5,7 @@ using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.history;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -320,6 +321,9 @@ public static class ProjectSceneSerializer
             ObjectType = obj.ObjectType,
             SpawnCategory = obj.SpawnCategory,
             BlockVariant = obj.BlockVariant,
+            HasBannerPattern = obj.HasBannerPattern,
+            BannerBaseColor = obj.BannerBaseColor,
+            BannerPatternLayers = obj.BannerPatternLayers.Select(layer => layer.Clone()).ToList(),
             TextureType = obj.TextureType,
             ResourcePackId = MinecraftDataLoader.NormalizeResourcePackStack(obj.ResourcePackId),
             NormalResourcePackId = obj.NormalResourcePackId,
@@ -896,6 +900,9 @@ public static class ProjectSceneSerializer
         obj.ObjectType = entry.ObjectType;
         obj.SpawnCategory = entry.SpawnCategory;
         obj.BlockVariant = entry.BlockVariant;
+        obj.HasBannerPattern = entry.HasBannerPattern || entry.BannerPatternLayers is { Count: > 0 };
+        obj.BannerBaseColor = BannerPatternSystem.NormalizeColor(entry.BannerBaseColor);
+        obj.BannerPatternLayers = entry.BannerPatternLayers?.Select(layer => layer.Clone()).ToList() ?? [];
         obj.TextureType = entry.TextureType;
         obj.ResourcePackId = resourcePackStack;
         obj.NormalResourcePackId = entry.NormalResourcePackId ?? "";
@@ -1261,6 +1268,9 @@ public static class ProjectSceneSerializer
             light.LightSpotAngle = entry.LightSpotAngle;
             light.LightSpotBlend = entry.LightSpotBlend;
         }
+
+        if (obj.HasBannerPattern)
+            BannerPatternSystem.ApplyToScene(obj, obj.BannerBaseColor, obj.BannerPatternLayers);
     }
 
     private static void ClearScene(Viewport viewport)

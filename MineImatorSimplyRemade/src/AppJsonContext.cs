@@ -30,6 +30,7 @@ namespace MineImatorSimplyRemade;
 [JsonSerializable(typeof(MiModel))]
 [JsonSerializable(typeof(ProjectManifest))]
 [JsonSerializable(typeof(ProjectSceneObjectEntry))]
+[JsonSerializable(typeof(BannerPatternLayer))]
 [JsonSerializable(typeof(NxObjectManifest))]
 [JsonSerializable(typeof(NxFramesManifest))]
 [JsonSerializable(typeof(DataAssetRemapRules))]

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemadeNuxi.core.objs;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
@@ -359,6 +360,9 @@ public class ProjectSceneObjectEntry
     public string ObjectType { get; set; } = "";
     public string SpawnCategory { get; set; } = "";
     public string BlockVariant { get; set; } = "";
+    public bool HasBannerPattern { get; set; }
+    public string BannerBaseColor { get; set; } = "white";
+    public List<BannerPatternLayer> BannerPatternLayers { get; set; } = new();
     public string TextureType { get; set; } = "item";
     // Semicolon-separated pack stack, highest priority first. Single-ID saves need no migration.
     public string ResourcePackId { get; set; } = "";

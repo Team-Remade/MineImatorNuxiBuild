@@ -69,6 +69,13 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.ObjectType);
         hash.Add(obj.SpawnCategory);
         hash.Add(obj.BlockVariant);
+        hash.Add(obj.HasBannerPattern);
+        hash.Add(obj.BannerBaseColor);
+        foreach (var layer in obj.BannerPatternLayers)
+        {
+            hash.Add(layer.Pattern);
+            hash.Add(layer.Color);
+        }
         hash.Add(obj.TextureType);
         hash.Add(obj.ResourcePackId);
         hash.Add(obj.NormalResourcePackId);

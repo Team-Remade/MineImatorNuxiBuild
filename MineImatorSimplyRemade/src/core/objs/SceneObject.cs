@@ -191,6 +191,9 @@ public class SceneObject
 
     public string SpawnCategory = "";
     public string BlockVariant = "";
+    public bool HasBannerPattern;
+    public string BannerBaseColor = "white";
+    public List<BannerPatternLayer> BannerPatternLayers = new();
     public string TextureType = "item";
     public string ItemTileKey = "";
     // Canonical semicolon-separated pack IDs, highest priority first; empty uses defaults.

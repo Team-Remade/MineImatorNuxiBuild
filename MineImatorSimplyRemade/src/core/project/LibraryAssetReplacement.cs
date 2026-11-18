@@ -55,6 +55,9 @@ internal sealed class LibraryAssetReplacement
             state.ObjectType = asset.ObjectType;
             state.SpawnCategory = asset.SpawnCategory;
             state.BlockVariant = asset.BlockVariant;
+            state.HasBannerPattern = asset.HasBannerPattern;
+            state.BannerBaseColor = asset.BannerBaseColor;
+            state.BannerPatternLayers = asset.BannerPatternLayers.Select(layer => layer.Clone()).ToList();
             state.TextureType = asset.TextureType;
             state.ResourcePackId = asset.ResourcePackId;
             state.SourceAssetPath = asset.SourceAssetPath;

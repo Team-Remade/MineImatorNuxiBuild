@@ -1206,6 +1206,9 @@ public class SceneTree : UiPanel
         dup.RenderDepthOffset   = original.RenderDepthOffset;
         dup.SpawnCategory   = original.SpawnCategory;
         dup.BlockVariant    = original.BlockVariant;
+        dup.HasBannerPattern = original.HasBannerPattern;
+        dup.BannerBaseColor = original.BannerBaseColor;
+        dup.BannerPatternLayers = original.BannerPatternLayers.Select(layer => layer.Clone()).ToList();
         dup.TextureType     = original.TextureType;
         dup.ResourcePackId  = original.ResourcePackId;
         dup.NormalResourcePackId = original.NormalResourcePackId;
