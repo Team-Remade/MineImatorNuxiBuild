@@ -351,6 +351,80 @@ public class ProjectVec4
     public float W { get; set; }
 }
 
+public sealed class ProjectFluidSettings
+{
+    public int ParticleCount { get; set; } = 216;
+    public int Seed { get; set; } = 1;
+    public float ParticleRadius { get; set; } = 0.065f;
+    public float SmoothingRadius { get; set; } = 0.28f;
+    public float Gravity { get; set; } = 9.81f;
+    public float Viscosity { get; set; } = 0.08f;
+    public float Pressure { get; set; } = 0.85f;
+    public float Bounce { get; set; } = 0.25f;
+    public bool MeshCollisions { get; set; }
+    public float CollisionFriction { get; set; } = 0.15f;
+    public bool ShowBounds { get; set; } = true;
+    public int Iterations { get; set; } = 4;
+    public ProjectVec3 Bounds { get; set; } = new() { X = 1.8f, Y = 1.8f, Z = 1.8f };
+    public ProjectVec3 InitialVelocity { get; set; } = new();
+    public float SimulationSpeed { get; set; } = 1f;
+    public FluidRenderMode RenderMode { get; set; } = FluidRenderMode.Surface;
+    public int SurfaceResolution { get; set; } = 20;
+    public float SurfaceRadius { get; set; } = 0.4f;
+    public float SurfaceThreshold { get; set; } = 0.16f;
+
+    public static ProjectFluidSettings From(FluidSettings settings) => new()
+    {
+        ParticleCount = settings.ParticleCount,
+        Seed = settings.Seed,
+        ParticleRadius = settings.ParticleRadius,
+        SmoothingRadius = settings.SmoothingRadius,
+        Gravity = settings.Gravity,
+        Viscosity = settings.Viscosity,
+        Pressure = settings.Pressure,
+        Bounce = settings.Bounce,
+        MeshCollisions = settings.MeshCollisions,
+        CollisionFriction = settings.CollisionFriction,
+        ShowBounds = settings.ShowBounds,
+        Iterations = settings.Iterations,
+        Bounds = new ProjectVec3 { X = settings.Bounds.x, Y = settings.Bounds.y, Z = settings.Bounds.z },
+        InitialVelocity = new ProjectVec3
+        {
+            X = settings.InitialVelocity.x,
+            Y = settings.InitialVelocity.y,
+            Z = settings.InitialVelocity.z
+        },
+        SimulationSpeed = settings.SimulationSpeed,
+        RenderMode = settings.RenderMode,
+        SurfaceResolution = settings.SurfaceResolution,
+        SurfaceRadius = settings.SurfaceRadius,
+        SurfaceThreshold = settings.SurfaceThreshold
+    };
+
+    public FluidSettings ToRuntime() => new FluidSettings
+    {
+        ParticleCount = ParticleCount,
+        Seed = Seed,
+        ParticleRadius = ParticleRadius,
+        SmoothingRadius = SmoothingRadius,
+        Gravity = Gravity,
+        Viscosity = Viscosity,
+        Pressure = Pressure,
+        Bounce = Bounce,
+        MeshCollisions = MeshCollisions,
+        CollisionFriction = CollisionFriction,
+        ShowBounds = ShowBounds,
+        Iterations = Iterations,
+        Bounds = new GlmSharp.vec3(Bounds.X, Bounds.Y, Bounds.Z),
+        InitialVelocity = new GlmSharp.vec3(InitialVelocity.X, InitialVelocity.Y, InitialVelocity.Z),
+        SimulationSpeed = SimulationSpeed,
+        RenderMode = RenderMode,
+        SurfaceResolution = SurfaceResolution,
+        SurfaceRadius = SurfaceRadius,
+        SurfaceThreshold = SurfaceThreshold
+    }.Validated();
+}
+
 public class ProjectSceneObjectEntry
 {
     public string ObjectId { get; set; } = "";
@@ -443,6 +517,7 @@ public class ProjectSceneObjectEntry
     public ProjectVec3 Scale { get; set; } = new() { X = 1f, Y = 1f, Z = 1f };
     public ProjectVec3? BendAngle { get; set; }
     public ProceduralEffectSettings? ProceduralEffect { get; set; }
+    public ProjectFluidSettings? Fluid { get; set; }
     public PathSettings? Path { get; set; }
     public float PathPointAngle { get; set; }
     public float PathPointScale { get; set; } = 1f;

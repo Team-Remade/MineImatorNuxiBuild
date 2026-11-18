@@ -354,6 +354,20 @@ internal static partial class Program
                 return 1;
             }
         }
+        if (args.Contains("--fluid-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                FluidGraphics();
+                Console.WriteLine("PASS Fluid particle and reconstructed-surface GPU rendering, animation and replay");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--effects-graphics", StringComparer.Ordinal))
         {
             try
@@ -555,6 +569,9 @@ internal static partial class Program
             ("Procedural effect source-generated archive, library and duplicate persistence", EffectPersistence),
             ("Procedural effect snapshot restoration and dirty fingerprint", EffectSnapshots),
             ("Procedural effect timeline discovery, read/write and interpolation", EffectTimeline),
+            ("Fluid deterministic seek, collision bounds and finite state", FluidDeterminism),
+            ("Fluid validated limits and explicit invalid input rejection", FluidLimits),
+            ("Fluid archive, project import, duplicate and dirty fingerprint persistence", FluidPersistence),
             ("Path spawn, ordered points, arc length, smooth and closed sampling", PathSampling),
             ("Path flat/tube geometry, winding, normals, UVs, roll and scale", PathMeshes),
             ("Path limits, degenerate curves and invalid input rejection", PathLimits),
@@ -709,6 +726,8 @@ internal static partial class Program
         if (args.Contains("--particles", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Particle", StringComparison.Ordinal) ||
                 test.Name.StartsWith("All 15 bundled particle", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--fluid", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Fluid ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--paths", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Path", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--frames", StringComparer.Ordinal))

@@ -2726,6 +2726,7 @@ public partial class Timeline : UiPanel
                 : obj is LightSceneObject ? new LightSceneObject()
                 : obj is ParticleSpawnerSceneObject ? new ParticleSpawnerSceneObject()
                 : obj is ProceduralEffectSceneObject ? new ProceduralEffectSceneObject()
+                : obj is FluidSceneObject ? new FluidSceneObject()
                 : obj is PathSceneObject ? new PathSceneObject()
                 : obj is PathPointSceneObject ? new PathPointSceneObject()
                 : obj is BoneSceneObject ? new BoneSceneObject() : new SceneObject();

@@ -491,6 +491,8 @@ public static class ProjectSceneSerializer
 
         if (obj is ProceduralEffectSceneObject procedural)
             entry.ProceduralEffect = procedural.Settings;
+        if (obj is FluidSceneObject fluid)
+            entry.Fluid = ProjectFluidSettings.From(fluid.Settings);
         if (obj is PathSceneObject path)
             entry.Path = path.Settings;
         if (obj is PathPointSceneObject point)
@@ -800,6 +802,8 @@ public static class ProjectSceneSerializer
         if (entry.SpawnCategory == "Particle Spawners")
             return spawnMenu.SpawnParticleSpawnerObject(entry.Name, entry.ParticleLibraryEntryId, entry.ParticleLibraryDisplayName);
 
+        if (entry.ObjectType == "Fluid Simulation")
+            return spawnMenu.SpawnFluidObject(entry.Name, entry.Fluid?.ToRuntime() ?? new());
         if (entry.SpawnCategory == "Effects")
             return spawnMenu.SpawnProceduralEffectObject(entry.Name, entry.ProceduralEffect ?? new());
 
@@ -875,6 +879,7 @@ public static class ProjectSceneSerializer
     {
         SceneObject obj = entry.ObjectType == "Path" ? new PathSceneObject()
             : entry.ObjectType == "Path Point" ? new PathPointSceneObject()
+            : entry.ObjectType == "Fluid Simulation" ? new FluidSceneObject()
             : entry.SpawnCategory == "Effects"
             ? new ProceduralEffectSceneObject()
             : entry.BoneName != null || entry.BoneConstraints != null
@@ -1047,6 +1052,8 @@ public static class ProjectSceneSerializer
 
         if (obj is ProceduralEffectSceneObject procedural)
             procedural.Settings = entry.ProceduralEffect ?? new();
+        if (obj is FluidSceneObject fluid)
+            fluid.Settings = entry.Fluid?.ToRuntime() ?? new();
         if (obj is PathSceneObject path)
             path.Settings = entry.Path ?? new();
         if (obj is PathPointSceneObject point)

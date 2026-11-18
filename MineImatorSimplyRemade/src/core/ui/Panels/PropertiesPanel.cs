@@ -4103,6 +4103,7 @@ public partial class PropertiesPanel : UiPanel
         }
 
         RenderPathProperties();
+        RenderFluidProperties();
 
         if (_currentObject is ProceduralEffectSceneObject procedural &&
             ImGui.CollapsingHeader(Localization.Label("text.effects.title", "Procedural Effect"), ImGuiTreeNodeFlags.DefaultOpen))
@@ -7840,6 +7841,7 @@ public partial class PropertiesPanel : UiPanel
                 : obj is ParticleSpawnerSceneObject ? new ParticleSpawnerSceneObject()
                 : obj is PathSceneObject ? new PathSceneObject()
                 : obj is PathPointSceneObject ? new PathPointSceneObject()
+                : obj is FluidSceneObject ? new FluidSceneObject()
                 : obj is ProceduralEffectSceneObject ? new ProceduralEffectSceneObject() : new SceneObject();
             defaults.MaterialSettings = new MaterialSettings();
             if (defaults is CameraSceneObject defaultCamera && obj is CameraSceneObject sourceCamera)

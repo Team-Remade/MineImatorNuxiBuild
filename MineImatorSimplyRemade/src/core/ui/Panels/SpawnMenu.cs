@@ -315,7 +315,7 @@ public partial class SpawnMenu : UiPanel
             { "Props",        new List<string>() },
             { "Model part",   new List<string>() },
             { "Particle Spawners", new List<string> { "Particle Spawner" } },
-            { "Effects", new List<string> { "Lightning", "Ring / Portal", "Procedural Effect" } },
+            { "Effects", new List<string> { "Lightning", "Ring / Portal", "Procedural Effect", "Fluid Simulation" } },
             { "Scenery",      new List<string> { SceneryLoadLabel, WorldImportLabel } },
             { "Custom Models", new List<string> { "Load..." } }
         };
@@ -836,6 +836,14 @@ public partial class SpawnMenu : UiPanel
                 var filtered = GetFilteredObjects();
                 if (_selectedObjectIndex < 0 || _selectedObjectIndex >= filtered.Count)
                     return new List<Mesh>();
+                if (filtered[_selectedObjectIndex] == "Fluid Simulation")
+                {
+                    var fluid = new FluidSceneObject();
+                    fluid.AddMesh(new Mesh(Gl));
+                    fluid.EvaluateGeometry(0f);
+                    fluid.ApplyMaterialSettingsToMeshes();
+                    return fluid.Visuals.ToList();
+                }
                 var effect = new ProceduralEffectSceneObject
                 {
                     Settings = filtered[_selectedObjectIndex] == "Ring / Portal"
@@ -5907,9 +5915,14 @@ public partial class SpawnMenu : UiPanel
                 break;
 
             case "Effects":
-                var settings = objectName == "Ring / Portal"
-                    ? ProceduralEffectSettings.Portal : ProceduralEffectSettings.Lightning;
-                SpawnWithCursor(() => SpawnProceduralEffectObject(fullName, settings));
+                if (objectName == "Fluid Simulation")
+                    SpawnWithCursor(() => SpawnFluidObject(fullName));
+                else
+                {
+                    var settings = objectName == "Ring / Portal"
+                        ? ProceduralEffectSettings.Portal : ProceduralEffectSettings.Lightning;
+                    SpawnWithCursor(() => SpawnProceduralEffectObject(fullName, settings));
+                }
                 break;
 
             case "Custom Models":
@@ -6026,6 +6039,21 @@ public partial class SpawnMenu : UiPanel
         mesh.MinecraftItemTexture = atlasSource == ItemAtlasSource.ItemAtlas;
 
         obj.AddMesh(mesh);
+        Viewport.SceneObjects.Add(obj);
+        return obj;
+    }
+
+    public FluidSceneObject? SpawnFluidObject(string objectName, FluidSettings? settings = null)
+    {
+        if (Viewport == null) return null;
+        var obj = new FluidSceneObject { Name = objectName, Settings = settings ?? new() };
+        obj.AssignObjectId();
+        if (Gl != null)
+        {
+            obj.AddMesh(new Mesh(Gl));
+            obj.EvaluateGeometry(0f);
+            obj.ApplyMaterialSettingsToMeshes();
+        }
         Viewport.SceneObjects.Add(obj);
         return obj;
     }

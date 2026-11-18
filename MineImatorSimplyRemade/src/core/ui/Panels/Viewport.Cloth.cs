@@ -67,7 +67,7 @@ public partial class Viewport
     public static string? ClothUnsupportedReason(SceneObject obj)
     {
         if (obj is CameraSceneObject or LightSceneObject or PathSceneObject or PathPointSceneObject or
-            ParticleSpawnerSceneObject or ProceduralEffectSceneObject)
+            ParticleSpawnerSceneObject or ProceduralEffectSceneObject or FluidSceneObject)
             return Localization.T("text.cloth.unsupported_object");
         if (obj.Visuals.Count == 0 || obj.Visuals.All(m => m.PickOnly || m.Vertices.Count == 0))
             return Localization.T("text.cloth.no_mesh");
@@ -387,7 +387,7 @@ public partial class Viewport
         foreach (var obj in objects)
         {
             if (!IsObjectVisible(obj) || obj is CameraSceneObject or LightSceneObject or PathSceneObject or
-                PathPointSceneObject or ParticleSpawnerSceneObject or ProceduralEffectSceneObject) continue;
+                PathPointSceneObject or ParticleSpawnerSceneObject or ProceduralEffectSceneObject or FluidSceneObject) continue;
             mat4 source = obj.GetWorldMatrix();
             foreach (var mesh in obj.Visuals)
             {

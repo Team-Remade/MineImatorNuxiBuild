@@ -1976,6 +1976,17 @@ public partial class Viewport : UiPanel
         if (!obj.GetEffectiveVisibility())
             return;
 
+        if (obj is FluidSceneObject fluid && fluid.Settings.ShowBounds &&
+            (_showHiddenObjects || !obj.IsHiddenForRendering()))
+        {
+            vec3 scale = new vec3(
+                MathF.Max(0.0001f, fluid.Settings.Bounds.x * 2f),
+                MathF.Max(0.0001f, fluid.Settings.Bounds.y * 2f),
+                MathF.Max(0.0001f, fluid.Settings.Bounds.z * 2f));
+            RenderMeshWithModeOverride(_particleEmissionWireCube!,
+                fluid.GetWorldMatrix() * mat4.Scale(scale), view, proj, true, includeFog: false);
+        }
+
         if (obj is ParticleSpawnerSceneObject spawner && !spawner.IsRuntimeTransient &&
             (_showHiddenObjects || !obj.IsHiddenForRendering()))
         {
@@ -2828,11 +2839,11 @@ public partial class Viewport : UiPanel
             UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
         }
         // Input and simulation can move targets. Every view must use that same updated pose.
-        UpdateProceduralEffects(IsPreviewViewport ? MainViewport?.SceneObjects ?? SceneObjects : SceneObjects,
-            GetTimelineEffectTimeSeconds());
         InverseKinematicsSolver.Evaluate(SceneObjects, Timeline.Instance?.CurrentFrame ?? 0, Timeline.Instance?.Framerate ?? 30f);
         UpdateWiggle();
         UpdateCloth();
+        UpdateProceduralEffects(IsPreviewViewport ? MainViewport?.SceneObjects ?? SceneObjects : SceneObjects,
+            GetTimelineEffectTimeSeconds());
         PreviewViewport?.UpdateCameraTextureFeeds();
 
         // ── 3D render into FBO ────────────────────────────────────────────────
@@ -5869,16 +5880,29 @@ public partial class Viewport : UiPanel
         return translation * rotation * roll * scaling * pivot;
     }
 
-    private static void UpdateProceduralEffects(IReadOnlyList<SceneObject> objects, float seconds)
+    private void UpdateProceduralEffects(IReadOnlyList<SceneObject> objects, float seconds)
     {
-        for (int i = 0; i < objects.Count; i++)
+        var allObjects = EnumerateClothObjects(objects).ToArray();
+        var fluids = allObjects.OfType<FluidSceneObject>()
+            .Where(fluid => fluid.Settings.MeshCollisions && fluid.GetEffectiveVisibility()).ToArray();
+        IReadOnlyList<ClothTriangle> colliders = [];
+        if (fluids.Length > 0)
+            colliders = CollectClothColliders(allObjects, fluids.SelectMany(fluid => fluid.Visuals).ToHashSet());
+        Update(objects, seconds, colliders);
+
+        static void Update(IReadOnlyList<SceneObject> nodes, float time, IReadOnlyList<ClothTriangle> triangles)
         {
-            var obj = objects[i];
-            if (obj is ProceduralEffectSceneObject effect)
-                effect.EvaluateGeometry(seconds);
-            if (obj is PathSceneObject path)
-                path.EvaluateGeometry();
-            UpdateProceduralEffects(obj.Children, seconds);
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                var obj = nodes[i];
+                if (obj is FluidSceneObject fluid)
+                    fluid.EvaluateGeometry(time, fluid.Settings.MeshCollisions ? triangles : null);
+                if (obj is ProceduralEffectSceneObject effect)
+                    effect.EvaluateGeometry(time);
+                if (obj is PathSceneObject path)
+                    path.EvaluateGeometry();
+                Update(obj.Children, time, triangles);
+            }
         }
     }
 
@@ -7500,10 +7524,10 @@ public partial class Viewport : UiPanel
             using var particleScope = FrameProfiler.Shared.Measure(ProfileStage.ParticleUpdate);
             UpdateParticleSpawners(SceneObjects, (float)Mesh.DeltaTime, timelinePlaying);
         }
-        UpdateProceduralEffects(MainViewport.SceneObjects, GetTimelineEffectTimeSeconds());
         InverseKinematicsSolver.Evaluate(MainViewport.SceneObjects, Timeline.Instance?.CurrentFrame ?? 0, Timeline.Instance?.Framerate ?? 30f);
         UpdateWiggle();
         UpdateCloth();
+        UpdateProceduralEffects(MainViewport.SceneObjects, GetTimelineEffectTimeSeconds());
 
         // Render substages/counters aggregate across all views; feed time stays out of PreviewScene.
         using var sceneScope = FrameProfiler.Shared.Measure(

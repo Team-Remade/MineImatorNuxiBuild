@@ -1040,6 +1040,9 @@ public class SceneTree : UiPanel
             case ProceduralEffectSceneObject effect:
                 dup = new ProceduralEffectSceneObject { Settings = effect.Settings };
                 break;
+            case FluidSceneObject fluid:
+                dup = new FluidSceneObject { Settings = fluid.Settings };
+                break;
             case PathSceneObject path:
                 dup = new PathSceneObject { Settings = path.Settings };
                 break;

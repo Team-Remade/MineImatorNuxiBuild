@@ -316,6 +316,18 @@ internal static class SceneObjectFingerprint
         if (obj is ProceduralEffectSceneObject procedural)
             foreach (var control in ProceduralEffectSettings.Controls)
                 hash.Add(control.Read(procedural.Settings));
+        hash.Add(obj is FluidSceneObject);
+        if (obj is FluidSceneObject fluid)
+        {
+            var settings = fluid.Settings;
+            hash.Add(settings.ParticleCount); hash.Add(settings.Seed); hash.Add(settings.ParticleRadius);
+            hash.Add(settings.SmoothingRadius); hash.Add(settings.Gravity); hash.Add(settings.Viscosity);
+            hash.Add(settings.Pressure); hash.Add(settings.Bounce); hash.Add(settings.MeshCollisions);
+            hash.Add(settings.CollisionFriction); hash.Add(settings.ShowBounds); hash.Add(settings.Iterations);
+            hash.Add(settings.Bounds); hash.Add(settings.InitialVelocity); hash.Add(settings.SimulationSpeed);
+            hash.Add((int)settings.RenderMode); hash.Add(settings.SurfaceResolution); hash.Add(settings.SurfaceRadius);
+            hash.Add(settings.SurfaceThreshold);
+        }
 
         if (obj is { HasExplicitMaterialSettings: true, MaterialSettings: { } material })
         {

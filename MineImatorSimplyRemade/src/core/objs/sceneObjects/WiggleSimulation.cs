@@ -307,7 +307,7 @@ public sealed class WiggleSimulation
         foreach (var obj in _objects)
         {
             if (!obj.GetEffectiveVisibility() || obj is CameraSceneObject or LightSceneObject or PathSceneObject or
-                PathPointSceneObject or ParticleSpawnerSceneObject or ProceduralEffectSceneObject) continue;
+                PathPointSceneObject or ParticleSpawnerSceneObject or ProceduralEffectSceneObject or FluidSceneObject) continue;
             if (obj is MiBoneSceneObject mi) mi.RefreshInverseKinematicsVisuals();
             mat4 source = obj.GetWorldMatrix();
             foreach (var mesh in obj.Visuals)
