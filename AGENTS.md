@@ -87,6 +87,8 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --block-rotation-graphics
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --fluid
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --fluid-graphics
 ```
@@ -156,6 +158,17 @@ Coverage and prerequisites:
   stone and wooden buttons), trapdoors, both door halves, multipart rotations,
   and consistent geometry after conversion to animatable blocks, rebuilding,
   and resource-pack reapplication.
+- `--shader-graph`: custom shader graph validation, socket values, multi-output
+  links, legacy graph upgrades, persistence, canvas/inspector controls for every
+  node kind, and editor shortcuts.
+- `--shader-graph-graphics`: OpenGL 3.3; preset pixels, every node kind and
+  output on the GPU, Alpha, Time-driven animation, and screen-space transmission
+  and IOR refraction. Pass a PNG path after the selector to write a contact sheet.
+
+Shader graph nodes are described by `ShaderGraph.Spec`; their numeric kinds are
+saved in projects and match the instruction codes in `shader_graph.glsl`. Add
+new sockets at the end of a node's input list and keep existing kind values so
+saved links stay valid.
 
 ### Camera outline regression checks
 

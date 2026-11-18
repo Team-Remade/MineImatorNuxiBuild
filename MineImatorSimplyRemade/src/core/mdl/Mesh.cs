@@ -152,6 +152,8 @@ public class Mesh : IDisposable
     /// Local-space bounding sphere center (computed from vertices during Upload).
     /// </summary>
     public vec3 BoundingSphereCenter;
+    /// <summary>Local axis-aligned bounds, for the shader graph's Generated coordinates.</summary>
+    public vec3 BoundsMin = new(-0.5f), BoundsMax = new(0.5f);
 
     /// <summary>
     /// Local-space bounding sphere radius (computed from vertices during Upload).
@@ -245,7 +247,7 @@ public class Mesh : IDisposable
     /// </summary>
     public bool IsTranslucent = false;
 
-    internal bool RequiresTranslucentPass => IsTranslucent && AlphaMode != MaterialAlphaMode.Clip;
+    internal bool RequiresTranslucentPass => (IsTranslucent || ShaderGraphTranslucent) && AlphaMode != MaterialAlphaMode.Clip;
 
     internal (bool ignoresDepth, bool translucent, float depth, float distance, int index) GetRenderSortKey(
         mat4 model, vec3 cameraPosition, float depth, int index)
@@ -1249,6 +1251,7 @@ public class Mesh : IDisposable
         if (Vertices.Count == 0)
         {
             BoundingSphereCenter = vec3.Zero;
+            (BoundsMin, BoundsMax) = (new vec3(-0.5f), new vec3(0.5f));
             BoundingSphereRadius = 0.5f;
             return;
         }
@@ -1262,6 +1265,7 @@ public class Mesh : IDisposable
         }
 
         BoundingSphereCenter = (min + max) * 0.5f;
+        (BoundsMin, BoundsMax) = (min, max);
         BoundingSphereRadius = MathF.Sqrt(
             vec3.DistanceSqr(min, max)) * 0.5f;
 
@@ -1405,6 +1409,60 @@ public class Mesh : IDisposable
     /// </summary>
     public static double AnimatedTextureSpeedScale = 1.0;
 
+    // ── Custom shader graphs ──────────────────────────────────────────────────
+
+    private const int ShaderGraphDataUnit = 12, ShaderGraphSceneColorUnit = 14;
+
+    /// <summary>Current timeline frame for the shader graph Time node; see <see cref="EffectTime"/>.</summary>
+    public static float EffectFrame;
+
+    /// <summary>
+    /// Copy of the scene colour drawn so far, captured by the viewport before a transmissive custom
+    /// shader draws. Zero makes transmission fall back to alpha transparency.
+    /// </summary>
+    public static uint ShaderGraphSceneColorTexture;
+
+    private uint _graphTexture;
+    private ShaderGraphProgram? _graphTextureProgram;
+
+    internal bool UsesShaderGraphTransmission =>
+        CustomShader is { Enabled: true } graph && graph.Program is { Error: null, Transmissive: true };
+
+    private bool ShaderGraphTranslucent =>
+        CustomShader is { Enabled: true } graph && graph.Program is { Error: null, Translucent: true };
+
+    private unsafe void ApplyShaderGraphUniforms(ShaderGraphProgram graph, mat4 view, mat4 proj)
+    {
+        _gl.ActiveTexture(GLEnum.Texture0 + ShaderGraphDataUnit);
+        if (_graphTexture == 0) _graphTexture = _gl.GenTexture();
+        _gl.BindTexture(GLEnum.Texture2D, _graphTexture);
+        if (!ReferenceEquals(_graphTextureProgram, graph))
+        {
+            fixed (float* data = graph.Data)
+                _gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba32f, (uint)graph.Texels, 1, 0,
+                    PixelFormat.Rgba, PixelType.Float, data);
+            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)GLEnum.Nearest);
+            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)GLEnum.Nearest);
+            _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMaxLevel, 0);
+            _graphTextureProgram = graph;
+        }
+        SetUniformInt("uShaderGraphData", ShaderGraphDataUnit);
+        bool sceneColor = ShaderGraphSceneColorTexture != 0 && graph.Transmissive;
+        _gl.ActiveTexture(GLEnum.Texture0 + ShaderGraphSceneColorUnit);
+        _gl.BindTexture(GLEnum.Texture2D, sceneColor ? ShaderGraphSceneColorTexture : 0);
+        _gl.ActiveTexture(GLEnum.Texture0);
+        SetUniformInt("uShaderGraphSceneColor", ShaderGraphSceneColorUnit);
+        SetUniformBool("uShaderGraphSceneColorAvailable", sceneColor);
+        SetUniformInt("uShaderGraphCount", graph.Count);
+        SetUniformInt("uShaderGraphOutputStart", graph.OutputStart);
+        SetUniformInt("uShaderGraphFlags", graph.Flags);
+        SetUniformFloat("uShaderGraphFrame", EffectFrame);
+        SetUniformMat4("uShaderGraphView", view);
+        SetUniformMat4("uShaderGraphViewProj", proj * view);
+        SetUniformVec3("uShaderGraphBoundsMin", BoundsMin);
+        SetUniformVec3("uShaderGraphBoundsSize", BoundsMax - BoundsMin);
+    }
+
     // ── Rendering ─────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -1431,20 +1489,7 @@ public class Mesh : IDisposable
         bool useGraph = graph is { Error: null };
         SetUniformInt("uShaderGraphEnabled", useGraph ? 1 : 0);
         if (useGraph && graph != null)
-        {
-            SetUniformInt("uShaderGraphCount", graph.Count);
-            if (graph.Count > 0)
-            {
-                fixed (float* ops = graph.Instructions, parameters = graph.Parameters)
-                {
-                    _gl.Uniform4(_shader.GetUniformLocation("uShaderGraphOps[0]"), (uint)graph.Count, ops);
-                    _gl.Uniform4(_shader.GetUniformLocation("uShaderGraphParams[0]"), (uint)graph.Count, parameters);
-                }
-            }
-            var outputs = graph.Outputs;
-            _gl.Uniform4(_shader.GetUniformLocation("uShaderGraphOutputs"), outputs[0], outputs[1], outputs[2], outputs[3]);
-            SetUniformInt("uShaderGraphHeight", outputs[4]);
-        }
+            ApplyShaderGraphUniforms(graph, view, proj);
         ApplyWindUniforms(_shader, model);
         ApplyBendUniforms(_shader);
 
@@ -1697,6 +1742,13 @@ public class Mesh : IDisposable
         _gl.BindSampler(13, 0);
         SetUniformBool("uUseSurfaceTexture", false);
         SetUniformBool("uPbrEnabled", false);
+        if (useGraph)
+        {
+            _gl.ActiveTexture(GLEnum.Texture0 + ShaderGraphDataUnit);
+            _gl.BindTexture(GLEnum.Texture2D, 0);
+            _gl.ActiveTexture(GLEnum.Texture0 + ShaderGraphSceneColorUnit);
+            _gl.BindTexture(GLEnum.Texture2D, 0);
+        }
         if (useAlphaMask)
         {
             _gl.ActiveTexture(GLEnum.Texture15);
@@ -2361,6 +2413,9 @@ public class Mesh : IDisposable
         if (_vbo != 0) _gl.DeleteBuffers(1, _vbo);
         if (_ebo != 0) _gl.DeleteBuffers(1, _ebo);
         if (_skinVbo != 0) _gl.DeleteBuffers(1, _skinVbo);
+        if (_graphTexture != 0) _gl.DeleteTexture(_graphTexture);
+        _graphTexture = 0;
+        _graphTextureProgram = null;
         _shader?.Dispose();
         _vao = _vbo = _ebo = _skinVbo = 0;
     }

@@ -1205,6 +1205,7 @@ public partial class Viewport : UiPanel
     {
         Mesh.GlobalCameraPosition = camera.Position;
         Mesh.EffectTime = GetTimelineEffectTimeSeconds();
+        Mesh.EffectFrame = Timeline.Instance?.CurrentFrame ?? 0;
         var p = PropertiesPanel;
         if (p == null) return (vec3.Zero, vec3.Zero, vec3.Zero);
         Mesh.Wind = new WindSettings(p.WindEnabled, p.WindSpeed, p.WindStrength, p.WindDirection,
@@ -2232,6 +2233,9 @@ public partial class Viewport : UiPanel
         _cinematicBarsShader?.Dispose();
         _cinematicBarsShader = null;
         DeleteFramebuffer(ref _fbo);
+        DeleteFramebuffer(ref _graphBackdropFbo);
+        DeleteTexture(ref _graphBackdropTex);
+        _graphBackdropWidth = _graphBackdropHeight = 0;
         DeleteTexture(ref _colorTex);
         DeleteTexture(ref _depthTex);
         DeleteTexture(ref _giAlbedoTex);
@@ -5681,6 +5685,9 @@ public partial class Viewport : UiPanel
         foreach (var (_, _, _, _, index) in _renderOrder)
         {
             var (model, mesh, _, includeFog, blurTexture, textureMipmaps) = renderItems[index];
+            // Each transmissive surface refracts everything drawn before it, including earlier glass.
+            if (mesh.UsesShaderGraphTransmission && !forceUnshaded)
+                CaptureShaderGraphBackdrop();
             Gl.DepthMask(!mesh.RequiresTranslucentPass && !mesh.DepthWriteDisabled);
             Gl.ColorMask(1, !mesh.RequiresTranslucentPass, !mesh.RequiresTranslucentPass,
                 !mesh.RequiresTranslucentPass, !mesh.RequiresTranslucentPass);
@@ -5691,11 +5698,63 @@ public partial class Viewport : UiPanel
             RenderMeshWithModeOverride(mesh, model, view, proj, forceUnshaded, includeFog, blurTexture, textureMipmaps, _preparedMipmaps);
         }
         Gl.DepthMask(true);
+        Mesh.ShaderGraphSceneColorTexture = 0;
         Gl.ColorMask(1, true, true, true, true);
         Gl.ColorMask(2, true, true, true, true);
         Gl.BlendEquation(GLEnum.FuncAdd);
         Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
         Gl.Disable(GLEnum.Blend);
+    }
+
+    private uint _graphBackdropFbo, _graphBackdropTex;
+    private int _graphBackdropWidth, _graphBackdropHeight;
+
+    /// <summary>
+    /// Copies colour attachment 0 of the bound scene framebuffer for screen-space refraction by
+    /// transmissive custom shaders. Leaves the framebuffer bindings and read buffer unchanged.
+    /// </summary>
+    private unsafe void CaptureShaderGraphBackdrop()
+    {
+        Mesh.ShaderGraphSceneColorTexture = 0;
+        Gl.GetInteger(GLEnum.DrawFramebufferBinding, out int drawFbo);
+        if (drawFbo == 0) return;
+        Span<int> viewport = stackalloc int[4];
+        Gl.GetInteger(GLEnum.Viewport, viewport);
+        int width = viewport[2], height = viewport[3];
+        if (width <= 0 || height <= 0) return;
+        if (_graphBackdropTex == 0 || _graphBackdropWidth != width || _graphBackdropHeight != height)
+        {
+            if (_graphBackdropTex == 0) _graphBackdropTex = Gl.GenTexture();
+            if (_graphBackdropFbo == 0) _graphBackdropFbo = Gl.GenFramebuffer();
+            Gl.GetInteger(GLEnum.TextureBinding2D, out int previousTexture);
+            Gl.BindTexture(GLEnum.Texture2D, _graphBackdropTex);
+            Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba16f, (uint)width, (uint)height, 0,
+                PixelFormat.Rgba, PixelType.HalfFloat, null);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)GLEnum.Linear);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)GLEnum.Linear);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)GLEnum.ClampToEdge);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.ClampToEdge);
+            Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMaxLevel, 0);
+            Gl.BindTexture(GLEnum.Texture2D, (uint)previousTexture);
+            Gl.BindFramebuffer(GLEnum.DrawFramebuffer, _graphBackdropFbo);
+            Gl.FramebufferTexture2D(GLEnum.DrawFramebuffer, GLEnum.ColorAttachment0, GLEnum.Texture2D, _graphBackdropTex, 0);
+            Gl.BindFramebuffer(GLEnum.DrawFramebuffer, (uint)drawFbo);
+            (_graphBackdropWidth, _graphBackdropHeight) = (width, height);
+        }
+        Gl.GetInteger(GLEnum.ReadFramebufferBinding, out int readFbo);
+        bool scissor = Gl.IsEnabled(EnableCap.ScissorTest);
+        if (scissor) Gl.Disable(EnableCap.ScissorTest);
+        Gl.BindFramebuffer(GLEnum.ReadFramebuffer, (uint)drawFbo);
+        Gl.GetInteger(GLEnum.ReadBuffer, out int readBuffer);
+        Gl.ReadBuffer(GLEnum.ColorAttachment0);
+        Gl.BindFramebuffer(GLEnum.DrawFramebuffer, _graphBackdropFbo);
+        Gl.BlitFramebuffer(viewport[0], viewport[1], viewport[0] + width, viewport[1] + height,
+            0, 0, width, height, ClearBufferMask.ColorBufferBit, GLEnum.Nearest);
+        Gl.BindFramebuffer(GLEnum.DrawFramebuffer, (uint)drawFbo);
+        Gl.ReadBuffer((GLEnum)readBuffer);
+        Gl.BindFramebuffer(GLEnum.ReadFramebuffer, (uint)readFbo);
+        if (scissor) Gl.Enable(EnableCap.ScissorTest);
+        Mesh.ShaderGraphSceneColorTexture = _graphBackdropTex;
     }
 
     private static void RenderMeshWithModeOverride(

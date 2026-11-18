@@ -8,27 +8,17 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 
 public partial class PropertiesPanel
 {
-    private enum ShaderSocketType { Float, Color, Vector }
-
-    // Node card layout in unscaled canvas units. Rows hold the output, then inputs, then parameter previews.
+    // Node card layout in unscaled canvas units. Rows hold outputs, then settings, then inputs.
     private const float ShaderHeaderHeight = 26, ShaderRowStart = 28, ShaderRowHeight = 22, ShaderFooter = 6;
-
-    private static readonly (string Category, ShaderNodeKind[] Kinds)[] ShaderNodeMenu =
-    [
-        ("Input", [ShaderNodeKind.Value, ShaderNodeKind.Color, ShaderNodeKind.Object, ShaderNodeKind.UV]),
-        ("Texture", [ShaderNodeKind.Noise, ShaderNodeKind.Wave, ShaderNodeKind.Voronoi, ShaderNodeKind.Checker]),
-        ("Color", [ShaderNodeKind.Ramp, ShaderNodeKind.Mix]),
-        ("Math", [ShaderNodeKind.Add, ShaderNodeKind.Multiply]),
-        ("Vector", [ShaderNodeKind.Mapping])
-    ];
 
     private bool _shaderEditorOpen, _shaderEditorFocused, _shaderCanvasHovered;
     private SceneObject? _shaderEditorObject;
     private Vector2 _shaderPan, _shaderDrag, _shaderCanvasOrigin, _shaderCanvasSize, _shaderMenuPos;
     private float _shaderZoom = 1f, _shaderScale = 1f;
-    private int _shaderSelected, _shaderSource, _shaderMoving, _shaderMenuNode;
+    private int _shaderSelected, _shaderSource, _shaderSourceOutput, _shaderMoving, _shaderMenuNode;
     private bool _shaderPanning, _shaderLinkDragging;
     private string? _shaderError;
+    private string _shaderSearch = "";
     private ShaderNode? _shaderClipboard;
 
     /// <summary>True while the shader editor window owns keyboard edit shortcuts.</summary>
@@ -182,41 +172,30 @@ public partial class PropertiesPanel
         return graph;
     }
 
+    private ShaderGraph ShaderReplaceNode(SceneObject obj, ShaderGraph graph, ShaderNode node, ShaderNode replacement)
+    {
+        var candidate = graph with { Nodes = graph.Nodes.Replace(node, replacement) };
+        if (candidate.ValidationError != null)
+        {
+            _shaderError = candidate.ValidationError;
+            return graph;
+        }
+        SetShaderGraph(obj, candidate);
+        return candidate;
+    }
+
     // ── Layout and styling ────────────────────────────────────────────────────
 
     private static uint ShaderRgb(int r, int g, int b, int a = 255) => (uint)((a << 24) | (b << 16) | (g << 8) | r);
 
-    private static (string Name, uint Color) ShaderCategory(ShaderNodeKind kind) => kind switch
+    private static (string Name, uint Color) ShaderCategory(ShaderNodeKind kind) => ShaderGraph.Spec(kind).Category switch
     {
-        ShaderNodeKind.Output => ("Output", ShaderRgb(128, 38, 52)),
-        ShaderNodeKind.Value or ShaderNodeKind.Color or ShaderNodeKind.Object or ShaderNodeKind.UV
-            => ("Input", ShaderRgb(124, 52, 82)),
-        ShaderNodeKind.Noise or ShaderNodeKind.Wave or ShaderNodeKind.Voronoi or ShaderNodeKind.Checker
-            => ("Texture", ShaderRgb(134, 82, 36)),
-        ShaderNodeKind.Ramp or ShaderNodeKind.Mix => ("Color", ShaderRgb(112, 102, 42)),
-        ShaderNodeKind.Add or ShaderNodeKind.Multiply => ("Math", ShaderRgb(38, 98, 130)),
+        "Output" => ("Output", ShaderRgb(128, 38, 52)),
+        "Input" => ("Input", ShaderRgb(124, 52, 82)),
+        "Texture" => ("Texture", ShaderRgb(134, 82, 36)),
+        "Color" => ("Color", ShaderRgb(112, 102, 42)),
+        "Converter" => ("Converter", ShaderRgb(38, 98, 130)),
         _ => ("Vector", ShaderRgb(70, 64, 140))
-    };
-
-    private static ShaderSocketType ShaderOutputType(ShaderNodeKind kind) => kind switch
-    {
-        ShaderNodeKind.Color or ShaderNodeKind.Ramp or ShaderNodeKind.Mix => ShaderSocketType.Color,
-        ShaderNodeKind.Object or ShaderNodeKind.UV or ShaderNodeKind.Mapping => ShaderSocketType.Vector,
-        _ => ShaderSocketType.Float
-    };
-
-    private static string ShaderOutputLabel(ShaderNodeKind kind) => ShaderOutputType(kind) switch
-    {
-        ShaderSocketType.Color => "Color",
-        ShaderSocketType.Vector => "Vector",
-        _ => kind is ShaderNodeKind.Value or ShaderNodeKind.Add or ShaderNodeKind.Multiply ? "Value" : "Factor"
-    };
-
-    private static ShaderSocketType ShaderInputType(string input) => input switch
-    {
-        "Base Color" or "Emission" or "Color A" or "Color B" => ShaderSocketType.Color,
-        "Vector" => ShaderSocketType.Vector,
-        _ => ShaderSocketType.Float
     };
 
     private static uint ShaderSocketColor(ShaderSocketType type) => type switch
@@ -226,29 +205,45 @@ public partial class PropertiesPanel
         _ => ShaderRgb(168, 168, 168)
     };
 
-    private static int ShaderOutputRows(ShaderNodeKind kind) => kind == ShaderNodeKind.Output ? 0 : 1;
+    private static ShaderSocketType ShaderOutputType(ShaderNodeKind kind, int output) =>
+        (uint)output < (uint)ShaderGraph.OutputCount(kind) ? ShaderGraph.OutputSockets(kind)[output].Type : ShaderSocketType.Float;
 
-    private static int ShaderParameterRows(ShaderNodeKind kind) => kind switch
+    private static int ShaderOutputRows(ShaderNodeKind kind) => ShaderGraph.OutputCount(kind);
+
+    /// <summary>Rows for dropdowns, toggles, parameters and previews, drawn between outputs and inputs.</summary>
+    private static int ShaderSettingRows(ShaderNodeKind kind)
     {
-        ShaderNodeKind.Value or ShaderNodeKind.Color or ShaderNodeKind.Noise or ShaderNodeKind.Voronoi
-            or ShaderNodeKind.Checker => 1,
-        ShaderNodeKind.Wave or ShaderNodeKind.Ramp or ShaderNodeKind.Mapping => 2,
-        _ => 0
-    };
+        var spec = ShaderGraph.Spec(kind);
+        int rows = (spec.Mode != null ? 1 : 0) + (spec.Option != null ? 1 : 0) + (spec.Variant != null ? 1 : 0) +
+                   (spec.ClampLabel != null ? 1 : 0) + spec.Parameters.Length;
+        return rows + (kind is ShaderNodeKind.Color or ShaderNodeKind.Ramp ? 1 : 0);
+    }
 
-    private static float ShaderNodeWidth(ShaderNodeKind kind) => kind == ShaderNodeKind.Output ? 220 : 180;
+    private static float ShaderNodeWidth(ShaderNodeKind kind) => kind == ShaderNodeKind.Output ? 240 : 200;
 
     private static float ShaderNodeHeight(ShaderNodeKind kind) => ShaderRowStart + ShaderFooter + ShaderRowHeight *
-        (ShaderOutputRows(kind) + ShaderGraph.Inputs(kind).Length + ShaderParameterRows(kind));
+        (ShaderOutputRows(kind) + ShaderSettingRows(kind) + ShaderGraph.InputCount(kind));
 
     private static float ShaderRowCenter(int row) => ShaderRowStart + ShaderRowHeight * (row + 0.5f);
 
-    private static float ShaderInputY(ShaderNodeKind kind, int input) => ShaderRowCenter(ShaderOutputRows(kind) + input);
+    private static float ShaderInputY(ShaderNodeKind kind, int input) =>
+        ShaderRowCenter(ShaderOutputRows(kind) + ShaderSettingRows(kind) + input);
 
     private Vector2 ShaderScreenToGraph(Vector2 screen) =>
         (screen - _shaderCanvasOrigin - _shaderPan) / (_shaderScale * _shaderZoom);
 
     private static string ShortcutSuffix(string id) => Keybinds.Label(id) is { Length: > 0 } label ? $" ({label})" : "";
+
+    private static string ShaderChoiceText(ShaderNodeChoice choice, int value) =>
+        choice.Values[Math.Clamp(value, 0, choice.Values.Length - 1)];
+
+    private static string ShaderSourceLabel(ShaderNode source, int output)
+    {
+        string label = Localization.DisplayText(ShaderGraph.Label(source.Kind));
+        return ShaderGraph.OutputCount(source.Kind) > 1
+            ? $"{label} · {Localization.DisplayText(ShaderGraph.OutputSockets(source.Kind)[output].Name)}"
+            : label;
+    }
 
     // ── Editor window ─────────────────────────────────────────────────────────
 
@@ -292,7 +287,7 @@ public partial class PropertiesPanel
             else
             {
                 float statusHeight = ImGui.GetFrameHeightWithSpacing();
-                float inspectorWidth = 240 * UiTheme.Scale;
+                float inspectorWidth = 280 * UiTheme.Scale;
                 float width = Math.Max(1f, ImGui.GetContentRegionAvail().X - inspectorWidth - ImGui.GetStyle().ItemSpacing.X);
                 ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
                 if (ImGui.BeginChild("##shaderCanvas", new Vector2(width, -statusHeight), ImGuiChildFlags.Borders,
@@ -320,7 +315,11 @@ public partial class PropertiesPanel
     {
         bool valid = graph.ValidationError == null;
         ImGui.BeginDisabled(!valid);
-        if (ImGui.Button(Localization.DisplayText("Add Node"))) ImGui.OpenPopup("##shaderNodes");
+        if (ImGui.Button(Localization.DisplayText("Add Node")))
+        {
+            _shaderSearch = "";
+            ImGui.OpenPopup("##shaderNodes");
+        }
         ImGui.EndDisabled();
         if (ImGui.BeginPopup("##shaderNodes"))
         {
@@ -335,7 +334,7 @@ public partial class PropertiesPanel
         {
             foreach (var preset in Enum.GetValues<ShaderGraphPreset>())
             {
-                if (!ImGui.MenuItem(Localization.DisplayText(preset == ShaderGraphPreset.BrushedSteel ? "Brushed Steel" : preset.ToString()))) continue;
+                if (!ImGui.MenuItem(Localization.DisplayText(ShaderGraphPresets.Label(preset)))) continue;
                 graph = ShaderGraphPresets.Create(preset) with { Enabled = graph.Enabled };
                 SetShaderGraph(obj, graph);
                 ResetShaderCanvas();
@@ -343,7 +342,10 @@ public partial class PropertiesPanel
             ImGui.Separator();
             if (ImGui.MenuItem(Localization.DisplayText("Empty Graph")))
             {
-                graph = new ShaderGraph { Enabled = graph.Enabled };
+                graph = new ShaderGraph
+                {
+                    Enabled = graph.Enabled, Nodes = [ShaderGraph.CreateNode(1, ShaderNodeKind.Output, 470, 80)]
+                };
                 SetShaderGraph(obj, graph);
                 ResetShaderCanvas();
             }
@@ -381,7 +383,7 @@ public partial class PropertiesPanel
                 Localization.DisplayText("Click an input socket to connect. Press Esc or right-click to cancel."));
         else
             UiText.Disabled(Localization.DisplayText(
-                "Drag or click from an output to an input  |  Right-click for options  |  Middle-drag to pan  |  Scroll to zoom"));
+                "Drag from an output to an input  |  Shift+A or right-click to add  |  Middle-drag to pan  |  Scroll to zoom"));
         string zoom = $"{_shaderZoom * 100:0}%";
         ImGui.SameLine(Math.Max(ImGui.GetCursorPosX(), right - ImGui.CalcTextSize(zoom).X));
         UiText.Disabled(zoom);
@@ -391,13 +393,38 @@ public partial class PropertiesPanel
     {
         bool full = graph.Nodes.Length >= ShaderGraph.MaxNodes;
         if (full) UiText.Disabled(Localization.DisplayText("Node limit reached"));
-        foreach (var (category, kinds) in ShaderNodeMenu)
+        if (ImGui.IsWindowAppearing()) ImGui.SetKeyboardFocusHere();
+        ImGui.SetNextItemWidth(220 * UiTheme.Scale);
+        ImGui.InputTextWithHint("##shaderNodeSearch", Localization.DisplayText("Search nodes..."), ref _shaderSearch, 64);
+        string search = _shaderSearch.Trim();
+        ShaderGraph Add(ShaderNodeKind kind)
+        {
+            ImGui.CloseCurrentPopup();
+            return ShaderAddNode(obj, graph, ShaderGraph.CreateNode(NextShaderNodeId(graph), kind, at.X, at.Y));
+        }
+        if (search.Length > 0)
+        {
+            var matches = ShaderGraph.Categories.SelectMany(ShaderGraph.MenuKinds)
+                .Where(kind => ShaderGraph.Label(kind).Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                               Localization.DisplayText(ShaderGraph.Label(kind)).Contains(search, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (matches.Count == 0) UiText.Disabled(Localization.DisplayText("No matching nodes"));
+            bool enter = ImGui.IsKeyPressed(ImGuiKey.Enter) || ImGui.IsKeyPressed(ImGuiKey.KeypadEnter);
+            for (int i = 0; i < matches.Count; i++)
+            {
+                if (ImGui.MenuItem(Localization.DisplayText(ShaderGraph.Label(matches[i])), ShaderGraph.Spec(matches[i]).Category, false, !full) ||
+                    (i == 0 && enter && !full))
+                    graph = Add(matches[i]);
+            }
+            return graph;
+        }
+        foreach (string category in ShaderGraph.Categories)
         {
             if (!ImGui.BeginMenu(Localization.DisplayText(category), !full)) continue;
-            foreach (var kind in kinds)
+            foreach (var kind in ShaderGraph.MenuKinds(category))
             {
                 if (ImGui.MenuItem(Localization.DisplayText(ShaderGraph.Label(kind))))
-                    graph = ShaderAddNode(obj, graph, ShaderGraph.CreateNode(NextShaderNodeId(graph), kind, at.X, at.Y));
+                    graph = Add(kind);
             }
             ImGui.EndMenu();
         }
@@ -408,7 +435,7 @@ public partial class PropertiesPanel
     {
         _shaderPan = _shaderDrag = Vector2.Zero;
         _shaderZoom = 1f;
-        _shaderSelected = _shaderSource = _shaderMoving = _shaderMenuNode = 0;
+        _shaderSelected = _shaderSource = _shaderSourceOutput = _shaderMoving = _shaderMenuNode = 0;
         _shaderPanning = _shaderLinkDragging = false;
         _shaderError = null;
     }
@@ -430,7 +457,7 @@ public partial class PropertiesPanel
         }
         var size = max - min + new Vector2(80);
         _shaderZoom = Math.Clamp(Math.Min(_shaderCanvasSize.X / (size.X * _shaderScale),
-            _shaderCanvasSize.Y / (size.Y * _shaderScale)), 0.45f, 1.25f);
+            _shaderCanvasSize.Y / (size.Y * _shaderScale)), 0.3f, 1.25f);
         _shaderPan = _shaderCanvasSize * 0.5f - (min + max) * 0.5f * _shaderScale * _shaderZoom;
     }
 
@@ -453,9 +480,15 @@ public partial class PropertiesPanel
         if (_shaderPanning) _shaderPan += io.MouseDelta;
         if (hovered && io.MouseWheel != 0 && _shaderMoving == 0)
         {
-            float zoom = Math.Clamp(_shaderZoom * MathF.Pow(1.15f, io.MouseWheel), 0.45f, 1.75f);
+            float zoom = Math.Clamp(_shaderZoom * MathF.Pow(1.15f, io.MouseWheel), 0.3f, 1.75f);
             _shaderPan = mouse - origin - (mouse - origin - _shaderPan) * (zoom / _shaderZoom);
             _shaderZoom = zoom;
+        }
+        if (hovered && io.KeyShift && !io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.A, false))
+        {
+            _shaderMenuPos = ShaderScreenToGraph(mouse);
+            _shaderSearch = "";
+            ImGui.OpenPopup("##shaderCanvasMenu");
         }
         float s = _shaderScale * _shaderZoom;
         if (_shaderMoving != 0)
@@ -480,8 +513,7 @@ public partial class PropertiesPanel
         Vector2 Position(ShaderNode n) => origin + _shaderPan +
             (new Vector2(n.X, n.Y) + (n.Id == _shaderMoving ? _shaderDrag : Vector2.Zero)) * s;
         Vector2 Size(ShaderNode n) => new Vector2(ShaderNodeWidth(n.Kind), ShaderNodeHeight(n.Kind)) * s;
-        bool IsOutput(ShaderNode n) => n.Kind == ShaderNodeKind.Output;
-        Vector2 Out(ShaderNode n) => Position(n) + new Vector2(ShaderNodeWidth(n.Kind), ShaderRowCenter(0)) * s;
+        Vector2 Out(ShaderNode n, int output) => Position(n) + new Vector2(ShaderNodeWidth(n.Kind), ShaderRowCenter(output)) * s;
         Vector2 In(ShaderNode n, int input) => Position(n) + new Vector2(0, ShaderInputY(n.Kind, input)) * s;
         bool Near(Vector2 p) => Vector2.DistanceSquared(mouse, p) <= 81 * s * s;
         bool Within(Vector2 min, Vector2 max) => mouse.X >= min.X && mouse.Y >= min.Y && mouse.X <= max.X && mouse.Y <= max.Y;
@@ -524,17 +556,19 @@ public partial class PropertiesPanel
         static uint Brighten(uint color) => (color & 0xFF000000) |
             (uint)((((color >> 16) & 0xFF) + 255) / 2 << 16) | (uint)((((color >> 8) & 0xFF) + 255) / 2 << 8) | (((color & 0xFF) + 255) / 2);
         static uint Dim(uint color, int alpha) => (color & 0x00FFFFFF) | (uint)(alpha << 24);
+        static uint ColorU32(float r, float g, float b) => ImGui.ColorConvertFloat4ToU32(new Vector4(
+            Math.Clamp(r, 0, 1), Math.Clamp(g, 0, 1), Math.Clamp(b, 0, 1), 1f));
 
         var nodes = graph.Nodes.ToDictionary(node => node.Id);
         foreach (var link in graph.Links)
         {
             var source = nodes[link.Source];
             bool active = link.Source == _shaderSelected || link.Target == _shaderSelected;
-            uint color = ShaderSocketColor(ShaderOutputType(source.Kind));
-            Wire(Out(source), In(nodes[link.Target], link.Input), active ? Brighten(color) : Dim(color, 200), active ? 3f : 2.2f);
+            uint color = ShaderSocketColor(ShaderOutputType(source.Kind, link.Output));
+            Wire(Out(source, link.Output), In(nodes[link.Target], link.Input), active ? Brighten(color) : Dim(color, 200), active ? 3f : 2.2f);
         }
         if (_shaderSource != 0 && nodes.TryGetValue(_shaderSource, out var from))
-            Wire(Out(from), mouse, Brighten(ShaderSocketColor(ShaderOutputType(from.Kind))), 2.6f);
+            Wire(Out(from, _shaderSourceOutput), mouse, Brighten(ShaderSocketColor(ShaderOutputType(from.Kind, _shaderSourceOutput))), 2.6f);
 
         void Socket(Vector2 center, ShaderSocketType type, bool linked)
         {
@@ -548,14 +582,17 @@ public partial class PropertiesPanel
         void Text(Vector2 at, uint color, string text) => draw.AddText(font, fontSize, at, color, text);
         float TextWidth(string text) => ImGui.CalcTextSize(text).X * _shaderZoom;
 
-        foreach (var n in graph.Nodes)
+        foreach (var original in graph.Nodes)
         {
+            var n = ShaderGraph.Normalize(original);
+            var spec = ShaderGraph.Spec(n.Kind);
             var pos = Position(n);
             var end = pos + Size(n);
             float width = ShaderNodeWidth(n.Kind);
             float rounding = 6 * s;
             var (_, headerColor) = ShaderCategory(n.Kind);
-            var inputs = ShaderGraph.Inputs(n.Kind);
+            var inputs = ShaderGraph.InputSockets(n.Kind);
+            var outputs = ShaderGraph.OutputSockets(n.Kind);
 
             draw.AddRectFilled(pos + new Vector2(3, 5) * s, end + new Vector2(3, 5) * s, ShaderRgb(0, 0, 0, 80), rounding);
             draw.AddRectFilled(pos, end, ShaderRgb(48, 48, 53, 248), rounding);
@@ -567,77 +604,88 @@ public partial class PropertiesPanel
             else
                 draw.AddRect(pos, end, hoveredNode == n.Id ? ShaderRgb(120, 120, 130) : ShaderRgb(16, 16, 18), rounding, ImDrawFlags.None, 1f * s);
             Text(pos + new Vector2(10 * s, (ShaderHeaderHeight * s - fontSize) * 0.5f), 0xFFFFFFFF,
-                Localization.DisplayText(ShaderGraph.Label(n.Kind)));
+                Localization.DisplayText(spec.Label));
 
             float RowTop(int row) => pos.Y + (ShaderRowCenter(row) * s) - fontSize * 0.5f;
-            if (!IsOutput(n))
+            for (int k = 0; k < outputs.Length; k++)
             {
-                string label = Localization.DisplayText(ShaderOutputLabel(n.Kind));
-                Text(new Vector2(pos.X + (width - 12) * s - TextWidth(label), RowTop(0)), ShaderRgb(220, 220, 224), label);
-                Socket(Out(n), ShaderOutputType(n.Kind), graph.Links.Any(link => link.Source == n.Id));
+                int output = k;
+                string label = Localization.DisplayText(outputs[k].Name);
+                Text(new Vector2(pos.X + (width - 12) * s - TextWidth(label), RowTop(k)), ShaderRgb(220, 220, 224), label);
+                Socket(Out(n, k), outputs[k].Type, graph.Links.Any(link => link.Source == n.Id && link.Output == output));
             }
+
+            int row = outputs.Length;
+            (Vector2 Min, Vector2 Max) Field(int fieldRow)
+            {
+                var top = pos + new Vector2(8, ShaderRowStart + ShaderRowHeight * fieldRow + 2) * s;
+                return (top, top + new Vector2(width - 16, ShaderRowHeight - 4) * s);
+            }
+            void Setting(string name, string value)
+            {
+                var (min, max) = Field(row);
+                draw.AddRectFilled(min, max, ShaderRgb(34, 34, 38), 4 * s);
+                float y = RowTop(row);
+                Text(new Vector2(pos.X + 14 * s, y), ShaderRgb(150, 150, 158), Localization.DisplayText(name));
+                string text = Localization.DisplayText(value);
+                Text(new Vector2(pos.X + (width - 14) * s - TextWidth(text), y), ShaderRgb(230, 230, 234), text);
+                row++;
+            }
+            if (spec.Mode != null) Setting(spec.Mode.Label, ShaderChoiceText(spec.Mode, n.Mode));
+            if (spec.Option != null) Setting(spec.Option.Label, ShaderChoiceText(spec.Option, n.Option));
+            if (spec.Variant != null) Setting(spec.Variant.Label, ShaderChoiceText(spec.Variant, n.Variant));
+            if (spec.ClampLabel != null) Setting(spec.ClampLabel, n.Clamp ? "On" : "Off");
+            float[] parameters = [n.A, n.B, n.C, n.D];
+            for (int p = 0; p < spec.Parameters.Length; p++) Setting(spec.Parameters[p].Name, $"{parameters[p]:0.###}");
+            if (n.Kind == ShaderNodeKind.Color)
+            {
+                var (min, max) = Field(row++);
+                draw.AddRectFilled(min, max, ColorU32(n.A, n.B, n.C), 4 * s);
+                draw.AddRect(min, max, ShaderRgb(16, 16, 18), 4 * s, ImDrawFlags.None, 1f * s);
+            }
+            else if (n.Kind == ShaderNodeKind.Ramp)
+                DrawShaderRampPreview(draw, n, Field(row++), s);
+
             for (int i = 0; i < inputs.Length; ++i)
             {
                 int input = i;
                 bool linked = graph.Links.Any(link => link.Target == n.Id && link.Input == input);
-                Text(new Vector2(pos.X + 12 * s, RowTop(ShaderOutputRows(n.Kind) + i)),
-                    linked ? ShaderRgb(220, 220, 224) : ShaderRgb(170, 170, 176), Localization.DisplayText(inputs[i]));
-                Socket(In(n, i), ShaderInputType(inputs[i]), linked);
-            }
-
-            int firstParameter = ShaderOutputRows(n.Kind) + inputs.Length;
-            void Field(int row, string name, string value)
-            {
-                var top = pos + new Vector2(8, ShaderRowStart + ShaderRowHeight * (firstParameter + row) + 2) * s;
-                draw.AddRectFilled(top, top + new Vector2(width - 16, ShaderRowHeight - 4) * s, ShaderRgb(34, 34, 38), 4 * s);
-                float y = RowTop(firstParameter + row);
-                Text(new Vector2(pos.X + 14 * s, y), ShaderRgb(150, 150, 158), Localization.DisplayText(name));
-                Text(new Vector2(pos.X + (width - 14) * s - TextWidth(value), y), ShaderRgb(230, 230, 234), value);
-            }
-            switch (n.Kind)
-            {
-                case ShaderNodeKind.Color:
+                float y = RowTop(row + i);
+                Text(new Vector2(pos.X + 12 * s, y), linked ? ShaderRgb(220, 220, 224) : ShaderRgb(170, 170, 176),
+                    Localization.DisplayText(inputs[i].Name));
+                Socket(In(n, i), inputs[i].Type, linked);
+                if (linked || inputs[i].Auto != ShaderAutoInput.None) continue;
+                var (x, vy, z) = ShaderGraph.InputValue(n, i);
+                float right = pos.X + (width - 12) * s;
+                if (inputs[i].Type == ShaderSocketType.Color)
                 {
-                    var top = pos + new Vector2(8, ShaderRowStart + ShaderRowHeight * firstParameter + 3) * s;
-                    var bottom = top + new Vector2(width - 16, ShaderRowHeight - 6) * s;
-                    draw.AddRectFilled(top, bottom, ImGui.ColorConvertFloat4ToU32(new Vector4(
-                        Math.Clamp(n.A, 0, 1), Math.Clamp(n.B, 0, 1), Math.Clamp(n.C, 0, 1), 1f)), 4 * s);
-                    draw.AddRect(top, bottom, ShaderRgb(16, 16, 18), 4 * s, ImDrawFlags.None, 1f * s);
-                    break;
+                    var min = new Vector2(right - 34 * s, pos.Y + (ShaderRowCenter(row + i) - 6) * s);
+                    draw.AddRectFilled(min, min + new Vector2(34, 12) * s, ColorU32(x, vy, z), 3 * s);
+                    draw.AddRect(min, min + new Vector2(34, 12) * s, ShaderRgb(16, 16, 18), 3 * s, ImDrawFlags.None, 1f * s);
                 }
-                case ShaderNodeKind.Value: Field(0, "Value", $"{n.A:0.###}"); break;
-                case ShaderNodeKind.Noise or ShaderNodeKind.Voronoi or ShaderNodeKind.Checker:
-                    Field(0, "Scale", $"{n.A:0.###}"); break;
-                case ShaderNodeKind.Wave:
-                    Field(0, "Scale", $"{n.A:0.###}");
-                    Field(1, "Distortion", $"{n.B:0.###}");
-                    break;
-                case ShaderNodeKind.Ramp:
-                    Field(0, "Start", $"{n.A:0.###}");
-                    Field(1, "End", $"{n.B:0.###}");
-                    break;
-                case ShaderNodeKind.Mapping:
-                    Field(0, "Scale", $"{n.A:0.###}");
-                    Field(1, "Offset", $"{n.B:0.##}, {n.C:0.##}, {n.D:0.##}");
-                    break;
+                else
+                {
+                    string value = inputs[i].Type == ShaderSocketType.Vector ? $"{x:0.##}, {vy:0.##}, {z:0.##}" : $"{x:0.###}";
+                    Text(new Vector2(right - TextWidth(value), y), ShaderRgb(205, 205, 210), value);
+                }
             }
         }
         draw.PopClipRect();
 
         bool clicked = hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left);
-        bool right = hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Right);
+        bool rightClick = hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Right);
         if (_shaderLinkDragging && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
         {
             _shaderLinkDragging = false;
             graph = FinishShaderLinkDrag();
         }
-        if (clicked || right) graph = HandleShaderCanvasClick();
+        if (clicked || rightClick) graph = HandleShaderCanvasClick();
         return DrawShaderCanvasMenus(obj, graph);
 
         ShaderGraph ConnectInput(ShaderNode n, int input, bool connect)
         {
             var links = graph.Links.RemoveAll(link => link.Target == n.Id && link.Input == input);
-            if (connect) links = links.Add(new ShaderLink(_shaderSource, n.Id, input));
+            if (connect) links = links.Add(new ShaderLink(_shaderSource, n.Id, input, _shaderSourceOutput));
             var candidate = graph with { Links = links };
             _shaderError = candidate.ValidationError;
             if (_shaderError != null) return graph;
@@ -652,11 +700,11 @@ public partial class PropertiesPanel
             for (int ni = graph.Nodes.Length - 1; ni >= 0; ni--)
             {
                 var n = graph.Nodes[ni];
-                for (int i = 0; i < ShaderGraph.Inputs(n.Kind).Length; ++i)
+                for (int i = 0; i < ShaderGraph.InputCount(n.Kind); ++i)
                     if (Near(In(n, i))) return ConnectInput(n, i, connect: true);
             }
             // Releasing on the output itself keeps the wire pending for click-to-connect.
-            if (!Near(Out(source))) _shaderSource = 0;
+            if (!Near(Out(source, _shaderSourceOutput))) _shaderSource = 0;
             return graph;
         }
 
@@ -665,8 +713,7 @@ public partial class PropertiesPanel
             for (int ni = graph.Nodes.Length - 1; ni >= 0; ni--)
             {
                 var n = graph.Nodes[ni];
-                var inputs = ShaderGraph.Inputs(n.Kind);
-                for (int i = 0; i < inputs.Length; ++i)
+                for (int i = 0; i < ShaderGraph.InputCount(n.Kind); ++i)
                 {
                     if (!Near(In(n, i))) continue;
                     int input = i;
@@ -676,7 +723,7 @@ public partial class PropertiesPanel
                         var existing = graph.Links.FirstOrDefault(link => link.Target == n.Id && link.Input == input);
                         if (existing.Source == 0) return graph;
                         // Pick up the connected wire so it can be dragged to another input or dropped.
-                        _shaderSource = existing.Source;
+                        (_shaderSource, _shaderSourceOutput) = (existing.Source, existing.Output);
                         _shaderLinkDragging = true;
                         var detached = graph with { Links = graph.Links.Remove(existing) };
                         SetShaderGraph(obj, detached);
@@ -684,13 +731,18 @@ public partial class PropertiesPanel
                     }
                     return ConnectInput(n, input, clicked);
                 }
-                if (clicked && !IsOutput(n) && Near(Out(n)))
+                if (clicked)
                 {
-                    _shaderSource = _shaderSource == n.Id ? 0 : n.Id;
-                    _shaderLinkDragging = _shaderSource != 0;
-                    _shaderSelected = n.Id;
-                    _shaderError = null;
-                    return graph;
+                    for (int k = 0; k < ShaderGraph.OutputCount(n.Kind); k++)
+                    {
+                        if (!Near(Out(n, k))) continue;
+                        bool same = _shaderSource == n.Id && _shaderSourceOutput == k;
+                        (_shaderSource, _shaderSourceOutput) = same ? (0, 0) : (n.Id, k);
+                        _shaderLinkDragging = _shaderSource != 0;
+                        _shaderSelected = n.Id;
+                        _shaderError = null;
+                        return graph;
+                    }
                 }
                 if (n.Id != hoveredNode) continue;
                 _shaderSelected = n.Id;
@@ -716,10 +768,49 @@ public partial class PropertiesPanel
             else
             {
                 _shaderMenuPos = ShaderScreenToGraph(mouse);
+                _shaderSearch = "";
                 ImGui.OpenPopup("##shaderCanvasMenu");
             }
             return graph;
         }
+    }
+
+    private static void DrawShaderRampPreview(ImDrawListPtr draw, ShaderNode node, (Vector2 Min, Vector2 Max) area, float s)
+    {
+        node = ShaderGraph.Normalize(node);
+        int stops = Math.Clamp(node.Option, 0, 2) + 2;
+        float[] positions = [node.A, node.B, node.C, node.D];
+        const int segments = 32;
+        float width = area.Max.X - area.Min.X;
+        for (int i = 0; i < segments; i++)
+        {
+            float t = (i + 0.5f) / segments;
+            var (r, g, b) = SampleShaderRamp(node, positions, stops, t);
+            uint color = ImGui.ColorConvertFloat4ToU32(new Vector4(Math.Clamp(r, 0, 1), Math.Clamp(g, 0, 1), Math.Clamp(b, 0, 1), 1));
+            draw.AddRectFilled(new Vector2(area.Min.X + width * i / segments, area.Min.Y),
+                new Vector2(area.Min.X + width * (i + 1) / segments + 0.5f, area.Max.Y), color);
+        }
+        draw.AddRect(area.Min, area.Max, ShaderRgb(16, 16, 18), 0, ImDrawFlags.None, 1f * s);
+    }
+
+    private static (float R, float G, float B) SampleShaderRamp(ShaderNode node, float[] positions, int stops, float f)
+    {
+        var p = new float[4];
+        p[0] = Math.Clamp(positions[0], 0, 1);
+        for (int k = 1; k < 4; k++) p[k] = Math.Clamp(positions[k], p[k - 1], 1);
+        (float, float, float) Color(int stop) => ShaderGraph.InputValue(node, stop + 1);
+        static (float, float, float) Mix((float, float, float) a, (float, float, float) b, float t) =>
+            (a.Item1 + (b.Item1 - a.Item1) * t, a.Item2 + (b.Item2 - a.Item2) * t, a.Item3 + (b.Item3 - a.Item3) * t);
+        if (f <= p[0]) return Color(0);
+        for (int k = 0; k + 1 < stops; k++)
+        {
+            if (f >= p[k + 1]) continue;
+            if (node.Mode == 1) return Color(k);
+            float t = (f - p[k]) / Math.Max(p[k + 1] - p[k], 1e-6f);
+            if (node.Mode == 2) t = t * t * (3 - 2 * t);
+            return Mix(Color(k), Color(k + 1), t);
+        }
+        return Color(stops - 1);
     }
 
     private ShaderGraph DrawShaderCanvasMenus(SceneObject obj, ShaderGraph graph)
@@ -756,6 +847,11 @@ public partial class PropertiesPanel
                 if (ImGui.MenuItem(Localization.DisplayText("Disconnect All"), "", false,
                         graph.Links.Any(link => link.Source == node.Id || link.Target == node.Id)))
                     graph = ShaderDisconnectNode(obj, graph, node.Id);
+                if (ImGui.MenuItem(Localization.DisplayText("Reset Values")))
+                {
+                    var reset = ShaderGraph.CreateNode(node.Id, node.Kind, node.X, node.Y);
+                    graph = ShaderReplaceNode(obj, graph, node, reset);
+                }
                 ImGui.Separator();
                 if (ImGui.MenuItem(Localization.DisplayText("Delete"), Keybinds.Label("delete"), false, editable))
                     graph = ShaderRemoveNode(obj, graph, node.Id);
@@ -769,81 +865,113 @@ public partial class PropertiesPanel
 
     private ShaderGraph DrawShaderNodeInspector(SceneObject obj, ShaderGraph graph)
     {
-        var node = graph.Nodes.FirstOrDefault(n => n.Id == _shaderSelected);
-        if (node == null)
+        var original = graph.Nodes.FirstOrDefault(n => n.Id == _shaderSelected);
+        if (original == null)
         {
             UiTheme.RenderSectionHeader(Localization.DisplayText("Inspector"));
             UiText.Disabled(Localization.DisplayText("No node selected"));
             ImGui.Spacing();
             ImGui.TextWrapped(Localization.DisplayText("Select a node to edit its settings, or right-click the canvas to add one."));
+            ImGui.Spacing();
+            ImGui.TextWrapped(Localization.DisplayText("Add an Input > Time node to animate values with the timeline."));
             return graph;
         }
 
+        var node = ShaderGraph.Normalize(original);
+        var spec = ShaderGraph.Spec(node.Kind);
         var (category, categoryColor) = ShaderCategory(node.Kind);
         var draw = ImGui.GetWindowDrawList();
         var start = ImGui.GetCursorScreenPos();
         float barHeight = ImGui.GetTextLineHeightWithSpacing() + ImGui.GetTextLineHeight();
         draw.AddRectFilled(start, start + new Vector2(4 * UiTheme.Scale, barHeight), categoryColor, 2 * UiTheme.Scale);
         ImGui.Indent(10 * UiTheme.Scale);
-        ImGui.TextWrapped(Localization.DisplayText(ShaderGraph.Label(node.Kind)));
+        ImGui.TextWrapped(Localization.DisplayText(spec.Label));
         UiText.Disabled(Localization.DisplayText($"{category} node"));
         ImGui.Unindent(10 * UiTheme.Scale);
         ImGui.Separator();
 
         ImGui.PushItemWidth(-1);
-        var color = new Vector3(node.A, node.B, node.C);
-        float a = node.A, b = node.B, c = node.C, d = node.D;
-        bool Parameter(string name, ref float value, float min, float max)
+        var edited = node;
+        bool Choice(ShaderNodeChoice? choice, string id, ref int value)
         {
-            UiText.Disabled(Localization.DisplayText(name));
-            return ImGui.DragFloat("##" + name, ref value, 0.02f, min, max, "%.3f", ImGuiSliderFlags.AlwaysClamp);
-        }
-        bool changed = false;
-        switch (node.Kind)
-        {
-            case ShaderNodeKind.Color:
-                UiText.Disabled(Localization.DisplayText("Color"));
-                changed = ImGui.ColorEdit3("##graphColor", ref color, ImGuiColorEditFlags.DisplayHex);
-                (a, b, c) = (color.X, color.Y, color.Z);
-                break;
-            case ShaderNodeKind.Value:
-                changed = Parameter("Value", ref a, -32, 32);
-                break;
-            case ShaderNodeKind.Noise:
-            case ShaderNodeKind.Voronoi:
-            case ShaderNodeKind.Checker:
-            case ShaderNodeKind.Wave:
-                changed = Parameter("Scale", ref a, 0.01f, 256);
-                if (node.Kind == ShaderNodeKind.Wave) changed |= Parameter("Distortion", ref b, 0, 32);
-                break;
-            case ShaderNodeKind.Ramp:
-                changed = Parameter("Start", ref a, 0, Math.Max(0, b - 0.001f));
-                changed |= Parameter("End", ref b, Math.Min(1, a + 0.001f), 1);
-                break;
-            case ShaderNodeKind.Mapping:
-                changed = Parameter("Scale", ref a, -256, 256);
-                changed |= Parameter("Offset X", ref b, -32, 32);
-                changed |= Parameter("Offset Y", ref c, -32, 32);
-                changed |= Parameter("Offset Z", ref d, -32, 32);
-                break;
-            default:
-                UiText.Disabled(Localization.DisplayText("This node has no settings."));
-                break;
-        }
-        ImGui.PopItemWidth();
-        if (changed)
-        {
-            var candidate = graph with { Nodes = graph.Nodes.Replace(node, node with { A = a, B = b, C = c, D = d }) };
-            if (candidate.ValidationError == null)
+            if (choice == null) return false;
+            UiText.Disabled(Localization.DisplayText(choice.Label));
+            bool changed = false;
+            int current = Math.Clamp(value, 0, choice.Values.Length - 1);
+            if (ImGui.BeginCombo("##" + id, Localization.DisplayText(choice.Values[current])))
             {
-                SetShaderGraph(obj, candidate);
-                graph = candidate;
-                node = graph.Nodes.First(n => n.Id == node.Id);
+                for (int i = 0; i < choice.Values.Length; i++)
+                {
+                    if (ImGui.Selectable(Localization.DisplayText(choice.Values[i]), i == current))
+                        (value, changed) = (i, true);
+                    if (i == current) ImGui.SetItemDefaultFocus();
+                }
+                ImGui.EndCombo();
             }
-            else _shaderError = candidate.ValidationError;
+            return changed;
+        }
+        int mode = node.Mode, option = node.Option, variant = node.Variant;
+        bool changedNode = false;
+        if (Choice(spec.Mode, "shaderMode", ref mode)) (edited, changedNode) = (edited with { Mode = mode }, true);
+        if (Choice(spec.Option, "shaderOption", ref option))
+        {
+            edited = edited with { Option = option };
+            if (node.Kind == ShaderNodeKind.Ramp) edited = SpreadNewRampStops(edited, node.Option);
+            changedNode = true;
+        }
+        if (Choice(spec.Variant, "shaderVariant", ref variant)) (edited, changedNode) = (edited with { Variant = variant }, true);
+        if (spec.ClampLabel != null)
+        {
+            bool clamp = node.Clamp;
+            if (ImGui.Checkbox(Localization.DisplayText(spec.ClampLabel), ref clamp))
+                (edited, changedNode) = (edited with { Clamp = clamp }, true);
         }
 
-        var inputs = ShaderGraph.Inputs(node.Kind);
+        float a = node.A, b = node.B, c = node.C, d = node.D;
+        bool Parameter(string name, ref float value, float min, float max, float speed = 0.01f)
+        {
+            UiText.Disabled(Localization.DisplayText(name));
+            return ImGui.DragFloat("##" + name, ref value, speed, min, max, "%.3f", ImGuiSliderFlags.AlwaysClamp);
+        }
+        bool changedParameters = false;
+        if (node.Kind == ShaderNodeKind.Color)
+        {
+            var color = new Vector3(node.A, node.B, node.C);
+            UiText.Disabled(Localization.DisplayText("Color"));
+            changedParameters = ImGui.ColorEdit3("##graphColor", ref color, ImGuiColorEditFlags.DisplayHex | ImGuiColorEditFlags.Float);
+            (a, b, c) = (color.X, color.Y, color.Z);
+        }
+        else if (node.Kind == ShaderNodeKind.Ramp)
+        {
+            int stops = Math.Clamp(edited.Option, 0, 2) + 2;
+            float[] positions = [a, b, c, d];
+            for (int k = 0; k < stops; k++)
+            {
+                float low = k == 0 ? 0 : positions[k - 1], high = k + 1 < stops ? positions[k + 1] : 1;
+                changedParameters |= Parameter($"Stop {k + 1} Position", ref positions[k], low, Math.Max(low, high), 0.005f);
+            }
+            (a, b, c, d) = (positions[0], positions[1], positions[2], positions[3]);
+        }
+        else
+        {
+            float[] values = [a, b, c, d];
+            for (int p = 0; p < spec.Parameters.Length; p++)
+            {
+                var parameter = spec.Parameters[p];
+                float speed = Math.Max(0.005f, (parameter.Max - parameter.Min) / 400f);
+                if (node.Kind == ShaderNodeKind.Value) speed = 0.01f;
+                changedParameters |= Parameter(parameter.Name, ref values[p], parameter.Min, parameter.Max, speed);
+            }
+            (a, b, c, d) = (values[0], values[1], values[2], values[3]);
+        }
+        if (changedParameters) (edited, changedNode) = (edited with { A = a, B = b, C = c, D = d }, true);
+        if (spec.Mode == null && spec.Option == null && spec.Variant == null && spec.ClampLabel == null &&
+            spec.Parameters.Length == 0 && node.Kind != ShaderNodeKind.Color && spec.Inputs.Length == 0)
+            UiText.Disabled(Localization.DisplayText(node.Kind == ShaderNodeKind.Time
+                ? "Outputs the timeline position in seconds and frames." : "This node has no settings."));
+
+        var inputs = spec.Inputs;
+        var removeLink = default(ShaderLink?);
         if (inputs.Length > 0)
         {
             ImGui.Spacing();
@@ -852,25 +980,81 @@ public partial class PropertiesPanel
             for (int i = 0; i < inputs.Length; i++)
             {
                 int input = i;
+                var socket = inputs[i];
                 var link = graph.Links.FirstOrDefault(l => l.Target == node.Id && l.Input == input);
-                ImGui.TextUnformatted(Localization.DisplayText(inputs[i]));
-                ImGui.SameLine();
-                string source = link.Source != 0 && nodes.TryGetValue(link.Source, out var from)
-                    ? Localization.DisplayText(ShaderGraph.Label(from.Kind))
-                    : Localization.DisplayText("Not connected");
-                float x = ImGui.GetCursorPosX() + ImGui.GetContentRegionAvail().X - ImGui.CalcTextSize(source).X;
-                ImGui.SetCursorPosX(Math.Max(ImGui.GetCursorPosX(), x));
-                if (link.Source != 0) ImGui.TextUnformatted(source);
-                else UiText.Disabled(source);
+                ImGui.PushID(i);
+                if (link.Source != 0 && nodes.TryGetValue(link.Source, out var from))
+                {
+                    ImGui.TextUnformatted(Localization.DisplayText(socket.Name));
+                    ImGui.SameLine();
+                    string source = "← " + ShaderSourceLabel(from, link.Output);
+                    float buttonWidth = ImGui.GetFrameHeight();
+                    float x = ImGui.GetCursorPosX() + ImGui.GetContentRegionAvail().X - ImGui.CalcTextSize(source).X -
+                              buttonWidth - ImGui.GetStyle().ItemSpacing.X;
+                    ImGui.SetCursorPosX(Math.Max(ImGui.GetCursorPosX(), x));
+                    ImGui.TextUnformatted(source);
+                    ImGui.SameLine();
+                    if (ImGui.Button("x", new Vector2(buttonWidth, 0))) removeLink = link;
+                    if (ImGui.IsItemHovered()) UiText.Tooltip(Localization.DisplayText("Disconnect"));
+                }
+                else if (socket.Auto != ShaderAutoInput.None)
+                {
+                    ImGui.TextUnformatted(Localization.DisplayText(socket.Name));
+                    ImGui.SameLine();
+                    UiText.Disabled(Localization.DisplayText(socket.Auto == ShaderAutoInput.UV
+                        ? "UV coordinates" : "Object coordinates"));
+                }
+                else
+                {
+                    UiText.Disabled(Localization.DisplayText(socket.Name));
+                    var (x, y, z) = ShaderGraph.InputValue(node, i);
+                    bool changed;
+                    if (socket.Type == ShaderSocketType.Color)
+                    {
+                        var color = new Vector3(x, y, z);
+                        changed = ImGui.ColorEdit3("##value", ref color,
+                            ImGuiColorEditFlags.DisplayHex | ImGuiColorEditFlags.Float | ImGuiColorEditFlags.Hdr);
+                        (x, y, z) = (color.X, color.Y, color.Z);
+                    }
+                    else if (socket.Type == ShaderSocketType.Vector)
+                    {
+                        var vector = new Vector3(x, y, z);
+                        changed = ImGui.DragFloat3("##value", ref vector, 0.01f, socket.Min, socket.Max, "%.3f");
+                        (x, y, z) = (vector.X, vector.Y, vector.Z);
+                    }
+                    else
+                    {
+                        float range = socket.Max - socket.Min;
+                        float speed = range <= 16 ? 0.005f : range >= 1000 ? 0.05f : 0.01f;
+                        changed = ImGui.DragFloat("##value", ref x, speed, socket.Min, socket.Max, "%.3f", ImGuiSliderFlags.AlwaysClamp);
+                        (y, z) = (x, x);
+                    }
+                    if (changed) (edited, changedNode) = (ShaderGraph.WithInputValue(edited, i, x, y, z), true);
+                }
+                ImGui.PopID();
             }
         }
+        ImGui.PopItemWidth();
 
-        if (node.Kind == ShaderNodeKind.Output) return graph;
+        if (changedNode) graph = ShaderReplaceNode(obj, graph, original, edited);
+        if (removeLink is { } removed)
+        {
+            graph = graph with { Links = graph.Links.Remove(removed) };
+            SetShaderGraph(obj, graph);
+        }
+
+        if (node.Kind == ShaderNodeKind.Output)
+        {
+            ImGui.Spacing();
+            ImGui.TextWrapped(Localization.DisplayText(
+                "Transmission refracts the scene behind the surface using IOR and Refraction Depth; Alpha fades it out. Both draw in the transparent pass."));
+            return graph;
+        }
         ImGui.Spacing();
         ImGui.Separator();
-        float buttonWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) * 0.5f;
+        float buttonWidthHalf = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) * 0.5f;
         ImGui.BeginDisabled(graph.Nodes.Length >= ShaderGraph.MaxNodes);
-        if (ImGui.Button(Localization.DisplayText("Duplicate"), new Vector2(buttonWidth, 0)))
+        if (ImGui.Button(Localization.DisplayText("Duplicate"), new Vector2(buttonWidthHalf, 0)))
             graph = ShaderDuplicateNode(obj, graph, node.Id);
         ImGui.EndDisabled();
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
@@ -884,5 +1068,15 @@ public partial class PropertiesPanel
         ImGui.PopStyleColor(3);
         if (ImGui.IsItemHovered()) UiText.Tooltip(Localization.DisplayText("Delete node") + ShortcutSuffix("delete"));
         return graph;
+    }
+
+    /// <summary>Spaces Color Ramp stops evenly when stops are added, so new stops don't overlap the end.</summary>
+    private static ShaderNode SpreadNewRampStops(ShaderNode node, int previousOption)
+    {
+        int before = Math.Clamp(previousOption, 0, 2) + 2, after = Math.Clamp(node.Option, 0, 2) + 2;
+        if (after <= before) return node;
+        float[] positions = [node.A, node.B, node.C, node.D];
+        for (int k = 0; k < after; k++) positions[k] = k / (float)(after - 1);
+        return node with { A = positions[0], B = positions[1], C = positions[2], D = positions[3] };
     }
 }

@@ -141,31 +141,60 @@ object-target endpoints, arbitrary drawn splines, or motion-history trails.
 
 Select a mesh object, open **Properties > Object > Material**, enable **Use Custom
 Shader**, and open **Shader Editor**. Start with **Water**, **Magma**, **Brushed
-Steel**, **Copper**, or **Marble** under **Replace with Preset**, or build your own
-graph with **Add Node**.
+Steel**, **Copper**, **Marble**, **Glass**, or **Lava Flow** under **Replace with
+Preset**, or build your own graph with **Add Node** (or Shift+A over the canvas,
+then type to search).
 
 - Drag from an output socket to an input, or click one and then the other, to
   connect them. Drag a wire off an input or right-click the input to disconnect
   it. Drag nodes to move them, middle-drag to pan, scroll to zoom, and use
   **Frame All** to fit the graph. Right-click the canvas to add or paste nodes,
-  or right-click a node for more options. Select a node to edit its parameters
-  in the inspector.
+  or right-click a node for more options, including **Reset Values**. Select a
+  node to edit its settings and unlinked input values in the inspector.
 - While the Shader Editor is focused, the normal Delete, Duplicate, Cut, Copy,
   and Paste keybinds (and the matching **Edit** menu commands) act on the
   selected node instead of scene objects or keyframes. Press Esc to cancel a
   pending connection. The Material Output node can't be deleted or copied.
-- Connect procedural textures, colors, math, and coordinate nodes to the
-  **Principled Material Output**. Its inputs are Base Color, Roughness, Metallic,
-  Emission, and Bump Height. Procedural textures use mesh-local coordinates
-  unless you connect a different vector, such as UVs.
+- Every input has an editable value used when nothing is connected, as in
+  Blender. Nodes with several outputs (such as Noise **Fac**/**Color** or
+  Separate XYZ) expose each one as its own socket. Color and vector outputs
+  connected to a single-value input use their luminance.
+- The **Principled Material Output** inputs are Base Color, Roughness,
+  Metallic, Emission, Bump Height, Alpha, IOR, Transmission, Specular (IOR
+  level), Emission Strength, Bump Strength, and Refraction Depth.
+  - **Transmission** replaces diffuse shading with the scene behind the surface,
+    refracted by **IOR** and tinted by Base Color. **Refraction Depth** sets how
+    far behind the surface the refracted ray is sampled; rough surfaces blur it.
+    IOR and Specular also set the surface's reflectivity.
+  - Transmission and **Alpha** below 1 draw the object in the transparent pass.
+- Node categories:
+  - **Input**: Value, RGB, Texture Coordinate, Geometry, Fresnel, Layer Weight,
+    Object Info, and **Time**.
+  - **Texture**: Noise (with detail, roughness, distortion and a W input for
+    animating), Wave, Voronoi, Checker, Gradient, Magic, Brick, White Noise, and
+    Image Texture (the object's material texture).
+  - **Color**: Color Ramp (2–4 stops), Mix Color (19 blend modes),
+    Invert, Hue/Saturation/Value, Brightness/Contrast, Gamma, and Blackbody.
+  - **Vector**: Mapping, Vector Math, and Vector Rotate.
+  - **Converter**: Math (41 operations), Map Range, Clamp, RGB to BW, and
+    Separate/Combine XYZ and Color.
+- The **Time** node outputs the timeline position in **Seconds** and **Frame**.
+  Connect it, usually through Math, to inputs such as Noise **W**, Wave **Phase
+  Offset**, or Mapping **Location** to animate a material. Seeking and exports
+  render the same result for the same frame.
+- Procedural textures use mesh-local coordinates unless you connect a different
+  vector, such as UVs from Texture Coordinate. Rotation inputs (Mapping and
+  Vector Rotate) are in degrees; Math trigonometry uses radians.
 - The project saves the graph even when you turn **Use Custom Shader** off to
   return to the standard material. Existing opacity, texture alpha, and cutout
-  settings still apply while the graph is active.
+  settings still apply while the graph is active. Graphs saved by earlier
+  versions open with equivalent settings.
 
-Graphs support up to 32 nodes. They use the existing OpenGL lighting and
+Graphs support up to 64 nodes. They use the existing OpenGL lighting and
 export pipeline; the experimental Veldrid viewport switches to OpenGL for scenes
-with custom shader materials. The Water preset is a rippled surface, not a
-refraction or fluid simulation.
+with custom shader materials. Refraction is screen-space: it can only show
+what is already on screen, and library thumbnails show transmission as plain
+transparency. The Water preset is a rippled surface, not a fluid simulation.
 
 ## Importing Mine-imator objects
 

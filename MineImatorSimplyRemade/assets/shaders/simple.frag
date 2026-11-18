@@ -16,7 +16,6 @@ uniform vec3 uSubtractRgb;
 uniform vec3 uSubtractHsv;
 
 #include "material_colors.glsl"
-#include "shader_graph.glsl"
 uniform float uAlpha;
 uniform bool  uPremultiplyBlend;
 uniform bool  uAlphaClipEnabled;
@@ -120,6 +119,14 @@ layout(location = 1) out vec4 GiAlbedo;
 layout(location = 2) out vec4 GiRadiance;
 layout(location = 3) out vec4 OutlineNormal;
 
+#include "shader_graph.glsl"
+// Copy of the scene drawn so far, captured before transmissive custom-shader surfaces.
+uniform sampler2D uShaderGraphSceneColor;
+uniform bool uShaderGraphSceneColorAvailable;
+// Set per fragment by custom shaders; the defaults reproduce the standard material.
+float gDielectricF0 = 0.04;
+float gDiffuseWeight = 1.0;
+
 // Match the display-encoded scene / linear GI convention used by indirect_denoise.frag.
 vec3 toLinear(vec3 color) { return pow(max(color, vec3(0.0)), vec3(2.2)); }
 vec3 toDisplay(vec3 color) { return pow(max(color, vec3(0.0)), vec3(1.0 / 2.2)); }
@@ -141,7 +148,7 @@ vec3 pbrLighting(vec3 normal, vec3 view, vec3 light, vec3 albedo, vec3 diffuseTi
     vec3 halfVector = safeDirection(view + light, normal);
     float nDotH = clamp(dot(normal, halfVector), 0.0, 1.0);
     float vDotH = clamp(dot(view, halfVector), 0.0, 1.0);
-    vec3 f0 = mix(vec3(0.04), albedo, metallic);
+    vec3 f0 = mix(vec3(gDielectricF0), albedo, metallic);
     vec3 fresnel = f0 + (1.0 - f0) * pow(1.0 - vDotH, 5.0);
     float a = roughness * roughness;
     float a2 = a * a;
@@ -152,7 +159,7 @@ vec3 pbrLighting(vec3 normal, vec3 view, vec3 light, vec3 albedo, vec3 diffuseTi
     float smithV = nDotL * sqrt(nDotV * nDotV * (1.0 - a2) + a2);
     float smithL = nDotV * sqrt(nDotL * nDotL * (1.0 - a2) + a2);
     float visibility = 0.5 / max(smithV + smithL, 1e-6);
-    diffuse = (1.0 - fresnel) * (1.0 - metallic) * albedo * diffuseTint * (nDotL / PI);
+    diffuse = (1.0 - fresnel) * (1.0 - metallic) * gDiffuseWeight * albedo * diffuseTint * (nDotL / PI);
     return diffuse + distribution * visibility * fresnel * nDotL;
 }
 
@@ -569,13 +576,24 @@ void main() {
     float metallic = clamp(uMetallic * surface.b, 0.0, 1.0);
     float occlusion = pbr ? mix(1.0, clamp(surface.r, 0.0, 1.0), clamp(uOcclusionStrength, 0.0, 1.0)) : 1.0;
     vec3 graphEmission = vec3(0.0);
+    float graphTransmission = 0.0, graphIor = 1.45, graphRefractionDepth = 0.0;
     if (custom) {
-        NodeSurface material = evaluateShaderGraph(vShaderPosition, vTexCoord);
+        vec3 facingNormal = gl_FrontFacing ? vertexNormal : -vertexNormal;
+        vec3 incoming = safeDirection(uCameraPosition - vFragPos, facingNormal);
+        NodeSurface material = evaluateShaderGraph(vShaderPosition, vTexCoord, vFragPos, facingNormal, incoming,
+                                                   !gl_FrontFacing, uEffectTime);
         baseColor = pbr ? toLinear(material.color) : material.color;
         roughness = material.roughness;
         metallic = material.metallic;
         graphEmission = pbr ? toLinear(min(material.emission, 1.0)) + max(material.emission - 1.0, 0.0) : material.emission;
-        if (pbr && uShaderGraphHeight >= 0) vertexNormal = graphBump(vertexNormal, vFragPos, material.height);
+        alpha *= material.alpha;
+        gDielectricF0 = graphDielectricF0(material.ior, material.specular);
+        graphTransmission = material.transmission * (1.0 - metallic);
+        gDiffuseWeight = 1.0 - graphTransmission;
+        graphIor = material.ior;
+        graphRefractionDepth = material.refractionDepth;
+        if (pbr && (uShaderGraphFlags & GRAPH_BUMP_LINKED) != 0)
+            vertexNormal = graphBump(vertexNormal, vFragPos, material.height * material.bumpStrength);
     }
 
     // Modelbench discards only completely transparent fragments. Even very low
@@ -587,7 +605,7 @@ void main() {
     vec3 linearAlbedo = pbr ? baseColor : pow(max(baseColor, 0.0), vec3(2.2));
     vec3 bounceSource = vec3(0.0);
     float giVisibility = uIsUnlit ? 0.0 : 1.0 - clamp(uMetallic, 0.0, 1.0);
-    if (pbr) giVisibility = (1.0 - metallic) * occlusion;
+    if (pbr) giVisibility = (1.0 - metallic) * occlusion * gDiffuseWeight;
 
     if (!uIsUnlit && !uEndPortalSurface) {
     vec3 norm    = gl_FrontFacing ? vertexNormal : -vertexNormal;
@@ -729,15 +747,41 @@ void main() {
         }
         directionalLight += scatter;
     }
-    result = pbr ? max(uAmbient, vec3(0.0)) * linearAlbedo * (1.0 - metallic) * occlusion + directionalLight + pointLightSum
+    result = pbr ? max(uAmbient, vec3(0.0)) * linearAlbedo * (1.0 - metallic) * occlusion * gDiffuseWeight + directionalLight + pointLightSum
                  : (uAmbient + directionalLight * sssDirectTint + pointLightSum) * baseColor + pointSpecularSum;
     // GI transports outgoing diffuse light, not ambient, fog or post-processing.
     bounceSource = pbr ? directionalDiffuse + pointBounceSum
                       : (directionalLight * sssDirectTint + pointBounceSum) * linearAlbedo * giVisibility;
 
     if (uIndirectWorldEnabled) {
-        result += baseColor * pointIndirectSum * max(uIndirectWorldStrength, 0.0) * (pbr ? (1.0 - metallic) * occlusion : 1.0);
+        result += baseColor * pointIndirectSum * max(uIndirectWorldStrength, 0.0) * (pbr ? (1.0 - metallic) * occlusion * gDiffuseWeight : 1.0);
     }
+    }
+    if (custom && graphTransmission > 0.0) {
+        // Transmission replaces the diffuse lobe with the refracted, base-colour-tinted scene behind.
+        vec3 n = gl_FrontFacing ? vertexNormal : -vertexNormal;
+        vec3 v = safeDirection(uCameraPosition - vFragPos, n);
+        float transmitted = graphTransmission *
+            (1.0 - graphFresnelDielectric(dot(v, n), gl_FrontFacing ? graphIor : 1.0 / graphIor));
+        if (uShaderGraphSceneColorAvailable) {
+            vec3 direction = refract(-v, n, gl_FrontFacing ? 1.0 / graphIor : graphIor);
+            if (dot(direction, direction) <= 0.0) direction = reflect(-v, n);
+            vec4 clip = uShaderGraphViewProj * vec4(vFragPos + direction * graphRefractionDepth, 1.0);
+            vec2 size = vec2(textureSize(uShaderGraphSceneColor, 0));
+            vec2 target = clip.w > 1e-6 ? clip.xy / clip.w * 0.5 + 0.5 : gl_FragCoord.xy / size;
+            // Rough surfaces blur the backdrop.
+            vec2 radius = vec2(roughness * roughness * 0.02) * vec2(size.y / size.x, 1.0);
+            vec4 behind = texture(uShaderGraphSceneColor, clamp(target, 0.0, 1.0)) * 2.0;
+            behind += texture(uShaderGraphSceneColor, clamp(target + vec2(radius.x, 0.0), 0.0, 1.0));
+            behind += texture(uShaderGraphSceneColor, clamp(target - vec2(radius.x, 0.0), 0.0, 1.0));
+            behind += texture(uShaderGraphSceneColor, clamp(target + vec2(0.0, radius.y), 0.0, 1.0));
+            behind += texture(uShaderGraphSceneColor, clamp(target - vec2(0.0, radius.y), 0.0, 1.0));
+            behind /= 6.0;
+            result += (pbr ? toLinear(behind.rgb) : behind.rgb) * baseColor * transmitted;
+            alpha *= 1.0 - transmitted * (1.0 - clamp(behind.a, 0.0, 1.0));
+        } else {
+            alpha *= 1.0 - transmitted;
+        }
     }
     if (uEndPortalSurface) bounceSource = toLinear(baseColor);
     if (custom) {
