@@ -135,6 +135,15 @@ internal static class SceneObjectFingerprint
                 hash.Add(shake.Intensity); hash.Add(shake.Speed); hash.Add(shake.Offset);
                 hash.Add(shake.AutomaticOffset); hash.Add(shake.KeyframeInfluence);
             }
+            if (modifier.Type == SceneModifierType.RigidBody)
+            {
+                var body = modifier.RigidBody;
+                hash.Add(modifier.RigidBodyBake?.Id);
+                hash.Add((int)body.Type); hash.Add(body.Animated); hash.Add((int)body.Shape); hash.Add(body.Mass);
+                hash.Add(body.Friction); hash.Add(body.Bounciness); hash.Add(body.Margin);
+                hash.Add(body.LinearDamping); hash.Add(body.AngularDamping); hash.Add(body.Deactivation);
+                hash.Add(body.ContinuousCollision); hash.Add(body.CollisionCollections); hash.Add(body.IncludeChildren);
+            }
             if (modifier.Type == SceneModifierType.Cloth)
             {
                 var cloth = modifier.Cloth;
@@ -327,6 +336,9 @@ internal static class SceneObjectFingerprint
             hash.Add(settings.Bounds); hash.Add(settings.InitialVelocity); hash.Add(settings.SimulationSpeed);
             hash.Add((int)settings.RenderMode); hash.Add(settings.SurfaceResolution); hash.Add(settings.SurfaceRadius);
             hash.Add(settings.SurfaceThreshold);
+            hash.Add(settings.RigidBodyInteraction); hash.Add(settings.Density);
+            hash.Add(settings.LinearDrag); hash.Add(settings.AngularDrag);
+            hash.Add(fluid.Bake?.Id);
         }
 
         if (obj is { HasExplicitMaterialSettings: true, MaterialSettings: { } material })

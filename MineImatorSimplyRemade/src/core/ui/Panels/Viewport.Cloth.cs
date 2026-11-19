@@ -138,6 +138,7 @@ public partial class Viewport
         if (owner != this) return owner.BakeCloth();
         if (IsClothBaking) throw new InvalidOperationException("A cloth bake is already running.");
         if (IsWiggleBaking) throw new InvalidOperationException("Finish or cancel the wiggle bake before baking cloth.");
+        if (IsRigidBodyBaking) throw new InvalidOperationException("Finish or cancel the rigid body bake before baking cloth.");
         _showClothBakePopup = true;
         ClothBakeCompletedFrames = ClothBakeTotalFrames = 0;
         var timeline = Timeline.Instance;
@@ -392,29 +393,7 @@ public partial class Viewport
             foreach (var mesh in obj.Visuals)
             {
                 if (clothMeshes.Contains(mesh) || mesh.PickOnly || mesh.DepthTestDisabled) continue;
-                if (mesh.IsSkinned)
-                {
-                    var root = obj;
-                    while (root.Parent != null) root = root.Parent;
-                    if (!rootBones.TryGetValue(root, out var bones))
-                        rootBones.Add(root, bones = MeshSkinning.BuildBoneDictionary(root));
-                    MeshSkinning.UpdateBoneMatrices(mesh, source, bones);
-                }
-                IReadOnlyList<vec3> vertices;
-                if (mesh.IsSkinned || mesh.HasShapeKeys)
-                    vertices = VeldridSceneRenderer.BuildVertices(mesh).Select(v => v.Position).ToArray();
-                else if (mesh.GpuBend == null)
-                    vertices = mesh.Vertices;
-                else
-                {
-                    int signature = ComputeClothMeshSignature(mesh);
-                    if (!_clothColliderVertices.TryGetValue(mesh, out var cached) || cached.Signature != signature)
-                    {
-                        cached = (signature, VeldridSceneRenderer.BuildClothRestVertices(mesh).Select(v => v.Position).ToArray());
-                        _clothColliderVertices[mesh] = cached;
-                    }
-                    vertices = cached.Vertices;
-                }
+                IReadOnlyList<vec3> vertices = ColliderVertices(obj, mesh, source, rootBones);
                 int count = mesh.Indices is { Length: > 0 } ? mesh.Indices.Length : vertices.Count;
                 foreach (var delta in modifiers.GetDeltas(obj))
                 {
@@ -438,6 +417,31 @@ public partial class Viewport
             }
         }
         return triangles;
+    }
+
+    /// <summary>Object-space collision vertices including skinning, shape keys and the current GPU bend.</summary>
+    private IReadOnlyList<vec3> ColliderVertices(SceneObject obj, Mesh mesh, mat4 source,
+        Dictionary<SceneObject, Dictionary<string, BoneSceneObject>> rootBones)
+    {
+        if (mesh.IsSkinned)
+        {
+            var root = obj;
+            while (root.Parent != null) root = root.Parent;
+            if (!rootBones.TryGetValue(root, out var bones))
+                rootBones.Add(root, bones = MeshSkinning.BuildBoneDictionary(root));
+            MeshSkinning.UpdateBoneMatrices(mesh, source, bones);
+        }
+        if (mesh.IsSkinned || mesh.HasShapeKeys)
+            return VeldridSceneRenderer.BuildVertices(mesh).Select(v => v.Position).ToArray();
+        if (mesh.GpuBend == null)
+            return mesh.Vertices;
+        int signature = ComputeClothMeshSignature(mesh);
+        if (!_clothColliderVertices.TryGetValue(mesh, out var cached) || cached.Signature != signature)
+        {
+            cached = (signature, VeldridSceneRenderer.BuildClothRestVertices(mesh).Select(v => v.Position).ToArray());
+            _clothColliderVertices[mesh] = cached;
+        }
+        return cached.Vertices;
     }
 
     internal static IEnumerable<SceneObject> EnumerateClothObjects(IEnumerable<SceneObject> roots)

@@ -46,6 +46,8 @@ public static class InverseKinematicsSolver
             obj.SetEvaluatedCopyTransform(null, vec3.Ones);
             obj.SetEvaluatedPathFrame(null);
             ShakeEvaluation.Evaluate(obj, frame, framerate);
+            // Before copy constraints and IK so targets of simulated objects follow the baked motion.
+            RigidBodyEvaluation.Apply(obj, frame, framerate);
             foreach (var constraint in obj.CopyConstraints)
             {
                 constraint.EvaluatedInput = null;

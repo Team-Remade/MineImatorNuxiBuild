@@ -9,6 +9,23 @@ public sealed class FluidSceneObject : SceneObject
     private FluidSimulation? _simulation;
     private float _evaluatedTime = -1f;
     private long _evaluatedColliderHash;
+    private FluidBake? _bake;
+    private FluidBake? _uploadedBake;
+    private int _uploadedBakeFrame = -1;
+
+    /// <summary>Particle frames saved by a coupled rigid body bake; replaces live simulation while it matches.</summary>
+    public FluidBake? Bake
+    {
+        get => _bake;
+        set
+        {
+            value?.Validate();
+            _bake = value;
+            ResetRuntime();
+        }
+    }
+
+    public bool HasValidBake(float framerate) => _bake is { } bake && bake.Settings == Settings && bake.Framerate == framerate;
 
     public FluidSettings Settings
     {
@@ -45,13 +62,28 @@ public sealed class FluidSceneObject : SceneObject
         _simulation = null;
         _evaluatedTime = -1f;
         _evaluatedColliderHash = 0;
+        _uploadedBake = null;
+        _uploadedBakeFrame = -1;
     }
 
-    public void EvaluateGeometry(float seconds, IReadOnlyList<ClothTriangle>? worldColliders = null)
+    public void EvaluateGeometry(float seconds, IReadOnlyList<ClothTriangle>? worldColliders = null, float? framerate = null)
     {
         if (!float.IsFinite(seconds) || seconds < 0)
             throw new ArgumentOutOfRangeException(nameof(seconds));
         if (Visuals.Count == 0) return;
+        if (framerate is { } fps && HasValidBake(fps))
+        {
+            int frame = (int)MathF.Round(seconds * fps);
+            if (ReferenceEquals(_uploadedBake, _bake) && _uploadedBakeFrame == frame) return;
+            Upload(_bake!.GetParticles(frame));
+            _uploadedBake = _bake;
+            _uploadedBakeFrame = frame;
+            // A later live evaluation must rebuild instead of reusing the baked surface.
+            _evaluatedTime = -1f;
+            return;
+        }
+        _uploadedBake = null;
+        _uploadedBakeFrame = -1;
         float target = MathF.Floor(seconds * 60f) / 60f;
         IReadOnlyList<ClothTriangle>? localColliders = null;
         if (Settings.MeshCollisions && worldColliders is { Count: > 0 })
@@ -68,10 +100,15 @@ public sealed class FluidSceneObject : SceneObject
             ResetRuntime();
         _evaluatedColliderHash = colliderHash;
         Simulation.SimulateToTime(target, localColliders);
-        FluidGeometry.Populate(Visuals[0], Settings, Simulation.Particles);
+        Upload(Simulation.Particles);
+        _evaluatedTime = target;
+    }
+
+    private void Upload(IReadOnlyList<FluidParticle> particles)
+    {
+        FluidGeometry.Populate(Visuals[0], Settings, particles);
         Visuals[0].IsTranslucent = Visuals[0].AlphaMode != MaterialAlphaMode.Clip;
         Visuals[0].Upload();
-        _evaluatedTime = target;
     }
 
     private static long ColliderHash(IReadOnlyList<ClothTriangle>? triangles)

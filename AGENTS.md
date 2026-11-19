@@ -87,6 +87,7 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --block-rotation-graphics
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --rigid-body
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --fluid
@@ -158,6 +159,10 @@ Coverage and prerequisites:
   stone and wooden buttons), trapdoors, both door halves, multipart rotations,
   and consistent geometry after conversion to animatable blocks, rebuilding,
   and resource-pack reapplication.
+- `--rigid-body`: no GPU; Jolt falling/resting, determinism, shapes, collision
+  collections, kinematic bodies and keyframed handoff, fluid buoyancy/sinking/
+  particle displacement, viewport bake playback, staleness, start frame,
+  clearing, coupled fluid bakes and persistence.
 - `--shader-graph`: custom shader graph validation, socket values, multi-output
   links, legacy graph upgrades, persistence, canvas/inspector controls for every
   node kind, and editor shortcuts.
@@ -397,6 +402,37 @@ Weld and deformation invariants:
   shape, retained in baked frames; cloth replaces bend deformation rather than
   bending twice. Disabling cloth restores normal bend rendering.
 - Animated collider skinning/bending is sampled on the CPU.
+
+### Rigid bodies (Jolt Physics)
+
+Preserve the README behavior: rigid bodies are bake-only and solved together.
+`RigidBodySimulation` is UI-independent; `Viewport.RigidBody.cs` samples each
+frame on the UI thread (with `RigidBodyEvaluation.Suspend()` so old bakes don't
+feed the authored pose) and solves it on a background task.
+
+- Bakes store object world transforms without pivot. `RigidBodyEvaluation.Apply`
+  runs inside `InverseKinematicsSolver.Evaluate` before copy constraints/IK, and
+  `SceneObject` gives the override priority over copy transforms, so viewport,
+  export, cloth/wiggle sampling and children all see the same motion.
+- Simulated poses are deltas: `N_t = B_t * B_0^-1 * N_0`, where `B` is the rigid
+  Jolt body frame and `N` the captured object world matrix. This preserves
+  scale, shear, mirroring and pivots of the authored transform.
+- `RigidBodyBake.Matches` ignores `Animated`, because it is keyframeable for
+  animated-to-dynamic handoff; other setting, world or frame-rate changes make
+  the bake stale and the authored pose is shown.
+- Coupled fluids are created at frame 0 and stepped at their own fixed 60 Hz
+  inside physics substeps. Buoyancy uses Jolt's `Body.ApplyBuoyancyImpulse` with
+  a water level from `2 * median - floor` of particles in a ring around the body,
+  which ignores splashes. Particles are pushed out with exact body-local signed
+  distances (hull planes come from Jolt's hull faces); water trapped against the
+  fluid domain slides along the wall instead of being clamped back in.
+- JoltPhysicsSharp 2.24 binding bugs: `BodyInterface.ApplyBuoyancyImpulse`
+  passes the body ID by pointer (always fails) and
+  `NarrowPhaseQuery.CollideShape` ignores the query transform. Use the `Body`
+  overload and the signed-distance push-out instead. Verify any new binding call
+  against joltc behavior with a focused test.
+- NativeAOT publishes embed `joltc.dll` from `$(PkgJoltPhysics_Native)` for
+  `NativeLibraryBootstrap`, since loose publish DLLs are deleted.
 
 ### Procedural 3D effects
 

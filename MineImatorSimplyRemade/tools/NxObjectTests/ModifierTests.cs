@@ -13,6 +13,76 @@ using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 internal static partial class Program
 {
+    private static void ModifierApplyArrays(Fixture f)
+    {
+        var viewport = new Viewport();
+        var stack = new SceneModifier { Count = 3, Axis = ArrayAxis.Y, Distance = 2 };
+        var rake = new SceneModifier { Count = 2, RotationZ = 60, ScaleX = 0.8f };
+        var body = new SceneModifier { Type = SceneModifierType.RigidBody, RigidBody = new() { Mass = 4f } };
+        var source = new SceneObject { Name = "Body", PivotOffset = new vec3(0.1f), Modifiers = [stack, rake, body] };
+        source.AssignObjectId();
+        source.SetLocalPosition(new vec3(1, 2, 3));
+        source.SetExplicitMaterialSettings();
+        source.MaterialSettings.BlendColor = new vec4(0.3f, 0.5f, 0.7f, 1f);
+        source.Keyframes["position.y"] = [new() { Frame = 0, Value = 0f }];
+        source.Keyframes[$"modifier.{stack.Id}.count"] = [new() { Frame = 0, Value = 3f }];
+        string massTrack = $"modifier.{body.Id}.rigid_body.mass";
+        source.Keyframes[massTrack] = [new() { Frame = 0, Value = 4f }];
+        var parent = new SceneObject { Name = "Group", PivotOffset = vec3.Zero };
+        parent.AssignObjectId();
+        parent.SetLocalRotation(new vec3(0, 0, 0.2f));
+        parent.AddChild(source);
+        var child = new SceneObject { Name = "Child", PivotOffset = vec3.Zero };
+        child.AssignObjectId();
+        child.SetLocalPosition(vec3.UnitY);
+        source.AddChild(child);
+        viewport.SceneObjects.Add(parent);
+        var preview = new ModifierEvaluation(viewport.SceneObjects).GetDeltas(source);
+        var world = source.GetWorldMatrix();
+        var childWorld = child.GetWorldMatrix();
+
+        var copies = new SceneTree { Viewport = viewport }.ApplyArrays(source);
+
+        Equal(5, copies.Count, "Array count includes the original");
+        Equal(6, parent.Children.Count, "Copies stay under the same parent");
+        Equal(6, parent.Children.Select(o => o.ObjectId).Distinct().Count(), "Each copy is individually addressable");
+        for (int i = 0; i < copies.Count; i++)
+        {
+            var copy = copies[i];
+            Check(SceneObject.ArrayMatrixNear(preview[i + 1] * world, copy.GetWorldMatrix()), "Copied pose matches the preview");
+            Check(SceneObject.ArrayMatrixNear(preview[i + 1] * childWorld, copy.Children.Single().GetWorldMatrix()),
+                "The copied hierarchy matches the preview");
+            Equal(body.RigidBody, RigidBodyEvaluation.ActiveModifier(copy)!.RigidBody, "Each copy has active rigid body settings");
+            Equal(source.MaterialSettings.BlendColor, copy.MaterialSettings.BlendColor, "Copies keep the source material");
+            Check(!ReferenceEquals(source.MaterialSettings, copy.MaterialSettings), "Material edits are independent");
+            Check(!copy.Keyframes.ContainsKey("position.y") && copy.Keyframes.ContainsKey(massTrack),
+                "Copies drop transform tracks but preserve other animation");
+            Equal(1, new ModifierEvaluation(viewport.SceneObjects).GetDeltas(copy).Count, "Copies no longer instance themselves");
+        }
+        Check(source.Keyframes.ContainsKey("position.y") && !source.Keyframes.ContainsKey($"modifier.{stack.Id}.count"),
+            "The original keeps transform animation and loses the applied Array tracks");
+        Equal(body, source.Modifiers.Single(), "Only Array modifiers are applied");
+    }
+
+    private static void ModifierApplyRollback(Fixture f)
+    {
+        var array = new SceneModifier { Count = 3, Axis = ArrayAxis.X };
+        var source = new SceneObject { Name = "Parent", PivotOffset = vec3.Zero, Modifiers = [array] };
+        source.AssignObjectId();
+        var child = new SceneObject { Name = "Independent position", PivotOffset = vec3.Zero, InheritPosition = false };
+        child.AssignObjectId();
+        source.AddChild(child);
+        var viewport = new Viewport();
+        viewport.SceneObjects.Add(source);
+
+        bool rejected = false;
+        try { new SceneTree { Viewport = viewport }.ApplyArrays(source); }
+        catch (InvalidOperationException) { rejected = true; }
+        Check(rejected, "A preview affected by incompatible transform inheritance is rejected rather than approximated");
+        Equal(source, viewport.SceneObjects.Single(), "Rejection does not leave extra objects");
+        Equal(array, source.Modifiers.Single(), "Rejection keeps the preview intact");
+    }
+
     private static void ModifierFrameSkip(Fixture f)
     {
         var skip = new SceneModifier { Type = SceneModifierType.FrameSkip, FrameSkipFrames = 4 };

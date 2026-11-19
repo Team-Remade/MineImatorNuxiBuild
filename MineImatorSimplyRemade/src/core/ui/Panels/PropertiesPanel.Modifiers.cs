@@ -11,6 +11,7 @@ public partial class PropertiesPanel
 {
     private SceneObject? _modifierErrorOwner;
     private string? _modifierError;
+    internal SceneTree? SceneTree { get; set; }
 
     private void DrawModifiers(SceneObject owner)
     {
@@ -59,6 +60,15 @@ public partial class PropertiesPanel
                 Timeline?.RefreshFromScene();
                 ProjectManager.Instance.SetDirty(true);
             }
+            if (owner.Modifiers.All(m => m.Type != SceneModifierType.RigidBody) &&
+                MineImatorSimplyRemade.core.ui.Panels.Viewport.RigidBodyUnsupportedReason(owner) == null &&
+                ImGui.MenuItem(Localization.Label("text.rigid_body.title", "Rigid Body")))
+            {
+                if (string.IsNullOrEmpty(owner.ObjectId)) owner.AssignObjectId();
+                owner.Modifiers.Add(new SceneModifier { Type = SceneModifierType.RigidBody });
+                Timeline?.RefreshFromScene();
+                ProjectManager.Instance.SetDirty(true);
+            }
             ImGui.EndPopup();
         }
         ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 6f * UiTheme.Scale);
@@ -82,6 +92,7 @@ public partial class PropertiesPanel
                     SceneModifierType.Cloth => Localization.Label("text.cloth.title", "Cloth"),
                     SceneModifierType.Shake => Localization.Label("text.shake.title", "Shake"),
                     SceneModifierType.FrameSkip => Localization.Label("text.frame_skip.title", "Frame Skip"),
+                    SceneModifierType.RigidBody => Localization.Label("text.rigid_body.title", "Rigid Body"),
                     _ => Localization.Label("text.modifier.array", "Array")
                 };
                 if (ImGui.TreeNodeEx(label, ImGuiTreeNodeFlags.DefaultOpen))
@@ -110,6 +121,8 @@ public partial class PropertiesPanel
                     }
                     else if (modifier.Type == SceneModifierType.Cloth)
                         DrawClothModifier(owner, i);
+                    else if (modifier.Type == SceneModifierType.RigidBody)
+                        DrawRigidBodyModifier(owner, i);
                     else if (modifier.Type == SceneModifierType.Shake)
                         DrawShakeModifier(owner, i);
                     else if (modifier.Type == SceneModifierType.FrameSkip)
@@ -236,6 +249,30 @@ public partial class PropertiesPanel
         }
         ImGui.EndChild();
         ImGui.PopStyleVar(2);
+        if (SceneTree != null && owner.Modifiers.Any(m => m.Type == SceneModifierType.Array && m.Enabled))
+        {
+            ImGui.BeginDisabled(Viewport?.IsPhysicsBaking == true);
+            bool apply = ImGui.Button(Localization.Label("text.modifier.apply_arrays", "Apply Arrays"));
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered())
+                UiText.Tooltip(Localization.T("text.modifier.apply_help"));
+            if (apply)
+            {
+                try
+                {
+                    SceneTree.ApplyArrays(owner);
+                    Timeline?.RefreshFromScene();
+                    remove = move = -1;
+                    _modifierError = null;
+                }
+                catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
+                {
+                    _modifierErrorOwner = owner;
+                    _modifierError = ex.Message;
+                    Console.Error.WriteLine($"Apply Arrays rejected: {ex.Message}");
+                }
+            }
+        }
         bool combineChildren = owner.CombineChildren;
         ImGui.BeginDisabled(!combineChildren && owner.Children.Count == 0);
         if (ImGui.Checkbox(Localization.Label("text.modifier.combine_children", "Combine Children"), ref combineChildren))

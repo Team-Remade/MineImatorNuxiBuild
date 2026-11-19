@@ -5949,20 +5949,22 @@ public partial class Viewport : UiPanel
     private void UpdateProceduralEffects(IReadOnlyList<SceneObject> objects, float seconds)
     {
         var allObjects = EnumerateClothObjects(objects).ToArray();
+        float framerate = Timeline.Instance?.Framerate ?? 30f;
+        // Baked fluids replay saved particles and need no live collision geometry.
         var fluids = allObjects.OfType<FluidSceneObject>()
-            .Where(fluid => fluid.Settings.MeshCollisions && fluid.GetEffectiveVisibility()).ToArray();
+            .Where(fluid => fluid.Settings.MeshCollisions && fluid.GetEffectiveVisibility() && !fluid.HasValidBake(framerate)).ToArray();
         IReadOnlyList<ClothTriangle> colliders = [];
         if (fluids.Length > 0)
             colliders = CollectClothColliders(allObjects, fluids.SelectMany(fluid => fluid.Visuals).ToHashSet());
         Update(objects, seconds, colliders);
 
-        static void Update(IReadOnlyList<SceneObject> nodes, float time, IReadOnlyList<ClothTriangle> triangles)
+        void Update(IReadOnlyList<SceneObject> nodes, float time, IReadOnlyList<ClothTriangle> triangles)
         {
             for (int i = 0; i < nodes.Count; i++)
             {
                 var obj = nodes[i];
                 if (obj is FluidSceneObject fluid)
-                    fluid.EvaluateGeometry(time, fluid.Settings.MeshCollisions ? triangles : null);
+                    fluid.EvaluateGeometry(time, fluid.Settings.MeshCollisions ? triangles : null, framerate);
                 if (obj is ProceduralEffectSceneObject effect)
                     effect.EvaluateGeometry(time);
                 if (obj is PathSceneObject path)

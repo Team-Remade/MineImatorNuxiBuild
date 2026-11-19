@@ -493,7 +493,10 @@ public static class ProjectSceneSerializer
         if (obj is ProceduralEffectSceneObject procedural)
             entry.ProceduralEffect = procedural.Settings;
         if (obj is FluidSceneObject fluid)
+        {
             entry.Fluid = ProjectFluidSettings.From(fluid.Settings);
+            entry.FluidBake = fluid.Bake is { } fluidBake ? ProjectFluidBake.From(fluidBake) : null;
+        }
         if (obj is PathSceneObject path)
             entry.Path = path.Settings;
         if (obj is PathPointSceneObject point)
@@ -952,7 +955,11 @@ public static class ProjectSceneSerializer
         obj.WiggleCollider = entry.WiggleCollider ?? new();
         obj.WiggleCollider.Validate();
         obj.Modifiers = entry.Modifiers?.Select(modifier => modifier.Validated()).ToList() ?? [];
-        foreach (var modifier in obj.Modifiers) modifier.ClothBake?.Validate();
+        foreach (var modifier in obj.Modifiers)
+        {
+            modifier.ClothBake?.Validate();
+            modifier.RigidBodyBake?.Validate();
+        }
         if (entry.CopyConstraints != null)
         {
             obj.CopyConstraints.Clear();
@@ -1054,7 +1061,10 @@ public static class ProjectSceneSerializer
         if (obj is ProceduralEffectSceneObject procedural)
             procedural.Settings = entry.ProceduralEffect ?? new();
         if (obj is FluidSceneObject fluid)
+        {
             fluid.Settings = entry.Fluid?.ToRuntime() ?? new();
+            fluid.Bake = entry.FluidBake?.ToRuntime();
+        }
         if (obj is PathSceneObject path)
             path.Settings = entry.Path ?? new();
         if (obj is PathPointSceneObject point)

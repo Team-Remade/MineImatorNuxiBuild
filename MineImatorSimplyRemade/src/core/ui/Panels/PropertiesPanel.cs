@@ -404,6 +404,8 @@ public partial class PropertiesPanel : UiPanel
         MaxParticlesPerSpawner = settings.MaxParticlesPerSpawner;
         if (settings.Wiggle == null) throw new InvalidDataException("Wiggle scene settings are missing.");
         settings.Wiggle.Validate();
+        settings.RigidBodyWorld ??= new();
+        settings.RigidBodyWorld.Validate();
         WatermarkEnabled = settings.WatermarkEnabled;
         WatermarkImagePath = settings.WatermarkImagePath ?? "";
         WatermarkHorizontalAlignment = Math.Clamp(settings.WatermarkHorizontalAlignment, 0, 2);

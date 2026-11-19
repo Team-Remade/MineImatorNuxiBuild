@@ -30,12 +30,18 @@ public partial class Timeline
     [
         ("enabled", "Enabled"), ("frame_skip.frames", "text.frame_skip.frames")
     ];
+    // Keyframing Animated off hands an active body from its animation to the simulation, as in Blender.
+    internal static readonly (string Channel, string Label)[] RigidBodyChannels =
+    [
+        ("enabled", "Enabled"), ("rigid_body.animated", "text.rigid_body.animated")
+    ];
 
     private static IEnumerable<(string Channel, string Label)> ModifierChannels(SceneModifierType type) => type switch
     {
         SceneModifierType.Array => ArrayChannels,
         SceneModifierType.Shake => ShakeChannels,
         SceneModifierType.FrameSkip => FrameSkipChannels,
+        SceneModifierType.RigidBody => RigidBodyChannels,
         _ => [("enabled", "Enabled")]
     };
 
@@ -45,7 +51,8 @@ public partial class Timeline
     internal static bool IsDiscreteModifierPath(string path) =>
         path.StartsWith("modifier.", StringComparison.Ordinal) &&
         (path.EndsWith(".enabled", StringComparison.Ordinal) || path.EndsWith(".count", StringComparison.Ordinal) ||
-            path.EndsWith(".axis", StringComparison.Ordinal) || path.EndsWith(".frame_skip.frames", StringComparison.Ordinal));
+            path.EndsWith(".axis", StringComparison.Ordinal) || path.EndsWith(".frame_skip.frames", StringComparison.Ordinal) ||
+            path.EndsWith(".rigid_body.animated", StringComparison.Ordinal));
 
     internal static bool TryGetModifier(SceneObject obj, string path, out SceneModifier modifier, out string channel)
     {
@@ -72,6 +79,7 @@ public partial class Timeline
                 SceneModifierType.Cloth => Localization.T("text.cloth.title"),
                 SceneModifierType.Shake => Localization.T("text.shake.title"),
                 SceneModifierType.FrameSkip => Localization.T("text.frame_skip.title"),
+                SceneModifierType.RigidBody => Localization.T("text.rigid_body.title"),
                 _ => Localization.T("text.path.follow")
             };
             var channels = ModifierChannels(modifier.Type);
@@ -104,6 +112,7 @@ public partial class Timeline
         "shake.offset" => modifier.Shake.Offset,
         "shake.automatic.enabled" => modifier.Shake.AutomaticOffset ? 1f : 0f,
         "shake.influence" => modifier.Shake.KeyframeInfluence,
+        "rigid_body.animated" => modifier.RigidBody.Animated ? 1f : 0f,
         _ => throw new InvalidDataException($"Unknown modifier channel: {channel}.")
     };
 
@@ -149,6 +158,7 @@ public partial class Timeline
                 "shake.offset" => modifier with { Shake = modifier.Shake with { Offset = value } },
                 "shake.automatic.enabled" => modifier with { Shake = modifier.Shake with { AutomaticOffset = value >= 0.5f } },
                 "shake.influence" => modifier with { Shake = modifier.Shake with { KeyframeInfluence = value } },
+                "rigid_body.animated" => modifier with { RigidBody = modifier.RigidBody with { Animated = value >= 0.5f } },
                 _ => throw new InvalidDataException($"Invalid modifier channel or value: {channel}.")
             };
         }

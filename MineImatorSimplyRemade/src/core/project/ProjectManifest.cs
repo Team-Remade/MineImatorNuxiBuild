@@ -118,6 +118,7 @@ public class ProjectRenderSettings
             ? value : throw new InvalidDataException("Maximum particles per spawner must be from 1 to 10000.");
     }
     public WiggleSceneSettings Wiggle { get; set; } = new();
+    public RigidBodyWorldSettings RigidBodyWorld { get; set; } = new();
     public bool WatermarkEnabled { get; set; }
     public string WatermarkImagePath { get; set; } = "";
     public int WatermarkHorizontalAlignment { get; set; } = 2;
@@ -373,6 +374,10 @@ public sealed class ProjectFluidSettings
     public int SurfaceResolution { get; set; } = 20;
     public float SurfaceRadius { get; set; } = 0.4f;
     public float SurfaceThreshold { get; set; } = 0.16f;
+    public bool RigidBodyInteraction { get; set; } = true;
+    public float Density { get; set; } = 1000f;
+    public float LinearDrag { get; set; } = 4f;
+    public float AngularDrag { get; set; } = 0.5f;
 
     public static ProjectFluidSettings From(FluidSettings settings) => new()
     {
@@ -399,7 +404,11 @@ public sealed class ProjectFluidSettings
         RenderMode = settings.RenderMode,
         SurfaceResolution = settings.SurfaceResolution,
         SurfaceRadius = settings.SurfaceRadius,
-        SurfaceThreshold = settings.SurfaceThreshold
+        SurfaceThreshold = settings.SurfaceThreshold,
+        RigidBodyInteraction = settings.RigidBodyInteraction,
+        Density = settings.Density,
+        LinearDrag = settings.LinearDrag,
+        AngularDrag = settings.AngularDrag
     };
 
     public FluidSettings ToRuntime() => new FluidSettings
@@ -422,8 +431,34 @@ public sealed class ProjectFluidSettings
         RenderMode = RenderMode,
         SurfaceResolution = SurfaceResolution,
         SurfaceRadius = SurfaceRadius,
-        SurfaceThreshold = SurfaceThreshold
+        SurfaceThreshold = SurfaceThreshold,
+        RigidBodyInteraction = RigidBodyInteraction,
+        Density = Density,
+        LinearDrag = LinearDrag,
+        AngularDrag = AngularDrag
     }.Validated();
+}
+
+/// <summary>Serialized particle frames from a coupled rigid body bake.</summary>
+public sealed class ProjectFluidBake
+{
+    public string Id { get; set; } = "";
+    public float Framerate { get; set; }
+    public ProjectFluidSettings Settings { get; set; } = new();
+    public float[][] Frames { get; set; } = [];
+
+    public static ProjectFluidBake From(FluidBake bake) => new()
+    {
+        Id = bake.Id, Framerate = bake.Framerate, Settings = ProjectFluidSettings.From(bake.Settings), Frames = bake.Frames
+    };
+
+    public FluidBake ToRuntime()
+    {
+        if (Settings == null) throw new InvalidDataException("Saved fluid bake settings are missing.");
+        var bake = new FluidBake { Id = Id, Framerate = Framerate, Settings = Settings.ToRuntime(), Frames = Frames };
+        bake.Validate();
+        return bake;
+    }
 }
 
 public class ProjectSceneObjectEntry
@@ -519,6 +554,7 @@ public class ProjectSceneObjectEntry
     public ProjectVec3? BendAngle { get; set; }
     public ProceduralEffectSettings? ProceduralEffect { get; set; }
     public ProjectFluidSettings? Fluid { get; set; }
+    public ProjectFluidBake? FluidBake { get; set; }
     public PathSettings? Path { get; set; }
     public float PathPointAngle { get; set; }
     public float PathPointScale { get; set; } = 1f;

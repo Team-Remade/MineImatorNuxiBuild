@@ -575,6 +575,13 @@ internal static partial class Program
             ("Fluid deterministic seek, collision bounds and finite state", FluidDeterminism),
             ("Fluid validated limits and explicit invalid input rejection", FluidLimits),
             ("Fluid archive, project import, duplicate and dirty fingerprint persistence", FluidPersistence),
+            ("Rigid body falling, resting, determinism, gravity and world speed", RigidBodyFallingAndResting),
+            ("Rigid body collision shapes, validation and transformed sources", RigidBodyShapesAndTransforms),
+            ("Rigid body collision collections, animated bodies and dynamic handoff", RigidBodyCollectionsAndKinematics),
+            ("Rigid body fluid buoyancy, sinking, drag settling and particle displacement", RigidBodyBuoyancy),
+            ("Rigid body viewport bake, playback override, staleness, start frame, clearing and persistence", RigidBodyViewportBakeAndPlayback),
+            ("Rigid body keyframed Animated handoff keeps momentum", RigidBodyAnimatedHandoff),
+            ("Rigid body coupled fluid bake, floating playback, staleness and persistence", RigidBodyFluidBake),
             ("Path spawn, ordered points, arc length, smooth and closed sampling", PathSampling),
             ("Path flat/tube geometry, winding, normals, UVs, roll and scale", PathMeshes),
             ("Path limits, degenerate curves and invalid input rejection", PathLimits),
@@ -587,6 +594,8 @@ internal static partial class Program
             ("Array radial axes, circular positions, oriented subtrees and edge cases", ModifierRadial),
             ("Array path alignment, spacing, wrapping, point edits and unavailable targets", ModifierPaths),
             ("Array stacks, inherited instances, safety cap and invalid transform rejection", ModifierStacks),
+            ("Array application realizes independent rigid bodies at the current pose", ModifierApplyArrays),
+            ("Array application rolls back when a preview cannot be represented", ModifierApplyRollback),
             ("Project performance limits, persistence, shared render settings and ImGui controls", ProjectPerformanceSettings),
             ("Follow Path modifier and Array offset composition, toggles and animation", ModifierFollowPath),
             ("Follow Path modifier migration, persistence, references and special objects", ModifierFollowPersistence),
@@ -739,6 +748,8 @@ internal static partial class Program
                 test.Name.StartsWith("All 15 bundled particle", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--fluid", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Fluid ", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--rigid-body", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Rigid body ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--paths", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Path", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--frames", StringComparer.Ordinal))

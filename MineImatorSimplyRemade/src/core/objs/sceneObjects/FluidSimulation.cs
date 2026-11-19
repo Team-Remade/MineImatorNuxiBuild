@@ -31,6 +31,12 @@ public sealed record FluidSettings
     public int SurfaceResolution { get; init; } = 20;
     public float SurfaceRadius { get; init; } = 0.4f;
     public float SurfaceThreshold { get; init; } = 0.16f;
+    /// <summary>Co-simulate with rigid bodies when baking: bodies float/sink and displace particles.</summary>
+    public bool RigidBodyInteraction { get; init; } = true;
+    /// <summary>Fluid density in kg/m^3 used for rigid body buoyancy (water is 1000).</summary>
+    public float Density { get; init; } = 1000f;
+    public float LinearDrag { get; init; } = 4f;
+    public float AngularDrag { get; init; } = 0.5f;
 
     public FluidSettings Validated()
     {
@@ -57,13 +63,22 @@ public sealed record FluidSettings
             !Enum.IsDefined(RenderMode) ||
             SurfaceResolution is < 8 or > 32 ||
             Finite(SurfaceRadius, "surface radius") is < 0.02f or > 2f ||
-            Finite(SurfaceThreshold, "surface threshold") is < 0.01f or > 0.99f)
+            Finite(SurfaceThreshold, "surface threshold") is < 0.01f or > 0.99f ||
+            Finite(Density, "density") is < 0f or > 100000f ||
+            Finite(LinearDrag, "linear drag") is < 0f or > 10f ||
+            Finite(AngularDrag, "angular drag") is < 0f or > 10f)
             throw new InvalidDataException("Fluid settings are outside the supported editor ranges.");
         return this;
     }
 }
 
 public readonly record struct FluidParticle(vec3 Position, vec3 Velocity);
+
+/// <summary>Solid bodies that particles cannot enter, evaluated in fluid-local space.</summary>
+public interface IFluidBodyCollider
+{
+    void Collide(ref vec3 position, float radius);
+}
 
 public sealed class FluidSimulation
 {
@@ -108,13 +123,15 @@ public sealed class FluidSimulation
         _predicted = new vec3[_particles.Count];
     }
 
-    public void SimulateToTime(float seconds, IReadOnlyList<ClothTriangle>? colliders = null)
+    public void SimulateToTime(float seconds, IReadOnlyList<ClothTriangle>? colliders = null,
+        IFluidBodyCollider? bodies = null)
     {
         if (!float.IsFinite(seconds) || seconds < 0)
             throw new ArgumentOutOfRangeException(nameof(seconds));
         if ((double)seconds + 0.000001 < _simulatedTime)
             Reset();
-        if (_settings.MeshCollisions && colliders is { Count: > 0 })
+        // Coupled rigid body stepping supplies body triangles even when scene-mesh collisions are off.
+        if ((_settings.MeshCollisions || bodies != null) && colliders is { Count: > 0 })
         {
             if (_collisionTree == null || _collisionTree.EntryCount != colliders.Count)
                 _collisionTree = ClothCollisionTree.ForScene(colliders, []);
@@ -126,12 +143,12 @@ public sealed class FluidSimulation
         double target = seconds;
         while (_simulatedTime + TimeStep <= target + 0.000001)
         {
-            Step(TimeStep * _settings.SimulationSpeed);
+            Step(TimeStep * _settings.SimulationSpeed, bodies);
             _simulatedTime += TimeStep;
         }
     }
 
-    private void Step(float dt)
+    private void Step(float dt, IFluidBodyCollider? bodies)
     {
         if (dt <= 0f) return;
         float h = _settings.SmoothingRadius;
@@ -186,6 +203,13 @@ public sealed class FluidSimulation
                     vec3 velocity = (position - _particles[i].Position) / dt;
                     _collisionTree.CollideSphere(ref position, _particles[i].Position, ref velocity,
                         _settings.ParticleRadius, _settings.CollisionFriction, _settings.Bounce);
+                    _predicted[i] = ClampToBounds(position);
+                }
+                if (bodies != null)
+                {
+                    // Position-only push-out: the final velocity is derived from displacement below.
+                    vec3 position = _predicted[i];
+                    bodies.Collide(ref position, _settings.ParticleRadius);
                     _predicted[i] = ClampToBounds(position);
                 }
             }

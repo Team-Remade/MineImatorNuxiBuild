@@ -110,6 +110,73 @@ Limits are 12,000 cloth source vertices per scene, 256 groups
 per modifier, and 200,000 visible collider triangles. Invalid setups are reported
 in the modifier panel rather than partially simulated.
 
+## Rigid body physics
+
+Rigid bodies are simulated with [Jolt Physics](https://github.com/jrouwe/JoltPhysics)
+and work like Blender's Rigid Body physics. Add **Properties > Modifiers > + >
+Rigid Body** to any object with geometry:
+
+- **Type**: *Active* bodies are simulated; *Passive* bodies are static
+  colliders (floors, walls, containers).
+- **Animated**: the body follows its keyframed animation and pushes other
+  bodies. Keyframe **Animated** off on an active body to hand it over to physics;
+  it keeps its animated momentum (for example, a thrown object).
+- **Mass** (kg), **Friction**, **Bounciness**, **Linear/Angular damping**,
+  **Enable deactivation** (let resting bodies sleep) and **Continuous collision**
+  (prevents small, fast bodies from tunneling through thin colliders).
+- **Shape**: Box, Sphere, Capsule, Cylinder (along the object's Y axis),
+  Convex Hull (default) or Mesh. Mesh is only available for passive bodies; use
+  Convex Hull for active ones. Flat sources such as planes fall back to a thin
+  box. The shape is built from the object's visible meshes and, with **Include
+  child meshes**, from children that don't have their own rigid body.
+- **Collision margin** (px) and 16 **Collision collections**: bodies collide only
+  when they share a collection.
+
+The **Rigid Body World** section (shown in every Rigid Body modifier) holds
+scene-wide gravity, speed, substeps per frame, solver iterations and the
+simulation start frame. Before the start frame bodies follow their animation;
+the start frame is the initial state.
+
+Like cloth, rigid bodies **never simulate live**. Click **Bake rigid bodies** to
+solve all enabled bodies together from the start frame to the timeline end.
+Playback, scrubbing and export read the saved transforms, which replace the
+object's animation, parenting and constraints; children follow their simulated
+parent. Authored keyframes are never modified. Bakes are saved with the project.
+Changing a body's settings, the world settings or the frame rate shows the
+authored pose until you rebake; **Free bake** removes all rigid body and coupled
+fluid bakes.
+
+To make a batch of independent bodies, set up the material and **Rigid Body**
+modifier on one object, then add one or more **Array** modifiers. At the frame
+with the layout you want, click **Properties > Modifiers > Apply Arrays**.
+The displayed copies become separate objects with the same material and
+rigid-body settings. Their starting transforms come from that frame, not
+from copied transform keyframes. The original keeps its animation unless
+the Array moved its first instance (for example, onto a path). Then click
+**Bake rigid bodies** to simulate the new bodies together. If the source
+already has a physics bake, free it before applying the Arrays.
+
+### Floating and sinking in fluids
+
+Fluid Simulation objects with **Interact with rigid bodies** enabled (the
+default) are co-simulated during the rigid body bake:
+
+- Water applies Jolt buoyancy and drag to active bodies. Bodies lighter than the
+  fluid's **Density** (1000 kg/m^3 for water) float at the surface, heavier ones
+  sink. For example, a 1x1x1 block with a mass of 500 kg floats half-submerged.
+  **Linear drag** and **Angular drag** control how quickly bobbing settles.
+- Bodies push water aside: particles cannot enter active, animated or passive
+  bodies (Mesh-shaped passive bodies collide as triangles), and water squeezed
+  under a sinking body flows out sideways.
+- The fluid's particles are baked alongside the bodies and replay exactly,
+  so baked water and floating objects stay in sync during playback and export.
+  Editing the fluid's settings returns it to live simulation until you rebake.
+
+Water levels are estimated from nearby particles, so very small pools (a few
+particles around a body) float bodies less precisely. Fluid particles don't
+leave the fluid's bounds, but bodies can. Very light bodies are limited to 50x
+their weight in buoyancy for stability.
+
 ## Procedural 3D effects
 
 Open **Spawn > Effects** and choose **Lightning**, **Ring / Portal**, or

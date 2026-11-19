@@ -429,6 +429,8 @@ public class MainWindow : Window
 
         if (sceneTree != null && viewport != null)
             sceneTree.Viewport = viewport;
+        if (propertiesPanel != null)
+            propertiesPanel.SceneTree = sceneTree;
         if (viewport != null && propertiesPanel != null)
             viewport.PropertiesPanel = propertiesPanel;
         if (viewport != null && preferencesPanel != null)
@@ -524,7 +526,7 @@ public class MainWindow : Window
     protected override void RenderUi()
     {
         UpdateFileDropCallbacks();
-        if (_mainViewport?.IsClothBaking != true && _mainViewport?.IsWiggleBaking != true) ImportDroppedFiles();
+        if (_mainViewport?.IsPhysicsBaking != true) ImportDroppedFiles();
         SyncPreviewViewportPreferenceState();
 
         if (_mainViewport != null)
@@ -536,6 +538,7 @@ public class MainWindow : Window
         AdvanceResourcePackImportJob();
         _mainViewport?.AdvanceClothBake();
         _mainViewport?.AdvanceWiggleBake();
+        _mainViewport?.AdvanceRigidBodyBake();
 
         _menubar.Render();
         RenderProjectDialogs();
@@ -603,6 +606,7 @@ public class MainWindow : Window
         RenderProjectHomeScreen();
         RenderToast();
         _mainViewport?.DrawClothBakePopup();
+        _mainViewport?.DrawRigidBodyBakePopup();
         _mainViewport?.DrawWiggleBakePopup();
         _performancePanel.Render();
         MetricsOverlay.Render();

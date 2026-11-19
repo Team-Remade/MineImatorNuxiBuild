@@ -4,7 +4,7 @@ using MineImatorSimplyRemade.core.project;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
-public enum SceneModifierType { Array, FollowPath, Cloth, Shake, FrameSkip }
+public enum SceneModifierType { Array, FollowPath, Cloth, Shake, FrameSkip, RigidBody }
 public enum ArrayAxis { X, Y, Z }
 
 public sealed record SceneModifier
@@ -32,6 +32,8 @@ public sealed record SceneModifier
     public ClothBake? ClothBake { get; init; }
     public ShakeSettings Shake { get; init; } = new();
     public int FrameSkipFrames { get; init; } = 2;
+    public RigidBodySettings RigidBody { get; init; } = new();
+    public RigidBodyBake? RigidBodyBake { get; init; }
 
     internal int SampleFrame(int frame)
     {
@@ -61,6 +63,12 @@ public sealed record SceneModifier
         {
             if (Cloth == null) throw new InvalidDataException("Cloth settings are missing.");
             Cloth.Validate();
+            return this;
+        }
+        if (Type == SceneModifierType.RigidBody)
+        {
+            if (RigidBody == null) throw new InvalidDataException("Rigid body settings are missing.");
+            RigidBody.Validate();
             return this;
         }
         if (!Enum.IsDefined(Axis) || !Enum.IsDefined(RadialAxis) ||

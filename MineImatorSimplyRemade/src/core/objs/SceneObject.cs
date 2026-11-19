@@ -1584,10 +1584,105 @@ public class SceneObject
         InvalidateRenderEvaluation();
     }
 
-    private mat4 ComputeWorldMatrixNoPivot() => _evaluatedCopyTransform ?? ComputeWorldMatrixNoPivot(false, out _, out _, out _);
+    private mat4 ComputeWorldMatrixNoPivot() =>
+        _evaluatedRigidBodyWorld ?? _evaluatedCopyTransform ?? ComputeWorldMatrixNoPivot(false, out _, out _, out _);
+
+    private mat4? _evaluatedRigidBodyWorld;
+    public bool HasEvaluatedRigidBodyWorld => _evaluatedRigidBodyWorld.HasValue;
+
+    /// <summary>Baked rigid body world transform (without pivot); replaces animation, parenting and constraints.</summary>
+    internal void SetEvaluatedRigidBodyWorld(mat4? world)
+    {
+        if (_evaluatedRigidBodyWorld == world) return;
+        _evaluatedRigidBodyWorld = world;
+        InvalidateRenderEvaluation();
+    }
 
     internal mat4 GetWorldRotationEditFrame(out mat4 rotationPrefix, out mat4 authoredRotation, out mat4 rotationSuffix) =>
         ComputeWorldMatrixNoPivot(true, out rotationPrefix, out authoredRotation, out rotationSuffix);
+
+    internal bool TryGetArrayPlacement(mat4 target, out vec3 position, out vec3 rotation, out vec3 scale)
+    {
+        rotation = Rotation;
+        scale = Scale;
+        var parent = GetParentWorldTransform();
+        var point = new vec4(target.m30, target.m31, target.m32, target.m33);
+        var local = InheritPosition ? parent.Inverse * point : point;
+        position = new vec3(local.x, local.y, local.z);
+        var checkPosition = InheritPosition ? parent * new vec4(position, 1f) : new vec4(position, 1f);
+        if (!float.IsFinite(position.x) || !float.IsFinite(position.y) || !float.IsFinite(position.z) ||
+            !ArrayMatrixNear(mat4.Translate(new vec3(checkPosition.x, checkPosition.y, checkPosition.z)),
+                mat4.Translate(new vec3(point.x, point.y, point.z))))
+            return false;
+
+        static mat4 Basis(mat4 matrix)
+        {
+            matrix.m30 = matrix.m31 = matrix.m32 = 0f;
+            matrix.m33 = 1f;
+            return matrix;
+        }
+
+        var worldBasis = Basis(target);
+        if (ArrayMatrixNear(worldBasis, Basis(GetWorldMatrixNoPivot()))) return true;
+        if (!InheritRotation) return false;
+
+        bool resize = ScaleResize || !InheritScale || this is ParticleSpawnerSceneObject;
+        var parentBasis = Basis(parent);
+        var inheritedScale = vec3.Ones;
+        if (resize)
+        {
+            var lengths = GetBasisScale(parentBasis);
+            if (lengths.x > 0f && lengths.y > 0f && lengths.z > 0f)
+                parentBasis *= mat4.Scale(vec3.Ones / lengths);
+            if (InheritScale)
+                for (SceneObject current = this; current.InheritScale && current.Parent != null; current = current.Parent)
+                    inheritedScale *= current.Parent.CopyConstraintLocalScale;
+        }
+
+        var basis = parentBasis.Inverse * worldBasis;
+        var magnitude = resize ? GetBasisScale(basis) : GetBasisScale(basis.Transposed);
+        if (magnitude.x <= 0f || magnitude.y <= 0f || magnitude.z <= 0f ||
+            inheritedScale.x == 0f || inheritedScale.y == 0f || inheritedScale.z == 0f)
+            return false;
+        var signedScale = magnitude * new vec3(
+            Scale.x * inheritedScale.x < 0f ? -1f : 1f,
+            Scale.y * inheritedScale.y < 0f ? -1f : 1f,
+            Scale.z * inheritedScale.z < 0f ? -1f : 1f);
+        var x = new vec3(basis.m00, basis.m01, basis.m02);
+        var y = new vec3(basis.m10, basis.m11, basis.m12);
+        var z = new vec3(basis.m20, basis.m21, basis.m22);
+        if (vec3.Dot(vec3.Cross(x, y), z) * signedScale.x * signedScale.y * signedScale.z < 0f)
+            signedScale.x = -signedScale.x;
+        var inverseScale = mat4.Scale(vec3.Ones / signedScale);
+        var localRotation = resize ? basis * inverseScale : inverseScale * basis;
+        rotation = MineImatorSimplyRemade.core.mdl.mineImator.MineImatorLoader.MatrixToEulerRzRyRx(localRotation);
+        scale = signedScale / inheritedScale;
+        var rebuiltRotation = mat4.RotateZ(rotation.z) * mat4.RotateY(rotation.y) * mat4.RotateX(rotation.x);
+        var rebuiltScale = mat4.Scale(scale * inheritedScale);
+        return ArrayMatrixNear(worldBasis, parentBasis *
+            (resize ? rebuiltRotation * rebuiltScale : rebuiltScale * rebuiltRotation));
+    }
+
+    internal static bool ArrayMatrixNear(mat4 left, mat4 right)
+    {
+        for (int c = 0; c < 4; c++)
+            for (int r = 0; r < 4; r++)
+            {
+                float a = left[c * 4 + r], b = right[c * 4 + r];
+                if (!float.IsFinite(a) || !float.IsFinite(b) ||
+                    MathF.Abs(a - b) > 0.0001f * MathF.Max(1f, MathF.Abs(a)))
+                    return false;
+            }
+        return true;
+    }
+
+    internal void CopyLocalPoseFrom(SceneObject source)
+    {
+        SetLocalPosition(source.Position);
+        SetLocalRotationMatrix(source.GetLocalRotationMatrix(), source.Rotation);
+        SetLocalScale(source.Scale);
+        PivotOffset = source.PivotOffset;
+    }
 
     private mat4 ComputeWorldMatrixNoPivot(bool captureRotationFrame,
         out mat4 rotationPrefix, out mat4 authoredRotation, out mat4 rotationSuffix)

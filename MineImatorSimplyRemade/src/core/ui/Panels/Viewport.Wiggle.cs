@@ -186,7 +186,7 @@ public partial class Viewport
     {
         var owner = MainViewport ?? this;
         if (owner != this) return owner.BakeWiggle();
-        if (IsWiggleBaking || IsClothBaking)
+        if (IsPhysicsBaking)
             throw new InvalidOperationException("Finish or cancel the current physics bake first.");
         _showWiggleBakePopup = true;
         _wiggleBakeError = null;

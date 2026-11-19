@@ -58,6 +58,20 @@ public partial class PropertiesPanel
             changed |= ImGui.DragFloat("Surface Radius", ref surfaceRadius, 0.005f, 0.02f, 2f);
             changed |= ImGui.SliderFloat("Surface Threshold", ref threshold, 0.01f, 0.99f);
         }
+        bool interaction = settings.RigidBodyInteraction;
+        float density = settings.Density, linearDrag = settings.LinearDrag, angularDrag = settings.AngularDrag;
+        ImGui.SeparatorText(Localization.T("text.rigid_body.fluid_interaction"));
+        changed |= ImGui.Checkbox(Localization.T("text.rigid_body.fluid_enabled"), ref interaction);
+        if (interaction)
+        {
+            changed |= ImGui.DragFloat(Localization.T("text.rigid_body.fluid_density"), ref density, 10f, 0f, 100000f, "%.0f",
+                ImGuiSliderFlags.AlwaysClamp);
+            changed |= ImGui.DragFloat(Localization.T("text.rigid_body.fluid_linear_drag"), ref linearDrag, 0.05f, 0f, 10f, "%.2f",
+                ImGuiSliderFlags.AlwaysClamp);
+            changed |= ImGui.DragFloat(Localization.T("text.rigid_body.fluid_angular_drag"), ref angularDrag, 0.05f, 0f, 10f, "%.2f",
+                ImGuiSliderFlags.AlwaysClamp);
+            UiText.Wrapped(Localization.T("text.rigid_body.fluid_help"));
+        }
 
         if (changed)
         {
@@ -81,10 +95,18 @@ public partial class PropertiesPanel
                 RenderMode = (FluidRenderMode)Math.Clamp(renderMode, 0, 1),
                 SurfaceResolution = resolution,
                 SurfaceRadius = surfaceRadius,
-                SurfaceThreshold = threshold
+                SurfaceThreshold = threshold,
+                RigidBodyInteraction = interaction,
+                Density = density,
+                LinearDrag = linearDrag,
+                AngularDrag = angularDrag
             };
             ProjectManager.Instance.SetDirty(true);
         }
+        if (fluid.Bake is { } bake)
+            UiText.Wrapped(fluid.HasValidBake(Timeline?.Framerate ?? 30f)
+                ? Localization.Format("text.rigid_body.fluid_baked", bake.Frames.Length - 1)
+                : Localization.T("text.rigid_body.fluid_stale"));
         ImGui.TextDisabled($"Active particles: {fluid.Particles.Count}");
         if (ImGui.Button("Restart Fluid"))
             fluid.ResetRuntime();

@@ -29,7 +29,7 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 /// ────────────────────
 ///  • Per-type object icons
 /// </summary>
-public class SceneTree : UiPanel
+public partial class SceneTree : UiPanel
 {
     // ── Owner reference ─────────────────────────────────────────────────────
     public Viewport Viewport { get; set; }
@@ -968,13 +968,8 @@ public class SceneTree : UiPanel
     {
         bool remapReferences = objectIds == null;
         objectIds ??= new Dictionary<string, string>(StringComparer.Ordinal);
-        var duplicate = CreateSceneObjectDuplicate(original, objectIds);
+        var duplicate = DuplicateHierarchy(original, objectIds);
         if (duplicate == null) return null;
-
-        // Mine-imator characters are rebuilt by their loader, including their
-        // complete bone hierarchy and mesh regeneration state.
-        if (original is not CharacterSceneObject)
-            DuplicateChildrenRecursive(original, duplicate, objectIds);
 
         if (remapReferences)
             RemapDuplicateReferences(duplicate, objectIds);
@@ -997,6 +992,15 @@ public class SceneTree : UiPanel
             }
         }
 
+        return duplicate;
+    }
+
+    private SceneObject DuplicateHierarchy(SceneObject original, Dictionary<string, string> objectIds)
+    {
+        var duplicate = CreateSceneObjectDuplicate(original, objectIds);
+        // The character loader already rebuilds the bone hierarchy.
+        if (duplicate != null && original is not CharacterSceneObject)
+            DuplicateChildrenRecursive(original, duplicate, objectIds);
         return duplicate;
     }
 
