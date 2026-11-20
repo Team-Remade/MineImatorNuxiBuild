@@ -5,7 +5,7 @@ using NumericsQuaternion = System.Numerics.Quaternion;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
-/// <summary>Non-destructive, numeric CCD evaluated after animation and before any world-transform consumers.</summary>
+/// <summary>Non-destructive damped Jacobian/CCD IK evaluated before world-transform consumers.</summary>
 public static class InverseKinematicsSolver
 {
     private const float Degrees = 180f / MathF.PI;
@@ -128,7 +128,10 @@ public static class InverseKinematicsSolver
         var rotations = job.Chain.Select(bone => bone.EvaluatedIkRotation).ToArray();
         var bends = job.Chain.Select(bone => (bone as MiBoneSceneObject)?.GetEvaluatedEditableBendAngle()).ToArray();
         var root = job.Chain[^1];
-        float scale = Math.Max(1e-4f, (ChainEndpoint(job) - root.GetWorldPosition()).Length);
+        float scale = (ChainEndpoint(job) - job.Owner.GetWorldPosition()).Length;
+        for (int i = 1; i < job.Chain.Count; i++)
+            scale += (job.Chain[i - 1].GetWorldPosition() - job.Chain[i].GetWorldPosition()).Length;
+        scale = Math.Max(1e-4f, scale);
         float Score()
         {
             vec3 endpoint = job.Owner.GetEndWorldPosition();
@@ -143,9 +146,10 @@ public static class InverseKinematicsSolver
 
         float initialScore = Score();
         if (!float.IsFinite(initialScore)) return;
+        bool coordinated = job.Chain.Count > 2 && SolveDamped(job, target, pole, scale);
         // A perfectly straight chain has zero CCD gradient toward a nearer axial target.
         // Seed a real distal joint (including an internal bend), not an authored channel.
-        if (initialScore > scale * scale * 1e-8f)
+        if (!coordinated && initialScore > scale * scale * 1e-8f)
         {
             SeedJoint(job, target);
             // Align the seeded chain before the distal CCD pass, otherwise that
@@ -165,7 +169,7 @@ public static class InverseKinematicsSolver
         }
 
         int iterations = Math.Clamp(job.Settings.Iterations, 1, 256);
-        for (int iteration = 0; iteration < iterations; iteration++)
+        for (int iteration = 0; !coordinated && iteration < iterations; iteration++)
         {
             if (Settled()) break;
             float before = Score();
@@ -218,7 +222,135 @@ public static class InverseKinematicsSolver
         }
     }
 
-    private static void SeedJoint(Job job, vec3 target)
+    // Solve the endpoint with all participating degrees of freedom together. Damping
+    // bounds singular updates; a line search keeps finite differences and scaled rigs safe.
+    // Unlike global coordinate searches, this retains the local authored pose branch.
+    // Blender's intern/iksolver/intern/IK_QJacobian.cpp uses selective damping;
+    // this is an independent, simpler DLS solve: delta = J^T (J J^T + lambda^2 I)^-1 error.
+    private static bool SolveDamped(Job job, vec3 target, vec3? pole, float scale)
+    {
+        var controls = new List<Action<float>>();
+        var rotations = new mat4[job.Chain.Count];
+        var bends = new vec3[job.Chain.Count];
+        for (int i = 0; i < job.Chain.Count; i++)
+        {
+            int index = i;
+            var bone = job.Chain[i];
+            if (CanRotate(job, bone))
+                for (int axis = 0; axis < 3; axis++)
+                {
+                    int component = axis;
+                    controls.Add(value => bone.SetEvaluatedIkRotation(
+                        bone.EvaluatedIkRotation * AxisRotation(component, value)));
+                }
+            if (GetBoneSettings(job.Settings, bone)?.AllowBend != false &&
+                (bone != job.Owner || bone.EndOffset.HasValue) && bone is MiBoneSceneObject mi && mi.BendParameters is { } bp)
+                for (int axis = 0; axis < 3; axis++)
+                {
+                    if (!(axis == 0 ? bp.AxisX : axis == 1 ? bp.AxisY : bp.AxisZ)) continue;
+                    int component = axis;
+                    float min = Component(bp.DirectionMin, axis), max = Component(bp.DirectionMax, axis);
+                    if (!float.IsFinite(min) || !float.IsFinite(max)) continue;
+                    controls.Add(value => mi.SetEvaluatedBend(WithComponent(mi.GetEvaluatedEditableBendAngle(), component,
+                        Math.Clamp(Component(bends[index], component) + value * Degrees,
+                            Math.Min(min, max), Math.Max(min, max)))));
+                }
+        }
+        if (controls.Count == 0) return false;
+        void Capture()
+        {
+            for (int i = 0; i < job.Chain.Count; i++)
+            {
+                rotations[i] = job.Chain[i].EvaluatedIkRotation;
+                if (job.Chain[i] is MiBoneSceneObject mi) bends[i] = mi.GetEvaluatedEditableBendAngle();
+            }
+        }
+        void Restore()
+        {
+            for (int i = 0; i < job.Chain.Count; i++)
+            {
+                job.Chain[i].SetEvaluatedIkRotation(rotations[i]);
+                if (job.Chain[i] is MiBoneSceneObject mi) mi.SetEvaluatedBend(bends[i]);
+            }
+        }
+        var columns = new vec3[controls.Count];
+        var steps = new float[controls.Count];
+        bool seeded = false;
+        vec3 origin = job.Chain[^1].GetWorldPosition();
+        vec3 direction = ChainEndpoint(job) - origin;
+        if (direction.LengthSqr > 1e-12f && (ChainTarget(job, target) - origin).Length < direction.Length * 0.999f &&
+            job.Chain.All(bone => Project(bone.GetWorldPosition() - origin, direction / direction.Length).Length < scale * 1e-5f))
+        {
+            SeedJoint(job, target, 0.08f);
+            seeded = true;
+        }
+        int iterations = Math.Clamp(job.Settings.Iterations, 1, 256);
+        for (int iteration = 0; iteration < iterations; iteration++)
+        {
+            Capture();
+            vec3 endpoint = job.Owner.GetEndWorldPosition();
+            vec3 error = (target - endpoint) / scale;
+            if (error.LengthSqr < 1e-10f) break;
+            const float epsilon = 0.001f;
+            vec3 row0 = new(0.0004f, 0f, 0f), row1 = new(0f, 0.0004f, 0f), row2 = new(0f, 0f, 0.0004f);
+            float gradient = 0f;
+            for (int i = 0; i < controls.Count; i++)
+            {
+                controls[i](epsilon);
+                vec3 plus = job.Owner.GetEndWorldPosition();
+                Restore();
+                controls[i](-epsilon);
+                vec3 minus = job.Owner.GetEndWorldPosition();
+                Restore();
+                vec3 column = (plus - minus) / (2f * epsilon * scale);
+                if (!Finite(column)) column = vec3.Zero;
+                columns[i] = column;
+                row0 += column * column.x;
+                row1 += column * column.y;
+                row2 += column * column.z;
+                gradient += MathF.Abs(Dot(column, error));
+            }
+            // An axial compression has no first-order solution. A small deterministic
+            // joint perturbation provides curvature without folding one distal link.
+            if (!seeded && gradient < 1e-6f)
+            {
+                seeded = true;
+                SeedJoint(job, target, 0.08f);
+                continue;
+            }
+            float determinant = Dot(row0, Cross(row1, row2));
+            if (!float.IsFinite(determinant) || determinant <= 0f) break;
+            vec3 dual = (Cross(row1, row2) * error.x + Cross(row2, row0) * error.y +
+                Cross(row0, row1) * error.z) / determinant;
+            float largest = 0f;
+            for (int i = 0; i < controls.Count; i++)
+            {
+                steps[i] = Dot(columns[i], dual);
+                largest = Math.Max(largest, MathF.Abs(steps[i]));
+            }
+            float gain = largest > 0.2f ? 0.2f / largest : 1f;
+            bool improved = false;
+            for (int trial = 0; trial < 10; trial++, gain *= 0.5f)
+            {
+                Restore();
+                for (int i = 0; i < controls.Count; i++) controls[i](steps[i] * gain);
+                vec3 next = (target - job.Owner.GetEndWorldPosition()) / scale;
+                if (Finite(next) && next.LengthSqr < error.LengthSqr)
+                {
+                    improved = true;
+                    break;
+                }
+            }
+            if (!improved) { Restore(); break; }
+        }
+        if (pole.HasValue)
+            ApplyPole(job, target, pole.Value, () =>
+                (job.Owner.GetEndWorldPosition() - target).LengthSqr +
+                PoleError(job, target, pole.Value) * scale * scale * 0.00001f);
+        return true;
+    }
+
+    private static void SeedJoint(Job job, vec3 target, float maximumAngle = MathF.PI)
     {
         float SeedAngle(vec3 joint)
         {
@@ -228,7 +360,7 @@ public static class InverseKinematicsSolver
             float cosine = ((ChainTarget(job, target) - origin).LengthSqr - a * a - b * b) / (2f * a * b);
             // An out-of-reach target needs a straight chain, not a singularity-escape bend.
             if (cosine >= 1f) return 0f;
-            return Math.Clamp(MathF.Acos(Math.Clamp(cosine, -1f, 1f)), 0.01f, MathF.PI - 0.01f);
+            return Math.Min(maximumAngle, Math.Clamp(MathF.Acos(Math.Clamp(cosine, -1f, 1f)), 0.01f, MathF.PI - 0.01f));
         }
         foreach (var bone in job.Chain)
         {

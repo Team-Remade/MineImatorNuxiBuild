@@ -582,6 +582,9 @@ internal static partial class Program
             ("Rigid body viewport bake, playback override, staleness, start frame, clearing and persistence", RigidBodyViewportBakeAndPlayback),
             ("Rigid body keyframed Animated handoff keeps momentum", RigidBodyAnimatedHandoff),
             ("Rigid body coupled fluid bake, floating playback, staleness and persistence", RigidBodyFluidBake),
+            ("IK long chains reach smoothly and repeat on seeking", IkLongChains),
+            ("IK long-chain locks, poles, influence and degenerate targets", IkLongChainControls),
+            ("IK long-chain bend limits and participation", IkLongChainBends),
             ("Path spawn, ordered points, arc length, smooth and closed sampling", PathSampling),
             ("Path flat/tube geometry, winding, normals, UVs, roll and scale", PathMeshes),
             ("Path limits, degenerate curves and invalid input rejection", PathLimits),
@@ -641,6 +644,8 @@ internal static partial class Program
             ("World importer player position from legacy and 26.1+ Java saves", WorldPlayerPositionReading),
             ("World importer default block states for 26.1+ bare palette entries", WorldDefaultBlockStates)
         ];
+        if (args.Contains("--ik", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("IK ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--meshcache", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Meshcache ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--world-player", StringComparer.Ordinal))
@@ -1187,6 +1192,128 @@ internal static partial class Program
     private static void Near(vec3 expected, vec3 actual, string message)
     {
         for (int axis = 0; axis < 3; axis++) Near(expected[axis], actual[axis], $"{message}, axis {axis}");
+    }
+
+    private static void IkLongChains(Fixture f)
+    {
+        foreach (int count in new[] { 3, 5, 8 })
+        {
+            var bones = Enumerable.Range(0, count).Select(i => new BoneSceneObject
+            {
+                Name = $"chain {i}", Position = i == 0 ? vec3.Zero : vec3.UnitY,
+                EndOffset = vec3.UnitY
+            }).ToArray();
+            for (int i = 1; i < count; i++) bones[i - 1].AddChild(bones[i]);
+            var target = Node("IK target");
+            var settings = new InverseKinematicsSettings
+            {
+                TargetObjectId = target.ObjectId, ChainLength = count, Iterations = 64
+            };
+            bones[^1].Constraints.Add(new BoneConstraint { InverseKinematics = settings });
+            vec3[]? previous = null;
+            for (int sample = 0; sample <= 40; sample++)
+            {
+                target.Position = new vec3((sample - 20) * 0.002f, count * 0.65f, 0.1f);
+                InverseKinematicsSolver.Evaluate([bones[0], target]);
+                Near(target.Position, bones[^1].GetEndWorldPosition(), $"{count}-bone reach at {sample}");
+                var pose = bones.Select(bone => bone.GetEndWorldPosition()).ToArray();
+                if (previous != null)
+                    for (int i = 0; i < count; i++)
+                        Check((pose[i] - previous[i]).Length < 0.1f, $"{count}-bone joint {i} jumps at {sample}");
+                previous = pose;
+                InverseKinematicsSolver.Evaluate([bones[0], target]);
+                for (int i = 0; i < count; i++)
+                {
+                    Near(pose[i], bones[i].GetEndWorldPosition(), "Repeat evaluation is deterministic");
+                    Near(vec3.Zero, bones[i].LocalRotation, "Authored rotation unchanged");
+                }
+            }
+        }
+    }
+
+    private static void IkLongChainControls(Fixture f)
+    {
+        var root = new BoneSceneObject();
+        var middle = new BoneSceneObject { Position = vec3.UnitY };
+        var tip = new BoneSceneObject { Position = vec3.UnitY, EndOffset = vec3.UnitY };
+        root.AddChild(middle);
+        middle.AddChild(tip);
+        var target = Node("target");
+        var pole = Node("pole");
+        pole.Position = new vec3(3f, 0f, 0f);
+        var settings = new InverseKinematicsSettings
+        {
+            TargetObjectId = target.ObjectId, ChainLength = 3, Iterations = 128
+        };
+        tip.Constraints.Add(new BoneConstraint { InverseKinematics = settings });
+        void Evaluate() => InverseKinematicsSolver.Evaluate([root, target, pole]);
+        foreach (vec3 position in new[] { new vec3(0f, 1.5f, 0f), new vec3(0.7f, 1.5f, 0.3f), vec3.Zero })
+        {
+            target.Position = position;
+            Evaluate();
+            Near(position, tip.GetEndWorldPosition(), "Reach axial, off-axis and coincident targets");
+            vec3 saved = middle.GetWorldPosition();
+            target.Position = new vec3(0f, 5f, 0f);
+            Evaluate();
+            Near(new vec3(0f, 3f, 0f), tip.GetEndWorldPosition(), "Unreachable target retains full extension");
+            target.Position = position;
+            Evaluate();
+            Near(saved, middle.GetWorldPosition(), "Seeking does not depend on previous target");
+        }
+        target.Position = new vec3(0.5f, 2f, 0f);
+        settings.LockOrientation = true;
+        settings.PoleObjectId = pole.ObjectId;
+        Evaluate();
+        Near(target.Position, tip.GetEndWorldPosition(), "Locked tip reaches with pole");
+        Near(vec3.UnitY, tip.GetEndWorldPosition() - tip.GetWorldPosition(), "Tip orientation remains authored");
+        Check(middle.GetWorldPosition().x > 0f, "Pole chooses positive-X joint side");
+        settings.Influence = 0f;
+        Evaluate();
+        Near(new vec3(0f, 3f, 0f), tip.GetEndWorldPosition(), "Zero influence restores pose");
+        settings.Influence = 0.5f;
+        Evaluate();
+        vec3 blended = tip.GetEndWorldPosition();
+        Check((blended - target.Position).Length > 0.01f && (blended - new vec3(0f, 3f, 0f)).Length > 0.01f,
+            "Partial influence blends instead of snapping");
+        settings.Influence = 1f;
+        settings.Bones = new[] { root, middle, tip }.Select(bone => new IkBoneSettings
+        {
+            BoneObjectId = bone.ObjectId, AllowRotation = false, AllowBend = false
+        }).ToList();
+        Evaluate();
+        Near(new vec3(0f, 3f, 0f), tip.GetEndWorldPosition(), "Disabled participation leaves pose unchanged");
+    }
+
+    private static void IkLongChainBends(Fixture f)
+    {
+        var root = new BoneSceneObject();
+        var middle = new BoneSceneObject { Position = vec3.UnitY };
+        var tip = BendBone("bend tip", vec3.Zero);
+        tip.Position = vec3.UnitY;
+        tip.EndOffset = new vec3(0f, 4f, 0f);
+        root.AddChild(middle);
+        middle.AddChild(tip);
+        var target = Node("bend target");
+        tip.SetBendAngle(new vec3(20f, 0f, 15f));
+        target.Position = tip.GetEndWorldPosition();
+        tip.SetBendAngle(vec3.Zero);
+        var settings = new InverseKinematicsSettings
+        {
+            TargetObjectId = target.ObjectId, ChainLength = 3, Iterations = 128,
+            Bones = new[] { root, middle, tip }.Select(bone => new IkBoneSettings
+            {
+                BoneObjectId = bone.ObjectId, AllowRotation = false, AllowBend = true
+            }).ToList()
+        };
+        tip.Constraints.Add(new BoneConstraint { InverseKinematics = settings });
+        InverseKinematicsSolver.Evaluate([root, target]);
+        Near(target.Position, tip.GetEndWorldPosition(), "Multiple bend axes reach without rotation");
+        vec3 solved = EvaluatedBend(tip);
+        Check(solved.Length > 1f && MathF.Abs(solved.x) <= 180f && MathF.Abs(solved.y) <= 180f && MathF.Abs(solved.z) <= 180f,
+            "Bends participate within model limits");
+        settings.Bones[^1].AllowBend = false;
+        InverseKinematicsSolver.Evaluate([root, target]);
+        Near(vec3.Zero, EvaluatedBend(tip), "Disabled bend restores authored bend");
     }
 
     private static void LookAtAiming(Fixture f)
