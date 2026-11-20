@@ -9,7 +9,7 @@ otherwise noted.
 
 Requirements:
 
-- .NET 10.0 SDK or newer (the app and harness target `net10.0`).
+- .NET 11.0 SDK or newer (the app and harness target `net11.0`).
 - A C++ compiler (MSVC, GCC, or Clang) for NativeAOT publishing.
 - An OpenGL 3.3+ compatible graphics driver and desktop session for the app
   and graphics regression checks.
