@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 
 namespace MineImatorSimplyRemade.core.mdl.mineImator;
 
@@ -9,6 +10,45 @@ public sealed record MiObjectItemSelectionResult(
 
 public static class MiObjectItemSelection
 {
+    public static string? ResolveItemName(MiTemplate template, MiTimeline timeline, MiKeyframe? frame)
+    {
+        bool customSlot = frame?.CustomItemSlot is { } custom
+            ? custom != 0
+            : timeline.DefaultValues != null &&
+              timeline.DefaultValues.TryGetBool("CUSTOM_ITEM_SLOT", out bool enabled) && enabled;
+        string? name = customSlot ? ReadItemName(frame?.ExtraValues, "ITEM_NAME") : null;
+        if (customSlot && string.IsNullOrWhiteSpace(name) && timeline.DefaultValues != null &&
+            timeline.DefaultValues.TryGetString("ITEM_NAME", out string defaultName))
+            name = defaultName;
+        if (string.IsNullOrWhiteSpace(name))
+            name = ReadItemName(template.Item?.ExtraValues, "name");
+        return string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+    }
+
+    public static string? ResolveBuiltinItemKey(MiTemplate template, MiTimeline timeline, MiKeyframe? frame)
+    {
+        string? name = ResolveItemName(template, timeline, frame);
+        if (string.IsNullOrWhiteSpace(name))
+            return null;
+
+        string key = name.Trim().Replace('\\', '/');
+        int separator = key.IndexOf(':');
+        if (separator >= 0)
+        {
+            if (!key[..separator].Equals("minecraft", StringComparison.OrdinalIgnoreCase))
+                return null;
+            key = key[(separator + 1)..];
+        }
+        if (key.StartsWith("textures/item/", StringComparison.OrdinalIgnoreCase))
+            key = key["textures/item/".Length..];
+        if (key.StartsWith("item/", StringComparison.OrdinalIgnoreCase))
+            key = key["item/".Length..];
+        if (key.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            key = key[..^4];
+        key = key.Trim('/').ToLowerInvariant();
+        return ItemsAtlas.Textures.ContainsKey(key) ? key : null;
+    }
+
     public static MiObjectItemSelectionResult? Resolve(MiTemplate template, MiTimeline timeline,
         MiKeyframe? frame, IReadOnlyDictionary<string, MiResource> resources, string directory)
     {
@@ -57,5 +97,12 @@ public static class MiObjectItemSelection
                 return null;
             return candidate;
         }
+    }
+
+    private static string? ReadItemName(IReadOnlyDictionary<string, JsonElement>? values, string key)
+    {
+        if (values == null || !values.TryGetValue(key, out JsonElement value))
+            return null;
+        return value.ValueKind == JsonValueKind.String ? value.GetString() : null;
     }
 }

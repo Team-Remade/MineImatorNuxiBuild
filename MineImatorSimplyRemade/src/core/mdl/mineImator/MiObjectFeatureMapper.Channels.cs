@@ -64,7 +64,7 @@ public static partial class MiObjectFeatureMapper
             "GLOW_COLOR", "EMISSIVE", "METALLIC", "ROUGHNESS", "SUBSURFACE", "SUBSURFACE_RADIUS_RED",
             "SUBSURFACE_RADIUS_GREEN", "SUBSURFACE_RADIUS_BLUE", "SUBSURFACE_COLOR", "VISIBLE", "HIDE",
             "TRANSITION", "EASE_IN_X", "EASE_IN_Y", "EASE_OUT_X", "EASE_OUT_Y", "TEXTURE_OBJ",
-            "CUSTOM_ITEM_SLOT", "ITEM_SLOT", "IK_TARGET", "IK_TARGET_ANGLE", "IK_ANGLE_OFFSET", "IK_BLEND",
+            "CUSTOM_ITEM_SLOT", "ITEM_SLOT", "ITEM_NAME", "IK_TARGET", "IK_TARGET_ANGLE", "IK_ANGLE_OFFSET", "IK_BLEND",
             "PATH_OBJ", "PATH_OFFSET", "PATH_POINT_ANGLE", "PATH_POINT_SCALE",
             "SPAWN", "FREEZE", "FORCE", "ATTRACTOR", "CUSTOM_SEED", "SEED", "CLEAR", "FORCE_DIRECTIONAL", "FORCE_VORTEX"
         };
@@ -236,7 +236,7 @@ public static partial class MiObjectFeatureMapper
                 ? ["tex_normal", "tex_material"]
                 : ["name", "state", "tex", "tex_normal", "tex_material", "repeat_enable", "repeat"], "block");
             if (template.Item is { } templateItem)
-                foreach (var property in templateItem.ExtraValues.Where(p => p.Key is not ("tex_normal" or "tex_material") && Active(p.Value)))
+                foreach (var property in templateItem.ExtraValues.Where(p => p.Key is not ("name" or "tex_normal" or "tex_material") && Active(p.Value)))
                     Report($"MIObject '{source.Name}': item setting '{property.Key}' has no native mapping.", warning);
         }
         obj.RefreshInheritedMaterials();

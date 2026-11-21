@@ -1772,10 +1772,9 @@ public class MainWindow : Window
 
                 case ResourcePackImportStage.ReloadTerrain:
                     _resourcePackImportStatus = Localization.T("text.window.main.reloading_terrain_textures");
-                    TerrainAtlas.Initialize(GL, (value, detail) =>
+                    TerrainAtlas.LoadAdditionalResourcePacks(new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                     {
-                        _resourcePackImportProgress = 0.42f + value * 0.28f;
-                        _resourcePackImportDetail = detail;
+                        MinecraftDataLoader.GetResourcePackId(Path.GetFileName(_resourcePackImportedPath))
                     });
                     _resourcePackImportProgress = 0.70f;
                     _resourcePackImportStage = ResourcePackImportStage.ReloadItems;
@@ -1783,10 +1782,9 @@ public class MainWindow : Window
 
                 case ResourcePackImportStage.ReloadItems:
                     _resourcePackImportStatus = Localization.T("text.window.main.reloading_item_textures");
-                    ItemsAtlas.Initialize(GL, (value, detail) =>
+                    ItemsAtlas.LoadAdditionalResourcePacks(new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                     {
-                        _resourcePackImportProgress = 0.70f + value * 0.24f;
-                        _resourcePackImportDetail = detail;
+                        MinecraftDataLoader.GetResourcePackId(Path.GetFileName(_resourcePackImportedPath))
                     });
                     _resourcePackImportProgress = 0.94f;
                     _resourcePackImportStage = ResourcePackImportStage.RefreshUi;

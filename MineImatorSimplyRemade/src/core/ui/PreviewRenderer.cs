@@ -236,8 +236,14 @@ public class PreviewRenderer : IDisposable
             // ── Flat mesh list (Items, Blocks, Primitives) ────────────────────
             var previousCameraPosition = Mesh.GlobalCameraPosition;
             var previousLighting = Mesh.SceneUBO;
+            double previousDeltaTime = Mesh.DeltaTime;
+            bool previousAdvanceAnimatedTextures = Mesh.AdvanceAnimatedTextures;
+            double? previousTimelineTextureTime = Mesh.AnimatedTextureTimelineTimeSeconds;
             int previousUniformBuffer = _gl.GetInteger(GLEnum.UniformBufferBinding, 0);
             Mesh.GlobalCameraPosition = camera?.Position ?? eye;
+            Mesh.DeltaTime = deltaTime;
+            Mesh.AdvanceAnimatedTextures = true;
+            Mesh.AnimatedTextureTimelineTimeSeconds = null;
             try
             {
                 if (isolatedLighting)
@@ -285,6 +291,9 @@ public class PreviewRenderer : IDisposable
                 _gl.DepthMask(true);
                 Mesh.GlobalCameraPosition = previousCameraPosition;
                 Mesh.SceneUBO = previousLighting;
+                Mesh.DeltaTime = previousDeltaTime;
+                Mesh.AdvanceAnimatedTextures = previousAdvanceAnimatedTextures;
+                Mesh.AnimatedTextureTimelineTimeSeconds = previousTimelineTextureTime;
                 _gl.BindBufferBase(GLEnum.UniformBuffer, 0, (uint)previousUniformBuffer);
             }
         }

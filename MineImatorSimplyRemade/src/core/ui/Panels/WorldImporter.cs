@@ -549,9 +549,11 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         _renderer.Resize((int)_viewportSize.X, (int)_viewportSize.Y);
         double previousDelta = Mesh.DeltaTime, previousSpeed = Mesh.AnimatedTextureSpeedScale;
         bool previousAdvance = Mesh.AdvanceAnimatedTextures;
+        double? previousTimelineTime = Mesh.AnimatedTextureTimelineTimeSeconds;
         try
         {
             Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
+            Mesh.AnimatedTextureTimelineTimeSeconds = null;
             Mesh.AdvanceAnimatedTextures = true;
             Mesh.AnimatedTextureSpeedScale = 1;
             _renderer.Render(Array.Empty<Mesh>(), "world", 0, sceneRoot: _preview, camera: _camera);
@@ -561,6 +563,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             Mesh.DeltaTime = previousDelta;
             Mesh.AdvanceAnimatedTextures = previousAdvance;
             Mesh.AnimatedTextureSpeedScale = previousSpeed;
+            Mesh.AnimatedTextureTimelineTimeSeconds = previousTimelineTime;
         }
         ImGui.Image(new ImTextureRef(texId: (ulong)_renderer.ColorTexture), _viewportSize,
             new Vector2(0, 1), new Vector2(1, 0));

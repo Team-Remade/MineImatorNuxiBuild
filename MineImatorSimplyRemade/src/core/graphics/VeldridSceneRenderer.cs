@@ -22,7 +22,7 @@ namespace MineImatorSimplyRemade.core.graphics;
 /// distance and height fog. Shadows, SSS, mipmaps and native postprocessing are
 /// not implemented.
 /// Alpha-mask opacity is supported, but independent text outline colors are not.
-/// Animated spritesheets share a renderer-local animation clock.
+/// Animated spritesheets sample scene timeline time, with a renderer-local clock as fallback.
 /// </summary>
 public sealed class VeldridSceneRenderer : IDisposable
 {
@@ -320,7 +320,7 @@ public sealed class VeldridSceneRenderer : IDisposable
         _cameraPosition = (view.Inverse * new vec4(0, 0, 0, 1)).xyz;
         _wireframe = wireframe;
         _hasDraws = false;
-        if (Mesh.AdvanceAnimatedTextures)
+        if (Mesh.AnimatedTextureTimelineTimeSeconds == null && Mesh.AdvanceAnimatedTextures)
             _animationTime += Mesh.DeltaTime * Mesh.AnimatedTextureSpeedScale;
         _commands.Begin();
         _recording = true;
@@ -360,9 +360,12 @@ public sealed class VeldridSceneRenderer : IDisposable
             TerrainAtlas.AnimatedTextures.TryGetValue(mesh.AnimationKey, out var animation) &&
             animation.Frames.Length > 0 && animation.TotalFrames > 0 && animation.FrameTime > 0)
         {
-            int frame = (int)((_animationTime / (animation.FrameTime / 20.0)) % animation.Frames.Length);
+            double animationTime = Mesh.AnimatedTextureTimelineTimeSeconds is { } timelineTime
+                ? timelineTime * Mesh.AnimatedTextureSpeedScale
+                : _animationTime;
+            int frameIndex = Mesh.GetAnimatedTextureFrameIndex(animation, animationTime);
             scaleV = 1f / animation.TotalFrames;
-            offsetV = animation.Frames[frame] * scaleV;
+            offsetV = frameIndex * scaleV;
         }
         var data = new DrawUniforms
         {

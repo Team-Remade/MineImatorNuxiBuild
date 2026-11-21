@@ -25,6 +25,20 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--resourcepack-animation-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                ResourcePackAnimationGraphics();
+                Console.WriteLine("PASS Incremental resource-pack atlas preservation and animated texture timeline seeking");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--meshcache-graphics", StringComparer.Ordinal))
         {
             try
@@ -495,6 +509,7 @@ internal static partial class Program
             ("MI import native constraints, modifiers, colors and reference remapping", MiImportConstraintsAndModifiers),
             ("MI import effect units, native approximations and unsupported diagnostics", MiImportEffectConversions),
             ("MI import builtin models, normal formats, template fallback and portable tracks", MiImportResources),
+            ("MI import named vanilla items, settings, hierarchy and persistence", MiImportVanillaItems),
             ("MI import audio triggers, sparse values, pitch, trims and diagnostics", MiImportAudio),
             ("MI import audio project assets, resource identity and reload", MiImportAudioProject),
             ("Audio mixer source trims, pitch, loop bounds, overlaps and export offsets", AudioMixTiming),

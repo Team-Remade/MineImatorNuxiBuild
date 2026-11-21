@@ -2840,6 +2840,11 @@ public partial class Viewport : UiPanel
 
         Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
         bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
+        Mesh.AnimatedTextureTimelineTimeSeconds = (Timeline.Instance?.CurrentFrame ?? 0) /
+            (double)MathF.Max(1f, Timeline.Instance?.Framerate ?? 30f);
+        Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
+        int textureAnimFps = Math.Clamp(PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240);
+        Mesh.AnimatedTextureSpeedScale = textureAnimFps / 20.0;
         if (!IsPreviewViewport)
         {
             using var particleScope = FrameProfiler.Shared.Measure(ProfileStage.ParticleUpdate);
@@ -2924,9 +2929,6 @@ public partial class Viewport : UiPanel
             ResetModifierEvaluation();
             foreach (var root in SceneObjects)
                 root.RefreshInheritedMaterials();
-            Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
-            int textureAnimFps = Math.Clamp(PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240);
-            Mesh.AnimatedTextureSpeedScale = textureAnimFps / 20.0;
             Mesh.ShadowsEnabled = false;
             Mesh.ShadowMapTexture = 0;
             Mesh.ShadowLightSpaceMatrix = mat4.Identity;
@@ -3557,6 +3559,8 @@ public partial class Viewport : UiPanel
 
         Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
         bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
+        Mesh.AnimatedTextureTimelineTimeSeconds = (Timeline.Instance?.CurrentFrame ?? 0) /
+            (double)MathF.Max(1f, Timeline.Instance?.Framerate ?? 30f);
         Mesh.AdvanceAnimatedTextures = timelinePlaying || MainWindow.IsAnimationRenderExportActive;
         Mesh.AnimatedTextureSpeedScale = Math.Clamp(PropertiesPanel?.TextureAnimationFps ?? 20, 1, 240) / 20.0;
         using var evaluation = SceneObject.BeginRenderEvaluation();
@@ -7587,6 +7591,8 @@ public partial class Viewport : UiPanel
         using var uncachedPreparation = SceneObject.SuspendRenderEvaluation();
         Mesh.DeltaTime = ImGui.GetIO().DeltaTime;
         bool timelinePlaying = Timeline.Instance?.IsPlaying ?? false;
+        Mesh.AnimatedTextureTimelineTimeSeconds = (Timeline.Instance?.CurrentFrame ?? 0) /
+            (double)MathF.Max(1f, Timeline.Instance?.Framerate ?? 30f);
         if (!IsPreviewViewport)
         {
             using var particleScope = FrameProfiler.Shared.Measure(ProfileStage.ParticleUpdate);

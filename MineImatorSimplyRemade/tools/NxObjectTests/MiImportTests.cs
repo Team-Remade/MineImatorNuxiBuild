@@ -452,6 +452,173 @@ internal static partial class Program
         Equal("normal resource", File.ReadAllText(Resource(directory, packedTrack)), "Animated normals are packaged portably");
     }
 
+    private static void MiImportVanillaItems(Fixture f)
+    {
+        string[] keys = ["diamond_sword", "stick", "iron_sword", "gold_ingot", "leather_helmet", "nether_star"];
+        var oldTextures = keys.ToDictionary(key => key,
+            key => ItemsAtlas.Textures.TryGetValue(key, out uint value) ? (uint?)value : null);
+        var oldPixels = keys.ToDictionary(key => key,
+            key => ItemsAtlas.TilePixels.TryGetValue(key, out byte[]? value) ? value : null);
+        var oldDimensions = keys.ToDictionary(key => key,
+            key => ItemsAtlas.TileDimensions.TryGetValue(key, out var value) ? ((int Width, int Height)?)value : null);
+        try
+        {
+            foreach (string key in keys)
+            {
+                ItemsAtlas.Textures[key] = 1;
+                ItemsAtlas.TilePixels[key] = new byte[16 * 16 * 4];
+                ItemsAtlas.TileDimensions[key] = (16, 16);
+            }
+
+            string? ResolveBuiltinName(string name)
+            {
+                var template = new MiTemplate
+                {
+                    Type = "item",
+                    Item = new MiTemplateItem
+                    {
+                        ExtraValues = new Dictionary<string, JsonElement>
+                            { ["name"] = JsonSerializer.SerializeToElement(name) }
+                    }
+                };
+                return MiObjectItemSelection.ResolveBuiltinItemKey(template, new MiTimeline(), null);
+            }
+
+            Equal("leather_helmet", ResolveBuiltinName("leather_helmet"), "Bare vanilla names resolve to atlas keys");
+            Equal("leather_helmet", ResolveBuiltinName("item/leather_helmet"), "Mine-imator item prefix resolves to atlas keys");
+            Equal("leather_helmet", ResolveBuiltinName("textures/item/leather_helmet.png"), "Texture paths resolve to atlas keys");
+            Equal("leather_helmet", ResolveBuiltinName("minecraft:item/leather_helmet"), "Namespaced item paths resolve to atlas keys");
+            Check(ResolveBuiltinName("mod:item/leather_helmet") == null, "Non-Minecraft namespaces do not resolve to vanilla items");
+
+            SceneObject ImportItem(string json, List<string> warnings)
+            {
+                var source = MiDocument(json);
+                return new MineImatorLoader().CreateSceneFromMiObject(source, warning: warnings.Add)
+                    .GetAllDescendants().Single(obj => obj.ObjectType == "Item");
+            }
+
+            var warnings = new List<string>();
+            var fallback = ImportItem("""
+                {"templates":[{"id":"sword","type":"item","name":"Sword template",
+                  "item":{"name":"minecraft:diamond_sword","3d":true,"face_camera":true,"bounce":true,"spin":true}}],
+                 "timelines":[{"id":"folder","type":"folder","name":"Items"},
+                  {"id":"sword","type":"item","temp":"sword","name":"Sword","parent":"folder",
+                   "default_values":{"POS_X":16}}]}
+                """, warnings);
+            Equal("diamond_sword", fallback.ItemTileKey, "Namespaced template item name selects its native atlas key");
+            Equal("item", fallback.TextureType, "Vanilla item retains native item texture type");
+            Equal("Sword", fallback.Name, "Imported item keeps its timeline name");
+            Near(1f, fallback.Position.x, "Imported item retains its timeline transform");
+            Check(fallback.Parent?.Name == "Items", "Imported item remains in its source hierarchy");
+            Check(fallback.ItemBounce && fallback.ItemSpin && fallback.ItemFaceCamera,
+                "Imported item keeps bounce, spin and camera-facing settings");
+            Check(!warnings.Any(w => w.Contains("ITEM_NAME") || w.Contains("item setting 'name'")),
+                "Supported item names are not reported as unmapped");
+
+            var saved = ProjectSceneSerializer.SerializeObjectForLibrary(fallback);
+            Equal("diamond_sword", saved.ItemTileKey, "Native item atlas key persists");
+            Equal("item", saved.TextureType, "Native item texture type persists");
+            Check(saved.ItemBounce && saved.ItemSpin && saved.ItemFaceCamera, "Item settings persist");
+
+            var defaults = ImportItem("""
+                {"templates":[{"id":"item","type":"item","item":{"name":"diamond_sword"}}],
+                 "timelines":[{"id":"item","type":"item","temp":"item",
+                   "default_values":{"CUSTOM_ITEM_SLOT":true,"ITEM_NAME":"minecraft:stick"}}]}
+                """, warnings);
+            Equal("stick", defaults.ItemTileKey, "Enabled timeline custom slot selects its default item name");
+
+            var keyframed = ImportItem("""
+                {"templates":[{"id":"item","type":"item","item":{"name":"diamond_sword"}}],
+                 "timelines":[{"id":"item","type":"item","temp":"item",
+                   "default_values":{"CUSTOM_ITEM_SLOT":true,"ITEM_NAME":"stick"},
+                   "keyframes":{"10":{"CUSTOM_ITEM_SLOT":1,"ITEM_NAME":"minecraft:iron_sword"}}}]}
+                """, warnings);
+            Equal("iron_sword", keyframed.ItemTileKey, "Enabled keyframe custom slot overrides the timeline default");
+
+            var disabledKeyframe = ImportItem("""
+                {"templates":[{"id":"item","type":"item","item":{"name":"diamond_sword"}}],
+                 "timelines":[{"id":"item","type":"item","temp":"item",
+                   "default_values":{"CUSTOM_ITEM_SLOT":true,"ITEM_NAME":"stick"},
+                   "keyframes":{"0":{"CUSTOM_ITEM_SLOT":0,"ITEM_NAME":"iron_sword"}}}]}
+                """, warnings);
+            Equal("diamond_sword", disabledKeyframe.ItemTileKey,
+                "Frame-disabled custom slot ignores both frame and default item names");
+
+            var witherHelmet = ImportItem("""
+                {"templates":[{"id":"wither-item","type":"item","name":"Wither item",
+                  "item":{"name":"minecraft:nether_star"}}],
+                 "timelines":[{"id":"wither-folder","type":"folder","name":"Wither"},
+                  {"id":"wither-item","type":"item","temp":"wither-item","name":"Helmet",
+                   "parent":"wither-folder","default_values":{"POS_X":16},
+                   "keyframes":{"0":{"ITEM_NAME":"item/leather_helmet"}}}]}
+                """, warnings);
+            Equal("nether_star", witherHelmet.ItemTileKey,
+                "Wither frame-0 helmet name is ignored when its custom slot is disabled");
+            Near(1f, witherHelmet.Position.x, "Wither item retains its timeline transform");
+            Check(witherHelmet.Parent?.Name == "Wither", "Wither item remains in its source hierarchy");
+            var witherSaved = ProjectSceneSerializer.SerializeObjectForLibrary(witherHelmet);
+            Equal("nether_star", witherSaved.ItemTileKey, "Wither nether-star atlas key persists after serialization");
+
+            var staticItem = ImportItem("""
+                {"templates":[{"id":"item","type":"item","item":{"name":"diamond_sword"}}],
+                 "timelines":[{"id":"item","type":"item","temp":"item","animated":false,
+                   "current_values":{"CUSTOM_ITEM_SLOT":true,"ITEM_NAME":"item/leather_helmet"},
+                   "keyframes":{"0":{"ITEM_NAME":"stick"}}}]}
+                """, warnings);
+            Equal("leather_helmet", staticItem.ItemTileKey, "Enabled static custom slot selects its current item name");
+
+            var missingOverride = ImportItem("""
+                {"templates":[{"id":"item","type":"item","item":{"name":"diamond_sword"}}],
+                 "timelines":[{"id":"item","type":"item","temp":"item",
+                   "default_values":{"CUSTOM_ITEM_SLOT":true}}]}
+                """, warnings);
+            Equal("diamond_sword", missingOverride.ItemTileKey,
+                "An enabled custom slot with no override name falls back to the template item");
+
+            var external = new MiTemplate
+            {
+                Id = "external", Type = "item",
+                Item = new MiTemplateItem { Tex = "sheet", ExtraValues = new Dictionary<string, JsonElement>
+                    { ["name"] = JsonSerializer.SerializeToElement("diamond_sword") } }
+            };
+            var externalResource = new MiResource { Id = "sheet", Filename = f.File("item-sheet.png", "sheet") };
+            var externalSelection = MiObjectItemSelection.Resolve(external, new MiTimeline(), null,
+                new Dictionary<string, MiResource> { ["sheet"] = externalResource }, f.Root);
+            Equal(externalResource, externalSelection?.Resource, "External item sheet takes precedence over a vanilla name");
+
+            warnings.Clear();
+            var missingSheet = new MineImatorLoader().CreateSceneFromMiObject(new MiObject
+            {
+                DirectoryPath = f.Root,
+                Templates = [external],
+                Timelines = [new MiTimeline { Id = "external", Type = "item", Temp = "external", Name = "Sheet item" }],
+                Resources = [new MiResource { Id = "sheet", Filename = "missing-item-sheet.png" }]
+            }, warning: warnings.Add).Children.Single();
+            Equal("Placeholder", missingSheet.ObjectType, "Missing external sheets do not fall through to a vanilla item");
+            Check(warnings.Any(w => w.Contains("missing item sheet")), "Missing external item sheets remain diagnosable");
+
+            warnings.Clear();
+            var missing = new MineImatorLoader().CreateSceneFromMiObject(MiDocument("""
+                {"templates":[{"id":"missing","type":"item","item":{"name":"not_a_vanilla_item"}}],
+                 "timelines":[{"id":"missing","type":"item","temp":"missing"}]}
+                """), warning: warnings.Add).Children.Single();
+            Equal("Placeholder", missing.ObjectType, "Unknown atlas names do not select an unrelated item");
+            Check(warnings.Any(w => w.Contains("not_a_vanilla_item")), "Missing atlas names remain diagnosable");
+        }
+        finally
+        {
+            foreach (string key in keys)
+            {
+                if (oldTextures[key] is { } texture) ItemsAtlas.Textures[key] = texture;
+                else ItemsAtlas.Textures.Remove(key);
+                if (oldPixels[key] is { } pixels) ItemsAtlas.TilePixels[key] = pixels;
+                else ItemsAtlas.TilePixels.Remove(key);
+                if (oldDimensions[key] is { } dimensions) ItemsAtlas.TileDimensions[key] = dimensions;
+                else ItemsAtlas.TileDimensions.Remove(key);
+            }
+        }
+    }
+
     private static void MiImportScenery(Fixture f)
     {
         string schematic = f.NewPath(".schematic");

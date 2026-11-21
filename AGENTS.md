@@ -73,6 +73,7 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --meshcache-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --texture-sheets
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --texture-sheets-graphics
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --resourcepack-animation-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --backups
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --modifiers
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --world-player
@@ -137,6 +138,10 @@ Coverage and prerequisites:
 - `--texture-sheets-graphics`: OpenGL 3.3; uploaded tile dimensions, pixels, alpha,
   existing material orientation rules, and the dialog's image preview,
   orientation, transparency, and texture cleanup.
+- `--resourcepack-animation-graphics`: OpenGL 3.3; incremental pack loading preserves
+  existing terrain, item and imported sheet texture handles/pixels; animated
+  textures reproduce paused seeks, exact tick boundaries, speed changes, shadow
+  signatures, independent asset previews, camera previews and PNG exports.
 - `--effects-graphics`: OpenGL 3.3 desktop session; real rendered pixels,
   animation/seek reproducibility, emission, and empty-mesh rebuilding.
 - `--particles-graphics`: OpenGL 3.3; particle sprite image orientation, textures,

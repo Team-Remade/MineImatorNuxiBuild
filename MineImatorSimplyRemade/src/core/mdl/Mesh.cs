@@ -169,8 +169,8 @@ public class Mesh : IDisposable
 
     /// <summary>
     /// Key into <see cref="TerrainAtlas.AnimatedTextures"/>.
-    /// When non-empty the mesh samples a single frame of the spritesheet each
-    /// render call and advances the animation over time.
+    /// Samples the spritesheet at scene timeline time, or advances in real time
+    /// for standalone previews.
     /// Leave empty (default) for static textures.
     /// </summary>
     public string AnimationKey = "";
@@ -1391,10 +1391,12 @@ public class Mesh : IDisposable
     public static double DeltaTime = 0.0;
 
     /// <summary>
-    /// Global gate for animated texture time progression.
-    /// When false, animated textures hold their current frame.
+    /// Global gate for real-time animated texture progression when no timeline time is set.
     /// </summary>
     public static bool AdvanceAnimatedTextures = true;
+
+    /// <summary>Absolute scene time in seconds for deterministic timeline sampling; null uses real-time animation.</summary>
+    public static double? AnimatedTextureTimelineTimeSeconds;
 
     /// <summary>
     /// Shared scene-uniform buffer set by Viewport once per frame.
@@ -1408,6 +1410,25 @@ public class Mesh : IDisposable
     /// A value of 1.0 reproduces vanilla 20 FPS timing.
     /// </summary>
     public static double AnimatedTextureSpeedScale = 1.0;
+
+    private double GetAnimatedTextureTimeSeconds(bool advance)
+    {
+        if (AnimatedTextureTimelineTimeSeconds is { } timelineTime)
+            return timelineTime * AnimatedTextureSpeedScale;
+
+        if (advance && AdvanceAnimatedTextures)
+            _animTime += DeltaTime * AnimatedTextureSpeedScale;
+        return _animTime;
+    }
+
+    internal static int GetAnimatedTextureFrameIndex(AnimatedTextureInfo animation, double timeSeconds)
+    {
+        // Avoid selecting the previous frame at exact tick boundaries due to floating-point rounding.
+        double frame = Math.Floor(timeSeconds / SecondsPerTick / animation.FrameTime + 1e-9);
+        int sequenceIndex = (int)(frame % animation.Frames.Length);
+        if (sequenceIndex < 0) sequenceIndex += animation.Frames.Length;
+        return animation.Frames[sequenceIndex];
+    }
 
     // ── Custom shader graphs ──────────────────────────────────────────────────
 
@@ -1579,15 +1600,7 @@ public class Mesh : IDisposable
         if (!string.IsNullOrEmpty(AnimationKey) &&
             TerrainAtlas.AnimatedTextures.TryGetValue(AnimationKey, out var animInfo))
         {
-            if (AdvanceAnimatedTextures)
-                _animTime += DeltaTime * AnimatedTextureSpeedScale;
-
-            double ticksPerFrame = animInfo.FrameTime * SecondsPerTick;
-            double totalDuration = animInfo.Frames.Length * ticksPerFrame;
-            double t = _animTime % totalDuration;
-            int sequenceIndex = (int)(t / ticksPerFrame);
-            sequenceIndex = Math.Clamp(sequenceIndex, 0, animInfo.Frames.Length - 1);
-            int frameIndex = animInfo.Frames[sequenceIndex];
+            int frameIndex = GetAnimatedTextureFrameIndex(animInfo, GetAnimatedTextureTimeSeconds(advance: true));
 
             // Each frame occupies (frameH / totalH) of the texture in V
             texScaleV  = (float)animInfo.FrameHeight / (animInfo.FrameHeight * animInfo.TotalFrames);
@@ -1835,7 +1848,7 @@ public class Mesh : IDisposable
         hash.Add(TextureMirror);
         hash.Add(AnimationKey);
         if (!string.IsNullOrEmpty(AnimationKey))
-            hash.Add(_animTime);
+            hash.Add(GetAnimatedTextureTimeSeconds(advance: false));
         hash.Add(IsSkinned);
         foreach (var name in BoneNames) hash.Add(name);
         foreach (var inverseBind in BoneInverseBindMatrices) hash.Add(inverseBind);
@@ -1876,12 +1889,7 @@ public class Mesh : IDisposable
         if (!string.IsNullOrEmpty(AnimationKey) &&
             TerrainAtlas.AnimatedTextures.TryGetValue(AnimationKey, out var animInfo))
         {
-            double ticksPerFrame = animInfo.FrameTime * SecondsPerTick;
-            double totalDuration = animInfo.Frames.Length * ticksPerFrame;
-            double t = _animTime % totalDuration;
-            int sequenceIndex = (int)(t / ticksPerFrame);
-            sequenceIndex = Math.Clamp(sequenceIndex, 0, animInfo.Frames.Length - 1);
-            int frameIndex = animInfo.Frames[sequenceIndex];
+            int frameIndex = GetAnimatedTextureFrameIndex(animInfo, GetAnimatedTextureTimeSeconds(advance: false));
             texScaleV  = (float)animInfo.FrameHeight / (animInfo.FrameHeight * animInfo.TotalFrames);
             texOffsetV = frameIndex * texScaleV;
         }
@@ -1954,12 +1962,7 @@ public class Mesh : IDisposable
         if (!string.IsNullOrEmpty(AnimationKey) &&
             TerrainAtlas.AnimatedTextures.TryGetValue(AnimationKey, out var animInfo))
         {
-            double ticksPerFrame = animInfo.FrameTime * SecondsPerTick;
-            double totalDuration = animInfo.Frames.Length * ticksPerFrame;
-            double t = _animTime % totalDuration;
-            int sequenceIndex = (int)(t / ticksPerFrame);
-            sequenceIndex = Math.Clamp(sequenceIndex, 0, animInfo.Frames.Length - 1);
-            int frameIndex = animInfo.Frames[sequenceIndex];
+            int frameIndex = GetAnimatedTextureFrameIndex(animInfo, GetAnimatedTextureTimeSeconds(advance: false));
             texScaleV = (float)animInfo.FrameHeight / (animInfo.FrameHeight * animInfo.TotalFrames);
             texOffsetV = frameIndex * texScaleV;
         }
@@ -2345,12 +2348,7 @@ public class Mesh : IDisposable
         if (!string.IsNullOrEmpty(AnimationKey) &&
             TerrainAtlas.AnimatedTextures.TryGetValue(AnimationKey, out var animInfo))
         {
-            double ticksPerFrame = animInfo.FrameTime * SecondsPerTick;
-            double totalDuration = animInfo.Frames.Length * ticksPerFrame;
-            double t = _animTime % totalDuration;
-            int sequenceIndex = (int)(t / ticksPerFrame);
-            sequenceIndex = Math.Clamp(sequenceIndex, 0, animInfo.Frames.Length - 1);
-            int frameIndex = animInfo.Frames[sequenceIndex];
+            int frameIndex = GetAnimatedTextureFrameIndex(animInfo, GetAnimatedTextureTimeSeconds(advance: false));
             texScaleV = (float)animInfo.FrameHeight / (animInfo.FrameHeight * animInfo.TotalFrames);
             texOffsetV = frameIndex * texScaleV;
         }

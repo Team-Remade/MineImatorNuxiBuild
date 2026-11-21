@@ -228,7 +228,8 @@ public class MineImatorLoader
                     string.Equals(template.Type, "item", StringComparison.OrdinalIgnoreCase))
                 {
                     itemObject = itemFactory?.Invoke(template, timeline, resourceInfoById, miObject.DirectoryPath)
-                                 ?? CreateSceneObjectFromItemTemplate(template, timeline, resourceInfoById, miObject.DirectoryPath);
+                                 ?? CreateSceneObjectFromItemTemplate(template, timeline, resourceInfoById,
+                                     miObject.DirectoryPath, warning);
                 }
 
                 if (itemObject == null && template != null)
@@ -872,13 +873,61 @@ public class MineImatorLoader
     }
 
     private SceneObject? CreateSceneObjectFromItemTemplate(MiTemplate template, MiTimeline timeline,
-        IReadOnlyDictionary<string, MiResource> resourceInfoById, string objectDirectory)
+        IReadOnlyDictionary<string, MiResource> resourceInfoById, string objectDirectory, Action<string>? warning)
     {
         if (template.Item is not { } item) return null;
-        var selection = MiObjectItemSelection.Resolve(template, timeline, GetFirstTimelineKeyframe(timeline),
+        var first = GetFirstTimelineKeyframe(timeline);
+        var selection = MiObjectItemSelection.Resolve(template, timeline, first,
             resourceInfoById, objectDirectory);
-        if (selection == null || !File.Exists(selection.TexturePath))
+        if (selection == null)
+        {
+            string? nativeTileKey = MiObjectItemSelection.ResolveBuiltinItemKey(template, timeline, first);
+            if (nativeTileKey == null)
+            {
+                string? itemName = MiObjectItemSelection.ResolveItemName(template, timeline, first);
+                if (!string.IsNullOrWhiteSpace(itemName))
+                    MiObjectFeatureMapper.Report($"MIObject item '{timeline.Name}' has no loaded atlas texture for '{itemName}'.", warning);
+                return null;
+            }
+
+            ItemsAtlas.Textures.TryGetValue(nativeTileKey, out uint nativeTileTextureId);
+            ItemsAtlas.TilePixels.TryGetValue(nativeTileKey, out byte[]? nativeTilePixels);
+            ItemsAtlas.TryGetTileDimensions(nativeTileKey, out int tileWidth, out int tileHeight);
+            if (_gl != null && (nativeTileTextureId == 0 || nativeTilePixels == null))
+                return null;
+
+            var nativeItem = new SceneObject
+            {
+                Name = !string.IsNullOrWhiteSpace(timeline.Name) ? timeline.Name :
+                    !string.IsNullOrWhiteSpace(template.Name) ? template.Name : "Item",
+                ObjectType = "Item",
+                SpawnCategory = "Items",
+                TextureType = "item",
+                ItemTileKey = nativeTileKey,
+                ItemFaceCamera = item.FaceCamera,
+                ItemBounce = item.Bounce,
+                ItemSpin = item.Spin,
+                Position = vec3.Zero,
+                PivotOffset = ExtrudedItemMesh.GetDefaultPivotOffset(tileWidth, tileHeight)
+            };
+            nativeItem.AssignObjectId();
+            if (_gl != null)
+            {
+                var mesh = new ExtrudedItemMesh(_gl, nativeTileTextureId, nativeTilePixels!, is3D: item.ThreeD,
+                    tileSize: Math.Max(tileWidth, tileHeight), tileWidth: tileWidth, tileHeight: tileHeight,
+                    extrudeDepth: 1f / 16f);
+                mesh.MinecraftTextureKey = nativeTileKey;
+                mesh.MinecraftItemTexture = true;
+                nativeItem.AddMesh(mesh);
+            }
+            return nativeItem;
+        }
+        if (!File.Exists(selection.TexturePath))
+        {
+            MiObjectFeatureMapper.Report(
+                $"MIObject item '{timeline.Name}' references missing item sheet '{selection.TexturePath}'.", warning);
             return null;
+        }
         string texturePath = selection.TexturePath;
         var bytes = File.ReadAllBytes(texturePath);
         ImageResult image = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
