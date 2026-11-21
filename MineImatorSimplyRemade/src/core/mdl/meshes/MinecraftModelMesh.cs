@@ -25,6 +25,7 @@ public static class MinecraftModelMesh
 {
     // Preserve Minecraft's model origin, scaling 0..16 to 0..1 block units.
     private const float Scale = 1f / 16f;
+    private const float TileBoundaryEpsilon = 0.0001f;
 
     // ── Default block tints ───────────────────────────────────────────────────
     //
@@ -423,26 +424,53 @@ public static class MinecraftModelMesh
     /// <summary>
     /// Returns true when a face is on the boundary between this tile and an
     /// adjacent tile (i.e. it's an internal face and should be culled).
-    /// Only non-rotated elements that span the full block extent are culled,
-    /// since rotated or partial elements aren't guaranteed to sit on a tile
-    /// boundary.
+    /// Only non-element-rotated elements that span the full block extent along
+    /// the face normal are culled. Blockstate rotation is accounted for when
+    /// checking the face's tile boundary.
     /// </summary>
-    private static bool IsInternalFace(string faceName, BlockModelElement element,
+    private static bool IsInternalFace(string faceName, BlockModelElement element, mat4 variantTransform,
                                        int tx, int ty, int tz,
                                        int tileX, int tileY, int tileZ)
     {
         if (element.Rotation != null) return false;
 
-        return faceName switch
+        bool spansBlockAxis = faceName switch
         {
-            "down"  => element.From[1] == 0f  && ty > 0,
-            "up"    => element.To[1]   == 16f && ty + 1 < tileY,
-            "north" => element.From[2] == 0f  && tz > 0,
-            "south" => element.To[2]   == 16f && tz + 1 < tileZ,
-            "west"  => element.From[0] == 0f  && tx > 0,
-            "east"  => element.To[0]   == 16f && tx + 1 < tileX,
+            "down" or "up" => MathF.Abs(element.From[1]) < TileBoundaryEpsilon &&
+                               MathF.Abs(element.To[1] - 16f) < TileBoundaryEpsilon,
+            "north" or "south" => MathF.Abs(element.From[2]) < TileBoundaryEpsilon &&
+                                   MathF.Abs(element.To[2] - 16f) < TileBoundaryEpsilon,
+            "west" or "east" => MathF.Abs(element.From[0]) < TileBoundaryEpsilon &&
+                                 MathF.Abs(element.To[0] - 16f) < TileBoundaryEpsilon,
             _       => false
         };
+        if (!spansBlockAxis) return false;
+
+        vec3 normal = TransformNormal(variantTransform, NormalForFace(faceName));
+        int axis = MathF.Abs(normal.x) > 0.999f ? 0 :
+                   MathF.Abs(normal.y) > 0.999f ? 1 :
+                   MathF.Abs(normal.z) > 0.999f ? 2 : -1;
+        if (axis < 0) return false;
+
+        int tileIndex = axis switch { 0 => tx, 1 => ty, _ => tz };
+        int tileCount = axis switch { 0 => tileX, 1 => tileY, _ => tileZ };
+        bool positive = normal[axis] > 0f;
+        if (positive ? tileIndex + 1 >= tileCount : tileIndex <= 0)
+            return false;
+
+        float x0 = element.From[0] * Scale;
+        float y0 = element.From[1] * Scale;
+        float z0 = element.From[2] * Scale;
+        float x1 = element.To[0] * Scale;
+        float y1 = element.To[1] * Scale;
+        float z1 = element.To[2] * Scale;
+        var (v0, v1, v2, v3) = QuadForFace(faceName, x0, y0, z0, x1, y1, z1);
+        float boundary = positive ? 1f : 0f;
+        return IsOnTileBoundary(v0) && IsOnTileBoundary(v1) &&
+               IsOnTileBoundary(v2) && IsOnTileBoundary(v3);
+
+        bool IsOnTileBoundary(vec3 vertex) =>
+            MathF.Abs(TransformPoint(variantTransform, vertex)[axis] - boundary) < TileBoundaryEpsilon;
     }
 
     /// <summary>
@@ -754,7 +782,7 @@ public static class MinecraftModelMesh
         foreach (var (faceName, face) in element.Faces)
         {
             // Skip internal faces between adjacent tiles
-            if (IsInternalFace(faceName, element, tx, ty, tz, tileX, tileY, tileZ))
+            if (IsInternalFace(faceName, element, variantTransform, tx, ty, tz, tileX, tileY, tileZ))
                 continue;
 
             // Resolve texture

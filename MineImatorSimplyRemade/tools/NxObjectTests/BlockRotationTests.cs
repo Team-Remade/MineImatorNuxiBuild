@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.Json.Nodes;
 using GlmSharp;
 using MineImatorSimplyRemade;
+using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core.objs;
@@ -31,7 +32,7 @@ internal static partial class Program
             var blocks = (List<string>)typeof(BlockRegistry).GetField("_blocks", statics)!.GetValue(null)!;
             var parse = typeof(BlockRegistry).GetMethod("ParseBlockstate", statics,
                 [typeof(string), typeof(JsonObject), typeof(string)])!;
-            foreach (string name in new[] { "stone_button", "oak_button", "oak_trapdoor", "iron_door", "oak_fence" })
+            foreach (string name in new[] { "stone_button", "oak_button", "oak_trapdoor", "iron_door", "oak_fence", "oak_log" })
             {
                 var json = JsonNode.Parse(File.ReadAllText(Path.Combine(version, "blockstates", name + ".json")))!.AsObject();
                 parse.Invoke(null, [name, json, ""]);
@@ -85,6 +86,92 @@ internal static partial class Program
                 viewport.SceneObjects.Remove(root);
                 foreach (var mesh in root.Visuals) mesh.Dispose();
             }
+
+            void CheckTiledLog(BlockVariantEntry variant, int tileX, int tileY, int tileZ, string label)
+            {
+                var model = BlockRegistry.ResolveModel(variant.ModelPath, blockName: "oak_log") ??
+                    throw new InvalidOperationException("Failed resolving oak log model " + variant.ModelPath);
+                var meshes = MinecraftModelMesh.Build(gl, model, variant.RotationX, variant.RotationY,
+                    blockName: "oak_log", tileX: tileX, tileY: tileY, tileZ: tileZ, textureLoader: _ => 1);
+                try
+                {
+                    var faces = new List<(vec3 Normal, vec3 Center)>();
+                    foreach (var mesh in meshes)
+                    {
+                        Equal(0, mesh.Vertices.Count % 6, label + ": complete face geometry");
+                        for (int i = 0; i < mesh.Vertices.Count; i += 6)
+                        {
+                            vec3 center = vec3.Zero;
+                            for (int j = 0; j < 6; j++) center += mesh.Vertices[i + j] / 6f;
+                            faces.Add((mesh.Normals[i], center));
+                        }
+                    }
+
+                    Equal(2 * (tileX * tileY + tileX * tileZ + tileY * tileZ), faces.Count,
+                        label + ": exterior face count");
+                    var dimensions = new[] { tileX, tileY, tileZ };
+                    foreach (var (name, normal, axis, expectedCount) in new[]
+                    {
+                        ("-X", new vec3(-1, 0, 0), 0, tileY * tileZ),
+                        ("+X", new vec3(1, 0, 0), 0, tileY * tileZ),
+                        ("-Y", new vec3(0, -1, 0), 1, tileX * tileZ),
+                        ("+Y", new vec3(0, 1, 0), 1, tileX * tileZ),
+                        ("-Z", new vec3(0, 0, -1), 2, tileX * tileY),
+                        ("+Z", new vec3(0, 0, 1), 2, tileX * tileY)
+                    })
+                    {
+                        var side = faces.Where(face => (face.Normal - normal).Length < 0.001f).ToArray();
+                        Equal(expectedCount, side.Length, label + ": " + name + " exterior coverage");
+                        float boundary = normal[axis] < 0 ? 0f : dimensions[axis];
+                        foreach (var face in side)
+                            Near(boundary, face.Center[axis], label + ": " + name + " has no internal faces");
+                    }
+                }
+                finally { foreach (var mesh in meshes) mesh.Dispose(); }
+            }
+
+            ResolvedBlockModel MakeTestModel(float[] from, float[] to, ElementRotation? rotation = null)
+            {
+                var model = new ResolvedBlockModel();
+                model.Textures["all"] = "minecraft:block/oak_log";
+                var element = new BlockModelElement { From = from, To = to, Rotation = rotation };
+                foreach (string face in new[] { "down", "up", "north", "south", "west", "east" })
+                    element.Faces.Add(face, new BlockModelFace { Texture = "#all" });
+                model.Elements.Add(element);
+                return model;
+            }
+
+            foreach (string axis in new[] { "x", "y", "z" })
+            {
+                var variant = BlockRegistry.GetVariants("oak_log").Single(entry => entry.StateKey == $"axis={axis}");
+                CheckTiledLog(variant, 3, 1, 1, $"Oak log axis={axis}, tiled X");
+                CheckTiledLog(variant, 1, 3, 1, $"Oak log axis={axis}, tiled Y");
+                CheckTiledLog(variant, 1, 1, 3, $"Oak log axis={axis}, tiled Z");
+                CheckTiledLog(variant, 2, 3, 4, $"Oak log axis={axis}, asymmetric grid");
+            }
+
+            var xLog = BlockRegistry.GetVariants("oak_log").Single(entry => entry.StateKey == "axis=x");
+            CheckTiledLog(xLog, 4, 1, 1, "Oak log axis=x, user four-wide project case");
+
+            var partial = MakeTestModel([0, 0, 0], [8, 16, 16]);
+            var partialMeshes = MinecraftModelMesh.Build(gl, partial, variantRotY: 90,
+                blockName: "oak_log", tileZ: 2, textureLoader: _ => 1);
+            try
+            {
+                Equal(12, partialMeshes.Sum(mesh => mesh.Vertices.Count / 6),
+                    "Rotated partial element keeps non-touching boundary faces");
+            }
+            finally { foreach (var mesh in partialMeshes) mesh.Dispose(); }
+
+            var rotated = MakeTestModel([0, 0, 0], [16, 16, 16], new ElementRotation { Axis = "y", Angle = 45 });
+            var rotatedMeshes = MinecraftModelMesh.Build(gl, rotated, blockName: "oak_log",
+                tileX: 2, textureLoader: _ => 1);
+            try
+            {
+                Equal(12, rotatedMeshes.Sum(mesh => mesh.Vertices.Count / 6),
+                    "Element-rotated geometry remains excluded from internal-face culling");
+            }
+            finally { foreach (var mesh in rotatedMeshes) mesh.Dispose(); }
 
             void Scenario(string state, string? upper = null, (string Face, string Facing, bool Powered)? button = null)
             {
