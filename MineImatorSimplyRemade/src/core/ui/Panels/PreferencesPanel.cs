@@ -437,12 +437,24 @@ public class PreferencesPanel : UiPanel
 
                 {
                     int scalePercent = (int)MathF.Round(UiScale * 100f);
-                    if (ImGui.SliderInt(Localization.Label("text.panel.preferences.ui_scale", "UI scale##uiScale"),
-                        ref scalePercent, (int)(UiTheme.MinUiScale * 100f), (int)(UiTheme.MaxUiScale * 100f),
-                        "%d%%", ImGuiSliderFlags.AlwaysClamp))
+                    ImGui.SetNextItemWidth(180f * UiTheme.Scale);
+                    if (ImGui.BeginCombo(Localization.Label("text.panel.preferences.ui_scale", "UI scale##uiScale"),
+                        $"{scalePercent}%"))
                     {
-                        ApplyUiScale(scalePercent / 100f);
-                        preferencesChanged = true;
+                        int minScalePercent = (int)(UiTheme.MinUiScale * 100f);
+                        int maxScalePercent = (int)(UiTheme.MaxUiScale * 100f);
+                        for (int presetPercent = minScalePercent; presetPercent <= maxScalePercent; presetPercent += 25)
+                        {
+                            bool selected = scalePercent == presetPercent;
+                            if (ImGui.Selectable($"{presetPercent}%", selected))
+                            {
+                                ApplyUiScale(presetPercent / 100f);
+                                preferencesChanged = true;
+                            }
+                            if (selected)
+                                ImGui.SetItemDefaultFocus();
+                        }
+                        ImGui.EndCombo();
                     }
                 }
 
