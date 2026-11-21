@@ -1,10 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="PublishSingleFile">
 
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
         <ApplicationIcon>Icon.ico</ApplicationIcon>
         <ApplicationManifest>app.manifest</ApplicationManifest>
-        <TargetFramework>net10.0</TargetFramework>
+        <TargetFramework>net11.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <Version>0.4.0</Version>
@@ -22,6 +22,7 @@
         <NoWarn>$(NoWarn);IL2104;IL3000;IL3002;IL3053;NU1701;CS8600;CS8601;CS8603;CS8604;CS8618;CS8619;CS8625;CS8629;CS8981;CS9192;CS9193</NoWarn>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <PublishAot>true</PublishAot>
+        <PublishSingleFile Condition="'$(PublishAot)' == 'true'">false</PublishSingleFile>
     </PropertyGroup>
 
     <ItemGroup>
@@ -35,7 +36,6 @@
       <PackageReference Include="JoltPhysics.Native" Version="1.2.0" GeneratePathProperty="true" />
       <!-- Direct reference exposes the package path so publish can embed Magick's native DLL. -->
       <PackageReference Include="Magick.NET-Q16-HDRI-AnyCPU" Version="15.0.0" GeneratePathProperty="true" />
-      <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="10.0.14" />
       <PackageReference Include="NativeFileDialogSharp" Version="0.5.0" />
       <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
       <PackageReference Include="OpenAL.Soft" Version="1.23.1" />
@@ -73,6 +73,16 @@
         <DanglingDllFiles Include="$(PkgMagick_NET-Q16-HDRI-AnyCPU)\runtimes\win-x64\native\Magick.Native-Q16-HDRI-x64.dll" />
         <EmbeddedResource Include="@(DanglingDllFiles)" LogicalName="%(Filename)%(Extension)" />
     </ItemGroup>
+
+    <Target Name="EmbedPackageNativeDlls" BeforeTargets="AssignTargetPaths" DependsOnTargets="ResolvePackageAssets" Condition="'$(IsPublishing)' == 'true'">
+        <PropertyGroup>
+            <EmbeddedNativeDllNames>;@(DanglingDllFiles->'%(Filename)%(Extension)');</EmbeddedNativeDllNames>
+        </PropertyGroup>
+        <ItemGroup>
+            <PackageNativeDllFiles Include="@(NativeCopyLocalItems)" Condition="'%(Extension)' == '.dll' and !$([System.String]::Copy('$(EmbeddedNativeDllNames)').Contains(';%(Filename)%(Extension);'))" />
+            <EmbeddedResource Include="@(PackageNativeDllFiles)" LogicalName="%(Filename)%(Extension)" />
+        </ItemGroup>
+    </Target>
 
     <ItemGroup Condition="'$(IsPublishing)' != 'true'">
         <None Include="$(MSBuildProjectDirectory)\*.dll" CopyToOutputDirectory="PreserveNewest" />
@@ -115,10 +125,10 @@
 
     <Target Name="RemoveDanglingDllsFromPublish" AfterTargets="_CopyResolvedFilesToPublishAlways;_CopyResolvedFilesToPublishPreserveNewest;Publish;PublishOnly;_PublishNoBuild;FileSystemPublish">
         <ItemGroup>
-            <PublishedDanglingDlls Include="$(PublishDir)*.dll" Exclude="$(PublishDir)$(TargetName).dll" Condition="'$(PublishAot)' != 'true'" />
-            <PublishedDanglingDlls Include="$(PublishDir)*.dll" Condition="'$(PublishAot)' == 'true'" />
+            <PublishedDanglingDlls Include="@(DanglingDllFiles-&gt;'$(PublishDir)%(Filename)%(Extension)')" />
+            <PublishedPackageNativeDlls Include="@(PackageNativeDllFiles-&gt;'$(PublishDir)%(Filename)%(Extension)')" />
         </ItemGroup>
-        <Delete Files="@(PublishedDanglingDlls)" />
+        <Delete Files="@(PublishedDanglingDlls);@(PublishedPackageNativeDlls)" />
     </Target>
 
 </Project>

@@ -2,13 +2,32 @@ using System.Buffers.Binary;
 using ImageMagick;
 using MineImatorSimplyRemade.core.startup;
 
-const string nativeResourceName = "Magick.Native-Q16-HDRI-x64.dll";
 var applicationAssembly = typeof(NativeLibraryBootstrap).Assembly;
-if (!applicationAssembly.GetManifestResourceNames().Contains(nativeResourceName, StringComparer.Ordinal))
-    throw new InvalidOperationException($"Missing embedded resource: {nativeResourceName}");
+string[] nativeResourceNames =
+{
+    "Assimp64.dll",
+    "cimgui.dll",
+    "glfw3.dll",
+    "ImGuiImpl.dll",
+    "ImGuiImplGLFW.dll",
+    "nfd.dll",
+    "OpenAL32.dll",
+    "joltc.dll",
+    "Magick.Native-Q16-HDRI-x64.dll",
+    "joltc_double.dll",
+    "SDL2.dll",
+    "libveldrid-spirv.dll"
+};
 
-if (File.Exists(Path.Combine(AppContext.BaseDirectory, nativeResourceName)))
-    throw new InvalidOperationException($"The native library must not be loose beside the executable: {nativeResourceName}");
+string[] embeddedResourceNames = applicationAssembly.GetManifestResourceNames();
+foreach (string nativeResourceName in nativeResourceNames)
+{
+    if (!embeddedResourceNames.Contains(nativeResourceName, StringComparer.Ordinal))
+        throw new InvalidOperationException($"Missing embedded resource: {nativeResourceName}");
+
+    if (File.Exists(Path.Combine(AppContext.BaseDirectory, nativeResourceName)))
+        throw new InvalidOperationException($"The native library must not be loose beside the executable: {nativeResourceName}");
+}
 
 NativeLibraryBootstrap.Initialize();
 
