@@ -33,9 +33,11 @@
       <PackageReference Include="JoltPhysicsSharp" Version="2.24.0" />
       <!-- Direct reference exposes $(PkgJoltPhysics_Native) so publish can embed joltc.dll. -->
       <PackageReference Include="JoltPhysics.Native" Version="1.2.0" GeneratePathProperty="true" />
-      <PackageReference Include="Magick.NET-Q16-HDRI-AnyCPU" Version="15.0.0" />
+      <!-- Direct reference exposes the package path so publish can embed Magick's native DLL. -->
+      <PackageReference Include="Magick.NET-Q16-HDRI-AnyCPU" Version="15.0.0" GeneratePathProperty="true" />
       <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="10.0.14" />
       <PackageReference Include="NativeFileDialogSharp" Version="0.5.0" />
+      <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
       <PackageReference Include="OpenAL.Soft" Version="1.23.1" />
       <PackageReference Include="Sentry" Version="6.7.0" />
       <PackageReference Include="Silk.NET.Assimp" Version="2.23.0" />
@@ -68,6 +70,7 @@
     <ItemGroup Condition="'$(IsPublishing)' == 'true'">
         <DanglingDllFiles Include="$(MSBuildProjectDirectory)\*.dll" />
         <DanglingDllFiles Include="$(PkgJoltPhysics_Native)\runtimes\win-x64\native\joltc.dll" />
+        <DanglingDllFiles Include="$(PkgMagick_NET-Q16-HDRI-AnyCPU)\runtimes\win-x64\native\Magick.Native-Q16-HDRI-x64.dll" />
         <EmbeddedResource Include="@(DanglingDllFiles)" LogicalName="%(Filename)%(Extension)" />
     </ItemGroup>
 
@@ -112,8 +115,8 @@
 
     <Target Name="RemoveDanglingDllsFromPublish" AfterTargets="_CopyResolvedFilesToPublishAlways;_CopyResolvedFilesToPublishPreserveNewest;Publish;PublishOnly;_PublishNoBuild;FileSystemPublish">
         <ItemGroup>
-            <PublishedDanglingDlls Include="$(PublishDir)*.dll" Exclude="$(PublishDir)$(TargetName).dll;$(PublishDir)Magick.Native-*.dll" Condition="'$(PublishAot)' != 'true'" />
-            <PublishedDanglingDlls Include="$(PublishDir)*.dll" Exclude="$(PublishDir)Magick.Native-*.dll" Condition="'$(PublishAot)' == 'true'" />
+            <PublishedDanglingDlls Include="$(PublishDir)*.dll" Exclude="$(PublishDir)$(TargetName).dll" Condition="'$(PublishAot)' != 'true'" />
+            <PublishedDanglingDlls Include="$(PublishDir)*.dll" Condition="'$(PublishAot)' == 'true'" />
         </ItemGroup>
         <Delete Files="@(PublishedDanglingDlls)" />
     </Target>
