@@ -9,6 +9,7 @@ using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core;
 using MineImatorSimplyRemadeNuxi.core.objs;
+using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 internal static partial class Program
 {
@@ -229,6 +230,336 @@ internal static partial class Program
         finally
         {
             SelectionManager.Instance.ClearSelection();
+            ImGui.DestroyContext(context);
+            ImGui.SetCurrentContext(previous);
+        }
+    }
+
+    private static unsafe void PropertiesPanelLayout(Fixture fixture)
+    {
+        var previous = ImGui.GetCurrentContext();
+        var context = ImGui.CreateContext();
+        var manager = ProjectManager.Instance;
+        var originalSettings = manager.Manifest.Settings;
+        bool originalDirty = manager.IsDirty;
+        SelectionManager.Instance.ClearSelection();
+        try
+        {
+            var io = ImGui.GetIO();
+            io.IniFilename = null;
+            io.LogFilename = null;
+            io.DisplaySize = new Vector2(1200f, 3400f);
+            io.DeltaTime = 1f / 60f;
+            io.BackendFlags |= ImGuiBackendFlags.RendererHasTextures;
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var currentObject = typeof(PropertiesPanel).GetField("_currentObject", flags)!;
+            var renderObject = typeof(PropertiesPanel).GetMethod("RenderObjectProperties", flags)!;
+            var renderProject = typeof(PropertiesPanel).GetMethod("RenderProjectProperties", flags)!;
+
+            Dictionary<string, float> FindHeaderPositions(string windowName, Action render,
+                (string Name, string Key, string Fallback)[] headers)
+            {
+                var ids = new Dictionary<uint, string>();
+                var positions = new Dictionary<string, float>();
+                for (float y = 20f; y < io.DisplaySize.Y - 20f && positions.Count < headers.Length; y += 6f)
+                {
+                    io.AddMousePosEvent(100f, y);
+                    ImGui.NewFrame();
+                    ImGui.SetNextWindowPos(new Vector2(10f, 10f), ImGuiCond.Always);
+                    ImGui.SetNextWindowSize(new Vector2(900f, 3300f), ImGuiCond.Always);
+                    ImGui.Begin(windowName);
+                    if (ids.Count == 0)
+                    {
+                        foreach (var header in headers)
+                            ids.Add(ImGui.GetID(Localization.Label(header.Key, header.Fallback)), header.Name);
+                    }
+                    render();
+                    if (ids.TryGetValue(context.HoveredId, out string? hovered))
+                        positions.TryAdd(hovered, y);
+                    ImGui.End();
+                    ImGui.Render();
+                }
+                return positions;
+            }
+
+            var objectPanel = new PropertiesPanel();
+            currentObject.SetValue(objectPanel, new SceneObject { Name = "Layout test" });
+            var objectPositions = FindHeaderPositions("Properties object layout", () => renderObject.Invoke(objectPanel, null),
+            [
+                ("Position", "text.common.position", "Position"),
+                ("Rotation", "text.panel.properties.rotation_degrees", "Rotation (degrees)"),
+                ("Scale", "text.common.scale", "Scale"),
+                ("Pivot", "text.panel.properties.pivot_offset", "Pivot Offset"),
+                ("Material", "text.panel.properties.material", "Material"),
+                ("Appearance", "text.common.appearance", "Appearance")
+            ]);
+            Check(objectPositions["Position"] < objectPositions["Rotation"] &&
+                  objectPositions["Rotation"] < objectPositions["Scale"] &&
+                  objectPositions["Scale"] < objectPositions["Pivot"] &&
+                  objectPositions["Pivot"] < objectPositions["Material"] &&
+                  objectPositions["Material"] < objectPositions["Appearance"],
+                "Object transforms, pivot, material and appearance are not grouped in the expected order.");
+
+            var cameraPanel = new PropertiesPanel();
+            var camera = new CameraSceneObject();
+            currentObject.SetValue(cameraPanel, camera);
+            var cameraPositions = FindHeaderPositions("Properties camera layout", () => renderObject.Invoke(cameraPanel, null),
+            [
+                ("Camera", "text.common.camera", "Camera"),
+                ("Effects", "text.panel.properties.effects", "Effects")
+            ]);
+            Check(cameraPositions["Camera"] < cameraPositions["Effects"],
+                "Camera setup must appear before camera effects.");
+
+            var projectPanel = new PropertiesPanel();
+            var projectPositions = FindHeaderPositions("Properties project layout", () => renderProject.Invoke(projectPanel, null),
+            [
+                ("Background", "text.panel.properties.background_settings", "Background Settings"),
+                ("Render", "text.panel.properties.render_settings", "Render Settings"),
+                ("Performance", "text.panel.properties.performance", "Performance"),
+                ("Library", "text.panel.properties.library", "Library")
+            ]);
+            Check(projectPositions["Background"] < projectPositions["Render"] &&
+                  projectPositions["Render"] < projectPositions["Performance"] &&
+                  projectPositions["Performance"] < projectPositions["Library"],
+                "Project environment, render, performance and library sections are not in workflow order.");
+
+            var renderCamera = typeof(PropertiesPanel).GetMethod("RenderCameraProperties", flags)!;
+            var cameraLabel = Localization.Label("text.common.camera", "Camera");
+            Vector2 activeCameraPosition = default;
+            Vector2 activeCameraSize = default;
+            void CameraFrame(Vector2? mouse = null, bool left = false)
+            {
+                io.AddMousePosEvent(mouse?.X ?? -100f, mouse?.Y ?? -100f);
+                io.AddMouseButtonEvent(0, left);
+                ImGui.NewFrame();
+                ImGui.SetNextWindowPos(new Vector2(10f, 10f), ImGuiCond.Always);
+                ImGui.SetNextWindowSize(new Vector2(700f, 800f), ImGuiCond.Always);
+                ImGui.Begin("Camera property controls");
+                ImGui.GetStateStorage().SetInt(ImGui.GetID(cameraLabel), 1);
+                renderCamera.Invoke(cameraPanel, null);
+                activeCameraPosition = ImGui.GetItemRectMin();
+                activeCameraSize = ImGui.GetItemRectMax() - activeCameraPosition;
+                ImGui.End();
+                ImGui.Render();
+            }
+
+            bool originalActive = camera.Active;
+            CameraFrame();
+            Check(activeCameraSize.X > 0f && activeCameraSize.Y > 0f,
+                "Active Camera control is missing from the expanded Camera section.");
+            var activeCameraCenter = activeCameraPosition + activeCameraSize / 2f;
+            CameraFrame(activeCameraCenter, left: true);
+            CameraFrame(activeCameraCenter);
+            Check(camera.Active != originalActive, "Active Camera control no longer changes the camera state.");
+            camera.Active = originalActive;
+        }
+        finally
+        {
+            manager.Manifest.Settings = originalSettings;
+            manager.SetDirty(originalDirty);
+            SelectionManager.Instance.ClearSelection();
+            ImGui.DestroyContext(context);
+            ImGui.SetCurrentContext(previous);
+        }
+    }
+
+    private static unsafe void BackgroundPropertiesLayout(Fixture fixture)
+    {
+        var previous = ImGui.GetCurrentContext();
+        var context = ImGui.CreateContext();
+        var manager = ProjectManager.Instance;
+        var originalSettings = manager.Manifest.Settings;
+        bool originalDirty = manager.IsDirty;
+        try
+        {
+            manager.Manifest.Settings = new ProjectManifest().Settings;
+            var panel = new PropertiesPanel();
+            panel.LoadProjectSettingsFromManifest(manager.Manifest);
+            var io = ImGui.GetIO();
+            io.IniFilename = null;
+            io.LogFilename = null;
+            io.DisplaySize = new Vector2(1200f, 2600f);
+            io.DeltaTime = 1f / 60f;
+            io.BackendFlags |= ImGuiBackendFlags.RendererHasTextures;
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var renderBackground = typeof(PropertiesPanel).GetMethod("RenderBackgroundProperties", flags)!;
+            string backgroundLabel = Localization.Label("text.panel.properties.background_settings", "Background Settings");
+            string backdropLabel = Localization.Label("text.panel.properties.backdrop", "Backdrop");
+            string windLabel = Localization.Label("text.panel.properties.wind", "Wind");
+
+            (string Key, string Value)[] sectionTranslations =
+            [
+                ("text.panel.properties.backdrop", "Backdrop"),
+                ("text.panel.properties.sky_settings", "Sky Settings"),
+                ("text.panel.properties.ground_biome", "Ground & Biome"),
+                ("text.panel.properties.lighting", "Lighting"),
+                ("text.panel.properties.sky_colors", "Sky Colors"),
+                ("text.panel.properties.stars", "Stars"),
+                ("text.panel.properties.sun_moon", "Sun & Moon"),
+                ("text.panel.properties.clouds", "Clouds")
+            ];
+            foreach (var (key, value) in sectionTranslations)
+                Check(Localization.T(key) == value, $"Background section translation '{key}' should resolve to '{value}'.");
+
+            (string Name, string Label)[] controls =
+            [
+                ("Backdrop", Localization.Label("text.panel.properties.backdrop", "Backdrop")),
+                ("Sky", Localization.Label("text.panel.properties.sky_settings", "Sky Settings")),
+                ("Ground", Localization.Label("text.panel.properties.ground_biome", "Ground & Biome")),
+                ("Lighting", Localization.Label("text.panel.properties.lighting", "Lighting")),
+                ("Fog", Localization.Label("text.panel.properties.fog", "Fog")),
+                ("Wind", Localization.Label("text.panel.properties.wind", "Wind")),
+                ("Sky Colors", Localization.Label("text.panel.properties.sky_colors", "Sky Colors")),
+                ("Stars", Localization.Label("text.panel.properties.stars", "Stars")),
+                ("Sun & Moon", Localization.Label("text.panel.properties.sun_moon", "Sun & Moon")),
+                ("Clouds", Localization.Label("text.panel.properties.clouds", "Clouds")),
+                ("Wind Enabled", Localization.Label("text.panel.properties.wind_enabled", "Enabled##wind")),
+                ("Sky Toggle", Localization.Label("text.panel.properties.sky_enabled", "Sky")),
+                ("Sky Time", Localization.Label("text.panel.properties.time", "Time")),
+                ("Sky Mode", Localization.Label("text.panel.properties.sky_mode", "Sky Mode")),
+                ("Sky Texture", Localization.Label("text.panel.properties.sky_texture", "Sky Texture")),
+                ("Skybox Mapped", Localization.Label("text.panel.properties.skybox_mapped", "Mapped##skybox")),
+                ("Background Scale", Localization.DisplayLabel("Background Scale"))
+            ];
+
+            void Frame(float x = -100f, float y = -100f, bool left = false, bool? backdropOpen = null, bool? windOpen = null,
+                string[]? trackedNames = null, Dictionary<uint, string>? trackedIds = null)
+            {
+                io.AddMousePosEvent(x, y);
+                io.AddMouseButtonEvent(0, left);
+                ImGui.NewFrame();
+                ImGui.SetNextWindowPos(new Vector2(10f, 10f), ImGuiCond.Always);
+                ImGui.SetNextWindowSize(new Vector2(900f, 2500f), ImGuiCond.Always);
+                ImGui.Begin("Background properties layout");
+                ImGui.GetStateStorage().SetInt(ImGui.GetID(backgroundLabel), 1);
+                if (backdropOpen.HasValue)
+                    ImGui.GetStateStorage().SetInt(ImGui.GetID(backdropLabel), backdropOpen.Value ? 1 : 0);
+                if (windOpen.HasValue)
+                    ImGui.GetStateStorage().SetInt(ImGui.GetID(windLabel), windOpen.Value ? 1 : 0);
+                if (trackedNames != null && trackedIds != null && trackedIds.Count == 0)
+                {
+                    foreach (string name in trackedNames)
+                    {
+                        string label = controls.First(control => control.Name == name).Label;
+                        if (name == "Wind Enabled")
+                        {
+                            ImGui.PushID(windLabel);
+                            trackedIds.Add(ImGui.GetID(label), name);
+                            ImGui.PopID();
+                        }
+                        else
+                        {
+                            trackedIds.Add(ImGui.GetID(label), name);
+                        }
+                    }
+                }
+                renderBackground.Invoke(panel, null);
+                ImGui.End();
+                ImGui.Render();
+            }
+
+            Dictionary<string, float> FindPositions(params string[] names)
+            {
+                var ids = new Dictionary<uint, string>();
+                var positions = new Dictionary<string, float>();
+                for (float y = 20f; y < io.DisplaySize.Y - 20f && positions.Count < names.Length; y += 6f)
+                {
+                    Frame(50f, y, trackedNames: names, trackedIds: ids);
+                    if (ids.TryGetValue(context.HoveredId, out string? hovered))
+                        positions.TryAdd(hovered, y);
+                }
+                return positions;
+            }
+
+            float FindHeaderLeft(string name, float y)
+            {
+                var ids = new Dictionary<uint, string>();
+                Frame(trackedNames: [name], trackedIds: ids);
+                uint targetId = ids.Keys.Single();
+                for (float x = 0f; x < io.DisplaySize.X; x += 2f)
+                {
+                    Frame(x, y, trackedNames: [name], trackedIds: ids);
+                    if (context.HoveredId == targetId)
+                        return x;
+                }
+                return float.NaN;
+            }
+
+            var positions = FindPositions("Backdrop", "Sky", "Ground", "Lighting", "Fog", "Wind",
+                "Sky Colors", "Stars", "Sun & Moon", "Clouds", "Sky Toggle", "Sky Time", "Background Scale");
+            Check(positions["Backdrop"] < positions["Sky"] && positions["Sky"] < positions["Ground"] &&
+                  positions["Ground"] < positions["Lighting"] && positions["Lighting"] < positions["Fog"] &&
+                  positions["Fog"] < positions["Wind"],
+                "Background groups must follow backdrop, sky, ground, lighting, fog and wind order.");
+            Check(Math.Abs(FindHeaderLeft("Backdrop", positions["Backdrop"]) - FindHeaderLeft("Wind", positions["Wind"])) <= 2f,
+                "Wind must align with the other top-level Background section headers.");
+            Check(positions["Sky Time"] < positions["Sky Colors"] && positions["Sky Colors"] < positions["Stars"] &&
+                  positions["Stars"] < positions["Sun & Moon"] && positions["Sun & Moon"] < positions["Clouds"],
+                "Minecraft sky settings must keep time first, then group colors, stars, celestial controls and clouds.");
+
+            Frame(windOpen: false);
+            Check(!FindPositions("Wind Enabled").ContainsKey("Wind Enabled"),
+                "Collapsing Wind must hide its controls.");
+            Frame(windOpen: true);
+            float windEnabledY = FindPositions("Wind Enabled")["Wind Enabled"];
+            bool originalWindEnabled = panel.WindEnabled;
+            manager.SetDirty(false);
+            Frame(50f, windEnabledY);
+            Frame(50f, windEnabledY, left: true);
+            Frame(50f, windEnabledY);
+            Check(panel.WindEnabled != originalWindEnabled &&
+                  manager.Manifest.Settings.WindEnabled == panel.WindEnabled && manager.IsDirty,
+                "Wind edits remain interactive and persist to project settings.");
+
+            float backdropY = positions["Backdrop"];
+            Frame(100f, backdropY);
+            Frame(100f, backdropY, left: true);
+            Frame(100f, backdropY);
+            Check(!FindPositions("Background Scale").ContainsKey("Background Scale"),
+                "Collapsing Backdrop must hide its image and transform controls.");
+
+            Frame(backdropOpen: true);
+            float scaleY = FindPositions("Background Scale")["Background Scale"];
+            float originalScale = panel.BackgroundScale;
+            manager.SetDirty(false);
+            Frame(300f, scaleY);
+            Frame(300f, scaleY, left: true);
+            Frame(340f, scaleY, left: true);
+            Frame(340f, scaleY);
+            Check(panel.BackgroundScale != originalScale, "Background Scale remains editable in Backdrop.");
+            Check(Math.Abs(manager.Manifest.Settings.BackgroundScale - panel.BackgroundScale) < 0.001f,
+                "Background image transform edits persist after rendering all backdrop controls.");
+            Check(manager.IsDirty, "Changing a background image transform marks the project dirty.");
+
+            manager.SetDirty(false);
+            float skyToggleY = positions["Sky Toggle"];
+            Frame(50f, skyToggleY);
+            Frame(50f, skyToggleY, left: true);
+            Frame(50f, skyToggleY);
+            Check(!panel.UseSky && !manager.Manifest.Settings.UseSky && manager.IsDirty,
+                "The Sky toggle still updates and persists its setting.");
+
+            panel.UseSky = true;
+            panel.SkyMode = "sphere";
+            var spherePositions = FindPositions("Sky Texture", "Sky Time", "Sky Colors");
+            Check(spherePositions.ContainsKey("Sky Texture") && !spherePositions.ContainsKey("Sky Time") &&
+                  !spherePositions.ContainsKey("Sky Colors"),
+                "Texture sky modes retain their texture control without Minecraft-only details.");
+
+            panel.SkyMode = "box";
+            var boxPositions = FindPositions("Skybox Mapped");
+            Check(boxPositions.ContainsKey("Skybox Mapped"), "Skybox mode retains its mapped option.");
+
+            panel.SkyMode = "minecraft";
+            var minecraftPositions = FindPositions("Sky Time", "Sky Colors", "Stars", "Sun & Moon", "Clouds");
+            Check(minecraftPositions.Count == 5,
+                "Minecraft mode retains its time and all grouped sky controls.");
+        }
+        finally
+        {
+            manager.Manifest.Settings = originalSettings;
+            manager.SetDirty(originalDirty);
             ImGui.DestroyContext(context);
             ImGui.SetCurrentContext(previous);
         }

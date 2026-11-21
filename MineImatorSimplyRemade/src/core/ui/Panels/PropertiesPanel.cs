@@ -2482,14 +2482,6 @@ public partial class PropertiesPanel : UiPanel
             RegisterProjectPropertyContext(nameof(_framerate), 1, 120);
             ImGui.SameLine();
             ImGui.TextUnformatted(Localization.T("text.panel.properties.fps"));
-            ImGui.TextUnformatted(Localization.T("text.panel.properties.presets"));
-            if (ImGui.Button("24"))  { _framerate = 24; frameRateChanged = true; }
-            ImGui.SameLine();
-            if (ImGui.Button("30"))  { _framerate = 30; frameRateChanged = true; }
-            ImGui.SameLine();
-            if (ImGui.Button("60"))  { _framerate = 60; frameRateChanged = true; }
-            ImGui.SameLine();
-            if (ImGui.Button("120")) { _framerate = 120; frameRateChanged = true; }
             if (frameRateChanged)
             {
                 _framerate = Math.Clamp(_framerate, 1, 120);
@@ -2505,14 +2497,6 @@ public partial class PropertiesPanel : UiPanel
             RegisterProjectPropertyContext(nameof(TextureAnimationFps), 1, 240);
             ImGui.SameLine();
             ImGui.TextUnformatted(Localization.T("text.panel.properties.fps"));
-            ImGui.TextUnformatted(Localization.T("text.panel.properties.presets"));
-            if (ImGui.Button("10##tex")) { TextureAnimationFps = 10; textureFpsChanged = true; }
-            ImGui.SameLine();
-            if (ImGui.Button("20##tex")) { TextureAnimationFps = 20; textureFpsChanged = true; }
-            ImGui.SameLine();
-            if (ImGui.Button("30##tex")) { TextureAnimationFps = 30; textureFpsChanged = true; }
-            ImGui.SameLine();
-            if (ImGui.Button("60##tex")) { TextureAnimationFps = 60; textureFpsChanged = true; }
             if (textureFpsChanged)
             {
                 TextureAnimationFps = Math.Clamp(TextureAnimationFps, 1, 240);
@@ -2522,8 +2506,7 @@ public partial class PropertiesPanel : UiPanel
 
         }
 
-        if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.library", "Library"), ImGuiTreeNodeFlags.DefaultOpen))
-            RenderObjectLibrarySection(ProjectManager.Instance);
+        RenderBackgroundProperties();
 
         if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.render_settings", "Render Settings")))
             RenderRenderSettings();
@@ -2531,489 +2514,584 @@ public partial class PropertiesPanel : UiPanel
         if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.performance", "Performance")))
             RenderPerformanceSettings();
 
+        if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.library", "Library")))
+            RenderObjectLibrarySection(ProjectManager.Instance);
+
+    }
+
+    private void RenderBackgroundProperties()
+    {
         if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.background_settings", "Background Settings")))
         {
-            RenderBiomeSettings();
-            if (ImGui.Checkbox(Localization.Label("text.panel.properties.opaque_leaves", "Opaque leaves"), ref OpaqueLeaves))
+            if (BeginBackgroundSection("text.panel.properties.backdrop", "Backdrop", defaultOpen: true))
             {
-                ApplyBackgroundSettingsToViewport();
-                WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
-                ProjectManager.Instance.SetDirty(true);
+                ImGui.Indent();
+                RenderBackgroundColorSettings();
+                RenderBackgroundImageSettings();
+                ImGui.Unindent();
             }
-            RegisterProjectPropertyContext(nameof(OpaqueLeaves));
-            unsafe
+
+            if (BeginBackgroundSection("text.panel.properties.sky_settings", "Sky Settings", defaultOpen: true))
             {
-                bool skyChanged = false;
-                bool useSky = UseSky;
-                if (ImGui.Checkbox(Localization.Label("text.panel.properties.sky_enabled", "Sky"), ref useSky)) { UseSky = useSky; skyChanged = true; }
-                RegisterBackgroundKeyframeContext(nameof(UseSky));
-                if (UseSky)
-                {
-                    string skyLabel = SkyMode == "sphere" ? "Sky Sphere" : SkyMode == "box" ? "Skybox" : "Minecraft Sky";
-                    bool skyModeOpen = ImGui.BeginCombo(Localization.Label("text.panel.properties.sky_mode", "Sky Mode"), Localization.DisplayText(skyLabel));
-                    RegisterBackgroundKeyframeContext(nameof(SkyMode));
-                    if (skyModeOpen)
-                    {
-                        foreach (var (mode, label) in new[] { ("minecraft", "Minecraft Sky"), ("sphere", "Sky Sphere"), ("box", "Skybox") })
-                            if (ImGui.Selectable(Localization.DisplayText(label), SkyMode == mode)) { SkyMode = mode; skyChanged = true; }
-                        ImGui.EndCombo();
-                    }
-                    if (SkyMode is "sphere" or "box")
-                    {
-                        skyChanged |= EnvironmentTextureSelector();
-                        fixed (float* rotation = SkyRotation)
-                            skyChanged |= ImGui.DragFloat3(Localization.Label("text.panel.properties.sky_rotation", "Sky Rotation (XYZ)"), rotation, 0.25f, -360f, 360f);
-                        RegisterBackgroundKeyframeContext(nameof(SkyRotation));
-                        if (SkyMode == "box")
-                        {
-                            skyChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.skybox_mapped", "Mapped##skybox"), ref SkyboxMapped);
-                            RegisterBackgroundKeyframeContext(nameof(SkyboxMapped));
-                        }
-                        UiText.Disabled(Localization.T(SkyMode == "sphere" ? "text.panel.properties.sky_sphere_help" : "text.panel.properties.skybox_help"));
-                        if (!string.IsNullOrEmpty(Viewport?.SkyTextureError))
-                            ImGui.TextWrapped(Viewport.SkyTextureError);
-                    }
-                }
-                if (UseSky && SkyMode == "minecraft")
-                {
-                    ImGui.Indent();
-                    skyChanged |= SkyColorEditor("Horizon Day", SkyHorizonDay);
-                    skyChanged |= SkyColorEditor("Zenith Day", SkyZenithDay);
-                    skyChanged |= SkyColorEditor("Horizon Sunset", SkyHorizonSunset);
-                    skyChanged |= SkyColorEditor("Zenith Sunset", SkyZenithSunset);
-                    skyChanged |= SkyColorEditor("Night Horizon", SkyHorizonNight);
-                    skyChanged |= SkyColorEditor("Night Zenith", SkyZenithNight);
-                    bool twilight = Twilight;
-                    if (ImGui.Checkbox(Localization.Label("text.panel.properties.twilight", "Twilight"), ref twilight)) { Twilight = twilight; skyChanged = true; }
-                    RegisterBackgroundKeyframeContext(nameof(Twilight));
-                    ImGui.Spacing();
-                    ImGui.TextUnformatted(Localization.T("text.panel.properties.stars"));
-                    bool showStars = ShowStars;
-                    if (ImGui.Checkbox(Localization.Label("text.panel.properties.show_stars", "Show Stars##stars"), ref showStars)) { ShowStars = showStars; skyChanged = true; }
-                    RegisterBackgroundKeyframeContext(nameof(ShowStars));
-                    if (ShowStars)
-                    {
-                        ImGui.Indent();
-                        skyChanged |= InputFloatEditor("Density", ref StarDensity, 0.01f, 0f, 5f, "%.2f");
-                        RegisterBackgroundKeyframeContext(nameof(StarDensity));
-                        skyChanged |= InputFloatEditor("Brightness", ref StarBrightness, 0.01f, 0f, 5f, "%.2f");
-                        RegisterBackgroundKeyframeContext(nameof(StarBrightness));
-                        skyChanged |= InputFloatEditor("Twinkle Speed", ref StarTwinkleSpeed, 0.01f, 0f, 5f, "%.2f");
-                        RegisterBackgroundKeyframeContext(nameof(StarTwinkleSpeed));
-                        skyChanged |= SkyColorEditor("Star Color", StarColor);
-                        ImGui.Unindent();
-                    }
-                    ImGui.Spacing();
-                    skyChanged |= SkyColorEditor("Cloud Color", CloudColor);
-                    skyChanged |= SkyColorEditor("Night Cloud Color", NightCloudColor);
-                    ImGui.Spacing();
-                    skyChanged |= SkyTextureSelector("Sun Texture", ref SunTexture, "sun.png");
-                    skyChanged |= SkyTextureSelector("Moon Texture", ref MoonTexture, "moon_phases.png");
-                    skyChanged |= SkyTextureSelector("Cloud Texture", ref CloudTexture, "clouds.png");
-                    string cloudModeLabel = CloudRenderMode == "story" ? "Story Mode" : CloudRenderMode == "flat" ? "Flat" : "3D";
-                    bool cloudModeOpen = ImGui.BeginCombo(Localization.Label("text.panel.properties.cloud_rendering", "Cloud Rendering"), Localization.DisplayText(cloudModeLabel));
-                    RegisterBackgroundKeyframeContext(nameof(CloudRenderMode));
-                    if (cloudModeOpen)
-                    {
-                        if (ImGui.Selectable(Localization.Label("text.panel.properties.3d", "3D"), CloudRenderMode == "3d")) { CloudRenderMode = "3d"; skyChanged = true; }
-                        if (ImGui.Selectable(Localization.Label("text.panel.properties.story_mode", "Story Mode"), CloudRenderMode == "story")) { CloudRenderMode = "story"; skyChanged = true; }
-                        if (ImGui.Selectable(Localization.Label("text.common.flat", "Flat"), CloudRenderMode == "flat")) { CloudRenderMode = "flat"; skyChanged = true; }
-                        ImGui.EndCombo();
-                    }
-                    skyChanged |= InputFloatEditor("Cloud Speed", ref CloudSpeed, 1f, -10000f, 10000f, "%.0f px/s");
-                    RegisterBackgroundKeyframeContext(nameof(CloudSpeed));
-                    fixed (float* value = CloudOffset) skyChanged |= ImGui.DragFloat2(Localization.Label("text.panel.properties.cloud_offset", "Cloud Offset"), value, 1f, -100000f, 100000f, "%.0f px");
-                    RegisterBackgroundKeyframeContext(nameof(CloudOffset));
-                    skyChanged |= InputFloatEditor("Cloud Height", ref CloudHeight, 1f, 0f, 100000f, "%.0f px");
-                    RegisterBackgroundKeyframeContext(nameof(CloudHeight));
-                    skyChanged |= InputFloatEditor("Cloud Block Size", ref CloudBlockSize, 1f, 1f, 100000f, "%.0f px");
-                    RegisterBackgroundKeyframeContext(nameof(CloudBlockSize));
-                    skyChanged |= InputFloatEditor("Cloud Thickness", ref CloudThickness, 1f, 1f, 100000f, "%.0f px");
-                    RegisterBackgroundKeyframeContext(nameof(CloudThickness));
-                    skyChanged |= ImGui.SliderInt(Localization.Label("text.panel.properties.moon_phase", "Moon Phase"), ref MoonPhase, 0, 7);
-                    RegisterBackgroundKeyframeContext(nameof(MoonPhase));
-                    skyChanged |= ImGui.SliderFloat(Localization.Label("text.panel.properties.time", "Time"), ref SkyTime, 0f, 24f, "%.2f h");
-                    RegisterBackgroundKeyframeContext(nameof(SkyTime));
-                    skyChanged |= InputFloatEditor("Sun Size (degrees)", ref SunSize, 0.1f, 0.1f, 90f);
-                    RegisterBackgroundKeyframeContext(nameof(SunSize));
-                    fixed (float* value = SunAngle) skyChanged |= ImGui.DragFloat3(Localization.Label("text.panel.properties.sun_angle_xyz", "Sun Angle (XYZ)"), value, 0.25f, -360f, 360f);
-                    RegisterBackgroundKeyframeContext(nameof(SunAngle));
-                    skyChanged |= InputFloatEditor("Moon Size (degrees)", ref MoonSize, 0.1f, 0.1f, 90f);
-                    RegisterBackgroundKeyframeContext(nameof(MoonSize));
-                    fixed (float* value = MoonAngle) skyChanged |= ImGui.DragFloat3(Localization.Label("text.panel.properties.moon_angle_xyz", "Moon Angle (XYZ)"), value, 0.25f, -360f, 360f);
-                    RegisterBackgroundKeyframeContext(nameof(MoonAngle));
-                    skyChanged |= SkyColorEditor("Sun Fill Light", SunFillLightColor);
-                    skyChanged |= InputFloatEditor("Sun Fill Strength", ref SunFillLightStrength, 0.01f, 0f, 5f);
-                    RegisterBackgroundKeyframeContext(nameof(SunFillLightStrength));
-                    skyChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.sun_fill_casts_shadows", "Sun Fill Casts Shadows"), ref SunFillLightCastsShadows);
-                    RegisterBackgroundKeyframeContext(nameof(SunFillLightCastsShadows));
-                    skyChanged |= SkyColorEditor("Moon Fill Light", MoonFillLightColor);
-                    skyChanged |= InputFloatEditor("Moon Fill Strength", ref MoonFillLightStrength, 0.01f, 0f, 5f);
-                    RegisterBackgroundKeyframeContext(nameof(MoonFillLightStrength));
-                    skyChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.moon_fill_casts_shadows", "Moon Fill Casts Shadows"), ref MoonFillLightCastsShadows);
-                    RegisterBackgroundKeyframeContext(nameof(MoonFillLightCastsShadows));
-                    ImGui.Unindent();
-                }
-                else if (!UseSky)
-                    UiText.Disabled(Localization.T("text.panel.properties.solid_background_color_is_active"));
+                ImGui.Indent();
+                RenderBackgroundSkySettings();
+                ImGui.Unindent();
+            }
 
-                if (skyChanged)
-                {
-                    Viewport?.ReloadSkyTextures();
-                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
-                    ProjectManager.Instance.SetDirty(true);
-                }
+            if (BeginBackgroundSection("text.panel.properties.ground_biome", "Ground & Biome", defaultOpen: true))
+            {
+                ImGui.Indent();
+                RenderBackgroundBiomeSettings();
+                RenderGroundFloorSettings();
+                ImGui.Unindent();
+            }
 
-                ImGui.SeparatorText(Localization.T("text.panel.properties.fog"));
-                bool fogChanged = ImGui.Checkbox(Localization.Label("text.panel.properties.enable_fog", "Enable Fog"), ref FogEnabled);
-                RegisterProjectPropertyContext(nameof(FogEnabled));
-                if (FogEnabled)
-                {
-                    ImGui.Indent();
-                    fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.fog_the_sky", "Fog the Sky"), ref SkyFog);
-                    RegisterProjectPropertyContext(nameof(SkyFog));
-                    fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.custom_fog_color", "Custom Fog Color"), ref CustomFogColor);
-                    RegisterProjectPropertyContext(nameof(CustomFogColor));
-                    if (CustomFogColor) fogChanged |= SkyColorEditor("Fog Color", FogColor);
-                    fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.custom_object_fog_color", "Custom Object Fog Color"), ref CustomObjectFogColor);
-                    RegisterProjectPropertyContext(nameof(CustomObjectFogColor));
-                    if (CustomObjectFogColor) fogChanged |= SkyColorEditor("Object Fog Color", ObjectFogColor);
-                    fogChanged |= InputFloatEditor("Distance", ref FogDistance, 10f, 0f, 1000000f, "%.0f px");
-                    RegisterProjectPropertyContext(nameof(FogDistance), 0, 1000000);
-                    fogChanged |= InputFloatEditor("Fade Size", ref FogFadeSize, 10f, 1f, 1000000f, "%.0f px");
-                    RegisterProjectPropertyContext(nameof(FogFadeSize), 1, 1000000);
-                    fogChanged |= InputFloatEditor("Height", ref FogHeight, 10f, -1000000f, 1000000f, "%.0f px");
-                    RegisterProjectPropertyContext(nameof(FogHeight), -1000000, 1000000);
-                    fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.height_fog", "Height Fog"), ref HeightFog);
-                    RegisterProjectPropertyContext(nameof(HeightFog));
-                    if (HeightFog)
-                    {
-                        fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.custom_height_fog_color", "Custom Height Fog Color"), ref CustomHeightFogColor);
-                        RegisterProjectPropertyContext(nameof(CustomHeightFogColor));
-                        if (CustomHeightFogColor) fogChanged |= SkyColorEditor("Height Fog Color", HeightFogColor);
-                        fogChanged |= InputFloatEditor("Height Fog Size", ref HeightFogSize, 10f, 1f, 1000000f, "%.0f px");
-                        RegisterProjectPropertyContext(nameof(HeightFogSize), 1, 1000000);
-                        fogChanged |= InputFloatEditor("Height Fog Offset", ref HeightFogOffset, 10f, -1000000f, 1000000f, "%.0f px");
-                        RegisterProjectPropertyContext(nameof(HeightFogOffset), -1000000, 1000000);
-                    }
-                    ImGui.Unindent();
-                }
-                if (fogChanged)
-                {
-                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
-                    ProjectManager.Instance.SetDirty(true);
-                }
+            if (BeginBackgroundSection("text.panel.properties.lighting", "Lighting"))
+            {
+                ImGui.Indent();
+                RenderBackgroundLightingSettings();
+                ImGui.Unindent();
+            }
 
-                ImGui.Separator();
-                ImGui.TextUnformatted(Localization.T("text.panel.properties.background_color"));
-                ImGui.SetNextItemWidth(-1);
-                fixed (byte* label = "##BackgroundColor"u8)
-                fixed (float* bgColorPtr = BackgroundColor)
-                {
-                    if (ImGui.ColorEdit4(label, bgColorPtr, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions))
-                    {
-                        WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
-                        ProjectManager.Instance.SetDirty(true);
-                    }
-                }
-                RegisterBackgroundKeyframeContext(nameof(BackgroundColor));
+            if (BeginBackgroundSection("text.panel.properties.fog", "Fog"))
+            {
+                ImGui.Indent();
+                RenderBackgroundFogSettings();
+                ImGui.Unindent();
+            }
 
-                ImGui.Spacing();
-                ImGui.TextUnformatted(Localization.T("text.panel.properties.presets"));
-                var presets = new (string name, float r, float g, float b, float a)[]
-                {
-                    ("Dawn",    1f,          0.7f,        0.5f,  1f),
-                    ("Morning", 0.6f,        0.8f,        1f,    1f),
-                    ("Day",     0.5764706f,  0.5764706f,  1f,    1f),
-                    ("Sunset",  1f,          0.5f,        0.3f,  1f),
-                    ("Dusk",    0.3f,        0.4f,        0.7f,  1f),
-                    ("Night",   0.05f,       0.05f,       0.15f, 1f)
-                };
-                for (int i = 0; i < presets.Length; i++)
-                {
-                    if (i > 0) ImGui.SameLine();
-                    if (ImGui.Button(Localization.DisplayLabel(presets[i].name)))
-                    {
-                        BackgroundColor[0] = presets[i].r;
-                        BackgroundColor[1] = presets[i].g;
-                        BackgroundColor[2] = presets[i].b;
-                        BackgroundColor[3] = presets[i].a;
-                        WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
-                        ProjectManager.Instance.SetDirty(true);
-                    }
-                }
-                ImGui.Spacing();
-
-                bool floorVisible = FloorVisible;
-                if (ImGui.Checkbox(Localization.Label("text.panel.properties.show_floor", "Show Floor"), ref floorVisible))
-                {
-                    FloorVisible = floorVisible;
-                    ApplyFloorSettingsToViewport();
-                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
-                    ProjectManager.Instance.SetDirty(true);
-                }
-                RegisterBackgroundKeyframeContext(nameof(FloorVisible));
-
-                if (FloorVisible)
-                {
-                    bool floorChanged = false;
-                    string floorAtlasLabel = NormalizeFloorAtlas(FloorTextureAtlas) == "item" ? "Item Atlas" : "Block Atlas";
-                    bool floorAtlasOpen = ImGui.BeginCombo(Localization.Label("text.panel.properties.floor_atlas", "Floor Atlas"), Localization.DisplayText(floorAtlasLabel));
-                    RegisterBackgroundKeyframeContext(nameof(FloorTextureAtlas));
-                    if (floorAtlasOpen)
-                    {
-                        bool useBlock = NormalizeFloorAtlas(FloorTextureAtlas) == "block";
-                        if (ImGui.Selectable(Localization.Label("text.common.block_atlas", "Block Atlas"), useBlock))
-                        {
-                            FloorTextureAtlas = "block";
-                            floorChanged = true;
-                        }
-
-                        bool useItem = NormalizeFloorAtlas(FloorTextureAtlas) == "item";
-                        if (ImGui.Selectable(Localization.Label("text.common.item_atlas", "Item Atlas"), useItem))
-                        {
-                            FloorTextureAtlas = "item";
-                            floorChanged = true;
-                        }
-
-                        ImGui.EndCombo();
-                    }
-
-                    ImGui.TextUnformatted(Localization.T("text.panel.properties.floor_tile"));
-                    ImGui.SetNextItemWidth(-1);
-                    bool floorTileOpen = ImGui.BeginCombo("##FloorTile", FloorTileKey);
-                    RegisterBackgroundKeyframeContext(nameof(FloorTileKey));
-                    if (floorTileOpen)
-                    {
-                        foreach (string key in GetFloorAtlasKeys())
-                        {
-                            bool selected = string.Equals(key, FloorTileKey, StringComparison.Ordinal);
-                            if (ImGui.Selectable(key, selected))
-                            {
-                                FloorTileKey = key;
-                                floorChanged = true;
-                            }
-                        }
-                        ImGui.EndCombo();
-                    }
-
-                    if (floorChanged)
-                    {
-                        ApplyFloorSettingsToViewport();
-                        WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
-                        ProjectManager.Instance.SetDirty(true);
-                    }
-                }
-
-                ImGui.Spacing();
-                bool backgroundChanged = false;
-                
-                var imageAssets = GetBackgroundImageAssets();
-                string selectedImageLabel = GetBackgroundImageLabel(BackgroundImagePath);
-                if (selectedImageLabel != NoImageSelected)
-                    selectedImageLabel = TextureSheetPicker.Label(BackgroundImagePath);
-                ImGui.TextUnformatted(Localization.T("text.panel.properties.background_image"));
-                ImGui.SetNextItemWidth(-1);
-                bool backgroundImageOpen = ImGui.BeginCombo("##BackgroundImage", selectedImageLabel == NoImageSelected ? Localization.T("text.common.no_image_selected") : selectedImageLabel);
-                RegisterBackgroundKeyframeContext(nameof(BackgroundImagePath));
-                if (backgroundImageOpen)
-                {
-                    bool noneSelected = string.Equals(BackgroundImagePath, NoImageSelected, StringComparison.OrdinalIgnoreCase);
-                    if (ImGui.Selectable(Localization.Label("text.common.no_image_selected", "No image selected"), noneSelected))
-                    {
-                        BackgroundImagePath = NoImageSelected;
-                        backgroundChanged = true;
-                    }
-
-                    foreach (var asset in imageAssets)
-                    {
-                        string candidatePath = !string.IsNullOrWhiteSpace(asset.RelativePath)
-                            ? asset.RelativePath
-                            : asset.SourcePath;
-                        if (string.IsNullOrWhiteSpace(candidatePath))
-                            continue;
-
-                        bool selected = string.Equals(candidatePath, BackgroundImagePath, StringComparison.OrdinalIgnoreCase);
-                        string optionLabel = string.IsNullOrWhiteSpace(asset.DisplayName)
-                            ? Path.GetFileName(candidatePath)
-                            : asset.DisplayName;
-
-                        if (ImGui.Selectable(optionLabel + "##" + candidatePath, selected))
-                        {
-                            ApplySheetSelection(candidatePath, path => AssignBackgroundTexture(path, sky: false));
-                        }
-                    }
-
-                    ImGui.EndCombo();
-                }
-
-                if (ImGui.Button(Localization.Label("text.common.import", "Import##backgroundImport")))
-                    ImportBackgroundImageFromDialog();
-
-                ImGui.SameLine();
-                if (ImGui.Button(Localization.Label("text.common.clear", "Clear##backgroundClear")) && !string.Equals(BackgroundImagePath, NoImageSelected, StringComparison.OrdinalIgnoreCase))
-                {
-                    BackgroundImagePath = NoImageSelected;
-                    backgroundChanged = true;
-                }
-                DrawTextureSheetPicker("BackgroundSheet", BackgroundImagePath, path => AssignBackgroundTexture(path, sky: false));
-
-                if (backgroundChanged)
-                {
-                    ApplyBackgroundSettingsToViewport();
-                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
-                    ProjectManager.Instance.SetDirty(true);
-                }
-
-                string modeLabel = BackgroundRenderMode switch
-                {
-                    BackgroundModeFit => "Fit",
-                    BackgroundModeOriginal => "Original",
-                    _ => "Stretch"
-                };
-
-                bool backgroundModeOpen = ImGui.BeginCombo(Localization.Label("text.panel.properties.background_mode", "Background Mode"), Localization.DisplayText(modeLabel));
-                RegisterBackgroundKeyframeContext(nameof(BackgroundRenderMode));
-                if (backgroundModeOpen)
-                {
-                    bool isStretch = string.Equals(BackgroundRenderMode, BackgroundModeStretch, StringComparison.OrdinalIgnoreCase);
-                    if (ImGui.Selectable(Localization.Label("text.panel.properties.stretch", "Stretch"), isStretch))
-                    {
-                        BackgroundRenderMode = BackgroundModeStretch;
-                        StretchBackground = true;
-                        backgroundChanged = true;
-                    }
-
-                    bool isFit = string.Equals(BackgroundRenderMode, BackgroundModeFit, StringComparison.OrdinalIgnoreCase);
-                    if (ImGui.Selectable(Localization.Label("text.panel.properties.fit", "Fit"), isFit))
-                    {
-                        BackgroundRenderMode = BackgroundModeFit;
-                        StretchBackground = false;
-                        backgroundChanged = true;
-                    }
-
-                    bool isOriginal = string.Equals(BackgroundRenderMode, BackgroundModeOriginal, StringComparison.OrdinalIgnoreCase);
-                    if (ImGui.Selectable(Localization.Label("text.panel.properties.original", "Original"), isOriginal))
-                    {
-                        BackgroundRenderMode = BackgroundModeOriginal;
-                        StretchBackground = false;
-                        backgroundChanged = true;
-                    }
-
-                    ImGui.EndCombo();
-                }
-
-                float backgroundScale = BackgroundScale;
-                if (InputFloatEditor("Background Scale", ref backgroundScale, 0.01f, 0.01f, 20f))
-                {
-                    BackgroundScale = Math.Clamp(backgroundScale, 0.01f, 20f);
-                    backgroundChanged = true;
-                }
-                RegisterBackgroundKeyframeContext(nameof(BackgroundScale));
-
-                float backgroundRotation = BackgroundRotationDegrees;
-                if (InputFloatEditor("Background Rotation", ref backgroundRotation, 0.25f, -360f, 360f))
-                {
-                    BackgroundRotationDegrees = Math.Clamp(backgroundRotation, -360f, 360f);
-                    backgroundChanged = true;
-                }
-                RegisterBackgroundKeyframeContext(nameof(BackgroundRotationDegrees));
-
-                float offsetX = BackgroundOffset[0];
-                if (InputFloatEditor("Background Offset X", ref offsetX, 0.005f, -3f, 3f))
-                {
-                    BackgroundOffset[0] = offsetX;
-                    backgroundChanged = true;
-                }
-                RegisterBackgroundKeyframeContext(nameof(BackgroundOffset) + ".0");
-
-                float offsetY = BackgroundOffset[1];
-                if (InputFloatEditor("Background Offset Y", ref offsetY, 0.005f, -3f, 3f))
-                {
-                    BackgroundOffset[1] = offsetY;
-                    backgroundChanged = true;
-                }
-                RegisterBackgroundKeyframeContext(nameof(BackgroundOffset) + ".1");
-
-                ImGui.Spacing();
+            if (BeginBackgroundSection("text.panel.properties.wind", "Wind"))
+            {
+                ImGui.Indent();
                 DrawWindSettings();
-                ImGui.TextUnformatted(Localization.T("text.panel.properties.ambient_light"));
-                bool ambientChanged = false;
-                ImGui.SetNextItemWidth(-1);
-                fixed (byte* ambientLabel = "##AmbientLightColor"u8)
-                fixed (float* ambientColorPtr = AmbientLightColor)
-                {
-                    if (ImGui.ColorEdit3(ambientLabel, ambientColorPtr, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions))
-                        ambientChanged = true;
-                }
-                RegisterBackgroundKeyframeContext(nameof(AmbientLightColor));
+                ImGui.Unindent();
+            }
+        }
+    }
 
-                float ambientStrength = AmbientLightStrength;
-                ImGui.SetNextItemWidth(120f);
-                if (InputFloatEditor("Ambient Strength", ref ambientStrength, 0.01f, 0f, 5f))
-                {
-                    AmbientLightStrength = ambientStrength;
-                    ambientChanged = true;
-                }
-                RegisterBackgroundKeyframeContext(nameof(AmbientLightStrength));
+    private static bool BeginBackgroundSection(string localizationKey, string label, bool defaultOpen = false)
+    {
+        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags.NoTreePushOnOpen;
+        if (defaultOpen)
+            flags |= ImGuiTreeNodeFlags.DefaultOpen;
+        return ImGui.CollapsingHeader(Localization.Label(localizationKey, label), flags);
+    }
 
-                ImGui.Spacing();
-                ImGui.TextUnformatted(Localization.T("text.panel.properties.night_ambient"));
-                ImGui.SetNextItemWidth(-1);
-                fixed (byte* nightAmbientLabel = "##NightAmbientLightColor"u8)
-                fixed (float* nightAmbientColorPtr = NightAmbientLightColor)
-                {
-                    if (ImGui.ColorEdit3(nightAmbientLabel, nightAmbientColorPtr, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions))
-                        ambientChanged = true;
-                }
-                RegisterBackgroundKeyframeContext(nameof(NightAmbientLightColor));
+    private void RenderBackgroundBiomeSettings()
+    {
+        RenderBiomeSettings();
+        if (ImGui.Checkbox(Localization.Label("text.panel.properties.opaque_leaves", "Opaque leaves"), ref OpaqueLeaves))
+        {
+            ApplyBackgroundSettingsToViewport();
+            WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+            ProjectManager.Instance.SetDirty(true);
+        }
+        RegisterProjectPropertyContext(nameof(OpaqueLeaves));
+    }
 
-                float nightAmbientStrength = NightAmbientLightStrength;
-                ImGui.SetNextItemWidth(120f);
-                if (InputFloatEditor("Night Ambient Strength", ref nightAmbientStrength, 0.01f, 0f, 5f))
-                {
-                    NightAmbientLightStrength = nightAmbientStrength;
-                    ambientChanged = true;
-                }
-                RegisterBackgroundKeyframeContext(nameof(NightAmbientLightStrength));
+    private unsafe void RenderBackgroundSkySettings()
+    {
+        bool skyChanged = false;
+        bool useSky = UseSky;
+        if (ImGui.Checkbox(Localization.Label("text.panel.properties.sky_enabled", "Sky"), ref useSky)) { UseSky = useSky; skyChanged = true; }
+        RegisterBackgroundKeyframeContext(nameof(UseSky));
 
-                ImGui.Spacing();
-                ImGui.TextUnformatted(Localization.T("text.panel.properties.fill_light"));
-                ImGui.SetNextItemWidth(-1);
-                fixed (byte* fillLabel = "##FillLightColor"u8)
-                fixed (float* fillColorPtr = FillLightColor)
+        if (UseSky)
+        {
+            string skyLabel = SkyMode == "sphere" ? "Sky Sphere" : SkyMode == "box" ? "Skybox" : "Minecraft Sky";
+            bool skyModeOpen = ImGui.BeginCombo(Localization.Label("text.panel.properties.sky_mode", "Sky Mode"), Localization.DisplayText(skyLabel));
+            RegisterBackgroundKeyframeContext(nameof(SkyMode));
+            if (skyModeOpen)
+            {
+                foreach (var (mode, label) in new[] { ("minecraft", "Minecraft Sky"), ("sphere", "Sky Sphere"), ("box", "Skybox") })
+                    if (ImGui.Selectable(Localization.DisplayText(label), SkyMode == mode)) { SkyMode = mode; skyChanged = true; }
+                ImGui.EndCombo();
+            }
+            if (SkyMode is "sphere" or "box")
+            {
+                skyChanged |= EnvironmentTextureSelector();
+                fixed (float* rotation = SkyRotation)
+                    skyChanged |= ImGui.DragFloat3(Localization.Label("text.panel.properties.sky_rotation", "Sky Rotation (XYZ)"), rotation, 0.25f, -360f, 360f);
+                RegisterBackgroundKeyframeContext(nameof(SkyRotation));
+                if (SkyMode == "box")
                 {
-                    if (ImGui.ColorEdit3(fillLabel, fillColorPtr, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions))
-                        ambientChanged = true;
+                    skyChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.skybox_mapped", "Mapped##skybox"), ref SkyboxMapped);
+                    RegisterBackgroundKeyframeContext(nameof(SkyboxMapped));
                 }
-                RegisterBackgroundKeyframeContext(nameof(FillLightColor));
-
-                float fillStrength = FillLightStrength;
-                ImGui.SetNextItemWidth(120f);
-                if (InputFloatEditor("Fill Strength", ref fillStrength, 0.01f, 0f, 5f))
-                {
-                    FillLightStrength = fillStrength;
-                    ambientChanged = true;
-                }
-                RegisterBackgroundKeyframeContext(nameof(FillLightStrength));
-
-                bool fillLightCastsShadows = FillLightCastsShadows;
-                if (ImGui.Checkbox(Localization.Label("text.panel.properties.fill_light_casts_shadows", "Fill Light Casts Shadows"), ref fillLightCastsShadows))
-                {
-                    FillLightCastsShadows = fillLightCastsShadows;
-                    ambientChanged = true;
-                }
-                RegisterBackgroundKeyframeContext(nameof(FillLightCastsShadows));
-
-                if (ambientChanged)
-                {
-                    ApplyAmbientSettingsToRenderer();
-                    WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
-                    ProjectManager.Instance.SetDirty(true);
-                }
+                UiText.Disabled(Localization.T(SkyMode == "sphere" ? "text.panel.properties.sky_sphere_help" : "text.panel.properties.skybox_help"));
+                if (!string.IsNullOrEmpty(Viewport?.SkyTextureError))
+                    ImGui.TextWrapped(Viewport.SkyTextureError);
             }
         }
 
+        if (UseSky && SkyMode == "minecraft")
+        {
+            skyChanged |= ImGui.SliderFloat(Localization.Label("text.panel.properties.time", "Time"), ref SkyTime, 0f, 24f, "%.2f h");
+            RegisterBackgroundKeyframeContext(nameof(SkyTime));
+
+            if (BeginBackgroundSection("text.panel.properties.sky_colors", "Sky Colors", defaultOpen: true))
+            {
+                ImGui.Indent();
+                skyChanged |= SkyColorEditor("Horizon Day", SkyHorizonDay);
+                skyChanged |= SkyColorEditor("Zenith Day", SkyZenithDay);
+                skyChanged |= SkyColorEditor("Horizon Sunset", SkyHorizonSunset);
+                skyChanged |= SkyColorEditor("Zenith Sunset", SkyZenithSunset);
+                skyChanged |= SkyColorEditor("Night Horizon", SkyHorizonNight);
+                skyChanged |= SkyColorEditor("Night Zenith", SkyZenithNight);
+                bool twilight = Twilight;
+                if (ImGui.Checkbox(Localization.Label("text.panel.properties.twilight", "Twilight"), ref twilight)) { Twilight = twilight; skyChanged = true; }
+                RegisterBackgroundKeyframeContext(nameof(Twilight));
+                ImGui.Unindent();
+            }
+
+            if (BeginBackgroundSection("text.panel.properties.stars", "Stars"))
+            {
+                ImGui.Indent();
+                bool showStars = ShowStars;
+                if (ImGui.Checkbox(Localization.Label("text.panel.properties.show_stars", "Show Stars##stars"), ref showStars)) { ShowStars = showStars; skyChanged = true; }
+                RegisterBackgroundKeyframeContext(nameof(ShowStars));
+                if (ShowStars)
+                {
+                    ImGui.Indent();
+                    skyChanged |= InputFloatEditor("Density", ref StarDensity, 0.01f, 0f, 5f, "%.2f");
+                    RegisterBackgroundKeyframeContext(nameof(StarDensity));
+                    skyChanged |= InputFloatEditor("Brightness", ref StarBrightness, 0.01f, 0f, 5f, "%.2f");
+                    RegisterBackgroundKeyframeContext(nameof(StarBrightness));
+                    skyChanged |= InputFloatEditor("Twinkle Speed", ref StarTwinkleSpeed, 0.01f, 0f, 5f, "%.2f");
+                    RegisterBackgroundKeyframeContext(nameof(StarTwinkleSpeed));
+                    skyChanged |= SkyColorEditor("Star Color", StarColor);
+                    ImGui.Unindent();
+                }
+                ImGui.Unindent();
+            }
+
+            if (BeginBackgroundSection("text.panel.properties.sun_moon", "Sun & Moon"))
+            {
+                ImGui.Indent();
+                skyChanged |= SkyTextureSelector("Sun Texture", ref SunTexture, "sun.png");
+                skyChanged |= SkyTextureSelector("Moon Texture", ref MoonTexture, "moon_phases.png");
+                skyChanged |= ImGui.SliderInt(Localization.Label("text.panel.properties.moon_phase", "Moon Phase"), ref MoonPhase, 0, 7);
+                RegisterBackgroundKeyframeContext(nameof(MoonPhase));
+                skyChanged |= InputFloatEditor("Sun Size (degrees)", ref SunSize, 0.1f, 0.1f, 90f);
+                RegisterBackgroundKeyframeContext(nameof(SunSize));
+                fixed (float* value = SunAngle) skyChanged |= ImGui.DragFloat3(Localization.Label("text.panel.properties.sun_angle_xyz", "Sun Angle (XYZ)"), value, 0.25f, -360f, 360f);
+                RegisterBackgroundKeyframeContext(nameof(SunAngle));
+                skyChanged |= InputFloatEditor("Moon Size (degrees)", ref MoonSize, 0.1f, 0.1f, 90f);
+                RegisterBackgroundKeyframeContext(nameof(MoonSize));
+                fixed (float* value = MoonAngle) skyChanged |= ImGui.DragFloat3(Localization.Label("text.panel.properties.moon_angle_xyz", "Moon Angle (XYZ)"), value, 0.25f, -360f, 360f);
+                RegisterBackgroundKeyframeContext(nameof(MoonAngle));
+                skyChanged |= SkyColorEditor("Sun Fill Light", SunFillLightColor);
+                skyChanged |= InputFloatEditor("Sun Fill Strength", ref SunFillLightStrength, 0.01f, 0f, 5f);
+                RegisterBackgroundKeyframeContext(nameof(SunFillLightStrength));
+                skyChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.sun_fill_casts_shadows", "Sun Fill Casts Shadows"), ref SunFillLightCastsShadows);
+                RegisterBackgroundKeyframeContext(nameof(SunFillLightCastsShadows));
+                skyChanged |= SkyColorEditor("Moon Fill Light", MoonFillLightColor);
+                skyChanged |= InputFloatEditor("Moon Fill Strength", ref MoonFillLightStrength, 0.01f, 0f, 5f);
+                RegisterBackgroundKeyframeContext(nameof(MoonFillLightStrength));
+                skyChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.moon_fill_casts_shadows", "Moon Fill Casts Shadows"), ref MoonFillLightCastsShadows);
+                RegisterBackgroundKeyframeContext(nameof(MoonFillLightCastsShadows));
+                ImGui.Unindent();
+            }
+
+            if (BeginBackgroundSection("text.panel.properties.clouds", "Clouds"))
+            {
+                ImGui.Indent();
+                skyChanged |= SkyColorEditor("Cloud Color", CloudColor);
+                skyChanged |= SkyColorEditor("Night Cloud Color", NightCloudColor);
+                skyChanged |= SkyTextureSelector("Cloud Texture", ref CloudTexture, "clouds.png");
+                string cloudModeLabel = CloudRenderMode == "story" ? "Story Mode" : CloudRenderMode == "flat" ? "Flat" : "3D";
+                bool cloudModeOpen = ImGui.BeginCombo(Localization.Label("text.panel.properties.cloud_rendering", "Cloud Rendering"), Localization.DisplayText(cloudModeLabel));
+                RegisterBackgroundKeyframeContext(nameof(CloudRenderMode));
+                if (cloudModeOpen)
+                {
+                    if (ImGui.Selectable(Localization.Label("text.panel.properties.3d", "3D"), CloudRenderMode == "3d")) { CloudRenderMode = "3d"; skyChanged = true; }
+                    if (ImGui.Selectable(Localization.Label("text.panel.properties.story_mode", "Story Mode"), CloudRenderMode == "story")) { CloudRenderMode = "story"; skyChanged = true; }
+                    if (ImGui.Selectable(Localization.Label("text.common.flat", "Flat"), CloudRenderMode == "flat")) { CloudRenderMode = "flat"; skyChanged = true; }
+                    ImGui.EndCombo();
+                }
+                skyChanged |= InputFloatEditor("Cloud Speed", ref CloudSpeed, 1f, -10000f, 10000f, "%.0f px/s");
+                RegisterBackgroundKeyframeContext(nameof(CloudSpeed));
+                fixed (float* value = CloudOffset) skyChanged |= ImGui.DragFloat2(Localization.Label("text.panel.properties.cloud_offset", "Cloud Offset"), value, 1f, -100000f, 100000f, "%.0f px");
+                RegisterBackgroundKeyframeContext(nameof(CloudOffset));
+                skyChanged |= InputFloatEditor("Cloud Height", ref CloudHeight, 1f, 0f, 100000f, "%.0f px");
+                RegisterBackgroundKeyframeContext(nameof(CloudHeight));
+                skyChanged |= InputFloatEditor("Cloud Block Size", ref CloudBlockSize, 1f, 1f, 100000f, "%.0f px");
+                RegisterBackgroundKeyframeContext(nameof(CloudBlockSize));
+                skyChanged |= InputFloatEditor("Cloud Thickness", ref CloudThickness, 1f, 1f, 100000f, "%.0f px");
+                RegisterBackgroundKeyframeContext(nameof(CloudThickness));
+                ImGui.Unindent();
+            }
+        }
+        else if (!UseSky)
+            UiText.Disabled(Localization.T("text.panel.properties.solid_background_color_is_active"));
+
+        if (skyChanged)
+        {
+            Viewport?.ReloadSkyTextures();
+            WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+            ProjectManager.Instance.SetDirty(true);
+        }
+    }
+
+    private void RenderBackgroundFogSettings()
+    {
+        ImGui.SeparatorText(Localization.T("text.panel.properties.fog"));
+        bool fogChanged = ImGui.Checkbox(Localization.Label("text.panel.properties.enable_fog", "Enable Fog"), ref FogEnabled);
+        RegisterProjectPropertyContext(nameof(FogEnabled));
+        if (FogEnabled)
+        {
+            ImGui.Indent();
+            fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.fog_the_sky", "Fog the Sky"), ref SkyFog);
+            RegisterProjectPropertyContext(nameof(SkyFog));
+            fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.custom_fog_color", "Custom Fog Color"), ref CustomFogColor);
+            RegisterProjectPropertyContext(nameof(CustomFogColor));
+            if (CustomFogColor) fogChanged |= SkyColorEditor("Fog Color", FogColor);
+            fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.custom_object_fog_color", "Custom Object Fog Color"), ref CustomObjectFogColor);
+            RegisterProjectPropertyContext(nameof(CustomObjectFogColor));
+            if (CustomObjectFogColor) fogChanged |= SkyColorEditor("Object Fog Color", ObjectFogColor);
+            fogChanged |= InputFloatEditor("Distance", ref FogDistance, 10f, 0f, 1000000f, "%.0f px");
+            RegisterProjectPropertyContext(nameof(FogDistance), 0, 1000000);
+            fogChanged |= InputFloatEditor("Fade Size", ref FogFadeSize, 10f, 1f, 1000000f, "%.0f px");
+            RegisterProjectPropertyContext(nameof(FogFadeSize), 1, 1000000);
+            fogChanged |= InputFloatEditor("Height", ref FogHeight, 10f, -1000000f, 1000000f, "%.0f px");
+            RegisterProjectPropertyContext(nameof(FogHeight), -1000000, 1000000);
+            fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.height_fog", "Height Fog"), ref HeightFog);
+            RegisterProjectPropertyContext(nameof(HeightFog));
+            if (HeightFog)
+            {
+                fogChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.custom_height_fog_color", "Custom Height Fog Color"), ref CustomHeightFogColor);
+                RegisterProjectPropertyContext(nameof(CustomHeightFogColor));
+                if (CustomHeightFogColor) fogChanged |= SkyColorEditor("Height Fog Color", HeightFogColor);
+                fogChanged |= InputFloatEditor("Height Fog Size", ref HeightFogSize, 10f, 1f, 1000000f, "%.0f px");
+                RegisterProjectPropertyContext(nameof(HeightFogSize), 1, 1000000);
+                fogChanged |= InputFloatEditor("Height Fog Offset", ref HeightFogOffset, 10f, -1000000f, 1000000f, "%.0f px");
+                RegisterProjectPropertyContext(nameof(HeightFogOffset), -1000000, 1000000);
+            }
+            ImGui.Unindent();
+        }
+        if (fogChanged)
+        {
+            WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+            ProjectManager.Instance.SetDirty(true);
+        }
+    }
+
+    private unsafe void RenderBackgroundColorSettings()
+    {
+        ImGui.Separator();
+        ImGui.TextUnformatted(Localization.T("text.panel.properties.background_color"));
+        ImGui.SetNextItemWidth(-1);
+        fixed (byte* label = "##BackgroundColor"u8)
+        fixed (float* bgColorPtr = BackgroundColor)
+        {
+            if (ImGui.ColorEdit4(label, bgColorPtr, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions))
+            {
+                WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                ProjectManager.Instance.SetDirty(true);
+            }
+        }
+        RegisterBackgroundKeyframeContext(nameof(BackgroundColor));
+
+        ImGui.Spacing();
+        ImGui.TextUnformatted(Localization.T("text.panel.properties.presets"));
+        var presets = new (string name, float r, float g, float b, float a)[]
+        {
+            ("Dawn",    1f,          0.7f,        0.5f,  1f),
+            ("Morning", 0.6f,        0.8f,        1f,    1f),
+            ("Day",     0.5764706f,  0.5764706f,  1f,    1f),
+            ("Sunset",  1f,          0.5f,        0.3f,  1f),
+            ("Dusk",    0.3f,        0.4f,        0.7f,  1f),
+            ("Night",   0.05f,       0.05f,       0.15f, 1f)
+        };
+        for (int i = 0; i < presets.Length; i++)
+        {
+            if (i > 0) ImGui.SameLine();
+            if (ImGui.Button(Localization.DisplayLabel(presets[i].name)))
+            {
+                BackgroundColor[0] = presets[i].r;
+                BackgroundColor[1] = presets[i].g;
+                BackgroundColor[2] = presets[i].b;
+                BackgroundColor[3] = presets[i].a;
+                WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                ProjectManager.Instance.SetDirty(true);
+            }
+        }
+        ImGui.Spacing();
+    }
+
+    private void RenderGroundFloorSettings()
+    {
+        bool floorVisible = FloorVisible;
+        if (ImGui.Checkbox(Localization.Label("text.panel.properties.show_floor", "Show Floor"), ref floorVisible))
+        {
+            FloorVisible = floorVisible;
+            ApplyFloorSettingsToViewport();
+            WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+            ProjectManager.Instance.SetDirty(true);
+        }
+        RegisterBackgroundKeyframeContext(nameof(FloorVisible));
+
+        if (FloorVisible)
+        {
+            bool floorChanged = false;
+            string floorAtlasLabel = NormalizeFloorAtlas(FloorTextureAtlas) == "item" ? "Item Atlas" : "Block Atlas";
+            bool floorAtlasOpen = ImGui.BeginCombo(Localization.Label("text.panel.properties.floor_atlas", "Floor Atlas"), Localization.DisplayText(floorAtlasLabel));
+            RegisterBackgroundKeyframeContext(nameof(FloorTextureAtlas));
+            if (floorAtlasOpen)
+            {
+                bool useBlock = NormalizeFloorAtlas(FloorTextureAtlas) == "block";
+                if (ImGui.Selectable(Localization.Label("text.common.block_atlas", "Block Atlas"), useBlock))
+                {
+                    FloorTextureAtlas = "block";
+                    floorChanged = true;
+                }
+
+                bool useItem = NormalizeFloorAtlas(FloorTextureAtlas) == "item";
+                if (ImGui.Selectable(Localization.Label("text.common.item_atlas", "Item Atlas"), useItem))
+                {
+                    FloorTextureAtlas = "item";
+                    floorChanged = true;
+                }
+
+                ImGui.EndCombo();
+            }
+
+            ImGui.TextUnformatted(Localization.T("text.panel.properties.floor_tile"));
+            ImGui.SetNextItemWidth(-1);
+            bool floorTileOpen = ImGui.BeginCombo("##FloorTile", FloorTileKey);
+            RegisterBackgroundKeyframeContext(nameof(FloorTileKey));
+            if (floorTileOpen)
+            {
+                foreach (string key in GetFloorAtlasKeys())
+                {
+                    bool selected = string.Equals(key, FloorTileKey, StringComparison.Ordinal);
+                    if (ImGui.Selectable(key, selected))
+                    {
+                        FloorTileKey = key;
+                        floorChanged = true;
+                    }
+                }
+                ImGui.EndCombo();
+            }
+
+            if (floorChanged)
+            {
+                ApplyFloorSettingsToViewport();
+                WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+                ProjectManager.Instance.SetDirty(true);
+            }
+        }
+    }
+
+    private void RenderBackgroundImageSettings()
+    {
+        ImGui.Spacing();
+        bool backgroundChanged = false;
+                
+        var imageAssets = GetBackgroundImageAssets();
+        string selectedImageLabel = GetBackgroundImageLabel(BackgroundImagePath);
+        if (selectedImageLabel != NoImageSelected)
+            selectedImageLabel = TextureSheetPicker.Label(BackgroundImagePath);
+        ImGui.TextUnformatted(Localization.T("text.panel.properties.background_image"));
+        ImGui.SetNextItemWidth(-1);
+        bool backgroundImageOpen = ImGui.BeginCombo("##BackgroundImage", selectedImageLabel == NoImageSelected ? Localization.T("text.common.no_image_selected") : selectedImageLabel);
+        RegisterBackgroundKeyframeContext(nameof(BackgroundImagePath));
+        if (backgroundImageOpen)
+        {
+            bool noneSelected = string.Equals(BackgroundImagePath, NoImageSelected, StringComparison.OrdinalIgnoreCase);
+            if (ImGui.Selectable(Localization.Label("text.common.no_image_selected", "No image selected"), noneSelected))
+            {
+                BackgroundImagePath = NoImageSelected;
+                backgroundChanged = true;
+            }
+
+            foreach (var asset in imageAssets)
+            {
+                string candidatePath = !string.IsNullOrWhiteSpace(asset.RelativePath)
+                    ? asset.RelativePath
+                    : asset.SourcePath;
+                if (string.IsNullOrWhiteSpace(candidatePath))
+                    continue;
+
+                bool selected = string.Equals(candidatePath, BackgroundImagePath, StringComparison.OrdinalIgnoreCase);
+                string optionLabel = string.IsNullOrWhiteSpace(asset.DisplayName)
+                    ? Path.GetFileName(candidatePath)
+                    : asset.DisplayName;
+
+                if (ImGui.Selectable(optionLabel + "##" + candidatePath, selected))
+                {
+                    ApplySheetSelection(candidatePath, path => AssignBackgroundTexture(path, sky: false));
+                }
+            }
+
+            ImGui.EndCombo();
+        }
+
+        if (ImGui.Button(Localization.Label("text.common.import", "Import##backgroundImport")))
+            ImportBackgroundImageFromDialog();
+
+        ImGui.SameLine();
+        if (ImGui.Button(Localization.Label("text.common.clear", "Clear##backgroundClear")) && !string.Equals(BackgroundImagePath, NoImageSelected, StringComparison.OrdinalIgnoreCase))
+        {
+            BackgroundImagePath = NoImageSelected;
+            backgroundChanged = true;
+        }
+        DrawTextureSheetPicker("BackgroundSheet", BackgroundImagePath, path => AssignBackgroundTexture(path, sky: false));
+
+        string modeLabel = BackgroundRenderMode switch
+        {
+            BackgroundModeFit => "Fit",
+            BackgroundModeOriginal => "Original",
+            _ => "Stretch"
+        };
+
+        bool backgroundModeOpen = ImGui.BeginCombo(Localization.Label("text.panel.properties.background_mode", "Background Mode"), Localization.DisplayText(modeLabel));
+        RegisterBackgroundKeyframeContext(nameof(BackgroundRenderMode));
+        if (backgroundModeOpen)
+        {
+            bool isStretch = string.Equals(BackgroundRenderMode, BackgroundModeStretch, StringComparison.OrdinalIgnoreCase);
+            if (ImGui.Selectable(Localization.Label("text.panel.properties.stretch", "Stretch"), isStretch))
+            {
+                BackgroundRenderMode = BackgroundModeStretch;
+                StretchBackground = true;
+                backgroundChanged = true;
+            }
+
+            bool isFit = string.Equals(BackgroundRenderMode, BackgroundModeFit, StringComparison.OrdinalIgnoreCase);
+            if (ImGui.Selectable(Localization.Label("text.panel.properties.fit", "Fit"), isFit))
+            {
+                BackgroundRenderMode = BackgroundModeFit;
+                StretchBackground = false;
+                backgroundChanged = true;
+            }
+
+            bool isOriginal = string.Equals(BackgroundRenderMode, BackgroundModeOriginal, StringComparison.OrdinalIgnoreCase);
+            if (ImGui.Selectable(Localization.Label("text.panel.properties.original", "Original"), isOriginal))
+            {
+                BackgroundRenderMode = BackgroundModeOriginal;
+                StretchBackground = false;
+                backgroundChanged = true;
+            }
+
+            ImGui.EndCombo();
+        }
+
+        float backgroundScale = BackgroundScale;
+        if (InputFloatEditor("Background Scale", ref backgroundScale, 0.01f, 0.01f, 20f))
+        {
+            BackgroundScale = Math.Clamp(backgroundScale, 0.01f, 20f);
+            backgroundChanged = true;
+        }
+        RegisterBackgroundKeyframeContext(nameof(BackgroundScale));
+
+        float backgroundRotation = BackgroundRotationDegrees;
+        if (InputFloatEditor("Background Rotation", ref backgroundRotation, 0.25f, -360f, 360f))
+        {
+            BackgroundRotationDegrees = Math.Clamp(backgroundRotation, -360f, 360f);
+            backgroundChanged = true;
+        }
+        RegisterBackgroundKeyframeContext(nameof(BackgroundRotationDegrees));
+
+        float offsetX = BackgroundOffset[0];
+        if (InputFloatEditor("Background Offset X", ref offsetX, 0.005f, -3f, 3f))
+        {
+            BackgroundOffset[0] = offsetX;
+            backgroundChanged = true;
+        }
+        RegisterBackgroundKeyframeContext(nameof(BackgroundOffset) + ".0");
+
+        float offsetY = BackgroundOffset[1];
+        if (InputFloatEditor("Background Offset Y", ref offsetY, 0.005f, -3f, 3f))
+        {
+            BackgroundOffset[1] = offsetY;
+            backgroundChanged = true;
+        }
+        RegisterBackgroundKeyframeContext(nameof(BackgroundOffset) + ".1");
+
+        if (backgroundChanged)
+        {
+            ApplyBackgroundSettingsToViewport();
+            WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+            ProjectManager.Instance.SetDirty(true);
+        }
+    }
+
+    private unsafe void RenderBackgroundLightingSettings()
+    {
+        ImGui.TextUnformatted(Localization.T("text.panel.properties.ambient_light"));
+        bool ambientChanged = false;
+        ImGui.SetNextItemWidth(-1);
+        fixed (byte* ambientLabel = "##AmbientLightColor"u8)
+        fixed (float* ambientColorPtr = AmbientLightColor)
+        {
+            if (ImGui.ColorEdit3(ambientLabel, ambientColorPtr, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions))
+                ambientChanged = true;
+        }
+        RegisterBackgroundKeyframeContext(nameof(AmbientLightColor));
+
+        float ambientStrength = AmbientLightStrength;
+        ImGui.SetNextItemWidth(120f);
+        if (InputFloatEditor("Ambient Strength", ref ambientStrength, 0.01f, 0f, 5f))
+        {
+            AmbientLightStrength = ambientStrength;
+            ambientChanged = true;
+        }
+        RegisterBackgroundKeyframeContext(nameof(AmbientLightStrength));
+
+        ImGui.Spacing();
+        ImGui.TextUnformatted(Localization.T("text.panel.properties.night_ambient"));
+        ImGui.SetNextItemWidth(-1);
+        fixed (byte* nightAmbientLabel = "##NightAmbientLightColor"u8)
+        fixed (float* nightAmbientColorPtr = NightAmbientLightColor)
+        {
+            if (ImGui.ColorEdit3(nightAmbientLabel, nightAmbientColorPtr, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions))
+                ambientChanged = true;
+        }
+        RegisterBackgroundKeyframeContext(nameof(NightAmbientLightColor));
+
+        float nightAmbientStrength = NightAmbientLightStrength;
+        ImGui.SetNextItemWidth(120f);
+        if (InputFloatEditor("Night Ambient Strength", ref nightAmbientStrength, 0.01f, 0f, 5f))
+        {
+            NightAmbientLightStrength = nightAmbientStrength;
+            ambientChanged = true;
+        }
+        RegisterBackgroundKeyframeContext(nameof(NightAmbientLightStrength));
+
+        ImGui.Spacing();
+        ImGui.TextUnformatted(Localization.T("text.panel.properties.fill_light"));
+        ImGui.SetNextItemWidth(-1);
+        fixed (byte* fillLabel = "##FillLightColor"u8)
+        fixed (float* fillColorPtr = FillLightColor)
+        {
+            if (ImGui.ColorEdit3(fillLabel, fillColorPtr, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoOptions))
+                ambientChanged = true;
+        }
+        RegisterBackgroundKeyframeContext(nameof(FillLightColor));
+
+        float fillStrength = FillLightStrength;
+        ImGui.SetNextItemWidth(120f);
+        if (InputFloatEditor("Fill Strength", ref fillStrength, 0.01f, 0f, 5f))
+        {
+            FillLightStrength = fillStrength;
+            ambientChanged = true;
+        }
+        RegisterBackgroundKeyframeContext(nameof(FillLightStrength));
+
+        bool fillLightCastsShadows = FillLightCastsShadows;
+        if (ImGui.Checkbox(Localization.Label("text.panel.properties.fill_light_casts_shadows", "Fill Light Casts Shadows"), ref fillLightCastsShadows))
+        {
+            FillLightCastsShadows = fillLightCastsShadows;
+            ambientChanged = true;
+        }
+        RegisterBackgroundKeyframeContext(nameof(FillLightCastsShadows));
+
+        if (ambientChanged)
+        {
+            ApplyAmbientSettingsToRenderer();
+            WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
+            ProjectManager.Instance.SetDirty(true);
+        }
     }
 
     private unsafe void RenderRenderSettings()
@@ -3207,7 +3285,7 @@ public partial class PropertiesPanel : UiPanel
 
     private void DrawWindSettings()
     {
-        if (!ImGui.TreeNode(Localization.Label("text.panel.properties.wind", "Wind"))) return;
+        ImGui.PushID(Localization.Label("text.panel.properties.wind", "Wind"));
         bool changed = ImGui.Checkbox(Localization.Label("text.panel.properties.wind_enabled", "Enabled##wind"), ref WindEnabled);
         RegisterBackgroundKeyframeContext(nameof(WindEnabled));
         if (WindEnabled)
@@ -3223,7 +3301,7 @@ public partial class PropertiesPanel : UiPanel
             changed |= InputFloatEditor("Directional Strength##wind", ref WindDirectionalStrength, 0.01f, 0f, 10f, "%.2f");
             RegisterBackgroundKeyframeContext(nameof(WindDirectionalStrength));
         }
-        ImGui.TreePop();
+        ImGui.PopID();
         if (!changed) return;
         WriteProjectSettingsToManifest(ProjectManager.Instance.Manifest);
         ProjectManager.Instance.SetDirty(true);
@@ -3752,6 +3830,8 @@ public partial class PropertiesPanel : UiPanel
             ImGui.PopItemWidth();
 
         }
+
+        RenderPivotProperties();
 
         // ── Bend ──────────────────────────────────────────────────────────────
         // Bend axes are authored per Mine-imator part. Do not offer controls
@@ -4448,34 +4528,6 @@ public partial class PropertiesPanel : UiPanel
             {
                 particleSpawner.ResetRuntime();
             }
-        }
-
-        // ── Pivot Offset ──────────────────────────────────────────────────────
-        if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.pivot_offset", "Pivot Offset")))
-        {
-            bool inheritPivot = _currentObject.InheritPivot;
-            if (ImGui.Checkbox(Localization.Label("text.panel.properties.inherit_pivot", "Inherit Pivot##pivot"), ref inheritPivot))
-                ApplyToSelectedObjects(obj => obj.InheritPivot = inheritPivot);
-            RegisterObjectPropertyContext("inherit_pivot", obj => obj.InheritPivot, (obj, value) => obj.InheritPivot = value);
-
-            vec3 pivot = GetEditablePivotOffset(_currentObject);
-            float pivX = pivot.x * 16f;
-            float pivY = pivot.y * 16f;
-            float pivZ = pivot.z * 16f;
-
-            ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
-            if (InputFloatEditor("X##pivX", ref pivX, 0.1f, float.MinValue, float.MaxValue))
-                ApplyPivotOffset(new vec3(pivX / 16f, pivY / 16f, pivZ / 16f));
-            RegisterPropertyContext("pivot.x");
-
-            if (InputFloatEditor("Y##pivY", ref pivY, 0.1f, float.MinValue, float.MaxValue))
-                ApplyPivotOffset(new vec3(pivX / 16f, pivY / 16f, pivZ / 16f));
-            RegisterPropertyContext("pivot.y");
-
-            if (InputFloatEditor("Z##pivZ", ref pivZ, 0.1f, float.MinValue, float.MaxValue))
-                ApplyPivotOffset(new vec3(pivX / 16f, pivY / 16f, pivZ / 16f));
-            RegisterPropertyContext("pivot.z");
-            ImGui.PopItemWidth();
         }
 
         if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.property_inheritance", "Property Inheritance")))
@@ -5349,6 +5401,8 @@ public partial class PropertiesPanel : UiPanel
 
         }
 
+        RenderAppearanceProperties();
+
         // ── Shape Keys ────────────────────────────────────────────────────────
         if (!isLight && HasAnyShapeKeys(_currentObject) && ImGui.CollapsingHeader(Localization.Label("text.panel.properties.shape_keys", "Shape Keys")))
         {
@@ -5486,6 +5540,7 @@ public partial class PropertiesPanel : UiPanel
         DrawConstraints(_currentObject);
         DrawWiggle(_currentObject);
         DrawModifiers(_currentObject);
+        RenderCameraProperties();
 
         // ── Effects (shown only for CameraSceneObject) ────────────────────────
         if (_currentObject is CameraSceneObject cameraObject)
@@ -5871,61 +5926,10 @@ public partial class PropertiesPanel : UiPanel
             }
         }
 
-        if (_currentObject is CameraSceneObject selectedCamera &&
-            ImGui.CollapsingHeader(Localization.Label("text.common.camera", "Camera")))
-        {
-            float fov = selectedCamera.Fov;
-            if (InputFloatEditor("Field of View (degrees)", ref fov, 0.1f, 1f, 179f, "%.1f"))
-            {
-                ApplyToSelectedObjects(obj =>
-                {
-                    if (obj is CameraSceneObject camera)
-                    {
-                        camera.Fov = fov;
-                        Timeline?.RecordAutoKeyframe(camera, "camera.fov");
-                    }
-                });
-                ProjectManager.Instance.SetDirty(true);
-            }
-            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
-            {
-                _ctxPropertyPath = "camera.fov";
-                _ctxMenuPos = ImGui.GetMousePos();
-                _openPropContextMenu = true;
-            }
-            ImGui.Spacing();
-            DrawCameraBladeControls(selectedCamera);
-            ImGui.Spacing();
-            DrawCameraOrbitControls(selectedCamera);
-            ImGui.Spacing();
-            ImGui.TextUnformatted(Localization.T("text.panel.properties.color_management"));
-            bool overrideEnabled = selectedCamera.ColorManagementOverrideEnabled;
-            bool changed = ImGui.Checkbox(Localization.Label("text.panel.properties.camera_custom_color_management",
-                "Custom Color Management##cameraCustom"), ref overrideEnabled);
-            void ApplyOverride(object value) => ApplyToSelectedObjects(obj =>
-            {
-                if (obj is CameraSceneObject camera)
-                    camera.ColorManagementOverrideEnabled = (bool)value;
-            });
-            if (changed) ApplyOverride(overrideEnabled);
-            RegisterPropertyContext("camera.custom.color_management.override", () => selectedCamera.ColorManagementOverrideEnabled,
-                ApplyOverride, false);
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(Localization.T("text.panel.properties.camera_custom_color_management_tooltip"));
-            if (overrideEnabled)
-            {
-                bool enabled = selectedCamera.ColorManagementEnabled;
-                int toneMapper = selectedCamera.ColorManagementToneMapper;
-                float exposure = selectedCamera.ColorManagementExposure;
-                float gamma = selectedCamera.ColorManagementGamma;
-                int look = selectedCamera.ColorManagementLook;
-                ImGui.Indent();
-                changed |= DrawColorManagementControls(ref enabled, ref toneMapper, ref exposure, ref gamma, ref look, selectedCamera);
-                ImGui.Unindent();
-            }
-            if (changed) ProjectManager.Instance.SetDirty(true);
-        }
+    }
 
+    private void RenderAppearanceProperties()
+    {
         if (ImGui.CollapsingHeader(Localization.Label("text.common.appearance", "Appearance")))
         {
             bool affectedByWind = _currentObject.AffectedByWind;
@@ -6097,29 +6101,6 @@ public partial class PropertiesPanel : UiPanel
             RegisterObjectPropertyContext("render_depth", obj => obj.RenderDepthOffset,
                 (obj, value) => obj.RenderDepthOffset = Math.Clamp(value, -1000f, 1000f), includeDescendants: true);
 
-            // Active toggle for cameras. When enabled, this camera is the
-            // preferred render-output camera and every other camera is
-            // deactivated. The "active" state is also a keyframable property.
-            if (_currentObject is CameraSceneObject activeCam)
-            {
-                bool active = activeCam.Active;
-                if (ImGui.Checkbox(Localization.Label("text.panel.properties.active_camera", "Active Camera"), ref active))
-                {
-                    if (active)
-                        CameraSceneObject.SetActiveExclusive(activeCam);
-                    else
-                        activeCam.Active = false;
-
-                    Timeline?.RecordAutoKeyframe(activeCam, "camera.active");
-                }
-                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
-                {
-                    _ctxPropertyPath = "camera.active";
-                    _ctxMenuPos = ImGui.GetMousePos();
-                    _openPropContextMenu = true;
-                }
-            }
-
             // Mine-imator models can switch between Modelbench's block-preserving
             // sharp bends and the more finely segmented smooth bend style.
             if (_currentObject is CharacterSceneObject character &&
@@ -6145,9 +6126,121 @@ public partial class PropertiesPanel : UiPanel
                         : Localization.T("text.panel.properties.uses_additional_segments_for_a_smoother_bend"));
             }
         }
-
     }
-    
+
+    private void RenderCameraProperties()
+    {
+        if (_currentObject is CameraSceneObject selectedCamera &&
+            ImGui.CollapsingHeader(Localization.Label("text.common.camera", "Camera")))
+        {
+            float fov = selectedCamera.Fov;
+            if (InputFloatEditor("Field of View (degrees)", ref fov, 0.1f, 1f, 179f, "%.1f"))
+            {
+                ApplyToSelectedObjects(obj =>
+                {
+                    if (obj is CameraSceneObject camera)
+                    {
+                        camera.Fov = fov;
+                        Timeline?.RecordAutoKeyframe(camera, "camera.fov");
+                    }
+                });
+                ProjectManager.Instance.SetDirty(true);
+            }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "camera.fov";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
+            }
+            ImGui.Spacing();
+            DrawCameraBladeControls(selectedCamera);
+            ImGui.Spacing();
+            DrawCameraOrbitControls(selectedCamera);
+            ImGui.Spacing();
+            ImGui.TextUnformatted(Localization.T("text.panel.properties.color_management"));
+            bool overrideEnabled = selectedCamera.ColorManagementOverrideEnabled;
+            bool changed = ImGui.Checkbox(Localization.Label("text.panel.properties.camera_custom_color_management",
+                "Custom Color Management##cameraCustom"), ref overrideEnabled);
+            void ApplyOverride(object value) => ApplyToSelectedObjects(obj =>
+            {
+                if (obj is CameraSceneObject camera)
+                    camera.ColorManagementOverrideEnabled = (bool)value;
+            });
+            if (changed) ApplyOverride(overrideEnabled);
+            RegisterPropertyContext("camera.custom.color_management.override", () => selectedCamera.ColorManagementOverrideEnabled,
+                ApplyOverride, false);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(Localization.T("text.panel.properties.camera_custom_color_management_tooltip"));
+            if (overrideEnabled)
+            {
+                bool enabled = selectedCamera.ColorManagementEnabled;
+                int toneMapper = selectedCamera.ColorManagementToneMapper;
+                float exposure = selectedCamera.ColorManagementExposure;
+                float gamma = selectedCamera.ColorManagementGamma;
+                int look = selectedCamera.ColorManagementLook;
+                ImGui.Indent();
+                changed |= DrawColorManagementControls(ref enabled, ref toneMapper, ref exposure, ref gamma, ref look, selectedCamera);
+                ImGui.Unindent();
+            }
+            if (changed) ProjectManager.Instance.SetDirty(true);
+            RenderActiveCameraControl();
+        }
+    }
+
+    private void RenderActiveCameraControl()
+    {
+        if (_currentObject is CameraSceneObject activeCam)
+        {
+            bool active = activeCam.Active;
+            if (ImGui.Checkbox(Localization.Label("text.panel.properties.active_camera", "Active Camera"), ref active))
+            {
+                if (active)
+                    CameraSceneObject.SetActiveExclusive(activeCam);
+                else
+                    activeCam.Active = false;
+
+                Timeline?.RecordAutoKeyframe(activeCam, "camera.active");
+            }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            {
+                _ctxPropertyPath = "camera.active";
+                _ctxMenuPos = ImGui.GetMousePos();
+                _openPropContextMenu = true;
+            }
+        }
+    }
+
+    private void RenderPivotProperties()
+    {
+        // ── Pivot Offset ──────────────────────────────────────────────────────
+        if (ImGui.CollapsingHeader(Localization.Label("text.panel.properties.pivot_offset", "Pivot Offset")))
+        {
+            bool inheritPivot = _currentObject.InheritPivot;
+            if (ImGui.Checkbox(Localization.Label("text.panel.properties.inherit_pivot", "Inherit Pivot##pivot"), ref inheritPivot))
+                ApplyToSelectedObjects(obj => obj.InheritPivot = inheritPivot);
+            RegisterObjectPropertyContext("inherit_pivot", obj => obj.InheritPivot, (obj, value) => obj.InheritPivot = value);
+
+            vec3 pivot = GetEditablePivotOffset(_currentObject);
+            float pivX = pivot.x * 16f;
+            float pivY = pivot.y * 16f;
+            float pivZ = pivot.z * 16f;
+
+            ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
+            if (InputFloatEditor("X##pivX", ref pivX, 0.1f, float.MinValue, float.MaxValue))
+                ApplyPivotOffset(new vec3(pivX / 16f, pivY / 16f, pivZ / 16f));
+            RegisterPropertyContext("pivot.x");
+
+            if (InputFloatEditor("Y##pivY", ref pivY, 0.1f, float.MinValue, float.MaxValue))
+                ApplyPivotOffset(new vec3(pivX / 16f, pivY / 16f, pivZ / 16f));
+            RegisterPropertyContext("pivot.y");
+
+            if (InputFloatEditor("Z##pivZ", ref pivZ, 0.1f, float.MinValue, float.MaxValue))
+                ApplyPivotOffset(new vec3(pivX / 16f, pivY / 16f, pivZ / 16f));
+            RegisterPropertyContext("pivot.z");
+            ImGui.PopItemWidth();
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private IReadOnlyList<SceneObject> GetSelectedObjectsForEdit()

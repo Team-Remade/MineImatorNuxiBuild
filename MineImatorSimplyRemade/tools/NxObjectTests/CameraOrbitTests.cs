@@ -222,7 +222,7 @@ internal static partial class Program
                 new() { Frame = 0, Value = 0f }, new() { Frame = 10, Value = value }
             };
             float expected = channel is "orbit_enabled" or "orbit_look_at" ? 0f : value / 2f;
-            Near(expected, Convert.ToSingle(interpolate.Invoke(timeline, [keys, path, 5, false])),
+            Near(expected, Convert.ToSingle(interpolate.Invoke(timeline, [keys, path, 5])),
                 "Numeric interpolation and stepped toggles");
         }
         set.Invoke(timeline, [camera, "camera.orbit_rotation_xy", 20f]);

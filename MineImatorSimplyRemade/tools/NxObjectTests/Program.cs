@@ -644,6 +644,8 @@ internal static partial class Program
             ("Cloth viewport click, box, additive and subtractive vertex selection", ClothSelectionInteraction),
             ("Property reset Shift-right-click, defaults, groups, selection, auto-key and persistence", PropertyResetInteraction),
             ("Properties tabs stay fixed, switch while scrolled and retain independent scroll positions", PropertiesTabScrolling),
+            ("Properties panel sections follow task groups and retain camera controls", PropertiesPanelLayout),
+            ("Background settings are grouped and preserve sky and image controls", BackgroundPropertiesLayout),
             ("All 15 bundled particle presets, assets and finite simulation", ParticleBundled),
             ("Particle spawn menu selection, search and all provided presets", ParticleSpawnMenu),
             ("Particle per-minute rate, multi-type burst, restart and amount limit", ParticleEmission),
@@ -680,6 +682,10 @@ internal static partial class Program
                 test.Name.StartsWith("Modifier ImGui context menu", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--properties-tabs", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Properties tabs", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--properties-layout", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Properties panel sections", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--background-layout", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Background settings are grouped", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--watermark", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Watermark", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--watermark-graphics", StringComparer.Ordinal))

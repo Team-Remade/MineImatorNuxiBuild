@@ -193,7 +193,7 @@ internal static partial class Program
             };
             foreach (int frame in new[] { 0, 5, 10, 5, 0 })
             {
-                float value = Convert.ToSingle(interpolate.Invoke(timeline, [keys, path, frame, false]));
+                float value = Convert.ToSingle(interpolate.Invoke(timeline, [keys, path, frame]));
                 set.Invoke(timeline, [camera, path, value]);
                 Near(end * frame / 10f, Convert.ToSingle(get.Invoke(timeline, [camera, path])),
                     "Interpolation and reverse seeking " + path);
