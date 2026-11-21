@@ -56,6 +56,11 @@ uniform float uShadowBlurStrength;
 uniform bool  uIsUnlit;
 uniform bool  uEndPortalSurface;
 uniform float uEffectTime;
+uniform sampler2D uGlintTexture;
+uniform bool uUseEnchantmentGlint;
+uniform float uGlintScale;
+uniform float uGlintSpeed;
+uniform float uGlintStrength;
 #include "end_portal.glsl"
 uniform vec3 uCameraPosition, uFogColor, uHeightFogColor;
 uniform bool uFogEnabled, uHeightFogEnabled;
@@ -812,6 +817,14 @@ void main() {
         result = mix(uTextOutlineColor.rgb, result, textFillWeight);
     GiAlbedo = vec4(linearAlbedo, giVisibility * textFillWeight * alpha);
     GiRadiance = vec4(bounceSource * textFillWeight * alpha, alpha);
+    if (uUseEnchantmentGlint && alpha > 0.0 && !uEndPortalSurface) {
+        vec2 glintUv = fract(uv * max(uGlintScale, 0.001) + vec2(uEffectTime * uGlintSpeed * 0.05));
+        vec4 glintSample = texture(uGlintTexture, glintUv);
+        float glintWeight = clamp(max(max(glintSample.r, glintSample.g), glintSample.b) * glintSample.a
+                                  * max(uGlintStrength, 0.0) * alpha, 0.0, 1.0);
+        vec3 glintColor = pbr ? toLinear(glintSample.rgb) : glintSample.rgb;
+        result = mix(result, glintColor, glintWeight);
+    }
     // Leave HDR range intact; downstream scene effects own exposure/tone mapping.
     FragColor   = vec4(pbr ? toDisplay(result) : result, uAlphaClipEnabled ? 1.0 : alpha);
     // Multiply and screen use opacity-weighted source RGB in framebuffer blending.

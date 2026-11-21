@@ -143,12 +143,17 @@ internal static partial class Program
 
         var enabledDefaults = MiDocument("""
             {"timelines":[{"id":"glint","type":"folder","name":"Glint",
-              "glint_mode":1,"glint_scale":1,"glint_tex":"default"}]}
+              "glint_mode":1,"glint_scale":1.5,"glint_speed":0.75,"glint_strength":1.25,
+              "glint_tex":"default"}]}
             """);
         warnings.Clear();
-        new MineImatorLoader().CreateSceneFromMiObject(enabledDefaults, warning: warnings.Add);
-        Check(warnings.Any(w => w.Contains("glint_mode")) && warnings.Any(w => w.Contains("glint_scale")),
-            "Enabled unsupported glint settings remain explicit");
+        var glint = new MineImatorLoader().CreateSceneFromMiObject(enabledDefaults, warning: warnings.Add).Children.Single();
+        Equal(MaterialGlintMode.Item, glint.MaterialSettings.GlintMode, "MI item glint mode imports");
+        Near(1.5f, glint.MaterialSettings.GlintScale, "MI glint scale imports");
+        Near(0.75f, glint.MaterialSettings.GlintSpeed, "MI glint speed imports");
+        Near(1.25f, glint.MaterialSettings.GlintStrength, "MI glint strength imports");
+        Check(string.IsNullOrEmpty(glint.MaterialSettings.GlintTexturePath), "MI default glint texture resolves to the vanilla mode texture");
+        Equal(0, warnings.Count, "Supported glint settings import without warnings");
     }
 
     private static void MiImportBackground(Fixture f)

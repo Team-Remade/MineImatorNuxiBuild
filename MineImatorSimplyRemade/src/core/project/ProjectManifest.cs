@@ -651,6 +651,11 @@ public class ProjectSceneObjectEntry
     public float SubsurfaceHighlightStrength { get; set; } = 0.6f;
     public bool EmissionIndirectOnly { get; set; } = false;
     public bool AutoEmission { get; set; } = true;
+    public MaterialGlintMode GlintMode { get; set; } = MaterialGlintMode.None;
+    public float GlintScale { get; set; } = 1f;
+    public float GlintSpeed { get; set; } = 1f;
+    public float GlintStrength { get; set; } = 1f;
+    public string GlintTexturePath { get; set; } = "";
 
     // Item-specific data
     public string ItemTileKey { get; set; } = "";

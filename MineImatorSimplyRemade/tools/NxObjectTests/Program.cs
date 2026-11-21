@@ -463,6 +463,7 @@ internal static partial class Program
             ("Camera material persistence, duplication, undo and timeline", CameraMaterialPersistence),
             ("Camera material burn color persistence, duplication, undo and timeline", CameraMaterialBurnColorPersistence),
             ("Camera material color controls and multi-selection", CameraMaterialControls),
+            ("Enchantment glint MI resource mapping, persistence, packaging, inheritance and duplication", EnchantmentGlintPersistence),
             ("Material color operations persistence, inheritance, undo and timeline", MaterialColorPersistence),
             ("Shader graph links, persistence and duplication", ShaderGraphPersistence),
             ("Shader graph canvas socket interactions", ShaderGraphControls),
@@ -698,6 +699,10 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Camera material", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--camera-material-graphics", StringComparer.Ordinal))
             tests = [("Camera material GPU blend/mix, alpha, preview and export", CameraMaterialGraphics)];
+        if (args.Contains("--enchantment-glint", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Enchantment glint", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--enchantment-glint-graphics", StringComparer.Ordinal))
+            tests = [("Enchantment glint GPU pixels, animation, alpha and disabled parity", EnchantmentGlintGraphics)];
         if (args.Contains("--material-colors", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Material color operations", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--material-colors-graphics", StringComparer.Ordinal))

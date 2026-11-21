@@ -1165,6 +1165,11 @@ public partial class PropertiesPanel : UiPanel
             SubsurfaceHighlightStrength = source.SubsurfaceHighlightStrength,
             EmissionIndirectOnly = source.EmissionIndirectOnly,
             AutoEmission = source.AutoEmission,
+            GlintMode = source.GlintMode,
+            GlintScale = source.GlintScale,
+            GlintSpeed = source.GlintSpeed,
+            GlintStrength = source.GlintStrength,
+            GlintTexturePath = source.GlintTexturePath,
             ItemTileKey = source.ItemTileKey,
             ItemIs3D = source.ItemIs3D,
             ItemBounce = source.ItemBounce,
@@ -5973,6 +5978,8 @@ public partial class PropertiesPanel : UiPanel
                 obj.PropagateMaterialSettingsToChildren();
             }, includeDescendants: true);
 
+            DrawEnchantmentGlintControls();
+
             bool vis = _currentObject.ObjectVisible;
             if (ImGui.Checkbox(Localization.Label("text.common.visible", "Visible"), ref vis))
             {
@@ -6192,6 +6199,77 @@ public partial class PropertiesPanel : UiPanel
         Edit(ImGui.Checkbox(Localization.Label("text.panel.properties.face_camera", "Face Camera"), ref faceCamera),
             faceCamera, (obj, value) => obj.ItemFaceCamera = value);
         ImGui.PopID();
+    }
+
+    private void DrawEnchantmentGlintControls()
+    {
+        if (_currentObject == null || !_currentObject.Visuals.Any(mesh => !mesh.PickOnly)) return;
+        if (!ImGui.TreeNodeEx(Localization.Label("text.panel.properties.enchantment_glint", "Enchantment Glint"),
+                ImGuiTreeNodeFlags.SpanAvailWidth)) return;
+
+        void Apply(Action<SceneObject> edit)
+        {
+            ApplyToSelectedSubtrees(obj =>
+            {
+                if (!obj.Visuals.Any(mesh => !mesh.PickOnly)) return;
+                obj.SetExplicitMaterialSettings();
+                edit(obj);
+                obj.PropagateMaterialSettingsToChildren();
+            });
+            ProjectManager.Instance.SetDirty(true);
+        }
+
+        int mode = (int)(_currentObject.MaterialSettings?.GlintMode ?? MaterialGlintMode.None);
+        string[] modes =
+        [
+            Localization.Label("text.panel.properties.glint_none", "None"),
+            Localization.Label("text.panel.properties.glint_item", "Item"),
+            Localization.Label("text.panel.properties.glint_armor", "Armor")
+        ];
+        if (ImGui.Combo(Localization.Label("text.panel.properties.glint_mode", "Mode"), ref mode, modes, modes.Length))
+            Apply(obj => obj.MaterialSettings.GlintMode = (MaterialGlintMode)Math.Clamp(mode, 0, 2));
+
+        if ((MaterialGlintMode)Math.Clamp(mode, 0, 2) != MaterialGlintMode.None)
+        {
+            string currentPath = _currentObject.MaterialSettings?.GlintTexturePath ?? "";
+            string currentLabel = string.IsNullOrWhiteSpace(currentPath)
+                ? Localization.Label("text.panel.properties.glint_default_texture", "Default Minecraft texture")
+                : Path.GetFileName(ProjectManager.Instance.ResolveAssetPath(currentPath));
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.BeginCombo(Localization.Label("text.panel.properties.glint_texture", "Texture"), currentLabel))
+            {
+                string? selectedPath = null;
+                if (ImGui.Selectable(Localization.Label("text.panel.properties.glint_default_texture", "Default Minecraft texture"),
+                        string.IsNullOrWhiteSpace(currentPath)))
+                    selectedPath = "";
+                foreach (var (_, path) in _loadedTexturePathCache.OrderBy(pair => pair.Value, StringComparer.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(path) || TextureSheetPicker.IsGeneratedTile(path)) continue;
+                    string label = Path.GetFileName(path);
+                    if (ImGui.Selectable(label, string.Equals(ProjectManager.Instance.ResolveAssetPath(currentPath),
+                            ProjectManager.Instance.ResolveAssetPath(path), StringComparison.OrdinalIgnoreCase)))
+                        selectedPath = ProjectManager.Instance.ToAssetReference(path);
+                }
+                if (selectedPath != null)
+                    Apply(obj => obj.MaterialSettings.GlintTexturePath = selectedPath);
+                ImGui.EndCombo();
+            }
+
+            float scale = _currentObject.MaterialSettings?.GlintScale ?? 1f;
+            if (ImGui.DragFloat(Localization.Label("text.panel.properties.glint_scale", "Scale"), ref scale,
+                    0.01f, 0.001f, 1000f, "%.2f"))
+                Apply(obj => obj.MaterialSettings.GlintScale = scale);
+            float speed = _currentObject.MaterialSettings?.GlintSpeed ?? 1f;
+            if (ImGui.DragFloat(Localization.Label("text.panel.properties.glint_speed", "Speed"), ref speed,
+                    0.01f, -float.MaxValue, float.MaxValue, "%.2f"))
+                Apply(obj => obj.MaterialSettings.GlintSpeed = speed);
+            float strength = _currentObject.MaterialSettings?.GlintStrength ?? 1f;
+            if (ImGui.DragFloat(Localization.Label("text.panel.properties.glint_strength", "Strength"), ref strength,
+                    0.01f, 0f, float.MaxValue, "%.2f"))
+                Apply(obj => obj.MaterialSettings.GlintStrength = strength);
+        }
+
+        ImGui.TreePop();
     }
 
     private void DrawCameraBladeControls(CameraSceneObject camera)

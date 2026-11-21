@@ -134,6 +134,7 @@ public sealed class ProjectManager
                 node.TextureOverridePath = Remap(node.TextureOverridePath);
                 node.NormalTexturePath = Remap(node.NormalTexturePath);
                 node.EmissionTexturePath = Remap(node.EmissionTexturePath);
+                node.GlintTexturePath = Remap(node.GlintTexturePath);
                 foreach (var effect in node.CameraEffects)
                     effect.LensDirt.TexturePath = Remap(effect.LensDirt.TexturePath);
                 node.SurfaceTexturePath = Remap(node.SurfaceTexturePath);

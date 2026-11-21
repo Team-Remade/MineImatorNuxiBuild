@@ -19,6 +19,13 @@ public enum MaterialAlphaMode
     Clip
 }
 
+public enum MaterialGlintMode
+{
+    None,
+    Item,
+    Armor
+}
+
 public enum MaterialBlendMode
 {
     Normal = 0,
@@ -69,6 +76,11 @@ public class MaterialSettings
     public float SubsurfaceHighlightStrength = 0.6f;
     public bool EmissionIndirectOnly = false;
     public bool AutoEmission = true;
+    public MaterialGlintMode GlintMode = MaterialGlintMode.None;
+    public float GlintScale = 1f;
+    public float GlintSpeed = 1f;
+    public float GlintStrength = 1f;
+    public string GlintTexturePath = "";
 
     /// <summary>
     /// When true, both faces of meshes are rendered (back-face culling disabled).
@@ -124,6 +136,11 @@ public class MaterialSettings
             SubsurfaceHighlightStrength = this.SubsurfaceHighlightStrength,
             EmissionIndirectOnly = this.EmissionIndirectOnly,
             AutoEmission = this.AutoEmission,
+            GlintMode = this.GlintMode,
+            GlintScale = this.GlintScale,
+            GlintSpeed = this.GlintSpeed,
+            GlintStrength = this.GlintStrength,
+            GlintTexturePath = this.GlintTexturePath,
             DoubleSided = this.DoubleSided,
             TextureOffset = this.TextureOffset,
             TextureRepeat = this.TextureRepeat,
@@ -875,6 +892,14 @@ public class SceneObject
                 resolved.Roughness = Math.Clamp(resolved.Roughness * parent.Roughness, 0f, 1f);
                 resolved.EmissionEnergy += parent.EmissionEnabled ? parent.EmissionEnergy : 0f;
                 resolved.EmissionEnabled |= parent.EmissionEnabled;
+                if (parent.GlintMode != MaterialGlintMode.None)
+                {
+                    resolved.GlintMode = parent.GlintMode;
+                    resolved.GlintScale = parent.GlintScale;
+                    resolved.GlintSpeed = parent.GlintSpeed;
+                    resolved.GlintStrength = parent.GlintStrength;
+                    resolved.GlintTexturePath = parent.GlintTexturePath;
+                }
             }
             if (subsurface)
             {
@@ -1043,8 +1068,28 @@ public class SceneObject
             mesh.CustomShader = settings?.CustomShader;
         if (settings == null) return;
 
+        uint glintTexture = 0;
+        if (settings.GlintMode != MaterialGlintMode.None)
+        {
+            string path = settings.GlintTexturePath;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                string fileName = settings.GlintMode == MaterialGlintMode.Armor
+                    ? "enchanted_glint_armor.png"
+                    : "enchanted_glint_item.png";
+                path = Path.Combine(MinecraftDataLoader.GetVersionRoot(), "textures", "misc", fileName);
+            }
+            path = ProjectManager.Instance?.ResolveAssetPath(path) ?? path;
+            glintTexture = MineImatorLoader.Instance.LoadTextureFromFile(path);
+        }
+
         foreach (var mesh in Visuals)
         {
+            mesh.GlintMode = settings.GlintMode;
+            mesh.GlintTexture = glintTexture;
+            mesh.GlintScale = settings.GlintScale;
+            mesh.GlintSpeed = settings.GlintSpeed;
+            mesh.GlintStrength = settings.GlintStrength;
             mesh.Albedo = new vec3(
                 settings.AlbedoColor.x,
                 settings.AlbedoColor.y,
@@ -1115,6 +1160,11 @@ public class SceneObject
                 material.NormalStrength = settings.NormalStrength;
                 material.OcclusionStrength = settings.OcclusionStrength;
                 material.HeightScale = settings.HeightScale;
+                material.GlintMode = settings.GlintMode;
+                material.GlintTexture = glintTexture;
+                material.GlintScale = settings.GlintScale;
+                material.GlintSpeed = settings.GlintSpeed;
+                material.GlintStrength = settings.GlintStrength;
             }
         }
     }

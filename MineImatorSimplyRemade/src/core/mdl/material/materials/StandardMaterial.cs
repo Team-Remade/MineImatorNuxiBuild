@@ -92,6 +92,12 @@ public class StandardMaterial : Material
     /// </summary>
     public bool EmissionIndirectOnly = false;
 
+    public MaterialGlintMode GlintMode = MaterialGlintMode.None;
+    public uint GlintTexture;
+    public float GlintScale = 1f;
+    public float GlintSpeed = 1f;
+    public float GlintStrength = 1f;
+
     /// <summary>
     /// Per-mesh auto-emission level (0..15) inferred from Minecraft block data.
     /// </summary>

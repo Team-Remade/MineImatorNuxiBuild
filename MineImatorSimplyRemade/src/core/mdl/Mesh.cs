@@ -628,6 +628,36 @@ public class Mesh : IDisposable
         set => DefaultMaterial.EmissionTexture = value;
     }
 
+    public MaterialGlintMode GlintMode
+    {
+        get => DefaultMaterial.GlintMode;
+        set => DefaultMaterial.GlintMode = value;
+    }
+
+    public uint GlintTexture
+    {
+        get => DefaultMaterial.GlintTexture;
+        set => DefaultMaterial.GlintTexture = value;
+    }
+
+    public float GlintScale
+    {
+        get => DefaultMaterial.GlintScale;
+        set => DefaultMaterial.GlintScale = Math.Clamp(value, 0.001f, 1000f);
+    }
+
+    public float GlintSpeed
+    {
+        get => DefaultMaterial.GlintSpeed;
+        set => DefaultMaterial.GlintSpeed = float.IsFinite(value) ? value : 1f;
+    }
+
+    public float GlintStrength
+    {
+        get => DefaultMaterial.GlintStrength;
+        set => DefaultMaterial.GlintStrength = Math.Max(0f, value);
+    }
+
     /// <summary>Optional independent alpha mask (used by textured flat text).</summary>
     public uint AlphaMaskTextureId { get; set; }
     public bool IsTextAlphaMask { get; set; }
@@ -988,6 +1018,11 @@ public class Mesh : IDisposable
         dstMat.SubsurfaceHighlightStrength = srcMat.SubsurfaceHighlightStrength;
         dstMat.EmissionIndirectOnly      = srcMat.EmissionIndirectOnly;
         dstMat.AutoEmissionLevel         = srcMat.AutoEmissionLevel;
+        dstMat.GlintMode                 = srcMat.GlintMode;
+        dstMat.GlintTexture              = srcMat.GlintTexture;
+        dstMat.GlintScale                = srcMat.GlintScale;
+        dstMat.GlintSpeed                = srcMat.GlintSpeed;
+        dstMat.GlintStrength             = srcMat.GlintStrength;
         dstMat.DoubleSided               = srcMat.DoubleSided;
         dstMat.TextureOffset              = srcMat.TextureOffset;
         dstMat.TextureRepeat              = srcMat.TextureRepeat;
@@ -1538,6 +1573,12 @@ public class Mesh : IDisposable
         SetUniformBool("uEmissionEnabled", EmissionEnabled);
         SetUniformBool("uEndPortalSurface", EndPortalSurface);
         SetUniformFloat("uEffectTime", EffectTime);
+        bool useGlintTexture = GlintMode != MaterialGlintMode.None && GlintTexture != 0 &&
+                               TexCoords.Count == Vertices.Count;
+        SetUniformBool("uUseEnchantmentGlint", useGlintTexture);
+        SetUniformFloat("uGlintScale", GlintScale);
+        SetUniformFloat("uGlintSpeed", GlintSpeed);
+        SetUniformFloat("uGlintStrength", GlintStrength);
         SetUniformVec3("uEmissionColor", EmissionColor);
         SetUniformFloat("uEmissionEnergy", EmissionEnergy);
         SetUniformBool("uEmissionIndirectOnly", EmissionIndirectOnly);
@@ -1643,12 +1684,18 @@ public class Mesh : IDisposable
         _gl.BindSampler(13, 0);
         if (useSurfaceTexture)
             BindSurfaceTexture(SurfaceTexture, GLEnum.Texture13);
+        if (useGlintTexture)
+        {
+            BindSurfaceTexture(GlintTexture, GLEnum.Texture14, blur: true);
+            SetUniformInt("uGlintTexture", 14);
+        }
         _gl.ActiveTexture(GLEnum.Texture0);
 
-        void BindSurfaceTexture(uint texture, GLEnum unit)
+        void BindSurfaceTexture(uint texture, GLEnum unit, bool? blur = null)
         {
             _gl.ActiveTexture(unit);
             _gl.BindTexture(GLEnum.Texture2D, texture);
+            bool useBlur = blur ?? BlurTexture;
             if (TextureMipmaps)
             {
                 // The batch owns this set and clears it before the next pass, so
@@ -1658,20 +1705,20 @@ public class Mesh : IDisposable
                 _gl.TexParameter(
                     GLEnum.Texture2D,
                     GLEnum.TextureMinFilter,
-                    (int)(BlurTexture ? TextureMinFilter.LinearMipmapLinear : TextureMinFilter.NearestMipmapNearest));
+                    (int)(useBlur ? TextureMinFilter.LinearMipmapLinear : TextureMinFilter.NearestMipmapNearest));
             }
             else
             {
                 _gl.TexParameter(
                     GLEnum.Texture2D,
                     GLEnum.TextureMinFilter,
-                    (int)(BlurTexture ? TextureMinFilter.Linear : TextureMinFilter.Nearest));
+                    (int)(useBlur ? TextureMinFilter.Linear : TextureMinFilter.Nearest));
             }
 
             _gl.TexParameter(
                 GLEnum.Texture2D,
                 GLEnum.TextureMagFilter,
-                (int)(BlurTexture ? TextureMagFilter.Linear : TextureMagFilter.Nearest));
+                (int)(useBlur ? TextureMagFilter.Linear : TextureMagFilter.Nearest));
         }
         if (useAlphaMask)
         {
@@ -1748,6 +1795,11 @@ public class Mesh : IDisposable
         if (useEmissionTexture)
         {
             _gl.ActiveTexture(GLEnum.Texture11);
+            _gl.BindTexture(GLEnum.Texture2D, 0);
+        }
+        if (useGlintTexture)
+        {
+            _gl.ActiveTexture(GLEnum.Texture14);
             _gl.BindTexture(GLEnum.Texture2D, 0);
         }
         _gl.ActiveTexture(GLEnum.Texture13);

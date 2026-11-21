@@ -90,6 +90,24 @@ public static partial class MiObjectFeatureMapper
             else Report($"MIObject '{source.Name}': blend mode '{mode}' has no native mapping.", warning);
         }
 
+        string[] glintSettings = ["glint_mode", "glint_scale", "glint_speed", "glint_strength", "glint_tex"];
+        mapped.UnionWith(glintSettings);
+        bool HasGlintSetting(string name) => source.ExtraValues.ContainsKey(name) ||
+            (template?.Item is { } item && item.ExtraValues.ContainsKey(name));
+        JsonElement GlintValue(string name) => template?.Item is { } item && item.ExtraValues.TryGetValue(name, out var itemValue)
+            ? itemValue : PropertyValue(source.ExtraValues, name);
+        if (glintSettings.Any(HasGlintSetting))
+        {
+            obj.SetExplicitMaterialSettings();
+            var glint = obj.MaterialSettings;
+            glint.GlintMode = (MaterialGlintMode)Math.Clamp((int)Number(GlintValue("glint_mode"), 0), 0, 2);
+            glint.GlintScale = Math.Clamp(Number(GlintValue("glint_scale"), 1f), 0.001f, 1000f);
+            glint.GlintSpeed = Number(GlintValue("glint_speed"), 1f);
+            glint.GlintStrength = Math.Max(0f, Number(GlintValue("glint_strength"), 1f));
+            string texture = Text(GlintValue("glint_tex"), "default");
+            glint.GlintTexturePath = ResourcePath(texture, "material.glint_texture");
+        }
+
         foreach (var (channel, target, fallback) in new[]
         {
             ("RGB_ADD", "add_rgb", "#000000"), ("RGB_SUB", "subtract_rgb", "#000000"),
@@ -207,6 +225,7 @@ public static partial class MiObjectFeatureMapper
                 Report($"MIObject '{source.Name}': channel '{channel}' has no native mapping.", warning);
         foreach (var property in source.ExtraValues)
             if (property.Key is not ("text" or "lock" or "wind" or "wind_terrain" or
+                "glint_mode" or "glint_scale" or "glint_speed" or "glint_strength" or "glint_tex" or
                 "parent_tree_index" or "tree_extend" or "color_tag" or "parts" or "blend_mode") &&
                 ActiveSetting(source, property.Key, property.Value))
                 Report($"MIObject '{source.Name}': setting '{property.Key}' has no native mapping.", warning);
@@ -236,7 +255,8 @@ public static partial class MiObjectFeatureMapper
                 ? ["tex_normal", "tex_material"]
                 : ["name", "state", "tex", "tex_normal", "tex_material", "repeat_enable", "repeat"], "block");
             if (template.Item is { } templateItem)
-                foreach (var property in templateItem.ExtraValues.Where(p => p.Key is not ("name" or "tex_normal" or "tex_material") && Active(p.Value)))
+                foreach (var property in templateItem.ExtraValues.Where(p => p.Key is not ("name" or "tex_normal" or "tex_material" or
+                             "glint_mode" or "glint_scale" or "glint_speed" or "glint_strength" or "glint_tex") && Active(p.Value)))
                     Report($"MIObject '{source.Name}': item setting '{property.Key}' has no native mapping.", warning);
         }
         obj.RefreshInheritedMaterials();

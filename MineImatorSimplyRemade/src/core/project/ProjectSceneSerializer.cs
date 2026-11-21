@@ -477,6 +477,11 @@ public static class ProjectSceneSerializer
             entry.SubsurfaceHighlightStrength = obj.MaterialSettings.SubsurfaceHighlightStrength;
             entry.EmissionIndirectOnly = obj.MaterialSettings.EmissionIndirectOnly;
             entry.AutoEmission = obj.MaterialSettings.AutoEmission;
+            entry.GlintMode = obj.MaterialSettings.GlintMode;
+            entry.GlintScale = obj.MaterialSettings.GlintScale;
+            entry.GlintSpeed = obj.MaterialSettings.GlintSpeed;
+            entry.GlintStrength = obj.MaterialSettings.GlintStrength;
+            entry.GlintTexturePath = pm.ToAssetReference(obj.MaterialSettings.GlintTexturePath);
         }
 
         if (obj.SpawnCategory == "Items")
@@ -1241,6 +1246,12 @@ public static class ProjectSceneSerializer
             material.SubsurfaceHighlightStrength = Math.Max(0f, entry.SubsurfaceHighlightStrength);
             material.EmissionIndirectOnly = entry.EmissionIndirectOnly;
             material.AutoEmission = entry.AutoEmission;
+            material.GlintMode = Enum.IsDefined(typeof(MaterialGlintMode), entry.GlintMode)
+                ? entry.GlintMode : MaterialGlintMode.None;
+            material.GlintScale = float.IsFinite(entry.GlintScale) ? Math.Clamp(entry.GlintScale, 0.001f, 1000f) : 1f;
+            material.GlintSpeed = float.IsFinite(entry.GlintSpeed) ? entry.GlintSpeed : 1f;
+            material.GlintStrength = float.IsFinite(entry.GlintStrength) ? Math.Max(0f, entry.GlintStrength) : 1f;
+            material.GlintTexturePath = ProjectManager.Instance.ResolveAssetPath(entry.GlintTexturePath ?? "");
             obj.MaterialSettings = material;
             obj.SetExplicitMaterialSettings();
             obj.PropagateMaterialSettingsToChildren();

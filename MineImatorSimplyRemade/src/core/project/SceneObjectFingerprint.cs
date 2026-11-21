@@ -396,6 +396,11 @@ internal static class SceneObjectFingerprint
             hash.Add(material.SubsurfaceHighlightStrength);
             hash.Add(material.EmissionIndirectOnly);
             hash.Add(material.AutoEmission);
+            hash.Add((int)material.GlintMode);
+            hash.Add(material.GlintScale);
+            hash.Add(material.GlintSpeed);
+            hash.Add(material.GlintStrength);
+            hash.Add(material.GlintTexturePath);
         }
         else
             hash.Add(false);
