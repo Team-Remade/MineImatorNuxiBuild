@@ -21,7 +21,7 @@ public partial class Viewport
             foreach (var control in HeatDistortSettings.Controls)
                 if (!float.IsFinite(settings.GetValue(control.Key)))
                     throw new InvalidDataException($"Heat distort {control.Key} must be finite.");
-            if (settings.Strength <= 0f)
+            if (settings.Strength == 0f)
                 continue;
             if (_heatDistortShader == null)
             {
@@ -56,9 +56,9 @@ public partial class Viewport
             Gl.Uniform1(_heatDistortShader.GetUniformLocation("uScene"), 0);
             Gl.Uniform2(_heatDistortShader.GetUniformLocation("uResolution"), (float)width, (float)height);
             Gl.Uniform1(_heatDistortShader.GetUniformLocation("uTime"), GetTimelineEffectTimeSeconds());
-            Gl.Uniform1(_heatDistortShader.GetUniformLocation("uStrength"), Math.Clamp(settings.Strength, 0f, 100f) / 100f);
-            Gl.Uniform1(_heatDistortShader.GetUniformLocation("uSpeed"), Math.Clamp(settings.Speed, 0f, 1000f) / 100f);
-            Gl.Uniform1(_heatDistortShader.GetUniformLocation("uScale"), Math.Clamp(settings.Scale, 1f, 1000f) / 100f);
+            Gl.Uniform1(_heatDistortShader.GetUniformLocation("uStrength"), settings.Strength / 100f);
+            Gl.Uniform1(_heatDistortShader.GetUniformLocation("uSpeed"), settings.Speed / 100f);
+            Gl.Uniform1(_heatDistortShader.GetUniformLocation("uScale"), settings.Scale / 100f);
             Gl.BindVertexArray(_edgeVao);
             Gl.DrawArrays(GLEnum.Triangles, 0, 3);
             Gl.BindVertexArray(0);

@@ -398,6 +398,7 @@ internal static partial class Program
         }
         (string Name, Action<Fixture> Run)[] tests =
         [
+            ("Creative range signed scale, expanded effect values and persistence", CreativeRangeProperties),
             ("Meshcache current Zstandard geometry, byte planes, materials and validation", MeshCacheCurrent),
             ("Meshcache legacy gzip layouts, coordinates, colors and rectangular sheets", MeshCacheLegacy),
             ("Meshcache sidecar freshness, project copying and portable archives", MeshCachePersistence),
@@ -749,6 +750,10 @@ internal static partial class Program
             tests = [("Chromatic aberration GPU channel offsets, distortion, blur, stacking, alpha and preview/export parity", ChromaticAberrationGraphics)];
         if (args.Contains("--wind", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Wind", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--creative-ranges", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Creative range", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--creative-ranges-graphics", StringComparer.Ordinal))
+            tests = [("Creative effects GPU negative grain, expanded distortion and deterministic pixels", CreativeRangeGraphics)];
         if (args.Contains("--biomes", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Biome", StringComparison.Ordinal) ||
                 test.Name.StartsWith("Opaque leaf", StringComparison.Ordinal) ||

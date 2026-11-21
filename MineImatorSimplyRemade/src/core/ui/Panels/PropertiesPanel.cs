@@ -211,7 +211,8 @@ public partial class PropertiesPanel : UiPanel
             if (buffer != previousBuffer)
             {
                 buffer = SanitizeNumericText(buffer, allowDecimal: true, allowExponent: true);
-                if (float.TryParse(buffer, NumberStyles.Float | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedValue))
+                if (float.TryParse(buffer, NumberStyles.Float | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedValue) &&
+                    float.IsFinite(parsedValue))
                 {
                     value = SanitizeFloatValue(parsedValue, min, max);
                     return true;
@@ -3696,14 +3697,13 @@ public partial class PropertiesPanel : UiPanel
             ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
             
             // Scale X
-            if (InputFloatEditor("X##scaleX", ref scaleX, 0.01f, 0.001f, float.MaxValue))
+            if (InputFloatEditor("X##scaleX", ref scaleX, 0.01f, float.MinValue, float.MaxValue))
             {
-                scaleX = MathF.Max(scaleX, 0.001f);
                 if (_linkScale)
                 {
                     float delta = scaleX - curScale.x;
-                    scaleY = MathF.Max(curScale.y + delta, 0.001f);
-                    scaleZ = MathF.Max(curScale.z + delta, 0.001f);
+                    scaleY = curScale.y + delta;
+                    scaleZ = curScale.z + delta;
                 }
                 ApplyScale(new vec3(scaleX, scaleY, scaleZ));
             }
@@ -3715,14 +3715,13 @@ public partial class PropertiesPanel : UiPanel
             }
             
             // Scale Y
-            if (InputFloatEditor("Y##scaleY", ref scaleY, 0.01f, 0.001f, float.MaxValue))
+            if (InputFloatEditor("Y##scaleY", ref scaleY, 0.01f, float.MinValue, float.MaxValue))
             {
-                scaleY = MathF.Max(scaleY, 0.001f);
                 if (_linkScale)
                 {
                     float delta = scaleY - curScale.y;
-                    scaleX = MathF.Max(curScale.x + delta, 0.001f);
-                    scaleZ = MathF.Max(curScale.z + delta, 0.001f);
+                    scaleX = curScale.x + delta;
+                    scaleZ = curScale.z + delta;
                 }
                 ApplyScale(new vec3(scaleX, scaleY, scaleZ));
             }
@@ -3734,14 +3733,13 @@ public partial class PropertiesPanel : UiPanel
             }
             
             // Scale Z
-            if (InputFloatEditor("Z##scaleZ", ref scaleZ, 0.01f, 0.001f, float.MaxValue))
+            if (InputFloatEditor("Z##scaleZ", ref scaleZ, 0.01f, float.MinValue, float.MaxValue))
             {
-                scaleZ = MathF.Max(scaleZ, 0.001f);
                 if (_linkScale)
                 {
                     float delta = scaleZ - curScale.z;
-                    scaleX = MathF.Max(curScale.x + delta, 0.001f);
-                    scaleY = MathF.Max(curScale.y + delta, 0.001f);
+                    scaleX = curScale.x + delta;
+                    scaleY = curScale.y + delta;
                 }
                 ApplyScale(new vec3(scaleX, scaleY, scaleZ));
             }
@@ -5638,7 +5636,7 @@ public partial class PropertiesPanel : UiPanel
                                 float strength = effect.FilmGrain.Strength;
                                 if (ImGui.SliderFloat(Localization.T("text.common.strength") + $"###Strength##filmGrainStrength{i}", ref strength, 0f, 1f, "%.3f"))
                                 {
-                                    effect.FilmGrain.Strength = strength;
+                                    effect.FilmGrain.SetValue("strength", strength);
                                     Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.strength");
                                     changed = true;
                                 }
@@ -5651,7 +5649,7 @@ public partial class PropertiesPanel : UiPanel
                                 float saturation = effect.FilmGrain.Saturation;
                                 if (ImGui.SliderFloat(Localization.T("text.common.saturation") + $"###Saturation##filmGrainSaturation{i}", ref saturation, 0f, 1f, "%.3f"))
                                 {
-                                    effect.FilmGrain.Saturation = saturation;
+                                    effect.FilmGrain.SetValue("saturation", saturation);
                                     Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.saturation");
                                     changed = true;
                                 }
@@ -5664,7 +5662,7 @@ public partial class PropertiesPanel : UiPanel
                                 float size = effect.FilmGrain.Size;
                                 if (ImGui.SliderFloat(Localization.T("text.common.size") + $"###Size##filmGrainSize{i}", ref size, 0.25f, 8f, "%.2f"))
                                 {
-                                    effect.FilmGrain.Size = size;
+                                    effect.FilmGrain.SetValue("size", size);
                                     Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.size");
                                     changed = true;
                                 }
@@ -5686,7 +5684,7 @@ public partial class PropertiesPanel : UiPanel
                                     if (control.Key is not ("radius" or "intensity" or "threshold" or "anamorphic_ratio"))
                                         continue;
                                     float value = effect.Bloom.GetValue(control.Key);
-                                    if (ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value, control.Min, control.Max, "%.1f%%", ImGuiSliderFlags.AlwaysClamp))
+                                    if (ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value, control.Min, control.Max, "%.1f%%"))
                                     {
                                         effect.Bloom.SetValue(control.Key, value);
                                         Timeline?.RecordAutoKeyframe(cameraObject, $"{basePath}.{control.Key}");
@@ -6533,10 +6531,7 @@ public partial class PropertiesPanel : UiPanel
         ApplyToSelectedObjects(obj =>
         {
             vec3 cur = GetEditableScale(obj);
-            vec3 target = new vec3(
-                MathF.Max(cur.x + delta.x, 0.001f),
-                MathF.Max(cur.y + delta.y, 0.001f),
-                MathF.Max(cur.z + delta.z, 0.001f));
+            vec3 target = cur + delta;
             SetEditableScale(obj, target);
 
             Timeline?.RecordAutoKeyframe(obj, "scale.x");
@@ -7078,7 +7073,7 @@ public partial class PropertiesPanel : UiPanel
         {
             float value = settings.GetValue(control.Key);
             if (ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value,
-                    control.Min, control.Max, "%.1f%%", ImGuiSliderFlags.AlwaysClamp))
+                    control.Min, control.Max, "%.1f%%"))
             {
                 settings.SetValue(control.Key, value);
                 Timeline?.RecordAutoKeyframe(camera, $"{basePath}.{control.Key}");
@@ -7106,7 +7101,7 @@ public partial class PropertiesPanel : UiPanel
             }
             else
                 changed = ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value,
-                    control.Min, control.Max, "%.1f%%", ImGuiSliderFlags.AlwaysClamp);
+                    control.Min, control.Max, "%.1f%%");
             if (changed)
             {
                 settings.SetValue(control.Key, value);
@@ -7144,7 +7139,7 @@ public partial class PropertiesPanel : UiPanel
             }
             else
                 changed = ImGui.SliderFloat(Localization.DisplayLabel(control.Label), ref value,
-                    control.Min, control.Max, "%.1f%%", ImGuiSliderFlags.AlwaysClamp);
+                    control.Min, control.Max, "%.1f%%");
             if (channelColor.HasValue)
                 ImGui.PopStyleColor(5);
             if (changed)
@@ -8005,10 +8000,15 @@ public partial class PropertiesPanel : UiPanel
                 else if (path == "path_follow.offset" || path.StartsWith("modifier.", StringComparison.Ordinal) && (path.EndsWith(".distance", StringComparison.Ordinal) || path.EndsWith(".radial.radius", StringComparison.Ordinal)) || path.StartsWith("position.", StringComparison.Ordinal) || path.StartsWith("bone.end.", StringComparison.Ordinal))
                     stored = Convert.ToSingle(value, CultureInfo.InvariantCulture) / 16f;
                 else if (path.StartsWith("scale.", StringComparison.Ordinal))
-                    stored = MathF.Max(0.001f, Convert.ToSingle(value, CultureInfo.InvariantCulture));
+                {
+                    float scale = Convert.ToSingle(value, CultureInfo.InvariantCulture);
+                    if (!float.IsFinite(scale)) return;
+                    stored = scale;
+                }
                 else if (value is not string)
                 {
                     float number = Convert.ToSingle(value, CultureInfo.InvariantCulture);
+                    if (!float.IsFinite(number)) return;
                     stored = path switch
                     {
                         "light.energy" => Math.Clamp(number, 0f, 100f),
@@ -8032,7 +8032,12 @@ public partial class PropertiesPanel : UiPanel
                         else if (parts[3] == "bloom")
                         {
                             var control = BloomSettings.Controls.First(c => c.Key == string.Join('.', parts.Skip(4)));
-                            stored = Math.Clamp(number, control.Min, control.Max);
+                            stored = control.Key switch
+                            {
+                                "radius" or "intensity" or "threshold" => number,
+                                "anamorphic_ratio" => MathF.Max(MathF.Abs(number), 0.001f),
+                                _ => Math.Clamp(number, control.Min, control.Max)
+                            };
                         }
                         else if (parts[3] == "lens_dirt")
                         {
@@ -8047,12 +8052,12 @@ public partial class PropertiesPanel : UiPanel
                         else if (parts[3] == "chromatic_aberration")
                         {
                             var control = ChromaticAberrationSettings.Controls.First(c => c.Key == parts[4]);
-                            stored = Math.Clamp(number, control.Min, control.Max);
+                            stored = control.Key == "distort_rgb" ? Math.Clamp(number, control.Min, control.Max) : number;
                         }
                         else if (parts[3] == "distort")
                         {
                             var control = DistortSettings.Controls.First(c => c.Key == parts[4]);
-                            stored = Math.Clamp(number, control.Min, control.Max);
+                            stored = control.Key == "repeat_image" ? Math.Clamp(number, control.Min, control.Max) : number;
                         }
                         else if (parts[3] == "pixelate")
                         {
@@ -8061,8 +8066,8 @@ public partial class PropertiesPanel : UiPanel
                         }
                         else if (parts[3] == "heat_distort")
                         {
-                            var control = HeatDistortSettings.Controls.First(c => c.Key == parts[4]);
-                            stored = Math.Clamp(number, control.Min, control.Max);
+                            _ = HeatDistortSettings.Controls.First(c => c.Key == parts[4]);
+                            stored = number;
                         }
                         else if (parts[3] == "cinematic_bars")
                         {
@@ -8075,7 +8080,7 @@ public partial class PropertiesPanel : UiPanel
                             stored = Math.Clamp(number, control.Min, control.Max);
                         }
                         else if (parts[3] == "film_grain")
-                            stored = parts[4] == "size" ? Math.Clamp(number, 0.25f, 8f) : Math.Clamp(number, 0f, 1f);
+                            stored = number;
                         else if (parts[3] == "shake")
                             stored = parts[4] switch
                             {

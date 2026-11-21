@@ -27,7 +27,7 @@ vec4 sampleScene(vec2 uv) {
 }
 
 float sampleChannel(vec2 uv, int channel, vec2 blurStep) {
-    if (uBlurAmount <= 0.0)
+    if (uBlurAmount == 0.0)
         return sampleScene(uv)[channel];
 
     float color = 0.0;
@@ -49,8 +49,8 @@ void main() {
     vec2 uv = gl_FragCoord.xy / uResolution;
     vec4 scene = texelFetch(uScene, ivec2(gl_FragCoord.xy), 0);
     vec2 direction = uDistortRgb ? uv - 0.5 : vec2(1.0, 0.0);
-    vec3 offsets = clamp(uOffsets, -100.0, 100.0) / 100.0;
-    float radius = clamp(uBlurAmount, 0.0, 100.0) / 100.0 * min(uResolution.x, uResolution.y) * 0.02;
+    vec3 offsets = uOffsets / 100.0;
+    float radius = abs(uBlurAmount) / 100.0 * min(uResolution.x, uResolution.y) * 0.02;
     vec2 blurStep = radius * 0.5 / uResolution;
     vec3 color;
     for (int channel = 0; channel < 3; ++channel)

@@ -4058,7 +4058,7 @@ public partial class Timeline : UiPanel
             if (obj.TextMeshFontPath != font) { obj.TextMeshFontPath = font; TextMeshFactory.Rebuild(obj); }
             return;
         }
-        if (!TryConvertKeyframeValue(rawValue, out float value)) return;
+        if (!TryConvertKeyframeValue(rawValue, out float value) || !float.IsFinite(value)) return;
         if (obj is BoneSceneObject endpointBone && float.IsFinite(value))
         {
             if (path == "bone.end_enabled")
@@ -4590,12 +4590,7 @@ public partial class Timeline : UiPanel
                     break;
                 var effect = camGrain.Effects[effectIndex];
                 if (effect.Type != CameraEffectType.FilmGrain) break;
-                switch (parts[4])
-                {
-                    case "strength": effect.FilmGrain.Strength = value; break;
-                    case "saturation": effect.FilmGrain.Saturation = value; break;
-                    case "size": effect.FilmGrain.Size = value; break;
-                }
+                effect.FilmGrain.SetValue(parts[4], value);
                 break;
             }
         }

@@ -6751,10 +6751,13 @@ public partial class Viewport : UiPanel
 
         foreach (var effect in camera.Effects)
         {
-            if (!effect.Enabled || effect.Type != CameraEffectType.Bloom || effect.Bloom.Intensity <= 0f)
+            if (!effect.Enabled || effect.Type != CameraEffectType.Bloom || effect.Bloom.Intensity == 0f)
                 continue;
             using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.Glow);
             var settings = effect.Bloom;
+            foreach (var control in BloomSettings.Controls)
+                if (!float.IsFinite(settings.GetValue(control.Key)))
+                    throw new InvalidDataException($"Bloom {control.Key} must be finite.");
             bool depthTest = Gl.IsEnabled(GLEnum.DepthTest);
             bool cullFace = Gl.IsEnabled(GLEnum.CullFace);
             bool blend = Gl.IsEnabled(GLEnum.Blend);
@@ -6769,8 +6772,8 @@ public partial class Viewport : UiPanel
             Gl.Uniform1(_bloomShader.GetUniformLocation("uScene"), 0);
             Gl.Uniform1(_bloomShader.GetUniformLocation("uBloom"), 1);
             Gl.Uniform2(_bloomShader.GetUniformLocation("uTexelSize"), 1f / width, 1f / height);
-            Gl.Uniform1(_bloomShader.GetUniformLocation("uThreshold"), Math.Clamp(settings.Threshold, 0f, 100f) / 100f);
-            Gl.Uniform1(_bloomShader.GetUniformLocation("uIntensity"), Math.Clamp(settings.Intensity, 0f, 1000f) / 100f);
+            Gl.Uniform1(_bloomShader.GetUniformLocation("uThreshold"), settings.Threshold / 100f);
+            Gl.Uniform1(_bloomShader.GetUniformLocation("uIntensity"), settings.Intensity / 100f);
             Gl.Uniform3(_bloomShader.GetUniformLocation("uBlendColor"), Math.Clamp(settings.BlendColorR, 0f, 1f),
                 Math.Clamp(settings.BlendColorG, 0f, 1f), Math.Clamp(settings.BlendColorB, 0f, 1f));
             Gl.Uniform1(_bloomShader.GetUniformLocation("uBlendMode"), Math.Clamp((int)settings.BlendMode, 0, 4));
@@ -6782,8 +6785,8 @@ public partial class Viewport : UiPanel
             Gl.DrawArrays(GLEnum.Triangles, 0, 3);
 
             // Radius is relative to the image's shorter side; 100% ratio is circular.
-            float radius = Math.Clamp(settings.Radius, 0f, 100f) * 0.0004f * Math.Min(width, height);
-            float ratio = Math.Clamp(settings.AnamorphicRatio, 1f, 1000f) / 100f;
+            float radius = MathF.Abs(settings.Radius) * 0.0004f * Math.Min(width, height);
+            float ratio = MathF.Max(MathF.Abs(settings.AnamorphicRatio), 0.001f) / 100f;
             float horizontal = radius * MathF.Sqrt(ratio);
             float vertical = radius / MathF.Sqrt(ratio);
             // Grow the kernel gradually to avoid gaps between taps at large radii.
@@ -7119,6 +7122,10 @@ public partial class Viewport : UiPanel
 
         var grains = cameraObject.Effects.Where(effect => effect.Enabled && effect.Type == CameraEffectType.FilmGrain).ToList();
         if (grains.Count == 0) return;
+        foreach (var effect in grains)
+        foreach (var control in new[] { "strength", "saturation", "size" })
+            if (!float.IsFinite(effect.FilmGrain.GetValue(control)))
+                throw new InvalidDataException($"Film grain {control} must be finite.");
 
         Gl.BindFramebuffer(GLEnum.ReadFramebuffer, sceneFbo);
         Gl.BindFramebuffer(GLEnum.DrawFramebuffer, scratchFbo);
@@ -7138,10 +7145,10 @@ public partial class Viewport : UiPanel
         int sceneLoc = Gl.GetUniformLocation(program, "uScene");
         if (sceneLoc >= 0) Gl.Uniform1(sceneLoc, 0);
 
-        float strength = Math.Clamp(grains.Sum(effect => effect.FilmGrain.Strength), 0f, 1f);
-        float weight = MathF.Max(0.0001f, grains.Sum(effect => MathF.Max(0f, effect.FilmGrain.Strength)));
-        float saturation = grains.Sum(effect => effect.FilmGrain.Saturation * MathF.Max(0f, effect.FilmGrain.Strength)) / weight;
-        float size = grains.Sum(effect => effect.FilmGrain.Size * MathF.Max(0f, effect.FilmGrain.Strength)) / weight;
+        float strength = grains.Sum(effect => effect.FilmGrain.Strength);
+        float weight = MathF.Max(0.0001f, grains.Sum(effect => MathF.Abs(effect.FilmGrain.Strength)));
+        float saturation = grains.Sum(effect => effect.FilmGrain.Saturation * MathF.Abs(effect.FilmGrain.Strength)) / weight;
+        float size = grains.Sum(effect => effect.FilmGrain.Size * MathF.Abs(effect.FilmGrain.Strength)) / weight;
         int frame = Timeline.Instance?.CurrentFrame ?? 0;
 
         int strengthLoc = Gl.GetUniformLocation(program, "uStrength");
@@ -7150,8 +7157,8 @@ public partial class Viewport : UiPanel
         int frameLoc = Gl.GetUniformLocation(program, "uFrame");
         int resolutionLoc = Gl.GetUniformLocation(program, "uResolution");
         if (strengthLoc >= 0) Gl.Uniform1(strengthLoc, strength);
-        if (saturationLoc >= 0) Gl.Uniform1(saturationLoc, Math.Clamp(saturation, 0f, 1f));
-        if (sizeLoc >= 0) Gl.Uniform1(sizeLoc, Math.Clamp(size, 0.25f, 8f));
+        if (saturationLoc >= 0) Gl.Uniform1(saturationLoc, saturation);
+        if (sizeLoc >= 0) Gl.Uniform1(sizeLoc, size);
         if (frameLoc >= 0) Gl.Uniform1(frameLoc, (float)frame);
         if (resolutionLoc >= 0) Gl.Uniform2(resolutionLoc, (float)width, (float)height);
 

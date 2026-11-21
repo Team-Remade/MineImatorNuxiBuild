@@ -79,16 +79,18 @@ internal static partial class Program
             };
             foreach (int frame in new[] { 0, 5, 9, 10, 5, 0 })
             {
-                float value = Convert.ToSingle(interpolate.Invoke(timeline, [keys, path, frame, false]));
+                float value = Convert.ToSingle(interpolate.Invoke(timeline, [keys, path, frame]));
                 set.Invoke(timeline, [camera, path, value]);
                 float expected = control.Key == "repeat_image" ? (frame == 10 ? 1f : 0f)
                     : control.Min + (control.Max - control.Min) * frame / 10f;
                 Near(expected, Convert.ToSingle(get.Invoke(timeline, [camera, path])), "Interpolation/seek " + path);
             }
             settings.SetValue(control.Key, control.Min - 1f);
-            Near(control.Min, settings.GetValue(control.Key), "Lower bound " + control.Key);
+            Near(control.Key == "repeat_image" ? 0f : control.Min - 1f,
+                settings.GetValue(control.Key), "Expanded lower value " + control.Key);
             settings.SetValue(control.Key, control.Max + 1f);
-            Near(control.Max, settings.GetValue(control.Key), "Upper bound " + control.Key);
+            Near(control.Key == "repeat_image" ? 1f : control.Max + 1f,
+                settings.GetValue(control.Key), "Expanded upper value " + control.Key);
             foreach (float invalid in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity })
             {
                 bool rejected = false;
@@ -229,6 +231,10 @@ internal static partial class Program
                 settings.ZoomAmount = 200f;
                 byte[] zoom = Render();
                 Check(Math.Abs(zoom[Pixel(10, 40)] - 59) <= 1, "200% zoom samples half the offset from center");
+                settings.ZoomAmount = -200f;
+                byte[] mirroredZoom = Render();
+                Check(mirroredZoom[Pixel(10, 40)] > zoom[Pixel(10, 40)] + 50,
+                    "Negative zoom mirrors the image around its center");
                 settings.ZoomAmount = 100f;
                 settings.DistortAmount = 100f;
                 byte[] positive = Render();

@@ -21,7 +21,7 @@ public partial class Viewport
             foreach (var control in DistortSettings.Controls)
                 if (!float.IsFinite(settings.GetValue(control.Key)))
                     throw new InvalidDataException($"Distort {control.Key} must be finite.");
-            if (settings.ZoomAmount == 100f && settings.DistortAmount == 0f)
+            if (MathF.Abs(settings.ZoomAmount) == 100f && settings.DistortAmount == 0f)
                 continue;
             if (_distortShader == null)
             {

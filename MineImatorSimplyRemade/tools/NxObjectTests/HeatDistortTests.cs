@@ -89,9 +89,9 @@ internal static partial class Program
             }
             settings = camera.Effects[0].HeatDistort;
             settings.SetValue(control.Key, -100f);
-            Near(control.Min, settings.GetValue(control.Key), $"{control.Key} lower limit");
+            Near(-100f, settings.GetValue(control.Key), $"{control.Key} accepts negative values");
             settings.SetValue(control.Key, 10000f);
-            Near(control.Max, settings.GetValue(control.Key), $"{control.Key} upper limit");
+            Near(10000f, settings.GetValue(control.Key), $"{control.Key} accepts values beyond its slider range");
             foreach (float invalid in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity })
             {
                 bool rejected = false;

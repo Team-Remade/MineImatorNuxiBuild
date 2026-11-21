@@ -97,9 +97,9 @@ public class HeatDistortSettings
             throw new ArgumentOutOfRangeException(nameof(value), value, "Heat distort values must be finite.");
         switch (key)
         {
-            case "strength": Strength = Math.Clamp(value, 0f, 100f); break;
-            case "speed": Speed = Math.Clamp(value, 0f, 1000f); break;
-            case "scale": Scale = Math.Clamp(value, 1f, 1000f); break;
+            case "strength": Strength = value; break;
+            case "speed": Speed = value; break;
+            case "scale": Scale = value; break;
             default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown heat distort control.");
         }
     }
@@ -233,8 +233,8 @@ public class DistortSettings
         switch (key)
         {
             case "repeat_image": RepeatImage = value >= 0.5f; break;
-            case "zoom_amount": ZoomAmount = Math.Clamp(value, 1f, 1000f); break;
-            case "distort_amount": DistortAmount = Math.Clamp(value, -100f, 100f); break;
+            case "zoom_amount": ZoomAmount = value; break;
+            case "distort_amount": DistortAmount = value; break;
             default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown distort control.");
         }
     }
@@ -275,11 +275,11 @@ public class ChromaticAberrationSettings
             throw new ArgumentOutOfRangeException(nameof(value), value, "Chromatic aberration values must be finite.");
         switch (key)
         {
-            case "blur_amount": BlurAmount = Math.Clamp(value, 0f, 100f); break;
+            case "blur_amount": BlurAmount = value; break;
             case "distort_rgb": DistortRgb = value >= 0.5f; break;
-            case "red_offset": RedOffset = Math.Clamp(value, -100f, 100f); break;
-            case "green_offset": GreenOffset = Math.Clamp(value, -100f, 100f); break;
-            case "blue_offset": BlueOffset = Math.Clamp(value, -100f, 100f); break;
+            case "red_offset": RedOffset = value; break;
+            case "green_offset": GreenOffset = value; break;
+            case "blue_offset": BlueOffset = value; break;
             default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown chromatic aberration control.");
         }
     }
@@ -429,12 +429,14 @@ public class BloomSettings
 
     public void SetValue(string key, float value)
     {
+        if (!float.IsFinite(value))
+            throw new ArgumentOutOfRangeException(nameof(value), value, "Bloom values must be finite.");
         switch (key)
         {
-            case "radius": Radius = Math.Clamp(value, 0f, 100f); break;
-            case "intensity": Intensity = Math.Clamp(value, 0f, 1000f); break;
-            case "threshold": Threshold = Math.Clamp(value, 0f, 100f); break;
-            case "anamorphic_ratio": AnamorphicRatio = Math.Clamp(value, 1f, 1000f); break;
+            case "radius": Radius = value; break;
+            case "intensity": Intensity = value; break;
+            case "threshold": Threshold = value; break;
+            case "anamorphic_ratio": AnamorphicRatio = MathF.Max(MathF.Abs(value), 0.001f); break;
             case "blend_color.r": BlendColorR = Math.Clamp(value, 0f, 1f); break;
             case "blend_color.g": BlendColorG = Math.Clamp(value, 0f, 1f); break;
             case "blend_color.b": BlendColorB = Math.Clamp(value, 0f, 1f); break;
@@ -520,6 +522,27 @@ public class FilmGrainSettings
     public float Strength = 0.15f;
     public float Saturation = 0.5f;
     public float Size = 1f;
+
+    public float GetValue(string key) => key switch
+    {
+        "strength" => Strength,
+        "saturation" => Saturation,
+        "size" => Size,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown film grain control.")
+    };
+
+    public void SetValue(string key, float value)
+    {
+        if (!float.IsFinite(value))
+            throw new ArgumentOutOfRangeException(nameof(value), value, "Film grain values must be finite.");
+        switch (key)
+        {
+            case "strength": Strength = value; break;
+            case "saturation": Saturation = value; break;
+            case "size": Size = value; break;
+            default: throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown film grain control.");
+        }
+    }
 }
 
 public enum CameraShakeMode

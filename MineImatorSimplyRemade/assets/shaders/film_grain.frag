@@ -20,12 +20,14 @@ void main()
 {
     vec2 uv = gl_FragCoord.xy / uResolution;
     vec4 scene = texture(uScene, uv);
-    vec2 grainCell = floor(gl_FragCoord.xy / max(uSize, 0.25));
+    vec2 grainCell = floor(gl_FragCoord.xy / max(abs(uSize), 0.25));
     float mono = hash(vec3(grainCell, uFrame + 17.0)) * 2.0 - 1.0;
     vec3 colorNoise = vec3(
         hash(vec3(grainCell + vec2(19.0, 7.0), uFrame + 3.0)),
         hash(vec3(grainCell + vec2(5.0, 23.0), uFrame + 11.0)),
         hash(vec3(grainCell + vec2(29.0, 13.0), uFrame + 29.0))) * 2.0 - 1.0;
-    vec3 noise = mix(vec3(mono), colorNoise, clamp(uSaturation, 0.0, 1.0));
-    FragColor = vec4(clamp(scene.rgb + noise * uStrength, 0.0, 1.0), scene.a);
+    vec3 noise = mix(vec3(mono), colorNoise, uSaturation);
+    if (uStrength < 0.0)
+        noise = -abs(noise);
+    FragColor = vec4(clamp(scene.rgb + noise * abs(uStrength), 0.0, 1.0), scene.a);
 }

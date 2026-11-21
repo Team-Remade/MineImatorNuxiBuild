@@ -22,11 +22,12 @@ vec4 fetchScene(ivec2 pixel) {
 void main() {
     vec2 offset = gl_FragCoord.xy / uResolution - 0.5;
     vec2 radial = offset * 2.0 * uResolution / min(uResolution.x, uResolution.y);
-    float amount = clamp(uDistortAmount, -100.0, 100.0) / 100.0;
+    float amount = uDistortAmount / 100.0;
     // Both signs stay monotonic, avoiding folded images at strong distortion.
     float scale = sqrt(1.0 + abs(amount) * dot(radial, radial));
     if (amount > 0.0) scale = 1.0 / scale;
-    vec2 uv = 0.5 + offset * scale / (clamp(uZoomAmount, 1.0, 1000.0) / 100.0);
+    float zoom = (uZoomAmount < 0.0 ? -1.0 : 1.0) * max(abs(uZoomAmount), 0.001);
+    vec2 uv = 0.5 + offset * scale / (zoom / 100.0);
     vec2 pixel = uv * uResolution - 0.5;
     ivec2 low = ivec2(floor(pixel));
     vec2 fraction = fract(pixel);
