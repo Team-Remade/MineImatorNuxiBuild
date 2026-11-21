@@ -104,6 +104,7 @@ public class MainWindow : Window
     private readonly Queue<string> _droppedFiles = new();
     private GlfwCallbacks.DropCallback? _fileDropCallback;
     private readonly Dictionary<string, uint> _thumbnailTextures = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Vector2> _thumbnailDimensions = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _homeSplashPool = new();
     private readonly List<SplashTextSegment> _homeSplashSegments = new();
     private ImFontPtr _homeSplashItalicFont;
@@ -907,18 +908,24 @@ public class MainWindow : Window
         float scale = UiTheme.Scale;
         ImDrawListPtr drawList = ImGui.GetWindowDrawList();
         Vector2 splashMin = ImGui.GetCursorScreenPos();
-        Vector2 splashSize = new Vector2(MathF.Min(ImGui.GetContentRegionAvail().X, 920f * scale), 180f * scale);
+        float splashWidth = MathF.Max(0f, MathF.Min(ImGui.GetContentRegionAvail().X, 640f * scale));
+        Vector2 splashSize = new Vector2(splashWidth, splashWidth * 9f / 16f);
         Vector2 splashMax = splashMin + splashSize;
         uint splashTexture = GetThumbnailTexture(SplashImagePath);
 
         if (splashTexture != 0)
         {
+            Vector2 splashUvMin = Vector2.Zero;
+            Vector2 splashUvMax = Vector2.One;
+            if (_thumbnailDimensions.TryGetValue(SplashImagePath, out Vector2 splashImageDimensions))
+                CalculateCenteredImageUv(splashImageDimensions, splashSize, out splashUvMin, out splashUvMax);
+
             drawList.AddImageRounded(
                 new ImTextureRef(texId: (ulong)splashTexture),
                 splashMin,
                 splashMax,
-                Vector2.Zero,
-                Vector2.One,
+                splashUvMin,
+                splashUvMax,
                 0xFFFFFFFF,
                 18f * scale,
                 ImDrawFlags.RoundCornersAll);
@@ -2935,12 +2942,38 @@ public class MainWindow : Window
             GL.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
             GL.BindTexture(GLEnum.Texture2D, 0);
 
+            _thumbnailDimensions[thumbnailPath] = new Vector2(img.Width, img.Height);
             _thumbnailTextures[thumbnailPath] = texId;
             return texId;
         }
         catch
         {
             return 0;
+        }
+    }
+
+    private static void CalculateCenteredImageUv(Vector2 imageSize, Vector2 targetSize, out Vector2 uvMin, out Vector2 uvMax)
+    {
+        uvMin = Vector2.Zero;
+        uvMax = Vector2.One;
+        if (imageSize.X <= 0f || imageSize.Y <= 0f || targetSize.X <= 0f || targetSize.Y <= 0f)
+            return;
+
+        float imageAspect = imageSize.X / imageSize.Y;
+        float targetAspect = targetSize.X / targetSize.Y;
+        if (imageAspect > targetAspect)
+        {
+            float visibleWidth = targetAspect / imageAspect;
+            float uOffset = (1f - visibleWidth) * 0.5f;
+            uvMin = new Vector2(uOffset, 0f);
+            uvMax = new Vector2(1f - uOffset, 1f);
+        }
+        else
+        {
+            float visibleHeight = imageAspect / targetAspect;
+            float vOffset = (1f - visibleHeight) * 0.5f;
+            uvMin = new Vector2(0f, vOffset);
+            uvMax = new Vector2(1f, 1f - vOffset);
         }
     }
 
@@ -2953,6 +2986,7 @@ public class MainWindow : Window
         {
             GL.DeleteTextures(1, in texId);
             _thumbnailTextures.Remove(thumbnailPath);
+            _thumbnailDimensions.Remove(thumbnailPath);
         }
     }
 

@@ -5,6 +5,13 @@ For all your Minecraft animation needs!
 For development setup, debugging, regression tests, and implementation notes,
 see [AGENTS.md](AGENTS.md).
 
+## Home screen splash artwork
+
+Replace `MineImatorSimplyRemade\data\splashes\splash.png` to customize the home
+screen artwork. Use a 1280×720 PNG (16:9) for the best fit; the splash is displayed
+in a responsive 16:9 area up to 640×360 UI units. Images with other aspect ratios
+are center-cropped to fit without distortion.
+
 ## Wiggle bones
 
 Select a bone and open **Properties > Wiggle Bones**. The Blender Wiggle 2-inspired
