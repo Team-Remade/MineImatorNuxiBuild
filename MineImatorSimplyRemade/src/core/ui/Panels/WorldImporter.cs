@@ -18,8 +18,9 @@ namespace MineImatorSimplyRemade.core.ui.Panels;
 internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDisposable
 {
     private const int TileSize = 64;
-    private const int ActiveTileRadius = 1;
-    private const int RetainedTileRadius = 2;
+    private const int LargeSelectionWarningThreshold = 2 * 1024 * 1024;
+    private const int ActiveTileRadius = 3;
+    private const int RetainedTileRadius = 15;
     private readonly Dictionary<(int X, int Z), PreviewTile> _tiles = [];
     private (int X, int Z)? _loadedCenter;
     private (int X, int Z) _requestedCenter;
@@ -77,6 +78,8 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
     private bool PreviewBusy => _previewReadTask != null || !_pendingTiles.IsEmpty ||
                                 _tileBuild != null || _previewSummaryTask != null;
     private bool Busy => _readTask != null || _pendingImport != null || PreviewBusy || _discoveryTask != null;
+    internal static int ActivePreviewTileRadius => ActiveTileRadius;
+    internal static int PreviewWidthInBlocks => TileSize * (ActiveTileRadius * 2 + 1);
 
     public void Open()
     {
@@ -459,8 +462,8 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         else if (_world != null && _cameraInitialized)
         {
             var eye = _camera.Position + _worldOrigin;
-            ImGui.TextUnformatted(Localization.Format("text.panel.world_importer.x_y_z_blocks_s_192_x_192_blocks_cached_tiles",
-                Dimension.Name, eye.x, eye.y, eye.z, _flightInput.FreeFlySpeed, _tiles.Count));
+            ImGui.TextUnformatted(Localization.Format("text.panel.world_importer.x_y_z_blocks_s_preview_area_width_blocks_cached_tiles",
+                Dimension.Name, eye.x, eye.y, eye.z, _flightInput.FreeFlySpeed, PreviewWidthInBlocks, _tiles.Count));
         }
         UiText.Wrapped(Localization.Format("text.panel.world_importer.flight_controls_bindings",
             Keybinds.DisplayLabel("flyForward"), Keybinds.DisplayLabel("flyBackward"),
@@ -532,6 +535,9 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         }
         string? invalid = SelectionError();
         if (invalid != null) UiText.Wrapped(Localization.DisplayText(invalid));
+        else if (Selection.Count > LargeSelectionWarningThreshold)
+            UiText.Wrapped(Localization.Label("text.panel.world_importer.large_selection_warning",
+                "Large selections use substantial memory and may take a long time to import and build."));
         if (ImGui.Button(Localization.Label("text.panel.world_importer.done", "Done"))) ImGui.CloseCurrentPopup();
         ImGui.EndPopup();
     }
@@ -622,6 +628,9 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
                             (_unknown.Length > 0 && !_allowUnknown));
         if (ImGui.Button(Localization.Label("text.panel.world_importer.import_selected_area", "Import selected area"), new Vector2(240, 42))) StartRead(preview: false);
         ImGui.EndDisabled();
+        if (SelectionError() == null && Selection.Count > LargeSelectionWarningThreshold && ImGui.IsItemHovered())
+            UiText.Tooltip(Localization.Label("text.panel.world_importer.large_selection_warning",
+                "Large selections use substantial memory and may take a long time to import and build."));
         if (!ProjectManager.Instance.HasProject)
             ImGui.TextUnformatted(Localization.T("text.panel.world_importer.open_a_project_before_importing"));
         else if (_unknown.Length > 0 && !_allowUnknown)
@@ -1086,8 +1095,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
         {
             if (_cancellation?.IsCancellationRequested == true) return;
             // Do not finish a stale neighborhood after fast flight has left it behind.
-            if (Math.Abs(center.X - _requestedCenter.X) > ActiveTileRadius ||
-                Math.Abs(center.Z - _requestedCenter.Z) > ActiveTileRadius)
+            if (!IsTileInActiveNeighborhood(center.X, center.Z, _requestedCenter.X, _requestedCenter.Z))
             {
                 _restartStreaming = true;
                 _cancellation?.Cancel();
@@ -1260,6 +1268,15 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
             Math.Clamp(z >> 6, -worldTileLimit + ActiveTileRadius, worldTileLimit - ActiveTileRadius - 1));
     }
 
+    internal static bool IsTileInActiveNeighborhood(int tileX, int tileZ, int centerX, int centerZ) =>
+        IsWithinTileRadius(tileX, tileZ, centerX, centerZ, ActiveTileRadius);
+
+    internal static bool ShouldRetainTile(int tileX, int tileZ, int centerX, int centerZ) =>
+        IsWithinTileRadius(tileX, tileZ, centerX, centerZ, RetainedTileRadius);
+
+    private static bool IsWithinTileRadius(int tileX, int tileZ, int centerX, int centerZ, int radius) =>
+        Math.Abs((long)tileX - centerX) <= radius && Math.Abs((long)tileZ - centerZ) <= radius;
+
     private bool HasBlock(int x, int y, int z)
     {
         if (!_tiles.TryGetValue((x >> 6, z >> 6), out var tile)) return false;
@@ -1415,8 +1432,7 @@ internal sealed unsafe class WorldImporter(SpawnMenu spawnMenu, GL gl) : IDispos
 
     private void PruneTiles()
     {
-        foreach (var key in _tiles.Keys.Where(k => Math.Abs(k.X - _requestedCenter.X) > RetainedTileRadius ||
-                     Math.Abs(k.Z - _requestedCenter.Z) > RetainedTileRadius).ToArray())
+        foreach (var key in _tiles.Keys.Where(k => !ShouldRetainTile(k.X, k.Z, _requestedCenter.X, _requestedCenter.Z)).ToArray())
         {
             var tile = _tiles[key];
             if (tile.Scene != null)

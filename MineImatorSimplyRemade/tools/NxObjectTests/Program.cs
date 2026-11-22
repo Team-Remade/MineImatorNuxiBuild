@@ -679,6 +679,7 @@ internal static partial class Program
             ("Particle invalid and unsupported preset rejection", ParticleInvalid),
             ("World importer asynchronous preview scheduling, cancellation and errors", WorldPreviewScheduling),
             ("World importer player position from legacy and 26.1+ Java saves", WorldPlayerPositionReading),
+            ("World importer large selection limits, filtering and schematic roundtrip", WorldLargeSelection),
             ("World importer default block states for 26.1+ bare palette entries", WorldDefaultBlockStates)
         ];
         if (args.Contains("--ik", StringComparer.Ordinal))
@@ -687,6 +688,8 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Meshcache ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--world-player", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("World importer player", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--world-large", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("World importer large", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--world-preview", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("World importer asynchronous", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--world-states", StringComparer.Ordinal))

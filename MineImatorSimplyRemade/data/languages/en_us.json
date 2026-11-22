@@ -1513,7 +1513,7 @@
     "text.panel.world_importer.world_reading_cancelled": "World reading cancelled.",
     "text.panel.world_importer.world_spawn": "World spawn",
     "text.panel.world_importer.x_x_blocks": "{0} x {1} x {2} ({3:N0} blocks)",
-    "text.panel.world_importer.x_y_z_blocks_s_192_x_192_blocks_cached_tiles": "{0} | X {1:F1}  Y {2:F1}  Z {3:F1} | {4:F0} blocks/s | 192 x 192 blocks | {5} cached tiles",
+    "text.panel.world_importer.x_y_z_blocks_s_preview_area_width_blocks_cached_tiles": "{0} | X {1:F1}  Y {2:F1}  Z {3:F1} | {4:F0} blocks/s | {5} x {5} blocks | {6} cached tiles",
     "text.startup.bootstrapping_startup": "Bootstrapping startup",
     "text.startup.checking_local_dependencies": "Checking local dependencies...",
     "text.startup.continuing_into_asset_initialization": "Continuing into asset initialization",

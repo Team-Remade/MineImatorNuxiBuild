@@ -5,7 +5,8 @@ namespace MineImatorSimplyRemade.core.world;
 
 internal readonly record struct WorldBounds(int MinX, int MinY, int MinZ, int MaxX, int MaxY, int MaxZ)
 {
-    public const int MaxBlocks = 2 * 1024 * 1024;
+    public const int MaxBlocks = 128 * 1024 * 1024;
+    public const int MaxHorizontalDimension = 2048;
     public int Width => checked(MaxX - MinX + 1);
     public int Height => checked(MaxY - MinY + 1);
     public int Length => checked(MaxZ - MinZ + 1);
@@ -19,8 +20,9 @@ internal readonly record struct WorldBounds(int MinX, int MinY, int MinZ, int Ma
             MinY < -2048 || MaxY > 2047)
             throw new InvalidDataException("The selected coordinates are outside the supported world bounds.");
         long width = (long)MaxX - MinX + 1, height = (long)MaxY - MinY + 1, length = (long)MaxZ - MinZ + 1;
-        if (width > 512 || length > 512 || width * height * length > MaxBlocks)
-            throw new InvalidDataException($"Select at most {MaxBlocks:N0} blocks, with width and length at most 512.");
+        if (width > MaxHorizontalDimension || length > MaxHorizontalDimension ||
+            width * length > MaxBlocks / height)
+            throw new InvalidDataException($"Select at most {MaxBlocks:N0} blocks, with width and length at most {MaxHorizontalDimension}.");
     }
 }
 

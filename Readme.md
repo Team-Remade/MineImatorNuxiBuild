@@ -12,6 +12,14 @@ screen artwork. Use a 1280×720 PNG (16:9) for the best fit; the splash is displ
 in a responsive 16:9 area up to 640×360 UI units. Images with other aspect ratios
 are center-cropped to fit without distortion.
 
+## Importing Minecraft worlds
+
+Open the **Import from world** panel, choose a save and dimension, and select the
+terrain bounds to import. Selections can contain up to 128 million blocks, with
+each horizontal dimension limited to 2048 blocks. Large selections require
+substantial memory and can take a long time to read, filter, preview and build;
+the actual practical limit depends on available memory and terrain complexity.
+
 ## Wiggle bones
 
 Select a bone and open **Properties > Wiggle Bones**. The Blender Wiggle 2-inspired

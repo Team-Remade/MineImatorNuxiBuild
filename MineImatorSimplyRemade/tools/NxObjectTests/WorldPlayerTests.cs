@@ -7,8 +7,84 @@ using MineImatorSimplyRemade.core.ui.Panels;
 
 internal static partial class Program
 {
+    private static void WorldLargeSelection(Fixture f)
+    {
+        var fullHeight = new WorldBounds(0, 0, 0, 511, 383, 511);
+        fullHeight.Validate();
+        Equal(512 * 384 * 512, fullHeight.Count, "Full-height terrain selection count");
+
+        var wide = new WorldBounds(-1024, 0, 0, 1023, 0, 0);
+        wide.Validate();
+        Equal(2048, wide.Width, "Maximum horizontal selection width");
+
+        var maximum = new WorldBounds(0, -2048, 0, 2047, 2047, 15);
+        maximum.Validate();
+        Equal(128 * 1024 * 1024, maximum.Count, "Maximum supported selection volume");
+        Equal(128 * 1024 * 1024, WorldBounds.MaxBlocks, "Maximum supported block count");
+
+        Reject(new WorldBounds(0, -2048, 0, 2047, 2047, 16), "Selections above the volume limit are rejected");
+        Reject(new WorldBounds(0, 0, 0, 2048, 0, 0), "Selections wider than the horizontal limit are rejected");
+        Reject(new WorldBounds(1, 0, 0, 0, 0, 0), "Reversed selection coordinates are rejected");
+        Reject(new WorldBounds(int.MinValue, 0, 0, int.MinValue, 0, 0), "Extreme world coordinates are rejected");
+
+        var bounds = new WorldBounds(-1024, -512, -3, 1023, 512, -3);
+        var volume = new WorldVolume(bounds);
+        volume.Set(-1024, -512, -3, "minecraft:stone");
+        volume.Set(1023, 512, -3, "minecraft:water");
+        volume.Set(0, 0, -3, "minecraft:dirt");
+        int last = volume.Blocks.Length - 1;
+        Equal(2_099_200, volume.Blocks.Length, "Allocation above the former two-million-block cap");
+        Equal(1, volume.Blocks[0], "Negative-coordinate first block index");
+        Equal(2, volume.Blocks[last], "Negative-coordinate last block index");
+        Equal(3, volume.NonAirCount, "Large selection non-air count");
+
+        var filter = new WorldBlockFilter { Enabled = true };
+        filter.FilteredBlocks.Add("water");
+        var filtered = volume.ApplyFilter(filter);
+        Check(!ReferenceEquals(volume, filtered), "Active filter copies a large selection");
+        Equal(0, filtered.Blocks[last], "Filtering updates the last large-selection index");
+        Equal(2, filtered.NonAirCount, "Filtered large-selection non-air count");
+
+        string path = f.NewPath(".schematic");
+        volume.SaveSchematic(path);
+        var schematic = SchematicData.Load(path);
+        Equal(bounds.Width, schematic.Width, "Large schematic width roundtrip");
+        Equal(bounds.Height, schematic.Height, "Large schematic height roundtrip");
+        Equal(bounds.Length, schematic.Length, "Large schematic length roundtrip");
+        Equal(volume.Blocks.Length, schematic.PaletteIndices.Length, "Large schematic block data roundtrip");
+        Equal("minecraft:stone", schematic.Palette![schematic.PaletteIndices[0]], "Negative-coordinate first schematic block");
+        Equal("minecraft:water", schematic.Palette[schematic.PaletteIndices[last]], "Negative-coordinate last schematic block");
+
+        static void Reject(WorldBounds bounds, string message)
+        {
+            bool rejected = false;
+            try { bounds.Validate(); }
+            catch (Exception ex) when (ex is InvalidDataException or OverflowException) { rejected = true; }
+            Check(rejected, message);
+        }
+    }
+
     private static void WorldPreviewScheduling(Fixture f)
     {
+        Equal(3, WorldImporter.ActivePreviewTileRadius, "Active preview loads a seven-by-seven tile neighborhood");
+        Equal(448, WorldImporter.PreviewWidthInBlocks, "Active preview coverage in blocks");
+        Check(WorldImporter.IsTileInActiveNeighborhood(-3, 3, 0, 0), "Active preview includes its far corner");
+        Check(!WorldImporter.IsTileInActiveNeighborhood(-4, 0, 0, 0), "Active preview excludes tiles beyond its radius");
+
+        var movedCenter = (-12, 9);
+        Check(WorldImporter.ShouldRetainTile(-16, 13, movedCenter.Item1, movedCenter.Item2),
+            "Retained cache includes a negative-coordinate corner at the radius boundary");
+        Check(WorldImporter.ShouldRetainTile(-8, 9, movedCenter.Item1, movedCenter.Item2), "Retained cache includes its east edge");
+        Check(!WorldImporter.ShouldRetainTile(-8, 9, -3, 9), "Moving the center evicts tiles outside the new retention window");
+        Check(WorldImporter.ShouldRetainTile(-12, 5, movedCenter.Item1, movedCenter.Item2), "Retained cache includes its south edge");
+        Check(WorldImporter.ShouldRetainTile(-12, 13, movedCenter.Item1, movedCenter.Item2), "Retained cache includes its north edge");
+        Check(WorldImporter.ShouldRetainTile(-16, 9, movedCenter.Item1, movedCenter.Item2), "Retained cache includes its west edge");
+        Check(!WorldImporter.ShouldRetainTile(-17, 9, movedCenter.Item1, movedCenter.Item2), "Tiles beyond the west edge are evicted");
+        Check(!WorldImporter.ShouldRetainTile(-7, 9, movedCenter.Item1, movedCenter.Item2), "Tiles beyond the east edge are evicted");
+        Check(!WorldImporter.ShouldRetainTile(-12, 4, movedCenter.Item1, movedCenter.Item2), "Tiles beyond the south edge are evicted");
+        Check(!WorldImporter.ShouldRetainTile(-12, 14, movedCenter.Item1, movedCenter.Item2), "Tiles beyond the north edge are evicted");
+        Check(!WorldImporter.ShouldRetainTile(int.MinValue, 0, int.MaxValue, 0), "Retention distance cannot overflow at extreme coordinates");
+
         var source = new TaskCompletionSource<SchematicData?>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var cancellation = new CancellationTokenSource();
         using var build = new SpawnMenu.SchematicPreviewBuild(new SpawnMenu(), "World preview", "",
