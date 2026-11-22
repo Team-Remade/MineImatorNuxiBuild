@@ -630,13 +630,15 @@ internal static partial class Program
         string cache = schematic + ".meshcache";
         File.Copy(CacheFile(f, CachePayload(7)), cache);
         var source = MiDocument("""
-            {"resources":[{"id":"terrain","type":"scenery","filename":"missing.schematic"}],
-             "templates":[{"id":"scenery","type":"scenery","scenery":"terrain"}],
+            {"resources":[{"id":"terrain","type":"scenery","filename":"missing.schematic"},
+                           {"id":"skin","type":"texture","filename":"skin.png"}],
+             "templates":[{"id":"scenery","type":"scenery","scenery":"terrain","block":{"tex":"skin"}}],
              "timelines":[{"id":"scene","type":"scenery","temp":"scenery","name":"Terrain",
                            "default_values":{"POS_X":32},"keyframes":{"0":{},"10":{"POS_X":48}}}]}
             """);
         source.Resources[0].Filename = Path.GetFileName(schematic);
         source.DirectoryPath = Path.GetDirectoryName(schematic)!;
+        string texture = f.File("skin.png", "texture bytes");
         var tried = new List<string>();
         SceneObject? Load(string path)
         {
@@ -651,6 +653,7 @@ internal static partial class Program
         Equal(cache, scene.SourceAssetPath, "Surviving source is what persistence copies");
         Near(2, scene.Position.x, "Scenery participates in normal timeline mapping");
         Equal("Terrain", scene.Name, "Imported scenery uses timeline name");
+        Equal(texture, scene.AlbedoTexturePath, "Scenery template texture is applied to custom cache geometry");
         Equal(0, warnings.Count, "Valid meshcache-only scenery does not report missing schematic");
         new MineImatorSimplyRemade.core.world.WorldVolume(
             new MineImatorSimplyRemade.core.world.WorldBounds(0, 0, 0, 1, 0, 2)).SaveSchematic(schematic);

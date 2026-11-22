@@ -36,6 +36,15 @@ internal sealed class MeshCacheData
     public static bool IsSchematic(string path) =>
         Path.GetExtension(path).ToLowerInvariant() is ".schem" or ".schematic";
 
+    public static IEnumerable<string> CacheCandidates(string schematic)
+    {
+        if (!IsSchematic(schematic)) yield break;
+        string appended = schematic + ".meshcache";
+        yield return appended;
+        string replaced = Path.ChangeExtension(schematic, ".meshcache");
+        if (!string.Equals(appended, replaced, StringComparison.OrdinalIgnoreCase)) yield return replaced;
+    }
+
     public static string? FindSidecar(string path)
     {
         if (!IsSchematic(path) || !File.Exists(path + ".meshcache")) return null;
@@ -278,7 +287,7 @@ internal sealed class MeshCacheData
                     batches.Add(material, batch);
                     Batches.Add(batch);
                 }
-                // Both Z-up conversions reflect handedness, so reverse triangle winding.
+                // The Z-up conversion reflects handedness, so reverse triangle winding.
                 Add(a, uvA); Add(c, uvC); Add(b, uvB);
 
                 void Add(int offset, vec2 uv)
@@ -294,16 +303,16 @@ internal sealed class MeshCacheData
                             Float(buffer.Vertices, index + 4), Float(buffer.Vertices, index + 8));
                         n = vec3.Cross(Position(b) - Position(a), Position(c) - Position(a));
                     }
-                    if (format == 2)
+                    if (customMesh)
                     {
-                        p = new vec3(p.x - (customMesh ? 0 : Width * .5f), p.z,
-                            p.y - (customMesh ? 0 : Length * .5f));
+                        // Legacy scenery rotation, default rotation point, then Z-up to Y-up.
+                        p = new vec3(p.y - Width * .5f, p.z, Height - p.x - Length * .5f);
+                        n = new vec3(n.y, n.z, -n.x);
+                    }
+                    else if (format == 2)
+                    {
+                        p = new vec3(p.x - Width * .5f, p.z, p.y - Length * .5f);
                         n = new vec3(n.x, n.z, n.y);
-                        if (customMesh)
-                        {
-                            p = new vec3(-p.x, p.y, -p.z);
-                            n = new vec3(-n.x, n.y, -n.z);
-                        }
                     }
                     else
                     {

@@ -53,6 +53,24 @@ internal static partial class Program
                 return 1;
             }
         }
+        int meshCacheModelGraphics = Array.IndexOf(args, "--meshcache-model-graphics");
+        if (meshCacheModelGraphics >= 0)
+        {
+            try
+            {
+                if (meshCacheModelGraphics + 1 >= args.Length)
+                    throw new ArgumentException("--meshcache-model-graphics requires an MIObject path.");
+                string? imagePath = meshCacheModelGraphics + 2 < args.Length ? args[meshCacheModelGraphics + 2] : null;
+                MeshCacheModelGraphics(args[meshCacheModelGraphics + 1], imagePath);
+                Console.WriteLine("PASS Phainon model meshcache placement rendered in its imported hierarchy");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         int meshCacheFile = Array.IndexOf(args, "--meshcache-file");
         if (meshCacheFile >= 0)
         {

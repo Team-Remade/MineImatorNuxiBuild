@@ -998,6 +998,9 @@ public sealed class ProjectManager
                 string? filenamePath = ResolveDependencyPath(baseDir, resource.Filename);
                 if (filenamePath != null)
                     yield return filenamePath;
+                foreach (string cacheReference in core.mdl.MeshCacheData.CacheCandidates(resource.Filename))
+                    if (ResolveDependencyPath(baseDir, cacheReference) is { } cachePath)
+                        yield return cachePath;
             }
         }
 
@@ -1023,6 +1026,8 @@ public sealed class ProjectManager
         if (template == null)
             yield break;
 
+        if (!string.IsNullOrWhiteSpace(template.Scenery))
+            yield return template.Scenery;
         if (!string.IsNullOrWhiteSpace(template.Model))
             yield return template.Model;
         if (!string.IsNullOrWhiteSpace(template.ModelTex))

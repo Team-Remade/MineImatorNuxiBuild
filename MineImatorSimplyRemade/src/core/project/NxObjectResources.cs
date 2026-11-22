@@ -304,6 +304,8 @@ internal sealed class NxObjectResources : IDisposable
             path = absolute.LocalPath;
         }
         string resolved = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(owner)!, path));
+        if (!File.Exists(resolved) && MeshCacheData.IsSchematic(resolved))
+            resolved = MeshCacheData.CacheCandidates(resolved).FirstOrDefault(File.Exists) ?? resolved;
         RequireFile(resolved);
         return resolved;
     }

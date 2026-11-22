@@ -25,7 +25,7 @@ public static partial class MiObjectFeatureMapper
         // Exported caches can be the only surviving copy of edited scenery.
         // Unlike ordinary schematic reloads, do not reject these by timestamp.
         var candidates = MeshCacheData.IsCache(schematic) ? new[] { schematic } :
-            new[] { schematic + ".meshcache", Path.ChangeExtension(schematic, ".meshcache"), schematic };
+            MeshCacheData.CacheCandidates(schematic).Append(schematic);
         foreach (string path in candidates.Distinct(StringComparer.OrdinalIgnoreCase).Where(File.Exists))
         {
             if (factory == null)
@@ -121,6 +121,8 @@ public static partial class MiObjectFeatureMapper
         if (template != null)
         {
             JsonElement settings = template.Shape ?? template.Block ?? default;
+            if (template.Type == "scenery")
+                TemplateTexture(Text(Property(template.Block ?? default, "tex"), ""), "material.texture");
             string normal = template.ModelTexNormal ?? Text(Property(settings, "tex_normal"), "");
             if (template.Item is { } normalItem)
                 normal = Text(PropertyValue(normalItem.ExtraValues, "tex_normal"), normal);
@@ -252,7 +254,7 @@ public static partial class MiObjectFeatureMapper
                 "smooth", "detail", "subdivision", "morph", "major_size", "minor_size", "face_camera"], "shape");
             NestedSettings(template.Text, ["font", "3d", "face_camera"], "text");
             NestedSettings(template.Block, template.Type == "scenery"
-                ? ["tex_normal", "tex_material"]
+                ? ["tex", "tex_normal", "tex_material"]
                 : ["name", "state", "tex", "tex_normal", "tex_material", "repeat_enable", "repeat"], "block");
             if (template.Item is { } templateItem)
                 foreach (var property in templateItem.ExtraValues.Where(p => p.Key is not ("name" or "tex_normal" or "tex_material" or
@@ -361,8 +363,14 @@ public static partial class MiObjectFeatureMapper
         void TemplateTexture(string reference, string target)
         {
             if (reference is "" or "null" or "none" or "default") return;
+            string channel = target switch
+            {
+                "material.normal_texture" => "TEXTURE_NORMAL_OBJ",
+                "material.texture" => "TEXTURE_OBJ",
+                _ => "TEXT_FONT"
+            };
             if (!obj.Keyframes.ContainsKey(target) && !Has(source, frames,
-                    target == "material.normal_texture" ? "TEXTURE_NORMAL_OBJ" : "TEXT_FONT"))
+                    channel))
                 timeline.SetPropertyValue(obj, target, ResourcePath(reference, target));
         }
 

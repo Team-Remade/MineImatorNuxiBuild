@@ -315,13 +315,15 @@ build output or modify the supplied project to make this check pass.
 vertex/index arrays. Format 7 uses Zstandard and byte-plane shuffled arrays;
 formats 2/4/6 use gzip; format 2 also supports uncompressed input. Single-buffer
 format-2 custom meshes have dummy 1x1x1 dimensions, no block atlas, and mesh-local
-UVs (often negative). Preserve their authored origin and UVs; do not center them
-or resolve their UVs as block tiles. After swapping Z-up to Y-up, rotate custom
-mesh positions and normals 180 degrees around Y to match the editor's forward
-axis; keep UVs and the reflected winding unchanged. Do not apply this extra
-rotation to block-atlas caches. Format 2 is untransformed Z-up geometry; later formats
-already contain Mine-imator's timeline-axis transform. Preserve the conversion
-to centered block units, outward winding, per-tile UVs and material batches.
+UVs (often negative). Preserve authored offsets and UVs; do not recenter their
+bounding box or resolve UVs as block tiles. Compose `render_world_block`'s legacy
+matrix with `temp_update_rot_point`'s default scenery pivot, then convert Z-up to
+Y-up. In block units this is `(y - width/2, z, height - x - length/2)`; normals
+become `(ny, nz, -nx)`. The reference `matrix_build` transposes its +90-degree Z
+rotation. Keep UVs and reflected winding unchanged; do not apply these custom
+transforms to block-atlas caches. Later formats already contain Mine-imator's
+timeline-axis transform. Preserve centered block units, outward winding, per-tile
+UVs and material batches.
 Reject incompatible sidecars with a logged schematic fallback.
 
 `tools/ImportMinecraftCharacters/import_characters.py` also generates
@@ -329,6 +331,10 @@ Reject incompatible sidecars with a logged schematic fallback.
 reorder these tables or infer slot order from filenames. They contain texture
 identifiers and sheet dimensions, not image assets or renderer source.
 
+Run `--meshcache-model-graphics "path\to\model.miobject" "path\to\render.png"`
+for the supplied Phainon outfit's actual OpenGL attachment pixels against an
+independent raw-cache reference transform, using one body-framed camera for all
+three caches. It requires the full application asset data; the PNG is optional.
 Run the custom harness with `--meshcache` for CPU decoding, malformed input,
 sidecar freshness and asset/archive persistence; run `--meshcache-graphics`
 separately for OpenGL pixel/orientation and reload checks. Use

@@ -226,15 +226,33 @@ internal static partial class Program
             var batch = MeshCacheData.Load(CacheFile(f, custom, raw)).Batches.Single();
             Equal("", batch.Material.Texture, "Custom caches do not use Minecraft atlas textures");
             Equal(6, batch.Vertices.Count, "Custom indexed triangles retained");
-            Near(new vec3(1, 0, 1.5f), batch.Vertices[0], "Custom origin converted with 180-degree Y orientation");
-            Near(new vec3(1, 1, 1.5f), batch.Vertices[1], "Custom orientation preserves source height");
-            Near(new vec3(0, 1, 1.5f), batch.Vertices[2], "Custom X and Z rotate together without mirroring");
-            Near(vec3.UnitZ, batch.Normals[0], "Custom normals follow the corrected forward direction");
+            Near(new vec3(-2, 0, 1.5f), batch.Vertices[0], "Legacy scenery placement includes its default rotation point");
+            Near(new vec3(-2, 1, 1.5f), batch.Vertices[1], "Source-space rotation preserves custom mesh height");
+            Near(new vec3(-2, 1, .5f), batch.Vertices[2], "Custom cache preserves authored offsets relative to the default pivot");
+            Near(-vec3.UnitX, batch.Normals[0], "Custom normals follow the converted source-space rotation");
             Near(-1, batch.TexCoords[1].y, "Negative custom V retained");
             Near(1, batch.TexCoords[2].x, "Custom UVs not expanded from a block tile");
             Check(vec3.Dot(vec3.Cross(batch.Vertices[1] - batch.Vertices[0],
                 batch.Vertices[2] - batch.Vertices[0]), batch.Normals[0]) > .99f, "Custom outward winding");
         }
+        var attachmentParent = new SceneObject();
+        attachmentParent.SetLocalPosition(new vec3(4, 2, -3));
+        attachmentParent.SetLocalRotation(new vec3(0, 0, MathF.PI / 2));
+        attachmentParent.SetLocalScale(new vec3(2));
+        var attachment = new SceneObject();
+        attachment.SetLocalPosition(new vec3(0.5f, -1, 0.25f));
+        attachment.SetLocalRotation(new vec3(0, MathF.PI / 2, 0));
+        attachment.SetLocalScale(new vec3(1.5f, 0.75f, 2));
+        attachmentParent.AddChild(attachment);
+        Near(new vec3(6, 3, -2.5f), attachment.GetWorldPosition(),
+            "Attached custom cache object follows its parent's translation, combined rotation and scale");
+        string attachmentCache = CacheFile(f, custom, raw: true);
+        var attachmentVertices = MeshCacheData.Load(attachmentCache).Batches.Single().Vertices;
+        var referenceVertices = ReferenceCustomCacheVertices(attachmentCache);
+        for (int i = 0; i < attachmentVertices.Count; i++)
+            Near((attachment.GetWorldMatrix() * new vec4(referenceVertices[i], 1)).xyz,
+                (attachment.GetWorldMatrix() * new vec4(attachmentVertices[i], 1)).xyz,
+                "Attached vertex matches reference draw matrix and automatic scenery rotation point");
         foreach (int length in new[] { 1, 25, 48, custom.Length - 1 })
             Reject(() => MeshCacheData.Load(CacheFile(f, custom[..length], raw: true)), "Truncated raw cache accepted");
         byte[] badUv = CachePayload(2);
@@ -285,6 +303,37 @@ internal static partial class Program
             CheckCacheQuad(MeshCacheData.Load(extracted + ".meshcache"));
             Check(manager.RemoveAsset(asset), "Project asset removal");
             Check(!File.Exists(stored + ".meshcache"), "Removing schematic also removes its owned cache");
+
+            string modelFolder = Path.Combine(f.Root, "cache-only-model");
+            Directory.CreateDirectory(modelFolder);
+            string miObject = Path.Combine(modelFolder, "model.miobject");
+            string cacheOnly = Path.Combine(modelFolder, "part.schematic.meshcache");
+            string modelTexture = Path.Combine(modelFolder, "skin.png");
+            File.Copy(cache, cacheOnly);
+            File.WriteAllText(modelTexture, "texture bytes");
+            File.WriteAllText(miObject, """
+                {"resources":[{"id":"terrain","type":"scenery","filename":"part.schematic"},
+                               {"id":"skin","type":"texture","filename":"skin.png"}],
+                 "templates":[{"id":"scenery","type":"scenery","scenery":"terrain","block":{"tex":"skin"}}],
+                 "timelines":[{"id":"scene","type":"scenery","temp":"scenery"}]}
+                """);
+            var modelAsset = manager.AddAsset(miObject, ProjectAssetType.Model);
+            string storedModel = manager.GetAssetFullPath(modelAsset);
+            string storedCache = Path.Combine(Path.GetDirectoryName(storedModel)!, Path.GetFileName(cacheOnly));
+            Check(File.Exists(storedCache), "Model import copies a cache when its referenced schematic is absent");
+            Check(File.Exists(Path.Combine(Path.GetDirectoryName(storedModel)!, Path.GetFileName(modelTexture))),
+                "Model import keeps the scenery texture dependency");
+
+            var modelRoot = new SceneObject { SourceAssetPath = miObject };
+            var (modelManifest, modelDirectory) = f.Roundtrip(modelRoot);
+            string archivedModel = Resource(modelDirectory, modelManifest.Root.SourceAssetPath);
+            NxObjectResources.ValidateModelReferences(archivedModel, modelDirectory);
+            var archivedDocument = JsonNode.Parse(File.ReadAllText(archivedModel))!.AsObject();
+            string archivedScenery = archivedDocument["resources"]!.AsArray().OfType<JsonObject>()
+                .Single(resource => resource["id"]!.GetValue<string>() == "terrain")["filename"]!.GetValue<string>();
+            string archivedCache = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(archivedModel)!, archivedScenery));
+            Check(File.Exists(archivedCache) && MeshCacheData.IsCache(archivedCache),
+                "Portable model archive rewrites cache-only scenery to its surviving meshcache");
         });
         var standalone = new SceneObject { Name = "Standalone", SpawnCategory = "Scenery", SourceAssetPath = cache };
         var (standaloneManifest, standaloneDirectory) = f.Roundtrip(standalone);
@@ -389,14 +438,14 @@ internal static partial class Program
                 roots.Add(customRoot);
                 var customMesh = customRoot.Visuals.Single();
                 Equal(0u, customMesh.TextureId, "Custom mesh starts without an unrelated atlas texture");
-                byte[] untextured = Draw(customMesh, custom: true);
+                byte[] untextured = Draw(customMesh, custom: true, customRoot.GetWorldMatrix());
                 Check(untextured.Where((_, i) => i % 4 != 3).All(v => v > 250), "Custom mesh renders untextured");
                 string customArchive = f.NewPath(".nxObj");
                 NxObjectArchive.Export(customArchive, customRoot);
                 SceneObject? restoredCustom = null;
                 WithTextureSheetProject(f, _ => restoredCustom = NxObjectArchive.Import(customArchive, viewport, spawn));
                 roots.Add(restoredCustom!);
-                Check(Draw(restoredCustom!.Visuals.Single(), custom: true).SequenceEqual(untextured),
+                Check(Draw(restoredCustom!.Visuals.Single(), custom: true, restoredCustom.GetWorldMatrix()).SequenceEqual(untextured),
                     "Raw custom archive reload preserves orientation");
                 string customTexture = f.NewPath(".png");
                 using (var image = new MagickImage(pixels, new MagickReadSettings
@@ -406,8 +455,9 @@ internal static partial class Program
                     image.Write(customTexture, MagickFormat.Png32);
                 customRoot.AlbedoTexturePath = customTexture;
                 new PropertiesPanel { Gl = gl, Viewport = viewport }.LoadPendingAlbedoTextures([customRoot]);
-                Check(Draw(customMesh, custom: true).SequenceEqual(referenceImage!),
-                    "Custom negative UVs render correctly with a material texture override");
+                byte[] customTextured = Draw(customMesh, custom: true, customRoot.GetWorldMatrix());
+                Check(customTextured.SequenceEqual(referenceImage!),
+                    "Custom negative UVs preserve texture pixels through the converted legacy transform");
                 string schematic = f.NewPath(".schem");
                 File.WriteAllText(schematic, "Not NBT: a valid cache must avoid meshing the source.");
                 File.SetLastWriteTimeUtc(schematic, DateTime.UtcNow.AddMinutes(-2));
@@ -444,7 +494,7 @@ internal static partial class Program
                     "Stale cache uses schematic geometry, not the cached quad");
                 roots.Add(stale!);
 
-                byte[] Draw(Mesh mesh, bool custom = false)
+                byte[] Draw(Mesh mesh, bool custom = false, mat4? model = null)
                 {
                     gl.BindFramebuffer(GLEnum.Framebuffer, 0);
                     gl.Viewport(0, 0, 64, 64);
@@ -454,10 +504,10 @@ internal static partial class Program
                     gl.ClearColor(0, 0, 0, 0);
                     gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
                     mesh.Unlit = true;
-                    var eye = custom ? new vec3(.5f, .5f, 3) : new vec3(-.5f, .5f, -3);
-                    var target = custom ? new vec3(.5f, .5f, 1.5f) : new vec3(-.5f, .5f, -1.5f);
+                    var eye = custom ? new vec3(-4, .5f, 1) : new vec3(-.5f, .5f, -3);
+                    var target = custom ? new vec3(-2, .5f, 1) : new vec3(-.5f, .5f, -1.5f);
                     var view = mat4.LookAt(eye, target, vec3.UnitY);
-                    mesh.Render(mat4.Identity, view, mat4.Ortho(-.5f, .5f, -.5f, .5f, .1f, 10), useSceneLighting: false);
+                    mesh.Render(model ?? mat4.Identity, view, mat4.Ortho(-.5f, .5f, -.5f, .5f, .1f, 10), useSceneLighting: false);
                     var image = new byte[64 * 64 * 4];
                     fixed (byte* pointer = image)
                         gl.ReadPixels(0, 0, 64, 64, GLEnum.Rgba, GLEnum.UnsignedByte, pointer);
@@ -474,5 +524,189 @@ internal static partial class Program
             }
         }
         finally { glfw.DestroyWindow(window); glfw.Terminate(); }
+    }
+
+    private static unsafe void MeshCacheModelGraphics(string miObjectPath, string? imagePath)
+    {
+        Check(File.Exists(miObjectPath), $"MIObject exists: {miObjectPath}");
+        using var glfw = Silk.NET.GLFW.Glfw.GetApi();
+        Check(glfw.Init(), "GLFW initialization");
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintBool.Visible, false);
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintInt.ContextVersionMajor, 3);
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintInt.ContextVersionMinor, 3);
+        glfw.WindowHint(Silk.NET.GLFW.WindowHintOpenGlProfile.OpenGlProfile, Silk.NET.GLFW.OpenGlProfile.Core);
+        var window = glfw.CreateWindow(640, 480, "Meshcache model placement regression", null, null);
+        Check(window != null, "OpenGL context");
+        try
+        {
+            glfw.MakeContextCurrent(window);
+            using var gl = GL.GetApi(glfw.GetProcAddress);
+            var loader = MineImatorLoader.Instance;
+            loader.Initialize(gl);
+            var viewport = new Viewport { Gl = gl };
+            var spawn = new SpawnMenu { Gl = gl, Viewport = viewport };
+            MiObject source = loader.LoadMiObject(miObjectPath) ??
+                throw new InvalidDataException($"Could not load MIObject '{miObjectPath}'.");
+            var warnings = new List<string>();
+            SceneObject scene = loader.CreateSceneFromMiObject(source, warning: warnings.Add,
+                sceneryFactory: path => spawn.CreateSchematicPreview(path, ""));
+            var objects = new[] { scene }.Concat(scene.GetAllDescendants()).ToArray();
+            var caches = objects.Where(obj => MeshCacheData.IsCache(obj.SourceAssetPath ?? "")).ToArray();
+            Check(caches.Length >= 3, $"All supplied meshcaches load into the scene ({caches.Length})");
+            Console.WriteLine($"MIObject import warnings: {warnings.Count}");
+
+            new PropertiesPanel { Gl = gl, Viewport = viewport }.LoadPendingAlbedoTextures([scene]);
+            // Frame only non-cache geometry: a displaced cache must not change its own test camera.
+            var worldVertices = objects.Except(caches).Where(obj => obj.GetEffectiveVisibility()).SelectMany(obj =>
+            {
+                mat4 world = obj.GetWorldMatrix();
+                return obj.Visuals.SelectMany(mesh => mesh.Vertices.Select(vertex =>
+                    (world * new vec4(vertex, 1)).xyz));
+            }).ToArray();
+            Check(worldVertices.Length > 0, "Imported model has renderable geometry");
+            var min = new vec3(worldVertices.Min(v => v.x), worldVertices.Min(v => v.y), worldVertices.Min(v => v.z));
+            var max = new vec3(worldVertices.Max(v => v.x), worldVertices.Max(v => v.y), worldVertices.Max(v => v.z));
+            vec3 center = (min + max) * .5f;
+            float radius = Math.Max((max - min).Length * .55f, .5f);
+            vec3 direction = new vec3(3.5f, 2.2f, 7).Normalized;
+            var view = mat4.LookAt(center + direction * radius * 3, center, vec3.UnitY);
+            float aspect = 640f / 480f;
+            var projection = mat4.Ortho(-radius * aspect, radius * aspect, -radius, radius,
+                .1f, radius * 10);
+            gl.Viewport(0, 0, 640, 480);
+            gl.Disable(GLEnum.Blend);
+            gl.Enable(GLEnum.CullFace);
+            gl.Enable(GLEnum.DepthTest);
+
+            byte[] Render(IEnumerable<SceneObject> drawObjects)
+            {
+                gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+                gl.ClearColor(0, 0, 0, 0);
+                gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+                foreach (var obj in drawObjects)
+                {
+                    if (!obj.GetEffectiveVisibility()) continue;
+                    foreach (var mesh in obj.Visuals)
+                    {
+                        mesh.Unlit = true;
+                        mesh.IncludeInFog = false;
+                        mesh.Render(obj.GetWorldMatrix(), view, projection, useSceneLighting: false);
+                    }
+                }
+                var pixels = new byte[640 * 480 * 4];
+                fixed (byte* pointer = pixels)
+                    gl.ReadPixels(0, 0, 640, 480, GLEnum.Rgba, GLEnum.UnsignedByte, pointer);
+                return pixels;
+            }
+
+            byte[] image = Render(objects);
+            var fullBounds = PixelBounds(image);
+            Check(fullBounds.Count > 1000, $"Full outfit renders actual pixels ({fullBounds.Count})");
+            var nonCaches = objects.Except(caches).ToArray();
+            var bodyBounds = PixelBounds(Render(nonCaches));
+            Check(bodyBounds.Count > 1000, $"Outfit body renders actual pixels ({bodyBounds.Count})");
+            foreach (var cache in caches)
+            {
+                byte[] actual = Render([cache]);
+                var bounds = PixelBounds(actual);
+                Check(bounds.Count > 10, $"Cache '{cache.Name}' produces actual pixels");
+                var mesh = cache.Visuals.Single();
+                var original = mesh.Vertices.ToArray();
+                try
+                {
+                    mesh.Vertices.Clear();
+                    mesh.Vertices.AddRange(ReferenceCustomCacheVertices(cache.SourceAssetPath!));
+                    mesh.Upload();
+                    byte[] reference = Render([cache]);
+                    Check(actual.SequenceEqual(reference),
+                        $"Cache '{cache.Name}' attachment pixels match the independent reference draw transform");
+                }
+                finally
+                {
+                    mesh.Vertices.Clear();
+                    mesh.Vertices.AddRange(original);
+                    mesh.Upload();
+                }
+                Console.WriteLine($"Cache pixels: {cache.Name}: ({bounds.MinX},{bounds.MinY})-" +
+                    $"({bounds.MaxX},{bounds.MaxY}), {bounds.Count} pixels; world origin {cache.GetWorldPosition()}, " +
+                    $"parent {cache.Parent?.Name ?? "<root>"}, local position {cache.LocalPosition}, " +
+                    $"rotation {cache.LocalRotation}, scale {cache.LocalScale}");
+            }
+            Console.WriteLine($"Outfit pixels: ({fullBounds.MinX},{fullBounds.MinY})-" +
+                $"({fullBounds.MaxX},{fullBounds.MaxY}), body pixels: {bodyBounds.Count}");
+            if (imagePath != null)
+            {
+                string? directory = Path.GetDirectoryName(Path.GetFullPath(imagePath));
+                if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+                using var rendered = new MagickImage(image, new MagickReadSettings
+                {
+                    Width = 640, Height = 480, Format = MagickFormat.Rgba, Depth = 8
+                });
+                rendered.Flip();
+                rendered.Write(imagePath, MagickFormat.Png32);
+                Console.WriteLine($"Rendered image: {Path.GetFullPath(imagePath)}");
+            }
+
+            static (int MinX, int MinY, int MaxX, int MaxY, int Count) PixelBounds(byte[] pixels)
+            {
+                int minX = 640, minY = 480, maxX = -1, maxY = -1, count = 0;
+                for (int y = 0; y < 480; y++)
+                for (int x = 0; x < 640; x++)
+                {
+                    if (pixels[(y * 640 + x) * 4 + 3] < 16) continue;
+                    minX = Math.Min(minX, x);
+                    minY = Math.Min(minY, y);
+                    maxX = Math.Max(maxX, x);
+                    maxY = Math.Max(maxY, y);
+                    count++;
+                }
+                return (minX, minY, maxX, maxY, count);
+            }
+        }
+        finally { glfw.DestroyWindow(window); glfw.Terminate(); }
+    }
+
+    private static List<vec3> ReferenceCustomCacheVertices(string path)
+    {
+        using var file = File.OpenRead(path);
+        using var payload = new MemoryStream();
+        if (file.ReadByte() == 0x1f)
+        {
+            file.Position = 0;
+            using var gzip = new GZipStream(file, CompressionMode.Decompress, leaveOpen: true);
+            gzip.CopyTo(payload);
+        }
+        else
+        {
+            file.Position = 0;
+            file.CopyTo(payload);
+        }
+        byte[] bytes = payload.ToArray();
+        Equal((byte)2, bytes[0], "Reference fixture is a format-2 custom cache");
+        long length = BinaryPrimitives.ReadInt64BigEndian(bytes.AsSpan(1));
+        long width = BinaryPrimitives.ReadInt64BigEndian(bytes.AsSpan(9));
+        long height = BinaryPrimitives.ReadInt64BigEndian(bytes.AsSpan(17));
+        Equal(1L, BinaryPrimitives.ReadInt64BigEndian(bytes.AsSpan(25)), "Reference fixture has one buffer");
+        int vertices = checked((int)BinaryPrimitives.ReadInt64BigEndian(bytes.AsSpan(33)));
+        int indices = checked((int)BinaryPrimitives.ReadInt64BigEndian(bytes.AsSpan(41)));
+        // render_world_block's matrix_build(0, height, 0, 0, 0, 90, 1, 1, 1)
+        // uses the transposed rotation. temp_update_rot_point supplies (width/2, length/2, 0).
+        var legacy = new mat4(new vec4(0, -1, 0, 0), new vec4(1, 0, 0, 0),
+            new vec4(0, 0, 1, 0), new vec4(0, height, 0, 1));
+        var pivot = mat4.Translate(new vec3(-width * .5f, -length * .5f, 0));
+        var axes = new mat4(new vec4(1, 0, 0, 0), new vec4(0, 0, 1, 0),
+            new vec4(0, 1, 0, 0), new vec4(0, 0, 0, 1));
+        var result = new List<vec3>(indices);
+        for (int triangle = 0; triangle < indices; triangle += 3)
+        foreach (int corner in new[] { 0, 2, 1 })
+        {
+            int index = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(
+                bytes.AsSpan(49 + vertices * 36 + (triangle + corner) * 4)));
+            int offset = 49 + index * 36;
+            var position = new vec4(BitConverter.ToSingle(bytes, offset) / 16,
+                BitConverter.ToSingle(bytes, offset + 4) / 16, BitConverter.ToSingle(bytes, offset + 8) / 16, 1);
+            result.Add((axes * pivot * legacy * position).xyz);
+        }
+        return result;
     }
 }
