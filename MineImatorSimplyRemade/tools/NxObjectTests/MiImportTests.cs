@@ -107,14 +107,16 @@ internal static partial class Program
                "shape":{"subdivision":3,"morph":-0.75,"smooth":false}},
               {"id":"torus-template","type":"torus",
                "shape":{"detail":20,"major_size":1.5,"minor_size":0.25,"smooth":false,
-                        "tex_hrepeat":2,"tex_vmirror":true}}
+                        "ring_detail":32,"tex_hrepeat":2,"tex_vmirror":true}},
+              {"id":"surface-template","type":"surface","shape":{"ring_detail":32}}
              ],
              "timelines":[
               {"id":"ico","type":"icosphere","temp":"icosphere-template","name":"Faceted"},
               {"id":"ring","type":"torus","temp":"torus-template","name":"Ring",
                "glow":false,"glow_texture":true,"only_render_glow":false,
                "glint_mode":0,"glint_scale":1,"glint_speed":1,"glint_strength":1,"glint_tex":"default",
-               "alpha_mode":2,"object_tag":"Main"}
+               "alpha_mode":2,"object_tag":"Main"},
+              {"id":"surface","type":"surface","temp":"surface-template","name":"Surface"}
              ]}
             """);
         var warnings = new List<string>();
@@ -131,6 +133,19 @@ internal static partial class Program
         Check(!torus.PrimitiveRadialSmooth, "Torus shading imports");
         Near(2f, torus.MaterialSettings.TextureRepeat.x, "Torus UV repeat imports");
         Check(torus.MaterialSettings.TextureMirror.y, "Torus UV mirror imports");
+        Equal("Plane", root.Children.Single(o => o.Name == "Surface").ObjectType,
+            "Surface with ignored ring detail imports");
+
+        var unknownShape = MiDocument("""
+            {"templates":[{"id":"surface-template","type":"surface",
+                           "shape":{"ring_detail":32,"mystery_detail":7}}],
+             "timelines":[{"id":"surface","type":"surface","temp":"surface-template"}]}
+            """);
+        warnings.Clear();
+        new MineImatorLoader().CreateSceneFromMiObject(unknownShape, warning: warnings.Add);
+        Equal(1, warnings.Count, "Unknown shape settings still produce a warning");
+        Check(warnings.Single().Contains("shape setting 'mystery_detail'"),
+            "Unknown shape warning identifies the unsupported setting");
 
         var saved = ProjectSceneSerializer.SerializeObjectForLibrary(torus);
         Equal(20, saved.PrimitiveRadialSegments, "Torus detail serializes");
