@@ -6,7 +6,7 @@ namespace MineImatorSimplyRemade.core.world;
 internal readonly record struct WorldBounds(int MinX, int MinY, int MinZ, int MaxX, int MaxY, int MaxZ)
 {
     public const int MaxBlocks = 128 * 1024 * 1024;
-    public const int MaxHorizontalDimension = 2048;
+    public const int MaxHorizontalDimension = 4096;
     public int Width => checked(MaxX - MinX + 1);
     public int Height => checked(MaxY - MinY + 1);
     public int Length => checked(MaxZ - MinZ + 1);
