@@ -1,0 +1,655 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(rgba32f, binding = 0) uniform image2D AccumulationImage;
+layout(rgba8, binding = 1) writeonly uniform image2D OutputImage;
+
+struct Triangle
+{
+    vec4 A;
+    vec4 B;
+    vec4 C;
+    vec4 NormalA;
+    vec4 NormalB;
+    vec4 NormalC;
+    vec4 UvAB;
+    vec4 UvC;
+    vec4 Albedo;
+    vec4 Emission;
+    vec4 Material;
+    vec4 TextureTransform;
+    vec4 TextureFrame;
+    vec4 Flags;
+    ivec4 AlbedoTexture;
+    ivec4 EmissionTexture;
+    ivec4 AlphaTexture;
+    vec4 MultiplyHsv;
+    vec4 AddRgb;
+    vec4 AddHsv;
+    vec4 SubtractRgb;
+    vec4 SubtractHsv;
+};
+
+struct PointLight
+{
+    vec4 Position;
+    vec4 Direction;
+    vec4 ColorEnergy;
+    vec4 RangeSpot;
+};
+
+struct DirectionalLight
+{
+    vec4 Direction;
+    vec4 Radiance;
+    vec4 Flags;
+};
+
+layout(binding = 0) uniform sampler2D uNodeBounds;
+layout(binding = 1) uniform isampler2D uNodeData;
+layout(binding = 2) uniform isampler2D uTriangleIndices;
+layout(binding = 3) uniform sampler2D uGeometry;
+layout(binding = 4) uniform isampler2D uTriangleMaterials;
+layout(binding = 5) uniform sampler2D uMaterials;
+layout(binding = 6) uniform isampler2D uMaterialTextureRefs;
+layout(binding = 7) uniform sampler2D uPointLights;
+layout(binding = 8) uniform sampler2D uDirectionalLights;
+layout(binding = 9) uniform sampler2D uTexturePixels;
+layout(binding = 10) uniform sampler2D uTlasBounds;
+layout(binding = 11) uniform isampler2D uTlasData;
+layout(binding = 12) uniform isampler2D uTlasInstanceIndices;
+layout(binding = 13) uniform sampler2D uInstanceTransforms;
+layout(binding = 14) uniform isampler2D uInstanceInfo;
+
+uniform int uWidth;
+uniform int uHeight;
+uniform int uSampleIndex;
+uniform int uSeed;
+uniform int uMaxBounces;
+uniform int uTransparentBackground;
+uniform int uNodeCount;
+uniform int uTriangleCount;
+uniform int uTlasNodeCount;
+uniform int uInstanceCount;
+uniform int uPointLightCount;
+uniform int uDirectionalLightCount;
+uniform int uNodeBoundsWidth;
+uniform int uNodeDataWidth;
+uniform int uTriangleIndicesWidth;
+uniform int uGeometryWidth;
+uniform int uTriangleMaterialsWidth;
+uniform int uMaterialsWidth;
+uniform int uMaterialTextureRefsWidth;
+uniform int uPointLightsWidth;
+uniform int uDirectionalLightsWidth;
+uniform int uTexturePixelsWidth;
+uniform int uTlasBoundsWidth;
+uniform int uTlasDataWidth;
+uniform int uTlasInstanceIndicesWidth;
+uniform int uInstanceTransformsWidth;
+uniform int uInstanceInfoWidth;
+uniform float uExposure;
+uniform float uFov;
+uniform vec3 uCameraPosition;
+uniform vec3 uCameraForward;
+uniform vec3 uCameraRight;
+uniform vec3 uCameraUp;
+uniform vec3 uEnvironment;
+uniform vec3 uAmbient;
+
+const float Pi = 3.14159265358979323846;
+const float RayEpsilon = 0.0005;
+
+uint RandomState;
+
+ivec2 TexelCoordinate(int index, int width)
+{
+    return ivec2(index % width, index / width);
+}
+
+Triangle LoadTriangle(int index, int instanceIndex)
+{
+    Triangle triangle;
+    int geometryOffset = index * 8;
+    triangle.A = texelFetch(uGeometry, TexelCoordinate(geometryOffset, uGeometryWidth), 0);
+    triangle.B = texelFetch(uGeometry, TexelCoordinate(geometryOffset + 1, uGeometryWidth), 0);
+    triangle.C = texelFetch(uGeometry, TexelCoordinate(geometryOffset + 2, uGeometryWidth), 0);
+    triangle.NormalA = texelFetch(uGeometry, TexelCoordinate(geometryOffset + 3, uGeometryWidth), 0);
+    triangle.NormalB = texelFetch(uGeometry, TexelCoordinate(geometryOffset + 4, uGeometryWidth), 0);
+    triangle.NormalC = texelFetch(uGeometry, TexelCoordinate(geometryOffset + 5, uGeometryWidth), 0);
+    triangle.UvAB = texelFetch(uGeometry, TexelCoordinate(geometryOffset + 6, uGeometryWidth), 0);
+    triangle.UvC = texelFetch(uGeometry, TexelCoordinate(geometryOffset + 7, uGeometryWidth), 0);
+
+    int materialIndex = texelFetch(uTriangleMaterials,
+        TexelCoordinate(index, uTriangleMaterialsWidth), 0).r;
+    int instanceMaterial = texelFetch(uInstanceInfo,
+        TexelCoordinate(instanceIndex, uInstanceInfoWidth), 0).y;
+    if (instanceMaterial >= 0)
+        materialIndex = instanceMaterial;
+    int materialOffset = materialIndex * 11;
+    triangle.Albedo = texelFetch(uMaterials, TexelCoordinate(materialOffset, uMaterialsWidth), 0);
+    triangle.Emission = texelFetch(uMaterials, TexelCoordinate(materialOffset + 1, uMaterialsWidth), 0);
+    triangle.Material = texelFetch(uMaterials, TexelCoordinate(materialOffset + 2, uMaterialsWidth), 0);
+    triangle.TextureTransform = texelFetch(uMaterials, TexelCoordinate(materialOffset + 3, uMaterialsWidth), 0);
+    triangle.TextureFrame = texelFetch(uMaterials, TexelCoordinate(materialOffset + 4, uMaterialsWidth), 0);
+    triangle.Flags = texelFetch(uMaterials, TexelCoordinate(materialOffset + 5, uMaterialsWidth), 0);
+    triangle.MultiplyHsv = texelFetch(uMaterials, TexelCoordinate(materialOffset + 6, uMaterialsWidth), 0);
+    triangle.AddRgb = texelFetch(uMaterials, TexelCoordinate(materialOffset + 7, uMaterialsWidth), 0);
+    triangle.AddHsv = texelFetch(uMaterials, TexelCoordinate(materialOffset + 8, uMaterialsWidth), 0);
+    triangle.SubtractRgb = texelFetch(uMaterials, TexelCoordinate(materialOffset + 9, uMaterialsWidth), 0);
+    triangle.SubtractHsv = texelFetch(uMaterials, TexelCoordinate(materialOffset + 10, uMaterialsWidth), 0);
+    triangle.AlbedoTexture = texelFetch(uMaterialTextureRefs,
+        TexelCoordinate(materialIndex * 3, uMaterialTextureRefsWidth), 0);
+    triangle.EmissionTexture = texelFetch(uMaterialTextureRefs,
+        TexelCoordinate(materialIndex * 3 + 1, uMaterialTextureRefsWidth), 0);
+    triangle.AlphaTexture = texelFetch(uMaterialTextureRefs,
+        TexelCoordinate(materialIndex * 3 + 2, uMaterialTextureRefsWidth), 0);
+    return triangle;
+}
+
+float RandomFloat()
+{
+    RandomState ^= RandomState << 13;
+    RandomState ^= RandomState >> 17;
+    RandomState ^= RandomState << 5;
+    return float(RandomState >> 8) * (1.0 / 16777216.0);
+}
+
+vec3 SafeNormalize(vec3 value, vec3 fallbackValue)
+{
+    float lengthSquared = dot(value, value);
+    return lengthSquared > 1e-20 ? value * inversesqrt(lengthSquared) : fallbackValue;
+}
+
+bool IntersectBounds(vec3 minimum, vec3 maximum, vec3 origin, vec3 direction, float maximumDistance)
+{
+    float nearDistance = RayEpsilon;
+    float farDistance = maximumDistance;
+    for (int axis = 0; axis < 3; axis++)
+    {
+        float rayOrigin = origin[axis];
+        float rayDirection = direction[axis];
+        if (abs(rayDirection) < 1e-20)
+        {
+            if (rayOrigin < minimum[axis] || rayOrigin > maximum[axis])
+                return false;
+            continue;
+        }
+        float inverseDirection = 1.0 / rayDirection;
+        float first = (minimum[axis] - rayOrigin) * inverseDirection;
+        float second = (maximum[axis] - rayOrigin) * inverseDirection;
+        if (first > second)
+        {
+            float swapValue = first;
+            first = second;
+            second = swapValue;
+        }
+        nearDistance = max(nearDistance, first);
+        farDistance = min(farDistance, second);
+        if (farDistance < nearDistance)
+            return false;
+    }
+    return true;
+}
+
+bool IntersectTriangle(Triangle triangle, vec3 origin, vec3 direction, float maximumDistance,
+    out float distance, out vec3 barycentric)
+{
+    vec3 edge1 = triangle.B.xyz - triangle.A.xyz;
+    vec3 edge2 = triangle.C.xyz - triangle.A.xyz;
+    vec3 p = cross(direction, edge2);
+    float determinant = dot(edge1, p);
+    if (abs(determinant) < 1e-8)
+        return false;
+    float inverse = 1.0 / determinant;
+    vec3 fromA = origin - triangle.A.xyz;
+    float u = dot(fromA, p) * inverse;
+    if (u < 0.0 || u > 1.0)
+        return false;
+    vec3 q = cross(fromA, edge1);
+    float v = dot(direction, q) * inverse;
+    if (v < 0.0 || u + v > 1.0)
+        return false;
+    distance = dot(edge2, q) * inverse;
+    barycentric = vec3(1.0 - u - v, u, v);
+    return distance >= RayEpsilon && distance <= maximumDistance;
+}
+
+vec4 InstanceTransformValue(int instanceIndex, int field, bool inverseTransform)
+{
+    int transformIndex = instanceIndex * 6 + (inverseTransform ? 3 : 0) + field;
+    return texelFetch(uInstanceTransforms,
+        TexelCoordinate(transformIndex, uInstanceTransformsWidth), 0);
+}
+
+ivec4 InstanceInfo(int instanceIndex)
+{
+    return texelFetch(uInstanceInfo, TexelCoordinate(instanceIndex, uInstanceInfoWidth), 0);
+}
+
+vec3 TransformInstancePoint(int instanceIndex, vec3 point, bool inverseTransform)
+{
+    vec4 value = vec4(point, 1.0);
+    return vec3(dot(value, InstanceTransformValue(instanceIndex, 0, inverseTransform)),
+        dot(value, InstanceTransformValue(instanceIndex, 1, inverseTransform)),
+        dot(value, InstanceTransformValue(instanceIndex, 2, inverseTransform)));
+}
+
+vec3 TransformInstanceDirection(int instanceIndex, vec3 direction, bool inverseTransform)
+{
+    vec4 value = vec4(direction, 0.0);
+    return vec3(dot(value, InstanceTransformValue(instanceIndex, 0, inverseTransform)),
+        dot(value, InstanceTransformValue(instanceIndex, 1, inverseTransform)),
+        dot(value, InstanceTransformValue(instanceIndex, 2, inverseTransform)));
+}
+
+vec3 TransformInstanceNormal(int instanceIndex, vec3 normal)
+{
+    vec4 inverseX = InstanceTransformValue(instanceIndex, 0, true);
+    vec4 inverseY = InstanceTransformValue(instanceIndex, 1, true);
+    vec4 inverseZ = InstanceTransformValue(instanceIndex, 2, true);
+    return SafeNormalize(vec3(dot(normal, vec3(inverseX.x, inverseY.x, inverseZ.x)),
+        dot(normal, vec3(inverseX.y, inverseY.y, inverseZ.y)),
+        dot(normal, vec3(inverseX.z, inverseY.z, inverseZ.z))), vec3(0.0, 1.0, 0.0));
+}
+
+bool IntersectBlas(int rootNode, int instanceIndex, vec3 origin, vec3 direction, float maximumDistance,
+    out int hitIndex, out float hitDistance, out vec3 barycentric)
+{
+    hitIndex = -1;
+    hitDistance = maximumDistance;
+    if (rootNode < 0 || uNodeCount == 0)
+        return false;
+
+    int stack[128];
+    int stackCount = 1;
+    stack[0] = rootNode;
+    while (stackCount > 0)
+    {
+        int nodeIndex = stack[--stackCount];
+        vec3 minimum = texelFetch(uNodeBounds,
+            TexelCoordinate(nodeIndex * 2, uNodeBoundsWidth), 0).xyz;
+        vec3 maximum = texelFetch(uNodeBounds,
+            TexelCoordinate(nodeIndex * 2 + 1, uNodeBoundsWidth), 0).xyz;
+        if (!IntersectBounds(minimum, maximum, origin, direction, hitDistance))
+            continue;
+        ivec4 nodeData = texelFetch(uNodeData, TexelCoordinate(nodeIndex, uNodeDataWidth), 0);
+        int count = nodeData.y;
+        if (count > 0)
+        {
+            int start = nodeData.x;
+            for (int i = start; i < start + count; i++)
+            {
+                int triangleIndex = texelFetch(uTriangleIndices,
+                    TexelCoordinate(i, uTriangleIndicesWidth), 0).r;
+                float distance;
+                vec3 candidateBarycentric;
+                if (IntersectTriangle(LoadTriangle(triangleIndex, instanceIndex), origin, direction, hitDistance,
+                    distance, candidateBarycentric))
+                {
+                    hitIndex = triangleIndex;
+                    hitDistance = distance;
+                    barycentric = candidateBarycentric;
+                }
+            }
+        }
+        else if (stackCount + 2 <= 128)
+        {
+            stack[stackCount++] = nodeData.z;
+            stack[stackCount++] = nodeData.w;
+        }
+    }
+    return hitIndex >= 0;
+}
+
+bool IntersectScene(vec3 origin, vec3 direction, float maximumDistance, out int hitIndex,
+    out int hitInstance, out float hitDistance, out vec3 barycentric)
+{
+    hitIndex = -1;
+    hitInstance = -1;
+    hitDistance = maximumDistance;
+    if (uTlasNodeCount == 0 || uInstanceCount == 0)
+        return false;
+
+    int stack[128];
+    int stackCount = 1;
+    stack[0] = 0;
+    while (stackCount > 0)
+    {
+        int nodeIndex = stack[--stackCount];
+        vec3 minimum = texelFetch(uTlasBounds,
+            TexelCoordinate(nodeIndex * 2, uTlasBoundsWidth), 0).xyz;
+        vec3 maximum = texelFetch(uTlasBounds,
+            TexelCoordinate(nodeIndex * 2 + 1, uTlasBoundsWidth), 0).xyz;
+        if (!IntersectBounds(minimum, maximum, origin, direction, hitDistance))
+            continue;
+        ivec4 nodeData = texelFetch(uTlasData, TexelCoordinate(nodeIndex, uTlasDataWidth), 0);
+        if (nodeData.y > 0)
+        {
+            for (int i = nodeData.x; i < nodeData.x + nodeData.y; i++)
+            {
+                int instanceIndex = texelFetch(uTlasInstanceIndices,
+                    TexelCoordinate(i, uTlasInstanceIndicesWidth), 0).r;
+                ivec4 instanceInfo = InstanceInfo(instanceIndex);
+                vec3 localOrigin = TransformInstancePoint(instanceIndex, origin, true);
+                vec3 localDirection = TransformInstanceDirection(instanceIndex, direction, true);
+                int candidateIndex;
+                float candidateDistance;
+                vec3 candidateBarycentric;
+                if (IntersectBlas(instanceInfo.x, instanceIndex, localOrigin, localDirection, hitDistance,
+                        candidateIndex, candidateDistance, candidateBarycentric))
+                {
+                    hitIndex = candidateIndex;
+                    hitInstance = instanceIndex;
+                    hitDistance = candidateDistance;
+                    barycentric = candidateBarycentric;
+                }
+            }
+        }
+        else if (stackCount + 2 <= 128)
+        {
+            stack[stackCount++] = nodeData.z;
+            stack[stackCount++] = nodeData.w;
+        }
+    }
+    return hitIndex >= 0;
+}
+
+vec4 SampleTexture(vec2 uv, ivec4 reference)
+{
+    if (reference.x < 0)
+        return vec4(1.0);
+    int width = reference.y;
+    int height = reference.z;
+    if (width <= 0 || height <= 0)
+        return vec4(1.0);
+    vec2 wrapped = fract(uv);
+    ivec2 pixel = ivec2(clamp(wrapped * vec2(width, height), vec2(0.0), vec2(width - 1, height - 1)));
+    int texturePixel = reference.x + pixel.y * width + pixel.x;
+    return texelFetch(uTexturePixels, TexelCoordinate(texturePixel, uTexturePixelsWidth), 0);
+}
+
+float SrgbToLinear(float value)
+{
+    return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4);
+}
+
+vec3 RgbToHsv(vec3 color)
+{
+    vec4 k = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    vec4 p = mix(vec4(color.bg, k.wz), vec4(color.gb, k.xy), step(color.b, color.g));
+    vec4 q = mix(vec4(p.xyw, color.r), vec4(color.r, p.yzx), step(p.x, color.r));
+    float chroma = q.x - min(q.w, q.y);
+    float epsilon = 1e-10;
+    return vec3(abs(q.z + (q.w - q.y) / (6.0 * chroma + epsilon)),
+        chroma / (q.x + epsilon), q.x);
+}
+
+vec3 HsvToRgb(vec3 hsv)
+{
+    vec3 p = abs(fract(hsv.xxx + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+    return hsv.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), clamp(hsv.y, 0.0, 1.0));
+}
+
+vec2 TransformUv(Triangle triangle, vec2 uv)
+{
+    uv.y = uv.y * triangle.TextureFrame.x + triangle.TextureFrame.y;
+    vec2 transformed = uv * triangle.TextureTransform.zw + triangle.TextureTransform.xy;
+    if (triangle.TextureFrame.z > 0.5 && mod(floor(transformed.x), 2.0) != 0.0)
+        transformed.x = ceil(transformed.x) - transformed.x;
+    if (triangle.TextureFrame.w > 0.5 && mod(floor(transformed.y), 2.0) != 0.0)
+        transformed.y = ceil(transformed.y) - transformed.y;
+    return transformed;
+}
+
+vec4 SampleAlbedo(Triangle triangle, vec2 uv)
+{
+    vec2 transformedUv = TransformUv(triangle, uv);
+    vec4 texel = SampleTexture(transformedUv, triangle.AlbedoTexture);
+    vec3 color = triangle.Albedo.rgb * vec3(SrgbToLinear(texel.r), SrgbToLinear(texel.g), SrgbToLinear(texel.b));
+    if (triangle.Flags.w > 0.5)
+    {
+        if (any(notEqual(triangle.MultiplyHsv.xyz, vec3(1.0))))
+            color = HsvToRgb(RgbToHsv(max(color, vec3(0.0))) * triangle.MultiplyHsv.xyz);
+        if (any(notEqual(triangle.AddRgb.xyz, vec3(0.0))))
+            color = clamp(color + triangle.AddRgb.xyz, 0.0, 1.0);
+        if (any(notEqual(triangle.AddHsv.xyz, vec3(0.0))))
+            color = HsvToRgb(RgbToHsv(max(color, vec3(0.0))) + triangle.AddHsv.xyz);
+        if (any(notEqual(triangle.SubtractRgb.xyz, vec3(0.0))))
+            color = clamp(color - triangle.SubtractRgb.xyz, 0.0, 1.0);
+        if (any(notEqual(triangle.SubtractHsv.xyz, vec3(0.0))))
+            color = HsvToRgb(RgbToHsv(max(color, vec3(0.0))) - triangle.SubtractHsv.xyz);
+    }
+    float alpha = triangle.Albedo.a * texel.a * SampleTexture(transformedUv, triangle.AlphaTexture).a;
+    return vec4(color, clamp(alpha, 0.0, 1.0));
+}
+
+vec3 SampleEmission(Triangle triangle, vec2 uv)
+{
+    vec4 texel = SampleTexture(TransformUv(triangle, uv), triangle.EmissionTexture);
+    return triangle.Emission.rgb * vec3(SrgbToLinear(texel.r), SrgbToLinear(texel.g), SrgbToLinear(texel.b));
+}
+
+bool IsOccluded(vec3 origin, vec3 direction, float maximumDistance)
+{
+    for (int layer = 0; layer < 32; layer++)
+    {
+        int triangleIndex;
+        int instanceIndex;
+        float distance;
+        vec3 barycentric;
+        if (!IntersectScene(origin, direction, maximumDistance, triangleIndex, instanceIndex, distance, barycentric))
+            return false;
+        Triangle triangle = LoadTriangle(triangleIndex, instanceIndex);
+        vec2 uv = triangle.UvAB.xy * barycentric.x + triangle.UvAB.zw * barycentric.y + triangle.UvC.xy * barycentric.z;
+        vec4 surface = SampleAlbedo(triangle, uv);
+        bool clipped = triangle.Flags.x > 0.5 && surface.a < triangle.Material.z;
+        bool transparent = triangle.Flags.x > 0.5 ? clipped : surface.a <= 0.0 ||
+            surface.a < 1.0 && RandomFloat() > surface.a;
+        if (!transparent)
+            return true;
+        origin += direction * (distance + RayEpsilon);
+        maximumDistance -= distance + RayEpsilon;
+        if (maximumDistance <= RayEpsilon)
+            return false;
+    }
+    return true;
+}
+
+vec3 EvaluateDirectLighting(vec3 position, vec3 normal)
+{
+    vec3 result = vec3(0.0);
+    for (int i = 0; i < uDirectionalLightCount; i++)
+    {
+        int lightOffset = i * 3;
+        DirectionalLight light;
+        light.Direction = texelFetch(uDirectionalLights,
+            TexelCoordinate(lightOffset, uDirectionalLightsWidth), 0);
+        light.Radiance = texelFetch(uDirectionalLights,
+            TexelCoordinate(lightOffset + 1, uDirectionalLightsWidth), 0);
+        light.Flags = texelFetch(uDirectionalLights,
+            TexelCoordinate(lightOffset + 2, uDirectionalLightsWidth), 0);
+        vec3 direction = SafeNormalize(light.Direction.xyz, vec3(0.0, 1.0, 0.0));
+        float cosine = max(0.0, dot(normal, direction));
+        if (cosine <= 0.0)
+            continue;
+        if (light.Flags.x > 0.5 && IsOccluded(position + normal * RayEpsilon, direction, 3.402823e+38))
+            continue;
+        result += light.Radiance.rgb * (cosine / Pi);
+    }
+    for (int i = 0; i < uPointLightCount; i++)
+    {
+        int lightOffset = i * 4;
+        PointLight light;
+        light.Position = texelFetch(uPointLights, TexelCoordinate(lightOffset, uPointLightsWidth), 0);
+        light.Direction = texelFetch(uPointLights, TexelCoordinate(lightOffset + 1, uPointLightsWidth), 0);
+        light.ColorEnergy = texelFetch(uPointLights, TexelCoordinate(lightOffset + 2, uPointLightsWidth), 0);
+        light.RangeSpot = texelFetch(uPointLights, TexelCoordinate(lightOffset + 3, uPointLightsWidth), 0);
+        vec3 toLight = light.Position.xyz - position;
+        float distanceSquared = dot(toLight, toLight);
+        float range = light.RangeSpot.x;
+        if (distanceSquared < 1e-8 || distanceSquared >= range * range)
+            continue;
+        float distance = sqrt(distanceSquared);
+        vec3 direction = toLight / distance;
+        float cosine = max(0.0, dot(normal, direction));
+        if (cosine <= 0.0)
+            continue;
+        float spot = 1.0;
+        float outerCosine = light.RangeSpot.z;
+        float innerCosine = light.RangeSpot.y;
+        if (outerCosine > -1.0)
+        {
+            float alignment = dot(SafeNormalize(light.Direction.xyz, vec3(0.0, -1.0, 0.0)), -direction);
+            if (alignment <= outerCosine)
+                continue;
+            if (innerCosine > outerCosine)
+            {
+                float t = clamp((alignment - outerCosine) / (innerCosine - outerCosine), 0.0, 1.0);
+                spot = t * t * (3.0 - 2.0 * t);
+            }
+        }
+        if (light.RangeSpot.w > 0.5 && IsOccluded(position + normal * RayEpsilon, direction, distance - RayEpsilon))
+            continue;
+        float rangeFalloff = clamp(1.0 - distance / range, 0.0, 1.0);
+        float attenuation = rangeFalloff * rangeFalloff / distanceSquared;
+        result += light.ColorEnergy.rgb * (light.ColorEnergy.w * cosine * spot * attenuation / Pi);
+    }
+    return result;
+}
+
+vec3 CosineHemisphere(vec3 normal)
+{
+    float r1 = RandomFloat();
+    float r2 = RandomFloat();
+    float radius = sqrt(r1);
+    float angle = 2.0 * Pi * r2;
+    vec3 tangent = SafeNormalize(abs(normal.y) < 0.999 ? cross(vec3(0.0, 1.0, 0.0), normal) :
+        cross(vec3(1.0, 0.0, 0.0), normal), vec3(1.0, 0.0, 0.0));
+    vec3 bitangent = cross(normal, tangent);
+    return SafeNormalize(tangent * (radius * cos(angle)) + bitangent * (radius * sin(angle)) +
+        normal * sqrt(1.0 - r1), normal);
+}
+
+vec3 RandomInUnitSphere()
+{
+    float z = RandomFloat() * 2.0 - 1.0;
+    float angle = RandomFloat() * 2.0 * Pi;
+    float radius = pow(RandomFloat(), 1.0 / 3.0) * sqrt(1.0 - z * z);
+    return vec3(radius * cos(angle), radius * sin(angle), z);
+}
+
+vec3 Trace(vec3 origin, vec3 direction, out bool primaryHit)
+{
+    vec3 radiance = vec3(0.0);
+    vec3 throughput = vec3(1.0);
+    int transparentLayers = 0;
+    primaryHit = false;
+    for (int bounce = 0; bounce <= uMaxBounces;)
+    {
+        int triangleIndex;
+        int instanceIndex;
+        float distance;
+        vec3 barycentric;
+        if (!IntersectScene(origin, direction, 3.402823e+38, triangleIndex, instanceIndex, distance, barycentric))
+            return radiance + throughput * uEnvironment;
+
+        Triangle triangle = LoadTriangle(triangleIndex, instanceIndex);
+        vec2 uv = triangle.UvAB.xy * barycentric.x + triangle.UvAB.zw * barycentric.y + triangle.UvC.xy * barycentric.z;
+        vec4 surface = SampleAlbedo(triangle, uv);
+        bool clipped = triangle.Flags.x > 0.5 && surface.a < triangle.Material.z;
+        bool transparent = triangle.Flags.x > 0.5 ? clipped :
+            surface.a < 1.0 && RandomFloat() > surface.a;
+        if (transparent)
+        {
+            if (++transparentLayers > 32)
+                return radiance + throughput * uEnvironment;
+            origin += direction * (distance + RayEpsilon);
+            continue;
+        }
+        transparentLayers = 0;
+        if (bounce == 0)
+            primaryHit = true;
+
+        vec3 localNormal = triangle.NormalA.xyz * barycentric.x + triangle.NormalB.xyz * barycentric.y +
+            triangle.NormalC.xyz * barycentric.z;
+        localNormal = SafeNormalize(localNormal, SafeNormalize(cross(triangle.B.xyz - triangle.A.xyz,
+            triangle.C.xyz - triangle.A.xyz), vec3(0.0, 1.0, 0.0)));
+        vec3 normal = TransformInstanceNormal(instanceIndex, localNormal);
+        if (dot(normal, direction) > 0.0)
+            normal = -normal;
+        vec3 position = origin + direction * distance;
+        float metallic = clamp(triangle.Material.x, 0.0, 1.0);
+        vec3 albedo = surface.rgb;
+        vec3 emission = triangle.Flags.z > 0.5 && bounce == 0 ? vec3(0.0) : SampleEmission(triangle, uv);
+        if (triangle.Flags.y > 0.5)
+            return radiance + throughput * (emission + albedo);
+        radiance += throughput * (emission + albedo * (1.0 - metallic) *
+            (uAmbient + EvaluateDirectLighting(position, normal)));
+        if (bounce == uMaxBounces)
+            return radiance;
+
+        vec3 nextDirection;
+        if (metallic > 0.0 && RandomFloat() < metallic)
+        {
+            nextDirection = reflect(direction, normal);
+            float roughness = clamp(triangle.Material.y, 0.0, 1.0);
+            if (roughness > 0.001)
+                nextDirection = SafeNormalize(nextDirection + RandomInUnitSphere() * roughness * roughness, normal);
+            throughput *= albedo;
+        }
+        else
+        {
+            nextDirection = CosineHemisphere(normal);
+            throughput *= albedo;
+        }
+        if (bounce >= 3)
+        {
+            float survival = clamp(max(throughput.r, max(throughput.g, throughput.b)), 0.05, 0.95);
+            if (RandomFloat() > survival)
+                return radiance;
+            throughput /= survival;
+        }
+        origin = position + normal * RayEpsilon;
+        direction = SafeNormalize(nextDirection, normal);
+        bounce++;
+    }
+    return radiance;
+}
+
+float LinearToSrgb(float value)
+{
+    return value <= 0.0031308 ? value * 12.92 : 1.055 * pow(value, 1.0 / 2.4) - 0.055;
+}
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (pixel.x >= uWidth || pixel.y >= uHeight)
+        return;
+
+    RandomState = uint(uSeed) * 747796405u + uint(uSampleIndex) * 2891336453u +
+        uint(pixel.y) * 277803737u + uint(pixel.x);
+    if (RandomState == 0u)
+        RandomState = 0xA341316Cu;
+    float aspect = float(uWidth) / float(uHeight);
+    float halfHeight = tan(uFov * 0.5);
+    float px = ((float(pixel.x) + RandomFloat()) / float(uWidth) * 2.0 - 1.0) * aspect * halfHeight;
+    float py = ((float(pixel.y) + RandomFloat()) / float(uHeight) * 2.0 - 1.0) * halfHeight;
+    vec3 direction = SafeNormalize(uCameraForward + uCameraRight * px + uCameraUp * py, uCameraForward);
+    bool primaryHit;
+    vec3 sampleRadiance = Trace(uCameraPosition, direction, primaryHit);
+    vec4 sampleContribution = vec4(sampleRadiance, 1.0);
+    if (uTransparentBackground != 0 && !primaryHit)
+        sampleContribution = vec4(0.0);
+    vec4 accumulated = uSampleIndex == 0 ? sampleContribution :
+        imageLoad(AccumulationImage, pixel) + sampleContribution;
+    imageStore(AccumulationImage, pixel, accumulated);
+    float coveredSamples = uTransparentBackground != 0 ? accumulated.a : float(uSampleIndex + 1);
+    vec3 averageRadiance = coveredSamples > 0.0 ? accumulated.rgb / coveredSamples : vec3(0.0);
+    vec3 linearColor = max(vec3(0.0), averageRadiance * uExposure);
+    linearColor = linearColor / (vec3(1.0) + linearColor);
+    vec3 displayColor = vec3(LinearToSrgb(linearColor.r), LinearToSrgb(linearColor.g), LinearToSrgb(linearColor.b));
+    float alpha = uTransparentBackground != 0 ? accumulated.a / float(uSampleIndex + 1) : 1.0;
+    imageStore(OutputImage, pixel, vec4(displayColor, alpha));
+}

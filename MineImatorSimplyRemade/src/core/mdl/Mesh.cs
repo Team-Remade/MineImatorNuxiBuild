@@ -43,6 +43,7 @@ public class Mesh : IDisposable
     private vec3[]? _clothVertices;
     private vec3[]? _clothNormals;
     internal bool HasClothGeometry => _clothVertices != null;
+    internal int GeometryVersion => _shadowGeometryVersion;
     public IReadOnlyList<vec3> RenderVertices => _clothVertices ?? (IReadOnlyList<vec3>)Vertices;
     public IReadOnlyList<vec3> RenderNormals => _clothNormals ?? (IReadOnlyList<vec3>)Normals;
 
@@ -1868,6 +1869,27 @@ public class Mesh : IDisposable
         _gl.CullFace(GLEnum.Back);
     }
 
+    internal void AddBendStateHash(ref HashCode hash)
+    {
+        var bend = GpuBend;
+        hash.Add(bend != null);
+        if (bend == null) return;
+        hash.Add(bend.Angle);
+        hash.Add(bend.Pivot);
+        hash.Add(bend.ShapePosition);
+        hash.Add(bend.InverseShapeTransform);
+        hash.Add(bend.SegmentAxis);
+        hash.Add(bend.ScaleCorrectionAxis);
+        hash.Add(bend.AxisStart);
+        hash.Add(bend.BendStart);
+        hash.Add(bend.BendEnd);
+        hash.Add(bend.BendSize);
+        hash.Add(bend.InvertWeight);
+        hash.Add(bend.Sharp);
+        hash.Add(bend.Plane);
+        hash.Add(bend.ExtrudedPlane);
+    }
+
     internal void AddShadowCacheState(ref HashCode hash)
     {
         if (HasShapeKeys)
@@ -1905,23 +1927,7 @@ public class Mesh : IDisposable
         foreach (var name in BoneNames) hash.Add(name);
         foreach (var inverseBind in BoneInverseBindMatrices) hash.Add(inverseBind);
 
-        var bend = GpuBend;
-        hash.Add(bend != null);
-        if (bend == null) return;
-        hash.Add(bend.Angle);
-        hash.Add(bend.Pivot);
-        hash.Add(bend.ShapePosition);
-        hash.Add(bend.InverseShapeTransform);
-        hash.Add(bend.SegmentAxis);
-        hash.Add(bend.ScaleCorrectionAxis);
-        hash.Add(bend.AxisStart);
-        hash.Add(bend.BendStart);
-        hash.Add(bend.BendEnd);
-        hash.Add(bend.BendSize);
-        hash.Add(bend.InvertWeight);
-        hash.Add(bend.Sharp);
-        hash.Add(bend.Plane);
-        hash.Add(bend.ExtrudedPlane);
+        AddBendStateHash(ref hash);
     }
 
     public unsafe void RenderShadow(Shader shader, mat4 lightViewProj, mat4 model)

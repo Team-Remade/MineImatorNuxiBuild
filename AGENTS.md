@@ -89,6 +89,8 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --block-rotation-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --rigid-body
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --nuxt
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --nuxt-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --fluid
@@ -168,6 +170,16 @@ Coverage and prerequisites:
   collections, kinematic bodies and keyframed handoff, fluid buoyancy/sinking/
   particle displacement, viewport bake playback, staleness, start frame,
   clearing, coupled fluid bakes and persistence.
+- `--nuxt`: no GPU; NuxT path-tracer environment, intersections, albedo/alpha-mask
+  cutouts, emission, diffuse bounces, ambient/directional/point lighting and
+  shadows, deterministic samples, settings validation, and progressive cancellation/reset.
+- `--nuxt-graphics`: OpenGL 4.3; compute shader compilation and dispatch, textured
+  scene pixels against the CPU reference, progressive accumulation, camera/scene
+  resets, empty-scene environment output, and a 200,000-triangle scene whose old
+  expanded triangle buffer exceeded 64 MiB. `--nuxt-project "path\to\project.nxProj"`
+  restores a supplied project read-only, prepares its NuxT scene and reports one
+  GPU sample or a device-limit fallback; run it with the harness output directed
+  to the application bin folder so bundled data assets resolve.
 - `--shader-graph`: custom shader graph validation, socket values, multi-output
   links, legacy graph upgrades, persistence, canvas/inspector controls for every
   node kind, and editor shortcuts.

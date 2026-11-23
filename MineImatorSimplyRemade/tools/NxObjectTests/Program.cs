@@ -25,6 +25,50 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         SelectionManager.Initialize();
+        if (args.Contains("--nuxt-graphics", StringComparer.Ordinal))
+        {
+            try
+            {
+                RunNuxTGraphicsTests();
+                Console.WriteLine("PASS NuxT compute tracing, large-scene paging, CPU pixel parity, accumulation and reset");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
+        int nuxtProject = Array.IndexOf(args, "--nuxt-project");
+        if (nuxtProject >= 0)
+        {
+            try
+            {
+                if (nuxtProject + 1 >= args.Length)
+                    throw new ArgumentException("--nuxt-project requires an .nxProj path or project folder.");
+                RunNuxTProject(args[nuxtProject + 1]);
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
+        if (args.Contains("--nuxt", StringComparer.Ordinal))
+        {
+            try
+            {
+                RunNuxTTests();
+                Console.WriteLine("PASS NuxT intersections, lighting, deterministic sampling and progressive cancellation");
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         if (args.Contains("--resourcepack-animation-graphics", StringComparer.Ordinal))
         {
             try

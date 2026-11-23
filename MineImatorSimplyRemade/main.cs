@@ -62,11 +62,13 @@ public static class main
         {
             string renderer = args.FirstOrDefault(arg => arg.StartsWith("--renderer=", StringComparison.OrdinalIgnoreCase))?
                 .Split('=', 2)[1].ToLowerInvariant() ?? "opengl";
-            if (renderer is not ("opengl" or "vulkan" or "d3d11"))
+            if (renderer is not ("opengl" or "vulkan" or "d3d11" or "nuxt"))
             {
-                Console.Error.WriteLine("Supported renderers: --renderer=opengl, --renderer=vulkan, --renderer=d3d11");
+                Console.Error.WriteLine("Supported renderers: --renderer=opengl, --renderer=vulkan, --renderer=d3d11, --renderer=nuxt");
                 return 1;
             }
+
+            Viewport.StartWithNuxT = renderer == "nuxt";
 
             PreferencesPanel.LoadLanguagePreference();
             NativeLibraryBootstrap.Initialize();
@@ -92,7 +94,7 @@ public static class main
             RunFfmpegBootstrap(startupWindow);
 
             // ── Main window ───────────────────────────────────────────────────────
-            Glfw.WindowHint(WindowHintInt.ContextVersionMajor, 3);
+            Glfw.WindowHint(WindowHintInt.ContextVersionMajor, 4);
             Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
             Glfw.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
 
@@ -103,12 +105,19 @@ public static class main
             MainWindow = new MainWindow(size.x, size.y, "Mine Imator Nuxi", Glfw, visible: false);
             if (MainWindow.WindowHandle == null)
             {
-                Console.WriteLine("Failed to create main window!");
-                startupWindow?.Dispose();
-                _startupGl?.Dispose();
-                _startupGl = null;
-                Glfw.Terminate();
-                return 1;
+                Console.WriteLine("OpenGL 4.3 context unavailable; retrying with OpenGL 3.3.");
+                Glfw.WindowHint(WindowHintInt.ContextVersionMajor, 3);
+                Glfw.WindowHint(WindowHintInt.ContextVersionMinor, 3);
+                MainWindow = new MainWindow(size.x, size.y, "Mine Imator Nuxi", Glfw, visible: false);
+                if (MainWindow.WindowHandle == null)
+                {
+                    Console.WriteLine("Failed to create an OpenGL 3.3 main window!");
+                    startupWindow?.Dispose();
+                    _startupGl?.Dispose();
+                    _startupGl = null;
+                    Glfw.Terminate();
+                    return 1;
+                }
             }
 
             MainWindow.CenterWindow();
@@ -119,7 +128,7 @@ public static class main
             _gl = GL.GetApi(Glfw.GetProcAddress);
             MainWindow.SetGL(_gl);
             
-            if (renderer != "opengl")
+            if (renderer is "vulkan" or "d3d11")
             {
                 try
                 {

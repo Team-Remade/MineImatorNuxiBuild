@@ -5,6 +5,43 @@ For all your Minecraft animation needs!
 For development setup, debugging, regression tests, and implementation notes,
 see [AGENTS.md](AGENTS.md).
 
+## Viewport renderers
+
+Open the renderer dropdown in the main viewport toolbar to switch between the
+default **OpenGL** renderer and **NuxT**, an experimental progressive path tracer.
+NuxT uses GPU compute when the main window has an OpenGL 4.3+ context and falls
+back to CPU tracing on older or unsupported hardware. Start directly in NuxT with
+`dotnet run --project .\MineImatorSimplyRemade\MineImatorSimplyRemade.csproj -- --renderer=nuxt`;
+OpenGL remains the default.
+
+Open **Properties > Render Settings > NuxT Path Tracer** to adjust samples per
+pixel, maximum bounces, render scale, exposure, and the deterministic sampling
+seed. These controls are saved with the project. The viewport displays progress
+as samples accumulate; camera, scene, timeline, or setting changes restart the
+render. Lower the render scale or sample count for faster feedback.
+
+NuxT traces evaluated scene meshes with albedo/alpha-mask and animated textures,
+unlit materials, RGB/HSV material color adjustments, approximate diffuse/metal
+scattering, emission, environment and global ambient/directional lighting, and
+point/spot lights with ray-traced shadows. Scene preparation is time-sliced and
+uses a median-partitioned BVH; GPU scene textures are transferred in bounded
+batches to reduce large-scene upload overhead. GPU scene data is subject to the
+device's maximum texture dimensions; unsupported sizes or compute failures use
+the CPU fallback.
+
+Select **Rendered** mode with the **Combined** pass to use NuxT in the viewport
+and rendered camera previews. Raster sky/background remains visible through
+primary rays that miss the NuxT geometry, and the raster camera effects and
+editor overlays are applied after the path-traced layer. Other viewport modes,
+diagnostic passes, and live camera feeds stay on the raster renderer. PNG and
+animation exports wait for scene preparation and all configured samples, and
+render at the requested output dimensions rather than the interactive render
+scale, up to the renderer's 8,388,608-pixel and device texture limits.
+
+NuxT is still experimental: custom shader graphs and blended/translucent surface
+materials are not reproduced, and several material and post-processing details
+can differ from OpenGL. OpenGL remains the default renderer.
+
 ## Home screen splash artwork
 
 Replace `MineImatorSimplyRemade\data\splashes\splash.png` to customize the home

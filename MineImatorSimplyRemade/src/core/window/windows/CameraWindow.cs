@@ -223,6 +223,8 @@ public class CameraWindow : Window
                 new Vector2(0, 1),
                 new Vector2(1, 0));
 
+            _panel.MainViewport?.DrawNuxTStatusOverlay(_panel, imageMin);
+
             _panel.RenderRuleOfThirdsOverlay(imageMin, imageSize);
 
             // Gizmo rotation-arc overlay for the undocked window.

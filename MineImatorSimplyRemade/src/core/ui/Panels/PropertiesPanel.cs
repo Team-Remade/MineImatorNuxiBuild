@@ -111,6 +111,11 @@ public partial class PropertiesPanel : UiPanel
     public float AntiAliasingSubpixel = 0.75f;
     public float AntiAliasingEdgeThreshold = 0.125f;
     public float AntiAliasingMinimumThreshold = 0.03125f;
+    public int NuxTSamples = 32;
+    public int NuxTMaxBounces = 4;
+    public float NuxTResolutionScale = 0.5f;
+    public float NuxTExposure = 1f;
+    public int NuxTSeed = 1;
     public bool AmbientOcclusionEnabled = true;
     public float AmbientOcclusionRadius = 12f;
     public float AmbientOcclusionStrength = 1f;
@@ -418,6 +423,11 @@ public partial class PropertiesPanel : UiPanel
         AntiAliasingSubpixel = float.IsFinite(settings.AntiAliasingSubpixel) ? Math.Clamp(settings.AntiAliasingSubpixel, 0f, 1f) : 0.75f;
         AntiAliasingEdgeThreshold = float.IsFinite(settings.AntiAliasingEdgeThreshold) ? Math.Clamp(settings.AntiAliasingEdgeThreshold, 0.03125f, 0.5f) : 0.125f;
         AntiAliasingMinimumThreshold = float.IsFinite(settings.AntiAliasingMinimumThreshold) ? Math.Clamp(settings.AntiAliasingMinimumThreshold, 0.001f, 0.25f) : 0.03125f;
+        NuxTSamples = Math.Clamp(settings.NuxTSamples, 1, 4096);
+        NuxTMaxBounces = Math.Clamp(settings.NuxTMaxBounces, 0, 16);
+        NuxTResolutionScale = float.IsFinite(settings.NuxTResolutionScale) ? Math.Clamp(settings.NuxTResolutionScale, 0.1f, 1f) : 0.5f;
+        NuxTExposure = float.IsFinite(settings.NuxTExposure) ? Math.Clamp(settings.NuxTExposure, 0.05f, 8f) : 1f;
+        NuxTSeed = settings.NuxTSeed;
         AmbientOcclusionEnabled = settings.AmbientOcclusionEnabled;
         AmbientOcclusionRadius = Math.Clamp(settings.AmbientOcclusionRadius, 0f, 128f);
         AmbientOcclusionStrength = Math.Clamp(settings.AmbientOcclusionStrength, 0f, 2f);
@@ -593,6 +603,11 @@ public partial class PropertiesPanel : UiPanel
         manifest.Settings.AntiAliasingSubpixel = Math.Clamp(AntiAliasingSubpixel, 0f, 1f);
         manifest.Settings.AntiAliasingEdgeThreshold = Math.Clamp(AntiAliasingEdgeThreshold, 0.03125f, 0.5f);
         manifest.Settings.AntiAliasingMinimumThreshold = Math.Clamp(AntiAliasingMinimumThreshold, 0.001f, 0.25f);
+        manifest.Settings.NuxTSamples = Math.Clamp(NuxTSamples, 1, 4096);
+        manifest.Settings.NuxTMaxBounces = Math.Clamp(NuxTMaxBounces, 0, 16);
+        manifest.Settings.NuxTResolutionScale = float.IsFinite(NuxTResolutionScale) ? Math.Clamp(NuxTResolutionScale, 0.1f, 1f) : 0.5f;
+        manifest.Settings.NuxTExposure = float.IsFinite(NuxTExposure) ? Math.Clamp(NuxTExposure, 0.05f, 8f) : 1f;
+        manifest.Settings.NuxTSeed = NuxTSeed;
         manifest.Settings.AmbientOcclusionEnabled = AmbientOcclusionEnabled;
         manifest.Settings.AmbientOcclusionRadius = Math.Clamp(AmbientOcclusionRadius, 0f, 128f);
         manifest.Settings.AmbientOcclusionStrength = Math.Clamp(AmbientOcclusionStrength, 0f, 2f);
@@ -3097,6 +3112,22 @@ public partial class PropertiesPanel : UiPanel
     private unsafe void RenderRenderSettings()
     {
         bool changed = false;
+
+        if (ImGui.CollapsingHeader("NuxT Path Tracer"))
+        {
+            ImGui.TextWrapped("Progressive path-tracing quality and output settings. Changes restart the accumulated render.");
+            changed |= ImGui.SliderInt("Samples##nuxt", ref NuxTSamples, 1, 4096);
+            RegisterProjectPropertyContext(nameof(NuxTSamples), 1, 4096);
+            changed |= ImGui.SliderInt("Max bounces##nuxt", ref NuxTMaxBounces, 0, 16);
+            RegisterProjectPropertyContext(nameof(NuxTMaxBounces), 0, 16);
+            changed |= ImGui.SliderFloat("Render scale##nuxt", ref NuxTResolutionScale, 0.1f, 1f, "%.2f");
+            RegisterProjectPropertyContext(nameof(NuxTResolutionScale), 0.1f, 1f);
+            changed |= ImGui.SliderFloat("Exposure##nuxt", ref NuxTExposure, 0.05f, 8f, "%.2f");
+            RegisterProjectPropertyContext(nameof(NuxTExposure), 0.05f, 8f);
+            changed |= ImGui.InputInt("Seed##nuxt", ref NuxTSeed);
+            RegisterProjectPropertyContext(nameof(NuxTSeed));
+            ImGui.Separator();
+        }
 
         changed |= DrawWatermarkSettings();
         changed |= ImGui.Checkbox(Localization.Label("text.panel.properties.transparent_background", "Transparent Background"), ref TransparentBackground);

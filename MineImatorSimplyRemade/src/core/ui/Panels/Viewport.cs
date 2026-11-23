@@ -2666,6 +2666,8 @@ public partial class Viewport : UiPanel
                     _activeCameraIndex = 0;
             }
 
+            DrawNuxTRendererSelector(itemY);
+
             // Overlays toggle button — right-aligned at the end of the bar.
             {
                 ImGui.SameLine();
@@ -2860,7 +2862,9 @@ public partial class Viewport : UiPanel
 
         // ── 3D render into FBO ────────────────────────────────────────────────
         bool renderedWithVeldrid = false;
-        if (!graphFallback && VeldridContext.SceneRenderer is { } sceneRenderer)
+        bool renderNuxT = _useNuxT && _viewportRenderMode == ViewportRenderMode.Rendered &&
+                          _renderedPassMode == RenderedPassMode.Combined;
+        if (!graphFallback && !renderNuxT && VeldridContext.SceneRenderer is { } sceneRenderer)
         {
             try
             {
@@ -2950,19 +2954,22 @@ public partial class Viewport : UiPanel
             SceneRenderMode renderMode = _viewportRenderMode == ViewportRenderMode.Rendered
                 ? SceneRenderMode.Rendered
                 : SceneRenderMode.Unrendered;
+            bool useNuxTRasterFallback = ShouldUseNuxTRasterFallback(_useNuxT,
+                renderMode == SceneRenderMode.Rendered, _renderedPassMode == RenderedPassMode.Combined);
+            SceneRenderMode rasterRenderMode = useNuxTRasterFallback ? SceneRenderMode.Unrendered : renderMode;
             bool forceUnshaded = _viewportRenderMode == ViewportRenderMode.FlatUnshaded ||
                                  _viewportRenderMode == ViewportRenderMode.Wireframe;
             bool wireframeMode = _viewportRenderMode == ViewportRenderMode.Wireframe;
-            bool useWorldGi = renderMode == SceneRenderMode.Rendered &&
+            bool useWorldGi = rasterRenderMode == SceneRenderMode.Rendered &&
                       PropertiesPanel?.IndirectLightingEnabled == true &&
                       string.Equals(PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
-            bool useScreenSpaceGi = renderMode == SceneRenderMode.Rendered &&
+            bool useScreenSpaceGi = rasterRenderMode == SceneRenderMode.Rendered &&
                         PropertiesPanel?.IndirectLightingEnabled == true &&
                         !string.Equals(PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
             Mesh.IndirectWorldEnabled = useWorldGi;
             Mesh.IndirectWorldStrength = Math.Clamp(PropertiesPanel?.IndirectLightingStrength ?? 1f, 0f, 4f);
-            Mesh.SssEnabled = renderMode == SceneRenderMode.Rendered && PropertiesPanel?.SubsurfaceEnabled == true;
-            if (renderMode == SceneRenderMode.Rendered)
+            Mesh.SssEnabled = rasterRenderMode == SceneRenderMode.Rendered && PropertiesPanel?.SubsurfaceEnabled == true;
+            if (rasterRenderMode == SceneRenderMode.Rendered)
             {
                 Mesh.ShadowBlurStrength = Math.Clamp(PropertiesPanel?.ShadowBlurStrength ?? 1f, 0f, 4f);
                 Mesh.SssBlurSamples = Math.Clamp(PropertiesPanel?.SubsurfaceBlurSamples ?? 8, 0, 32);
@@ -2987,7 +2994,8 @@ public partial class Viewport : UiPanel
                     pointShadowIndices = RenderPointShadowMaps(camPos);
             }
 
-            CollectPointLights(SceneObjects, renderMode, pointShadowIndices, useScreenSpaceGi, _cachedAllPointLights);
+            if (rasterRenderMode == SceneRenderMode.Rendered)
+                CollectPointLights(SceneObjects, rasterRenderMode, pointShadowIndices, useScreenSpaceGi, _cachedAllPointLights);
 
             // ── Upload scene UBO ──────────────────────────────────────────────────
             if (_sceneUBO != null)
@@ -3048,10 +3056,10 @@ public partial class Viewport : UiPanel
                 _cachedRenderItemsNoAo.Clear();
                 _cachedOverlays.Clear();
 
-                CollectRenderPairs(SceneObjects, camPos, renderMode, frustum, _cachedRenderItems, _cachedRenderItemsNoAo, _cachedOverlays);
+                CollectRenderPairs(SceneObjects, camPos, rasterRenderMode, frustum, _cachedRenderItems, _cachedRenderItemsNoAo, _cachedOverlays);
             }
 
-            bool splitAoObjects = renderMode == SceneRenderMode.Rendered &&
+            bool splitAoObjects = rasterRenderMode == SceneRenderMode.Rendered &&
                                   _ambientOcclusionShader != null &&
                                   PropertiesPanel?.AmbientOcclusionEnabled == true;
 
@@ -3068,7 +3076,7 @@ public partial class Viewport : UiPanel
                 Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Fill);
 
             SetGiDrawBuffers(false);
-            if (renderMode == SceneRenderMode.Rendered)
+            if (rasterRenderMode == SceneRenderMode.Rendered)
                 RenderAmbientOcclusion(_fbo, _depthTex, w, h, renderNear, renderFar, PropertiesPanel, _renderedPassMode);
 
             if (splitAoObjects && _renderedPassMode != RenderedPassMode.AmbientOcclusion)
@@ -3087,9 +3095,17 @@ public partial class Viewport : UiPanel
 
             ResolveSceneAlpha(_fbo, _glowFbo, _glowTex, w, h);
 
-            if (renderMode == SceneRenderMode.Rendered)
+            if (rasterRenderMode == SceneRenderMode.Rendered)
                 ApplyIndirectLightingPassGeneric(_fbo, _colorTex, _depthTex, _indirectFbo, _indirectTex, _indirectPingFbo, _indirectPingTex,
                     w, h, _giAlbedoTex, _giRadianceTex, proj, PropertiesPanel, _renderedPassMode);
+
+            if (_useNuxT && renderMode == SceneRenderMode.Rendered &&
+                _renderedPassMode == RenderedPassMode.Combined)
+            {
+                uint nuxTexture = RenderNuxTImage(activeCamera, activeCamObj, w, h, renderView: this);
+                if (nuxTexture != 0)
+                    CompositeNuxTImage(nuxTexture, _fbo, w, h);
+            }
 
             PrepareLensDirt(renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined
                 ? activeCamObj : null, w, h);
@@ -3185,13 +3201,18 @@ public partial class Viewport : UiPanel
                 ExecutePendingPick(imageMin, imageSize);
         }
 
-        // ── Display FBO as ImGui image (flip V for OpenGL→ImGui convention) ────
+        uint displayTexture = _colorTex;
+
+        // ── Display renderer image as ImGui image (flip V for OpenGL→ImGui convention) ────
         RenderTransparencyBackground(imageMin, imageSize);
         ImGui.Image(
-            new ImTextureRef(texId: (ulong)_colorTex),
+            new ImTextureRef(texId: (ulong)displayTexture),
             size,
             new Vector2(0, 1),
             new Vector2(1, 0));
+
+        if (_useNuxT)
+            DrawNuxTStatusOverlay(this, imageMin);
 
         RenderRuleOfThirdsOverlay(imageMin, imageSize);
         if (OverlaysEnabled)
@@ -7397,6 +7418,8 @@ public partial class Viewport : UiPanel
                 new Vector2(0, 1),
                 new Vector2(1, 0));
 
+            MainViewport?.DrawNuxTStatusOverlay(this, previewImageMin);
+
             RenderRuleOfThirdsOverlay(previewImageMin, previewImageSize);
 
             // Gizmo rotation-arc overlay (drawn on the ImGui draw list so it
@@ -7624,17 +7647,21 @@ public partial class Viewport : UiPanel
                              effectiveMode == ViewportRenderMode.Wireframe;
         bool wireframeMode = effectiveMode == ViewportRenderMode.Wireframe;
         RenderedPassMode effectivePassMode = highQuality ? RenderedPassMode.Combined : _renderedPassMode;
+        bool useNuxTRasterFallback = !_profilingCameraFeeds &&
+            ShouldUseNuxTRasterFallback(MainViewport._useNuxT, renderMode == SceneRenderMode.Rendered,
+                effectivePassMode == RenderedPassMode.Combined);
+        SceneRenderMode rasterRenderMode = useNuxTRasterFallback ? SceneRenderMode.Unrendered : renderMode;
         EnsureColorManagementTargets(true, w, h, ResolveColorManagementSettings(MainViewport.PropertiesPanel, sceneObj).Enabled &&
             (renderMode == SceneRenderMode.Rendered || applyCameraEffects) && effectivePassMode == RenderedPassMode.Combined);
-        bool previewWorldGi = renderMode == SceneRenderMode.Rendered &&
+        bool previewWorldGi = rasterRenderMode == SceneRenderMode.Rendered &&
                       MainViewport.PropertiesPanel?.IndirectLightingEnabled == true &&
                       string.Equals(MainViewport.PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
-        bool previewScreenSpaceGi = renderMode == SceneRenderMode.Rendered &&
+        bool previewScreenSpaceGi = rasterRenderMode == SceneRenderMode.Rendered &&
                         MainViewport.PropertiesPanel?.IndirectLightingEnabled == true &&
                         !string.Equals(MainViewport.PropertiesPanel.GlobalIlluminationMode, "world", StringComparison.OrdinalIgnoreCase);
         Mesh.IndirectWorldEnabled = previewWorldGi;
         Mesh.IndirectWorldStrength = Math.Clamp(MainViewport.PropertiesPanel?.IndirectLightingStrength ?? 1f, 0f, 4f);
-        Mesh.SssEnabled = renderMode == SceneRenderMode.Rendered && MainViewport.PropertiesPanel?.SubsurfaceEnabled == true;
+        Mesh.SssEnabled = rasterRenderMode == SceneRenderMode.Rendered && MainViewport.PropertiesPanel?.SubsurfaceEnabled == true;
 
         Camera renderCamera;
         mat4 view, proj;
@@ -7692,7 +7719,7 @@ public partial class Viewport : UiPanel
         var allPointLights = new List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle, float specular)>();
         vec3 camPos = renderCamera.Position;
 
-        if (renderMode == SceneRenderMode.Rendered)
+        if (rasterRenderMode == SceneRenderMode.Rendered)
         {
             Mesh.ShadowBlurStrength = Math.Clamp(MainViewport.PropertiesPanel?.ShadowBlurStrength ?? 1f, 0f, 4f);
             Mesh.SssBlurSamples = Math.Clamp(MainViewport.PropertiesPanel?.SubsurfaceBlurSamples ?? 8, 0, 32);
@@ -7753,7 +7780,8 @@ public partial class Viewport : UiPanel
                 moonShadows);
         }
 
-        CollectPointLights(MainViewport.SceneObjects, renderMode, pointShadowIndices, previewScreenSpaceGi, allPointLights);
+        if (rasterRenderMode == SceneRenderMode.Rendered)
+            CollectPointLights(MainViewport.SceneObjects, rasterRenderMode, pointShadowIndices, previewScreenSpaceGi, allPointLights);
 
         if (wireframeMode)
             Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
@@ -7775,10 +7803,10 @@ public partial class Viewport : UiPanel
         Frustum previewFrustum = Frustum.FromViewProj(proj * view);
         {
             using var collectionScope = FrameProfiler.Shared.Measure(ProfileStage.SceneCollection);
-            CollectRenderPairs(MainViewport.SceneObjects, camPos, renderMode, previewFrustum, renderItems, renderItemsNoAo, overlays);
+            CollectRenderPairs(MainViewport.SceneObjects, camPos, rasterRenderMode, previewFrustum, renderItems, renderItemsNoAo, overlays);
         }
 
-        bool splitAoObjects = renderMode == SceneRenderMode.Rendered &&
+        bool splitAoObjects = rasterRenderMode == SceneRenderMode.Rendered &&
                               _ambientOcclusionShader != null &&
                               MainViewport.PropertiesPanel?.AmbientOcclusionEnabled == true;
 
@@ -7795,7 +7823,7 @@ public partial class Viewport : UiPanel
             Gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Fill);
 
         SetGiDrawBuffers(false);
-        if (renderMode == SceneRenderMode.Rendered)
+        if (rasterRenderMode == SceneRenderMode.Rendered)
             RenderAmbientOcclusion(_previewFbo, _previewDepthTex, w, h, renderCamera.Near, renderCamera.Far, MainViewport.PropertiesPanel, effectivePassMode);
 
         if (splitAoObjects && effectivePassMode != RenderedPassMode.AmbientOcclusion)
@@ -7814,10 +7842,19 @@ public partial class Viewport : UiPanel
 
         ResolveSceneAlpha(_previewFbo, _previewGlowFbo, _previewGlowTex, w, h);
 
-        if (renderMode == SceneRenderMode.Rendered)
+        if (rasterRenderMode == SceneRenderMode.Rendered)
             ApplyIndirectLightingPassGeneric(_previewFbo, _previewColorTex, _previewDepthTex,
                 _previewIndirectFbo, _previewIndirectTex, _previewIndirectPingFbo, _previewIndirectPingTex,
                 w, h, _previewGiAlbedoTex, _previewGiRadianceTex, proj, MainViewport.PropertiesPanel, effectivePassMode);
+
+        bool finalNuxTOutput = applyWatermark || MainWindow.IsAnimationRenderExportActive;
+        if (!_profilingCameraFeeds && MainViewport._useNuxT &&
+            renderMode == SceneRenderMode.Rendered && effectivePassMode == RenderedPassMode.Combined)
+        {
+            uint nuxTexture = MainViewport.RenderNuxTImage(renderCamera, sceneObj, w, h, finalNuxTOutput, this);
+            if (nuxTexture != 0)
+                CompositeNuxTImage(nuxTexture, _previewFbo, w, h);
+        }
 
         PrepareLensDirt((renderMode == SceneRenderMode.Rendered || applyCameraEffects) &&
             effectivePassMode == RenderedPassMode.Combined ? sceneObj : null, w, h);

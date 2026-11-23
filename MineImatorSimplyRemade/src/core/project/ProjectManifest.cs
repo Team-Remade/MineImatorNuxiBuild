@@ -105,6 +105,11 @@ public class ProjectRenderSettings
 {
     private int _maxArrayInstances = SceneModifier.DefaultMaxInstances;
     private int _maxParticlesPerSpawner = ParticlePresetSimulation.SafetyLimit;
+    public int NuxTSamples { get; set; } = 32;
+    public int NuxTMaxBounces { get; set; } = 4;
+    public float NuxTResolutionScale { get; set; } = 0.5f;
+    public float NuxTExposure { get; set; } = 1f;
+    public int NuxTSeed { get; set; } = 1;
     public int MaxArrayInstances
     {
         get => _maxArrayInstances;
