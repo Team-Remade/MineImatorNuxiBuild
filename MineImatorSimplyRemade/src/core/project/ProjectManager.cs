@@ -13,7 +13,7 @@ public sealed class ProjectManager
     private static readonly Lazy<ProjectManager> _lazy = new(() => new ProjectManager());
     public static ProjectManager Instance => _lazy.Value;
 
-    public const string ModelImportFilter = "glb,gltf,fbx,obj,dae,3ds,ply,stl,x3d,mimodel,miobject,nxObj,json";
+    public const string ModelImportFilter = "glb,gltf,fbx,obj,dae,3ds,ply,stl,x3d,mimodel,miobject,miproject,nxObj,json";
     public const string ImageImportFilter = "png,jpg,jpeg,bmp,tga,gif,webp,tiff,hdr,exr";
     public const string SoundImportFilter = "wav,mp3,ogg,flac,m4a";
     public const string SceneryImportFilter = "schematic,schem,meshcache";
@@ -953,7 +953,7 @@ public sealed class ProjectManager
             if (IsTextureFile(current) && File.Exists(current + ".mcmeta"))
                 pending.Enqueue(current + ".mcmeta");
 
-            if (ext == ".miobject")
+            if (ext is ".miobject" or ".miproject")
             {
                 foreach (string dep in GetMiObjectDependencies(current, currentDir))
                     if (!files.Contains(dep))

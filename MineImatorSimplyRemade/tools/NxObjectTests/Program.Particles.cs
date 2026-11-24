@@ -530,7 +530,7 @@ internal static partial class Program
             {
                 case "sprite": preset.Types[0]["sprite_template"] = "unknown"; break;
                 case "source": preset.Types[0]["temp_type"] = "sheet"; break;
-                case "region": preset.Settings["spawn_region_type"] = "path"; break;
+                case "region": preset.Settings["spawn_region_type"] = "torus"; break;
                 case "vector": preset.Types[0]["spd"] = new JsonArray(1f, 2f); break;
                 case "color": preset.Types[0]["color"] = "invalid"; break;
             }

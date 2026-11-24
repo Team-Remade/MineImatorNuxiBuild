@@ -461,6 +461,7 @@ internal static class SceneObjectFingerprint
             hash.Add(particle.Seed);
             hash.Add(particle.Freeze);
             hash.Add(particle.AttractorObjectId);
+            hash.Add(particle.SpawnRegionPathObjectId);
             hash.Add(particle.AttractorForce);
             hash.Add(particle.ParticleLibraryEntryId);
             hash.Add(particle.ParticleLibraryDisplayName);

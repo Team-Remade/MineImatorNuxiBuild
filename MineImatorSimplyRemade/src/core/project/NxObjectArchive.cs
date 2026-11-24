@@ -327,7 +327,7 @@ public static class NxObjectArchive
         string File(string? path) => string.IsNullOrWhiteSpace(path) ? "" : rewrite(path);
         if (!string.IsNullOrWhiteSpace(node.SourceAssetPath) &&
             Path.GetExtension(node.SourceAssetPath).ToLowerInvariant() is not
-                (".glb" or ".gltf" or ".obj" or ".mimodel" or ".miobject" or ".json" or ".schematic" or ".schem" or ".meshcache" or ".stl"))
+                (".glb" or ".gltf" or ".obj" or ".mimodel" or ".miobject" or ".miproject" or ".json" or ".schematic" or ".schem" or ".meshcache" or ".stl"))
             throw new NotSupportedException("This source model format cannot yet be packaged safely in nxObj. Convert the model to GLB, glTF, or OBJ first.");
         node.SourceAssetPath = File(node.SourceAssetPath);
         node.TextureOverridePath = File(node.TextureOverridePath);
@@ -382,6 +382,7 @@ public static class NxObjectArchive
                         };
                 }
             node.ParticleAttractorObjectId = Reference(node.ParticleAttractorObjectId);
+            node.ParticleSpawnRegionPathObjectId = Reference(node.ParticleSpawnRegionPathObjectId);
             foreach (var constraint in node.CopyConstraints ?? []) constraint.TargetObjectId = Reference(constraint.TargetObjectId);
             foreach (var constraint in node.BoneConstraints ?? [])
             {

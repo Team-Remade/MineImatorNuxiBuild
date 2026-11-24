@@ -2343,9 +2343,15 @@ public class MainWindow : Window
 
     private void OpenProjectFromDialog()
     {
-        var result = Dialog.FileOpen("nxProj");
+        var result = Dialog.FileOpen("nxProj,miproject");
         if (!result.IsOk || string.IsNullOrWhiteSpace(result.Path))
             return;
+
+        if (IsMineImatorProjectFile(result.Path))
+        {
+            OpenMineImatorProject(result.Path);
+            return;
+        }
 
         if (_projectManager.LoadProject(result.Path))
         {
@@ -2357,6 +2363,34 @@ public class MainWindow : Window
         else
         {
             ShowErrorToast(Localization.T("text.window.main.failed_to_open_project"));
+        }
+    }
+
+    private static bool IsMineImatorProjectFile(string path) =>
+        string.Equals(Path.GetExtension(path), ".miproject", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Opens a Mine-imator .miproject by importing it into a new project.</summary>
+    private void OpenMineImatorProject(string path)
+    {
+        if (_spawnMenu == null || !File.Exists(path))
+        {
+            ShowErrorToast(Localization.T("text.window.main.failed_to_open_project"));
+            return;
+        }
+
+        try
+        {
+            _projectManager.CreateNewProject(Path.GetFileNameWithoutExtension(path));
+            _showProjectHome = false;
+            LoadProjectScene();
+            var root = _spawnMenu.SpawnCustomModelFromPath(path);
+            if (root == null)
+                ShowErrorToast(Localization.T("text.window.main.failed_to_open_project"));
+            RefreshWindowTitle();
+        }
+        catch (Exception ex)
+        {
+            ShowErrorToast(Localization.Format("text.window.main.asset_import_failed", Path.GetFileName(path), ex.Message));
         }
     }
 
@@ -2431,6 +2465,14 @@ public class MainWindow : Window
     {
         if (_droppedFiles.Count == 0)
             return;
+
+        if (!_projectManager.HasProject && _droppedFiles.TryPeek(out string? firstDropped) &&
+            IsMineImatorProjectFile(firstDropped))
+        {
+            _droppedFiles.Clear();
+            OpenMineImatorProject(firstDropped);
+            return;
+        }
 
         if (!_projectManager.HasProject)
         {

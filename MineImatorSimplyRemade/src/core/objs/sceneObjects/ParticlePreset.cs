@@ -20,8 +20,8 @@ public sealed class ParticlePreset
         Types = types.Select(node => node as JsonObject ??
             throw new InvalidDataException("Particle types must be objects.")).ToArray();
         ValidateNumbers(Document);
-        if (Text(settings, "spawn_region_type", "box") is not ("sphere" or "cube" or "box"))
-            throw new InvalidDataException("Path-based particle regions are not supported.");
+        if (Text(settings, "spawn_region_type", "box") is not ("sphere" or "cube" or "box" or "path"))
+            throw new InvalidDataException("Unknown particle spawn region type.");
         if (Text(settings, "bounding_box_type", "none") is not ("none" or "ground" or "spawn" or "custom"))
             throw new InvalidDataException("Unknown particle bounding box type.");
         foreach (JsonObject type in Types)

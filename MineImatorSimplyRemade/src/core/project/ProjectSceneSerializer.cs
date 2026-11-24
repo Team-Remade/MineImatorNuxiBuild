@@ -518,6 +518,7 @@ public static class ProjectSceneSerializer
             entry.ParticleSeed = particleSpawner.Seed;
             entry.ParticleFreeze = particleSpawner.Freeze;
             entry.ParticleAttractorObjectId = particleSpawner.AttractorObjectId;
+            entry.ParticleSpawnRegionPathObjectId = particleSpawner.SpawnRegionPathObjectId;
             entry.ParticleAttractorForce = particleSpawner.AttractorForce;
             entry.ParticleLibraryEntryId = particleSpawner.ParticleLibraryEntryId;
             entry.ParticleLibraryDisplayName = particleSpawner.ParticleLibraryDisplayName;
@@ -1092,6 +1093,7 @@ public static class ProjectSceneSerializer
             particleSpawner.Seed = entry.ParticleSeed;
             particleSpawner.Freeze = entry.ParticleFreeze;
             particleSpawner.AttractorObjectId = entry.ParticleAttractorObjectId;
+            particleSpawner.SpawnRegionPathObjectId = entry.ParticleSpawnRegionPathObjectId ?? "";
             particleSpawner.AttractorForce = entry.ParticleAttractorForce;
             particleSpawner.ParticleLibraryEntryId = entry.ParticleLibraryEntryId ?? "";
             particleSpawner.ParticleLibraryDisplayName = entry.ParticleLibraryDisplayName ?? "";
@@ -1498,6 +1500,9 @@ public static class ProjectSceneSerializer
         if (obj is ParticleSpawnerSceneObject particle &&
             objectIds.TryGetValue(particle.AttractorObjectId, out string? attractorId))
             particle.AttractorObjectId = attractorId;
+        if (obj is ParticleSpawnerSceneObject regionParticle &&
+            objectIds.TryGetValue(regionParticle.SpawnRegionPathObjectId, out string? regionPathId))
+            regionParticle.SpawnRegionPathObjectId = regionPathId;
         if (objectIds.TryGetValue(obj.CameraTextureObjectId, out string? cameraId))
             obj.CameraTextureObjectId = cameraId;
         foreach (var pair in obj.Keyframes)

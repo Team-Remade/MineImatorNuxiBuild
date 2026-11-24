@@ -19,6 +19,7 @@ public static partial class MiObjectFeatureMapper
     public static SceneObject? Create(MiTimeline timeline, MiTemplate? template, MiObject source, GL? gl)
     {
         string type = timeline.Type?.ToLowerInvariant() ?? template?.Type?.ToLowerInvariant() ?? "";
+        type = type switch { "pointlight" => "point_light", "spotlight" => "spot_light", "particles" => "particle_spawner", _ => type };
         SceneObject? obj = null;
         if (type is "camera" or "point_light" or "spot_light" or "light")
         {
@@ -127,6 +128,19 @@ public static partial class MiObjectFeatureMapper
             Scalar("FREEZE", "particle.freeze", 0f, value => particle.Freeze = value != 0, discrete: true);
             Scalar("FORCE", "particle.attractor_force", 1f, value => particle.AttractorForce = value);
             Reference("ATTRACTOR", "particle.attractor_target", id => particle.AttractorObjectId = id, _ => true);
+            if (particle.Preset?["particles"] is JsonObject region &&
+                ParticlePreset.Text(region, "spawn_region_type", "box") == "path")
+            {
+                string pathId = region["spawn_region_path"] is JsonValue pathValue &&
+                    pathValue.TryGetValue<string>(out string? text) ? text : "";
+                if (pathId is not ("" or "null" or "-1"))
+                {
+                    if (ids.TryGetValue(pathId, out var pathObject) && pathObject is PathSceneObject)
+                        particle.SpawnRegionPathObjectId = pathObject.ObjectId;
+                    else
+                        Report($"MIObject particle '{timeline.Name}': unresolved spawn region path '{pathId}'.", warning);
+                }
+            }
             if (Flag(Value(timeline, first, "CUSTOM_SEED"), false))
                 particle.Seed = (int)Number(Value(timeline, first, "SEED"), 0);
             foreach (string channel in new[] { "CLEAR", "FORCE_DIRECTIONAL", "FORCE_VORTEX" })

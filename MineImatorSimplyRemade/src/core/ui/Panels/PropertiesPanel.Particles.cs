@@ -82,6 +82,26 @@ public partial class PropertiesPanel
                 }
             ImGui.EndCombo();
         }
+        PathSceneObject[] paths = targets.OfType<PathSceneObject>().ToArray();
+        string pathName = paths.FirstOrDefault(obj => obj.ObjectId == spawner.SpawnRegionPathObjectId)?.Name ??
+            Localization.T("text.panel.properties.none");
+        if (ImGui.BeginCombo(Localization.Label("text.particles.region_path", "Region Path"), pathName))
+        {
+            if (ImGui.Selectable(Localization.Label("text.panel.properties.none", "(none)") + "##regionPathNone",
+                    string.IsNullOrEmpty(spawner.SpawnRegionPathObjectId)))
+            {
+                spawner.SpawnRegionPathObjectId = "";
+                changed = true;
+            }
+            foreach (PathSceneObject path in paths)
+                if (ImGui.Selectable(path.Name + "##regionPath_" + path.ObjectId,
+                        path.ObjectId == spawner.SpawnRegionPathObjectId))
+                {
+                    spawner.SpawnRegionPathObjectId = path.ObjectId;
+                    changed = true;
+                }
+            ImGui.EndCombo();
+        }
         float force = spawner.AttractorForce;
         if (ImGui.DragFloat(Localization.Label("text.particles.attractor_force", "Attractor Force"),
                 ref force, 0.01f, 0, 10000))
@@ -131,7 +151,7 @@ public partial class PropertiesPanel
         {
             string key = pair.Key;
             if (key is "sprite_tex_image" or "sprite_frame_width" or "sprite_frame_height" or
-                "sprite_frame_start" or "sprite_frame_end" or "spawn_region_path_radius" or "text")
+                "sprite_frame_start" or "sprite_frame_end" or "spawn_region_path" or "text")
                 continue;
             string label = Localization.DisplayLabel(CultureInfo.InvariantCulture.TextInfo.ToTitleCase(
                 key.Replace('_', ' ')) + "##" + key);
@@ -195,7 +215,7 @@ public partial class PropertiesPanel
                     {
                         "sprite_template" => ["generic", "big_smoke", "effect", "explosion", "spark", "splash",
                             "flame", "firefly", "flash", "glow"],
-                        "spawn_region_type" => ["sphere", "cube", "box"],
+                        "spawn_region_type" => ["sphere", "cube", "box", "path"],
                         "bounding_box_type" => ["none", "ground", "spawn", "custom"],
                         _ => null
                     };

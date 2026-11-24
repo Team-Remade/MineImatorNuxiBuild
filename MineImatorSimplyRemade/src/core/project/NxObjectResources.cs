@@ -64,7 +64,7 @@ internal sealed class NxObjectResources : IDisposable
                 RelativeTarget(target, AddFile(ResolveSource(source, reference, false))));
             text = document.ToJsonString(AppJsonContext.Default.Options);
         }
-        else if (extension is ".mimodel" or ".miobject" or ".gltf")
+        else if (extension is ".mimodel" or ".miobject" or ".miproject" or ".gltf")
         {
             JsonNode document = ReadModelJson(source, extension);
             RewriteJson(document, extension, reference =>
@@ -156,7 +156,7 @@ internal sealed class NxObjectResources : IDisposable
                     throw new InvalidDataException("Archived block models must have flattened parents.");
                 BlockModelLoader.RewriteTextures(document, Validate);
             }
-            else if (extension is ".mimodel" or ".miobject" or ".gltf")
+            else if (extension is ".mimodel" or ".miobject" or ".miproject" or ".gltf")
                 RewriteJson(ReadModelJson(current, extension), extension, Validate);
             else if (extension == ".glb")
                 RewriteJson(ReadGlbJson(current).Document, ".gltf", Validate);
@@ -188,7 +188,7 @@ internal sealed class NxObjectResources : IDisposable
     private static JsonNode ReadModelJson(string path, string extension)
     {
         string text = File.ReadAllText(path);
-        if (extension is ".mimodel" or ".miobject")
+        if (extension is ".mimodel" or ".miobject" or ".miproject")
             text = MineImatorLoader.EscapeJsonControlCharacters(text);
         return JsonNode.Parse(text, documentOptions: new JsonDocumentOptions
         {

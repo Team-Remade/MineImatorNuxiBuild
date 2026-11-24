@@ -918,7 +918,8 @@ public partial class SpawnMenu : UiPanel
                 {
                     _previewCharacter = NxObjectArchive.CreatePreview(_customArchivePreviews[path], this);
                 }
-                else if (Path.GetExtension(path).Equals(".miobject", StringComparison.OrdinalIgnoreCase))
+                else if (Path.GetExtension(path).Equals(".miobject", StringComparison.OrdinalIgnoreCase) ||
+                         Path.GetExtension(path).Equals(".miproject", StringComparison.OrdinalIgnoreCase))
                     _previewCharacter = SpawnMineImatorObject(path, importBackground: false);
                 else if (Path.GetExtension(path).Equals(".mimodel", StringComparison.OrdinalIgnoreCase))
                     _previewCharacter = SpawnMineImatorModel(path);
@@ -2743,6 +2744,7 @@ public partial class SpawnMenu : UiPanel
                 root = SpawnMineImatorModel(pathToSpawn, textureOverridePath);
                 break;
             case ".miobject":
+            case ".miproject":
                 try
                 {
                     root = SpawnMineImatorObject(pathToSpawn, registerAsset, importAudio: registerAsset);
@@ -2806,7 +2808,7 @@ public partial class SpawnMenu : UiPanel
 
         AddToCustomModelHistory(pathToSpawn, displayName);
         Viewport.SceneObjects.Add(root);
-        if (ext == ".miobject")
+        if (ext is ".miobject" or ".miproject")
             Timeline.Instance?.LoadKeyframesForAllObjects(new[] { root }.Concat(root.GetAllDescendants()));
         return root;
     }

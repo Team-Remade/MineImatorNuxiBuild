@@ -41,6 +41,7 @@ public class ParticleSpawnerSceneObject : SceneObject
     public int Seed = 0;
     public bool Freeze = false;
     public string AttractorObjectId = "";
+    public string SpawnRegionPathObjectId = "";
     public float AttractorForce = 0f;
 
     public string ParticleLibraryEntryId = "";
@@ -272,6 +273,9 @@ public class ParticleSpawnerSceneObject : SceneObject
         SceneObject? attractor = FindSceneObject(viewport.SceneObjects, AttractorObjectId);
         _presetSimulation.AttractorPosition = attractor?.GetWorldPosition();
         _presetSimulation.AttractorForce = AttractorForce;
+        _presetSimulation.PathRegion = FindSceneObject(viewport.SceneObjects, SpawnRegionPathObjectId) is PathSceneObject path &&
+            path.Samples.Count >= 2
+                ? new ParticlePathRegion(path.Samples, path.GetWorldMatrixNoPivot(), path.Settings.Closed) : null;
         mat4 world = GetWorldMatrixNoPivot();
         vec3 scale = new(new vec3(world.m00, world.m01, world.m02).Length,
             new vec3(world.m10, world.m11, world.m12).Length,

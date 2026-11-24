@@ -675,6 +675,7 @@ public class ProjectSceneObjectEntry
     public int ParticleSeed { get; set; }
     public bool ParticleFreeze { get; set; }
     public string ParticleAttractorObjectId { get; set; } = "";
+    public string ParticleSpawnRegionPathObjectId { get; set; } = "";
     public float ParticleAttractorForce { get; set; }
     public string ParticleLibraryEntryId { get; set; } = "";
     public string ParticleLibraryDisplayName { get; set; } = "";

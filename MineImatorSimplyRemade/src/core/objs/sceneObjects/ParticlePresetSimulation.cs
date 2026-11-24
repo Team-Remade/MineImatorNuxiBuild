@@ -4,6 +4,9 @@ using static MineImatorSimplyRemadeNuxi.core.objs.sceneObjects.ParticlePreset;
 
 namespace MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
+public sealed record ParticlePathRegion(IReadOnlyList<MineImatorSimplyRemade.core.mdl.meshes.PathSample> Samples,
+    mat4 World, bool Closed);
+
 public sealed class ParticlePresetSimulation
 {
     public sealed class Particle
@@ -31,6 +34,7 @@ public sealed class ParticlePresetSimulation
     public List<Particle> Particles { get; } = [];
     public vec3? AttractorPosition { get; set; }
     public float AttractorForce { get; set; }
+    public ParticlePathRegion? PathRegion { get; set; }
 
     public ParticlePresetSimulation(ParticlePreset preset, int seed, int maxParticles = SafetyLimit)
     {
@@ -80,7 +84,7 @@ public sealed class ParticlePresetSimulation
                         : _maxParticles;
                     if (Particles.Count >= limit)
                         Particles.RemoveAt(0);
-                    Particles.Add(Spawn(type, origin, rotation));
+                    Particles.Add(Spawn(type, origin, rotation, constant ? null : (float)index / amount));
                 }
             }
             _fired = true;
@@ -120,7 +124,7 @@ public sealed class ParticlePresetSimulation
         }
     }
 
-    private Particle Spawn(int typeIndex, vec3 origin, mat4 rotation)
+    private Particle Spawn(int typeIndex, vec3 origin, mat4 rotation, float? burstFraction = null)
     {
         JsonObject type = _preset.Types[typeIndex];
         JsonObject settings = _preset.Settings;
@@ -156,6 +160,9 @@ public sealed class ParticlePresetSimulation
             MixColor = SampleColor(type, "color_mix", _random),
             MixTime = Math.Max(TimeStep, Sample(type, "color_mix_time", _random, 3))
         };
+        if (Flag(settings, "spawn_region_use") && Flag(type, "spawn_region", true) &&
+            Text(settings, "spawn_region_type") == "path" && PathRegion is { } region)
+            p.Position = PathPoint(region, burstFraction);
         p.Color = p.StartColor;
         if (Text(type, "temp_type", "template") == "template")
         {
@@ -163,6 +170,23 @@ public sealed class ParticlePresetSimulation
             p.StillFrame = Flag(type, "sprite_template_random_frame") ? _random.Next(frames) : 0;
         }
         return p;
+    }
+
+    private vec3 PathPoint(ParticlePathRegion region, float? burstFraction)
+    {
+        float length = region.Samples[^1].Distance;
+        float fraction = burstFraction ?? _random.NextSingle();
+        var sample = MineImatorSimplyRemade.core.mdl.meshes.PathGeometry.AtDistance(
+            region.Samples, fraction * length, region.Closed);
+        float angle = _random.NextSingle() * MathF.Tau;
+        vec3 tangent = sample.Tangent;
+        vec3 normal = sample.Normal;
+        // Rotate the normal around the tangent (Rodrigues).
+        vec3 radial = normal * MathF.Cos(angle) + vec3.Cross(tangent, normal) * MathF.Sin(angle) +
+            tangent * vec3.Dot(tangent, normal) * (1f - MathF.Cos(angle));
+        float radius = Math.Max(0, Number(_preset.Settings, "spawn_region_path_radius", 8)) / 16f;
+        vec3 local = sample.Position + radial * radius;
+        return (region.World * new vec4(local, 1)).xyz;
     }
 
     public static mat4 DegreesRotation(vec3 degrees) => mat4.RotateY(degrees.y * MathF.PI / 180f) *

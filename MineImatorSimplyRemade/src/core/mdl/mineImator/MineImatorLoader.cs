@@ -241,7 +241,7 @@ public class MineImatorLoader
                     {
                         itemObject = MiObjectFeatureMapper.Create(timeline, template, miObject, _gl);
                     }
-                    catch (InvalidDataException ex) when (timeline.Type == "particle_spawner")
+                    catch (InvalidDataException ex) when (timeline.Type is "particle_spawner" or "particles")
                     {
                         MiObjectFeatureMapper.Report($"MIObject particle '{timeline.Name}' could not be imported: {ex.Message}", warning);
                     }
@@ -3807,7 +3807,7 @@ public class MiModel
     [JsonPropertyName("texture")] public string Texture { get; set; }
     [JsonPropertyName("texture_material")] public string TextureMaterial { get; set; }
     [JsonPropertyName("texture_normal")] public string TextureNormal { get; set; }
-    [JsonPropertyName("texture_size")] public int[] TextureSize { get; set; }
+    [JsonPropertyName("texture_size")] [JsonConverter(typeof(LenientIntArrayConverter))] public int[] TextureSize { get; set; }
     [JsonPropertyName("textures")] public Dictionary<string, string> Textures { get; set; }
     [JsonPropertyName("parts")] public List<MiPart> Parts { get; set; }
     [JsonPropertyName("player_skin")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? PlayerSkin { get; set; }
@@ -3835,6 +3835,49 @@ public class MiModel
     }
 }
 
+/// <summary>Reads integer arrays but accepts decimal values (e.g. 2.66667) by rounding them.</summary>
+public sealed class LenientIntArrayConverter : JsonConverter<int[]?>
+{
+    public override int[]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+            return null;
+        if (reader.TokenType != JsonTokenType.StartArray)
+        {
+            reader.Skip();
+            return null;
+        }
+
+        var values = new List<int>();
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+        {
+            if (reader.TokenType == JsonTokenType.Number)
+                values.Add((int)Math.Round(reader.GetDouble(), MidpointRounding.AwayFromZero));
+            else if (reader.TokenType == JsonTokenType.String &&
+                     double.TryParse(reader.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed))
+                values.Add((int)Math.Round(parsed, MidpointRounding.AwayFromZero));
+            else
+                reader.Skip();
+        }
+
+        return values.ToArray();
+    }
+
+    public override void Write(Utf8JsonWriter writer, int[]? value, JsonSerializerOptions options)
+    {
+        if (value == null)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+
+        writer.WriteStartArray();
+        foreach (int v in value)
+            writer.WriteNumberValue(v);
+        writer.WriteEndArray();
+    }
+}
+
 public class MiPart
 {
     [JsonPropertyName("name")] public string Name { get; set; }
@@ -3843,7 +3886,7 @@ public class MiPart
     [JsonPropertyName("texture")] public string Texture { get; set; }
     [JsonPropertyName("texture_material")] public string TextureMaterial { get; set; }
     [JsonPropertyName("texture_normal")] public string TextureNormal { get; set; }
-    [JsonPropertyName("texture_size")] public int[] TextureSize { get; set; }
+    [JsonPropertyName("texture_size")] [JsonConverter(typeof(LenientIntArrayConverter))] public int[] TextureSize { get; set; }
 
     [JsonPropertyName("texture_scroll_speed")]
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]
@@ -3916,7 +3959,7 @@ public class MiShape
     [JsonPropertyName("texture")] public string Texture { get; set; }
     [JsonPropertyName("texture_material")] public string TextureMaterial { get; set; }
     [JsonPropertyName("texture_normal")] public string TextureNormal { get; set; }
-    [JsonPropertyName("texture_size")] public int[]? TextureSize { get; set; }
+    [JsonPropertyName("texture_size")] [JsonConverter(typeof(LenientIntArrayConverter))] public int[]? TextureSize { get; set; }
 
     [JsonPropertyName("texture_scroll_speed")]
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.AllowNamedFloatingPointLiterals)]

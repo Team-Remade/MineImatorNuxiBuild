@@ -273,11 +273,52 @@ internal static partial class Program
         }
     }
 
+    private static void MiImportParticlePathRegion(Fixture f)
+    {
+        var source = MiDocument("""
+            {"templates":[{"id":"spawner","type":"particle_spawner",
+                           "particles":{"spawn_constant":false,"spawn_amount":4,"spawn_region_use":true,
+                                      "spawn_region_type":"path","spawn_region_path":"curve",
+                                      "spawn_region_path_radius":0,"destroy_at_time":false,
+                                      "types":[{"temp_type":"template"}]}}],
+             "timelines":[
+              {"id":"emitter","type":"particle_spawner","temp":"spawner","name":"Emitter"},
+              {"id":"curve","type":"path","name":"Curve",
+               "path":{"closed":false,"smooth":false,"shape":"none","shape_radius":8},"keyframes":{}},
+              {"id":"start","type":"path_point","parent":"curve","keyframes":{}},
+              {"id":"end","type":"path_point","parent":"curve","default_values":{"POS_Y":160},"keyframes":{}}
+             ]}
+            """);
+        var warnings = new List<string>();
+        var root = new MineImatorLoader().CreateSceneFromMiObject(source, warning: warnings.Add);
+        var spawner = root.Children.OfType<ParticleSpawnerSceneObject>().Single();
+        var path = root.Children.OfType<PathSceneObject>().Single();
+        Equal(0, warnings.Count, "Path region imports without warnings");
+        Equal(path.ObjectId, spawner.SpawnRegionPathObjectId, "Path region reference resolves");
+        var simulation = new ParticlePresetSimulation(new ParticlePreset(spawner.Preset!), 1)
+        {
+            PathRegion = new ParticlePathRegion(path.Samples, path.GetWorldMatrixNoPivot(), path.Settings.Closed)
+        };
+        simulation.Advance(1f / 60f, true, new vec3(100, 100, 100), mat4.Identity);
+        Equal(4, simulation.Particles.Count, "Burst spawns the requested amount");
+        vec3 a = (path.GetWorldMatrixNoPivot() * new vec4(path.Samples[0].Position, 1)).xyz;
+        vec3 b = (path.GetWorldMatrixNoPivot() * new vec4(path.Samples[^1].Position, 1)).xyz;
+        vec3 axis = (b - a).Normalized;
+        foreach (var particle in simulation.Particles)
+        {
+            vec3 offset = particle.Position - a;
+            Near(0f, (offset - axis * vec3.Dot(offset, axis)).Length, "Particle lies on the path");
+        }
+        float span = simulation.Particles.Max(p => vec3.Dot(p.Position - a, axis)) -
+            simulation.Particles.Min(p => vec3.Dot(p.Position - a, axis));
+        Check(span > 0.5f * (b - a).Length, "Burst particles spread along the path");
+    }
+
     private static void MiImportWarnings(Fixture f)
     {
         var source = MiDocument("""
             {"templates":[{"id":"unsupported","type":"particle_spawner",
-                           "particles":{"spawn_region_type":"path","types":[{"temp_type":"sheet"}]}}],
+                           "particles":{"spawn_region_type":"box","types":[{"temp_type":"sheet"}]}}],
              "timelines":[{"id":"bad","type":"particle_spawner","temp":"unsupported","name":"Unsupported emitter"},
                           {"id":"good","type":"folder","name":"Retained"},
                           {"id":"missing","type":"folder","default_values":{"PATH_OBJ":"not-exported"}}]}
@@ -286,7 +327,7 @@ internal static partial class Program
         var root = new MineImatorLoader().CreateSceneFromMiObject(source, warning: warnings.Add);
         Equal(3, root.Children.Count, "Unsupported particles do not discard other objects");
         Equal("Placeholder", root.Children.Single(o => o.Name == "Unsupported emitter").ObjectType, "Unsupported emitter retained");
-        Check(warnings.Any(w => w.Contains("Path-based particle")) && warnings.Any(w => w.Contains("not-exported")),
+        Check(warnings.Any(w => w.Contains("sheet")) && warnings.Any(w => w.Contains("not-exported")),
             "Unsupported features and unresolved references are reported");
     }
 

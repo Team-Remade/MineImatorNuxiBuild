@@ -567,6 +567,7 @@ internal static partial class Program
             ("MI import Simply Upscaled icospheres and tori", MiImportShapes),
             ("MI import background colors, toggles, sparse keys, easing and persistence", MiImportBackground),
             ("MI import embedded particle presets, controls and references", MiImportParticles),
+            ("MI import path-based particle regions", MiImportParticlePathRegion),
             ("MI import unsupported particles report warnings and retain other objects", MiImportWarnings),
             ("MI import native lights, cameras, text, effect animation and persistence", MiImportNativeObjects),
             ("MI import scenery cache priority, missing schematics and fallback", MiImportScenery),
