@@ -8,8 +8,29 @@ using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 namespace MineImatorSimplyRemade.core.mdl.mineImator;
 
+/// <summary>Repeat counts (app axes, Y up) and block randomization requested by a Mine-imator scenery template.</summary>
+internal sealed record SceneryRepeat(int X, int Y, int Z, bool Randomize)
+{
+    public bool IsActive => X > 1 || Y > 1 || Z > 1 || Randomize;
+}
+
 public static partial class MiObjectFeatureMapper
 {
+    /// <summary>Read by scenery factories while they build the scenery requested by <see cref="CreateScenery"/>.</summary>
+    [ThreadStatic] internal static SceneryRepeat? PendingSceneryRepeat;
+
+    private static SceneryRepeat SceneryRepeatFor(MiTemplate template)
+    {
+        JsonElement block = template.Block ?? default;
+        int[] counts = [1, 1, 1];
+        JsonElement repeat = Property(block, "repeat");
+        if (Flag(Property(block, "repeat_enable"), false) && repeat.ValueKind == JsonValueKind.Array)
+            for (int axis = 0; axis < 3 && axis < repeat.GetArrayLength(); axis++)
+                counts[axis] = Math.Clamp((int)Number(repeat[axis], 1), 1, SceneObject.MaxTilesPerAxis);
+        // Mine-imator is Z-up: its Y axis is depth and Z is height.
+        return new SceneryRepeat(counts[0], counts[2], counts[1], Flag(Property(block, "randomize"), false));
+    }
+
     internal static SceneObject? CreateScenery(MiTemplate template,
         IReadOnlyDictionary<string, MiResource> resources, string? directory,
         Func<string, SceneObject?>? factory, Action<string>? warning)
@@ -24,10 +45,15 @@ public static partial class MiObjectFeatureMapper
         string schematic = Path.GetFullPath(Path.Combine(directory ?? "", reference));
         // Exported caches can be the only surviving copy of edited scenery.
         // Unlike ordinary schematic reloads, do not reject these by timestamp.
+        var repeat = SceneryRepeatFor(template);
+        // Caches hold already-meshed geometry, so repeating or randomizing blocks needs the schematic itself.
         var candidates = MeshCacheData.IsCache(schematic) ? new[] { schematic } :
+            repeat.IsActive && File.Exists(schematic) ? new[] { schematic }.Concat(MeshCacheData.CacheCandidates(schematic)) :
             MeshCacheData.CacheCandidates(schematic).Append(schematic);
         foreach (string path in candidates.Distinct(StringComparer.OrdinalIgnoreCase).Where(File.Exists))
         {
+            if (repeat.IsActive && MeshCacheData.IsCache(path))
+                Report($"MIObject scenery '{template.Name}': repeat/randomize cannot be applied to a mesh cache; using it unrepeated.", warning);
             if (factory == null)
             {
                 Report($"MIObject scenery '{template.Name}' requires a scenery mesh loader: '{path}'.", warning);
@@ -35,7 +61,11 @@ public static partial class MiObjectFeatureMapper
             }
             try
             {
-                if (factory(path) is { } result)
+                PendingSceneryRepeat = repeat.IsActive && !MeshCacheData.IsCache(path) ? repeat : null;
+                SceneObject? built;
+                try { built = factory(path); }
+                finally { PendingSceneryRepeat = null; }
+                if (built is { } result)
                 {
                     result.SourceAssetPath = path;
                     return result;
@@ -77,6 +107,37 @@ public static partial class MiObjectFeatureMapper
         StaticFlag("lock", value => obj.IsSelectable = !value);
         StaticFlag("wind", value => obj.AffectedByWind = value);
         StaticFlag("wind_terrain", value => obj.TerrainAffectedByWind = value);
+        StaticFlag("ghost", value => obj.ImportedGhost = value);
+        if (source.ExtraValues.TryGetValue("alpha_mode", out var alphaMode))
+        {
+            // Mine-imator: 0 = blend, 1 = hashed, 2 = project default.
+            int mode = (int)Number(alphaMode, 2);
+            if (mode is 0 or 1)
+            {
+                obj.SetExplicitMaterialSettings();
+                obj.MaterialSettings.AlphaMode = mode == 1 ? MaterialAlphaMode.Hashed : MaterialAlphaMode.Blend;
+            }
+        }
+        if (source.ExtraValues.TryGetValue("glow", out var glowValue) && Flag(glowValue, false))
+        {
+            // glow_texture glows with the texture colors; the shader multiplies emission by the texture.
+            obj.SetExplicitMaterialSettings();
+            obj.MaterialSettings.EmissionEnabled = true;
+            obj.MaterialSettings.EmissionEnergy = 1f;
+            obj.MaterialSettings.EmissionColor = new vec4(1f, 1f, 1f, 1f);
+        }
+        if (template != null && template.ExtraValues.TryGetValue("model_blend_color", out var modelColor) &&
+            modelColor.ValueKind == JsonValueKind.String)
+        {
+            var tint = ParticlePreset.Color(Text(modelColor, "#FFFFFF"));
+            if (tint[0] < 1f || tint[1] < 1f || tint[2] < 1f)
+            {
+                obj.SetExplicitMaterialSettings();
+                obj.MaterialSettings.BlendColor = new vec4(tint[0], tint[1], tint[2], 1f);
+                if (Has(source, frames, "RGB_MUL"))
+                    Report($"MIObject '{source.Name}': model_blend_color is replaced by the animated RGB_MUL channel.", warning);
+            }
+        }
         if (source.ExtraValues.TryGetValue("blend_mode", out var blend))
         {
             string mode = Text(blend, "normal");
@@ -144,6 +205,8 @@ public static partial class MiObjectFeatureMapper
             Add("LIGHT_STRENGTH", "light.energy", 1, force: true);
             Add("LIGHT_RANGE", "light.range", 250, 1f / 16f, force: true);
             Add("LIGHT_SPECULAR_STRENGTH", "light.specular", 1, 0.5f, force: true);
+            Add("LIGHT_SIZE", "light.size", 2, force: true);
+            Add("LIGHT_FADE_SIZE", "light.fade_size", 0.5f, force: true);
             Color("LIGHT_COLOR", "light.color", "#FFFFFF");
             if (light.Type == LightType.Spot)
             {
@@ -228,12 +291,13 @@ public static partial class MiObjectFeatureMapper
         foreach (var property in source.ExtraValues)
             if (property.Key is not ("text" or "lock" or "wind" or "wind_terrain" or
                 "glint_mode" or "glint_scale" or "glint_speed" or "glint_strength" or "glint_tex" or
-                "parent_tree_index" or "tree_extend" or "color_tag" or "parts" or "blend_mode") &&
+                "parent_tree_index" or "tree_extend" or "color_tag" or "parts" or "blend_mode" or
+                "ghost" or "glow" or "glow_texture" or "alpha_mode") &&
                 ActiveSetting(source, property.Key, property.Value))
                 Report($"MIObject '{source.Name}': setting '{property.Key}' has no native mapping.", warning);
         if (template != null)
         {
-            foreach (var property in template.ExtraValues.Where(p => Active(p.Value)))
+            foreach (var property in template.ExtraValues.Where(p => p.Key != "model_blend_color" && Active(p.Value)))
                 Report($"MIObject '{source.Name}': template setting '{property.Key}' has no native mapping.", warning);
             bool armor = template.ModelDefinition is { ValueKind: JsonValueKind.Object } armorDefinition &&
                 Text(Property(armorDefinition, "name"), "") == "armor";
@@ -243,7 +307,9 @@ public static partial class MiObjectFeatureMapper
                     if (!(property.Name == "age" && property.Value.ToString() is "baby" or "adult") &&
                         !(armor && ArmorModelBuilder.Pieces.Contains(property.Name)) &&
                         !(property.Name == "variant" && Text(Property(definition, "name"), "") == "human" &&
-                          property.Value.ToString() is "alex" or "steve"))
+                          property.Value.ToString() is "alex" or "steve") &&
+                        !(property.Name == "variant" && MiObjectTemplateFactory.VariantModelResolved(template)) &&
+                        !(property.Name == "crack_amount" && Text(Property(definition, "name"), "") == "iron_golem"))
                         Report($"MIObject '{source.Name}': builtin model state '{property.Name}={property.Value}' has no native mapping.", warning);
             NestedSettings(template.Armor, armor
                 ? ArmorModelBuilder.Pieces.SelectMany(piece => new[]
@@ -254,8 +320,9 @@ public static partial class MiObjectFeatureMapper
                 "smooth", "detail", "ring_detail", "subdivision", "morph", "major_size", "minor_size", "face_camera"], "shape");
             NestedSettings(template.Text, ["font", "3d", "face_camera"], "text");
             NestedSettings(template.Block, template.Type == "scenery"
-                ? ["tex", "tex_normal", "tex_material"]
-                : ["name", "state", "tex", "tex_normal", "tex_material", "repeat_enable", "repeat"], "block");
+                ? ["tex", "tex_normal", "tex_material", "repeat_enable", "repeat", "randomize"]
+                : ["name", "state", "tex", "tex_normal", "tex_material", "repeat_enable", "repeat", "randomize"], "block");
+            // Scenery handles repeat_enable/repeat/randomize while the schematic is built (see CreateScenery).
             if (template.Item is { } templateItem)
                 foreach (var property in templateItem.ExtraValues.Where(p => p.Key is not ("name" or "tex_normal" or "tex_material" or
                              "glint_mode" or "glint_scale" or "glint_speed" or "glint_strength" or "glint_tex") && Active(p.Value)))
@@ -520,7 +587,7 @@ public static partial class MiObjectFeatureMapper
                     .Concat(color == null ? [] : new[] { color }).Concat(blendMode == null ? [] : new[] { blendMode })
                     .Concat(type switch
                     {
-                        CameraEffectType.ColorCorrection => ["CAM_CONTRAST"],
+                        CameraEffectType.ColorCorrection => ["CAM_CONTRAST", "CAM_COLOR_BURN"],
                         CameraEffectType.CinematicBars => ["CAM_BLACK_LINES_SIZE", "CAM_BLACK_LINES_OFFSET_Y"],
                         CameraEffectType.ChromaticAberration => ["CAM_CA_DISTORT_CHANNELS"],
                         CameraEffectType.CameraShake => new[] { "X", "Y", "Z" }.SelectMany(axis =>
@@ -539,7 +606,12 @@ public static partial class MiObjectFeatureMapper
                         control.Target is "mode" or "color_fringe" or "normal_pass" or "invert" or "affected_by_bloom" or
                             "affected_by_glow" or "repeat_image" or "distort_rgb", force: true);
                 if (type == CameraEffectType.ColorCorrection)
+                {
                     Map(["CAM_CONTRAST"], path + group + ".contrast", key => (Read(key, "CAM_CONTRAST", 0) + 1) * 100);
+                    // Mine-imator's color burn channel is the burn color; white has no visible effect.
+                    Map(["CAM_COLOR_BURN"], path + group + ".color_burn", key => 100f, true);
+                    Color("CAM_COLOR_BURN", path + group + ".burn_color", "#FFFFFF");
+                }
                 if (type == CameraEffectType.LensDirt)
                     Texture("TEXTURE_OBJ", path + group + ".texture");
                 if (type == CameraEffectType.ChromaticAberration)

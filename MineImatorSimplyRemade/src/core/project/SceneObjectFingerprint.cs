@@ -266,6 +266,7 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.GetEffectiveTileX());
         hash.Add(obj.GetEffectiveTileY());
         hash.Add(obj.GetEffectiveTileZ());
+        hash.Add(obj.SceneryRandomize);
 
         if (obj.SpawnCategory == "Primitives" && obj.ObjectType == "Plane")
         {
@@ -617,6 +618,8 @@ internal static class SceneObjectFingerprint
             hash.Add(light.LightRange);
             hash.Add(light.LightIndirectEnergy);
             hash.Add(light.LightSpecular);
+            hash.Add(light.LightSize);
+            hash.Add(light.LightFadeSize);
             hash.Add(light.LightShadowEnabled);
             hash.Add(light.Type);
             hash.Add(light.LightSpotAngle);

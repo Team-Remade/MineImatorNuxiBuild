@@ -2929,7 +2929,7 @@ public partial class SpawnMenu : UiPanel
 
         var warnings = new List<string>();
         var scene = loader.CreateSceneFromMiObject(miObject, SpawnMiObjectItemViaSpawnMenu, warnings.Add,
-            path => BuildSchematicFromPath(path, "", addToScene: false));
+            path => BuildImportedScenery(path));
         if (scene == null) return null;
         if (importBackground)
             Viewport?.PropertiesPanel?.ImportMineImatorBackground(miObject, warnings.Add);
@@ -3184,6 +3184,87 @@ public partial class SpawnMenu : UiPanel
     public SceneObject? SpawnSchematicFromPath(string filePath, string resourcePackId = "")
         => BuildSchematicFromPath(filePath, resourcePackId, addToScene: true);
 
+    /// <summary>Builds scenery for a Mine-imator import, honoring the template's repeat and randomize settings.</summary>
+    private SceneObject? BuildImportedScenery(string path)
+    {
+        var repeat = MiObjectFeatureMapper.PendingSceneryRepeat;
+        if (repeat == null) return BuildSchematicFromPath(path, "", addToScene: false);
+        (_sceneryTileX, _sceneryTileY, _sceneryTileZ, _sceneryRandomize) = (repeat.X, repeat.Y, repeat.Z, repeat.Randomize);
+        try
+        {
+            var root = BuildSchematicFromPath(path, "", addToScene: false);
+            if (root != null)
+            {
+                root.TileX = repeat.X;
+                root.TileY = repeat.Y;
+                root.TileZ = repeat.Z;
+                root.SceneryRandomize = repeat.Randomize;
+            }
+            return root;
+        }
+        finally
+        {
+            (_sceneryTileX, _sceneryTileY, _sceneryTileZ, _sceneryRandomize) = (1, 1, 1, false);
+        }
+    }
+
+    // Per-spawn scenery repeat/randomize settings read by BuildSchematicSteps (spawning is synchronous).
+    private int _sceneryTileX = 1, _sceneryTileY = 1, _sceneryTileZ = 1;
+    private bool _sceneryRandomize;
+
+    /// <summary>Spawns a schematic repeated tileX*tileY*tileZ times, optionally with randomized block rotations.</summary>
+    public SceneObject? SpawnSchematicFromPath(string filePath, string resourcePackId,
+        int tileX, int tileY, int tileZ, bool randomize)
+    {
+        (_sceneryTileX, _sceneryTileY, _sceneryTileZ, _sceneryRandomize) = (tileX, tileY, tileZ, randomize);
+        try
+        {
+            var root = SpawnSchematicFromPath(filePath, resourcePackId);
+            if (root != null)
+            {
+                root.TileX = Math.Clamp(tileX, 1, SceneObject.MaxTilesPerAxis);
+                root.TileY = Math.Clamp(tileY, 1, SceneObject.MaxTilesPerAxis);
+                root.TileZ = Math.Clamp(tileZ, 1, SceneObject.MaxTilesPerAxis);
+                root.SceneryRandomize = randomize;
+            }
+            return root;
+        }
+        finally
+        {
+            (_sceneryTileX, _sceneryTileY, _sceneryTileZ, _sceneryRandomize) = (1, 1, 1, false);
+        }
+    }
+
+    /// <summary>
+    /// Mine-imator "randomize": blocks with several weighted model variants (random rotations)
+    /// pick one per position instead of always using the first.
+    /// </summary>
+    private void RandomizeSceneryVariants(VariantRenderInfo?[] voxels, int width, int length,
+        string resourcePackId, Dictionary<string, VariantRenderInfo> variantCache)
+    {
+        var alternatives = new Dictionary<(string Block, string State), VariantRenderInfo[]>();
+        for (int i = 0; i < voxels.Length; i++)
+        {
+            if (voxels[i] is not { } info || info.BlockName is "water" or "lava") continue;
+            var key = (info.BlockName, info.Variant.StateKey ?? info.Variant.VariantKey);
+            if (!alternatives.TryGetValue(key, out var choices))
+            {
+                var weighted = BlockRegistry.GetImportVariants(info.BlockName, resourcePackId)
+                    .Where(v => string.Equals(v.StateKey ?? v.VariantKey, key.Item2, StringComparison.Ordinal))
+                    .ToList();
+                choices = weighted.Count > 1 && weighted.All(v => string.IsNullOrEmpty(v.CemPath))
+                    ? weighted.Select(v => GetOrCreateVariantRenderInfo(info.BlockName, v, variantCache)).ToArray()
+                    : [];
+                alternatives[key] = choices;
+            }
+            if (choices.Length < 2) continue;
+            int x = i % width, z = i / width % length, y = i / (width * length);
+            uint hash = unchecked((uint)(x * 73856093) ^ (uint)(y * 19349663) ^ (uint)(z * 83492791));
+            hash ^= hash >> 13; hash = unchecked(hash * 0x5bd1e995); hash ^= hash >> 15;
+            voxels[i] = choices[hash % (uint)choices.Length];
+        }
+    }
+
     internal SceneObject CreateSchematicPreview(string filePath, string resourcePackId)
         => BuildSchematicFromPath(filePath, resourcePackId, addToScene: false) ??
            throw new InvalidDataException(_lastSchematicLoadError ?? "The terrain could not be meshed.");
@@ -3374,6 +3455,36 @@ public partial class SpawnMenu : UiPanel
                     yield return Task.CompletedTask;
                 }
             }
+
+            int tileX = Math.Clamp(_sceneryTileX, 1, SceneObject.MaxTilesPerAxis);
+            int tileY = Math.Clamp(_sceneryTileY, 1, SceneObject.MaxTilesPerAxis);
+            int tileZ = Math.Clamp(_sceneryTileZ, 1, SceneObject.MaxTilesPerAxis);
+            if (tileX > 1 || tileY > 1 || tileZ > 1)
+            {
+                long tiledTotal = (long)width * tileX * height * tileY * length * tileZ;
+                if (tiledTotal > 67_108_864L)
+                    throw new InvalidDataException("The repeated schematic is too large.");
+                int sourceWidth = width, sourceHeight = height, sourceLength = length;
+                width = sourceWidth * tileX;
+                height = sourceHeight * tileY;
+                length = sourceLength * tileZ;
+                total = (int)tiledTotal;
+                var tiledInfos = new VariantRenderInfo?[total];
+                var tiledLevels = new int[total];
+                for (int y = 0; y < height; y++)
+                    for (int z = 0; z < length; z++)
+                        for (int x = 0; x < width; x++)
+                        {
+                            int sourceIndex = (y % sourceHeight * sourceLength + z % sourceLength) * sourceWidth + x % sourceWidth;
+                            int targetIndex = (y * length + z) * width + x;
+                            tiledInfos[targetIndex] = voxelInfos[sourceIndex];
+                            tiledLevels[targetIndex] = liquidLevels[sourceIndex];
+                        }
+                voxelInfos = tiledInfos;
+                liquidLevels = tiledLevels;
+            }
+            if (_sceneryRandomize)
+                RandomizeSceneryVariants(voxelInfos, width, length, normalizedResourcePackId, variantCache);
 
             string baseName = Path.GetFileNameWithoutExtension(filePath);
             int nextNum = GetNextAvailableObjectNumber(baseName);
@@ -6791,7 +6902,8 @@ public partial class SpawnMenu : UiPanel
             if (string.IsNullOrWhiteSpace(target.SourceAssetPath) || !File.Exists(target.SourceAssetPath))
                 return false;
 
-            var temp = SpawnSchematicFromPath(target.SourceAssetPath, normalizedResourcePackId);
+            var temp = SpawnSchematicFromPath(target.SourceAssetPath, normalizedResourcePackId,
+                target.GetEffectiveTileX(), target.GetEffectiveTileY(), target.GetEffectiveTileZ(), target.SceneryRandomize);
             return temp != null && ReplaceObjectMeshesFromTempSpawn(target, temp, normalizedResourcePackId);
         }
 

@@ -50,6 +50,7 @@ vec4 celestial(sampler2D tex, vec3 ray, vec3 direction, float angularSize, bool 
 vec4 raycastClouds(vec3 ray, float night, out float hitDistance)
 {
     hitDistance = -1.0;
+    if (uCloudMode < 0) return vec4(0.0);
     float bottom = uCloudHeight;
     float top = bottom + max(uCloudThickness, 1.0) * 4.0;
     float cellSize = max(uCloudBlockSize, 1.0);

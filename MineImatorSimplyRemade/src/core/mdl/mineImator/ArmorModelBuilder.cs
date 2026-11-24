@@ -30,7 +30,7 @@ public static class ArmorModelBuilder
     {
         if (template.ModelDefinition is not { ValueKind: JsonValueKind.Object } definition ||
             !definition.TryGetProperty("name", out var name) || name.GetString() != "armor")
-            return modelPath;
+            return PrepareCrackState(template, modelPath);
         var entry = new CharacterEntry
         {
             FilePath = modelPath,
@@ -60,6 +60,38 @@ public static class ArmorModelBuilder
         static string Text(JsonElement? element, string key, string fallback) =>
             element is { ValueKind: JsonValueKind.Object } value && value.TryGetProperty(key, out var property)
                 ? property.GetString() ?? fallback : fallback;
+    }
+
+    /// <summary>Iron golem crack_amount: shows the hidden crack shapes with the matching crackiness texture.</summary>
+    private static string PrepareCrackState(MiTemplate template, string modelPath)
+    {
+        if (template.ModelDefinition is not { ValueKind: JsonValueKind.Object } definition ||
+            !definition.TryGetProperty("name", out var name) || name.GetString() != "iron_golem" ||
+            !definition.TryGetProperty("state", out var state) || state.ValueKind != JsonValueKind.Object ||
+            !state.TryGetProperty("crack_amount", out var amountValue))
+            return modelPath;
+        string amount = amountValue.ToString();
+        if (amount == "none") return modelPath;
+        if (amount is not ("low" or "medium" or "high"))
+            throw new InvalidDataException($"Unknown iron golem crack amount '{amount}'.");
+        string texture = Path.Combine(MinecraftDataLoader.GetVersionRoot(), "textures", "entity", "iron_golem",
+            $"iron_golem_crackiness_{amount}.png");
+        if (!File.Exists(texture))
+            throw new FileNotFoundException("The iron golem crack texture is missing.", texture);
+        var model = ReadModel(modelPath);
+        int count = 0;
+        foreach (var part in IndexParts(model.Parts).Values)
+            foreach (var shape in part.Shapes ?? [])
+            {
+                if (shape.Description != "crack") continue;
+                shape.Visible = true;
+                shape.Texture = texture;
+                shape.TextureSize ??= part.TextureSize ?? model.TextureSize;
+                count++;
+            }
+        if (count == 0) throw new InvalidDataException("The iron golem model has no crack shapes.");
+        return Save(model, Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SimplyRemadeNuxi", "Models"));
     }
 
     public static MiModel Build(CharacterEntry entry, IReadOnlyList<ArmorPieceSelection> selections)

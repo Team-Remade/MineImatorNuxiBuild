@@ -403,6 +403,7 @@ public static class ProjectSceneSerializer
             TileX = obj.GetEffectiveTileX(),
             TileY = obj.GetEffectiveTileY(),
             TileZ = obj.GetEffectiveTileZ(),
+            SceneryRandomize = obj.SceneryRandomize,
             BlockMeshOriginVersion = 1,
             PrimitivePlaneOrientation = obj.SpawnCategory == "Primitives" && obj.ObjectType == "Plane"
                 ? obj.Visuals.OfType<PlaneMesh>().FirstOrDefault()?.Orientation ?? PlaneOrientation.XY
@@ -594,6 +595,8 @@ public static class ProjectSceneSerializer
             entry.LightRange = light.LightRange;
             entry.LightIndirectEnergy = light.LightIndirectEnergy;
             entry.LightSpecular = light.LightSpecular;
+            entry.LightSize = light.LightSize;
+            entry.LightFadeSize = light.LightFadeSize;
             entry.LightShadowEnabled = light.LightShadowEnabled;
             entry.LightType = (int)light.Type;
             entry.LightSpotAngle = light.LightSpotAngle;
@@ -821,7 +824,10 @@ public static class ProjectSceneSerializer
         {
             string resolved = ResolveSourcePath(entry);
             if (File.Exists(resolved))
-                return spawnMenu.SpawnSchematicFromPath(resolved, entry.ResourcePackId);
+                return spawnMenu.SpawnSchematicFromPath(resolved, entry.ResourcePackId,
+                    Math.Clamp(entry.TileX, 1, SceneObject.MaxTilesPerAxis),
+                    Math.Clamp(entry.TileY, 1, SceneObject.MaxTilesPerAxis),
+                    Math.Clamp(entry.TileZ, 1, SceneObject.MaxTilesPerAxis), entry.SceneryRandomize);
             return null;
         }
 
@@ -1051,6 +1057,7 @@ public static class ProjectSceneSerializer
         obj.TileX = entry.TileX;
         obj.TileY = entry.TileY;
         obj.TileZ = entry.TileZ;
+        obj.SceneryRandomize = entry.SceneryRandomize;
         obj.ItemTileKey = entry.ItemTileKey;
         obj.ItemBounce = entry.ItemBounce;
         obj.ItemSpin = entry.ItemSpin;
@@ -1323,6 +1330,8 @@ public static class ProjectSceneSerializer
             light.LightRange = entry.LightRange;
             light.LightIndirectEnergy = entry.LightIndirectEnergy;
             light.LightSpecular = entry.LightSpecular;
+            light.LightSize = entry.LightSize;
+            light.LightFadeSize = entry.LightFadeSize;
             light.LightShadowEnabled = entry.LightShadowEnabled;
             light.Type = (LightType)entry.LightType;
             light.LightSpotAngle = entry.LightSpotAngle;

@@ -2855,6 +2855,12 @@ public partial class Timeline : UiPanel
     {
         foreach (var obj in objects)
         {
+            if (obj is { ImportedGhost: true })
+            {
+                obj.ImportedGhost = false;
+                foreach (var path in GetKeyframePropertyPaths(obj))
+                    SetTrackGhostState(obj, path, true);
+            }
             if (obj == null || obj.Keyframes.Count == 0) continue;
             foreach (var path in GetKeyframePropertyPaths(obj))
                 if (obj.Keyframes.TryGetValue(path, out var track) && track.Count > 0)
@@ -2884,7 +2890,7 @@ public partial class Timeline : UiPanel
         };
         string[] lightPaths =
         {
-            "light.energy", "light.range", "light.indirect_energy", "light.specular",
+            "light.energy", "light.range", "light.indirect_energy", "light.specular", "light.size", "light.fade_size",
             "light.color.r", "light.color.g", "light.color.b",
             "light.spot_angle", "light.spot_blend",
         };
@@ -3640,6 +3646,8 @@ public partial class Timeline : UiPanel
                             "range"           => lo.LightRange,
                             "indirect_energy" => lo.LightIndirectEnergy,
                             "specular"        => lo.LightSpecular,
+                            "size"            => lo.LightSize,
+                            "fade_size"       => lo.LightFadeSize,
                             "spot_angle"      => lo.LightSpotAngle,
                             "spot_blend"      => lo.LightSpotBlend,
                             _                 => 0f,
@@ -4276,6 +4284,8 @@ public partial class Timeline : UiPanel
                                 case "range":           lo.LightRange          = value; break;
                                 case "indirect_energy": lo.LightIndirectEnergy = value; break;
                                 case "specular":        lo.LightSpecular       = value; break;
+                                case "size":            lo.LightSize           = value; break;
+                                case "fade_size":       lo.LightFadeSize       = value; break;
                                 case "spot_angle":      lo.LightSpotAngle      = value; break;
                                 case "spot_blend":      lo.LightSpotBlend      = value; break;
                             }
@@ -4864,6 +4874,8 @@ public partial class Timeline : UiPanel
                     (label: "Light Range",     path: "light.range", parent: "", indent: 0),
                     (label: "Indirect Energy", path: "light.indirect_energy", parent: "", indent: 0),
                     (label: "Specular",        path: "light.specular", parent: "", indent: 0),
+                    (label: "Light Size",      path: "light.size", parent: "", indent: 0),
+                    (label: "Fade Size",       path: "light.fade_size", parent: "", indent: 0),
                     (label: "Spot Angle",      path: "light.spot_angle", parent: "", indent: 0),
                     (label: "Spot Blend",      path: "light.spot_blend", parent: "", indent: 0),
                     (label: "Light Color",     path: "light.color", parent: "", indent: 0),
@@ -5267,6 +5279,8 @@ public partial class Timeline : UiPanel
             _displayRows.Add(MakeSingle(obj, "Light Range",     "light.range"));
             _displayRows.Add(MakeSingle(obj, "Indirect Energy", "light.indirect_energy"));
             _displayRows.Add(MakeSingle(obj, "Specular",        "light.specular"));
+            _displayRows.Add(MakeSingle(obj, "Light Size",      "light.size"));
+            _displayRows.Add(MakeSingle(obj, "Fade Size",       "light.fade_size"));
             _displayRows.Add(MakeSingle(obj, "Spot Angle",      "light.spot_angle"));
             _displayRows.Add(MakeSingle(obj, "Spot Blend",      "light.spot_blend"));
             _displayRows.Add(MakeGroup(obj,  "Light Color",     new[] { "light.color.r", "light.color.g", "light.color.b" }));

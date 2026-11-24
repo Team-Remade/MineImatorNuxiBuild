@@ -7,6 +7,14 @@ uniform vec4  uBlendColor;
 uniform float uAlpha;
 uniform bool  uAlphaClipEnabled;
 uniform float uAlphaClipThreshold;
+uniform bool  uAlphaHashed;
+
+float alphaCutoff()
+{
+    if (!uAlphaClipEnabled) return 0.0;
+    if (!uAlphaHashed) return uAlphaClipThreshold;
+    return fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+}
 uniform sampler2D uTexture;
 uniform bool  uUseTexture;
 uniform sampler2D uAlphaMask;
@@ -25,7 +33,7 @@ void main() {
     if (!uForceOpaque && uUseAlphaMask)
         alpha *= texture(uAlphaMask, vTexCoord).a;
 
-    if (alpha <= (uAlphaClipEnabled ? uAlphaClipThreshold : 0.0))
+    if (alpha <= alphaCutoff())
         discard;
 
     FragColor = vec4(uPickColor, 1.0);

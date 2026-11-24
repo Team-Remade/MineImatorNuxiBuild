@@ -437,6 +437,9 @@ internal static partial class Program
         var correction = camera.Effects.Single(e => e.Type == CameraEffectType.ColorCorrection).ColorCorrection;
         Near(125, correction.Contrast, "Source contrast is offset around one");
         Near(50, correction.Hue, "Source hue is expressed in hundreds of degrees");
+        Near(100, correction.ColorBurn, "Source color burn is applied with its burn color");
+        Near(0.5019608f, correction.BurnColorR, "Source color burn color red");
+        Near(0, correction.BurnColorG, "Source color burn color green");
         Near(2, camera.Effects.Single(e => e.Type == CameraEffectType.HeatDistort).HeatDistort.Strength,
             "Heat strength is already a percentage in both renderers");
         var aberration = camera.Effects.Single(e => e.Type == CameraEffectType.ChromaticAberration).ChromaticAberration;
@@ -459,7 +462,8 @@ internal static partial class Program
         Near(5, Convert.ToSingle(camera.Keyframes[$"camera.effect.{barsIndex}.cinematic_bars.offset"][^1].Value),
             "Rotated source offset is projected onto the bar normal");
         Check(warnings.Any(w => w.Contains("native noise")) &&
-              new[] { "CAM_BRIGHTNESS", "CAM_COLOR_BURN", "CAM_VHS" }.All(c => warnings.Any(w => w.Contains(c))),
+              new[] { "CAM_BRIGHTNESS", "CAM_VHS" }.All(c => warnings.Any(w => w.Contains(c))) &&
+              !warnings.Any(w => w.Contains("CAM_COLOR_BURN")),
             "Approximate and unmapped rendering features are reported explicitly");
     }
 

@@ -227,6 +227,7 @@ public class ProjectRenderSettings
     public string CloudTexture { get; set; } = "minecraft:environment/clouds.png";
     public ProjectVec3 CloudColor { get; set; } = new() { X = 1f, Y = 1f, Z = 1f };
     public string CloudRenderMode { get; set; } = "3d";
+    public bool CloudsVisible { get; set; } = true;
     public float CloudSpeed { get; set; } = 0f;
     public float CloudOffsetX { get; set; } = 0f;
     public float CloudOffsetY { get; set; } = 0f;
@@ -516,6 +517,7 @@ public class ProjectSceneObjectEntry
     public int TileX { get; set; } = 1;
     public int TileY { get; set; } = 1;
     public int TileZ { get; set; } = 1;
+    public bool SceneryRandomize { get; set; }
 
     // 0 (including absent) uses centered generated block meshes; 1 uses native coordinates.
     public int BlockMeshOriginVersion { get; set; }
@@ -738,6 +740,8 @@ public class ProjectSceneObjectEntry
     public float LightRange { get; set; } = 5f;
     public float LightIndirectEnergy { get; set; } = 1f;
     public float LightSpecular { get; set; } = 0.5f;
+    public float LightSize { get; set; } = 2f;
+    public float LightFadeSize { get; set; } = 0.5f;
     public bool LightShadowEnabled { get; set; } = true;
     // 0 = point, 1 = spot.  Stored as int for forward compatibility.
     public int LightType { get; set; } = 0;

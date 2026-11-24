@@ -16,7 +16,8 @@ namespace MineImatorSimplyRemadeNuxi.core.objs;
 public enum MaterialAlphaMode
 {
     Blend,
-    Clip
+    Clip,
+    Hashed
 }
 
 public enum MaterialGlintMode
@@ -209,6 +210,9 @@ public class SceneObject
     public string ObjectId;
     public string LibrarySourceId = "";
 
+    /// <summary>Set by Mine-imator imports; the timeline turns it into ghost tracks and clears it.</summary>
+    public bool ImportedGhost;
+
     public string SpawnCategory = "";
     public string BlockVariant = "";
     public bool HasBannerPattern;
@@ -242,6 +246,9 @@ public class SceneObject
     public int TileX = 1;
     public int TileY = 1;
     public int TileZ = 1;
+
+    /// <summary>Scenery (schematic) option: randomize weighted block rotations per position.</summary>
+    public bool SceneryRandomize;
 
     /// <summary>
     /// Returns <see cref="TileX"/> clamped to <c>[1, MaxTilesPerAxis]</c>.

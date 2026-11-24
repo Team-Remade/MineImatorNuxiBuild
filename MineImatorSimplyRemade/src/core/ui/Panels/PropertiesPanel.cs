@@ -75,6 +75,7 @@ public partial class PropertiesPanel : UiPanel
     public string CloudTexture = "minecraft:environment/clouds.png";
     public readonly float[] CloudColor = [1f, 1f, 1f];
     public string CloudRenderMode = "3d";
+    public bool CloudsVisible = true;
     public float CloudSpeed;
     public readonly float[] CloudOffset = [0f, 0f];
     public float CloudHeight = 2294f;
@@ -520,6 +521,7 @@ public partial class PropertiesPanel : UiPanel
         StarTwinkleSpeed = Math.Clamp(settings.StarTwinkleSpeed, 0f, 5f);
         ReadColor(settings.StarColor, StarColor);
         CloudRenderMode = settings.CloudRenderMode is "story" or "flat" ? settings.CloudRenderMode : "3d";
+        CloudsVisible = settings.CloudsVisible;
         CloudSpeed = settings.CloudSpeed;
         CloudOffset[0] = settings.CloudOffsetX; CloudOffset[1] = settings.CloudOffsetY;
         CloudHeight = Math.Max(0f, settings.CloudHeight);
@@ -701,6 +703,7 @@ public partial class PropertiesPanel : UiPanel
         manifest.Settings.StarTwinkleSpeed = StarTwinkleSpeed;
         manifest.Settings.StarColor = ToVec3(StarColor);
         manifest.Settings.CloudRenderMode = CloudRenderMode;
+        manifest.Settings.CloudsVisible = CloudsVisible;
         manifest.Settings.CloudSpeed = CloudSpeed;
         manifest.Settings.CloudOffsetX = CloudOffset[0]; manifest.Settings.CloudOffsetY = CloudOffset[1];
         manifest.Settings.CloudHeight = Math.Max(0f, CloudHeight);
@@ -1374,6 +1377,8 @@ public partial class PropertiesPanel : UiPanel
             LightRange = source.LightRange,
             LightIndirectEnergy = source.LightIndirectEnergy,
             LightSpecular = source.LightSpecular,
+            LightSize = source.LightSize,
+            LightFadeSize = source.LightFadeSize,
             LightShadowEnabled = source.LightShadowEnabled,
             LightType = source.LightType,
             LightSpotAngle = source.LightSpotAngle,
@@ -2714,6 +2719,8 @@ public partial class PropertiesPanel : UiPanel
             if (BeginBackgroundSection("text.panel.properties.clouds", "Clouds"))
             {
                 ImGui.Indent();
+                skyChanged |= ImGui.Checkbox(Localization.Label("text.panel.properties.show_clouds", "Show Clouds"), ref CloudsVisible);
+                RegisterBackgroundKeyframeContext(nameof(CloudsVisible));
                 skyChanged |= SkyColorEditor("Cloud Color", CloudColor);
                 skyChanged |= SkyColorEditor("Night Cloud Color", NightCloudColor);
                 skyChanged |= SkyTextureSelector("Cloud Texture", ref CloudTexture, "clouds.png");
@@ -3373,7 +3380,7 @@ public partial class PropertiesPanel : UiPanel
             nameof(SunTexture), nameof(MoonTexture), nameof(CloudTexture), nameof(MoonPhase), nameof(SkyTime),
             nameof(SunSize), nameof(MoonSize), nameof(SunFillLightStrength), nameof(SunFillLightCastsShadows),
             nameof(MoonFillLightStrength), nameof(MoonFillLightCastsShadows),
-            nameof(CloudRenderMode), nameof(CloudSpeed), nameof(CloudHeight), nameof(CloudBlockSize), nameof(CloudThickness),
+            nameof(CloudRenderMode), nameof(CloudsVisible), nameof(CloudSpeed), nameof(CloudHeight), nameof(CloudBlockSize), nameof(CloudThickness),
             nameof(FloorVisible), nameof(FloorTextureAtlas), nameof(FloorTileKey), nameof(BackgroundImagePath),
             nameof(BackgroundRenderMode), nameof(BackgroundScale), nameof(BackgroundRotationDegrees),
             nameof(AmbientLightStrength), nameof(NightAmbientLightStrength), nameof(FillLightStrength), nameof(FillLightCastsShadows),
@@ -5113,7 +5120,8 @@ public partial class PropertiesPanel : UiPanel
                     int alphaMode = (int)(mat?.AlphaMode ?? MaterialAlphaMode.Blend);
                     string[] alphaModes = [
                         Localization.Label("text.panel.properties.alpha_blend", "Alpha Blend"),
-                        Localization.Label("text.panel.properties.alpha_clip", "Alpha Clip")
+                        Localization.Label("text.panel.properties.alpha_clip", "Alpha Clip"),
+                        Localization.Label("text.panel.properties.alpha_hashed", "Alpha Hashed")
                     ];
                     if (ImGui.Combo(Localization.Label("text.panel.properties.alpha_mode", "Alpha Mode"), ref alphaMode,
                             alphaModes, alphaModes.Length))
@@ -5540,6 +5548,25 @@ public partial class PropertiesPanel : UiPanel
                         _ctxMenuPos = ImGui.GetMousePos();
                         _openPropContextMenu = true;
                     }
+                }
+
+                // Size and fade size
+                {
+                    float size = light.LightSize;
+                    if (ImGui.DragFloat(Localization.Label("text.panel.properties.light_size", "Light Size##lightSize"), ref size, 0.05f, 0f, 1000f))
+                    {
+                        light.LightSize = Math.Max(0f, size);
+                        Timeline?.RecordAutoKeyframe(_currentObject, "light.size");
+                    }
+                    RegisterPropertyContext("light.size");
+
+                    float fade = light.LightFadeSize * 100f;
+                    if (ImGui.SliderFloat(Localization.Label("text.panel.properties.light_fade_size", "Fade Size (%)##lightFadeSize"), ref fade, 0f, 100f))
+                    {
+                        light.LightFadeSize = Math.Clamp(fade / 100f, 0f, 1f);
+                        Timeline?.RecordAutoKeyframe(_currentObject, "light.fade_size");
+                    }
+                    RegisterPropertyContext("light.fade_size");
                 }
 
                 // Cast Shadows
@@ -8146,6 +8173,8 @@ public partial class PropertiesPanel : UiPanel
                         "light.range" => Math.Clamp(number, 0.01f, 500f),
                         "light.indirect_energy" => Math.Clamp(number, 0f, 16f),
                         "light.specular" => Math.Clamp(number, 0f, 1f),
+                        "light.size" => Math.Clamp(number, 0f, 1000f),
+                        "light.fade_size" => Math.Clamp(number, 0f, 1f),
                         "light.spot_angle" => Math.Clamp(number, 1f, 170f),
                         "light.spot_blend" when obj is LightSceneObject light => Math.Clamp(number, 0f, MathF.Max(0f, light.LightSpotAngle * 0.5f)),
                         _ when path.StartsWith("light.color.", StringComparison.Ordinal) => Math.Clamp(number, 0f, 1f),

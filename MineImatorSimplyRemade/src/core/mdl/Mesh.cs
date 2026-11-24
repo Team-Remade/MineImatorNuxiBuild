@@ -248,7 +248,8 @@ public class Mesh : IDisposable
     /// </summary>
     public bool IsTranslucent = false;
 
-    internal bool RequiresTranslucentPass => (IsTranslucent || ShaderGraphTranslucent) && AlphaMode != MaterialAlphaMode.Clip;
+    internal bool RequiresTranslucentPass => (IsTranslucent || ShaderGraphTranslucent) &&
+        AlphaMode is not (MaterialAlphaMode.Clip or MaterialAlphaMode.Hashed);
 
     internal (bool ignoresDepth, bool translucent, float depth, float distance, int index) GetRenderSortKey(
         mat4 model, vec3 cameraPosition, float depth, int index)
@@ -1569,7 +1570,8 @@ public class Mesh : IDisposable
         _shader.SetColorAdjustments(ColorAdjustments);
         SetUniformFloat("uAlpha", Alpha);
         SetUniformBool("uPremultiplyBlend", BlendMode is MaterialBlendMode.Multiply or MaterialBlendMode.Screen);
-        SetUniformBool("uAlphaClipEnabled", AlphaMode == MaterialAlphaMode.Clip);
+        SetUniformBool("uAlphaClipEnabled", AlphaMode is MaterialAlphaMode.Clip or MaterialAlphaMode.Hashed);
+        SetUniformBool("uAlphaHashed", AlphaMode == MaterialAlphaMode.Hashed);
         SetUniformFloat("uAlphaClipThreshold", AlphaClipThreshold);
         SetUniformBool("uEmissionEnabled", EmissionEnabled);
         SetUniformBool("uEndPortalSurface", EndPortalSurface);
@@ -1956,7 +1958,8 @@ public class Mesh : IDisposable
         bool useAlphaMask = AlphaMaskTextureId != 0 && AlphaMaskTextureId != TextureId &&
                             TexCoords.Count == Vertices.Count;
         SetUniformFloat(shader, "uAlpha", Alpha);
-        SetUniformBool(shader, "uAlphaClipEnabled", AlphaMode == MaterialAlphaMode.Clip);
+        SetUniformBool(shader, "uAlphaClipEnabled", AlphaMode is MaterialAlphaMode.Clip or MaterialAlphaMode.Hashed);
+        SetUniformBool(shader, "uAlphaHashed", AlphaMode == MaterialAlphaMode.Hashed);
         SetUniformFloat(shader, "uAlphaClipThreshold", AlphaClipThreshold);
         SetUniformBool(shader, "uUseTexture", useTexture);
         SetUniformBool(shader, "uUseAlphaMask", useAlphaMask);
@@ -2027,7 +2030,8 @@ public class Mesh : IDisposable
 
         bool useTexture = TextureId != 0 && TexCoords.Count == Vertices.Count;
         SetUniformFloat(shader, "uAlpha", Alpha);
-        SetUniformBool(shader, "uAlphaClipEnabled", AlphaMode == MaterialAlphaMode.Clip);
+        SetUniformBool(shader, "uAlphaClipEnabled", AlphaMode is MaterialAlphaMode.Clip or MaterialAlphaMode.Hashed);
+        SetUniformBool(shader, "uAlphaHashed", AlphaMode == MaterialAlphaMode.Hashed);
         SetUniformFloat(shader, "uAlphaClipThreshold", AlphaClipThreshold);
         SetUniformBool(shader, "uUseTexture", useTexture);
         SetUniformVec2(shader, "uTexOffset", new vec2(0f, texOffsetV));
@@ -2418,7 +2422,8 @@ public class Mesh : IDisposable
         bool forceOpaque = PickOnly;
         SetUniformFloat(shader, "uAlpha", Alpha);
         SetUniformVec4(shader, "uBlendColor", BlendColor);
-        SetUniformBool(shader, "uAlphaClipEnabled", AlphaMode == MaterialAlphaMode.Clip);
+        SetUniformBool(shader, "uAlphaClipEnabled", AlphaMode is MaterialAlphaMode.Clip or MaterialAlphaMode.Hashed);
+        SetUniformBool(shader, "uAlphaHashed", AlphaMode == MaterialAlphaMode.Hashed);
         SetUniformFloat(shader, "uAlphaClipThreshold", AlphaClipThreshold);
         SetUniformBool(shader, "uUseTexture", useTexture);
         bool useAlphaMask = AlphaMaskTextureId != 0 && AlphaMaskTextureId != TextureId &&

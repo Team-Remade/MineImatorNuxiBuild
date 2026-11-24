@@ -1104,6 +1104,8 @@ public partial class SceneTree : UiPanel
                     LightRange         = light.LightRange,
                     LightIndirectEnergy = light.LightIndirectEnergy,
                     LightSpecular      = light.LightSpecular,
+                    LightSize          = light.LightSize,
+                    LightFadeSize      = light.LightFadeSize,
                     LightShadowEnabled = light.LightShadowEnabled,
                     LightSpotAngle     = light.LightSpotAngle,
                     LightSpotBlend     = light.LightSpotBlend

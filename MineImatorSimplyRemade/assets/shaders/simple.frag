@@ -20,6 +20,14 @@ uniform float uAlpha;
 uniform bool  uPremultiplyBlend;
 uniform bool  uAlphaClipEnabled;
 uniform float uAlphaClipThreshold;
+uniform bool  uAlphaHashed;
+
+float alphaCutoff()
+{
+    if (!uAlphaClipEnabled) return 0.0;
+    if (!uAlphaHashed) return uAlphaClipThreshold;
+    return fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+}
 uniform bool  uBendEnabled;
 uniform bool  uBendSharp;
 uniform bool  uEmissionEnabled;
@@ -501,7 +509,7 @@ void main() {
             alpha *= texture(uAlphaMask, vTexCoord).a;
         }
         alpha *= uAlpha * uBlendColor.a;
-        if (alpha <= (uAlphaClipEnabled ? uAlphaClipThreshold : 0.0)) discard;
+        if (alpha <= alphaCutoff()) discard;
 
         vec3 n = normalize(vNormal);
         vec3 solidCol;
@@ -603,7 +611,7 @@ void main() {
 
     // Modelbench discards only completely transparent fragments. Even very low
     // non-zero alpha must survive so it can write depth for render-depth masks.
-    if (alpha <= (uAlphaClipEnabled ? uAlphaClipThreshold : 0.0)) discard;
+    if (alpha <= alphaCutoff()) discard;
 
     OutlineNormal = vec4((gl_FrontFacing ? vertexNormal : -vertexNormal) * 0.5 + 0.5, 1.0);
     vec3 result = baseColor;

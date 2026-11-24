@@ -49,6 +49,12 @@ public class LightSceneObject : SceneObject
     public float LightSpecular = 0.5f;
     public bool  LightShadowEnabled = true;
 
+    /// <summary>Physical source size; larger lights cast softer shadows (Mine-imator default 2).</summary>
+    public float LightSize = 2f;
+
+    /// <summary>Distance falloff softness: 0.5 is the standard quadratic falloff, larger values reach farther.</summary>
+    public float LightFadeSize = 0.5f;
+
     // ── Spot-light properties (only used when Type == LightType.Spot) ─────────
 
     /// <summary>

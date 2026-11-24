@@ -18,14 +18,32 @@ public static class MiObjectTemplateFactory
         var state = Property(template.ModelDefinition, "state");
         string variant = Text(state, "variant");
         if (name == "human") name = variant == "alex" ? "alex" : "steve";
-        if (Text(state, "age") == "baby") name += "_baby";
+        bool baby = Text(state, "age") == "baby";
         string category = template.Type is "character" ? "characters" : "props";
-        foreach (string folder in new[] { category, "equipment", "characters", "props" }.Distinct())
+        // Model variants (zombie/husk/drowned...) are separate model files named after the variant.
+        var names = new List<string>();
+        if (variant.Length > 0 && Path.GetFileName(variant) == variant && name != "alex" && name != "steve")
         {
-            string path = Path.Combine(MinecraftDataLoader.GetVersionRoot(), folder, "vanilla", name, name + ".mimodel");
-            if (File.Exists(path)) return path;
+            if (baby && !variant.EndsWith("_baby", StringComparison.Ordinal)) names.Add(variant + "_baby");
+            names.Add(variant);
         }
+        names.Add(baby ? name + "_baby" : name);
+        foreach (string candidate in names)
+            foreach (string folder in new[] { category, "equipment", "characters", "props" }.Distinct())
+            {
+                string path = Path.Combine(MinecraftDataLoader.GetVersionRoot(), folder, "vanilla", candidate, candidate + ".mimodel");
+                if (File.Exists(path)) return path;
+            }
         return "";
+    }
+
+    /// <summary>True when the template's variant state selects an existing model file.</summary>
+    internal static bool VariantModelResolved(MiTemplate template)
+    {
+        string variant = Text(Property(template.ModelDefinition, "state"), "variant");
+        if (variant.Length == 0 || Path.GetFileName(variant) != variant) return false;
+        string path = ResolveBuiltinModelPath(template);
+        return path.Length > 0 && Path.GetFileNameWithoutExtension(path).StartsWith(variant, StringComparison.Ordinal);
     }
 
     public static SceneObject? Create(MineImatorLoader loader, GL gl, MiTemplate template,
@@ -156,7 +174,24 @@ public static class MiObjectTemplateFactory
             TileX = Tile(0), TileY = Tile(1), TileZ = Tile(2)
         };
         obj.PivotOffset = new vec3(-obj.TileX * 0.5f, 0f, -obj.TileZ * 0.5f);
-        if (gl != null && variant != null)
+        // Mine-imator "randomize": each repeated tile picks one of the block's weighted model variants.
+        var choices = variant != null && Bool(block, "randomize") && (obj.TileX > 1 || obj.TileY > 1 || obj.TileZ > 1)
+            ? BlockRegistry.GetImportVariants(name, "")
+                .Where(v => string.Equals(v.StateKey ?? v.VariantKey, variant.StateKey ?? variant.VariantKey, StringComparison.Ordinal) &&
+                            string.IsNullOrEmpty(v.CemPath) && v.TopHalf == null).ToList()
+            : [];
+        if (gl != null && variant != null && choices.Count > 1 && variant.TopHalf == null)
+        {
+            for (int y = 0; y < obj.TileY; y++)
+                for (int z = 0; z < obj.TileZ; z++)
+                    for (int x = 0; x < obj.TileX; x++)
+                    {
+                        uint hash = unchecked((uint)(x * 73856093) ^ (uint)(y * 19349663) ^ (uint)(z * 83492791));
+                        hash ^= hash >> 13; hash = unchecked(hash * 0x5bd1e995); hash ^= hash >> 15;
+                        AddMeshes(choices[(int)(hash % (uint)choices.Count)], new vec3(x, y, z), 1, 1, 1);
+                    }
+        }
+        else if (gl != null && variant != null)
         {
             AddMeshes(variant, vec3.Zero);
             if (variant.TopHalf != null)
@@ -164,16 +199,17 @@ public static class MiObjectTemplateFactory
         }
         return obj;
 
-        void AddMeshes(BlockVariantEntry entry, vec3 offset)
+        void AddMeshes(BlockVariantEntry entry, vec3 offset, int tx = 0, int ty = 0, int tz = 0)
         {
+            int meshTileX = tx > 0 ? tx : obj.TileX, meshTileY = ty > 0 ? ty : obj.TileY, meshTileZ = tz > 0 ? tz : obj.TileZ;
             var resolved = string.IsNullOrEmpty(entry.ModelPath) ? null : BlockRegistry.ResolveModel(entry.ModelPath, "", name);
             var meshes = MobHeadBlockMesh.GetModelName(name) != null
-                ? MobHeadBlockMesh.Build(gl, name, entry, tileX: obj.TileX, tileY: obj.TileY, tileZ: obj.TileZ)
+                ? MobHeadBlockMesh.Build(gl, name, entry, tileX: meshTileX, tileY: meshTileY, tileZ: meshTileZ)
                 : !string.IsNullOrEmpty(entry.CemPath)
                 ? CemLoader.Load(gl, entry.CemPath, MinecraftDataLoader.GetVersionRoot(), "")
                 : resolved != null
                     ? MinecraftModelMesh.Build(gl, resolved, entry.RotationX, entry.RotationY,
-                        blockName: name, tileX: obj.TileX, tileY: obj.TileY, tileZ: obj.TileZ)
+                        blockName: name, tileX: meshTileX, tileY: meshTileY, tileZ: meshTileZ)
                     : new List<Mesh>();
             // CEM does not repeat geometry, so retain the imported repeat-frame displacement.
             var shift = string.IsNullOrEmpty(entry.CemPath) ? offset

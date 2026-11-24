@@ -1309,7 +1309,7 @@ public partial class Viewport : UiPanel
         C3("uCloudColor", p.CloudColor);
         C3("uNightCloudColor", p.NightCloudColor);
         int cloudMode = Gl.GetUniformLocation(program, "uCloudMode");
-        if (cloudMode >= 0) Gl.Uniform1(cloudMode, p.CloudRenderMode == "story" ? 1 : p.CloudRenderMode == "flat" ? 2 : 0);
+        if (cloudMode >= 0) Gl.Uniform1(cloudMode, !p.CloudsVisible ? -1 : p.CloudRenderMode == "story" ? 1 : p.CloudRenderMode == "flat" ? 2 : 0);
         float animationSeconds = (Timeline.Instance?.CurrentFrame ?? 0) / (float)Math.Max(1, p.GetFramerate());
         int cloudOffset = Gl.GetUniformLocation(program, "uCloudOffset");
         if (cloudOffset >= 0) Gl.Uniform2(cloudOffset, p.CloudOffset[0] + p.CloudSpeed * animationSeconds, p.CloudOffset[1]);

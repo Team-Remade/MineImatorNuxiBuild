@@ -217,6 +217,7 @@ public static partial class MiObjectFeatureMapper
             ("ENV_FOG_HEIGHT_COLOR", "HeightFogColor", 1),
             ("ENV_FOG_HEIGHT_SIZE", "HeightFogSize", 1),
             ("ENV_FOG_HEIGHT_OFFSET", "HeightFogOffset", 1),
+            ("ENV_SKY_CLOUDS_SHOW", "CloudsVisible", 1),
             ("ENV_SKY_CLOUDS_SPEED", "CloudSpeed", 1),
             ("ENV_SKY_CLOUDS_HEIGHT", "CloudHeight", 1),
             ("ENV_WIND", "WindEnabled", 1),
