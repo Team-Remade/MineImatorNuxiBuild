@@ -1,4 +1,4 @@
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Numerics;
 using System.Reflection;
@@ -5092,7 +5092,7 @@ public partial class Viewport : UiPanel
         SceneRenderMode renderMode,
         Dictionary<LightSceneObject, int> shadowIndices,
         bool screenSpaceIndirectFallback,
-        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle, float specular)> result)
+        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle, float specular, bool realisticFalloff)> result)
     {
         foreach (var obj in objects)
         {
@@ -5140,7 +5140,7 @@ public partial class Viewport : UiPanel
                 result.Add((
                     pos, col, light.LightRange, light.LightEnergy, shadowIndex,
                     dir, light.LightIndirectEnergy,
-                    spotOuterCos, spotInnerCos, light.LightSpecular));
+                    spotOuterCos, spotInnerCos, light.LightSpecular, light.LightRealisticFalloff));
             }
 
             // Screen-space GI samples emissive surfaces directly; proxy lights would count them twice.
@@ -5161,7 +5161,7 @@ public partial class Viewport : UiPanel
     /// </summary>
     private void AddEmissivePointLightsForObject(
         SceneObject obj,
-        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle, float specular)> result)
+        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle, float specular, bool realisticFalloff)> result)
     {
         if (obj.Visuals.Count == 0)
             return;
@@ -5232,7 +5232,8 @@ public partial class Viewport : UiPanel
                         indirectEnergy,
                         0f,
                         0f,
-                        0f));
+                        0f,
+                        false));
                 }
             }
             FrameProfiler.Shared.Count(ProfileCounter.EmissiveProxyLights);
@@ -5248,7 +5249,7 @@ public partial class Viewport : UiPanel
 
     // ── Reusable per-frame lists (reduces allocations) ────────────────────────
 
-    private readonly List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle, float specular)> _cachedAllPointLights = new();
+    private readonly List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle, float specular, bool realisticFalloff)> _cachedAllPointLights = new();
     private readonly List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> _cachedRenderItems = new();
     private readonly List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> _cachedRenderItemsNoAo = new();
     private readonly List<(mat4 model, Mesh mesh)> _cachedOverlays = new();
@@ -5288,7 +5289,7 @@ public partial class Viewport : UiPanel
     /// </summary>
     private unsafe void SelectPointLightsForMesh(
         vec3 meshWorldPos,
-        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle, float specular)> allLights,
+        List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle, float specular, bool realisticFalloff)> allLights,
         bool cacheSelection = false)
     {
         using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.LightSelection);
@@ -5677,7 +5678,7 @@ public partial class Viewport : UiPanel
         mat4 view, mat4 proj,
         List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> renderItems,
         List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy,
-            float spotCosOuterAngle, float spotCosInnerAngle, float specular)> allLights,
+            float spotCosOuterAngle, float spotCosInnerAngle, float specular, bool realisticFalloff)> allLights,
         bool forceUnshaded,
         bool? translucentOnly = null)
     {
@@ -7717,7 +7718,7 @@ public partial class Viewport : UiPanel
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         Dictionary<LightSceneObject, int> pointShadowIndices = new();
-        var allPointLights = new List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle, float specular)>();
+        var allPointLights = new List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex, vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle, float specular, bool realisticFalloff)>();
         vec3 camPos = renderCamera.Position;
 
         if (rasterRenderMode == SceneRenderMode.Rendered)

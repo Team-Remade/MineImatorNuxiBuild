@@ -743,6 +743,7 @@
     "text.panel.properties.camera_shake": "Camera Shake",
     "text.panel.properties.cancel_focus_selection": "Cancel Focus Selection",
     "text.panel.properties.cast_shadows": "Cast Shadows",
+    "text.panel.properties.light_realistic_falloff": "Realistic Falloff",
     "text.panel.properties.ignore_depth": "Ignore Depth",
     "text.panel.properties.center": "Center",
     "text.panel.properties.choose_font": "Choose Font...",

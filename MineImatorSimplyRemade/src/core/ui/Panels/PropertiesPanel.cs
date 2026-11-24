@@ -1133,6 +1133,7 @@ public partial class PropertiesPanel : UiPanel
             InheritPose = source.InheritPose,
             ScaleResize = source.ScaleResize,
             LockBend = source.LockBend,
+            TagColor = source.TagColor,
             LockToBentHalf = source.LockToBentHalf,
             InheritBend = source.InheritBend,
             InheritPivotOffset = source.InheritPivotOffset,
@@ -1379,6 +1380,7 @@ public partial class PropertiesPanel : UiPanel
             LightSpecular = source.LightSpecular,
             LightSize = source.LightSize,
             LightFadeSize = source.LightFadeSize,
+            LightRealisticFalloff = source.LightRealisticFalloff,
             LightShadowEnabled = source.LightShadowEnabled,
             LightType = source.LightType,
             LightSpotAngle = source.LightSpotAngle,
@@ -5567,6 +5569,15 @@ public partial class PropertiesPanel : UiPanel
                         Timeline?.RecordAutoKeyframe(_currentObject, "light.fade_size");
                     }
                     RegisterPropertyContext("light.fade_size");
+                }
+
+                // Realistic Falloff
+                {
+                    bool realistic = light.LightRealisticFalloff;
+                    if (ImGui.Checkbox(Localization.Label("text.panel.properties.light_realistic_falloff", "Realistic Falloff##lightRealisticFalloff"), ref realistic))
+                        light.LightRealisticFalloff = realistic;
+                    RegisterPropertyContext("light.realistic_falloff", () => light.LightRealisticFalloff,
+                        value => light.LightRealisticFalloff = (bool)value, true);
                 }
 
                 // Cast Shadows

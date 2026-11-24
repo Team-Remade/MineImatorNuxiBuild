@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using GlmSharp;
 using MineImatorSimplyRemade;
 using MineImatorSimplyRemade.core.mdl;
@@ -116,7 +116,7 @@ internal static partial class Program
                     Mesh.FogEnabled = Mesh.HeightFogEnabled = Mesh.IndirectWorldEnabled = Mesh.SssEnabled = true;
                     Mesh.GlobalCameraPosition = new vec3(1000f);
                     Mesh.PointLights.Add((vec3.Zero, new vec3(1f, 0f, 0f), 100f, 100f,
-                        -1, vec3.UnitY, 100f, -1f, -1f, 0.5f));
+                        -1, vec3.UnitY, 100f, -1f, -1f, 0.5f, false));
                     sceneLighting.Upload(mat4.Identity, new vec3(10f, 0f, 0f), vec3.UnitZ, new vec3(20f),
                         vec3.UnitY, new vec3(10f), vec3.UnitY, new vec3(10f), 0, true, true, true);
                     update.Invoke(spawn, [0d]);

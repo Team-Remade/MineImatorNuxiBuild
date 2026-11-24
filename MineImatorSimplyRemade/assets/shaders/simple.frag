@@ -119,6 +119,7 @@ uniform float uPointLightRange[MAX_POINT_LIGHTS];
 uniform float uPointLightEnergy[MAX_POINT_LIGHTS];
 uniform float uPointLightIndirectEnergy[MAX_POINT_LIGHTS];
 uniform float uPointLightSpecular[MAX_POINT_LIGHTS];
+uniform int   uPointLightRealisticFalloff[MAX_POINT_LIGHTS];
 uniform int   uPointLightShadowIndex[MAX_POINT_LIGHTS];
 uniform vec3  uPointLightDir[MAX_POINT_LIGHTS];
 uniform float uPointLightSpotCosOuter[MAX_POINT_LIGHTS];
@@ -647,6 +648,13 @@ void main() {
 
         float attenuation = clamp(1.0 - (dist / range), 0.0, 1.0);
         attenuation *= attenuation;
+        if (uPointLightRealisticFalloff[i] > 0) {
+            float distanceRatio = dist / max(range, 0.0001);
+            float distanceRatio2 = distanceRatio * distanceRatio;
+            float window = clamp(1.0 - distanceRatio2 * distanceRatio2, 0.0, 1.0);
+            const float referenceDistance2 = 1.0; // Mine-imator's 16-unit reference distance is one block
+            attenuation = window * window * referenceDistance2 / (dist * dist + referenceDistance2);
+        }
 
         float spot = 1.0;
         if (uPointLightSpotCosOuter[i] > 0.0) {

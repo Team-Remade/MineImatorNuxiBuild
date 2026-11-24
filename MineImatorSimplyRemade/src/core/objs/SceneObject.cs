@@ -479,6 +479,9 @@ public class SceneObject
     /// </summary>
     public float LockBend = 1f;
 
+    /// <summary>Optional editor label colour (0xRRGGBB), imported from Mine-imator's timeline colour tag.</summary>
+    public uint? TagColor;
+
     private bool _lockToBentHalf = true;
 
     /// <summary>Attach to the parent's bent-half origin, independently of imported part metadata.</summary>

@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Reflection;
 using Cyotek.Data.Nbt;
 using GlmSharp;
@@ -197,7 +197,7 @@ internal static partial class Program
             var collect = typeof(Viewport).GetMethod("AddEmissivePointLightsForObject",
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
             var lights = new List<(vec3 pos, vec3 color, float range, float energy, int shadowIndex,
-                vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle, float specular)>();
+                vec3 direction, float indirectEnergy, float spotCosOuterAngle, float spotCosInnerAngle, float specular, bool realisticFalloff)>();
 
             void Collect(SceneObject obj)
             {

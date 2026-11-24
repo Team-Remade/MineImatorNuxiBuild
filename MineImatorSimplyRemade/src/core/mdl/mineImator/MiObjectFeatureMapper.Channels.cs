@@ -202,6 +202,7 @@ public static partial class MiObjectFeatureMapper
         if (obj is LightSceneObject light)
         {
             light.LightShadowEnabled = source.Shadows ?? true;
+            light.LightRealisticFalloff = source.RealisticFalloff ?? false;
             Add("LIGHT_STRENGTH", "light.energy", 1, force: true);
             Add("LIGHT_RANGE", "light.range", 250, 1f / 16f, force: true);
             Add("LIGHT_SPECULAR_STRENGTH", "light.specular", 1, 0.5f, force: true);
@@ -291,7 +292,7 @@ public static partial class MiObjectFeatureMapper
         foreach (var property in source.ExtraValues)
             if (property.Key is not ("text" or "lock" or "wind" or "wind_terrain" or
                 "glint_mode" or "glint_scale" or "glint_speed" or "glint_strength" or "glint_tex" or
-                "parent_tree_index" or "tree_extend" or "color_tag" or "parts" or "blend_mode" or
+                "parent_tree_index" or "tree_extend" or "color_tag" or "color" or "parts" or "blend_mode" or
                 "ghost" or "glow" or "glow_texture" or "alpha_mode") &&
                 ActiveSetting(source, property.Key, property.Value))
                 Report($"MIObject '{source.Name}': setting '{property.Key}' has no native mapping.", warning);

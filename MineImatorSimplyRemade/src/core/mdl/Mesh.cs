@@ -1334,6 +1334,7 @@ public class Mesh : IDisposable
     ///   spotCosInnerAngle – cosine of the inner (zero-intensity) spot-cone half-angle;
     ///                       0 for point lights
     ///   specular          – highlight strength (0 disables, 0.5 is the default)
+    ///   realisticFalloff  – use inverse-square falloff windowed at the range instead of the default curve
     /// </summary>
     public static readonly List<(
         vec3 pos,
@@ -1345,7 +1346,8 @@ public class Mesh : IDisposable
         float indirectEnergy,
         float spotCosOuterAngle,
         float spotCosInnerAngle,
-        float specular)> PointLights = new();
+        float specular,
+        bool  realisticFalloff)> PointLights = new();
 
     /// <summary>
     /// Global ambient light colour for lit meshes.
@@ -2291,6 +2293,7 @@ public class Mesh : IDisposable
         float* energies = stackalloc float[count];
         float* indirectEnergies = stackalloc float[count];
         float* speculars = stackalloc float[count];
+        int* realisticFalloffs = stackalloc int[count];
         float* spotOuter = stackalloc float[count];
         float* spotInner = stackalloc float[count];
         int* shadowIndices = stackalloc int[count];
@@ -2310,6 +2313,7 @@ public class Mesh : IDisposable
             energies[i] = light.energy;
             indirectEnergies[i] = light.indirectEnergy;
             speculars[i] = Math.Clamp(light.specular, 0f, 1f);
+            realisticFalloffs[i] = light.realisticFalloff ? 1 : 0;
             spotOuter[i] = light.spotCosOuterAngle;
             spotInner[i] = light.spotCosInnerAngle;
             shadowIndices[i] = light.shadowIndex;
@@ -2329,6 +2333,8 @@ public class Mesh : IDisposable
         if (loc >= 0) _gl.Uniform1(loc, (uint)count, indirectEnergies);
         loc = _shader.GetUniformLocation("uPointLightSpecular[0]");
         if (loc >= 0) _gl.Uniform1(loc, (uint)count, speculars);
+        loc = _shader.GetUniformLocation("uPointLightRealisticFalloff[0]");
+        if (loc >= 0) _gl.Uniform1(loc, (uint)count, realisticFalloffs);
         loc = _shader.GetUniformLocation("uPointLightSpotCosOuter[0]");
         if (loc >= 0) _gl.Uniform1(loc, (uint)count, spotOuter);
         loc = _shader.GetUniformLocation("uPointLightSpotCosInner[0]");

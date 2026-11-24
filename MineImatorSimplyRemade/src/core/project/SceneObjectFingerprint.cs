@@ -241,6 +241,7 @@ internal static class SceneObjectFingerprint
         hash.Add(obj.InheritPose);
         hash.Add(obj.ScaleResize);
         hash.Add(obj.LockBend);
+        hash.Add(obj.TagColor.HasValue ? (long)obj.TagColor.Value : -1L);
         hash.Add(obj is MiBoneSceneObject ? obj.LockBend > 0f : obj.LockToBentHalf);
         hash.Add(obj.InheritPivotOffset);
         hash.Add(obj.PivotOffsetInheritsModelOrigin);
@@ -620,6 +621,7 @@ internal static class SceneObjectFingerprint
             hash.Add(light.LightSpecular);
             hash.Add(light.LightSize);
             hash.Add(light.LightFadeSize);
+            hash.Add(light.LightRealisticFalloff);
             hash.Add(light.LightShadowEnabled);
             hash.Add(light.Type);
             hash.Add(light.LightSpotAngle);

@@ -598,6 +598,7 @@ public class ProjectSceneObjectEntry
     public bool InheritPose { get; set; } = false;
     public bool ScaleResize { get; set; } = false;
     public float? LockBend { get; set; }
+    public uint? TagColor { get; set; }
     // Null migrates the attachment choice stored in LockBend by older native projects.
     public bool? LockToBentHalf { get; set; }
     public bool? InheritBend { get; set; }
@@ -742,6 +743,7 @@ public class ProjectSceneObjectEntry
     public float LightSpecular { get; set; } = 0.5f;
     public float LightSize { get; set; } = 2f;
     public float LightFadeSize { get; set; } = 0.5f;
+    public bool LightRealisticFalloff { get; set; } = false;
     public bool LightShadowEnabled { get; set; } = true;
     // 0 = point, 1 = spot.  Stored as int for forward compatibility.
     public int LightType { get; set; } = 0;

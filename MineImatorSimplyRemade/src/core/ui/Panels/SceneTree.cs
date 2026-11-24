@@ -616,7 +616,16 @@ public partial class SceneTree : UiPanel
         }
         else
         {
+            bool tagged = obj.TagColor.HasValue;
+            if (tagged)
+            {
+                uint rgb = obj.TagColor!.Value;
+                ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(
+                    ((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f, 1f));
+            }
             nodeOpen = ImGui.TreeNodeEx(obj.GetDisplayName() + "###node", flags);
+            if (tagged)
+                ImGui.PopStyleColor();
         }
 
         if (_selectionToReveal == obj)
@@ -1106,6 +1115,7 @@ public partial class SceneTree : UiPanel
                     LightSpecular      = light.LightSpecular,
                     LightSize          = light.LightSize,
                     LightFadeSize      = light.LightFadeSize,
+                    LightRealisticFalloff = light.LightRealisticFalloff,
                     LightShadowEnabled = light.LightShadowEnabled,
                     LightSpotAngle     = light.LightSpotAngle,
                     LightSpotBlend     = light.LightSpotBlend
@@ -1197,6 +1207,7 @@ public partial class SceneTree : UiPanel
         CopyPropertyInheritanceSettings(original, dup, original is CharacterSceneObject, objectIds);
         dup.ScaleResize         = original.ScaleResize;
         dup.LockBend            = original.LockBend;
+        dup.TagColor            = original.TagColor;
         dup.LockToBentHalf      = original is MiBoneSceneObject ? original.LockBend > 0f : original.LockToBentHalf;
         dup.CastShadow          = original.CastShadow;
         dup.IgnoreDepth         = original.IgnoreDepth;

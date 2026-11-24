@@ -55,6 +55,12 @@ public class LightSceneObject : SceneObject
     /// <summary>Distance falloff softness: 0.5 is the standard quadratic falloff, larger values reach farther.</summary>
     public float LightFadeSize = 0.5f;
 
+    /// <summary>
+    /// Mine-imator's realistic falloff: inverse-square attenuation smoothly windowed to zero at
+    /// <see cref="LightRange"/>, instead of the default falloff curve. Off by default.
+    /// </summary>
+    public bool LightRealisticFalloff;
+
     // ── Spot-light properties (only used when Type == LightType.Spot) ─────────
 
     /// <summary>

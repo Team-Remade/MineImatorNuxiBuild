@@ -376,6 +376,7 @@ public static class ProjectSceneSerializer
             InheritPose = obj.InheritPose,
             ScaleResize = obj.ScaleResize,
             LockBend = obj.LockBend,
+            TagColor = obj.TagColor,
             // Preserve attachment if an internal part is restored as a regular library/fallback object.
             LockToBentHalf = obj is MiBoneSceneObject ? obj.LockBend > 0f : obj.LockToBentHalf,
             InheritBend = obj is MiBoneSceneObject bendSource ? bendSource.BendParameters?.InheritBend : null,
@@ -597,6 +598,7 @@ public static class ProjectSceneSerializer
             entry.LightSpecular = light.LightSpecular;
             entry.LightSize = light.LightSize;
             entry.LightFadeSize = light.LightFadeSize;
+            entry.LightRealisticFalloff = light.LightRealisticFalloff;
             entry.LightShadowEnabled = light.LightShadowEnabled;
             entry.LightType = (int)light.Type;
             entry.LightSpotAngle = light.LightSpotAngle;
@@ -1033,6 +1035,7 @@ public static class ProjectSceneSerializer
                 obj.LockBend = entry.LockBend.Value;
         }
         obj.LockToBentHalf = entry.LockToBentHalf ?? (entry.LockBend ?? 1f) > 0f;
+        obj.TagColor = entry.TagColor;
         obj.PivotOffsetInheritsModelOrigin = entry.PivotOffsetInheritsModelOrigin;
         obj.InheritPivotOffset = entry.InheritPivotOffset;
         obj.InheritVisibility = entry.InheritVisibility;
@@ -1332,6 +1335,7 @@ public static class ProjectSceneSerializer
             light.LightSpecular = entry.LightSpecular;
             light.LightSize = entry.LightSize;
             light.LightFadeSize = entry.LightFadeSize;
+            light.LightRealisticFalloff = entry.LightRealisticFalloff;
             light.LightShadowEnabled = entry.LightShadowEnabled;
             light.Type = (LightType)entry.LightType;
             light.LightSpotAngle = entry.LightSpotAngle;

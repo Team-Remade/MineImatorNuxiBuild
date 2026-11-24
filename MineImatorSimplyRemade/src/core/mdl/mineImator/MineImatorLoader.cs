@@ -338,6 +338,7 @@ public class MineImatorLoader
                     ApplyTimelineTransform(obj, timeline);
                 ImportTimelineKeyframes(obj, timeline, resourceDict, miObject.DirectoryPath);
                 templateDict.TryGetValue(timeline.Temp ?? "", out var template);
+                obj.TagColor = ParseTimelineTagColor(timeline);
                 MiObjectFeatureMapper.Apply(obj, timeline, sceneObjectsByTimelineId, warning);
                 MiObjectFeatureMapper.ApplyNativeChannels(obj, timeline, template, resourceInfoById,
                     miObject.DirectoryPath, sceneObjectsByTimelineId, warning);
@@ -362,6 +363,47 @@ public class MineImatorLoader
             foreach (var child in obj.Children)
                 RefreshInheritedBends(child);
         }
+    }
+
+    // Mine-imator's nine timeline tag accents as (hue, saturation, value) on its 0-255 scale.
+    private static readonly (int H, int S, int V)[] TagAccentHsv =
+    [
+        (0, 194, 209), (18, 250, 206), (28, 248, 204), (71, 250, 151), (71, 182, 123),
+        (128, 243, 132), (170, 141, 215), (199, 196, 193), (237, 188, 223)
+    ];
+
+    /// <summary>
+    /// Reads a timeline's label colour tag: either a "#RRGGBB" "color" value or
+    /// Mine-imator's "color_tag" accent index. Returns 0xRRGGBB, or null when untagged.
+    /// </summary>
+    internal static uint? ParseTimelineTagColor(MiTimeline timeline)
+    {
+        var extra = timeline.ExtraValues;
+        if (extra.TryGetValue("color", out var color) && color.ValueKind == JsonValueKind.String)
+        {
+            string text = color.GetString()!.Trim().TrimStart('#');
+            if (text.Length == 6 && uint.TryParse(text, System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out uint rgb))
+                return rgb;
+        }
+
+        if (extra.TryGetValue("color_tag", out var tag) && tag.ValueKind == JsonValueKind.Number &&
+            tag.TryGetInt32(out int index) && index >= 0 && index < TagAccentHsv.Length)
+        {
+            var (h, s, v) = TagAccentHsv[index];
+            float hue = h / 255f * 6f, sat = s / 255f, val = v / 255f;
+            int sector = (int)MathF.Floor(hue) % 6;
+            float f = hue - MathF.Floor(hue);
+            float p = val * (1f - sat), q = val * (1f - sat * f), t = val * (1f - sat * (1f - f));
+            (float r, float g, float b) = sector switch
+            {
+                0 => (val, t, p), 1 => (q, val, p), 2 => (p, val, t),
+                3 => (p, q, val), 4 => (t, p, val), _ => (val, p, q)
+            };
+            return ((uint)MathF.Round(r * 255f) << 16) | ((uint)MathF.Round(g * 255f) << 8) | (uint)MathF.Round(b * 255f);
+        }
+
+        return null;
     }
 
     /// <summary>Loads a .mimodel file.</summary>
@@ -4120,6 +4162,7 @@ public class MiTimeline
     [JsonPropertyName("texture_blur")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? TextureBlur { get; set; }
     [JsonPropertyName("texture_filtering")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? TextureFiltering { get; set; }
     [JsonPropertyName("shadows")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Shadows { get; set; }
+    [JsonPropertyName("realistic_falloff")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? RealisticFalloff { get; set; }
     [JsonPropertyName("depth_ignore")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? DepthIgnore { get; set; }
     [JsonPropertyName("ssao")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Ssao { get; set; }
     [JsonPropertyName("fog")] [JsonConverter(typeof(MiNullableBoolConverter))] public bool? Fog { get; set; }
