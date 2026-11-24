@@ -22,6 +22,30 @@ public partial class SpawnMenu
         if (MeshCacheData.IsCache(sourcePath) && MeshCacheData.IsSchematic(name))
             name = Path.GetFileNameWithoutExtension(name);
         int next = GetNextAvailableObjectNumber(name);
+        int tileX = Math.Clamp(_sceneryTileX, 1, SceneObject.MaxTilesPerAxis);
+        int tileY = Math.Clamp(_sceneryTileY, 1, SceneObject.MaxTilesPerAxis);
+        int tileZ = Math.Clamp(_sceneryTileZ, 1, SceneObject.MaxTilesPerAxis);
+        long copies = (long)tileX * tileY * tileZ;
+        vec3 tileSize = new(data.Width, data.Height, data.Length);
+        if (copies > 1)
+        {
+            long vertexCount = 0;
+            foreach (var batch in data.Batches) vertexCount += batch.Vertices.Count;
+            if (vertexCount * copies > 8_000_000L)
+                throw new InvalidDataException("The repeated meshcache is too large.");
+            if (data.Width <= 1 && data.Height <= 1 && data.Length <= 1)
+            {
+                // Custom single-buffer caches carry dummy 1x1x1 dimensions; tile by their real extent.
+                vec3 min = new(float.MaxValue), max = new(float.MinValue);
+                foreach (var batch in data.Batches)
+                    foreach (var v in batch.Vertices)
+                    {
+                        min = new vec3(Math.Min(min.x, v.x), Math.Min(min.y, v.y), Math.Min(min.z, v.z));
+                        max = new vec3(Math.Max(max.x, v.x), Math.Max(max.y, v.y), Math.Max(max.z, v.z));
+                    }
+                if (max.x >= min.x) tileSize = max - min;
+            }
+        }
         var root = new SceneObject
         {
             Name = next > 1 ? $"{name}{next}" : name,
@@ -75,9 +99,18 @@ public partial class SpawnMenu
                         material.Wave == 2 ? 2 : 1
                 };
                 root.AddMesh(mesh);
-                mesh.Vertices.AddRange(batch.Vertices);
-                mesh.Normals.AddRange(batch.Normals);
-                mesh.TexCoords.AddRange(batch.TexCoords);
+                for (int ty = 0; ty < tileY; ty++)
+                    for (int tz = 0; tz < tileZ; tz++)
+                        for (int tx = 0; tx < tileX; tx++)
+                        {
+                            var offset = new vec3((tx - (tileX - 1) * 0.5f) * tileSize.x,
+                                (ty - (tileY - 1) * 0.5f) * tileSize.y,
+                                (tz - (tileZ - 1) * 0.5f) * tileSize.z);
+                            if (copies == 1) mesh.Vertices.AddRange(batch.Vertices);
+                            else foreach (var v in batch.Vertices) mesh.Vertices.Add(v + offset);
+                            mesh.Normals.AddRange(batch.Normals);
+                            mesh.TexCoords.AddRange(batch.TexCoords);
+                        }
                 mesh.Upload();
             }
             root.ApplyMaterialSettingsToMeshes();

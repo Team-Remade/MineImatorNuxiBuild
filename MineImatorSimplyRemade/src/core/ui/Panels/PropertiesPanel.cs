@@ -3992,6 +3992,39 @@ public partial class PropertiesPanel : UiPanel
 
         }
 
+        // ── Scenery (schematic / meshcache) Tiling ─────────────────────────────
+        if (string.Equals(_currentObject.SpawnCategory, "Scenery", StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(_currentObject.SourceAssetPath) &&
+            ImGui.CollapsingHeader(Localization.Label("text.panel.properties.schematic_tiling", "Schematic Tiling")))
+        {
+            UiText.Wrapped(Localization.T("text.panel.properties.repeat_the_block_along_each_axis_each_axis_is_limited_to_1_1000"));
+            ImGui.Spacing();
+
+            int sTileX = _currentObject.TileX;
+            int sTileY = _currentObject.TileY;
+            int sTileZ = _currentObject.TileZ;
+            bool sceneryTileChanged = false;
+
+            ImGui.PushItemWidth(-ImGui.CalcTextSize("Z").X - ImGui.GetStyle().ItemInnerSpacing.X * 2);
+            if (InputIntEditor("X##sceneryTileX", ref sTileX, 1, 10, 1, SceneObject.MaxTilesPerAxis))
+                sceneryTileChanged = true;
+            if (InputIntEditor("Y##sceneryTileY", ref sTileY, 1, 10, 1, SceneObject.MaxTilesPerAxis))
+                sceneryTileChanged = true;
+            if (InputIntEditor("Z##sceneryTileZ", ref sTileZ, 1, 10, 1, SceneObject.MaxTilesPerAxis))
+                sceneryTileChanged = true;
+            ImGui.PopItemWidth();
+
+            if (sceneryTileChanged)
+                ApplySceneryTiling(sTileX, sTileY, sTileZ, _currentObject.SceneryRandomize);
+
+            bool sceneryRandomize = _currentObject.SceneryRandomize;
+            if (ImGui.Checkbox(Localization.Label("text.panel.properties.randomize", "Randomize##sceneryRandomize"), ref sceneryRandomize))
+                ApplySceneryTiling(_currentObject.TileX, _currentObject.TileY, _currentObject.TileZ, sceneryRandomize);
+
+            ImGui.Spacing();
+            UiText.Disabled(Localization.Format("text.panel.properties.total_blocks", _currentObject.GetEffectiveTileX() * _currentObject.GetEffectiveTileY() * _currentObject.GetEffectiveTileZ()));
+        }
+
         if (string.Equals(_currentObject.SpawnCategory, "Items", StringComparison.OrdinalIgnoreCase) &&
             ImGui.CollapsingHeader(Localization.Label("text.panel.properties.item", "Item")))
             DrawItemControls();
@@ -6899,6 +6932,33 @@ public partial class PropertiesPanel : UiPanel
 
             if (SpawnMenu != null && SpawnMenu.RebuildBlockMeshes(obj))
                 dirty = true;
+        });
+
+        if (dirty)
+            ProjectManager.Instance.SetDirty(true);
+    }
+
+    private void ApplySceneryTiling(int tileX, int tileY, int tileZ, bool randomize)
+    {
+        if (_currentObject == null || SpawnMenu == null) return;
+
+        tileX = Math.Clamp(tileX, 1, SceneObject.MaxTilesPerAxis);
+        tileY = Math.Clamp(tileY, 1, SceneObject.MaxTilesPerAxis);
+        tileZ = Math.Clamp(tileZ, 1, SceneObject.MaxTilesPerAxis);
+
+        bool dirty = false;
+        ApplyToSelectedObjects(obj =>
+        {
+            if (!string.Equals(obj.SpawnCategory, "Scenery", StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(obj.SourceAssetPath))
+                return;
+
+            var previous = (obj.TileX, obj.TileY, obj.TileZ, obj.SceneryRandomize);
+            (obj.TileX, obj.TileY, obj.TileZ, obj.SceneryRandomize) = (tileX, tileY, tileZ, randomize);
+            if (SpawnMenu.ApplyResourcePackToSpawnedObject(obj, obj.ResourcePackId))
+                dirty = true;
+            else
+                (obj.TileX, obj.TileY, obj.TileZ, obj.SceneryRandomize) = previous;
         });
 
         if (dirty)
